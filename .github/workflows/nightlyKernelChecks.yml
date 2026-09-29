@@ -198,6 +198,7 @@ jobs:
           args=()
           [[ -f correctness.xml ]] && args+=(--correctness correctness.xml)
           [[ -f perf.json ]] && args+=(--perf perf.json)
+          [[ -f meta.json ]] && args+=(--meta meta.json)
           python utils/kernel_checks/catalogue.py --npu "$AIE_EXPECTED_NPU" \
             "${args[@]}" --out catalogue.json
 

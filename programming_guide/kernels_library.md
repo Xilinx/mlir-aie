@@ -471,8 +471,10 @@ results. A bit-exact `passthrough` smoke test inside a cycle band guards
 the machine. Nightly data goes to `gh-pages:kernel-checks/<npu>/` and is
 graphed at `https://xilinx.github.io/mlir-aie/kernel-checks/`, whose kernels
 view lists every factory with the builds each NPU offers, how its cases fared that
-night and their latest numbers (`utils/kernel_checks/catalogue.py` writes the
-catalogue); nothing gates a pull request. A Peano-bump PR is compared against the
+night (passed, failed the sweep, failed in the timing run, or checked for
+correctness only) and their latest numbers (`utils/kernel_checks/catalogue.py`
+writes the catalogue from `correctness.xml`, `perf.json` and `meta.json`);
+nothing gates a pull request. A Peano-bump PR is compared against the
 cached nightly baseline by `utils/kernel_checks/pr_report.py`, which keeps one PR
 comment listing failing cases and `cycles` or core ELF size regressions of 2 % or more.
 

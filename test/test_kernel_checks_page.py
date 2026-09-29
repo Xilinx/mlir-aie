@@ -187,39 +187,62 @@ const kernel = (factory, extra) => ({
   builds: [factory], passed: 1, failed: [], timed: 1, ...extra,
 });
 renderKernels([{ npu: 'npu1', arch: 'aie2', commit: 'abcdef1', date: 0, kernels: [
-  kernel('softmax', { failed: ['softmax/2048/bfloat16'] }),
+  kernel('softmax', { failed: ['softmax/2048/bfloat16'], timing_failed: ['softmax/16/bfloat16'],
+                      untimed: ['softmax/32/bfloat16'] }),
   kernel('relu', { builds: [], passed: 0, timed: 0 }),
+  kernel('cascade_mm', { passed: 0, timed: 0, reason: 'no case' }),
 ]}], db);
 assert.ok($('kernels-status').textContent.endsWith(', turbo mode'));
 const rows = $('kernels-rows').children;
 const name = r => r.children[r.className === 'case' ? 0 : 1];
 assert.deepEqual(rows.map(r => name(r).text), [
-  'relu', 'softmax3 cases',
-  'softmax/1024/bfloat16', 'softmax/2048/bfloat16', 'softmax/64/bfloat16',
+  'cascade_mm', 'relu', 'softmax5 cases',
+  'softmax/1024/bfloat16', 'softmax/16/bfloat16', 'softmax/2048/bfloat16',
+  'softmax/32/bfloat16', 'softmax/64/bfloat16',
 ]);
 const npu = r => r.children[r.children.length - 1];
-assert.equal(npu(rows[0]).text, '—');
-assert.equal(npu(rows[1]).text, '1 build · 1 failing · charts');
-assert.equal(npu(rows[2]).text, '1,100 cycles (+10.0%) · 4.0 KiB');
-assert.equal(npu(rows[2]).children[0].children[1].className, 'worse');
-assert.equal(npu(rows[3]).text, 'failing');
-assert.equal(npu(rows[4]).className, 'stale');
-assert.equal(npu(rows[4]).text, '50 cycles');
-assert.equal(rows[2].children[0].children[0].href,
+assert.equal(npu(rows[0]).text, '1 build · not checked on hardware');
+assert.equal(npu(rows[0]).children[1].title, 'no case');
+assert.equal(npu(rows[1]).text, '—');
+assert.equal(npu(rows[2]).text, '1 build · 1 failing · 1 timing failed · charts');
+assert.equal(npu(rows[2]).children[2].title, 'softmax/16/bfloat16');
+assert.equal(npu(rows[3]).text, '1,100 cycles (+10.0%) · 4.0 KiB');
+assert.equal(npu(rows[3]).children[0].children[1].className, 'worse');
+assert.equal(npu(rows[4]).text, 'timing failed');
+assert.equal(npu(rows[4]).className, 'fail');
+assert.equal(npu(rows[5]).text, 'failing');
+assert.equal(npu(rows[6]).text, 'passed, not timed');
+assert.equal(npu(rows[6]).className, 'none');
+assert.equal(npu(rows[7]).className, 'stale');
+assert.equal(npu(rows[7]).text, '50 cycles');
+assert.equal(rows[3].children[0].children[0].href,
   '#view=charts&npu=npu1&metric=all&kernel=softmax%2F1024%2Fbfloat16');
 
-assert.ok(rows.slice(2).every(r => r.hidden));
-rows[1].children[1].children[1].on.click();
-assert.ok(rows.slice(2).every(r => !r.hidden));
-rows[1].children[1].children[1].on.click();
-assert.ok(rows.slice(2).every(r => r.hidden));
+assert.ok(rows.slice(3).every(r => r.hidden));
+rows[2].children[1].children[1].on.click();
+assert.ok(rows.slice(3).every(r => !r.hidden));
+rows[2].children[1].children[1].on.click();
+assert.ok(rows.slice(3).every(r => r.hidden));
 
 $('kernels-filter').value = '2048';
 $('kernels-filter').on.input();
-assert.deepEqual(rows.map(r => r.hidden), [true, false, true, false, true]);
+assert.deepEqual(rows.map(r => r.hidden), [true, true, false, true, true, false, true, true]);
 $('kernels-filter').value = '';
 $('kernels-filter').on.input();
-assert.deepEqual(rows.map(r => r.hidden), [false, false, true, true, true]);
+assert.deepEqual(rows.map(r => r.hidden), [false, false, false, true, true, true, true, true]);
+""")
+
+
+def test_kernels_view_counts_untimed_cases(page):
+    page("""
+renderKernels([{ npu: 'npu1', arch: 'aie2', commit: 'abcdef1', date: 0, kernels: [
+  { factory: 'zero', family: 'zero', summary: 'zero', sources: ['common/zero.h'], builds: ['zero'],
+    passed: 4, failed: [], timed: 0, untimed: ['zero/64/int32', 'zero/64/bfloat16'] },
+]}], null);
+const row = $('kernels-rows').children[0];
+const cell = row.children[row.children.length - 1];
+assert.equal(cell.text, '1 build · 4 cases pass');
+assert.equal(cell.children[1].title, '2 cases not timed by design');
 """)
 
 

@@ -71,9 +71,11 @@
           <span class="worse">red</span> is more than 0.5% worse, <span class="better">green</span> more than 0.5% better.</li>
         <li>Kernels: one row per kernel factory, and per NPU the builds it offers and how its cases fared in the latest nightly:
           <span class="fail">failing</span> cases failed the correctness sweep and are not timed,
+          <span class="fail">timing failed</span> cases passed it but failed in the timing run (their series has a gap),
           <span class="pass">cases pass</span> passed it, <span class="none">not checked on hardware</span> has no case,
           and <span class="none">&mdash;</span> is not offered on that NPU.
           Expand a kernel for its cases' latest cycles, core ELF size and NPU time, colored as in the charts;
+          <span class="none">passed, not timed</span> cases are checked for correctness only, and
           <span class="stale">gray</span> values are from an earlier nightly than the latest.</li>
       </ul>
     </details>
@@ -254,29 +256,54 @@
       td.title = k.builds.join('\n');
       td.append(`${k.builds.length} build${k.builds.length > 1 ? 's' : ''}`);
       const verdict = document.createElement('span');
+      const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`;
       if (k.failed.length) {
         verdict.className = 'fail';
         verdict.textContent = ` \u00b7 ${k.failed.length} failing`;
         verdict.title = k.failed.join('\n');
       } else if (k.passed) {
         verdict.className = 'pass';
-        verdict.textContent = ` \u00b7 ${k.passed} case${k.passed > 1 ? 's' : ''} pass`;
+        verdict.textContent = ` \u00b7 ${plural(k.passed, 'case')} pass`;
+        const untimed = (k.untimed || []).length;
+        if (untimed) verdict.title = `${plural(untimed, 'case')} not timed by design`;
       } else {
         verdict.className = 'none';
         verdict.textContent = ' \u00b7 not checked on hardware';
+        verdict.title = k.reason || '';
       }
       td.append(verdict);
+      const broken = k.timing_failed || [];
+      if (broken.length) {
+        const span = document.createElement('span');
+        span.className = 'fail';
+        span.textContent = ` \u00b7 ${broken.length} timing failed`;
+        span.title = broken.join('\n');
+        td.append(span);
+      }
       if (k.timed) td.append(' \u00b7 ', chartsLink(npu, `${k.factory}/`, 'charts'));
       return td;
     }
 
-    // One case on one NPU: failing, or its latest values of the SHOWN metrics.
-    function caseCell(failing, c) {
+    // One case on one NPU: its verdict when it was not timed, else its latest
+    // values of the SHOWN metrics.
+    function caseCell(verdict, c) {
       const td = document.createElement('td');
-      if (failing) {
+      if (verdict === 'failing') {
         td.className = 'fail';
         td.textContent = 'failing';
         td.title = 'failed the correctness sweep, so not timed';
+        return td;
+      }
+      if (verdict === 'timing failed') {
+        td.className = 'fail';
+        td.textContent = 'timing failed';
+        td.title = 'passed the correctness sweep, then failed in the timing run; see the run\'s perf.log';
+        return td;
+      }
+      if (verdict === 'untimed' && !c) {
+        td.className = 'none';
+        td.textContent = 'passed, not timed';
+        td.title = 'passed the correctness sweep; not timed by design (perf=False)';
         return td;
       }
       if (!c) {
@@ -332,8 +359,16 @@
         a.family.localeCompare(b.family) || a.factory.localeCompare(b.factory));
       const commit = catalogues.find(c => c.commit)?.commit || 'main';
       const groups = sorted.map(k => {
-        const failing = catalogues.map((c, i) => new Set(byNpu[i].get(k.factory)?.failed || []));
-        const names = new Set(failing.flatMap(f => [...f]));
+        // Per NPU, each case's verdict when it has no numbers to show.
+        const verdicts = catalogues.map((c, i) => {
+          const entry = byNpu[i].get(k.factory);
+          const v = new Map();
+          for (const kase of entry?.untimed || []) v.set(kase, 'untimed');
+          for (const kase of entry?.timing_failed || []) v.set(kase, 'timing failed');
+          for (const kase of entry?.failed || []) v.set(kase, 'failing');
+          return v;
+        });
+        const names = new Set(verdicts.flatMap(v => [...v.keys()]));
         for (const { cases } of latest.values()) {
           for (const kase of cases.keys()) if (kase.split('/')[0] === k.factory) names.add(kase);
         }
@@ -347,7 +382,7 @@
           name.colSpan = 4;
           name.append(chartsLink(catalogues.map(c => c.npu).join(','), kase, kase));
           tr.append(name, ...catalogues.map((c, i) =>
-            caseCell(failing[i].has(kase), latest.get(c.npu).cases.get(kase))));
+            caseCell(verdicts[i].get(kase), latest.get(c.npu).cases.get(kase))));
           return tr;
         });
 
