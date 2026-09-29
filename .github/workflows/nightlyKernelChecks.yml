@@ -144,9 +144,9 @@ jobs:
           BDF=$(printf '%s\n' "$EXAMINE" | grep -oE '\[[0-9a-f:.]+\]' | head -1 | tr -d '[]')
           [ -n "$BDF" ]
           echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
-          # The bench runners set `turbo` at boot (a oneshot systemd unit
-          # ordered before the runner): amdxdna refuses turbo while any hwctx
-          # is open, and setting any mode needs root. Only a runner found in
+          # The bench runners set `turbo` at boot (a oneshot systemd unit,
+          # retried on failure): amdxdna refuses turbo while any hwctx is
+          # open, and setting any mode needs root. Only a runner found in
           # another mode tries here. Run the exact command in the condition
           # so a denied sudo rule is non-fatal even when permissions are
           # restricted by argument.
