@@ -399,6 +399,15 @@ assert.equal(migrated.url, null);
 // Stale, unsane runs say so first.
 const bad = latestRun('npu1', { runs: [{ ...index.runs[0], sane: false, published: false }] }, db, catalogue);
 assert.deepEqual(warningsFor('npu1', bad, now + 48 * 3600 * 1000).map(w => w.level), ['bad', 'bad']);
+// A refused run says why, and its empty provenance is no change: the next
+// run compares with the last published one.
+const refusal = "power mode is performance, required 'turbo'";
+const refusedRuns = [...index.runs, summary('3', '1970-01-01T00:00:03Z', null, {}, { sane: null, published: false, refused: refusal })];
+assert.deepEqual(warningsFor('npu1', latestRun('npu1', { runs: refusedRuns }, db, catalogue), now).map(w => w.text),
+                 [`the run refused to measure: ${refusal}`]);
+const after = latestRun('npu1', { runs: [...refusedRuns, summary('4', '1970-01-01T00:00:04Z', 'turbo', index.runs[1].provenance)] }, db, catalogue);
+assert.equal(after.previous.id, '2');
+assert.deepEqual(warningsFor('npu1', after, now), []);
 
 // Without runs.json, the latest run's record stands in.
 const fallback = latestRun('npu1', null, db, catalogue);

@@ -475,7 +475,9 @@
       if (newer) runsIndex = null;
       const runs = runsIndex && runsIndex.runs ? runsIndex.runs : [];
       const recorded = runs.length ? runs[runs.length - 1] : null;
-      const previous = runs.length > 1 ? runs[runs.length - 2] : null;
+      // Provenance is compared with the last run that measured anything: a
+      // refused or failed run records little of it.
+      const previous = runs.slice(0, -1).reverse().find(r => r.published) || null;
       const last = db ? latestCases(db, npu).last : null;
       const run = {
         recorded: Boolean(recorded),
@@ -497,6 +499,7 @@
         failed: recorded ? recorded.failed : [],
         truncated: recorded ? recorded.truncated : [],
         correctnessError: recorded ? recorded.correctness_error : undefined,
+        refused: recorded ? recorded.refused : undefined,
         previous,
       };
       if (!run.commitUrl && run.commit) run.commitUrl = `${REPO}/commit/${run.commit}`;
@@ -509,7 +512,8 @@
       if (run.newer) out.push({ level: 'bad', text: 'the results were published by a newer version of this page: reload it' });
       if (run.date === null) { out.push({ level: 'bad', text: `${npu}: no results have been published` }); return out; }
       if (now - run.date > STALE_AFTER_MS) out.push({ level: 'bad', text: `no run since ${formatDate(run.date)}` });
-      if (run.sane === false) out.push({ level: 'bad', text: 'the measurement sanity check failed: no numbers were published from this run' });
+      if (run.refused) out.push({ level: 'bad', text: `the run refused to measure: ${run.refused}` });
+      else if (run.sane === false) out.push({ level: 'bad', text: 'the measurement sanity check failed: no numbers were published from this run' });
       else if (!run.published) out.push({ level: 'bad', text: run.recorded ? 'this run published no numbers' : 'no numbers have been published yet' });
       if (run.pmode && run.pmode !== EXPECTED_PMODE) out.push({ level: 'warn', text: `measured in power mode "${run.pmode}", not ${EXPECTED_PMODE}: not comparable with ${EXPECTED_PMODE} runs` });
       if (run.correctnessError) out.push({ level: 'bad', text: `correctness report unreadable: ${run.correctnessError}` });
@@ -518,7 +522,7 @@
       const truncated = run.truncated || [];
       if (truncated.length) out.push({ level: 'warn', text: `${truncated.length} case${truncated.length > 1 ? 's' : ''} with a truncated trace: the cycles min is over part of the calls`, detail: truncated.join('\n') });
       const prev = run.previous;
-      if (prev && prev.provenance) {
+      if (prev && prev.provenance && run.published) {
         for (const k of MARKED) {
           const a = prev.provenance[k], b = (run.provenance || {})[k];
           if (a !== b && (a || b)) out.push({ level: k === 'peano' ? 'info' : 'warn', text: `${k} changed since the previous run: ${a || '?'} → ${b || '?'}` });

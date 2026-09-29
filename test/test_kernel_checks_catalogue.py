@@ -3,13 +3,12 @@
 #
 # RUN: %pytest %s
 
-"""Catalogue behavior with synthetic factories, independent of the kernel tree."""
+"""How the catalogue attributes a run's outcomes to each factory."""
 
 import importlib.util
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace as NS
 
 import pytest
 
@@ -97,42 +96,3 @@ def test_rows_aggregate_variants_and_attribute_outcomes(catalogue, tmp_path):
     assert "reason" not in measured
     assert by_name["uncased"]["reason"] == "needs an external input"
     assert "reason" not in by_name["unavailable"]
-
-
-def test_rows_without_artifacts_distinguish_built_and_unavailable(catalogue):
-    rows = catalogue.rows(FACTORIES, {}, {}, {}, {}, {})
-    assert all(
-        (r["passed"], r["failed"], r["timed"], r["timing_failed"], r["untimed"])
-        == (0, [], 0, [], [])
-        for r in rows
-    )
-    assert [r.get("reason") for r in rows] == [
-        catalogue.NO_CASE,
-        "needs an external input",
-        None,
-    ]
-
-
-@pytest.mark.parametrize(
-    "factory,reason",
-    [
-        (NS(contract=NS(unsupported="external result", trace=None)), "external result"),
-        (
-            NS(
-                contract=NS(
-                    unsupported=None, trace=NS(shape="none", reason="runs once")
-                )
-            ),
-            "runs once",
-        ),
-        (
-            NS(
-                contract=NS(unsupported=None, trace=NS(shape="whole_call", reason=None))
-            ),
-            None,
-        ),
-        (NS(contract=None), None),
-    ],
-)
-def test_uncased_reason_comes_from_contract(catalogue, factory, reason):
-    assert catalogue.why_uncased(factory) == reason

@@ -182,7 +182,7 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
         "device": device_part(preflight.get("device")),
         "device_raw": preflight.get("device"),
         "provenance": provenance_fields(meta.get("provenance", "")),
-        "sane": meta.get("measurement_sane") is True,
+        "sane": meta.get("measurement_sane"),
         "published": meta.get("measurement_sane") is True and bool(rows),
         "n_rows": len(rows),
         "exitstatus": meta.get("exitstatus"),
@@ -194,8 +194,9 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
         ),
         "rows": rows_by_case(rows) if meta.get("measurement_sane") is True else {},
     }
-    if "correctness_error" in meta:
-        record["correctness_error"] = meta["correctness_error"]
+    for key in ("correctness_error", "refused"):
+        if key in meta:
+            record[key] = meta[key]
     if catalogue:
         record.update(_summary_of_catalogue(catalogue))
     return record

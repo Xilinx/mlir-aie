@@ -254,8 +254,11 @@ def _preflight(request):
     pre = preflight()
     required = config.getoption("--pmode")
     if required != "any" and pre.pmode != required:
+        config._perf_meta["refused"] = (
+            f"power mode is {pre.pmode or 'unreadable'}, required '{required}'"
+        )
         pytest.fail(
-            f"power mode is {pre.pmode or 'unreadable'}, required '{required}' "
+            f"{config._perf_meta['refused']} "
             "(set it with xrt-smi configure --pmode, or pass --pmode any)"
         )
     config._perf_meta["preflight"] = dict(vars(pre))

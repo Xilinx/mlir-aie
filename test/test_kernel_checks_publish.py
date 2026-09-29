@@ -215,6 +215,16 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
     ]
 
 
+def test_a_refused_run_records_why_and_no_sanity_result(publish, tmp_path):
+    refused = "power mode is performance, required 'turbo'"
+    meta = {"refused": refused, "exitstatus": 1, "n_rows": 0, "failed": []}
+    record = publish.record_perf(
+        results_dir(tmp_path, meta=meta, rows=None), target="npu1", run={"id": "1"}
+    )
+    assert record["refused"] == refused
+    assert record["sane"] is None and not record["published"]
+
+
 def test_runs_accumulate_gaps_stay_and_unsane_runs_publish_nothing(publish, tmp_path):
     out = tmp_path / "npu1"
     a = results_dir(tmp_path, "a")
