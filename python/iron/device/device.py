@@ -35,7 +35,7 @@ class Device(Resolvable):
         self._resolved_tiles: dict[int, LogicalTileOp] = {}
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}()"
+        return f"{type(self).__name__}(AIEDevice.{self._device.name})"
 
     @property
     def name(self) -> str:
@@ -219,6 +219,9 @@ class NamedDevice(Device):
 
     def __init__(self) -> None:
         super().__init__(device=self.aie_device)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}()"
 
     def resolve(
         self,

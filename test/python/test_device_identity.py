@@ -11,7 +11,16 @@ requiring one bound."""
 import pytest
 
 from aie.dialects._aie_enum_gen import AIEArch
-from aie.iron.device import NPU1, NPU1Col1, NPU2, NPU2Col1, NamedDevice, from_name
+from aie.dialects.aie import AIEDevice
+from aie.iron.device import (
+    NPU1,
+    NPU1Col1,
+    NPU2,
+    NPU2Col1,
+    Device,
+    NamedDevice,
+    from_name,
+)
 from aie.utils import ensure_current_device, get_current_device, set_current_device
 
 
@@ -34,6 +43,7 @@ def test_a_device_reprs_as_its_constructor():
     assert isinstance(from_name("npu2", n_cols=4), NamedDevice)
     assert repr(NPU2()) == "NPU2()"
     assert repr(from_name("npu2", n_cols=4)) == "NPU2Col4()"
+    assert repr(Device(AIEDevice.npu2)) == "Device(AIEDevice.npu2)"
 
 
 @pytest.mark.parametrize(
