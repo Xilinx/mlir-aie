@@ -970,6 +970,13 @@ def main(argv=None):
     cli.add_argument("--bankres-seeds", type=int, default=BANKRES_SEEDS)
     cli.add_argument("--jobs", type=int, default=4, help="parallel aie-opt runs")
     args = cli.parse_args(argv)
+    if args.seeds < SEEDS:
+        cli.error(f"--seeds must be at least {SEEDS} to preserve quality ratchets")
+    if args.bankres_seeds < BANKRES_SEEDS:
+        cli.error(
+            f"--bankres-seeds must be at least {BANKRES_SEEDS} "
+            "to preserve search coverage"
+        )
     pool = ThreadPoolExecutor(args.jobs)
 
     designs = []
