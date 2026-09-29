@@ -246,41 +246,28 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
   // dialect, so downgradeIRForPeano runs again on the result: the pre-link pass
   // above cannot see the newer spellings the reprint introduces, and the
   // reprint also restores the `align` attributes it had stripped.
+  //
+  // The result stays in memory until `opt` materializes it as its input, so
+  // the core IR is written to disk once per core (peano-compat's file when
+  // nothing is merged, this edge's otherwise) instead of written and copied.
   auto &peanoLinked =
       bundle(peanoCompat.out, irLinkFiles.out)
-          .map<File>(
+          .map<std::string>(
               "peano-linked_{0}.ll",
               [](const Item<std::string> &ir,
                  const Item<std::vector<std::string>> &links,
-                 Item<File> &out) -> mlir::LogicalResult {
+                 Item<std::string> &out) -> mlir::LogicalResult {
                 if (links.get().empty()) {
-                  // Nothing to merge: the downgraded core IR is the
-                  // object input. Copy it to this edge's own output path
-                  // -- aliasing the peano-compat item's path collides
-                  // with it (the engine requires each item's output path
-                  // to be unique).
-                  if (std::error_code ec =
-                          llvm::sys::fs::copy_file(ir.asFile(), out.filePath)) {
-                    llvm::errs() << "aiecc: peano-linked: cannot copy '"
-                                 << ir.asFile() << "' to '" << out.filePath
-                                 << "': " << ec.message() << "\n";
-                    return mlir::failure();
-                  }
-                  out.value = File{};
+                  // Nothing to merge: the downgraded core IR is the object
+                  // input as is. Alias it, so `opt` reads peano-compat's file
+                  // and the IR is neither copied nor written twice.
+                  out.aliasSource = &ir;
                   return mlir::success();
                 }
                 if (dryRun) {
-                  // Placeholder so path bookkeeping resolves without requiring
-                  // the merge artifacts to exist, as the ShellCommand edges do.
-                  std::error_code ec;
-                  llvm::raw_fd_ostream placeholder(out.filePath, ec);
-                  if (ec) {
-                    llvm::errs()
-                        << "aiecc: peano-linked: cannot write '" << out.filePath
-                        << "': " << ec.message() << "\n";
-                    return mlir::failure();
-                  }
-                  out.value = File{};
+                  // Empty placeholder, so the dry run does not require the
+                  // merge artifacts to exist, as the ShellCommand edges do.
+                  out.value.emplace();
                   return mlir::success();
                 }
                 // AIELLVMLink takes module *contents*, not paths (its `Files`
@@ -306,15 +293,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                                   "the core module\n";
                   return mlir::failure();
                 }
-                std::error_code ec;
-                llvm::raw_fd_ostream os(out.filePath, ec);
-                if (ec) {
-                  llvm::errs() << "aiecc: peano-linked: cannot write '"
-                               << out.filePath << "': " << ec.message() << "\n";
-                  return mlir::failure();
-                }
-                os << downgradeIRForPeano(merged, /*stripAlign=*/false);
-                out.value = File{};
+                out.value = downgradeIRForPeano(merged, /*stripAlign=*/false);
                 return mlir::success();
               })
           .threadSafe();
@@ -2023,6 +2002,21 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
                 return mlir::success();
               });
 
+  // Every input is named in the full-ELF config by its absolute path.
+  // `aiebu-asm` reads each from there, so the inputs are materialized. The
+  // in-process assembler reads the PDIs (which bootgen writes) from there too,
+  // but is handed the in-memory inputs under their would-be paths, so those
+  // are never written. Either way the config matches what `aiebu-asm` needs.
+#ifdef AIECC_HAS_AIEBU_CONFIG_ELF
+  auto fullElfInputPath = [](const auto &item) {
+    return absolutePath(item.path());
+  };
+#else
+  auto fullElfInputPath = [](const auto &item) {
+    return absolutePath(item.asFile());
+  };
+#endif // AIECC_HAS_AIEBU_CONFIG_ELF
+
   // Combined ELF: all PDIs + NPU insts bundled
   // + control packet data, if any.
   auto &fullElfConfig =
@@ -2030,40 +2024,70 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
              fullElfCtrlpkt.out, fullElfPatchInfo.out)
           .join<llvm::json::Value>(
               "full_elf_config.json",
-              [](const Node<OpInModule<DeviceOp>> &devices,
-                 const Node<File> &pdis,
-                 const Node<std::vector<char>> &instsBins,
-                 const Node<std::vector<char>> &ctrlPkts,
-                 const Node<llvm::json::Value> &patchInfos,
-                 Item<llvm::json::Value> &out) -> mlir::LogicalResult {
+              [fullElfInputPath](
+                  const Node<OpInModule<DeviceOp>> &devices,
+                  const Node<File> &pdis,
+                  const Node<std::vector<char>> &instsBins,
+                  const Node<std::vector<char>> &ctrlPkts,
+                  const Node<llvm::json::Value> &patchInfos,
+                  Item<llvm::json::Value> &out) -> mlir::LogicalResult {
                 llvm::StringMap<std::string> pdiPaths, instsPaths;
                 llvm::StringMap<std::string> ctrlPktPaths, patchInfoPaths;
                 for (const auto &item : pdis.items) {
-                  pdiPaths[item.key] = absolutePath(item.asFile());
+                  pdiPaths[item.key] = fullElfInputPath(item);
                 }
                 for (const auto &item : instsBins.items) {
-                  instsPaths[item.key] = absolutePath(item.asFile());
+                  instsPaths[item.key] = fullElfInputPath(item);
                 }
                 for (const auto &item : ctrlPkts.items) {
-                  ctrlPktPaths[item.key] = absolutePath(item.asFile());
+                  ctrlPktPaths[item.key] = fullElfInputPath(item);
                 }
                 for (const auto &item : patchInfos.items) {
-                  patchInfoPaths[item.key] = absolutePath(item.asFile());
+                  patchInfoPaths[item.key] = fullElfInputPath(item);
                 }
                 out.value = makeFullElfConfigJson(devices, pdiPaths, instsPaths,
                                                   ctrlPktPaths, patchInfoPaths);
                 return mlir::success();
               });
 
-  // TODO(aiebu-aie2_config): unlike the instruction and control-packet ELFs,
-  // the full ELF is assembled by shelling out to `aiebu-asm -t aie2_config`
-  // rather than calling the in-process aiebu library. The library's
-  // `aiebu_assembler_buffer_type_aie2_config` entry point is a no-op in this
-  // XRT build (it returns a 0-byte ELF), whereas the CLI tool assembles the
-  // same config correctly. This is the one remaining shell-out edge in the ELF
-  // path; it should move in-memory once the library's aie2_config support is
-  // understood/fixed. Until then this stays a declarative ShellCommand edge so
-  // the driver never grows ad-hoc subprocess or temp-file machinery.
+#ifdef AIECC_HAS_AIEBU_CONFIG_ELF
+  auto &fullElf =
+      bundle(fullElfConfig.out, npuInstsFullElf.out, fullElfCtrlpkt.out,
+             fullElfPatchInfo.out)
+          .join<File>(
+              fullElfName.getValue(),
+              [fullElfInputPath](const Node<llvm::json::Value> &config,
+                                 const Node<std::vector<char>> &instsBins,
+                                 const Node<std::vector<char>> &ctrlPkts,
+                                 const Node<llvm::json::Value> &patchInfos,
+                                 Item<File> &out) -> mlir::LogicalResult {
+                // The config is still written: the Python JIT reads the
+                // kernel name from it.
+                const auto &configItem = config.items.front();
+                (void)configItem.asFile();
+                if (dryRun) {
+                  std::error_code ec;
+                  llvm::raw_fd_ostream f(out.filePath, ec);
+                  out.value = File{};
+                  return mlir::success();
+                }
+                std::vector<std::pair<std::string, std::vector<char>>> files;
+                for (const auto &item : instsBins.items) {
+                  files.emplace_back(fullElfInputPath(item), item.get());
+                }
+                for (const auto &item : ctrlPkts.items) {
+                  files.emplace_back(fullElfInputPath(item), item.get());
+                }
+                for (const auto &item : patchInfos.items) {
+                  std::string json = item.asString();
+                  files.emplace_back(
+                      fullElfInputPath(item),
+                      std::vector<char>(json.begin(), json.end()));
+                }
+                return assembleFullElf(configItem.asString(), files, out,
+                                       verbose, ShellCommand::progress);
+              });
+#else
   auto &fullElf =
       fullElfConfig.map<File>(fullElfName.getValue(), ShellCommand{"aiebu-asm"}
                                                           .arg("-t")
@@ -2072,6 +2096,7 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
                                                           .input()
                                                           .arg("-o")
                                                           .output());
+#endif // AIECC_HAS_AIEBU_CONFIG_ELF
 
   //--------------------------------------------------------------------------//
   // Host program
