@@ -113,11 +113,20 @@ portSettings(Operation &op, AIE::SwitchboxOp sb) {
                        src.channel)});
     settings.push_back({key(false, src), "circuit"});
   } else if (auto masterSet = dyn_cast<AIE::MasterSetOp>(op)) {
-    std::string value = "packet";
-    for (Value v : masterSet.getAmsels())
-      value += " " + amsel(v);
-    if (auto keep = masterSet.getKeepPktHeader())
-      value += *keep ? " keep" : " drop";
+    int arbiter = -1;
+    int mask = 0;
+    for (Value v : masterSet.getAmsels()) {
+      auto a = cast<AIE::AMSelOp>(v.getDefiningOp());
+      arbiter = a.arbiterIndex();
+      mask |= 1 << a.getMselValue();
+    }
+    bool keepHeader = masterSet.getKeepPktHeader().value_or(
+        masterSet.getDestBundle() != AIE::WireBundle::DMA &&
+        !(sb.rowIndex() == 0 &&
+          masterSet.getDestBundle() == AIE::WireBundle::South));
+    std::string value = llvm::formatv("packet {0}/{1} {2}", arbiter, mask,
+                                      keepHeader ? "keep" : "drop")
+                            .str();
     settings.push_back({key(true, masterSet.destPort()), value});
   } else if (auto rules = dyn_cast<AIE::PacketRulesOp>(op)) {
     std::string value = "rules";

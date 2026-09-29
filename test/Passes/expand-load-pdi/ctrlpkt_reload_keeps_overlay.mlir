@@ -16,7 +16,9 @@ module {
     %t = aie.tile(0, 2)
     aie.switchbox(%t) {
       %a = aie.amsel<5> (3)
-      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      %b = aie.amsel<5> (2)
+      aie.masterset(TileControl : 0, %a, %b) {is_ctrl_pkt_overlay}
+      aie.masterset(DMA : 1, %a) {is_ctrl_pkt_overlay}
       aie.packet_rules(South : 1) {
         aie.rule(31, 1, %a)
       } {is_ctrl_pkt_overlay}
@@ -26,16 +28,43 @@ module {
     %t = aie.tile(0, 2)
     aie.switchbox(%t) {
       %a = aie.amsel<5> (3)
-      %b = aie.amsel<0> (0)
-      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
-      aie.masterset(DMA : 0, %b)
+      %b = aie.amsel<5> (2)
+      %c = aie.amsel<0> (0)
+      aie.masterset(TileControl : 0, %b, %a, %a) {is_ctrl_pkt_overlay, keep_pkt_header = true}
+      aie.masterset(DMA : 1, %a) {is_ctrl_pkt_overlay, keep_pkt_header = false}
+      aie.masterset(DMA : 0, %c)
       aie.packet_rules(South : 1) {
         aie.rule(31, 1, %a)
       } {is_ctrl_pkt_overlay}
       aie.packet_rules(South : 5) {
         aie.rule(31, 2, %a)
-        aie.rule(31, 3, %b)
+        aie.rule(31, 3, %c)
       }
+    }
+  }
+  aie.device(npu1_1col) @main {
+    aie.runtime_sequence(%arg0: memref<1xi32>) {
+      aiex.npu.load_pdi {device_ref = @design, expand_mode = 2 : i32}
+    }
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu1_1col) @ctrl_pkt_overlay {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+    }
+  }
+  aie.device(npu1_1col) @design {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      // expected-error@+1 {{a control-packet reload skips this op, but @ctrl_pkt_overlay sets tile (0, 2) master TileControl : 0 differently}}
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay, keep_pkt_header = false}
     }
   }
   aie.device(npu1_1col) @main {
