@@ -2072,6 +2072,8 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
                   return mlir::success();
                 }
                 std::vector<std::pair<std::string, std::vector<char>>> files;
+                files.reserve(instsBins.items.size() + ctrlPkts.items.size() +
+                              patchInfos.items.size());
                 for (const auto &item : instsBins.items) {
                   files.emplace_back(fullElfInputPath(item), item.get());
                 }
