@@ -9,7 +9,7 @@
 
 // A marked DMA-to-TileControl request is not a routed response.
 // CHECK-LABEL: aie.device(npu1_1col) {
-// CHECK: aie.packet_rules(DMA : 0)
+// CHECK: aie.masterset(TileControl : 0, %{{.*}}) {is_ctrl_pkt_overlay}
 // CHECK: aie.packet_flow(15) {
 // CHECK-NEXT: aie.packet_source<%{{.*}}, TileControl : 0>
 // CHECK-NEXT: aie.packet_dest<%{{.*}}, South : 0>
@@ -27,10 +27,12 @@ aie.device(npu1_1col) {
 // A response in one column must not prevent generation in another column.
 // CHECK-LABEL: aie.device(npu1_2col) {
 // CHECK: aie.packet_rules(TileControl : 0)
+// CHECK: %[[SHIM1:.*]] = aie.tile(1, 0)
 // CHECK-NOT: aie.packet_flow
 // CHECK: aie.packet_flow(15) {
-// CHECK-NEXT: aie.packet_source<%[[SHIM:.*]], TileControl : 0>
-// CHECK-NEXT: aie.packet_dest<%[[SHIM]], South : 0>
+// CHECK-NEXT: aie.packet_source<%[[SHIM1]], TileControl : 0>
+// CHECK-NEXT: aie.packet_dest<%[[SHIM1]], South : 0>
+// CHECK-NOT: aie.packet_flow
 aie.device(npu1_2col) {
   %shim0 = aie.tile(0, 0)
   %compute0 = aie.tile(0, 2)

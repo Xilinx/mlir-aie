@@ -489,10 +489,8 @@ struct AIEGenerateColumnControlOverlayPass
       cols.insert(tile.colIndex());
     if (cols.empty())
       return false;
-    for (int col : cols)
-      if (!hasRoutedShimResponse(device, col))
-        return false;
-    return true;
+    return llvm::all_of(
+        cols, [&](int col) { return hasRoutedShimResponse(device, col); });
   }
 
   AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, Location loc,
