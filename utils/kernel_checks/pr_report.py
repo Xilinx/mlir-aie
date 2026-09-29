@@ -4,15 +4,16 @@
 """Report a kernel checks run's failures and regressions against the last nightly.
 
 For each NPU that produced results: the cases that failed, and the cases
-whose cycles or core ELF size moved against the nightly baseline on main.
+whose cycles or kernel object size moved against the nightly baseline on main.
 nightlyKernelChecks.yml writes it to the job summary and, on a Peano PR,
 keeps it as one comment. Standard library only, so it runs on any runner.
 
     pr_report.py --results results --baselines baselines --out report.md
 
 ``results/<npu>/`` holds a leg's artifact (meta.json, perf.json,
-correctness.xml); ``baselines/<npu>/series.json`` is the nightly series the
-publish job caches.
+correctness.xml); ``baselines/<npu>/latest.json`` is the record publish.py
+wrote for the last nightly that published rows, which the publish job
+caches. The thresholds are ``thresholds.json``'s, shared with the page.
 """
 
 import argparse
@@ -26,15 +27,31 @@ from pathlib import Path
 
 MARKER = "<!-- kernel-checks-report -->"
 PAGE = "https://xilinx.github.io/mlir-aie/kernel-checks/"
-# Deterministic, so any move is the compiler's: the regressions that count.
-GATED = {"cycles": 0.02, "core_elf_bytes": 0.02}
-# Host timing and compile time move with the machine; listed only past this.
-OTHER_THRESHOLD = 0.10
-# Derived from cycles, so it would repeat every cycles row.
-DERIVED = {"cycles_per_kop"}
+THRESHOLDS = {
+    metric: spec
+    for metric, spec in json.loads(
+        Path(__file__).with_name("thresholds.json").read_text()
+    ).items()
+    if not metric.startswith("_")
+}
+# Stable run to run, so a move is the compiler's: the regressions that count.
+GATED = {m: s["pct"] / 100 for m, s in THRESHOLDS.items() if s.get("gated")}
+# Derived from another metric, so it would repeat that metric's rows.
+DERIVED = {m for m, s in THRESHOLDS.items() if s.get("derived")}
+# Everything else (host timing moves with the machine) is listed past this.
+OTHER = {
+    m: s["pct"] / 100
+    for m, s in THRESHOLDS.items()
+    if m not in GATED and m not in DERIVED
+}
+DEFAULT_THRESHOLD = 0.10  # a metric thresholds.json does not name
+# A change must also exceed this many MADs, per metric (npu_us).
+MAD = {m: s["mad"] for m, s in THRESHOLDS.items() if s.get("mad")}
+SCHEMA = 1  # the newest publish.py record format this reads
 MAX_ROWS = 50
 
 _EXTENSIVE = re.compile(r"test_kernel_extensive\[(.+)/([^/]+/s\d+)\]")
+_MAD = re.compile(r"^\u00b1 ([\d.]+)")
 _BRACKETED = re.compile(r"\[(.+)\]$")
 _PEANO = re.compile(r"\bpeano (\S+)")
 
@@ -134,14 +151,43 @@ def failures(directory: Path) -> tuple[list[Failure], set[str]]:
     )
 
 
-def baseline(path: Path, npu: str, pmode: str | None) -> dict | None:
-    """Return the newest nightly entry, in this power mode's suite if any."""
+def baseline(path: Path, run_id: str = "") -> dict | None:
+    """Return the last nightly's record (``latest.json``), or None.
+
+    None without rows, in a newer format than this reads, or from this very
+    run: the publish job of a nightly can cache its record before a re-run
+    of the report restores it, and a run compared with itself shows nothing.
+    """
     if not path.exists():
         return None
-    entries = json.loads(path.read_text()).get("entries", {})
-    suite = entries.get(f"aie_kernels ({npu}, {pmode})")
-    candidates = [suite[-1]] if suite else [e[-1] for e in entries.values() if e]
-    return max(candidates, key=lambda e: e["date"], default=None)
+    record = json.loads(path.read_text())
+    if record.get("schema", 1) > SCHEMA:
+        return None
+    if run_id and str(record.get("id", "")) == str(run_id):
+        return None
+    return record if record.get("rows") else None
+
+
+def _mad(cell: dict) -> float | None:
+    match = _MAD.match(cell.get("range") or "")
+    return float(match[1]) if match else None
+
+
+def moved(metric: str, threshold: float, before: dict, after: dict) -> bool:
+    """Whether a change from ``before`` to ``after`` counts for ``metric``.
+
+    At least ``threshold`` of the old value, and for a metric with a MAD
+    factor, more than that many of the larger of the two rows' MADs too.
+    """
+    change = abs(after["value"] - before["value"])
+    if change < threshold * abs(before["value"]):
+        return False
+    factor = MAD.get(metric)
+    if factor:
+        spread = [m for m in (_mad(before), _mad(after)) if m is not None]
+        if spread and change <= factor * max(spread):
+            return False
+    return True
 
 
 def _split(name: str) -> tuple[str, str]:
@@ -149,14 +195,15 @@ def _split(name: str) -> tuple[str, str]:
     return case, metric
 
 
-def _peano(rows) -> str:
+def _peano(rows, fallback: str = "") -> str:
     for row in rows:
         if match := _PEANO.search(row.get("extra", "")):
             return match[1]
-    return ""
+    match = _PEANO.search(fallback)
+    return match[1] if match else ""
 
 
-def read_leg(npu: str, directory: Path, series: Path) -> Leg:
+def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
     meta_path = directory / "meta.json"
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
     perf_path = directory / "perf.json"
@@ -164,16 +211,21 @@ def read_leg(npu: str, directory: Path, series: Path) -> Leg:
     result = Leg(npu, measured=bool(rows))
     result.failures, swept = failures(directory)
     failing = {f.case for f in result.failures}
-    result.peano = _peano(rows) or _peano([{"extra": meta.get("provenance", "")}])
+    result.peano = _peano(rows, meta.get("provenance", ""))
     measured = {_split(row["name"])[0] for row in rows}
     result.cases = len(measured | swept)
 
-    entry = baseline(series, npu, meta.get("preflight", {}).get("pmode"))
-    if not entry or not rows:
+    record = baseline(latest, run_id)
+    pmode = meta.get("preflight", {}).get("pmode")
+    if not record or not rows or not pmode or record.get("pmode") != pmode:
         return result
-    result.baseline_commit = entry["commit"]
-    result.baseline_peano = _peano(entry["benches"])
-    before = {row["name"]: row for row in entry["benches"]}
+    result.baseline_commit = record.get("commit") or None
+    result.baseline_peano = record.get("provenance", {}).get("peano", "")
+    before = {
+        f"{case}/{metric}": cell
+        for case, cells in record["rows"].items()
+        for metric, cell in cells.items()
+    }
     for row in rows:
         case, metric = _split(row["name"])
         old = before.get(row["name"])
@@ -185,7 +237,7 @@ def read_leg(npu: str, directory: Path, series: Path) -> Leg:
                 result.regressed.append(change)
             elif change.ratio <= -GATED[metric]:
                 result.improved.append(change)
-        elif abs(change.ratio) >= OTHER_THRESHOLD:
+        elif moved(metric, OTHER.get(metric, DEFAULT_THRESHOLD), old, row):
             result.other.append(change)
     for changes in (result.regressed, result.other):
         changes.sort(key=lambda c: -c.ratio)
@@ -252,7 +304,7 @@ def render(legs: list[Leg], run_url: str = "") -> str:
         f"## Kernel checks: {title}",
         "",
         f"Compared with the last nightly on main. Regressed: {gated} or more "
-        "worse. Both are deterministic, so a move is the compiler's. "
+        "worse. Both are stable run to run, so a move is the compiler's. "
         + " \u00b7 ".join(links),
         "",
     ]
@@ -268,8 +320,8 @@ def render(legs: list[Leg], run_url: str = "") -> str:
         if leg.baseline_peano and leg.baseline_peano != leg.peano:
             peano += f" (nightly: {leg.baseline_peano})"
         commit = leg.baseline_commit
-        if commit:
-            base = f"[{commit['id'][:7]}]({commit['url']})"
+        if commit and commit.get("id"):
+            base = f"[{commit['id'][:7]}]({commit.get('url', '')})"
         else:
             base = "none cached" if leg.measured else "\u2014"
         summary.append(
@@ -309,13 +361,17 @@ def render(legs: list[Leg], run_url: str = "") -> str:
     if rows := _changes(legs, "improved"):
         out += [""] + _details(f"Improved ({len(rows)})", _table(header, rows))
     if rows := _changes(legs, "other"):
+        thresholds = ", ".join(
+            f"`{m}` {100 * t:g}%"
+            + (f" and {MAD[m]:g}\u00d7 its MAD" if m in MAD else "")
+            for m, t in OTHER.items()
+        )
         note = (
-            "`npu_us` is timed on the host and moves with the machine; the "
-            "byte counts do not."
+            f"Listed past {thresholds}. `npu_us` is timed on the host and "
+            "moves with the machine; the byte counts do not."
         )
         out += [""] + _details(
-            f"Other metrics that moved {100 * OTHER_THRESHOLD:g}% or more "
-            f"({len(rows)})",
+            f"Other metrics that moved ({len(rows)})",
             [note, "", *_table(header, rows)],
         )
     unmeasured = [[leg.npu, f"`{case}`"] for leg in legs for case in leg.unmeasured]
@@ -338,11 +394,14 @@ def main(argv=None) -> int:
     parser.add_argument("--results", required=True, type=Path)
     parser.add_argument("--baselines", required=True, type=Path)
     parser.add_argument("--run-url", default="")
+    parser.add_argument(
+        "--run-id", default="", help="ignore a baseline this run published itself"
+    )
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     legs = (
         [
-            read_leg(d.name, d, args.baselines / d.name / "series.json")
+            read_leg(d.name, d, args.baselines / d.name / "latest.json", args.run_id)
             for d in sorted(args.results.iterdir())
             if d.is_dir()
         ]
