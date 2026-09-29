@@ -129,8 +129,12 @@ portSettings(Operation &op, AIE::SwitchboxOp sb) {
                             .str();
     settings.push_back({key(true, masterSet.destPort()), value});
   } else if (auto rules = dyn_cast<AIE::PacketRulesOp>(op)) {
+    // An empty packet_rules op writes nothing to the hardware.
+    auto ruleOps = rules.getRules().front().getOps<AIE::PacketRuleOp>();
+    if (ruleOps.empty())
+      return settings;
     std::string value = "rules";
-    for (auto rule : rules.getRules().front().getOps<AIE::PacketRuleOp>())
+    for (auto rule : ruleOps)
       value += llvm::formatv(" {0}/{1}>{2}", rule.valueInt(), rule.maskInt(),
                              amsel(rule.getAmsel()));
     settings.push_back({key(false, rules.sourcePort()), value});
@@ -144,6 +148,7 @@ portSettings(Operation &op, AIE::SwitchboxOp sb) {
 // and no op the reload writes may set a port the overlay sets.
 static LogicalResult verifyReloadKeepsOverlay(AIE::DeviceOp device,
                                               AIE::DeviceOp overlay) {
+  StringRef overlayName = overlay.getSymName();
   std::map<SwitchPort, std::string> overlaySettings;
   overlay.walk([&](AIE::SwitchboxOp sb) {
     for (Operation &op : sb.getConnections().front())
@@ -157,20 +162,19 @@ static LogicalResult verifyReloadKeepsOverlay(AIE::DeviceOp device,
         auto it = overlaySettings.find(port);
         if (skipped && it == overlaySettings.end()) {
           op.emitError() << "a control-packet reload skips this op, but @"
-                         << kCtrlPktOverlayName << " does not set "
-                         << describe(port);
+                         << overlayName << " does not set " << describe(port);
           return WalkResult::interrupt();
         }
         if (skipped && it->second != value) {
           op.emitError() << "a control-packet reload skips this op, but @"
-                         << kCtrlPktOverlayName << " sets " << describe(port)
+                         << overlayName << " sets " << describe(port)
                          << " differently";
           return WalkResult::interrupt();
         }
         if (!skipped && it != overlaySettings.end()) {
           op.emitError() << "a control-packet reload rewrites "
                          << describe(port) << ", which the control packets of @"
-                         << kCtrlPktOverlayName << " route through";
+                         << overlayName << " route through";
           return WalkResult::interrupt();
         }
       }
@@ -236,19 +240,21 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
     // PDI addresses that carry the same overlay configuration.
     StringRef overlayName =
         (index % 2 == 0) ? kCtrlPktOverlayName : kCtrlPktOverlayCopyName;
+    AIE::DeviceOp overlay;
     if (index % 2 != 0) {
-      AIE::DeviceOp copy =
+      overlay =
           getOrCreateCtrlPktOverlayCopy(moduleOp, loadPdiOp.getOperation());
-      if (!copy)
+      if (!overlay)
         return failure();
-    } else if (!moduleOp.lookupSymbol<AIE::DeviceOp>(kCtrlPktOverlayName)) {
-      loadPdiOp.emitError("ctrl-pkt mode requires a `@")
-          << kCtrlPktOverlayName << "` device in the module";
-      return failure();
+    } else {
+      overlay = moduleOp.lookupSymbol<AIE::DeviceOp>(kCtrlPktOverlayName);
+      if (!overlay) {
+        loadPdiOp.emitError("ctrl-pkt mode requires a `@")
+            << kCtrlPktOverlayName << "` device in the module";
+        return failure();
+      }
     }
-    if (failed(verifyReloadKeepsOverlay(
-            referencedDevice,
-            moduleOp.lookupSymbol<AIE::DeviceOp>(kCtrlPktOverlayName))))
+    if (failed(verifyReloadKeepsOverlay(referencedDevice, overlay)))
       return failure();
     preloadRef = FlatSymbolRefAttr::get(builder.getContext(), overlayName);
   } else {
