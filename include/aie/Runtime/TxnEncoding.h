@@ -201,16 +201,10 @@ inline void txn_append_maskpoll32(std::vector<uint32_t> &txn, uint32_t addr,
   txn[pos + 6] = 7 * sizeof(uint32_t); // operation size
 }
 
-// Append a 4-word create_scratchpad instruction.
-//
-// words[2:3] carry the scratchpad buffer's DEVICE address (low/high). On the
-// static (aiebu) path those words are left 0 and filled by a link-time
-// relocation: aiebu records the field's offset against the .ctrl.scratchpad
-// section, and XRT patches it in when it allocates the buffer at module load.
-// A runtime-built TXN has no relocation table -- but it doesn't need one,
-// because on this path the host has already allocated the buffer and knows
-// its device address (xrt::run::get_ctrl_scratchpad_bo()), so it is written
-// here directly instead of being patched later.
+// Append a 4-word create_scratchpad instruction. The static (aiebu) path
+// leaves words[2:3] zero for a relocation; a runtime-built TXN has no
+// relocation table, so the caller passes the buffer's device address
+// (xrt::run::get_ctrl_scratchpad_bo()).
 inline void txn_append_create_scratchpad(std::vector<uint32_t> &txn,
                                          uint32_t usage_type, uint32_t size,
                                          uint64_t ddr_addr) {
@@ -223,9 +217,7 @@ inline void txn_append_create_scratchpad(std::vector<uint32_t> &txn,
   txn[pos + 3] = static_cast<uint32_t>(ddr_addr >> 32);
 }
 
-// Append a 3-word update_reg (update_from_scratchpad) instruction. Pure
-// encode: `address` is already resolved (buffer/col/row folded in), unlike
-// create_scratchpad there is no relocated/host-supplied field here.
+// Append a 3-word update_reg (update_from_scratchpad) instruction.
 inline void txn_append_update_reg(std::vector<uint32_t> &txn,
                                   uint32_t state_table_idx, uint32_t func,
                                   uint32_t func_arg, uint32_t address) {

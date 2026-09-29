@@ -294,9 +294,7 @@ private:
           countOp(b, loc, count);
         })
         .Case<AIEX::NpuCreateScratchpadOp>([&](auto cs) {
-          // usage_type/size are compile-time attributes; the buffer's device
-          // address is not resolvable from the IR at all (the host allocates
-          // it), so it comes from the function's extra trailing parameter.
+          // The device address is a host value, see emitFunction.
           emitTxnCall(b, loc, "txn_append_create_scratchpad", txnVec,
                       {u32Literal(b, loc, cs.getUsageType()),
                        u32Literal(b, loc, cs.getSize()), scratchpadAddr});
@@ -501,9 +499,7 @@ private:
   // Runtime op-count variable (the C++ `__opcount`), or null when the sequence
   // is straight-line and the count is a compile-time literal.
   Value opCountVar;
-  // The generated function's extra trailing parameter carrying the host-
-  // allocated scratchpad buffer's device address; null unless the sequence
-  // contains a create_scratchpad op (see emitFunction).
+  // Scratchpad device address parameter; null without a create_scratchpad.
   Value scratchpadAddr;
   bool ok = true;
   // Counter for unique popped-BD-id C++ variable names.
@@ -750,12 +746,9 @@ private:
       if (!isa<BaseMemRefType>(arg.getType()))
         paramTypes.push_back(paramTypeFor(arg.getType()));
 
-    // create_scratchpad's DDR address has no relocation table to fill it in
-    // on this path (see txn_append_create_scratchpad) -- the host already
-    // knows it (xrt::run::get_ctrl_scratchpad_bo()), so it is threaded
-    // through as an extra trailing parameter instead. Added only when the
-    // sequence actually has a create_scratchpad, so every other generated
-    // signature is unchanged.
+    // create_scratchpad's device address becomes a trailing uint64_t
+    // parameter (see txn_append_create_scratchpad); other signatures are
+    // unchanged.
     bool hasScratchpad = false;
     seqOp.walk([&](AIEX::NpuCreateScratchpadOp) { hasScratchpad = true; });
     if (hasScratchpad)
@@ -837,8 +830,7 @@ private:
     for (BlockArgument arg : entry.getArguments())
       if (!isa<BaseMemRefType>(arg.getType()))
         mapping.map(arg, funcBlock->getArgument(p++));
-    // The scratchpad address param (if any) was appended last, past every
-    // sequence-derived argument the loop above just consumed.
+    // Appended last, after every sequence-derived argument.
     Value scratchpadAddr =
         hasScratchpad ? funcBlock->getArgument(p++) : Value();
     DeviceResolved resolved;

@@ -5,12 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// create_scratchpad's DDR address has no relocation table to fill it in on
-// this path (a runtime-built TXN has none): the host already knows it
-// (xrt::run::get_ctrl_scratchpad_bo()), so the generated function gains an
-// extra trailing parameter carrying it. update_from_scratchpad needs no such
-// parameter -- it is a pure encode of its own attributes plus the resolved
-// address.
+// create_scratchpad adds a trailing uint64_t device-address parameter;
+// update_from_scratchpad adds none.
 
 // RUN: aie-translate %s --aie-npu-to-cpp | FileCheck %s
 
