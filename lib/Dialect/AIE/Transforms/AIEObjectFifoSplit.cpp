@@ -140,6 +140,18 @@ int objectCountOn(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo) {
   return maxAcquire + 1;
 }
 
+/// Objects a fifo whose ends share one memory module keeps in its single pool:
+/// the most that any end states, so the deeper end can acquire all of its own.
+int sharedObjectCount(ObjectFifoCreateOp objFifo) {
+  int depth = objFifo.size();
+  if (auto depths = dyn_cast<ArrayAttr>(objFifo.getElemNumber())) {
+    for (int index = 1; index < static_cast<int>(depths.size()); ++index) {
+      depth = std::max(depth, objFifo.size(index));
+    }
+  }
+  return depth;
+}
+
 bool hasCoreAccess(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo,
                    ObjectFifoPort port) {
   for (auto coreOp : device.getOps<CoreOp>()) {
@@ -602,9 +614,11 @@ void AIEObjectFifoSplitPass::runOnOperation() {
           }
           tile = alloc->getDelegateTile();
         }
+        int depth =
+            fifo.getInitValues() ? fifo.size() : sharedObjectCount(fifo);
         ref = PoolRef{
-            createPool(loc, (fifoName + "_pool").str(), tile, fifo.size(),
-                       elemType, fifo, {{0, elemType.getNumElements()}},
+            createPool(loc, (fifoName + "_pool").str(), tile, depth, elemType,
+                       fifo, {{0, elemType.getNumElements()}},
                        /*holdsInitialContents=*/true, fifo.getRepeatCount()),
             {0}};
       }
