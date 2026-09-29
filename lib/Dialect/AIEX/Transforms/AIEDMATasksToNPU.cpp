@@ -691,11 +691,9 @@ struct AIEDMATasksToNPUPass
                      [](OpFoldResult s) { return !getConstantIntValue(s); }) ||
         llvm::any_of(bd_op.getMixedStrides(),
                      [](OpFoldResult s) { return !getConstantIntValue(s); });
-    // Runtime iteration SSA values require the dynamic BD-word path, but a
-    // constant-foldable iteration_size_val/stride_val (e.g. a dynamic design
-    // specialized to compile-time M/N, where the outer dim folds to a
-    // constant) is encoded into the static BD word below instead, so it does
-    // not by itself force the dynamic path.
+    // A constant iteration operand is folded into the static BD word (see the
+    // static-path handling below), so only a genuinely non-constant one is
+    // treated as runtime here.
     Value iterSizeVal = bd_op.getIterationSizeVal();
     Value iterStrideVal = bd_op.getIterationStrideVal();
     bool constIteration =
