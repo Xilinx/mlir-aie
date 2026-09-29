@@ -96,8 +96,10 @@ class Device(Resolvable):
 
     @property
     def shim_dma_channels_in(self) -> int:
-        """DMA channels the shim tiles feed the array through, summed over them:
-        how many streams from the host the device carries at once."""
+        """DMA channels the shim tiles feed the array through, summed over them.
+
+        How many streams from the host the device carries at once.
+        """
         return self._shim_dma(self._tm.get_num_source_shim_mux_connections)
 
     @property
