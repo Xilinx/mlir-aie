@@ -117,6 +117,45 @@ jobs:
           :xrt_ready
           echo Using existing XRT_ROOT=%XRT_ROOT%
 
+      - name: Ensure Windows OpenSSL
+        # Persistent devlab runners have the full (non-Light) Win64 OpenSSL
+        # package installed by hand per docs/buildHostWinNative.md Addendum
+        # B.1, but the devlab-dispatch pool recreates its runners per job.
+        # Self-heal here the same way as the XRT SDK step above: fetch the
+        # pinned installer from its official source, verify its hash (silent
+        # installers skip the interactive prompt that would normally catch a
+        # bad download), and run it unattended to the same default location
+        # the doc uses.
+        shell: cmd
+        run: |
+          if exist "C:\Program Files\OpenSSL-Win64" goto :openssl_ready
+
+          echo OpenSSL not found on this runner - downloading it
+          set "OPENSSL_EXE=Win64OpenSSL-4_0_3.exe"
+          set "OPENSSL_SHA256=0f5436092d1303db9052d3c114fbc6326abe0276861619e26da5156ddf7ca087"
+          if exist "%OPENSSL_EXE%" del /f /q "%OPENSSL_EXE%"
+          python -c "import urllib.request; urllib.request.urlretrieve('https://slproweb.com/download/%OPENSSL_EXE%', r'%OPENSSL_EXE%')"
+          if errorlevel 1 exit /b 1
+
+          python -c "import hashlib,sys; h = hashlib.sha256(open(r'%OPENSSL_EXE%', 'rb').read()).hexdigest(); sys.exit(0 if h == '%OPENSSL_SHA256%' else 1)"
+          if errorlevel 1 (
+            echo ##[error]%OPENSSL_EXE% sha256 mismatch - refusing to run an unverified installer
+            exit /b 1
+          )
+
+          "%OPENSSL_EXE%" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="C:\Program Files\OpenSSL-Win64"
+          if errorlevel 1 exit /b 1
+          del /f /q "%OPENSSL_EXE%"
+
+          if not exist "C:\Program Files\OpenSSL-Win64" (
+            echo ##[error]C:\Program Files\OpenSSL-Win64 still missing after running %OPENSSL_EXE% - installer may require elevation on this runner
+            exit /b 1
+          )
+          exit /b 0
+
+          :openssl_ready
+          echo Using existing C:\Program Files\OpenSSL-Win64
+
       - name: Setup IRON environment
         shell: cmd
         run: |
@@ -273,3 +312,4 @@ jobs:
           if exist "install" rmdir /s /q "install"
           if exist "my_install" rmdir /s /q "my_install"
           if exist "xrt_sdk_download" rmdir /s /q "xrt_sdk_download"
+          if exist "Win64OpenSSL-4_0_3.exe" del /f /q "Win64OpenSSL-4_0_3.exe"
