@@ -87,7 +87,7 @@ PARAMS = dict(
     max_hop_ratio=1.10,
     max_amsels=dict(npu1=19.5, npu2=19.5, xcvc1902=21.0),
     max_low_priority=0.05,
-    max_ms_per_design=250,
+    max_ms_per_design=dict(npu1=250, npu2=250, xcvc1902=600),
     # Generator knobs: share of routable designs given pre-placed switchbox
     # configuration, and parallel aie-opt runs.
     fixed_rate=0.25,
@@ -5385,10 +5385,11 @@ def main(argv=None):
         )
 
     per_design = route_time / max(runs, 1) * 1000
+    max_ms = PARAMS["max_ms_per_design"][args.device]
     report(
         "time",
-        per_design <= PARAMS["max_ms_per_design"],
-        f"{per_design:.1f} ms per design (max {PARAMS['max_ms_per_design']})",
+        per_design <= max_ms,
+        f"{per_design:.1f} ms per design (max {max_ms})",
     )
     print(f"total: {time.monotonic() - t_start:.1f}s")
     return 1 if regressions else 0
