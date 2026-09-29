@@ -407,7 +407,8 @@ def mha_round(
     )
     init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
     pv = obj.bind(
-        "matmul_PV", [tile_ty, tile_ty, tile_ty, scale_ty, np.int32, np.int32, idx_ty]
+        "matmul_PV",
+        [tile_ty, tile_ty, tile_ty, scale_ty, np.int32, np.int32, idx_ty, np.int32],
     )
     rescale = obj.bind("rescale_O", [tile_ty, scale_ty, np.int32, idx_ty])
     zero = kernels.zero(_B * _B, bfloat16)
@@ -443,7 +444,16 @@ def mha_round(
             )
             of_p.release(1)
             of_sv.release(1)
-            pv(of_pb.acquire(1), of_sv.acquire(1), o, scale, _B, int(k > 0), idx[k])
+            pv(
+                of_pb.acquire(1),
+                of_sv.acquire(1),
+                o,
+                scale,
+                _B,
+                int(k > 0),
+                idx[k],
+                s_kv_eff,
+            )
             of_pb.release(1)
             of_sv.release(1)
         rescale(o, scale, _B, idx[0])
@@ -491,6 +501,10 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff):
             k[q_block * _B + row] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
 
     scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(bfloat16)
+    # Keys from s_kv_eff on do not exist; the device's V rows for them hold
+    # NaN, which must not reach O.
+    stale = v.copy()
+    stale[s_kv_eff:] = np.nan
     # Each block's row-major scores, then its blocked V.
     sv_host = np.concatenate(
         [
@@ -498,7 +512,7 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff):
             for b in range(n_kv)
             for arr in (
                 np.asarray(scores[:, b * _B : (b + 1) * _B]).reshape(-1).copy(),
-                _block(v[b * _B : (b + 1) * _B]),
+                _block(stale[b * _B : (b + 1) * _B]),
             )
         ]
     )

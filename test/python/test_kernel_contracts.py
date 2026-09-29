@@ -1291,7 +1291,7 @@ def test_mha_binds_its_translation_unit_as_one_object():
         "matmul_bf16_bf16_wrapper_scalar": [tile, tile, tile],
         "matmul_bf16_bf16_rowmaj": [tile, tile, tile],
         "partial_softmax": [tile, tile, scale, idx, bfloat16, *([np.int32] * 4)],
-        "matmul_PV": [tile, tile, tile, scale, np.int32, np.int32, idx],
+        "matmul_PV": [tile, tile, tile, scale, np.int32, np.int32, idx, np.int32],
         "rescale_O": [tile, scale, np.int32, idx],
         "init_scale_buffer": [scale, np.int32],
     }
