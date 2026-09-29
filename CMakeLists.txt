@@ -54,6 +54,23 @@ endif()
 
 project(AIE LANGUAGES CXX C)
 
+# The CMP0116 depfile rules above are written with an extra implicit output,
+# which Ninja before 1.10 rejects only once the build starts ("multiple outputs
+# aren't (yet?) supported by depslog"). Enterprise Linux 8, and so the
+# manylinux_2_28 wheel image, packages 1.8.2 as ninja-build; reject it here.
+if(CMAKE_GENERATOR MATCHES "Ninja")
+  execute_process(COMMAND "${CMAKE_MAKE_PROGRAM}" --version
+                  OUTPUT_VARIABLE AIE_NINJA_VERSION
+                  OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  if(AIE_NINJA_VERSION AND AIE_NINJA_VERSION VERSION_LESS 1.10)
+    message(FATAL_ERROR
+      "Ninja ${AIE_NINJA_VERSION} (${CMAKE_MAKE_PROGRAM}) is too old; mlir-aie "
+      "needs Ninja 1.10 or newer. Install one (e.g. `pip install ninja`) and "
+      "reconfigure in a fresh build directory, passing "
+      "-DCMAKE_MAKE_PROGRAM=<path to ninja> if it is not first on PATH.")
+  endif()
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 

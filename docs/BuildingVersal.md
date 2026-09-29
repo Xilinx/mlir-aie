@@ -11,7 +11,7 @@
 ```
 lld
 cmake 3.20.6
-ninja 1.8.2
+ninja 1.10+
 Xilinx Vitis 2023.2
 python 3.8.x and pip
 virtualenv

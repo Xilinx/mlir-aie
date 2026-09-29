@@ -3,7 +3,12 @@
 #   utils/regenerate_lockfiles.sh
 cmake>=4.4.3, <5.0
 importlib-metadata
-ninja!=1.13.0; platform_system=="Windows"
+# Installed on every platform so the wheel build never falls back to a system
+# Ninja: the manylinux image's yum ninja-build is 1.8.2, and the tablegen
+# depfile rules (CMP0116 NEW in the top-level CMakeLists.txt) need >= 1.10.
+# Keep a `>=` floor rather than a bare exclusion so Dependabot raises it in
+# lockstep with python/ and utils/mlir_wheels/.
+ninja>=1.11.1.4,!=1.13.0
 numpy>=2.4.6,<2.5; python_version == "3.11"
 numpy>=2.5.1; python_version >= "3.12"
 pip>=26.2.1

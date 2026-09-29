@@ -5,7 +5,7 @@ cmake>=4.4.3, <5.0
 pybind11>=3.1.0
 setuptools>=84.0.0
 wheel
-ninja!=1.13.0
+ninja>=1.11.1.4,!=1.13.0
 cibuildwheel
 # cibuildwheel pulls patchelf transitively via auditwheel. patchelf has
 # no Windows binary wheel and falls over building from source; gate the
