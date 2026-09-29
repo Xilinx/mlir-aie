@@ -114,13 +114,24 @@ public:
   bool canFill(const StreamEndpoint &endpoint,
                llvm::ArrayRef<RoutedStream> streams) const;
 
+  /// Whether the source both streams come from can send a packet of `then`
+  /// after one of `first`; nullopt if its program doesn't show or they come
+  /// from different sources.
+  std::optional<bool> maySendAfter(const RoutedStream &first,
+                                   const RoutedStream &then) const;
+
 private:
   /// Bytes the looping BD chain `program` sends before an acquire runs out of
   /// tokens, counting each BD as `bytesOf` says.
   std::optional<uint64_t>
   loopedVolume(mlir::Operation *program,
                llvm::function_ref<uint64_t(DMABDOp)> bytesOf) const;
-  /// Tokens every agent but `self` can release to `lock` over a run.
+  /// Visits, in order, the BDs the looping BD chain `program` runs until an
+  /// acquire runs out of tokens. False if it cannot tell when that is.
+  bool walkLoop(mlir::Operation *program,
+                llvm::function_ref<void(DMABDOp)> visit) const;
+  /// Tokens every agent but `self` can release to `lock` over a run. A core
+  /// runs its body once.
   std::optional<uint64_t> tokensFromOthers(LockOp lock,
                                            mlir::Operation *self) const;
   std::optional<uint64_t> releasesOver(mlir::Operation *program,

@@ -533,50 +533,71 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
 
 std::optional<uint64_t> StreamVolumeAnalysis::loopedVolume(
     Operation *program, function_ref<uint64_t(DMABDOp)> bytesOf) const {
+  uint64_t bytes = 0;
+  if (!walkLoop(program, [&](DMABDOp bd) { bytes += bytesOf(bd); }))
+    return std::nullopt;
+  return bytes;
+}
+
+bool StreamVolumeAnalysis::walkLoop(Operation *program,
+                                    function_ref<void(DMABDOp)> visit) const {
   // AIE1 locks hold a state rather than count tokens.
   if (getTargetModel(device).getTargetArch() == AIEArch::AIE1 ||
       !visiting.insert(program).second)
-    return std::nullopt;
+    return false;
   llvm::scope_exit done([&] { visiting.erase(program); });
   std::optional<DmaChannelProgram> p = makeProgram(program, device);
   if (!p)
-    return std::nullopt;
+    return false;
   SmallVector<Block *> sequence = chainBlocks(*p);
   if (sequence.empty())
-    return std::nullopt;
+    return false;
   std::map<Operation *, uint64_t> tokens;
-  uint64_t bytes = 0;
   for (int step = 0; step < maxBDSteps; step++) {
     for (Operation &bdOp : *sequence[step % sequence.size()]) {
       if (auto use = dyn_cast<UseLockOp>(bdOp)) {
         auto lock = use.getLock().getDefiningOp<LockOp>();
         std::optional<int64_t> n = lockAmount(use);
         if (!n || *n < 0 || (!use.release() && !use.acquireGE()))
-          return std::nullopt;
+          return false;
         auto it = tokens.find(lock);
         if (it == tokens.end()) {
           std::optional<uint64_t> others = tokensFromOthers(lock, program);
           if (!others)
-            return std::nullopt;
+            return false;
           it = tokens.emplace(lock, lock.getInit().value_or(0) + *others).first;
         }
         if (use.release())
           it->second += *n;
         else if (it->second < static_cast<uint64_t>(*n))
-          return bytes;
+          return true;
         else
           it->second -= *n;
       } else if (auto bd = dyn_cast<DMABDOp>(bdOp)) {
-        bytes += bytesOf(bd);
+        visit(bd);
       }
     }
   }
-  return std::nullopt;
+  return false;
+}
+
+// Whether `op` runs at most once each time its core runs its body.
+static bool onceInCore(Operation *op) {
+  for (Operation *parent = op->getParentOp(); parent;
+       op = parent, parent = parent->getParentOp()) {
+    if (!op->getParentRegion()->hasOneBlock() ||
+        isa<LoopLikeOpInterface>(parent))
+      return false;
+    if (isa<CoreOp>(parent))
+      return true;
+  }
+  return false;
 }
 
 std::optional<uint64_t>
 StreamVolumeAnalysis::tokensFromOthers(LockOp lock, Operation *self) const {
   llvm::SetVector<Operation *> releasers;
+  uint64_t tokens = 0;
   for (Operation *user : lock->getUsers()) {
     auto use = dyn_cast<UseLockOp>(user);
     if (!use)
@@ -584,12 +605,16 @@ StreamVolumeAnalysis::tokensFromOthers(LockOp lock, Operation *self) const {
     if (!use.release())
       continue;
     auto owner = lockUseProgram.find(use);
-    if (owner == lockUseProgram.end())
-      return std::nullopt;
+    if (owner == lockUseProgram.end()) {
+      std::optional<int64_t> n = lockAmount(use);
+      if (!onceInCore(use) || !n || *n < 0)
+        return std::nullopt;
+      tokens += *n;
+      continue;
+    }
     if (owner->second != self)
       releasers.insert(owner->second);
   }
-  uint64_t tokens = 0;
   for (Operation *program : releasers) {
     std::optional<uint64_t> n = releasesOver(program, lock);
     if (!n)
@@ -597,6 +622,57 @@ StreamVolumeAnalysis::tokensFromOthers(LockOp lock, Operation *self) const {
     tokens += *n;
   }
   return tokens;
+}
+
+std::optional<bool>
+StreamVolumeAnalysis::maySendAfter(const RoutedStream &first,
+                                   const RoutedStream &then) const {
+  if (first.src.tile != then.src.tile || first.src.port != then.src.port)
+    return std::nullopt;
+  if (!first.packetID || !then.packetID || *first.packetID == *then.packetID)
+    return true;
+  if (first.src.port.bundle != WireBundle::DMA)
+    return std::nullopt;
+  ChannelKey key =
+      channelKey(first.src.tile, DMAChannelDir::MM2S, first.src.port.channel);
+  auto it = programs.find(key);
+  if (it == programs.end() || it->second.size() != 1 ||
+      !isa<DMAStartOp, DMAOp>(it->second.front()))
+    return std::nullopt;
+  bool memcpy = false;
+  device.walk([&](AIEX::NpuDmaMemcpyNdOp op) {
+    memcpy |= channelOfSymbol(device, op.getMetadata().getRootReference()) ==
+              std::optional(key);
+  });
+  Operation *program = it->second.front();
+  std::optional<DmaChannelProgram> p = makeProgram(program, device);
+  if (memcpy || !p)
+    return std::nullopt;
+  auto carries = [](DMABDOp bd, int id) {
+    std::optional<PacketInfoAttr> packet = bd.getPacket();
+    return !packet || static_cast<int>(packet->getPktId()) == id;
+  };
+  bool sent = false, after = false;
+  auto visit = [&](DMABDOp bd) {
+    after |= sent && carries(bd, *then.packetID);
+    sent |= carries(bd, *first.packetID);
+  };
+  if (p->loops) {
+    if (!walkLoop(program, visit))
+      return std::nullopt;
+    return after;
+  }
+  uint64_t passes = 1;
+  if (auto start = dyn_cast<DMAStartOp>(program))
+    passes += start.getRepeatCount();
+  else
+    passes += cast<DMAOp>(program).getRepeatCount();
+  SmallVector<Block *> sequence = chainBlocks(*p);
+  for (uint64_t pass = 0; pass < passes && !after; pass++)
+    for (Block *b : sequence)
+      for (DMABDOp bd : b->getOps<DMABDOp>())
+        visit(bd);
+  return after;
 }
 
 std::optional<uint64_t> StreamVolumeAnalysis::releasesOver(Operation *program,
@@ -999,6 +1075,8 @@ bool StreamDeadlockAnalysis::canBlock(size_t f, size_t g) const {
   if (!inserted)
     return it->second;
   return blocks[{f, g}] = canStall(f) && !silent(f) && !silent(g) &&
+                          volumes.maySendAfter(streams[f], streams[g]) !=
+                              std::optional(false) &&
                           !blockingChain(f, g).empty();
 }
 
@@ -1036,7 +1114,8 @@ SmallVector<std::string> StreamDeadlockAnalysis::assumptions(size_t f,
                         "receiver.");
       break;
     }
-  if (fs.src.tile == gs.src.tile && fs.src.port == gs.src.port)
+  if (fs.src.tile == gs.src.tile && fs.src.port == gs.src.port &&
+      !volumes.maySendAfter(fs, gs))
     assumed.push_back("Both come from (" + std::to_string(fs.src.tile.col) +
                       ", " + std::to_string(fs.src.tile.row) + ") " +
                       stringifyWireBundle(fs.src.port.bundle).str() + ":" +

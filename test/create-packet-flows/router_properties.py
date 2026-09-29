@@ -134,6 +134,8 @@ STEP = {
 S2MM, MM2S = 0, 1
 DIRS = ("S2MM", "MM2S")
 ACTIONS = ("Acquire", "Release", "AcquireGreaterEqual")
+# The ops LoopLikeOpInterface covers that a core body can hold.
+LOOP_OPS = ("scf.for", "scf.while", "scf.parallel", "scf.forall", "affine.for")
 
 
 def fmt_port(p):
@@ -312,6 +314,7 @@ class Design:
         self.locks = {}  # name -> (col, row, id, init)
         self.programs = []  # document order
         self.cores = {}  # tile -> [(action, lock, amount)]
+        self.core_repeated_releases = set()  # locks a core can release twice
         self.boxes = {}  # tile -> [op]
         self.muxes = {}  # tile -> [(src port, dst port)]
         self.flows = []  # (src, dst)
@@ -333,6 +336,7 @@ class Design:
             for p in self.programs
         ]
         d.cores = {k: list(v) for k, v in self.cores.items()}
+        d.core_repeated_releases = set(self.core_repeated_releases)
         d.boxes = {k: [tuple(o) for o in v] for k, v in self.boxes.items()}
         d.muxes = {k: list(v) for k, v in self.muxes.items()}
         d.flows = list(self.flows)
@@ -764,12 +768,17 @@ def load_design(text):
                 except (ValueError, KeyError):
                     pass
 
-        def walk_ops(op, out):
+        def walk_ops(op, out, repeated=None, once=True):
+            start = len(out)
             lock_ops(op, out)
+            if repeated is not None and not once:
+                repeated.update(u[2] for u in out[start:] if u[:2] == ("lock", 1))
             for region in op.regions:
-                for b in region.blocks:
+                blocks = list(region.blocks)
+                inner = once and len(blocks) == 1 and op.name not in LOOP_OPS
+                for b in blocks:
                     for x in _ops(b):
-                        walk_ops(x, out)
+                        walk_ops(x, out, repeated, inner)
 
         def dma_programs(op, tile):
             blocks = list(op.regions[0].blocks)
@@ -1011,9 +1020,12 @@ def load_design(text):
             elif name == "aie.core":
                 uses = []
                 for region in op.regions:
-                    for b in region.blocks:
+                    blocks = list(region.blocks)
+                    for b in blocks:
                         for x in _ops(b):
-                            walk_ops(x, uses)
+                            walk_ops(
+                                x, uses, d.core_repeated_releases, len(blocks) == 1
+                            )
                 d.cores[tile_of(op.operands[0])] = [
                     (u[1], u[2], u[3]) for u in uses if u[0] == "lock"
                 ]
@@ -1331,41 +1343,88 @@ class Volumes:
 
     def looped_volume(self, p, bytes_of):
         """StreamVolumeAnalysis::loopedVolume."""
+        nbytes = 0
+
+        def visit(op):
+            nonlocal nbytes
+            nbytes += bytes_of(op)
+
+        return nbytes if self.walk_loop(p, visit) else None
+
+    def walk_loop(self, p, visit):
+        """StreamVolumeAnalysis::walkLoop."""
         if id(p) in self.visiting or not p["seq"]:
-            return None
+            return False
         self.visiting.add(id(p))
         try:
-            tokens, nbytes, seq = {}, 0, p["seq"]
+            tokens, seq = {}, p["seq"]
             for step in range(PARAMS["max_bd_steps"]):
                 for op in seq[step % len(seq)]:
                     if op[0] != "lock":
-                        nbytes += bytes_of(op)
+                        visit(op)
                         continue
                     _, action, lock, n = op
                     if lock is None or n is None or n < 0 or action == 0:
-                        return None
+                        return False
                     if lock not in tokens:
                         others = self.tokens_from_others(lock, p)
                         if others is None:
-                            return None
+                            return False
                         tokens[lock] = self.d.locks[lock][3] + others
                     if action == 1:
                         tokens[lock] += n
                     elif tokens[lock] < n:
-                        return nbytes
+                        return True
                     else:
                         tokens[lock] -= n
-            return None
+            return False
         finally:
             self.visiting.discard(id(p))
 
+    def may_send_after(self, first, then):
+        """StreamVolumeAnalysis::maySendAfter."""
+        if first.src != then.src:
+            return None
+        if first.pid is None or then.pid is None or first.pid == then.pid:
+            return True
+        if first.src[2] != DMA:
+            return None
+        key = (first.src[0], first.src[1], MM2S, first.src[3])
+        progs = self.programs.get(key, [])
+        if len(progs) != 1 or progs[0]["kind"] != "start":
+            return None
+        for _, sym, _, _, _ in self.memcpys:
+            a = self.d.allocs.get(sym)
+            if a is not None and (*a["tile"], a["dir"], a["ch"]) == key:
+                return None
+        p = progs[0]
+        sent = after = False
+
+        def visit(op):
+            nonlocal sent, after
+            after |= sent and op[2] in (None, then.pid)
+            sent |= op[2] in (None, first.pid)
+
+        if p["loops"]:
+            return after if self.walk_loop(p, visit) else None
+        for _ in range(p["repeat"] + 1):
+            if after:
+                break
+            for op in program_ops(p):
+                if op[0] == "bd":
+                    visit(op)
+        return after
+
     def tokens_from_others(self, lock, me):
         """StreamVolumeAnalysis::tokensFromOthers."""
-        if any(
-            a == 1 and l == lock for uses in self.d.cores.values() for a, l, _ in uses
-        ):
-            return None
         total = 0
+        for uses in self.d.cores.values():
+            for a, l, n in uses:
+                if a != 1 or l != lock:
+                    continue
+                if lock in self.d.core_repeated_releases or n is None or n < 0:
+                    return None
+                total += n
         for p in self.d.programs:
             if p is me or not any(
                 op[0] == "lock" and op[1] == 1 and op[2] == lock
@@ -1701,6 +1760,8 @@ class Analysis:
                 self.can_stall(f)
                 and not self.silent(f)
                 and not self.silent(g)
+                and self.volumes.may_send_after(self.streams[f], self.streams[g])
+                is not False
                 and bool(self.blocking_chain(f, g))
             )
         return self._blocks[(f, g)]
@@ -1719,7 +1780,10 @@ class Analysis:
                     "is assumed to overrun its receiver."
                 )
                 break
-        if fs.src == self.streams[g].src:
+        if (
+            fs.src == self.streams[g].src
+            and self.volumes.may_send_after(fs, self.streams[g]) is None
+        ):
             out.append(
                 f"Both come from {fmt_ep(fs.src)}, and the order it sends in is "
                 "not modeled."
@@ -4761,7 +4825,9 @@ def check_model():
     add_program(d, (0, 4), MM2S, 0, [bd_block(32)], False)
     looped("looped, feeder fills no BD", 32)
     d.cores[(0, 2)] = [(1, go, 1)]
-    looped("looped, core refills", None)
+    looped("looped, core refills once", 64)
+    d.core_repeated_releases.add(go)
+    looped("looped, core refills in a loop", None)
     del d.cores[(0, 2)]
     send["seq"][0][0] = ("lock", 0, go, 1)
     looped("looped, acquire-equal", None)
