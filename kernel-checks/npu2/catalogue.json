@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "d53582d3e0f9f8a2b77695bbf4abbd7766d5584a",
- "date": "2026-09-29T06:35:30.159993+00:00",
+ "commit": "4952b74e86c471471ebbd4cccccb2d54d6940dc4",
+ "date": "2026-09-29T22:57:15.067432+00:00",
  "swept": true,
  "kernels": [
   {
@@ -17,7 +17,10 @@
    ],
    "passed": 0,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "runs once before the calls; nothing to time"
   },
   {
    "factory": "zero",
@@ -39,7 +42,16 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "zero/12x3/bfp16ebs8/vector-tail",
+    "zero/34x3/int16/vectorized=False",
+    "zero/64x4/bfloat16",
+    "zero/64x4/bfp16ebs8",
+    "zero/64x4/int32",
+    "zero/68x3/uint8/vector-tail"
+   ]
   },
   {
    "factory": "passthrough",
@@ -53,7 +65,15 @@
    ],
    "passed": 10,
    "failed": [],
-   "timed": 5
+   "timed": 5,
+   "timing_failed": [],
+   "untimed": [
+    "passthrough/128x4/int16/edge-tiny",
+    "passthrough/16x4/int32/edge-one-vector",
+    "passthrough/256x4/uint8/edge-tiny",
+    "passthrough/4096x4/int32",
+    "passthrough/64x4/int32/edge-tiny"
+   ]
   },
   {
    "factory": "scale",
@@ -68,7 +88,13 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 3
+   "timed": 3,
+   "timing_failed": [],
+   "untimed": [
+    "scale/1024x16/int32/edge-negfactor",
+    "scale/32x4/int16/edge-one-vector",
+    "scale/64x4/int32/edge-tiny"
+   ]
   },
   {
    "factory": "add",
@@ -82,7 +108,9 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "add_sized",
@@ -96,7 +124,12 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "add_sized/1024x16/bfloat16",
+    "add_sized/32x4/bfloat16/edge-tiny"
+   ]
   },
   {
    "factory": "mul",
@@ -110,7 +143,9 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "mul_sized",
@@ -124,7 +159,12 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 4
+   "timed": 4,
+   "timing_failed": [],
+   "untimed": [
+    "mul_sized/1024x16/bfloat16",
+    "mul_sized/32x4/bfloat16/edge-tiny"
+   ]
   },
   {
    "factory": "mul_add",
@@ -138,7 +178,9 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "rms_norm",
@@ -152,7 +194,12 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "rms_norm/1000x16/bfloat16/cols=1000/row-tail",
+    "rms_norm/200x16/bfloat16/cols=200/row-tail"
+   ]
   },
   {
    "factory": "q4nx_dequant",
@@ -166,7 +213,12 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "q4nx_dequant/1536x2/uint8/ct_k=16/group=24/k_tile=48/m_tile=48",
+    "q4nx_dequant/512x2/uint8/ct_k=16/group=8/k_tile=32/m_tile=16"
+   ]
   },
   {
    "factory": "layer_norm",
@@ -180,7 +232,9 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "layer_norm_f32",
@@ -194,7 +248,12 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "layer_norm_f32/1008x16/float32/cols=1008/row-tail",
+    "layer_norm_f32/112x16/float32/cols=112/row-tail"
+   ]
   },
   {
    "factory": "layer_norm_affine_cast",
@@ -208,7 +267,12 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "layer_norm_affine_cast/1008x16/float32_bfloat16/cols=1008/row-tail",
+    "layer_norm_affine_cast/112x16/float32_bfloat16/cols=112/row-tail"
+   ]
   },
   {
    "factory": "rope",
@@ -222,7 +286,14 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "rope/1008x16/bfloat16/cols=1008/row-tail",
+    "rope/1024x16/bfloat16/cols=1024/two_halves=True",
+    "rope/112x16/bfloat16/cols=112/row-tail",
+    "rope/96x16/bfloat16/cols=96/two_halves=True/row-tail"
+   ]
   },
   {
    "factory": "mm_activation_epilogue",
@@ -236,7 +307,22 @@
    ],
    "passed": 16,
    "failed": [],
-   "timed": 4
+   "timed": 4,
+   "timing_failed": [],
+   "untimed": [
+    "mm_activation_epilogue/16x4/float32/gelu-one-vector",
+    "mm_activation_epilogue/16x4/float32/identity-one-vector",
+    "mm_activation_epilogue/16x4/float32/relu-one-vector",
+    "mm_activation_epilogue/16x4/float32/silu-one-vector",
+    "mm_activation_epilogue/48x4/float32/gelu-short-row",
+    "mm_activation_epilogue/48x4/float32/identity-short-row",
+    "mm_activation_epilogue/48x4/float32/relu-short-row",
+    "mm_activation_epilogue/48x4/float32/silu-short-row",
+    "mm_activation_epilogue/80x4/float32/gelu-min-trips",
+    "mm_activation_epilogue/80x4/float32/identity-min-trips",
+    "mm_activation_epilogue/80x4/float32/relu-min-trips",
+    "mm_activation_epilogue/80x4/float32/silu-min-trips"
+   ]
   },
   {
    "factory": "reduce_add",
@@ -250,7 +336,13 @@
    ],
    "passed": 5,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "reduce_add/1024x1/int32/edge-single",
+    "reduce_add/16x4/int32/edge-one-vector",
+    "reduce_add/64x4/int32/edge-tiny"
+   ]
   },
   {
    "factory": "reduce_min",
@@ -264,7 +356,11 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "reduce_min/16x4/int32/edge-one-vector"
+   ]
   },
   {
    "factory": "reduce_max",
@@ -279,7 +375,12 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 4
+   "timed": 4,
+   "timing_failed": [],
+   "untimed": [
+    "reduce_max/16x4/int32/edge-one-vector",
+    "reduce_max/32x4/bfloat16/edge-one-vector"
+   ]
   },
   {
    "factory": "compute_max",
@@ -293,7 +394,9 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "relu",
@@ -307,7 +410,9 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "relu_sized",
@@ -321,7 +426,12 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "relu_sized/1024x16/bfloat16",
+    "relu_sized/32x4/bfloat16/edge-tiny"
+   ]
   },
   {
    "factory": "rgba2hue",
@@ -335,7 +445,11 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "rgba2hue/384x4/uint8/line_width=96/short-row"
+   ]
   },
   {
    "factory": "threshold",
@@ -351,7 +465,18 @@
    ],
    "passed": 9,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "threshold/1920x16/int16",
+    "threshold/1920x16/uint8/tozero-inv",
+    "threshold/1920x16/uint8/trunc",
+    "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-0",
+    "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-1",
+    "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-2",
+    "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-3",
+    "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-4"
+   ]
   },
   {
    "factory": "bitwise_or",
@@ -367,7 +492,11 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "bitwise_or/64x4/uint8/line_width=64/edge-one-vector"
+   ]
   },
   {
    "factory": "bitwise_and",
@@ -383,7 +512,11 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "bitwise_and/64x4/uint8/line_width=64/edge-one-vector"
+   ]
   },
   {
    "factory": "gray2rgba",
@@ -397,7 +530,12 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "gray2rgba/112x4/uint8/line_width=112/short-row",
+    "gray2rgba/144x4/uint8/line_width=144/tail"
+   ]
   },
   {
    "factory": "rgba2gray",
@@ -411,7 +549,11 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "rgba2gray/640x4/uint8/line_width=160/short-row"
+   ]
   },
   {
    "factory": "filter2d",
@@ -425,7 +567,11 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "filter2d/160x4/uint8/line_width=160/short-row"
+   ]
   },
   {
    "factory": "add_weighted",
@@ -440,7 +586,13 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "add_weighted/1920x16/int16/gamma",
+    "add_weighted/1920x16/uint8/gamma",
+    "add_weighted/32x4/uint8/line_width=32/edge-one-vector"
+   ]
   },
   {
    "factory": "softmax",
@@ -454,7 +606,12 @@
    ],
    "passed": 5,
    "failed": [],
-   "timed": 3
+   "timed": 3,
+   "timing_failed": [],
+   "untimed": [
+    "softmax/160x4/bfloat16/min-pipelined",
+    "softmax/32x4/bfloat16/short-trip"
+   ]
   },
   {
    "factory": "gelu",
@@ -468,7 +625,9 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "gelu_sized",
@@ -482,7 +641,14 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "gelu_sized/1024x16/bfloat16",
+    "gelu_sized/160x4/bfloat16/unroll-tail",
+    "gelu_sized/32x4/bfloat16/edge-tiny",
+    "gelu_sized/96x4/bfloat16/short-trip"
+   ]
   },
   {
    "factory": "silu",
@@ -496,7 +662,9 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 3
+   "timed": 3,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "silu_sized",
@@ -510,7 +678,14 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "silu_sized/1024x16/bfloat16",
+    "silu_sized/160x4/bfloat16/unroll-tail",
+    "silu_sized/32x4/bfloat16/edge-tiny",
+    "silu_sized/96x4/bfloat16/short-trip"
+   ]
   },
   {
    "factory": "swiglu",
@@ -524,7 +699,9 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 3
+   "timed": 3,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "bf16_exp",
@@ -538,7 +715,9 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "exp2f_vec",
@@ -552,7 +731,11 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "exp2f_vec/48x4/float32/vector-tail"
+   ]
   },
   {
    "factory": "tanh",
@@ -566,7 +749,11 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 3
+   "timed": 3,
+   "timing_failed": [],
+   "untimed": [
+    "tanh/1056x4/bfloat16/tail"
+   ]
   },
   {
    "factory": "sigmoid",
@@ -580,7 +767,11 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 3
+   "timed": 3,
+   "timing_failed": [],
+   "untimed": [
+    "sigmoid/1056x4/bfloat16/tail"
+   ]
   },
   {
    "factory": "leaky_relu",
@@ -594,7 +785,11 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "leaky_relu/160x4/bfloat16/unroll-tail"
+   ]
   },
   {
    "factory": "axpy",
@@ -608,7 +803,11 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "axpy/64x4/bfloat16/short-row"
+   ]
   },
   {
    "factory": "convert_copy",
@@ -622,7 +821,12 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "convert_copy/272x4/float32_bfloat16/unroll-tail",
+    "convert_copy/64x4/float32_bfloat16/short-row"
+   ]
   },
   {
    "factory": "expand",
@@ -636,7 +840,12 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "expand/400x16/uint8_bfloat16/group_size=96/group-96",
+    "expand/544x16/uint8_bfloat16/group_size=64/group-64"
+   ]
   },
   {
    "factory": "transpose",
@@ -653,7 +862,9 @@
    ],
    "passed": 5,
    "failed": [],
-   "timed": 5
+   "timed": 5,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "rms_norm_eps",
@@ -667,7 +878,11 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "rms_norm_eps/1024x16/bfloat16/cols=1024"
+   ]
   },
   {
    "factory": "mm",
@@ -687,7 +902,19 @@
    ],
    "passed": 16,
    "failed": [],
-   "timed": 7
+   "timed": 7,
+   "timing_failed": [],
+   "untimed": [
+    "mm/32x32x32x16/bfloat16_float32/edge-small-tile",
+    "mm/64x32x64x1/bfloat16_float32/edge-single-tile",
+    "mm/64x32x64x3/int16_int32/b_col_maj=True/c_col_maj=True",
+    "mm/64x32x64x4/bfloat16_float32",
+    "mm/64x32x64x4/bfloat16_float32/b_col_maj=True",
+    "mm/64x32x64x4/bfloat16_float32/c_col_maj=True",
+    "mm/64x32x64x4/int16_int32",
+    "mm/64x32x64x4/int16_int32/c_col_maj=True",
+    "mm/64x32x64x4/int8_int32/c_col_maj=True"
+   ]
   },
   {
    "factory": "fused_mm",
@@ -701,7 +928,16 @@
    ],
    "passed": 10,
    "failed": [],
-   "timed": 4
+   "timed": 4,
+   "timing_failed": [],
+   "untimed": [
+    "fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)",
+    "fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)/epilogue=silu",
+    "fused_mm/32x48x16x4/bfloat16/epilogue=gelu",
+    "fused_mm/32x48x16x4/bfloat16/epilogue=sigmoid",
+    "fused_mm/32x48x16x4/bfloat16/epilogue=silu",
+    "fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=silu/out_chunk=512"
+   ]
   },
   {
    "factory": "mha",
@@ -715,7 +951,12 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "mha/64x64x64x4/bfloat16",
+    "mha/64x64x64x4/bfloat16/pv=True"
+   ]
   },
   {
    "factory": "mha_softmax",
@@ -729,7 +970,11 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal-padded"
+   ]
   },
   {
    "factory": "prefill_fv",
@@ -743,7 +988,9 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "mm_bfp",
@@ -759,7 +1006,14 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "mm_bfp/32x24x48x4/bfp16ebs8/odd-k",
+    "mm_bfp/64x32x32x4/bfloat16/mixed=True/non-square",
+    "mm_bfp/64x64x64x4/bfloat16/mixed=True",
+    "mm_bfp/64x64x64x4/bfp16ebs8"
+   ]
   },
   {
    "factory": "mm_bfp_shuffle",
@@ -773,7 +1027,9 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 4
+   "timed": 4,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "mv",
@@ -789,7 +1045,17 @@
    ],
    "passed": 12,
    "failed": [],
-   "timed": 5
+   "timed": 5,
+   "timing_failed": [],
+   "untimed": [
+    "mv/10x512x4/bfloat16/vec_size=64/edge-mac-loop",
+    "mv/32x256x4/bfloat16",
+    "mv/32x32x4/int16_int32",
+    "mv/48x32x4/int16_int32/edge-rows-not-multiple-of-32",
+    "mv/4x128x4/bfloat16/vec_size=64/edge-two-chunks",
+    "mv/4x64x4/bfloat16/vec_size=64/edge-one-chunk",
+    "mv/6x128x4/bfloat16/vec_size=64/edge-rows-not-multiple-of-4"
+   ]
   },
   {
    "factory": "cascade_mm",
@@ -803,7 +1069,10 @@
    ],
    "passed": 0,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "the GET half of a cascade pair: one input arrives on the cascade stream; the device test builds and judges the pair"
   },
   {
    "factory": "cascade_mm_put",
@@ -817,7 +1086,10 @@
    ],
    "passed": 0,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "the PUT half of a cascade pair: its result leaves on the cascade stream"
   },
   {
    "factory": "conv2dk1",
@@ -832,7 +1104,11 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "conv2dk1/4096x8/int8_uint8/input_width=64/two-blocks"
+   ]
   },
   {
    "factory": "conv2dk3",
@@ -847,7 +1123,16 @@
    ],
    "passed": 8,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "conv2dk3/2048x8/int8_uint8/bottom-row",
+    "conv2dk3/2048x8/int8_uint8/output_channels=32/weight_output_channels=64/channel-offset",
+    "conv2dk3/2048x8/int8_uint8/top-row",
+    "conv2dk3/2048x8/uint8/bottom-row",
+    "conv2dk3/2048x8/uint8/output_channels=32/weight_output_channels=64/channel-offset",
+    "conv2dk3/2048x8/uint8/top-row"
+   ]
   },
   {
    "factory": "dwconv1d",
@@ -861,7 +1146,9 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "dwconv1d_channels_first",
@@ -875,7 +1162,13 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "dwconv1d_channels_first/1024x16/bfloat16/kernel_size=9/seq_len=1008/odd-block-count",
+    "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=1/seq_len=1024",
+    "dwconv1d_channels_first/64x16/bfloat16/kernel_size=17/seq_len=48/short-row"
+   ]
   },
   {
    "factory": "dwconv1d_channels_last",
@@ -889,7 +1182,11 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "dwconv1d_channels_last/256x16/bfloat16/channels=256/clamp=False/unclamped"
+   ]
   },
   {
    "factory": "conv2dk1_skip",
@@ -904,7 +1201,9 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "conv2dk1_i8",
@@ -918,7 +1217,11 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "conv2dk1_i8/4096x8/int8/input_width=64/two-blocks"
+   ]
   },
   {
    "factory": "conv2dk14",
@@ -932,7 +1235,12 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "conv2dk14/12544x4/uint8_int8/output_channels=24/three-groups",
+    "conv2dk14/25088x4/uint8_int8/input_width=448/output_channels=8/two-tile-groups"
+   ]
   },
   {
    "factory": "conv2dk1_skip_init",
@@ -947,7 +1255,11 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "conv2dk1_skip_init/256x8/uint8/input_channels=16/skip_input_channels=8/one-step"
+   ]
   },
   {
    "factory": "bn_conv2dk1_relu",
@@ -961,7 +1273,9 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 4
+   "timed": 4,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "bn_conv2dk3",
@@ -975,7 +1289,17 @@
    ],
    "passed": 8,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "bn_conv2dk3/1024x8/int8_uint8/input_channels=16/input_width=64/output_channels=8/weight_output_channels=16/channel-offset",
+    "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16/top-row",
+    "bn_conv2dk3/256x8/int8_uint8/input_channels=8/input_width=32/output_channels=8/weight_output_channels=16/channel-offset",
+    "bn_conv2dk3/3584x8/int8_uint8/input_channels=32/input_width=112/output_channels=16",
+    "bn_conv2dk3/448x8/int8_uint8/input_channels=8/input_width=56/output_channels=24/bottom-row",
+    "bn_conv2dk3/896x8/int8_uint8/input_channels=16/input_width=56/output_channels=24/bottom-row",
+    "bn_conv2dk3/960x8/int8_uint8/input_channels=24/input_width=40/output_channels=8/top-row"
+   ]
   },
   {
    "factory": "bn_conv2dk1_i8",
@@ -989,7 +1313,9 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 4
+   "timed": 4,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "bn_conv2dk1_skip",
@@ -1004,7 +1330,9 @@
    ],
    "passed": 5,
    "failed": [],
-   "timed": 5
+   "timed": 5,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "bn_conv2dk3_dw",
@@ -1018,7 +1346,12 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 4
+   "timed": 4,
+   "timing_failed": [],
+   "untimed": [
+    "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120/bottom-row",
+    "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2/top-row"
+   ]
   },
   {
    "factory": "bn_conv2dk1_relu_xy_pool_padded",
@@ -1032,7 +1365,13 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/first-row",
+    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/mid-row",
+    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=128/weight_chunk_count=5120/split"
+   ]
   },
   {
    "factory": "bn_fc_relu_ui16_pad",
@@ -1046,7 +1385,13 @@
    ],
    "passed": 5,
    "failed": [],
-   "timed": 2
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=16/two-blocks",
+    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/ic-tail",
+    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/short"
+   ]
   },
   {
    "factory": "bn_conv2dk1_partial_put_i8",
@@ -1060,7 +1405,10 @@
    ],
    "passed": 0,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "no case in test/python/npu/kernel_cases.py"
   },
   {
    "factory": "bn_conv2dk1_partial_get_relu_i8",
@@ -1074,7 +1422,10 @@
    ],
    "passed": 0,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "no case in test/python/npu/kernel_cases.py"
   },
   {
    "factory": "bn_conv2dk3_dw_out_split",
@@ -1088,7 +1439,9 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
   },
   {
    "factory": "bn_conv2dk1_input_split_partial_put_ui8",
@@ -1102,7 +1455,10 @@
    ],
    "passed": 0,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "no case in test/python/npu/kernel_cases.py"
   },
   {
    "factory": "bn_conv2dk1_input_split_partial_skip_get",
@@ -1116,7 +1472,10 @@
    ],
    "passed": 0,
    "failed": [],
-   "timed": 0
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "no case in test/python/npu/kernel_cases.py"
   }
  ]
 }
