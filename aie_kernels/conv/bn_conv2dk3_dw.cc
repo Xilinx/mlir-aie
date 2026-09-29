@@ -1244,11 +1244,9 @@ static bool dwg_run(const uint8_t *line0, const uint8_t *line1,
   }
 }
 
-// Stride 2 with W % 16 == 0: the C / 8 blocks are contiguous, so one pipelined
-// loop walks them all two words at a time. Step t convolves words 2t and
-// 2t + 1, and the head of word 2t + 2, into the even pixels 16t + 2..16t + 16
-// and stores pixels 16t..16t + 14. The weights are staged 64-byte aligned
-// first; each block's pixel 0, computed then, is patched in afterwards.
+// Precomputing pixel 0 lets dws2_body traverse channel boundaries without
+// masking each convolution. Pack weights for aligned loads; dws2_patch
+// restores those boundary outputs afterwards.
 template <int W>
 __attribute__((always_inline)) static inline void
 dws2_stage(const uint8_t *__restrict line0, const uint8_t *__restrict line1,

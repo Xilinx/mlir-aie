@@ -112,15 +112,9 @@ def build_3layer(
         segs[2] = segs[2][:0]
     if next_blk:
         assert not has_skip, f"{name}: next_blk needs the no-skip variant"
-        next_ch = next_blk.layers[0].out_shape[2]
-        next_sz = out_c * next_ch
         segs.append(_segments(next_blk)[0])
     if prev_blk:
         assert prev_blk.skip == (res_in is not None), f"{name}: residual mismatch"
-        prev_ch = prev_blk.layers[1].in_shape[2]
-        prev_sz = prev_ch * in_c
-        s_prev = _layer_sf(prev_blk, sf, 2)
-        sa_prev = _skip_sf(prev_blk, sf) if prev_blk.skip else None
         segs.append(_segments(prev_blk)[2])
     wts_buf, offs = _pack_wts(segs)
     off_l1, off_l2, off_l3 = offs[:3]
@@ -151,6 +145,7 @@ def build_3layer(
         )
 
     f12 = ObjectFifo(_u8((in_w, 1, dw_ch)), depth=3)
+    res_fifo = None
     if split_l3:
         # Neighbouring tiles share one pool of these; at depth 2 a stride-2
         # consumer taking rows in pairs holds the producer to its pace.
@@ -164,6 +159,7 @@ def build_3layer(
         f23 = ObjectFifo(_u8((out_w, 1, dw_ch)), depth=1)
         l3_args = [out_fifo.prod(), f23.cons(), k_l3]
     if next_blk:
+        next_ch = next_blk.layers[0].out_shape[2]
         next_fifo = ObjectFifo(_u8((out_w, 1, next_ch)), depth=2)
         k_next = kernels.bn_conv2dk1_relu(
             input_width=out_w,
@@ -171,8 +167,10 @@ def build_3layer(
             output_channels=next_ch,
         )
         l3_args += [next_fifo.prod(), k_next]
+        out_fifo = (out_fifo, next_fifo)
     prev_args = []
     if prev_blk:
+        prev_ch = prev_blk.layers[1].in_shape[2]
         if prev_blk.skip:
             k_prev = kernels.bn_conv2dk1_skip(
                 input_width=in_w,
@@ -187,6 +185,7 @@ def build_3layer(
                 output_channels=in_c,
             )
         if split_l3 and has_skip:
+            assert res_fifo is not None
             prev_args = [res_fifo.prod(), k_prev]
         else:
             # prev_blk's output rows, in the window act_in would feed.
@@ -202,8 +201,12 @@ def build_3layer(
         `n` act_in rows, which the tile then reads from rows_fifo."""
         if not prev:
             return (lambda n: None), act_in_fifo
+        assert prev_blk is not None
+        prev_ch = prev_blk.layers[1].in_shape[2]
+        s_prev = _layer_sf(prev_blk, sf, 2)
+        sa_prev = _skip_sf(prev_blk, sf) if prev_blk.skip else None
         p01, c01, k_prev, *res = prev
-        wts_prev = memref_view(wts.op, [prev_sz], shift=offs[-1])
+        wts_prev = memref_view(wts.op, [prev_ch * in_c], shift=offs[-1])
 
         def feed(n):
             for _ in range(n):
@@ -240,17 +243,25 @@ def build_3layer(
             # Phases — preamble (rows 0,1) → middle (rows 2..in_h-2) → postamble (last row).
             wts_l1 = memref_view(wts.op, [l1_sz], shift=off_l1)
             wts_l2 = memref_view(wts.op, [l2_sz], shift=off_l2)
+            wts_prev = wts_l3 = None
+            prev = []
             if split_l3:
-                res_f, k_prev = rest
-                wts_prev = memref_view(wts.op, [prev_sz], shift=offs[-1])
+                assert prev_blk is not None
+                wts_prev = memref_view(
+                    wts.op, [prev_blk.layers[1].in_shape[2] * in_c], shift=offs[-1]
+                )
             else:
-                out_f, c23, k_skip, *prev = rest
+                prev = rest[3:]
                 wts_l3 = memref_view(wts.op, [l3_sz], shift=off_l3)
-                feed, rows_f = _prev_rows(act_in_fifo, wts, prev)
+            feed, rows_f = _prev_rows(act_in_fifo, wts, prev)
 
             def _pw_row():
                 """split_l3: prev_blk's final 1x1 into the outgoing residual
                 row, then this block's 1x1-relu on it."""
+                assert prev_blk is not None
+                res_f, k_prev = rest
+                prev_ch = prev_blk.layers[1].in_shape[2]
+                s_prev = _layer_sf(prev_blk, sf, 2)
                 row_dw = act_in_fifo.acquire(1)
                 row = res_f.acquire(1)
                 k_prev(row_dw, wts_prev, row, in_w, prev_ch, in_c, s_prev)
@@ -286,6 +297,7 @@ def build_3layer(
                 """L3 skip step: uses skip_row, releases act_in row + L2 row + out."""
                 if split_l3:
                     return
+                out_f, c23, k_skip, *_ = rest
                 row_l2 = c23.acquire(1)
                 row_out = out_f.acquire(1)
                 k_skip(
@@ -348,13 +360,13 @@ def build_3layer(
             wts_l1 = memref_view(wts.op, [l1_sz], shift=off_l1)
             wts_l2 = memref_view(wts.op, [l2_sz], shift=off_l2)
             l3, prev = rest[:n_l3], rest[n_l3:]
+            wts_l3 = wts_next = None
             if l3:
-                out_f, c23, k_l3, *nxt = l3
                 wts_l3 = memref_view(wts.op, [l3_sz], shift=off_l3)
             if next_blk:
-                next_f, k_next = nxt
-                wts_next = memref_view(wts.op, [next_sz], shift=offs[3])
-                s_next = _layer_sf(next_blk, sf, 0)
+                wts_next = memref_view(
+                    wts.op, [out_c * next_blk.layers[0].out_shape[2]], shift=offs[3]
+                )
             feed, rows_f = _prev_rows(act_in_fifo, wts, prev)
 
             def _l3():
@@ -362,11 +374,15 @@ def build_3layer(
                 row from it."""
                 if not l3:
                     return
+                out_f, c23, k_l3, *nxt = l3
                 row_l2 = c23.acquire(1)
                 row_out = out_f.acquire(1)
                 k_l3(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, s3)
                 c23.release(1)
                 if next_blk:
+                    next_f, k_next = nxt
+                    next_ch = next_blk.layers[0].out_shape[2]
+                    s_next = _layer_sf(next_blk, sf, 0)
                     row_next = next_f.acquire(1)
                     k_next(row_out, wts_next, row_next, out_w, out_c, next_ch, s_next)
                     next_f.release(1)
@@ -446,7 +462,7 @@ def build_3layer(
             *prev_args,
         ],
     )
-    return (out_fifo, next_fifo) if next_blk else out_fifo, worker
+    return out_fifo, worker
 
 
 # ---------------------------------------------------------------------------

@@ -93,6 +93,7 @@ def _build_one(block_name, act_in):
             data_dir=_DATA_DIR,
             wts_tag=_WTS_TAG,
         )
+        assert isinstance(out_fifo, ObjectFifo)
         return out_fifo, [w]
 
     if block_name in _FUSED_PAIRS:
