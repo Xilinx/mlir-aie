@@ -121,25 +121,22 @@ class XRTHostRuntime(HostRuntime):
             raise RuntimeError(f"Unknown device type: {self._device_type_str}")
 
     def provenance(self) -> dict[str, str]:
-        """Add XRT's versions from the shared, cached stack probe."""
+        """Add XRT's version from the shared, cached stack probe."""
         from ...probe import _examine_field
 
         fields = super().provenance()
         version = _examine_field("Version", section="XRT")
         if version:
             fields["xrt"] = version.split()[0]
-        driver = _examine_field("amdxdna", section="XRT")
-        if driver and "xdna" not in fields:
-            fields["xdna"] = driver.split(",")[0].strip()
         return fields
 
     def power_mode(self) -> str | None:
         """Return the power mode ``xrt-smi`` reports for this device, or ``None``.
 
         Scraped from ``xrt-smi examine --report platform`` for the device's
-        BDF because XRT exposes no API for it. Best effort: a missing
-        ``xrt-smi`` or an unexpected report gives ``None`` rather than an
-        error, since the mode only qualifies a measurement.
+        BDF because XRT exposes no API for it. Best effort: a missing or
+        failing ``xrt-smi``, or an unexpected report, gives ``None`` rather
+        than an error, and a run that requires a mode then refuses to measure.
         """
         xrt_smi = xrt_smi_path()
         if xrt_smi is None:
@@ -151,7 +148,7 @@ class XRTHostRuntime(HostRuntime):
                 capture_output=True,
                 text=True,
                 timeout=10,
-                check=False,
+                check=True,
             ).stdout
         except Exception:  # noqa: BLE001 - informational only
             return None

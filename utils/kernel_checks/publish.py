@@ -51,7 +51,7 @@ SCHEMA = 1
 REPO = "https://github.com/Xilinx/mlir-aie"
 TARGETS = ("npu1", "npu2")
 # Provenance fields worth a column in the history (the rest stay in the record).
-HISTORY_PROVENANCE = ("peano", "host", "xrt", "xdna", "kernels", "device")
+HISTORY_PROVENANCE = ("peano", "host", "runtime", "xrt", "xdna", "kernels", "device")
 # The part a runtime's device name means, first match wins. XRT names the
 # same NPU differently across drivers ("RyzenAI-npu1", "NPU Phoenix"); the
 # raw name stays in the record as ``device_raw``.

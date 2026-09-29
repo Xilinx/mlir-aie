@@ -56,13 +56,13 @@ TRACE_MAX_BYTES = 4 << 20
 
 # A kernel whose cost is known well enough to catch a broken measurement:
 # 8 KB copied, identical across its calls and across nightlies (264 cycles
-# on npu1, 138 on npu2, min = median = max over 256 calls). A band of about
-# 25% either side catches a decode that reports nothing, a clock or trace
-# path that reports something else, and a device that is not what the
-# runner label promised, while leaving room for a host of the same
-# generation to differ a little.
+# on npu1, 138 on npu2, min = median = max over 256 calls). The band runs
+# from about 0.75x, which catches a decode that reports too little, to about
+# 4x, which catches a clock or trace path off by a factor. A slower compile
+# of the copy loop stays inside it: that is a regression for the passthrough
+# row to report, not a broken measurement.
 SMOKE_TEST = Case("passthrough", dict(tile_size=2048), calls=16)
-SMOKE_CYCLE_BANDS = {"npu1": (200, 330), "npu2": (105, 175)}
+SMOKE_CYCLE_BANDS = {"npu1": (200, 1050), "npu2": (105, 550)}
 
 
 def _param(case: Case):
@@ -123,7 +123,7 @@ def _measure(case: Case, config, workdir: Path) -> dict:
         # A separate traced run: tracing perturbs the timing above.
         intervals = kd.traced_intervals(fn, calls=case.calls)
         trace_size = max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * intervals)
-        for _ in range(1 + TRACE_RETRIES):
+        for attempt in range(1 + TRACE_RETRIES):
             traced = kd.cycles_per_call(
                 design,
                 inputs,
@@ -137,7 +137,11 @@ def _measure(case: Case, config, workdir: Path) -> dict:
             # Every kernel checked here is timed; one that is not would chart
             # only wall clock and still pass.
             assert not traced.untimed, f"{case.name}: untimed, {traced.untimed}"
-            if not traced.truncated or trace_size >= TRACE_MAX_BYTES:
+            if (
+                not traced.truncated
+                or trace_size >= TRACE_MAX_BYTES
+                or attempt == TRACE_RETRIES
+            ):
                 break
             # The buffer filled: the min is over a prefix of the calls. Ask
             # for every interval at the cost this run measured.
@@ -146,12 +150,28 @@ def _measure(case: Case, config, workdir: Path) -> dict:
                 + len(traced.kernel)
                 + sum(len(v) for v in traced.initializers.values())
             )
-            trace_size = kd.grow_trace_size(
-                trace_size, seen=seen, expected=intervals, limit=TRACE_MAX_BYTES
-            )
+            trace_size = _grow_trace_size(trace_size, seen=seen, expected=intervals)
         measured["cycles"] = traced
         measured["trace_size"] = trace_size
     return measured
+
+
+def _grow_trace_size(trace_size: int, *, seen: int, expected: int) -> int:
+    """Guess a buffer size for ``expected`` intervals, from one that filled after ``seen``.
+
+    A heuristic, not a bound: the bytes an interval costs vary with the
+    kernel's length and from run to run (lock timing, stalls). This asks for
+    every interval at the cost the filled run measured, and half as much
+    again, rounded up to 4 KiB, never less than double and never more than
+    ``TRACE_MAX_BYTES``. A guess that still falls short costs a retry, and
+    after the last one the case is recorded as truncated.
+    """
+    if seen < 1:
+        grown = 2 * trace_size
+    else:
+        wanted = trace_size / seen * expected * 1.5
+        grown = max(2 * trace_size, -(-int(wanted) // 4096) * 4096)
+    return min(grown, TRACE_MAX_BYTES)
 
 
 def _kernel_object_size(design, fn) -> int | None:

@@ -141,15 +141,26 @@ def _examine_field(label: str, section: str | None = None) -> str | None:
     return None
 
 
+def _driver_release(text: str) -> str | None:
+    # Both sysfs and `xrt-smi examine` append the build hash after a comma
+    # ("2.25.260102.56.release_20260630,88dda53e..."); the release is before it.
+    return text.split(",")[0].strip() or None
+
+
 def amdxdna_version() -> str | None:
-    """Return the loaded Linux driver version without requiring an XRT install."""
+    """Return the loaded driver's release, from sysfs, else from ``xrt-smi examine``."""
     if sys.platform == "linux":
         try:
             with open("/sys/module/amdxdna/version") as f:
-                return f.read().strip() or None
+                return _driver_release(f.read())
         except OSError:
             pass
-    return None
+    return _examined_driver_release()
+
+
+def _examined_driver_release() -> str | None:
+    field = _examine_field("amdxdna Version", section="XRT")
+    return _driver_release(field) if field else None
 
 
 def _undetermined(name: str) -> Check:
