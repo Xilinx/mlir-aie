@@ -49,8 +49,8 @@ def AIEDecomposeLargeDmaBd
     The starts of those tasks are interleaved with the starts issued alongside
     them, ordered by how far through its transfer each is, so that the waits
     inserted for a transfer's later pieces cannot block a counterpart issued
-    after it. They move past configures and RTP writes. Anything else with an
-    effect, such as an await, poll, write32, blockwrite or lock set, stays
+    after it. They move past configures, RTP writes and lock sets. Anything
+    else with an effect, such as an await, poll, write32 or blockwrite, stays
     ordered against them.
 
     A task-path descriptor may give more dimensions than a buffer descriptor

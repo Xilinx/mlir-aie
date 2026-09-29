@@ -183,15 +183,6 @@ def vector_vector_add(
     rt = Runtime(sequence, [tensor_ty, tensor_ty])
     rt.add_flow(in_flow)
     rt.add_flow(out_flow)
-    for lk in (
-        in1_prod_lock,
-        in1_cons_lock,
-        in2_prod_lock,
-        in2_cons_lock,
-        out_prod_lock,
-        out_cons_lock,
-    ):
-        rt.add_lock(lk)
     rt.add_tile_dma(compute_dma)
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()

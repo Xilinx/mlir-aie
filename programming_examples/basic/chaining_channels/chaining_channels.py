@@ -278,8 +278,6 @@ def chaining_channels(
     rt = Runtime(sequence, [vector_ty, vector_ty_read])
     rt.add_flow(mem_to_shim_flow)
     rt.add_flow(shim_to_compute_flow)
-    for lk in (memtile_lock, compute_prod_lock, compute_cons_lock):
-        rt.add_lock(lk)
     rt.add_tile_dma(memtile_dma)
     rt.add_tile_dma(compute_dma)
 

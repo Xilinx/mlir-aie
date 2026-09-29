@@ -90,8 +90,6 @@ def _dma_channel(elem_dtype):
         rt = Runtime(sequence, [mem_ty, out_ty])
         rt.add_flow(into)
         rt.add_flow(out)
-        rt.add_lock(prod)
-        rt.add_lock(cons)
         rt.add_tile_dma(mem_dma)
         return Program(iron.get_current_device(), rt).resolve_program()
 

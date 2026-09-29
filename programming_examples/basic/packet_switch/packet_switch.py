@@ -374,21 +374,6 @@ def packet_switch(
         flow_c03_to_mem,
     ):
         rt.add_flow(f)
-    for lk in (
-        c02_prod_lock_in,
-        c02_cons_lock_in,
-        c02_prod_lock_out,
-        c02_cons_lock_out,
-        c03_prod_lock_in,
-        c03_cons_lock_in,
-        c03_prod_lock_out,
-        c03_cons_lock_out,
-        mem_prod_lock_in,
-        mem_cons_lock_in,
-        mem_prod_lock_out,
-        mem_cons_lock_out,
-    ):
-        rt.add_lock(lk)
     for td in (c02_dma, c03_dma, mem_dma):
         rt.add_tile_dma(td)
 

@@ -180,13 +180,13 @@ class PingPongDma:
         self.buffers = [
             Buffer(type=buf_ty, tile=tile, name=f"{name}_buf{i}") for i in range(2)
         ]
-        self.full = Lock(tile=tile, init=0, name=f"{name}_full")
-        self.empty = Lock(tile=tile, init=len(self.buffers), name=f"{name}_empty")
+        full = Lock(tile=tile, init=0, name=f"{name}_full")
+        empty = Lock(tile=tile, init=len(self.buffers), name=f"{name}_empty")
         self.tile_dma = TileDma(
             tile=tile,
             channels=[
-                self._channel(into, self.empty, self.full, BD_S2MM),
-                self._channel(out, self.full, self.empty, BD_MM2S),
+                self._channel(into, empty, full, BD_S2MM),
+                self._channel(out, full, empty, BD_MM2S),
             ],
         )
 
@@ -200,12 +200,6 @@ class PingPongDma:
                 for b, i in zip(self.buffers, bd_ids)
             ],
         )
-
-    def register(self, rt: Runtime) -> None:
-        """Add this passthrough's locks and DMA program to ``rt``."""
-        rt.add_lock(self.full)
-        rt.add_lock(self.empty)
-        rt.add_tile_dma(self.tile_dma)
 
 
 def build_multi_cmp_only():
@@ -241,8 +235,8 @@ def build_multi_cmp_only():
     rt = Runtime(sequence, [vec_ty, vec_ty])
     for f in (into, link, out):
         rt.add_flow(f)
-    ct2_dma.register(rt)
-    ct3_dma.register(rt)
+    rt.add_tile_dma(ct2_dma.tile_dma)
+    rt.add_tile_dma(ct3_dma.tile_dma)
     return Program(iron.get_current_device(), rt).resolve_program()
 
 
