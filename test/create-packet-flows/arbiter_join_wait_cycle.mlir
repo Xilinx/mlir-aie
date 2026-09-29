@@ -324,7 +324,7 @@ module {
       aie.use_lock(%mp5, AcquireGreaterEqual, %one)
       aie.dma_bd(%mb5 : memref<256xi32> offset = 0 len = 256)
       aie.use_lock(%mq5, Release, %one)
-      aie.next_bd ^out
+      aie.next_bd ^end
     ^out:
       %6 = aie.dma_start(MM2S, 0, ^j0, ^end)
     ^j0:
