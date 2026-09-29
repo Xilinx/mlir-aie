@@ -233,7 +233,8 @@ static Value widenValueWithNarrowingCheck(Value val, Type targetType,
   if (val.getType() == targetType)
     return val;
 
-  return arith::ExtFOp::create(rewriter, loc, targetType, val);
+  return arith::ExtFOp::create(rewriter, loc, targetType, val,
+                               /*fastmath=*/nullptr);
 }
 
 // Result structure for smart narrowing operation
@@ -1550,9 +1551,14 @@ struct FoldSplatToFMAOp : OpConversionPattern<aievec::aie1::FMAOp> {
     auto pos = extOp.getStaticPosition();
     int64_t zstart = pos[0];
     auto fmaOpAttr = buildFMAOpSplatAttrForElemTy(fmaOp, zstart);
+    aievec::aie1::FMAOp::Properties fmaProps;
+    if (failed(aievec::aie1::FMAOp::setPropertiesFromAttr(
+            fmaProps, rewriter.getDictionaryAttr(fmaOpAttr),
+            [&]() { return fmaOp.emitError(); })))
+      return failure();
     rewriter.replaceOpWithNewOp<aievec::aie1::FMAOp>(
         fmaOp, TypeRange({fmaOp.getResult().getType()}),
-        ValueRange({lhsX2, rhs, adaptor.getAcc()}), fmaOpAttr);
+        ValueRange({lhsX2, rhs, adaptor.getAcc()}), fmaProps);
 
     return success();
   }
@@ -2854,9 +2860,16 @@ struct LowerVectorExtractStridedSliceOpAIEv1Pattern
       return failure();
 
     int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
+    aievec::aie1::SelectOp::Properties selectProps;
+    if (failed(aievec::aie1::SelectOp::setPropertiesFromAttr(
+            selectProps,
+            rewriter.getDictionaryAttr(
+                buildAttributeListForRotationSelectOp(rewriter, vType, offset)),
+            [&]() { return extractOp.emitError(); })))
+      return failure();
     auto selectOp = aievec::aie1::SelectOp::create(
-        rewriter, extractOp.getLoc(), vType, adaptor.getSource(),
-        buildAttributeListForRotationSelectOp(rewriter, vType, offset));
+        rewriter, extractOp.getLoc(), TypeRange({vType}),
+        ValueRange({adaptor.getSource()}), selectProps);
     rewriter.replaceOpWithNewOp<aievec::aie1::ExtOp>(
         extractOp, extractOp.getType(), selectOp.getResult(),
         rewriter.getI8IntegerAttr(0));
@@ -4058,8 +4071,22 @@ struct ComputeFloorOpPattern : OpConversionPattern<math::FloorOp> {
   }
 };
 
+// The element types and lane counts AIE2P can negate. NegOpAIE2pConversion
+// only takes an f32 accumulator, which the pattern below builds from bf16 (via
+// UPS) and from f32 (via a cast); an f16 would take the same 16-bit UPS path
+// and be reinterpreted as bf16, so leave it to the backend. Both the pattern
+// and the AIE2P legality predicate ask this, so nothing is declared illegal
+// that no pattern will take.
+static bool isNegFOpSupportedOnAIE2P(VectorType srcType) {
+  Type scalarType = srcType.getElementType();
+  if (!scalarType.isBF16() && !scalarType.isF32())
+    return false;
+  unsigned laneSize = getVectorLaneSize(srcType);
+  return laneSize == 16 || laneSize == 32;
+}
+
 // Convert arith.negf to aievec.neg to negate the vector for v16bfloat16 and
-// v16float types.
+// v16float types, plus v32 of either on AIE2P.
 struct ComputeNegOpPattern : OpConversionPattern<arith::NegFOp> {
   // `maxLanes` is 16 for AIE1/AIE2 and 32 for AIE2P, whose
   // NegOpAIE2pConversion widens the accumulator to ACC2048 and so takes both.
@@ -4083,7 +4110,10 @@ struct ComputeNegOpPattern : OpConversionPattern<arith::NegFOp> {
       return failure();
 
     unsigned laneSize = getVectorLaneSize(srcType);
-    if (laneSize != 16 && !(laneSize == 32 && maxLanes >= 32))
+    if (maxLanes >= 32) {
+      if (!isNegFOpSupportedOnAIE2P(srcType))
+        return failure();
+    } else if (laneSize != 16)
       return failure();
 
     Location loc = negOp.getLoc();
@@ -5675,16 +5705,14 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
   // but NegOpAIE2pConversion handles both -- it widens to ACC2048 either way --
   // so at 32 the op was declared legal, nothing converted it, and it reached
   // Peano as `G_FNEG <32 x s32>`, which does not legalize. A sigmoid's
-  // `exp(-z)` on a v32 is the ordinary way to meet this.
+  // `exp(-z)` on a v32 is the ordinary way to meet this. This replaces the
+  // AIE2 predicate installed above, so it also narrows the element types to
+  // the ones ComputeNegOpPattern actually lowers here.
   target.addDynamicallyLegalOp<arith::NegFOp>([](arith::NegFOp negOp) {
     auto srcType = dyn_cast<VectorType>(negOp.getOperand().getType());
     if (!srcType)
       return true;
-    if (Type scalarType = srcType.getElementType(); !isa<FloatType>(scalarType))
-      return true;
-
-    unsigned laneSize = getVectorLaneSize(srcType);
-    return laneSize != 16 && laneSize != 32;
+    return !isNegFOpSupportedOnAIE2P(srcType);
   });
 
   // LowerVectorSIToFPI16BF16AIE2pPattern uses vector.shuffle to split
