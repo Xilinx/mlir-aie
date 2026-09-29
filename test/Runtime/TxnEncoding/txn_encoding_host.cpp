@@ -34,6 +34,10 @@ int main() {
                          /*mask=*/0xFFu);
   ++count;
 
+  txn_append_maskpoll32(txn, /*addr=*/0x0001D228u, /*val=*/0x00200000u,
+                        /*mask=*/0x00700000u);
+  ++count;
+
   txn_append_sync(txn, /*col=*/1, /*row=*/2, /*dir=*/0, /*chan=*/3,
                   /*ncol=*/4, /*nrow=*/5);
   ++count;

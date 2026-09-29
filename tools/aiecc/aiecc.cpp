@@ -33,6 +33,7 @@
 #include "AIECCVersion.h"
 #include "Actions.h"
 #include "CommandLineOptions.h"
+#include "DeviceCache.h"
 #include "ExecutionEngine.h"
 #include "Graph.h"
 #include "IRTransforms.h"
@@ -59,6 +60,7 @@
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
@@ -66,12 +68,21 @@
 
 #include <cstdlib>
 #include <mutex>
+#include <optional>
 #include <set>
 
 using namespace xilinx::aiecc;
 using namespace xilinx::aiecc::cli;
 
 namespace {
+
+// Defined here rather than in CommandLineOptions.h: __DATE__/__TIME__ need
+// -Wno-date-time, which CMakeLists.txt sets for this file only.
+void printVersion(llvm::raw_ostream &os) {
+  os << "aiecc (mlir-aie declarative driver)\n";
+  os << "  git SHA:  " << AIECC_GIT_SHA << "\n";
+  os << "  compiled: " << __DATE__ << " " << __TIME__ << "\n";
+}
 
 // Apply the process-wide parallelism cap only when the command line did not
 // select one explicitly. Keep the accepted syntax identical to -j: an
@@ -108,6 +119,11 @@ bool applyJobsEnvironment() {
 using ModRef = mlir::OwningOpRef<mlir::ModuleOp>;
 using xilinx::AIE::DeviceOp;
 
+struct CoreCompilation {
+  EdgeWithTypedOutput<Directory> &object;
+  EdgeWithTypedOutput<File> &optimizedIR;
+};
+
 // Produce a per-key object (.o) -- these are the core program memories. Both
 // lowering strategies feed this per core; they differ only in how the modules
 // arriving here were produced. We define a chess path and a peano path; the
@@ -118,10 +134,11 @@ using xilinx::AIE::DeviceOp;
 // key's module before codegen. Keys with an empty list get the plain compile
 // flow. Only the peano path can merge them; the chess path consumes the same
 // edge solely to reject a non-empty list with a diagnostic.
-EdgeWithTypedOutput<Directory> &
+CoreCompilation
 buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                     EdgeWithTypedOutput<std::string> &arches,
                     EdgeWithTypedOutput<std::vector<std::string>> &irLinkFiles,
+                    EdgeWithTypedOutput<std::string> &stackSpaces,
                     const std::string &objName) {
   std::string installDir = getInstallDir();
   std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
@@ -135,12 +152,13 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       llvmIR.map<std::string>("chess-compat_{0}.ll", downgradeIRForChess)
           .threadSafe();
   auto &chessLinked =
-      bundle(chessCompat.out, arches.out, irLinkFiles.out)
+      bundle(chessCompat.out, arches.out, irLinkFiles.out, stackSpaces.out)
           .map<File>("chesslinked_{0}.ll",
                      [aietoolsRoot,
                       installDir](const Item<std::string> &ir,
                                   const Item<std::string> &archItem,
                                   const Item<std::vector<std::string>> &irLinks,
+                                  const Item<std::string> &,
                                   Item<File> &out) -> mlir::LogicalResult {
                        // The chess front-end cannot llvm-link, so merge-mode
                        // kernel artifacts have no route into the core on this
@@ -228,41 +246,28 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
   // dialect, so downgradeIRForPeano runs again on the result: the pre-link pass
   // above cannot see the newer spellings the reprint introduces, and the
   // reprint also restores the `align` attributes it had stripped.
+  //
+  // The result stays in memory until `opt` materializes it as its input, so
+  // the core IR is written to disk once per core (peano-compat's file when
+  // nothing is merged, this edge's otherwise) instead of written and copied.
   auto &peanoLinked =
       bundle(peanoCompat.out, irLinkFiles.out)
-          .map<File>(
+          .map<std::string>(
               "peano-linked_{0}.ll",
               [](const Item<std::string> &ir,
                  const Item<std::vector<std::string>> &links,
-                 Item<File> &out) -> mlir::LogicalResult {
+                 Item<std::string> &out) -> mlir::LogicalResult {
                 if (links.get().empty()) {
-                  // Nothing to merge: the downgraded core IR is the
-                  // object input. Copy it to this edge's own output path
-                  // -- aliasing the peano-compat item's path collides
-                  // with it (the engine requires each item's output path
-                  // to be unique).
-                  if (std::error_code ec =
-                          llvm::sys::fs::copy_file(ir.asFile(), out.filePath)) {
-                    llvm::errs() << "aiecc: peano-linked: cannot copy '"
-                                 << ir.asFile() << "' to '" << out.filePath
-                                 << "': " << ec.message() << "\n";
-                    return mlir::failure();
-                  }
-                  out.value = File{};
+                  // Nothing to merge: the downgraded core IR is the object
+                  // input as is. Alias it, so `opt` reads peano-compat's file
+                  // and the IR is neither copied nor written twice.
+                  out.aliasSource = &ir;
                   return mlir::success();
                 }
                 if (dryRun) {
-                  // Placeholder so path bookkeeping resolves without requiring
-                  // the merge artifacts to exist, as the ShellCommand edges do.
-                  std::error_code ec;
-                  llvm::raw_fd_ostream placeholder(out.filePath, ec);
-                  if (ec) {
-                    llvm::errs()
-                        << "aiecc: peano-linked: cannot write '" << out.filePath
-                        << "': " << ec.message() << "\n";
-                    return mlir::failure();
-                  }
-                  out.value = File{};
+                  // Empty placeholder, so the dry run does not require the
+                  // merge artifacts to exist, as the ShellCommand edges do.
+                  out.value.emplace();
                   return mlir::success();
                 }
                 // AIELLVMLink takes module *contents*, not paths (its `Files`
@@ -288,15 +293,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                                   "the core module\n";
                   return mlir::failure();
                 }
-                std::error_code ec;
-                llvm::raw_fd_ostream os(out.filePath, ec);
-                if (ec) {
-                  llvm::errs() << "aiecc: peano-linked: cannot write '"
-                               << out.filePath << "': " << ec.message() << "\n";
-                  return mlir::failure();
-                }
-                os << downgradeIRForPeano(merged, /*stripAlign=*/false);
-                out.value = File{};
+                out.value = downgradeIRForPeano(merged, /*stripAlign=*/false);
                 return mlir::success();
               })
           .threadSafe();
@@ -307,14 +304,15 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .value("--march=")
       .arg("--function-sections")
       .arg("-stack-size-section")
+      .value("-aie-stack-addrspace=", "", /*omitIfEmpty=*/true)
       .arg("--filetype=obj")
       .output("-o");
   EdgeWithTypedOutput<Directory> &peanoObject =
-      bundle(opted.out, arches.out)
+      bundle(opted.out, arches.out, stackSpaces.out)
           .map<Directory>(objName, llcCmd)
           .threadSafe();
 
-  return xchesscc ? chessObject : peanoObject;
+  return {xchesscc ? chessObject : peanoObject, opted};
 }
 
 // Host-compilation subgraph. Compiles the user's host sources against the
@@ -389,8 +387,8 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
 }
 
 // AIE-simulator work-folder subgraph. Emits the `sim/` folder the aiesimulator
-// consumes: the graph/shim/scsim descriptors, the routed flows, the ps.so
-// co-simulation model, the `.target` marker, and the `aiesim.sh` launcher.
+// consumes: the graph/shim/scsim descriptors, the ps.so co-simulation model,
+// the `.target` marker, and the `aiesim.sh` launcher.
 //
 // Each artifact is its own edge/Item. They are declared with work-dir-relative
 // names, so as intermediates they land in the `.prj` (aiesim.sh derives
@@ -406,7 +404,6 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                     EdgeWithTypedOutput<std::string> &aieInc) {
   std::string installDir = getInstallDir();
   std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
-  const std::string &devFilter = deviceName.getValue();
 
   // graph.xpe / aieshim_solution.aiesol / scsim_config.json: in-process
   // translations of the per-device module.
@@ -438,27 +435,10 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                                                     d.getSymName());
       });
 
-  // Routed flows: run `aie-find-flows` to annotate the module, emit it as
-  // flows_physical.mlir, then serialize the flows to JSON.
-  auto findFlowsPM = std::make_unique<mlir::PassManager>(&context);
-  findFlowsPM->nest<DeviceOp>().addPass(xilinx::AIE::createAIEFindFlowsPass());
-  auto &flows = staticPerDevice.map<ModRef>(
-      "sim/flows_physical.mlir", PassPipeline{std::move(findFlowsPM)});
-  auto &flowsJson = flows.map<std::string>(
-      "sim/flows_physical.json",
-      [devFilter](const Item<ModRef> &item,
-                  Item<std::string> &out) -> mlir::LogicalResult {
-        mlir::ModuleOp mod = item.get().get();
-        std::string devName = devFilter;
-        if (devName.empty()) {
-          for (auto d : mod.getOps<DeviceOp>()) {
-            devName = d.getSymName().str();
-            break;
-          }
-        }
-        llvm::raw_string_ostream os(out.value.emplace());
-        return xilinx::AIE::AIEFlowsToJSON(mod, os, devName);
-      });
+  // The routing description `aie-translate --aie-flows-to-json` produces
+  // belongs to the route visualizer, not to aiesimulator, which reads only the
+  // graph/shim/scsim descriptors and ps.so. Run
+  // tools/aie-routing-command-line/mlir2json.sh to obtain it.
 
   // ps.so: the SystemC co-simulation model. clang++ links the toolchain's
   // `genwrapper_for_ps.cpp` (which #includes aie_inc.cpp from the work dir)
@@ -582,26 +562,24 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
   // materializes them -- via asFile(), the Item abstraction's "I need this on
   // disk" request -- into the `.prj`. Produces no file of its own.
   auto &aiesim =
-      bundle(xpe.out, shim.out, scsim.out, flows.out, flowsJson.out, ps.out,
-             target.out, script.out)
-          .join<File>(
-              "aiesim.stamp",
-              [](const Node<std::string> &xpe, const Node<std::string> &shim,
-                 const Node<std::string> &scsim, const Node<ModRef> &flows,
-                 const Node<std::string> &flowsJson, const Node<File> &ps,
-                 const Node<std::string> &target,
-                 const Node<std::string> &script,
-                 Item<File> &out) -> mlir::LogicalResult {
-                const NodeBase *nodes[] = {&xpe,       &shim, &scsim,  &flows,
-                                           &flowsJson, &ps,   &target, &script};
-                for (const NodeBase *n : nodes) {
-                  for (const ItemBase *it : n->itemRefs()) {
-                    (void)it->asFile();
-                  }
-                }
-                out.value = File{};
-                return mlir::success();
-              });
+      bundle(xpe.out, shim.out, scsim.out, ps.out, target.out, script.out)
+          .join<File>("aiesim.stamp",
+                      [](const Node<std::string> &xpe,
+                         const Node<std::string> &shim,
+                         const Node<std::string> &scsim, const Node<File> &ps,
+                         const Node<std::string> &target,
+                         const Node<std::string> &script,
+                         Item<File> &out) -> mlir::LogicalResult {
+                        const NodeBase *nodes[] = {&xpe, &shim,   &scsim,
+                                                   &ps,  &target, &script};
+                        for (const NodeBase *n : nodes) {
+                          for (const ItemBase *it : n->itemRefs()) {
+                            (void)it->asFile();
+                          }
+                        }
+                        out.value = File{};
+                        return mlir::success();
+                      });
   aiesim.producesFiles = false;
   return aiesim;
 }
@@ -648,10 +626,13 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
 
 // Assemble the full compilation artifact graph into `g` and return the list of
 // requested output edges. Edges named via `--cut` are appended to `cutEdges`
-// (and built) so a `--checkpoint` can capture them as its cut points.
-static std::vector<EdgeBase *>
-buildMainGraph(mlir::MLIRContext &context, Graph &g,
-               std::vector<EdgeBase *> &cutEdges) {
+// (and built) so a `--checkpoint` can capture them as its cut points. A
+// non-null `cache` is --device-cache, which the graph uses only when this
+// build's outputs allow it.
+static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
+                                              Graph &g,
+                                              std::vector<EdgeBase *> &cutEdges,
+                                              DeviceCache *cache) {
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -677,6 +658,25 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
     llvm::StringMap<int64_t> size;
   };
   auto dataRegionBytes = std::make_shared<DataRegionSizes>();
+
+  // What each core's own sections want from each bank, measured from a probe
+  // link before placement runs. The placement edge fills this in; the ld script
+  // and the failure hint read it.
+  struct BankDemand {
+    std::mutex mutex;
+    llvm::StringMap<llvm::SmallVector<xilinx::aiecc::BankSectionSize>> byCore;
+  };
+  auto bankDemand = std::make_shared<BankDemand>();
+
+  auto elfLookup = [](const Node<Directory> &elfs) {
+    auto byKey = std::make_shared<llvm::StringMap<std::string>>();
+    for (const auto &item : elfs.items) {
+      (*byKey)[item.key] = item.filePath;
+    }
+    return [byKey](CoreOp coreOp) -> std::string {
+      return byKey->lookup(coreKey(coreOp));
+    };
+  };
 
   auto matchesDeviceFilter = [devFilter](DeviceOp d) {
     // Empty reset devices synthesized by --expand-load-pdis must always be
@@ -733,24 +733,24 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       });
 
   // Everything a core needs before it can be compiled: objectFifo lowering
-  // (which creates buffers), buffer addresses, lock and BD ids, and the
-  // core-body lowerings.
-  auto &withAddresses = withDefaultStackSize.map<ModRef>(
-      "input_with_addresses.mlir",
+  // (which creates buffers), lock and BD ids, and the core-body lowerings.
+  // Buffer addresses are not among them; see the placement edge below.
+  auto &withSymbols = withDefaultStackSize.map<ModRef>(
+      "input_with_symbols.mlir",
       PassPipeline{
           &context,
-          [scheme = allocScheme.getValue(), dyn = dynamicObjFifos.getValue(),
-           pkt = packetSwObjFifos.getValue(),
+          [dyn = dynamicObjFifos.getValue(), pkt = packetSwObjFifos.getValue(),
            ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
            ldpdi = loadPdiToCtrlPkt.getValue(), bf16 = bf16Emulation.getValue(),
            skipVerify = skipObjectFifoVerify.getValue()](mlir::MLIRContext *ctx,
                                                          mlir::ModuleOp mod) {
-            return getInputWithAddressesPipeline(ctx, mod, scheme, dyn, pkt,
-                                                 ctrl, bf16, ldpdi, skipVerify);
+            return getInputWithAddressesPipeline(ctx, mod, dyn, pkt, ctrl, bf16,
+                                                 ldpdi, skipVerify,
+                                                 /*assignAddresses=*/false);
           }});
 
   // Scratchpad run-time parameters sidecar file
-  auto &paramsFile = withAddresses.map<std::string>(
+  auto &paramsFile = withSymbols.map<std::string>(
       "params.txt", [](const ModRef &mod) -> std::string {
         std::string txt;
         llvm::raw_string_ostream os(txt);
@@ -758,12 +758,27 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return txt;
       });
 
-  auto &physical = withAddresses.map<ModRef>(
+  auto &unplaced = withSymbols.map<ModRef>(
       "input_physical.mlir", PassPipeline{getRoutingPipeline(&context)});
+
+  // Everything that compiles or places a core reads the routed module through
+  // this view, so the device cache's lookup runs before any of it.
+  auto &compileInput =
+      cache ? static_cast<EdgeWithTypedOutput<ModRef> &>(unplaced.filter(
+                  "deviceCacheLookup",
+                  [cache, matchesDeviceFilter, inputFile,
+                   workDirStr](const ModRef &mod) {
+                    cache->lookup(
+                        mod.get(), matchesDeviceFilter, [&](llvm::StringRef f) {
+                          return resolveExternalPath(f, inputFile, workDirStr);
+                        });
+                    return true;
+                  }))
+            : static_cast<EdgeWithTypedOutput<ModRef> &>(unplaced);
 
   // Split every core once, then filter into compile / pre-baked subviews.
   auto &allCores =
-      physical
+      compileInput
           .split<OpInModule<CoreOp>>(
               "perCore_{0}.mlir",
               SplitIRAction<CoreOp>([](CoreOp c) { return coreKey(c); }))
@@ -779,10 +794,25 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // However, some external tests that manually link pre-baked cores rely on a
   // per-core BCF being emitted for every core, so if chess is enabled we
   // compile all cores regardless.
-  auto &perCore =
-      allCores.filter("perCoreCompile", [](const OpInModule<CoreOp> &x) {
-        return !CoreOp(x.op).getElfFileAttr() || xbridge;
-      });
+  //
+  // A build whose only use of the cores is placing the buffers its runtime
+  // sequences name compiles just the cores on those tiles; see
+  // `sequenceCoresOnly` at the end of this function, which decides it once the
+  // outputs are known.
+  //
+  // A device the cache holds compiles none of its cores.
+  auto sequenceCoresOnly = std::make_shared<bool>(false);
+  auto cachedDevice = [cache](CoreOp c) {
+    return cache && cache->isHit(c->getParentOfType<DeviceOp>());
+  };
+  auto compilesCore = [sequenceCoresOnly, cachedDevice](CoreOp c) {
+    return (!c.getElfFileAttr() || xbridge) && !cachedDevice(c) &&
+           (!*sequenceCoresOnly || runtimeCodeReferencesCoreTile(c));
+  };
+  auto &perCore = allCores.filter("perCoreCompile",
+                                  [compilesCore](const OpInModule<CoreOp> &x) {
+                                    return compilesCore(CoreOp(x.op));
+                                  });
 
   // Cores whose `elf_file` attribute already points to a built object.
   auto &preBakedElfs =
@@ -802,6 +832,69 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                      });
   preBakedElfs.producesFiles = false;
 
+  // Peano models a bank as an address space and schedules around conflicts
+  // between them, so a moved stack has to be declared or the backend reasons
+  // about stack accesses in the wrong bank. 5..8 are banks A..D; a core that
+  // leaves the stack where it has always been reports bank A, which is also
+  // llc's default.
+  auto &perCoreStackSpace = perCore.map<std::string>(
+      "perCoreStackSpace_{0}.txt",
+      [](const Item<OpInModule<CoreOp>> &core,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        CoreOp op(core.get().op);
+        auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
+        const auto &tm = getTargetModel(op);
+        int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
+        int64_t bankSize =
+            numBanks > 0 ? tm.getLocalMemorySize() / numBanks : 0;
+        // An address space names one bank, so it can only describe a stack that
+        // lies inside one. Claiming a bank for a stack that spans two would
+        // tell Peano's bank-conflict model that every stack access hits that
+        // bank when most do not, so say nothing instead.
+        //
+        // Measured across the stack's extent, not its size: a stack smaller
+        // than a bank still spans two when it starts part-way through one. A
+        // `stack_bank` core has no resolved address here -- placement runs
+        // after this -- but the verifier holds that case to a single bank.
+        xilinx::AIE::MemoryRun stackRun = op.getStackRun();
+        bool spansBanks =
+            !op.getStackBank() && bankSize > 0 &&
+            stackRun.start / bankSize != (stackRun.end() - 1) / bankSize;
+        if (spansBanks) {
+          out.value = "";
+          return mlir::success();
+        }
+        int bank = 0;
+        // Prefer the declared `stack_bank`. Codegen needs the bank, not the
+        // address, and the bank is an input attribute whereas the address is
+        // resolved later by the allocator: deriving it from `getStackRun()`
+        // would make this edge depend on buffer placement, which runs after the
+        // core is compiled.
+        if (auto stackBank = op.getStackBank()) {
+          bank = *stackBank;
+        } else if (bankSize > 0) {
+          bank = static_cast<int>(op.getStackRun().start / bankSize);
+        }
+        if (bank != 0) {
+          bool hasObjects = false;
+          if (auto files = op.getLinkFiles())
+            hasObjects = !files->empty();
+          else
+            hasObjects = op.getLinkWith().has_value();
+          if (xchesscc || xbridge || hasObjects) {
+            op.emitError()
+                << "a stack outside memory bank A requires Peano compilation "
+                   "with no separately compiled link_files: their stack bank "
+                   "assumptions cannot be verified. Use stack bank A, or "
+                   "compile kernels as LLVM IR with link_with_mode = \"merge\" "
+                   "and without --xchesscc/--xbridge";
+            return mlir::failure();
+          }
+        }
+        out.value = std::to_string(5 + bank);
+        return mlir::success();
+      });
+
   // Per-core arch string (feeds link --target= and llc --march=).
   auto &perCoreArches = perCore.map<std::string>(
       "perCoreArches_{0}.txt", [](const OpInModule<CoreOp> &core) {
@@ -814,28 +907,28 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // times the lowering pipeline runs:
   //   * unified: lower once per device, then carve that module into one module
   //     per core;
-  //   * per-core: lower once per core, each run on a clone of the whole design.
+  //   * per-core: lower once per core, each run on a clone of its device.
   // Either way every core compiles its own object, so the object stage keeps
   // its per-core parallelism.
 
-  // Unified strategy
   auto &physicalPerDevice = splitPerDevice(
-      physical, "perDeviceCompile_{0}.mlir", "perDeviceCompileMatching");
+      unplaced, "perDeviceCompile_{0}.mlir", "perDeviceCompileMatching");
   auto &perDeviceArches = physicalPerDevice.map<std::string>(
       "perDeviceArches_{0}.txt", [](const OpInModule<DeviceOp> &dev) {
         return detectAIETarget(dev.module.get(), DeviceOp(dev.op).getSymName());
       });
+
+  // Unified strategy
   // Lower once per device, then carve out one module per core. Keyed like
   // `perCore`, so the per-core arches and link files below apply unchanged --
-  // except that `perCore` drops cores that already carry an `elf_file`, so
-  // filter the carved set to match or the object subgraph joins on a key its
-  // other inputs do not have.
-  auto &unifiedPerCoreLowered = physicalPerDevice.split<ModRef>(
-      "lowered_{0}.mlir", [](const Item<OpInModule<DeviceOp>> &dev) {
-        // Same predicate as the `perCoreCompile` filter above: a core with an
-        // `elf_file` is used verbatim, so it must not appear here either.
-        return splitLoweredCores(
-            dev, [](CoreOp c) { return !c.getElfFileAttr() || xbridge; });
+  // except that `perCore` drops the cores `compilesCore` rejects, so filter the
+  // carved set to match or the object subgraph joins on a key its other inputs
+  // do not have.
+  auto &unifiedPerCoreLowered = compileInput.split<ModRef>(
+      "lowered_{0}.mlir",
+      [matchesDeviceFilter, compilesCore](const Item<ModRef> &mod) {
+        return splitLoweredCores(mod.get().get(), matchesDeviceFilter,
+                                 compilesCore);
       });
 
   // Per-core strategy
@@ -854,19 +947,120 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       [inputFile, workDirStr](const OpInModule<CoreOp> &core) {
         return collectCoreIRLinkFiles(CoreOp(core.op), inputFile, workDirStr);
       });
-  EdgeWithTypedOutput<Directory> &perCoreObjects = buildObjectSubgraph(
-      perCoreLowered, perCoreArches, perCoreIRLinkFiles, "objects_{0}.o");
+  auto perCoreCompilation =
+      buildObjectSubgraph(perCoreLowered, perCoreArches, perCoreIRLinkFiles,
+                          perCoreStackSpace, "objects_{0}.o");
 
-  EdgeWithTypedOutput<Directory> &unifiedObjects =
-      buildObjectSubgraph(unifiedPerCoreLowered, perCoreArches,
-                          perCoreIRLinkFiles, "objects_{0}.o");
+  auto unifiedCompilation = buildObjectSubgraph(
+      unifiedPerCoreLowered, perCoreArches, perCoreIRLinkFiles,
+      perCoreStackSpace, "objects_{0}.o");
 
-  EdgeWithTypedOutput<Directory> &objects =
-      doUnified ? unifiedObjects : perCoreObjects;
+  auto compilation = doUnified ? unifiedCompilation : perCoreCompilation;
+  auto &objects = compilation.object;
+  auto &optimizedIR = compilation.optimizedIR;
+
+  // Probe scripts, from the unplaced module. Emitted by the same function as
+  // the real ones so ENTRY, KEEP and the discarded sections cannot drift: a
+  // probe whose garbage collection differs from the real link would measure
+  // the wrong sections.
+  auto &probeScripts = perCore.map<std::string>(
+      "probeScripts_{0}.ld.script",
+      [inputFile, workDirStr](const Item<OpInModule<CoreOp>> &item,
+                              Item<std::string> &out) -> mlir::LogicalResult {
+        CoreOp op = item.get().op;
+        auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateToLdScript(
+            item.get().module.get(), os, tile.getCol(), tile.getRow(),
+            op->getParentOfType<DeviceOp>().getSymName(), /*probe=*/true,
+            [&](llvm::StringRef f) {
+              return resolveExternalPath(f, inputFile, workDirStr);
+            });
+      });
+
+  // The probe link. Same objects, same garbage collection and the same script
+  // generator as the real link, but with every region offered whole, so the
+  // sections that land in each bank are sized only by what the objects hold.
+  // Buffer symbols are left undefined rather than placed: their addresses are
+  // not known yet, and reachability -- which is all garbage collection depends
+  // on -- does not care where they live.
+  EdgeWithTypedOutput<Directory> &probeElfs =
+      bundle(perCoreArches.out, objects.out, probeScripts.out)
+          .map<Directory>(
+              "probeElfs_{0}.elf",
+              ShellCommand{"clang"}
+                  .arg("-O" + std::to_string(optLevel))
+                  .value("--target=", "-none-unknown-elf")
+                  .arg(lldPath.empty() ? "-fuse-ld=lld" : "-fuse-ld=" + lldPath)
+                  .input()
+                  .arg("-Wl,--gc-sections")
+                  .arg("-Wl,--orphan-handling=error")
+                  .arg("-Wl,--unresolved-symbols=ignore-all")
+                  .arg("-Wl,--no-check-sections")
+                  .input("-Wl,-T,")
+                  .output("-o")
+                  // A probe that cannot run costs placement quality, never
+                  // correctness: the core is placed as it was before any of
+                  // this, and whatever stopped the probe stops the real link
+                  // too, where it is reported properly.
+                  .optional())
+          .threadSafe();
+
+  // Compile before placement so the probe can reserve each bank's static data.
+  // Buffer references lower to declarations; the final linker script supplies
+  // their addresses. Address-dependent consumers read this placement edge.
+  // Chess uses native storage constraints and cannot use the LLD probe, so its
+  // placement depends on the compiled objects without recording bank demand.
+  bool useProbe = !xchesscc && !xbridge;
+  auto &placementInput = useProbe ? probeElfs : objects;
+  auto &physical =
+      bundle(placementInput.out, compileInput.out)
+          .join<ModRef>(
+              "input_with_addresses.mlir",
+              [&context, elfLookup, bankDemand, useProbe,
+               cache](const Node<Directory> &probes, const Node<ModRef> &modN,
+                      Item<ModRef> &out) -> mlir::LogicalResult {
+                out.value = ModRef(modN.get().get().clone());
+                mlir::ModuleOp mod = out.value->get();
+                auto placeCompiled = [&]() -> mlir::LogicalResult {
+                  if (useProbe) {
+                    recordBankDemand(mod, elfLookup(probes), *bankDemand,
+                                     !noMeasureDataSize.getValue());
+                  }
+                  // A prebaked core is never probed -- its ELF is used
+                  // verbatim -- so read the extents it already holds straight
+                  // from it.
+                  recordPrebakedRanges(mod, [](xilinx::AIE::CoreOp core) {
+                    return absolutePath(core.getElfFileAttr().getValue());
+                  });
+                  auto pm = getAssignBufferAddressesPipeline(&context);
+                  for (auto device : mod.getOps<DeviceOp>()) {
+                    if ((!cache || !cache->isHit(device)) &&
+                        mlir::failed(runPasses(*pm, device))) {
+                      return mlir::failure();
+                    }
+                  }
+                  return mlir::success();
+                };
+                return cache ? cache->place(mod, placeCompiled)
+                             : placeCompiled();
+              });
+
+  // Per-core view of the placed module, for anything that needs addresses.
+  auto &placedCores =
+      physical
+          .split<OpInModule<CoreOp>>(
+              "placedCore_{0}.mlir",
+              SplitIRAction<CoreOp>([](CoreOp c) { return coreKey(c); }))
+          .filter("placedCoreCompile", [cachedDevice](
+                                           const OpInModule<CoreOp> &x) {
+            CoreOp core(x.op);
+            return (!core.getElfFileAttr() || xbridge) && !cachedDevice(core);
+          });
 
   // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
   auto &ldScripts =
-      perCore.map<std::string>(
+      placedCores.map<std::string>(
           "ldScripts_{0}.ld.script",
           [inputFile, workDirStr,
            dataRegionBytes](const Item<OpInModule<CoreOp>> &item,
@@ -925,20 +1119,21 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 }
               }
             }
-            auto rewritten =
-                absolutizeLinkFiles(item.get().module.get(), tile.getCol(),
-                                    tile.getRow(), inputFile, workDirStr);
             llvm::raw_string_ostream os(out.value.emplace());
             return xilinx::AIE::AIETranslateToLdScript(
-                rewritten.get(), os, tile.getCol(), tile.getRow(),
-                op->getParentOfType<DeviceOp>().getSymName());
+                item.get().module.get(), os, tile.getCol(), tile.getRow(),
+                op->getParentOfType<DeviceOp>().getSymName(), /*probe=*/false,
+                [&](llvm::StringRef f) {
+                  return resolveExternalPath(f, inputFile, workDirStr);
+                });
           });
 
   // Link each core's object into its .elf; user can chose between
   // chess/xbridge or peano
 
   // chess linking
-  auto &bcfScripts = perCore.map<std::string>(
+  // The BCF names each buffer's address, so it reads the placed module.
+  auto &bcfScripts = placedCores.map<std::string>(
       "{0}.bcf",
       [](const Item<OpInModule<CoreOp>> &item,
          Item<std::string> &out) -> mlir::LogicalResult {
@@ -998,11 +1193,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .output("-o")
                   .explainFailure([dataRegionBytes](llvm::StringRef log,
                                                     llvm::StringRef key) {
-                    // A failed link writes no ELF to measure, so the bytes the
-                    // core needs are the region the script granted plus the
-                    // shortfall the linker reports against it.
-                    std::optional<int64_t> over = parseLinkOverflowBytes(log);
-                    if (log.contains("will not fit in region 'data'") && over) {
+                    // Bank sections can shrink the default data region at link
+                    // time, so the original region plus overflow is an upper
+                    // bound on the reservation needed, not an exact measure.
+                    std::optional<int64_t> over =
+                        parseLinkOverflowBytes(log, "data");
+                    if (over) {
                       int64_t granted = 0;
                       {
                         std::lock_guard<std::mutex> guard(
@@ -1014,7 +1210,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                       }
                       int64_t need = granted + *over;
                       llvm::errs()
-                          << "aiecc: core " << key << " needs space for "
+                          << "aiecc: core " << key << " needs space for up to "
                           << need
                           << " bytes of static data (constant arrays such as "
                              "lookup tables and strings). That does not fit in "
@@ -1025,6 +1221,30 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                           << need
                           << " : i32 }, or Worker(..., data_size=" << need
                           << ") in IRON.\n";
+                    }
+                    if (size_t at = log.find("will not fit in region 'bank");
+                        at != llvm::StringRef::npos) {
+                      llvm::StringRef bank =
+                          log.substr(at + strlen("will not fit in region '"))
+                              .take_while([](char c) { return c != '\''; });
+                      std::optional<int64_t> bankOver =
+                          parseLinkOverflowBytes(log, bank);
+                      llvm::errs()
+                          << "aiecc: core " << key << ": a static pinned to "
+                          << bank << " does not fit there";
+                      if (bankOver) {
+                        llvm::errs() << ", by " << *bankOver << " bytes";
+                      }
+                      // Reaching here means the reservation was wrong rather
+                      // than absent: placement measures each core's objects and
+                      // holds room for them, so the usual causes are a probe
+                      // that could not run and a Chess build, which has no
+                      // reservations to make.
+                      llvm::errs()
+                          << ". Placement reserves what a core's objects "
+                             "measure, so either that measurement was "
+                             "unavailable for this core, or something outside "
+                             "it grew afterwards.\n";
                     }
                     if (log.contains("will not fit in region 'program'")) {
                       llvm::errs()
@@ -1048,16 +1268,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Each measurement reads the linked ELFs and writes its result into a clone
   // of the physical IR. Both run before `physicalWithElfs`, so a failure ends
   // the run before any artifact that depends on a core is written.
-  auto elfLookup = [](const Node<Directory> &elfs) {
-    auto byKey = std::make_shared<llvm::StringMap<std::string>>();
-    for (const auto &item : elfs.items) {
-      (*byKey)[item.key] = item.filePath;
-    }
-    return [byKey](CoreOp coreOp) -> std::string {
-      return byKey->lookup(coreKey(coreOp));
-    };
-  };
-
   EdgeWithTypedOutput<ModRef> *measured = &physical;
   if (!noMeasureStackSize.getValue()) {
     measured = &bundle(compiledElfs.out, measured->out)
@@ -1083,6 +1293,57 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                                            elfLookup(elfs));
                         });
   }
+  if (!noCheckBankPlacement.getValue()) {
+    measured =
+        &bundle(compiledElfs.out, objects.out, measured->out)
+             .join<ModRef>(
+                 "checked_bank_placement.mlir",
+                 [elfLookup, inputFile,
+                  workDirStr](const Node<Directory> &elfs,
+                              const Node<Directory> &coreObjects,
+                              const Node<ModRef> &physicalN,
+                              Item<ModRef> &out) -> mlir::LogicalResult {
+                   out.value = ModRef(physicalN.get().get().clone());
+                   return checkBankPlacement(
+                       out.value->get(), elfLookup(elfs),
+                       elfLookup(coreObjects), [&](llvm::StringRef p) {
+                         return resolveExternalPath(p, inputFile, workDirStr);
+                       });
+                 });
+  }
+  if (checkLutBanks.getValue()) {
+    measured =
+        &bundle(compiledElfs.out, optimizedIR.out, preBakedElfs.out,
+                measured->out)
+             .join<ModRef>(
+                 "checked_lut_banks.mlir",
+                 [elfLookup, inputFile, workDirStr](
+                     const Node<Directory> &elfs, const Node<File> &coreIR,
+                     const Node<File> &preBaked, const Node<ModRef> &physicalN,
+                     Item<ModRef> &out) -> mlir::LogicalResult {
+                   out.value = ModRef(physicalN.get().get().clone());
+                   if (dryRun)
+                     return mlir::success();
+                   if (!preBaked.items.empty()) {
+                     llvm::errs()
+                         << "aiecc: --check-lut-banks cannot verify a prebuilt "
+                            "core elf_file without its compiler IR: "
+                         << preBaked.items.front().filePath << "\n";
+                     return mlir::failure();
+                   }
+                   llvm::StringMap<std::string> irByKey;
+                   for (const auto &item : coreIR.items)
+                     irByKey[item.key] = item.asFile();
+                   return checkLutBankSeparation(
+                       out.value->get(), elfLookup(elfs),
+                       [&](CoreOp core) {
+                         return irByKey.lookup(coreKey(core));
+                       },
+                       [&](llvm::StringRef p) {
+                         return resolveExternalPath(p, inputFile, workDirStr);
+                       });
+                 });
+  }
   EdgeWithTypedOutput<ModRef> &physicalForElfs = *measured;
 
   // --- Per-device configuration artifacts ---------------------------------
@@ -1092,9 +1353,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       bundle(compiledElfs.out, preBakedElfs.out, physicalForElfs.out)
           .join<ModRef>(
               "physical_with_elfs.mlir",
-              [](const Node<Directory> &compiled, const Node<File> &preBaked,
-                 const Node<ModRef> &physicalN,
-                 Item<ModRef> &out) -> mlir::LogicalResult {
+              [cache](const Node<Directory> &compiled,
+                      const Node<File> &preBaked, const Node<ModRef> &physicalN,
+                      Item<ModRef> &out) -> mlir::LogicalResult {
                 // ELF paths must be absolute for the aie-rt loader.
                 llvm::StringMap<std::string> byKey;
                 for (const auto &item : compiled.items) {
@@ -1104,13 +1365,18 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   byKey[item.key] = absolutePath(item.filePath);
                 }
                 out.value = patchCoreElfFiles(physicalN.get().get(), byKey);
+                if (cache) {
+                  cache->link(out.value->get(), byKey);
+                }
                 return mlir::success();
               });
 
   // NPU runtime-sequence lowering needs only the placed+routed `physical`
-  // module, so feeding it keeps the instruction-sequence branch independent of
-  // per-core compilation. Three cases reference the compiled cores and so run
-  // on the ELF-patched `physicalWithElfs` module instead:
+  // module, and from it only the addresses of the buffers the sequences name,
+  // which is what lets `sequenceCoresOnly` skip the other cores. It reads
+  // `physical` through its own view so that decision can tell this use apart
+  // from every other. Three cases reference the compiled cores and so run on
+  // the ELF-patched `physicalWithElfs` module instead:
   //   * --expand-load-pdis references the compiled cores directly.
   //   * the transaction output embeds each core's compiled program:
   //     `convert-aie-to-transaction` reads each core's `elf_file` to emit a
@@ -1121,10 +1387,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //     compiled cores.
   bool npuTransactionsNeedCoresLowered =
       expandLoadPdis.getValue() || generateTxn || loadPdiToCtrlPkt.getValue();
+  auto &sequencePlacement =
+      physical.filter("sequencePlacement", [](const ModRef &) { return true; });
   EdgeWithTypedOutput<ModRef> &npuLoweringInput =
       npuTransactionsNeedCoresLowered
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs)
-          : static_cast<EdgeWithTypedOutput<ModRef> &>(physical);
+          : static_cast<EdgeWithTypedOutput<ModRef> &>(sequencePlacement);
   // NPU instruction sequence lowering. The default and --load-pdi-to-ctrl-pkt
   // flows share the materialize + expand prefix and diverge at DMA lowering.
   EdgeWithTypedOutput<ModRef> &npuMaterialized =
@@ -1138,34 +1406,57 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // For --load-pdi-to-ctrl-pkt this edge holds the control-packet ops before
   // DMA lowering: the extraction point for the control-packet binary.
   bool ctrlPkt = loadPdiToCtrlPkt.getValue();
-  EdgeWithTypedOutput<ModRef> &npuExpanded =
-      (expandLoadPdis.getValue() || ctrlPkt)
-          ? static_cast<EdgeWithTypedOutput<ModRef> &>(
-                npuMaterialized.map<ModRef>(
-                    "npu_expanded.mlir",
-                    PassPipeline{
-                        &context,
-                        [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
-                          return getExpandLoadPdiPipeline(ctx, ctrlPkt);
-                        }}))
-          : npuMaterialized;
+  auto expandPipeline =
+      [&context, ctrlPkt](
+          EdgeWithTypedOutput<ModRef> &src) -> EdgeWithTypedOutput<ModRef> & {
+    return src.map<ModRef>(
+        "npu_expanded.mlir",
+        PassPipeline{&context,
+                     [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
+                       return getExpandLoadPdiPipeline(ctx, ctrlPkt);
+                     }});
+  };
+
+  // --load-pdi-to-ctrl-pkt expands first: its tail consumes the control-packet
+  // ops the expansion emits. Built only there, so "npu_expanded.mlir" names at
+  // most one edge.
+  EdgeWithTypedOutput<ModRef> *ctrlPktExpanded =
+      ctrlPkt ? &expandPipeline(npuMaterialized) : nullptr;
 
   // The default tail unrolls runtime-sequence loops and pools dynamic BDs; the
   // ctrl-packet sequence is straight-line and only needs the per-device tail,
   // after its control packets are lowered to DMA.
+  //
+  // Elsewhere the DMA lowering runs first: aie-dma-to-npu's write32 patterns
+  // only match writes carrying a buffer symbol, and npu_materialized already
+  // carries those, so the expansion's writes need nothing from it.
   EdgeWithTypedOutput<ModRef> &npuDmaLowered =
-      ctrlPkt
-          ? npuExpanded
-                .map<ModRef>("ctrlpkt_to_dma.mlir",
-                             PassPipeline{getCtrlPktToDmaPipeline(&context)})
+      ctrlPktExpanded
+          ? ctrlPktExpanded
+                ->map<ModRef>("ctrlpkt_to_dma.mlir",
+                              PassPipeline{getCtrlPktToDmaPipeline(&context)})
                 .map<ModRef>(
                     "ctrlpkt_npu_lowered.mlir",
                     PassPipeline{getPerDeviceDmaLoweringPipeline(&context)})
-          : npuExpanded.map<ModRef>(
+          : npuMaterialized.map<ModRef>(
                 "npu_dma_lowered.mlir",
                 PassPipeline{getNpuDmaLoweringPipeline(&context)});
 
-  auto &npuLowered = npuDmaLowered.map<ModRef>(
+  // The control-packet extraction point: the ctrl-pkt flow reads its data off
+  // the expanded module before the DMA lowering rewrites it (see
+  // `ctrlPktExpandedPerSeq`), so this edge is deliberately the pre-DMA one
+  // there.
+  EdgeWithTypedOutput<ModRef> &npuExpanded = ctrlPktExpanded ? *ctrlPktExpanded
+                                             : expandLoadPdis.getValue()
+                                                 ? expandPipeline(npuDmaLowered)
+                                                 : npuDmaLowered;
+
+  // What the runtime sequence is actually built from, which must be past the
+  // DMA lowering in every configuration.
+  EdgeWithTypedOutput<ModRef> &npuSequence =
+      ctrlPkt ? npuDmaLowered : npuExpanded;
+
+  auto &npuLowered = npuSequence.map<ModRef>(
       "npu_lowered.mlir",
       [](const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
         ModRef clone = item.get().get().clone();
@@ -1277,7 +1568,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         ModRef clone = item.get().module.get().clone();
         auto pm =
             getControlPacketPipeline(&context, /*elfDir=*/"", d.getSymName());
-        if (!pm || mlir::failed(pm->run(*clone))) {
+        if (!pm || mlir::failed(runPasses(*pm, *clone))) {
           return mlir::failure();
         }
         out.value = std::move(clone);
@@ -1294,22 +1585,24 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   auto &ctrlpktDmaSeq = ctrlpktLowered.map<std::vector<char>>(
       ctrlpktDmaSeqName.getValue(),
-      emitBinary<ModRef>([&context](const Item<ModRef> &item,
-                                    std::vector<uint32_t> &words)
-                             -> mlir::LogicalResult {
-        ModRef clone = item.get().get().clone();
-        if (mlir::failed(getControlPacketDmaPipeline(&context)->run(*clone))) {
-          return mlir::failure();
-        }
-        // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX
-        // consumes the producer-independent (unfolded) insts.bin and adds the
-        // AIE DDR aperture offset for every arg itself. cl::opt defaults to
-        // true, so only pass the flag when unfolding is requested.
-        return xilinx::AIE::AIETranslateNpuToBinary(
-            clone.get(), words, item.key, "",
-            /*locmap=*/nullptr,
-            /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue());
-      }));
+      emitBinary<ModRef>(
+          [&context](const Item<ModRef> &item,
+                     std::vector<uint32_t> &words) -> mlir::LogicalResult {
+            ModRef clone = item.get().get().clone();
+            auto pm = getControlPacketDmaPipeline(&context);
+            if (mlir::failed(runPasses(*pm, *clone))) {
+              return mlir::failure();
+            }
+            // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX
+            // consumes the producer-independent (unfolded) insts.bin and adds
+            // the AIE DDR aperture offset for every arg itself. cl::opt
+            // defaults to true, so only pass the flag when unfolding is
+            // requested.
+            return xilinx::AIE::AIETranslateNpuToBinary(
+                clone.get(), words, item.key, "",
+                /*locmap=*/nullptr,
+                /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue());
+          }));
 
   // Partial ELF containing the DMA sequence and the control packet data;
   // this is still used in combination with an xclbin. The
@@ -1509,7 +1802,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         ModRef clone = item.get().module.get().clone();
         auto pm =
             getTransactionPipeline(&context, /*elfDir=*/"", d.getSymName());
-        if (!pm || mlir::failed(pm->run(*clone))) {
+        if (!pm || mlir::failed(runPasses(*pm, *clone))) {
           return mlir::failure();
         }
         out.value = std::move(clone);
@@ -1536,6 +1829,34 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 // --sequence-name: keep only the named runtime sequence.
                 return seqFilter.empty() || seq.getSymName() == seqFilter;
               });
+
+  // The C++ target consumes (and replaces) its module. Keep the shared lowered
+  // IR intact, and retain only the selected sequence in the private clone:
+  // SplitIRAction preserves the complete module for symbol resolution.
+  bool cppFoldDDRAddrOffset =
+      foldDDRAddrOffsetOpt.getNumOccurrences() || !generateFullElf
+          ? foldDDRAddrOffsetOpt.getValue()
+          : false;
+  auto &npuCpp = perSeq.map<std::string>(
+      npuCppName.getValue(),
+      [cppFoldDDRAddrOffset, emitShim = npuCppEmitDispatchShim.getValue()](
+          const Item<OpInModule<RuntimeSequenceOp>> &item,
+          Item<std::string> &out) -> mlir::LogicalResult {
+        RuntimeSequenceOp selected = item.get().op;
+        auto deviceName = selected->getParentOfType<DeviceOp>().getSymName();
+        ModRef clone = item.get().module.get().clone();
+        llvm::SmallVector<RuntimeSequenceOp> toErase;
+        clone->walk([&](RuntimeSequenceOp seq) {
+          if (seq.getSymName() != selected.getSymName() ||
+              seq->getParentOfType<DeviceOp>().getSymName() != deviceName)
+            toErase.push_back(seq);
+        });
+        for (RuntimeSequenceOp seq : toErase)
+          seq.erase();
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateNpuToCpp(
+            *clone, os, cppFoldDDRAddrOffset, emitShim);
+      });
 
   // Translate each sequence exactly once into its NPU program (the .bin bytes
   // and the locmap). Two variants are built from the same per-sequence input.
@@ -1681,6 +2002,21 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 return mlir::success();
               });
 
+  // Every input is named in the full-ELF config by its absolute path.
+  // `aiebu-asm` reads each from there, so the inputs are materialized. The
+  // in-process assembler reads the PDIs (which bootgen writes) from there too,
+  // but is handed the in-memory inputs under their would-be paths, so those
+  // are never written. Either way the config matches what `aiebu-asm` needs.
+#ifdef AIECC_HAS_AIEBU_CONFIG_ELF
+  auto fullElfInputPath = [](const auto &item) {
+    return absolutePath(item.path());
+  };
+#else
+  auto fullElfInputPath = [](const auto &item) {
+    return absolutePath(item.asFile());
+  };
+#endif // AIECC_HAS_AIEBU_CONFIG_ELF
+
   // Combined ELF: all PDIs + NPU insts bundled
   // + control packet data, if any.
   auto &fullElfConfig =
@@ -1688,40 +2024,72 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
              fullElfCtrlpkt.out, fullElfPatchInfo.out)
           .join<llvm::json::Value>(
               "full_elf_config.json",
-              [](const Node<OpInModule<DeviceOp>> &devices,
-                 const Node<File> &pdis,
-                 const Node<std::vector<char>> &instsBins,
-                 const Node<std::vector<char>> &ctrlPkts,
-                 const Node<llvm::json::Value> &patchInfos,
-                 Item<llvm::json::Value> &out) -> mlir::LogicalResult {
+              [fullElfInputPath](
+                  const Node<OpInModule<DeviceOp>> &devices,
+                  const Node<File> &pdis,
+                  const Node<std::vector<char>> &instsBins,
+                  const Node<std::vector<char>> &ctrlPkts,
+                  const Node<llvm::json::Value> &patchInfos,
+                  Item<llvm::json::Value> &out) -> mlir::LogicalResult {
                 llvm::StringMap<std::string> pdiPaths, instsPaths;
                 llvm::StringMap<std::string> ctrlPktPaths, patchInfoPaths;
                 for (const auto &item : pdis.items) {
-                  pdiPaths[item.key] = absolutePath(item.asFile());
+                  pdiPaths[item.key] = fullElfInputPath(item);
                 }
                 for (const auto &item : instsBins.items) {
-                  instsPaths[item.key] = absolutePath(item.asFile());
+                  instsPaths[item.key] = fullElfInputPath(item);
                 }
                 for (const auto &item : ctrlPkts.items) {
-                  ctrlPktPaths[item.key] = absolutePath(item.asFile());
+                  ctrlPktPaths[item.key] = fullElfInputPath(item);
                 }
                 for (const auto &item : patchInfos.items) {
-                  patchInfoPaths[item.key] = absolutePath(item.asFile());
+                  patchInfoPaths[item.key] = fullElfInputPath(item);
                 }
                 out.value = makeFullElfConfigJson(devices, pdiPaths, instsPaths,
                                                   ctrlPktPaths, patchInfoPaths);
                 return mlir::success();
               });
 
-  // TODO(aiebu-aie2_config): unlike the instruction and control-packet ELFs,
-  // the full ELF is assembled by shelling out to `aiebu-asm -t aie2_config`
-  // rather than calling the in-process aiebu library. The library's
-  // `aiebu_assembler_buffer_type_aie2_config` entry point is a no-op in this
-  // XRT build (it returns a 0-byte ELF), whereas the CLI tool assembles the
-  // same config correctly. This is the one remaining shell-out edge in the ELF
-  // path; it should move in-memory once the library's aie2_config support is
-  // understood/fixed. Until then this stays a declarative ShellCommand edge so
-  // the driver never grows ad-hoc subprocess or temp-file machinery.
+#ifdef AIECC_HAS_AIEBU_CONFIG_ELF
+  auto &fullElf =
+      bundle(fullElfConfig.out, npuInstsFullElf.out, fullElfCtrlpkt.out,
+             fullElfPatchInfo.out)
+          .join<File>(
+              fullElfName.getValue(),
+              [fullElfInputPath](const Node<llvm::json::Value> &config,
+                                 const Node<std::vector<char>> &instsBins,
+                                 const Node<std::vector<char>> &ctrlPkts,
+                                 const Node<llvm::json::Value> &patchInfos,
+                                 Item<File> &out) -> mlir::LogicalResult {
+                // The config is still written: the Python JIT reads the
+                // kernel name from it.
+                const auto &configItem = config.items.front();
+                (void)configItem.asFile();
+                if (dryRun) {
+                  std::error_code ec;
+                  llvm::raw_fd_ostream f(out.filePath, ec);
+                  out.value = File{};
+                  return mlir::success();
+                }
+                std::vector<std::pair<std::string, std::vector<char>>> files;
+                files.reserve(instsBins.items.size() + ctrlPkts.items.size() +
+                              patchInfos.items.size());
+                for (const auto &item : instsBins.items) {
+                  files.emplace_back(fullElfInputPath(item), item.get());
+                }
+                for (const auto &item : ctrlPkts.items) {
+                  files.emplace_back(fullElfInputPath(item), item.get());
+                }
+                for (const auto &item : patchInfos.items) {
+                  std::string json = item.asString();
+                  files.emplace_back(
+                      fullElfInputPath(item),
+                      std::vector<char>(json.begin(), json.end()));
+                }
+                return assembleFullElf(configItem.asString(), files, out,
+                                       verbose, ShellCommand::progress);
+              });
+#else
   auto &fullElf =
       fullElfConfig.map<File>(fullElfName.getValue(), ShellCommand{"aiebu-asm"}
                                                           .arg("-t")
@@ -1730,6 +2098,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                                           .input()
                                                           .arg("-o")
                                                           .output());
+#endif // AIECC_HAS_AIEBU_CONFIG_ELF
 
   //--------------------------------------------------------------------------//
   // Host program
@@ -1764,11 +2133,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // passed, or as the default when no other artifact was requested (so a bare
   // `aiecc design.mlir` builds every device's cores up front).
   bool anySpecificOutput =
-      generateInputWithAddresses || generateScratchpadParams ||
-      generateNpuInsts || keepLoc || generateElf || generateCdo ||
-      generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
-      generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
-      !cutOutputs.empty();
+      generateInputWithAddresses || generateInputWithSymbols ||
+      generateScratchpadParams || generateNpuInsts || generateNpuCpp ||
+      keepLoc || generateElf || generateCdo || generatePdi || generateTxn ||
+      generateCtrlpkt || generateXclbin || generateFullElf || wantAiesim ||
+      doCompileHost || !getOutputs.empty() || !cutOutputs.empty();
   // Every other artifact depends on the post-link checks through
   // physicalWithElfs. A core-ELF build ends before that edge, so name the
   // checks here.
@@ -1780,10 +2149,16 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   }
 
   if (generateInputWithAddresses) {
-    outputs.push_back(&withAddresses);
+    outputs.push_back(&physical);
+  }
+  if (generateInputWithSymbols) {
+    outputs.push_back(&withSymbols);
   }
   if (generateNpuInsts) {
     outputs.push_back(&npuInsts);
+  }
+  if (generateNpuCpp) {
+    outputs.push_back(&npuCpp);
   }
   if (keepLoc) {
     outputs.push_back(&npuLocmap);
@@ -1879,6 +2254,37 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
     }
   }
 
+  // Placement is per tile, so the addresses the runtime sequences read come out
+  // the same whether or not the other cores were measured. When nothing else
+  // wants a core or the placement, compile only the cores the sequences need.
+  // Kept off under --dump-intermediates, whose placement should be the one a
+  // full build makes.
+  if (!keepIntermediates.getValue()) {
+    std::vector<EdgeBase *> roots = outputs;
+    roots.insert(roots.end(), cutEdges.begin(), cutEdges.end());
+    llvm::DenseSet<EdgeBase *> needed =
+        reachableEdges(roots, {&sequencePlacement});
+    *sequenceCoresOnly = !needed.count(&perCore) && !needed.count(&physical);
+  }
+
+  // A cached device reaches the build only through the placed and the
+  // ELF-patched modules, so the cache serves exactly the builds whose outputs
+  // read the cores through those two alone. A locmap would name the storing
+  // build's locations, and --dump-intermediates would miss the compile steps
+  // the cache skipped.
+  if (cache) {
+    std::vector<EdgeBase *> roots = outputs;
+    roots.insert(roots.end(), cutEdges.begin(), cutEdges.end());
+    llvm::DenseSet<EdgeBase *> needed =
+        reachableEdges(roots, {&physical, &physicalWithElfs});
+    cache->active = !keepIntermediates.getValue() && !keepLoc &&
+                    !needed.count(&allCores) && !needed.count(&placedCores) &&
+                    !needed.count(&unifiedPerCoreLowered);
+    if (verbose && !cache->active) {
+      llvm::errs() << "aiecc: device cache: not used by this build\n";
+    }
+  }
+
   return outputs;
 }
 
@@ -1966,6 +2372,31 @@ int main(int argc, char **argv) {
   // CommandLineOptions.h.
   if (!cli::resolveOptions()) {
     return 1;
+  }
+  verifyEachPass = verifyEach;
+
+  if (checkLutBanks && (xchesscc || xbridge)) {
+    llvm::errs() << "aiecc: --check-lut-banks requires Peano compilation and "
+                    "linking; it cannot verify Chess LLVM IR\n";
+    return 1;
+  }
+
+  // Exact edge selectors also request C++ output, including a checkpoint cut.
+  // On resume these selectors may change while the recorded C++ options remain.
+  bool wantNpuCpp = generateNpuCpp ||
+                    llvm::is_contained(getOutputs, npuCppName.getValue()) ||
+                    llvm::is_contained(cutOutputs, npuCppName.getValue());
+  if (!resume.active && !wantNpuCpp) {
+    if (npuCppEmitDispatchShim) {
+      llvm::errs() << "aiecc: --npu-cpp-emit-dispatch-shim requires NPU C++ "
+                      "output; use --get-npu-cpp\n";
+      return 1;
+    }
+    if (npuCppName.getNumOccurrences()) {
+      llvm::errs() << "aiecc: --npu-cpp-name requires NPU C++ output; "
+                      "use --get-npu-cpp\n";
+      return 1;
+    }
   }
 
   // --expand-load-pdis reconfigures via PDI swaps and routes the config branch
@@ -2074,7 +2505,20 @@ int main(int argc, char **argv) {
   Graph g;
   std::vector<EdgeBase *>
       cutEdges; // the --cut points, captured by --checkpoint
-  std::vector<EdgeBase *> outputs = buildMainGraph(context, g, cutEdges);
+  // Chess objects and a dry run's placeholders are nothing to reuse, and a
+  // resume restores its own frontier.
+  std::optional<DeviceCache> deviceCache;
+  if (!deviceCacheDir.empty() && !xchesscc && !xbridge && !dryRun &&
+      !resume.active) {
+    std::vector<std::string> tools = {
+        ShellCommand::resolveTool("clang"), ShellCommand::resolveTool("opt"),
+        ShellCommand::resolveTool("llc"), ShellCommand::resolveTool("ld.lld")};
+    deviceCache.emplace(deviceCacheDir.getValue(),
+                        DeviceCache::configurationKey(*effArgvStore, tools),
+                        verbose);
+  }
+  std::vector<EdgeBase *> outputs = buildMainGraph(
+      context, g, cutEdges, deviceCache ? &*deviceCache : nullptr);
 
   // --emit-dot: visualize the (pruned) static graph and exit without running.
   // Needs no input file (the graph is static), so it runs before the input-file

@@ -369,6 +369,10 @@ static LogicalResult inlineReferencedSymbolDefinitions(
         // (for cross-device references).
         Operation *symbolDefOp =
             SymbolTable::lookupNearestSymbolFrom(lookupFrom, oldSymbolRef);
+        if (!symbolDefOp && oldSymbolRef.getNestedReferences().empty()) {
+          symbolDefOp =
+              AIE::lookupNamedOp(lookupFrom, oldSymbolRef.getRootReference());
+        }
         if (!symbolDefOp) {
           if (ModuleOp moduleOp = lookupFrom->getParentOfType<ModuleOp>()) {
             symbolDefOp = SymbolTable::lookupSymbolIn(moduleOp, oldSymbolRef);

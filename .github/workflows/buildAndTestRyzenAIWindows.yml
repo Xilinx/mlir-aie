@@ -192,21 +192,35 @@ jobs:
 
           pushd build
 
+          REM Run every suite even if an earlier one fails, then fail the step if
+          REM any did. Fail-fast here meant a red check-aie -- which main has been
+          REM carrying -- aborted the step before check-reference-designs ran, so
+          REM the example and guide suites produced no Windows signal at all and
+          REM a PR touching only examples could not be evaluated. Nothing is
+          REM masked: FAILED collects the targets and the step still exits 1.
+          set FAILED=
+
           echo ===== Running tests =====
           ninja check-aie
-          if errorlevel 1 exit /b 1
+          if errorlevel 1 set FAILED=%FAILED% check-aie
 
           echo ===== Running concurrency tests =====
           ninja check-aie-concurrency
-          if errorlevel 1 exit /b 1
+          if errorlevel 1 set FAILED=%FAILED% check-aie-concurrency
 
           echo ===== Running examples =====
           ninja check-reference-designs
-          if errorlevel 1 exit /b 1
+          if errorlevel 1 set FAILED=%FAILED% check-reference-designs
           ninja check-programming-guide
-          if errorlevel 1 exit /b 1
+          if errorlevel 1 set FAILED=%FAILED% check-programming-guide
 
           popd
+
+          if not "%FAILED%"=="" (
+            echo ##[error]Failing targets:%FAILED%
+            exit /b 1
+          )
+          echo ===== All suites passed =====
 
       - name: Cleanup workspace
         if: always()

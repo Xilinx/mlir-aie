@@ -16,6 +16,7 @@ import argparse
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.iron import (
     Buffer,
@@ -26,7 +27,6 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
@@ -73,7 +73,7 @@ def edge_detect(
         ObjectFifo(line_ty, depth=intermediate_depths[i], name=f"OF_{i + 2}to{i + 3}")
         for i in range(3)
     ]
-    of_local = ObjectFifo(line_bytes_ty, depth=1, name="OF_local")
+    rgba_line = Buffer(line_bytes_ty, name="rgba_line")
 
     # Laplacian edge-detect kernel: cross stencil with -16384 center, 4096 edges.
     v0, v1, v_minus4 = 0, 4096, -16384
@@ -182,25 +182,21 @@ def edge_detect(
     def gray2rgba_add_weight_fn(
         of_in,
         of_in2,
-        of_out_self,
-        of_in_self,
+        rgba_line,
         of_out,
         gray2rgba_line,
         add_weighted_line,
     ):
         elem_in = of_in.acquire(1)
-        elem_out = of_out_self.acquire(1)
-        gray2rgba_line(elem_in, elem_out, line_width)
+        gray2rgba_line(elem_in, rgba_line, line_width)
         of_in.release(1)
-        of_out_self.release(1)
 
-        elem_in1 = of_in_self.acquire(1)
         elem_in2 = of_in2.acquire(1)
         elem_out2 = of_out.acquire(1)
 
         alpha, beta, gamma = 16384, 16384, 0
         add_weighted_line(
-            elem_in1,
+            rgba_line,
             elem_in2,
             elem_out2,
             line_width_in_bytes,
@@ -208,7 +204,6 @@ def edge_detect(
             beta,
             gamma,
         )
-        of_in_self.release(1)
         of_in2.release(1)
         of_out.release(1)
 
@@ -218,8 +213,7 @@ def edge_detect(
             [
                 of_intermediates[2].cons(),
                 in_of_l2l1.cons(),
-                of_local.prod(),
-                of_local.cons(),
+                rgba_line,
                 out_of_l1l2.prod(),
                 gray2rgba_line_kernel,
                 add_weighted_line_kernel,
@@ -245,7 +239,7 @@ def edge_detect(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Edge Detect")
-    add_compile_args(p)
+    add_compile_args(p, with_emit_mlir=True)
     p.add_argument("-W", "--width", type=int, default=1920)
     p.add_argument("-H", "--height", type=int, default=1080)
     return p
@@ -253,19 +247,6 @@ def _make_argparser():
 
 def _compile_kwargs(opts):
     return dict(width=opts.width, height=opts.height)
-
-
-def _rgba2gray_ref(rgba_uint8, height, width):
-    """Numpy port of ``rgba2gray_aie`` (SRS_SHIFT=15)."""
-    rgba = rgba_uint8.reshape(height, width, 4)
-    r = rgba[..., 0].astype(np.int32)
-    g = rgba[..., 1].astype(np.int32)
-    b = rgba[..., 2].astype(np.int32)
-    wt_r = int(round(0.299 * (1 << 15)))  # 9798
-    wt_g = int(round(0.587 * (1 << 15)))  # 19235
-    wt_b = int(round(0.114 * (1 << 15)))  # 3736
-    y = (wt_r * r + wt_g * g + wt_b * b + (1 << 14)) >> 15
-    return np.clip(y, 0, 255).astype(np.uint8)
 
 
 def _filter2d_cv_ref(gray_uint8, height, width):
@@ -283,24 +264,13 @@ def _filter2d_cv_ref(gray_uint8, height, width):
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
-def _threshold_binary_ref(arr_uint8, thresh, max_val):
-    """cv::threshold with THRESH_BINARY: out = (in > thresh) ? max : 0."""
-    return np.where(arr_uint8 > thresh, np.uint8(max_val), np.uint8(0))
-
-
-def _gray2rgba_ref(gray_uint8):
-    """Replicate gray to R/G/B with alpha=255 (matches ``gray2rgba_aie``)."""
-    flat = gray_uint8.reshape(-1)
-    out = np.zeros((flat.size, 4), dtype=np.uint8)
-    out[:, 0] = flat
-    out[:, 1] = flat
-    out[:, 2] = flat
-    out[:, 3] = 255
-    return out.reshape(-1)
-
-
 def _add_weighted_cv_ref(a_uint8, b_uint8, alpha, beta, gamma):
     """Numpy equivalent of cv::addWeighted: ``saturate(alpha*a + beta*b + gamma)``.
+
+    Deliberately the OpenCV formula and not ``kernels.add_weighted_ref``: this
+    file mirrors test.cpp's OpenCV pipeline and judges the whole image by an
+    L1 epsilon, whereas the library reference follows the kernel's Q2.14
+    fixed point exactly.
     test.cpp passes alpha=beta=1.0, gamma=0.0; the AIE kernel computes
     ``(a+b)/2`` in fixed-point — the diffs land under ``_EPSILON``.
     """
@@ -310,10 +280,10 @@ def _add_weighted_cv_ref(a_uint8, b_uint8, alpha, beta, gamma):
 
 def _edge_detect_ref(rgba_uint8, height, width):
     """End-to-end reference mirroring test.cpp's edgeDetect() OpenCV pipeline."""
-    gray = _rgba2gray_ref(rgba_uint8, height, width)
+    gray = kernels.rgba2gray_ref(rgba_uint8.reshape(-1))
     edges = _filter2d_cv_ref(gray, height, width)
-    thresholded = _threshold_binary_ref(edges, 10, 255)
-    mask_rgba = _gray2rgba_ref(thresholded)
+    thresholded = kernels.threshold_ref(edges, 10, 255, 0)  # 0 is BINARY
+    mask_rgba = kernels.gray2rgba_ref(thresholded.reshape(-1))
     return _add_weighted_cv_ref(rgba_uint8, mask_rgba, 1, 1, 0)
 
 

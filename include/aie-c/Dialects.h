@@ -36,6 +36,16 @@ MLIR_CAPI_EXPORTED MlirType aieBlockFloatTypeGet(MlirContext ctx,
                                                  const std::string &blockType);
 
 //===---------------------------------------------------------------------===//
+// Data layout
+//===---------------------------------------------------------------------===//
+
+/// Size of \p type in bits under the default data layout, or 0 for a type that
+/// does not describe one. A dialect type answers through its
+/// DataLayoutTypeInterface, so a block floating-point type reports the bits one
+/// block occupies rather than the bits of one value.
+MLIR_CAPI_EXPORTED uint64_t aieTypeGetSizeInBits(MlirType type);
+
+//===---------------------------------------------------------------------===//
 // TileLike Interface
 //===---------------------------------------------------------------------===//
 
