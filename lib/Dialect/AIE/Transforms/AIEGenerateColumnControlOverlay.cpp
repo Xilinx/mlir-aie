@@ -328,8 +328,9 @@ struct AIEGenerateColumnControlOverlayPass
       if (clRouteShimDmaToTileCTRL)
         tiles[{col, 0}] = shimTile;
 
-      if (clRouteShimCTRLToTCT == "all-tiles" ||
-          clRouteShimCTRLToTCT == "shim-only") {
+      if ((clRouteShimCTRLToTCT == "all-tiles" ||
+           clRouteShimCTRLToTCT == "shim-only") &&
+          !hasRoutedShimResponse(device, col)) {
         // Get all tile ops on column col
         SmallVector<AIE::TileOp> tilesOnCol;
         for (auto &[tId, tOp] : tiles) {
@@ -442,30 +443,59 @@ struct AIEGenerateColumnControlOverlayPass
     return flows;
   }
 
-  // Return true when `device` already contains a control-packet overlay,
-  // identified by the `is_ctrl_pkt_overlay` marker the overlay's routed
-  // switchbox configuration carries at a TileControl port. Any priority_route
-  // flow carries the marker, so elsewhere it says nothing about the overlay.
+  // A routed response must actually connect TileControl:0 to South:0 on
+  // this column's shim. A priority request ending at TileControl is not a
+  // response, even though pathfinder marks it is_ctrl_pkt_overlay.
+  static bool hasRoutedShimResponse(DeviceOp device, int col) {
+    auto tileIDMap = getTileToControllerIdMap(true, device.getTargetModel());
+    for (auto switchbox : device.getOps<AIE::SwitchboxOp>()) {
+      auto tile = dyn_cast<TileLike>(switchbox.getTile().getDefiningOp());
+      if (!tile || tile.tryGetCol() != col || tile.tryGetRow() != 0)
+        continue;
+      int responseID = tileIDMap[{col, 0}];
+      if (auto id = switchbox.getTile()
+                        .getDefiningOp()
+                        ->getAttrOfType<AIE::PacketInfoAttr>("controller_id"))
+        responseID = id.getPktId();
+      Block &connections = switchbox.getConnections().front();
+      for (auto connect : connections.getOps<AIE::ConnectOp>())
+        if (connect->hasAttr("is_ctrl_pkt_overlay") &&
+            connect.sourcePort() == Port{WireBundle::TileControl, 0} &&
+            connect.destPort() == Port{WireBundle::South, 0})
+          return true;
+      for (auto rules : connections.getOps<AIE::PacketRulesOp>()) {
+        if (!rules->hasAttr("is_ctrl_pkt_overlay") ||
+            rules.sourcePort() != Port{WireBundle::TileControl, 0})
+          continue;
+        for (auto master : connections.getOps<AIE::MasterSetOp>()) {
+          if (!master->hasAttr("is_ctrl_pkt_overlay") ||
+              master.destPort() != Port{WireBundle::South, 0})
+            continue;
+          for (auto rule : rules.getRules().front().getOps<AIE::PacketRuleOp>())
+            if (llvm::is_contained(master.getAmsels(), rule.getAmsel()) &&
+                (responseID & rule.maskInt()) == rule.valueInt())
+              return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Every occupied column needs its own shim response route. An overlay
+  // routed on only one column must not suppress the remaining columns.
   static bool deviceHasControlOverlay(DeviceOp device) {
-    auto isCtrl = [](Port port) {
-      return port.bundle == WireBundle::TileControl;
-    };
-    return device
-        .walk([&](Operation *op) {
-          if (!op->hasAttr("is_ctrl_pkt_overlay"))
-            return WalkResult::advance();
-          bool atTileControl = false;
-          if (auto connect = dyn_cast<AIE::ConnectOp>(op))
-            atTileControl =
-                isCtrl(connect.sourcePort()) || isCtrl(connect.destPort());
-          else if (auto masterSet = dyn_cast<AIE::MasterSetOp>(op))
-            atTileControl = isCtrl(masterSet.destPort());
-          else if (auto rules = dyn_cast<AIE::PacketRulesOp>(op))
-            atTileControl = isCtrl(rules.sourcePort());
-          return atTileControl ? WalkResult::interrupt()
-                               : WalkResult::advance();
-        })
-        .wasInterrupted();
+    llvm::SmallSet<int, 4> cols;
+    for (auto tile : device.getOps<AIE::TileOp>())
+      cols.insert(tile.colIndex());
+    if (cols.empty())
+      return false;
+    int firstCol = *llvm::min_element(cols);
+    int lastCol = *llvm::max_element(cols);
+    for (int col = firstCol; col <= lastCol; ++col)
+      if ((clRouteShimDmaToTileCTRL || cols.contains(col)) &&
+          !hasRoutedShimResponse(device, col))
+        return false;
+    return true;
   }
 
   AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, Location loc,
