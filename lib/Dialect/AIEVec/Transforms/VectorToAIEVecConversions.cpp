@@ -5137,7 +5137,8 @@ struct FlattenElementwiseVectorToRank1Pattern : OpConversionPattern<OpTy> {
     }
 
     auto flatOp = OpTy::create(rewriter, loc, TypeRange{flatResultType},
-                               flatOperands, op->getAttrs());
+                               flatOperands, op.getProperties(),
+                               op->getDiscardableAttrDictionary().getValue());
     rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, resultType,
                                                      flatOp->getResult(0));
     return success();
@@ -5164,6 +5165,10 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
   // and vector.shuffle indexes only the leading dimension -- which is 1 --
   // so the op fails to verify ("mask index #3 out of range") a whole pass
   // later, naming neither the rank nor the negate.
+  //
+  // Benefit 3 and not 2: the AIE2P-specific tanh and negf patterns below are
+  // at 2 and would otherwise take an n-D op before it has been flattened,
+  // which for negf puts the rank straight back into `aievec.neg`.
   patterns.add<FlattenElementwiseVectorToRank1Pattern<arith::MulFOp>,
                FlattenElementwiseVectorToRank1Pattern<arith::DivFOp>,
                FlattenElementwiseVectorToRank1Pattern<arith::AddFOp>,
@@ -5173,9 +5178,6 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
                FlattenElementwiseVectorToRank1Pattern<arith::ExtFOp>,
                FlattenElementwiseVectorToRank1Pattern<math::ExpOp>,
                FlattenElementwiseVectorToRank1Pattern<math::TanhOp>>(
-      // 3 and not 2: the AIE2P-specific tanh and negf patterns below are at 2
-      // and would otherwise take an n-D op before it has been flattened, which
-      // for negf puts the rank straight back into `aievec.neg`.
       patterns.getContext(), /*benefit=*/3);
   // Higher benefit to take priority over the AIE2 LUT-based tanh pattern
   // registered in the common patterns.
