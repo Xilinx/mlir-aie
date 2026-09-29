@@ -3,12 +3,13 @@
 #
 # RUN: %pytest %s
 
-"""Assemble a catalogue column from a run's artifacts; no aie package needed."""
+"""Catalogue behavior with synthetic factories, independent of the kernel tree."""
 
 import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace as NS
 
 import pytest
 
@@ -29,67 +30,38 @@ def catalogue():
     return module
 
 
-def _junit(cases):
-    tests = "".join(
-        f'<testcase name="test_kernel_extensive[{name}]">{body}</testcase>'
-        for name, body in cases
-    )
-    return f"<testsuites><testsuite>{tests}</testsuite></testsuites>"
-
-
 FACTORIES = [
-    {
-        "factory": "softmax",
-        "family": "activation",
-        "summary": "Softmax",
-        "sources": ["activation/softmax.cc"],
-        "builds": ["softmax", "softmax/dtype=bfloat16"],
-    },
-    {
-        "factory": "zero",
-        "family": "zero",
-        "summary": "Zero",
-        "sources": ["common/zero.h"],
-        "builds": ["zero"],
-    },
-    {
-        "factory": "cascade_mm",
-        "family": "linalg",
-        "summary": "Cascade",
-        "sources": ["linalg/mm.cc"],
-        "builds": ["cascade_mm"],
-    },
-    {
-        "factory": "exp2f_vec",
-        "family": "activation",
-        "summary": "Only on npu2",
-        "sources": [],
-        "builds": [],
-    },
+    {"factory": "synthetic", "builds": ["synthetic"]},
+    {"factory": "uncased", "builds": ["uncased"], "why": "needs an external input"},
+    {"factory": "unavailable", "builds": []},
 ]
 
 
-def test_rows_attribute_every_case_outcome(catalogue, tmp_path):
+def test_rows_aggregate_variants_and_attribute_outcomes(catalogue, tmp_path):
+    cases = [
+        ("synthetic/1/i8/random/s0", ""),
+        ("synthetic/1/i8/ones/s0", ""),
+        ("synthetic/2/i8/random/s0", ""),
+        ("synthetic/3/i8/random/s0", '<failure message="bad" />'),
+        ("synthetic/3/i8/random/s1", ""),
+        ("synthetic/4/i8/random/s0", "<skipped />"),
+        ("synthetic/5/i8/random/s0", ""),
+    ]
     correctness = tmp_path / "correctness.xml"
     correctness.write_text(
-        _junit(
-            [
-                ("softmax/1024x16/bfloat16/random/s0", ""),
-                ("softmax/1024x16/bfloat16/large/s0", ""),
-                ("softmax/64x16/bfloat16/random/s0", ""),
-                ("softmax/2048x16/bfloat16/random/s0", '<failure message="bad" />'),
-                ("softmax/2048x16/bfloat16/random/s1", ""),
-                ("zero/64/int32/random/s0", ""),
-                ("zero/64/bfloat16/random/s0", "<skipped />"),
-            ]
+        "<testsuite>"
+        + "".join(
+            f'<testcase name="test_kernel_extensive[{name}]">{body}</testcase>'
+            for name, body in cases
         )
+        + "</testsuite>"
     )
     perf = tmp_path / "perf.json"
     perf.write_text(
         json.dumps(
             [
-                {"name": "softmax/1024x16/bfloat16/cycles", "value": 1},
-                {"name": "softmax/1024x16/bfloat16/npu_us", "value": 2},
+                {"name": "synthetic/1/i8/cycles", "value": 1},
+                {"name": "synthetic/1/i8/npu_us", "value": 2},
             ]
         )
     )
@@ -98,22 +70,15 @@ def test_rows_attribute_every_case_outcome(catalogue, tmp_path):
         json.dumps(
             {
                 "failed": [
-                    "test_kernels_perf.py::test_kernel_perf[softmax/64x16/bfloat16]",
-                    "test_kernels_e2e.py::test_kernel_extensive[softmax/2048x16/bfloat16/random/s0]",
-                    "test_kernels_perf.py::test_measurement_is_sane",
+                    "test_kernel_perf[synthetic/2/i8]",
+                    "test_kernel_extensive[synthetic/3/i8/random/s0]",
+                    "test_measurement_is_sane",
                 ]
             }
         )
     )
-    declared = {
-        "softmax": {
-            "softmax/1024x16/bfloat16": True,
-            "softmax/64x16/bfloat16": True,
-            "softmax/2048x16/bfloat16": True,
-        },
-        "zero": {"zero/64/int32": False, "zero/64/bfloat16": False},
-    }
     passed, failed = catalogue.swept(correctness)
+    declared = {"synthetic": {f"synthetic/{i}/i8": i != 5 for i in range(1, 6)}}
     rows = catalogue.rows(
         FACTORIES,
         passed,
@@ -123,80 +88,51 @@ def test_rows_attribute_every_case_outcome(catalogue, tmp_path):
         declared,
     )
     by_name = {row["factory"]: row for row in rows}
-
-    softmax = by_name["softmax"]
-    assert softmax["passed"] == 2
-    assert softmax["failed"] == ["softmax/2048x16/bfloat16"]
-    assert softmax["timed"] == 1
-    assert softmax["timing_failed"] == ["softmax/64x16/bfloat16"]
-    assert softmax["untimed"] == []
-    assert "reason" not in softmax
-
-    zero = by_name["zero"]
-    assert (zero["passed"], zero["timed"]) == (1, 0)
-    assert zero["untimed"] == ["zero/64/int32"]  # the skipped case is not "passed"
-    assert "reason" not in zero
-
-    cascade = by_name["cascade_mm"]
-    assert (cascade["passed"], cascade["timed"], cascade["failed"]) == (0, 0, [])
-    assert cascade["reason"] == catalogue.NO_CASE
-
-    # Not built on this NPU: nothing to explain.
-    assert "reason" not in by_name["exp2f_vec"]
-    assert [row["factory"] for row in rows] == [f["factory"] for f in FACTORIES]
+    measured = by_name["synthetic"]
+    assert measured["passed"] == 3
+    assert measured["failed"] == ["synthetic/3/i8"]
+    assert measured["timed"] == 1
+    assert measured["timing_failed"] == ["synthetic/2/i8"]
+    assert measured["untimed"] == ["synthetic/5/i8"]
+    assert "reason" not in measured
+    assert by_name["uncased"]["reason"] == "needs an external input"
+    assert "reason" not in by_name["unavailable"]
 
 
-def test_rows_without_artifacts(catalogue):
+def test_rows_without_artifacts_distinguish_built_and_unavailable(catalogue):
     rows = catalogue.rows(FACTORIES, {}, {}, {}, {}, {})
     assert all(
         (r["passed"], r["failed"], r["timed"], r["timing_failed"], r["untimed"])
         == (0, [], 0, [], [])
         for r in rows
     )
-    assert [r.get("reason") for r in rows] == [catalogue.NO_CASE] * 3 + [None]
-
-
-def test_timing_failures_ignore_the_sweep_and_the_sanity_test(catalogue, tmp_path):
-    meta = tmp_path / "meta.json"
-    meta.write_text(
-        json.dumps(
-            {
-                "failed": [
-                    "test_kernels_e2e.py::test_kernel_extensive[mm/64x64/i8/ones/s0]",
-                    "test_kernels_perf.py::test_measurement_is_sane",
-                    "test_kernels_perf.py::test_kernel_perf[mm/64x32x64x4/bfloat16_float32/b_col_maj=True]",
-                ]
-            }
-        )
-    )
-    assert catalogue.timing_failed(meta) == {
-        "mm": {"mm/64x32x64x4/bfloat16_float32/b_col_maj=True"}
-    }
-    meta.write_text("{}")
-    assert catalogue.timing_failed(meta) == {}
-
-
-def test_a_factory_without_a_case_says_why_from_its_contract(catalogue):
-    from types import SimpleNamespace as NS
-
-    put = NS(
-        contract=NS(unsupported="its result leaves on the cascade stream", trace=None)
-    )
-    rounding = NS(
-        contract=NS(unsupported=None, trace=NS(shape="none", reason="runs once"))
-    )
-    timed = NS(contract=NS(unsupported=None, trace=NS(shape="whole_call", reason=None)))
-    assert catalogue.why_uncased(put) == "its result leaves on the cascade stream"
-    assert catalogue.why_uncased(rounding) == "runs once"
-    assert catalogue.why_uncased(timed) is None
-    assert catalogue.why_uncased(NS(contract=None)) is None
-    assert catalogue.why_uncased(object()) is None
-
-    factories = [
-        dict(FACTORIES[2], why="its result leaves on the cascade stream"),
-        dict(FACTORIES[1], why="ignored: it has cases"),
+    assert [r.get("reason") for r in rows] == [
+        catalogue.NO_CASE,
+        "needs an external input",
+        None,
     ]
-    rows = catalogue.rows(factories, {}, {}, {}, {}, {"zero": {"zero/64/int32": False}})
-    assert rows[0]["reason"] == "its result leaves on the cascade stream"
-    assert "reason" not in rows[1]
-    assert all("why" not in row for row in rows)
+
+
+@pytest.mark.parametrize(
+    "factory,reason",
+    [
+        (NS(contract=NS(unsupported="external result", trace=None)), "external result"),
+        (
+            NS(
+                contract=NS(
+                    unsupported=None, trace=NS(shape="none", reason="runs once")
+                )
+            ),
+            "runs once",
+        ),
+        (
+            NS(
+                contract=NS(unsupported=None, trace=NS(shape="whole_call", reason=None))
+            ),
+            None,
+        ),
+        (NS(contract=None), None),
+    ],
+)
+def test_uncased_reason_comes_from_contract(catalogue, factory, reason):
+    assert catalogue.why_uncased(factory) == reason

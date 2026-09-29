@@ -3,10 +3,10 @@
 #
 # RUN: %pytest %s
 
-"""Build the PR report from a run's artifacts and the published baselines on disk."""
+"""Compare synthetic run artifacts with published baselines; no NPU needed."""
 
+import importlib.util
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -14,214 +14,210 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "utils/kernel_checks/pr_report.py"
-EXTRA = "commit 41dcf3cd6a | peano {} | kernels c86c05864e | pmode performance"
+META = {"preflight": {"npu": "npu2", "pmode": "performance"}, "failed": []}
 
 
-def _rows(values, peano):
-    """Return perf.json rows; a value may be ``(value, range)``."""
+@pytest.fixture(scope="module")
+def report():
+    spec = importlib.util.spec_from_file_location("pr_report", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _rows(values):
     rows = []
     for name, (unit, value) in values.items():
         value, span = value if isinstance(value, tuple) else (value, None)
-        row = {"name": name, "unit": unit, "value": value, "extra": EXTRA.format(peano)}
+        row = {"name": name, "unit": unit, "value": value}
         if span:
             row["range"] = span
         rows.append(row)
     return rows
 
 
-def _record(values, peano="22.0.0+old", target="npu2"):
-    """Return a publish.py record: the last nightly's rows, by case and metric."""
+def _record(values, **overrides):
     rows = {}
-    for name, (unit, value) in values.items():
-        case, metric = name.rsplit("/", 1)
-        value, span = value if isinstance(value, tuple) else (value, None)
-        cell = {"value": value, "unit": unit}
-        if span:
-            cell["range"] = span
-        rows.setdefault(case, {})[metric] = cell
+    for row in _rows(values):
+        case, metric = row.pop("name").rsplit("/", 1)
+        rows.setdefault(case, {})[metric] = row
     return {
-        "target": target,
-        "id": "77",
-        "commit": {"id": "0123456789ab", "url": "https://example.com/c/0123456"},
-        "date": "2026-09-28T06:00:00+00:00",
-        "provenance": {"commit": "0123456789", "peano": peano},
-        "published": True,
+        "id": "baseline-run",
+        "pmode": "performance",
         "rows": rows,
+        **overrides,
     }
-
-
-def _junit(cases):
-    tests = "".join(
-        f'<testcase name="test_kernel_extensive[{name}]">{body}</testcase>'
-        for name, body in cases
-    )
-    return f"<testsuites><testsuite>{tests}</testsuite></testsuites>"
 
 
 @pytest.fixture
-def report(tmp_path):
-    def run(results, baselines=None, run_id="7"):
-        for old in ("results", "baselines"):
-            shutil.rmtree(tmp_path / old, ignore_errors=True)
-        for leg, files in results.items():
-            d = tmp_path / "results" / leg
-            d.mkdir(parents=True)
-            for name, content in files.items():
-                text = content if isinstance(content, str) else json.dumps(content)
-                (d / name).write_text(text)
-        for leg, record in (baselines or {}).items():
-            base = tmp_path / "baselines" / leg
-            base.mkdir(parents=True)
-            (base / "latest.json").write_text(json.dumps(record))
-        (tmp_path / "results").mkdir(exist_ok=True)
-        out = tmp_path / "report.md"
-        subprocess.run(
-            [sys.executable, SCRIPT, "--results", tmp_path / "results"]
-            + ["--baselines", tmp_path / "baselines", "--out", out]
-            + ["--run-url", "https://example.com/run/1", "--run-id", run_id],
-            check=True,
+def read_leg(report, tmp_path):
+    def read(values, baseline=None, meta=META, cases=(), run_id="current-run"):
+        (tmp_path / "perf.json").write_text(json.dumps(_rows(values)))
+        (tmp_path / "meta.json").write_text(json.dumps(meta))
+        tests = "".join(
+            f'<testcase name="test_kernel_extensive[{name}]">{body}</testcase>'
+            for name, body in cases
         )
-        return out.read_text()
+        (tmp_path / "correctness.xml").write_text(f"<testsuite>{tests}</testsuite>")
+        latest = tmp_path / "latest.json"
+        if baseline is not None:
+            latest.write_text(json.dumps(baseline))
+        else:
+            latest.unlink(missing_ok=True)
+        return report.read_leg("npu2", tmp_path, latest, run_id=run_id)
 
-    return run
+    return read
 
 
-META = {"preflight": {"npu": "npu2", "pmode": "performance"}, "failed": []}
-
-
-def test_failures_regressions_and_coverage(report):
+def test_comparison_classifies_changes_and_coverage(read_leg):
     nightly = {
-        "relu/1024/bf16/cycles": ("cycles", 1000),
-        "relu/1024/bf16/core_elf_bytes": ("bytes", 4096),
-        "relu/1024/bf16/npu_us": ("us", 100),
-        "gelu/1024/bf16/cycles": ("cycles", 2000),
-        "gone/64/i8/cycles": ("cycles", 10),
+        "slower/1/i8/cycles": ("cycles", 1000),
+        "larger/1/i8/kernel_object_bytes": ("bytes", 1000),
+        "faster/1/i8/cycles": ("cycles", 2000),
+        "slower/1/i8/npu_us": ("us", 100),
+        "slower/1/i8/cycles_per_kop": ("cycles/1k-ops", 10),
+        "gone/1/i8/cycles": ("cycles", 10),
+        "failed/1/i8/cycles": ("cycles", 10),
     }
-    run = {
-        "relu/1024/bf16/cycles": ("cycles", 1100),
-        "relu/1024/bf16/cycles_per_kop": ("cycles/1k-ops", 90),
-        "relu/1024/bf16/core_elf_bytes": ("bytes", 4096),
-        "relu/1024/bf16/npu_us": ("us", 150),
-        "gelu/1024/bf16/cycles": ("cycles", 1500),
-        "fresh/64/i8/cycles": ("cycles", 5),
+    current = {
+        "slower/1/i8/cycles": ("cycles", 1100),
+        "larger/1/i8/kernel_object_bytes": ("bytes", 1100),
+        "faster/1/i8/cycles": ("cycles", 1500),
+        "slower/1/i8/npu_us": ("us", 150),
+        "slower/1/i8/cycles_per_kop": ("cycles/1k-ops", 90),
+        "fresh/1/i8/cycles": ("cycles", 5),
     }
-    junit = _junit(
+    leg = read_leg(
+        current,
+        _record(nightly),
+        meta=dict(META, failed=["test_kernel_perf[failed/1/i8]"]),
+    )
+    assert {(c.case, c.metric) for c in leg.regressed} == {
+        ("slower/1/i8", "cycles"),
+        ("larger/1/i8", "kernel_object_bytes"),
+    }
+    assert [(c.case, c.ratio) for c in leg.improved] == [("faster/1/i8", -0.25)]
+    assert [(c.metric, c.before, c.after) for c in leg.other] == [("npu_us", 100, 150)]
+    assert leg.unmeasured == ["gone/1/i8"]
+    assert leg.new == ["fresh/1/i8"]
+
+
+def test_failures_combine_sweep_and_timing_without_counting_skips(read_leg):
+    leg = read_leg(
+        {},
+        cases=[
+            ("synthetic/1/i8/random/s0", '<failure message="x.cc:3: error: bad" />'),
+            ("synthetic/1/i8/random/s1", ""),
+            ("synthetic/1/i8/ones/s0", "<skipped />"),
+        ],
+        meta=dict(
+            META,
+            failed=[
+                "test_kernel_extensive[synthetic/1/i8/random/s0]",
+                "test_kernel_perf[timing/1/i8]",
+            ],
+        ),
+    )
+    failures = {f.case: f for f in leg.failures}
+    assert set(failures) == {"synthetic/1/i8", "timing/1/i8"}
+    assert failures["synthetic/1/i8"].total == 2
+    assert failures["synthetic/1/i8"].failed == ["random/s0"]
+    assert failures["synthetic/1/i8"].reason == "bad"
+    assert failures["timing/1/i8"].failed == ["timing run"]
+
+
+@pytest.mark.parametrize(
+    "before_mad,after_mad,after,changed",
+    [
+        (1, 1, 120, True),
+        (10, 1, 120, False),
+        (1, 7, 120, False),
+        (None, None, 120, True),
+        (0.1, 0.1, 105, False),
+    ],
+)
+def test_host_timing_change_must_exceed_threshold_and_noise(
+    read_leg, before_mad, after_mad, after, changed
+):
+    def values(value, mad):
+        span = None if mad is None else f"\u00b1 {mad}; min 1 max 2 n=50"
+        return {"synthetic/1/i8/npu_us": ("us", (value, span))}
+
+    leg = read_leg(values(after, after_mad), _record(values(100, before_mad)))
+    assert bool(leg.other) is changed
+    assert not leg.regressed
+
+
+@pytest.mark.parametrize("record_kind", ["absent", "empty", "own-run", "new-schema"])
+def test_unusable_baseline_does_not_produce_comparisons(read_leg, record_kind):
+    values = {"synthetic/1/i8/cycles": ("cycles", 100)}
+    baseline = {
+        "absent": None,
+        "empty": _record({}),
+        "own-run": _record(values, id="current-run"),
+        "new-schema": _record(values, schema=2),
+    }[record_kind]
+    leg = read_leg({"synthetic/1/i8/cycles": ("cycles", 150)}, baseline)
+    assert leg.measured and leg.cases == 1
+    assert not (leg.regressed or leg.improved or leg.other or leg.new)
+
+
+@pytest.mark.parametrize(
+    "current_mode,baseline_mode,compared",
+    [
+        ("performance", "performance", True),
+        ("turbo", "turbo", True),
+        ("turbo", "performance", False),
+        ("performance", None, False),
+        (None, "performance", False),
+        (None, None, False),
+        ("", "", False),
+    ],
+)
+def test_baseline_requires_matching_known_power_modes(
+    read_leg, current_mode, baseline_mode, compared
+):
+    baseline = _record({"synthetic/1/i8/cycles": ("cycles", 100)})
+    preflight = {}
+    if current_mode is not None:
+        preflight["pmode"] = current_mode
+    if baseline_mode is None:
+        baseline.pop("pmode")
+    else:
+        baseline["pmode"] = baseline_mode
+    leg = read_leg(
+        {"synthetic/1/i8/cycles": ("cycles", 150)},
+        baseline,
+        meta={"preflight": preflight},
+    )
+    assert bool(leg.regressed) is compared
+
+
+def test_cli_writes_report(tmp_path):
+    results = tmp_path / "results/npu2"
+    results.mkdir(parents=True)
+    (results / "meta.json").write_text(json.dumps(META))
+    (results / "perf.json").write_text(
+        json.dumps(_rows({"synthetic/1/i8/cycles": ("cycles", 100)}))
+    )
+    out = tmp_path / "report.md"
+    subprocess.run(
         [
-            ("relu/1024/bf16/random/s0", ""),
-            ("mm/64x64/i8/random/s0", '<failure message="x.cc:3: error: bad" />'),
-            ("mm/64x64/i8/random/s1", ""),
-            ("mm/64x64/i8/ones/s0", "<skipped />"),
-        ]
+            sys.executable,
+            SCRIPT,
+            "--results",
+            results.parent,
+            "--baselines",
+            tmp_path / "baselines",
+            "--out",
+            out,
+            "--run-id",
+            "current-run",
+        ],
+        check=True,
     )
-    meta = dict(META, failed=["test_kernels_perf.py::test_kernel_perf[conv/8/i8]"])
-    text = report(
-        {
-            "npu2": {
-                "meta.json": meta,
-                "perf.json": _rows(run, "22.0.0+new"),
-                "correctness.xml": junit,
-            }
-        },
-        {"npu2": _record(nightly)},
-    )
-    assert text.startswith("<!-- kernel-checks-report -->\n")
-    assert "## Kernel checks: 2 failing, 1 regressed" in text
-    assert "Regressed: `cycles` 2% or `core_elf_bytes` 2% or more worse" in text
-    assert "| npu2 | 22.0.0+new (nightly: 22.0.0+old) | [0123456]" in text
-    assert "| `mm/64x64/i8` | 1 of 2 | bad |" in text
-    assert "| `conv/8/i8` | timing run | failed in the timing run" in text
-    assert (
-        "| `relu/1024/bf16` | cycles | 1,000 cycles | 1,100 cycles | +10.0% |" in text
-    )
-    assert (
-        "| `gelu/1024/bf16` | cycles | 2,000 cycles | 1,500 cycles | -25.0% |" in text
-    )
-    assert "| `relu/1024/bf16` | npu_us | 100 us | 150 us | +50.0% |" in text
-    assert "cycles_per_kop" not in text
-    assert "<summary>In the nightly but not measured here (1)</summary>" in text
-    assert "| npu2 | `gone/64/i8` |" in text
-    assert "<summary>Measured here, not in the nightly (1)</summary>" in text
-
-
-def test_clean_run_and_missing_leg(report):
-    values = {"relu/1024/bf16/cycles": ("cycles", 1000)}
-    text = report(
-        {
-            "npu1": {},
-            "npu2": {"meta.json": META, "perf.json": _rows(values, "22.0.0+a")},
-        },
-        {"npu2": _record(values, peano="22.0.0+a")},
-    )
-    assert "## Kernel checks: all passed, no regressions" in text
-    assert "| npu1 | ? | — | no results |" in text
-    assert (
-        "| npu2 | 22.0.0+a | [0123456](https://example.com/c/0123456) | 1 | 0 | 0 | 0 |"
-        in text
-    )
-    assert "### " not in text and "<details>" not in text
-
-
-def test_no_baseline(report):
-    values = {"relu/1024/bf16/cycles": ("cycles", 1000)}
-    text = report({"npu2": {"meta.json": META, "perf.json": _rows(values, "a")}})
-    assert "| npu2 | a | none cached | 1 | 0 | — | — |" in text
-
-
-def test_a_baseline_without_rows_is_no_baseline(report):
-    values = {"relu/1024/bf16/cycles": ("cycles", 1000)}
-    empty = dict(_record({}), published=False)
-    text = report(
-        {"npu2": {"meta.json": META, "perf.json": _rows(values, "a")}}, {"npu2": empty}
-    )
-    assert "| npu2 | a | none cached | 1 | 0 | — | — |" in text
-
-
-def test_no_results(report):
-    assert "## Kernel checks: no NPU produced results" in report({})
-
-
-def test_npu_us_counts_only_past_its_noise(report):
-    mad = "\u00b1 {}; min 1 max 2 n=50"
-    nightly = {
-        # 20% moves: steady, then noisy (MAD 10 us of 100), then noisy only now.
-        "steady/1/bf16/npu_us": ("us", (100, mad.format(1.0))),
-        "noisy/1/bf16/npu_us": ("us", (100, mad.format(10.0))),
-        "newly_noisy/1/bf16/npu_us": ("us", (100, mad.format(1.0))),
-        "no_spread/1/bf16/npu_us": ("us", 100),
-        "small/1/bf16/npu_us": ("us", (100, mad.format(0.1))),
-    }
-    run = {
-        "steady/1/bf16/npu_us": ("us", (120, mad.format(1.0))),
-        "noisy/1/bf16/npu_us": ("us", (120, mad.format(1.0))),
-        "newly_noisy/1/bf16/npu_us": ("us", (120, mad.format(7.0))),
-        "no_spread/1/bf16/npu_us": ("us", 120),
-        # Many MADs, but under 10%.
-        "small/1/bf16/npu_us": ("us", (105, mad.format(0.1))),
-    }
-    text = report(
-        {"npu2": {"meta.json": META, "perf.json": _rows(run, "a")}},
-        {"npu2": _record(nightly, peano="a")},
-    )
-    assert "`npu_us` 10% and 3\u00d7 its MAD" in text
-    listed = [line.split("`")[1] for line in text.splitlines() if "| npu_us |" in line]
-    # 20 us is past 3x a 1 us MAD, not past 3x 10 us or 3x 7 us.
-    assert sorted(listed) == ["no_spread/1/bf16", "steady/1/bf16"]
-
-
-def test_a_baseline_from_this_run_or_a_newer_format_is_ignored(report):
-    values = {"relu/1024/bf16/cycles": ("cycles", 1000)}
-    run = {"relu/1024/bf16/cycles": ("cycles", 1500)}
-    rows = _rows(run, "a")
-    own = dict(_record(values), id="7")
-    text = report({"npu2": {"meta.json": META, "perf.json": rows}}, {"npu2": own})
-    assert "| npu2 | a | none cached | 1 | 0 | \u2014 | \u2014 |" in text
-    newer = dict(_record(values), schema=2)
-    text = report(
-        {"npu2": {"meta.json": META, "perf.json": rows}}, {"npu2": newer}, run_id="8"
-    )
+    text = out.read_text()
+    assert "<!-- kernel-checks-report -->" in text
+    assert "all passed, no regressions" in text
     assert "none cached" in text
-    older = _record(values)
-    text = report(
-        {"npu2": {"meta.json": META, "perf.json": rows}}, {"npu2": older}, run_id="8"
-    )
-    assert "1 regressed" in text

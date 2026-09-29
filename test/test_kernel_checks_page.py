@@ -101,12 +101,12 @@ def test_thresholds_match_the_report_and_color_only_past_them(page):
     page("""
 assert.equal(changeClass(0.019, 'cycles'), '');
 assert.equal(changeClass(0.02, 'cycles'), 'worse');
-assert.equal(changeClass(-0.02, 'core_elf_bytes'), 'better');
+assert.equal(changeClass(-0.02, 'kernel_object_bytes'), 'better');
 assert.equal(changeClass(0.09, 'npu_us'), '');
 assert.equal(changeClass(0.1, 'npu_us'), 'worse');
 assert.equal(changeClass(0.05, 'compile_s'), '');
 assert.equal(changeClass(0.1, 'compile_s'), 'worse');
-assert.deepEqual(GATED, ['cycles', 'core_elf_bytes']);
+assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes']);
 """)
 
 
@@ -239,7 +239,7 @@ def test_provenance_changes_are_marked_and_shown_in_the_footer(page):
     page("""
 const a = { commit: '111', peano: '22.0.0+aaaa', kernels: 'k1', host: 'bench-1' };
 const b = { commit: '222', peano: '22.0.0+bbbb', kernels: 'k2', host: 'bench-1' };
-const c = { commit: '333', peano: '22.0.0+bbbb', kernels: 'k3', host: 'bench-2', xrt: '2.20.0' };
+const c = { commit: '333', peano: '22.0.0+bbbb', kernels: 'k3', host: 'bench-2', runtime: 'XRTHostRuntime', xrt: '2.20.0' };
 db = fromRecords({ npu1: [
   rec('1', 100000, 'performance', sm(5), a), rec('2', 200000, 'performance', sm(null)),
   rec('3', 300000, 'performance', sm(6), b), rec('4', 400000, 'performance', sm(7), c),
@@ -247,13 +247,13 @@ db = fromRecords({ npu1: [
 // The run without provenance is skipped; kernel digests are not marked.
 assert.deepEqual(markersFor(db.order), [
   { index: 2, label: 'peano 22.0.0+bbbb' },
-  { index: 3, label: 'host bench-2, xrt 2.20.0' },
+  { index: 3, label: 'host bench-2, runtime XRTHostRuntime, xrt 2.20.0' },
 ]);
 draw(el0, db.series[0], ['performance']);
 assert.deepEqual(chart.options.plugins.markers.at.map(m => m.index), [2, 3]);
 const footer = chart.options.plugins.tooltip.callbacks.footer;
 assert.deepEqual(footer([{ dataIndex: 3 }]),
-  ['commit 333', 'peano 22.0.0+bbbb', 'kernels k3', 'host bench-2', 'xrt 2.20.0', 'pmode performance']);
+  ['commit 333', 'peano 22.0.0+bbbb', 'kernels k3', 'host bench-2', 'runtime XRTHostRuntime', 'xrt 2.20.0', 'pmode performance']);
 assert.equal(footer([{ dataIndex: 1 }]), '');
 assert.equal(footer([]), '');
 """)
@@ -265,7 +265,7 @@ db = fromRecords({ npu1: [
   rec('1', 1, 'turbo', { 'softmax/1024/bfloat16/cycles': ['cycles', 100], 'softmax/64/bfloat16/cycles': ['cycles', 50] }),
   rec('3', 3, 'turbo', {
     'softmax/1024/bfloat16/cycles': ['cycles', 110, 'median 112 max 130 n=16'],
-    'softmax/1024/bfloat16/core_elf_bytes': ['bytes', 4096],
+    'softmax/1024/bfloat16/kernel_object_bytes': ['bytes', 4096],
   }),
   rec('2', 2, 'performance', { 'softmax/1024/bfloat16/cycles': ['cycles', 1] }),
 ]});
@@ -274,7 +274,7 @@ assert.equal(last.mode, 'turbo');
 const big = cases.get('softmax/1024/bfloat16');
 assert.ok(big.current);
 assert.deepEqual(big.metrics.get('cycles'), { value: 110, unit: 'cycles', change: 0.1, cls: 'worse', range: 'median 112 max 130 n=16' });
-assert.equal(big.metrics.get('core_elf_bytes').change, null);
+assert.equal(big.metrics.get('kernel_object_bytes').change, null);
 assert.ok(!cases.get('softmax/64/bfloat16').current);
 assert.equal(latestCases(db, 'npu2').cases.size, 0);
 """)
@@ -313,13 +313,13 @@ assert.equal(caseCell(undefined, undefined).text, '—');
 MOVED = """
 const r1 = rec('1', 1000, 'performance', {
   'relu/1024/bf16/cycles': ['cycles', 1000], 'relu/1024/bf16/cycles_per_kop': ['cycles/1k-ops', 10],
-  'relu/1024/bf16/npu_us': ['us', 100], 'relu/1024/bf16/core_elf_bytes': ['bytes', 4096],
+  'relu/1024/bf16/npu_us': ['us', 100], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
   'gelu/1024/bf16/cycles': ['cycles', 2000], 'gone/1/i8/cycles': ['cycles', 10],
   'flat/1/i8/cycles': ['cycles', 500],
 });
 const r2 = rec('2', 2000, 'performance', {
   'relu/1024/bf16/cycles': ['cycles', 1030], 'relu/1024/bf16/cycles_per_kop': ['cycles/1k-ops', 10.3],
-  'relu/1024/bf16/npu_us': ['us', 150], 'relu/1024/bf16/core_elf_bytes': ['bytes', 4096],
+  'relu/1024/bf16/npu_us': ['us', 150], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
   'gelu/1024/bf16/cycles': ['cycles', 1500], 'flat/1/i8/cycles': ['cycles', 505],
   'fresh/1/i8/cycles': ['cycles', 5],
 });
@@ -330,7 +330,7 @@ db = fromRecords({ npu1: [r1, r2] });
 def test_moved_series_use_the_thresholds_and_lead_with_gated_metrics(page):
     page(MOVED + """
 const moved = movedSeries(db, 'npu1');
-// cycles_per_kop is derived, an unchanged ELF is not a move, gone/ has no
+// cycles_per_kop is derived, an unchanged object is not a move, gone/ has no
 // latest point, fresh/ no previous one, flat/ moved 1%.
 assert.deepEqual(moved.regressed.map(x => [x.series.kase, x.series.metric, x.before, x.after]), [
   ['relu/1024/bf16', 'cycles', 1000, 1030],
@@ -424,7 +424,7 @@ const counts = card1.children.find(c => c.className === 'counts');
 assert.equal(counts.children[0].text, 'Cases: 3 passed · 1 failing · 1 timed · 1 timing failed · 1 correctness only');
 assert.equal(counts.children[1].text, 'Kernels: 2 of 2 offered checked on hardware · kernels');
 assert.equal(counts.children[2].text,
-  'Since the previous nightly: 1 regression in cycles, core_elf_bytes, 1 other series worse, 1 improved · charts, worst first');
+  'Since the previous nightly: 1 regression in cycles, kernel_object_bytes, 1 other series worse, 1 improved · charts, worst first');
 assert.equal(counts.children[2].children.find(c => c.tag === 'a').href, '#view=charts&npu=npu1&metric=all&kernel=&sort=worse');
 // No warnings on a clean run.
 assert.ok(!card1.children.some(c => c.className === 'warnings'));
@@ -440,10 +440,71 @@ assert.deepEqual(rows.map(r => r.children.map(c => c.text)), [
 assert.equal(rows[0].children[1].children[0].href, '#view=kernel&kernel=relu');
 assert.equal(rows[0].children[1].children[3].href, '#view=charts&npu=npu1&metric=cycles&kernel=relu%2F1024%2Fbf16');
 assert.equal(rows[0].children[5].className, 'worse');
-assert.equal($('regressions-about').textContent, "2 series moved past their threshold in the latest nightly's power mode; cycles and core_elf_bytes first.");
+assert.equal($('regressions-about').textContent, "2 series moved past their threshold in the latest nightly's power mode; cycles and kernel_object_bytes first.");
 assert.equal($('improvements-summary').textContent, 'Improvements (1)');
 assert.equal($('improvements-box').hidden, false);
 """)
+
+
+@pytest.mark.parametrize(
+    "latest",
+    [
+        "{ ...r2, id: '3', published: false, sane: false }",
+        "{ ...r2, published: false, sane: false }",
+        "{ ...r2, id: '3', published: true, sane: true }",
+    ],
+)
+def test_dashboard_does_not_attribute_old_changes_to_the_latest_run(page, latest):
+    page(MOVED + f"""
+renderDashboard(['npu1'], db, new Map(), new Map([['npu1', {{ runs: [{latest}] }}]]), 3000);
+assert.ok(!$('cards').text.includes('Since the previous nightly'));
+assert.equal($('regressions').children.length, 0);
+assert.equal($('improvements').children.length, 0);
+assert.ok(!$('regressions-about').textContent.includes('No series moved'));
+""")
+
+
+def test_dashboard_can_compare_without_a_run_index(page):
+    page(MOVED + """
+renderDashboard(['npu1'], db, new Map(), new Map(), 3000);
+assert.equal($('regressions').children.length, 2);
+""")
+
+
+@pytest.mark.parametrize("view", ["kernel", "dashboard", "kernels"])
+def test_pending_chart_render_does_not_overwrite_another_view(page, view):
+    page(
+        """
+global.history = { replaceState: (_state, _title, hash) => { location.hash = hash; } };
+location.hash = '#view=charts';
+$('npus').querySelectorAll = () => [{ value: 'npu1' }];
+$('modes').querySelectorAll = () => [{ value: 'performance' }];
+$('metric').value = 'cycles';
+$('kernel-filter').value = '';
+$('sort').value = 'name';
+let finish;
+global.fetch = () => new Promise(resolve => { finish = resolve; });
+const original = db;
+let destroyed = false;
+charts.push({ destroy: () => { destroyed = true; } });
+const pending = render();
+"""
+        + f"""
+location.hash = '#view={view}';
+"""
+        + """
+finish({ ok: false });
+(async () => {
+  await pending;
+  assert.equal(db, original);
+  assert.equal(destroyed, false);
+  // A debounced filter callback must not navigate back to charts either.
+  const hash = location.hash;
+  await render();
+  assert.equal(location.hash, hash);
+})().catch(e => { console.error(e); process.exit(1); });
+"""
+    )
 
 
 def test_kernels_view_groups_cases_under_their_factory(page):
@@ -451,7 +512,7 @@ def test_kernels_view_groups_cases_under_their_factory(page):
 db = fromRecords({ npu1: [
   rec('1', 1, 'turbo', { 'softmax/1024/bfloat16/cycles': ['cycles', 1000], 'softmax/64/bfloat16/cycles': ['cycles', 50] }),
   rec('2', 2, 'turbo', {
-    'softmax/1024/bfloat16/cycles': ['cycles', 1100], 'softmax/1024/bfloat16/core_elf_bytes': ['bytes', 4096],
+    'softmax/1024/bfloat16/cycles': ['cycles', 1100], 'softmax/1024/bfloat16/kernel_object_bytes': ['bytes', 4096],
     'softmax_mask/8/bfloat16/cycles': ['cycles', 7],
   }),
 ]});
@@ -548,7 +609,7 @@ kernelCharts('relu', db);
 const boxes = $('kernel-charts').children;
 assert.deepEqual(boxes.map(b => b.children[0].text), [
   'npu1 · relu/1024/bf16 · cycles +3.0%', 'npu1 · relu/1024/bf16 · cycles_per_kop +3.0%',
-  'npu1 · relu/1024/bf16 · npu_us +50.0%', 'npu1 · relu/1024/bf16 · core_elf_bytes 0.0%',
+  'npu1 · relu/1024/bf16 · npu_us +50.0%', 'npu1 · relu/1024/bf16 · kernel_object_bytes 0.0%',
 ]);
 assert.equal(boxes[0].children[0].children[1].href, '#view=kernel&kernel=relu');
 assert.equal(boxes[0].children[0].children[3].className, 'delta worse');

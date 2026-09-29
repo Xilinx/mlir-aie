@@ -450,59 +450,36 @@ default. Both remain to do under that issue.
 
 ### What the performance checks record
 
-`test/python/npu/test_kernels_perf.py` measures a kernel only after it has
-produced a correct result under its declared tolerance; a wrong result fails
-the test, and a failed session writes no `--perf-out` file at all. Per case it records core
-`cycles` and `cycles_per_kop`, `npu_us` from `aie.utils.benchmark`, and
-the `xclbin`, `insts` and core-ELF sizes of the build it ran.
+`test/python/npu/test_kernels_perf.py` checks correctness before measuring.
+Failing cases publish no rows; a failed preflight or `passthrough` sanity
+check prevents publication for the whole run. Each passing case records:
 
-`cycles` is recorded only for a kernel whose contract declares
-`Trace.whole_call()`. The trace holds one interval per call of the kernel
-and one per call of each traced initializer (`zero` before `mm`), in the
-order the harness calls them, and `kd.cycles_per_call` splits it by that
-position. The row is the kernel's minimum. Every call does the same work,
-so anything above the minimum is the core waiting. The median, the maximum,
-each initializer's minimum and whether the trace buffer filled go in the
-row's `range`, and as fields under `cases` in `--perf-meta`. The trace
-buffer is sized to the number of intervals the contract declares; a long
-kernel costs more bytes per interval, so a buffer that filled is regrown
-from what it held (`kd.grow_trace_size`) and the traced run repeated, a
-few times at most, before a truncated min is recorded and marked. Preflight reads the device and its power mode through the
-host runtime (`HostRuntime.power_mode()`); the nightly workflow tries to
-switch to `performance` first, and a run that would publish refuses to
-measure in any other mode (`--pmode performance`), so a runner that cannot
-set the mode fails the timing loudly instead of charting numbers taken at
-another clock. A dispatched or pull-request run records whatever mode it
-finds, and the publisher charts only `performance` runs. A bit-exact `passthrough` smoke test inside a cycle band guards
-the machine. Nightly data goes to `gh-pages:kernel-checks/<npu>/`, written by
-`utils/kernel_checks/publish.py`: one record per run (`runs/<id>.json`: the
-Actions run, commit, power mode, provenance, sanity result, failures and
-every row), an index of them (`runs.json`), the newest one that published
-rows (`latest.json`, which is also the pull-request baseline), and one
-history file per metric (`history/<metric>.json`) for the charts. Runs older
-than 90 days thin to one a week. Beside them sits the catalogue
-(`catalogue.json`, written by `utils/kernel_checks/catalogue.py` from
-`correctness.xml`, `perf.json` and `meta.json`). The page at
-`https://xilinx.github.io/mlir-aie/kernel-checks/` opens on a dashboard of
-the latest run per NPU, with warnings when its numbers are less comparable
-(another power mode, a failed sanity check, truncated traces, a host or
-driver change) and the series that moved past their threshold since the
-previous nightly. Its kernels view lists every factory with the builds each
-NPU offers and how its cases fared that night (passed, failed the sweep,
-failed in the timing run, or checked for correctness only); a kernel's own
-page has every case's latest numbers, links to its sources, factory and
-case table, and its charts; the charts view has one chart per case and
-metric, by date, with a dashed line where Peano, the host or the driver
-changed;
-nothing gates a pull request. A Peano-bump PR is compared against the
-cached nightly baseline by `utils/kernel_checks/pr_report.py`, which keeps one PR
-comment listing failing cases and `cycles` or core ELF size regressions of 2 % or more.
-The page colors a change by the same per-metric thresholds
-(`utils/kernel_checks/thresholds.json`: 2 % for cycles and the byte sizes;
-for `npu_us`, which moves with the host, 10 % and more than three times the
-larger median absolute deviation of the two runs). Every published file
-carries a `schema` number, and the page and the report set aside a file
-newer than they read rather than misreading it.
+- `cycles`: minimum kernel-call cycles for `Trace.whole_call()` contracts,
+  excluding initializers; `cycles_per_kop` normalizes by work.
+- `npu_us`: median host-runtime timing, with median absolute deviation (MAD).
+- `kernel_object_bytes`: the tested kernel's compiled `.o` size, excluding
+  harness, initializer, instruction and runtime-container files. Inline-only
+  kernels have no object-size row. This starts a new series rather than
+  reusing the old whole-design `core_elf_bytes` measurements.
+
+Cycle spread, initializer timings and trace truncation are recorded in
+`range` and `--perf-meta`. Full trace buffers are enlarged and retried up to
+a limit; remaining truncation is flagged. Nightlies require `performance`
+power mode. PR and filtered dispatch runs may measure another mode, but
+comparisons require a known, matching mode.
+
+The [Nightly Kernel Checks dashboard](https://xilinx.github.io/mlir-aie/kernel-checks/)
+shows run health, per-kernel correctness and timing, and metric histories,
+with warnings for truncated traces and toolchain, runtime or host changes.
+The dashboard and Peano-PR report share `utils/kernel_checks/thresholds.json`:
+2% for cycles and kernel object size; for `npu_us`, 10% and more than three
+times the larger MAD. Reports are informational, not PR gates.
+
+`utils/kernel_checks/publish.py` writes `gh-pages:kernel-checks/<npu>/`:
+`runs/<id>.json`, `runs.json`, `latest.json` (the last published PR baseline),
+and `history/<metric>.json`; `catalogue.json` lists available kernels and
+case outcomes. Runs older than 90 days thin to weekly. Readers reject newer
+schema versions instead of interpreting them.
 
 ### Static checks
 

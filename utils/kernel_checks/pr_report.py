@@ -4,7 +4,7 @@
 """Report a kernel checks run's failures and regressions against the last nightly.
 
 For each NPU that produced results: the cases that failed, and the cases
-whose cycles or core ELF size moved against the nightly baseline on main.
+whose cycles or kernel object size moved against the nightly baseline on main.
 nightlyKernelChecks.yml writes it to the job summary and, on a Peano PR,
 keeps it as one comment. Standard library only, so it runs on any runner.
 
@@ -216,7 +216,8 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
     result.cases = len(measured | swept)
 
     record = baseline(latest, run_id)
-    if not record or not rows:
+    pmode = meta.get("preflight", {}).get("pmode")
+    if not record or not rows or not pmode or record.get("pmode") != pmode:
         return result
     result.baseline_commit = record.get("commit") or None
     result.baseline_peano = record.get("provenance", {}).get("peano", "")

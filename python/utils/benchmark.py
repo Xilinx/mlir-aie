@@ -207,82 +207,6 @@ def kernel_tree_digest() -> str | None:
     return h.hexdigest()[:12] if found else None
 
 
-def parse_xrt_examine(text: str) -> dict[str, str]:
-    """Return the ``Version`` and ``amdxdna`` fields of ``xrt-smi examine``'s XRT section.
-
-    ``{"xrt": "2.20.0", "xdna": "2.20.0_20250915"}``; a field the report
-    lacks is left out. The section is the block of indented ``key : value``
-    lines under the bare ``XRT`` heading; the driver line carries the
-    kernel release after a comma, which is dropped.
-    """
-    found: dict[str, str] = {}
-    in_xrt = False
-    for line in text.splitlines():
-        if not line.strip():
-            in_xrt = False
-            continue
-        if not line[0].isspace():
-            in_xrt = line.strip() == "XRT"
-            continue
-        if not in_xrt:
-            continue
-        key, sep, value = line.partition(":")
-        key, value = key.strip(), value.strip()
-        if not sep or not value:
-            continue
-        if key == "Version":
-            found["xrt"] = value.split()[0]
-        elif key == "amdxdna":
-            found["xdna"] = value.split(",")[0].strip()
-    return found
-
-
-def xrt_examine() -> str | None:
-    """Return what ``xrt-smi examine`` prints, or None without it or when it fails."""
-    from aie.utils.probe import xrt_smi_path
-
-    xrt_smi = xrt_smi_path()
-    if xrt_smi is None:
-        return None
-    try:
-        return subprocess.run(
-            [xrt_smi, "examine"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
-
-
-def xrt_versions() -> dict[str, str]:
-    """Return the XRT and amdxdna driver versions ``xrt-smi examine`` reports.
-
-    ``{}`` without ``xrt-smi``, or when it fails; see
-    :func:`parse_xrt_examine` for the fields. They qualify a host-side
-    measurement (``npu_us``): a driver update moves it and a kernel change
-    does not. Best effort, as the power mode is.
-    """
-    out = xrt_examine()
-    return parse_xrt_examine(out) if out else {}
-
-
-def xrt_unparsed() -> str | None:
-    """Return ``xrt-smi examine``'s output when it names no version this reads.
-
-    The parser follows the report's layout as documented, not a captured
-    one; a run whose report reads otherwise keeps the text (at most 4 KB)
-    in its meta, so the mismatch shows in the first run's artifacts rather
-    than as a provenance that silently lacks the versions. None when the
-    versions were read, or there is no report at all.
-    """
-    out = xrt_examine()
-    if not out or parse_xrt_examine(out):
-        return None
-    return out[:4096]
-
-
 def provenance(**extra: str | None) -> str:
     """Return a one-line description of what produced a measurement.
 
@@ -290,7 +214,7 @@ def provenance(**extra: str | None) -> str:
     compiles the kernels (``peano_version()``), the installed ``mlir_aie``
     version, the kernel tree
     (``MLIR_AIE_KERNEL_SOURCES`` when set, and ``kernel_tree_digest()``),
-    the XRT and driver versions (``xrt_versions()``), the runner the job ran
+    the selected runtime's provenance, the runner the job ran
     on (``RUNNER_NAME``, under GitHub Actions: nightly runs move between
     hosts of a generation, and a host swap moves ``npu_us`` as a regression
     would), and any ``extra`` fields (``device="NPU Strix"``,
@@ -304,6 +228,7 @@ def provenance(**extra: str | None) -> str:
     row would otherwise carry a word that reads like a lookup failure. The
     commit already identifies that build.
     """
+    import aie.utils as aie_utils
 
     def pkg(name: str) -> str | None:
         try:
@@ -319,13 +244,20 @@ def provenance(**extra: str | None) -> str:
             ).stdout.strip()
         except (OSError, subprocess.CalledProcessError):
             commit = "unknown"
+    runtime_fields = {}
+    try:
+        runtime = aie_utils.DefaultNPURuntime
+        if runtime is not None:
+            runtime_fields = runtime.provenance()
+    except Exception:  # noqa: BLE001 - optional metadata must not fail a measurement
+        pass
     fields = {
         "commit": commit[:10],
         "peano": peano_version(),
         "mlir_aie": pkg("mlir_aie"),
         "kernel_sources": os.environ.get("MLIR_AIE_KERNEL_SOURCES"),
         "kernels": kernel_tree_digest(),
-        **xrt_versions(),
+        **runtime_fields,
         "host": os.environ.get("RUNNER_NAME"),
         **extra,
     }

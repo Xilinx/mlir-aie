@@ -120,6 +120,19 @@ class XRTHostRuntime(HostRuntime):
         if not self.npu_str:
             raise RuntimeError(f"Unknown device type: {self._device_type_str}")
 
+    def provenance(self) -> dict[str, str]:
+        """Add XRT's versions from the shared, cached stack probe."""
+        from ...probe import _examine_field
+
+        fields = super().provenance()
+        version = _examine_field("Version", section="XRT")
+        if version:
+            fields["xrt"] = version.split()[0]
+        driver = _examine_field("amdxdna", section="XRT")
+        if driver and "xdna" not in fields:
+            fields["xdna"] = driver.split(",")[0].strip()
+        return fields
+
     def power_mode(self) -> str | None:
         """Return the power mode ``xrt-smi`` reports for this device, or ``None``.
 

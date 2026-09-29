@@ -20,7 +20,9 @@ chart histories a change ends.
 """
 
 import sys
+import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 from aie.iron.algorithms import kernel_design as kd
@@ -104,6 +106,33 @@ def test_cycles_row_is_the_kernel_min_with_its_spread_beside_it():
     )
 
 
+def test_size_records_only_the_tested_kernel_object():
+    from test_kernels_perf import _kernel_object_size, _record
+
+    with tempfile.TemporaryDirectory() as tmp:
+        directory = Path(tmp)
+        (directory / "tested.o").write_bytes(b"\0" * 128)
+        for name in ("initializer.o", "core.elf", "final.xclbin", "insts.bin"):
+            (directory / name).write_bytes(b"\0" * 256)
+        design = SimpleNamespace(
+            compilable=SimpleNamespace(
+                get_cache_entry=lambda: SimpleNamespace(directory=directory)
+            )
+        )
+        size = _kernel_object_size(design, SimpleNamespace(object_file_name="tested.o"))
+        rows = []
+        _record(
+            lambda *row: rows.append(row),
+            SimpleNamespace(name="tested"),
+            {"kernel_object_bytes": size},
+        )
+        assert rows == [("tested", "kernel_object_bytes", "bytes", 128)]
+        assert (
+            _kernel_object_size(design, SimpleNamespace(object_file_name="inline.ll"))
+            is None
+        )
+
+
 def test_raw_words_compare_bits_not_values():
     from test_kernels_perf import _differing_words
 
@@ -128,6 +157,7 @@ if __name__ == "__main__":
     test_smoke_case_is_measured_once()
     test_cycle_efficiency_is_independent_of_call_count()
     test_cycles_row_is_the_kernel_min_with_its_spread_beside_it()
+    test_size_records_only_the_tested_kernel_object()
     test_raw_words_compare_bits_not_values()
     test_matrix_series_keep_tile_geometry_and_call_count()
     print("PASS!")

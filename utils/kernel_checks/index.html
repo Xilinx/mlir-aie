@@ -240,15 +240,13 @@
       cycles: 'core cycles per kernel call, the fastest traced call; stable to well under 1% run to run',
       cycles_per_kop: 'cycles per 1,000 of the kernel\'s operations, from cycles',
       npu_us: 'host time to submit a run and wait for it, median of 50, shaded ± its median absolute deviation; moves with the machine',
-      xclbin_bytes: 'size of the xclbin',
-      insts_bytes: 'size of the runtime sequence\'s instructions',
-      core_elf_bytes: 'size of the core ELF; deterministic',
+      kernel_object_bytes: 'size of the compiled kernel object (.o), excluding the harness',
     };
-    const SHOWN = ['cycles', 'core_elf_bytes', 'npu_us'];
-    const ALL_METRICS = ['cycles', 'cycles_per_kop', 'npu_us', 'core_elf_bytes', 'insts_bytes', 'xclbin_bytes'];
+    const SHOWN = ['cycles', 'kernel_object_bytes', 'npu_us'];
+    const ALL_METRICS = ['cycles', 'cycles_per_kop', 'npu_us', 'kernel_object_bytes'];
     // Per-metric change thresholds, in percent of the previous value; kept
     // equal to thresholds.json (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "core_elf_bytes": {"pct": 2, "gated": true}, "insts_bytes": {"pct": 2}, "xclbin_bytes": {"pct": 2}, "npu_us": {"pct": 10, "mad": 3}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => pct(metric) / 100;
@@ -256,7 +254,7 @@
       (THRESHOLDS[metric] && THRESHOLDS[metric].mad ? ` and ${THRESHOLDS[metric].mad}\u00d7 its MAD` : '');
     const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated);
     // Provenance fields whose change between runs is marked on the charts.
-    const MARKED = ['peano', 'host', 'xrt', 'xdna'];
+    const MARKED = ['peano', 'host', 'runtime', 'xrt', 'xdna'];
 
     // ------------------------------------------------------------------
     // Data
@@ -582,6 +580,7 @@
       row('Power mode', run.pmode || '?');
       const p = run.provenance || {};
       if (p.peano) row('Peano', p.peano);
+      if (p.runtime) row('Runtime', p.runtime);
       if (p.xrt || p.xdna) row('XRT / driver', `${p.xrt || '?'} / ${p.xdna || '?'}`);
       if (p.host) row('Host', p.host);
       if (p.kernels) row('Kernel sources', el('code', {}, p.kernels));
@@ -635,7 +634,9 @@
       for (const npu of npus) {
         const catalogue = catalogues.get(npu) || null;
         const run = latestRun(npu, runsIndexes.get(npu) || null, db, catalogue);
-        const moved = db ? movedSeries(db, npu) : null;
+        const published = db ? movedSeries(db, npu) : null;
+        const moved = published && (!run.recorded ||
+          (run.published && published.last && String(published.last.run) === String(run.id))) ? published : null;
         cards.append(runCard(npu, run, catalogue, moved, now));
         if (!moved) continue;
         for (const x of moved.regressed) regressions.append(movedRow(npu, x));
@@ -645,7 +646,7 @@
       }
       $('regressions-about').textContent = nRegressed
         ? `${plural(nRegressed, 'series')} moved past ${nRegressed === 1 ? 'its' : 'their'} threshold in the latest nightly's power mode; ${GATED.join(' and ')} first.`
-        : 'No series moved past its threshold since the previous nightly.';
+        : 'No comparable changes to report for the latest run.';
       $('improvements-summary').textContent = `Improvements (${nImproved})`;
       $('improvements-box').hidden = nImproved === 0;
     }
@@ -1107,6 +1108,7 @@
     let renderToken = 0;
 
     async function render() {
+      if (currentView() !== 'charts') return;
       writeHash();
       const token = ++renderToken;
       const npus = checked($('npus')), modes = checked($('modes'));
@@ -1115,7 +1117,7 @@
       $('status').textContent = 'Loading\u2026';
       const data = await loadHistories(npus, metric === 'all' ? metricList : [metric]);
       // A later change of the controls has already drawn its own.
-      if (token !== renderToken) return;
+      if (token !== renderToken || currentView() !== 'charts') return;
       db = data;
       const shown = db.series.filter(s =>
         npus.includes(s.npu) && (metric === 'all' || s.metric === metric) &&
@@ -1222,7 +1224,7 @@
         if (currentView() === 'kernel') showKernel(readHash().kernel || '');
       });
       window.addEventListener('hashchange', showView);
-      const view = applyView();
+      applyView();
       for (const [m, about] of Object.entries(METRICS)) {
         $('key-metrics').append(el('dt', {}, m), el('dd', {}, `${about}; ${thresholdText(m)}`));
       }
@@ -1247,7 +1249,7 @@
       metricList = found.length
         ? ALL_METRICS.filter(m => found.includes(m)).concat(found.filter(m => !ALL_METRICS.includes(m)).sort())
         : ALL_METRICS;
-      if (view === 'kernel') showKernel(readHash().kernel || '');
+      if (currentView() === 'kernel') showKernel(readHash().kernel || '');
       const runs = [...indexes.values()].map(readable).flatMap(i => (i && i.runs) || []);
       if (!runs.some(r => r.published)) {
         $('status').textContent = 'No results have been published yet.';
@@ -1278,7 +1280,7 @@
       $('controls').addEventListener('change', render);
       let typing;
       $('kernel-filter').addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(render, 200); });
-      if (view === 'charts') { applyHash(); render(); }
+      if (currentView() === 'charts') { applyHash(); render(); }
     }
 
     if (typeof window !== 'undefined' && window.document && typeof window.addEventListener === 'function' && !window.KERNEL_CHECKS_TEST) main();

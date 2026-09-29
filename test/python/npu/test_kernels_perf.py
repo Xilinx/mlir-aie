@@ -38,7 +38,7 @@ import numpy as np
 import pytest
 from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
-from aie.utils.benchmark import preflight, provenance, run_iters, xrt_unparsed
+from aie.utils.benchmark import preflight, provenance, run_iters
 from cases import Case, inputs_for
 from kernel_cases import CASES
 
@@ -88,7 +88,6 @@ def _measure(case: Case, config, workdir: Path) -> dict:
         factory,
         **case.harness_opts(),
         params=fn.param_values(inputs),
-        aiecc_flags=["--get-core-elfs"],
         **case.kwargs,
     )
 
@@ -109,7 +108,10 @@ def _measure(case: Case, config, workdir: Path) -> dict:
         scalars=case.scalars,
     )
     assert verdict, f"{case.name}: {verdict.detail}"
-    measured: dict = {"outputs": got, "sizes": _sizes(design)}
+    measured: dict = {
+        "outputs": got,
+        "kernel_object_bytes": _kernel_object_size(design, fn),
+    }
     measured["wall"] = run_iters(
         design,
         *ins,
@@ -152,11 +154,12 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     return measured
 
 
-def _sizes(design) -> tuple[int, int, int]:
-    """The xclbin, instruction and core ELF bytes of the build ``design`` ran."""
+def _kernel_object_size(design, fn) -> int | None:
+    """Return only the tested kernel's object size, excluding harness objects."""
+    if Path(fn.object_file_name).suffix != ".o":
+        return None
     entry = design.compilable.get_cache_entry()
-    elfs = sum(p.stat().st_size for p in entry.directory.glob("elfs_*/*.elf"))
-    return entry.xclbin.stat().st_size, entry.insts.stat().st_size, elfs
+    return (entry.directory / fn.object_file_name).stat().st_size
 
 
 def _cycles_span(traced: kd.CallCycles) -> str:
@@ -228,11 +231,8 @@ def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
             round(s.median_us, 2),
             f"± {s.mad_us:.1f}; min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}",
         )
-    if sizes := m.get("sizes"):
-        xclbin, insts, elf = sizes
-        record(case.name, "xclbin_bytes", "bytes", xclbin)
-        record(case.name, "insts_bytes", "bytes", insts)
-        record(case.name, "core_elf_bytes", "bytes", elf)
+    if (size := m.get("kernel_object_bytes")) is not None:
+        record(case.name, "kernel_object_bytes", "bytes", size)
 
 
 @pytest.fixture(scope="module")
@@ -260,8 +260,6 @@ def _preflight(request):
         )
     config._perf_meta["preflight"] = dict(vars(pre))
     config._perf_meta["provenance"] = provenance(device=pre.device, pmode=pre.pmode)
-    if unparsed := xrt_unparsed():
-        config._perf_meta["xrt_unparsed"] = unparsed
     return pre
 
 

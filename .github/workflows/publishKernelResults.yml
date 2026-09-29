@@ -114,10 +114,10 @@ jobs:
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: baseline
-          key: kernel-checks-baseline-npu1-${{ github.run_id }}
+          key: kernel-checks-baseline-npu1-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Select npu2 baseline
         run: rm -rf baseline && cp -r baselines/npu2/baseline baseline
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: baseline
-          key: kernel-checks-baseline-npu2-${{ github.run_id }}
+          key: kernel-checks-baseline-npu2-${{ github.run_id }}-${{ github.run_attempt }}

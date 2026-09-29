@@ -85,15 +85,15 @@ def xrt_smi_path() -> str | None:
 def _examine() -> str | None:
     """Return `xrt-smi examine` output, or None if it cannot be run.
 
-    Used where sysfs is unavailable. Deferred and memoised: this spawns a process,
-    unlike the sysfs reads that serve the same purpose on Linux.
+    Used for XRT provenance and where sysfs is unavailable. Deferred and memoised:
+    this spawns a process, unlike sysfs reads.
     """
     binary = xrt_smi_path()
     if binary is None:
         return None
     try:
         result = subprocess.run(
-            [binary, "examine"], timeout=20, capture_output=True, text=True
+            [binary, "examine"], timeout=20, capture_output=True, text=True, check=True
         )
     except (OSError, subprocess.SubprocessError) as e:
         _logger.debug("xrt-smi examine failed: %s", e)
@@ -123,14 +123,32 @@ def _examine_devices() -> list[str]:
     return names
 
 
-def _examine_field(label: str) -> str | None:
+def _examine_field(label: str, section: str | None = None) -> str | None:
     text = _examine()
     if not text:
         return None
+    in_section = section is None
     for line in text.splitlines():
+        if section is not None:
+            if not line.strip() or not line[0].isspace():
+                in_section = line.strip() == section
+                continue
+            if not in_section:
+                continue
         key, sep, value = line.partition(":")
         if sep and key.strip() == label:
-            return value.strip()
+            return value.strip() or None
+    return None
+
+
+def amdxdna_version() -> str | None:
+    """Return the loaded Linux driver version without requiring an XRT install."""
+    if sys.platform == "linux":
+        try:
+            with open("/sys/module/amdxdna/version") as f:
+                return f.read().strip() or None
+        except OSError:
+            pass
     return None
 
 
