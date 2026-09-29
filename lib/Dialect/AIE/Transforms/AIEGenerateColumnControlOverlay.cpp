@@ -489,11 +489,8 @@ struct AIEGenerateColumnControlOverlayPass
       cols.insert(tile.colIndex());
     if (cols.empty())
       return false;
-    int firstCol = *llvm::min_element(cols);
-    int lastCol = *llvm::max_element(cols);
-    for (int col = firstCol; col <= lastCol; ++col)
-      if ((clRouteShimDmaToTileCTRL || cols.contains(col)) &&
-          !hasRoutedShimResponse(device, col))
+    for (int col : cols)
+      if (!hasRoutedShimResponse(device, col))
         return false;
     return true;
   }
