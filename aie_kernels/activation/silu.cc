@@ -118,11 +118,8 @@ static inline void silu_lut_aie2p(bfloat16 *restrict input_vector,
   auto it_in = aie::begin_restrict_vector<32>(input_vector);
   auto it_sig = aie::begin_restrict_vector<32>(output_vector);
 #pragma clang loop pipeline_initiation_interval(16)
-  for (int i = 0; i < num_elems; i += 32) {
-    const aie::vector<bfloat16, 32> x = *it_in++;
-    *it_sig++ = aie::concat(sigmoid_lut_bf16(x.extract<16>(0)),
-                            sigmoid_lut_bf16(x.extract<16>(1)));
-  }
+  for (int i = 0; i < num_elems; i += 32)
+    *it_sig++ = sigmoid_lut_bf16(*it_in++);
 
   auto it_x = aie::begin_restrict_vector<32>(input_vector);
   auto it_s = aie::begin_vector<32>(output_vector);

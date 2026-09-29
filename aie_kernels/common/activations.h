@@ -74,9 +74,43 @@ lut_segments_acc(const float *ab, const float *cd,
   return result.extract<16>(1);
 }
 
+// The same over 32 lanes: both halves' table reads, then one mac with every
+// lane live. A loop of the 16-lane form, called twice a trip, runs wrong from
+// llvm-aie 2026092801 on (lanes 16-31 of each store come out 0).
+template <int shift>
+__attribute__((always_inline)) inline aie::accum<accfloat, 32>
+lut_segments_acc(const float *ab, const float *cd,
+                 aie::vector<bfloat16, 32> x) {
+  constexpr int bias_bytes = 16 << 4;
+  constexpr float range = 1 << (8 - shift);
+  const aie::vector<bfloat16, 32> xc = aie::max(
+      aie::min(x, bfloat16(range - 1.0f / (1 << shift))), bfloat16(-range));
+  aie::accum<accfloat, 32> offset;
+  aie::vector<bfloat16, 32> slope;
+#pragma unroll
+  for (int h = 0; h < 2; h++) {
+    const aie::vector<int32, 16> index = aie::add(
+        aie::vector<int32, 16>(bfloat16_to_int(xc.extract<16>(h), shift)),
+        bias_bytes);
+    v32bfloat16 coeff0, coeff1;
+    load_lut_2x_float(ab, cd, index, coeff0, coeff1);
+    offset.insert(h, aie::accum<accfloat, 16>(
+                         (v16accfloat)::shuffle(coeff0, coeff1, T32_16x2_hi)));
+    slope.insert(
+        h, aie::vector<bfloat16, 32>(::shuffle(coeff0, coeff1, T16_16x4_lo))
+               .extract<16>(1));
+  }
+  return mac_elem_32(slope, xc, offset);
+}
+
 __attribute__((always_inline)) inline aie::accum<accfloat, 16>
 tanh_lut_acc(aie::vector<bfloat16, 16> x) {
   return lut_segments_acc<6>(tanh_lut_ab, tanh_lut_cd, x);
+}
+
+__attribute__((always_inline)) inline aie::vector<bfloat16, 32>
+tanh_lut_bf16(aie::vector<bfloat16, 32> x) {
+  return lut_segments_acc<6>(tanh_lut_ab, tanh_lut_cd, x).to_vector<bfloat16>();
 }
 #endif
 
@@ -102,11 +136,8 @@ __attribute__((always_inline)) inline void tanh_lut_map(const bfloat16 *in,
   auto it_in = aie::begin_vector<32>(in);
   auto it_out = aie::begin_vector<32>(out);
 #pragma clang loop pipeline_initiation_interval(16)
-  for (int i = 0; i < n; i += 32) {
-    const aie::vector<bfloat16, 32> x = *it_in++;
-    *it_out++ = aie::concat(tanh_lut_bf16(x.extract<16>(0)),
-                            tanh_lut_bf16(x.extract<16>(1)));
-  }
+  for (int i = 0; i < n; i += 32)
+    *it_out++ = tanh_lut_bf16(*it_in++);
 }
 #endif
 #endif

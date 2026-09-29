@@ -157,4 +157,10 @@ sigmoid_lut_bf16(aie::vector<bfloat16, 16> x) {
   return lut_segments_acc<5>(sigmoid_lut_ab, sigmoid_lut_cd, x)
       .to_vector<bfloat16>();
 }
+
+__attribute__((always_inline)) inline aie::vector<bfloat16, 32>
+sigmoid_lut_bf16(aie::vector<bfloat16, 32> x) {
+  return lut_segments_acc<5>(sigmoid_lut_ab, sigmoid_lut_cd, x)
+      .to_vector<bfloat16>();
+}
 #endif
