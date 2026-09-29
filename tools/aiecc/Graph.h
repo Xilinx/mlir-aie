@@ -142,6 +142,11 @@ struct Item : ItemBase {
     }
   }
 
+  // The path asFile() materializes the item to, without writing anything.
+  const std::string &path() const {
+    return aliasSource ? aliasSource->path() : filePath;
+  }
+
   const std::string &asFile() const override {
     if (aliasSource)
       return aliasSource->asFile();

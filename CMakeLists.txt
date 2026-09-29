@@ -233,8 +233,18 @@ else()
 endif()
 
 # Find AIEBU library for direct ELF generation (optional, falls back to subprocess)
+# XRT ships it, so look in the XRT the build was pointed at (XRT_ROOT, as the
+# wheel builds pass) before the default install locations.
+set(_aiebu_search_paths)
+foreach(_xrt_root IN ITEMS "${XRT_ROOT}" "$ENV{XRT_ROOT}" "$ENV{XILINX_XRT}")
+  if(_xrt_root)
+    file(TO_CMAKE_PATH "${_xrt_root}" _xrt_root)
+    list(APPEND _aiebu_search_paths "${_xrt_root}/share/cmake/AIEBU")
+  endif()
+endforeach()
 find_package(aiebu QUIET NO_DEFAULT_PATH
-  PATHS /opt/xilinx/xrt/share/cmake/AIEBU
+  PATHS ${_aiebu_search_paths}
+        /opt/xilinx/xrt/share/cmake/AIEBU
         /usr/share/cmake/AIEBU
 )
 if(aiebu_FOUND)
