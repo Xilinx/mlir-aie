@@ -83,7 +83,7 @@ class _Route(Resolvable):
         return self._op
 
     def _shim_end(self) -> int | None:
-        """The end ``fill``/``drain`` reach: a shim source, else a lone shim destination."""
+        """Return the end ``fill``/``drain`` reach: a shim source, else a lone shim dst."""
         if self._src.effective_tile_type in _SHIM_TILE_TYPES:
             return 0
         if len(self._dsts) == 1 and self._dsts[0].effective_tile_type in (

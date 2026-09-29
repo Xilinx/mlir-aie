@@ -195,7 +195,7 @@ class DmaEndpoint:
         return None
 
     def _operand(self) -> int | str:
-        """What ``aie.dma_start`` and a runtime task name: an index, else the symbol."""
+        """Return the channel operand: its index if given, else the endpoint symbol."""
         if self.channel is not None:
             return self.channel
         assert self.symbol is not None

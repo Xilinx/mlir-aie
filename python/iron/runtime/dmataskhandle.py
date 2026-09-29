@@ -47,7 +47,7 @@ class Task:
         return self._handle
 
     def _with_handle(self, handle) -> "Task":
-        """This task carried to another SSA value, e.g. a loop's iter_arg."""
+        """Return this task carried to another SSA value, e.g. a loop's iter_arg."""
         task = copy.copy(self)
         task._handle = handle
         return task
