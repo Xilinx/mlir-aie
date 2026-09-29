@@ -15,7 +15,7 @@
 // two buffers appear. Both place "wants_bank1" in the hole at [16384, 24576),
 // below the buffer pinned at 24576.
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // CHECK-LABEL: module @pinned_declared_first
 // CHECK: %wants_bank1 = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "wants_bank1"} : memref<4096xbf16>

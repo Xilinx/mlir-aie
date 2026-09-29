@@ -14,6 +14,8 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 
+#include <limits>
+
 using namespace mlir;
 
 namespace xilinx::AIEX {
@@ -111,6 +113,10 @@ Value buildArgPlusValue(OpBuilder &builder, Location loc,
       assert(oc && sc && "allConst already verified these are constant");
       bytes += (*oc) * (*sc) * elemWidthBytes;
     }
+    // Reachable only for a constant offset; the runtime path below stays i32.
+    if (bytes > std::numeric_limits<uint32_t>::max() || bytes < 0)
+      return arith::ConstantOp::create(
+          builder, loc, IntegerAttr::get(builder.getIntegerType(64), bytes));
     return arith::ConstantOp::create(builder, loc,
                                      IntegerAttr::get(i32ty, bytes));
   }

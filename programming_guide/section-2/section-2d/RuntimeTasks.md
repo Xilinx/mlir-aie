@@ -110,7 +110,9 @@ To pin the Shim tile a handle's host-side DMA uses, pass `tile=` to `prod()`/`co
 rt = Runtime(sequence, [data_ty, of_in.prod(tile=Tile(0, 0))])
 ```
 
-The `fill()`/`drain()` methods return a `Task` handle. For the common case you can ignore it, but it enables software-pipelined data movement: pass a `Task` as a `range_` `iter_arg` to carry an in-flight transfer across loop iterations, and call `.free()` / `.await_()` on it to manage its lifetime by hand (see [dmataskhandle.py](../../../python/iron/runtime/dmataskhandle.py)).
+The `fill()`/`drain()` methods return a `Task` handle. Prefer the default managed transfers and `TaskGroup` for ordinary data movement; the runtime handles their waits and frees.
+
+For software-pipelined data movement with manual lifetime control, issue the transfer with `managed=False` and do not pass `group=`. Use `range_` and `yield_` from `aie.iron.controlflow` to carry a `Task` through `iter_args` across loop iterations. Call `.await_()` only on transfers issued with `wait=True` (which requests a completion token), then call `.free()` when it is safe to reuse the descriptor. Awaiting alone does not free it. An unwaited transfer may be freed only after a dependent waited transfer proves it has completed. Do not manually free managed tasks: their task group already owns that responsibility. See [dmataskhandle.py](../../../python/iron/runtime/dmataskhandle.py).
 
 #### **Setting Runtime Parameters in the Body**
 
@@ -180,8 +182,8 @@ It may be desirable to reconfigure a `Runtime`'s `sequence` and reuse some of th
 
 To facilitate this reconfiguration step, IRON introduces `TaskGroup`s, created with the `TaskGroup()` constructor as defined in [taskgroup.py](../../../python/iron/runtime/taskgroup.py).
 
-A task is added to a group by passing `group=` to `fill`/`drain`. Tasks in the same group are appended to the runtime sequence and executed in order. The `finish()` method marks the end of a task group: it waits for tasks in the group annotated with `wait=True` to complete, then frees _all_ resources used by the group.
-If no group is specified for the DMA tasks in a body, a single default task group is used.
+A task is added to a group by passing `group=` to `fill`/`drain`. Transfers are submitted in sequence order and may overlap. The `finish()` method marks the end of a task group: it waits for tasks in the group annotated with `wait=True` to complete, then frees _all_ resources used by the group.
+If no group is specified for managed DMA tasks in a body, a single default task group is used and finished at the end of the sequence. By default, `Runtime` rejects mixing explicit groups with this default group; assign all managed transfers to explicit groups when using them.
 
 > **NOTE:**  A call to  `finish()` blocks the runtime sequence until all of the group's tasks annotated with `wait=True`  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those _not_ annotated with `wait=True` ("unawaited tasks") -- will be freed and reused for subsequent tasks. 
 > 
@@ -191,22 +193,106 @@ If no group is specified for the DMA tasks in a body, a single default task grou
 >
 > If you suspect a race condition, the safest (but possibly slower) solution is to annotated _all_ tasks (including inputs) with `wait=True`.
 
-The body in the code snippet below has two task groups. We can observe that the creation of the second task group happens at the end of execution of the first task group.
+The body in the code snippet below has two task groups. Each group is finished before the next iteration submits its transfers.
 ```python
 def sequence(a_in, b, c_out, in_h, out_h):
-    tg = TaskGroup()  # start first task group
-    for _ in [0, 1]:
+    for _ in range(2):
+        tg = TaskGroup()
         in_h.fill(a_in, group=tg)
         out_h.drain(c_out, group=tg, wait=True)
         tg.finish()
-        tg = TaskGroup()  # start second task group
-    tg.finish()
 
 rt = Runtime(
     sequence,
     [data_ty, data_ty, data_ty, of_in.prod(), of_out.cons()],
 )
 ```
+
+## Dispatch-time scalars
+
+`DispatchTime[T]` rebuilds the instruction stream for each call using a compiled
+host builder. `T` must be a supported NumPy integer scalar type, such as
+`np.int32` or `np.int64`; built-in `int`/`bool` and floating-point types are
+rejected.
+
+- **Call-time value:** overrides the signature default without recompiling.
+  If omitted, the default is used; without a default, the value is required.
+- **Explicit specialization:** `iron.jit(generator, count=3)` or
+  `design.specialize(count=3)` fixes the value and includes it in the cache key.
+  Calls cannot override it; use another specialization to change it.
+
+Defaults do not specialize parameters. Tensor capacities and worker tiling
+remain compile-time properties; callers must keep dispatch values within the
+design's valid ranges and buffer capacities.
+
+`DispatchTime` parameters must be keyword-only, even when defaulted or
+explicitly specialized. Prefer tensors first, then dispatch scalars, then
+compile-time configuration; group ordering is a convention, not a restriction:
+
+```python
+import numpy as np
+import aie.iron as iron
+
+@iron.jit
+def copy(a: iron.In, b: iron.Out, *,
+         count: iron.DispatchTime[np.int32] = 3,
+         tile_size: iron.CompileTime[int] = 256):
+    ...  # Build the design.
+
+copy(a, b)                        # Dispatch with the default count=3.
+copy(a, b, count=6)               # Same compiled design; a different dispatch.
+copy.specialize(count=3)(a, b)    # Compile with count fixed to 3.
+```
+
+### Generator-side binding and scope
+
+The generator receives an identity-bearing symbolic parameter for each unbound
+`DispatchTime[T]`, or a typed NumPy constant for a specialized one. Forward each
+symbolic parameter exactly once as a direct `Runtime` argument, **in any order**.
+The callback receives the corresponding SSA values:
+
+```python
+@iron.jit
+def design(*, bar: iron.DispatchTime[np.int32],
+           baz: iron.DispatchTime[np.int32]):
+    def seq(baz_value, bar_value):
+        ...  # baz_value corresponds to baz, bar_value to bar.
+
+    rt = iron.Runtime(seq, fn_args=[baz, bar])
+    ...  # Build and resolve the Program with rt.
+```
+
+Aliases preserve identity. Missing or duplicate bindings, bare scalar-type
+substitutes, and bindings to multiple sequences are rejected.
+
+Use the **callback argument**, not the captured symbolic parameter, for runtime
+arithmetic and MLIR control flow. Generation-time arithmetic, comparisons,
+`if bar`, `range(bar)`, NumPy value/dtype conversion, and `Worker.fn_args` reject
+symbolic parameters with `TypeError`. Shapes and worker configuration require
+`CompileTime[T]` or explicit specialization; storing or forwarding a symbolic
+parameter is valid.
+
+### Compilation scope
+
+The JIT requests device artifacts and a C++ transaction builder from the same
+`aiecc` invocation and lowering pipeline. Python validates the scalar ABI and
+compiles the host library. This requires a
+[host C++17 compiler](../../iron_configuration.md#dispatch-time-scalar-compilation),
+including with wheel installations; subsequent dispatches call the library
+without compiling.
+
+By default, artifacts live in the JIT cache. For explicit outputs, use
+`compile(xclbin_path=..., pdi_path=...)` (`pdi_path` is optional). Retain the
+builder library in the adjacent `<xclbin stem>.prj` directory with the device
+artifacts; `design.compilable.get_dispatch_lib_path()` returns its path.
+
+The Python bridge supports one runtime sequence and rejects remaining
+`load_pdi` operations because its runtimes cannot supply those resources.
+While any parameters remain dynamic, `inst_path`, `elf_path`, and
+`full_elf=True` are unsupported: full ELF embeds static instructions, with no
+per-call replacement API. Fully specialized designs retain normal full-ELF
+support. Native hosts can request C++ builders, including reconfiguration
+builders, directly from [`aiecc`](../../../tools/aiecc/README.md#parameterized-c-transaction-builders).
 
 -----
 [Up](./README.md)

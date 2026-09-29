@@ -1,0 +1,29 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Read a real prebaked ELF, not a hand-written attribute: build a core, then
+// hand its ELF to a second design as `elf_file` and check the allocator keeps
+// that design's buffer off the memory the image already holds.
+
+// REQUIRES: peano
+// RUN: rm -rf %t.d && mkdir -p %t.d && cd %t.d
+
+// A kernel with both kinds of occupancy: a bank-pinned table and ordinary
+// statics.
+// RUN: clang++ --target=aie2p-none-unknown-elf -O2 -c %S/Inputs/prebaked_elf_kernel.cc -o %t.d/prebaked_elf_kernel.o
+// RUN: cd %t.d && aiecc --get-core-elfs --output-dir=%t.out --tmpdir=%t.prj %S/Inputs/prebaked_elf_producer.mlir
+// RUN: cp %t.out/elfs_main_core_0_2/elfs_main_core_0_2.elf %t.d/prebaked.elf
+
+// The ELF's sections are what the reservation has to match.
+// RUN: llvm-readelf -S %t.d/prebaked.elf | FileCheck %s --check-prefix=SECTIONS
+// SECTIONS-DAG: .aie.bank2
+// SECTIONS-DAG: .data
+
+// RUN: cd %t.d && aiecc --get-input-with-addresses --output-dir=%t.out2 --tmpdir=%t.prj2 %S/Inputs/prebaked_elf_consumer.mlir
+// RUN: FileCheck %s --check-prefix=PLACED < %t.out2/input_with_addresses.mlir
+
+// Both extents reserved, and the 16 KB buffer placed clear of them rather than
+// on top of .data, which is where it went before the ELF was read.
+// PLACED-DAG: sym_name = "prebaked_0_2_16384"
+// PLACED-DAG: sym_name = "prebaked_0_2_48128"
+// PLACED-DAG: {address = 49152 : i32, {{.*}}sym_name = "scratch"}

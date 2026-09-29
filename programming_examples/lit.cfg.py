@@ -41,6 +41,7 @@ LitConfigHelper.setup_standard_environment(
 )
 
 LitConfigHelper.add_makefile_examples_feature(config)
+LitConfigHelper.add_cmake_examples_feature(config)
 
 # Basic substitutions
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
@@ -174,7 +175,3 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
     config.parallelism_group = "board"
-
-# Opt-in serialization group for chess builds whose peak RSS is large enough
-# to OOM the CI runner under -j4. Tests opt in via a lit.local.cfg.
-lit_config.parallelism_groups["atb_chess"] = 1

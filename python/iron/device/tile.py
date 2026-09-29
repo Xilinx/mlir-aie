@@ -28,6 +28,9 @@ class Tile:
 
     Pre-built Tile instances (AnyComputeTile, AnyMemTile, AnyShimTile)
     are provided as convenient defaults for tile-type-only requests.
+
+    packet_type/packet_id set the tile's control-packet address
+    (lowers to the `controller_id` attribute on the resolved `aie.tile`).
     """
 
     def __init__(
@@ -36,28 +39,30 @@ class Tile:
         row: int | None = None,
         *,
         tile_type: AIETileType | None = None,
-        allocation_scheme: str | None = None,
+        packet_type: int = 0,
+        packet_id: int | None = None,
     ) -> None:
         self.col: int | None = col
         self.row: int | None = row
         self.tile_type: AIETileType | None = tile_type
-        self.allocation_scheme: str | None = allocation_scheme
+        self.packet_type: int = packet_type
+        self.packet_id: int | None = packet_id
         self._op: LogicalTileOp | None = None
 
     def copy(self) -> Tile:
-        """Return a Tile instance with the same col, row, tile_type, and allocation_scheme."""
+        """Return a copy of this Tile, including its control-packet id."""
         return Tile(
             self.col,
             self.row,
             tile_type=self.tile_type,
-            allocation_scheme=self.allocation_scheme,
+            packet_type=self.packet_type,
+            packet_id=self.packet_id,
         )
 
     def with_type(
         self,
         tile_type: AIETileType,
         *,
-        allocation_scheme: str | None = None,
         mismatch_msg: str | None = None,
     ) -> Tile:
         """Return a fresh Tile with ``tile_type`` stamped, preserving col/row.
@@ -74,12 +79,22 @@ class Tile:
             self.col,
             self.row,
             tile_type=tile_type,
-            allocation_scheme=(
-                allocation_scheme
-                if allocation_scheme is not None
-                else self.allocation_scheme
-            ),
+            packet_type=self.packet_type,
+            packet_id=self.packet_id,
         )
+
+    @property
+    def effective_tile_type(self) -> AIETileType | None:
+        """Return the explicit type or the type inferred by Device.resolve_tile().
+
+        DMA regions and shim routes need this when a Tile supplies only coordinates.
+        Return None if neither an explicit type nor a resolved op is available.
+        """
+        if self.tile_type is not None:
+            return self.tile_type
+        if self._op is None:
+            return None
+        return AIETileType(int(self._op.tile_type))
 
     @property
     def op(self) -> LogicalTileOp:
