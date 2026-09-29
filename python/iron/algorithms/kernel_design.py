@@ -623,6 +623,22 @@ def traced_intervals(fn, *, calls=1) -> int:
     return int(setup) + _calls(calls) * (len(inits) + 1)
 
 
+def grow_trace_size(trace_size: int, *, seen: int, expected: int) -> int:
+    """Return a buffer size for ``expected`` intervals, from one that filled after ``seen``.
+
+    The bytes an interval costs scale with the kernel's length (the core
+    emits packets while it runs), so no size fits every kernel in advance.
+    A buffer of ``trace_size`` that held ``seen`` of ``expected`` intervals
+    says what one costs; this asks for every interval at that cost and half
+    as much again, rounded up to 4 KiB, and never less than double.
+    """
+    if seen < 1:
+        return 2 * trace_size
+    per_interval = trace_size / seen
+    wanted = per_interval * expected * 1.5
+    return max(2 * trace_size, -(-int(wanted) // 4096) * 4096)
+
+
 def split_intervals(durations, *, calls, per_call, setup=0):
     """Label an interval stream: ``setup`` intervals, then ``per_call`` per call.
 
@@ -697,6 +713,7 @@ __all__ = [
     "cycles_per_call",
     "design",
     "elems",
+    "grow_trace_size",
     "host_layout",
     "host_args",
     "output_size",

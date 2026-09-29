@@ -75,6 +75,8 @@
           <span class="pass">cases pass</span> passed it, <span class="none">not checked on hardware</span> has no case,
           and <span class="none">&mdash;</span> is not offered on that NPU.
           Expand a kernel for its cases' latest cycles, core ELF size and NPU time, colored as in the charts;
+          hover a cycle count for the median and slowest call behind it, and
+          <span class="fail">truncated</span> marks one whose trace buffer filled before every call, so its min is over the calls it held.
           <span class="none">passed, not timed</span> cases are checked for correctness only, and
           <span class="stale">gray</span> values are from an earlier nightly than the latest.</li>
       </ul>
@@ -112,7 +114,7 @@
     const REPO = 'https://github.com/Xilinx/mlir-aie';
     // What test_kernels_perf.py records per case.
     const METRICS = {
-      cycles: 'core cycles per kernel call, the fastest traced call; deterministic',
+      cycles: 'core cycles per kernel call, the fastest traced call; stable to well under 1% run to run',
       cycles_per_kop: 'cycles per 1,000 of the kernel\'s operations, from cycles',
       npu_us: 'host time to submit a run and wait for it, median of 50, shaded ± its median absolute deviation; moves with the machine',
       xclbin_bytes: 'size of the xclbin',
@@ -189,7 +191,8 @@
         if (!cases.has(s.kase)) cases.set(s.kase, { current: false, metrics: new Map() });
         const c = cases.get(s.kase);
         c.current ||= p.id === last.id;
-        c.metrics.set(s.metric, { value: p.row.value, unit: s.unit, change: latestChange(s, [last.mode]) });
+        c.metrics.set(s.metric, { value: p.row.value, unit: s.unit, change: latestChange(s, [last.mode]),
+                                  ...(p.row.range ? { range: p.row.range } : {}) });
       }
       return { last, cases };
     }
@@ -201,6 +204,14 @@
     function formatValue(value, unit) {
       if (unit === 'bytes') return `${(value / 1024).toFixed(1)} KiB`;
       return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${unit}`;
+    }
+
+    // A cycles row's range, "median M max X n=N[; ...][; truncated]": the
+    // calls behind the min, and whether the trace held all of them.
+    function cyclesSpread(range) {
+      const m = /^median (\d+) max (\d+) n=(\d+)/.exec(range || '');
+      if (!m) return null;
+      return { median: +m[1], max: +m[2], n: +m[3], truncated: /(^|; )truncated$/.test(range) };
     }
 
     const $ = id => document.getElementById(id);
@@ -317,7 +328,7 @@
         td.title = 'not measured in the latest nightly; these are from an earlier one';
       }
       const parts = SHOWN.filter(m => c.metrics.has(m)).map(m => {
-        const { value, unit, change } = c.metrics.get(m);
+        const { value, unit, change, range } = c.metrics.get(m);
         const span = document.createElement('span');
         span.title = `${m}: ${METRICS[m]}`;
         span.append(formatValue(value, unit));
@@ -326,6 +337,17 @@
           d.className = c.current ? changeClass(change) : '';
           d.textContent = ` (${change > 0 ? '+' : ''}${(100 * change).toFixed(1)}%)`;
           span.append(d);
+        }
+        const spread = m === 'cycles' ? cyclesSpread(range) : null;
+        if (spread) {
+          span.title += `\nmin ${value}, median ${spread.median}, max ${spread.max} over ${spread.n} calls`;
+          if (spread.truncated) {
+            const flag = document.createElement('span');
+            flag.className = 'fail';
+            flag.textContent = ' truncated';
+            flag.title = `the trace buffer filled after ${spread.n} calls; the min is over those`;
+            span.append(flag);
+          }
         }
         return span;
       });

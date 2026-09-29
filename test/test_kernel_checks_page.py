@@ -183,6 +183,36 @@ assert.equal(latestCases(db, 'npu2').cases.size, 0);
 """)
 
 
+def test_cycle_spread_and_truncation_are_read_from_the_range(page):
+    page("""
+assert.deepEqual(cyclesSpread('median 2939 max 2990 n=84; truncated'),
+                 { median: 2939, max: 2990, n: 84, truncated: true });
+assert.deepEqual(cyclesSpread('median 264 max 264 n=16'),
+                 { median: 264, max: 264, n: 16, truncated: false });
+assert.deepEqual(cyclesSpread('median 5580 max 5580 n=3; init[2] min 16; truncated'),
+                 { median: 5580, max: 5580, n: 3, truncated: true });
+assert.equal(cyclesSpread('± 1.6; min 172.8 max 202.2 n=50'), null);
+assert.equal(cyclesSpread(undefined), null);
+
+const row = (name, unit, value, range) => ({ name, unit, value, range });
+db = collect([['npu1', { entries: { 'aie_kernels (npu1, performance)': [
+  { commit, date: 1, benches: [
+    row('swiglu/1024x256/bfloat16/cycles', 'cycles', 2875, 'median 2939 max 2990 n=84; truncated'),
+    row('add/1024x16/bfloat16/cycles', 'cycles', 78, 'median 87 max 131 n=16'),
+  ]},
+]}}]]);
+const { cases } = latestCases(db, 'npu1');
+assert.equal(cases.get('add/1024x16/bfloat16').metrics.get('cycles').range, 'median 87 max 131 n=16');
+const cell = caseCell(undefined, cases.get('swiglu/1024x256/bfloat16'));
+assert.equal(cell.text, '2,875 cycles truncated');
+assert.equal(cell.children[0].children[1].className, 'fail');
+assert.ok(cell.children[0].title.includes('min 2875, median 2939, max 2990 over 84 calls'));
+const plain = caseCell(undefined, cases.get('add/1024x16/bfloat16'));
+assert.equal(plain.text, '78 cycles');
+assert.ok(plain.children[0].title.includes('median 87, max 131 over 16 calls'));
+""")
+
+
 def test_kernels_view_groups_cases_under_their_factory(page):
     page("""
 const row = (name, unit, value) => ({ name, unit, value });

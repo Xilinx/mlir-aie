@@ -46,14 +46,20 @@ TRACE_SIZE = 16384
 # The add/256 case filled 16 KB after 91 intervals (180 B each); size for
 # every declared interval with headroom, so the split sees whole calls.
 TRACE_BYTES_PER_INTERVAL = 512
+# A long kernel costs more trace bytes per interval than that (swiglu/256
+# filled 128 KB after 84 calls), so a filled buffer is regrown from what it
+# held and the traced run repeated, this many times at most.
+TRACE_RETRIES = 3
 
-# A kernel whose cost is known well enough to catch a broken measurement.
-# 270 cycles on Strix, identical across calls and across runs: 8 KB copied at
-# about 30 B/cycle. The lower bound catches a decode that reports nothing
-# rather than bounding the kernel, and the upper bound stays generous until
-# nightly data has shown the spread across machines.
+# A kernel whose cost is known well enough to catch a broken measurement:
+# 8 KB copied, identical across its calls and across nightlies (264 cycles
+# on npu1, 138 on npu2, min = median = max over 256 calls). A band of about
+# 25% either side catches a decode that reports nothing, a clock or trace
+# path that reports something else, and a device that is not what the
+# runner label promised, while leaving room for a host of the same
+# generation to differ a little.
 SMOKE_TEST = Case("passthrough", dict(tile_size=2048), calls=16)
-SMOKE_CYCLE_BAND = (100, 2_000_000)
+SMOKE_CYCLE_BANDS = {"npu1": (200, 330), "npu2": (105, 175)}
 
 
 def _param(case: Case):
@@ -111,20 +117,33 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     if not config.getoption("--no-cycles"):
         # A separate traced run: tracing perturbs the timing above.
         intervals = kd.traced_intervals(fn, calls=case.calls)
-        traced = kd.cycles_per_call(
-            design,
-            inputs,
-            out_n,
-            out_dt,
-            trace_size=max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * intervals),
-            workdir=workdir,
-            fn=fn,
-            calls=case.calls,
-        )
-        # Every kernel checked here is timed; one that is not would chart only
-        # wall clock and still pass.
-        assert not traced.untimed, f"{case.name}: untimed, {traced.untimed}"
+        trace_size = max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * intervals)
+        for _ in range(1 + TRACE_RETRIES):
+            traced = kd.cycles_per_call(
+                design,
+                inputs,
+                out_n,
+                out_dt,
+                trace_size=trace_size,
+                workdir=workdir,
+                fn=fn,
+                calls=case.calls,
+            )
+            # Every kernel checked here is timed; one that is not would chart
+            # only wall clock and still pass.
+            assert not traced.untimed, f"{case.name}: untimed, {traced.untimed}"
+            if not traced.truncated:
+                break
+            # The buffer filled: the min is over a prefix of the calls. Ask
+            # for every interval at the cost this run measured.
+            seen = (
+                len(traced.setup)
+                + len(traced.kernel)
+                + sum(len(v) for v in traced.initializers.values())
+            )
+            trace_size = kd.grow_trace_size(trace_size, seen=seen, expected=intervals)
         measured["cycles"] = traced
+        measured["trace_size"] = trace_size
     return measured
 
 
@@ -145,8 +164,46 @@ def _cycles_span(traced: kd.CallCycles) -> str:
     return "; ".join(parts)
 
 
-def _record(record, case: Case, m: dict) -> None:
-    """Emit the rows one measurement contributes, in series-name order."""
+def _detail(case: Case, m: dict) -> dict:
+    """Return the distribution behind each row, for ``--perf-meta``.
+
+    benchmark-action keeps one value and a text ``range`` per row; the
+    numbers a reader needs to judge that value (how far the median and the
+    slowest call sit above the min, how many calls the trace held) go here
+    as fields.
+    """
+    detail: dict = {}
+    if (traced := m.get("cycles")) is not None:
+        k = traced.kernel
+        detail["cycles"] = {
+            "min": min(k),
+            "median": int(np.median(k)),
+            "max": max(k),
+            "n": len(k),
+            "calls": case.kernel_calls(),
+            "truncated": traced.truncated,
+            "trace_size": m.get("trace_size"),
+        }
+    if (wall := m.get("wall")) and (s := wall.npu):
+        detail["npu_us"] = {
+            "median": round(s.median_us, 2),
+            "mad": round(s.mad_us, 2),
+            "p95": round(s.p95_us, 2),
+            "min": round(s.min_us, 2),
+            "max": round(s.max_us, 2),
+            "n": s.n,
+        }
+    return detail
+
+
+def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
+    """Emit the rows one measurement contributes, in series-name order.
+
+    With ``meta`` (the ``--perf-meta`` dict), also file the case's
+    :func:`_detail` under ``meta["cases"]``.
+    """
+    if meta is not None:
+        meta.setdefault("cases", {})[case.name] = _detail(case, m)
     if (traced := m.get("cycles")) is not None:
         # The min: every call does the same work, so anything above it is
         # the core waiting (a stall, a refresh), not the kernel.
@@ -215,11 +272,12 @@ def test_measurement_is_sane(request, record_perf, workdir):
     m = _measure(SMOKE_TEST, request.config, workdir)
     cycles = min(m["cycles"].kernel) if "cycles" in m else None
     if not request.config.getoption("--no-cycles"):
-        lo, hi = SMOKE_CYCLE_BAND
+        band = SMOKE_CYCLE_BANDS[meta["preflight"]["npu"]]
+        lo, hi = band
         assert cycles is not None, "traced run produced no cycle count"
-        assert lo <= cycles <= hi, f"{cycles} cycles is outside {SMOKE_CYCLE_BAND}"
+        assert lo <= cycles <= hi, f"{cycles} cycles is outside {band}"
     meta["measurement_sane"] = True
-    _record(record_perf, SMOKE_TEST, m)
+    _record(record_perf, SMOKE_TEST, m, meta)
 
 
 def _differing_words(a: np.ndarray, b: np.ndarray) -> int:
@@ -267,6 +325,6 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
 @pytest.mark.parametrize("case", _PERF_CASES)
 def test_kernel_perf(case, request, record_perf, workdir):
     m = _measure(case, request.config, workdir)
-    _record(record_perf, case, m)
+    _record(record_perf, case, m, request.config._perf_meta)
     if request.config.getoption("--baseline-sources"):
         _against_baseline(case, request.config, workdir, m)

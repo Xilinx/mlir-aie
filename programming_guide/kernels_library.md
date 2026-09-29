@@ -463,8 +463,11 @@ order the harness calls them, and `kd.cycles_per_call` splits it by that
 position. The row is the kernel's minimum. Every call does the same work,
 so anything above the minimum is the core waiting. The median, the maximum,
 each initializer's minimum and whether the trace buffer filled go in the
-row's `range`. The trace buffer is sized to the number of intervals the
-contract declares. Preflight reads the device and its power mode through the
+row's `range`, and as fields under `cases` in `--perf-meta`. The trace
+buffer is sized to the number of intervals the contract declares; a long
+kernel costs more bytes per interval, so a buffer that filled is regrown
+from what it held (`kd.grow_trace_size`) and the traced run repeated, a
+few times at most, before a truncated min is recorded and marked. Preflight reads the device and its power mode through the
 host runtime (`HostRuntime.power_mode()`); the nightly workflow tries to
 switch to `performance` first, and a run that would publish refuses to
 measure in any other mode (`--pmode performance`), so a runner that cannot
