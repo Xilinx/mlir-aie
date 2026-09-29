@@ -85,15 +85,15 @@ def xrt_smi_path() -> str | None:
 def _examine() -> str | None:
     """Return `xrt-smi examine` output, or None if it cannot be run.
 
-    Used where sysfs is unavailable. Deferred and memoised: this spawns a process,
-    unlike the sysfs reads that serve the same purpose on Linux.
+    Used for XRT provenance and where sysfs is unavailable. Deferred and memoised:
+    this spawns a process, unlike sysfs reads.
     """
     binary = xrt_smi_path()
     if binary is None:
         return None
     try:
         result = subprocess.run(
-            [binary, "examine"], timeout=20, capture_output=True, text=True
+            [binary, "examine"], timeout=20, capture_output=True, text=True, check=True
         )
     except (OSError, subprocess.SubprocessError) as e:
         _logger.debug("xrt-smi examine failed: %s", e)
@@ -123,15 +123,44 @@ def _examine_devices() -> list[str]:
     return names
 
 
-def _examine_field(label: str) -> str | None:
+def _examine_field(label: str, section: str | None = None) -> str | None:
     text = _examine()
     if not text:
         return None
+    in_section = section is None
     for line in text.splitlines():
+        if section is not None:
+            if not line.strip() or not line[0].isspace():
+                in_section = line.strip() == section
+                continue
+            if not in_section:
+                continue
         key, sep, value = line.partition(":")
         if sep and key.strip() == label:
-            return value.strip()
+            return value.strip() or None
     return None
+
+
+def _driver_release(text: str) -> str | None:
+    # Both sysfs and `xrt-smi examine` append the build hash after a comma
+    # ("2.25.260102.56.release_20260630,88dda53e..."); the release is before it.
+    return text.split(",")[0].strip() or None
+
+
+def amdxdna_version() -> str | None:
+    """Return the loaded driver's release, from sysfs, else from ``xrt-smi examine``."""
+    if sys.platform == "linux":
+        try:
+            with open("/sys/module/amdxdna/version") as f:
+                return _driver_release(f.read())
+        except OSError:
+            pass
+    return _examined_driver_release()
+
+
+def _examined_driver_release() -> str | None:
+    field = _examine_field("amdxdna Version", section="XRT")
+    return _driver_release(field) if field else None
 
 
 def _undetermined(name: str) -> Check:
