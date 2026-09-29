@@ -26,6 +26,7 @@ declare_mlir_python_sources(AIEPythonSources.Util
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     __init__.py
+    doctor.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Tools
@@ -40,7 +41,9 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/__init__.py
     utils/_log_setup.py
     utils/benchmark.py
+    utils/bfp.py
     utils/config.py
+    utils/probe.py
     utils/tensor_factory.py
     utils/test.py
     utils/ml.py
@@ -73,14 +76,19 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/hsaruntime/hostruntime.py
     utils/hostruntime/hsaruntime/tensor.py
     utils/compile/__init__.py
+    utils/compile/remarks.py
     utils/compile/utils.py
     utils/compile/cache/utils.py
     utils/compile/jit/__init__.py
     utils/compile/jit/compilabledesign.py
+    utils/compile/jit/_dispatch_bridge.py
+    utils/compile/jit/_dispatch_compile.py
     utils/compile/jit/_dma_size_parser.py
+    utils/compile/jit/_explicit_builds.py
     utils/compile/jit/_hash.py
     utils/compile/jit/_introspect.py
     utils/compile/jit/_manifest.py
+    utils/compile/jit/_object_cache.py
     utils/compile/jit/_serialization.py
     utils/compile/jit/markers.py
     utils/compile/jit/context.py

@@ -11,15 +11,15 @@ Tests that exercise compile() or actual NPU kernel execution live in
 test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
-import pytest
-
 from unittest.mock import MagicMock, patch
 
-from aie.utils.compile.jit.compilabledesign import CompilableDesign
-from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
-from aie.utils.callabledesign import CallableDesign
-from aie.utils.jit import _JIT_CONFIG_KEYS, jit
+import numpy as np
+import pytest
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.callabledesign import CallableDesign
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
+from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
+from aie.utils.jit import _JIT_CONFIG_KEYS, jit
 
 # ---------------------------------------------------------------------------
 # CallableDesign construction
@@ -38,6 +38,72 @@ def test_repr_contains_callable_design():
 
     cd = CallableDesign(gen, compile_kwargs={"M": 1})
     assert "CallableDesign" in repr(cd)
+
+
+def test_jit_explicit_dispatch_specialization():
+    def gen(a: In, *, M: DispatchTime[np.int32] = 8):
+        pass
+
+    dynamic = jit(gen)
+    static = jit(gen, M=4)
+    assert dynamic.compilable.dispatch_params == ["M"]
+    assert static.compilable.dispatch_params == []
+    assert static.compilable.compile_kwargs == {"M": 4}
+    assert static.specialize(M=6).compilable.compile_kwargs == {"M": 6}
+    assert static.specialize(use_cache=False).compilable.bound_dispatch_params == ("M",)
+    assert dynamic._extract_compile_kwargs({"M": 7}) == ({}, {"M": 7}, {})
+    with pytest.raises(TypeError, match="specialized.*specialize"):
+        static._extract_compile_kwargs({"M": 7})
+    with pytest.raises(TypeError, match="specialized.*specialize"):
+        static.as_mlir(None, M=7)
+
+
+@pytest.mark.parametrize("factory", [CompilableDesign, CallableDesign, jit])
+@pytest.mark.parametrize("prebound", [False, True])
+@pytest.mark.parametrize(
+    "kind", ["positional", "positional-only", "defaulted", "args", "kwargs"]
+)
+def test_dispatch_requires_keyword_only(factory, prebound, kind):
+    def positional(a: In, count: DispatchTime[np.int32]):
+        pass
+
+    def positional_only(count: DispatchTime[np.int32], /, a: In):
+        pass
+
+    def defaulted(a: In, count: DispatchTime[np.int32] = 3):
+        pass
+
+    def args(a: In, *count: DispatchTime[np.int32]):
+        pass
+
+    def kwargs(a: In, **count: DispatchTime[np.int32]):
+        pass
+
+    gen = {
+        "positional": positional,
+        "positional-only": positional_only,
+        "defaulted": defaulted,
+        "args": args,
+        "kwargs": kwargs,
+    }[kind]
+    options = (
+        ({"count": 3} if factory is jit else {"compile_kwargs": {"count": 3}})
+        if prebound
+        else {}
+    )
+    with pytest.raises(TypeError, match=r"DispatchTime.*count.*keyword-only"):
+        factory(gen, **options)
+
+
+@pytest.mark.parametrize("factory", [CompilableDesign, CallableDesign, jit])
+def test_keyword_only_group_order_is_not_enforced(factory):
+    def gen(a: In, *, size: CompileTime[int] = 8, count: DispatchTime[np.int32] = 3):
+        pass
+
+    design = factory(gen)
+    compilable = design if isinstance(design, CompilableDesign) else design.compilable
+    assert compilable.dispatch_params == ["count"]
+    assert compilable.split_runtime_args(("tensor",), {}) == (["tensor"], {"count": 3})
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +392,20 @@ def test_external_function_positional_not_in_tensor_args():
     ), "Kernel instance must not appear in scalar_kwargs"
 
 
+def test_variadic_tensor_design_takes_any_number_of_positionals():
+    """A ``*tensors: In`` design has no positional maximum; the runtime checks the count."""
+
+    def stream(*tensors: In, N: CompileTime[int]):
+        pass
+
+    cd = jit(stream, N=2)
+    assert cd.compilable.variadic_tensor_param == "tensors"
+    assert cd.compilable.tensor_params == ["tensors"]
+    assert cd.compilable.split_runtime_args((1, 2, 3), {}) == ([1, 2, 3], {})
+    with pytest.raises(TypeError, match="keyword arguments"):
+        cd(1, tensors=2)
+
+
 # NOTE: trace_config end-to-end behaviour (forwarded to NPUKernel.__init__,
 # not to kernel.__call__) is covered by a real NPU run in
 # test/python/npu/test_iron_jit_e2e.py::test_trace_config_forwarded_to_kernel.
@@ -495,7 +575,14 @@ def test_call_binds_runtime_device_before_in_process_cache(monkeypatch):
     def fake_compile_and_build(self, compilable, cache_key, trace_config):
         seen_keys.append(cache_key)
         assert type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2"
-        return lambda *args, **kwargs: "ran"
+
+        class FakeKernel:
+            num_host_bos = 0
+
+            def __call__(self, *args, **kwargs):
+                return "ran"
+
+        return FakeKernel()
 
     monkeypatch.setattr(
         CallableDesign, "_compile_and_build_kernel", fake_compile_and_build
@@ -521,6 +608,8 @@ def test_call_rebuilds_removed_cached_artifacts(
         pass
 
     class FakeKernel:
+        num_host_bos = 0
+
         def __init__(self, xclbin_path, insts_path, result):
             self.xclbin_path = xclbin_path
             self.insts_path = insts_path

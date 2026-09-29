@@ -7,7 +7,7 @@
 
 A single AIE core copies a ``width x height`` 8-bit image one line at a
 time via ``passThroughLine`` (``-DBIT_WIDTH=8`` from
-``aie_kernels/generic/passThrough.cc``).
+``aie_kernels/eltwise/passThrough.cc``).
 """
 
 import argparse
@@ -20,7 +20,7 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
-@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+@iron.jit
 def vision_passthrough(
     in_tensor: In,
     _unused: In,

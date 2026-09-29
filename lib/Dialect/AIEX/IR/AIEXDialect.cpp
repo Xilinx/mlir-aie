@@ -26,6 +26,7 @@
 #include "llvm/Support/TypeSize.h"
 
 #include <cstdint>
+#include <limits>
 #include <numeric>
 
 using namespace mlir;
@@ -597,6 +598,12 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
+  if (getOffsetParameterAttr() || getOffsetStateTableIdxAttr()) {
+    uint64_t elemBitWidth = buffer.getElementTypeBitWidth();
+    if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
+      return emitOpError("offset_parameter requires a whole-byte element type");
+  }
+
   if (getElementTypeBitwidth() > addressGranularity) {
     return emitOpError("Maximum element bit width allowed is ")
            << addressGranularity << "bits. ";
@@ -732,10 +739,12 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
       bdId && *bdId > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
+  uint32_t maxRepeat = targetModel.getMaxRepeatCount();
   if (std::optional<uint32_t> repeatCount =
           getConstantIntOperand(getRepeatCount());
-      repeatCount && *repeatCount > 255)
-    return emitOpError("Repeat count exceeds the [0:255] range.");
+      repeatCount && *repeatCount > maxRepeat)
+    return emitOpError("Repeat count exceeds the [0:")
+           << maxRepeat << "] range.";
   return success();
 }
 
@@ -847,10 +856,28 @@ std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
   return static_cast<uint32_t>(cst.getZExtValue());
 }
 
+// Widthwise counterpart of getConstantIntOperand; see createConstantArgPlus.
+std::optional<uint64_t> AIEX::getConstantInt64Operand(mlir::Value v) {
+  mlir::APInt cst;
+  if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
+    return std::nullopt;
+  return cst.getZExtValue();
+}
+
 mlir::Value AIEX::createConstantI32(mlir::OpBuilder &builder,
                                     mlir::Location loc, uint32_t value) {
   return arith::ConstantOp::create(
       builder, loc, builder.getI32IntegerAttr(static_cast<int32_t>(value)));
+}
+
+mlir::Value AIEX::createConstantArgPlus(mlir::OpBuilder &builder,
+                                        mlir::Location loc, uint64_t value) {
+  if (value <= std::numeric_limits<uint32_t>::max())
+    return createConstantI32(builder, loc, static_cast<uint32_t>(value));
+  return arith::ConstantOp::create(
+      builder, loc,
+      IntegerAttr::get(builder.getIntegerType(64),
+                       static_cast<int64_t>(value)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -873,7 +900,8 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op,
   // If blockwrite references a buffer, the given address is understood to be
   // relative to the buffer's start address.
   if (auto bufferSym = op->getBuffer()) {
-    AIE::BufferOp buffer = device.lookupSymbol<AIE::BufferOp>(*bufferSym);
+    AIE::BufferOp buffer =
+        AIE::lookupNamedOpIn<AIE::BufferOp>(device, *bufferSym);
     if (!buffer) {
       op->emitError() << "buffer '" << *bufferSym << "' not found in device";
       return std::nullopt;
@@ -980,22 +1008,7 @@ LogicalResult AIEX::NpuUpdateFromScratchpadOp::verify() {
            << " exceeds maximum StateTable index ("
            << (kMaxStateTableEntries - 1) << ").";
 
-  // Cross-check against any npu.create_scratchpad ops in the same block: the
-  // index must fit within the allocated scratchpad (size in 32-bit words).
-  Block *block = (*this)->getBlock();
-  if (block) {
-    for (auto createOp : block->getOps<AIEX::NpuCreateScratchpadOp>()) {
-      uint32_t sizeBytes = createOp.getSize();
-      uint32_t numEntries = sizeBytes / 4;
-      if (getStateTableIdx() >= numEntries) {
-        return emitOpError("state_table_idx ")
-               << static_cast<uint32_t>(getStateTableIdx())
-               << " is out of bounds for scratchpad of size " << sizeBytes
-               << " bytes (" << numEntries << " entries) created by "
-               << createOp->getName() << ".";
-      }
-    }
-  }
+  // NpuCreateScratchpadOp::verify() bounds the state_table_idx.
   return success();
 }
 
@@ -1025,6 +1038,21 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
     return emitOpError("size (")
            << getSize() << " bytes) exceeds maximum scratchpad size of "
            << kMaxScratchpadSizeBytes << " bytes.";
+  }
+
+  // Scratchpads are far rarer than the updates they bound, and an op verifier
+  // runs after every pass, so the block scan belongs on this side.
+  uint32_t numEntries = getSize() / 4;
+  if (Block *block = (*this)->getBlock()) {
+    for (auto updateOp : block->getOps<AIEX::NpuUpdateFromScratchpadOp>()) {
+      if (updateOp.getStateTableIdx() < numEntries)
+        continue;
+      return updateOp.emitOpError("state_table_idx ")
+             << static_cast<uint32_t>(updateOp.getStateTableIdx())
+             << " is out of bounds for scratchpad of size " << getSize()
+             << " bytes (" << numEntries << " entries) created by "
+             << (*this)->getName() << ".";
+    }
   }
 
   // At most one create_scratchpad may appear per runtime sequence. Walk the
@@ -1059,6 +1087,17 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
+  std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
+  if (!addressOffset)
+    return std::nullopt;
+  return ::getAbsoluteAddress(this, *addressOffset);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuMaskPollOp
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuMaskPollOp::getAbsoluteAddress() {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
@@ -1268,14 +1307,18 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   return result;
 }
 
-LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
+// Resolving the allocation symbol through the collection keeps the lookup off
+// the device's linear symbol scan, which a per-op verifier repeats after every
+// pass.
+LogicalResult AIEX::DMAConfigureTaskForOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
   // Recover the shim tile through the referenced shim DMA allocation symbol so
   // the per-BD dimension limit can be enforced on the runtime-sequence path
   // before the allocation is substituted into a concrete DMAConfigureTaskOp.
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
-  AIE::ShimDMAAllocationOp allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+  auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getAlloc().getRootReference());
   if (!allocOp)
     return success(); // symbol resolved during a later pass; defer the check
@@ -1505,7 +1548,7 @@ AIEX::BlockFloatType::getBlockFormat(StringRef blockType) {
       blockFormatsMap = {
           {"v8bfp16ebs8", {8, 8, 8, 0}},
           {"v16bfp16ebs16", {16, 8, 8, 0}},
-      };
+  };
 
   auto it = blockFormatsMap.find(blockType);
   if (it != blockFormatsMap.end()) {

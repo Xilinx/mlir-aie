@@ -5,7 +5,10 @@
 #
 """Depthwise conv1d, 'same' padding, stride 1, bf16, IRON API + ``@iron.jit``.
 
-NPU2-only: ``aie_kernels/aie2p/dwconv1d.cc`` has no aie2 counterpart.
+Runs on NPU1 (aie2) and NPU2 (aie2p): ``dwconv1d_channels_first.cc`` lives
+under ``aie_kernels/conv/`` and builds for both. On NPU1 pass ``-n 4``: each
+core streams ``x`` and ``w`` from the shim, and NPU1's four shim tiles have 8
+such DMA channels, so the default 8 cores do not place.
 
 ``n_cores`` cores each process ``channels // n_cores`` channels; one channel
 is one length-``seq_len`` time series with its own ``kernel_size`` taps (+ an
@@ -20,45 +23,22 @@ most framework "same" depthwise convs.
 ``x_in`` is passed to this design ALREADY padded: shape ``(channels,
 seq_len + 16)``. The extra 16 (fixed, independent of ``kernel_size``) is
 scratch room the vectorized kernel's aligned loads need past the halo; see
-``dwconv1d.cc`` and ``_pad_input`` below, which is both the reference
+``dwconv1d_channels_first.cc`` and ``_pad_input`` below, which is both the reference
 construction and this file's own test input.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib import TensorTiler2D
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.kernel import ExternalFunction
-from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
-
-_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/dwconv1d.cc"
-_TAIL_SLACK = 16  # matches the kernel's fixed aligned-load window, see dwconv1d.cc
-
-
-def _dwconv1d_extern(chunk_in_ty, w_ty, chunk_out_ty, kernel_size, bias):
-    return ExternalFunction(
-        "dwconv1d_bf16",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[
-            chunk_in_ty,
-            w_ty,
-            chunk_out_ty,
-            np.int32,  # pyright: ignore[reportArgumentType]
-        ],
-        include_dirs=[config.cxx_header_path()],
-        compile_flags=[
-            f"-DDWCONV_K={kernel_size}",
-            f"-DDWCONV_BIAS={int(bias)}",
-        ],
-    )
 
 
 @iron.jit
@@ -79,7 +59,7 @@ def dwconv1d(
         )
     if seq_len % 16 != 0:
         # The kernel processes full 16-lane output chunks with no scalar
-        # tail (see dwconv1d.cc), so a non-multiple would silently drop the
+        # tail (see dwconv1d_channels_first.cc), so a non-multiple would drop the
         # last columns.
         raise ValueError(f"seq_len ({seq_len}) must be a multiple of 16")
     if kernel_size < 1 or kernel_size > 17 or kernel_size % 2 == 0:
@@ -89,14 +69,15 @@ def dwconv1d(
 
     device = iron.get_current_device()
     channels_per_core = channels // n_cores
-    in_row = seq_len + _TAIL_SLACK
+    in_row = seq_len + kernels.DWCONV1D_TAIL
     # w_row is always kernel_size + 1, even when bias=False: kernel_size is
     # required odd (see the check above), so kernel_size alone gives an odd
     # bf16 row width, i.e. 2*kernel_size bytes, not a multiple of 4, which
     # aie.dma_bd's transfer-length check rejects. kernel_size + 1 is always
     # even, so 2*(kernel_size + 1) bytes is 4-byte aligned. The extra column
-    # is unused padding when bias=False (dwconv1d.cc never reads w[K] unless
-    # DWCONV_BIAS=1); callers should zero it, see _run_and_verify below.
+    # is unused padding when bias=False (dwconv1d_channels_first.cc never reads
+    # w[K] unless DWCONV1D_CF_BIAS=1); callers should zero it, see
+    # _run_and_verify below.
     w_row = kernel_size + 1
 
     dtype = bfloat16
@@ -115,7 +96,9 @@ def dwconv1d(
     of_ws = [ObjectFifo(w_row_ty, name=f"w_{i}") for i in range(n_cores)]
     of_outs = [ObjectFifo(y_row_ty, name=f"y_{i}") for i in range(n_cores)]
 
-    dwconv_fn = _dwconv1d_extern(x_row_ty, w_row_ty, y_row_ty, kernel_size, bias)
+    dwconv_fn = kernels.dwconv1d_channels_first(
+        seq_len=seq_len, kernel_size=kernel_size, bias=bias
+    )
 
     def core_fn(of_x, of_w, of_y, kernel):
         for _ in range_(channels_per_core):
@@ -169,19 +152,19 @@ def dwconv1d(
 def _pad_input(x_np, kernel_size):
     """(channels, seq_len) -> (channels, seq_len + 16): zero-pad by
     (kernel_size - 1) // 2 on each side (the 'same' halo) plus the fixed
-    16-element don't-care tail dwconv1d.cc's aligned loads need. This is the
-    reference construction any caller of this design must follow, see the
-    file docstring and dwconv1d.cc's header comment for why."""
+    16-element don't-care tail dwconv1d_channels_first.cc's aligned loads need.
+    This is the reference construction any caller of this design must follow,
+    see the file docstring and that kernel's header comment for why."""
     channels, seq_len = x_np.shape
     pad = (kernel_size - 1) // 2
-    out = np.zeros((channels, seq_len + _TAIL_SLACK), dtype=x_np.dtype)
+    out = np.zeros((channels, seq_len + kernels.DWCONV1D_TAIL), dtype=x_np.dtype)
     out[:, pad : pad + seq_len] = x_np
     return out
 
 
 def _dwconv1d_reference(x_np, w_np, kernel_size, bias):
     """Plain f32 'same' depthwise cross-correlation, no padding trick.
-    This is the ground truth this design (and dwconv1d.cc) is computing."""
+    This is the ground truth this design (and the kernel) is computing."""
     channels, seq_len = x_np.shape
     pad = (kernel_size - 1) // 2
     x32 = x_np.astype(np.float32)
@@ -230,7 +213,7 @@ def _run_and_verify(opts):
     x_np = rng.uniform(-2.0, 2.0, size=(channels, seq_len)).astype(bfloat16)
     w_np = rng.uniform(-1.0, 1.0, size=(channels, w_row)).astype(bfloat16)
     if not bias:
-        w_np[:, K] = bfloat16(0.0)  # padding column dwconv1d.cc never reads
+        w_np[:, K] = bfloat16(0.0)  # padding column the kernel never reads
 
     x_padded = _pad_input(x_np, K)
 

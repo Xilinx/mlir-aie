@@ -23,8 +23,9 @@ chunks. A single S2MM ``aie.dma_bd`` with ``iteration_size=4`` and
 ``iteration_stride=64`` receives them, its base advancing one 64-element slot
 per chunk. The MemTile buffer is read back to the host unmodified.
 
-The BD is self-chained (``next="self"``), so loops indefinitely. What bounds it
-to four executions here is the handshake (four chunks), not the descriptor.
+The BD chain loops (``DmaChannel.loop`` defaults to True), so it repeats
+indefinitely. What bounds it to four executions here is the handshake (four
+chunks), not the descriptor.
 
 ``iteration_current`` is the initial value of a per-BD register that the DMA
 advances each execution and wraps at ``iteration_size``, independent of its
@@ -144,7 +145,6 @@ def bd_iteration(
                         ),
                         acquires=[Acquire(slot_credit, value=1, greater_equal=True)],
                         releases=[Release(fill_count, value=1)],
-                        next="self",
                     ),
                 ],
             ),
@@ -160,7 +160,6 @@ def bd_iteration(
                             Acquire(fill_count, value=N_CHUNKS, greater_equal=True)
                         ],
                         releases=[Release(slot_credit, value=1)],
-                        next="self",
                     ),
                 ],
             ),

@@ -16,6 +16,7 @@ __all__ = [
     "npu_instgen",
     "register_dialect",
     "translate_mlir_to_llvmir",
+    "type_size_in_bits",
 ]
 
 def aie_llvm_link(modules: list[str]) -> str: ...
@@ -35,6 +36,10 @@ def generate_xaie(module: Operation) -> str: ...
 def npu_instgen(module: Operation) -> list: ...
 def register_dialect(registry: DialectRegistry) -> None: ...
 def translate_mlir_to_llvmir(module: Operation) -> str: ...
+def type_size_in_bits(type: Type) -> int:
+    """
+    Size of a type in bits under the default data layout, or 0 when the type does not describe one. A block floating-point type reports the bits one block occupies, not the bits of one value.
+    """
 
 class ObjectFifoType:
     @staticmethod

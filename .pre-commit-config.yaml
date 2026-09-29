@@ -13,10 +13,15 @@ repos:
 
 # Formatting hooks (run on pre-push to catch issues before CI)
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: f4d7745e17a28aad7eed2f4874ca8d1568c11c4c  # frozen: v22.1.8
+  rev: e2b496dc2bd8340c2524cb9a2d2a943cde1bb6df  # frozen: v23.1.1
   hooks:
     - id: clang-format
-      types_or: [c, c++]
+      # Keep this extension list in sync with lintAndFormat.yml's clang-format
+      # job so contributors and CI format the same C/C++ and TableGen files.
+      files: \.(c|cc|cpp|cxx|h|hpp|td)$
+      # Override the mirror's built-in type filter so pre-commit doesn't drop
+      # TableGen files before the filename regex can match them.
+      types_or: [text]
       stages: [pre-push]
       # Exclude generated files and third-party / vendored code (matches black)
       exclude: |
@@ -48,7 +53,7 @@ repos:
         )$
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: 65dbdb59d2f2d9c3bdc343c566821ad3319ddaa3  # frozen: v0.16.3
+  rev: e8f7d69b957a30acb2c875078d5fd012de24b64c  # frozen: v0.16.7
   hooks:
     - id: ruff-check
       stages: [pre-push]
@@ -64,7 +69,8 @@ repos:
           python/(iron|utils|helpers|compiler)/.*\.py|
           programming_examples/(algorithms|basic|getting_started|vision)/.*\.py|
           programming_examples/lit\.cfg\.py|
-          programming_examples/ml/(block_datatypes|mobilenet|bottleneck|conv2d|conv2d_14x14|eltwise|eltwise_unary|magika|norm|resnet|rope|scale_shift|softmax|swiglu)/.*\.py
+          programming_examples/ml/(block_datatypes|mobilenet|bottleneck|cast_f32_bf16|conv2d|conv2d_14x14|dwconv1d|eltwise|eltwise_unary|magika|mm_activation_epilogue|norm|resnet|rope|scale_shift|softmax|swiglu)/.*\.py|
+          utils/kernel_checks/.*\.py
         )$
 
 # Baseline hygiene: validators run on every commit, fixers gated to pre-push
@@ -275,3 +281,14 @@ repos:
         )$
       pass_filenames: true
       stages: [pre-push]
+
+    # Flags AI comment slop: the same concept re-explained at 3+ sites, oversized
+    # comment blocks, and high comment density. Reads the diff, not whole files, so
+    # it never complains about a comment the contributor did not write.
+    - id: comment-slop
+      name: Check for AI comment slop (repeated explanations, oversized blocks)
+      language: python
+      entry: python utils/check_comment_slop.py
+      pass_filenames: false
+      require_serial: true
+      types_or: [c, c++, python]

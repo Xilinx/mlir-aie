@@ -394,14 +394,14 @@ def run_conv_torch_test(
             (e.g. ``(co, h, w)``).
         out_scale: float multiplier applied to the AIE int output before comparison.
         atol: ``np.allclose`` absolute tolerance.
-        kernel_name: name passed to :class:`NPUKernel`; default ``None`` lets
+        kernel_name: name passed to `NPUKernel`; default ``None`` lets
             the runtime pick the first kernel in the xclbin.
         in_layout: input ``(order, defOrder)`` token pair passed positionally
-            to :meth:`DataShaper.reorder_mat`.  Defaults to ``YCXC8 / CYX``.
+            to `DataShaper.reorder_mat`.  Defaults to ``YCXC8 / CYX``.
         wts_layout: weights ``(order, defOrder)`` token pair passed positionally
-            to :meth:`DataShaper.reorder_mat`.  Defaults to ``OIYXI8O8 / OIYX``.
+            to `DataShaper.reorder_mat`.  Defaults to ``OIYXI8O8 / OIYX``.
         out_reorder: output ``(order, defOrder)`` token pair passed positionally
-            to :meth:`DataShaper.reorder_mat`.  Defaults to ``CDYX / YCXD``.
+            to `DataShaper.reorder_mat`.  Defaults to ``CDYX / YCXD``.
         dtype_in: numpy dtype for the input NPU buffer. Default int8.
         dtype_wts: numpy dtype for the weights NPU buffer. Default int8.
         dtype_out: numpy dtype for the output NPU buffer. Default int8.
@@ -444,7 +444,9 @@ def run_conv_torch_test(
 
     in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
     in2 = iron.tensor(total_wts, dtype=dtype_wts)
-    out_size = int(np.prod(out_shape_in_layout) * dtype_out.itemsize)
+    # zeros() takes a shape in elements, and out is reshaped to
+    # out_shape_in_layout below, so this must not be scaled by itemsize.
+    out_size = int(np.prod(out_shape_in_layout))
     out = iron.zeros(out_size, dtype=dtype_out)
     buffers = [in1, in2, out]
 

@@ -106,6 +106,9 @@ foreach(target ${AIE_RUNTIME_TARGETS})
   set(enableTestLibProject OFF)
   if (DEFINED VITIS_ROOT OR DEFINED LibXAIE_${target}_DIR)
     set(enableTestLibProject ON)
+  elseif (NOT WIN32 AND TARGET xaiengine_${target})
+    # test_lib's dependency is xaiengine, not Vitis.
+    set(enableTestLibProject ON)
   elseif (WIN32 AND ${target} STREQUAL "x86_64" AND NOT DEFINED LibXAIE_${target}_DIR AND LibXAIE_FOUND)
     set(enableTestLibProject ON)
   endif()
@@ -118,6 +121,10 @@ foreach(target ${AIE_RUNTIME_TARGETS})
       BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/test_lib/lib
       CMAKE_CACHE_ARGS
           -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
+          # test_lib's find_package(XRT) is optional, but a broken system XRT
+          # package raises FATAL_ERROR from inside its own config file, which
+          # QUIET does not suppress.
+          -DCMAKE_DISABLE_FIND_PACKAGE_XRT:BOOL=${CMAKE_DISABLE_FIND_PACKAGE_XRT}
       CMAKE_ARGS
           -DCMAKE_TOOLCHAIN_FILE=${${target}_TOOLCHAIN_FILE}
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}

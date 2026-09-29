@@ -152,7 +152,8 @@ bool replayToRegisters(const char *name, const std::vector<uint32_t> &txn,
         return false;
       regs[synthKey++] = txn[pos + 6];  // register to patch
       regs[synthKey++] = txn[pos + 8];  // arg_idx
-      regs[synthKey++] = txn[pos + 10]; // arg_plus
+      regs[synthKey++] = txn[pos + 10]; // arg_plus low
+      regs[synthKey++] = txn[pos + 11]; // arg_plus high
       pos += 12;
       break;
     }

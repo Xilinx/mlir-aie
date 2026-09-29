@@ -7,14 +7,12 @@ name: Generate GitHub Pages
 permissions:
   contents: read
 
-# Serialize deploys instead of racing them: mike and the Doxygen-copy step
-# both push to gh-pages, so two runs overlapping (e.g. back-to-back pushes
-# to main) can have the second's push rejected as non-fast-forward.
-# cancel-in-progress is false so a queued run still deploys rather than
-# being dropped.
+# All gh-pages writers share this lock, including kernel result publishers.
+# Preserve active and queued deploys (up to GitHub's 100-run queue limit).
 concurrency:
-  group: generate-docs-${{ github.ref }}
+  group: gh-pages-publish
   cancel-in-progress: false
+  queue: max
 
 on:
   push:
@@ -91,7 +89,7 @@ jobs:
 
       - name: Ccache for C++ compilation
         # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
-        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03  # v1.2.23
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
           key: ${{ runner.os }}-releaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
           # The key carries the submodule hash, so every bump mints a new key with
@@ -229,7 +227,8 @@ jobs:
 
           # Remove legacy Jekyll/CMake detritus from the gh-pages root. mike
           # owns versioned subdirs (dev/, 1.x.y/, versions.json, index.html);
-          # everything else at the root is carry-over from the old Jekyll setup.
+          # kernel-checks/ belongs to the kernel workflows and must survive
+          # deployment. Its old home, bench/, is legacy and goes with the rest.
           cd ../gh-pages-wt
           # Keep the versioned dirs (dev/, 1.x.y/) plus the bare "latest"
           # alias mike writes as a symlink (a file literally named "latest",
@@ -239,6 +238,7 @@ jobs:
             | grep -zv '^\.nojekyll$' \
             | grep -zv '^index\.html$' \
             | grep -zv '^versions\.json$' \
+            | grep -zv '^kernel-checks/' \
             | grep -zvE '^(dev|latest)(/|$)' \
             | grep -zvE '^[0-9]+\.' \
             | xargs -0 -r git rm -rf --ignore-unmatch -q

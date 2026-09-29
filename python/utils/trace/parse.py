@@ -43,6 +43,12 @@ logger = logging.getLogger(__name__)
 
 NUM_EVENTS = 8  # number of events we can view per trace
 
+# Single2/Multiple2 carry an 18-bit cycle delta (utils.py convert_to_commands). Event_Sync is
+# the hardware's marker that the field wrapped once, so decoding it as a no-op undercounts by
+# one full range per occurrence -- 6.9x on a measured capture whose real per-tile interval was
+# 306746 cycles against 44602 decoded.
+EVENT_SYNC_CYCLES = 1 << 18
+
 DEFAULT_KERNEL = "main:sequence"
 
 
@@ -103,7 +109,19 @@ def get_trace_slices(mlir_module_str, kernel=DEFAULT_KERNEL):
     """
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
-        attr = _find_sequence(module, kernel).trace_slices
+        try:
+            sequence = _find_sequence(module, kernel)
+        except ValueError:
+            if kernel != DEFAULT_KERNEL:
+                raise
+            for sequence in find_ops(
+                module.operation,
+                lambda o: isinstance(o.operation.opview, RuntimeSequenceOp),
+            ):
+                if sequence.trace_slices is not None:
+                    raise
+            return []
+        attr = sequence.trace_slices
         if attr is None:
             return []
         entries = []
@@ -326,19 +344,16 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
             if loc in pid_events[tt]:
                 pid = pid_events[tt][loc][NUM_EVENTS]
             else:
-                logger.error(
-                    "tile in %s not found in trace packet data file (e.g trace.txt).",
-                    loc,
+                tiles = [
+                    keys
+                    for tt_tmp in range(len(commands))
+                    for keys in pid_events[tt_tmp]
+                ]
+                raise ValueError(
+                    f"trace data comes from tile {loc}, which the design does not "
+                    f"trace; it traces {tiles}. Consider changing the column "
+                    "shift (colshift) if you think this is an error."
                 )
-                tiles = []
-                for tt_tmp in range(len(commands)):
-                    for keys in pid_events[tt_tmp]:
-                        tiles.append(keys)
-                logger.error("Defined tiles in design are at: %s", tiles)
-                logger.error(
-                    "Consider changing --colshift value if you think this is an error."
-                )
-                sys.exit(1)
 
             active_events = dict()
             for i in range(8):  # 8 max events at a time
@@ -485,6 +500,10 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
                                     events_module,
                                 )
 
+                elif t == "Event_Sync":
+                    # Advances the clock only; no event starts or ends here.
+                    timer = timer + EVENT_SYNC_CYCLES
+
 
 def process_name_metadata(trace_events, pid, trace_type, loc):
     trace_event: dict = {"name": "process_name"}
@@ -594,13 +613,11 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None, device_name=None):
 
         if row is None and col is None:
             if address is None:
-                logger.error(
-                    "Could not decode write32 op '%s': address is not a "
+                raise ValueError(
+                    f"Could not decode write32 op '{write32}': address is not a "
                     "compile-time constant (trace config requires constant "
-                    "operands)",
-                    write32,
+                    "operands)"
                 )
-                sys.exit(1)
             row = (address >> target_model.get_row_shift()) & 0x1F
             col = (address >> target_model.get_column_shift()) & 0x1F
             address = address & 0xFFFFF  # 20 bits address
@@ -613,12 +630,10 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None, device_name=None):
             hex(value) if value is not None else None,
         )
         if row is None or col is None or address is None or value is None:
-            logger.error(
-                "Could not decode write32 op '%s': address or value is not a "
-                "compile-time constant (trace config requires constant operands)",
-                write32,
+            raise ValueError(
+                f"Could not decode write32 op '{write32}': address or value is not "
+                "a compile-time constant (trace config requires constant operands)"
             )
-            sys.exit(1)
 
         # Adjust column based on colshift
         if colshift is not None:
@@ -1040,7 +1055,11 @@ def main():
 
     setup_trace_metadata(trace_events, pid_events, events_module)
 
-    convert_commands_to_json(trace_events, commands_0, pid_events, events_module)
+    try:
+        convert_commands_to_json(trace_events, commands_0, pid_events, events_module)
+    except ValueError as e:
+        logger.error("%s", e)
+        sys.exit(1)
 
     print(json.dumps(trace_events).replace("'", '"').replace(", {", ",\n{"), file=of)
 

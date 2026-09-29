@@ -7,7 +7,7 @@
 
 # <ins>Vision Passthrough</ins>
 
-A single AIE tile copies a `width x height` 8-bit image one line at a time using the `passThroughLine` kernel from `aie_kernels/generic/passThrough.cc`.  This pipeline mainly serves to test whether the data movement between a Shim tile and an AIE tile works correctly.
+A single AIE tile copies a `width x height` 8-bit image one line at a time using the `passThroughLine` kernel from `aie_kernels/eltwise/passThrough.cc`.  This pipeline mainly serves to test whether the data movement between a Shim tile and an AIE tile works correctly.
 
 `vision_passthrough.py` is a single `@iron.jit`-decorated design that the `Makefile` drives in compile-only mode (`--xclbin-path` / `--insts-path`) for the OpenCV-based C++ host (`test.cpp`).  The same script also runs standalone for a quick in-Python identity check.
 

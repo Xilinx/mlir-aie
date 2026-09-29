@@ -33,14 +33,14 @@ inline constexpr llvm::StringLiteral kObjectFifoUnrollHintAttrName =
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPlaceTilesPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEPlaceTilesPass(const AIEPlaceTilesOptions &options);
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPrepareBuffersPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferAddressesPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
-createAIEAssignBufferAddressesPass(
-    const AIEAssignBufferAddressesOptions &options);
-std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignCoreLinkFilesPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignLockIDsPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIENormalizeDmaBdDimsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECanonicalizeDevicePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

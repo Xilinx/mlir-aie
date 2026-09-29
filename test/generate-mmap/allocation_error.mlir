@@ -6,13 +6,12 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: peano, aietools_aie
-// RUN: not %aiecc --alloc-scheme=basic-sequential %s 2>&1 | FileCheck %s --check-prefix=PEANO
-// PEANO: ld.lld: error: section '.bss' will not fit in region 'data': overflowed by 4 bytes
+// RUN: not %aiecc %s 2>&1 | FileCheck %s --check-prefix=PEANO
+// PEANO: could not be placed:
+// PEANO-SAME: this tile has no room left for it
 
-// If we use all of the local memory, then linking the AIE executable should
-// fail. The fundamental problem here is that we can stuff things in the
-// executable that aren't visibla at the MLIR level, so the
-// assign-buffer-addresses pass can't generate a good error message.
+// The stack and buffer leave only two bytes. A four-byte data reservation must
+// fail during placement, even if optimization removes the global from the core.
 module @example0 {
   aie.device(npu1) {
     memref.global @x : memref<4xi8> = uninitialized
@@ -30,6 +29,6 @@ module @example0 {
       memref.store %c7_i8, %buffer_3_3[%c3] : memref<64510xi8>
       %0 = func.call @test(%c3, %c7_i8) : (index, i8) -> i8
       aie.end
-    }
+    } {data_size = 4 : i32}
   }
 }

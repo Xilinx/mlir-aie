@@ -22,6 +22,7 @@
 #include "Utils.h"
 
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallString.h"
@@ -56,8 +57,9 @@ auto emitBinary(Fill fill) {
              const Item<In> &item,
              Item<std::vector<char>> &out) -> mlir::LogicalResult {
     std::vector<uint32_t> words;
-    if (mlir::failed(fill(item, words)))
+    if (mlir::failed(fill(item, words))) {
       return mlir::failure();
+    }
     out.value = wordsToBytes(words);
     return mlir::success();
   };
@@ -81,6 +83,28 @@ asModule(const Item<OpInModule<KeyOp>> &in, mlir::MLIRContext * /*ctx*/) {
 inline mlir::OwningOpRef<mlir::ModuleOp> asModule(const Item<File> &in,
                                                   mlir::MLIRContext *ctx) {
   return parseModuleFromFile(in.asFile(), ctx);
+}
+
+// Run `pm` on `op` and verify what it produced. MLIR verifies the whole op
+// after every pass by default, which on a large design costs more than the
+// passes themselves; verifying the result once still keeps invalid IR from
+// reaching a later step, a translation, the device cache or a `--get` dump.
+// `verifyEachPass` (--verify-each) restores the per-pass verification, which
+// names the pass that broke the IR.
+inline bool verifyEachPass = false;
+
+inline mlir::LogicalResult runPasses(mlir::PassManager &pm,
+                                     mlir::Operation *op) {
+  pm.enableVerifier(verifyEachPass);
+  if (mlir::failed(pm.run(op))) {
+    return mlir::failure();
+  }
+  if (!verifyEachPass && mlir::failed(mlir::verify(op))) {
+    llvm::errs() << "aiecc: a pass produced invalid IR; rerun with "
+                    "--verify-each to find which\n";
+    return mlir::failure();
+  }
+  return mlir::success();
 }
 
 // PassPipeline — execute an MLIR pass-pipeline on a clone of the input.
@@ -125,15 +149,18 @@ struct PassPipeline {
       }
       pm = built.get();
     }
-    if (mlir::failed(pm->run(*mod)))
+    if (mlir::failed(runPasses(*pm, *mod))) {
       return mlir::failure();
+    }
     out.value = std::move(mod);
     return mlir::success();
   }
 };
 
-// SplitIRAction — walks a ModuleOp for KeyOp instances; clones the module
-// once per match. Use `.filter` downstream to skip matches.
+// SplitIRAction — walks a ModuleOp for KeyOp instances and produces one item
+// per match, each focused on its own op. Use `.filter` downstream to skip
+// matches. The items share one clone of the design (see SharedModule); the
+// clone keeps a split's output isolated from its input.
 template <typename KeyOp>
 struct SplitIRAction {
   using KeyFn = std::function<std::string(KeyOp)>;
@@ -143,30 +170,24 @@ struct SplitIRAction {
 
   mlir::FailureOr<std::vector<std::pair<std::string, OpInModule<KeyOp>>>>
   operator()(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &item) const {
-    auto srcModule = item.get().get();
-    std::vector<std::pair<std::string, size_t>> matches;
-    size_t idx = 0;
-    srcModule.walk([&](KeyOp op) {
-      matches.emplace_back(keyFn(op), idx);
-      ++idx;
-    });
+    std::vector<std::string> keys;
+    item.get().get().walk([&](KeyOp op) { keys.push_back(keyFn(op)); });
+
+    SharedModule shared{
+        mlir::OwningOpRef<mlir::ModuleOp>(item.get().get().clone())};
+    std::vector<KeyOp> ops;
+    ops.reserve(keys.size());
+    shared.get().walk([&](KeyOp op) { ops.push_back(op); });
+    if (ops.size() != keys.size()) {
+      llvm::errs() << "aiecc: split found " << ops.size() << " ops in the "
+                   << "cloned module but " << keys.size() << " in its source\n";
+      return mlir::failure();
+    }
 
     std::vector<std::pair<std::string, OpInModule<KeyOp>>> out;
-    out.reserve(matches.size());
-    for (auto &match : matches) {
-      std::string &key = match.first;
-      size_t target = match.second;
-      mlir::OwningOpRef<mlir::ModuleOp> clone = srcModule.clone();
-      KeyOp clonedOp;
-      size_t cur = 0;
-      clone->walk([&](KeyOp op) -> mlir::WalkResult {
-        if (cur++ != target)
-          return mlir::WalkResult::advance();
-        clonedOp = op;
-        return mlir::WalkResult::interrupt();
-      });
-      out.emplace_back(std::move(key),
-                       OpInModule<KeyOp>{std::move(clone), clonedOp});
+    out.reserve(keys.size());
+    for (size_t i = 0; i < keys.size(); ++i) {
+      out.emplace_back(std::move(keys[i]), OpInModule<KeyOp>{shared, ops[i]});
     }
     return out;
   }
@@ -181,12 +202,16 @@ struct ShellCommand {
     enum Mode { Path, Value } mode = Path;
     std::string text;
     std::string suffix;
+    // Drop the whole argv entry when the source's value is empty, rather than
+    // passing a bare `--flag=`. For an option whose absence is meaningful.
+    bool omitIfEmpty = false;
 
     static Part literal(std::string s) {
       return {Literal, Path, std::move(s), {}};
     }
-    static Part mkSlot(Mode m, std::string prefix, std::string suffix) {
-      return {Slot, m, std::move(prefix), std::move(suffix)};
+    static Part mkSlot(Mode m, std::string prefix, std::string suffix,
+                       bool omitIfEmpty = false) {
+      return {Slot, m, std::move(prefix), std::move(suffix), omitIfEmpty};
     }
     static Part mkSlotList(std::string prefix, std::string suffix) {
       return {SlotList, Value, std::move(prefix), std::move(suffix)};
@@ -201,6 +226,8 @@ struct ShellCommand {
 
   std::string tool;
   std::vector<Part> parts;
+  std::function<void(llvm::StringRef, llvm::StringRef)> failureHint;
+  bool failureIsEmpty = false;
 
   inline static std::vector<std::string> searchPaths;
   inline static std::map<std::string, std::string> toolPathCache;
@@ -239,8 +266,9 @@ struct ShellCommand {
   [[nodiscard]] static bool addInstallPrefix(llvm::StringRef name,
                                              llvm::StringRef overrideDir = "") {
     auto tryAdd = [](llvm::StringRef dir) -> bool {
-      if (dir.empty() || !llvm::sys::fs::is_directory(dir))
+      if (dir.empty() || !llvm::sys::fs::is_directory(dir)) {
         return false;
+      }
       llvm::SmallString<256> binDir(dir);
       llvm::sys::path::append(binDir, "bin");
       addSearchPath(std::string(binDir));
@@ -257,9 +285,11 @@ struct ShellCommand {
       return true;
     }
     std::string envName = name.upper() + "_INSTALL_DIR";
-    if (const char *env = std::getenv(envName.c_str()))
-      if (tryAdd(env))
+    if (const char *env = std::getenv(envName.c_str())) {
+      if (tryAdd(env)) {
         return true;
+      }
+    }
     std::string mainExe = llvm::sys::fs::getMainExecutable(
         nullptr, reinterpret_cast<void *>(&addInstallPrefix));
     llvm::StringRef prefix =
@@ -267,8 +297,9 @@ struct ShellCommand {
     for (auto base : {prefix, llvm::sys::path::parent_path(prefix)}) {
       llvm::SmallString<256> p(base);
       llvm::sys::path::append(p, name);
-      if (tryAdd(p))
+      if (tryAdd(p)) {
         return true;
+      }
     }
     return true;
   }
@@ -288,15 +319,18 @@ struct ShellCommand {
     {
       std::lock_guard<std::mutex> lock(toolCacheMutex);
       auto ov = toolOverrides.find(name.str());
-      if (ov != toolOverrides.end())
+      if (ov != toolOverrides.end()) {
         return ov->second;
+      }
     }
-    if (llvm::sys::path::is_absolute(name))
+    if (llvm::sys::path::is_absolute(name)) {
       return name.str();
+    }
     std::lock_guard<std::mutex> lock(toolCacheMutex);
     auto it = toolPathCache.find(name.str());
-    if (it != toolPathCache.end())
+    if (it != toolPathCache.end()) {
       return it->second;
+    }
     std::string result;
     for (auto p = searchPaths.rbegin(); p != searchPaths.rend(); ++p) {
       llvm::SmallString<256> candidate(*p);
@@ -306,9 +340,11 @@ struct ShellCommand {
         break;
       }
     }
-    if (result.empty())
-      if (auto r = llvm::sys::findProgramByName(name))
+    if (result.empty()) {
+      if (auto r = llvm::sys::findProgramByName(name)) {
         result = *r;
+      }
+    }
     return toolPathCache.emplace(name.str(), std::move(result)).first->second;
   }
 
@@ -327,9 +363,10 @@ struct ShellCommand {
   }
 
   // Insert next source's string value (std::string-payload sources only).
-  ShellCommand &value(std::string prefix = "", std::string suffix = "") {
-    parts.push_back(
-        Part::mkSlot(Part::Value, std::move(prefix), std::move(suffix)));
+  ShellCommand &value(std::string prefix = "", std::string suffix = "",
+                      bool omitIfEmpty = false) {
+    parts.push_back(Part::mkSlot(Part::Value, std::move(prefix),
+                                 std::move(suffix), omitIfEmpty));
     return *this;
   }
 
@@ -359,6 +396,26 @@ struct ShellCommand {
   // `+w <dir>`) can point at it.
   ShellCommand &outputDir(std::string prefix = "") {
     parts.push_back(Part::mkOutputDir(std::move(prefix)));
+    return *this;
+  }
+
+  // Called with the tool's captured output and the item's key when the tool
+  // fails, before that output is replayed. Use it for a condition the driver
+  // can explain better than the user can read out of the tool's own message,
+  // such as a linker that runs out of room in a region the driver chose.
+  ShellCommand &
+  explainFailure(std::function<void(llvm::StringRef, llvm::StringRef)> fn) {
+    failureHint = std::move(fn);
+    return *this;
+  }
+
+  // Treat a nonzero exit as "no result" rather than as a build failure, and say
+  // nothing about it. For a tool run to learn something optional, where not
+  // learning it costs quality rather than correctness: the caller is expected
+  // to cope with the missing output, and whatever went wrong will be reported
+  // by the step that genuinely needs the tool to work.
+  ShellCommand &optional() {
+    failureIsEmpty = true;
     return *this;
   }
 
@@ -410,9 +467,10 @@ private:
     std::string outputFile =
         (llvm::Twine(dir) + "/" + llvm::sys::path::filename(out.filePath))
             .str();
-    if (mlir::failed(
-            runResolved(std::move(resolved), sources, outputFile, dir)))
+    if (mlir::failed(runResolved(std::move(resolved), sources, outputFile, dir,
+                                 out.key))) {
       return mlir::failure();
+    }
     out.filePath = outputFile;
     out.value = Directory{std::string(dir)};
     return mlir::success();
@@ -434,8 +492,9 @@ private:
       resolved = tool;
     }
     if (mlir::failed(runResolved(std::move(resolved), sources, out.filePath,
-                                 /*outputDir=*/"")))
+                                 /*outputDirPath=*/"", out.key))) {
       return mlir::failure();
+    }
     out.value = File{};
     return mlir::success();
   }
@@ -443,7 +502,8 @@ private:
   mlir::LogicalResult runResolved(std::string resolved,
                                   llvm::ArrayRef<const ItemBase *> sources,
                                   llvm::StringRef outputFile,
-                                  llvm::StringRef outputDirPath) const {
+                                  llvm::StringRef outputDirPath,
+                                  llvm::StringRef key) const {
     std::vector<std::string> cmd{std::move(resolved)};
     cmd.reserve(parts.size() + 2);
     size_t cursor = 0;
@@ -458,11 +518,15 @@ private:
                        << "': not enough sources for input/value parts\n";
           return mlir::failure();
         }
-        cmd.push_back(p.text +
-                      (p.mode == Part::Path ? sources[cursor]->asFile()
-                                            : sources[cursor]->asString()) +
-                      p.suffix);
-        ++cursor;
+        {
+          std::string slot = p.mode == Part::Path ? sources[cursor]->asFile()
+                                                  : sources[cursor]->asString();
+          ++cursor;
+          if (p.omitIfEmpty && slot.empty()) {
+            break;
+          }
+          cmd.push_back(p.text + slot + p.suffix);
+        }
         break;
       case Part::SlotList:
         if (cursor >= sources.size()) {
@@ -470,16 +534,18 @@ private:
                        << "': not enough sources for inputs parts\n";
           return mlir::failure();
         }
-        for (const auto &entry : sources[cursor]->asArgList())
+        for (const auto &entry : sources[cursor]->asArgList()) {
           cmd.push_back(p.text + entry + p.suffix);
+        }
         ++cursor;
         break;
       case Part::Output:
         if (p.mode == Part::Value) {
           cmd.push_back(p.text + outputFile.str());
         } else {
-          if (!p.text.empty())
+          if (!p.text.empty()) {
             cmd.push_back(p.text);
+          }
           cmd.push_back(outputFile.str());
         }
         break;
@@ -492,25 +558,29 @@ private:
       // Echo the command on stdout so callers that capture stdout can see it.
       std::lock_guard<std::mutex> lock(logMutex());
       llvm::outs() << "aiecc: exec:";
-      for (const auto &a : cmd)
+      for (const auto &a : cmd) {
         llvm::outs() << ' ' << a;
+      }
       llvm::outs() << '\n';
       llvm::outs().flush();
     }
-    if (dryRun)
+    if (dryRun) {
       return mlir::success();
+    }
     llvm::SmallVector<llvm::StringRef> argv(cmd.begin(), cmd.end());
     std::string errMsg;
     // Capture the tool's stdout+stderr into a temp file so routine chatter
     // stays hidden; replayed to stderr only on failure. Under --verbose the
-    // tool inherits stdout/stderr and prints normally.
+    // tool inherits stdout/stderr and prints live, except when a failure hint
+    // has to read that output. Such a command is captured either way and
+    // replayed in full under --verbose, which costs only the streaming.
     // Redirects are [stdin, stdout, stderr]; std::nullopt inherits, and
     // pointing stdout and stderr at the same path merges them.
     llvm::SmallString<128> logPath;
     int logFd = -1;
     std::optional<llvm::StringRef> capture;
-    if (!verbose && !llvm::sys::fs::createTemporaryFile("aiecc-tool", "log",
-                                                        logFd, logPath)) {
+    if ((!verbose || failureHint) && !llvm::sys::fs::createTemporaryFile(
+                                         "aiecc-tool", "log", logFd, logPath)) {
       // ExecuteAndWait opens the path itself, so close our handle.
       llvm::sys::Process::SafelyCloseFileDescriptor(logFd);
       capture = llvm::StringRef(logPath);
@@ -518,21 +588,32 @@ private:
     std::array<std::optional<llvm::StringRef>, 3> redirects = {
         std::nullopt, capture, capture};
     llvm::ArrayRef<std::optional<llvm::StringRef>> redirectRef;
-    if (capture)
+    if (capture) {
       redirectRef = redirects;
+    }
     int rc = llvm::sys::ExecuteAndWait(cmd[0], argv, std::nullopt, redirectRef,
                                        0, 0, &errMsg);
     if (capture) {
-      if (rc != 0) {
+      // Verbose replays a successful run too, in place of the live output the
+      // capture suppressed.
+      if ((rc != 0 && !failureIsEmpty) || verbose) {
         // Move off the live --progress status line before the tool's output.
-        if (progress)
+        if (progress) {
           llvm::errs() << '\n';
-        if (auto buf = llvm::MemoryBuffer::getFile(logPath))
+        }
+        if (auto buf = llvm::MemoryBuffer::getFile(logPath)) {
           llvm::errs() << (*buf)->getBuffer();
+          if (rc != 0 && failureHint) {
+            failureHint((*buf)->getBuffer(), key);
+          }
+        }
       }
       llvm::sys::fs::remove(logPath);
     }
     if (rc != 0) {
+      if (failureIsEmpty) {
+        return mlir::success();
+      }
       llvm::errs() << "aiecc: '" << cmd[0] << "' failed: " << errMsg << "\n";
       return mlir::failure();
     }
