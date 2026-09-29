@@ -7,8 +7,8 @@ For every factory in ``aie.iron.kernels``: its family, summary and sources,
 the builds it offers on this NPU's architecture, and how its cases fared in
 the nightly extensive sweep and performance checks. nightlyKernelChecks.yml
 runs it on each NPU after timing, and publishKernelResults.yml installs the
-result as ``kernel-checks/<npu>/catalogue.json`` beside that NPU's
-``data.js``.
+result as ``kernel-checks/<npu>/catalogue.json`` beside that NPU's run
+records (``utils/kernel_checks/publish.py``).
 
 Per factory the column records, for this NPU:
 

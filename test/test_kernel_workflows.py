@@ -21,33 +21,30 @@ def workflow(name):
     return yaml.load((WORKFLOWS / name).read_text(), Loader=yaml.BaseLoader)
 
 
-TARGETS = ("npu1", "npu2", "aie2", "aie2p")
+TARGETS = ("npu1", "npu2")
 
 
-def artifact(target):
-    kind = "kernel-checks" if target.startswith("npu") else "static"
-    return f"{kind}-{target}-${{{{ github.run_id }}}}"
+def artifact(npu):
+    return f"kernel-checks-{npu}-${{{{ github.run_id }}}}"
 
 
 def test_parallel_compute_has_one_main_only_publisher():
     config = workflow("nightlyKernelChecks.yml")
     assert set(config["on"]) == {"workflow_dispatch", "schedule", "pull_request"}
     assert config["permissions"]["contents"] == "read"
-    for name, legs in (("checks", 2), ("static", 2)):
-        job = config["jobs"][name]
-        matrix = job["strategy"]["matrix"]
-        assert len(matrix.get("include") or matrix.get("target")) == legs
-        if "concurrency" in job:
-            assert "${{ matrix." in job["concurrency"]["group"]
-            assert job["concurrency"]["cancel-in-progress"] == "false"
-            assert job["concurrency"]["queue"] == "max"
-        for step in job["steps"]:
-            assert "git push" not in step.get("run", "")
-            assert "git show" not in step.get("run", "")
-            assert not step.get("uses", "").startswith("actions/cache/save@")
-            assert not step.get("uses", "").startswith("benchmark-action/")
+    assert set(config["jobs"]) == {"checks", "report", "publish"}
+    job = config["jobs"]["checks"]
+    assert len(job["strategy"]["matrix"]["include"]) == 2
+    assert "${{ matrix." in job["concurrency"]["group"]
+    assert job["concurrency"]["cancel-in-progress"] == "false"
+    assert job["concurrency"]["queue"] == "max"
+    for step in job["steps"]:
+        assert "git push" not in step.get("run", "")
+        assert "git show" not in step.get("run", "")
+        assert not step.get("uses", "").startswith("actions/cache/save@")
+        assert not step.get("uses", "").startswith("benchmark-action/")
     publisher = config["jobs"]["publish"]
-    assert publisher["needs"] == ["checks", "static"]
+    assert publisher["needs"] == "checks"
     assert "github.ref == 'refs/heads/main'" in publisher["if"]
     assert "github.event_name != 'pull_request'" in publisher["if"]
     assert publisher["if"].endswith("&& !inputs.only && !inputs.peano }}")
@@ -89,10 +86,9 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
     assert "utils/kernel_checks/index.html" in publish["run"]
     assert "utils/kernel_checks/publish.py" in publish["run"]
     assert (WORKFLOWS.parents[1] / "utils/kernel_checks/publish.py").is_file()
-    # Every target is migrated, whether or not it produced results tonight.
-    assert publish["run"].count('publish.py" migrate') == 2
-    assert 'publish.py" perf --target "$target"' in publish["run"]
-    assert 'publish.py" static --target "$target"' in publish["run"]
+    # Every NPU is migrated, whether or not it produced results tonight.
+    assert publish["run"].count('publish.py" migrate') == 1
+    assert 'publish.py" perf --target "$npu"' in publish["run"]
     baseline_index = next(
         i for i, step in enumerate(steps) if "git show" in step.get("run", "")
     )
@@ -333,12 +329,10 @@ def test_unpublished_runs_report_against_the_published_baseline(tmp_path):
     config = workflow("nightlyKernelChecks.yml")
     assert "pull-requests" not in config["permissions"]
     report = config["jobs"]["report"]
-    assert report["needs"] == ["checks", "static"]
-    # The nightly gets the report in its job summary too, and a run whose
-    # hardware legs were skipped still reports its static ones.
+    assert report["needs"] == "checks"
+    # The nightly gets the report in its job summary too.
     assert "'schedule'" not in report["if"]
     assert "needs.checks.result != 'skipped'" in report["if"]
-    assert "needs.static.result != 'skipped'" in report["if"]
     assert report["permissions"] == {"contents": "read", "pull-requests": "write"}
     steps = report["steps"]
     downloads = [
@@ -400,7 +394,6 @@ def test_unpublished_runs_report_against_the_published_baseline(tmp_path):
             )
     assert (tmp_path / "baselines/npu2/latest.json").is_file()
     assert not (tmp_path / "baselines/npu1").exists()
-    assert not (tmp_path / "baselines/aie2").exists()
     text = summary.read_text()
     assert text == (tmp_path / "report.md").read_text()
     assert "(https://github.com/Xilinx/mlir-aie/actions/runs/7)" in text
@@ -435,7 +428,7 @@ def test_results_are_published_and_old_series_migrated(tmp_path):
     git("add", ".")
     git("commit", "-q", "-m", "main")
     # The publication branch still holds github-action-benchmark's npu2
-    # series and the directory reserved for static program memory.
+    # series and its generated page.
     git("switch", "-q", "--orphan", "gh-pages")
     (tmp_path / "kernel-checks/npu2").mkdir(parents=True)
     (tmp_path / "kernel-checks/npu2/data.js").write_text(
@@ -445,8 +438,6 @@ def test_results_are_published_and_old_series_migrated(tmp_path):
         '"cycles", "value": 5, "extra": "commit abc | pmode default"}]}]}};'
     )
     (tmp_path / "kernel-checks/npu2/index.html").write_text("BENCHMARK_DATA")
-    (tmp_path / "kernel-checks/static-pm/aie2").mkdir(parents=True)
-    (tmp_path / "kernel-checks/static-pm/aie2/data.js").write_text("x")
     git("add", ".")
     git("commit", "-q", "-m", "pages")
     git("switch", "-q", "main")
@@ -465,10 +456,6 @@ def test_results_are_published_and_old_series_migrated(tmp_path):
     (tmp_path / "results/npu1/perf.json").write_text(
         '[{"name": "add/1/bf16/cycles", "unit": "cycles", "value": 7, "extra": "x"}]'
     )
-    (tmp_path / "results/aie2p").mkdir()
-    (tmp_path / "results/aie2p/static.json").write_text(
-        '[{"name": "add/pm_bytes", "unit": "bytes", "value": 100, "extra": "commit abc | peano p1"}]'
-    )
     env = {k: v for k, v in os.environ.items() if k != "BRANCH"}
     env.update(
         GITHUB_RUN_ID="42", RUN_URL="https://example.com/runs/42", GITHUB_SHA="abc"
@@ -485,7 +472,6 @@ def test_results_are_published_and_old_series_migrated(tmp_path):
         # nothing to change.
         if first:
             meta.unlink()
-            (tmp_path / "results/aie2p/static.json").unlink()
     assert (
         git("show", "gh-pages:kernel-checks/index.html") == source.read_text().strip()
     )
@@ -495,11 +481,9 @@ def test_results_are_published_and_old_series_migrated(tmp_path):
     published = git("ls-tree", "-r", "--name-only", "gh-pages", "kernel-checks").split()
     assert "kernel-checks/npu1/runs/42.json" in published
     assert "kernel-checks/npu1/history/cycles.json" in published
-    assert "kernel-checks/static/aie2p/runs/42.json" in published
-    assert "kernel-checks/static/aie2p/history/pm_bytes.json" in published
     assert "kernel-checks/npu2/runs/bench-1790632656742.json" in published
     assert not any(p.endswith("data.js") for p in published)
-    assert not any("static-pm" in p or p.endswith("npu2/index.html") for p in published)
+    assert not any(p.endswith("npu2/index.html") for p in published)
     latest = json.loads(git("show", "gh-pages:kernel-checks/npu1/latest.json"))
     assert (latest["id"], latest["url"], latest["commit"]["id"]) == (
         "42",
@@ -510,62 +494,9 @@ def test_results_are_published_and_old_series_migrated(tmp_path):
     assert latest["provenance"]["host"] == "h1"
     assert latest["cases"]["passed"] == 2 and latest["kernels"]["offered"] == 1
     assert latest["rows"]["add/1/bf16"]["cycles"]["value"] == 7
-    static = json.loads(git("show", "gh-pages:kernel-checks/static/aie2p/latest.json"))
-    assert static["kind"] == "static" and static["provenance"]["peano"] == "p1"
     migrated = json.loads(git("show", "gh-pages:kernel-checks/npu2/runs.json"))
     assert [r["pmode"] for r in migrated["runs"]] == ["default"]
-    assert (
-        git("ls-tree", "-r", "--name-only", "gh-pages", "kernel-checks/static/aie2")
-        == ""
-    )
     assert git("rev-list", "--count", "gh-pages") == "2"
-
-
-def test_static_checks_compile_this_checkout_on_a_cpu_runner(tmp_path):
-    config = workflow("nightlyKernelChecks.yml")
-    checks, static = config["jobs"]["checks"], config["jobs"]["static"]
-    assert static["if"] == checks["if"]
-    assert static["runs-on"] == "ubuntu-latest"
-    assert static["strategy"]["matrix"]["target"] == ["aie2", "aie2p"]
-    names = [step.get("name") for step in static["steps"]]
-    assert "Install the latest wheels and Peano" in names
-    # The same Peano override as the hardware legs, verbatim.
-    peano = {
-        job: next(
-            s
-            for s in config["jobs"][job]["steps"]
-            if s.get("name") == "Install requested Peano"
-        )
-        for job in ("checks", "static")
-    }
-    assert peano["checks"]["run"] == peano["static"]["run"]
-    assert peano["checks"]["env"] == peano["static"]["env"]
-    run = next(step for step in static["steps"] if step.get("id") == "static")
-    assert run["env"]["MLIR_AIE_KERNEL_SOURCES"] == "${{ github.workspace }}"
-    assert run["env"]["ONLY"] == "${{ inputs.only }}"
-    assert "inputs.only" not in run["run"]
-    upload = next(
-        step for step in static["steps"] if "upload-artifact" in step.get("uses", "")
-    )
-    assert upload["with"]["name"] == "static-${{ matrix.target }}-${{ github.run_id }}"
-    assert upload["if"] == "always()"
-    for name in ("static.json", "static-pm.json", "static-meta.json"):
-        assert name in upload["with"]["path"]
-    # The filter is data, and absent when empty.
-    command = run["run"][run["run"].index("python -m") :].split("2>&1", 1)[0]
-    command = command.replace("${{ matrix.target }}", "aie2p")
-    for only, expected in (("", []), ("softmax|gelu", ["--only", "softmax|gelu"])):
-        result = subprocess.run(
-            ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
-            cwd=tmp_path,
-            env={**os.environ, "ONLY": only},
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        args = result.stdout.splitlines()
-        assert args[-len(expected) :] == expected if expected else "--only" not in args
-        assert "--out-pm" in args and "static-meta.json" in args
 
 
 @pytest.mark.parametrize(
@@ -607,7 +538,7 @@ def test_docs_cleanup_preserves_kernel_checks_history():
         input=b"\0".join(
             [
                 b"kernel-checks/npu1/data.js",
-                b"kernel-checks/static/aie2/data.js",
+                b"kernel-checks/npu1/runs/42.json",
                 b"bench/npu1/index.html",
                 b"dev/index.html",
                 b"legacy.html",

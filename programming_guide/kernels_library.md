@@ -474,12 +474,15 @@ measure in any other mode (`--pmode performance`), so a runner that cannot
 set the mode fails the timing loudly instead of charting numbers taken at
 another clock. A dispatched or pull-request run records whatever mode it
 finds, and the publisher charts only `performance` runs. A bit-exact `passthrough` smoke test inside a cycle band guards
-the machine. Nightly data goes to `gh-pages:kernel-checks/<npu>/`: the
-series (`data.js`), the catalogue (`catalogue.json`, written by
-`utils/kernel_checks/catalogue.py` from `correctness.xml`, `perf.json` and
-`meta.json`) and a record of every run (`runs.json` and the latest
-`meta.json` as `latest.json`, written by `utils/kernel_checks/runs_index.py`:
-the Actions run, power mode, host, sanity result and failures). The page at
+the machine. Nightly data goes to `gh-pages:kernel-checks/<npu>/`, written by
+`utils/kernel_checks/publish.py`: one record per run (`runs/<id>.json`: the
+Actions run, commit, power mode, provenance, sanity result, failures and
+every row), an index of them (`runs.json`), the newest one that published
+rows (`latest.json`, which is also the pull-request baseline), and one
+history file per metric (`history/<metric>.json`) for the charts. Runs older
+than 90 days thin to one a week. Beside them sits the catalogue
+(`catalogue.json`, written by `utils/kernel_checks/catalogue.py` from
+`correctness.xml`, `perf.json` and `meta.json`). The page at
 `https://xilinx.github.io/mlir-aie/kernel-checks/` opens on a dashboard of
 the latest run per NPU, with warnings when its numbers are less comparable
 (another power mode, a failed sanity check, truncated traces, a host or

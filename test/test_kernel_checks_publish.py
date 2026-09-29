@@ -147,7 +147,7 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
         ]
     )
     record = json.loads((out / "runs/100.json").read_text())
-    assert record["kind"] == "perf" and record["target"] == "npu1"
+    assert record["target"] == "npu1"
     assert record["id"] == "100" and record["url"] == "https://example.com/runs/100"
     assert record["date"] == "2026-09-29T06:35:00+00:00"
     assert record["commit"] == {
@@ -182,7 +182,7 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
     assert "extra" not in json.dumps(record["rows"])
 
     index = json.loads((out / "runs.json").read_text())
-    assert index["kind"] == "perf" and index["target"] == "npu1"
+    assert index["target"] == "npu1"
     (entry,) = index["runs"]
     assert entry["id"] == "100" and "rows" not in entry
     latest = json.loads((out / "latest.json").read_text())
@@ -308,76 +308,6 @@ def test_runs_accumulate_gaps_stay_and_unsane_runs_publish_nothing(publish, tmp_
     assert len(list((out / "runs").glob("*.json"))) == 3
 
 
-def test_static_runs_are_recorded_from_the_remarks_output(publish, tmp_path):
-    results = tmp_path / "aie2p"
-    results.mkdir()
-    extra = "commit d53582d3e0 | peano 22.0.0+0006955e | kernels 0857407c3322 | target aie2p"
-    (results / "static.json").write_text(
-        json.dumps(
-            [
-                {
-                    "name": "softmax/unpipelined_loops",
-                    "unit": "loops",
-                    "value": 1,
-                    "extra": extra,
-                },
-                {
-                    "name": "softmax/loop/softmax_bf16/for.body/II",
-                    "unit": "cycles",
-                    "value": 4,
-                    "extra": extra,
-                    "range": "NS=3 pro=2 epi=2 zol=True via=SwingModulo at softmax_aie2p.h:41",
-                },
-            ]
-        )
-    )
-    (results / "static-pm.json").write_text(
-        json.dumps(
-            [
-                {
-                    "name": "softmax/pm_bytes",
-                    "unit": "bytes",
-                    "value": 2048,
-                    "extra": extra,
-                },
-            ]
-        )
-    )
-    (results / "static-meta.json").write_text(
-        json.dumps({"kernels": {"softmax": {}}, "failed": []})
-    )
-    out = tmp_path / "static/aie2p"
-    run_cli(
-        [
-            "static",
-            "--target",
-            "aie2p",
-            "--results",
-            results,
-            "--run-id",
-            "9",
-            "--out",
-            out,
-            "--date",
-            "2026-09-29T06:00:00+00:00",
-        ]
-    )
-    record = json.loads((out / "latest.json").read_text())
-    assert record["kind"] == "static" and record["target"] == "aie2p"
-    assert record["provenance"]["peano"] == "22.0.0+0006955e"
-    assert record["pmode"] is None and record["published"] and record["n_rows"] == 3
-    assert record["kernels"] == {"built": 1}
-    assert record["rows"]["softmax"]["pm_bytes"] == {"value": 2048, "unit": "bytes"}
-    assert record["rows"]["softmax/loop/softmax_bf16/for.body"]["II"][
-        "range"
-    ].startswith("NS=3")
-    assert sorted(p.stem for p in (out / "history").glob("*.json")) == [
-        "II",
-        "pm_bytes",
-        "unpipelined_loops",
-    ]
-
-
 DATA_JS = """window.BENCHMARK_DATA = {
   "lastUpdate": 1790663759370,
   "repoUrl": "https://github.com/Xilinx/mlir-aie",
@@ -494,7 +424,6 @@ def test_rebuild_drops_pruned_run_files_and_stale_histories(publish, tmp_path):
     now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
     for i, days in enumerate((0, 1, 100, 101)):
         record = {
-            "kind": "perf",
             "target": "npu2",
             "id": f"r{i}",
             "url": "",
@@ -517,3 +446,33 @@ def test_rebuild_drops_pruned_run_files_and_stale_histories(publish, tmp_path):
     assert not (out / "history/gone.json").exists()
     cycles = json.loads((out / "history/cycles.json").read_text())
     assert cycles["series"]["add/1/bf16"]["values"] == [2, 1, 0]
+
+
+def test_a_retired_power_mode_is_dropped_on_request(publish, tmp_path):
+    out = tmp_path / "npu1"
+    out.mkdir()
+    (out / "data.js").write_text(DATA_JS)
+    run_cli(["migrate", "--out", out])
+    results = results_dir(tmp_path)
+    run_cli(
+        [
+            "perf",
+            "--target",
+            "npu1",
+            "--results",
+            results,
+            "--run-id",
+            "5",
+            "--out",
+            out,
+            "--date",
+            "2026-09-30T06:00:00+00:00",
+        ]
+    )
+    run_cli(["rebuild", "--out", out, "--drop-pmode", "default"])
+    index = json.loads((out / "runs.json").read_text())
+    assert [(r["id"], r["pmode"]) for r in index["runs"]] == [("5", "performance")]
+    assert sorted(p.name for p in (out / "runs").iterdir()) == ["5.json"]
+    cycles = json.loads((out / "history/cycles.json").read_text())
+    assert [r["id"] for r in cycles["runs"]] == ["5"]
+    assert "passthrough/2048x16/int32" not in cycles["series"]

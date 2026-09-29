@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-"""Time the kernel library on device and emit benchmark-action rows.
+"""Time the kernel library on device and emit performance rows.
 
 Every case in ``kernel_cases.py`` marked ``perf`` is one test: it checks the
 kernel against its contract, then times it. Checking first is the point --
@@ -167,8 +167,7 @@ def _cycles_span(traced: kd.CallCycles) -> str:
 def _detail(case: Case, m: dict) -> dict:
     """Return the distribution behind each row, for ``--perf-meta``.
 
-    benchmark-action keeps one value and a text ``range`` per row; the
-    numbers a reader needs to judge that value (how far the median and the
+    A row keeps one value and a text ``range``; the numbers a reader needs to judge that value (how far the median and the
     slowest call sit above the min, how many calls the trace held) go here
     as fields.
     """

@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Publish one target's kernel check results on the publication branch.
+"""Publish one NPU's kernel check results on the publication branch.
 
-A target is an NPU the hardware checks ran on (``npu1``, ``npu2``; kind
-``perf``) or an architecture the static checks compiled for (``aie2``,
-``aie2p``; kind ``static``). Its directory on the branch holds:
+Each NPU the hardware checks ran on (``npu1``, ``npu2``) has a directory on
+the branch, ``kernel-checks/<npu>/``, holding:
 
     runs/<id>.json         one record per run: the Actions run, commit, power
                            mode, provenance, sanity result, failures, and
@@ -21,16 +20,17 @@ the page, where the package is not installed.
 
     publish.py perf --target npu1 --results results/npu1 --run-id 42
         --run-url https://github.com/.../actions/runs/42 --out kernel-checks/npu1
-    publish.py static --target aie2p --results results/aie2p ... --out kernel-checks/static/aie2p
     publish.py migrate --out kernel-checks/npu1
+    publish.py rebuild --out kernel-checks/npu1 [--drop-pmode default]
 
 ``perf`` reads the timing step's ``perf.json`` and ``meta.json`` and the
-catalogue; ``static`` reads ``static.json``, ``static-pm.json`` and
-``static-meta.json``. Every publish first migrates a directory that still
-holds a github-action-benchmark ``data.js`` (one record per entry, then the
-file is removed), rebuilds ``runs.json``, ``latest.json`` and the history
-from the run records, and prunes: every run of the last ``KEEP_DAYS`` is
-kept, older ones one per ISO week, ``MAX_RUNS`` at most.
+catalogue. Every publish first migrates a directory that still holds a
+github-action-benchmark ``data.js`` (one record per entry, then the file is
+removed), rebuilds ``runs.json``, ``latest.json`` and the history from the
+run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
+ones one per ISO week, ``MAX_RUNS`` at most. ``rebuild --drop-pmode MODE``
+also deletes the records of every run measured in ``MODE``, for retiring a
+power mode nobody should compare against.
 """
 
 import argparse
@@ -45,10 +45,7 @@ from pathlib import Path
 KEEP_DAYS = 90
 MAX_RUNS = 400
 REPO = "https://github.com/Xilinx/mlir-aie"
-KINDS = {
-    "perf": {"npu1", "npu2"},
-    "static": {"aie2", "aie2p"},
-}
+TARGETS = ("npu1", "npu2")
 # Provenance fields worth a column in the history (the rest stay in the record).
 HISTORY_PROVENANCE = ("peano", "host", "xrt", "xdna", "kernels", "device")
 
@@ -141,7 +138,6 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
     preflight = meta.get("preflight") or {}
     cases = meta.get("cases") or {}
     record = {
-        "kind": "perf",
         "target": target,
         **run,
         "pmode": preflight.get("pmode"),
@@ -166,29 +162,6 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
     return record
 
 
-def record_static(results: Path, *, target: str, run: dict) -> dict:
-    """Return the record of one static (remarks) run from its ``results`` directory."""
-    rows = _load(results / "static.json", []) + _load(results / "static-pm.json", [])
-    meta = _load(results / "static-meta.json", {})
-    extra = rows[0].get("extra", "") if rows else meta.get("provenance", "")
-    return {
-        "kind": "static",
-        "target": target,
-        **run,
-        "pmode": None,
-        "device": None,
-        "provenance": provenance_fields(extra),
-        "sane": True,
-        "published": bool(rows),
-        "n_rows": len(rows),
-        "exitstatus": meta.get("exitstatus"),
-        "failed": list(meta.get("failed", [])),
-        "truncated": [],
-        "kernels": {"built": len(meta.get("kernels", {}))} if meta else {},
-        "rows": rows_by_case(rows),
-    }
-
-
 def summary(record: dict) -> dict:
     """Return the record without its rows, for ``runs.json``."""
     return {k: v for k, v in record.items() if k != "rows"}
@@ -197,8 +170,7 @@ def summary(record: dict) -> dict:
 def migrate(out: Path) -> int:
     """Turn a github-action-benchmark ``data.js`` into run records; return how many.
 
-    Each entry of each suite ("aie_kernels (<npu>, <mode>)" or "static
-    (<arch>)") becomes ``runs/bench-<date>.json`` with the mode from the
+    Each entry of each suite ("aie_kernels (<npu>, <mode>)") becomes ``runs/bench-<date>.json`` with the mode from the
     suite name and the provenance from the rows' ``extra``. The file and
     the action's own page are removed afterwards. Nothing happens when
     there is no ``data.js``.
@@ -208,7 +180,6 @@ def migrate(out: Path) -> int:
         return 0
     text = re.sub(r"^\s*window\.BENCHMARK_DATA\s*=\s*", "", source.read_text())
     data = json.loads(re.sub(r";\s*$", "", text))
-    kind = "static" if "static" in str(out) else "perf"
     target = out.name
     count = 0
     (out / "runs").mkdir(parents=True, exist_ok=True)
@@ -222,7 +193,6 @@ def migrate(out: Path) -> int:
             )
             run_id = f"bench-{entry['date']}"
             record = {
-                "kind": kind,
                 "target": target,
                 "id": run_id,
                 "url": "",
@@ -281,24 +251,31 @@ def prune(records: list[dict], now: datetime.datetime) -> list[dict]:
     return kept[-MAX_RUNS:]
 
 
-def rebuild(out: Path, now: datetime.datetime | None = None) -> dict:
-    """Rewrite the derived files from ``runs/*.json``, pruning old runs."""
+def rebuild(
+    out: Path, now: datetime.datetime | None = None, drop_pmode: str | None = None
+) -> dict:
+    """Rewrite the derived files from ``runs/*.json``, pruning old runs.
+
+    With ``drop_pmode``, the records of runs measured in that power mode are
+    deleted first.
+    """
     now = now or now_utc()
     runs_dir = out / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
     records = [json.loads(p.read_text()) for p in runs_dir.glob("*.json")]
+    if drop_pmode:
+        for r in records:
+            if r.get("pmode") == drop_pmode:
+                (runs_dir / f"{r['id']}.json").unlink()
+        records = [r for r in records if r.get("pmode") != drop_pmode]
     kept = prune(records, now)
     keep_ids = {r["id"] for r in kept}
     for r in records:
         if r["id"] not in keep_ids:
             (runs_dir / f"{r['id']}.json").unlink(missing_ok=True)
-    kind = kept[-1]["kind"] if kept else None
     target = kept[-1]["target"] if kept else out.name
     (out / "runs.json").write_text(
-        json.dumps(
-            {"kind": kind, "target": target, "runs": [summary(r) for r in kept]},
-            indent=1,
-        )
+        json.dumps({"target": target, "runs": [summary(r) for r in kept]}, indent=1)
     )
     published = [r for r in kept if r.get("published") and r.get("rows")]
     latest = out / "latest.json"
@@ -349,7 +326,6 @@ def rebuild(out: Path, now: datetime.datetime | None = None) -> dict:
         (history_dir / f"{metric}.json").write_text(
             json.dumps(
                 {
-                    "kind": kind,
                     "target": target,
                     "metric": metric,
                     "unit": h["unit"],
@@ -362,14 +338,10 @@ def rebuild(out: Path, now: datetime.datetime | None = None) -> dict:
     return {"runs": len(kept), "published": len(published), "metrics": sorted(metrics)}
 
 
-def publish(
-    kind: str, out: Path, results: Path, *, target: str, run: dict, now=None
-) -> dict:
+def publish(out: Path, results: Path, *, target: str, run: dict, now=None) -> dict:
     """Migrate, record one run, rebuild; return the record."""
     migrate(out)
-    record = (record_perf if kind == "perf" else record_static)(
-        results, target=target, run=run
-    )
+    record = record_perf(results, target=target, run=run)
     (out / "runs").mkdir(parents=True, exist_ok=True)
     (out / "runs" / f"{run['id']}.json").write_text(json.dumps(record, indent=1))
     rebuild(out, now)
@@ -379,20 +351,21 @@ def publish(
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    for kind in KINDS:
-        p = sub.add_parser(kind, help=f"record one {kind} run and rebuild the target")
-        p.add_argument("--target", required=True, choices=sorted(KINDS[kind]))
-        p.add_argument("--results", required=True, type=Path)
-        p.add_argument("--run-id", required=True)
-        p.add_argument("--run-url", default="")
-        p.add_argument("--out", required=True, type=Path)
-        p.add_argument("--commit", default=os.environ.get("GITHUB_SHA", ""))
-        p.add_argument("--commit-message", default="")
-        p.add_argument("--commit-date", default="")
-        p.add_argument("--date", default="", help="ISO date of the run (default: now)")
-    for command in ("migrate", "rebuild"):
-        p = sub.add_parser(command)
-        p.add_argument("--out", required=True, type=Path)
+    p = sub.add_parser("perf", help="record one hardware run and rebuild the NPU")
+    p.add_argument("--target", required=True, choices=TARGETS)
+    p.add_argument("--results", required=True, type=Path)
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--run-url", default="")
+    p.add_argument("--out", required=True, type=Path)
+    p.add_argument("--commit", default=os.environ.get("GITHUB_SHA", ""))
+    p.add_argument("--commit-message", default="")
+    p.add_argument("--commit-date", default="")
+    p.add_argument("--date", default="", help="ISO date of the run (default: now)")
+    p = sub.add_parser("migrate", help="turn a data.js into run records, once")
+    p.add_argument("--out", required=True, type=Path)
+    p = sub.add_parser("rebuild", help="rewrite the derived files from the records")
+    p.add_argument("--out", required=True, type=Path)
+    p.add_argument("--drop-pmode", help="delete the records of runs in this power mode")
     args = parser.parse_args(argv)
 
     if args.command == "migrate":
@@ -402,7 +375,7 @@ def main(argv=None) -> int:
         print(f"migrated {n} runs into {args.out}")
         return 0
     if args.command == "rebuild":
-        print(json.dumps(rebuild(args.out)))
+        print(json.dumps(rebuild(args.out, drop_pmode=args.drop_pmode)))
         return 0
     run = {
         "id": args.run_id,
@@ -410,7 +383,7 @@ def main(argv=None) -> int:
         "date": args.date or iso(now_utc()),
         "commit": commit_info(args.commit, args.commit_message, args.commit_date),
     }
-    record = publish(args.command, args.out, args.results, target=args.target, run=run)
+    record = publish(args.out, args.results, target=args.target, run=run)
     print(
         f"{args.command} {args.target}: run {record['id']}, {record['n_rows']} rows, "
         f"published={record['published']}"

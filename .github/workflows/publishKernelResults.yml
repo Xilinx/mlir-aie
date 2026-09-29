@@ -4,12 +4,11 @@
 name: Publish kernel results
 
 # Called by nightlyKernelChecks.yml once its legs have uploaded their
-# artifacts. Every target that produced results (npu1/npu2 from the hardware
-# checks, aie2/aie2p from the static checks) is recorded under
-# gh-pages:kernel-checks/ by utils/kernel_checks/publish.py: one run record,
-# the run index, the latest published record (the PR report's baseline) and
-# one history file per metric. The page reads those files; nothing else
-# writes them.
+# artifacts. Every NPU that produced results is recorded under
+# gh-pages:kernel-checks/<npu>/ by utils/kernel_checks/publish.py: one run
+# record, the run index, the latest published record (the PR report's
+# baseline) and one history file per metric, beside the NPU's catalogue.
+# The page reads those files; nothing else writes them.
 
 on:
   workflow_call:
@@ -32,9 +31,9 @@ jobs:
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      # `pattern`, not `name`: a leg that produced nothing is skipped rather
-      # than failing the others' publication. One match extracts straight
-      # into `path`, as `name` would.
+      # `pattern`, not `name`: an NPU whose leg produced nothing is skipped
+      # rather than failing the other's publication. One match extracts
+      # straight into `path`, as `name` would.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           pattern: kernel-checks-npu1-${{ github.run_id }}
@@ -43,14 +42,6 @@ jobs:
         with:
           pattern: kernel-checks-npu2-${{ github.run_id }}
           path: results/npu2
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        with:
-          pattern: static-aie2-${{ github.run_id }}
-          path: results/aie2
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        with:
-          pattern: static-aie2p-${{ github.run_id }}
-          path: results/aie2p
 
       # Only `performance` (nightlyKernelChecks.yml's PERF_PMODE) is
       # published: the checks refuse to measure a publishing run in any
@@ -74,7 +65,7 @@ jobs:
 
       # The page and the publisher are copied out before switching branches,
       # since neither is on gh-pages; results/ is untracked and survives the
-      # switch. A target directory that still holds github-action-benchmark's
+      # switch. An NPU directory that still holds github-action-benchmark's
       # data.js is migrated first (once), and an NPU whose leg wrote nothing
       # keeps its previous files.
       - name: Publish results
@@ -84,29 +75,18 @@ jobs:
           git switch -q gh-pages
           mkdir -p kernel-checks
           cp "$RUNNER_TEMP/index.html" kernel-checks/index.html
-          for target in npu1 npu2; do
-            dir="kernel-checks/$target"
+          for npu in npu1 npu2; do
+            dir="kernel-checks/$npu"
             python3 "$RUNNER_TEMP/publish.py" migrate --out "$dir"
-            if [[ -f "results/$target/catalogue.json" ]]; then
+            if [[ -f "results/$npu/catalogue.json" ]]; then
               mkdir -p "$dir"
-              cp "results/$target/catalogue.json" "$dir/catalogue.json"
+              cp "results/$npu/catalogue.json" "$dir/catalogue.json"
             fi
-            if [[ -f "results/$target/meta.json" ]]; then
-              python3 "$RUNNER_TEMP/publish.py" perf --target "$target" --results "results/$target" \
+            if [[ -f "results/$npu/meta.json" ]]; then
+              python3 "$RUNNER_TEMP/publish.py" perf --target "$npu" --results "results/$npu" \
                 --run-id "$GITHUB_RUN_ID" --run-url "$RUN_URL" --out "$dir"
             fi
           done
-          for target in aie2 aie2p; do
-            dir="kernel-checks/static/$target"
-            python3 "$RUNNER_TEMP/publish.py" migrate --out "$dir"
-            if [[ -f "results/$target/static.json" ]]; then
-              python3 "$RUNNER_TEMP/publish.py" static --target "$target" --results "results/$target" \
-                --run-id "$GITHUB_RUN_ID" --run-url "$RUN_URL" --out "$dir"
-            fi
-          done
-          # The static checks' program-memory series were never published;
-          # the directory the old publisher reserved for them goes.
-          rm -rf kernel-checks/static-pm
           git add -A kernel-checks
           git diff --cached --quiet || git -c user.name=kernel-checks \
             -c user.email=github@users.noreply.github.com \
@@ -116,18 +96,15 @@ jobs:
       - name: Push
         run: git push origin gh-pages:gh-pages
 
-      # Cache exactly what was just published, per target, for the PR
+      # Cache exactly what was just published, per NPU, for the PR
       # comparisons; the report job restores it under the same path.
       - name: Collect baselines
         run: |
-          for target in npu1 npu2 aie2 aie2p; do
-            case "$target" in
-              npu*) file="kernel-checks/$target/latest.json" ;;
-              *) file="kernel-checks/static/$target/latest.json" ;;
-            esac
-            mkdir -p "baselines/$target/baseline"
+          for npu in npu1 npu2; do
+            file="kernel-checks/$npu/latest.json"
+            mkdir -p "baselines/$npu/baseline"
             if git cat-file -e "gh-pages:$file" 2>/dev/null; then
-              git show "gh-pages:$file" > "baselines/$target/baseline/latest.json"
+              git show "gh-pages:$file" > "baselines/$npu/baseline/latest.json"
             else
               echo "no gh-pages:$file yet -- nothing to cache as a baseline"
             fi
@@ -144,15 +121,3 @@ jobs:
         with:
           path: baseline
           key: kernel-checks-baseline-npu2-${{ github.run_id }}
-      - name: Select aie2 baseline
-        run: rm -rf baseline && cp -r baselines/aie2/baseline baseline
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: baseline
-          key: kernel-checks-baseline-aie2-${{ github.run_id }}
-      - name: Select aie2p baseline
-        run: rm -rf baseline && cp -r baselines/aie2p/baseline baseline
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: baseline
-          key: kernel-checks-baseline-aie2p-${{ github.run_id }}

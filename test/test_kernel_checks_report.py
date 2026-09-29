@@ -30,7 +30,6 @@ def _record(values, peano="22.0.0+old", target="npu2"):
         case, metric = name.rsplit("/", 1)
         rows.setdefault(case, {})[metric] = {"value": value, "unit": unit}
     return {
-        "kind": "perf" if target.startswith("npu") else "static",
         "target": target,
         "id": "77",
         "commit": {"id": "0123456789ab", "url": "https://example.com/c/0123456"},
@@ -115,8 +114,7 @@ def test_failures_regressions_and_coverage(report):
     )
     assert text.startswith("<!-- kernel-checks-report -->\n")
     assert "## Kernel checks: 2 failing, 1 regressed" in text
-    assert "on hardware, `cycles` 2% or `core_elf_bytes` 2% or more worse" in text
-    assert "static checks" not in text
+    assert "Regressed: `cycles` 2% or `core_elf_bytes` 2% or more worse" in text
     assert "| npu2 | 22.0.0+new (nightly: 22.0.0+old) | [0123456]" in text
     assert "| `mm/64x64/i8` | 1 of 2 | bad |" in text
     assert "| `conv/8/i8` | timing run | failed in the timing run" in text
@@ -151,56 +149,6 @@ def test_clean_run_and_missing_leg(report):
     assert "### " not in text and "<details>" not in text
 
 
-def test_static_legs_gate_on_any_increase(report):
-    nightly = {
-        "softmax/unpipelined_loops": ("loops", 0),
-        "softmax/loop/softmax_bf16/for.body/II": ("cycles", 4),
-        "softmax/pm_bytes": ("bytes", 2000),
-        "gelu/pm_bytes": ("bytes", 1000),
-        "gelu/libcalls": ("calls", 2),
-    }
-    run = {
-        "softmax/unpipelined_loops": ("loops", 1),
-        "softmax/loop/softmax_bf16/for.body/II": ("cycles", 5),
-        "softmax/pm_bytes": ("bytes", 2020),
-        "gelu/pm_bytes": ("bytes", 1040),
-        "gelu/libcalls": ("calls", 1),
-    }
-    extra = "commit 41dcf3cd6a | peano 22.0.0+new | target aie2p"
-    rows = [
-        {"name": n, "unit": u, "value": v, "extra": extra} for n, (u, v) in run.items()
-    ]
-    text = report(
-        {
-            "aie2p": {
-                "static.json": [r for r in rows if not r["name"].endswith("pm_bytes")],
-                "static-pm.json": [r for r in rows if r["name"].endswith("pm_bytes")],
-                "static-meta.json": {
-                    "kernels": {"softmax": {}, "gelu": {}},
-                    "failed": ["tanh: clang exited 1"],
-                },
-            }
-        },
-        {"aie2p": _record(nightly, target="aie2p")},
-    )
-    assert "## Kernel checks: 1 failing, 3 regressed" in text
-    assert "any increase in `II`, `not_zol`, `unpipelined_loops`" in text
-    assert "`pm_bytes` 3% or more" in text
-    assert "on hardware" not in text
-    assert "| aie2p | 22.0.0+new (nightly: 22.0.0+old) | [0123456]" in text
-    assert "| aie2p | `tanh` | compile | clang exited 1 |" in text
-    assert "| `softmax` | unpipelined_loops | 0 loops | 1 loops | from 0 |" in text
-    assert (
-        "| `softmax/loop/softmax_bf16/for.body` | II | 4 cycles | 5 cycles | +25.0% |"
-        in text
-    )
-    assert "| `gelu` | pm_bytes | 1.0 KiB | 1.0 KiB | +4.0% |" in text
-    # 1% of program memory is under its slack; one call fewer is an improvement.
-    assert "| `softmax` | pm_bytes |" not in text
-    assert "<summary>Improved (1)</summary>" in text
-    assert "| `gelu` | libcalls | 2 calls | 1 calls | -50.0% |" in text
-
-
 def test_no_baseline(report):
     values = {"relu/1024/bf16/cycles": ("cycles", 1000)}
     text = report({"npu2": {"meta.json": META, "perf.json": _rows(values, "a")}})
@@ -217,4 +165,4 @@ def test_a_baseline_without_rows_is_no_baseline(report):
 
 
 def test_no_results(report):
-    assert "## Kernel checks: no leg produced results" in report({})
+    assert "## Kernel checks: no NPU produced results" in report({})

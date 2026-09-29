@@ -5,14 +5,17 @@
 <!--
   The Nightly Kernel Checks page, installed as kernel-checks/index.html on the
   publication branch by publishKernelResults.yml. Per NPU it reads, from
-  kernel-checks/<npu>/:
+  kernel-checks/<npu>/ (written by utils/kernel_checks/publish.py):
 
-    data.js         the series github-action-benchmark writes: one entry per
-                    nightly, one suite per power mode "aie_kernels (<npu>, <mode>)"
-    catalogue.json  every factory, its builds and how its cases fared
-                    (utils/kernel_checks/catalogue.py)
-    runs.json       one summary per run: the Actions run, power mode, host,
-                    sanity result, failures (utils/kernel_checks/runs_index.py)
+    runs.json              one summary per run: the Actions run, commit, power
+                           mode, provenance, sanity result, failures
+    latest.json            the newest run that published rows, with its rows
+    runs/<id>.json         any one run's record; the dashboard reads the one
+                           before latest.json in the same power mode
+    history/<metric>.json  every published run's value of one metric per
+                           case; the charts read these, one metric at a time
+    catalogue.json         every factory, its builds and how its cases fared
+                           (utils/kernel_checks/catalogue.py)
 
   Four views, all in the URL hash so a link reproduces one: the dashboard
   (the latest run per NPU and what moved), the kernels table, one kernel's
@@ -208,7 +211,6 @@
   <script>
     'use strict';
     const NPUS = ['npu1', 'npu2'];
-    const SUITE = /^aie_kernels \((npu\d+), (.+)\)$/;
     const REPO = 'https://github.com/Xilinx/mlir-aie';
     const EXPECTED_PMODE = 'performance';
     const STALE_AFTER_MS = 36 * 3600 * 1000;
@@ -225,13 +227,11 @@
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'npu_us', 'core_elf_bytes', 'insts_bytes', 'xclbin_bytes'];
     // Per-metric change thresholds, in percent of the previous value; kept
     // equal to thresholds.json (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "core_elf_bytes": {"pct": 2, "gated": true}, "insts_bytes": {"pct": 2}, "xclbin_bytes": {"pct": 2}, "npu_us": {"pct": 10}, "II": {"pct": 0, "gated": true, "static": true}, "not_zol": {"pct": 0, "gated": true, "static": true}, "unpipelined_loops": {"pct": 0, "gated": true, "static": true}, "non_zol_loops": {"pct": 0, "gated": true, "static": true}, "missing_bank_loads": {"pct": 0, "gated": true, "static": true}, "pass_failed_warnings": {"pct": 0, "gated": true, "static": true}, "libcalls": {"pct": 0, "gated": true, "static": true}, "stack_bytes": {"pct": 0, "static": true}, "pm_bytes": {"pct": 3, "gated": true, "static": true}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "core_elf_bytes": {"pct": 2, "gated": true}, "insts_bytes": {"pct": 2}, "xclbin_bytes": {"pct": 2}, "npu_us": {"pct": 10}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => pct(metric) / 100;
-    // The hardware metrics a report leads with; the static ones are the kernel page's.
-    const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated && !THRESHOLDS[m].static);
-    const STATIC_GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated && THRESHOLDS[m].static);
+    const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated);
     // Provenance fields whose change between runs is marked on the charts.
     const MARKED = ['peano', 'host', 'xrt', 'xdna'];
 
@@ -246,54 +246,72 @@
       } catch (e) { return null; }
     }
 
-    // Every metric is smaller-is-better (customSmallerIsBetter).
-    async function load(npu) {
-      const res = await fetch(`${npu}/data.js`, { cache: 'no-cache' });
-      if (!res.ok) return null;
-      const text = await res.text();
-      return JSON.parse(text.replace(/^\s*window\.BENCHMARK_DATA\s*=\s*/, '').replace(/;\s*$/, ''));
-    }
-
-    // "commit abc | peano 22.0.0+e1 | host bench-3" -> {commit, peano, host}
-    function provenanceOf(extra) {
-      const fields = {};
-      for (const part of (extra || '').split(' | ')) {
-        const i = part.indexOf(' ');
-        if (i > 0) fields[part.slice(0, i)] = part.slice(i + 1);
-      }
-      return fields;
-    }
-
-    // series key "npu|case|metric" -> {npu, kase, metric, unit, byMode: mode -> [point]};
-    // order: every observation (one entry of one suite), by date.
-    function collect(loaded) {
-      const series = new Map();
-      const observations = [];
-      for (const [npu, data] of loaded) {
-        for (const [suite, entries] of Object.entries(data.entries)) {
-          const m = SUITE.exec(suite);
-          const mode = m && m[1] === npu ? m[2] : suite;
-          for (const { commit, date, benches } of entries) {
-            const id = observations.length;
-            const extra = benches.length ? benches[0].extra : undefined;
-            observations.push({ id, npu, mode, commit, date, extra, provenance: provenanceOf(extra) });
-            for (const row of benches) {
-              const cut = row.name.lastIndexOf('/');
-              const kase = row.name.slice(0, cut), metric = row.name.slice(cut + 1);
-              const key = `${npu}|${kase}|${metric}`;
-              let s = series.get(key);
-              if (!s) series.set(key, s = { key, npu, kase, factory: kase.split('/')[0], metric, unit: row.unit, byMode: new Map() });
-              if (!s.byMode.has(mode)) s.byMode.set(mode, []);
-              s.byMode.get(mode).push({ id, date, row });
-            }
+    // One run record per rows: {case: {metric: {value, unit, range}}} ->
+    // the history-file shape collect() reads, one entry per metric.
+    function historiesOf(npu, records) {
+      const byMetric = new Map();
+      const runs = records.map(r => ({ id: r.id, date: r.date, commit: r.commit || {}, pmode: r.pmode, provenance: r.provenance || {} }));
+      records.forEach((r, i) => {
+        for (const [kase, cells] of Object.entries(r.rows || {})) {
+          for (const [metric, cell] of Object.entries(cells)) {
+            if (!byMetric.has(metric)) byMetric.set(metric, { target: npu, metric, unit: cell.unit, runs, series: {} });
+            const series = byMetric.get(metric).series;
+            if (!series[kase]) series[kase] = { values: new Array(records.length).fill(null), ranges: new Array(records.length).fill(null) };
+            series[kase].values[i] = cell.value;
+            if (cell.range) series[kase].ranges[i] = cell.range;
           }
+        }
+      });
+      return [...byMetric.values()];
+    }
+
+    // History files ({target, metric, unit, runs, series: {case: {values,
+    // ranges?}}}) -> series keyed "npu|case|metric", each {npu, kase,
+    // factory, metric, unit, byMode: mode -> [point]}, and `order`, every
+    // run of every NPU by date. A run shared by several files is one
+    // observation, so every metric's chart has the same x axis.
+    function collect(histories) {
+      const series = new Map();
+      const observations = new Map();
+      for (const h of histories) {
+        const npu = h.target;
+        const ids = h.runs.map(r => {
+          const id = `${npu}|${r.id}`;
+          if (!observations.has(id)) {
+            observations.set(id, { id, npu, run: r.id, mode: r.pmode || 'unknown', commit: r.commit || {},
+                                   date: Date.parse(r.date), provenance: r.provenance || {} });
+          }
+          return id;
+        });
+        for (const [kase, sv] of Object.entries(h.series)) {
+          const key = `${npu}|${kase}|${h.metric}`;
+          let s = series.get(key);
+          if (!s) series.set(key, s = { key, npu, kase, factory: kase.split('/')[0], metric: h.metric, unit: h.unit, byMode: new Map() });
+          sv.values.forEach((value, i) => {
+            if (value === null || value === undefined) return;
+            const o = observations.get(ids[i]);
+            if (!s.byMode.has(o.mode)) s.byMode.set(o.mode, []);
+            const range = sv.ranges && sv.ranges[i];
+            s.byMode.get(o.mode).push({ id: o.id, date: o.date, row: { value, unit: h.unit, ...(range ? { range } : {}) } });
+          });
         }
       }
       for (const s of series.values()) {
         for (const points of s.byMode.values()) points.sort((a, b) => a.date - b.date);
       }
-      const order = observations.sort((a, b) => a.date - b.date);
+      const order = [...observations.values()].sort((a, b) => a.date - b.date);
       return { series: [...series.values()], order };
+    }
+
+    // The published run before `latest` in the same power mode, from the
+    // run index, or null.
+    function previousPublished(index, latest) {
+      const runs = (index && index.runs) || [];
+      const at = runs.findIndex(r => r.id === latest.id);
+      for (let i = (at < 0 ? runs.length : at) - 1; i >= 0; i--) {
+        if (runs[i].published && runs[i].pmode === latest.pmode) return runs[i];
+      }
+      return null;
     }
 
     // Relative change between the last two points of each shown mode; the
@@ -361,7 +379,6 @@
     // in cycles and noise in npu_us.
     function changeClass(d, metric) {
       const t = threshold(metric);
-      if (t === 0) return d > 0 ? 'worse' : d < 0 ? 'better' : '';
       return d >= t ? 'worse' : d <= -t ? 'better' : '';
     }
 
@@ -393,7 +410,7 @@
       const out = [];
       let previous = null;
       order.forEach((o, index) => {
-        if (!o.extra) return;
+        if (!Object.keys(o.provenance || {}).length) return;
         if (previous) {
           const changed = MARKED.filter(k => o.provenance[k] !== previous.provenance[k])
             .map(k => `${k} ${o.provenance[k] || '?'}`);
@@ -414,11 +431,12 @@
       const run = {
         recorded: Boolean(recorded),
         id: recorded ? recorded.id : null,
-        url: recorded ? recorded.url : null,
+        url: recorded && recorded.url ? recorded.url : null,
         date: recorded ? Date.parse(recorded.date) : last ? last.date : catalogue ? Date.parse(catalogue.date) : null,
-        commit: recorded && recorded.commit ? recorded.commit : last ? last.commit.id : catalogue ? catalogue.commit : '',
-        commitUrl: last ? last.commit.url : null,
-        message: last ? last.commit.message.split('\n')[0] : '',
+        commit: recorded && recorded.commit && recorded.commit.id ? recorded.commit.id
+          : last && last.commit.id ? last.commit.id : catalogue ? catalogue.commit : '',
+        commitUrl: recorded && recorded.commit && recorded.commit.url ? recorded.commit.url : last ? last.commit.url : null,
+        message: ((recorded && recorded.commit && recorded.commit.message) || (last && last.commit.message) || '').split('\n')[0],
         pmode: recorded ? recorded.pmode : last ? last.mode : null,
         provenance: recorded ? recorded.provenance : last ? last.provenance : {},
         device: recorded ? recorded.device : last ? last.provenance.device : null,
@@ -429,7 +447,6 @@
         correctnessError: recorded ? recorded.correctness_error : undefined,
         previous,
       };
-      if (recorded && last && recorded.commit && last.commit.id !== recorded.commit) run.commitUrl = `${REPO}/commit/${recorded.commit}`;
       if (!run.commitUrl && run.commit) run.commitUrl = `${REPO}/commit/${run.commit}`;
       return run;
     }
@@ -573,7 +590,7 @@
         nImproved += moved.improved.length;
       }
       $('regressions-about').textContent = nRegressed
-        ? `${plural(nRegressed, 'series')} moved past its threshold in the latest nightly's power mode; ${GATED.join(' and ')} first.`
+        ? `${plural(nRegressed, 'series')} moved past ${nRegressed === 1 ? 'its' : 'their'} threshold in the latest nightly's power mode; ${GATED.join(' and ')} first.`
         : 'No series moved past its threshold since the previous nightly.';
       $('improvements-summary').textContent = `Improvements (${nImproved})`;
       $('improvements-box').hidden = nImproved === 0;
@@ -763,7 +780,7 @@
 
     // One factory: what it is, where it comes from, every case with every
     // metric per NPU, and its charts.
-    function renderKernel(factory, catalogues, db) {
+    function renderKernel(factory, catalogues, recent) {
       const head = $('kernel-head');
       const found = catalogues.map(c => c.kernels.find(k => k.factory === factory)).filter(Boolean);
       const k = found[0];
@@ -786,7 +803,7 @@
       });
       head.append(builds);
 
-      const latest = new Map(catalogues.map(c => [c.npu, db ? latestCases(db, c.npu) : { cases: new Map() }]));
+      const latest = new Map(catalogues.map(c => [c.npu, recent ? latestCases(recent, c.npu) : { cases: new Map() }]));
       for (const c of catalogues) $('kernel-cases-head').append(el('th', {}, c.npu));
       const verdicts = caseVerdicts(catalogues, byNpu, factory);
       for (const kase of caseNames(verdicts, latest, factory)) {
@@ -795,21 +812,36 @@
         tr.append(...catalogues.map((c, i) => caseCell(verdicts[i].get(kase), latest.get(c.npu).cases.get(kase), ALL_METRICS)));
         $('kernel-cases').append(tr);
       }
-      if (db) {
-        const shown = db.series.filter(s => s.factory === factory)
-          .sort((a, b) => a.kase.localeCompare(b.kase) || ALL_METRICS.indexOf(a.metric) - ALL_METRICS.indexOf(b.metric) || a.npu.localeCompare(b.npu));
-        const modes = [...new Set(shown.flatMap(s => [...s.byMode.keys()]))].sort();
-        placeCharts($('kernel-charts'), shown, modes);
-      }
+    }
+
+    // One factory's charts, from the history files in `histories`.
+    function kernelCharts(factory, histories) {
+      const shown = histories.series.filter(s => s.factory === factory)
+        .sort((a, b) => a.kase.localeCompare(b.kase) || ALL_METRICS.indexOf(a.metric) - ALL_METRICS.indexOf(b.metric) || a.npu.localeCompare(b.npu));
+      const modes = [...new Set(shown.flatMap(s => [...s.byMode.keys()]))].sort();
+      placeCharts($('kernel-charts'), shown, modes);
     }
 
     // ------------------------------------------------------------------
     // Charts
     // ------------------------------------------------------------------
 
-    let db, modeColor, observer, charts = [];
+    // db: what the charts on screen draw from (history files); recent: the
+    // latest and the previous run per NPU (run records), for the tables.
+    let db, recent, modeColor, observer, charts = [];
     let applyHash = () => {};
-    let loadedCatalogues = [], currentKernel = null;
+    let loadedCatalogues = [], metricList = ALL_METRICS, updated = '';
+    const historyCache = new Map();
+
+    // The history files of `metrics` on `npus`, fetched once each.
+    async function loadHistories(npus, metrics) {
+      const files = await Promise.all(npus.flatMap(n => metrics.map(m => {
+        const url = `${n}/history/${m}.json`;
+        if (!historyCache.has(url)) historyCache.set(url, fetchJson(url));
+        return historyCache.get(url);
+      })));
+      return collect(files.filter(Boolean));
+    }
 
     function cssVar(name, fallback) {
       if (typeof getComputedStyle !== 'function' || !document.documentElement) return fallback;
@@ -904,12 +936,13 @@
                   const b = item.dataset.rows[item.dataIndex];
                   return `${item.dataset.label}: ${item.formattedValue} ${s.unit}` + (b && b.range ? ` (${b.range})` : '');
                 },
-                // The run's provenance (Peano, kernel sources, XRT, host,
-                // power mode), one field per line; every row of a run
-                // carries the same, so the first shown point's serves.
+                // The run's provenance (Peano, kernel sources, XRT, host)
+                // and power mode, one field per line.
                 footer: items => {
-                  const b = items.map(i => i.dataset.rows[i.dataIndex]).find(r => r && r.extra);
-                  return b ? b.extra.split(' | ') : '';
+                  if (!items.length) return '';
+                  const o = order[items[0].dataIndex];
+                  const fields = Object.entries(o.provenance || {}).map(([k, v]) => `${k} ${v}`);
+                  return fields.length ? [...fields, `pmode ${o.mode}`] : '';
                 },
               },
             },
@@ -975,11 +1008,19 @@
       history.replaceState(null, '', '#' + p);
     }
 
-    function render() {
+    let renderToken = 0;
+
+    async function render() {
       writeHash();
+      const token = ++renderToken;
       const npus = checked($('npus')), modes = checked($('modes'));
       const metric = $('metric').value, kernel = $('kernel-filter').value.trim().toLowerCase();
       $('metric-about').textContent = METRICS[metric] ? `${METRICS[metric]}; threshold ${pct(metric)}%` : '';
+      $('status').textContent = 'Loading\u2026';
+      const data = await loadHistories(npus, metric === 'all' ? metricList : [metric]);
+      // A later change of the controls has already drawn its own.
+      if (token !== renderToken) return;
+      db = data;
       const shown = db.series.filter(s =>
         npus.includes(s.npu) && (metric === 'all' || s.metric === metric) &&
         s.kase.toLowerCase().includes(kernel) && modes.some(m => s.byMode.has(m)));
@@ -987,7 +1028,7 @@
       const sort = $('sort').value;
       // Sorted by change relative to the metric's threshold, so a 4% move in
       // cycles outranks a 6% one in npu_us.
-      const rank = s => change.get(s.key) === null ? null : change.get(s.key) / (threshold(s.metric) || 1e-6);
+      const rank = s => change.get(s.key) === null ? null : change.get(s.key) / threshold(s.metric);
       shown.sort((a, b) => {
         if (sort !== 'name') {
           const x = rank(a), y = rank(b);
@@ -1001,7 +1042,7 @@
       });
       $('empty').hidden = shown.length > 0;
       placeCharts($('charts'), shown, modes);
-      $('status').textContent = `${shown.length} of ${db.series.length} series · last update ${db.updated}`;
+      $('status').textContent = `${plural(shown.length, 'series')} · last update ${updated}`;
     }
 
     // ------------------------------------------------------------------
@@ -1031,14 +1072,21 @@
 
     // One factory's detail, rebuilt when another is asked for (or the theme
     // changes, since its charts read their colors when drawn).
+    let currentKernel = null;
+
     function showKernel(factory) {
-      if (currentKernel === factory) return;
       currentKernel = factory;
       $('kernel-head').replaceChildren();
       $('kernel-cases-head').replaceChildren(el('th', {}, 'Case'));
       $('kernel-cases').replaceChildren();
       $('kernel-charts').replaceChildren();
-      renderKernel(factory, loadedCatalogues, db);
+      renderKernel(factory, loadedCatalogues, recent);
+      const npus = loadedCatalogues.map(c => c.npu);
+      loadHistories(npus, metricList).then(data => {
+        if (currentKernel !== factory || currentView() !== 'kernel') return;
+        db = data;
+        kernelCharts(factory, data);
+      });
     }
 
     function readTheme() {
@@ -1064,8 +1112,8 @@
 
     function showView() {
       const view = applyView();
-      if (view === 'charts' && db) { applyHash(); render(); }
-      if (view === 'kernel') showKernel(readHash().kernel || '');
+      if (view === 'charts' && recent) { applyHash(); render(); }
+      if (view === 'kernel' && recent) showKernel(readHash().kernel || '');
       return view;
     }
 
@@ -1073,34 +1121,45 @@
       applyTheme(readTheme());
       $('theme').addEventListener('click', () => {
         applyTheme(isDark() ? 'light' : 'dark');
-        if (currentView() === 'charts' && db) render();
-        if (currentView() === 'kernel') { currentKernel = null; showKernel(readHash().kernel || ''); }
+        if (currentView() === 'charts' && recent) render();
+        if (currentView() === 'kernel') showKernel(readHash().kernel || '');
       });
       window.addEventListener('hashchange', showView);
       const view = applyView();
       for (const [m, about] of Object.entries(METRICS)) {
         $('key-metrics').append(el('dt', {}, m), el('dd', {}, `${about}; threshold ${pct(m)}%`));
       }
-      const [catalogues, runsIndexes, loaded] = await Promise.all([
+      const [catalogues, indexes, latests] = await Promise.all([
         Promise.all(NPUS.map(n => fetchJson(`${n}/catalogue.json`))),
         Promise.all(NPUS.map(n => fetchJson(`${n}/runs.json`))),
-        Promise.all(NPUS.map(async n => [n, await load(n).catch(() => null)])),
-      ]).then(([c, r, l]) => [c.filter(Boolean), new Map(NPUS.map((n, i) => [n, r[i]])), l.filter(([, data]) => data)]);
-      const data = loaded.length ? collect(loaded) : null;
-      db = data;
+        Promise.all(NPUS.map(n => fetchJson(`${n}/latest.json`))),
+      ]).then(([c, r, l]) => [c.filter(Boolean), new Map(NPUS.map((n, i) => [n, r[i]])), l]);
+      // The run before each latest one, in its power mode, for what moved.
+      const previous = await Promise.all(NPUS.map((n, i) => {
+        const p = latests[i] && previousPublished(indexes.get(n), latests[i]);
+        return p ? fetchJson(`${n}/runs/${p.id}.json`) : null;
+      }));
+      const published = NPUS.map((n, i) => [n, [previous[i], latests[i]].filter(Boolean)]).filter(([, r]) => r.length);
+      recent = collect(published.flatMap(([n, records]) => historiesOf(n, records)));
+      const data = published.length ? recent : null;
       loadedCatalogues = catalogues;
-      const npus = NPUS.filter(n => catalogues.some(c => c.npu === n) || runsIndexes.get(n) || loaded.some(([m]) => m === n));
-      renderDashboard(npus.length ? npus : NPUS, data, new Map(catalogues.map(c => [c.npu, c])), runsIndexes, Date.now());
+      const npus = NPUS.filter(n => catalogues.some(c => c.npu === n) || indexes.get(n));
+      renderDashboard(npus.length ? npus : NPUS, data, new Map(catalogues.map(c => [c.npu, c])), indexes, Date.now());
       renderKernels(catalogues, data);
+      const found = [...new Set(recent.series.map(s => s.metric))];
+      metricList = found.length
+        ? ALL_METRICS.filter(m => found.includes(m)).concat(found.filter(m => !ALL_METRICS.includes(m)).sort())
+        : ALL_METRICS;
       if (view === 'kernel') showKernel(readHash().kernel || '');
-      if (!data) {
+      const runs = [...indexes.values()].flatMap(i => (i && i.runs) || []);
+      if (!runs.some(r => r.published)) {
         $('status').textContent = 'No results have been published yet.';
         return;
       }
-      db.updated = formatDate(Math.max(...loaded.map(([, d]) => d.lastUpdate)));
-      const modes = [...new Set(db.series.flatMap(s => [...s.byMode.keys()]))].sort();
-      const metrics = [...new Set(db.series.map(s => s.metric))].sort();
-      addBoxes($('npus'), loaded.map(([n]) => n));
+      updated = formatDate(Math.max(...runs.map(r => Date.parse(r.date))));
+      const modes = [...new Set(runs.filter(r => r.published).map(r => r.pmode || 'unknown'))].sort();
+      const metrics = metricList;
+      addBoxes($('npus'), NPUS.filter(n => indexes.get(n)));
       addBoxes($('modes'), modes);
       for (const m of ['all', ...metrics]) {
         const option = new Option(m, m);
