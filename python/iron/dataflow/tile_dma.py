@@ -403,8 +403,10 @@ def _with_runtime_bd_fields(bd: Bd) -> Bd:
     length = bd.length
     runtime = any(_is_value(v) for v in (*bd.sizes, *bd.strides, bd.offset))
     if length is None and runtime:
+        # The outermost of four sizes is the iteration count, which repeats
+        # the transfer rather than lengthening it (as in shim_dma_bd).
         if sizes:
-            length = np.prod(sizes)
+            length = np.prod(sizes[-3:])
         else:
             length = int(np.prod(bd.buffer.shape))
     return replace(

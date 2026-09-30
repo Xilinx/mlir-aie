@@ -89,6 +89,7 @@ def yield_(values):
 
     See [`Task`][iron.runtime.dmataskhandle.Task].
     """
+    values = list(values)
     frames = _yielded_tasks.get()
     if frames:
         frames[-1].update((i, v) for i, v in enumerate(values) if isinstance(v, Task))
