@@ -13,6 +13,9 @@
 import aie.iron as iron
 import numpy as np
 import pytest
+from aie.dialects import memref
+from aie.extras.dialects.arith import constant
+from aie.helpers.util import np_ndarray_type_to_memref_type
 from aie.iron import CascadeFlow, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
@@ -43,19 +46,21 @@ def _cascade_program(with_skip, block_index):
         get = kernels.bn_conv2dk1_partial_get_relu_i8(**opts, output_channels=_OC)
     in_ty, wt_ty, out_ty = get.arg_types()[:3]
     full_wt_ty = np.ndarray[(_HALF_IC * _OC,), np.dtype[np.int8]]
-    input_types = [in_ty, full_wt_ty, in_ty, full_wt_ty]
+    get_input_ty = in_ty
+    if with_skip:
+        # One byte buffer carries activation and residual: GET has only two
+        # incoming DMA channels, one for this row and one for its weights.
+        get_input_ty = np.ndarray[(_WIDTH * (_HALF_IC + _OC),), np.dtype[np.int8]]
+    input_types = [in_ty, full_wt_ty, get_input_ty, full_wt_ty]
     inputs = [
         ObjectFifo(ty, name=name)
         for name, ty in (
             ("input_put", in_ty),
             ("weights_put", wt_ty),
-            ("input_get", in_ty),
+            ("input_get", get_input_ty),
             ("weights_get", wt_ty),
         )
     ]
-    if with_skip:
-        input_types.append(get.arg_types()[3])
-        inputs.append(ObjectFifo(input_types[-1], name="skip"))
     output = ObjectFifo(out_ty, name="output")
 
     def put_core(act, weights, kernel):
@@ -68,10 +73,25 @@ def _cascade_program(with_skip, block_index):
             weights.release(1)
         act.release(1)
 
-    def get_core(act, weights, out, kernel, *residual):
-        row, result = act.acquire(1), out.acquire(1)
+    def get_core(act, weights, out, kernel):
+        raw, result = act.acquire(1), out.acquire(1)
         if with_skip:
-            skip_row = residual[0].acquire(1)
+            # Typed byte views preserve unsigned activations and signed skips,
+            # following kernel_design's guarded-buffer memref.view pattern.
+            row = memref.view(
+                np_ndarray_type_to_memref_type(in_ty),
+                raw,
+                constant(0, index=True),
+                [],
+            )
+            skip_row = memref.view(
+                np_ndarray_type_to_memref_type(kernel.arg_types()[3]),
+                raw,
+                constant(_WIDTH * _HALF_IC, index=True),
+                [],
+            )
+        else:
+            row = raw
         for weight_index in range_(_OUTPUT_SPLIT):
             chunk = weights.acquire(1)
             for oc in range_(_OC8):
@@ -110,13 +130,9 @@ def _cascade_program(with_skip, block_index):
             weights.release(1)
         act.release(1)
         out.release(1)
-        if with_skip:
-            residual[0].release(1)
 
     w_put = Worker(put_core, [inputs[0].cons(), inputs[1].cons(), put], tile=Tile(0, 3))
     get_args = [inputs[2].cons(), inputs[3].cons(), output.prod(), get]
-    if with_skip:
-        get_args.append(inputs[4].cons())
     w_get = Worker(get_core, get_args, tile=Tile(0, 2))
     CascadeFlow(w_put, w_get)
 
@@ -146,7 +162,7 @@ def _relu_design(
 
 @iron.jit
 def _skip_design(
-    x_put: In, w_put: In, x_get: In, w_get: In, skip: In, out: Out, *, block_index: int
+    x_put: In, w_put: In, x_get_skip: In, w_get: In, out: Out, *, block_index: int
 ):
     return _cascade_program(True, block_index)
 
@@ -221,7 +237,7 @@ def _data(with_skip):
         _pack_weights(weights[1]),
     ]
     if with_skip:
-        inputs.append(_pack_row(skip))
+        inputs[2] = np.concatenate([inputs[2].view(np.int8), _pack_row(skip)])
     return inputs, _pack_row(expected)
 
 

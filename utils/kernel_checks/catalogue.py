@@ -81,7 +81,7 @@ def _by_factory(case_names) -> dict[str, set[str]]:
 
 
 def swept(path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
-    """Return the cases of the extensive sweep that passed and that failed, by factory.
+    """Return generic and dedicated checks that passed and failed, by factory.
 
     A case failed if any input or seed failed, as the performance checks exclude it.
     """

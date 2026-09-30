@@ -136,7 +136,11 @@ def record_perf(request):
 
 
 def _checked_cases(path):
-    """Read the extensive sweep, excluding a case if any input or seed failed."""
+    """Exclude failed sweep cases and factories with failed dedicated checks.
+
+    An unrecognized failure or a failed shared-setup check rejects the whole
+    timing run: unrelated kernels cannot establish that the setup is sound.
+    """
     tests = list(ET.parse(path).iter("testcase"))
     if not tests:
         raise ValueError("correctness report contains no tests")
