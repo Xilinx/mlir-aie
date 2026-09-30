@@ -255,3 +255,27 @@ def test_declared_link_with_picks_among_kernels_sharing_a_symbol(compile_utils):
         'func.func private @setup() attributes {link_with = "setup_bbbb.ll"}\n'
     )
     assert select([aie2, aie2p, other], both) == [aie2, aie2p, other]
+
+
+def test_declared_link_with_spans_lines(compile_utils):
+    """A declaration's ``link_with`` is found when it is split across lines."""
+    aie2 = types.SimpleNamespace(name="setup", object_file_name="setup_aaaa.ll")
+    aie2p = types.SimpleNamespace(name="setup", object_file_name="setup_bbbb.ll")
+    select = compile_utils._select_declared_kernels
+    for text in (
+        "func.func private @setup(\n"
+        "    %arg0: memref<16xi32, affine_map<(d0) -> (d0)>>,\n"
+        "    %arg1: i32)\n"
+        '    attributes {link_with = "setup_bbbb.ll"}\n',
+        "func.func private @setup(%arg0: i32) -> (i32, i32)\n"
+        '  attributes {\n    note = "}{",\n    link_with = "setup_bbbb.ll"\n  }\n',
+        "func.func private @setup()\n  -> memref<4 x i32>\n"
+        '  attributes {link_with = "setup_bbbb.ll"}\n',
+    ):
+        assert select([aie2, aie2p], text) == [aie2p]
+    # A later declaration's attributes are not taken for an earlier one's.
+    text = (
+        "func.func private @setup(%arg0: i32)\n"
+        'func.func private @other() attributes {link_with = "setup_bbbb.ll"}\n'
+    )
+    assert select([aie2, aie2p], text) == [aie2, aie2p]

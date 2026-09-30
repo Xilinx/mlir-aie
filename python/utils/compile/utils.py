@@ -1115,8 +1115,60 @@ def _compiled_into(func, kernel_dir, embed_bitcode=False) -> bool:
     return os.path.abspath(compiled_dir) == os.path.abspath(kernel_dir)
 
 
-_FUNC_DECL_RE = re.compile(r"func\.func\s+private\s+@([^\s(]+)\(([^\n]*)")
+_FUNC_DECL_RE = re.compile(
+    r'func\.func\s+private\s+@("(?:[^"\\]|\\.)*"|[^\s(]+)\s*(?=\()'
+)
+_ATTRIBUTES_RE = re.compile(r"\s*attributes\s*(?=\{)")
 _LINK_WITH_RE = re.compile(r'link_with\s*=\s*"([^"]*)"')
+_WHITESPACE_RE = re.compile(r"\s*")
+_CLOSERS = {"(": ")", "[": "]", "{": "}", "<": ">"}
+
+
+def _skip_nested(text: str, pos: int, stop_at_space: bool = False) -> int:
+    """Return the index just past the nested group or token starting at ``pos``.
+
+    Tracks ``()[]{}<>`` nesting and skips string literals, so the scan is not
+    confused by line breaks or delimiters inside them.  With ``stop_at_space``
+    the scan also ends at whitespace outside any group (the end of a type).
+    """
+    stack = []
+    while pos < len(text):
+        c = text[pos]
+        if c == '"':
+            pos += 1
+            while pos < len(text) and text[pos] != '"':
+                pos += 2 if text[pos] == "\\" else 1
+        elif text.startswith("->", pos):
+            pos += 1
+        elif c in _CLOSERS:
+            stack.append(_CLOSERS[c])
+        elif stack and c == stack[-1]:
+            stack.pop()
+            if not stack and not stop_at_space:
+                return pos + 1
+        elif not stack and (c.isspace() or c in ")]}>"):
+            return pos
+        pos += 1
+    return pos
+
+
+def _declared_link_with(text: str, pos: int):
+    """Return the ``link_with`` of the declaration whose argument list is at ``pos``.
+
+    The signature, result types and ``attributes`` dictionary may each start on
+    a new line, so this follows the declaration's structure rather than reading
+    to the end of the line.
+    """
+    pos = _WHITESPACE_RE.match(text, _skip_nested(text, pos)).end()
+    if text.startswith("->", pos):
+        pos = _WHITESPACE_RE.match(text, pos + 2).end()
+        pos = _skip_nested(text, pos, stop_at_space=True)
+    attrs = _ATTRIBUTES_RE.match(text, pos)
+    if not attrs:
+        return None
+    body = text[attrs.end() : _skip_nested(text, attrs.end())]
+    found = _LINK_WITH_RE.search(body)
+    return found.group(1) if found else None
 
 
 def _select_declared_kernels(funcs, mlir_text: str) -> list:
@@ -1132,9 +1184,8 @@ def _select_declared_kernels(funcs, mlir_text: str) -> list:
     """
     link_with = {}
     for decl in _FUNC_DECL_RE.finditer(mlir_text):
-        found = _LINK_WITH_RE.search(decl.group(2))
         link_with.setdefault(decl.group(1).strip('"'), set()).add(
-            found.group(1) if found else None
+            _declared_link_with(mlir_text, decl.end())
         )
     objects = {}
     for f in funcs:
