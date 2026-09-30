@@ -63,7 +63,7 @@ jobs:
           del /f /q "%OPENSSL_EXE%"
 
           if not exist "C:\Program Files\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" (
-            echo ##[error]C:\Program Files\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib still missing after running %OPENSSL_EXE% - installer may require elevation on this runner, or may not be the full (non-Light) package
+            echo ##[error]C:\Program Files\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib still missing after running %OPENSSL_EXE% - installer may require elevation on this runner, or may not be the full non-Light package
             exit /b 1
           )
           exit /b 0
