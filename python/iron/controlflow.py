@@ -36,7 +36,8 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs):
     ``iter_args`` entry is carried across iterations by its SSA handle: the loop
     body and the loop results receive it re-wrapped as a copy of the ``Task``
     passed in (so ``.start()``/``.free()``/``.await_()`` work; a loop result
-    keeps the freed state of the ``Task`` the body yielded), and
+    takes the type and state, e.g. freed or endpoint, of the ``Task`` the body
+    yielded), and
     [`yield_`][iron.controlflow.yield_] accepts ``Task`` entries too. This is
     what a hand-rolled software-pipelined DMA loop needs.
     """
@@ -69,12 +70,15 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs):
                 yield iv, rewrap_args(a), results
             finally:
                 _yielded_tasks.set(outer)
-            # A loop result is the Task the body yielded, so it inherits that
-            # Task's lifetime (e.g. freed in the body), not the initial one's.
+            # A loop result is the Task the body yielded, so it takes that
+            # Task's type and state (lifetime, endpoint), not the initial one's.
             result_tasks = results if isinstance(results, tuple) else (results,)
             for i, task in yielded.items():
                 if i in wrapped:
-                    result_tasks[i]._freed = task._freed
+                    res = result_tasks[i]
+                    handle = res.handle
+                    res.__class__ = type(task)
+                    res.__dict__ = {**vars(task), "_handle": handle}
         else:
             # iv-only (no iter_args) never has wrapped positions.
             yield vals
