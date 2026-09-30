@@ -1126,19 +1126,30 @@ def _select_declared_kernels(funcs, mlir_text: str) -> list:
     across archs, and each arch's factory gives it its own object. The
     declaration's ``link_with`` picks the one this module uses. A symbol no
     instance links as declared (or declared without ``link_with``) keeps every
-    instance, so one built for another arch still reports that.
+    instance, so one built for another arch still reports that. A module can
+    hold several device symbol tables, each declaring the symbol with its own
+    ``link_with``, so every declared object is kept.
     """
     link_with = {}
     for decl in _FUNC_DECL_RE.finditer(mlir_text):
         found = _LINK_WITH_RE.search(decl.group(2))
-        link_with[decl.group(1).strip('"')] = found.group(1) if found else None
-    chosen = [
+        link_with.setdefault(decl.group(1).strip('"'), set()).add(
+            found.group(1) if found else None
+        )
+    objects = {}
+    for f in funcs:
+        if None not in link_with.get(f.name, {None}):
+            objects.setdefault(f.name, set()).add(f.object_file_name)
+    resolved = {
+        name
+        for name, declared in link_with.items()
+        if None not in declared and declared <= objects.get(name, set())
+    }
+    return [
         f
         for f in funcs
-        if link_with.get(f.name) is not None and link_with[f.name] == f.object_file_name
+        if f.name not in resolved or f.object_file_name in link_with[f.name]
     ]
-    matched = {f.name for f in chosen}
-    return chosen + [f for f in funcs if f.name not in matched]
 
 
 def compile_external_kernels(

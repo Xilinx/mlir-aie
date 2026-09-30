@@ -250,3 +250,8 @@ def test_declared_link_with_picks_among_kernels_sharing_a_symbol(compile_utils):
     assert select([aie2, aie2p, other], text) == [aie2p, other]
     stale = 'func.func private @setup() attributes {link_with = "setup_cccc.ll"}\n'
     assert select([aie2, aie2p], stale) == [aie2, aie2p]
+    both = (
+        'func.func private @setup() attributes {link_with = "setup_aaaa.ll"}\n'
+        'func.func private @setup() attributes {link_with = "setup_bbbb.ll"}\n'
+    )
+    assert select([aie2, aie2p, other], both) == [aie2, aie2p, other]
