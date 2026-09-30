@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // REQUIRES: ryzen_ai, peano
-// Temporarily disabled on NPU1 pending investigation of recent failures.
-// UNSUPPORTED: ryzen_ai_npu1
 //
 // RUN: %run_on_npu1% %python %S/saxpy.py
 // RUN: %run_on_npu2% %python %S/saxpy.py
