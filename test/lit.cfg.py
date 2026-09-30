@@ -63,6 +63,7 @@ llvm_config.with_system_environment(
 # NPU cache namespace so cache state cannot leak between unrelated tests while
 # still allowing multiple RUN lines from one test to share that test-local cache.
 _python_with_test_cache = LitConfigHelper._run_with_test_cache_wrap(config.aie_src_root)
+_pytest_wrapper = os.path.join(config.aie_src_root, "utils", "run_pytest.py")
 config.substitutions.append(
     (
         "%PYTHON",
@@ -76,7 +77,14 @@ config.substitutions.append(
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # Show only failures
-config.substitutions.append(("%pytest", f"{_python_with_test_cache} pytest -rA"))
+config.substitutions.append(
+    (
+        "%pytest",
+        f"{_python_with_test_cache} "
+        f"{LitConfigHelper._quote_lit_arg(config.python_executable)} "
+        f"{LitConfigHelper._quote_lit_arg(_pytest_wrapper)} -rA",
+    )
+)
 
 # Setup test library substitutions
 LitConfigHelper.setup_test_lib_substitutions(
