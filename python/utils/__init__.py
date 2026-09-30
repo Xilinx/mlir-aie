@@ -5,7 +5,7 @@
 #
 """Tensor factories, device helpers, and re-exports for the IRON runtime."""
 
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import Any
 
 from . import (
     _log_setup,  # noqa: F401  # side effect: configure "aie" logging first
@@ -29,9 +29,6 @@ from .tensor_factory import tensor as tensor
 from .tensor_factory import zeros as zeros
 from .tensor_factory import zeros_like as zeros_like
 from .trace import TraceConfig as TraceConfig
-
-if TYPE_CHECKING:
-    from aie.iron.device import Device
 
 _DefaultNPURuntime = None
 
@@ -98,6 +95,11 @@ def get_current_device(*, probe_runtime: bool = True):
     """Get the current NPU device.
 
     Args:
+        probe_runtime: When True, infer the device from the default runtime if
+            no explicit device has been bound.  Use False for offline inspection
+            paths that must not initialize the runtime.
+
+    Args:
         probe_runtime: When True, fall back to the default NPU runtime if no
             device was explicitly set with ``set_current_device``. When False,
             return only the explicitly selected device and never initialize or
@@ -119,15 +121,7 @@ def get_current_device(*, probe_runtime: bool = True):
         return None
 
 
-@overload
-def ensure_current_device(
-    *, probe_runtime: bool = ..., required: Literal[True]
-) -> "Device": ...
-@overload
-def ensure_current_device(
-    *, probe_runtime: bool = ..., required: bool = ...
-) -> "Device | None": ...
-def ensure_current_device(*, probe_runtime: bool = True, required: bool = False):
+def ensure_current_device(*, probe_runtime: bool = True):
     """Bind and return the device observed by IRON.
 
     ``get_current_device()`` can infer a device from the runtime without making
@@ -138,21 +132,12 @@ def ensure_current_device(*, probe_runtime: bool = True, required: bool = False)
     Args:
         probe_runtime: Forwarded to ``get_current_device``. Use False for
             offline inspection paths that must not initialize the runtime.
-        required: Raise rather than return ``None`` when there is no device.
 
     Returns:
         Device | None: The device that was bound, or ``None`` if no device
         was available and nothing was bound.
-
-    Raises:
-        RuntimeError: ``required`` and no device is bound or found.
     """
     device = get_current_device(probe_runtime=probe_runtime)
     if device is not None:
         set_current_device(device)
-    elif required:
-        raise RuntimeError(
-            "no NPU device is bound and none was found; bind one with "
-            "aie.utils.set_current_device(aie.iron.device.from_name(...))"
-        )
     return device

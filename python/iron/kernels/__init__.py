@@ -20,8 +20,8 @@ Submodules:
   and ``.stream_dims`` read the blocking and DMA transforms off the
   contract's operand layouts)
 - `mm(...).zero` and `mv(...).zero` construct companion zero-fill kernels;
-  `mm.mac_dims(...)` and `cascade_mm.mac_dims(...)` query micro-kernel geometry
-  without constructing a kernel.
+  `mm.mac_dims(...)`, `cascade_mm.mac_dims(...)` and `mha.mac_dims(...)` query
+  micro-kernel geometry without constructing a kernel.
 - `zero` — independent zero-fill kernel
 
 Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as

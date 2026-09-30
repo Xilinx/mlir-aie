@@ -5,8 +5,7 @@
 #
 
 # RUN: %pytest %s
-"""A device's name, its constructor and repr, its shim DMA budget, and
-requiring one bound."""
+"""A device's name, its constructor and repr, and its shim DMA budget."""
 
 import pytest
 
@@ -21,7 +20,6 @@ from aie.iron.device import (
     NamedDevice,
     from_name,
 )
-from aie.utils import ensure_current_device, get_current_device, set_current_device
 
 
 @pytest.mark.parametrize(
@@ -53,17 +51,3 @@ def test_a_device_reprs_as_its_constructor():
 def test_shim_dma_channels_are_two_per_shim_tile_each_way(device, channels):
     assert device.shim_dma_channels_in == channels
     assert device.shim_dma_channels_out == channels
-
-
-def test_required_raises_without_a_device_and_binds_one_given():
-    previous = get_current_device(probe_runtime=False)
-    try:
-        set_current_device(None)
-        assert ensure_current_device(probe_runtime=False) is None
-        with pytest.raises(RuntimeError, match="set_current_device"):
-            ensure_current_device(probe_runtime=False, required=True)
-        dev = NPU2()
-        set_current_device(dev)
-        assert ensure_current_device(probe_runtime=False, required=True) is dev
-    finally:
-        set_current_device(previous)

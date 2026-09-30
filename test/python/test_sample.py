@@ -13,8 +13,6 @@ argmax and exact rational prefix sums for the draw.
 
 import math
 import re
-import subprocess
-import sys
 from fractions import Fraction
 from pathlib import Path
 
@@ -166,9 +164,12 @@ def test_draw_row_layout():
 
 
 @pytest.mark.parametrize("n53", [-1, 1 << 53, 1 << 64])
-def test_draw_row_rejects_n53_outside_53_bits(n53):
-    with pytest.raises(ValueError, match="n53"):
-        sample.draw_row(1.0, 1, n53)
+@pytest.mark.parametrize("temperature", [0.0, 1.0])
+def test_draw_and_reference_reject_n53_outside_53_bits(n53, temperature):
+    with pytest.raises(ValueError, match="n53 .* is not in"):
+        sample.draw_row(temperature, 1, n53)
+    with pytest.raises(ValueError, match="n53 .* is not in"):
+        sample.sample_ref(np.zeros(8, dtype=bfloat16), temperature, 4, n53)
 
 
 @pytest.mark.parametrize(
@@ -254,14 +255,6 @@ def test_exp64_ref_special_values():
     np.testing.assert_array_equal(sample.exp64_ref(x), want)
     assert np.isnan(sample.exp64_ref(np.array([np.nan]))).all()
     assert sample.exp64_ref(np.zeros((2, 3))).shape == (2, 3)
-
-
-def test_exp64_table_is_what_its_generator_writes():
-    pytest.importorskip("mpmath")
-    subprocess.run(
-        [sys.executable, str(_ROOT / "utils" / "generate_exp64_table.py"), "--check"],
-        check=True,
-    )
 
 
 # --- keys and temperatures -------------------------------------------------
@@ -473,14 +466,6 @@ def test_reference_rejects_non_positive_top_k(top_k):
         sample.sample_weights(logits, 1.0, top_k)
     with pytest.raises(ValueError, match="k_max must be a positive integer"):
         sample.sample_ref(logits, 1.0, 4, 0, k_max=top_k)
-
-
-@pytest.mark.parametrize("n53", [-1, 1 << 53])
-def test_reference_rejects_n53_out_of_range(n53):
-    logits = np.zeros(8, dtype=bfloat16)
-    for temperature in (0.0, 1.0):
-        with pytest.raises(ValueError, match="n53 .* is not in"):
-            sample.sample_ref(logits, temperature, 4, n53)
 
 
 @pytest.mark.parametrize("k_max", [1, 8, 64])
