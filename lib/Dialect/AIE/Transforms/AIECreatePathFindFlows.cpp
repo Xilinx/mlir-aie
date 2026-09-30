@@ -1239,6 +1239,8 @@ struct PacketFlowRouting {
   void moveFlow(TileID tileId, FlowKey key);
   void moveUnit(TileID tileId, FlowKey key);
   void splitFlow(TileID tileId, FlowKey key, ArrayRef<FlowKey> partners);
+  SmallVector<std::pair<int, int>, 2>
+  statedCubes(const std::pair<PhysPort, int> &slaveFlow) const;
 
   AIEPathfinderPass &pass;
   DeviceOp device;
@@ -1274,8 +1276,9 @@ struct PacketFlowRouting {
 
   // Packet-rule masks the flows state, keyed by the slave port the stream
   // enters and the flow ID. One ID may reach a port under two masks, so the
-  // ID alone does not identify the claim.
-  std::map<std::pair<PhysPort, int>, int> pinnedMasks;
+  // ID alone does not identify the claim, and flows sharing both may each
+  // state a mask of their own, which the port then claims together.
+  std::map<std::pair<PhysPort, int>, std::set<int>> pinnedMasks;
 
   // The streams each slave flow carries, for asking whether two flows can
   // deadlock on an arbiter.
@@ -1454,8 +1457,8 @@ LogicalResult PacketFlowRouting::collectFlows() {
               slaveFlowStreams[slaveFlow].push_back(stream->second);
             slaveFlowSources[slaveFlow][srcPoint].insert(dest);
             if (std::optional<uint8_t> mask = pktFlowOp.getMask()) {
-              pinnedMasks[{{currTile, {src.bundle, src.channel}}, flowID}] =
-                  *mask;
+              pinnedMasks[{{currTile, {src.bundle, src.channel}}, flowID}]
+                  .insert(*mask);
             }
             if (pktFlowOp.getPriorityRoute().value_or(false)) {
               ctrlPktFlows.insert(slaveFlow);
@@ -1477,6 +1480,20 @@ LogicalResult PacketFlowRouting::collectFlows() {
     }
   }
   return success();
+}
+
+// The rules the flows through `slaveFlow` state. A full-width mask selects the
+// id alone, which the cover states just as well, so only a wider claim becomes
+// a rule of its own.
+SmallVector<std::pair<int, int>, 2> PacketFlowRouting::statedCubes(
+    const std::pair<PhysPort, int> &slaveFlow) const {
+  SmallVector<std::pair<int, int>, 2> cubes;
+  auto it = pinnedMasks.find(slaveFlow);
+  if (it != pinnedMasks.end())
+    for (int mask : it->second)
+      if (mask != idMask)
+        cubes.push_back({mask, slaveFlow.second});
+  return cubes;
 }
 
 const SwitchSettings &PacketFlowRouting::settingsOf(const PathEndPoint &src,
@@ -1854,12 +1871,12 @@ void PacketFlowRouting::checkRules() {
             if (masters.empty())
               continue;
             RuleGroup &group = groups[masters];
-            auto mask = pinnedMasks.find({{tileId, f.slave}, f.id});
-            if (mask == pinnedMasks.end() || mask->second == idMask)
+            auto cubes = statedCubes({{tileId, f.slave}, f.id});
+            if (cubes.empty())
               group.derived.push_back(f.id);
-            else if (!llvm::is_contained(group.stated,
-                                         std::pair{mask->second, f.id}))
-              group.stated.push_back({mask->second, f.id});
+            for (auto cube : cubes)
+              if (!llvm::is_contained(group.stated, cube))
+                group.stated.push_back(cube);
           }
           SmallVector<std::pair<int, int>> existing =
               existingCubes[{tileId, slave}];
@@ -1915,16 +1932,25 @@ void PacketFlowRouting::checkRules() {
     // claim a common id, and a mask written on an aie.packet_flow claims every
     // id it matches.
     auto claim = [&, tileId = tileId](const SlaveFlow &f) {
-      auto mask = pinnedMasks.find({{tileId, f.slave}, f.id});
-      return std::pair{mask == pinnedMasks.end() ? idMask : mask->second, f.id};
+      auto cubes = statedCubes({{tileId, f.slave}, f.id});
+      if (cubes.empty())
+        cubes.push_back({idMask, f.id});
+      return cubes;
     };
     for (auto a = byFlow.begin(); a != byFlow.end(); ++a)
       for (auto b = std::next(a); b != byFlow.end(); ++b) {
         const SlaveFlow &fa = a->second, &fb = b->second;
-        auto own = claim(fa), other = claim(fb);
-        if (fa.slave != fb.slave || fa.masters == fb.masters ||
-            !cubesIntersect(own, other))
+        if (fa.slave != fb.slave || fa.masters == fb.masters)
           continue;
+        std::optional<std::pair<std::pair<int, int>, std::pair<int, int>>>
+            overlap;
+        for (auto own : claim(fa))
+          for (auto other : claim(fb))
+            if (!overlap && cubesIntersect(own, other))
+              overlap = {own, other};
+        if (!overlap)
+          continue;
+        auto [own, other] = *overlap;
         moveFlow(tileId, a->first);
         moveFlow(tileId, b->first);
         if (planFailure)
@@ -2208,17 +2234,14 @@ LogicalResult PacketFlowRouting::emit() {
   SmallVector<SmallVector<int, 4>, 4> derivedIds(slaveGroups.size());
   for (size_t gi = 0; gi < slaveGroups.size(); ++gi) {
     for (auto member : slaveGroups[gi]) {
-      auto it = pinnedMasks.find(member);
-      // A full-width mask selects the id alone, which the cover states just as
-      // well, so only a wider claim becomes a rule of its own.
-      if (it == pinnedMasks.end() || it->second == idMask) {
+      auto cubes = statedCubes(member);
+      if (cubes.empty()) {
         derivedIds[gi].push_back(member.second);
         continue;
       }
-      std::pair<int, int> cube = {it->second, member.second};
-      if (!llvm::is_contained(statedRules[gi], cube)) {
-        statedRules[gi].push_back(cube);
-      }
+      for (auto cube : cubes)
+        if (!llvm::is_contained(statedRules[gi], cube))
+          statedRules[gi].push_back(cube);
     }
   }
 
