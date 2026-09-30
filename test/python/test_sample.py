@@ -171,6 +171,46 @@ def test_draw_row_rejects_n53_outside_53_bits(n53):
         sample.draw_row(1.0, 1, n53)
 
 
+@pytest.mark.parametrize(
+    "n53",
+    [
+        -0.5,
+        0.0,
+        0.5,
+        np.float32(1),
+        np.float64(1.5),
+        "0",
+        True,
+        False,
+        np.bool_(True),
+        None,
+        np.nan,
+        np.inf,
+        1 + 0j,
+        np.array(1),
+    ],
+)
+@pytest.mark.parametrize("temperature", [0.0, -0.0, 1.0])
+def test_draw_and_reference_reject_non_integer_n53(n53, temperature):
+    with pytest.raises(ValueError, match="n53 must be an integer"):
+        sample.draw_row(temperature, 4, n53)
+    with pytest.raises(ValueError, match="n53 must be an integer"):
+        sample.sample_ref(np.zeros(8, dtype=bfloat16), temperature, 4, n53)
+
+
+@pytest.mark.parametrize("dtype", [int, np.int64, np.uint64])
+@pytest.mark.parametrize("n53", [0, 1, 1 << 52, (1 << 53) - 1])
+@pytest.mark.parametrize("temperature", [0.0, -0.0, 1.0])
+def test_draw_and_reference_accept_integer_n53(dtype, n53, temperature):
+    words = sample.draw_row(temperature, 4, dtype(n53)).view(np.uint32)
+    assert int(words[2]) | (int(words[3]) << 32) == n53
+    want = 0 if temperature == 0 else n53 * 8 >> 53
+    assert (
+        sample.sample_ref(np.zeros(8, dtype=bfloat16), temperature, 4, dtype(n53))
+        == want
+    )
+
+
 @pytest.mark.parametrize("top_k", [0, -1, 1.0, True])
 def test_draw_row_rejects_non_positive_top_k(top_k):
     with pytest.raises(ValueError, match="top_k must be a positive integer"):

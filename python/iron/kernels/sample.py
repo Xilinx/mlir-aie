@@ -17,7 +17,7 @@ above its k-th largest value and a bitmap of the ties at it); one
    order.
 3. Each candidate value v weighs ``exp64_ref(float64(fl32(fl32(v / T) -
    fl32(max / T))))``.
-4. ``u = n53 * 2**-53``, n53 < 2**53. The token is the first candidate, in
+4. ``u = n53 * 2**-53``, integer 0 <= n53 < 2**53. The token is the first candidate, in
    index order, whose exact prefix sum of the weights P exceeds ``u * S``, S
    the exact total: ``P * 2**53 > n53 * S`` in integers. That is the
    inverse-CDF draw over the weights, with no rounding after them.
@@ -341,6 +341,15 @@ def check_order_preserving(temperature) -> None:
         )
 
 
+def _check_n53(n53: int) -> int:
+    if isinstance(n53, (bool, np.bool_)) or not isinstance(n53, (int, np.integer)):
+        raise ValueError("n53 must be an integer")
+    n53 = int(n53)
+    if not 0 <= n53 < 1 << 53:
+        raise ValueError(f"n53 {n53} is not in [0, 2**53)")
+    return n53
+
+
 def draw_row(temperature, top_k: int, n53: int) -> np.ndarray:
     """Pack the four int32 words ``sample_select`` and ``sample_combine`` read for one draw.
 
@@ -349,8 +358,7 @@ def draw_row(temperature, top_k: int, n53: int) -> np.ndarray:
     _positive("draw_row", top_k=top_k)
     if top_k >= 1 << 31:
         raise ValueError(f"draw_row: top_k {top_k} does not fit int32")
-    if not 0 <= n53 < 1 << 53:
-        raise ValueError(f"n53 {n53} is not in [0, 2**53)")
+    n53 = _check_n53(n53)
     row = np.empty(ROW_WORDS, dtype=np.uint32)
     row[0] = np.float32(temperature).view(np.uint32)
     row[1] = top_k
@@ -409,9 +417,7 @@ def sample_ref(
     ``k_max`` clamp it; without, ``top_k`` is taken as it is.
     """
     _positive("sample_ref", top_k=top_k)
-    n53 = int(n53)
-    if not 0 <= n53 < 1 << 53:
-        raise ValueError(f"n53 {n53} is not in [0, 2**53)")
+    n53 = _check_n53(n53)
     if k_max is not None:
         _positive("sample_ref", k_max=k_max)
         top_k = min(top_k, k_max)
@@ -422,5 +428,5 @@ def sample_ref(
     # P * 2**53 > n53 * S is P > floor(n53 * S / 2**53) for an integer P. The
     # prefixes never step down, so the first above is a bisection; S >= 1
     # (the maximum weighs 1) and u < 1, so the last always is.
-    target = int(n53) * prefix[-1] >> 53
+    target = n53 * prefix[-1] >> 53
     return int(candidates[bisect_right(prefix, target)])
