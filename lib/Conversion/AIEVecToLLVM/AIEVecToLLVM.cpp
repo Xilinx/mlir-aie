@@ -803,14 +803,22 @@ public:
 
     auto v64f32Ty = VectorType::get({64}, rewriter.getF32Type());
 
+    // The masks below address individual lanes, but vector.shuffle indexes
+    // the leading dimension, so an n-D operand has to be flattened first.
+    Value srcVal = adaptor.getSource();
+    auto fltSrcVecTy = getFlattenedVectorType(srcVecTy);
+    if (srcVecTy != fltSrcVecTy)
+      srcVal = vector::ShapeCastOp::create(rewriter, loc, fltSrcVecTy, srcVal)
+                   .getResult();
+
     // Widen the accumulator to ACC2048, filling the unused lanes with poison.
     SmallVector<int64_t> expandMask;
     for (unsigned i = 0; i < laneSize; ++i)
       expandMask.push_back(i);
     for (unsigned i = laneSize; i < 64; ++i)
       expandMask.push_back(-1);
-    auto srcExpanded = vector::ShuffleOp::create(
-        rewriter, loc, adaptor.getSource(), adaptor.getSource(), expandMask);
+    auto srcExpanded =
+        vector::ShuffleOp::create(rewriter, loc, srcVal, srcVal, expandMask);
 
     // conf selects the fp32 accumulator datapath, matching the ACC2048
     // accfloat add/sub lowerings and the AIE API's neg(v64accfloat):
@@ -824,8 +832,15 @@ public:
     SmallVector<int64_t> extractMask;
     for (unsigned i = 0; i < laneSize; ++i)
       extractMask.push_back(i);
-    auto finalResult = vector::ShuffleOp::create(rewriter, loc, negResult,
-                                                 negResult, extractMask);
+    Value finalResult = vector::ShuffleOp::create(rewriter, loc, negResult,
+                                                  negResult, extractMask)
+                            .getResult();
+
+    // Restore the operand's shape.
+    if (srcVecTy != fltSrcVecTy)
+      finalResult =
+          vector::ShapeCastOp::create(rewriter, loc, srcVecTy, finalResult)
+              .getResult();
 
     rewriter.replaceOp(op, finalResult);
     return success();
