@@ -202,7 +202,8 @@ bool isDirectional(WireBundle bundle) {
 
 class StreamTracer {
 public:
-  explicit StreamTracer(DeviceOp device) {
+  explicit StreamTracer(DeviceOp device)
+      : maxPacketID(getTargetModel(device).getMaxPacketId()) {
     for (auto sb : device.getOps<SwitchboxOp>())
       switchboxes[sb.getTileOp().getTileID()] = sb;
     for (auto mux : device.getOps<ShimMuxOp>())
@@ -344,16 +345,14 @@ private:
             next(masterSet.destPort(), ruleID, arbiter,
                  masterSet.getKeepPktHeader().value_or(false));
       };
-      for (auto rule : rules.getRules().front().getOps<PacketRuleOp>()) {
-        if (!id) {
-          route(rule, rule.valueInt());
-          continue;
-        }
-        if ((*id & rule.maskInt()) == (rule.valueInt() & rule.maskInt())) {
-          route(rule, *id);
-          break;
-        }
-      }
+      for (int packetID = id.value_or(0); packetID <= id.value_or(maxPacketID);
+           ++packetID)
+        for (auto rule : rules.getRules().front().getOps<PacketRuleOp>())
+          if ((packetID & rule.maskInt()) ==
+              (rule.valueInt() & rule.maskInt())) {
+            route(rule, packetID);
+            break;
+          }
     }
   }
 
@@ -361,6 +360,7 @@ private:
   std::map<TileID, ShimMuxOp> shimMuxes;
   std::map<ChannelKey, std::set<int>> sentIDs;
   std::vector<RoutedStream> streams;
+  int maxPacketID;
 };
 
 } // namespace
@@ -1479,8 +1479,7 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
   // A counted wait within one component lies on a closed walk. A packet holds
   // its arbiter until its tail passes, so no state has two trees holding one
   // arbiter, and a walk that needs that is no deadlock. The search fixes or
-  // rules out a holder per arbiter until the shortest walk left agrees; past
-  // its budget it keeps the first walk.
+  // rules out a holder per arbiter until the shortest walk left agrees.
   using Grant = std::pair<TileID, int>;
   struct Holders {
     std::optional<size_t> fixed;
@@ -1529,21 +1528,16 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
         cycle.steps.push_back(*edge->step);
     return cycle;
   };
-  constexpr int maxWalkSearches = 64;
   for (size_t x : roots)
     for (const Edge &e : successors(x)) {
       if (!counts(e) || component[e.to] != component[x])
         continue;
-      std::optional<SmallVector<const Edge *>> first;
       SmallVector<Constraints> pending{{}};
-      for (int search = 0; !pending.empty() && search < maxWalkSearches;
-           search++) {
+      while (!pending.empty()) {
         Constraints c = pending.pop_back_val();
         std::optional<SmallVector<const Edge *>> path = closeWalk(x, e, c);
         if (!path)
           continue;
-        if (!first)
-          first = path;
         std::map<Grant, size_t> held;
         std::optional<std::pair<Grant, size_t>> clash;
         for (const Edge *edge : *path) {
@@ -1564,8 +1558,6 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
         pending.push_back(std::move(exclude));
         pending.push_back(std::move(fix));
       }
-      if (!pending.empty())
-        return toCycle(*first);
     }
   return std::nullopt;
 }

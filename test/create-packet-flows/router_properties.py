@@ -67,11 +67,10 @@ PARAMS = dict(
     # AIETargetModel::getNumSlaveSlots, getMaxPacketId
     rule_slots=4,
     max_id=31,
-    # pktHeaderBytes, maxBDSteps, maxWalkSearches:
+    # pktHeaderBytes, maxBDSteps:
     # AIEStreamDependencyAnalysis.cpp
     header_bytes=4,
     max_bd_steps=1024,
-    max_walk_searches=64,
     # stepBudget in planArbiters and unroutableArbiters, budget in
     # runOnPacketFlow's hold-cycle search: AIECreatePathFindFlows.cpp
     plan_budget=100000,
@@ -1260,15 +1259,13 @@ def trace_routed_streams(d):
                     if ms[0] == "masterset" and rule[2] in ms[2]:
                         nxt(ms[1], rule_id, arbiter, bool(ms[3]))
 
-            for i, rule in enumerate(op[2]):
-                mask, value = rule[0], rule[1]
-                if pid is None:
-                    if not any(value & m == v & m for m, v, _ in op[2][:i]):
-                        route(rule, value)
-                    continue
-                if (pid & mask) == (value & mask):
-                    route(rule, pid)
-                    break
+            ids = range(PARAMS["max_id"] + 1) if pid is None else (pid,)
+            for packet_id in ids:
+                for rule in op[2]:
+                    mask, value = rule[0], rule[1]
+                    if (packet_id & mask) == (value & mask):
+                        route(rule, packet_id)
+                        break
 
     def trace_from(src, tile, is_mux, inp):
         ids = None
@@ -2149,16 +2146,12 @@ class Analysis:
             for e in successors(x):
                 if not counts(e) or comp[e[0]] != comp[x]:
                     continue
-                first = None
                 pending = [({}, {})]
-                searches = 0
-                while pending and searches < PARAMS["max_walk_searches"]:
-                    searches += 1
+                while pending:
                     fixed, excluded = pending.pop()
                     path = close_walk(x, e, fixed, excluded)
                     if path is None:
                         continue
-                    first = first or path
                     held, clash = {}, None
                     for st in steps_of(path):
                         if st[0] != "arbiter":
@@ -2177,8 +2170,6 @@ class Analysis:
                         )
                     )
                     pending.append(({**fixed, grant: holder}, excluded))
-                if pending:
-                    return steps_of(first)
         return None
 
     def explain_cycle(self, steps):
@@ -4885,6 +4876,38 @@ def check_model():
         if got != want:
             out.append(f"{label}: got {got!r}, want {want!r}")
 
+    # Unknown ids obey first-match rules and can diverge downstream.
+    d = Design("npu1_1col")
+    d.boxes[(0, 5)] = [
+        ("amsel", "a", 0, 0),
+        ("amsel", "b", 1, 0),
+        ("masterset", (SOUTH, 0), ["a"], False),
+        ("masterset", (SOUTH, 1), ["b"], False),
+        ("rules", (DMA, 0), [(30, 30, "a"), (31, 31, "b")]),
+    ]
+    d.boxes[(0, 4)] = [
+        ("amsel", "a", 0, 0),
+        ("amsel", "b", 1, 0),
+        ("masterset", (DMA, 0), ["a"], False),
+        ("masterset", (DMA, 1), ["b"], False),
+        ("rules", (NORTH, 0), [(31, 30, "a"), (31, 31, "b")]),
+        ("connect", (NORTH, 1), (CORE, 0)),
+    ]
+    expect(
+        "unknown ids, ordered and masked",
+        [(s.dst, s.pid) for s in trace_routed_streams(d)],
+        [((0, 4, DMA, 0), 30), ((0, 4, DMA, 1), 31)],
+    )
+    add_program(d, (0, 5), MM2S, 0, [bd_block(64, 31)], False)
+    expect(
+        "known id through masked rule",
+        [(s.dst, s.pid) for s in trace_routed_streams(d)],
+        [((0, 4, DMA, 1), 31)],
+    )
+    d = Design("npu1_1col")
+    d.boxes[(0, 4)] = [("connect", (DMA, 0), (DMA, 1))]
+    expect("circuit has no packet id", [s.pid for s in trace_routed_streams(d)], [None])
+
     # arbiter_deadlock_exhausted.mlir: nothing programs memtile (1,1), so the
     # six flows into it wait on each other, and flow 6 into (0,1) waits on all.
     d = Design("npu2")
@@ -4997,7 +5020,7 @@ def check_model():
     looped("looped, acquire-equal", None)
     # arbiter_hold_cycle_one_holder.mlir: flows 0 and 3 share arbiter 0 at
     # (0,1). The walk through it needs both to hold it at once, which a
-    # packet held until tlast rules out, but a single search takes it.
+    # packet held until tlast rules out.
     d = Design("npu1_1col")
     for k in range(4):
         core, ch = (0, 2 + k // 2), k % 2
@@ -5015,13 +5038,7 @@ def check_model():
         routes = [[((0, 1), (DMA, s.src[3]), arbiters[s.pid])] for s in an.streams]
         return an.hold_cycle(routes) is not None
 
-    saved = PARAMS["max_walk_searches"]
-    for budget, want in ((64, False), (1, True)):
-        PARAMS["max_walk_searches"] = budget
-        try:
-            expect(f"one holder, {budget} searches", cycles(0, 1, 2, 0), want)
-        finally:
-            PARAMS["max_walk_searches"] = saved
+    expect("one holder", cycles(0, 1, 2, 0), False)
     expect("same-core sharers", cycles(0, 0, 1, 2), True)
     # arbiter_hold_cycle_wormhole.mlir: no pair conflicts, but with every hop
     # packet switched the arbiters close a cycle.
