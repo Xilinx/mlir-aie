@@ -326,15 +326,18 @@ struct AIEObjectFifoAllocatePass
       return;
     }
 
-    auto initValues = pool.getInitValues();
-    int filled = initValues ? initValues->size() : 0;
+    ArrayRef<Attribute> initValues;
+    if (auto initAttr = pool.getInitValues()) {
+      initValues = initAttr->getValue();
+    }
+    int filled = initValues.size();
     StringRef base = pool.getBaseName();
 
     SmallVector<Attribute> names;
     // Initial contents may fill only the first objects of a deeper pool.
     for (int i = 0; i < pool.getDepth(); i++) {
       ElementsAttr init =
-          i < filled ? cast<ElementsAttr>((*initValues)[i]) : nullptr;
+          i < filled ? cast<ElementsAttr>(initValues[i]) : nullptr;
       std::string name = (base + "_buff_" + std::to_string(i)).str();
       Value placement = bufferPlacements[pool][i];
       setInsertionPointOn(placement);
