@@ -13,7 +13,7 @@ and `join()` alike.
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import Layout, TensorAccessPattern
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2Col1
@@ -61,3 +61,19 @@ print(Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 # A PaddedLayout carries the padding too.
 # CHECK: aie.objectfifo @out({{.*}}dimensionsToStream [<size = 8, stride = 16>, <size = 16, stride = 1>]
 # CHECK-SAME: padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 4, const_pad_after = 4>, <const_pad_before = 0, const_pad_after = 0>]>
+
+# ObjectFifo dims cannot encode an offset, so a view that starts past element
+# 0 is rejected instead of silently walking from the start.
+for label, dims in [
+    ("slice", Layout.full((ROWS, COLS)).slice(np.s_[2:6])),
+    ("padded slice", Layout.full((ROWS, COLS)).slice(np.s_[2:6]).pad([(1, 1), (0, 0)])),
+    ("tap", TensorAccessPattern((ROWS, COLS), COLS, [4, COLS], [COLS, 1])),
+]:
+    try:
+        ObjectFifo(tile_ty, name=f"off_{label}", dims_to_stream=dims)
+        print(f"{label}: accepted")
+    except ValueError as e:
+        print(f"{label}:", str(e)[:48])
+# CHECK: slice: ObjectFifo stream dimensions cannot encode an
+# CHECK: padded slice: ObjectFifo stream dimensions cannot encode an
+# CHECK: tap: ObjectFifo stream dimensions cannot encode an

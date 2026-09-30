@@ -137,3 +137,42 @@ try:
 except ValueError as e:
     print("mismatched yield:", str(e)[:44])
 # CHECK: mismatched yield: yielded TaskGroup({{[0-9]+}}) has transfers waited
+
+
+@iron.jit
+def index_for_group(a: In, b: Out, *, n_tiles: DispatchTime[np.int32] = 4):
+    def body(a, b, n, in_prod, out_cons, chunks):
+        tg = TaskGroup()
+        in_prod.fill(a, tap=chunks[0], group=tg)
+        for iv, carried, _last in range_(1, n, iter_args=[tg], insert_yield=False):
+            carried.finish()
+            yield_([iv])  # an unrelated index where the group should go
+
+    return build(body, n_tiles)
+
+
+try:
+    index_for_group.specialize().as_mlir()
+    print("index for group: accepted")
+except ValueError as e:
+    print("index for group:", str(e)[:48])
+# CHECK: index for group: slot 0 of the loop carries a TaskGroup
+
+
+@iron.jit
+def group_for_index(a: In, b: Out, *, n_tiles: DispatchTime[np.int32] = 4):
+    def body(a, b, n, in_prod, out_cons, chunks):
+        for iv, _acc, _last in range_(1, n, iter_args=[n], insert_yield=False):
+            other = TaskGroup()
+            in_prod.fill(a, tap=chunks[1], group=other)
+            yield_([other])
+
+    return build(body, n_tiles)
+
+
+try:
+    group_for_index.specialize().as_mlir()
+    print("group for index: accepted")
+except ValueError as e:
+    print("group for index:", str(e)[:60])
+# CHECK: group for index: yielded TaskGroup({{[0-9]+}}) in slot 0, but the loop does
