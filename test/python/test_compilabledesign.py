@@ -2082,7 +2082,7 @@ def test_dispatch_library_selected_once_per_compile(
 
     design = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
     monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
-    monkeypatch.setattr(design, "_compute_cache_hash", lambda: "cached")
+    monkeypatch.setattr(design, "_compute_cache_hash", lambda **_kw: "cached")
     directory = tmp_path / "cached"
     directory.mkdir()
     if cache_hit:

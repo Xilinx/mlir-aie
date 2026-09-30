@@ -24,6 +24,7 @@
 #include "mlir/Conversion/ArithToEmitC/ArithToEmitC.h"
 #include "mlir/Conversion/SCFToEmitC/SCFToEmitC.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -33,6 +34,7 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/RegionUtils.h"
 
 #include "llvm/ADT/SmallSet.h"
@@ -48,6 +50,27 @@ namespace xilinx {
 } // namespace xilinx
 
 using namespace mlir;
+
+// The C++ that declines a build with a reason. `why` becomes a string
+// literal (quotes and backslashes escaped, line breaks flattened). When the
+// snippet goes through an emitc.verbatim with operands, `{}` is a
+// placeholder and `{{` its escape, so a `{` in the message is doubled; a
+// verbatim without operands is emitted literally.
+static std::string refuse(StringRef why, bool inFormat) {
+  std::string lit;
+  for (char ch : why) {
+    if (ch == '\n' || ch == '\r')
+      lit += ' ';
+    else if (ch == '"' || ch == '\\')
+      (lit += '\\') += ch;
+    else if (ch == '{' && inFormat)
+      lit += "{{";
+    else
+      lit += ch;
+  }
+  return "return aie_runtime::txn_refused(\"" + lit + "\");";
+}
+
 using namespace xilinx;
 
 namespace {
@@ -296,10 +319,14 @@ private:
           // Host-side bounds guard: if the runtime value overflows its narrow
           // BD field, the builder yields no stream (std::nullopt) rather than a
           // truncated one. Appends nothing, so not counted.
-          emitc::VerbatimOp::create(b, loc,
-                                    "if ({} > " + std::to_string(g.getMax()) +
-                                        ") return std::nullopt;",
-                                    ValueRange{g.getValue()});
+          emitc::VerbatimOp::create(
+              b, loc,
+              "if ({} > " + std::to_string(g.getMax()) + ") " +
+                  refuse("a runtime size or stride overflows its buffer "
+                         "descriptor field (at most " +
+                             std::to_string(g.getMax()) + ")",
+                         /*inFormat=*/true),
+              ValueRange{g.getValue()});
         })
         .Case<AIEX::NpuAssertBdDivisibleOp>([&](auto g) {
           // Host-side realizability guard: a runtime size/stride whose byte
@@ -307,16 +334,27 @@ private:
           // builder yields no stream. allow_unit exempts a unit stride (the
           // contiguous sub-granule case). Appends nothing, so not counted.
           std::string d = std::to_string(g.getDivisor());
+          std::string why =
+              refuse("a runtime size or stride is not a whole number of "
+                     "address granules (must be a multiple of " +
+                         d + " elements)",
+                     /*inFormat=*/true);
           if (g.getAllowUnit())
             emitc::VerbatimOp::create(b, loc,
-                                      "if ({} != 1 && {} % " + d +
-                                          " != 0) return "
-                                          "std::nullopt;",
+                                      "if ({} != 1 && {} % " + d + " != 0) " +
+                                          why,
                                       ValueRange{g.getValue(), g.getValue()});
           else
-            emitc::VerbatimOp::create(
-                b, loc, "if ({} % " + d + " != 0) return std::nullopt;",
-                ValueRange{g.getValue()});
+            emitc::VerbatimOp::create(b, loc, "if ({} % " + d + " != 0) " + why,
+                                      ValueRange{g.getValue()});
+        })
+        .Case<AIEX::NpuRequireOp>([&](auto g) {
+          // Host-side shape guard: a violated user constraint yields no
+          // stream (std::nullopt), the same contract as the BD-field guards,
+          // and its message is what the host reports. Appends nothing.
+          emitc::VerbatimOp::create(
+              b, loc, "if (!({})) " + refuse(g.getMessage(), /*inFormat=*/true),
+              ValueRange{g.getCond()});
         })
         .Case<AIEX::DMABdPoolPopOp>([&](AIEX::DMABdPoolPopOp pop) {
           // Draw a BD id from the tile's runtime pool (declared in the
@@ -328,7 +366,13 @@ private:
               b, loc,
               "uint32_t " + var + "; if (!aie_runtime::bd_pool_pop(" +
                   bdPoolName(pop.getColumn(), pop.getRow()) + ", " + var +
-                  ")) return std::nullopt;");
+                  ")) " +
+                  refuse("no free buffer descriptor on tile (" +
+                             std::to_string(pop.getColumn()) + ", " +
+                             std::to_string(pop.getRow()) +
+                             "): the sequence keeps more transfers in flight "
+                             "than the tile has descriptors",
+                         /*inFormat=*/false));
           Value ref =
               emitc::LiteralOp::create(b, loc, pop.getBdId().getType(), var);
           pop.getBdId().replaceAllUsesWith(ref);
@@ -565,6 +609,21 @@ struct ConvertAIEXToEmitCPass
   // generated functions in one pass: a rolled dynamic loop is scf.for, and its
   // bounds / iter_args are arith, so both must lower together.
   LogicalResult lowerArithAndScfToEmitC(ModuleOp moduleOp) {
+    // ArithToEmitC has no patterns for the integer ops the Python bindings
+    // emit for `//`, ceildiv, min and max on staged scalars. Expand them to
+    // the divsi/cmpi/select forms it does lower before converting.
+    {
+      RewritePatternSet expand(moduleOp.getContext());
+      arith::populateCeilFloorDivExpandOpsPatterns(expand);
+      arith::populateExpandMinMaxIPatterns(expand);
+      // Rewrite only: folding or CSE here would reshape the sequence the
+      // per-op conversion below expects (and the C++ its tests check).
+      GreedyRewriteConfig config;
+      config.enableFolding(false).enableConstantCSE(false);
+      if (failed(applyPatternsGreedily(moduleOp, std::move(expand), config)))
+        return failure();
+    }
+
     TypeConverter typeConverter;
     typeConverter.addConversion([](Type t) { return t; });
     populateEmitCSizeTTypeConversions(typeConverter);
@@ -655,6 +714,7 @@ private:
                        llvm::join(holes, ", ") + ");";
     emitc::VerbatimOp::create(
         sb, loc, "static thread_local " + kTxnVecType.str() + " __txn;");
+    emitc::VerbatimOp::create(sb, loc, "aie_runtime::txn_refusal = nullptr;");
     emitc::VerbatimOp::create(sb, loc, call, genArgs);
     emitc::VerbatimOp::create(sb, loc, "if (!__result) return -2;");
     emitc::VerbatimOp::create(sb, loc, "__txn = std::move(*__result);");
@@ -664,6 +724,17 @@ private:
         sb, loc,
         emitc::LiteralOp::create(sb, loc, i64Ty,
                                  "static_cast<int64_t>(__txn.size())"));
+
+    // dispatch_last_refusal(): why the last dispatch_generate() on this
+    // thread returned -2 (a string literal in this library), or null.
+    auto whyFn = emitc::FuncOp::create(builder, loc, "dispatch_last_refusal",
+                                       FunctionType::get(ctx, {}, {charPtrTy}));
+    whyFn.setSpecifiersAttr(externC);
+    OpBuilder wb = OpBuilder::atBlockBegin(whyFn.addEntryBlock());
+    emitc::ReturnOp::create(
+        wb, loc,
+        emitc::LiteralOp::create(wb, loc, charPtrTy,
+                                 "aie_runtime::txn_refusal"));
     return success();
   }
 

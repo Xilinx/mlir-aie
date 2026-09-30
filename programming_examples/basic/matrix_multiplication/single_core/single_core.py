@@ -20,7 +20,7 @@ import argparse
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import Layout
 from aie.iron import (
     CompileTime,
     In,
@@ -136,24 +136,16 @@ def single_core(
 
     rows_per_block = 4
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n, prune_step=False
-    )
+    A_tiles = Layout.full((M, K)).tile((m, k)).group((1, K_div_k)).repeat(N_div_n)
     if b_col_maj:
-        b_tap = TensorTiler2D.group_tiler(
-            (N, K), (n, k), (N_div_n, K_div_k), prune_step=False
-        )[0]
+        b_tap = Layout.full((N, K)).tile((n, k)).group((N_div_n, K_div_k))[0]
     else:
-        b_tap = TensorTiler2D.group_tiler(
-            (K, N),
-            (k, n),
-            (K_div_k, N_div_n),
-            tile_group_col_major=True,
-            prune_step=False,
-        )[0]
-    C_tiles = TensorTiler2D.group_tiler(
-        (M, N), (m, n), (rows_per_block // 2, N_div_n), prune_step=False
-    )
+        b_tap = (
+            Layout.full((K, N))
+            .tile((k, n))
+            .group((K_div_k, N_div_n), col_major=True)[0]
+        )
+    C_tiles = Layout.full((M, N)).tile((m, n)).group((rows_per_block // 2, N_div_n))
     c_index = 0
 
     def sequence(A, B, C, inA_h, inB_h, outC_h):

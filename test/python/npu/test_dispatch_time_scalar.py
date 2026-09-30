@@ -16,8 +16,6 @@
 import aie.iron as iron
 import numpy as np
 import pytest
-from aie.extras.dialects import arith
-from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import (
     CompileTime,
     DispatchTime,
@@ -62,12 +60,9 @@ def dyn_copy(
     worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
     def seq(a_h, b_h, start, n, in_prod, out_cons):
-        i32 = np_dtype_to_mlir_type(np.int32)
-        i64 = np_dtype_to_mlir_type(np.int64)
-        n64 = arith.extsi(i64, n)
-        for tile in range_(n64):
-            tile_i32 = arith.index_cast(tile, to=i32)
-            offset = (start + tile_i32) * arith.constant(tile_size, i32)
+        # The index counter is cast to the scalar width by the arithmetic.
+        for tile in range_(n):
+            offset = (start + tile) * tile_size
             tg = TaskGroup()
             out_cons.drain(
                 b_h,

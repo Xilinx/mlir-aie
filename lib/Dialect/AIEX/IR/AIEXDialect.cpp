@@ -957,6 +957,56 @@ LogicalResult AIEX::NpuAssertBdFieldOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// NpuRequireOp
+//===----------------------------------------------------------------------===//
+
+// A constant-false guard is not a verifier error: a specialized sequence may
+// hold one in a region canonicalization later folds away (a peeled ragged
+// tail whose row count is zero). One that survives to the static lowering is
+// diagnosed there (AIETargetNPU) and refuses the dispatch on the C++ path.
+LogicalResult AIEX::NpuRequireOp::verify() { return success(); }
+
+namespace {
+// A constraint proven at compile time carries no runtime check.
+struct EraseSatisfiedRequire : OpRewritePattern<AIEX::NpuRequireOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(AIEX::NpuRequireOp op,
+                                PatternRewriter &rewriter) const override {
+    auto c = getConstantIntValue(op.getCond());
+    if (!c || *c == 0)
+      return failure();
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+} // namespace
+
+namespace {
+// A constraint already required on the same condition earlier in the block
+// adds nothing: after CSE every tap's re-derived check is the same value.
+struct EraseRepeatedRequire : OpRewritePattern<AIEX::NpuRequireOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(AIEX::NpuRequireOp op,
+                                PatternRewriter &rewriter) const override {
+    for (Operation *prev = op->getPrevNode(); prev;
+         prev = prev->getPrevNode()) {
+      auto earlier = dyn_cast<AIEX::NpuRequireOp>(prev);
+      if (earlier && earlier.getCond() == op.getCond()) {
+        rewriter.eraseOp(op);
+        return success();
+      }
+    }
+    return failure();
+  }
+};
+} // namespace
+
+void AIEX::NpuRequireOp::getCanonicalizationPatterns(
+    mlir::RewritePatternSet &results, mlir::MLIRContext *context) {
+  results.add<EraseSatisfiedRequire, EraseRepeatedRequire>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // NpuAssertBdDivisibleOp
 //===----------------------------------------------------------------------===//
 

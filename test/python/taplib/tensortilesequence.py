@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-
 from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 from util import construct_test
 

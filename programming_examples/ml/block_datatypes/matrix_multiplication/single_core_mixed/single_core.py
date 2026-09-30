@@ -16,7 +16,7 @@ import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import Layout
 from aie.iron import (
     CompileTime,
     In,
@@ -94,12 +94,10 @@ def single_core_mixed(
 
     rows_per_block = 4
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n
-    )
-    b_tap = TensorTiler2D.group_tiler((N, K // 8), (n, k // 8), (N_div_n, K_div_k))[0]
+    A_tiles = Layout.full((M, K)).tile((m, k)).group((1, K_div_k)).repeat(N_div_n)
+    b_tap = Layout.full((N, K // 8)).tile((n, k // 8)).group((N_div_n, K_div_k))[0]
 
-    C_tiles = TensorTiler2D.group_tiler((M, N), (m, n), (rows_per_block // 2, N_div_n))
+    C_tiles = Layout.full((M, N)).tile((m, n)).group((rows_per_block // 2, N_div_n))
     c_index = 0
 
     def sequence(a, b, c, inA_h, inB_h, outC_h):

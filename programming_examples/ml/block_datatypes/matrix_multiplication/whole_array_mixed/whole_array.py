@@ -15,7 +15,7 @@ import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import Layout
 from aie.iron import (
     CompileTime,
     In,
@@ -153,23 +153,21 @@ def whole_array_mixed(
     tb_max_n_rows = 4
     tb_n_rows = tb_max_n_rows // 2
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K),
-        (m * n_A_tiles_per_shim, k),
-        (1, K // k),
-        pattern_repeat=N // n // n_aie_cols,
+    A_tiles = (
+        Layout.full((M, K))
+        .tile((m * n_A_tiles_per_shim, k))
+        .group((1, K // k))
+        .repeat(N // n // n_aie_cols)
     )
-    B_tiles = TensorTiler2D.step_tiler(
-        (N, K // 8),
-        (n, k // 8),
-        tile_group_repeats=(N // n // n_aie_cols, K // k),
-        tile_group_steps=(n_aie_cols, 1),
+    B_tiles = (
+        Layout.full((N, K // 8))
+        .tile((n, k // 8))
+        .group((N // n // n_aie_cols, K // k), steps=(n_aie_cols, 1))
     )
-    C_tiles = TensorTiler2D.step_tiler(
-        (M, N),
-        (m * n_aie_rows, n),
-        tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
-        tile_group_steps=(1, n_aie_cols),
+    C_tiles = (
+        Layout.full((M, N))
+        .tile((m * n_aie_rows, n))
+        .group((tb_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols))
     )
     c_index = 0
 

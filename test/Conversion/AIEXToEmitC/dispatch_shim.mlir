@@ -21,6 +21,7 @@
 
 // CHECK: extern "C" AIE_DISPATCH_EXPORT int64_t dispatch_generate(int32_t [[A:v[0-9]+]], size_t [[B:v[0-9]+]], uint32_t** [[OUT:v[0-9]+]]) {
 // CHECK-NEXT: static thread_local std::vector<uint32_t> __txn;
+// CHECK-NEXT: aie_runtime::txn_refusal = nullptr;
 // CHECK-NEXT: auto __result = generate_txn_main_seq([[A]], [[B]]);
 // The builder declines (std::nullopt) when a runtime scalar overflows a BD
 // field; -2 is the sentinel DispatchBridge turns into an exception.
@@ -31,6 +32,10 @@
 
 // Off by default: these are definitions, so a header including them twice
 // would not link.
+// The reason for the last -2 on this thread, for the host to report.
+// CHECK: extern "C" AIE_DISPATCH_EXPORT const char* dispatch_last_refusal() {
+// CHECK-NEXT: return aie_runtime::txn_refusal;
+
 // NOSHIM-NOT: dispatch_abi
 // NOSHIM-NOT: dispatch_generate
 

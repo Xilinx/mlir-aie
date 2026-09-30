@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import Layout
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -12,7 +11,7 @@ from util import construct_test
 # CHECK-LABEL: tensor_tile_same_height
 @construct_test
 def tensor_tile_same_height():
-    tiles = TensorTiler2D.simple_tiler((12, 8), (12, 2))
+    tiles = Layout.full((12, 8)).tile((12, 2)).materialize()
     access_order, access_count = tiles.accesses()
     reference_access = np.array(
         # fmt: off

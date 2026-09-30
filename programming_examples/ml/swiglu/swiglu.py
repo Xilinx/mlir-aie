@@ -14,7 +14,7 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import Layout
 from aie.iron import (
     CompileTime,
     In,
@@ -88,8 +88,8 @@ def swiglu(
         for i in range(num_columns)
     ]
 
-    taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
-    taps_wts = TensorTiler2D.simple_tiler((1, 2 * size), (1, 2 * chunk))
+    taps = Layout.full((1, size)).tile((1, chunk))
+    taps_wts = Layout.full((1, 2 * size)).tile((1, 2 * chunk))
 
     def sequence(a, w, b, in_prods, wts_prods, out_conses):
         tg = TaskGroup()

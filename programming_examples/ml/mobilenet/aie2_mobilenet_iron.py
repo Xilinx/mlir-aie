@@ -29,7 +29,7 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorAccessPattern
+from aie.helpers.taplib import Layout
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, TaskGroup
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -154,13 +154,10 @@ def make_mobilenet_iron(use_placement: bool = True):
         _cascade_wts_sz_i32 = sum(_CASCADE_SIZES) // 4  # 76800 i32 = 307200 bytes
         cascade_wts_ty = np.ndarray[(_cascade_wts_sz_i32,), np.dtype[np.int32]]
 
+        weights = Layout.full((_cascade_wts_sz_i32,))
+
         def _wts_tap(byte_offset, byte_size):
-            return TensorAccessPattern(
-                (_cascade_wts_sz_i32,),
-                offset=byte_offset // 4,
-                sizes=[1, 1, 1, byte_size // 4],
-                strides=[0, 0, 0, 1],
-            )
+            return weights[byte_offset // 4 : (byte_offset + byte_size) // 4]
 
         # Use the gemm-style "one task_group at a time" pattern. Each task_group
         # holds a batch of fills + a wait=True drain, and finish_task_group()
@@ -201,12 +198,10 @@ def make_mobilenet_iron(use_placement: bool = True):
                 post_L1_OutW * post_L1_OutH * post_L2_InC * 2 // 4
             )  # 640
             _inp_sz_i32 = tensorInW * tensorInH * tensorInC // 4  # 100352
-            _post_l1_scratch_tap = TensorAccessPattern(
-                (_inp_sz_i32,),
-                offset=_post_l1_out_sz_i32,
-                sizes=[1, 1, 1, _post_l1_out_sz_i32],
-                strides=[0, 0, 0, 1],
-            )
+            scratch = Layout.full((_inp_sz_i32,))
+            _post_l1_scratch_tap = scratch[
+                _post_l1_out_sz_i32 : 2 * _post_l1_out_sz_i32
+            ]
             avgpool_cons.drain(
                 inp,
                 tap=_post_l1_scratch_tap,
@@ -226,12 +221,9 @@ def make_mobilenet_iron(use_placement: bool = True):
                 tap=_post_l1_scratch_tap,
                 group=tg2,
             )
-            _post_fc_out_tap = TensorAccessPattern(
-                (_inp_sz_i32,),
-                offset=_post_l1_out_sz_i32 * 2,  # i32 offset 1280
-                sizes=[1, 1, 1, _post_l1_out_sz_i32],
-                strides=[0, 0, 0, 1],
-            )
+            _post_fc_out_tap = scratch[
+                2 * _post_l1_out_sz_i32 : 3 * _post_l1_out_sz_i32  # i32 offset 1280
+            ]
             fc_cons.drain(
                 inp,
                 tap=_post_fc_out_tap,

@@ -19,7 +19,7 @@ is decorated.
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.helpers.taplib import Layout
 from aie.iron import (
     CompileTime,
     In,
@@ -82,29 +82,18 @@ def matrix_multiplication_single_core(
     # into r*s / s*t / r*t sub-tiles for the MMUL intrinsic.  See
     # programming_guide/section-2/section-2c/ for n-D layout transformations.
     fifo_A_L3L2 = ObjectFifo(a_ty, name="A_L3L2")
-    tap_A_L2L1 = TensorTiler2D.group_tiler((m, k), (r, s), (m // r, k // s))[0]
-    fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
-        dims_to_stream=tap_A_L2L1.transformation_dims, name="A_L2L1"
-    )
+    tap_A_L2L1 = Layout.full((m, k)).tile((r, s)).group((m // r, k // s))[0]
+    fifo_A_L2L1 = fifo_A_L3L2.cons().forward(dims_to_stream=tap_A_L2L1, name="A_L2L1")
 
     fifo_B_L3L2 = ObjectFifo(b_ty, name="B_L3L2")
-    tap_B_L2L1 = TensorTiler2D.group_tiler((k, n), (s, t), (k // s, n // t))[0]
-    fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
-        dims_to_stream=tap_B_L2L1.transformation_dims, name="B_L2L1"
-    )
+    tap_B_L2L1 = Layout.full((k, n)).tile((s, t)).group((k // s, n // t))[0]
+    fifo_B_L2L1 = fifo_B_L3L2.cons().forward(dims_to_stream=tap_B_L2L1, name="B_L2L1")
 
     fifo_C_L1L2 = ObjectFifo(c_ty, name="C_L1L2")
-    # Inverse tiling that unpacks C from the kernel's r*t sub-tile layout
-    # back to row-major.
-    tap_C_L1L2 = TensorAccessPattern(
-        tensor_dims=(m, n),
-        offset=0,
-        sizes=[m // r, r, n // t, t],
-        strides=[r * n, t, r * t, 1],
-    )
-    fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
-        dims_to_stream=list(tap_C_L1L2.transformation_dims), name="C_L2L3"
-    )
+    # The kernel leaves C as (r, t) sub-tiles; reading them back row-major is
+    # the inverse of that tiling.
+    tap_C_L1L2 = Layout.full((m, n)).tile((r, t)).inverse()
+    fifo_C_L2L3 = fifo_C_L1L2.cons().forward(dims_to_stream=tap_C_L1L2, name="C_L2L3")
 
     def core_fn(of_a, of_b, of_c, matmul):
         for _ in range_(M // m * N // n):
@@ -127,13 +116,16 @@ def matrix_multiplication_single_core(
     # Each task group encompasses all data movement for one row of output
     # tiles. See programming_guide/section-2/section-2f/ for multi-level
     # (L3→L2→L1) data-movement patterns.
-    a_taps = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (1, K // k), pattern_repeat=(N // n)
+    a_taps = Layout.full((M, K)).tile((m, k)).group((1, K // k)).repeat(N // n)
+    # All of B, walked one column of k*n tiles at a time; coalesce() merges
+    # the contiguous walk down a tile column into a single DMA dimension.
+    b_tap = (
+        Layout.full((K, N))
+        .tile((k, n))
+        .group((K // k, N // n), col_major=True)[0]
+        .coalesce()
     )
-    b_tap = TensorTiler2D.group_tiler(
-        (K, N), (k, n), (K // k, N // n), tile_group_col_major=True
-    )[0]
-    c_taps = TensorTiler2D.group_tiler((M, N), (m, n), (1, N // n))
+    c_taps = Layout.full((M, N)).tile((m, n)).group((1, N // n))
 
     def sequence(A, B, C, a_prod, b_prod, c_cons):
         for tile_row in range(M // m):

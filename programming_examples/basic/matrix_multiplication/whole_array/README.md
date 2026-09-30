@@ -19,7 +19,7 @@ At a high level, the code does the following (in order):
 
 1. [**Defining Core Computations:**](#4-defining-core-computations) The `core_fn()` function — wrapped in a `Worker` — contains the code that will be loaded onto each AIE core. This code calls the matrix-multiply microkernel from the library (`kernels.mm`) on the input sub-matrix elements acquired through the ObjectFifos, accumulating into the output sub-matrix.
 
-1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) A `sequence()` function handed to `Runtime(...)` sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation, via `handle.fill()` / `handle.drain()` calls that consume `TensorTiler2D`-generated access patterns.
+1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) A `sequence()` function handed to `Runtime(...)` sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation, via `handle.fill()` / `handle.drain()` calls that consume `Layout`/`TileGrid`-generated access patterns.
 
 1. **Generating the Design:** The `_build_design()` function constructs the IRON design and resolves it to an MLIR module. The `@iron.jit`-decorated `whole_array()` is the single entry point for compilation; `main()` either compiles + runs on hardware or compiles ahead-of-time to caller-specified xclbin/insts paths (used by the Makefile so `test.cpp` + `sweep.sh` can drive the design).  The `generate_taps()` helper calls into the same design body to produce TAP sequences for the visualization notebook.
 
@@ -136,7 +136,7 @@ We assume our data are stored in **row-major format** in the host's memory. For 
 
 #### Runtime Sequence Tiling and Data Layout Transformations Notebook
 
-There is a notebook that includes visualization for the runtime sequence's `handle.fill` / `handle.drain` shim DMA transfers for matrices A, B, and C — its TAPs come from the same `TensorTiler2D` calls the design uses, surfaced via the design's `generate_taps=True` mode.
+There is a notebook that includes visualization for the runtime sequence's `handle.fill` / `handle.drain` shim DMA transfers for matrices A, B, and C — its TAPs come from the same `Layout`/`TileGrid` tilings the design uses, surfaced via the design's `generate_taps=True` mode.
 
 To run the notebook:
 * Start a jupyter server at the root directory of your clone of `mlir-aie`.
@@ -231,24 +231,28 @@ Both `zero_kernel` and `matmul_kernel` come from the library — `kernels.mm(dim
 
 `Runtime(sequence, [A_ty, B_ty, C_ty, ...])` wires a host-side `sequence` function whose parameters (`A`, `B`, `C`) stand in for the three external buffers on the AIE's shim tiles, followed by the ObjectFifo handles passed as the trailing entries.  Inside the body, `handle.fill(buffer, tap=tap)` on a producer handle and `handle.drain(buffer, tap=tap)` on a consumer handle describe the per-shim DMA transfers — `tap` is a `TensorAccessPattern` that encodes the wraps/strides for tiling `M`&times;`K`, `K`&times;`N`, and `M`&times;`N` into the sub-matrices the in-array FIFOs expect.
 
-The full set of TAPs is produced once via `TensorTiler2D`:
+The full set of TAPs is produced once as `TileGrid`s built with the `Layout` algebra (`grid[i]` is the i-th tile, and `fill`/`drain` accept it directly):
 
 ```python
-A_tiles = TensorTiler2D.group_tiler(
-    (M, K), (m * n_A_tiles_per_shim, k), (1, K // k),
-    pattern_repeat=N // n // n_aie_cols, prune_step=False)
-B_tiles = TensorTiler2D.step_tiler(
-    (K, N), (k, n),
-    tile_group_repeats=(K // k, N // n // n_aie_cols),
-    tile_group_steps=(1, n_aie_cols), tile_group_col_major=True,
-    prune_step=False)
-C_tiles = TensorTiler2D.step_tiler(
-    (M, N), (m * n_aie_rows, n),
-    tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
-    tile_group_steps=(1, n_aie_cols), prune_step=False)
+A_tiles = (
+    Layout.full((M, K))
+    .tile((m * n_A_tiles_per_shim, k))
+    .group((1, K // k))
+    .repeat(N // n // n_aie_cols)
+)
+B_tiles = (
+    Layout.full((K, N))
+    .tile((k, n))
+    .group((K // k, N // n // n_aie_cols), steps=(1, n_aie_cols), col_major=True)
+)
+C_tiles = (
+    Layout.full((M, N))
+    .tile((m * n_aie_rows, n))
+    .group((tb_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols))
+)
 ```
 
-(The two `b_col_maj=1` / `c_col_maj=1` branches build slightly different `step_tiler` configs that emit the col-major DMA pattern.)
+(The two `b_col_maj=1` / `c_col_maj=1` branches build slightly different `.tile().group()` chains that emit the col-major DMA pattern.)
 
 The runtime body — a plain `sequence(A, B, C, A_hs, B_hs, C_hs)` function that receives the three host buffers plus the shim ObjectFifo handles — then walks the tile-row blocks with explicit ping-pong:
 
@@ -298,3 +302,44 @@ This C++ code demonstrates how to implement matrix multiplication for different 
 1. `matmul_vectorized_b_col_maj` functions: These functions are identical to the `matmul_vectorized_2x2` implementation except for differences in pointer arithmetic for accessing the `B` matrix and issuing a transpose instruction for `B`. This allows us to feed column-major `s`&times;`t`-sized tiles into the compute kernel, which then transposes those into row-major.
 
 This code showcases efficient performance in matrix multiplication-intensive workloads and can be adapted for other types of inputs and operations as needed.
+
+## Dispatch-Time Shapes: `whole_array_dyn.py`
+
+`whole_array.py` bakes `M`, `K` and `N` into the compiled artifact. The
+sibling design `whole_array_dyn.py` compiles once for a *capacity*
+(`--M-max`, `--K-max`, `--N-max`: the largest matrices the host buffers hold)
+and takes the live shape as `DispatchTime` scalars. Every call rebuilds the
+instruction stream on the host in C++ from the same xclbin, in well under a
+millisecond and with no Python in the loop:
+
+```python
+gemm = whole_array_dyn.specialize(M_max=4096, K_max=4096, N_max=4096,
+                                  m=64, k=64, n=32, n_aie_cols=4,
+                                  dtype_in_str="bf16", dtype_out_str="f32")
+gemm(A, B, C, M=512, K=1024, N=2048)    # one compile serves every shape
+gemm(A, B, C, M=4096, K=4096, N=4096)
+gemm(A, B, C, M=100, K=64, N=64)        # refused: M must be a multiple of m * 4
+```
+
+The tiling is the same taplib algebra as the static design, evaluated inside
+the runtime sequence on the staged shape: taps become arithmetic on `M`,
+`K`, `N`; the time-block loop stays rolled (`range_`); the ragged last row
+block is a peeled `if_`; the shape asserts become `require` guards that
+refuse an illegal dispatch before anything reaches the NPU. Each core's trip
+counts (`K // k` and its output-tile count) arrive as runtime parameters
+written by the sequence before it releases a per-worker barrier.
+
+```
+python3 whole_array_dyn.py -M 512 -K 512 -N 512 --M-max 1024 --K-max 1024 --N-max 1024 ...
+```
+
+`whole_array_dyn.specialize(M=.., K=.., N=..)` is a fully static
+specialization that takes the ordinary static path. `test/python/dispatch_taplib_gemm.py`
+compares the dispatch-time builder's DMA events against such specializations
+and against `whole_array.py` with `aie.utils.txn_trace`, which is also how to
+debug a dispatch-time sequence: `python -m aie.utils.txn_trace insts.bin`.
+Like `whole_array.py` it keeps two time-block halves in flight: a step's
+`TaskGroup` is carried to the next loop iteration as a `range_` iter_arg and
+finished only after the next step's has been issued, so for every shape
+`whole_array.py` accepts the two designs produce the same DMA events in the
+same order.

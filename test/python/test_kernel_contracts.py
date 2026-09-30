@@ -2029,9 +2029,9 @@ def test_mm_stream_dims_match_the_blocking_the_kernel_was_compiled_for(dims, mac
     """A and B come from taplib; C is the one layout taplib cannot express.
 
     The A/B transforms are a plain (r x s) blocked walk, so they ask
-    TensorTiler2D for it. This pins that the answer is still the layout
-    ``mm.cc`` expects, byte for byte, rather than whatever the tiler happens
-    to return after a change.
+    ``Layout.tile`` for it. This pins that the answer is still the layout
+    ``mm.cc`` expects, byte for byte, rather than whatever the layout algebra
+    happens to return after a change.
     """
     (m, k, n), (r, s, t) = dims, mac
     d = kernels.mm_stream_dims(m, k, n, mac)

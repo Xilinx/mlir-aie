@@ -14,14 +14,14 @@ the transposed view of the input ``arange(24)``.
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import Layout
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -33,7 +33,11 @@ data_ty = np.ndarray[(24,), np.dtype[np.int32]]
 def from_stream(a_in: In, c_out: Out):
     of_in0 = ObjectFifo(data_ty, name="in0")
     of_in1 = of_in0.cons().forward(
-        name="in1", obj_type=data_ty, dims_from_stream=[(3, 1), (8, 3)]
+        name="in1",
+        obj_type=data_ty,
+        # Write the incoming (3, 8) stream into the object as its (8, 3)
+        # transpose; as a list this is dims_from_stream=[(3, 1), (8, 3)].
+        dims_from_stream=Layout.full((8, 3)).permute((1, 0)),
     )
 
     of_out1 = ObjectFifo(data_ty, name="out1")

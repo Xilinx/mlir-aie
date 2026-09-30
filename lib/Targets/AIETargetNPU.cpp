@@ -21,6 +21,7 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "llvm/ADT/DenseMap.h"
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
@@ -394,6 +395,24 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   for (Block &block : seq.getBody()) {
     for (Operation &o : block) {
       llvm::TypeSwitch<Operation *>(&o)
+          .Case<NpuRequireOp>([&](auto op) {
+            // A static sequence only ever carries a constant-true guard
+            // (canonicalization erases it); a live constant-false one is the
+            // ValueError the static Python path raises, and anything
+            // unresolved means a runtime value reached the binary path.
+            auto c = getConstantIntValue(op.getCond());
+            if (c && *c == 0) {
+              op.emitOpError("shape constraint is violated at compile time: ")
+                  << op.getMessage();
+              result = failure();
+            } else if (!c) {
+              op.emitOpError("runtime shape constraint cannot be encoded in "
+                             "a static TXN binary; use the C++ builder "
+                             "(--aie-npu-to-cpp) or specialize the value: ")
+                  << op.getMessage();
+              result = failure();
+            }
+          })
           .Case<NpuSyncOp>([&](auto op) {
             count++;
             uint32_t before = byteOffset();

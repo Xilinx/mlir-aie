@@ -23,7 +23,7 @@ import sys
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
+from aie.helpers.taplib import Layout, TensorAccessSequence
 from aie.iron import (
     CompileTime,
     In,
@@ -228,48 +228,40 @@ def _build_design(
     tb_max_n_rows = 4 if not c_col_maj else 2
     tb_n_rows = tb_max_n_rows // 2
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K),
-        (m * n_A_tiles_per_shim, k),
-        (1, K // k),
-        pattern_repeat=N // n // n_aie_cols,
-        prune_step=False,
+    A_tiles = (
+        Layout.full((M, K))
+        .tile((m * n_A_tiles_per_shim, k))
+        .group((1, K // k))
+        .repeat(N // n // n_aie_cols)
     )
     if b_col_maj:
-        B_tiles = TensorTiler2D.step_tiler(
-            (N, K),
-            (n, k),
-            tile_group_repeats=(N // n // n_aie_cols, K // k),
-            tile_group_steps=(n_aie_cols, 1),
-            prune_step=False,
+        B_tiles = (
+            Layout.full((N, K))
+            .tile((n, k))
+            .group((N // n // n_aie_cols, K // k), steps=(n_aie_cols, 1))
         )
     else:
-        B_tiles = TensorTiler2D.step_tiler(
-            (K, N),
-            (k, n),
-            tile_group_repeats=(K // k, N // n // n_aie_cols),
-            tile_group_steps=(1, n_aie_cols),
-            tile_group_col_major=True,
-            prune_step=False,
+        B_tiles = (
+            Layout.full((K, N))
+            .tile((k, n))
+            .group(
+                (K // k, N // n // n_aie_cols), steps=(1, n_aie_cols), col_major=True
+            )
         )
     if c_col_maj:
-        # Splitting n_aie_rows out of the tile dim is what lets TensorTiler emit
-        # the (col-fast, row_block-slow) DMA pattern; iter_col_major matches it.
-        C_tiles = TensorTiler2D.step_tiler(
-            (N, M),
-            (n, m),
-            tile_group_repeats=(N // n // n_aie_cols, n_aie_rows),
-            tile_group_steps=(n_aie_cols, 1),
-            iter_col_major=True,
-            prune_step=False,
+        # Splitting n_aie_rows out of the tile dim is what lets the grouping emit
+        # the (col-fast, row_block-slow) DMA pattern; order("col") matches it.
+        C_tiles = (
+            Layout.full((N, M))
+            .tile((n, m))
+            .order("col")
+            .group((N // n // n_aie_cols, n_aie_rows), steps=(n_aie_cols, 1))
         )
     else:
-        C_tiles = TensorTiler2D.step_tiler(
-            (M, N),
-            (m * n_aie_rows, n),
-            tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
-            tile_group_steps=(1, n_aie_cols),
-            prune_step=False,
+        C_tiles = (
+            Layout.full((M, N))
+            .tile((m * n_aie_rows, n))
+            .group((tb_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols))
         )
     flat_workers = [w for row in workers for w in row]
 
@@ -279,11 +271,14 @@ def _build_design(
 
     def sequence(A, B, C, A_hs, B_hs, C_hs):
         c_index = 0
-        tg = TaskGroup()
+        # Two time-block halves in flight: each half's transfers form a
+        # group that is finished only after the next half's are issued.
+        prev = None
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
                 if c_index >= len(C_tiles):
                     break
+                tg = TaskGroup()
 
                 row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
                 current_tb_n_rows = min(
@@ -291,7 +286,7 @@ def _build_design(
                 )
 
                 for col in range(n_aie_cols):
-                    C_taps.append(C_tiles[c_index])
+                    C_taps.append(C_tiles[c_index].tap())
                     C_hs[col].drain(
                         C,
                         tap=C_tiles[c_index],
@@ -315,13 +310,14 @@ def _build_design(
                             tap=B_tiles[col],
                             group=tg,
                         )
-                        A_taps.append(A_tiles[tile_offset])
-                        B_taps.append(B_tiles[col])
+                        A_taps.append(A_tiles[tile_offset].tap())
+                        B_taps.append(B_tiles[col].tap())
 
-                if tb > 0 or (tb == 0 and pingpong > 0):
-                    tg.finish()
-                    tg = TaskGroup()
-        tg.finish()
+                if prev is not None:
+                    prev.finish()
+                prev = tg
+        if prev is not None:
+            prev.finish()
 
     rt = Runtime(
         sequence,

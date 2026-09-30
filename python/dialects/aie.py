@@ -15,7 +15,8 @@ from ._ods_common import _cext
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
 from ..helpers.dialects.func import call
-from ..extras.dialects.arith import ScalarValue, constant
+from ..extras.dialects.arith import ScalarValue, constant, index_cast as _index_cast
+from .arith import extsi as _arith_extsi
 from ..extras.dialects._shaped_value import ShapedValue
 from ..extras.dialects.memref import (
     MemRefValue,
@@ -138,6 +139,24 @@ def _split_i32_scalar(v):
     return v, None
 
 
+def _widen_i64(v):
+    """Widen a runtime size/stride to the i64 the op takes; ints pass through.
+
+    Staged taps compute their sizes and strides in the scalar's own width
+    (i32 for a DispatchTime[np.int32]), so a narrower integer Value is
+    sign-extended and an index Value cast.
+    """
+    if not isinstance(v, Value):
+        return v
+    if str(v.type) == "index":
+        return _index_cast(v, to=T.i64())
+    try:
+        width = IntegerType(v.type).width
+    except ValueError:
+        return v
+    return _arith_extsi(T.i64(), v) if width < 64 else v
+
+
 def dma_bd(
     buffer,
     sizes: MixedValues | None = None,
@@ -162,8 +181,12 @@ def dma_bd(
         aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
                    offset=0 len=%len)
     """
-    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
-    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
+    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(
+        [_widen_i64(v) for v in (sizes or [])]
+    )
+    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(
+        [_widen_i64(v) for v in (strides or [])]
+    )
 
     offset_operand, static_offset = _split_i32_scalar(offset)
     len_operand, static_len = _split_i32_scalar(transfer_len)

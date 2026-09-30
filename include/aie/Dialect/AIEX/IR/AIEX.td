@@ -131,6 +131,7 @@ and launch them onto a tile's DMA task queue.
 | `aiex.npu.address_patch` | Patch a runtime buffer address into the instruction stream: takes runtime argument `arg_idx` plus `arg_plus` offset and writes it into a BD address field. Used to bind host buffers whose address is only known at launch. | shim BD addresses | `aiex.npu.address_patch(%off : i32) {addr = 0 : ui32, arg_idx = 0 : i32}` |
 | `aiex.npu.assert_bd_field` *(compiler-emitted)* | Guard a runtime BD-field value against its hardware field width (`value <= max`); emitted by the dynamic DMA lowering when a runtime scalar lands in a narrow BD field (e.g. a 10-bit wrap). On the host-C++ path it aborts stream generation for an out-of-range value; on the binary path `value` is a verified constant and it is a no-op. | dynamic-BD lowering path | `aiex.npu.assert_bd_field(%v) {max = 1023 : i32} : i32` |
 | `aiex.npu.assert_bd_divisible` *(compiler-emitted)* | Guard a runtime BD size/stride against the address-gen granule (`value % divisor == 0`, or `value == 1` when `allow_unit`); emitted by the dynamic DMA lowering. Same host-C++ / binary behavior as `assert_bd_field`. | dynamic-BD lowering path | `aiex.npu.assert_bd_divisible(%v) {divisor = 4 : i32} : i32` |
+| `aiex.npu.require` | Guard a user-level shape constraint on runtime sequence scalars (`cond` must hold). Emitted by IRON's layout algebra where a static design would raise `ValueError`. Constant `true` canonicalizes away; a live constant `false` is a static-lowering error; on the host-C++ path a runtime `cond` declines the build with `message` as the reason, like `assert_bd_field`. | runtime sequence | `aiex.npu.require(%ok) {message = "K must be a multiple of k"} : i1` |
 
 See [Section 2d](programming_guide/section-2/section-2d/DMATasks.md) for a full
 walkthrough of `dma_memcpy_nd` access patterns and buffer-descriptor reuse.
@@ -856,6 +857,38 @@ def AIE_NpuAssertBdDivisibleOp : AIEX_Op<"npu.assert_bd_divisible", []> {
     TXN words).
   }];
   let hasVerifier = 1;
+}
+
+// REQUIRE
+def AIE_NpuRequireOp : AIEX_Op<"npu.require", []> {
+  let summary = "Guard a runtime shape constraint at TXN-build time";
+  let arguments = (ins I1:$cond, StrAttr:$message);
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $cond `)` attr-dict `:` type($cond)
+  }];
+  let description = [{
+    Asserts, at TXN-build time, that a user-level constraint on runtime
+    sequence scalars holds: `cond` must be true. IRON's layout algebra emits it
+    where a tiler would have raised `ValueError` on a concrete shape (a tensor
+    dimension not divisible by its tile, an offset past the end of a buffer,
+    ...), so a dispatch-time-parameterized design gets the same checks as a
+    static one. `message` is the text the static path would have raised with.
+
+    Canonicalization erases a constant-`true` op (and a repeat of a condition
+    already required earlier in the block), so a fully specialized sequence
+    carries no trace of it. A constant-`false` op is not a verifier error,
+    since a specialized sequence may hold one in a branch that folds away;
+    one that reaches the binary path (--aie-npu-to-binary) is the error the
+    static Python path would have raised, and that path accepts nothing but
+    constant-true ops, which contribute no TXN words. On the host-C++ path
+    (--aie-npu-to-cpp) a runtime `cond` lowers to
+    `if (!cond) return aie_runtime::txn_refused("message");`, the same
+    contract as `npu.assert_bd_field`: the builder yields no stream rather
+    than a wrong one, and the host reports `message` as the reason.
+  }];
+  let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
 // MASKWRITE

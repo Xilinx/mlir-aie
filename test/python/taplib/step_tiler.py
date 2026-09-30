@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.helpers.taplib import Layout, TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -13,12 +12,7 @@ from util import construct_test
 @construct_test
 def step_tiler():
     # Start with Step == (1, 1)
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(2, 2),
-        tile_group_steps=(1, 1),
-    )
+    tiles = Layout.full((32, 32)).tile((2, 2)).group((2, 2), steps=(1, 1)).materialize()
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[64, 2, 32, 1]
@@ -69,12 +63,7 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Step == (2, 1)
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(2, 2),
-        tile_group_steps=(2, 1),
-    )
+    tiles = Layout.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 1)).materialize()
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[128, 2, 32, 1]
@@ -128,12 +117,7 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Step == (1, 2)
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(2, 2),
-        tile_group_steps=(1, 2),
-    )
+    tiles = Layout.full((32, 32)).tile((2, 2)).group((2, 2), steps=(1, 2)).materialize()
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[64, 4, 32, 1]
@@ -187,12 +171,7 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Step == (2, 2)
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(2, 2),
-        tile_group_steps=(2, 2),
-    )
+    tiles = Layout.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 2)).materialize()
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[128, 4, 32, 1]
@@ -246,12 +225,7 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Step == (2, 2)
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(2, 2),
-        tile_group_steps=(2, 2),
-    )
+    tiles = Layout.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 2)).materialize()
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[128, 4, 32, 1]
@@ -305,11 +279,11 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Repeat across column/row
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(32 // 4, 32 // 4),
-        tile_group_steps=(2, 2),
+    tiles = (
+        Layout.full((32, 32))
+        .tile((2, 2))
+        .group((32 // 4, 32 // 4), steps=(2, 2))
+        .materialize()
     )
     assert len(tiles) == 4  # (32//(2*(32//4))) * (32//(2*(32//4)))
     assert tiles[0] == TensorAccessPattern(
@@ -364,11 +338,11 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Repeat one dimension
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(1, 32 // 4),
-        tile_group_steps=(2, 2),
+    tiles = (
+        Layout.full((32, 32))
+        .tile((2, 2))
+        .group((1, 32 // 4), steps=(2, 2))
+        .materialize()
     )
     assert len(tiles) == (32 // (2 * 1)) * (32 // (2 * (32 // 4)))
     assert tiles[0] == TensorAccessPattern(
@@ -423,11 +397,11 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Repeat other dimension
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(32 // 4, 1),
-        tile_group_steps=(2, 2),
+    tiles = (
+        Layout.full((32, 32))
+        .tile((2, 2))
+        .group((32 // 4, 1), steps=(2, 2))
+        .materialize()
     )
     assert len(tiles) == (32 // (2 * 1)) * (32 // (2 * (32 // 4)))
     assert tiles[0] == TensorAccessPattern(
@@ -482,12 +456,7 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Different repeats and steps
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(8, 2),
-        tile_group_steps=(2, 4),
-    )
+    tiles = Layout.full((32, 32)).tile((2, 2)).group((8, 2), steps=(2, 4)).materialize()
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[8, 2, 2, 2], strides=[128, 8, 32, 1]
@@ -541,12 +510,12 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Tile col major
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(8, 2),
-        tile_group_steps=(2, 4),
-        tile_col_major=True,
+    tiles = (
+        Layout.full((32, 32))
+        .tile((2, 2))
+        .permute_tile((1, 0))
+        .group((8, 2), steps=(2, 4))
+        .materialize()
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -601,13 +570,12 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Tile col major and tile group col major
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(8, 2),
-        tile_group_steps=(2, 4),
-        tile_col_major=True,
-        tile_group_col_major=True,
+    tiles = (
+        Layout.full((32, 32))
+        .tile((2, 2))
+        .permute_tile((1, 0))
+        .group((8, 2), steps=(2, 4), col_major=True)
+        .materialize()
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -662,14 +630,13 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Tile col major and tile group col major and iter col major
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
-        tile_dims=(2, 2),
-        tile_group_repeats=(8, 2),
-        tile_group_steps=(2, 4),
-        tile_col_major=True,
-        tile_group_col_major=True,
-        iter_col_major=True,
+    tiles = (
+        Layout.full((32, 32))
+        .tile((2, 2))
+        .permute_tile((1, 0))
+        .order("col")
+        .group((8, 2), steps=(2, 4), col_major=True)
+        .materialize()
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -731,64 +698,96 @@ def step_tiler():
 @construct_test
 def step_tiler_invalid():
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (), (3, 2), (1, 1), (1, 1), tile_col_major=True, pattern_repeat=5
+        tiles = (
+            Layout.full(())
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((1, 1), steps=(1, 1))
+            .repeat(5)
         )
         raise ValueError("Bad tensor dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (10, 9, 4), (3, 2), (1, 1), (1, 1), tile_col_major=True, pattern_repeat=5
+        tiles = (
+            Layout.full((10, 9, 4))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((1, 1), steps=(1, 1))
+            .repeat(5)
         )
         raise ValueError("Too many tensor dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (9, 4), (3, -1), (1, 1), (1, 1), tile_col_major=True, pattern_repeat=5
+        tiles = (
+            Layout.full((9, 4))
+            .tile((3, -1))
+            .permute_tile((1, 0))
+            .group((1, 1), steps=(1, 1))
+            .repeat(5)
         )
         raise ValueError("Bad tile dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (9, 4), (3,), (1, 1), (1, 1), tile_col_major=True, pattern_repeat=5
+        tiles = (
+            Layout.full((9, 4))
+            .tile((3,))
+            .permute_tile((1, 0))
+            .group((1, 1), steps=(1, 1))
+            .repeat(5)
         )
         raise ValueError("Too few tile dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (9, 4), (1, 1, 1), (1, 1), (1, 1), tile_col_major=True, pattern_repeat=5
+        tiles = (
+            Layout.full((9, 4))
+            .tile((1, 1, 1))
+            .permute_tile((1, 0))
+            .group((1, 1), steps=(1, 1))
+            .repeat(5)
         )
         raise ValueError("Too many tile dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (9, 4), (3, 2), (1, 1), (1, 1), tile_col_major=True, pattern_repeat=0
+        tiles = (
+            Layout.full((9, 4))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((1, 1), steps=(1, 1))
+            .repeat(0)
         )
         raise ValueError("Invalid repeat.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (9, 4), (4, 2), (1, 1), (1, 1), tile_col_major=True, pattern_repeat=5
+        tiles = (
+            Layout.full((9, 4))
+            .tile((4, 2))
+            .permute_tile((1, 0))
+            .group((1, 1), steps=(1, 1))
+            .repeat(5)
         )
         raise ValueError("Indivisible tile (height)")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (9, 4), (3, 3), (1, 1), (1, 1), tile_col_major=True, pattern_repeat=5
+        tiles = (
+            Layout.full((9, 4))
+            .tile((3, 3))
+            .permute_tile((1, 0))
+            .group((1, 1), steps=(1, 1))
+            .repeat(5)
         )
         raise ValueError("Indivisible tile (width)")
     except ValueError:
@@ -796,32 +795,46 @@ def step_tiler_invalid():
         pass
 
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (9, 4), (3, 2), (1,), (1, 1), tile_col_major=True, pattern_repeat=5
+        tiles = (
+            Layout.full((9, 4))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((1,), steps=(1, 1))
+            .repeat(5)
         )
         raise ValueError("Too few tile group dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (9, 4), (3, 2), (1, -1), (1, 1), tile_col_major=True, pattern_repeat=5
+        tiles = (
+            Layout.full((9, 4))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((1, -1), steps=(1, 1))
+            .repeat(5)
         )
         raise ValueError("Bad tile group dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (9, 4), (3, 2), (1, 1, 1), (1, 1), tile_col_major=True
+        tiles = (
+            Layout.full((9, 4))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((1, 1, 1), steps=(1, 1))
         )
         raise ValueError("Too many tile group dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (18, 8), (3, 2), (2, 3), (1, 1), tile_col_major=True
+        tiles = (
+            Layout.full((18, 8))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((2, 3), steps=(1, 1))
         )
         raise ValueError(
             "Indivisible by tile repeat width (but without allow_partial)."
@@ -830,8 +843,11 @@ def step_tiler_invalid():
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (18, 8), (3, 2), (4, 2), (1, 1), tile_col_major=True
+        tiles = (
+            Layout.full((18, 8))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((4, 2), steps=(1, 1))
         )
         raise ValueError(
             "Indivisible by tile repeat height (but without allow_partial)."
@@ -840,16 +856,23 @@ def step_tiler_invalid():
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (18, 8), (3, 2), (4, 2), (1, -1), tile_col_major=True
+        # (2, 2) divides the 6 x 4 tile grid, so only the step is bad.
+        tiles = (
+            Layout.full((18, 8))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((2, 2), steps=(1, -1))
         )
         raise ValueError("Bad tile step dims")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.step_tiler(
-            (18, 8), (3, 2), (4, 2), (1,), tile_col_major=True
+        tiles = (
+            Layout.full((18, 8))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((4, 2), steps=(1,))
         )
         raise ValueError("Too few tile step dims")
     except ValueError:

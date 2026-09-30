@@ -208,6 +208,30 @@ rt = Runtime(
 )
 ```
 
+### Carrying a task group across loop iterations
+
+A software pipeline issues the next step's transfers before finishing the
+previous step's. With a `range_` over a dispatch-time trip count the loop
+stays rolled, so the in-flight group rides the loop as an `iter_args` entry:
+the body receives a group over the carried transfers and `yield_`s the group
+it issued, and the loop's result is the last group in flight.
+
+```python
+prev = issue(0)                       # a TaskGroup
+for iv, prev, last in range_(1, n_steps, iter_args=[prev], insert_yield=False):
+    current = issue(iv)               # step iv's fills and drains, in one group
+    prev.finish()                     # the step issued one iteration ago
+    yield_([current])
+last.finish()
+```
+
+Every group yielded must hold the same number of transfers, with the same
+ones waited, as the group the loop started with (the carried handles are
+positional); `yield_` raises otherwise. Once a group has been carried, the
+Python object passed in is spent: finish the group the loop hands back.
+`programming_examples/basic/matrix_multiplication/whole_array/whole_array_dyn.py`
+keeps two time-block halves in flight this way.
+
 ## Dispatch-time scalars
 
 `DispatchTime[T]` rebuilds the instruction stream for each call using a compiled
@@ -243,6 +267,16 @@ copy(a, b)                        # Dispatch with the default count=3.
 copy(a, b, count=6)               # Same compiled design; a different dispatch.
 copy.specialize(count=3)(a, b)    # Compile with count fixed to 3.
 ```
+
+Inside the sequence body a dispatch scalar is an ordinary staged value: it can
+bound a `range_`, feed `if_`, be written to a worker's RTP buffer, and stand
+in for any size, stride, offset or index in the taplib layout algebra, which
+then emits the tap as arithmetic on it and turns its shape checks into
+`require` guards (see [Staged taps](../../../docs/api/taplib.md#staged-taps-in-a-dispatch-time-sequence)).
+`programming_examples/basic/matrix_multiplication/whole_array/whole_array_dyn.py`
+is a whole-array GEMM with dispatch-time `M`, `K` and `N` built this way, and
+`aie.utils.txn_trace` compares a dispatch-time builder's DMA events with a
+static specialization's without an NPU.
 
 ### Generator-side binding and scope
 

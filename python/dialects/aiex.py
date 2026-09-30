@@ -4,6 +4,9 @@ from contextlib import contextmanager
 import itertools
 from operator import itemgetter
 
+import functools
+import operator
+
 import numpy as np
 
 from ._aiex_ops_gen import *
@@ -13,11 +16,13 @@ from ._aiex_ops_gen import (
     npu_sync as _npu_sync,
     npu_address_patch as _npu_address_patch,
     npu_rtp_write as _npu_rtp_write,
+    npu_require as _npu_require,
     npu_push_queue as _npu_push_queue,
 )
 from ._aie_ops_gen import ObjectFifoCreateOp, EndOp, RuntimeSequenceOp
 from . import aie
 from .aie import (
+    _widen_i64,
     DMAChannelDir,
     LockAction,
     Neighbors,
@@ -91,6 +96,17 @@ def npu_address_patch(addr, arg_idx, arg_plus, **kwargs):
 
 def npu_rtp_write(buffer, index, value, **kwargs):
     return _npu_rtp_write(buffer, index, _as_i32(value), **kwargs)
+
+
+def npu_require(cond, message: str, **kwargs):
+    """Guard a shape constraint at dispatch: ``cond`` (an ``i1`` Value or a Python bool) must hold.
+
+    See ``aie.helpers.taplib.symbolic.require`` for the helper that raises on a
+    concrete condition and emits this op on a staged one.
+    """
+    if isinstance(cond, (bool, np.bool_)):
+        cond = constant(bool(cond), T.i1())
+    return _npu_require(cond, message, **kwargs)
 
 
 def npu_push_queue(
@@ -175,9 +191,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         if tap:
             sizes = tap.sizes.copy()
             strides = tap.strides.copy()
-            # For some reason, the type checking of offsets does not mesh well with offset being a property
-            # so here we make sure it is evaluated and properly is seen as an integer.
-            offsets = [0] * 3 + [int(tap.offset)]
+            # A static tap carries an int offset; a symbolic one a runtime Value.
+            offsets = [0] * 3 + [tap.offset]
         else:
             if offsets is None:
                 offsets = [0] * 4
@@ -289,9 +304,8 @@ def shim_dma_bd(
     if tap:
         sizes = tap.sizes.copy()
         strides = tap.strides.copy()
-        # For some reason, the type checking of offsets does not mesh well with offset being a property
-        # so here we make sure it is evaluated and properly is seen as an integer.
-        offset = int(tap.offset)
+        # A static tap carries an int offset; a symbolic one a runtime Value.
+        offset = tap.offset
 
     if offset is None:
         offset = 0
@@ -362,9 +376,8 @@ def shim_dma_single_bd_task(
     if tap:
         sizes = tap.sizes.copy()
         strides = tap.strides.copy()
-        # For some reason, the type checking of offsets does not mesh well with offset being a property
-        # so here we make sure it is evaluated and properly is seen as an integer.
-        offset = int(tap.offset)
+        # A static tap carries an int offset; a symbolic one a runtime Value.
+        offset = tap.offset
 
     # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration
     # dimension. The repeat_count below hoists sizes[0] into that iteration
@@ -387,6 +400,13 @@ def shim_dma_single_bd_task(
             if strides is not None:
                 strides = [0] + list(strides)
 
+    # Everything derived from runtime sizes/strides must be emitted *before*
+    # the task region opens below: a BD block may hold only dma_bd / aie.end,
+    # so the transfer length product, the repeat count and the i64 widening of
+    # the dimension operands all happen here.
+    if sizes is not None and transfer_len is None:
+        transfer_len = functools.reduce(operator.mul, sizes[-3:])
+
     # The outer (sizes[0]) dimension becomes the queue-push repeat_count. A
     # constant folds to the repeat_count attribute (static path, unchanged); a
     # runtime Value flows into the repeat_count_val operand so a dynamic tile
@@ -405,6 +425,10 @@ def shim_dma_single_bd_task(
             if s0.type != T.i32():
                 s0_i32 = arith.trunci(T.i32(), s0)
             repeat_count_val = s0_i32 - _as_i32(1)
+    if sizes is not None:
+        sizes = [_widen_i64(v) for v in sizes]
+    if strides is not None:
+        strides = [_widen_i64(v) for v in strides]
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,

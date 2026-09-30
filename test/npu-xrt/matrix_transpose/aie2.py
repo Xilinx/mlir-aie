@@ -18,7 +18,7 @@ from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import Layout
 from aie.iron.controlflow import range_
 
 matrix_rows = 7
@@ -60,10 +60,8 @@ def design():
                     fifo_out.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
-            tap_in = TensorTiler2D.simple_tiler(
-                (matrix_rows, matrix_cols), tile_col_major=True
-            )[0]
-            tap_out = TensorTiler2D.simple_tiler((matrix_rows, matrix_cols))[0]
+            tap_in = Layout.full((matrix_rows, matrix_cols)).permute((1, 0)).tap()
+            tap_out = Layout.full((matrix_rows, matrix_cols)).tap()
 
             @runtime_sequence(matrix_ty, matrix_ty)
             def sequence(inp, out):

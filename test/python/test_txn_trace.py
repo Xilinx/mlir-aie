@@ -1,0 +1,325 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# RUN: %pytest %s
+
+"""Unit tests for aie.utils.txn_trace: no NPU, no MLIR pipeline required.
+
+The streams are assembled by hand with the word layouts from
+include/aie/Runtime/TxnEncoding.h, mirroring what the static emitter and the
+dynamic (dispatch-time) builder produce for the same transfers.
+"""
+
+import numpy as np
+import pytest
+from aie.utils.txn_trace import compare, decode, explain, trace
+
+SHIM_BD0 = 0x1D000
+S2MM0_CTRL, S2MM0_QUEUE = 0x1D200, 0x1D204
+MM2S0_CTRL, MM2S0_QUEUE = 0x1D210, 0x1D214
+TOKEN = 1 << 31
+
+
+def header():
+    return [0, 0, 0, 0]
+
+
+def write32(addr, val):
+    return [0, 0, addr, 0, val, 24]
+
+
+def maskwrite32(addr, val, mask):
+    return [3, 0, addr, 0, val, mask, 28]
+
+
+def maskpoll32(addr, val, mask):
+    return [4, 0, addr, 0, val, mask, 28]
+
+
+def blockwrite(addr, data, col=0, row=0):
+    return [1, col | (row << 8), addr, 4 * (4 + len(data))] + list(data)
+
+
+def patch(addr, arg_idx, arg_plus):
+    return [
+        129,
+        48,
+        0,
+        0,
+        0,
+        0,
+        addr,
+        0,
+        arg_idx,
+        0,
+        arg_plus & 0xFFFFFFFF,
+        arg_plus >> 32,
+    ]
+
+
+def tct(col, row, direction, channel, ncol=1, nrow=1):
+    return [
+        128,
+        16,
+        direction | (row << 8) | (col << 16),
+        (nrow << 8) | (ncol << 16) | (channel << 24),
+    ]
+
+
+def bd_words(
+    length, *, offset=0, d0=None, d1=None, d2_stride=1, iteration=None, valid=True
+):
+    """Shim BD words, static-emitter style: linear when no dims are given."""
+    w = [length, offset, 0, 0, 0, 0, 0, 0]
+    if d0 is not None:
+        w[3] = ((d0[0] & 0x3FF) << 20) | ((d0[1] - 1) & 0xFFFFF)
+    if d1 is not None:
+        w[4] = ((d1[0] & 0x3FF) << 20) | ((d1[1] - 1) & 0xFFFFF)
+    w[4] |= 2 << 30  # burst length encoding
+    w[5] = (d2_stride - 1) & 0xFFFFF if (d0 or d1) else 0
+    w[5] |= 2 << 24  # AXCache
+    if iteration is not None:
+        w[6] = ((iteration[0] & 0x3F) << 20) | ((iteration[1] - 1) & 0xFFFFF)
+    w[7] = (1 << 25) if valid else 0
+    return w
+
+
+def transfer_static(
+    bd_id, arg_idx, byte_off, length, queue, ctrl=None, token=False, **dims
+):
+    """Build a static-path transfer.
+
+    BD image with the offset folded into word 1, an address patch carrying it
+    again, then the queue push.
+    """
+    bd = SHIM_BD0 + 0x20 * bd_id
+    s = blockwrite(bd, bd_words(length, offset=byte_off, **dims))
+    s += patch(bd + 4, arg_idx, byte_off)
+    if ctrl is not None:
+        s += maskwrite32(queue - 4, ctrl, 0x1F00)
+    s += write32(queue, bd_id | (TOKEN if token else 0))
+    return s
+
+
+def transfer_dynamic(
+    bd_id, arg_idx, byte_off, length, queue, ctrl=None, token=False, unit_wraps=True
+):
+    """Build the same transfer as the dispatch-time builder emits it.
+
+    A BD from the pool (any id), word 1 left zero, unit wraps instead of
+    linear mode, a poll on the BD before reuse.
+    """
+    bd = SHIM_BD0 + 0x20 * bd_id
+    dims = dict(d0=(1, 1), d1=(1, 1), d2_stride=1) if unit_wraps else {}
+    s = maskpoll32(0x1D228, 0, 1 << (22 + bd_id))
+    s += blockwrite(bd, bd_words(length, **dims))
+    s += patch(bd + 4, arg_idx, byte_off)
+    if ctrl is not None:
+        s += maskwrite32(queue - 4, ctrl, 0x1F00)
+    s += write32(queue, bd_id | (TOKEN if token else 0))
+    return s
+
+
+def as_stream(*parts):
+    words = header()
+    for p in parts:
+        words += p
+    return np.array(words, dtype=np.uint32)
+
+
+class TestDecode:
+    def test_round_trip_of_every_opcode(self):
+        s = as_stream(
+            write32(0x1D214, 1),
+            maskwrite32(0x1D200, 0xF00, 0x1F00),
+            maskpoll32(0x1D228, 0, 0x400000),
+            blockwrite(SHIM_BD0, bd_words(64)),
+            patch(SHIM_BD0 + 4, 1, 0x400),
+            tct(0, 0, 0, 0),
+            [8 | (3 << 16), 0x100, 0x1000, 0],  # loadpdi id 3
+            [6 | (2 << 8)],  # preempt level 2
+        )
+        kinds = [op.kind for op in decode(s)]
+        assert kinds == [
+            "header",
+            "write32",
+            "maskwrite32",
+            "maskpoll32",
+            "blockwrite",
+            "patch",
+            "tct",
+            "loadpdi",
+            "preempt",
+        ]
+        # Every op prints, and the positions chain without gaps.
+        ops = decode(s)
+        assert all(str(op) for op in ops)
+        assert ops[-1].pos + len(ops[-1].words) == len(s)
+
+    def test_rejects_unknown_opcode_and_short_header(self):
+        with pytest.raises(ValueError, match="unknown TXN opcode"):
+            decode(as_stream([0x42, 0, 0, 0]))
+        with pytest.raises(ValueError, match="header"):
+            decode([0, 0])
+
+
+class TestTrace:
+    def test_push_resolves_bd_patch_and_control(self):
+        s = as_stream(
+            transfer_static(0, 1, 0x400, 256, S2MM0_QUEUE, ctrl=0xF00, token=True),
+            transfer_static(1, 0, 0x400, 256, MM2S0_QUEUE),
+            tct(0, 0, 0, 0),
+        )
+        ev = trace(s)
+        assert [e.kind for e in ev] == ["push", "push", "wait"]
+        first = ev[0]
+        assert (first.col, first.row, first.direction, first.channel) == (
+            0,
+            0,
+            "S2MM",
+            0,
+        )
+        assert first.issue_token and first.ctrl == 0xF00
+        assert first.bd.length == 256
+        assert first.bd.address == ("arg", 1, 0x400)
+        assert first.bd.dims == () and first.bd.outer_stride == 1
+        assert not ev[1].issue_token and ev[1].bd.address == ("arg", 0, 0x400)
+        assert ev[2].direction == "S2MM" and ev[2].channel == 0
+
+    def test_unpatched_bd_keeps_absolute_address(self):
+        bd = SHIM_BD0
+        s = as_stream(
+            blockwrite(bd, bd_words(16, offset=0x1234)), write32(MM2S0_QUEUE, 0)
+        )
+        (ev,) = trace(s)
+        assert ev.bd.address == ("abs", 0x1234)
+
+    def test_nd_dims_and_repeat(self):
+        w = bd_words(1024, d0=(32, 1), d1=(8, 64), d2_stride=2048, iteration=(4, 512))
+        s = as_stream(blockwrite(SHIM_BD0, w), write32(MM2S0_QUEUE, 0 | (3 << 16)))
+        (ev,) = trace(s)
+        assert ev.repeat == 3
+        assert ev.bd.dims == ((32, 1), (8, 64))
+        assert ev.bd.outer_stride == 2048
+        assert ev.bd.iteration == (4, 512)
+
+    def test_column_and_row_come_from_the_address(self):
+        col, row = 2, 0
+        tile = (col << 25) | (row << 20)
+        s = as_stream(
+            blockwrite(tile | SHIM_BD0, bd_words(8)), write32(tile | S2MM0_QUEUE, 0)
+        )
+        (ev,) = trace(s)
+        assert (ev.col, ev.row) == (col, row)
+
+
+class TestCompare:
+    def test_dynamic_and_static_encodings_of_one_transfer_are_equivalent(self):
+        static = as_stream(
+            transfer_static(0, 1, 0x800, 256, S2MM0_QUEUE, ctrl=0xF00, token=True),
+            transfer_static(1, 0, 0x800, 256, MM2S0_QUEUE),
+            tct(0, 0, 0, 0),
+        )
+        dynamic = as_stream(
+            transfer_dynamic(3, 1, 0x800, 256, S2MM0_QUEUE, ctrl=0xF00, token=True),
+            transfer_dynamic(5, 0, 0x800, 256, MM2S0_QUEUE),
+            tct(0, 0, 0, 0),
+        )
+        assert len(static) != len(dynamic)  # not byte-identical...
+        assert compare(static, dynamic) == []  # ...but the same DMA events
+
+    def test_different_offset_is_reported(self):
+        a = as_stream(transfer_static(0, 1, 0x800, 256, S2MM0_QUEUE))
+        b = as_stream(transfer_dynamic(0, 1, 0xC00, 256, S2MM0_QUEUE))
+        (msg,) = compare(a, b, names=("static", "dynamic"))
+        assert "event 0 differs" in msg and "arg1+0x800" in msg and "arg1+0xc00" in msg
+
+    def test_missing_wait_is_reported(self):
+        a = as_stream(
+            transfer_static(0, 1, 0, 256, S2MM0_QUEUE, token=True), tct(0, 0, 0, 0)
+        )
+        b = as_stream(transfer_static(0, 1, 0, 256, S2MM0_QUEUE, token=True))
+        assert compare(a, b) == ["a has 2 events, b has 1"]
+
+    def test_real_dimension_difference_is_not_normalized_away(self):
+        a = as_stream(
+            blockwrite(SHIM_BD0, bd_words(64, d0=(8, 1), d1=(8, 16))),
+            write32(MM2S0_QUEUE, 0),
+        )
+        b = as_stream(
+            blockwrite(SHIM_BD0, bd_words(64, d0=(8, 1), d1=(8, 8))),
+            write32(MM2S0_QUEUE, 0),
+        )
+        assert compare(a, b)
+
+    def test_unit_wraps_with_a_non_unit_outer_stride_differ_from_linear(self):
+        linear = as_stream(blockwrite(SHIM_BD0, bd_words(64)), write32(MM2S0_QUEUE, 0))
+        strided = as_stream(
+            blockwrite(SHIM_BD0, bd_words(64, d0=(1, 1), d1=(1, 1), d2_stride=2)),
+            write32(MM2S0_QUEUE, 0),
+        )
+        assert compare(linear, strided)
+
+    def test_contiguous_nd_equals_linear(self):
+        # [32 x 1][128 x 32] with the next block at +4096 is a linear 4096-word
+        # scan; the static emitter folds it, the dynamic builder cannot when a
+        # stride is a runtime value.
+        linear = as_stream(
+            blockwrite(SHIM_BD0, bd_words(4096)), write32(S2MM0_QUEUE, 0)
+        )
+        nd = as_stream(
+            blockwrite(
+                SHIM_BD0, bd_words(4096, d0=(32, 1), d1=(128, 32), d2_stride=4096)
+            ),
+            write32(S2MM0_QUEUE, 0),
+        )
+        assert compare(linear, nd) == []
+        # A second pass over the dims needs the next block to follow on: a gap
+        # between blocks is a real difference, and so is a non-unit stride.
+        two_blocks = as_stream(
+            blockwrite(
+                SHIM_BD0, bd_words(8192, d0=(32, 1), d1=(128, 32), d2_stride=4096)
+            ),
+            write32(S2MM0_QUEUE, 0),
+        )
+        linear2 = as_stream(
+            blockwrite(SHIM_BD0, bd_words(8192)), write32(S2MM0_QUEUE, 0)
+        )
+        assert compare(linear2, two_blocks) == []
+        gapped = as_stream(
+            blockwrite(
+                SHIM_BD0, bd_words(8192, d0=(32, 1), d1=(128, 32), d2_stride=8192)
+            ),
+            write32(S2MM0_QUEUE, 0),
+        )
+        assert compare(two_blocks, gapped)
+        strided = as_stream(
+            blockwrite(SHIM_BD0, bd_words(4096, d0=(32, 1), d1=(128, 64))),
+            write32(S2MM0_QUEUE, 0),
+        )
+        assert compare(linear, strided)
+
+    def test_contiguous_repeat_folds_into_length(self):
+        # Two executions (repeat 1) of a 4096-word linear BD whose iteration
+        # dimension steps by 4096 is one 8192-word transfer.
+        folded = as_stream(
+            blockwrite(SHIM_BD0, bd_words(8192)), write32(S2MM0_QUEUE, 0)
+        )
+        repeated = as_stream(
+            blockwrite(SHIM_BD0, bd_words(4096, iteration=(1, 4096))),
+            write32(S2MM0_QUEUE, 0 | (1 << 16)),
+        )
+        assert compare(folded, repeated) == []
+        # A repeat that re-reads the same block (no iteration step) is not.
+        rereading = as_stream(
+            blockwrite(SHIM_BD0, bd_words(4096)), write32(S2MM0_QUEUE, 0 | (1 << 16))
+        )
+        assert compare(folded, rereading)
+
+    def test_explain_lists_events(self):
+        s = as_stream(
+            transfer_static(0, 1, 0x400, 256, S2MM0_QUEUE, token=True), tct(0, 0, 0, 0)
+        )
+        text = explain(s)
+        assert "push (0,0) S2MM ch0" in text and "wait (0,0) S2MM ch0" in text
+        assert "blockwrite" in explain(s, raw=True)

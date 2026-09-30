@@ -14,14 +14,14 @@ input ``arange(24)``.
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import Layout
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -34,7 +34,11 @@ def to_stream(a_in: In, c_out: Out):
     of_in0 = ObjectFifo(data_ty, name="in0")
     of_in1 = of_in0.cons().forward(name="in1", obj_type=data_ty)
 
-    of_out1 = ObjectFifo(data_ty, name="out1", dims_to_stream=[(8, 1), (3, 8)])
+    # Read the (3, 8) object out as its (8, 3) transpose; as a list this is
+    # dims_to_stream=[(8, 1), (3, 8)].
+    of_out1 = ObjectFifo(
+        data_ty, name="out1", dims_to_stream=Layout.full((3, 8)).permute((1, 0))
+    )
     of_out0 = of_out1.cons().forward(name="out0", obj_type=data_ty)
 
     def core_fn(of_in, of_out):

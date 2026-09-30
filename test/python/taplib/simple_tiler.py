@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-
-from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence, TensorTiler2D
+from aie.helpers.taplib import Layout, TensorAccessPattern, TensorAccessSequence
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -12,14 +11,14 @@ from util import construct_test
 # CHECK-LABEL: simple_tiler
 @construct_test
 def simple_tiler():
-    single_tile = TensorTiler2D.simple_tiler((3, 5))
+    single_tile = Layout.full((3, 5)).tile((3, 5))
     assert len(single_tile) == 1
     ref_tile = TensorAccessPattern(
         (3, 5), offset=0, sizes=[1, 1, 3, 5], strides=[0, 0, 5, 1]
     )
-    assert single_tile[0] == ref_tile
+    assert single_tile[0].tap() == ref_tile
 
-    tiles = TensorTiler2D.simple_tiler((9, 4), (3, 2))
+    tiles = Layout.full((9, 4)).tile((3, 2)).materialize()
     assert len(tiles) == 6
     # fmt: off
     ref_access_order_tensor = np.array([
@@ -73,9 +72,7 @@ def simple_tiler():
     assert (access_count == 1).all()
 
     # Check with column major iter order
-    tiles_iter_col_major = TensorTiler2D.simple_tiler(
-        (9, 4), (3, 2), iter_col_major=True
-    )
+    tiles_iter_col_major = Layout.full((9, 4)).tile((3, 2)).order("col").materialize()
     assert tiles_iter_col_major[0] == tile0_0
     assert tiles_iter_col_major[1] == tile1_0
     assert tiles_iter_col_major[3] == tile0_1
@@ -97,8 +94,8 @@ def simple_tiler():
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
-    tiles_tile_col_major = TensorTiler2D.simple_tiler(
-        (9, 4), (3, 2), tile_col_major=True
+    tiles_tile_col_major = (
+        Layout.full((9, 4)).tile((3, 2)).permute_tile((1, 0)).materialize()
     )
     tile0_0 = TensorAccessPattern(
         (9, 4), offset=0, sizes=[1, 1, 2, 3], strides=[0, 0, 1, 4]
@@ -133,8 +130,8 @@ def simple_tiler():
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
-    tiles_tile_col_major_iter_col_major = TensorTiler2D.simple_tiler(
-        (9, 4), (3, 2), tile_col_major=True, iter_col_major=True
+    tiles_tile_col_major_iter_col_major = (
+        Layout.full((9, 4)).tile((3, 2)).permute_tile((1, 0)).order("col").materialize()
     )
     assert tiles_tile_col_major_iter_col_major[0] == tile0_0
     assert tiles_tile_col_major_iter_col_major[1] == tile1_0
@@ -157,7 +154,7 @@ def simple_tiler():
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
-    tiles_repeat = TensorTiler2D.simple_tiler((9, 4), (3, 2), pattern_repeat=5)
+    tiles_repeat = Layout.full((9, 4)).tile((3, 2)).repeat(5).materialize()
     tile_repeat0_0 = TensorAccessPattern(
         (9, 4), offset=0, sizes=[5, 1, 3, 2], strides=[0, 0, 4, 1]
     )
@@ -179,8 +176,8 @@ def simple_tiler():
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 5).all()
 
-    tiles_repeat = TensorTiler2D.simple_tiler(
-        (9, 4), (3, 2), tile_col_major=True, pattern_repeat=5
+    tiles_repeat = (
+        Layout.full((9, 4)).tile((3, 2)).permute_tile((1, 0)).repeat(5).materialize()
     )
     tile_repeat0_0 = TensorAccessPattern(
         (9, 4), offset=0, sizes=[5, 1, 2, 3], strides=[0, 0, 1, 4]
@@ -211,65 +208,49 @@ def simple_tiler():
 @construct_test
 def simple_tiler_invalid():
     try:
-        tiles = TensorTiler2D.simple_tiler(
-            (), (3, 2), tile_col_major=True, pattern_repeat=5
-        )
+        tiles = Layout.full(()).tile((3, 2)).permute_tile((1, 0)).repeat(5)
         raise ValueError("Bad tensor dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.simple_tiler(
-            (10, 9, 4), (3, 2), tile_col_major=True, pattern_repeat=5
-        )
+        tiles = Layout.full((10, 9, 4)).tile((3, 2)).permute_tile((1, 0)).repeat(5)
         raise ValueError("Too many tensor dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.simple_tiler(
-            (9, 4), (3, -1), tile_col_major=True, pattern_repeat=5
-        )
+        tiles = Layout.full((9, 4)).tile((3, -1)).permute_tile((1, 0)).repeat(5)
         raise ValueError("Bad tile dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.simple_tiler(
-            (9, 4), (3,), tile_col_major=True, pattern_repeat=5
-        )
+        tiles = Layout.full((9, 4)).tile((3,)).permute_tile((1, 0)).repeat(5)
         raise ValueError("Too few tile dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.simple_tiler(
-            (9, 4), (1, 1, 1), tile_col_major=True, pattern_repeat=5
-        )
+        tiles = Layout.full((9, 4)).tile((1, 1, 1)).permute_tile((1, 0)).repeat(5)
         raise ValueError("Too many tile dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.simple_tiler(
-            (9, 4), (3, 2), tile_col_major=True, pattern_repeat=0
-        )
+        tiles = Layout.full((9, 4)).tile((3, 2)).permute_tile((1, 0)).repeat(0)
         raise ValueError("Invalid repeat.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.simple_tiler(
-            (9, 4), (4, 2), tile_col_major=True, pattern_repeat=5
-        )
+        tiles = Layout.full((9, 4)).tile((4, 2)).permute_tile((1, 0)).repeat(5)
         raise ValueError("Indivisible tile (height)")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorTiler2D.simple_tiler(
-            (9, 4), (3, 3), tile_col_major=True, pattern_repeat=5
-        )
+        tiles = Layout.full((9, 4)).tile((3, 3)).permute_tile((1, 0)).repeat(5)
         raise ValueError("Indivisible tile (width)")
     except ValueError:
         # good

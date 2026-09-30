@@ -5,13 +5,12 @@
 #
 
 import sys
-import numpy as np
-
-from aie.iron import Out, In, CompileTime, Program, Runtime, Worker, ObjectFifo
-from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorTiler2D
 
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import Layout
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron.controlflow import range_
 
 
 @iron.jit
@@ -36,7 +35,7 @@ def exercise_5a(
 
     tensor_dims = (3, 16)
     tile_dims = (3, 8)
-    simple_tiler = TensorTiler2D.simple_tiler(tensor_dims, tile_dims)
+    tiles = Layout.full(tensor_dims).tile(tile_dims)
 
     # Task for the core to perform
     def core_fn(of_in, of_out):
@@ -52,7 +51,7 @@ def exercise_5a(
 
     # To/from AIE-array runtime data movement
     def sequence(a_in, c_out, in_h, out_h):
-        for t in simple_tiler:
+        for t in tiles:
             in_h.fill(a_in, t)
         out_h.drain(c_out, wait=True)
 

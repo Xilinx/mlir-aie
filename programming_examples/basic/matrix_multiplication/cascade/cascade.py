@@ -15,7 +15,7 @@ import argparse
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import Layout
 from aie.iron import (
     Buffer,
     CascadeFlow,
@@ -288,38 +288,36 @@ def cascade(
 
     tb_max_n_rows = 5
 
-    # C drain TAPs: one per (tb, col).  step_tiler with allow_partial=True
-    # handles the trailing tb that has fewer than tb_max_n_rows rows.
-    C_taps = TensorTiler2D.step_tiler(
-        (M, N),
-        (m, n),
-        tile_group_repeats=(tb_max_n_rows, N // n // n_aie_cols),
-        tile_group_steps=(1, n_aie_cols),
-        allow_partial=True,
-        prune_step=False,
+    # C drain TAPs: one per (tb, col).  group(..., partial=True) handles the
+    # trailing tb that has fewer than tb_max_n_rows rows.
+    C_taps = (
+        Layout.full((M, N))
+        .tile((m, n))
+        .group(
+            (tb_max_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols), partial=True
+        )
     )
 
     # B fill TAPs: one per col, reused across all (tb, tile_row) for that col.
-    B_taps = TensorTiler2D.step_tiler(
-        (K, N),
-        (k * n_aie_rows, n),
-        tile_group_repeats=(K // k // n_aie_rows, N // n // n_aie_cols),
-        tile_group_steps=(1, n_aie_cols),
-        tile_group_col_major=True,
-        prune_step=False,
+    B_taps = (
+        Layout.full((K, N))
+        .tile((k * n_aie_rows, n))
+        .group(
+            (K // k // n_aie_rows, N // n // n_aie_cols),
+            steps=(1, n_aie_cols),
+            col_major=True,
+        )
     )
 
     # A fill TAPs: one per (col, m-block).  Indexed by (m_block_idx * n_aie_cols
     # + col) — m_block_idx walks all M//m rows once, col iterates the columns
     # for each row.  Each TAP repeats N//n//n_aie_cols times (broadcast across
-    # the N output-column axis) via pattern_repeat.
-    A_taps = TensorTiler2D.step_tiler(
-        (M, K),
-        (m * n_A_tiles_per_shim, k),
-        tile_group_repeats=(1, K // k // n_aie_rows),
-        tile_group_steps=(1, n_aie_rows),
-        pattern_repeat=N // n // n_aie_cols,
-        prune_step=False,
+    # the N output-column axis) via repeat().
+    A_taps = (
+        Layout.full((M, K))
+        .tile((m * n_A_tiles_per_shim, k))
+        .group((1, K // k // n_aie_rows), steps=(1, n_aie_rows))
+        .repeat(N // n // n_aie_cols)
     )
 
     # Move the shim-tile placement onto the handles (fill/drain no longer take

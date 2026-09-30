@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import Layout
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -12,7 +11,7 @@ from util import construct_test
 # CHECK-LABEL: rectangular_tiler_col_major_tensor
 @construct_test
 def rectangular_tiler_col_major_tensor():
-    tiler = TensorTiler2D.simple_tiler((8, 16), (4, 2), iter_col_major=True)
+    tiler = Layout.full((8, 16)).tile((4, 2)).order("col").materialize()
     access_order, access_count = tiler.accesses()
     reference_access = np.array(
         # fmt: off

@@ -11,7 +11,7 @@ This IRON design flow example, called "Tiling Exploration: Per Tile", demonstrat
 
 ## Source Files Overview
 
-1. `per_tile.py`: An `@iron.jit`-decorated design that uses `TensorTiler2D` to specify `TensorAccessPatterns` (*taps*) of data to be transferred out of the design.  When invoked standalone, `@iron.jit` JIT-compiles to an xclbin/insts pair, runs on the NPU, and verifies the output against the expected tiled pattern.
+1. `per_tile.py`: An `@iron.jit`-decorated design that uses `Layout.full(...).tile(...)` to build a `TileGrid` whose tiles (`Layout`s) specify the access patterns (*taps*) of data to be transferred out of the design.  When invoked standalone, `@iron.jit` JIT-compiles to an xclbin/insts pair, runs on the NPU, and verifies the output against the expected tiled pattern.
 
 ## Design Overview
 

@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import Layout
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -12,7 +11,7 @@ from util import construct_test
 # CHECK-LABEL: square_tiler_tile_grouping
 @construct_test
 def square_tiler_tile_grouping():
-    tiler = TensorTiler2D.group_tiler((32, 32), (8, 8), (2, 2))
+    tiler = Layout.full((32, 32)).tile((8, 8)).group((2, 2)).materialize()
     access_count = tiler.access_count()
     assert (access_count == 1).all()
 
