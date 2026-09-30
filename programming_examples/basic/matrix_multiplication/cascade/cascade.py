@@ -15,7 +15,7 @@ import argparse
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CascadeFlow,
@@ -131,7 +131,7 @@ def cascade(
                     f"A_L2L1_{r_}"
                     for r_ in range(start_row, start_row + n_A_tiles_per_shim)
                 ],
-                dims_to_stream=[a_dims] * n_A_tiles_per_shim,
+                to_stream=[a_dims] * n_A_tiles_per_shim,
                 tile=Tile(col, 1),
             )
         )
@@ -154,7 +154,7 @@ def cascade(
                 of_offsets,
                 obj_types=[B_l1_ty] * n_aie_rows,
                 names=[f"B_L2L1_{col}_{row}" for row in range(n_aie_rows)],
-                dims_to_stream=[b_dims] * n_aie_rows,
+                to_stream=[b_dims] * n_aie_rows,
                 tile=Tile(col, 1),
             )
         )
@@ -172,7 +172,7 @@ def cascade(
             obj_type=C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=dims.C,
+            to_stream=dims.C,
             tile=Tile(col, 1),
         )
         C_l1l2_fifos.append(c_l1l2)
@@ -291,7 +291,7 @@ def cascade(
     # C drain TAPs: one per (tb, col).  group(..., partial=True) handles the
     # trailing tb that has fewer than tb_max_n_rows rows.
     C_taps = (
-        Layout.full((M, N))
+        TensorAccessPattern.full((M, N))
         .tile((m, n))
         .group(
             (tb_max_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols), partial=True
@@ -300,7 +300,7 @@ def cascade(
 
     # B fill TAPs: one per col, reused across all (tb, tile_row) for that col.
     B_taps = (
-        Layout.full((K, N))
+        TensorAccessPattern.full((K, N))
         .tile((k * n_aie_rows, n))
         .group(
             (K // k // n_aie_rows, N // n // n_aie_cols),
@@ -314,7 +314,7 @@ def cascade(
     # for each row.  Each TAP repeats N//n//n_aie_cols times (broadcast across
     # the N output-column axis) via repeat().
     A_taps = (
-        Layout.full((M, K))
+        TensorAccessPattern.full((M, K))
         .tile((m * n_A_tiles_per_shim, k))
         .group((1, K // k // n_aie_rows), steps=(1, n_aie_rows))
         .repeat(N // n // n_aie_cols)

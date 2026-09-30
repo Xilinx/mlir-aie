@@ -28,7 +28,7 @@ import json
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import ObjectFifo, Program, Runtime, TaskGroup
 from aie.iron.device import Tile
 from aie.utils.hostruntime import set_current_device
@@ -155,8 +155,8 @@ def _chain_iron(mode, data_dir, scales_json):
 
     if wts_fifos:
         # Cascade: input + ONE concatenated cascade weight buffer + output.
-        # All 4 weight chunks live in a single host tensor; Layout slices
-        # slice it for each fifo. Mirrors aie2_mobilenet_iron.py main runtime.
+        # All 4 weight chunks live in a single host tensor; one
+        # TensorAccessPattern slice per fifo addresses its chunk. Mirrors aie2_mobilenet_iron.py main runtime.
         BN_WTS_SZ = 80 * 960  # 76800 bytes per chunk
         TOTAL_WTS_SZ_I32 = 4 * BN_WTS_SZ // 4  # 76800 i32 elements
         wts_ty = np.ndarray[(TOTAL_WTS_SZ_I32,), np.dtype[np.int32]]
@@ -165,7 +165,7 @@ def _chain_iron(mode, data_dir, scales_json):
         ]  # [0, 19200, 38400, 57600]
         size_i32 = BN_WTS_SZ // 4  # 19200
 
-        weights = Layout.full((TOTAL_WTS_SZ_I32,))
+        weights = TensorAccessPattern.full((TOTAL_WTS_SZ_I32,))
 
         def _wts_tap(byte_offset_i32):
             return weights[byte_offset_i32 : byte_offset_i32 + size_i32]

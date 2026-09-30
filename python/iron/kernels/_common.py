@@ -44,7 +44,7 @@ class TensorLayout:
     ``shape`` is the logical tile. ``pack`` and ``unpack`` are the reversible
     host codec between ``(calls, *shape)`` and ``(calls, storage_elements)``;
     identity is the default. ``stream`` is the DMA transform
-    (``dims_to_stream``) a design applies on the hop that feeds this operand
+    (``to_stream``) a design applies on the hop that feeds this operand
     to the kernel or drains it, ``None`` when the operand streams as stored;
     ``block`` is the micro-tile the kernel consumes or produces, ``(r, s)``
     for an MMUL operand. The codec is built from the same two facts, so the

@@ -260,7 +260,7 @@ class TensorAccessPattern:
         )
 
     @property
-    def T(self) -> TensorAccessPattern:
+    def T(self) -> TensorAccessPattern:  # noqa: N802
         """The walk with its dimensions reversed, like ``numpy.ndarray.T``.
 
         ``TensorAccessPattern.full((M, N)).T`` walks an ``(M, N)`` tensor

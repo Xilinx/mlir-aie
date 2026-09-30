@@ -26,50 +26,64 @@ from ...helpers.npdtypes import (
     pack_pad_value,
     single_elem_or_list_to_list,
 )
-from ...helpers.taplib import Layout, PaddedLayout, TensorAccessPattern
+from ...helpers.taplib import TensorAccessPattern
 from ...helpers.taplib.symbolic import is_sym
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, Resolvable
 from .endpoint import ObjectFifoEndpoint
 
-# A DMA stream layout transform: a list of (size, stride) pairs from highest
-# to lowest dimension, or a taplib view that describes the same walk (a
-# ``Layout``, a ``PaddedLayout`` that also carries the memtile padding, or a
-# ``TensorAccessPattern``). Pad descriptors are (before, after) pair lists.
-# The names exist to make signatures and docs self-documenting; every entry
-# point normalizes with ``_as_stream_dims``.
-StreamDims: TypeAlias = Union[
-    list[Sequence[int]], Layout, PaddedLayout, TensorAccessPattern
-]
+# A DMA stream transform: a TensorAccessPattern over the fifo's object (which
+# may also carry memtile padding), or the equivalent list of (size, stride)
+# pairs from highest to lowest dimension. Pad descriptors are (before, after)
+# pair lists. The names exist to make signatures and docs self-documenting;
+# every entry point normalizes with ``_as_stream_dims``.
+StreamDims: TypeAlias = Union[list[Sequence[int]], TensorAccessPattern]
 PadDims: TypeAlias = list[Sequence[int]]
 
 
-def _as_stream_dims(dims: StreamDims | None) -> list[Sequence[int]] | None:
+def _as_stream_dims(
+    dims: StreamDims | None, allow_padding: bool = False
+) -> list[Sequence[int]] | None:
     """Normalize a stream transform to the ``[(size, stride), ...]`` list.
 
-    Accepts the list itself, a :class:`~aie.helpers.taplib.Layout`, a
-    :class:`~aie.helpers.taplib.PaddedLayout` (its unpadded walk) or a
-    :class:`~aie.helpers.taplib.TensorAccessPattern`.
+    Accepts the list itself or a :class:`~aie.helpers.taplib.TensorAccessPattern`
+    (its unpadded walk; see :func:`_pad_dims_of` for the padding).
 
-    ObjectFifo dimensions cannot encode an offset, so a view or pattern whose
-    offset is not a literal ``0`` is rejected rather than silently dropped.
+    ObjectFifo dimensions cannot encode an offset, so a pattern whose offset
+    is not a literal ``0`` is rejected rather than silently dropped.
     """
     if dims is None or isinstance(dims, list):
         return dims
-    if isinstance(dims, (Layout, PaddedLayout, TensorAccessPattern)):
-        offset = (dims.layout if isinstance(dims, PaddedLayout) else dims).offset
+    if isinstance(dims, TensorAccessPattern):
+        if dims.padding is not None and not allow_padding:
+            raise ValueError(
+                "only a producer's to_stream pattern can pad; "
+                f"{dims!r} is used to write from a stream"
+            )
+        offset = dims.offset
         if is_sym(offset) or offset != 0:
             raise ValueError(
                 f"ObjectFifo stream dimensions cannot encode an offset, but "
                 f"{dims!r} has offset {offset}; apply the offset where the "
                 "buffer is addressed instead"
             )
-    if isinstance(dims, (Layout, PaddedLayout)):
-        return list(dims.stream_dims())
-    if isinstance(dims, TensorAccessPattern):
         return list(dims.transformation_dims)
     return list(dims)
+
+
+def _pad_dims_of(
+    to_stream: StreamDims | None, pad_dimensions: PadDims | None
+) -> PadDims | None:
+    """Return the padding a fifo emits: a padded pattern's, or ``pad_dimensions``."""
+    padding = to_stream.padding if isinstance(to_stream, TensorAccessPattern) else None
+    if padding is None:
+        return pad_dimensions
+    if pad_dimensions is not None:
+        raise ValueError(
+            "to_stream is a padded TensorAccessPattern; do not also pass pad_dimensions"
+        )
+    return [tuple(p) for p in padding]
 
 
 def _same_shim_pin(a: "Tile | None", b: "Tile | None") -> bool:
@@ -108,8 +122,8 @@ class ObjectFifo(Resolvable):
         *,
         depth: int | None = 2,
         name: str | None = None,
-        dims_to_stream: StreamDims | None = None,
-        dims_from_stream_per_cons: StreamDims | None = None,
+        to_stream: StreamDims | None = None,
+        from_stream_per_cons: StreamDims | None = None,
         plio: bool = False,
         pad_dimensions: PadDims | None = None,
         pad_value: int = 0,
@@ -129,19 +143,20 @@ class ObjectFifo(Resolvable):
             obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
             depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
             name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
-            dims_to_stream (StreamDims | None, optional): A ``Layout`` (or ``PaddedLayout``,
-                which also sets ``pad_dimensions``) or ``[(size, stride), ...]`` list. Data layout transformations applied
-                when data is pushed onto the AXI stream, described as pairs of (size, stride)
-                from highest to lowest dimension. Defaults to None.
-            dims_from_stream_per_cons (StreamDims | None, optional): List of data layout
-                transformations applied by each consumer when data is read from the AXI
-                stream, described as pairs of (size, stride) from highest to lowest
-                dimension. Defaults to None.
+            to_stream (StreamDims | None, optional): How the producer's DMA walks each
+                object onto the AXI stream: a ``TensorAccessPattern`` over the object
+                (a padded one, from ``.pad()``, also sets ``pad_dimensions``) or the
+                equivalent ``[(size, stride), ...]`` list, highest dimension first.
+                Defaults to None (a linear walk).
+            from_stream_per_cons (StreamDims | None, optional): How each consumer's DMA
+                writes the stream into its object, in the same forms as ``to_stream``.
+                Defaults to None (a linear walk).
             plio (bool, optional): Whether the ObjectFifo uses PLIO connections. Defaults to False.
             pad_dimensions (PadDims | None, optional): Per-dimension zero-padding applied to the
                 buffer, described as ``(pad_before, pad_after)`` pairs from highest to lowest
                 dimension. Lowers to the ``padDimensions`` attribute on the underlying
-                ``aie.objectfifo`` op. Defaults to None.
+                ``aie.objectfifo`` op. Prefer a padded ``to_stream`` pattern
+                (``tap.pad(...)``), which sets this. Defaults to None.
             pad_value (int, optional): Per-element constant value used to fill the region created
                 by ``pad_dimensions``. Packed into the raw 32-bit CONSTANT_PAD_VALUE register
                 using this fifo's element width. Only valid together with ``pad_dimensions`` (MemTile
@@ -199,11 +214,9 @@ class ObjectFifo(Resolvable):
                 f"Default ObjectFifo depth must be > 0, but got {self._depth}"
             )
         self._obj_type = obj_type
-        # A PaddedLayout carries the padding the memtile emits around the walk.
-        if isinstance(dims_to_stream, PaddedLayout) and pad_dimensions is None:
-            pad_dimensions = list(dims_to_stream.pad_dims())
-        self._dims_to_stream = _as_stream_dims(dims_to_stream)
-        self._dims_from_stream_per_cons = _as_stream_dims(dims_from_stream_per_cons)
+        pad_dimensions = _pad_dims_of(to_stream, pad_dimensions)
+        self._to_stream = _as_stream_dims(to_stream, allow_padding=True)
+        self._from_stream_per_cons = _as_stream_dims(from_stream_per_cons)
         self._plio = plio
         self._pad_dimensions = pad_dimensions
         self._pad_value = pad_value
@@ -235,14 +248,14 @@ class ObjectFifo(Resolvable):
         return self._depth
 
     @property
-    def dims_from_stream_per_cons(self) -> StreamDims | None:
+    def from_stream_per_cons(self) -> StreamDims | None:
         """The default dimensions from stream per consumer value. This may be overridden by an ObjectFifoHandle of type consumer."""
-        return self._dims_from_stream_per_cons
+        return self._from_stream_per_cons
 
     @property
-    def dims_to_stream(self) -> StreamDims | None:
+    def to_stream(self) -> StreamDims | None:
         """The dimensions to stream value. This will be shared by the ObjectFifoHandle of type producer."""
-        return self._dims_to_stream
+        return self._to_stream
 
     @property
     def op(self) -> ObjectFifoCreateOp:
@@ -343,7 +356,7 @@ class ObjectFifo(Resolvable):
     def cons(
         self,
         depth: int | None = None,
-        dims_from_stream: StreamDims | None = None,
+        from_stream: StreamDims | None = None,
         channel: int | None = None,
         tile: Tile | None = None,
     ) -> ObjectFifoHandle:
@@ -354,7 +367,7 @@ class ObjectFifo(Resolvable):
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
-            dims_from_stream (StreamDims | None, optional): Dimensions from stream for this consumer. Defaults to None.
+            from_stream (StreamDims | None, optional): Dimensions from stream for this consumer. Defaults to None.
             channel (int | None, optional): Pin this consumer endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
             tile (Tile | None, optional): When this handle drains an ObjectFifo to
                 the runtime (passed in ``Runtime`` ``fn_args``), the shim tile its
@@ -372,15 +385,15 @@ class ObjectFifo(Resolvable):
             else:
                 depth = self._depth
 
-        dims_from_stream = _as_stream_dims(dims_from_stream)
-        if dims_from_stream is None:
-            dims_from_stream = self._dims_from_stream_per_cons
+        from_stream = _as_stream_dims(from_stream)
+        if from_stream is None:
+            from_stream = self._from_stream_per_cons
         self._cons.append(
             ObjectFifoHandle(
                 self,
                 is_prod=False,
                 depth=depth,
-                dims_from_stream=dims_from_stream,
+                from_stream=from_stream,
                 channel=channel,
                 tile=tile,
             )
@@ -478,9 +491,8 @@ class ObjectFifo(Resolvable):
     ) -> None:
         if not self._resolving:
             self._resolving = True
-            dims_from_stream_per_cons = [
-                con.dims_from_stream if con.dims_from_stream else []
-                for con in self._cons
+            from_stream_per_cons = [
+                con.from_stream if con.from_stream else [] for con in self._cons
             ]
 
             consumer_datatype = (
@@ -494,8 +506,8 @@ class ObjectFifo(Resolvable):
                 self._cons_tiles_ops(),
                 self._get_depths(),
                 np_ndarray_type_to_memref_type(self._obj_type),
-                dimensionsToStream=self._dims_to_stream,
-                dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
+                dimensionsToStream=self._to_stream,
+                dimensionsFromStreamPerConsumer=from_stream_per_cons,
                 plio=self._plio,
                 padDimensions=self._pad_dimensions,
                 padValue=(
@@ -581,7 +593,7 @@ class ObjectFifoHandle(Resolvable):
         of: ObjectFifo,
         is_prod: bool,
         depth: int | None = None,
-        dims_from_stream: StreamDims | None = None,
+        from_stream: StreamDims | None = None,
         channel: int | None = None,
         tile: Tile | None = None,
     ):
@@ -591,7 +603,7 @@ class ObjectFifoHandle(Resolvable):
             of (ObjectFifo): The ObjectFifo to construct the handle for.
             is_prod (bool): Whether the handle should be producer or consumer handle.
             depth (int | None, optional): The depth of the ObjectFifo at this endpoint. Defaults to None.
-            dims_from_stream (StreamDims | None, optional): A unique dimensions from stream. This is only valid for consumer handles. Defaults to None.
+            from_stream (StreamDims | None, optional): A unique dimensions from stream. This is only valid for consumer handles. Defaults to None.
             channel (int | None, optional): Pin this endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
             tile (Tile | None, optional): Shim tile for a runtime-driven endpoint (see prod()/cons()). Defaults to None.
 
@@ -610,11 +622,11 @@ class ObjectFifoHandle(Resolvable):
         self._port: ObjectFifoPort = (
             ObjectFifoPort.Produce if is_prod else ObjectFifoPort.Consume
         )
-        dims_from_stream = _as_stream_dims(dims_from_stream)
-        if is_prod and dims_from_stream:
-            raise ValueError("Can only specify dims_from_stream for cons handles")
-        elif not is_prod and not dims_from_stream:
-            dims_from_stream = of.dims_from_stream_per_cons
+        from_stream = _as_stream_dims(from_stream)
+        if is_prod and from_stream:
+            raise ValueError("Can only specify from_stream for cons handles")
+        elif not is_prod and not from_stream:
+            from_stream = of.from_stream_per_cons
 
         self._is_prod = is_prod
         self._object_fifo = of
@@ -622,7 +634,7 @@ class ObjectFifoHandle(Resolvable):
         self._channel = channel
         self._shim_tile = tile
         self._endpoint = None
-        self._dims_from_stream = dims_from_stream
+        self._from_stream = from_stream
 
     def acquire(
         self,
@@ -707,11 +719,11 @@ class ObjectFifoHandle(Resolvable):
         return self._depth
 
     @property
-    def dims_from_stream(self) -> StreamDims | None:
+    def from_stream(self) -> StreamDims | None:
         """The dimensions from stream of a consumer ObjectFifoHandle."""
         if self._is_prod:
-            raise ValueError("prod ObjectFifoHandles cannot have dims_from_stream")
-        return self._dims_from_stream
+            raise ValueError("prod ObjectFifoHandles cannot have from_stream")
+        return self._from_stream
 
     @property
     def endpoint(self) -> ObjectFifoEndpoint | None:
@@ -721,7 +733,7 @@ class ObjectFifoHandle(Resolvable):
     def __str__(self) -> str:
         my_str = f"ObjectFifoHandle({self.handle_type}, {self.depth}, "
         if not self._is_prod:
-            my_str += f"{self.dims_from_stream}, "
+            my_str += f"{self.from_stream}, "
         my_str += f"{self._object_fifo})"
         return my_str
 
@@ -872,8 +884,8 @@ class ObjectFifoHandle(Resolvable):
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] | None = None,
         names: list[str] | None = None,
-        dims_to_stream: list[StreamDims] | None = None,
-        dims_from_stream: list[StreamDims] | None = None,
+        to_stream: list[StreamDims] | None = None,
+        from_stream: list[StreamDims] | None = None,
         plio: bool = False,
         repeat_counts: list[int | None] | None = None,
     ) -> list[ObjectFifo]:
@@ -887,8 +899,8 @@ class ObjectFifoHandle(Resolvable):
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The type of the buffers corresponding to each new ObjectFifo. Defaults to None.
             names (list[str] | None, optional): The name of each new ObjectFifo. If not given, unique names will be generated. Defaults to None.
-            dims_to_stream (list[list[Sequence[int]  |  None]] | None, optional): The dimensionsToStream to assign to each new ObjectFifo. Defaults to None.
-            dims_from_stream (list[list[Sequence[int]  |  None]] | None, optional): The
+            to_stream (list[list[Sequence[int]  |  None]] | None, optional): The dimensionsToStream to assign to each new ObjectFifo. Defaults to None.
+            from_stream (list[list[Sequence[int]  |  None]] | None, optional): The
                 dimensionsFromStream to assign to each new ObjectFifo consumer. Defaults
                 to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
@@ -918,19 +930,17 @@ class ObjectFifoHandle(Resolvable):
         elif len(names) != num_subfifos:
             raise ValueError("Number of names does not match number of offsets")
 
-        if dims_to_stream is None:
-            dims_to_stream = [[] for _ in range(num_subfifos)]
-        elif len(dims_to_stream) != num_subfifos:
+        if to_stream is None:
+            to_stream = [[] for _ in range(num_subfifos)]
+        elif len(to_stream) != num_subfifos:
             raise ValueError(
                 "Number of dims to stream does not match number of offsets"
             )
 
-        if dims_from_stream is None:
-            dims_from_stream = [[] for _ in range(num_subfifos)]
-        elif dims_from_stream and len(dims_from_stream) != num_subfifos:
-            raise ValueError(
-                "Number of dims_from_stream does not match number of offsets"
-            )
+        if from_stream is None:
+            from_stream = [[] for _ in range(num_subfifos)]
+        elif from_stream and len(from_stream) != num_subfifos:
+            raise ValueError("Number of from_stream does not match number of offsets")
 
         if repeat_counts is None:
             repeat_counts = [None for _ in range(num_subfifos)]
@@ -945,14 +955,14 @@ class ObjectFifoHandle(Resolvable):
                     obj_types[i],
                     name=names[i],
                     depth=depths[i],
-                    dims_to_stream=dims_to_stream[i],
+                    to_stream=to_stream[i],
                     plio=plio,
                     repeat_count=repeat_counts[i],
                 )
             )
 
         subfifo_cons = [
-            s.cons(depth=depths[i], dims_from_stream=dims_from_stream[i])
+            s.cons(depth=depths[i], from_stream=from_stream[i])
             for i, s in enumerate(subfifos)
         ]
         _ = ObjectFifoLink(subfifo_cons, self, tile, offsets, [])
@@ -965,8 +975,8 @@ class ObjectFifoHandle(Resolvable):
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] | None = None,
         names: list[str] | None = None,
-        dims_to_stream: list[StreamDims] | None = None,
-        dims_from_stream: list[StreamDims] | None = None,
+        to_stream: list[StreamDims] | None = None,
+        from_stream: list[StreamDims] | None = None,
         plio: bool = False,
         repeat_counts: list[int | None] | None = None,
         pad_dimensions: list[PadDims | None] | None = None,
@@ -983,8 +993,8 @@ class ObjectFifoHandle(Resolvable):
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The buffer type of each new ObjectFifo. Defaults to None.
             names (list[str] | None, optional): The name of each new ObjectFifo. If not given, a unique name will be generated. Defaults to None.
-            dims_to_stream (list[StreamDims] | None, optional): The dimensions to stream for each new ObjectFifo. Defaults to None.
-            dims_from_stream (list[StreamDims] | None, optional): The dimensions from stream for each new ObjectFifo. Defaults to None.
+            to_stream (list[StreamDims] | None, optional): The dimensions to stream for each new ObjectFifo. Defaults to None.
+            from_stream (list[StreamDims] | None, optional): The dimensions from stream for each new ObjectFifo. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
             repeat_counts (list[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
             pad_dimensions (list[PadDims | None] | None, optional): Per-sub-fifo (before, after) pad counts (see ObjectFifo.pad_dimensions). Defaults to None.
@@ -1019,18 +1029,18 @@ class ObjectFifoHandle(Resolvable):
         elif len(names) != num_subfifos:
             raise ValueError("Number of names does not match number of offsets")
 
-        if dims_to_stream is None:
-            dims_to_stream = [[] for _ in range(num_subfifos)]
-        elif len(dims_to_stream) != num_subfifos:
+        if to_stream is None:
+            to_stream = [[] for _ in range(num_subfifos)]
+        elif len(to_stream) != num_subfifos:
             raise ValueError(
-                "Number of dims_to_stream arrays does not match number of offsets"
+                "Number of to_stream arrays does not match number of offsets"
             )
 
-        if dims_from_stream is None:
-            dims_from_stream = [[] for _ in range(num_subfifos)]
-        elif len(dims_from_stream) != num_subfifos:
+        if from_stream is None:
+            from_stream = [[] for _ in range(num_subfifos)]
+        elif len(from_stream) != num_subfifos:
             raise ValueError(
-                "Number of dims_from_stream arrays does not match number of offsets"
+                "Number of from_stream arrays does not match number of offsets"
             )
 
         if repeat_counts is None:
@@ -1058,8 +1068,8 @@ class ObjectFifoHandle(Resolvable):
                     obj_types[i],
                     name=names[i],
                     depth=depths[i],
-                    dims_to_stream=dims_to_stream[i],
-                    dims_from_stream_per_cons=dims_from_stream[i],
+                    to_stream=to_stream[i],
+                    from_stream_per_cons=from_stream[i],
                     plio=plio,
                     repeat_count=repeat_counts[i],
                     pad_dimensions=pad_dimensions[i],
@@ -1088,8 +1098,8 @@ class ObjectFifoHandle(Resolvable):
         obj_type: type[np.ndarray] | None = None,
         depth: int | None = None,
         name: str | None = None,
-        dims_to_stream: StreamDims | None = None,
-        dims_from_stream: StreamDims | None = None,
+        to_stream: StreamDims | None = None,
+        from_stream: StreamDims | None = None,
         plio: bool = False,
         repeat_count: int | None = None,
         pad_dimensions: PadDims | None = None,
@@ -1106,8 +1116,8 @@ class ObjectFifoHandle(Resolvable):
             obj_type (type[np.ndarray] | None, optional): The object type of the new ObjectFifo. Defaults to None.
             depth (int | None, optional): The depth of the new ObjectFifo. Defaults to None.
             name (str | None, optional): The name of the new ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
-            dims_to_stream (StreamDims | None, optional): The dimensions to stream for the new ObjectFifo. Defaults to None.
-            dims_from_stream (StreamDims | None, optional): The dimensions from stream for the new ObjectFifo. Defaults to None.
+            to_stream (StreamDims | None, optional): The dimensions to stream for the new ObjectFifo. Defaults to None.
+            from_stream (StreamDims | None, optional): The dimensions from stream for the new ObjectFifo. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
             repeat_count (int | None, optional): MemTile DMA repeat count for the new ObjectFifo (see ObjectFifo.repeat_count). Defaults to None.
             pad_dimensions (PadDims | None, optional): Per-dimension (before, after) constant-pad
@@ -1130,10 +1140,8 @@ class ObjectFifoHandle(Resolvable):
         obj_types = [obj_type] if obj_type else None
         depths = [depth] if depth else None
         names = [name] if name else [self._object_fifo.name + "_fwd"]
-        dims_to_stream_arg = [dims_to_stream] if dims_to_stream is not None else None
-        dims_from_stream_arg = (
-            [dims_from_stream] if dims_from_stream is not None else None
-        )
+        to_stream_arg = [to_stream] if to_stream is not None else None
+        from_stream_arg = [from_stream] if from_stream is not None else None
 
         forward_fifo = self.split(
             [0],
@@ -1141,8 +1149,8 @@ class ObjectFifoHandle(Resolvable):
             obj_types=obj_types,
             depths=depths,
             names=names,
-            dims_to_stream=dims_to_stream_arg,
-            dims_from_stream=dims_from_stream_arg,
+            to_stream=to_stream_arg,
+            from_stream=from_stream_arg,
             plio=plio,
             repeat_counts=[repeat_count] if repeat_count is not None else None,
             pad_dimensions=[pad_dimensions] if pad_dimensions is not None else None,

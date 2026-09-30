@@ -10,7 +10,7 @@ from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     dma_start_task,
 )
 from ...dialects.aiex import shim_dma_single_bd_task
-from ...helpers.taplib import Layout, TensorAccessPattern
+from ...helpers.taplib import TensorAccessPattern
 from .data import RuntimeData
 from .dmataskhandle import Task
 from .task import RuntimeTask
@@ -190,9 +190,6 @@ def emit_shim_transfer(
         raise ValueError(
             "Pass either tap or sizes/strides/offset/transfer_len, not both."
         )
-    if isinstance(tap, Layout):
-        # A Layout is a view; its shim form is the 4-dim TensorAccessPattern.
-        tap = tap.tap()
     if tap is None and not explicit:
         tap = rt_data.default_tap()
 

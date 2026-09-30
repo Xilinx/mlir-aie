@@ -13,7 +13,7 @@ No NPU: the test inspects the MLIR and the error paths.
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     DispatchTime,
     In,
@@ -46,7 +46,7 @@ def build(body, n_tiles):
         out_prod.release(1)
 
     worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
-    chunks = Layout.full((1, MAX_TILES * TILE)).partition(MAX_TILES)
+    chunks = TensorAccessPattern.full((1, MAX_TILES * TILE)).partition(MAX_TILES)
 
     def seq(a, b, n, in_prod, out_cons):
         body(a, b, n, in_prod, out_cons, chunks)

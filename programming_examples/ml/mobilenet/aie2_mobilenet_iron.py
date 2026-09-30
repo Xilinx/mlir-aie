@@ -29,7 +29,7 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, TaskGroup
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -154,7 +154,7 @@ def make_mobilenet_iron(use_placement: bool = True):
         _cascade_wts_sz_i32 = sum(_CASCADE_SIZES) // 4  # 76800 i32 = 307200 bytes
         cascade_wts_ty = np.ndarray[(_cascade_wts_sz_i32,), np.dtype[np.int32]]
 
-        weights = Layout.full((_cascade_wts_sz_i32,))
+        weights = TensorAccessPattern.full((_cascade_wts_sz_i32,))
 
         def _wts_tap(byte_offset, byte_size):
             return weights[byte_offset // 4 : (byte_offset + byte_size) // 4]
@@ -198,7 +198,7 @@ def make_mobilenet_iron(use_placement: bool = True):
                 post_L1_OutW * post_L1_OutH * post_L2_InC * 2 // 4
             )  # 640
             _inp_sz_i32 = tensorInW * tensorInH * tensorInC // 4  # 100352
-            scratch = Layout.full((_inp_sz_i32,))
+            scratch = TensorAccessPattern.full((_inp_sz_i32,))
             _post_l1_scratch_tap = scratch[
                 _post_l1_out_sz_i32 : 2 * _post_l1_out_sz_i32
             ]

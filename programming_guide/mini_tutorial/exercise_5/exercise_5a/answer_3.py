@@ -27,7 +27,7 @@ def exercise_5a(
     # Dataflow with ObjectFifos
     of_in = ObjectFifo(data_ty, name="in")
     dims = [(2, 8), (3, 16), (8, 1)]
-    of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
+    of_out = ObjectFifo(data_ty, name="out", to_stream=dims)
 
     # Task for the core to perform
     def core_fn(of_in, of_out):

@@ -8,7 +8,7 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 
@@ -35,7 +35,7 @@ def exercise_5a(
 
     tensor_dims = (3, 16)
     tile_dims = (3, 8)
-    tiles = Layout.full(tensor_dims).tile(tile_dims)
+    tiles = TensorAccessPattern.full(tensor_dims).tile(tile_dims)
 
     # Task for the core to perform
     def core_fn(of_in, of_out):

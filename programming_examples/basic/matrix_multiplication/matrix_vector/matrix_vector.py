@@ -12,7 +12,7 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -66,7 +66,7 @@ def matrix_vector(
     # The vectorized mv kernel reads A in a "32-bit-word transposed" layout
     # (see aie_kernels/linalg/mv_i16.cc); the kernel's contract declares the DMA
     # transform on A's layout, so the design applies what the kernel wants.
-    a_dims_from_stream: StreamDims | None = matvec_kernel.contract.layouts[0].stream
+    a_from_stream: StreamDims | None = matvec_kernel.contract.layouts[0].stream
 
     def core_fn(of_a, of_b, of_c, zero, matvec):
         elem_out = of_c.acquire(1)
@@ -87,7 +87,7 @@ def matrix_vector(
     for i in range(n_cores):
         a_fifo = ObjectFifo(inA_ty, name=f"memA{i}")
         memA_fifos.append(a_fifo)
-        coreA_fifos.append(a_fifo.cons().forward(dims_from_stream=a_dims_from_stream))
+        coreA_fifos.append(a_fifo.cons().forward(from_stream=a_from_stream))
         outC_fifos.append(ObjectFifo(outC_ty, name=f"outC{i}"))
         workers.append(
             Worker(
@@ -102,9 +102,13 @@ def matrix_vector(
             )
         )
 
-    A_taps = Layout.full((M, K)).tile((m, k)).group((M_div_m_div_n_cores, K_div_k))
-    C_taps = Layout.full((1, M)).tile((1, M_div_n_cores))
-    b_tap = Layout.full((1, K)).repeat(M_div_m_div_n_cores)
+    A_taps = (
+        TensorAccessPattern.full((M, K))
+        .tile((m, k))
+        .group((M_div_m_div_n_cores, K_div_k))
+    )
+    C_taps = TensorAccessPattern.full((1, M)).tile((1, M_div_n_cores))
+    b_tap = TensorAccessPattern.full((1, K)).repeat(M_div_m_div_n_cores)
 
     memA_prods = [f.prod() for f in memA_fifos]
     outC_cons = [f.cons() for f in outC_fifos]

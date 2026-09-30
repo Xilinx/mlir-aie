@@ -23,7 +23,7 @@ import sys
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import Layout, TensorAccessSequence
+from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 from aie.iron import (
     CompileTime,
     In,
@@ -160,7 +160,7 @@ def _build_design(
             of_offsets,
             obj_types=[A_l1_ty] * (stop_row - start_row),
             names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-            dims_to_stream=a_dims,
+            to_stream=a_dims,
         )
         A_l2l1_fifos.extend(a_tmp_fifos)
 
@@ -171,7 +171,7 @@ def _build_design(
             b_l3l2.cons().forward(
                 obj_type=B_l1_ty,
                 name=f"B_L2L1_{col}",
-                dims_to_stream=dims.B,
+                to_stream=dims.B,
             )
         )
 
@@ -179,7 +179,7 @@ def _build_design(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=dims.C,
+            to_stream=dims.C,
         )
         C_l2l3_fifos.append(c_l2l3)
         of_offsets = [m * n * i for i in range(n_aie_rows)]
@@ -229,20 +229,20 @@ def _build_design(
     tb_n_rows = tb_max_n_rows // 2
 
     A_tiles = (
-        Layout.full((M, K))
+        TensorAccessPattern.full((M, K))
         .tile((m * n_A_tiles_per_shim, k))
         .group((1, K // k))
         .repeat(N // n // n_aie_cols)
     )
     if b_col_maj:
         B_tiles = (
-            Layout.full((N, K))
+            TensorAccessPattern.full((N, K))
             .tile((n, k))
             .group((N // n // n_aie_cols, K // k), steps=(n_aie_cols, 1))
         )
     else:
         B_tiles = (
-            Layout.full((K, N))
+            TensorAccessPattern.full((K, N))
             .tile((k, n))
             .group(
                 (K // k, N // n // n_aie_cols), steps=(1, n_aie_cols), col_major=True
@@ -252,14 +252,14 @@ def _build_design(
         # Splitting n_aie_rows out of the tile dim is what lets the grouping emit
         # the (col-fast, row_block-slow) DMA pattern; order("col") matches it.
         C_tiles = (
-            Layout.full((N, M))
+            TensorAccessPattern.full((N, M))
             .tile((n, m))
             .order("col")
             .group((N // n // n_aie_cols, n_aie_rows), steps=(n_aie_cols, 1))
         )
     else:
         C_tiles = (
-            Layout.full((M, N))
+            TensorAccessPattern.full((M, N))
             .tile((m * n_aie_rows, n))
             .group((tb_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols))
         )
@@ -286,7 +286,7 @@ def _build_design(
                 )
 
                 for col in range(n_aie_cols):
-                    C_taps.append(C_tiles[c_index].tap())
+                    C_taps.append(C_tiles[c_index])
                     C_hs[col].drain(
                         C,
                         tap=C_tiles[c_index],
@@ -310,8 +310,8 @@ def _build_design(
                             tap=B_tiles[col],
                             group=tg,
                         )
-                        A_taps.append(A_tiles[tile_offset].tap())
-                        B_taps.append(B_tiles[col].tap())
+                        A_taps.append(A_tiles[tile_offset])
+                        B_taps.append(B_tiles[col])
 
                 if prev is not None:
                     prev.finish()

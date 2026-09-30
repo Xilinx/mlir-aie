@@ -6,7 +6,7 @@
 """Tiled transform algorithms (unary/binary, single-core/parallel) built on IRON."""
 
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
@@ -334,8 +334,9 @@ def _transform_parallel_gen(
 
     # One chunk per (column, channel): equal, disjoint sub-ranges of the
     # input in row-major (col, chan) order.
-    chunks = Layout.full((1, num_elements)).partition(num_columns * num_channels)
-    taps = [chunks[i].tap() for i in range(num_columns * num_channels)]
+    taps = TensorAccessPattern.full((num_elements,)).partition(
+        num_columns * num_channels
+    )
 
     # Runtime operations to move data to/from the AIE-array.
     # Pre-build the prod/cons handle grids so they can be registered via fn_args

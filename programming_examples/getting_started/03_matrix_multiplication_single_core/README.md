@@ -128,21 +128,21 @@ across columns of `B` to produce the next row of output tiles in `C`:
 ```
 tap_A_L2L1 = Layout.full((m, k)).tile((r, s)).group((m // r, k // s))[0]
 fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
-    dims_to_stream=tap_A_L2L1, 
+    to_stream=tap_A_L2L1, 
     name="A_L2L1"
 )
 ```
 ```
 tap_B_L2L1 = Layout.full((k, n)).tile((s, t)).group((k // s, n // t))[0]
 fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
-    dims_to_stream=tap_B_L2L1, 
+    to_stream=tap_B_L2L1, 
     name="B_L2L1"
 )
 ```
 ```
 tap_C_L1L2 = Layout.full((m, n)).tile((r, t)).inverse()
 fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
-    dims_to_stream=tap_C_L1L2,
+    to_stream=tap_C_L1L2,
     name="C_L2L3"
 )
 ```

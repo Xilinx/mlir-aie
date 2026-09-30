@@ -6,7 +6,7 @@
 """Single-core mixed bf16/bfp16 matmul — ``@iron.jit`` IRON design.
 
 One AIE2P core does a (bf16, bfp16) -> bf16 GEMM with on-shim shuffle
-into the bf16 mac layout via memtile dims_to_stream. Strix-only;
+into the bf16 mac layout via memtile to_stream. Strix-only;
 kernel is Peano-built.
 """
 
@@ -16,7 +16,7 @@ import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -63,12 +63,12 @@ def single_core_mixed(
 
     inA = ObjectFifo(a_ty, name="inA")
     a_dims = matmul_kernel.stream_dims.A
-    memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
+    memA = inA.cons().forward(name="memA", to_stream=a_dims)
     inB = ObjectFifo(b_ty, name="inB")
     memB = inB.cons().forward(name="memB")
     memC = ObjectFifo(c_ty, name="memC")
     c_dims = matmul_kernel.stream_dims.C
-    outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
+    outC = memC.cons().forward(name="outC", to_stream=c_dims)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
         for _ in range_(tiles) if tiles > 1 else range(1):
@@ -94,10 +94,23 @@ def single_core_mixed(
 
     rows_per_block = 4
 
-    A_tiles = Layout.full((M, K)).tile((m, k)).group((1, K_div_k)).repeat(N_div_n)
-    b_tap = Layout.full((N, K // 8)).tile((n, k // 8)).group((N_div_n, K_div_k))[0]
+    A_tiles = (
+        TensorAccessPattern.full((M, K))
+        .tile((m, k))
+        .group((1, K_div_k))
+        .repeat(N_div_n)
+    )
+    b_tap = (
+        TensorAccessPattern.full((N, K // 8))
+        .tile((n, k // 8))
+        .group((N_div_n, K_div_k))[0]
+    )
 
-    C_tiles = Layout.full((M, N)).tile((m, n)).group((rows_per_block // 2, N_div_n))
+    C_tiles = (
+        TensorAccessPattern.full((M, N))
+        .tile((m, n))
+        .group((rows_per_block // 2, N_div_n))
+    )
     c_index = 0
 
     def sequence(a, b, c, inA_h, inB_h, outC_h):

@@ -380,21 +380,21 @@ print(grid[0].tap())
 Layout([8, 8], offset=0, sizes=[4, 4], strides=[8, 1])
 TensorAccessPattern([8, 8] offset=0, sizes=[1, 1, 4, 4], strides=[0, 0, 8, 1])
 ```
-Each tile is a `Layout`. `fill()`, `drain()` and an `ObjectFifo`'s `dims_to_stream`/`dims_from_stream` accept a `Layout` directly; `.tap()` converts it to the 4-dimensional `TensorAccessPattern` form wherever a `tap` is required, and `.stream_dims()` gives the `[(size, stride), ...]` list it stands for (see below). `grid.materialize()` collects every tile into a `TensorAccessSequence`, e.g. to visualize the whole tiling at once.
+Each tile is a `Layout`. `fill()`, `drain()` and an `ObjectFifo`'s `to_stream`/`from_stream` accept a `Layout` directly; `.tap()` converts it to the 4-dimensional `TensorAccessPattern` form wherever a `tap` is required, and `.stream_dims()` gives the `[(size, stride), ...]` list it stands for (see below). `grid.materialize()` collects every tile into a `TensorAccessSequence`, e.g. to visualize the whole tiling at once.
 
 A `TileGrid` can be refined before it is indexed. Common refinements are `.order("col")` to visit tiles column by column, `.permute_tile((1, 0))` to walk each tile column-major, `.group((2, 2))` to gather a 2 x 2 block of tiles into a single `tap`, and `.repeat(n)` to walk each tile `n` times. Other operations live on the `Layout` itself: `.partition(k)` cuts a dimension into `k` equal chunks, NumPy-style indexing (`Layout.full((8, 8))[2:6, ::2]`) slices a view, `.permute((1, 0))` transposes it, and `.coalesce()` reduces a view to the fewest dimensions that walk the same elements. See [layout.py](../../python/helpers/taplib/layout.py) for the full API.
 
 More on `taplib` in [tiling_exploration](../../programming_examples/basic/tiling_exploration/README.md).
 
-`ObjectFifo`s can express DMA on-the-fly data transformations via their `dims_to_stream` and `dims_from_stream_per_cons` inputs. These inputs are structured as a list of pairs where each pair is expressed as (size, stride) for a dimension of the DMA transformation. The dimensions should be given from highest to lowest:
+`ObjectFifo`s can express DMA on-the-fly data transformations via their `to_stream` and `from_stream_per_cons` inputs. These inputs are structured as a list of pairs where each pair is expressed as (size, stride) for a dimension of the DMA transformation. The dimensions should be given from highest to lowest:
 ```python
 dims = [(size_2, stride_2), (size_1, stride_1), (size_0, stride_0)]
-of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
+of_out = ObjectFifo(data_ty, name="out", to_stream=dims)
 ```
 A `Layout` can be passed in place of the list; `.stream_dims()` shows the list it stands for:
 ```python
 dims = Layout.full((8, 8)).tile((4, 4)).group((2, 2))[0].stream_dims()
-of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
+of_out = ObjectFifo(data_ty, name="out", to_stream=dims)
 ```
 Offsets are currently not represented at the ObjectFifo level and as such the dimensions should be applicable over the full size of the objects.
 

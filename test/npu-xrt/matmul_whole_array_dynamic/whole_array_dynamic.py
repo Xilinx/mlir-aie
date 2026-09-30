@@ -156,7 +156,7 @@ def whole_array_dynamic(
                 [m * k * j for j in range(n_aie_rows)],
                 obj_types=[A_l1_ty] * n_aie_rows,
                 names=[f"A_L2L1_{col}_{row}" for row in range(n_aie_rows)],
-                dims_to_stream=[
+                to_stream=[
                     [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
                     for _ in range(n_aie_rows)
                 ],
@@ -170,7 +170,7 @@ def whole_array_dynamic(
             .forward(
                 obj_type=B_l1_ty,
                 name=f"B_L2L1_{col}",
-                dims_to_stream=[(k // s, s * n), (n // t, t), (s, n), (t, 1)],
+                to_stream=[(k // s, s * n), (n // t, t), (s, n), (t, 1)],
             )
         )
 
@@ -178,7 +178,7 @@ def whole_array_dynamic(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=[(m // r, r * n), (r, t), (n // t, r * t), (t, 1)],
+            to_stream=[(m // r, r * n), (r, t), (n // t, r * t), (t, 1)],
         )
         C_l1l2_fifos[col] = (
             C_l2l3[col]

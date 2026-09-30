@@ -34,7 +34,7 @@ from typing import Any
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.helpers.taplib.symbolic import require
 from aie.iron import (
     Buffer,
@@ -140,7 +140,7 @@ def _build_design(
                 [m * k * j for j in range(stop_row - start_row)],
                 obj_types=[A_l1_ty] * (stop_row - start_row),
                 names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-                dims_to_stream=[dims.A or []] * (stop_row - start_row),
+                to_stream=[dims.A or []] * (stop_row - start_row),
             )
         )
 
@@ -149,11 +149,11 @@ def _build_design(
         B_l3l2_fifos.append(b_l3l2)
         B_l2l1_fifos.append(
             b_l3l2.cons().forward(
-                obj_type=B_l1_ty, name=f"B_L2L1_{col}", dims_to_stream=dims.B
+                obj_type=B_l1_ty, name=f"B_L2L1_{col}", to_stream=dims.B
             )
         )
         c_l2l3 = ObjectFifo(
-            C_l2_ty, name=f"C_L2L3_{col}", depth=fifo_depth, dims_to_stream=dims.C
+            C_l2_ty, name=f"C_L2L3_{col}", depth=fifo_depth, to_stream=dims.C
         )
         C_l2l3_fifos.append(c_l2l3)
         c_tmp_fifos = c_l2l3.prod().join(
@@ -245,20 +245,20 @@ def _build_design(
         # The same tilers as whole_array.py, on the live shape. Every grid
         # size, stride and index below is staged arithmetic on M, K, N.
         A_tiles = (
-            Layout.full((M, K))
+            TensorAccessPattern.full((M, K))
             .tile((m * n_A_tiles_per_shim, k))
             .group((1, K // k))
             .repeat(N // n // n_aie_cols)
         )
         if b_col_maj:
             B_tiles = (
-                Layout.full((N, K))
+                TensorAccessPattern.full((N, K))
                 .tile((n, k))
                 .group((N // n // n_aie_cols, K // k), steps=(n_aie_cols, 1))
             )
         else:
             B_tiles = (
-                Layout.full((K, N))
+                TensorAccessPattern.full((K, N))
                 .tile((k, n))
                 .group(
                     (K // k, N // n // n_aie_cols),
@@ -268,7 +268,7 @@ def _build_design(
             )
         if c_col_maj:
             C_tiles = (
-                Layout.full((N, M))
+                TensorAccessPattern.full((N, M))
                 .tile((n, m))
                 .order("col")
                 .group((N // n // n_aie_cols, n_aie_rows), steps=(n_aie_cols, 1))
@@ -276,7 +276,7 @@ def _build_design(
         else:
             # partial: the last group may hold fewer than tb_n_rows row blocks.
             C_tiles = (
-                Layout.full((M, N))
+                TensorAccessPattern.full((M, N))
                 .tile((m * n_aie_rows, n))
                 .group(
                     (tb_n_rows, N // n // n_aie_cols),

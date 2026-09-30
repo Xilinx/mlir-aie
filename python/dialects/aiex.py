@@ -192,6 +192,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
                 "NpuDmaMemcpyNd can take either a TileAccessPattern OR (sizes and/or strides and/or offsets), but not both."
             )
         if tap:
+            tap = tap._dma_form()
             sizes = tap.sizes.copy()
             strides = tap.strides.copy()
             # A static tap carries an int offset; a symbolic one a runtime Value.
@@ -305,6 +306,8 @@ def shim_dma_bd(
         )
 
     if tap:
+        # The shim BD form: exactly 4 dimensions, a repeat kept in slot 0.
+        tap = tap._dma_form()
         sizes = tap.sizes.copy()
         strides = tap.strides.copy()
         offset = tap.offset
@@ -380,6 +383,8 @@ def shim_dma_single_bd_task(
         )
 
     if tap:
+        # The shim BD form: exactly 4 dimensions, a repeat kept in slot 0.
+        tap = tap._dma_form()
         sizes = tap.sizes.copy()
         strides = tap.strides.copy()
         offset = tap.offset

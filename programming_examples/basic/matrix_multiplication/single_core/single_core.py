@@ -20,7 +20,7 @@ import argparse
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -107,13 +107,13 @@ def single_core(
     dims = matmul_kernel.stream_dims
 
     inA = ObjectFifo(a_ty, name="inA")
-    memA = inA.cons().forward(name="memA", dims_to_stream=dims.A)
+    memA = inA.cons().forward(name="memA", to_stream=dims.A)
 
     inB = ObjectFifo(b_ty, name="inB")
-    memB = inB.cons().forward(name="memB", dims_to_stream=dims.B)
+    memB = inB.cons().forward(name="memB", to_stream=dims.B)
 
     memC = ObjectFifo(c_ty, name="memC")
-    outC = memC.cons().forward(name="outC", dims_to_stream=dims.C)
+    outC = memC.cons().forward(name="outC", to_stream=dims.C)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
         for _ in range_(tiles) if tiles > 1 else range(1):
@@ -136,16 +136,27 @@ def single_core(
 
     rows_per_block = 4
 
-    A_tiles = Layout.full((M, K)).tile((m, k)).group((1, K_div_k)).repeat(N_div_n)
+    A_tiles = (
+        TensorAccessPattern.full((M, K))
+        .tile((m, k))
+        .group((1, K_div_k))
+        .repeat(N_div_n)
+    )
     if b_col_maj:
-        b_tap = Layout.full((N, K)).tile((n, k)).group((N_div_n, K_div_k))[0]
+        b_tap = (
+            TensorAccessPattern.full((N, K)).tile((n, k)).group((N_div_n, K_div_k))[0]
+        )
     else:
         b_tap = (
-            Layout.full((K, N))
+            TensorAccessPattern.full((K, N))
             .tile((k, n))
             .group((K_div_k, N_div_n), col_major=True)[0]
         )
-    C_tiles = Layout.full((M, N)).tile((m, n)).group((rows_per_block // 2, N_div_n))
+    C_tiles = (
+        TensorAccessPattern.full((M, N))
+        .tile((m, n))
+        .group((rows_per_block // 2, N_div_n))
+    )
     c_index = 0
 
     def sequence(A, B, C, inA_h, inB_h, outC_h):

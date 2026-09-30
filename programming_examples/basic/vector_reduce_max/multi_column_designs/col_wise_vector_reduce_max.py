@@ -25,7 +25,7 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -162,7 +162,7 @@ def vector_reduce_max(
     # One TAP per core — each reads a contiguous ``chunk`` of the input
     # tensor.  Equivalent to row-major iteration of ``(1, chunk)`` tiles
     # across the ``(1, in_num_elements)`` tensor.
-    taps = Layout.full((1, in_num_elements)).tile((1, chunk))
+    taps = TensorAccessPattern.full((1, in_num_elements)).tile((1, chunk))
 
     in_prods = [of_in1s[i].prod() for i in range(num_cores)]
     out_cons = of_outs[num_cores - 1].cons()

@@ -2026,10 +2026,10 @@ def test_scalar_bounds_are_specialized_without_vector_alignment(name):
     [((64, 64, 64), (4, 8, 8)), ((128, 64, 64), (8, 8, 8)), ((64, 32, 64), (4, 4, 8))],
 )
 def test_mm_stream_dims_match_the_blocking_the_kernel_was_compiled_for(dims, mac):
-    """A and B come from taplib; C is the one layout taplib cannot express.
+    """A, B and C all come from taplib.
 
-    The A/B transforms are a plain (r x s) blocked walk, so they ask
-    ``Layout.tile`` for it. This pins that the answer is still the layout
+    The A/B transforms are a plain (r x s) blocked walk from
+    ``TensorAccessPattern.tile`` and C is its ``inverse()``. This pins that the answer is still the layout
     ``mm.cc`` expects, byte for byte, rather than whatever the layout algebra
     happens to return after a change.
     """

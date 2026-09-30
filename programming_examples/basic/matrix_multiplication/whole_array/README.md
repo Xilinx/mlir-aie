@@ -121,12 +121,12 @@ A_l3l2_fifos[i] = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
 A_l2l1_fifos[start_row : stop_row] = A_l3l2_fifos[i].cons().split(
     of_offsets,
     obj_types=[A_l1_ty] * (stop_row - start_row),
-    dims_to_stream=dims_to_stream,
+    to_stream=to_stream,
     tile=Tile(2 * i if n_aie_cols == 8 else i, 1),  # memtile row 1
 )
 ```
 
-`split()` consumes the L3→L2 stream and fans it out into per-compute-row L2→L1 FIFOs; the `dims_to_stream=` argument carries the wraps/strides DMA-layout transform described below.  Matrix B uses `.cons().forward(...)` (1 → 1) since each column gets one shared B sub-tile; matrix C uses `.prod().join(...)` (n_aie_rows → 1) to combine per-row outputs.
+`split()` consumes the L3→L2 stream and fans it out into per-compute-row L2→L1 FIFOs; the `to_stream=` argument carries the wraps/strides DMA-layout transform described below.  Matrix B uses `.cons().forward(...)` (1 → 1) since each column gets one shared B sub-tile; matrix C uses `.prod().join(...)` (n_aie_rows → 1) to combine per-row outputs.
 
 [![data movement diagram](diagram.png)](https://excalidraw.com/#room=23df780b85d72d80cbc6,1czLdPr_vK9-OjtxFIWTpw)
 
@@ -156,7 +156,7 @@ To run the notebook:
 
 The `A_l2l1_fifos` and `B_l2l1_fifos` deliver sub-matrices of size `m`&times;`k` and `k`&times;`n` to each core.  Along the way the FIFOs translate those matrices from row-major (or column-major for `B` when `b_col_maj` is set) into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks the hardware's MAC vector intrinsics expect.
 
-For matrix A this transformation is expressed as the `dims_to_stream=` argument passed to `A_l3l2_fifos[i].cons().split(...)`, as a list of `(wrap, stride)` tuples:
+For matrix A this transformation is expressed as the `to_stream=` argument passed to `A_l3l2_fifos[i].cons().split(...)`, as a list of `(wrap, stride)` tuples:
 (Note that `//` denotes integer floor-division in Python.)
 
 
@@ -192,7 +192,7 @@ Let us break down each component of this pattern. We do so back-to-front for eas
 
 The matrix B transformation (`B_l2l1_fifos`) is equivalent after substituting the correct dimensions (`k`&times;`n` instead of `m`&times;`k` and `s`&times;`t` instead of `r`&times;`s`). If a column-major layout is used for `B` (argument `b_col_maj` is set), the transformation is analogous but transposed.
 
-Analogously, the output matrix C is transformed back from `r`&times;`t`-sized blocks into a row-major matrix of contiguous rows of size `m`&times;`n` (or column-major when `c_col_maj` is set), via the `dims_to_stream=` argument on the `C_l2l3_fifos[col]` ObjectFifo constructor.
+Analogously, the output matrix C is transformed back from `r`&times;`t`-sized blocks into a row-major matrix of contiguous rows of size `m`&times;`n` (or column-major when `c_col_maj` is set), via the `to_stream=` argument on the `C_l2l3_fifos[col]` ObjectFifo constructor.
 
 
 ### 4. Defining Core Computations

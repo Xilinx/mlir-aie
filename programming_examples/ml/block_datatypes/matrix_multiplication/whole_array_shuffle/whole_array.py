@@ -15,7 +15,7 @@ import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -154,18 +154,18 @@ def whole_array_shuffle(
     tb_n_rows = tb_max_n_rows // 2
 
     A_tiles = (
-        Layout.full((M, K // 8))
+        TensorAccessPattern.full((M, K // 8))
         .tile((m * n_A_tiles_per_shim, k // 8))
         .group((1, K // k))
         .repeat(N // n // n_aie_cols)
     )
     B_tiles = (
-        Layout.full((K, N // 8))
+        TensorAccessPattern.full((K, N // 8))
         .tile((k, n // 8))
         .group((K // k // n_aie_cols, N // n), steps=(n_aie_cols, 1))
     )
     C_tiles = (
-        Layout.full((M, N // 8))
+        TensorAccessPattern.full((M, N // 8))
         .tile((m * n_aie_rows, n // 8))
         .group((tb_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols))
     )

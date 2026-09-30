@@ -19,13 +19,13 @@ of_in0 = ObjectFifo(tile24_ty, name="in0")
 of_in1 = of_in0.cons().forward(name="in1", obj_type=tile24_ty)
 
 # Output
-of_out1 = ObjectFifo(tile24_ty, name="out1", dims_to_stream=[(8, 1), (3, 8)])
+of_out1 = ObjectFifo(tile24_ty, name="out1", to_stream=[(8, 1), (3, 8)])
 of_out0 = of_out1.cons().forward(name="out0", obj_type=tile24_ty)
 ```
 
 The process on the Worker acquires one object from `of_in1` to consume and one object from `of_out1` to produce into. It then reads the value of the input object and loads it into the output one before releasing both objects.
 
-The data layout transformation `dims_to_stream=[(8, 1), (3, 8)]` expresses the access pattern in which the Worker will push the data from the `24xi32` tensor to the stream. This access pattern can also be expressed with `for` loops as follows:
+The data layout transformation `to_stream=[(8, 1), (3, 8)]` expresses the access pattern in which the Worker will push the data from the `24xi32` tensor to the stream. This access pattern can also be expressed with `for` loops as follows:
 ```python
 for i in range(8):
     for j in range(3):

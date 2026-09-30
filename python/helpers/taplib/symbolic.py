@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Integer helpers that behave identically on Python ints and staged MLIR values.
 
-The layout algebra in :mod:`.layout` is pure integer arithmetic plus a handful
-of decisions that inspect a value: a minimum, a ceiling division, a conditional
+The access-pattern algebra in :mod:`.tap` and :mod:`.tas` is pure integer
+arithmetic plus a handful of decisions that inspect a value: a minimum, a ceiling division, a conditional
 choice, a product, and a validity check. On Python ints these helpers are the
 obvious builtins and produce exactly the numbers ``taplib`` produced before the
 algebra existed. On a staged value (an ``aie.ir.Value`` carrying a runtime
 scalar inside a runtime-sequence body) they emit the equivalent ``arith`` ops
-instead, so the same layout code serves the static instruction path and the
+instead, so the same pattern code serves the static instruction path and the
 dynamic C++ transaction builder.
 
 Only ``addi/subi/muli/divsi/remsi/cmpi/select`` are ever emitted: upstream

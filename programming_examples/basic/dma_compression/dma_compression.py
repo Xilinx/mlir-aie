@@ -53,7 +53,7 @@ from aie.extras.context import (  # pyright: ignore[reportMissingImports]
     mlir_mod_ctx,
 )
 from aie.helpers.dialects.func import func
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -150,7 +150,7 @@ def _maskwrite_compress(row, bd_base, bds, ctrl_addr):
 
 def _linear_tap(n_elems):
     """The first n_elems elements of an N-element host buffer."""
-    return Layout.full((1, N))[:, :n_elems]
+    return TensorAccessPattern.full((1, N))[:, :n_elems]
 
 
 def _build_multi_cmp_only():

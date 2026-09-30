@@ -506,7 +506,7 @@ class Runtime(Resolvable):
                         runtime_cons = c
                     elif (
                         c.depth == runtime_cons.depth
-                        and c.dims_from_stream == runtime_cons.dims_from_stream
+                        and c.from_stream == runtime_cons.from_stream
                     ):
                         to_remove.append(c)
                     else:

@@ -34,8 +34,8 @@ def forward(
     obj_type: type[np.ndarray] | None = None,
     depth: int | None = None,
     name: str | None = None,
-    dims_to_stream: list[Sequence[int]] | None = None,
-    dims_from_stream: list[Sequence[int]] | None = None,
+    to_stream: list[Sequence[int]] | None = None,
+    from_stream: list[Sequence[int]] | None = None,
     plio: bool = False,
 )
 ```
@@ -86,8 +86,8 @@ def split(
     depths: list[int] | None = None,
     obj_types: list[type[np.ndarray]] = None,
     names: list[str] | None = None,
-    dims_to_stream: list[list[Sequence[int]]] | None = None,
-    dims_from_stream: list[list[Sequence[int]]] | None = None,
+    to_stream: list[list[Sequence[int]]] | None = None,
+    from_stream: list[list[Sequence[int]]] | None = None,
     plio: bool = False,
 ) -> list[ObjectFifo]
 ```
@@ -141,8 +141,8 @@ def join(
     depths: list[int] | None = None,
     obj_types: list[type[np.ndarray]] = None,
     names: list[str] | None = None,
-    dims_to_stream: list[list[Sequence[int] | None]] | None = None,
-    dims_from_stream: list[list[Sequence[int] | None]] | None = None,
+    to_stream: list[list[Sequence[int] | None]] | None = None,
+    from_stream: list[list[Sequence[int] | None]] | None = None,
     plio: bool = False,
 ) -> list[ObjectFifo]
 ```

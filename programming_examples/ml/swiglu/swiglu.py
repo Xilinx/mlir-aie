@@ -14,7 +14,7 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -88,8 +88,8 @@ def swiglu(
         for i in range(num_columns)
     ]
 
-    taps = Layout.full((1, size)).tile((1, chunk))
-    taps_wts = Layout.full((1, 2 * size)).tile((1, 2 * chunk))
+    taps = TensorAccessPattern.full((1, size)).tile((1, chunk))
+    taps_wts = TensorAccessPattern.full((1, 2 * size)).tile((1, 2 * chunk))
 
     def sequence(a, w, b, in_prods, wts_prods, out_conses):
         tg = TaskGroup()

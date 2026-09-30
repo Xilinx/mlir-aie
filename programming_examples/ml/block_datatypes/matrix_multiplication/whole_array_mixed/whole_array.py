@@ -15,7 +15,7 @@ import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -83,12 +83,12 @@ def whole_array_mixed(
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        dims_to_stream = [matmul_kernel.stream_dims.A or []] * (stop_row - start_row)
+        to_stream = [matmul_kernel.stream_dims.A or []] * (stop_row - start_row)
         a_tmp_fifos = a_l3l2.cons().split(
             of_offsets,
             obj_types=[A_l1_ty] * (stop_row - start_row),
             names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-            dims_to_stream=dims_to_stream,
+            to_stream=to_stream,
         )
         A_l2l1_fifos.extend(a_tmp_fifos)
 
@@ -104,7 +104,7 @@ def whole_array_mixed(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=c_l2l3_dims,
+            to_stream=c_l2l3_dims,
         )
         C_l2l3_fifos.append(c_l2l3)
         of_offsets = [m * n * i for i in range(n_aie_rows)]
@@ -154,18 +154,18 @@ def whole_array_mixed(
     tb_n_rows = tb_max_n_rows // 2
 
     A_tiles = (
-        Layout.full((M, K))
+        TensorAccessPattern.full((M, K))
         .tile((m * n_A_tiles_per_shim, k))
         .group((1, K // k))
         .repeat(N // n // n_aie_cols)
     )
     B_tiles = (
-        Layout.full((N, K // 8))
+        TensorAccessPattern.full((N, K // 8))
         .tile((n, k // 8))
         .group((N // n // n_aie_cols, K // k), steps=(n_aie_cols, 1))
     )
     C_tiles = (
-        Layout.full((M, N))
+        TensorAccessPattern.full((M, N))
         .tile((m * n_aie_rows, n))
         .group((tb_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols))
     )

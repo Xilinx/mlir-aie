@@ -417,7 +417,7 @@ def mha_round(
     # O is held as the accumulator for the whole round.
     of_o = ObjectFifo(tile_ty, name="o", depth=1)
     of_p = ObjectFifo(tile_ty, name="p", depth=1)
-    of_pb = of_p.cons().forward(dims_to_stream=_REBLOCK, depth=1)
+    of_pb = of_p.cons().forward(to_stream=_REBLOCK, depth=1)
 
     scale_buf = Buffer(scale_ty, name="scale")
     idx_bufs = [

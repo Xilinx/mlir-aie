@@ -30,7 +30,7 @@ import aie.iron.kernels as kernels
 import numpy as np
 import torch  # pyright: ignore[reportMissingImports]
 import torch.nn as nn  # pyright: ignore[reportMissingImports]
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -112,7 +112,7 @@ def conv2dk14(
     of_act_l3l2 = ObjectFifo(
         buf_in_ty,
         name="inOF_act_L3L2",
-        dims_from_stream_per_cons=[
+        from_stream_per_cons=[
             (_KERNEL_SIZE, _KERNEL_SIZE * _IN_CHANNELS),
             (64, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
             (_KERNEL_SIZE * _IN_CHANNELS, 1),
@@ -121,7 +121,7 @@ def conv2dk14(
     of_act_l2 = of_act_l3l2.cons().forward(
         obj_type=act_in_ty,
         name="act_L2_02",
-        dims_to_stream=[
+        to_stream=[
             (2, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * 8),
             (_KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS),
             (8, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
@@ -135,7 +135,7 @@ def conv2dk14(
     of_out_l3 = of_out_l2.cons().forward(
         obj_type=buf_out_ty,
         name="outOFL2L3",
-        dims_to_stream=[(256, 256), (16, 8), (2, 128), (8, 1)],
+        to_stream=[(256, 256), (16, 8), (2, 128), (8, 1)],
     )
 
     def core_fn(of_wts, of_act, of_out, kernel):
@@ -264,14 +264,14 @@ def conv2dk14_multi(
         act_l3l2 = ObjectFifo(
             buf_in_ty,
             name=f"of_act_L3L2_{j}",
-            dims_from_stream_per_cons=act_l3l2_dims,
+            from_stream_per_cons=act_l3l2_dims,
         )
         of_act_l3l2.append(act_l3l2)
         of_act_l2l1.append(
             act_l3l2.cons().forward(
                 obj_type=act_in_ty,
                 name=f"of_act_L2L1_{j}",
-                dims_to_stream=act_l2l1_dims,
+                to_stream=act_l2l1_dims,
                 tile=Tile(j, 1),
             )
         )
@@ -288,7 +288,7 @@ def conv2dk14_multi(
         out_l2l3 = ObjectFifo(
             out_mem_ty,
             name=f"of_out_L2L3_{i}",
-            dims_to_stream=out_l2l3_dims,
+            to_stream=out_l2l3_dims,
         )
         of_out_l2l3.append(out_l2l3)
         col_fifos = out_l2l3.prod().join(
@@ -342,9 +342,9 @@ def conv2dk14_multi(
         # Each row of workers reads its chunk of the activations act_repeat
         # times; each column reads its chunk of the weights and writes its
         # chunk of the output.
-        act_chunks = Layout.full((1, tensor_in_size)).partition(n_rows)
-        wts_chunks = Layout.full((1, tensor_wts_size)).partition(n_cols)
-        out_chunks = Layout.full((1, tensor_out_size)).partition(n_cols)
+        act_chunks = TensorAccessPattern.full((1, tensor_in_size)).partition(n_rows)
+        wts_chunks = TensorAccessPattern.full((1, tensor_wts_size)).partition(n_cols)
+        out_chunks = TensorAccessPattern.full((1, tensor_out_size)).partition(n_cols)
         for j in range(n_rows):
             act_prods[j].fill(inp, act_chunks[j].repeat(act_repeat))
         for i in range(n_cols):

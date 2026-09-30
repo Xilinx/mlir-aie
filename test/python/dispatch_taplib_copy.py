@@ -7,7 +7,7 @@
 """Tiled copy with DispatchTime tile count and start tile.
 
 The taps are computed by taplib *inside* the runtime sequence body (a staged
-grid index into a Layout partition). The design compiles once; its host-side
+grid index into a TensorAccessPattern partition). The design compiles once; its host-side
 C++ transaction builder is then driven at several (start, n) pairs and the DMA
 events it produces are compared with a fully static specialization of the
 same generator. A dispatch that steps outside the buffer is refused by the
@@ -16,7 +16,7 @@ same generator. A dispatch that steps outside the buffer is refused by the
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     DispatchTime,
@@ -66,7 +66,9 @@ def tiled_copy(
     def seq(a_h, b_h, start, n, in_prod, out_cons):
         # The buffer as max_tiles equal chunks; the chunk index is staged
         # arithmetic (start + loop iv), so the tap's offset is too.
-        chunks = Layout.full((1, max_tiles * tile_size)).partition(max_tiles)
+        chunks = TensorAccessPattern.full((1, max_tiles * tile_size)).partition(
+            max_tiles
+        )
         for tile in range_(n):  # an index counter; the tiler casts it
             tap = chunks[start + tile]
             tg = TaskGroup()

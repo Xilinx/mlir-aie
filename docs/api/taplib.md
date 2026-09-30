@@ -36,13 +36,13 @@ dynamic runtime sequence (see the `symbolic` helpers below).
 
 A `Layout` converts to the two forms the rest of IRON consumes:
 
-- `fill()`/`drain()` and an `ObjectFifo`'s `dims_to_stream`/`dims_from_stream`
+- `fill()`/`drain()` and an `ObjectFifo`'s `to_stream`/`from_stream`
   take a `Layout` directly; a `PaddedLayout` also sets `pad_dimensions`.
 - `.tap()` returns the `TensorAccessPattern` shim form (four dimensions,
   left-padded with unit dimensions); `fill()` / `drain()` accept a `Layout`
   directly and call this for you.
 - `.stream_dims()` returns `[(size, stride), ...]` at the view's exact rank,
-  ready for an ObjectFifo's `dims_to_stream` / `dims_from_stream_per_cons`.
+  ready for an ObjectFifo's `to_stream` / `from_stream_per_cons`.
 
 `grid.materialize()` turns every tile of a `TileGrid` into a
 `TensorAccessSequence`, which is what the visualization tools
@@ -163,8 +163,8 @@ The old factories returned a `TensorAccessSequence`; the new chain returns a
   `shim_dma_single_bd_task(tap=...)`, needs `grid[i].tap()`.
 - `.tap()` returns the four-dimensional shim form of a view (left-padded with
   unit dimensions). `.stream_dims()` returns `[(size, stride), ...]` at the
-  view's exact rank, which is what an ObjectFifo's `dims_to_stream` /
-  `dims_from_stream_per_cons` want; prefer it over the old
+  view's exact rank, which is what an ObjectFifo's `to_stream` /
+  `from_stream_per_cons` want; prefer it over the old
   `tiles[i].transformation_dims` (which is still available as
   `grid[i].tap().transformation_dims`).
 - `grid.materialize()` returns a `TensorAccessSequence` of every tile. Use it
@@ -211,16 +211,16 @@ tap = grid[i].coalesce().tap()
 
 A design moves a tensor through up to four DMA walks before a core sees it:
 the shim reads the host tensor onto the stream (`fill` / `drain`), the
-memtile writes the stream into its object (`dims_from_stream`), a sub-fifo
-reads its segment of that object back onto the stream (`dims_to_stream` on
+memtile writes the stream into its object (`from_stream`), a sub-fifo
+reads its segment of that object back onto the stream (`to_stream` on
 `split` / `forward`) and the core writes the stream into its own object
-(`dims_from_stream`). Each walk is only checked on hardware, and a mistake
+(`from_stream`). Each walk is only checked on hardware, and a mistake
 in one of them shows up as scrambled data in the kernel.
 
 `aie.helpers.taplib.pipeline` lets you check the chain at generation time.
 A `Hop` is one walk over one object: its `kind` (one of `KINDS`: `"shim"`,
 `"memtile_in"`, `"memtile_out"`, `"core_in"`), the object `shape`, the
-`(size, stride)` list as `dims_to_stream` / `dims_from_stream` take it
+`(size, stride)` list as `to_stream` / `from_stream` take it
 (`None` for a linear walk), a segment `offset` and `length`, and the element
 width in bytes. A `Pipeline` is a list of hops in stream order, built with
 the fluent methods:
@@ -229,11 +229,11 @@ the fluent methods:
   runtime tap you pass to `fill` / `drain`). Several shim hops may be added
   for taps issued one after another.
 - `Pipeline.memtile_in(shape, dims)` is the memtile consumer's
-  `dims_from_stream` on the fifo the shim feeds.
+  `from_stream` on the fifo the shim feeds.
 - `Pipeline.memtile_out(shape, dims, offset=, length=)` is one sub-fifo's
-  `dims_to_stream` over its segment of the memtile object; add one per
+  `to_stream` over its segment of the memtile object; add one per
   `split` segment.
-- `Pipeline.core_in(shape, dims)` is the core consumer's `dims_from_stream`
+- `Pipeline.core_in(shape, dims)` is the core consumer's `from_stream`
   (one hop, or one per `memtile_out` segment).
 
 Two methods use the chain:
@@ -297,7 +297,7 @@ print("transposes chain: every tile arrives block-transposed")
 
 A memtile MM2S channel can pad the stream it emits (`ObjectFifo`'s
 `pad_dimensions` / `pad_value`). `Layout.pad([(before, after), ...])` attaches
-that padding to a walk: passed as `dims_to_stream`, the `PaddedLayout` sets
+that padding to a walk: passed as `to_stream`, the `PaddedLayout` sets
 both the walk and `pad_dimensions` (`stream_dims()` and `pad_dims()` give the
 two lists if you need them), `padded_sizes` is what the consuming object must
 hold, and `materialize()` shows where the constants land. A `memtile_out` hop
@@ -307,7 +307,7 @@ of the tile.
 
 ```python
 padded = Layout.full((rows, N))[:, :cols].pad([(1, 1), (2, 2)])
-of_out = ObjectFifo(padded_ty, dims_to_stream=padded, pad_value=0)
+of_out = ObjectFifo(padded_ty, to_stream=padded, pad_value=0)
 Pipeline().shim(...).memtile_in((rows, N)).memtile_out((rows, N), padded).core_in(padded.padded_sizes)
 ```
 

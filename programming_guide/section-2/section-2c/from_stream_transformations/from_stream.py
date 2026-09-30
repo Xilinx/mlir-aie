@@ -3,10 +3,10 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""``dims_from_stream`` example — Iron API design with ``@iron.jit``.
+"""``from_stream`` example — Iron API design with ``@iron.jit``.
 
 A 24-element int32 vector is forwarded shim -> memtile -> core -> memtile
--> shim.  The memtile->core ObjectFifo's ``dims_from_stream=[(3, 1),
+-> shim.  The memtile->core ObjectFifo's ``from_stream=[(3, 1),
 (8, 3)]`` reshapes the linear stream into the equivalent of a (3, 8) ->
 (8, 3) transpose by the time the core sees it, so the host output is
 the transposed view of the input ``arange(24)``.
@@ -16,7 +16,7 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
@@ -36,8 +36,8 @@ def from_stream(a_in: In, c_out: Out):
         name="in1",
         obj_type=data_ty,
         # Write the incoming (3, 8) stream into the object as its (8, 3)
-        # transpose; as a list this is dims_from_stream=[(3, 1), (8, 3)].
-        dims_from_stream=Layout.full((8, 3)).permute((1, 0)),
+        # transpose; as a list this is from_stream=[(3, 1), (8, 3)].
+        from_stream=TensorAccessPattern.full((8, 3)).permute((1, 0)),
     )
 
     of_out1 = ObjectFifo(data_ty, name="out1")
@@ -63,7 +63,7 @@ def from_stream(a_in: In, c_out: Out):
 
 
 def _expected_output():
-    # The dims_from_stream=[(3,1),(8,3)] reshape is equivalent to viewing
+    # The from_stream=[(3,1),(8,3)] reshape is equivalent to viewing
     # arange(24) as a (3, 8) row-major matrix and transposing it to (8, 3).
     return np.arange(24, dtype=np.int32).reshape(3, 8).T.reshape(-1)
 
@@ -76,7 +76,7 @@ def _run_and_verify(opts):
 
 
 def main():
-    p = argparse.ArgumentParser(prog="dims_from_stream example")
+    p = argparse.ArgumentParser(prog="from_stream example")
     add_compile_args(p, with_emit_mlir=True)
     opts = p.parse_args()
     run_design_cli(

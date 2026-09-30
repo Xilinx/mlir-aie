@@ -19,7 +19,7 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -88,7 +88,7 @@ def memcpy(
 
     # One TAP per (column, channel) shim DMA — same as iterating
     # `(1, chunk)` tiles row-major across the `(1, size)` tensor.
-    taps = Layout.full((1, size)).tile((1, chunk))
+    taps = TensorAccessPattern.full((1, size)).tile((1, chunk))
 
     in_prods = [
         of_ins[i * num_channels + j].prod()

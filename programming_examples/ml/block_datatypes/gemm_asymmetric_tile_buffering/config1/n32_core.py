@@ -18,7 +18,7 @@ import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -105,20 +105,20 @@ def n32_core_gemm(
             A_l2_ty,
             name=f"A_L3L2_{row}",
             depth=2,
-            dims_from_stream_per_cons=a_l3l2_dims,
+            from_stream_per_cons=a_l3l2_dims,
         )
         A_l3l2_fifos.append(a_l3l2)
         # forward() emits an ObjectFifoLink at the memtile. The new
-        # (A_l2l1) fifo's producer-side `dims_to_stream` is the memtile
-        # TX layout, and per-cons `dims_from_stream` is the layout each
+        # (A_l2l1) fifo's producer-side `to_stream` is the memtile
+        # TX layout, and per-cons `from_stream` is the layout each
         # of the 8 compute-tile consumers reads from the stream.
         A_l2l1_fifos.append(
             a_l3l2.cons().forward(
                 obj_type=A_l1_ty,
                 name=f"A_L2L1_{row}",
                 depth=2,
-                dims_to_stream=a_l2l1_in_dims,
-                dims_from_stream=a_l2l1_out_dims,
+                to_stream=a_l2l1_in_dims,
+                from_stream=a_l2l1_out_dims,
             )
         )
 
@@ -135,7 +135,7 @@ def n32_core_gemm(
     c_l2l3_dims: StreamDims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
     for col in range(n_aie_cols):
         c_l2l3 = ObjectFifo(
-            C_l2_ty, name=f"C_L2L3_{col}", depth=2, dims_to_stream=c_l2l3_dims
+            C_l2_ty, name=f"C_L2L3_{col}", depth=2, to_stream=c_l2l3_dims
         )
         C_l2l3_fifos.append(c_l2l3)
         of_offsets = [m * n * i for i in range(n_aie_rows)]
@@ -183,9 +183,9 @@ def n32_core_gemm(
     B_ty = np.ndarray[(K * N // 8,), np.dtype[v8bfp16ebs8]]
     C_ty = np.ndarray[(M * N,), np.dtype[bfloat16]]
 
-    A_taps = Layout.full((M, K)).tile((m, mtk)).group((1, K // mtk))
-    B_taps = Layout.full((1, N * K // 8)).tile((1, n * K // 8))
-    C_taps = Layout.full((M, N)).tile((n_aie_rows * m, n))
+    A_taps = TensorAccessPattern.full((M, K)).tile((m, mtk)).group((1, K // mtk))
+    B_taps = TensorAccessPattern.full((1, N * K // 8)).tile((1, n * K // 8))
+    C_taps = TensorAccessPattern.full((M, N)).tile((n_aie_rows * m, n))
 
     num_row_tile = M // m // n_aie_rows
     num_col_tile = N // n // n_aie_cols

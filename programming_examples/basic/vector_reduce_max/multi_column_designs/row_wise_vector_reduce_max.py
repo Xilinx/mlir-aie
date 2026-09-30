@@ -23,7 +23,7 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -110,7 +110,7 @@ def vector_reduce_max(
 
     # One TAP per channel — each reads a contiguous ``N_per_channel``
     # slice of the input tensor.
-    taps = Layout.full((1, in_tensor_size)).tile((1, N_per_channel))
+    taps = TensorAccessPattern.full((1, in_tensor_size)).tile((1, N_per_channel))
 
     def core_body(*args):
         compute_max = args[-1]

@@ -62,7 +62,7 @@ producer = of.prod()              # endpoint used on the producer side (or in th
 consumer = of.cons()              # NEW consumer handle each call — for broadcast to N
 ```
 
-`prod()`/`cons()` also take an optional `tile=` to pin the shim tile a runtime-driven endpoint binds to (`prod(tile=...)`, `cons(tile=..., dims_from_stream=...)`); leave it `None` (the default) unless you have a specific placement reason — IRON picks any available shim tile automatically.
+`prod()`/`cons()` also take an optional `tile=` to pin the shim tile a runtime-driven endpoint binds to (`prod(tile=...)`, `cons(tile=..., from_stream=...)`); leave it `None` (the default) unless you have a specific placement reason — IRON picks any available shim tile automatically.
 
 Inside a `Worker` body:
 
@@ -90,12 +90,12 @@ joined = of_out.prod().join(of_offsets,
 of_via_mem = of.forward(obj_type=tile_ty, name="forwarded")
 ```
 
-`split()`/`join()`/`forward()` also accept `tile=` (which mem tile hosts the split/join/forward DMA; defaults to `AnyMemTile`), `depths=`/`depth=` (per-sub-fifo depth override, defaults to the parent's `depth`), `dims_to_stream=`/`dims_from_stream=` (per-sub-fifo stream-dimension reshaping), `plio=` (mark sub-fifos as PLIO), and `repeat_counts=`/`repeat_count=` (per-sub-fifo MemTile DMA repeat count). Defaults cover the common case above; reach for these only for custom placement or streaming layouts.
+`split()`/`join()`/`forward()` also accept `tile=` (which mem tile hosts the split/join/forward DMA; defaults to `AnyMemTile`), `depths=`/`depth=` (per-sub-fifo depth override, defaults to the parent's `depth`), `to_stream=`/`from_stream=` (per-sub-fifo stream-dimension reshaping), `plio=` (mark sub-fifos as PLIO), and `repeat_counts=`/`repeat_count=` (per-sub-fifo MemTile DMA repeat count). Defaults cover the common case above; reach for these only for custom placement or streaming layouts.
 
-The plain `ObjectFifo(...)` constructor itself also accepts `dims_to_stream=`/`dims_from_stream_per_cons=` — distinct from the per-sub-fifo kwargs above, this reshapes the *whole* fifo's stream dimensions before any split/join:
+The plain `ObjectFifo(...)` constructor itself also accepts `to_stream=`/`from_stream_per_cons=` — distinct from the per-sub-fifo kwargs above, this reshapes the *whole* fifo's stream dimensions before any split/join:
 
 ```python
-of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
+of_out = ObjectFifo(data_ty, name="out", to_stream=dims)
 ```
 
 `depth`: 2 gives ping-pong (double-buffering — the producer fills one slot while the consumer drains the other). For a pipeline where a stage holds a buffer while the next stage also holds one, set `depth ≥ producer_outstanding + consumer_outstanding`, where each term is the number of buffers that side holds acquired-but-not-released at once.

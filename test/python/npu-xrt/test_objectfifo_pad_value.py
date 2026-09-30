@@ -34,7 +34,7 @@ def objectfifo_pad(a: In, c: Out):
     of_in = ObjectFifo(small, name="in0")
     of_out = of_in.cons().forward(
         obj_type=big,
-        dims_to_stream=[(REAL, 1)],
+        to_stream=[(REAL, 1)],
         pad_dimensions=[(PAD_BEFORE, PAD_AFTER)],
         pad_value=PAD_VALUE,
         name="out0",

@@ -15,7 +15,7 @@ import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -99,12 +99,21 @@ def single_core_matmul(
     rows_per_block = 4
 
     A_tiles = (
-        Layout.full((M, K // 8)).tile((m, k // 8)).group((1, K_div_k)).repeat(N_div_n)
+        TensorAccessPattern.full((M, K // 8))
+        .tile((m, k // 8))
+        .group((1, K_div_k))
+        .repeat(N_div_n)
     )
-    b_tap = Layout.full((N, K // 8)).tile((n, k // 8)).group((N_div_n, K_div_k))[0]
+    b_tap = (
+        TensorAccessPattern.full((N, K // 8))
+        .tile((n, k // 8))
+        .group((N_div_n, K_div_k))[0]
+    )
 
     C_tiles = (
-        Layout.full((M, N // 8)).tile((m, n // 8)).group((rows_per_block // 2, N_div_n))
+        TensorAccessPattern.full((M, N // 8))
+        .tile((m, n // 8))
+        .group((rows_per_block // 2, N_div_n))
     )
     c_index = 0
 

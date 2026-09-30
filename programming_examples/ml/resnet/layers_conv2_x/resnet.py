@@ -6,7 +6,7 @@
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
@@ -459,7 +459,7 @@ def resnet_conv2_x(
 
         # The weight buffer holds the first layer's weights, then one equal
         # block for each of the two remaining layers.
-        weights = Layout.full((totalWeights_complete,))
+        weights = TensorAccessPattern.full((totalWeights_complete,))
         wts0_prod.fill(weightsFromL3, weights[:totalWeights_init])
         wts1_prod.fill(
             weightsFromL3,

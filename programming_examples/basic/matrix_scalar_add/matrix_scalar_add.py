@@ -7,7 +7,7 @@
 
 A single AIE compute core reads one ``TILE_HEIGHT x TILE_WIDTH`` tile from
 the top-left corner of a ``MATRIX_HEIGHT x MATRIX_WIDTH`` matrix (via
-``Layout.full(...).tile(...)``), adds 1 to each element of that tile, and
+``TensorAccessPattern.full(...).tile(...)``), adds 1 to each element of that tile, and
 writes it to the corresponding output tile. The remaining output positions
 retain their initial values — a subtile-region DMA access pattern. Default
 config: 16x128 matrix, 8x16 tile.
@@ -22,7 +22,7 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
@@ -62,7 +62,7 @@ def matrix_scalar_add(
 
     worker = Worker(core_fn, fn_args=[of_in.cons(), of_out.prod()])
 
-    tap = Layout.full(matrix_shape).tile(tile_shape)[0]
+    tap = TensorAccessPattern.full(matrix_shape).tile(tile_shape)[0]
 
     def sequence(in_tensor, out_tensor, in_h, out_h):
         in_h.fill(in_tensor, tap)
