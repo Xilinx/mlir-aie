@@ -17,6 +17,7 @@
 
 #include <map>
 #include <optional>
+#include <set>
 #include <tuple>
 
 namespace xilinx::AIE {
@@ -448,42 +449,87 @@ struct AIEGenerateColumnControlOverlayPass
 
   // A routed response must actually connect TileControl:0 of `src` to South:0
   // on its column's shim. A priority request ending at TileControl is not a
-  // response, even though pathfinder marks it is_ctrl_pkt_overlay.
+  // response, even though pathfinder marks it is_ctrl_pkt_overlay. Trace the
+  // response ID from `src` through the routed switchboxes rather than inferring
+  // the source from the shim's final rule.
   static bool hasRoutedResponse(DeviceOp device, TileOp src,
                                 DenseMap<TileID, int> &tileIDMap) {
     int col = src.colIndex();
-    bool fromShim = src.rowIndex() == 0;
     int responseID = tileIDMap[{col, src.rowIndex()}];
     if (auto id = src->getAttrOfType<AIE::PacketInfoAttr>("controller_id"))
       responseID = id.getPktId();
+
+    DenseMap<TileID, AIE::SwitchboxOp> switchboxes;
     for (auto switchbox : device.getOps<AIE::SwitchboxOp>()) {
       auto tile = dyn_cast<TileLike>(switchbox.getTile().getDefiningOp());
-      if (!tile || tile.tryGetCol() != col || tile.tryGetRow() != 0)
+      if (!tile)
+        continue;
+      std::optional<int> c = tile.tryGetCol(), r = tile.tryGetRow();
+      if (c && r)
+        switchboxes[{*c, *r}] = switchbox;
+    }
+
+    SmallVector<std::pair<TileID, Port>> worklist = {
+        {{col, src.rowIndex()}, Port{WireBundle::TileControl, 0}}};
+    std::set<std::tuple<int, int, int, int>> visited;
+    while (!worklist.empty()) {
+      auto [tileID, port] = worklist.pop_back_val();
+      if (!visited
+               .insert({tileID.col, tileID.row, static_cast<int>(port.bundle),
+                        port.channel})
+               .second)
+        continue;
+      auto switchbox = switchboxes.lookup(tileID);
+      if (!switchbox)
         continue;
       Block &connections = switchbox.getConnections().front();
-      if (fromShim)
-        for (auto connect : connections.getOps<AIE::ConnectOp>())
-          if (connect->hasAttr("is_ctrl_pkt_overlay") &&
-              connect.sourcePort() == Port{WireBundle::TileControl, 0} &&
-              connect.destPort() == Port{WireBundle::South, 0})
-            return true;
-      // Pathfinder marks a slave's packet_rules only from the first group it
-      // routes, so the marker on the rules is not reliable; the marked master
-      // and a rule matching the response ID are. A response from a tile above
-      // the shim enters the shim switchbox from North.
+
+      SmallVector<std::pair<Port, Operation *>> outputs;
+      for (auto connect : connections.getOps<AIE::ConnectOp>())
+        if (connect.sourcePort() == port)
+          outputs.push_back({connect.destPort(), connect});
+      // The first rule matching the response ID picks the master. Pathfinder
+      // marks a slave's packet_rules only from the first group it routes, so
+      // the marker on the rules is not reliable.
       for (auto rules : connections.getOps<AIE::PacketRulesOp>()) {
-        if (fromShim ? rules.sourcePort() != Port{WireBundle::TileControl, 0}
-                     : rules.sourcePort().bundle != WireBundle::North)
+        if (rules.sourcePort() != port)
           continue;
-        for (auto master : connections.getOps<AIE::MasterSetOp>()) {
-          if (!master->hasAttr("is_ctrl_pkt_overlay") ||
-              master.destPort() != Port{WireBundle::South, 0})
+        for (auto rule : rules.getRules().front().getOps<AIE::PacketRuleOp>()) {
+          if ((responseID & rule.maskInt()) != rule.valueInt())
             continue;
-          for (auto rule : rules.getRules().front().getOps<AIE::PacketRuleOp>())
-            if (llvm::is_contained(master.getAmsels(), rule.getAmsel()) &&
-                (responseID & rule.maskInt()) == rule.valueInt())
-              return true;
+          for (auto master : connections.getOps<AIE::MasterSetOp>())
+            if (llvm::is_contained(master.getAmsels(), rule.getAmsel()))
+              outputs.push_back({master.destPort(), master});
+          break;
         }
+      }
+
+      for (auto [dest, op] : outputs) {
+        if (tileID.col == col && tileID.row == 0 &&
+            dest == Port{WireBundle::South, 0}) {
+          if (op->hasAttr("is_ctrl_pkt_overlay"))
+            return true;
+          continue;
+        }
+        TileID next = tileID;
+        switch (dest.bundle) {
+        case WireBundle::North:
+          next.row++;
+          break;
+        case WireBundle::South:
+          next.row--;
+          break;
+        case WireBundle::East:
+          next.col++;
+          break;
+        case WireBundle::West:
+          next.col--;
+          break;
+        default:
+          continue;
+        }
+        worklist.push_back(
+            {next, Port{getConnectingBundle(dest.bundle), dest.channel}});
       }
     }
     return false;
