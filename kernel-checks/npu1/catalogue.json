@@ -2,7 +2,7 @@
  "npu": "npu1",
  "arch": "aie2",
  "commit": "4952b74e86c471471ebbd4cccccb2d54d6940dc4",
- "date": "2026-09-29T22:34:50.859017+00:00",
+ "date": "2026-09-29T23:58:17.740190+00:00",
  "swept": true,
  "kernels": [
   {
@@ -39,16 +39,16 @@
     "zero/dtype=float32",
     "zero/dtype=bfloat16"
    ],
-   "passed": 0,
-   "failed": [
+   "passed": 4,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
     "zero/34x3/int16/vectorized=False",
     "zero/64x4/bfloat16",
     "zero/64x4/int32",
     "zero/68x3/uint8/vector-tail"
-   ],
-   "timed": 0,
-   "timing_failed": [],
-   "untimed": []
+   ]
   },
   {
    "factory": "passthrough",
@@ -60,19 +60,8 @@
    "builds": [
     "passthrough"
    ],
-   "passed": 0,
-   "failed": [
-    "passthrough/1024x16/int16",
-    "passthrough/128x4/int16/edge-tiny",
-    "passthrough/16x4/int32/edge-one-vector",
-    "passthrough/2048x16/int32",
-    "passthrough/2048x256/int32",
-    "passthrough/256x4/uint8/edge-tiny",
-    "passthrough/4096x16/int16",
-    "passthrough/4096x16/uint8",
-    "passthrough/4096x4/int32",
-    "passthrough/64x4/int32/edge-tiny"
-   ],
+   "passed": 10,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "passthrough/1024x16/int16",
@@ -80,7 +69,13 @@
     "passthrough/4096x16/int16",
     "passthrough/4096x16/uint8"
    ],
-   "untimed": []
+   "untimed": [
+    "passthrough/128x4/int16/edge-tiny",
+    "passthrough/16x4/int32/edge-one-vector",
+    "passthrough/256x4/uint8/edge-tiny",
+    "passthrough/4096x4/int32",
+    "passthrough/64x4/int32/edge-tiny"
+   ]
   },
   {
    "factory": "scale",
@@ -93,22 +88,19 @@
     "scale",
     "scale/dtype=int16"
    ],
-   "passed": 0,
-   "failed": [
-    "scale/1024x16/int16",
-    "scale/1024x16/int32",
-    "scale/1024x16/int32/edge-negfactor",
-    "scale/1024x256/int16",
-    "scale/32x4/int16/edge-one-vector",
-    "scale/64x4/int32/edge-tiny"
-   ],
+   "passed": 6,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "scale/1024x16/int16",
     "scale/1024x16/int32",
     "scale/1024x256/int16"
    ],
-   "untimed": []
+   "untimed": [
+    "scale/1024x16/int32/edge-negfactor",
+    "scale/32x4/int16/edge-one-vector",
+    "scale/64x4/int32/edge-tiny"
+   ]
   },
   {
    "factory": "add",
@@ -120,11 +112,8 @@
    "builds": [
     "add"
    ],
-   "passed": 0,
-   "failed": [
-    "add/1024x16/bfloat16",
-    "add/1024x256/bfloat16"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "add/1024x16/bfloat16",
@@ -142,19 +131,17 @@
    "builds": [
     "add_sized"
    ],
-   "passed": 0,
-   "failed": [
-    "add_sized/1024x16/bfloat16",
-    "add_sized/2048x16/bfloat16/llama-prefill",
-    "add_sized/256x16/bfloat16/llama-decode",
-    "add_sized/32x4/bfloat16/edge-tiny"
-   ],
+   "passed": 4,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "add_sized/2048x16/bfloat16/llama-prefill",
     "add_sized/256x16/bfloat16/llama-decode"
    ],
-   "untimed": []
+   "untimed": [
+    "add_sized/1024x16/bfloat16",
+    "add_sized/32x4/bfloat16/edge-tiny"
+   ]
   },
   {
    "factory": "mul",
@@ -166,11 +153,8 @@
    "builds": [
     "mul"
    ],
-   "passed": 0,
-   "failed": [
-    "mul/1024x16/bfloat16",
-    "mul/1024x256/bfloat16"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "mul/1024x16/bfloat16",
@@ -188,15 +172,8 @@
    "builds": [
     "mul_sized"
    ],
-   "passed": 0,
-   "failed": [
-    "mul_sized/1024x16/bfloat16",
-    "mul_sized/1024x16/bfloat16/llama-decode-ffn",
-    "mul_sized/2048x16/bfloat16/llama-prefill-attn-scale",
-    "mul_sized/256x16/bfloat16/llama-decode-attn-scale",
-    "mul_sized/32x4/bfloat16/edge-tiny",
-    "mul_sized/4096x16/bfloat16/llama-prefill-ffn"
-   ],
+   "passed": 6,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "mul_sized/1024x16/bfloat16/llama-decode-ffn",
@@ -204,7 +181,10 @@
     "mul_sized/256x16/bfloat16/llama-decode-attn-scale",
     "mul_sized/4096x16/bfloat16/llama-prefill-ffn"
    ],
-   "untimed": []
+   "untimed": [
+    "mul_sized/1024x16/bfloat16",
+    "mul_sized/32x4/bfloat16/edge-tiny"
+   ]
   },
   {
    "factory": "mul_add",
@@ -216,11 +196,8 @@
    "builds": [
     "mul_add"
    ],
-   "passed": 0,
-   "failed": [
-    "mul_add/1024x16/bfloat16",
-    "mul_add/1024x16/bfloat16/add"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "mul_add/1024x16/bfloat16",
@@ -238,17 +215,16 @@
    "builds": [
     "rms_norm"
    ],
-   "passed": 0,
-   "failed": [
-    "rms_norm/1000x16/bfloat16/cols=1000/row-tail",
-    "rms_norm/1024x16/bfloat16/cols=1024",
-    "rms_norm/200x16/bfloat16/cols=200/row-tail"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "rms_norm/1024x16/bfloat16/cols=1024"
    ],
-   "untimed": []
+   "untimed": [
+    "rms_norm/1000x16/bfloat16/cols=1000/row-tail",
+    "rms_norm/200x16/bfloat16/cols=200/row-tail"
+   ]
   },
   {
    "factory": "q4nx_dequant",
@@ -272,17 +248,16 @@
    "builds": [
     "layer_norm"
    ],
-   "passed": 0,
-   "failed": [
-    "layer_norm/1008x16/bfloat16/cols=1008/row-tail",
-    "layer_norm/1024x16/bfloat16/cols=1024",
-    "layer_norm/208x16/bfloat16/cols=208/row-tail"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "layer_norm/1024x16/bfloat16/cols=1024"
    ],
-   "untimed": []
+   "untimed": [
+    "layer_norm/1008x16/bfloat16/cols=1008/row-tail",
+    "layer_norm/208x16/bfloat16/cols=208/row-tail"
+   ]
   },
   {
    "factory": "layer_norm_f32",
@@ -294,17 +269,16 @@
    "builds": [
     "layer_norm_f32"
    ],
-   "passed": 0,
-   "failed": [
-    "layer_norm_f32/1008x16/float32/cols=1008/row-tail",
-    "layer_norm_f32/1024x16/float32/cols=1024",
-    "layer_norm_f32/112x16/float32/cols=112/row-tail"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "layer_norm_f32/1024x16/float32/cols=1024"
    ],
-   "untimed": []
+   "untimed": [
+    "layer_norm_f32/1008x16/float32/cols=1008/row-tail",
+    "layer_norm_f32/112x16/float32/cols=112/row-tail"
+   ]
   },
   {
    "factory": "layer_norm_affine_cast",
@@ -316,17 +290,16 @@
    "builds": [
     "layer_norm_affine_cast"
    ],
-   "passed": 0,
-   "failed": [
-    "layer_norm_affine_cast/1008x16/float32_bfloat16/cols=1008/row-tail",
-    "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024",
-    "layer_norm_affine_cast/112x16/float32_bfloat16/cols=112/row-tail"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024"
    ],
-   "untimed": []
+   "untimed": [
+    "layer_norm_affine_cast/1008x16/float32_bfloat16/cols=1008/row-tail",
+    "layer_norm_affine_cast/112x16/float32_bfloat16/cols=112/row-tail"
+   ]
   },
   {
    "factory": "rope",
@@ -338,21 +311,19 @@
    "builds": [
     "rope"
    ],
-   "passed": 0,
-   "failed": [
-    "rope/1008x16/bfloat16/cols=1008/row-tail",
-    "rope/1024x16/bfloat16/cols=1024",
-    "rope/1024x16/bfloat16/cols=1024/two_halves=True",
-    "rope/112x16/bfloat16/cols=112/row-tail",
-    "rope/64x16/bfloat16/cols=64/two_halves=True/llama",
-    "rope/96x16/bfloat16/cols=96/two_halves=True/row-tail"
-   ],
+   "passed": 6,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "rope/1024x16/bfloat16/cols=1024",
     "rope/64x16/bfloat16/cols=64/two_halves=True/llama"
    ],
-   "untimed": []
+   "untimed": [
+    "rope/1008x16/bfloat16/cols=1008/row-tail",
+    "rope/1024x16/bfloat16/cols=1024/two_halves=True",
+    "rope/112x16/bfloat16/cols=112/row-tail",
+    "rope/96x16/bfloat16/cols=96/two_halves=True/row-tail"
+   ]
   },
   {
    "factory": "mm_activation_epilogue",
@@ -364,14 +335,18 @@
    "builds": [
     "mm_activation_epilogue"
    ],
-   "passed": 0,
-   "failed": [
+   "passed": 18,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [
     "mm_activation_epilogue/1024x16/float32/gelu",
     "mm_activation_epilogue/1024x16/float32/identity",
-    "mm_activation_epilogue/1024x16/float32/identity-ieee",
     "mm_activation_epilogue/1024x16/float32/relu",
+    "mm_activation_epilogue/1024x16/float32/silu"
+   ],
+   "untimed": [
+    "mm_activation_epilogue/1024x16/float32/identity-ieee",
     "mm_activation_epilogue/1024x16/float32/relu-ieee",
-    "mm_activation_epilogue/1024x16/float32/silu",
     "mm_activation_epilogue/16x4/float32/gelu-one-vector",
     "mm_activation_epilogue/16x4/float32/identity-one-vector",
     "mm_activation_epilogue/16x4/float32/relu-one-vector",
@@ -384,15 +359,7 @@
     "mm_activation_epilogue/80x4/float32/identity-min-trips",
     "mm_activation_epilogue/80x4/float32/relu-min-trips",
     "mm_activation_epilogue/80x4/float32/silu-min-trips"
-   ],
-   "timed": 0,
-   "timing_failed": [
-    "mm_activation_epilogue/1024x16/float32/gelu",
-    "mm_activation_epilogue/1024x16/float32/identity",
-    "mm_activation_epilogue/1024x16/float32/relu",
-    "mm_activation_epilogue/1024x16/float32/silu"
-   ],
-   "untimed": []
+   ]
   },
   {
    "factory": "reduce_add",
@@ -404,20 +371,18 @@
    "builds": [
     "reduce_add"
    ],
-   "passed": 0,
-   "failed": [
-    "reduce_add/1024x1/int32/edge-single",
-    "reduce_add/1024x16/int32",
-    "reduce_add/1024x256/int32",
-    "reduce_add/16x4/int32/edge-one-vector",
-    "reduce_add/64x4/int32/edge-tiny"
-   ],
+   "passed": 5,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "reduce_add/1024x16/int32",
     "reduce_add/1024x256/int32"
    ],
-   "untimed": []
+   "untimed": [
+    "reduce_add/1024x1/int32/edge-single",
+    "reduce_add/16x4/int32/edge-one-vector",
+    "reduce_add/64x4/int32/edge-tiny"
+   ]
   },
   {
    "factory": "reduce_min",
@@ -429,18 +394,16 @@
    "builds": [
     "reduce_min"
    ],
-   "passed": 0,
-   "failed": [
-    "reduce_min/1024x16/int32",
-    "reduce_min/1024x256/int32",
-    "reduce_min/16x4/int32/edge-one-vector"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "reduce_min/1024x16/int32",
     "reduce_min/1024x256/int32"
    ],
-   "untimed": []
+   "untimed": [
+    "reduce_min/16x4/int32/edge-one-vector"
+   ]
   },
   {
    "factory": "reduce_max",
@@ -453,15 +416,8 @@
     "reduce_max",
     "reduce_max/dtype=bfloat16"
    ],
-   "passed": 0,
-   "failed": [
-    "reduce_max/1024x16/bfloat16",
-    "reduce_max/1024x16/int32",
-    "reduce_max/1024x256/bfloat16",
-    "reduce_max/1024x256/int32",
-    "reduce_max/16x4/int32/edge-one-vector",
-    "reduce_max/32x4/bfloat16/edge-one-vector"
-   ],
+   "passed": 6,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "reduce_max/1024x16/bfloat16",
@@ -469,7 +425,10 @@
     "reduce_max/1024x256/bfloat16",
     "reduce_max/1024x256/int32"
    ],
-   "untimed": []
+   "untimed": [
+    "reduce_max/16x4/int32/edge-one-vector",
+    "reduce_max/32x4/bfloat16/edge-one-vector"
+   ]
   },
   {
    "factory": "compute_max",
@@ -481,11 +440,8 @@
    "builds": [
     "compute_max"
    ],
-   "passed": 0,
-   "failed": [
-    "compute_max/1x16/int32",
-    "compute_max/2x16/bfloat16"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "compute_max/1x16/int32",
@@ -503,11 +459,8 @@
    "builds": [
     "relu"
    ],
-   "passed": 0,
-   "failed": [
-    "relu/1024x16/bfloat16",
-    "relu/1024x256/bfloat16"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "relu/1024x16/bfloat16",
@@ -525,14 +478,14 @@
    "builds": [
     "relu_sized"
    ],
-   "passed": 0,
-   "failed": [
-    "relu_sized/1024x16/bfloat16",
-    "relu_sized/32x4/bfloat16/edge-tiny"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [
+    "relu_sized/1024x16/bfloat16",
+    "relu_sized/32x4/bfloat16/edge-tiny"
+   ]
   },
   {
    "factory": "rgba2hue",
@@ -544,16 +497,15 @@
    "builds": [
     "rgba2hue"
    ],
-   "passed": 0,
-   "failed": [
-    "rgba2hue/384x4/uint8/line_width=96/short-row",
-    "rgba2hue/7680x16/uint8"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "rgba2hue/7680x16/uint8"
    ],
-   "untimed": []
+   "untimed": [
+    "rgba2hue/384x4/uint8/line_width=96/short-row"
+   ]
   },
   {
    "factory": "threshold",
@@ -567,10 +519,14 @@
     "threshold/dtype=int16",
     "threshold/dtype=int32"
    ],
-   "passed": 0,
-   "failed": [
+   "passed": 9,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [
+    "threshold/1920x16/uint8"
+   ],
+   "untimed": [
     "threshold/1920x16/int16",
-    "threshold/1920x16/uint8",
     "threshold/1920x16/uint8/tozero-inv",
     "threshold/1920x16/uint8/trunc",
     "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-0",
@@ -578,12 +534,7 @@
     "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-2",
     "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-3",
     "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-4"
-   ],
-   "timed": 0,
-   "timing_failed": [
-    "threshold/1920x16/uint8"
-   ],
-   "untimed": []
+   ]
   },
   {
    "factory": "bitwise_or",
@@ -597,16 +548,15 @@
     "bitwise_or/dtype=int16",
     "bitwise_or/dtype=int32"
    ],
-   "passed": 0,
-   "failed": [
-    "bitwise_or/1920x16/uint8",
-    "bitwise_or/64x4/uint8/line_width=64/edge-one-vector"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "bitwise_or/1920x16/uint8"
    ],
-   "untimed": []
+   "untimed": [
+    "bitwise_or/64x4/uint8/line_width=64/edge-one-vector"
+   ]
   },
   {
    "factory": "bitwise_and",
@@ -620,16 +570,15 @@
     "bitwise_and/dtype=int16",
     "bitwise_and/dtype=int32"
    ],
-   "passed": 0,
-   "failed": [
-    "bitwise_and/1920x16/uint8",
-    "bitwise_and/64x4/uint8/line_width=64/edge-one-vector"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "bitwise_and/1920x16/uint8"
    ],
-   "untimed": []
+   "untimed": [
+    "bitwise_and/64x4/uint8/line_width=64/edge-one-vector"
+   ]
   },
   {
    "factory": "gray2rgba",
@@ -641,17 +590,16 @@
    "builds": [
     "gray2rgba"
    ],
-   "passed": 0,
-   "failed": [
-    "gray2rgba/112x4/uint8/line_width=112/short-row",
-    "gray2rgba/144x4/uint8/line_width=144/tail",
-    "gray2rgba/1920x16/uint8"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "gray2rgba/1920x16/uint8"
    ],
-   "untimed": []
+   "untimed": [
+    "gray2rgba/112x4/uint8/line_width=112/short-row",
+    "gray2rgba/144x4/uint8/line_width=144/tail"
+   ]
   },
   {
    "factory": "rgba2gray",
@@ -663,16 +611,15 @@
    "builds": [
     "rgba2gray"
    ],
-   "passed": 0,
-   "failed": [
-    "rgba2gray/640x4/uint8/line_width=160/short-row",
-    "rgba2gray/7680x16/uint8"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "rgba2gray/7680x16/uint8"
    ],
-   "untimed": []
+   "untimed": [
+    "rgba2gray/640x4/uint8/line_width=160/short-row"
+   ]
   },
   {
    "factory": "filter2d",
@@ -684,16 +631,15 @@
    "builds": [
     "filter2d"
    ],
-   "passed": 0,
-   "failed": [
-    "filter2d/160x4/uint8/line_width=160/short-row",
-    "filter2d/1920x16/uint8"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "filter2d/1920x16/uint8"
    ],
-   "untimed": []
+   "untimed": [
+    "filter2d/160x4/uint8/line_width=160/short-row"
+   ]
   },
   {
    "factory": "add_weighted",
@@ -706,18 +652,17 @@
     "add_weighted",
     "add_weighted/dtype=int16"
    ],
-   "passed": 0,
-   "failed": [
-    "add_weighted/1920x16/int16/gamma",
-    "add_weighted/1920x16/uint8",
-    "add_weighted/1920x16/uint8/gamma",
-    "add_weighted/32x4/uint8/line_width=32/edge-one-vector"
-   ],
+   "passed": 4,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "add_weighted/1920x16/uint8"
    ],
-   "untimed": []
+   "untimed": [
+    "add_weighted/1920x16/int16/gamma",
+    "add_weighted/1920x16/uint8/gamma",
+    "add_weighted/32x4/uint8/line_width=32/edge-one-vector"
+   ]
   },
   {
    "factory": "softmax",
@@ -729,21 +674,18 @@
    "builds": [
     "softmax"
    ],
-   "passed": 0,
-   "failed": [
-    "softmax/1024x16/bfloat16",
-    "softmax/1024x256/bfloat16",
-    "softmax/160x4/bfloat16/min-pipelined",
-    "softmax/2048x16/bfloat16/llama-prefill",
-    "softmax/32x4/bfloat16/short-trip"
-   ],
+   "passed": 5,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "softmax/1024x16/bfloat16",
     "softmax/1024x256/bfloat16",
     "softmax/2048x16/bfloat16/llama-prefill"
    ],
-   "untimed": []
+   "untimed": [
+    "softmax/160x4/bfloat16/min-pipelined",
+    "softmax/32x4/bfloat16/short-trip"
+   ]
   },
   {
    "factory": "gelu",
@@ -755,11 +697,8 @@
    "builds": [
     "gelu"
    ],
-   "passed": 0,
-   "failed": [
-    "gelu/1024x16/bfloat16",
-    "gelu/1024x256/bfloat16"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "gelu/1024x16/bfloat16",
@@ -777,16 +716,16 @@
    "builds": [
     "gelu_sized"
    ],
-   "passed": 0,
-   "failed": [
+   "passed": 4,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
     "gelu_sized/1024x16/bfloat16",
     "gelu_sized/160x4/bfloat16/unroll-tail",
     "gelu_sized/32x4/bfloat16/edge-tiny",
     "gelu_sized/96x4/bfloat16/short-trip"
-   ],
-   "timed": 0,
-   "timing_failed": [],
-   "untimed": []
+   ]
   },
   {
    "factory": "silu",
@@ -798,11 +737,8 @@
    "builds": [
     "silu"
    ],
-   "passed": 0,
-   "failed": [
-    "silu/1024x16/bfloat16",
-    "silu/1024x256/bfloat16"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "silu/1024x16/bfloat16",
@@ -820,21 +756,19 @@
    "builds": [
     "silu_sized"
    ],
-   "passed": 0,
-   "failed": [
-    "silu_sized/1024x16/bfloat16",
-    "silu_sized/1024x16/bfloat16/llama-decode",
-    "silu_sized/160x4/bfloat16/unroll-tail",
-    "silu_sized/32x4/bfloat16/edge-tiny",
-    "silu_sized/4096x16/bfloat16/llama-prefill",
-    "silu_sized/96x4/bfloat16/short-trip"
-   ],
+   "passed": 6,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "silu_sized/1024x16/bfloat16/llama-decode",
     "silu_sized/4096x16/bfloat16/llama-prefill"
    ],
-   "untimed": []
+   "untimed": [
+    "silu_sized/1024x16/bfloat16",
+    "silu_sized/160x4/bfloat16/unroll-tail",
+    "silu_sized/32x4/bfloat16/edge-tiny",
+    "silu_sized/96x4/bfloat16/short-trip"
+   ]
   },
   {
    "factory": "swiglu",
@@ -846,11 +780,8 @@
    "builds": [
     "swiglu"
    ],
-   "passed": 0,
-   "failed": [
-    "swiglu/1024x16/bfloat16",
-    "swiglu/1024x256/bfloat16"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "swiglu/1024x16/bfloat16",
@@ -868,11 +799,8 @@
    "builds": [
     "bf16_exp"
    ],
-   "passed": 0,
-   "failed": [
-    "bf16_exp/1024x16/bfloat16",
-    "bf16_exp/1024x256/bfloat16"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "bf16_exp/1024x16/bfloat16",
@@ -890,18 +818,16 @@
    "builds": [
     "exp2f_vec"
    ],
-   "passed": 0,
-   "failed": [
-    "exp2f_vec/1024x16/float32",
-    "exp2f_vec/1024x256/float32",
-    "exp2f_vec/48x4/float32/vector-tail"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "exp2f_vec/1024x16/float32",
     "exp2f_vec/1024x256/float32"
    ],
-   "untimed": []
+   "untimed": [
+    "exp2f_vec/48x4/float32/vector-tail"
+   ]
   },
   {
    "factory": "tanh",
@@ -913,18 +839,16 @@
    "builds": [
     "tanh"
    ],
-   "passed": 0,
-   "failed": [
-    "tanh/1024x16/bfloat16",
-    "tanh/1024x256/bfloat16",
-    "tanh/1056x4/bfloat16/tail"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "tanh/1024x16/bfloat16",
     "tanh/1024x256/bfloat16"
    ],
-   "untimed": []
+   "untimed": [
+    "tanh/1056x4/bfloat16/tail"
+   ]
   },
   {
    "factory": "sigmoid",
@@ -936,18 +860,16 @@
    "builds": [
     "sigmoid"
    ],
-   "passed": 0,
-   "failed": [
-    "sigmoid/1024x16/bfloat16",
-    "sigmoid/1024x256/bfloat16",
-    "sigmoid/1056x4/bfloat16/tail"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "sigmoid/1024x16/bfloat16",
     "sigmoid/1024x256/bfloat16"
    ],
-   "untimed": []
+   "untimed": [
+    "sigmoid/1056x4/bfloat16/tail"
+   ]
   },
   {
    "factory": "leaky_relu",
@@ -959,18 +881,16 @@
    "builds": [
     "leaky_relu"
    ],
-   "passed": 0,
-   "failed": [
-    "leaky_relu/1024x16/bfloat16",
-    "leaky_relu/1024x256/bfloat16",
-    "leaky_relu/160x4/bfloat16/unroll-tail"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "leaky_relu/1024x16/bfloat16",
     "leaky_relu/1024x256/bfloat16"
    ],
-   "untimed": []
+   "untimed": [
+    "leaky_relu/160x4/bfloat16/unroll-tail"
+   ]
   },
   {
    "factory": "axpy",
@@ -982,18 +902,16 @@
    "builds": [
     "axpy"
    ],
-   "passed": 0,
-   "failed": [
-    "axpy/1024x16/bfloat16",
-    "axpy/1024x256/bfloat16",
-    "axpy/64x4/bfloat16/short-row"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "axpy/1024x16/bfloat16",
     "axpy/1024x256/bfloat16"
    ],
-   "untimed": []
+   "untimed": [
+    "axpy/64x4/bfloat16/short-row"
+   ]
   },
   {
    "factory": "convert_copy",
@@ -1005,19 +923,17 @@
    "builds": [
     "convert_copy"
    ],
-   "passed": 0,
-   "failed": [
-    "convert_copy/1024x16/float32_bfloat16",
-    "convert_copy/1024x256/float32_bfloat16",
-    "convert_copy/272x4/float32_bfloat16/unroll-tail",
-    "convert_copy/64x4/float32_bfloat16/short-row"
-   ],
+   "passed": 4,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "convert_copy/1024x16/float32_bfloat16",
     "convert_copy/1024x256/float32_bfloat16"
    ],
-   "untimed": []
+   "untimed": [
+    "convert_copy/272x4/float32_bfloat16/unroll-tail",
+    "convert_copy/64x4/float32_bfloat16/short-row"
+   ]
   },
   {
    "factory": "expand",
@@ -1029,19 +945,17 @@
    "builds": [
     "expand"
    ],
-   "passed": 0,
-   "failed": [
-    "expand/400x16/uint8_bfloat16/group_size=96/group-96",
-    "expand/544x16/uint8_bfloat16/group_size=64/group-64",
-    "expand/576x16/uint8_bfloat16",
-    "expand/576x256/uint8_bfloat16"
-   ],
+   "passed": 4,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "expand/576x16/uint8_bfloat16",
     "expand/576x256/uint8_bfloat16"
    ],
-   "untimed": []
+   "untimed": [
+    "expand/400x16/uint8_bfloat16/group_size=96/group-96",
+    "expand/544x16/uint8_bfloat16/group_size=64/group-64"
+   ]
   },
   {
    "factory": "transpose",
@@ -1056,14 +970,8 @@
     "transpose/dtype=uint16",
     "transpose/dtype=uint32"
    ],
-   "passed": 0,
-   "failed": [
-    "transpose/1024x16/bfloat16/subtile=4",
-    "transpose/1024x16/bfloat16/subtile=8",
-    "transpose/1024x16/uint32/subtile=8",
-    "transpose/1024x16/uint8/subtile=4",
-    "transpose/8192x16/bfloat16/subtile=8/llama-decode"
-   ],
+   "passed": 5,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "transpose/1024x16/bfloat16/subtile=4",
@@ -1084,13 +992,13 @@
    "builds": [
     "rms_norm_eps"
    ],
-   "passed": 0,
-   "failed": [
-    "rms_norm_eps/1024x16/bfloat16/cols=1024"
-   ],
+   "passed": 1,
+   "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [
+    "rms_norm_eps/1024x16/bfloat16/cols=1024"
+   ]
   },
   {
    "factory": "mm",
@@ -1108,23 +1016,8 @@
     "mm/input_dtype=bfloat16/output_dtype=bfloat16",
     "mm/input_dtype=bfloat16/output_dtype=float32"
    ],
-   "passed": 0,
-   "failed": [
-    "mm/32x32x32x16/bfloat16_float32/edge-small-tile",
-    "mm/64x32x64x1/bfloat16_float32/edge-single-tile",
-    "mm/64x32x64x16/bfloat16_float32",
-    "mm/64x32x64x16/int16_int32",
-    "mm/64x32x64x16/int8_int32",
-    "mm/64x32x64x256/bfloat16_float32",
-    "mm/64x32x64x3/int16_int32/b_col_maj=True/c_col_maj=True",
-    "mm/64x32x64x4/bfloat16_float32",
-    "mm/64x32x64x4/bfloat16_float32/b_col_maj=True",
-    "mm/64x32x64x4/bfloat16_float32/c_col_maj=True",
-    "mm/64x32x64x4/int16_int32",
-    "mm/64x32x64x4/int16_int32/c_col_maj=True",
-    "mm/64x32x64x4/int8_int32/c_col_maj=True",
-    "mm/64x64x64x16/bfloat16_float32/b_col_maj=True"
-   ],
+   "passed": 14,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "mm/64x32x64x16/bfloat16_float32",
@@ -1133,7 +1026,17 @@
     "mm/64x32x64x256/bfloat16_float32",
     "mm/64x64x64x16/bfloat16_float32/b_col_maj=True"
    ],
-   "untimed": []
+   "untimed": [
+    "mm/32x32x32x16/bfloat16_float32/edge-small-tile",
+    "mm/64x32x64x1/bfloat16_float32/edge-single-tile",
+    "mm/64x32x64x3/int16_int32/b_col_maj=True/c_col_maj=True",
+    "mm/64x32x64x4/bfloat16_float32",
+    "mm/64x32x64x4/bfloat16_float32/b_col_maj=True",
+    "mm/64x32x64x4/bfloat16_float32/c_col_maj=True",
+    "mm/64x32x64x4/int16_int32",
+    "mm/64x32x64x4/int16_int32/c_col_maj=True",
+    "mm/64x32x64x4/int8_int32/c_col_maj=True"
+   ]
   },
   {
    "factory": "fused_mm",
@@ -1145,20 +1048,19 @@
    "builds": [
     "fused_mm"
    ],
-   "passed": 0,
-   "failed": [
-    "fused_mm/32x32x16x4/bfloat16",
+   "passed": 6,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [
+    "fused_mm/32x32x16x4/bfloat16"
+   ],
+   "untimed": [
     "fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)",
     "fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)/epilogue=silu",
     "fused_mm/32x48x16x4/bfloat16/epilogue=gelu",
     "fused_mm/32x48x16x4/bfloat16/epilogue=sigmoid",
     "fused_mm/32x48x16x4/bfloat16/epilogue=silu"
-   ],
-   "timed": 0,
-   "timing_failed": [
-    "fused_mm/32x32x16x4/bfloat16"
-   ],
-   "untimed": []
+   ]
   },
   {
    "factory": "mha",
@@ -1170,14 +1072,14 @@
    "builds": [
     "mha"
    ],
-   "passed": 0,
-   "failed": [
-    "mha/64x64x64x4/bfloat16",
-    "mha/64x64x64x4/bfloat16/pv=True"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [
+    "mha/64x64x64x4/bfloat16",
+    "mha/64x64x64x4/bfloat16/pv=True"
+   ]
   },
   {
    "factory": "mha_softmax",
@@ -1189,18 +1091,16 @@
    "builds": [
     "mha_softmax"
    ],
-   "passed": 0,
-   "failed": [
-    "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16",
-    "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal",
-    "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal-padded"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16",
     "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal"
    ],
-   "untimed": []
+   "untimed": [
+    "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal-padded"
+   ]
   },
   {
    "factory": "prefill_fv",
@@ -1212,11 +1112,8 @@
    "builds": [
     "prefill_fv"
    ],
-   "passed": 0,
-   "failed": [
-    "prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256",
-    "prefill_fv/8x8x512x4/bfloat16_float32/head_dim=512"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256",
@@ -1260,21 +1157,8 @@
     "mv",
     "mv/dim_k=256/input_dtype=bfloat16/output_dtype=bfloat16"
    ],
-   "passed": 0,
-   "failed": [
-    "mv/10x512x4/bfloat16/vec_size=64/edge-mac-loop",
-    "mv/32x256x16/bfloat16",
-    "mv/32x256x4/bfloat16",
-    "mv/32x32x16/int16_int32",
-    "mv/32x32x4/int16_int32",
-    "mv/48x32x4/int16_int32/edge-rows-not-multiple-of-32",
-    "mv/4x128x4/bfloat16/vec_size=64/edge-two-chunks",
-    "mv/4x2048x16/bfloat16/vec_size=64",
-    "mv/4x64x16/bfloat16/vec_size=32",
-    "mv/4x64x4/bfloat16/vec_size=64/edge-one-chunk",
-    "mv/6x128x4/bfloat16/vec_size=64/edge-rows-not-multiple-of-4",
-    "mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down"
-   ],
+   "passed": 12,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "mv/32x256x16/bfloat16",
@@ -1283,7 +1167,15 @@
     "mv/4x64x16/bfloat16/vec_size=32",
     "mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down"
    ],
-   "untimed": []
+   "untimed": [
+    "mv/10x512x4/bfloat16/vec_size=64/edge-mac-loop",
+    "mv/32x256x4/bfloat16",
+    "mv/32x32x4/int16_int32",
+    "mv/48x32x4/int16_int32/edge-rows-not-multiple-of-32",
+    "mv/4x128x4/bfloat16/vec_size=64/edge-two-chunks",
+    "mv/4x64x4/bfloat16/vec_size=64/edge-one-chunk",
+    "mv/6x128x4/bfloat16/vec_size=64/edge-rows-not-multiple-of-4"
+   ]
   },
   {
    "factory": "cascade_mm",
@@ -1330,18 +1222,16 @@
     "conv2dk1",
     "conv2dk1/act_dtype=uint8"
    ],
-   "passed": 0,
-   "failed": [
-    "conv2dk1/2048x8/int8_uint8",
-    "conv2dk1/2048x8/uint8",
-    "conv2dk1/4096x8/int8_uint8/input_width=64/two-blocks"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "conv2dk1/2048x8/int8_uint8",
     "conv2dk1/2048x8/uint8"
    ],
-   "untimed": []
+   "untimed": [
+    "conv2dk1/4096x8/int8_uint8/input_width=64/two-blocks"
+   ]
   },
   {
    "factory": "conv2dk3",
@@ -1354,23 +1244,21 @@
     "conv2dk3",
     "conv2dk3/act_dtype=uint8"
    ],
-   "passed": 0,
-   "failed": [
-    "conv2dk3/2048x8/int8_uint8",
-    "conv2dk3/2048x8/int8_uint8/bottom-row",
-    "conv2dk3/2048x8/int8_uint8/output_channels=32/weight_output_channels=64/channel-offset",
-    "conv2dk3/2048x8/int8_uint8/top-row",
-    "conv2dk3/2048x8/uint8",
-    "conv2dk3/2048x8/uint8/bottom-row",
-    "conv2dk3/2048x8/uint8/output_channels=32/weight_output_channels=64/channel-offset",
-    "conv2dk3/2048x8/uint8/top-row"
-   ],
+   "passed": 8,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "conv2dk3/2048x8/int8_uint8",
     "conv2dk3/2048x8/uint8"
    ],
-   "untimed": []
+   "untimed": [
+    "conv2dk3/2048x8/int8_uint8/bottom-row",
+    "conv2dk3/2048x8/int8_uint8/output_channels=32/weight_output_channels=64/channel-offset",
+    "conv2dk3/2048x8/int8_uint8/top-row",
+    "conv2dk3/2048x8/uint8/bottom-row",
+    "conv2dk3/2048x8/uint8/output_channels=32/weight_output_channels=64/channel-offset",
+    "conv2dk3/2048x8/uint8/top-row"
+   ]
   },
   {
    "factory": "dwconv1d",
@@ -1382,10 +1270,8 @@
    "builds": [
     "dwconv1d"
    ],
-   "passed": 0,
-   "failed": [
-    "dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024"
-   ],
+   "passed": 1,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024"
@@ -1402,18 +1288,17 @@
    "builds": [
     "dwconv1d_channels_first"
    ],
-   "passed": 0,
-   "failed": [
-    "dwconv1d_channels_first/1024x16/bfloat16/kernel_size=9/seq_len=1008/odd-block-count",
-    "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=1/seq_len=1024",
-    "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024",
-    "dwconv1d_channels_first/64x16/bfloat16/kernel_size=17/seq_len=48/short-row"
-   ],
+   "passed": 4,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024"
    ],
-   "untimed": []
+   "untimed": [
+    "dwconv1d_channels_first/1024x16/bfloat16/kernel_size=9/seq_len=1008/odd-block-count",
+    "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=1/seq_len=1024",
+    "dwconv1d_channels_first/64x16/bfloat16/kernel_size=17/seq_len=48/short-row"
+   ]
   },
   {
    "factory": "dwconv1d_channels_last",
@@ -1425,16 +1310,15 @@
    "builds": [
     "dwconv1d_channels_last"
    ],
-   "passed": 0,
-   "failed": [
-    "dwconv1d_channels_last/256x16/bfloat16/channels=256",
-    "dwconv1d_channels_last/256x16/bfloat16/channels=256/clamp=False/unclamped"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "dwconv1d_channels_last/256x16/bfloat16/channels=256"
    ],
-   "untimed": []
+   "untimed": [
+    "dwconv1d_channels_last/256x16/bfloat16/channels=256/clamp=False/unclamped"
+   ]
   },
   {
    "factory": "conv2dk1_skip",
@@ -1447,11 +1331,8 @@
     "conv2dk1_skip",
     "conv2dk1_skip/act_dtype=uint8"
    ],
-   "passed": 0,
-   "failed": [
-    "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64",
-    "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/int8_skip"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64",
@@ -1469,16 +1350,15 @@
    "builds": [
     "conv2dk1_i8"
    ],
-   "passed": 0,
-   "failed": [
-    "conv2dk1_i8/2048x8/int8",
-    "conv2dk1_i8/4096x8/int8/input_width=64/two-blocks"
-   ],
+   "passed": 2,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "conv2dk1_i8/2048x8/int8"
    ],
-   "untimed": []
+   "untimed": [
+    "conv2dk1_i8/4096x8/int8/input_width=64/two-blocks"
+   ]
   },
   {
    "factory": "conv2dk14",
@@ -1490,17 +1370,16 @@
    "builds": [
     "conv2dk14"
    ],
-   "passed": 0,
-   "failed": [
-    "conv2dk14/12544x4/uint8_int8",
-    "conv2dk14/12544x4/uint8_int8/output_channels=24/three-groups",
-    "conv2dk14/25088x4/uint8_int8/input_width=448/output_channels=8/two-tile-groups"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "conv2dk14/12544x4/uint8_int8"
    ],
-   "untimed": []
+   "untimed": [
+    "conv2dk14/12544x4/uint8_int8/output_channels=24/three-groups",
+    "conv2dk14/25088x4/uint8_int8/input_width=448/output_channels=8/two-tile-groups"
+   ]
   },
   {
    "factory": "conv2dk1_skip_init",
@@ -1513,18 +1392,16 @@
     "conv2dk1_skip_init",
     "conv2dk1_skip_init/act_dtype=uint8"
    ],
-   "passed": 0,
-   "failed": [
-    "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32",
-    "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip",
-    "conv2dk1_skip_init/256x8/uint8/input_channels=16/skip_input_channels=8/one-step"
-   ],
+   "passed": 3,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32",
     "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip"
    ],
-   "untimed": []
+   "untimed": [
+    "conv2dk1_skip_init/256x8/uint8/input_channels=16/skip_input_channels=8/one-step"
+   ]
   },
   {
    "factory": "bn_conv2dk1_relu",
@@ -1536,13 +1413,8 @@
    "builds": [
     "bn_conv2dk1_relu"
    ],
-   "passed": 0,
-   "failed": [
-    "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=120",
-    "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=80/input_width=14/output_channels=184",
-    "bn_conv2dk1_relu/1792x8/int8_uint8/input_channels=16/input_width=112/output_channels=64",
-    "bn_conv2dk1_relu/560x8/int8_uint8/input_channels=80/input_width=7/output_channels=120"
-   ],
+   "passed": 4,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=120",
@@ -1562,22 +1434,21 @@
    "builds": [
     "bn_conv2dk3"
    ],
-   "passed": 0,
-   "failed": [
+   "passed": 8,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [
+    "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16"
+   ],
+   "untimed": [
     "bn_conv2dk3/1024x8/int8_uint8/input_channels=16/input_width=64/output_channels=8/weight_output_channels=16/channel-offset",
-    "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16",
     "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16/top-row",
     "bn_conv2dk3/256x8/int8_uint8/input_channels=8/input_width=32/output_channels=8/weight_output_channels=16/channel-offset",
     "bn_conv2dk3/3584x8/int8_uint8/input_channels=32/input_width=112/output_channels=16",
     "bn_conv2dk3/448x8/int8_uint8/input_channels=8/input_width=56/output_channels=24/bottom-row",
     "bn_conv2dk3/896x8/int8_uint8/input_channels=16/input_width=56/output_channels=24/bottom-row",
     "bn_conv2dk3/960x8/int8_uint8/input_channels=24/input_width=40/output_channels=8/top-row"
-   ],
-   "timed": 0,
-   "timing_failed": [
-    "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16"
-   ],
-   "untimed": []
+   ]
   },
   {
    "factory": "bn_conv2dk1_i8",
@@ -1589,13 +1460,8 @@
    "builds": [
     "bn_conv2dk1_i8"
    ],
-   "passed": 0,
-   "failed": [
-    "bn_conv2dk1_i8/2352x8/uint8_int8/input_channels=336/input_width=7/output_channels=80",
-    "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40",
-    "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=240/input_width=14/output_channels=80",
-    "bn_conv2dk1_i8/3584x8/uint8_int8/input_channels=64/input_width=56/output_channels=24"
-   ],
+   "passed": 4,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "bn_conv2dk1_i8/2352x8/uint8_int8/input_channels=336/input_width=7/output_channels=80",
@@ -1616,14 +1482,8 @@
     "bn_conv2dk1_skip",
     "bn_conv2dk1_skip/skip_dtype=int8"
    ],
-   "passed": 0,
-   "failed": [
-    "bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40",
-    "bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8",
-    "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40",
-    "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8",
-    "bn_conv2dk1_skip/4032x8/uint8_int8/input_channels=72/input_width=56/output_channels=24"
-   ],
+   "passed": 5,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40",
@@ -1644,15 +1504,8 @@
    "builds": [
     "bn_conv2dk3_dw"
    ],
-   "passed": 0,
-   "failed": [
-    "bn_conv2dk3_dw/2576x8/uint8/input_channels=184/input_width=14/output_channels=184",
-    "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120",
-    "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120/bottom-row",
-    "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2",
-    "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2/top-row",
-    "bn_conv2dk3_dw/4704x8/uint8/input_channels=336/input_width=14/output_channels=336/stride=2"
-   ],
+   "passed": 6,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "bn_conv2dk3_dw/2576x8/uint8/input_channels=184/input_width=14/output_channels=184",
@@ -1660,7 +1513,10 @@
     "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2",
     "bn_conv2dk3_dw/4704x8/uint8/input_channels=336/input_width=14/output_channels=336/stride=2"
    ],
-   "untimed": []
+   "untimed": [
+    "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120/bottom-row",
+    "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2/top-row"
+   ]
   },
   {
    "factory": "bn_conv2dk1_relu_xy_pool_padded",
@@ -1672,18 +1528,17 @@
    "builds": [
     "bn_conv2dk1_relu_xy_pool_padded"
    ],
-   "passed": 0,
-   "failed": [
-    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120",
-    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/first-row",
-    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/mid-row",
-    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=128/weight_chunk_count=5120/split"
-   ],
+   "passed": 4,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120"
    ],
-   "untimed": []
+   "untimed": [
+    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/first-row",
+    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/mid-row",
+    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=128/weight_chunk_count=5120/split"
+   ]
   },
   {
    "factory": "bn_fc_relu_ui16_pad",
@@ -1695,20 +1550,18 @@
    "builds": [
     "bn_fc_relu_ui16_pad"
    ],
-   "passed": 0,
-   "failed": [
-    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=16/two-blocks",
-    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8",
-    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/fc1",
-    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/ic-tail",
-    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/short"
-   ],
+   "passed": 5,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8",
     "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/fc1"
    ],
-   "untimed": []
+   "untimed": [
+    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=16/two-blocks",
+    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/ic-tail",
+    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/short"
+   ]
   },
   {
    "factory": "bn_conv2dk1_partial_put_i8",
@@ -1754,10 +1607,8 @@
    "builds": [
     "bn_conv2dk3_dw_out_split"
    ],
-   "passed": 0,
-   "failed": [
-    "bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240"
-   ],
+   "passed": 1,
+   "failed": [],
    "timed": 0,
    "timing_failed": [
     "bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240"

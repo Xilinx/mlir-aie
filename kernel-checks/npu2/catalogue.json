@@ -2,7 +2,7 @@
  "npu": "npu2",
  "arch": "aie2p",
  "commit": "4952b74e86c471471ebbd4cccccb2d54d6940dc4",
- "date": "2026-09-29T22:57:15.067432+00:00",
+ "date": "2026-09-30T00:11:15.420989+00:00",
  "swept": true,
  "kernels": [
   {
