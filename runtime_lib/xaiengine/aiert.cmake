@@ -119,6 +119,14 @@ cmake_parse_arguments(ARG "STATIC" "" "" ${ARGN})
 
   if (NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     target_compile_options(${TARGET} PRIVATE -Wno-gnu-designator)
+    # Vendored upstream aie-rt sources (xaie_perfcnt.c, xaie_timer.c,
+    # xaie_trace.c) compare an XAie_Events enum against a const u32 in a
+    # few spots; Clang's -Wsign-compare (promoted to -Werror at the top
+    # level) flags this. Not ours to fix - this tree tracks upstream
+    # directly with no personal fork - so suppress the warning here like
+    # -Wno-gnu-designator above, rather than patching vendored code for
+    # style.
+    target_compile_options(${TARGET} PRIVATE -Wno-sign-compare)
   endif()
   if (NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC" AND NOT WIN32)
     # PIC is an ELF/Unix concept; Clang targeting windows-msvc (PE/COFF)
