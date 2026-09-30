@@ -1281,8 +1281,10 @@ struct PacketFlowRouting {
   std::map<std::pair<PhysPort, int>, std::set<int>> pinnedMasks;
 
   // The streams each slave flow carries, for asking whether two flows can
-  // deadlock on an arbiter.
-  std::map<std::tuple<TileID, Port, TileID, Port, int>, size_t>
+  // deadlock on an arbiter. Flows with one source, destination and id may
+  // state different masks, so carry different ids, and each is a stream of
+  // its own.
+  std::map<std::tuple<TileID, Port, TileID, Port, int>, SmallVector<size_t, 1>>
       packetStreamIndex;
   DenseMap<std::pair<PhysPort, int>, SmallVector<size_t, 2>> slaveFlowStreams;
   // Each source's part of a SlaveFlow (see SlaveFlow). A switchbox routes on
@@ -1345,8 +1347,9 @@ LogicalResult PacketFlowRouting::collectFlows() {
 
   for (auto [i, s] : llvm::enumerate(conflicts.getStreams()))
     if (s.packetID)
-      packetStreamIndex.try_emplace(
-          {s.src.tile, s.src.port, s.dst.tile, s.dst.port, *s.packetID}, i);
+      packetStreamIndex[{s.src.tile, s.src.port, s.dst.tile, s.dst.port,
+                         *s.packetID}]
+          .push_back(i);
   for (const RoutedStream &s : conflicts.getStreams())
     routes.push_back(s.hops);
 
@@ -1396,10 +1399,22 @@ LogicalResult PacketFlowRouting::collectFlows() {
         if (circuitSources.count(srcPoint))
           continue;
         const SwitchSettings &settings = settingsOf(srcPoint, flowID);
-        auto stream = packetStreamIndex.find(
-            {srcCoords, srcPort, destCoords, destPort, flowID});
-        if (stream != packetStreamIndex.end()) {
-          SmallVector<StreamHop, 8> &hops = routes[stream->second];
+        // The requested streams this flow asks for here; with none, the
+        // stream the design already routes.
+        SmallVector<size_t, 1> flowStreams;
+        if (auto stream = packetStreamIndex.find(
+                {srcCoords, srcPort, destCoords, destPort, flowID});
+            stream != packetStreamIndex.end()) {
+          int mask = static_cast<int>(pktFlowOp.getMask().value_or(~0));
+          for (size_t i : stream->second)
+            if (i < conflicts.getRequestedStreams().size() &&
+                conflicts.getStreams()[i].packetMask == mask)
+              flowStreams.push_back(i);
+          if (flowStreams.empty())
+            flowStreams.push_back(stream->second.front());
+        }
+        for (size_t stream : flowStreams) {
+          SmallVector<StreamHop, 8> &hops = routes[stream];
           hops.clear();
           // A route may pass a switchbox more than once, but no connection.
           size_t connections = 0;
@@ -1451,10 +1466,9 @@ LogicalResult PacketFlowRouting::collectFlows() {
             // unrelated flows.
             PhysPort slavePort = {currTile, {src.bundle, src.channel}};
             std::pair<PhysPort, int> slaveFlow = {slavePort, flowID};
-            if (stream != packetStreamIndex.end() &&
-                !llvm::is_contained(slaveFlowStreams[slaveFlow],
-                                    stream->second))
-              slaveFlowStreams[slaveFlow].push_back(stream->second);
+            for (size_t stream : flowStreams)
+              if (!llvm::is_contained(slaveFlowStreams[slaveFlow], stream))
+                slaveFlowStreams[slaveFlow].push_back(stream);
             slaveFlowSources[slaveFlow][srcPoint].insert(dest);
             if (std::optional<uint8_t> mask = pktFlowOp.getMask()) {
               pinnedMasks[{{currTile, {src.bundle, src.channel}}, flowID}]
