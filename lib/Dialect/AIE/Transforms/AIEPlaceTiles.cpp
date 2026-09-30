@@ -84,13 +84,14 @@ struct AIEPlaceTilesPass
       break;
     }
     case PlacerType::SAPlacer: {
-      if (!std::isfinite(clSAEffort) || clSAEffort <= 0) {
+      double effort = clSAEffort.getValue();
+      if (!std::isfinite(effort) || effort <= 0) {
         device.emitError("sa-effort must be positive and finite, got ")
-            << clSAEffort;
+            << effort;
         return signalPassFailure();
       }
       SAConfig config;
-      config.effort = clSAEffort;
+      config.effort = effort;
       placer = saPlacer = std::make_shared<SAPlacer>(clSASeed, config);
       break;
     }
