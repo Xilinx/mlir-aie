@@ -27,6 +27,7 @@ from ...helpers.npdtypes import (
     single_elem_or_list_to_list,
 )
 from ...helpers.taplib import Layout, PaddedLayout, TensorAccessPattern
+from ...helpers.taplib.symbolic import is_sym
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, Resolvable
@@ -50,9 +51,20 @@ def _as_stream_dims(dims: StreamDims | None) -> list[Sequence[int]] | None:
     Accepts the list itself, a :class:`~aie.helpers.taplib.Layout`, a
     :class:`~aie.helpers.taplib.PaddedLayout` (its unpadded walk) or a
     :class:`~aie.helpers.taplib.TensorAccessPattern`.
+
+    ObjectFifo dimensions cannot encode an offset, so a view or pattern whose
+    offset is not a literal ``0`` is rejected rather than silently dropped.
     """
     if dims is None or isinstance(dims, list):
         return dims
+    if isinstance(dims, (Layout, PaddedLayout, TensorAccessPattern)):
+        offset = (dims.layout if isinstance(dims, PaddedLayout) else dims).offset
+        if is_sym(offset) or offset != 0:
+            raise ValueError(
+                f"ObjectFifo stream dimensions cannot encode an offset, but "
+                f"{dims!r} has offset {offset}; apply the offset where the "
+                "buffer is addressed instead"
+            )
     if isinstance(dims, (Layout, PaddedLayout)):
         return list(dims.stream_dims())
     if isinstance(dims, TensorAccessPattern):

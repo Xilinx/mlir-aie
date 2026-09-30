@@ -22,7 +22,7 @@ from aie.iron.runtime.taskgroup import TaskGroup
 
 # Specs of the TaskGroups carried by the loops currently being emitted,
 # innermost last, so yield_ can check a yielded group against them.
-_carried_specs: list[list[tuple[bool, ...] | None]] = []
+_carried_specs: list[list[tuple[bool, ...] | None] | None] = []
 
 
 def _unwrap(x):
@@ -87,7 +87,15 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs) -> Iterator[Any]:
         return out[0] if len(out) == 1 else tuple(out)
 
     if not packers:
-        yield from _for(*args, iter_args=iter_args, insert_yield=insert_yield, **kwargs)
+        # Shadow any enclosing loop's specs so a yield_ in this body is not
+        # checked against them.
+        _carried_specs.append(None)
+        try:
+            yield from _for(
+                *args, iter_args=iter_args, insert_yield=insert_yield, **kwargs
+            )
+        finally:
+            _carried_specs.pop()
         return
 
     _carried_specs.append(specs)
@@ -111,10 +119,25 @@ def yield_(values):
     enclosing ``range_`` carried in. See [`Task`][iron.runtime.dmataskhandle.Task].
     """
     specs = _carried_specs[-1] if _carried_specs else None
+    if specs is not None and len(values) != len(specs):
+        raise ValueError(
+            f"yield_ got {len(values)} values but the loop carries {len(specs)}"
+        )
     raw = []
     for i, v in enumerate(values):
-        if isinstance(v, TaskGroup):
-            expected = specs[i] if specs is not None and i < len(specs) else None
+        expected = specs[i] if specs is not None else None
+        is_group = isinstance(v, TaskGroup)
+        if specs is not None and is_group != (expected is not None):
+            if is_group:
+                raise ValueError(
+                    f"yielded {v} in slot {i}, but the loop does not carry a "
+                    "TaskGroup there"
+                )
+            raise ValueError(
+                f"slot {i} of the loop carries a TaskGroup, so yield_ must "
+                f"yield a TaskGroup there, not {v!r}"
+            )
+        if is_group:
             if expected is not None and v.spec != expected:
                 raise ValueError(
                     f"yielded {v} has transfers waited {list(v.spec)} but the "
