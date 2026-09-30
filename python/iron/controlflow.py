@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from contextlib import contextmanager
+from typing import Any, Iterator
 
-from aie.extras.dialects.arith import constant
+from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
 from aie.helpers.dialects.scf import (
     _for,
 )
@@ -33,7 +34,7 @@ def _unwrap(x):
     return x.handle if isinstance(x, Task) else x
 
 
-def range_(*args, iter_args=None, insert_yield=True, **kwargs):
+def range_(*args, iter_args=None, insert_yield=True, **kwargs) -> Iterator[Any]:
     """``scf.for`` for IRON bodies, with ``Task`` and ``TaskGroup`` support in ``iter_args``.
 
     See [`Task`][iron.runtime.dmataskhandle.Task] and

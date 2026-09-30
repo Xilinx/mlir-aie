@@ -1,10 +1,7 @@
-# whole_array_dyn.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc. or its affiliates
 """Whole-array matrix multiplication with dispatch-time M, K and N.
 
 The design in whole_array.py bakes the problem shape into the compiled
@@ -33,6 +30,7 @@ dynamic builder against it with ``aie.utils.txn_trace``.
 
 import argparse
 import sys
+from typing import Any
 
 import aie.iron as iron
 import numpy as np
@@ -106,6 +104,7 @@ def _build_design(
     assert M_max % (m * n_aie_rows) == 0
     assert K_max % k == 0
     assert N_max % (n * n_aie_cols) == 0
+    assert max(M_max * K_max, K_max * N_max, M_max * N_max) < 2**31
 
     fifo_depth = 2
     n_shim_mem_A = n_aie_rows if n_aie_cols > n_aie_rows else n_aie_cols
@@ -224,15 +223,16 @@ def _build_design(
     def sequence(A, B, C, M, K, N, A_hs, B_hs, C_hs):
         # The static design's asserts, as guards: a ValueError on a static
         # specialization, a refused dispatch (no stream) on the dynamic path.
-        require(M % (m * n_aie_rows) == 0, "M must be a multiple of m * n_aie_rows")
-        require(K % k == 0, "K must be a multiple of k")
-        require(N % (n * n_aie_cols) == 0, "N must be a multiple of n * n_aie_cols")
         require(M > 0, "M must be positive")
         require(K > 0, "K must be positive")
         require(N > 0, "N must be positive")
-        require(M * K <= M_max * K_max, "A exceeds the compiled capacity")
-        require(K * N <= K_max * N_max, "B exceeds the compiled capacity")
-        require(M * N <= M_max * N_max, "C exceeds the compiled capacity")
+        require(M % (m * n_aie_rows) == 0, "M must be a multiple of m * n_aie_rows")
+        require(K % k == 0, "K must be a multiple of k")
+        require(N % (n * n_aie_cols) == 0, "N must be a multiple of n * n_aie_cols")
+        # x * y <= cap as x <= cap // y: the i32 product could overflow.
+        require(M <= (M_max * K_max) // K, "A exceeds the compiled capacity")
+        require(K <= (K_max * N_max) // N, "B exceeds the compiled capacity")
+        require(M <= (M_max * N_max) // N, "C exceeds the compiled capacity")
 
         k_iters = K // k
         n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
@@ -399,7 +399,7 @@ def _make_argparser():
     return p
 
 
-def _compile_kwargs(opts):
+def _compile_kwargs(opts) -> dict[str, Any]:
     return dict(
         M_max=opts.M_max or opts.M,
         K_max=opts.K_max or opts.K,

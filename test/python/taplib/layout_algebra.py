@@ -229,6 +229,16 @@ def matmul_stream_dims():
     tiles = Layout.full((m, n)).tile((r, t))
     cat = np.concatenate([visited(tiles[i]) for i in range(len(tiles))])
     assert (cat[visited(c)] == np.arange(m * n)).all()
+    # Step order and the walk inside each tile are part of the blocked buffer.
+    for grid in (
+        Layout.full((8, 12)).tile((2, 3)).order("col"),
+        Layout.full((8, 12)).tile((2, 3)).permute_tile((1, 0)),
+        Layout.full((8, 12)).tile((2, 3)).order("col").permute_tile((1, 0)),
+        Layout.full((4, 6, 8)).tile((2, 3, 4)).order((2, 0, 1)).permute_tile((1, 2, 0)),
+    ):
+        cat = np.concatenate([visited(grid[i]) for i in range(len(grid))])
+        size = int(np.prod(grid.layout.tensor_dims))
+        assert (cat[visited(grid.inverse())] == np.arange(size)).all()
 
 
 # CHECK-LABEL: partition_and_partial

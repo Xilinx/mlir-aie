@@ -123,7 +123,7 @@ def test_cache_hit_refreshes_tensor_metadata_for_the_selected_artifact(
 
     cd = CompilableDesign(gen)
     hashes = iter(("npu1", "npu2", "npu1"))
-    monkeypatch.setattr(cd, "_compute_cache_hash", lambda: next(hashes))
+    monkeypatch.setattr(cd, "_compute_cache_hash", lambda **_kw: next(hashes))
     monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
     monkeypatch.setattr(
         compilabledesign_module,
@@ -173,7 +173,7 @@ def test_python_compile_binds_before_cache_lookup(monkeypatch, tmp_path):
         calls.append("bind")
         return NPU2Col1()
 
-    def fake_cache_hash():
+    def fake_cache_hash(**_kw):
         assert calls == ["bind"]
         calls.append("hash")
         return "target"

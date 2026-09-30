@@ -22,6 +22,7 @@ from ._aiex_ops_gen import (
 from ._aie_ops_gen import ObjectFifoCreateOp, EndOp, RuntimeSequenceOp
 from . import aie
 from .aie import (
+    _outside_bd_block,
     _widen_i64,
     DMAChannelDir,
     LockAction,
@@ -304,7 +305,6 @@ def shim_dma_bd(
     if tap:
         sizes = tap.sizes.copy()
         strides = tap.strides.copy()
-        # A static tap carries an int offset; a symbolic one a runtime Value.
         offset = tap.offset
 
     if offset is None:
@@ -315,7 +315,11 @@ def shim_dma_bd(
         strides = [0] * 3 + [1]
 
     if transfer_len is None:
-        transfer_len = np.prod(sizes[-3:])
+        if not all(isinstance(v, (int, np.integer)) for v in sizes[-3:]):
+            with _outside_bd_block():
+                transfer_len = functools.reduce(operator.mul, sizes[-3:])
+        else:
+            transfer_len = np.prod(sizes[-3:])
 
     dma_bd(
         mem,
@@ -376,7 +380,6 @@ def shim_dma_single_bd_task(
     if tap:
         sizes = tap.sizes.copy()
         strides = tap.strides.copy()
-        # A static tap carries an int offset; a symbolic one a runtime Value.
         offset = tap.offset
 
     # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration

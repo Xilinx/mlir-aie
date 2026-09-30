@@ -157,6 +157,27 @@ def _widen_i64(v):
     return _arith_extsi(T.i64(), v) if width < 64 else v
 
 
+# Ops whose region blocks are BD blocks that the DMA-task lowering requires to
+# hold nothing but dma_bd / aie.end.
+_BD_TASK_OPS = ("aiex.dma_configure_task", "aiex.dma_configure_task_for")
+
+
+def _outside_bd_block():
+    """Insertion point ahead of the enclosing DMA task when building inside one.
+
+    Arithmetic a BD builder derives from runtime operands (the i64 widening,
+    a default transfer length) must not land in the BD block; every such
+    operand is defined outside the task, so it is emitted just before it.
+    """
+    try:
+        owner = InsertionPoint.current.block.owner
+    except ValueError:
+        return contextlib.nullcontext()
+    if owner is None or owner.operation.name not in _BD_TASK_OPS:
+        return contextlib.nullcontext()
+    return InsertionPoint(owner)
+
+
 def dma_bd(
     buffer,
     sizes: MixedValues | None = None,
@@ -181,12 +202,11 @@ def dma_bd(
         aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
                    offset=0 len=%len)
     """
-    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(
-        [_widen_i64(v) for v in (sizes or [])]
-    )
-    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(
-        [_widen_i64(v) for v in (strides or [])]
-    )
+    with _outside_bd_block():
+        sizes = [_widen_i64(v) for v in (sizes or [])]
+        strides = [_widen_i64(v) for v in (strides or [])]
+    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes)
+    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides)
 
     offset_operand, static_offset = _split_i32_scalar(offset)
     len_operand, static_len = _split_i32_scalar(transfer_len)

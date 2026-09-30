@@ -321,3 +321,16 @@ def shim_form_stage():
         evaluated_tap(Layout.from_tap(r), {"K": 16}).access_order(),
         Layout.full((1, 16)).repeat(3).tap().access_order(),
     )
+    # Literal unit dimensions are dropped to fit, as on the concrete path.
+    N = Sym.var("N")
+    u = Layout((N,), Sym.var("off"), [1, 1, 1, 1, N], [0, 0, 0, 0, 1]).tap()
+    assert len(u.sizes) == 4 and u.sizes[:3] == [1, 1, 1]
+    assert (
+        evaluated_tap(Layout.from_tap(u), {"N": 16, "off": 0})
+        == Layout((16,), 0, [1, 1, 1, 1, 16], [0, 0, 0, 0, 1]).tap()
+    )
+    try:
+        Layout((N,), 0, [N, N, 1, N, N, N], [0, 0, 0, 0, 0, 1]).tap()
+        assert False
+    except ValueError as e:
+        assert "does not fit" in str(e)

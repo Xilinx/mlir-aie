@@ -340,10 +340,9 @@ private:
                          d + " elements)",
                      /*inFormat=*/true);
           if (g.getAllowUnit())
-            emitc::VerbatimOp::create(b, loc,
-                                      "if ({} != 1 && {} % " + d + " != 0) " +
-                                          why,
-                                      ValueRange{g.getValue(), g.getValue()});
+            emitc::VerbatimOp::create(
+                b, loc, "if ({} != 1 && {} % " + d + " != 0) " + why,
+                ValueRange{g.getValue(), g.getValue()});
           else
             emitc::VerbatimOp::create(b, loc, "if ({} % " + d + " != 0) " + why,
                                       ValueRange{g.getValue()});

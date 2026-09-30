@@ -109,15 +109,17 @@ def _from_index(value: Any) -> Any:
     if getattr(value, "type", None) is None or str(value.type) != "index":
         return value
     from aie.extras import types as T  # pyright: ignore[reportMissingImports]
-    from aie.extras.dialects.arith import (
+    from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
         index_cast,
-    )  # pyright: ignore[reportMissingImports]
+    )
 
     return index_cast(value, to=T.i32())
 
 
 def _arith():
-    from aie.dialects import arith  # pyright: ignore[reportMissingImports]
+    from aie.dialects import (  # pyright: ignore[reportMissingImports]
+        arith,  # pyright: ignore[reportAttributeAccessIssue]
+    )
 
     return arith
 
@@ -135,9 +137,9 @@ def _as_staged(value: Any, like: Any) -> Any:
     """Return ``value`` as an MLIR value of ``like``'s type (ints become constants)."""
     if is_sym(value):
         return value
-    from aie.extras.dialects.arith import (
+    from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
         constant,
-    )  # pyright: ignore[reportMissingImports]
+    )
 
     return constant(int(value), like.type)
 
@@ -148,9 +150,9 @@ def sselect(cond: Any, if_true: Any, if_false: Any) -> Any:
         hook = getattr(cond, "_select", None)
         if hook is not None:
             return hook(if_true, if_false)
-        from aie.extras.dialects.arith import (
+        from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
             ScalarValue,
-        )  # pyright: ignore[reportMissingImports]
+        )
 
         if not is_sym(if_true) and not is_sym(if_false):
             if if_true == if_false:
@@ -159,7 +161,9 @@ def sselect(cond: Any, if_true: Any, if_false: Any) -> Any:
             try:
                 ref = cond.owner.operands[0]
             except (AttributeError, IndexError):
-                from aie.extras.dialects.arith import constant
+                from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
+                    constant,
+                )
 
                 ref = constant(0, index=False)
         else:

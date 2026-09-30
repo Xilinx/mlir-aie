@@ -330,7 +330,7 @@ def trace(
         patched = patches.get(bd_base + (0 if kind == "core" else 4))
         return w, patched
 
-    def classify(addr: int) -> tuple[int, int, str, int, int] | None:
+    def classify(addr: int) -> tuple[int, int, str, str, int] | None:
         """Classify a register address.
 
         Returns (col, row, kind, direction, channel) when addr is a DMA queue

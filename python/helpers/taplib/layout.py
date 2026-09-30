@@ -237,11 +237,10 @@ class Layout:
     def drop_unit_dims(self) -> Layout:
         """Remove every dimension of size 1 (keeping at least one dimension).
 
-        Concrete values only: rank is structural.
+        Rank is structural, so only a size that is the constant 1 is dropped;
+        a staged size is kept whatever its runtime value.
         """
-        if sym_any(self._sizes):
-            raise TypeError("drop_unit_dims() needs concrete sizes")
-        keep = [i for i, n in enumerate(self._sizes) if n != 1]
+        keep = [i for i, n in enumerate(self._sizes) if is_sym(n) or n != 1]
         if not keep:
             keep = [self.rank - 1]
         return self._with(
@@ -255,6 +254,8 @@ class Layout:
         The result visits the same elements in the same order with the fewest
         dimensions. Concrete values only.
         """
+        if sym_any([*self._sizes, *self._strides]):
+            raise TypeError("coalesce() needs concrete sizes and strides")
         out = self.drop_unit_dims()
         i = 0
         while i + 1 < out.rank:
@@ -456,7 +457,7 @@ class Layout:
         """
         out = self
         if ndims is not None:
-            if out.rank > ndims and not out.is_symbolic:
+            if out.rank > ndims:
                 out = out.drop_unit_dims()
             if out.rank > ndims:
                 raise ValueError(
@@ -652,6 +653,7 @@ class TileGrid:
         "_tile_strides",
         "_order",
         "_partial",
+        "_tile_axes",
     )
 
     def __init__(
@@ -663,6 +665,7 @@ class TileGrid:
         tile_strides: Sequence[IntLike],
         order: Sequence[int] | None = None,
         partial: bool = False,
+        tile_axes: Sequence[int] | None = None,
     ):
         if len(grid) == 0:
             raise ValueError("a TileGrid needs at least one grid axis")
@@ -681,6 +684,12 @@ class TileGrid:
             else _check_perm(order, len(grid), "order")
         )
         self._partial = bool(partial)
+        # The tensor dimension each tile dimension walks (-1 for a repeat).
+        self._tile_axes = (
+            tuple(range(len(tile_sizes))) if tile_axes is None else tuple(tile_axes)
+        )
+        if len(self._tile_axes) != len(tile_sizes):
+            raise ValueError("tile_axes needs one entry per tile dimension")
 
     # --------------------------------------------------------------- shape
 
@@ -844,7 +853,7 @@ class TileGrid:
     # --------------------------------------------------------- refinements
 
     def _replace(self, **kw) -> TileGrid:
-        args = dict(
+        args: dict[str, Any] = dict(
             tensor_dims=self._tensor_dims,
             offset=self._offset,
             grid=self._grid,
@@ -852,6 +861,7 @@ class TileGrid:
             tile_strides=self._tile_strides,
             order=self._order,
             partial=self._partial,
+            tile_axes=self._tile_axes,
         )
         args.update(kw)
         return TileGrid(**args)
@@ -888,6 +898,7 @@ class TileGrid:
             grid=grid,
             tile_sizes=[self._tile_sizes[a] for a in axes],
             tile_strides=[self._tile_strides[a] for a in axes],
+            tile_axes=[self._tile_axes[a] for a in axes],
         )
 
     def repeat(self, count: IntLike) -> TileGrid:
@@ -902,6 +913,7 @@ class TileGrid:
             grid=grid,
             tile_sizes=[count] + self._tile_sizes,
             tile_strides=[0] + self._tile_strides,
+            tile_axes=(-1,) + self._tile_axes,
         )
 
     def group(
@@ -968,12 +980,13 @@ class TileGrid:
         if col_major:
             rep_sizes.reverse()
             rep_strides.reverse()
-            grid = [a._replace(rep_pos=ng - 1 - a.rep_pos) for a in grid]
+            grid = [a._replace(rep_pos=ng - 1 - i) for i, a in enumerate(grid)]
         return self._replace(
             grid=grid,
             tile_sizes=rep_sizes + self._tile_sizes,
             tile_strides=rep_strides + self._tile_strides,
             partial=partial,
+            tile_axes=(-1,) * ng + self._tile_axes,
         )
 
     def inverse(self) -> Layout:
@@ -986,16 +999,23 @@ class TileGrid:
         the "un-blocking" layout a memtile applies to a core's blocked output,
         and the inverse of :meth:`Layout.tile` up to that buffer's storage.
 
-        Only defined on a grid straight from :meth:`Layout.tile` (no grouping,
-        no repeat, no tile permutation).
+        The buffer holds the tiles in step order, each in its own walk order,
+        so :meth:`order` and :meth:`permute_tile` are honoured. Not defined on
+        a grouped or repeated grid.
         """
         ng = self.n_grid
         if self.is_grouped or len(self._tile_sizes) != ng:
             raise ValueError(
                 "inverse() is only defined on a plain tile grid (no group/repeat)"
             )
-        blocked = Layout.full([a.tiles for a in self._grid] + self._tile_sizes)
-        interleave = [x for i in range(ng) for x in (i, ng + i)]
+        blocked = Layout.full(
+            [self._grid[p].tiles for p in self._order] + self._tile_sizes
+        )
+        interleave = [
+            x
+            for i in range(ng)
+            for x in (self._order.index(i), ng + self._tile_axes.index(i))
+        ]
         out = blocked.permute(interleave)
         return Layout(self._tensor_dims, 0, out._sizes, out._strides)
 

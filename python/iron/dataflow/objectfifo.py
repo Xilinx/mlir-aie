@@ -44,7 +44,7 @@ StreamDims: TypeAlias = Union[
 PadDims: TypeAlias = list[Sequence[int]]
 
 
-def _as_stream_dims(dims):
+def _as_stream_dims(dims: StreamDims | None) -> list[Sequence[int]] | None:
     """Normalize a stream transform to the ``[(size, stride), ...]`` list.
 
     Accepts the list itself, a :class:`~aie.helpers.taplib.Layout`, a
@@ -54,7 +54,7 @@ def _as_stream_dims(dims):
     if dims is None or isinstance(dims, list):
         return dims
     if isinstance(dims, (Layout, PaddedLayout)):
-        return dims.stream_dims()
+        return list(dims.stream_dims())
     if isinstance(dims, TensorAccessPattern):
         return list(dims.transformation_dims)
     return list(dims)
@@ -189,7 +189,7 @@ class ObjectFifo(Resolvable):
         self._obj_type = obj_type
         # A PaddedLayout carries the padding the memtile emits around the walk.
         if isinstance(dims_to_stream, PaddedLayout) and pad_dimensions is None:
-            pad_dimensions = dims_to_stream.pad_dims()
+            pad_dimensions = list(dims_to_stream.pad_dims())
         self._dims_to_stream = _as_stream_dims(dims_to_stream)
         self._dims_from_stream_per_cons = _as_stream_dims(dims_from_stream_per_cons)
         self._plio = plio
@@ -907,14 +907,14 @@ class ObjectFifoHandle(Resolvable):
             raise ValueError("Number of names does not match number of offsets")
 
         if dims_to_stream is None:
-            dims_to_stream = [[]] * num_subfifos
+            dims_to_stream = [[] for _ in range(num_subfifos)]
         elif len(dims_to_stream) != num_subfifos:
             raise ValueError(
                 "Number of dims to stream does not match number of offsets"
             )
 
         if dims_from_stream is None:
-            dims_from_stream = [[]] * num_subfifos
+            dims_from_stream = [[] for _ in range(num_subfifos)]
         elif dims_from_stream and len(dims_from_stream) != num_subfifos:
             raise ValueError(
                 "Number of dims_from_stream does not match number of offsets"
@@ -1008,14 +1008,14 @@ class ObjectFifoHandle(Resolvable):
             raise ValueError("Number of names does not match number of offsets")
 
         if dims_to_stream is None:
-            dims_to_stream = [[]] * num_subfifos
+            dims_to_stream = [[] for _ in range(num_subfifos)]
         elif len(dims_to_stream) != num_subfifos:
             raise ValueError(
                 "Number of dims_to_stream arrays does not match number of offsets"
             )
 
         if dims_from_stream is None:
-            dims_from_stream = [[]] * num_subfifos
+            dims_from_stream = [[] for _ in range(num_subfifos)]
         elif len(dims_from_stream) != num_subfifos:
             raise ValueError(
                 "Number of dims_from_stream arrays does not match number of offsets"

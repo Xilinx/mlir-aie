@@ -81,12 +81,14 @@ print(seq)
 # The loop carries the two transfers of a step as index iter_args; the body
 # issues the next step, then awaits and frees the carried one; the loop's
 # results are finished after it.
+
 # CHECK-LABEL: aie.runtime_sequence
 # CHECK: %[[T0:.*]] = aiex.dma_configure_task_for @of_out
 # CHECK: %[[T1:.*]] = aiex.dma_configure_task_for @of_in
 # CHECK: %[[RES:.*]]:2 = scf.for %{{.*}} iter_args(%[[P0:.*]] = %[[T0]], %[[P1:.*]] = %[[T1]])
 # CHECK: %[[C0:.*]] = aiex.dma_configure_task_for @of_out
 # CHECK: %[[C1:.*]] = aiex.dma_configure_task_for @of_in
+
 # CHECK: aiex.dma_await_task(%[[P0]])
 # CHECK-NEXT: aiex.dma_free_task(%[[P0]])
 # CHECK-NEXT: aiex.dma_free_task(%[[P1]])
