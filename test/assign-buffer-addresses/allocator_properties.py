@@ -977,6 +977,8 @@ def main(argv=None):
             f"--bankres-seeds must be at least {BANKRES_SEEDS} "
             "to preserve search coverage"
         )
+    if args.jobs < 1:
+        cli.error("--jobs must be at least 1")
     pool = ThreadPoolExecutor(args.jobs)
 
     designs = []
