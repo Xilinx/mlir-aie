@@ -117,6 +117,21 @@ jobs:
           :xrt_ready
           echo Using existing XRT_ROOT=%XRT_ROOT%
 
+      - name: Cache Windows OpenSSL
+        # slproweb.com (the official source for this installer) was observed
+        # serving it at a throttled ~50KB/s from this runner pool's network
+        # path - a 251MB file at that rate takes ~85min, which no per-attempt
+        # curl timeout can paper over. Cache the verified, installed output
+        # directory in GitHub's cache backend (keyed on the pinned version +
+        # sha256, so a version bump below naturally invalidates it) so only
+        # the first run - or a run after a 7-day-unused cache eviction - pays
+        # for the slow download; every other ephemeral runner just restores
+        # from cache in seconds.
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files\OpenSSL-Win64
+          key: openssl-win64-4_0_3-0f5436092d1303db9052d3c114fbc6326abe0276861619e26da5156ddf7ca087
+
       - name: Ensure Windows OpenSSL
         # Persistent devlab runners have the full (non-Light) Win64 OpenSSL
         # package installed by hand per docs/buildHostWinNative.md Addendum
@@ -129,7 +144,9 @@ jobs:
         # modern Windows) rather than plain urllib.request.urlretrieve, which
         # has no timeout and was observed hanging far past its historical
         # ~3min duration on two separate ephemeral runners; curl bounds each
-        # attempt and retries instead of stalling for the whole job.
+        # attempt and retries instead of stalling for the whole job. Cache
+        # restores (see the "Cache Windows OpenSSL" step above) avoid this
+        # download most of the time.
         # Check for the static libcrypto lib CMake's FindOpenSSL actually
         # needs (via OPENSSL_USE_STATIC_LIBS in the build step below), not
         # just the top-level directory: a devlab-dispatch runner was seen
