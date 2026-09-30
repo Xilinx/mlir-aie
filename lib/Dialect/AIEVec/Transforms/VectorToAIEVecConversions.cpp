@@ -233,7 +233,8 @@ static Value widenValueWithNarrowingCheck(Value val, Type targetType,
   if (val.getType() == targetType)
     return val;
 
-  return arith::ExtFOp::create(rewriter, loc, targetType, val);
+  return arith::ExtFOp::create(rewriter, loc, targetType, val,
+                               /*fastmath=*/nullptr);
 }
 
 // Result structure for smart narrowing operation
@@ -1550,9 +1551,14 @@ struct FoldSplatToFMAOp : OpConversionPattern<aievec::aie1::FMAOp> {
     auto pos = extOp.getStaticPosition();
     int64_t zstart = pos[0];
     auto fmaOpAttr = buildFMAOpSplatAttrForElemTy(fmaOp, zstart);
+    aievec::aie1::FMAOp::Properties fmaProps;
+    if (failed(aievec::aie1::FMAOp::setPropertiesFromAttr(
+            fmaProps, rewriter.getDictionaryAttr(fmaOpAttr),
+            [&]() { return fmaOp.emitError(); })))
+      return failure();
     rewriter.replaceOpWithNewOp<aievec::aie1::FMAOp>(
         fmaOp, TypeRange({fmaOp.getResult().getType()}),
-        ValueRange({lhsX2, rhs, adaptor.getAcc()}), fmaOpAttr);
+        ValueRange({lhsX2, rhs, adaptor.getAcc()}), fmaProps);
 
     return success();
   }
@@ -2854,9 +2860,16 @@ struct LowerVectorExtractStridedSliceOpAIEv1Pattern
       return failure();
 
     int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
+    aievec::aie1::SelectOp::Properties selectProps;
+    if (failed(aievec::aie1::SelectOp::setPropertiesFromAttr(
+            selectProps,
+            rewriter.getDictionaryAttr(
+                buildAttributeListForRotationSelectOp(rewriter, vType, offset)),
+            [&]() { return extractOp.emitError(); })))
+      return failure();
     auto selectOp = aievec::aie1::SelectOp::create(
-        rewriter, extractOp.getLoc(), vType, adaptor.getSource(),
-        buildAttributeListForRotationSelectOp(rewriter, vType, offset));
+        rewriter, extractOp.getLoc(), TypeRange({vType}),
+        ValueRange({adaptor.getSource()}), selectProps);
     rewriter.replaceOpWithNewOp<aievec::aie1::ExtOp>(
         extractOp, extractOp.getType(), selectOp.getResult(),
         rewriter.getI8IntegerAttr(0));
@@ -4059,7 +4072,7 @@ struct ComputeFloorOpPattern : OpConversionPattern<math::FloorOp> {
 };
 
 // Convert arith.negf to aievec.neg to negate the vector for v16bfloat16 and
-// v16float types.
+// v16float types, and for v32 of either on AIE2P.
 struct ComputeNegOpPattern : OpConversionPattern<arith::NegFOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -4074,7 +4087,8 @@ struct ComputeNegOpPattern : OpConversionPattern<arith::NegFOp> {
     if (!isa<FloatType>(scalarType))
       return failure();
 
-    if (unsigned laneSize = getVectorLaneSize(srcType); laneSize != 16)
+    unsigned laneSize = getVectorLaneSize(srcType);
+    if (laneSize != 16 && laneSize != 32)
       return failure();
 
     Location loc = negOp.getLoc();
@@ -5657,6 +5671,33 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
 
     // For other types, only laneSize==16 (same as AIE2)
     return laneSize != 16;
+  });
+
+  // AIE2P-specific legalization: Override NegFOp to support laneSize==32 for
+  // bf16 and f32.
+  target.addDynamicallyLegalOp<arith::NegFOp>([](arith::NegFOp negOp) {
+    auto srcType = dyn_cast<VectorType>(negOp.getOperand().getType());
+    if (!srcType)
+      return true;
+
+    Type scalarType = srcType.getElementType();
+    unsigned laneSize = getVectorLaneSize(srcType);
+
+    // bf16 and f32 only: the aievec lowering needs an f32 accumulator, and
+    // other 16-bit floats (e.g. f16) would take the bf16 UPS path and be
+    // reinterpreted.
+    if (!scalarType.isBF16() && !scalarType.isF32())
+      return true;
+
+    // 16 lanes as before, at whatever rank the common config already took.
+    if (laneSize == 16)
+      return false;
+
+    // 32 only at rank 1. `getVectorLaneSize` is the product of every
+    // dimension, so vector<2x16xf32> counts 32 as well; the widening is
+    // scoped to the rank the aievec patterns match, and leaves n-D negates
+    // as they were before this branch.
+    return laneSize != 32 || srcType.getRank() != 1;
   });
 
   // LowerVectorSIToFPI16BF16AIE2pPattern uses vector.shuffle to split
