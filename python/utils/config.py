@@ -256,6 +256,44 @@ def _find_llvm_tool(name, env_var):
     )
 
 
+def xclbinutil_path():
+    """Return the xclbinutil used to read sections out of an xclbin.
+
+    Resolution order: ``AIE_XCLBINUTIL``, the MLIR-AIE bin directory (where
+    ``tools/hrx-xclbinutil`` installs, needing no system XRT), then PATH. The
+    override means what it means to aiecc: a value with a path separator names
+    an executable, a bare name is looked up on PATH, and one that resolves to
+    nothing is an error rather than a fallback, so a flow that pins its
+    xclbinutil gets exactly that one.
+    """
+    override = os.environ.get("AIE_XCLBINUTIL")
+    if override:
+        found = shutil.which(override)
+        if not found:
+            raise RuntimeError(
+                f"AIE_XCLBINUTIL is set to {override!r}, but that is not an "
+                "executable file or a program on PATH."
+            )
+        return found
+
+    try:
+        bundled = os.path.join(root_path(), "bin", _executable_name("xclbinutil"))
+    except RuntimeError:
+        # A source checkout with no install tree has no bundled copy.
+        bundled = None
+    if bundled and os.path.isfile(bundled):
+        return bundled
+
+    found = shutil.which("xclbinutil")
+    if found:
+        return found
+
+    raise RuntimeError(
+        "xclbinutil not found. Build mlir-aie with -DAIE_BUILD_HRXXCLBINUTIL=ON, "
+        "install XRT, or set AIE_XCLBINUTIL."
+    )
+
+
 def objcopy_path():
     """Return the llvm-objcopy used to rename symbols in compiled objects.
 

@@ -10,7 +10,7 @@ This is a deliberate mirror of ROCr's ``core/inc/amd_aie_section.h`` (in the
 rocm-systems repo, under ``projects/rocr-runtime/runtime/hsa-runtime/``).
 
 Because the two now live in separate repositories the mirror can drift
-silently, so :func:`hsaco.dump.parse_section` refuses a section whose
+silently, so ``hsaco.dump.parse_section()`` refuses a section whose
 ``version_major`` it does not recognise rather than misreading it.
 """
 

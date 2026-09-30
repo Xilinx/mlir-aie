@@ -107,6 +107,24 @@ without relying on `PATH` search order.
 AIECC_PATH=/path/to/aiecc python my_script.py
 ```
 
+## External Tool Overrides
+
+`aie.utils.config` resolves the external tools below from an environment
+variable first, then the bundled bin directories (MLIR-AIE's, and for the LLVM
+tools also Peano's), then `PATH`. Set a variable to pin a specific binary.
+
+| Variable | Tool | Used for |
+|----------|------|----------|
+| `AIE_XCLBINUTIL` | `xclbinutil` | Packaging an xclbin in `aiecc`, and reading a PDI out of one in `aie-hsaco`. A bare name is looked up on `PATH`; a value that resolves to nothing is an error, never a silent fallback. |
+| `AIE_OBJCOPY_PATH` | `llvm-objcopy` | Renaming symbols in compiled kernel objects, and injecting the AIE section in `aie-hsaco`. |
+| `AIE_NM_PATH` | `llvm-nm` | Listing the symbols a compiled kernel object defines. |
+| `AIE_AR_PATH` | `llvm-ar` | Bundling compiled objects into a static archive. |
+| `AIE_READOBJ_PATH` | `llvm-readobj` | Reading kernel objects for the static kernel checks. |
+
+```bash
+AIE_XCLBINUTIL=/path/to/xclbinutil aie-hsaco ...
+```
+
 ## IRON XRT Runtime Cache Size
 
 The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of this cache can be configured using the `XRT_CONTEXT_CACHE_SIZE` environment variable. This is particularly useful in CI environments where multiple tests run in parallel and might exhaust the available NPU contexts.

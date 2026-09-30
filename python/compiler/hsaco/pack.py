@@ -7,7 +7,7 @@
 """Inject an AIE section into an hsaco.
 
 The section is a versioned header, a kernel table, a string table and a blob
-pool; see :mod:`hsaco.format` for the layout. Kernels come from one of three
+pool; see ``hsaco.format`` for the layout. Kernels come from one of three
 input forms -- a PDI plus an instruction stream, an xclbin plus an instruction
 stream, or a self-contained full ELF.
 """
@@ -37,27 +37,12 @@ from .format import (
     VERSION_MINOR,
 )
 
-
-def _executable_name(name):
-    return f"{name}.exe" if os.name == "nt" else name
-
-
-def _bundled_tool(name):
-    """Return the MLIR-AIE bin/ copy of ``name``, or ``None``.
-
-    Resolved lazily and tolerantly: ``aie.utils.config`` pulls in the compiled
-    bindings, which this packer does not otherwise need. A source checkout with
-    no build should still be able to pack bytes using tools from PATH.
-    """
-    try:
-        import aie.utils.config as config
-
-        # root_path() raises when there is no install tree, which is exactly
-        # the case this falls back from.
-        candidate = os.path.join(config.root_path(), "bin", _executable_name(name))
-    except (ImportError, RuntimeError):
-        return None
-    return candidate if os.path.isfile(candidate) else None
+# Appended to every xclbinutil resolution failure: the tool is only needed for
+# the xclbin input form, so the PDI+insts form sidesteps it entirely.
+_XCLBINUTIL_ALTERNATIVE = (
+    "It is only needed to read a PDI out of an xclbin; pass the PDI directly "
+    "with the PDI+insts --kernel form instead."
+)
 
 
 def objcopy_path():
@@ -86,29 +71,32 @@ def objcopy_path():
 def xclbinutil_path():
     """Return the ``xclbinutil`` used to read a PDI out of an xclbin.
 
-    Resolution order, matching how ``aie.utils.config`` resolves its own tools:
-    ``AIE_XCLBINUTIL_PATH``, then the copy mlir-aie installs next to aiecc
-    (built from ``tools/hrx-xclbinutil``, which needs no system XRT), then PATH.
+    Prefers ``aie.utils.config.xclbinutil_path`` (which honours
+    ``AIE_XCLBINUTIL`` and the copy mlir-aie installs next to aiecc), then
+    falls back to ``AIE_XCLBINUTIL`` or PATH, as for ``objcopy_path()``.
     """
-    override = os.environ.get("AIE_XCLBINUTIL_PATH")
-    if override:
-        if not os.path.isfile(override):
-            raise RuntimeError(
-                f"AIE_XCLBINUTIL_PATH is set to {override}, but no such file exists."
-            )
-        return override
-    bundled = _bundled_tool("xclbinutil")
-    if bundled:
-        return bundled
+    try:
+        import aie.utils.config as config
+    except ImportError:
+        pass
+    else:
+        try:
+            return config.xclbinutil_path()
+        except RuntimeError as e:
+            raise RuntimeError(f"{e} {_XCLBINUTIL_ALTERNATIVE}") from e
+    override = os.environ.get("AIE_XCLBINUTIL")
     # shutil.which applies PATHEXT itself, so no .exe suffix is needed here.
-    found = shutil.which("xclbinutil")
+    found = shutil.which(override or "xclbinutil")
     if found:
         return found
+    if override:
+        raise RuntimeError(
+            f"AIE_XCLBINUTIL is set to {override!r}, but that is not an "
+            f"executable file or a program on PATH. {_XCLBINUTIL_ALTERNATIVE}"
+        )
     raise RuntimeError(
-        "xclbinutil not found. It is needed to read a PDI out of an xclbin; build "
-        "mlir-aie with -DAIE_BUILD_HRXXCLBINUTIL=ON, install XRT, set "
-        "AIE_XCLBINUTIL_PATH, or pass the PDI directly with the PDI+insts "
-        "--kernel form."
+        "xclbinutil not found. Build mlir-aie with -DAIE_BUILD_HRXXCLBINUTIL=ON, "
+        f"install XRT, or set AIE_XCLBINUTIL. {_XCLBINUTIL_ALTERNATIVE}"
     )
 
 
@@ -126,7 +114,7 @@ def build_section(arch, kernels):
     """Return the packed arch section for ``kernels``.
 
     Args:
-        arch (str): One of :data:`hsaco.format.ARCHES`.
+        arch (str): One of ``hsaco.format.ARCHES``.
         kernels (list[dict]): Kernel descriptors with ``name`` and ``insts``,
             optionally ``pdi``, ``kernarg_size``, ``num_cols`` and ``kind``.
 
@@ -255,7 +243,8 @@ def inject(hsaco_path, arch, section_bytes):
     single pass over the file rather than three.
 
     Raises:
-        RuntimeError: If objcopy fails, carrying its stderr.
+        RuntimeError: If objcopy fails, carrying its stderr, or if objcopy
+            cannot be run or the hsaco cannot be replaced.
     """
     objcopy = objcopy_path()
     with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
@@ -298,6 +287,13 @@ def inject(hsaco_path, arch, section_bytes):
             f"llvm-objcopy failed to write the {arch} section"
             + (f": {detail}" if detail else "")
         ) from e
+    except OSError as e:
+        # objcopy could not be started, or the replace failed. Converted so
+        # every injection failure reaches main's cleanup, which catches only
+        # RuntimeError.
+        raise RuntimeError(
+            f"could not write the {arch} section into {hsaco_path}: {e}"
+        ) from e
     finally:
         os.unlink(sec_file)
         if os.path.exists(scratch):
@@ -316,7 +312,7 @@ def kernels_from_full_elf(path, kernarg_size=0, num_cols=1):
     """Return one kernel descriptor per COMDAT group in a full ELF.
 
     Every descriptor embeds the whole ELF as its ``insts``; the blob pool in
-    :func:`build_section` stores it once.
+    ``build_section()`` stores it once.
 
     Args:
         path (str): Path to the full ELF.
@@ -556,7 +552,7 @@ def _kernel_options_from_spec(s):
     """Return the ``--kernel-*`` option group a colon-separated spec denotes.
 
     Splitting fields is all this does. Defaults, file reads and the rules about
-    which fields may appear together live in :func:`_kernel_from_options`, so
+    which fields may appear together live in ``_kernel_from_options()``, so
     the two spellings cannot drift apart.
     """
     parts = s.split(":")

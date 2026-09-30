@@ -39,8 +39,9 @@ def parse_section(section):
         dict: ``arch_version``, ``kernel_count`` and a ``kernels`` list.
 
     Raises:
-        ValueError: On bad magic, an unrecognised major version, or any field
-            that does not lie within the section.
+        ValueError: On bad magic, an unrecognised major version, regions out
+            of their declared order, or any field that does not lie within the
+            section.
     """
     if len(section) < HDR_SIZE:
         raise ValueError("section smaller than header")
@@ -61,10 +62,18 @@ def parse_section(section):
         raise ValueError("kernel_entry_size too small")
     if hdr_size < HDR_SIZE:
         raise ValueError("header_size smaller than the header")
-    if hdr_size + kcount * kentry > len(section):
+    # The regions must follow each other in the declared order, not merely lie
+    # within the section: pool_off is the lower bound in_pool() trusts, and an
+    # overlapping string table would read kernel-table bytes as names.
+    table_end = hdr_size + kcount * kentry
+    if table_end > len(section):
         raise ValueError("kernel table out of bounds")
+    if st_off < table_end:
+        raise ValueError("string table overlaps the kernel table")
     if st_off + st_size > len(section):
         raise ValueError("string table out of bounds")
+    if pool_off < st_off + st_size:
+        raise ValueError("blob pool overlaps the string table")
     if pool_off > len(section):
         raise ValueError("blob pool out of bounds")
 
@@ -128,7 +137,7 @@ def read_sections_from_hsaco(path):
 
     One hsaco can carry a section per architecture -- ROCr picks the one
     matching the running device -- so all of them are returned, in
-    :data:`hsaco.format.ARCHES` order.
+    ``hsaco.format.ARCHES`` order.
 
     Raises:
         ValueError: If the hsaco carries no aie2/aie2p section at all.

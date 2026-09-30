@@ -6,14 +6,14 @@
 
 """Minimal ELF reading and writing for the hsaco tools.
 
-Deliberately hand-rolled with :mod:`struct`: only three narrow things
+Deliberately hand-rolled with ``struct``: only three narrow things
 are needed here - look a section up by name, walk a full AIE ELF's COMDAT
 groups, and emit an empty container for the packer to inject into.
 
 Both ELF classes are read, because the tools need both: the hsaco container is
 ELF64, while a real AIE full ELF is ELF32 -- which is not incidental, it is the
 class ROCr's nested-ELF reader (``core/runtime/amd_aie_elf.cpp``) requires.
-Only ELF64 is *written*, by :func:`make_empty_elf64`.
+Only ELF64 is *written*, by ``make_empty_elf64()``.
 """
 
 import functools
@@ -29,6 +29,9 @@ _ELFDATA2LSB = 1
 SHT_SYMTAB = 2
 SHT_NOBITS = 8
 SHT_GROUP = 17
+
+# A group section's first word holds its flags; this is the only defined one.
+GRP_COMDAT = 0x1
 
 # e_shstrndx escape: the real index lives in section header 0's sh_link.
 _SHN_XINDEX = 0xFFFF
@@ -199,7 +202,7 @@ class ElfFile:
 
     @functools.cached_property
     def _by_name(self):
-        """Map resolvable section names to their first :class:`Section`.
+        """Map resolvable section names to their first ``Section``.
 
         A section whose own name cannot be resolved is skipped rather than
         raising: an hsaco can carry unrelated sections alongside the AIE one,
@@ -217,7 +220,7 @@ class ElfFile:
         return by_name
 
     def section_by_name(self, name):
-        """Return the named :class:`Section`, or ``None`` if absent."""
+        """Return the named ``Section``, or ``None`` if absent."""
         return self._by_name.get(name)
 
     @functools.cached_property
@@ -269,8 +272,32 @@ class ElfFile:
         return _cstr(self.blob, strtab_offset + st_name, strtab_end), st_shndx
 
     def group_signature_indices(self):
-        """Return the symbol index signing each ``SHT_GROUP`` section, in order."""
-        return [s.info for s in self.sections if s.type == SHT_GROUP]
+        """Return the symbol index signing each ``SHT_GROUP`` section, in order.
+
+        Every group must be a COMDAT group. A full ELF uses its groups as the
+        kernel index, and real producers emit only COMDAT ones; a plain group
+        has no known meaning there, so it is rejected rather than either
+        guessed into a kernel or silently dropped along with one.
+
+        Raises:
+            ValueError: If a group is too short to hold its flag word, or is
+                not flagged ``GRP_COMDAT``.
+        """
+        indices = []
+        for s in self.sections:
+            if s.type != SHT_GROUP:
+                continue
+            data = s.data
+            if len(data) < 4:
+                raise ValueError(f"group section {s.index} has no flag word")
+            (flags,) = struct.unpack_from("<I", data, 0)
+            if not flags & GRP_COMDAT:
+                raise ValueError(
+                    f"group section {s.index} is not a COMDAT group "
+                    f"(flags 0x{flags:x})"
+                )
+            indices.append(s.info)
+        return indices
 
 
 def demangle_kernel_name(symbol):
@@ -313,9 +340,16 @@ def kernel_names_from_full_elf(blob):
         list[str]: Sorted ``kernel:instance`` names.
 
     Raises:
-        ValueError: If the ELF contains no COMDAT groups.
+        ValueError: If the ELF is not ELF32, contains a group that is not
+            COMDAT, or contains no groups at all.
     """
     elf = ElfFile(blob)
+    # ROCr's nested-ELF reader rejects any other class, so an ELF64 payload
+    # would pack cleanly and only fail at load.
+    if blob[4] != _ELFCLASS32:
+        raise ValueError(
+            "full ELF is ELF64, but ROCr's nested-ELF reader requires ELF32"
+        )
     names = []
     for signature_index in elf.group_signature_indices():
         instance_name, instance_shndx = elf.symbol_at(signature_index)

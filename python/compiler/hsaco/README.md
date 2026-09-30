@@ -77,9 +77,11 @@ aie-hsaco --hsaco vector_add.hsaco --arch aie2p \
   --kernel 'xclbin:MLIR_AIE:build/final.xclbin:build/insts.bin:64:1'
 ```
 
-This shells out to `xclbinutil`, resolved from mlir-aie's own `bin/` first
-(built from `tools/hrx-xclbinutil`, which needs no system XRT install) and
-then from `PATH`. The xclbin must contain exactly one PDI.
+This shells out to `xclbinutil`, resolved via
+`aie.utils.config.xclbinutil_path()`: the `AIE_XCLBINUTIL` override that aiecc
+also honours, then mlir-aie's own `bin/` (built from `tools/hrx-xclbinutil`,
+which needs no system XRT install), then `PATH`. The xclbin must contain
+exactly one PDI.
 
 ### 3. Full ELF
 
@@ -152,8 +154,10 @@ aie-hsaco --hsaco design.hsaco --arch aie2 \
 Nothing is inherited between groups: each kernel's `--kernel-kernarg` and
 `--kernel-cols` fall back to their defaults, not to the previous kernel's
 values. Giving the same option twice within one group, using `--kernel-pdi`
-and `--kernel-xclbin` together, or attaching anything to `--kernel-elf` (which
-is self-contained) is rejected with a usage error.
+and `--kernel-xclbin` together, or combining `--kernel-elf` with
+`--kernel-insts`, `--kernel-pdi` or `--kernel-xclbin` (a full ELF carries its
+own) is rejected with a usage error. `--kernel-kernarg` and `--kernel-cols`
+apply to full ELFs as to any other kernel.
 
 ### Inspecting the result
 
@@ -224,7 +228,8 @@ A full ELF is a self-contained AIE program, and it is an **ELF32** — not
 incidentally, but because that is the class ROCR's nested-ELF reader requires
 (`core/runtime/amd_aie_elf.cpp` rejects anything but `ELFCLASS32`). So the two
 ELFs in play differ in class: an ELF32 payload embedded in an ELF64 container.
-`elf.py` reads both.
+`elf.py` reads both, and the packer rejects a full ELF of any other class
+rather than produce an hsaco ROCR would refuse to load.
 
 The packer does not interpret the payload's contents; it only enumerates the
 kernels inside, from the COMDAT groups:
@@ -248,6 +253,10 @@ signs it (`inst_a` at index 2, `inst_b` at index 4). **That instance symbol's
 section index, to reach the *kernel* symbol — `inst_a`'s `Ndx` of 1 means
 symbol 1, `_Z6vecaddPiS_`. Note that `readelf` prints that column as a section
 index, so the dump above is misleading unless you know the convention.
+
+Every group must be a COMDAT group (`GRP_COMDAT` set in its flag word), which
+is all real producers emit. A plain group has no known meaning in a full ELF, so
+the packer rejects it rather than guess it into a kernel or silently drop it.
 
 This is not standard ELF; it is how the AIE full-ELF producer encodes the
 pairing, and `elf.kernel_names_from_full_elf` mirrors ROCR's own packer rather
@@ -291,6 +300,8 @@ breaking change to every tool that predates it.
 - `llvm-objcopy` — injects the section. Resolved via
   `aie.utils.config.objcopy_path()` (honouring `AIE_OBJCOPY_PATH` and the
   wheel-bundled copy), falling back to `PATH`.
-- `xclbinutil` — only for input form 2.
+- `xclbinutil` — only for input form 2. Resolved via
+  `aie.utils.config.xclbinutil_path()` (honouring `AIE_XCLBINUTIL`), falling
+  back to `PATH`.
 
 ELF reading and writing is done directly with `struct` in `elf.py`.

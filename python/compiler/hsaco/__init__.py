@@ -6,6 +6,6 @@
 
 """Pack AIE kernels into an hsaco for loading from ROCR.
 
-The entry points are the :mod:`~aie.compiler.hsaco.pack` and
-:mod:`~aie.compiler.hsaco.dump` submodules; import those directly.
+The entry points are the ``aie.compiler.hsaco.pack`` and
+``aie.compiler.hsaco.dump`` submodules; import those directly.
 """

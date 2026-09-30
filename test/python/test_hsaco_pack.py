@@ -69,16 +69,17 @@ def _strtab(names):
     return bytes(blob), offsets
 
 
-def make_full_elf(pairs, elf_class=64):
+def make_full_elf(pairs, elf_class=32):
     """Return a synthetic full ELF with one COMDAT group per (kernel, instance).
 
     The instance symbol signs the group (``sh_info``), and its ``st_shndx``
     holds the symbol index of the kernel symbol -- the encoding the real AIE
     full-ELF producer uses.
 
-    ``elf_class`` picks ELF64 or ELF32. Both are needed: a real AIE full ELF is
-    ELF32 (which is the class ROCr's nested-ELF reader requires), while the
-    hsaco it gets packed into is ELF64, and one reader handles both.
+    ``elf_class`` picks ELF32 (the default) or ELF64. A real AIE full ELF is
+    ELF32 -- the class ROCr's nested-ELF reader requires, so the packer
+    rejects anything else -- while the hsaco it gets packed into is ELF64, and
+    one reader handles both; the ELF64 form exercises that reader.
     """
     is_64 = elf_class == 64
     shdr_fmt = _SHDR if is_64 else _SHDR32
@@ -356,6 +357,25 @@ def test_parse_section_rejects_a_header_size_below_the_real_header():
         dump.parse_section(bytes(section))
 
 
+def test_blob_pool_cannot_start_inside_the_metadata():
+    """in_pool() bounds blobs below by pool_off, so pool_off itself must be checked."""
+    section = bytearray(pack.build_section("aie2", [_kernel("k", b"\x01\x02\x03\x04")]))
+    hdr_size = struct.unpack_from(hsaco_format.HDR, section, 0)[3]
+    struct.pack_into("<I", section, 28, 0)  # blob_pool_offset
+    struct.pack_into("<I", section, hdr_size + 4, 0)  # insts_offset -> the header
+    with pytest.raises(ValueError, match="blob pool overlaps the string table"):
+        dump.parse_section(bytes(section))
+
+
+def test_string_table_cannot_start_inside_the_kernel_table():
+    """Otherwise kernel-table bytes could be read back as a kernel name."""
+    section = bytearray(pack.build_section("aie2", [_kernel("k", b"\x01")]))
+    hdr_size = struct.unpack_from(hsaco_format.HDR, section, 0)[3]
+    struct.pack_into("<I", section, 20, hdr_size)  # string_table_offset
+    with pytest.raises(ValueError, match="string table overlaps the kernel table"):
+        dump.parse_section(bytes(section))
+
+
 def test_kernel_name_cannot_point_outside_the_string_table():
     """A name offset past the table would otherwise read out of the blob pool."""
     section = bytearray(pack.build_section("aie2", [_kernel("k", b"AB\x00CD")]))
@@ -436,6 +456,42 @@ def test_elf_without_comdat_groups_is_rejected(tmp_path):
         pack.kernels_from_full_elf(path)
 
 
+@pytest.mark.parametrize("form", ["api", "colon"])
+def test_elf64_full_elf_is_rejected(tmp_path, form):
+    """ROCr would refuse it at load, so the packer must refuse it first."""
+    path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")], elf_class=64))
+    if form == "api":
+        with pytest.raises(ValueError, match="requires ELF32"):
+            pack.kernels_from_full_elf(path)
+    else:
+        with pytest.raises(argparse.ArgumentTypeError, match="requires ELF32"):
+            pack.parse_kernel_arg(f"elf:{path}")
+
+
+def _first_group(blob):
+    return next(s for s in elf.ElfFile(bytes(blob)).sections if s.type == elf.SHT_GROUP)
+
+
+def test_non_comdat_group_is_rejected(tmp_path):
+    """A plain group has no meaning in a full ELF; neither guess nor drop it."""
+    blob = bytearray(make_full_elf([("k0", "i0"), ("k1", "i1")]))
+    struct.pack_into("<I", blob, _first_group(blob).offset, 0)
+    path = _write(tmp_path / "final.elf", blob)
+    with pytest.raises(ValueError, match="is not a COMDAT group"):
+        pack.kernels_from_full_elf(path)
+
+
+def test_group_without_a_flag_word_is_rejected():
+    blob = bytearray(make_full_elf([("k", "i")]))
+    group = _first_group(blob)
+    # sh_size sits after sh_name, sh_type, sh_flags, sh_addr and sh_offset,
+    # which are all 4 bytes wide in Elf32_Shdr.
+    shoff = struct.unpack_from("<I", blob, 32)[0]
+    struct.pack_into("<I", blob, shoff + group.index * _SHDR32_SIZE + 20, 2)
+    with pytest.raises(ValueError, match="has no flag word"):
+        elf.kernel_names_from_full_elf(bytes(blob))
+
+
 def test_elf_without_a_symbol_table_is_rejected():
     with pytest.raises(ValueError, match="missing .symtab"):
         elf.ElfFile(elf.make_empty_elf64()).symbol_at(0)
@@ -476,7 +532,7 @@ def test_corrupt_symtab_fields_raise_valueerror(
     field_offset, field_format, value, message
 ):
     """Every failure in this module is a ValueError, so callers can add context."""
-    blob = bytearray(make_full_elf([("k", "i")]))
+    blob = bytearray(make_full_elf([("k", "i")], elf_class=64))
     base = _symtab_shdr_offset(blob)
     struct.pack_into(field_format, blob, base + field_offset, value)
     with pytest.raises(ValueError, match=message):
@@ -496,7 +552,7 @@ def test_section_name_offset_is_bounded_by_the_string_table():
 
 def test_symtab_running_past_end_of_file_is_rejected():
     """symbol_at unpacks straight out of the image, bypassing Section.data."""
-    blob = bytearray(make_full_elf([("k", "i")]))
+    blob = bytearray(make_full_elf([("k", "i")], elf_class=64))
     base = _symtab_shdr_offset(blob)
     struct.pack_into("<Q", blob, base + 32, 1 << 20)  # sh_size
     with pytest.raises(ValueError, match="runs past end of file"):
@@ -582,9 +638,20 @@ def _use_stub(monkeypatch, env_var, script):
     monkeypatch.setenv("PATH", os.path.dirname(script), prepend=os.pathsep)
 
 
+def _bundled_xclbinutil():
+    """Whether a built tree has its own xclbinutil, which outranks PATH."""
+    try:
+        from aie.utils import config
+
+        root = config.root_path()
+    except (ImportError, RuntimeError):
+        return False
+    return os.path.isfile(os.path.join(root, "bin", "xclbinutil"))
+
+
 @needs_posix
 def test_pdi_is_extracted_from_an_xclbin(tmp_path, monkeypatch):
-    _use_stub(monkeypatch, "AIE_XCLBINUTIL_PATH", _stub_xclbinutil(tmp_path))
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL", _stub_xclbinutil(tmp_path))
     xclbin = _write(tmp_path / "final.xclbin", b"not really an xclbin")
 
     assert pack.pdi_from_xclbin(xclbin) == b"PDI-FROM-XCLBIN"
@@ -592,7 +659,7 @@ def test_pdi_is_extracted_from_an_xclbin(tmp_path, monkeypatch):
 
 @needs_posix
 def test_xclbin_kernel_spec_packs_the_extracted_pdi(tmp_path, monkeypatch):
-    _use_stub(monkeypatch, "AIE_XCLBINUTIL_PATH", _stub_xclbinutil(tmp_path))
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL", _stub_xclbinutil(tmp_path))
     xclbin = _write(tmp_path / "final.xclbin", b"stub")
     insts = _write(tmp_path / "insts.bin", b"\x11\x22\x33\x44")
 
@@ -608,7 +675,7 @@ def test_xclbin_kernel_spec_packs_the_extracted_pdi(tmp_path, monkeypatch):
 
 @needs_posix
 def test_xclbin_with_several_pdis_is_rejected(tmp_path, monkeypatch):
-    _use_stub(monkeypatch, "AIE_XCLBINUTIL_PATH", _stub_xclbinutil(tmp_path, count=2))
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL", _stub_xclbinutil(tmp_path, count=2))
     xclbin = _write(tmp_path / "final.xclbin", b"stub")
 
     with pytest.raises(ValueError, match="expected exactly one PDI, found 2"):
@@ -617,16 +684,28 @@ def test_xclbin_with_several_pdis_is_rejected(tmp_path, monkeypatch):
 
 @needs_posix
 def test_xclbinutil_override_wins_over_everything_else(tmp_path, monkeypatch):
-    """AIE_XCLBINUTIL_PATH is the documented escape hatch; it must outrank a build."""
+    """AIE_XCLBINUTIL is the documented escape hatch; it must outrank a build."""
     script = _stub_xclbinutil(tmp_path)
-    monkeypatch.setenv("AIE_XCLBINUTIL_PATH", script)
+    monkeypatch.setenv("AIE_XCLBINUTIL", script)
     assert os.path.samefile(pack.xclbinutil_path(), script)
+
+
+@needs_posix
+def test_xclbinutil_override_may_be_a_bare_name_on_path(tmp_path, monkeypatch):
+    """As for aiecc, an override with no path separator is looked up on PATH."""
+    pinned = os.path.join(
+        os.path.dirname(_stub_xclbinutil(tmp_path)), "xclbinutil-pinned"
+    )
+    os.rename(os.path.join(os.path.dirname(pinned), "xclbinutil"), pinned)
+    monkeypatch.setenv("AIE_XCLBINUTIL", "xclbinutil-pinned")
+    monkeypatch.setenv("PATH", os.path.dirname(pinned), prepend=os.pathsep)
+    assert os.path.samefile(pack.xclbinutil_path(), pinned)
 
 
 def test_xclbinutil_override_pointing_at_nothing_is_reported(tmp_path, monkeypatch):
     missing = str(tmp_path / "nope" / "xclbinutil")
-    monkeypatch.setenv("AIE_XCLBINUTIL_PATH", missing)
-    with pytest.raises(RuntimeError, match="no such file exists"):
+    monkeypatch.setenv("AIE_XCLBINUTIL", missing)
+    with pytest.raises(RuntimeError, match="AIE_XCLBINUTIL is set to"):
         pack.xclbinutil_path()
 
 
@@ -634,17 +713,17 @@ def test_xclbinutil_override_pointing_at_nothing_is_reported(tmp_path, monkeypat
 def test_xclbinutil_falls_back_to_path(tmp_path, monkeypatch):
     """With no override and no build, PATH is the last resort."""
     script = _stub_xclbinutil(tmp_path)
-    monkeypatch.delenv("AIE_XCLBINUTIL_PATH", raising=False)
+    monkeypatch.delenv("AIE_XCLBINUTIL", raising=False)
     monkeypatch.setenv("PATH", os.path.dirname(script), prepend=os.pathsep)
-    if pack._bundled_tool("xclbinutil") is not None:
+    if _bundled_xclbinutil():
         pytest.skip("a bundled xclbinutil outranks PATH in this tree")
     assert os.path.samefile(pack.xclbinutil_path(), script)
 
 
 def test_missing_xclbinutil_explains_the_alternatives(tmp_path, monkeypatch):
-    monkeypatch.delenv("AIE_XCLBINUTIL_PATH", raising=False)
+    monkeypatch.delenv("AIE_XCLBINUTIL", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
-    if pack._bundled_tool("xclbinutil") is not None:
+    if _bundled_xclbinutil():
         pytest.skip("a bundled xclbinutil is resolvable in this tree")
     with pytest.raises(RuntimeError, match="PDI\\+insts --kernel form"):
         pack.xclbinutil_path()
@@ -653,9 +732,9 @@ def test_missing_xclbinutil_explains_the_alternatives(tmp_path, monkeypatch):
 @pytest.mark.parametrize("form", ["long", "colon"])
 def test_unresolvable_xclbinutil_is_a_usage_error(tmp_path, monkeypatch, form):
     """Tool resolution raises RuntimeError; that must not escape as a traceback."""
-    monkeypatch.delenv("AIE_XCLBINUTIL_PATH", raising=False)
+    monkeypatch.delenv("AIE_XCLBINUTIL", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
-    if pack._bundled_tool("xclbinutil") is not None:
+    if _bundled_xclbinutil():
         pytest.skip("a bundled xclbinutil is resolvable in this tree")
     xclbin = _write(tmp_path / "f.xclbin", b"stub")
     insts = _write(tmp_path / "insts.bin", b"\x01")
@@ -681,7 +760,7 @@ def test_a_rejected_xclbin_keeps_xclbinutils_diagnosis(tmp_path, monkeypatch):
     )
     _use_stub(
         monkeypatch,
-        "AIE_XCLBINUTIL_PATH",
+        "AIE_XCLBINUTIL",
         _stub_tool(tmp_path, "xclbinutil", body),
     )
     xclbin = _write(tmp_path / "bad.xclbin", b"not an xclbin")
@@ -781,7 +860,7 @@ def test_long_form_full_elf(tmp_path):
 
 @needs_posix
 def test_long_form_xclbin(tmp_path, monkeypatch):
-    _use_stub(monkeypatch, "AIE_XCLBINUTIL_PATH", _stub_xclbinutil(tmp_path))
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL", _stub_xclbinutil(tmp_path))
     xclbin = _write(tmp_path / "final.xclbin", b"stub")
     insts = _write(tmp_path / "insts.bin", b"\x01")
 
@@ -1058,7 +1137,7 @@ def test_injecting_into_a_populated_elf_keeps_its_sections(tmp_path):
     populated groups, and nothing injects into one anyway -- they are only ever
     read.
     """
-    path = _write(tmp_path / "existing.hsaco", make_full_elf([]))
+    path = _write(tmp_path / "existing.hsaco", make_full_elf([], elf_class=64))
     with open(path, "rb") as f:
         before = [s.name for s in elf.ElfFile(f.read()).sections]
     assert ".symtab" in before
@@ -1157,6 +1236,24 @@ def test_a_failed_injection_leaves_no_stray_container(tmp_path, monkeypatch, cap
             + ["--kernel-name", "k", "--kernel-insts", insts]
         )
     assert "nope" in capsys.readouterr().err
+    assert not os.path.exists(path)
+
+
+@needs_posix
+def test_an_unrunnable_objcopy_leaves_no_stray_container(tmp_path, monkeypatch, capsys):
+    """OSError, not just a nonzero exit, must take main's cleanup path."""
+    path = str(tmp_path / "never.hsaco")
+    insts = _write(tmp_path / "insts.bin", b"\x01")
+    unrunnable = _write(tmp_path / "llvm-objcopy", b"#!/bin/sh\n")  # not executable
+    monkeypatch.setattr(pack, "objcopy_path", lambda: unrunnable)
+
+    with pytest.raises(SystemExit) as excinfo:
+        pack.main(
+            ["--hsaco", path, "--arch", "aie2"]
+            + ["--kernel-name", "k", "--kernel-insts", insts]
+        )
+    assert excinfo.value.code == 2
+    assert "could not write the aie2 section" in capsys.readouterr().err
     assert not os.path.exists(path)
 
 
