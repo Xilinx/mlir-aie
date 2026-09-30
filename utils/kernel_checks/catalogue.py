@@ -12,14 +12,15 @@ records (``utils/kernel_checks/publish.py``).
 
 Per factory the column records, for this NPU:
 
-* ``passed`` / ``failed``: cases the extensive sweep passed (count) and
-  failed (names). A case failed if any input or seed failed.
+* ``passed`` / ``failed``: cases the correctness run passed (count) and
+  failed (names), including dedicated ``kernel_check`` tests. A case failed
+  if any input or seed failed.
 * ``timed``: cases the performance checks recorded rows for (count).
 * ``timing_failed``: cases that passed the sweep but failed in the timing
   run (names, from ``meta.json``), so a series with a gap has a reason.
 * ``untimed``: cases that passed the sweep and are not timed by design
-  (``perf=False`` in ``kernel_cases.py``), so "N cases pass" and "M timed"
-  add up.
+  (``perf=False`` in ``kernel_cases.py`` or a dedicated check), so "N cases
+  pass" and "M timed" add up.
 * ``reason``: why a factory with builds has no case at all.
 
 The row assembly (:func:`rows`) needs only the standard library, so it is
@@ -106,7 +107,7 @@ def timing_failed(path) -> dict[str, set[str]]:
         failed = json.load(f).get("failed", [])
     cases = []
     for nodeid in failed:
-        if "test_kernel_extensive[" in nodeid:
+        if "test_kernel_perf[" not in nodeid:
             continue
         match = pr_report._BRACKETED.search(nodeid)
         if match:
@@ -197,6 +198,11 @@ def catalogue(
         declared = _declared(npu, cases_dir)
     finally:
         set_current_device(previous)
+
+    if correctness:
+        for case, variant, _ in pr_report.sweep(correctness, include_skipped=True):
+            if variant == "dedicated":
+                declared.setdefault(case.split("/", 1)[0], {})[case] = False
 
     factories = [
         {

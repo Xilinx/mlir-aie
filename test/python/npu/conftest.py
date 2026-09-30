@@ -47,6 +47,12 @@ def pytest_configure(config):
         "markers",
         "perf: times a kernel and records performance rows; select with -m perf",
     )
+    config.addinivalue_line(
+        "markers",
+        "kernel_check(*factories): dedicated hardware correctness test for the "
+        "named factories; included in nightly checks and the kernel catalogue. "
+        "invalidates_timing=True makes a shared-setup failure reject all timing",
+    )
     config._perf_rows = []
     config._perf_meta = {}
 
@@ -134,19 +140,38 @@ def _checked_cases(path):
     tests = list(ET.parse(path).iter("testcase"))
     if not tests:
         raise ValueError("correctness report contains no tests")
-    checked, rejected, failed = set(), set(), []
+    checked, rejected, rejected_factories, failed = set(), set(), set(), []
     for test in tests:
         name = test.get("name", "")
         match = re.fullmatch(r"test_kernel_extensive\[(.+)/[^/]+/s\d+\]", name)
         bad = test.find("failure") is not None or test.find("error") is not None
         if bad:
-            if not match:
-                raise ValueError(f"unmapped correctness failure: {name}")
-            rejected.add(match[1])
+            if match:
+                rejected.add(match[1])
+            else:
+                properties = test.findall("properties/property")
+                factories = {
+                    prop.get("value")
+                    for prop in properties
+                    if prop.get("name") == "kernel_check" and prop.get("value")
+                }
+                if any(
+                    prop.get("name") == "kernel_check_invalidates_timing"
+                    and prop.get("value") == "true"
+                    for prop in properties
+                ):
+                    raise ValueError(f"shared setup correctness failure: {name}")
+                if not factories:
+                    raise ValueError(f"unmapped correctness failure: {name}")
+                rejected_factories.update(factories)
             failed.append(f"{test.get('classname', '')}::{name}")
         elif match and test.find("skipped") is None:
             checked.add(match[1])
-    return checked - rejected, failed
+    return {
+        case
+        for case in checked - rejected
+        if case.split("/", 1)[0] not in rejected_factories
+    }, failed
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -236,6 +261,10 @@ def pytest_collection_modifyitems(config, items):
     """
     generation = _device_generation()
     for item in items:
+        for check in item.iter_markers("kernel_check"):
+            item.user_properties.extend(("kernel_check", name) for name in check.args)
+            if check.kwargs.get("invalidates_timing"):
+                item.user_properties.append(("kernel_check_invalidates_timing", "true"))
         marker = item.get_closest_marker("supported_devices")
         if marker and generation and generation not in marker.args:
             item.add_marker(

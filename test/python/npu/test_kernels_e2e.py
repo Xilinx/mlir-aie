@@ -25,6 +25,9 @@ Two tiers share one table (``kernel_cases.py``):
 * ``test_kernel_extensive`` (marker ``extensive``, deselected by the RUN
   lines above) runs every case under every edge-data case its contract
   admits, for ``--seeds`` random seeds.
+* ``kernel_check`` marks dedicated tests for factories the generic harness
+  cannot check. They run in both tiers; their JUnit properties credit each
+  named factory in the nightly catalogue without claiming timing coverage.
 
 Cases whose kernels exist only for one NPU generation carry
 ``supported_devices`` (see ``conftest.py``), so they skip elsewhere.
@@ -326,6 +329,7 @@ def _bf16_from_bits(u):
     return (np.asarray(u, np.uint32) << 16).view(np.float32).astype(bfloat16)
 
 
+@pytest.mark.kernel_check("set_rounding", invalidates_timing=True)
 def test_setup_reaches_the_core():
     """A contract's ``setup`` must change the core, not just declare an intent.
 
@@ -445,6 +449,7 @@ def _cascade_design(a_put: In, b_put: In, a_get: In, b_get: In, c_out: Out):
     ).resolve_program()
 
 
+@pytest.mark.kernel_check("cascade_mm", "cascade_mm_put")
 def test_cascade_mm_pair():
     m = k = n = _CASCADE_DIM
     get = kernels.cascade_mm(dim_m=m, dim_k=k, dim_n=n)
