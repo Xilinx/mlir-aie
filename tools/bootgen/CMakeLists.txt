@@ -137,9 +137,13 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     -Wno-deprecated-declarations
     -Wno-sign-compare
     -Wno-type-limits
-    -Wno-unused
-    # See bootgen-lib below for why -fPIC is also passed explicitly here.
-    -fPIC)
+    -Wno-unused)
+endif()
+if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32)
+  # See bootgen-lib below for why -fPIC is also passed explicitly here.
+  # PIC is an ELF/Unix concept; Clang targeting windows-msvc (PE/COFF)
+  # rejects the flag outright, even when driven with the GNU-style CLI.
+  target_compile_options(bootgen-lms-hash-sigs PRIVATE -fPIC)
 endif()
 
 add_library(bootgen-lib STATIC ${libsources})
@@ -182,9 +186,11 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(bootgen-lib PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
 target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC AND NOT WIN32)
   # The POSITION_INDEPENDENT_CODE property above doesn't reliably force PIC
   # so pass -fPIC explicitly, last, so it wins over any inherited -fno-PIC.
+  # PIC is an ELF/Unix concept; Clang targeting windows-msvc (PE/COFF)
+  # rejects the flag outright, even when driven with the GNU-style CLI.
   target_compile_options(bootgen-lib PRIVATE -fPIC)
 endif()
 target_include_directories(bootgen-lib PRIVATE ${bootgen_include_dirs} ${OPENSSL_INCLUDE_DIR})
@@ -211,9 +217,11 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(bootgen PRIVATE /EHsc)
   target_compile_options(bootgen PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC AND NOT WIN32)
   # See bootgen-lib above. -fPIE is compile-only; -pie is the link-mode
   # switch (kept separate since some toolchains don't accept -fPIE at link).
+  # PIC/PIE are ELF/Unix concepts; Clang targeting windows-msvc (PE/COFF)
+  # rejects the flags outright, even when driven with the GNU-style CLI.
   target_compile_options(bootgen PRIVATE -fPIE)
   target_link_options(bootgen PRIVATE -pie)
 endif()

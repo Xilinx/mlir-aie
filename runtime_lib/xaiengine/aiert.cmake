@@ -118,7 +118,12 @@ cmake_parse_arguments(ARG "STATIC" "" "" ${ARGN})
   set_property(TARGET ${TARGET} PROPERTY C_STANDARD 99)
 
   if (NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    target_compile_options(${TARGET} PRIVATE -fPIC -Wno-gnu-designator)
+    target_compile_options(${TARGET} PRIVATE -Wno-gnu-designator)
+  endif()
+  if (NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC" AND NOT WIN32)
+    # PIC is an ELF/Unix concept; Clang targeting windows-msvc (PE/COFF)
+    # rejects the flag outright, even when driven with the GNU-style CLI.
+    target_compile_options(${TARGET} PRIVATE -fPIC)
   endif()
 
 endfunction()
