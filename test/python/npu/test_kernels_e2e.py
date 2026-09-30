@@ -3,11 +3,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-
-# RUN: %run_on_npu1_xrt% %pytest -m "not extensive" %s
-# RUN: %run_on_npu2_xrt% %pytest -m "not extensive" %s
-# RUN: %run_on_npu2_hrx% %pytest -m "not extensive" %s
-# REQUIRES: xrt_python_bindings || hrx_python_bindings
+# lit runs this file in shards, from test_kernels_e2e_shard*.test: one lit test
+# held the device for longer than lit's per-test timeout.
 
 """Device tests for the IRON kernel library, driven by ``kernel_cases.CASES``.
 
@@ -22,8 +19,8 @@ Two tiers share one table (``kernel_cases.py``):
 
 * ``test_kernel`` runs the ``smoke`` cases on random data: one representative
   shape per kernel, on every pull request.
-* ``test_kernel_extensive`` (marker ``extensive``, deselected by the RUN
-  lines above) runs every case under every edge-data case its contract
+* ``test_kernel_extensive`` (marker ``extensive``, deselected by the lit
+  shards) runs every case under every edge-data case its contract
   admits, for ``--seeds`` random seeds.
 
 A pass says the kernel is within tolerance, not how close it is.
