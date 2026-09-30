@@ -8,7 +8,7 @@
 // RUN: aie-opt --aie-prepare-buffers --aie-assign-buffer-addresses --aie-dma-tasks-to-npu %s | FileCheck %s
 
 // The mem tile counterpart of good-runtime-bdid.mlir. A runtime bd_id makes
-// the BD register block address runtime (0xA0000 + bd_id*32 here, against the
+// the BD register block address runtime (0x1A0000 + bd_id*32 here, against the
 // shim's 0x1D000 base), so the whole block is packed into one
 // npu.blockwrite_values at that runtime base.
 //
