@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -12,11 +12,11 @@ from util import construct_test
 @construct_test
 def rectangular_tiler_col_major_tensor_and_tile():
     tiler = (
-        Layout.full((16, 8))
+        TensorAccessPattern.full((16, 8))
         .tile((4, 2))
         .permute_tile((1, 0))
         .order("col")
-        .materialize()
+        
     )
     access_order, access_count = tiler.accesses()
     reference_access = np.array(

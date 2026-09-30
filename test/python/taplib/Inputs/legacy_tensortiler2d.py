@@ -1,9 +1,9 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""The retired TensorTiler2D, kept verbatim as the oracle for layout_vs_tiler.py.
+"""The retired TensorTiler2D, kept verbatim as the oracle for tiler_vs_legacy.py.
 
 This is not part of the aie package. It exists so the differential test can
-keep proving that the Layout algebra reproduces the old tiler's numbers
+keep proving that TensorAccessPattern.tile() reproduces the old tiler's numbers
 exactly; do not use it in designs.
 """
 

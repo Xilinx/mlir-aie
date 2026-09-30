@@ -1,7 +1,7 @@
 # Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from aie.helpers.taplib import Layout, TensorAccessPattern
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -27,19 +27,19 @@ def matrix_vector_tiling_sweep():
                 m_x_K = m * K
 
                 A_iter = iter(
-                    Layout.full((M, K))
+                    TensorAccessPattern.full((M, K))
                     .tile((m, k))
                     .group((M_div_m_div_n_cores, K // k))
-                    .materialize()
+                    
                 )
                 B_tap = (
-                    Layout.full((1, K))
+                    TensorAccessPattern.full((1, K))
                     .tile((1, K))
                     .repeat(M_div_m_div_n_cores)[0]
-                    .tap()
+                    
                 )
                 C_iter = iter(
-                    Layout.full((1, C_sz)).tile((1, C_sz_div_n_cores)).materialize()
+                    TensorAccessPattern.full((1, C_sz)).tile((1, C_sz_div_n_cores))
                 )
 
                 B_sizes = [M_div_m_div_n_cores, 1, 1, K]

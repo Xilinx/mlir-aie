@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-from aie.helpers.taplib import Layout, TensorAccessPattern
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -12,7 +12,7 @@ from util import construct_test
 @construct_test
 def step_tiler():
     # Start with Step == (1, 1)
-    tiles = Layout.full((32, 32)).tile((2, 2)).group((2, 2), steps=(1, 1)).materialize()
+    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((2, 2), steps=(1, 1))
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[64, 2, 32, 1]
@@ -63,7 +63,7 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Step == (2, 1)
-    tiles = Layout.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 1)).materialize()
+    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 1))
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[128, 2, 32, 1]
@@ -117,7 +117,7 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Step == (1, 2)
-    tiles = Layout.full((32, 32)).tile((2, 2)).group((2, 2), steps=(1, 2)).materialize()
+    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((2, 2), steps=(1, 2))
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[64, 4, 32, 1]
@@ -171,7 +171,7 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Step == (2, 2)
-    tiles = Layout.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 2)).materialize()
+    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 2))
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[128, 4, 32, 1]
@@ -225,7 +225,7 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Step == (2, 2)
-    tiles = Layout.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 2)).materialize()
+    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 2))
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[128, 4, 32, 1]
@@ -280,10 +280,10 @@ def step_tiler():
 
     # Repeat across column/row
     tiles = (
-        Layout.full((32, 32))
+        TensorAccessPattern.full((32, 32))
         .tile((2, 2))
         .group((32 // 4, 32 // 4), steps=(2, 2))
-        .materialize()
+        
     )
     assert len(tiles) == 4  # (32//(2*(32//4))) * (32//(2*(32//4)))
     assert tiles[0] == TensorAccessPattern(
@@ -339,10 +339,10 @@ def step_tiler():
 
     # Repeat one dimension
     tiles = (
-        Layout.full((32, 32))
+        TensorAccessPattern.full((32, 32))
         .tile((2, 2))
         .group((1, 32 // 4), steps=(2, 2))
-        .materialize()
+        
     )
     assert len(tiles) == (32 // (2 * 1)) * (32 // (2 * (32 // 4)))
     assert tiles[0] == TensorAccessPattern(
@@ -398,10 +398,10 @@ def step_tiler():
 
     # Repeat other dimension
     tiles = (
-        Layout.full((32, 32))
+        TensorAccessPattern.full((32, 32))
         .tile((2, 2))
         .group((32 // 4, 1), steps=(2, 2))
-        .materialize()
+        
     )
     assert len(tiles) == (32 // (2 * 1)) * (32 // (2 * (32 // 4)))
     assert tiles[0] == TensorAccessPattern(
@@ -456,7 +456,7 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Different repeats and steps
-    tiles = Layout.full((32, 32)).tile((2, 2)).group((8, 2), steps=(2, 4)).materialize()
+    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((8, 2), steps=(2, 4))
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[8, 2, 2, 2], strides=[128, 8, 32, 1]
@@ -511,11 +511,11 @@ def step_tiler():
 
     # Tile col major
     tiles = (
-        Layout.full((32, 32))
+        TensorAccessPattern.full((32, 32))
         .tile((2, 2))
         .permute_tile((1, 0))
         .group((8, 2), steps=(2, 4))
-        .materialize()
+        
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -571,11 +571,11 @@ def step_tiler():
 
     # Tile col major and tile group col major
     tiles = (
-        Layout.full((32, 32))
+        TensorAccessPattern.full((32, 32))
         .tile((2, 2))
         .permute_tile((1, 0))
         .group((8, 2), steps=(2, 4), col_major=True)
-        .materialize()
+        
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -631,12 +631,12 @@ def step_tiler():
 
     # Tile col major and tile group col major and iter col major
     tiles = (
-        Layout.full((32, 32))
+        TensorAccessPattern.full((32, 32))
         .tile((2, 2))
         .permute_tile((1, 0))
         .order("col")
         .group((8, 2), steps=(2, 4), col_major=True)
-        .materialize()
+        
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -699,7 +699,7 @@ def step_tiler():
 def step_tiler_invalid():
     try:
         tiles = (
-            Layout.full(())
+            TensorAccessPattern.full(())
             .tile((3, 2))
             .permute_tile((1, 0))
             .group((1, 1), steps=(1, 1))
@@ -711,7 +711,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((10, 9, 4))
+            TensorAccessPattern.full((10, 9, 4))
             .tile((3, 2))
             .permute_tile((1, 0))
             .group((1, 1), steps=(1, 1))
@@ -723,7 +723,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((9, 4))
+            TensorAccessPattern.full((9, 4))
             .tile((3, -1))
             .permute_tile((1, 0))
             .group((1, 1), steps=(1, 1))
@@ -735,7 +735,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((9, 4))
+            TensorAccessPattern.full((9, 4))
             .tile((3,))
             .permute_tile((1, 0))
             .group((1, 1), steps=(1, 1))
@@ -747,7 +747,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((9, 4))
+            TensorAccessPattern.full((9, 4))
             .tile((1, 1, 1))
             .permute_tile((1, 0))
             .group((1, 1), steps=(1, 1))
@@ -759,7 +759,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((9, 4))
+            TensorAccessPattern.full((9, 4))
             .tile((3, 2))
             .permute_tile((1, 0))
             .group((1, 1), steps=(1, 1))
@@ -771,7 +771,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((9, 4))
+            TensorAccessPattern.full((9, 4))
             .tile((4, 2))
             .permute_tile((1, 0))
             .group((1, 1), steps=(1, 1))
@@ -783,7 +783,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((9, 4))
+            TensorAccessPattern.full((9, 4))
             .tile((3, 3))
             .permute_tile((1, 0))
             .group((1, 1), steps=(1, 1))
@@ -796,7 +796,7 @@ def step_tiler_invalid():
 
     try:
         tiles = (
-            Layout.full((9, 4))
+            TensorAccessPattern.full((9, 4))
             .tile((3, 2))
             .permute_tile((1, 0))
             .group((1,), steps=(1, 1))
@@ -808,7 +808,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((9, 4))
+            TensorAccessPattern.full((9, 4))
             .tile((3, 2))
             .permute_tile((1, 0))
             .group((1, -1), steps=(1, 1))
@@ -820,7 +820,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((9, 4))
+            TensorAccessPattern.full((9, 4))
             .tile((3, 2))
             .permute_tile((1, 0))
             .group((1, 1, 1), steps=(1, 1))
@@ -831,7 +831,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((18, 8))
+            TensorAccessPattern.full((18, 8))
             .tile((3, 2))
             .permute_tile((1, 0))
             .group((2, 3), steps=(1, 1))
@@ -844,7 +844,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((18, 8))
+            TensorAccessPattern.full((18, 8))
             .tile((3, 2))
             .permute_tile((1, 0))
             .group((4, 2), steps=(1, 1))
@@ -858,7 +858,7 @@ def step_tiler_invalid():
     try:
         # (2, 2) divides the 6 x 4 tile grid, so only the step is bad.
         tiles = (
-            Layout.full((18, 8))
+            TensorAccessPattern.full((18, 8))
             .tile((3, 2))
             .permute_tile((1, 0))
             .group((2, 2), steps=(1, -1))
@@ -869,7 +869,7 @@ def step_tiler_invalid():
         pass
     try:
         tiles = (
-            Layout.full((18, 8))
+            TensorAccessPattern.full((18, 8))
             .tile((3, 2))
             .permute_tile((1, 0))
             .group((4, 2), steps=(1,))

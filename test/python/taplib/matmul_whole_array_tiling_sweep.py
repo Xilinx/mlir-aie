@@ -4,7 +4,7 @@
 #
 import random
 
-from aie.helpers.taplib import Layout, TensorAccessPattern, TensorAccessSequence
+from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 from aie.utils import ceildiv
 from util import construct_test
 
@@ -29,12 +29,12 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
     C_ordered_tiles = []
 
     A_tiles = (
-        Layout.full((M, K))  # Size of A matrix
+        TensorAccessPattern.full((M, K))  # Size of A matrix
         .tile((m * n_A_tiles_per_shim, k))  # Size of A (smallest) tile
         .group((1, K // k))  # Size of "group" of tiles
         # Repeat data so can distribute across whole column
         .repeat(N // n // n_aie_cols)
-        .materialize()
+        
     )
     if b_col_maj:
         # These assertions are probably too broad.
@@ -43,7 +43,7 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
         assert n % 32 == 0
 
         B_tiles = (
-            Layout.full((K, N))  # Size of B matrix
+            TensorAccessPattern.full((K, N))  # Size of B matrix
             .tile((k, n))  # Size of B tile
             .group(
                 (
@@ -55,11 +55,11 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
                     1,
                 ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
             )
-            .materialize()
+            
         )
     else:
         B_tiles = (
-            Layout.full((K, N))  # Size of B matrix
+            TensorAccessPattern.full((K, N))  # Size of B matrix
             .tile((k, n))  # Size of B tile
             .group(
                 (
@@ -72,10 +72,10 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
                 ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
                 col_major=True,  # Send all tiles in column before moving on to next column
             )
-            .materialize()
+            
         )
     C_tiles = (
-        Layout.full((M, N))  # Size of C matrix
+        TensorAccessPattern.full((M, N))  # Size of C matrix
         .tile((m * n_aie_rows, n))  # Size of C tile
         .group(
             (
@@ -87,7 +87,7 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
                 n_aie_cols,
             ),  # Collect every n_aie_cols row at a time (mirroring how we sent in B data)
         )
-        .materialize()
+        
     )
     c_index = 0
 

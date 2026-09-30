@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -11,7 +11,7 @@ from util import construct_test
 # CHECK-LABEL: square_tiler_tile_grouping_col_major_groups
 @construct_test
 def square_tiler_tile_grouping_col_major_groups():
-    tiler = Layout.full((32, 32)).tile((8, 8)).order("col").group((2, 2)).materialize()
+    tiler = TensorAccessPattern.full((32, 32)).tile((8, 8)).order("col").group((2, 2))
     access_count = tiler.access_count()
     assert (access_count == 1).all()
 

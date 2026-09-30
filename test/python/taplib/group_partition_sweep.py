@@ -4,7 +4,7 @@
 import itertools
 
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -31,7 +31,7 @@ def every_grouping_partitions_the_tensor():
         for tr, tc in ((1, 1), (1, 2), (3, 1)):
             if rows % tr or cols % tc:
                 continue
-            grid = Layout.full((rows, cols)).tile((tr, tc))
+            grid = TensorAccessPattern.full((rows, cols)).tile((tr, tc))
             for s0, s1, r0, r1 in itertools.product(
                 (1, 2, 3), (1, 2, 4), (1, 2, 3), (1, 2)
             ):
@@ -68,8 +68,8 @@ def every_grouping_partitions_the_tensor():
 def inverse_round_trips():
     """tile() then inverse(): reading the blocked buffer back is the identity."""
     for rows, cols, tr, tc in ((8, 8, 2, 4), (12, 6, 3, 2), (16, 32, 4, 8)):
-        grid = Layout.full((rows, cols)).tile((tr, tc))
-        blocked = indices(grid.layout)
+        grid = TensorAccessPattern.full((rows, cols)).tile((tr, tc))
+        blocked = indices(grid.tap)
         assert (blocked[indices(grid.inverse())] == np.arange(rows * cols)).all()
     print("inverse round trips")
     # CHECK: inverse round trips
@@ -86,8 +86,8 @@ def slices_match_numpy():
         (3, slice(None)),
         (slice(None), 4),
     ):
-        assert (indices(Layout.full((6, 8))[key]) == a[key].reshape(-1)).all(), key
-    assert (indices(Layout.full((6, 8)).permute((1, 0))) == a.T.reshape(-1)).all()
-    assert indices(Layout.full((6, 8)).split(1, 4).merge(1)).tolist() == list(range(48))
+        assert (indices(TensorAccessPattern.full((6, 8))[key]) == a[key].reshape(-1)).all(), key
+    assert (indices(TensorAccessPattern.full((6, 8)).permute((1, 0))) == a.T.reshape(-1)).all()
+    assert indices(TensorAccessPattern.full((6, 8)).split(1, 4).merge(1)).tolist() == list(range(48))
     print("slices, permute, split/merge match numpy")
     # CHECK: slices, permute, split/merge match numpy

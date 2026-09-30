@@ -1,6 +1,6 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Differential test: the layout algebra reproduces TensorTiler2D.
+"""Differential test: the tiling algebra reproduces TensorTiler2D.
 
 For every tiler configuration below, the algebra spelling of the same tiling
 must visit the same elements in the same order as the legacy tiler at every
@@ -11,8 +11,8 @@ CHECKed so a canonical-form change cannot pass silently.
 
 import itertools
 
-from _legacy_tensortiler2d import TensorTiler2D
-from aie.helpers.taplib import Layout, TensorAccessPattern
+from Inputs.legacy_tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -30,7 +30,7 @@ def algebra_tiler(
     allow_partial=False,
 ):
     """TensorTiler2D.step_tiler spelled on the algebra."""
-    grid = Layout.full(tensor_dims).tile(tile_dims)
+    grid = TensorAccessPattern.full(tensor_dims).tile(tile_dims)
     if tile_col_major:
         grid = grid.permute_tile((1, 0))
     grid = grid.order("col" if iter_col_major else "row")
@@ -50,7 +50,7 @@ def compare(legacy, grid):
     assert len(legacy) == len(grid), (len(legacy), len(grid))
     exact = 0
     for step, want in enumerate(legacy):
-        got = grid[step].tap()
+        got = grid[step]
         assert isinstance(got, TensorAccessPattern)
         if got == want:
             exact += 1
@@ -163,7 +163,7 @@ def whole_array_matmul():
                     prune_step=False,
                 )
                 grid_A = (
-                    Layout.full((M, K))
+                    TensorAccessPattern.full((M, K))
                     .tile((m * n_A_tiles_per_shim, k))
                     .group((1, K // k))
                     .repeat(rep)
@@ -177,7 +177,7 @@ def whole_array_matmul():
                     prune_step=False,
                 )
                 grid_B = (
-                    Layout.full((K, N))
+                    TensorAccessPattern.full((K, N))
                     .tile((k, n))
                     .group((K // k, rep), steps=(1, n_aie_cols), col_major=True)
                 )
@@ -189,7 +189,7 @@ def whole_array_matmul():
                     prune_step=False,
                 )
                 grid_C = (
-                    Layout.full((M, N))
+                    TensorAccessPattern.full((M, N))
                     .tile((m * n_aie_rows, n))
                     .group((tb_n_rows, rep), steps=(1, n_aie_cols))
                 )

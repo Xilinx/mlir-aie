@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-from aie.helpers.taplib import Layout
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -11,7 +11,7 @@ from util import construct_test
 # CHECK-LABEL: rectangular_tiler2
 @construct_test
 def rectangular_tiler2():
-    tiler = Layout.full((12, 8)).tile((3, 2)).materialize()
+    tiler = TensorAccessPattern.full((12, 8)).tile((3, 2))
     access_order, access_count = tiler.accesses()
     reference_access = np.array(
         # fmt: off
