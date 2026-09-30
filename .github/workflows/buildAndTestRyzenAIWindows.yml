@@ -156,6 +156,35 @@ jobs:
           :openssl_ready
           echo Using existing C:\Program Files\OpenSSL-Win64
 
+      - name: Ensure Windows LLVM/clang toolchain
+        # Host-side lit tests (e.g. test/Runtime/TxnEncoding/*_host.test) compile
+        # small x86_64 host executables via %host_clang, which the lit config
+        # resolves to a real clang++ if one can be found. Persistent devlab
+        # runners get one from the "C++ Clang Compiler for Windows" Visual
+        # Studio component documented in docs/buildHostWinNative.md Section
+        # 1.1, but the devlab-dispatch pool's golden image does not include
+        # it, so the lookup falls through to a bare "clang++" that resolves
+        # at test-run time to Peano's bare-metal AIE cross-compiler instead --
+        # it is missing host headers like mm_malloc.h and fails every host
+        # test. Self-heal with the standalone LLVM package instead of
+        # modifying the existing VS install: same winget-based approach the
+        # doc already uses for other tools, independent of VS versioning.
+        shell: cmd
+        run: |
+          if exist "C:\Program Files\LLVM\bin\clang++.exe" goto :llvm_ready
+
+          echo LLVM/clang not found on this runner - installing it
+          winget install -e --id LLVM.LLVM --silent --accept-package-agreements --accept-source-agreements
+          if errorlevel 1 exit /b 1
+
+          if not exist "C:\Program Files\LLVM\bin\clang++.exe" (
+            echo ##[error]C:\Program Files\LLVM\bin\clang++.exe still missing after installing LLVM.LLVM via winget
+            exit /b 1
+          )
+
+          :llvm_ready
+          echo C:\Program Files\LLVM\bin>>"%GITHUB_PATH%"
+
       - name: Setup IRON environment
         shell: cmd
         run: |
