@@ -16,7 +16,7 @@ The op is selected at compile time via the `op` parameter (`add` or `mul`); the 
 
 1. `eltwise.py`: A Python script that defines the AIE array structural design using the IRON API. `op` is a `CompileTime[str]` parameter so the body picks `kernels.add` or `kernels.mul` accordingly; everything else (placement, fifos, runtime sequence) is shared.
 
-1. `add.cc` / `mul.cc`: Vectorized AIE kernels for vector add / multiply, pulled from the IRON kernel library. Sources live under [`aie_kernels/generic/add.cc`](../../../aie_kernels/generic/add.cc) and [`mul.cc`](../../../aie_kernels/generic/mul.cc), one file per op with the vector width selected from `__AIE_ARCH__`.
+1. `add.cc` / `mul.cc`: Vectorized AIE kernels for vector add / multiply, pulled from the IRON kernel library. Sources live under [`aie_kernels/eltwise/add.cc`](../../../aie_kernels/eltwise/add.cc) and [`mul.cc`](../../../aie_kernels/eltwise/mul.cc), one file per op with the vector width `AIE_BF16_LANES` from [`aie_arch.h`](../../../aie_kernels/aie_arch.h).
 
 1. `test.cpp`: C++ testbench that loads the compiled XCLBIN + `insts.bin`, runs the kernel, and verifies the output against a CPU reference. Pass `--op add` or `--op mul` to match the compiled design.
 
