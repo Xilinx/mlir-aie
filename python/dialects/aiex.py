@@ -24,6 +24,7 @@ from . import aie
 from .aie import (
     _outside_bd_block,
     _widen_i64,
+    _narrow_i32,
     DMAChannelDir,
     LockAction,
     Neighbors,
@@ -423,10 +424,10 @@ def shim_dma_single_bd_task(
                 repeat_count = int(s0) - 1
         else:
             # Runtime: repeat = s0 - 1 as arith, in i32 (the queue field width).
-            # sizes may be i64 (DynamicIndexList); truncate before subtracting.
-            s0_i32 = s0
-            if s0.type != T.i32():
-                s0_i32 = arith.trunci(T.i32(), s0)
+            # A wider s0 is guarded to fit i32 before it is truncated; the
+            # queue-push lowering then guards the repeat against the target's
+            # maximum before masking it to its 8-bit field.
+            s0_i32 = _narrow_i32(s0, "repeat count")
             repeat_count_val = s0_i32 - _as_i32(1)
     if sizes is not None:
         sizes = [_widen_i64(v) for v in sizes]

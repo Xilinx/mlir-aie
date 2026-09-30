@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Iterator
 
 from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
@@ -21,8 +22,21 @@ from aie.iron.runtime.dmataskhandle import Task
 from aie.iron.runtime.taskgroup import TaskGroup
 
 # Specs of the TaskGroups carried by the loops currently being emitted,
-# innermost last, so yield_ can check a yielded group against them.
-_carried_specs: list[list[tuple[bool, ...] | None] | None] = []
+# innermost last, so yield_ can check a yielded group against them. A
+# ContextVar (like the active runtime sequence) so concurrent threads or async
+# tasks generating designs each see only their own loops.
+_Specs = list[tuple[bool, ...] | None] | None
+_carried_specs: ContextVar[tuple[_Specs, ...]] = ContextVar(
+    "iron_carried_specs", default=()
+)
+
+
+def _push_specs(specs: _Specs) -> None:
+    _carried_specs.set(_carried_specs.get() + (specs,))
+
+
+def _pop_specs() -> None:
+    _carried_specs.set(_carried_specs.get()[:-1])
 
 
 def _unwrap(x):
@@ -89,16 +103,16 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs) -> Iterator[Any]:
     if not packers:
         # Shadow any enclosing loop's specs so a yield_ in this body is not
         # checked against them.
-        _carried_specs.append(None)
+        _push_specs(None)
         try:
             yield from _for(
                 *args, iter_args=iter_args, insert_yield=insert_yield, **kwargs
             )
         finally:
-            _carried_specs.pop()
+            _pop_specs()
         return
 
-    _carried_specs.append(specs)
+    _push_specs(specs)
     try:
         for vals in _for(
             *args, iter_args=iter_args, insert_yield=insert_yield, **kwargs
@@ -108,7 +122,7 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs) -> Iterator[Any]:
                 a, results = (a,), (results,)
             yield iv, rewrap(tuple(a)), rewrap(tuple(results))
     finally:
-        _carried_specs.pop()
+        _pop_specs()
 
 
 def yield_(values):
@@ -118,7 +132,8 @@ def yield_(values):
     transfers (and is spent), checked against the shape of the group the
     enclosing ``range_`` carried in. See [`Task`][iron.runtime.dmataskhandle.Task].
     """
-    specs = _carried_specs[-1] if _carried_specs else None
+    stack = _carried_specs.get()
+    specs = stack[-1] if stack else None
     if specs is not None and len(values) != len(specs):
         raise ValueError(
             f"yield_ got {len(values)} values but the loop carries {len(specs)}"

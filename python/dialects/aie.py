@@ -16,7 +16,12 @@ from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
 from ..helpers.dialects.func import call
 from ..extras.dialects.arith import ScalarValue, constant, index_cast as _index_cast
-from .arith import extsi as _arith_extsi
+from .arith import (
+    extsi as _arith_extsi,
+    trunci as _arith_trunci,
+    cmpi as _arith_cmpi,
+    CmpIPredicate as _CmpIPredicate,
+)
 from ..extras.dialects._shaped_value import ShapedValue
 from ..extras.dialects.memref import (
     MemRefValue,
@@ -157,6 +162,33 @@ def _widen_i64(v):
     return _arith_extsi(T.i64(), v) if width < 64 else v
 
 
+def _narrow_i32(v, what):
+    """Bring a runtime offset/length to the i32 the op takes; ints pass through.
+
+    An index is cast to i64 first. A narrower integer is sign-extended; a wider
+    one is guarded at dispatch (``aiex.npu.require``) to fit the 32-bit field
+    before it is truncated, so an out-of-range value refuses the dispatch
+    instead of silently wrapping.
+    """
+    if not isinstance(v, Value):
+        return v
+    if str(v.type) == "index":
+        v = _index_cast(v, to=T.i64())
+    try:
+        width = IntegerType(v.type).width
+    except ValueError:
+        return v
+    if width < 32:
+        return _arith_extsi(T.i32(), v)
+    if width == 32:
+        return v
+    from ._aiex_ops_gen import NpuRequireOp
+
+    fits = _arith_cmpi(_CmpIPredicate.ule, v, constant(0xFFFFFFFF, IntegerType(v.type)))
+    NpuRequireOp(fits, f"a runtime DMA {what} does not fit its 32-bit field")
+    return _arith_trunci(T.i32(), v)
+
+
 # Ops whose region blocks are BD blocks that the DMA-task lowering requires to
 # hold nothing but dma_bd / aie.end.
 _BD_TASK_OPS = ("aiex.dma_configure_task", "aiex.dma_configure_task_for")
@@ -205,6 +237,8 @@ def dma_bd(
     with _outside_bd_block():
         sizes = [_widen_i64(v) for v in (sizes or [])]
         strides = [_widen_i64(v) for v in (strides or [])]
+        offset = _narrow_i32(offset, "offset")
+        transfer_len = _narrow_i32(transfer_len, "transfer length")
     dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes)
     dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides)
 

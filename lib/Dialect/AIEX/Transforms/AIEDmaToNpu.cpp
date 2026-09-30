@@ -231,6 +231,22 @@ public:
     } else {
       // (bd_id & bdIdMask) | ((repeat & 0xFF) << 16) | issueBit, as arith over
       // the runtime operands (a constant field folds to its contribution).
+      // A runtime repeat_count is masked to its 8-bit field below, so an
+      // out-of-range value would silently wrap to a different number of
+      // executions. Refuse the dispatch instead (host-side guard); the
+      // unsigned compare also rejects a negative count (zero executions).
+      if (!repeat_cnt) {
+        uint32_t maxRepeat = tm.getMaxRepeatCount();
+        Value inRange = arith::CmpIOp::create(
+            rewriter, loc, arith::CmpIPredicate::ule, op.getRepeatCount(),
+            createConstantI32(rewriter, loc, maxRepeat));
+        NpuRequireOp::create(
+            rewriter, loc, inRange,
+            rewriter.getStringAttr(
+                "a runtime DMA repeat count exceeds the task queue's [0:" +
+                std::to_string(maxRepeat) + "] range (at most " +
+                std::to_string(maxRepeat + 1) + " executions)"));
+      }
       Value cmd = createConstantI32(rewriter, loc, issueBit);
       Value bdField = arith::AndIOp::create(
           rewriter, loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),

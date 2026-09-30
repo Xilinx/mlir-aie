@@ -176,3 +176,35 @@ try:
 except ValueError as e:
     print("group for index:", str(e)[:60])
 # CHECK: group for index: yielded TaskGroup({{[0-9]+}}) in slot 0, but the loop does
+
+
+@iron.jit
+def isolated_specs(a: In, b: Out, *, n_tiles: DispatchTime[np.int32] = 4):
+    import threading
+
+    from aie.iron import controlflow
+
+    def body(a, b, n, in_prod, out_cons, chunks):
+        tg = TaskGroup()
+        in_prod.fill(a, tap=chunks[0], group=tg)
+        seen = {}
+        for _iv, carried, last in range_(1, n, iter_args=[tg], insert_yield=False):
+            # Another thread generating a design must not see this loop's specs.
+            t = threading.Thread(
+                target=lambda: seen.update(other=controlflow._carried_specs.get())
+            )
+            t.start()
+            t.join()
+            seen["here"] = len(controlflow._carried_specs.get())
+            nxt = TaskGroup()
+            in_prod.fill(a, tap=chunks[1], group=nxt)
+            carried.finish()
+            yield_([nxt])
+        last.finish()
+        print("carried specs: here", seen["here"], "other thread", seen["other"])
+
+    return build(body, n_tiles)
+
+
+isolated_specs.specialize().as_mlir()
+# CHECK: carried specs: here 1 other thread ()

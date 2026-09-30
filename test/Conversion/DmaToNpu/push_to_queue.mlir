@@ -64,3 +64,24 @@ module {
     }
   }
 }
+
+// -----
+
+// A runtime repeat_count is masked to the 8-bit queue field, so it is guarded
+// first: an out-of-range (or negative) count refuses the dispatch instead of
+// wrapping to a different number of executions. A constant count carries no
+// guard (the verifier range-checks it).
+// CHECK-LABEL: @rt_repeat
+// CHECK: %[[MAX:.*]] = arith.constant 255 : i32
+// CHECK: %[[OK:.*]] = arith.cmpi ule, %arg0, %[[MAX]] : i32
+// CHECK: aiex.npu.require(%[[OK]]) {message = "a runtime DMA repeat count exceeds the task queue's [0:255] range (at most 256 executions)"} : i1
+// CHECK: arith.andi %arg0, %{{.*}} : i32
+// CHECK: aiex.npu.write32
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @rt_repeat(%arg0: i32) {
+      %bd = arith.constant 2 : i32
+      aiex.npu.push_queue (0, 0, MM2S:0) bd_id %bd repeat %arg0 {issue_token = false} : i32, i32
+    }
+  }
+}
