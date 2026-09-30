@@ -178,8 +178,15 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 else()
   set(bootgen_warning_ignores)
 endif()
-if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+if (WIN32)
+  # The flex-generated lexers (bisonflex/*.yy.cpp) guard their #include
+  # <unistd.h> on this define. unistd.h doesn't exist on Windows at all,
+  # regardless of whether the compiler driver is clang-cl or clang++ in
+  # GNU-driver mode targeting windows-msvc - so this must be platform-gated,
+  # not compiler-ID-gated.
   target_compile_definitions(bootgen-lib PRIVATE YY_NO_UNISTD_H)
+endif()
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   # Enable correct unwind semantics on MSVC
   target_compile_options(bootgen-lib PRIVATE /EHsc)
   # Suppress MSVC warning noise
