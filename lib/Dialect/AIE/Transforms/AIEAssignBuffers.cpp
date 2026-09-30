@@ -669,6 +669,9 @@ struct BankAwareContext {
   // Whether this tile has a core, and so compiled sections that need a
   // contiguous region. A memtile has none.
   bool hasCore;
+  // Bytes at the start of the tile an initialized buffer must not cover; see
+  // allocateTile. Other buffers may still use them.
+  int64_t initGuardBytes = 0;
 };
 
 // Places a buffer carrying an explicit `address`, and checks that the space is
@@ -860,9 +863,17 @@ struct Placement {
 static SmallVector<Placement>
 rankedPlacements(BufferOp buffer, const BankAwareContext &ctx,
                  int startBankIndex, const RequiredBanks &requiredBanks,
-                 const MemoryOccupancy &occupancy, int64_t contiguityCap) {
+                 const MemoryOccupancy &tileOccupancy, int64_t contiguityCap) {
   assert(startBankIndex < ctx.numBanks &&
          "Unexpected input value for startBankIndex");
+  // An initialized buffer sees the guarded bytes as taken, so none of its
+  // candidates cover them. Every other buffer may still be placed there.
+  std::optional<MemoryOccupancy> guarded;
+  if (ctx.initGuardBytes > 0 && buffer.getInitialValue().has_value()) {
+    guarded = tileOccupancy;
+    guarded->markOccupied(0, std::min(ctx.initGuardBytes, guarded->size()));
+  }
+  const MemoryOccupancy &occupancy = guarded ? *guarded : tileOccupancy;
   int64_t size = buffer.getAllocationSize();
   int64_t alignBytes =
       getBufferAlignBytes(buffer, ctx.tileAlignBitWidth, ctx.maxVecAlignBits);
@@ -1330,17 +1341,13 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
   // On npu2, the first word of the column-0 memtile reads back as 0x00CD0CD0
   // on every dispatch after the first, though nothing in the design writes it.
   // A buffer that DMA refills each dispatch is unaffected, but an initialized
-  // one is loaded only once and keeps the bad word, so leave that word free.
-  // A buffer the user pinned there keeps its address.
-  int64_t reservedUnit = tileAlignBitWidth / 8;
-  bool holdsInitialValue = llvm::any_of(buffersToAlloc, [](BufferOp buffer) {
-    return buffer.getInitialValue().has_value();
-  });
+  // one is loaded only once and keeps the bad word, so keep initialized buffers
+  // off that word. Other buffers may still take it, and a buffer the user
+  // pinned there keeps its address.
   if (tile.isMemTile() && tile.getCol() == 0 &&
       targetModel.hasProperty(AIETargetModel::IsNPU) &&
-      targetModel.getTargetArch() == AIEArch::AIE2p && holdsInitialValue &&
-      occupancy.isRangeFree(0, reservedUnit)) {
-    occupancy.markOccupied(0, reservedUnit);
+      targetModel.getTargetArch() == AIEArch::AIE2p) {
+    ctx.initGuardBytes = tileAlignBitWidth / 8;
   }
 
   // Buffers this pass placed (not the pre-allocated ones), for rollback and

@@ -1120,7 +1120,6 @@ _FUNC_DECL_RE = re.compile(
 )
 _ATTRIBUTES_RE = re.compile(r"\s*attributes\s*(?=\{)")
 _LINK_WITH_RE = re.compile(r'link_with\s*=\s*"([^"]*)"')
-_WHITESPACE_RE = re.compile(r"\s*")
 _CLOSERS = {"(": ")", "[": "]", "{": "}", "<": ">"}
 
 
@@ -1152,6 +1151,13 @@ def _skip_nested(text: str, pos: int, stop_at_space: bool = False) -> int:
     return pos
 
 
+def _skip_space(text: str, pos: int) -> int:
+    """Return the index of the first non-whitespace character at or after ``pos``."""
+    while pos < len(text) and text[pos].isspace():
+        pos += 1
+    return pos
+
+
 def _declared_link_with(text: str, pos: int):
     """Return the ``link_with`` of the declaration whose argument list is at ``pos``.
 
@@ -1159,9 +1165,9 @@ def _declared_link_with(text: str, pos: int):
     a new line, so this follows the declaration's structure rather than reading
     to the end of the line.
     """
-    pos = _WHITESPACE_RE.match(text, _skip_nested(text, pos)).end()
+    pos = _skip_space(text, _skip_nested(text, pos))
     if text.startswith("->", pos):
-        pos = _WHITESPACE_RE.match(text, pos + 2).end()
+        pos = _skip_space(text, pos + 2)
         pos = _skip_nested(text, pos, stop_at_space=True)
     attrs = _ATTRIBUTES_RE.match(text, pos)
     if not attrs:

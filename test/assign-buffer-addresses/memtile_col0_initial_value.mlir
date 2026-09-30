@@ -49,6 +49,20 @@ module @test {
     }
   }
 
+  // Only the initialized buffer avoids the first word: an uninitialized one
+  // may take it, so a layout that fills the memtile exactly still places.
+  // CHECK-LABEL: aie.device(npu2) @col0_exact_fit
+  // CHECK:       %big = aie.buffer(%{{.*}}) {address = 0 : i32, {{.*}}sym_name = "big"}
+  // CHECK:       %init = aie.buffer(%{{.*}}) {address = 524272 : i32, {{.*}}sym_name = "init"}
+  aie.device(npu2) @col0_exact_fit {
+    %m0 = aie.tile(0, 1)
+    %big = aie.buffer(%m0) {sym_name = "big"} : memref<131068xi32>
+    %init = aie.buffer(%m0) {sym_name = "init"} : memref<4xi32> = dense<[1, 2, 3, 4]>
+    aie.memtile_dma(%m0) {
+      aie.end
+    }
+  }
+
   // CHECK-LABEL: aie.device(npu1) @npu1_col0
   // CHECK:       %n = aie.buffer(%{{.*}}) {address = 0 : i32, {{.*}}sym_name = "n"}
   aie.device(npu1) @npu1_col0 {
