@@ -16,7 +16,17 @@ import pytest
 from aie.dialects import memref
 from aie.extras.dialects.arith import constant
 from aie.helpers.util import np_ndarray_type_to_memref_type
-from aie.iron import CascadeFlow, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import (
+    CascadeFlow,
+    CompileTime,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+    kernels,
+)
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 
@@ -155,14 +165,26 @@ def _cascade_program(with_skip, block_index):
 
 @iron.jit
 def _relu_design(
-    x_put: In, w_put: In, x_get: In, w_get: In, out: Out, *, block_index: int
+    x_put: In,
+    w_put: In,
+    x_get: In,
+    w_get: In,
+    out: Out,
+    *,
+    block_index: CompileTime[int]
 ):
     return _cascade_program(False, block_index)
 
 
 @iron.jit
 def _skip_design(
-    x_put: In, w_put: In, x_get_skip: In, w_get: In, out: Out, *, block_index: int
+    x_put: In,
+    w_put: In,
+    x_get_skip: In,
+    w_get: In,
+    out: Out,
+    *,
+    block_index: CompileTime[int]
 ):
     return _cascade_program(True, block_index)
 
