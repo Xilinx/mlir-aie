@@ -51,6 +51,7 @@ def make_design():
         return ("rules", (bundle, channel), entries, False)
 
     d.boxes[(0, 1)] = [
+        *[amsel(f"reserved0_{m}", 0, m) for m in range(4)],
         amsel("y", 1),
         amsel("dj", 5),
         amsel("xi", 2),
@@ -65,7 +66,6 @@ def make_design():
         rules(DMA, 2, (31, 0, "xi")),
         rules(DMA, 3, (31, 0, "z")),
         rules(DMA, 4, (0, 0, "di")),
-        connect(DMA, 5, NORTH, 5),
     ]
     d.boxes[(0, 2)] = [
         amsel("y", 1),
@@ -74,7 +74,7 @@ def make_design():
         master(DMA, 1, "dj"),
         rules(SOUTH, 0, (31, 0, "y")),
         rules(EAST, 0, (31, 1, "dj")),
-        connect(SOUTH, 1, EAST, 1),
+        connect(SOUTH, 1, NORTH, 1),
         connect(SOUTH, 2, EAST, 2),
         connect(SOUTH, 3, NORTH, 0),
         connect(SOUTH, 4, EAST, 3),
@@ -87,13 +87,14 @@ def make_design():
         master(NORTH, 1, "y"),
         master(WEST, 0, "dj"),
         rules(WEST, 0, (31, 0, "y")),
-        rules(WEST, 1, (31, 1, "dj")),
+        rules(NORTH, 1, (31, 1, "dj")),
         rules(WEST, 2, (31, 0, "xi")),
         rules(WEST, 3, (0, 0, "xi")),
     ]
     d.boxes[(1, 3)] = [
         connect(SOUTH, 0, WEST, 0),
         connect(SOUTH, 1, NORTH, 0),
+        connect(WEST, 1, SOUTH, 1),
     ]
     d.boxes[(0, 3)] = [
         amsel("xi", 0),
@@ -102,6 +103,7 @@ def make_design():
         master(DMA, 1, "z"),
         rules(EAST, 0, (0, 0, "xi")),
         rules(SOUTH, 0, (31, 0, "z")),
+        connect(SOUTH, 1, EAST, 1),
     ]
     d.boxes[(1, 4)] = [connect(SOUTH, 0, WEST, 0)]
     d.boxes[(0, 4)] = [
@@ -115,7 +117,7 @@ def make_design():
 def main():
     d = make_design()
     analysis = rp.Analysis(d)
-    direct = [((0, 1), (DMA, 0), 1), ((0, 2), (SOUTH, 0), 0)]
+    direct = [((0, 1), (DMA, 0), 1), ((0, 2), (SOUTH, 5), 0)]
     routes = [direct] + [s.hops for s in analysis.streams[1:]]
     assert analysis.hold_cycle(routes) is None
     result = rp.aie_opt(d.emit(), False)
