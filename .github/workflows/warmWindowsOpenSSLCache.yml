@@ -37,13 +37,13 @@ jobs:
       - name: Cache Windows OpenSSL
         uses: actions/cache@v4
         with:
-          path: C:\Program Files\OpenSSL-Win64
+          path: C:\OpenSSL-Win64
           key: openssl-win64-4_0_3-0f5436092d1303db9052d3c114fbc6326abe0276861619e26da5156ddf7ca087
 
       - name: Ensure Windows OpenSSL
         shell: cmd
         run: |
-          if exist "C:\Program Files\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" goto :openssl_ready
+          if exist "C:\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" goto :openssl_ready
 
           echo OpenSSL not found in cache - downloading it
           set "OPENSSL_EXE=Win64OpenSSL-4_0_3.exe"
@@ -58,15 +58,15 @@ jobs:
             exit /b 1
           )
 
-          "%OPENSSL_EXE%" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="C:\Program Files\OpenSSL-Win64"
+          "%OPENSSL_EXE%" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="C:\OpenSSL-Win64"
           if errorlevel 1 exit /b 1
           del /f /q "%OPENSSL_EXE%"
 
-          if not exist "C:\Program Files\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" (
-            echo ##[error]C:\Program Files\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib still missing after running %OPENSSL_EXE% - installer may require elevation on this runner, or may not be the full non-Light package
+          if not exist "C:\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" (
+            echo ##[error]C:\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib still missing after running %OPENSSL_EXE% - installer may require elevation on this runner, or may not be the full non-Light package
             exit /b 1
           )
           exit /b 0
 
           :openssl_ready
-          echo Using existing C:\Program Files\OpenSSL-Win64
+          echo Using existing C:\OpenSSL-Win64
