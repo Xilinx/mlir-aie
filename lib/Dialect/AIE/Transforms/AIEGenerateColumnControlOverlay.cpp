@@ -328,9 +328,8 @@ struct AIEGenerateColumnControlOverlayPass
       if (clRouteShimDmaToTileCTRL)
         tiles[{col, 0}] = shimTile;
 
-      if ((clRouteShimCTRLToTCT == "all-tiles" ||
-           clRouteShimCTRLToTCT == "shim-only") &&
-          !hasRoutedShimResponse(device, col)) {
+      if (clRouteShimCTRLToTCT == "all-tiles" ||
+          clRouteShimCTRLToTCT == "shim-only") {
         // Get all tile ops on column col
         SmallVector<AIE::TileOp> tilesOnCol;
         for (auto &[tId, tOp] : tiles) {
@@ -338,10 +337,14 @@ struct AIEGenerateColumnControlOverlayPass
             continue;
           if (clRouteShimCTRLToTCT == "shim-only" && !tOp.isShimNOCorPLTile())
             continue;
+          // A routed response only covers the tile it comes from.
+          if (hasRoutedResponse(device, tOp, tileIDMap))
+            continue;
           tilesOnCol.push_back(tOp);
         }
 
-        if (failed(generatePacketFlowsForControl(
+        if (!tilesOnCol.empty() &&
+            failed(generatePacketFlowsForControl(
                 builder, device, shimTile, AIE::WireBundle::South, tilesOnCol,
                 AIE::WireBundle::TileControl, 0, tileIDMap, false)))
           return failure();
@@ -443,31 +446,34 @@ struct AIEGenerateColumnControlOverlayPass
     return flows;
   }
 
-  // A routed response must actually connect TileControl:0 to South:0 on
-  // this column's shim. A priority request ending at TileControl is not a
+  // A routed response must actually connect TileControl:0 of `src` to South:0
+  // on its column's shim. A priority request ending at TileControl is not a
   // response, even though pathfinder marks it is_ctrl_pkt_overlay.
-  static bool hasRoutedShimResponse(DeviceOp device, int col) {
-    auto tileIDMap = getTileToControllerIdMap(true, device.getTargetModel());
+  static bool hasRoutedResponse(DeviceOp device, TileOp src,
+                                DenseMap<TileID, int> &tileIDMap) {
+    int col = src.colIndex();
+    bool fromShim = src.rowIndex() == 0;
+    int responseID = tileIDMap[{col, src.rowIndex()}];
+    if (auto id = src->getAttrOfType<AIE::PacketInfoAttr>("controller_id"))
+      responseID = id.getPktId();
     for (auto switchbox : device.getOps<AIE::SwitchboxOp>()) {
       auto tile = dyn_cast<TileLike>(switchbox.getTile().getDefiningOp());
       if (!tile || tile.tryGetCol() != col || tile.tryGetRow() != 0)
         continue;
-      int responseID = tileIDMap[{col, 0}];
-      if (auto id = switchbox.getTile()
-                        .getDefiningOp()
-                        ->getAttrOfType<AIE::PacketInfoAttr>("controller_id"))
-        responseID = id.getPktId();
       Block &connections = switchbox.getConnections().front();
-      for (auto connect : connections.getOps<AIE::ConnectOp>())
-        if (connect->hasAttr("is_ctrl_pkt_overlay") &&
-            connect.sourcePort() == Port{WireBundle::TileControl, 0} &&
-            connect.destPort() == Port{WireBundle::South, 0})
-          return true;
+      if (fromShim)
+        for (auto connect : connections.getOps<AIE::ConnectOp>())
+          if (connect->hasAttr("is_ctrl_pkt_overlay") &&
+              connect.sourcePort() == Port{WireBundle::TileControl, 0} &&
+              connect.destPort() == Port{WireBundle::South, 0})
+            return true;
       // Pathfinder marks a slave's packet_rules only from the first group it
       // routes, so the marker on the rules is not reliable; the marked master
-      // and a rule matching the response ID are.
+      // and a rule matching the response ID are. A response from a tile above
+      // the shim enters the shim switchbox from North.
       for (auto rules : connections.getOps<AIE::PacketRulesOp>()) {
-        if (rules.sourcePort() != Port{WireBundle::TileControl, 0})
+        if (fromShim ? rules.sourcePort() != Port{WireBundle::TileControl, 0}
+                     : rules.sourcePort().bundle != WireBundle::North)
           continue;
         for (auto master : connections.getOps<AIE::MasterSetOp>()) {
           if (!master->hasAttr("is_ctrl_pkt_overlay") ||
@@ -486,13 +492,21 @@ struct AIEGenerateColumnControlOverlayPass
   // Every occupied column needs its own shim response route. An overlay
   // routed on only one column must not suppress the remaining columns.
   static bool deviceHasControlOverlay(DeviceOp device) {
+    auto tileIDMap = getTileToControllerIdMap(true, device.getTargetModel());
     llvm::SmallSet<int, 4> cols;
-    for (auto tile : device.getOps<AIE::TileOp>())
+    llvm::DenseMap<int, TileOp> shims;
+    for (auto tile : device.getOps<AIE::TileOp>()) {
       cols.insert(tile.colIndex());
+      if (tile.rowIndex() == 0)
+        shims[tile.colIndex()] = tile;
+    }
     if (cols.empty())
       return false;
-    return llvm::all_of(
-        cols, [&](int col) { return hasRoutedShimResponse(device, col); });
+    return llvm::all_of(cols, [&](int col) {
+      auto it = shims.find(col);
+      return it != shims.end() &&
+             hasRoutedResponse(device, it->second, tileIDMap);
+    });
   }
 
   AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, Location loc,
