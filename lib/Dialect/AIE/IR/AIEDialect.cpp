@@ -4493,6 +4493,10 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
   if (patternIt == reachable.end())
     return failure();
 
+  // No block repeats, so there is no sub-chain to collapse.
+  if (patternIt == reachable.end())
+    return failure();
+
   unsigned idx = 0;
   while (patternIt != reachable.end()) {
     // BD repetition found. Check if repeating pattern.
