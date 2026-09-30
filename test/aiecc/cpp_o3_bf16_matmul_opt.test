@@ -1,0 +1,22 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// REQUIRES: peano
+
+// After Peano's opt, the -O3 LHS widenings of cpp_o3_bf16_matmul.mlir read the
+// two 512-bit half loads directly, the form the backend selects as
+// load-and-convert. At -O2 they read shuffles of a 1024-bit load.
+
+// RUN: %aiecc -O2 --get='opted_{0}.ll' --tmpdir=%t.o2 --output-dir=%t.o2 %S/cpp_o3_bf16_matmul.mlir
+// RUN: FileCheck %s --check-prefix=O2 --input-file=%t.o2/opted_main_core_0_2.ll
+// RUN: %aiecc -O3 --get='opted_{0}.ll' --tmpdir=%t.o3 --output-dir=%t.o3 %S/cpp_o3_bf16_matmul.mlir
+// RUN: FileCheck %s --check-prefix=O3 --input-file=%t.o3/opted_main_core_0_2.ll
+
+// O2: %[[A:.*]] = load <64 x bfloat>, ptr
+// O2: %[[HALF:.*]] = shufflevector <64 x bfloat> %[[A]],
+// O2: @llvm.aie2p.v32bf16.to.v32accfloat(<32 x bfloat> %[[HALF]])
+
+// O3-DAG: %[[LO:.*]] = load <32 x bfloat>, ptr
+// O3-DAG: %[[HI:.*]] = load <32 x bfloat>, ptr
+// O3-DAG: @llvm.aie2p.v32bf16.to.v32accfloat(<32 x bfloat> %[[LO]])
+// O3-DAG: @llvm.aie2p.v32bf16.to.v32accfloat(<32 x bfloat> %[[HI]])
