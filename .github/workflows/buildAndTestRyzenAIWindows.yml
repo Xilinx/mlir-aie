@@ -51,7 +51,12 @@ jobs:
     # examples (@iron.jit) still run and cover the NPU end to end.
     runs-on: [self-hosted, windows, devlab-dispatch, strix-halo]
     # Normal exec is 19-21 min; observed hang on this job 71.4 min (2026-08-04).
-    timeout-minutes: 90
+    # Bumped from 90: slproweb.com was observed serving the OpenSSL installer
+    # at a throttled ~50KB/s, so the one-time cache-seeding download (see the
+    # "Cache Windows OpenSSL" step) can take ~85min on its own; every run
+    # after that seeds from the GH Actions cache in seconds and finishes in
+    # the normal 19-21min.
+    timeout-minutes: 180
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
@@ -146,7 +151,10 @@ jobs:
         # ~3min duration on two separate ephemeral runners; curl bounds each
         # attempt and retries instead of stalling for the whole job. Cache
         # restores (see the "Cache Windows OpenSSL" step above) avoid this
-        # download most of the time.
+        # download most of the time; on a cache miss, -C - resumes across
+        # curl's own retries instead of restarting from byte 0, since at the
+        # observed ~50KB/s the 251MB file takes ~85min and no single
+        # --max-time window can hope to complete it in one pass.
         # Check for the static libcrypto lib CMake's FindOpenSSL actually
         # needs (via OPENSSL_USE_STATIC_LIBS in the build step below), not
         # just the top-level directory: a devlab-dispatch runner was seen
@@ -161,7 +169,7 @@ jobs:
           set "OPENSSL_EXE=Win64OpenSSL-4_0_3.exe"
           set "OPENSSL_SHA256=0f5436092d1303db9052d3c114fbc6326abe0276861619e26da5156ddf7ca087"
           if exist "%OPENSSL_EXE%" del /f /q "%OPENSSL_EXE%"
-          curl.exe --fail --location --connect-timeout 15 --max-time 450 --retry 2 --retry-all-errors --retry-delay 10 -o "%OPENSSL_EXE%" "https://slproweb.com/download/%OPENSSL_EXE%"
+          curl.exe --fail --location --connect-timeout 15 --max-time 1500 --retry 8 --retry-all-errors --retry-delay 10 -C - -o "%OPENSSL_EXE%" "https://slproweb.com/download/%OPENSSL_EXE%"
           if errorlevel 1 exit /b 1
 
           python -c "import hashlib,sys; h = hashlib.sha256(open(r'%OPENSSL_EXE%', 'rb').read()).hexdigest(); sys.exit(0 if h == '%OPENSSL_SHA256%' else 1)"
