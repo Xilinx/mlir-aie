@@ -48,6 +48,8 @@ struct DmaChannelProgram {
   SmallVector<Region *> regions{};
   // Whether the BD chain runs forever.
   bool loops = false;
+  // The first of `bds` a looping chain returns to once it has run them all.
+  size_t loopStart = 0;
 };
 
 std::optional<DmaChannelProgram> makeProgram(Operation *op, DeviceOp device) {
@@ -66,6 +68,7 @@ std::optional<DmaChannelProgram> makeProgram(Operation *op, DeviceOp device) {
     for (Block *b = start.getDest(); b;) {
       if (!seen.insert(b).second) {
         p.loops = true;
+        p.loopStart = llvm::find(p.bds, b) - p.bds.begin();
         break;
       }
       p.bds.push_back(b);
@@ -391,7 +394,9 @@ std::vector<RoutedStream> AIE::requestedStreams(DeviceOp device) {
           streams.push_back({{*srcTile, src.port()},
                              {*dstTile, dst.port()},
                              static_cast<int>(flow.IDInt()),
-                             flow.getKeepPktHeader().value_or(false)});
+                             flow.getKeepPktHeader().value_or(false),
+                             {},
+                             flow.getMask() ? *flow.getMask() : ~0});
     }
   }
   return streams;
@@ -415,6 +420,26 @@ static SmallVector<Block *> chainBlocks(const DmaChannelProgram &p) {
   return sequence;
 }
 
+// The first block of the part of `sequence` a program runs over and over:
+// where a looping chain returns to, or the whole chain for a repeated one.
+static size_t cycleStart(const DmaChannelProgram &p) {
+  return p.loops ? p.loopStart : 0;
+}
+
+// Index into `sequence` of the block a program runs at `step`: the blocks
+// before the cycle once, then the cycle over and over.
+static size_t blockAt(const DmaChannelProgram &p, size_t size, uint64_t step) {
+  size_t start = cycleStart(p);
+  if (step < start)
+    return step;
+  return start + (step - start) % (size - start);
+}
+
+// Whether the stream carries packets with id `id`.
+static bool carriesID(const RoutedStream &s, int id) {
+  return !s.packetID || ((id ^ *s.packetID) & s.packetMask) == 0;
+}
+
 static std::optional<int64_t> lockAmount(UseLockOp use) {
   APInt amount;
   if (!use.getLock().getDefiningOp<LockOp>() ||
@@ -436,8 +461,7 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
   ChannelKey key =
       channelKey(stream.src.tile, DMAChannelDir::MM2S, stream.src.port.channel);
   auto carries = [&](std::optional<PacketInfoAttr> packet) {
-    return !packet || !stream.packetID ||
-           static_cast<int>(packet->getPktId()) == *stream.packetID;
+    return !packet || carriesID(stream, packet->getPktId());
   };
   constexpr uint64_t pktHeaderBytes = 4;
   auto headerBytes = [&](std::optional<PacketInfoAttr> packet) -> uint64_t {
@@ -554,7 +578,7 @@ bool StreamVolumeAnalysis::walkLoop(Operation *program,
     return false;
   std::map<Operation *, uint64_t> tokens;
   for (int step = 0; step < maxBDSteps; step++) {
-    for (Operation &bdOp : *sequence[step % sequence.size()]) {
+    for (Operation &bdOp : *sequence[blockAt(*p, sequence.size(), step)]) {
       if (auto use = dyn_cast<UseLockOp>(bdOp)) {
         auto lock = use.getLock().getDefiningOp<LockOp>();
         std::optional<int64_t> n = lockAmount(use);
@@ -629,7 +653,9 @@ StreamVolumeAnalysis::maySendAfter(const RoutedStream &first,
                                    const RoutedStream &then) const {
   if (first.src.tile != then.src.tile || first.src.port != then.src.port)
     return std::nullopt;
-  if (!first.packetID || !then.packetID || *first.packetID == *then.packetID)
+  if (!first.packetID || !then.packetID ||
+      ((*first.packetID ^ *then.packetID) & first.packetMask &
+       then.packetMask) == 0)
     return true;
   if (first.src.port.bundle != WireBundle::DMA)
     return std::nullopt;
@@ -648,14 +674,14 @@ StreamVolumeAnalysis::maySendAfter(const RoutedStream &first,
   std::optional<DmaChannelProgram> p = makeProgram(program, device);
   if (memcpy || !p)
     return std::nullopt;
-  auto carries = [](DMABDOp bd, int id) {
+  auto carries = [](DMABDOp bd, const RoutedStream &s) {
     std::optional<PacketInfoAttr> packet = bd.getPacket();
-    return !packet || static_cast<int>(packet->getPktId()) == id;
+    return !packet || carriesID(s, packet->getPktId());
   };
   bool sent = false, after = false;
   auto visit = [&](DMABDOp bd) {
-    after |= sent && carries(bd, *then.packetID);
-    sent |= carries(bd, *first.packetID);
+    after |= sent && carries(bd, then);
+    sent |= carries(bd, first);
   };
   if (p->loops) {
     if (!walkLoop(program, visit))
@@ -713,7 +739,7 @@ std::optional<uint64_t> StreamVolumeAnalysis::releasesOver(Operation *program,
   }
   uint64_t filled = 0, tokens = 0;
   for (int step = 0; step < maxBDSteps; step++) {
-    for (Operation &bdOp : *sequence[step % sequence.size()]) {
+    for (Operation &bdOp : *sequence[blockAt(*p, sequence.size(), step)]) {
       if (auto bd = dyn_cast<DMABDOp>(bdOp)) {
         if (filled + bd.getLenInBytes() > received)
           return tokens;
@@ -750,9 +776,30 @@ static std::optional<uint64_t> programCapacity(Operation *op, DeviceOp device) {
   bool stateLocks = getTargetModel(device).getTargetArch() == AIEArch::AIE1;
   std::map<Operation *, int64_t> lockValues;
   uint64_t bytes = 0;
-  for (int step = 0; step < maxBDSteps; step++) {
-    size_t i = step % sequence.size();
-    if (!p->loops && static_cast<uint64_t>(step) >= passes * sequence.size())
+  // Lock values and bytes when the cycle last began. A cycle that leaves every
+  // lock where it found it, or with more tokens, runs again the same way.
+  std::optional<std::map<Operation *, int64_t>> cycleLocks;
+  uint64_t cycleBytes = 0;
+  size_t start = cycleStart(*p);
+  for (uint64_t step = 0;; step++) {
+    if (!p->loops && step >= passes * sequence.size())
+      return bytes;
+    size_t i = blockAt(*p, sequence.size(), step);
+    if (i == start) {
+      if (cycleLocks && cycleLocks->size() == lockValues.size() &&
+          llvm::all_of(lockValues, [&](const auto &lv) {
+            int64_t before = cycleLocks->at(lv.first);
+            return stateLocks ? lv.second == before : lv.second >= before;
+          })) {
+        if (p->loops)
+          return std::nullopt;
+        return bytes + (passes - step / sequence.size()) * (bytes - cycleBytes);
+      }
+      cycleLocks = lockValues;
+      cycleBytes = bytes;
+    }
+    // Past the analysis limit, what it took in so far is a safe capacity.
+    if (step >= static_cast<uint64_t>(maxBDSteps))
       return bytes;
     for (Operation &bdOp : *sequence[i]) {
       if (auto use = dyn_cast<UseLockOp>(bdOp)) {
@@ -780,7 +827,6 @@ static std::optional<uint64_t> programCapacity(Operation *op, DeviceOp device) {
       }
     }
   }
-  return std::nullopt;
 }
 
 std::optional<uint64_t>

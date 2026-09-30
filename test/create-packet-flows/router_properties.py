@@ -1148,11 +1148,16 @@ def design_signature(d):
 
 
 class Stream:
-    __slots__ = ("src", "dst", "pid", "keep", "hops")
+    __slots__ = ("src", "dst", "pid", "keep", "hops", "mask")
 
-    def __init__(self, src, dst, pid=None, keep=False, hops=()):
+    def __init__(self, src, dst, pid=None, keep=False, hops=(), mask=None):
         self.src, self.dst, self.pid, self.keep = src, dst, pid, keep
         self.hops = list(hops)  # [(tile, input port, arbiter or None)]
+        self.mask = -1 if mask is None else mask
+
+    def carries(self, pid):
+        """carriesID: whether the stream carries packets with id `pid`."""
+        return self.pid is None or (pid ^ self.pid) & self.mask == 0
 
     def key(self):
         return (self.src, self.dst, self.pid)
@@ -1172,12 +1177,24 @@ def program_ops(p):
     return [op for block in p["seq"] for op in block]
 
 
+def cycle_start(p):
+    return p.get("loop_to", 0) if p["loops"] else 0
+
+
+def block_at(p, step):
+    """blockAt: the blocks before the cycle once, then the cycle over and over."""
+    start = cycle_start(p)
+    if step < start:
+        return step
+    return start + (step - start) % (len(p["seq"]) - start)
+
+
 def requested_streams(d):
     streams = [Stream(s, t) for s, t in d.flows]
     for f in d.packet_flows:
         for s in f["srcs"]:
             for t in f["dsts"]:
-                streams.append(Stream(s, t, f["id"], bool(f["keep"])))
+                streams.append(Stream(s, t, f["id"], bool(f["keep"]), mask=f["mask"]))
     return streams
 
 
@@ -1310,7 +1327,7 @@ class Volumes:
         key = (s.src[0], s.src[1], MM2S, s.src[3])
 
         def carries(pkt):
-            return pkt is None or s.pid is None or pkt == s.pid
+            return pkt is None or s.carries(pkt)
 
         def header(pkt):
             return PARAMS["header_bytes"] if pkt is not None and s.keep else 0
@@ -1373,7 +1390,7 @@ class Volumes:
         try:
             tokens, seq = {}, p["seq"]
             for step in range(PARAMS["max_bd_steps"]):
-                for op in seq[step % len(seq)]:
+                for op in seq[block_at(p, step)]:
                     if op[0] != "lock":
                         visit(op)
                         continue
@@ -1399,7 +1416,11 @@ class Volumes:
         """StreamVolumeAnalysis::maySendAfter."""
         if first.src != then.src:
             return None
-        if first.pid is None or then.pid is None or first.pid == then.pid:
+        if (
+            first.pid is None
+            or then.pid is None
+            or (first.pid ^ then.pid) & first.mask & then.mask == 0
+        ):
             return True
         if first.src[2] != DMA:
             return None
@@ -1416,8 +1437,8 @@ class Volumes:
 
         def visit(op):
             nonlocal sent, after
-            after |= sent and op[2] in (None, then.pid)
-            sent |= op[2] in (None, first.pid)
+            after |= sent and (op[2] is None or then.carries(op[2]))
+            sent |= op[2] is None or first.carries(op[2])
 
         if p["loops"]:
             return after if self.walk_loop(p, visit) else None
@@ -1480,7 +1501,7 @@ class Volumes:
             received += v
         filled = tokens = 0
         for step in range(PARAMS["max_bd_steps"]):
-            for op in seq[step % len(seq)]:
+            for op in seq[block_at(p, step)]:
                 if op[0] == "bd":
                     if filled + op[1] > received:
                         return tokens
@@ -1510,10 +1531,35 @@ class Volumes:
             return 0
         values = {}
         nbytes = 0
-        for step in range(PARAMS["max_bd_steps"]):
-            i = step % len(seq)
+        # A cycle that leaves every lock where it found it, or with more
+        # tokens, runs again the same way.
+        cycle_values, cycle_bytes, start = None, 0, cycle_start(p)
+        step = 0
+        while True:
             if not p["loops"] and step >= passes * len(seq):
                 return nbytes
+            i = block_at(p, step)
+            if i == start:
+                if (
+                    cycle_values is not None
+                    and cycle_values.keys() == values.keys()
+                    and all(
+                        (
+                            v == cycle_values[k]
+                            if self.d.target.aie1
+                            else v >= cycle_values[k]
+                        )
+                        for k, v in values.items()
+                    )
+                ):
+                    if p["loops"]:
+                        return None
+                    return nbytes + (passes - step // len(seq)) * (nbytes - cycle_bytes)
+                cycle_values, cycle_bytes = dict(values), nbytes
+            # Past the analysis limit, what it took in so far.
+            if step >= PARAMS["max_bd_steps"]:
+                return nbytes
+            step += 1
             for op in seq[i]:
                 if op[0] == "lock":
                     _, action, lock, n = op
@@ -1533,7 +1579,6 @@ class Volumes:
                         values[lock] = v - n
                 else:
                     nbytes += op[1]
-        return None
 
     def can_fill(self, ep, streams):
         cap = self.receive_capacity(ep)
@@ -3703,7 +3748,10 @@ def size_receivers(rng, d, bounded):
         v = [an.volumes.send_volume(s) for s in streams]
         if not streams or None in v:
             continue
-        v0 = sum(an.volumes.send_volume(Stream(s.src, s.dst, s.pid)) for s in streams)
+        v0 = sum(
+            an.volumes.send_volume(Stream(s.src, s.dst, s.pid, mask=s.mask))
+            for s in streams
+        )
         if v0 < 8:
             continue
         mode = rng.choice(["exact", "header", "overrun"])

@@ -47,6 +47,8 @@ struct RoutedStream {
   bool keepsPktHeader = false;
   /// The switchboxes the stream passes, source first, where it is routed.
   llvm::SmallVector<StreamHop, 8> hops{};
+  /// The stream carries every id that agrees with `packetID` on these bits.
+  int packetMask = ~0;
 };
 
 /// A cycle of waits packet streams can deadlock in, given their routes. A
@@ -106,7 +108,8 @@ public:
   std::optional<uint64_t> sendVolume(const RoutedStream &stream) const;
 
   /// Bytes the receiver at `endpoint` accepts before it waits on another
-  /// agent, or nullopt when it never does.
+  /// agent, or nullopt when it never does. Where the analysis gives up before
+  /// the receiver waits, the bytes it took in so far.
   std::optional<uint64_t> receiveCapacity(const StreamEndpoint &endpoint) const;
 
   /// Whether `streams` can send the receiver at `endpoint` more than it takes
