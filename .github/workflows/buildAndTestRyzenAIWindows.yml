@@ -130,9 +130,15 @@ jobs:
         # has no timeout and was observed hanging far past its historical
         # ~3min duration on two separate ephemeral runners; curl bounds each
         # attempt and retries instead of stalling for the whole job.
+        # Check for the static libcrypto lib CMake's FindOpenSSL actually
+        # needs (via OPENSSL_USE_STATIC_LIBS in the build step below), not
+        # just the top-level directory: a devlab-dispatch runner was seen
+        # with a pre-existing C:\Program Files\OpenSSL-Win64 that had headers
+        # but no static libs, which satisfied the old directory check yet
+        # broke the cmake configure two steps later.
         shell: cmd
         run: |
-          if exist "C:\Program Files\OpenSSL-Win64" goto :openssl_ready
+          if exist "C:\Program Files\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" goto :openssl_ready
 
           echo OpenSSL not found on this runner - downloading it
           set "OPENSSL_EXE=Win64OpenSSL-4_0_3.exe"
@@ -151,8 +157,8 @@ jobs:
           if errorlevel 1 exit /b 1
           del /f /q "%OPENSSL_EXE%"
 
-          if not exist "C:\Program Files\OpenSSL-Win64" (
-            echo ##[error]C:\Program Files\OpenSSL-Win64 still missing after running %OPENSSL_EXE% - installer may require elevation on this runner
+          if not exist "C:\Program Files\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" (
+            echo ##[error]C:\Program Files\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib still missing after running %OPENSSL_EXE% - installer may require elevation on this runner, or may not be the full (non-Light) package
             exit /b 1
           )
           exit /b 0
