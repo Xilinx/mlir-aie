@@ -66,7 +66,28 @@ jobs:
             echo ##[error]C:\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib still missing after running %OPENSSL_EXE% - installer may require elevation on this runner, or may not be the full non-Light package
             exit /b 1
           )
-          exit /b 0
 
           :openssl_ready
-          echo Using existing C:\OpenSSL-Win64
+          echo OpenSSL static libs ready at C:\OpenSSL-Win64
+
+          REM Kept in sync with buildAndTestRyzenAIWindows.yml's "Ensure
+          REM Windows OpenSSL" step: the build there compiles with clang++ in
+          REM its GNU-driver mode (not clang-cl), so CMake's FindOpenSSL.cmake
+          REM sees MSVC=FALSE and never takes the lib/VC/x64/MT search branch
+          REM that OPENSSL_MSVC_STATIC_RT was meant to enable - it falls
+          REM through to a generic Windows branch instead. That branch also
+          REM forces CMAKE_FIND_LIBRARY_SUFFIXES to plain ".a" whenever
+          REM OPENSSL_USE_STATIC_LIBS is set and MSVC is false, so it will
+          REM never match a ".lib" file no matter which directory or NAMES
+          REM list is searched. The installer only ships the static libs as
+          REM lib/VC/x64/MT/*_static.lib, so give find_library an ".a"-named
+          REM copy to match against; the COFF archive contents are identical
+          REM either way; only the extension find_library keys on changes; the
+          REM windows-msvc target Clang builds for here links COFF archives by
+          REM full path regardless of their extension, so lld-link accepts the
+          REM copy exactly like the original. Cached here too, so a cache hit
+          REM downstream already has both names present.
+          if not exist "C:\OpenSSL-Win64\lib\libcrypto.a" copy /y "C:\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" "C:\OpenSSL-Win64\lib\libcrypto.a"
+          if errorlevel 1 exit /b 1
+          if not exist "C:\OpenSSL-Win64\lib\libssl.a" copy /y "C:\OpenSSL-Win64\lib\VC\x64\MT\libssl_static.lib" "C:\OpenSSL-Win64\lib\libssl.a"
+          if errorlevel 1 exit /b 1
