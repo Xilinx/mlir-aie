@@ -527,13 +527,13 @@ class _MhaFactory:
         or (8, 8, 8) with BFP16 emulation on AIE2P. ``P*V``
         (``matmul_bf16_bf16_rowmaj``) expands ``aie::mmul<8, 8, 8>`` itself.
         """
-        if pv:
-            return (8, 8, 8)
         arch = arch or (
             resolve_target_arch(device) if device is not None else _detect_arch()
         )
         if arch not in _MM_MAC_DIMS:
             raise ValueError(f"mha.mac_dims(): unsupported arch {arch}.")
+        if pv:
+            return (8, 8, 8)
         key = (bfloat16, bfloat16)
         if emulate_bf16_mmul_with_bfp16 and arch == "aie2p":
             return _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]

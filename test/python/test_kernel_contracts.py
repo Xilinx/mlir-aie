@@ -1209,6 +1209,8 @@ def test_mha_answers_its_micro_tile_without_building_a_kernel(
         assert kernels.mha.mac_dims(device=target, **kw) == expected
         assert kernels.mha.mac_dims(arch=arch, **kw) == expected
         assert ExternalFunction._instances == instances
+        with pytest.raises(ValueError, match="unsupported arch"):
+            kernels.mha.mac_dims(arch="unsupported", **kw)
         fn = kernels.mha(dim_m=64, dim_k=64, dim_n=64, b_col_maj=b_col_maj, **kw)
         assert fn.mac_dims == expected
         assert fn.stream_dims == kernels.mm_stream_dims(
