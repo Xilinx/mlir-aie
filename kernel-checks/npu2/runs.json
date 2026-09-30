@@ -193,6 +193,50 @@
     "offered": 77,
     "checked": 70
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "36734464439",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36734464439",
+   "date": "2026-09-30T16:23:09+00:00",
+   "commit": {
+    "id": "91ee8c89c8b841f2f6f9364b642a69526d595197",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/91ee8c89c8b841f2f6f9364b642a69526d595197",
+    "message": "[AIEVec] Lower arith.negf at 32 lanes on AIE2P (#3813)",
+    "timestamp": "2026-09-30T05:43:03Z"
+   },
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "91ee8c89c8",
+    "peano": "22.0.0+b0d37423",
+    "kernels": "21d397f78f53",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 583,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 295,
+    "failed": 0,
+    "timed": 148,
+    "timing_failed": 0,
+    "untimed": 147
+   },
+   "kernels": {
+    "offered": 77,
+    "checked": 70
+   }
   }
  ]
 }
