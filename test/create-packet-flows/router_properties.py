@@ -897,8 +897,36 @@ def load_design(text):
             events = []
             k = len(d.sequences)
 
+            def forward(src, dst):
+                p = results.get(value_key(src))
+                if p is not None:
+                    results.setdefault(value_key(dst), p)
+
+            def forward_yields(x):
+                for region in x.regions:
+                    for b in region.blocks:
+                        ops = _ops(b)
+                        if ops and ops[-1].name == "scf.yield":
+                            for v, r in zip(ops[-1].operands, x.results):
+                                forward(v, r)
+
             def walk(x, in_loop):
                 a = _attrs(x)
+                if x.name not in (
+                    "aiex.dma_start_task",
+                    "aiex.dma_await_task",
+                    "aiex.dma_free_task",
+                ):
+                    for v in x.operands:
+                        p = results.get(value_key(v))
+                        if isinstance(p, int):
+                            # It may reach starts that are not counted.
+                            d.programs[p]["users"].append(True)
+                if x.name == "scf.for":
+                    body = x.regions[0].blocks[0]
+                    for i, init in enumerate(list(x.operands)[3:]):
+                        forward(init, body.arguments[i + 1])
+                        forward(init, x.results[i])
                 if x.name == "aiex.npu.dma_memcpy_nd":
                     sym = str(a["metadata"]).lstrip("@")
                     ty = str(x.operands[0].type)
@@ -995,12 +1023,14 @@ def load_design(text):
                         for b in region.blocks:
                             for y in _ops(b):
                                 walk(y, True)
+                    forward_yields(x)
                 elif x.name not in ("aie.end", "scf.yield", "aie.next_bd"):
                     if x.regions:
                         for region in x.regions:
                             for b in region.blocks:
                                 for y in _ops(b):
                                     walk(y, in_loop)
+                        forward_yields(x)
 
             for b in op.regions[0].blocks:
                 for x in _ops(b):

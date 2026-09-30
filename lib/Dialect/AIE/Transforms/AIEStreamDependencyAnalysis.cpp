@@ -10,6 +10,7 @@
 
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Matchers.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 
 #include "llvm/ADT/DenseSet.h"
@@ -147,8 +148,37 @@ std::optional<ChannelKey> channelOfSymbol(DeviceOp device, StringRef symbol) {
                     static_cast<int>(alloc.getChannelIndex()));
 }
 
+// The op that creates `task`, following it back through the results and
+// block arguments of runtime control flow (scf.for iter_args, scf.if results).
+// Every creator that can reach one value targets the same channel, so the
+// first one found gives it.
+Operation *taskCreator(Value task) {
+  llvm::SmallPtrSet<Value, 8> seen;
+  SmallVector<Value> worklist{task};
+  while (!worklist.empty()) {
+    Value v = worklist.pop_back_val();
+    if (!v || !seen.insert(v).second)
+      continue;
+    Operation *op = v.getDefiningOp();
+    if (isa_and_nonnull<AIEX::DMAConfigureTaskOp, AIEX::DMAConfigureTaskForOp,
+                        AIEX::DMAStartBdChainOp, AIEX::DMAStartBdChainForOp>(
+            op))
+      return op;
+    Operation *owner =
+        op ? op : cast<BlockArgument>(v).getOwner()->getParentOp();
+    auto branch = dyn_cast_or_null<RegionBranchOpInterface>(owner);
+    if (!branch)
+      continue;
+    RegionBranchInverseSuccessorMapping mapping;
+    branch.getSuccessorInputOperandMapping(mapping);
+    for (OpOperand *operand : mapping.lookup(v))
+      worklist.push_back(operand->get());
+  }
+  return nullptr;
+}
+
 std::optional<ChannelKey> channelOfTask(DeviceOp device, Value task) {
-  Operation *op = task.getDefiningOp();
+  Operation *op = taskCreator(task);
   auto onTile = [](Value tileValue, DMAChannelDir dir,
                    int channel) -> std::optional<ChannelKey> {
     std::optional<TileID> tile = tileOf(tileValue);
@@ -396,7 +426,7 @@ std::vector<RoutedStream> AIE::requestedStreams(DeviceOp device) {
                              static_cast<int>(flow.IDInt()),
                              flow.getKeepPktHeader().value_or(false),
                              {},
-                             flow.getMask() ? *flow.getMask() : ~0});
+                             static_cast<int>(flow.getMask().value_or(~0))});
     }
   }
   return streams;
@@ -512,8 +542,12 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
             (task ? task.getRepeatCount() : taskFor.getRepeatCount()) + 1;
         runs = 0;
         for (Operation *user : op->getUsers()) {
-          if (!isa<AIEX::DMAStartTaskOp>(user))
+          if (isa<AIEX::DMAAwaitTaskOp, AIEX::DMAFreeTaskOp>(user))
             continue;
+          // Any other user, such as an scf.yield or an scf.for init, can
+          // forward the task to starts this does not count.
+          if (!isa<AIEX::DMAStartTaskOp>(user))
+            return std::nullopt;
           if (inLoop(user))
             return std::nullopt;
           runs += repeat;
