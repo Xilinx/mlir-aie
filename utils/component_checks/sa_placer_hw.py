@@ -81,8 +81,11 @@ def run_seed(seed: int, warmup: int, iters: int) -> dict:
 def aggregate(rows: list[dict]) -> list[dict]:
     failed = [r for r in rows if not r["passed"]]
     out = [{"name": "sa_placer/hw_fail_count", "unit": "seeds", "value": len(failed)}]
+    # A failed seed's latency (say, a run that printed timing but produced the
+    # wrong answer) is not a measurement of the design, so only passing seeds
+    # contribute a latency point; the failure shows up in the count.
     for r in rows:
-        if r["min_latency_us"] is not None:
+        if r["passed"] and r["min_latency_us"] is not None:
             out.append(
                 {
                     "name": f"sa_placer/hw_seed{r['seed']}_latency_us",

@@ -614,13 +614,14 @@ void AIEObjectFifoSplitPass::runOnOperation() {
           }
           tile = alloc->getDelegateTile();
         }
-        int depth =
-            fifo.getInitValues() ? fifo.size() : sharedObjectCount(fifo);
-        ref = PoolRef{
-            createPool(loc, (fifoName + "_pool").str(), tile, depth, elemType,
-                       fifo, {{0, elemType.getNumElements()}},
-                       /*holdsInitialContents=*/true, fifo.getRepeatCount()),
-            {0}};
+        // Both ends address the one pool, so it needs the deeper end's depth
+        // even when init_values fill only the producer's share of it.
+        ref = PoolRef{createPool(loc, (fifoName + "_pool").str(), tile,
+                                 sharedObjectCount(fifo), elemType, fifo,
+                                 {{0, elemType.getNumElements()}},
+                                 /*holdsInitialContents=*/true,
+                                 fifo.getRepeatCount()),
+                      {0}};
       }
 
       if (hasCoreAccess(device, fifo.getProducerTile(), fifo,

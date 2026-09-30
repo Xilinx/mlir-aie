@@ -698,6 +698,12 @@ LogicalResult ObjectFifoPoolOp::verify() {
     }
   }
 
+  if (auto initValues = getInitValues()) {
+    if (static_cast<int64_t>(initValues->size()) > getDepth()) {
+      return emitOpError("has more 'init_values' than 'depth' objects");
+    }
+  }
+
   std::vector<ObjectFifoSegmentOp> segments = getSegmentOps();
   if (segments.empty()) {
     return emitOpError("expects at least one segment");
