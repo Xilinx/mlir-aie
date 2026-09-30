@@ -9,13 +9,28 @@ from aie.helpers.dialects.scf import (
 from aie.helpers.dialects.scf import (
     yield_ as _yield_,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from aie.ir import InsertionPoint  # pyright: ignore[reportMissingImports]
 from aie.iron.runtime.dmataskhandle import Task
 
-# One frame per active range_ loop with iter_args; yield_ records the Tasks
-# it yields into the innermost frame, by iter_args position. A ContextVar, like
-# the active runtime sequence, so concurrent emitters never share frames.
-_yielded_tasks: ContextVar[tuple[dict[int, Task], ...]] = ContextVar(
-    "iron_yielded_tasks", default=()
+
+class _YieldFrame:
+    """One active ``range_`` loop with iter_args.
+
+    Holds the loop body block and the values its terminating ``yield_``
+    passed, if any.
+    """
+
+    def __init__(self, body):
+        self.body = body
+        self.values: list | None = None
+
+
+# One frame per active range_ loop with iter_args. yield_ records its values
+# only when it terminates the loop body itself, not a nested scf.if or loop.
+# A ContextVar, like the active runtime sequence, so concurrent emitters never
+# share frames.
+_yield_frames: ContextVar[tuple[_YieldFrame, ...]] = ContextVar(
+    "iron_yield_frames", default=()
 )
 
 
@@ -36,8 +51,9 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs):
     ``iter_args`` entry is carried across iterations by its SSA handle: the loop
     body and the loop results receive it re-wrapped as a copy of the ``Task``
     passed in (so ``.start()``/``.free()``/``.await_()`` work; a loop result
-    takes the type and state, e.g. freed or endpoint, of the ``Task`` the body
-    yielded), and
+    takes the type and state, e.g. freed or endpoint, of the ``Task`` the
+    loop body's own ``yield_`` passed; a raw handle yielded there keeps the
+    copy of the ``Task`` passed in), and
     [`yield_`][iron.controlflow.yield_] accepts ``Task`` entries too. This is
     what a hand-rolled software-pipelined DMA loop needs.
     """
@@ -63,18 +79,18 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs):
         if isinstance(vals, tuple) and len(vals) == 3:
             iv, a, results = vals
             results = rewrap_args(results)
-            yielded: dict[int, Task] = {}
-            outer = _yielded_tasks.get()
-            _yielded_tasks.set(outer + (yielded,))
+            frame = _YieldFrame(InsertionPoint.current.block)
+            outer = _yield_frames.get()
+            _yield_frames.set(outer + (frame,))
             try:
                 yield iv, rewrap_args(a), results
             finally:
-                _yielded_tasks.set(outer)
+                _yield_frames.set(outer)
             # A loop result is the Task the body yielded, so it takes that
             # Task's type and state (lifetime, endpoint), not the initial one's.
             result_tasks = results if isinstance(results, tuple) else (results,)
-            for i, task in yielded.items():
-                if i in wrapped:
+            for i, task in enumerate(frame.values or ()):
+                if i in wrapped and isinstance(task, Task):
                     res = result_tasks[i]
                     handle = res.handle
                     res.__class__ = type(task)
@@ -90,7 +106,7 @@ def yield_(values):
     See [`Task`][iron.runtime.dmataskhandle.Task].
     """
     values = list(values)
-    frames = _yielded_tasks.get()
-    if frames:
-        frames[-1].update((i, v) for i, v in enumerate(values) if isinstance(v, Task))
+    frames = _yield_frames.get()
+    if frames and InsertionPoint.current.block == frames[-1].body:
+        frames[-1].values = values
     _yield_([_unwrap(v) for v in values])
