@@ -562,7 +562,20 @@ class TileDma(Resolvable):
         self._channels.extend(channels)
 
     def all_tiles(self):
-        return [self._tile]
+        """Return this DMA's tile plus the tiles of the Buffers and Locks it uses.
+
+        A mem tile DMA may use a neighbor's lock or buffer, whose tile must
+        be resolved before that lock or buffer is.
+        """
+        tiles = [self._tile]
+        bufs, locks = self.all_buffers_and_locks()
+        for b in bufs:
+            if b.tile is not None and b.tile not in tiles:
+                tiles.append(b.tile)
+        for lk in locks:
+            if lk.tile not in tiles:
+                tiles.append(lk.tile)
+        return tiles
 
     def all_buffers_and_locks(self):
         """Iterate every Buffer + Lock this program touches.
