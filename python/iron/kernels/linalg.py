@@ -523,19 +523,21 @@ class _MhaFactory:
     ) -> tuple[int, int, int]:
         """Query geometry without constructing a kernel; ``arch`` overrides ``device``.
 
-        ``QK^T`` is mm.cc's bf16 product, so it takes
-        [`mm`][iron.kernels.linalg.mm]'s micro-tile; ``P*V``
+        ``QK^T`` uses ``mm_aie2p.h`` on both architectures: (4, 8, 8),
+        or (8, 8, 8) with BFP16 emulation on AIE2P. ``P*V``
         (``matmul_bf16_bf16_rowmaj``) expands ``aie::mmul<8, 8, 8>`` itself.
         """
         if pv:
             return (8, 8, 8)
-        return _MatMulFactory.mac_dims(
-            bfloat16,
-            bfloat16,
-            device=device,
-            arch=arch,
-            emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
+        arch = arch or (
+            resolve_target_arch(device) if device is not None else _detect_arch()
         )
+        if arch not in _MM_MAC_DIMS:
+            raise ValueError(f"mha.mac_dims(): unsupported arch {arch}.")
+        key = (bfloat16, bfloat16)
+        if emulate_bf16_mmul_with_bfp16 and arch == "aie2p":
+            return _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
+        return _MM_MAC_DIMS["aie2p"][key]
 
 
 @_answers_mac_dims(_MatMulFactory.mac_dims)
@@ -1038,13 +1040,13 @@ def mha(
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
-    One translation unit that includes ``softmax.cc`` and ``mm.cc`` and
+    One translation unit that includes ``softmax_aie2p.h`` and ``mm_aie2p.h`` and
     exports the symbols an attention dataflow composes over one micro-tile.
     The returned kernel is one of the toolkit's two matmuls, both
     accumulating into ``C``, so it is a
     [`MatrixKernel`][iron.kernels.linalg.MatrixKernel] judged like
     [`mm`][iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
-    ``matmul_bf16_bf16_wrapper``, ``mm.cc``'s bf16 product on its 4x8x8
+    ``matmul_bf16_bf16_wrapper``, ``mm_aie2p.h``'s bf16 product on its 4x8x8
     micro-tile behind an ``idx_buffer`` gate (the call runs when
     ``idx[0] <= idx[1]``) bound here to ``[0, 0]``. With ``pv`` it is the
     ``P*V`` product ``matmul_bf16_bf16_rowmaj``, mha.cc's own expansion of
@@ -1098,7 +1100,7 @@ def mha(
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
-    # mha.cc includes mm.cc without C_COL_MAJ, and without B_COL_MAJ unless
+    # mha.cc includes mm_aie2p.h without C_COL_MAJ, and without B_COL_MAJ unless
     # b_col_maj. matmul_bf16_bf16_rowmaj is always row-major.
     b_col_maj = b_col_maj and not pv
     r, s, t = _MhaFactory.mac_dims(

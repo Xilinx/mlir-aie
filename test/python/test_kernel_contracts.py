@@ -1191,24 +1191,34 @@ def test_mha_binds_its_translation_unit_as_one_object():
 
 @pytest.mark.parametrize("emulate", [False, True])
 @pytest.mark.parametrize("pv", [False, True])
-def test_mha_answers_its_micro_tile_without_building_a_kernel(pv, emulate):
+@pytest.mark.parametrize("b_col_maj", [False, True])
+@pytest.mark.parametrize("device,arch", [(NPU1Col1, "aie2"), (NPU2Col1, "aie2p")])
+def test_mha_answers_its_micro_tile_without_building_a_kernel(
+    pv, emulate, b_col_maj, device, arch
+):
     """``mha.mac_dims`` is the micro-tile ``mha`` declares, for either product."""
     kw = dict(pv=pv, emulate_bf16_mmul_with_bfp16=emulate)
-    fn = kernels.mha(dim_m=64, dim_k=64, dim_n=64, **kw)
-    assert kernels.mha.mac_dims(**kw) == fn.mac_dims
-    assert fn.stream_dims == kernels.mm_stream_dims(
-        64, 64, 64, fn.mac_dims, b_col_maj=False
-    )
-    # QK^T is mm.cc's product on either architecture; P*V is 8x8x8 on both.
-    for arch in ("aie2", "aie2p"):
-        expected = (
-            (8, 8, 8)
-            if pv
-            else kernels.mm.mac_dims(
-                bfloat16, bfloat16, arch=arch, emulate_bf16_mmul_with_bfp16=emulate
-            )
-        )
+    # mha.cc includes mm_aie2p.h even on AIE2, unlike mm.cc.
+    expected = (8, 8, 8) if pv or (emulate and arch == "aie2p") else (4, 8, 8)
+    previous = get_current_device(probe_runtime=False)
+    target = device()
+    set_current_device(target)
+    try:
+        instances = ExternalFunction._instances.copy()
+        assert kernels.mha.mac_dims(**kw) == expected
+        assert kernels.mha.mac_dims(device=target, **kw) == expected
         assert kernels.mha.mac_dims(arch=arch, **kw) == expected
+        assert ExternalFunction._instances == instances
+        fn = kernels.mha(dim_m=64, dim_k=64, dim_n=64, b_col_maj=b_col_maj, **kw)
+        assert fn.mac_dims == expected
+        assert fn.stream_dims == kernels.mm_stream_dims(
+            64, 64, 64, expected, b_col_maj=b_col_maj and not pv
+        )
+        assert ("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" in fn._compile_flags) == (
+            emulate and arch == "aie2p"
+        )
+    finally:
+        set_current_device(previous)
 
 
 _C_ELEMENT_NAMES = {bfloat16: "bf16", np.float32: "float", np.int32: "int"}
