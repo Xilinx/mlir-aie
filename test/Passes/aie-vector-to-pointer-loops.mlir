@@ -311,3 +311,56 @@ aie.device(npu2) @base_defined_in_loop {
     aie.end
   }
 }
+
+// Two indices into the same buffer are combined into a third index; turning
+// both into pointers would add a pointer to a pointer, so the loop is left
+// alone.
+// CHECK-LABEL: @summed_indices
+aie.device(npu2) @summed_indices {
+  %tile = aie.tile(0, 2)
+  %buf = aie.buffer(%tile) : memref<1024xi32>
+
+  %core = aie.core(%tile) {
+    %c0 = arith.constant 0 : index
+    %c16 = arith.constant 16 : index
+    %c256 = arith.constant 256 : index
+
+    // CHECK-NOT: ptr.
+    // CHECK: scf.for {{.*}} -> (index, index)
+    // CHECK-NOT: ptr.
+    // CHECK: aie.end
+    %r:2 = scf.for %i = %c0 to %c256 step %c16 iter_args(%a = %c0, %b = %c0) -> (index, index) {
+      %va = vector.load %buf[%a] : memref<1024xi32>, vector<16xi32>
+      %vb = vector.load %buf[%b] : memref<1024xi32>, vector<16xi32>
+      %s = arith.addi %a, %b : index
+      %w = arith.addi %va, %vb : vector<16xi32>
+      vector.store %w, %buf[%s] : memref<1024xi32>, vector<16xi32>
+      %na = arith.addi %a, %c16 : index
+      %nb = arith.addi %b, %c16 : index
+      scf.yield %na, %nb : index, index
+    }
+    aie.end
+  }
+}
+
+// An unsigned-compare loop stays unsigned after the rewrite.
+// CHECK-LABEL: @unsigned_compare_kept
+aie.device(npu2) @unsigned_compare_kept {
+  %tile = aie.tile(0, 2)
+  %buf = aie.buffer(%tile) : memref<1024xi32>
+
+  %core = aie.core(%tile) {
+    %c0 = arith.constant 0 : index
+    %c16 = arith.constant 16 : index
+    %c1024 = arith.constant 1024 : index
+
+    // CHECK: scf.for unsigned {{.*}} -> (!ptr.ptr<#ptr.generic_space>)
+    %r = scf.for unsigned %i = %c0 to %c1024 step %c16 iter_args(%idx = %c0) -> (index) {
+      %v = vector.load %buf[%idx] : memref<1024xi32>, vector<16xi32>
+      vector.store %v, %buf[%idx] : memref<1024xi32>, vector<16xi32>
+      %n = arith.addi %idx, %c16 : index
+      scf.yield %n : index
+    }
+    aie.end
+  }
+}

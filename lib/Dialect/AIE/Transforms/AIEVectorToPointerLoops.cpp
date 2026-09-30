@@ -81,7 +81,8 @@ static bool analyzeLoopForVectorAccesses(
     Value base = loadOp.getBase();
     auto indices = loadOp.getIndices();
 
-    // Only handle 1D access for now
+    // Only handle 1D access for now. vector.load requires a unit innermost
+    // stride, so one index step of a 1D access is one element.
     if (indices.size() != 1)
       return;
 
@@ -123,8 +124,8 @@ static bool analyzeLoopForVectorAccesses(
 /// the loop yields back to it. Any other use (inside a nested loop, a scalar
 /// memref.load, a comparison, the loop result) would receive a pointer where
 /// it expects an index.
-static bool canConvertIndexIterArg(scf::ForOp forOp, unsigned pos,
-                                   Value memref) {
+static bool canConvertIndexIterArg(scf::ForOp forOp, unsigned pos, Value memref,
+                                   DenseSet<Value> &chain) {
   if (!forOp.isDefinedOutsideOfLoop(memref))
     return false;
   if (!forOp.getResult(pos).use_empty())
@@ -133,7 +134,7 @@ static bool canConvertIndexIterArg(scf::ForOp forOp, unsigned pos,
   Block *body = forOp.getBody();
   Operation *yield = body->getTerminator();
   SmallVector<Value> worklist = {forOp.getRegionIterArgs()[pos]};
-  DenseSet<Value> chain(worklist.begin(), worklist.end());
+  chain.insert(worklist.begin(), worklist.end());
   while (!worklist.empty()) {
     Value v = worklist.pop_back_val();
     for (OpOperand &use : v.getUses()) {
@@ -199,6 +200,9 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
     SmallVector<unsigned> indexIterArgPositions;
     SmallVector<Value> correspondingMemrefs;
 
+    // Values derived from the iter_args accepted so far. Two chains that meet
+    // (e.g. %a + %b) would add a pointer to a pointer.
+    DenseSet<Value> converted;
     for (auto [idx, iterArg] : llvm::enumerate(forOp.getRegionIterArgs())) {
       Value owner;
       for (auto &[memref, access] : memrefAccesses) {
@@ -213,8 +217,14 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
         owner = memref;
       }
       if (owner) {
-        if (!canConvertIndexIterArg(forOp, idx, owner)) {
+        DenseSet<Value> chain;
+        if (!canConvertIndexIterArg(forOp, idx, owner, chain)) {
           return failure();
+        }
+        for (Value v : chain) {
+          if (!converted.insert(v).second) {
+            return failure();
+          }
         }
         indexIterArgPositions.push_back(idx);
         correspondingMemrefs.push_back(owner);
@@ -310,8 +320,9 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
     auto newForOp =
         scf::ForOp::create(rewriter, loc, forOp.getLowerBound(),
                            forOp.getUpperBound(), forOp.getStep(), newInitArgs);
-    // Keep the loop's attributes, e.g. loop_annotation.
-    newForOp->setDiscardableAttrs(forOp->getDiscardableAttrDictionary());
+    // Keep the loop's attributes: unsignedCmp and discardable ones such as
+    // loop_annotation.
+    newForOp->setAttrs(forOp->getAttrDictionary());
 
     // Step 5: Transform loop body (simplified - doesn't handle all cases yet)
     IRMapping mapper;
