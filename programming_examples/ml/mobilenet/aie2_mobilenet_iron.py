@@ -99,6 +99,8 @@ def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: CompileTime[int]
     post-L1 / FC1 outputs round-trip through, and ``batch`` FC2 outputs.
     The runtime ``sequence(...)`` body's args match.
     """
+    if batch < 1:
+        raise ValueError(f"batch must be a positive integer, got {batch}")
 
     # Runtime arg types: i32 element view over the underlying byte buffers.
     #   arg0 (act_in):            100352 i32 = 401408 bytes per image
@@ -216,6 +218,13 @@ def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: CompileTime[int]
     return Program(iron.get_current_device(), rt, workers=all_workers).resolve_program()
 
 
+def _positive_int(text):
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {value}")
+    return value
+
+
 def _make_argparser():
     p = argparse.ArgumentParser(
         prog="python3 -m mobilenet.aie2_mobilenet_iron",
@@ -232,7 +241,9 @@ def _make_argparser():
     )
     add_compile_args(p, default_dev="npu2", with_emit_mlir=True)
     p.add_argument("--sa-seed", type=int, help="SA placer seed (default: 3)")
-    p.add_argument("--batch", type=int, default=1, help="images per launch")
+    p.add_argument(
+        "--batch", type=_positive_int, default=1, help="images per launch (>= 1)"
+    )
     p.add_argument(
         "--sa-effort",
         type=float,
