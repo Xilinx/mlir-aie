@@ -317,11 +317,15 @@ jobs:
           REM script's own download. EXTRA_CMAKE_ARGS carries the Windows-only
           REM -D flags; paths are forward-slashed and must be space-free since
           REM the script expands args unquoted (read -ra on a plain string).
+          REM FindOpenSSL.cmake only searches the MT/MTd (static-CRT) lib
+          REM paths/names when OPENSSL_MSVC_STATIC_RT is set - otherwise it
+          REM defaults to MD mode and won't find the MT-only static libs this
+          REM installer lays down, even with OPENSSL_USE_STATIC_LIBS=TRUE.
           set "XRT_ROOT_FWD=%XRT_ROOT:\=/%"
           set "PYTHON_EXE_FWD=%PYTHON_EXE:\=/%"
           set "PEANO_INSTALL_DIR_FWD=%PEANO_INSTALL_DIR:\=/%"
           set "OPENSSL_ROOT_FWD=C:/OpenSSL-Win64"
-          set "EXTRA_CMAKE_ARGS=-DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON -DXRT_ROOT=%XRT_ROOT_FWD% -DPython3_EXECUTABLE=%PYTHON_EXE_FWD% -DOPENSSL_ROOT_DIR=%OPENSSL_ROOT_FWD% -DOPENSSL_USE_STATIC_LIBS=TRUE"
+          set "EXTRA_CMAKE_ARGS=-DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON -DXRT_ROOT=%XRT_ROOT_FWD% -DPython3_EXECUTABLE=%PYTHON_EXE_FWD% -DOPENSSL_ROOT_DIR=%OPENSSL_ROOT_FWD% -DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_MSVC_STATIC_RT=TRUE"
 
           REM arg 4 = provisioned Peano, else the script derives its own.
           "C:\Program Files\Git\bin\bash.exe" utils/build-mlir-aie-from-wheels.sh my_install/mlir build install "%PEANO_INSTALL_DIR_FWD%"
