@@ -89,6 +89,11 @@ _COMPILE_LOCK_TIMEOUT_SECONDS = 1800
 logger = logging.getLogger(__name__)
 
 
+def _kernel_recipes(kernels) -> list[str]:
+    """Sorted, stable text of each external kernel's build recipe."""
+    return sorted(repr((f.object_file_name, f.object_file._source)) for f in kernels)
+
+
 def config_param_names(cls) -> frozenset[str]:
     """Names of ``cls.__init__``'s configuration parameters.
 
@@ -1432,14 +1437,17 @@ class CompilableDesign:
         # With include_mlir the generated design is part of the key: the
         # recipe hash covers the generator's code, not the helpers it calls,
         # so without it an edit to a helper served the previous artifact.
+        # The MLIR only names each external kernel's object file, so the
+        # kernels' recipes (source and compile flags) are keyed with it.
         # Generation is cached per design and needed by every compile, so
         # keying the artifact directory on it costs a hit nothing; __hash__
         # (identity, no generation) leaves it out.
         mlir_text = None
         if include_mlir:
-            mlir_text, _ = self._generated_for(
+            mlir_text, kernels = self._generated_for(
                 full_elf=self.full_elf if full_elf is None else full_elf
             )
+            mlir_text += "".join(_kernel_recipes(kernels))
         return _compute_hash(
             self.mlir_generator,
             self.compile_kwargs,
@@ -1478,9 +1486,7 @@ class CompilableDesign:
             ).encode()
         )
         h.update(mlir_text.encode())
-        for recipe in sorted(
-            repr((f.object_file_name, f.object_file._source)) for f in kernels
-        ):
+        for recipe in _kernel_recipes(kernels):
             h.update(recipe.encode())
         return h.hexdigest()
 

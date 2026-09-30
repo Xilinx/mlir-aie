@@ -74,6 +74,7 @@ from ..ir import (
     IntegerAttr,
     IntegerType,
     MemRefType,
+    OpView,
     StringAttr,
     TypeAttr,
     UnitAttr,
@@ -144,17 +145,45 @@ def _split_i32_scalar(v):
     return v, None
 
 
+def _unsigned_to_signless(v, to):
+    """Zero-extend an unsigned integer Value to signless ``to``, or return None.
+
+    arith takes only signless integers, so an unsigned operand (a
+    ``DispatchTime[np.uint*]`` scalar) is converted with ``emitc.cast``, which
+    the dispatch C++ emits as a C cast and so zero-extends. A constant folds
+    to its Python int instead. Callers pick a ``to`` at least as wide as the
+    value; a ``uint64`` above INT64_MAX keeps its bit pattern in i64, which the
+    32-bit guard in ``_narrow_i32`` rejects.
+    """
+    try:
+        int_ty = IntegerType(v.type)
+    except ValueError:
+        return None
+    if not int_ty.is_unsigned:
+        return None
+    if isinstance(v.owner, OpView) and v.owner.operation.name == "emitc.constant":
+        attr = v.owner.attributes["value"]
+        if isinstance(attr, IntegerAttr):
+            return attr.value & ((1 << int_ty.width) - 1)
+    from .emitc import CastOp as _EmitCCastOp
+
+    return _EmitCCastOp(to, v).result
+
+
 def _widen_i64(v):
     """Widen a runtime size/stride to the i64 the op takes; ints pass through.
 
     Staged taps compute their sizes and strides in the scalar's own width
-    (i32 for a DispatchTime[np.int32]), so a narrower integer Value is
-    sign-extended and an index Value cast.
+    (i32 for a DispatchTime[np.int32]), so a narrower signed integer Value is
+    sign-extended, an unsigned one zero-extended, and an index Value cast.
     """
     if not isinstance(v, Value):
         return v
     if str(v.type) == "index":
         return _index_cast(v, to=T.i64())
+    unsigned = _unsigned_to_signless(v, T.i64())
+    if unsigned is not None:
+        return unsigned
     try:
         width = IntegerType(v.type).width
     except ValueError:
@@ -165,15 +194,24 @@ def _widen_i64(v):
 def _narrow_i32(v, what):
     """Bring a runtime offset/length to the i32 the op takes; ints pass through.
 
-    An index is cast to i64 first. A narrower integer is sign-extended; a wider
-    one is guarded at dispatch (``aiex.npu.require``) to fit the 32-bit field
-    before it is truncated, so an out-of-range value refuses the dispatch
-    instead of silently wrapping.
+    An index is cast to i64 first; an unsigned integer is zero-extended (a
+    uint64 to i64). A narrower signed integer is sign-extended; a wider one is
+    guarded at dispatch (``aiex.npu.require``) to fit the 32-bit field before
+    it is truncated, so an out-of-range value refuses the dispatch instead of
+    silently wrapping.
     """
     if not isinstance(v, Value):
         return v
     if str(v.type) == "index":
         v = _index_cast(v, to=T.i64())
+    elif isinstance(v.type, IntegerType) and v.type.is_unsigned:
+        # Up to 32 bits always fits the field; a uint64 is guarded below.
+        wide = v.type.width > 32
+        v = _unsigned_to_signless(v, T.i64() if wide else T.i32())
+        if not isinstance(v, Value):
+            if v > 0xFFFFFFFF:
+                raise ValueError(f"DMA {what} {v} does not fit its 32-bit field")
+            return v
     try:
         width = IntegerType(v.type).width
     except ValueError:

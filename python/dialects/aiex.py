@@ -45,6 +45,7 @@ from ..ir import (
     InsertionPoint,
     Attribute,
     AttrBuilder,
+    Value,
 )
 
 # noinspection PyUnresolvedReferences
@@ -428,7 +429,10 @@ def shim_dma_single_bd_task(
             # queue-push lowering then guards the repeat against the target's
             # maximum before masking it to its 8-bit field.
             s0_i32 = _narrow_i32(s0, "repeat count")
-            repeat_count_val = s0_i32 - _as_i32(1)
+            if isinstance(s0_i32, Value):
+                repeat_count_val = s0_i32 - _as_i32(1)
+            elif s0_i32 > 1:
+                repeat_count = s0_i32 - 1
     if sizes is not None:
         sizes = [_widen_i64(v) for v in sizes]
     if strides is not None:

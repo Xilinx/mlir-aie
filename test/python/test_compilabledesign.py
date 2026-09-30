@@ -17,7 +17,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import CodeType
+from types import CodeType, SimpleNamespace
 
 import numpy as np
 import pytest
@@ -301,6 +301,29 @@ def test_hash_is_stable_across_two_constructions():
     d1 = CompilableDesign(gen, compile_kwargs={"M": 512, "K": 256, "N": 128})
     d2 = CompilableDesign(gen, compile_kwargs={"M": 512, "K": 256, "N": 128})
     assert hash(d1) == hash(d2)
+
+
+def test_artifact_key_covers_external_kernel_recipes(monkeypatch):
+    """Same MLIR and object name, different kernel source: a new artifact key."""
+
+    def kernel(source):
+        return SimpleNamespace(
+            object_file_name="k.o", object_file=SimpleNamespace(_source=source)
+        )
+
+    design = CompilableDesign(_gemm_gen(), compile_kwargs={"M": 512})
+
+    def key(source):
+        monkeypatch.setattr(
+            design,
+            "_generated_for",
+            lambda *, full_elf: ("module {}", [kernel(source)]),
+        )
+        return design._compute_cache_hash(include_mlir=True)
+
+    assert key(("a.cc", "-O2")) == key(("a.cc", "-O2"))
+    assert key(("a.cc", "-O2")) != key(("b.cc", "-O2"))
+    assert key(("a.cc", "-O2")) != key(("a.cc", "-O3"))
 
 
 def test_hash_differs_for_different_kwargs_value():
