@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "4952b74e86c471471ebbd4cccccb2d54d6940dc4",
- "date": "2026-09-30T00:11:15.420989+00:00",
+ "commit": "91ee8c89c8b841f2f6f9364b642a69526d595197",
+ "date": "2026-09-30T06:37:19.813258+00:00",
  "swept": true,
  "kernels": [
   {
@@ -765,9 +765,11 @@
    "builds": [
     "sigmoid"
    ],
-   "passed": 4,
-   "failed": [],
-   "timed": 3,
+   "passed": 3,
+   "failed": [
+    "sigmoid/1024x16/bfloat16"
+   ],
+   "timed": 2,
    "timing_failed": [],
    "untimed": [
     "sigmoid/1056x4/bfloat16/tail"
