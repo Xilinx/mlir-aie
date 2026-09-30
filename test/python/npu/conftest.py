@@ -94,6 +94,12 @@ def pytest_addoption(parser):
         "--no-cycles", action="store_true", help="skip the traced cycle-count run"
     )
     parser.addoption(
+        "--shard",
+        metavar="I/N",
+        default=None,
+        help="run only every Nth selected test, starting at the Ith (0-based)",
+    )
+    parser.addoption(
         "--baseline-sources",
         metavar="DIR",
         default=None,
@@ -227,13 +233,40 @@ def _device_generation() -> str | None:
     return ARCH_TRAITS[arch].device
 
 
+def _shard(config, items):
+    """Keep the ``--shard I/N`` slice of ``items``, deselecting the rest.
+
+    Round-robin rather than contiguous: neighbouring cases share a kernel and
+    cost about the same, so striding spreads the expensive kernels evenly.
+    """
+    spec = config.getoption("--shard")
+    if spec is None:
+        return
+    try:
+        index, count = (int(part) for part in spec.split("/"))
+    except ValueError:
+        raise pytest.UsageError(f"--shard expects I/N, got {spec!r}") from None
+    if not 0 <= index < count:
+        raise pytest.UsageError(f"--shard {spec}: need 0 <= I < N")
+    kept = items[index::count]
+    dropped = [item for i, item in enumerate(items) if i % count != index]
+    if dropped:
+        config.hook.pytest_deselected(items=dropped)
+    items[:] = kept
+
+
+# trylast: pytest's own -m deselection runs in this hook too, and the shards
+# must split what it leaves, or each shard would carry a different share of
+# deselected tests.
+@pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(config, items):
-    """Skip HRX-unsupported tests under HRX, and device-restricted tests elsewhere.
+    """Shard, then skip HRX-unsupported and device-restricted tests.
 
     ``@pytest.mark.supported_devices("npu2")`` names the generations a
     test's kernels exist for (IRON's marker of the same name); the test is
     skipped on any other device.
     """
+    _shard(config, items)
     generation = _device_generation()
     for item in items:
         marker = item.get_closest_marker("supported_devices")
