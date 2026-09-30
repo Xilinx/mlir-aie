@@ -14,6 +14,7 @@ stream, or a self-contained full ELF.
 
 import argparse
 import glob
+import json
 import os
 import shutil
 import struct
@@ -22,7 +23,11 @@ import sys
 import tempfile
 from collections import Counter
 
-from .elf import kernel_names_from_full_elf, make_empty_elf64
+from .elf import (
+    kernel_names_from_full_elf,
+    make_empty_elf64,
+    partition_size_from_full_elf,
+)
 from .format import (
     ARCHES,
     ENTRY,
@@ -115,15 +120,15 @@ def build_section(arch, kernels):
 
     Args:
         arch (str): One of ``hsaco.format.ARCHES``.
-        kernels (list[dict]): Kernel descriptors with ``name`` and ``insts``,
-            optionally ``pdi``, ``kernarg_size``, ``num_cols`` and ``kind``.
+        kernels (list[dict]): Kernel descriptors with ``name``, ``insts`` and
+            ``num_cols``, optionally ``pdi``, ``kernarg_size`` and ``kind``.
 
     Returns:
         bytes: The section, laid out as header, kernel table, string table, blob pool.
 
     Raises:
-        ValueError: On an unknown arch or kind, empty insts, or a FullElf entry
-            that also carries a PDI.
+        ValueError: On an unknown arch or kind, empty insts, a missing or zero
+            column count, or a FullElf entry that also carries a PDI.
     """
     if arch not in ARCHES:
         raise ValueError(f"unknown arch {arch!r}; expected one of {ARCHES}")
@@ -187,7 +192,13 @@ def build_section(arch, kernels):
         # oversized value -- both reachable from the command line -- is a
         # ValueError like every other bad-kernel condition, not a struct.error.
         kernarg_size = _uint32(k.get("kernarg_size", 0), "kernarg_size", k["name"])
-        num_cols = _uint32(k.get("num_cols", 1), "num_cols", k["name"])
+        # No default: the column count is the partition the kernel was compiled
+        # for, and a guessed one packs cleanly but is wrong for every other size.
+        if k.get("num_cols") is None:
+            raise ValueError(f"kernel {k['name']!r}: num_cols is required")
+        num_cols = _uint32(k["num_cols"], "num_cols", k["name"])
+        if num_cols == 0:
+            raise ValueError(f"kernel {k['name']!r}: num_cols must be at least 1")
         entries.append(
             (
                 name_off,
@@ -308,7 +319,29 @@ def ensure_hsaco(path):
         f.write(make_empty_elf64())
 
 
-def kernels_from_full_elf(path, kernarg_size=0, num_cols=1):
+def _resolve_num_cols(recorded, given, path):
+    """Return the column count for a kernel read from ``path``.
+
+    The count the file records wins; an explicitly ``given`` one must agree
+    with it, and is only used on its own when the file records none.
+
+    Raises:
+        ValueError: If the two disagree, or neither is available.
+    """
+    if recorded is None:
+        if given is None:
+            raise ValueError(
+                f"{path} does not record a column count; give one explicitly"
+            )
+        return given
+    if given is not None and given != recorded:
+        raise ValueError(
+            f"{path} was compiled for {recorded} column(s), but {given} was given"
+        )
+    return recorded
+
+
+def kernels_from_full_elf(path, kernarg_size=0, num_cols=None):
     """Return one kernel descriptor per COMDAT group in a full ELF.
 
     Every descriptor embeds the whole ELF as its ``insts``; the blob pool in
@@ -317,17 +350,25 @@ def kernels_from_full_elf(path, kernarg_size=0, num_cols=1):
     Args:
         path (str): Path to the full ELF.
         kernarg_size (int): Kernarg buffer size to record for each kernel.
-        num_cols (int): Column count to record for each kernel.
+        num_cols (int | None): Column count to record for each kernel. Read
+            from the ELF's ``.note.xrt.configuration`` when omitted; must
+            match it when given.
 
     Returns:
         list[dict]: Kernel descriptors of kind ``FullElf``.
+
+    Raises:
+        ValueError: If the ELF is malformed, or the column count is missing or
+            disagrees with ``num_cols``.
     """
     with open(path, "rb") as f:
         blob = f.read()
     try:
         names = kernel_names_from_full_elf(blob)
+        recorded = partition_size_from_full_elf(blob)
     except ValueError as e:
         raise ValueError(f"{path}: {e}") from e
+    num_cols = _resolve_num_cols(recorded, num_cols, path)
     return [
         {
             "name": n,
@@ -341,19 +382,21 @@ def kernels_from_full_elf(path, kernarg_size=0, num_cols=1):
     ]
 
 
-def pdi_from_xclbin(path):
-    """Extract the PDI from an xclbin's AIE_PARTITION section via xclbinutil.
+def partition_from_xclbin(path):
+    """Read the PDI and column count from an xclbin's AIE_PARTITION section.
 
     Args:
         path (str): Path to the xclbin.
 
     Returns:
-        bytes: The PDI image.
+        tuple[bytes, int | None]: The PDI image, and the partition's
+            ``column_width`` -- ``None`` if the section does not record one.
 
     Raises:
-        ValueError: If the xclbin does not contain exactly one PDI, or
-            xclbinutil rejects it -- carrying xclbinutil's own stderr, which
-            capture_output would otherwise swallow.
+        ValueError: If the xclbin does not contain exactly one PDI, records a
+            malformed column width, or xclbinutil rejects it -- carrying
+            xclbinutil's own stderr, which capture_output would otherwise
+            swallow.
     """
     with tempfile.TemporaryDirectory() as d:
         try:
@@ -378,7 +421,20 @@ def pdi_from_xclbin(path):
         if len(pdis) != 1:
             raise ValueError(f"{path}: expected exactly one PDI, found {len(pdis)}")
         with open(pdis[0], "rb") as f:
-            return f.read()
+            pdi = f.read()
+        with open(os.path.join(d, "aie.json")) as f:
+            try:
+                meta = json.load(f)
+            except ValueError as e:
+                raise ValueError(f"{path}: malformed AIE_PARTITION JSON: {e}") from e
+    width = meta.get("aie_partition", {}).get("partition", {}).get("column_width")
+    if width is None:
+        return pdi, None
+    # xclbinutil renders every number in this section as a string.
+    try:
+        return pdi, int(width)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"{path}: malformed column_width {width!r}") from e
 
 
 def _read(path):
@@ -454,7 +510,7 @@ def _group_kernel_options(ops):
 def _kernel_from_options(group):
     """Return the kernel descriptors for one group of ``--kernel-*`` options."""
     kernarg_size = group.get("kernel_kernarg", 0)
-    num_cols = group.get("kernel_cols", 1)
+    num_cols = group.get("kernel_cols")
 
     if "kernel_elf" in group:
         clashes = [_flag(d) for d in _ELF_INCOMPATIBLE if d in group]
@@ -475,12 +531,17 @@ def _kernel_from_options(group):
             f"kernel {name!r}: give {_flag('kernel_pdi')} or "
             f"{_flag('kernel_xclbin')}, not both"
         )
-    if "kernel_pdi" in group:
-        pdi = _read(group["kernel_pdi"])
-    elif "kernel_xclbin" in group:
-        pdi = pdi_from_xclbin(group["kernel_xclbin"])
+    if "kernel_xclbin" in group:
+        pdi, recorded = partition_from_xclbin(group["kernel_xclbin"])
+        num_cols = _resolve_num_cols(recorded, num_cols, group["kernel_xclbin"])
     else:
-        pdi = None
+        # Neither a PDI nor an instruction stream records the partition it was
+        # compiled for, so there is nothing to read it from.
+        if num_cols is None:
+            raise argparse.ArgumentTypeError(
+                f"{_flag('kernel_name')} {name!r} requires {_flag('kernel_cols')}"
+            )
+        pdi = _read(group["kernel_pdi"]) if "kernel_pdi" in group else None
     return [
         {
             "name": name,
@@ -524,8 +585,11 @@ def parse_kernel_arg(s):
     Three forms are accepted::
 
         elf:PATH[:KERNARG_SIZE[:NUM_COLS]]
-        xclbin:NAME:XCLBIN:INSTS:KERNARG_SIZE:NUM_COLS
+        xclbin:NAME:XCLBIN:INSTS:KERNARG_SIZE[:NUM_COLS]
         NAME:INSTS[:PDI]:KERNARG_SIZE:NUM_COLS
+
+    ``NUM_COLS`` is read from the full ELF or xclbin, and must match it if
+    given; the PDI+insts form records none, so there it is required.
 
     Args:
         s (str): The raw argument.
@@ -562,7 +626,7 @@ def _kernel_options_from_spec(s):
         group = {"kernel_elf": parts[1]}
         fields = zip(("kernel_kernarg", "kernel_cols"), parts[2:])
     elif parts[0] == "xclbin":
-        if len(parts) != 6:
+        if not 5 <= len(parts) <= 6:
             raise argparse.ArgumentTypeError(f"bad --kernel spec {s!r}")
         group = {"kernel_name": parts[1], "kernel_xclbin": parts[2]}
         fields = zip(("kernel_insts", "kernel_kernarg", "kernel_cols"), parts[3:])
@@ -597,8 +661,9 @@ def main(argv=None):
         type=parse_kernel_arg,
         help="colon-separated kernel spec; repeatable. One of "
         "NAME:INSTS[:PDI]:KERNARG_SIZE:NUM_COLS, "
-        "xclbin:NAME:XCLBIN:INSTS:KERNARG_SIZE:NUM_COLS, or "
-        "elf:PATH[:KERNARG_SIZE[:NUM_COLS]]. Cannot express a path containing "
+        "xclbin:NAME:XCLBIN:INSTS:KERNARG_SIZE[:NUM_COLS], or "
+        "elf:PATH[:KERNARG_SIZE[:NUM_COLS]]. NUM_COLS is read from an xclbin "
+        "or ELF, and must match it if given. Cannot express a path containing "
         "a colon, or a kernel named 'elf' or 'xclbin' -- use the --kernel-* "
         "options for those.",
     )
@@ -628,7 +693,11 @@ def main(argv=None):
         help="kernarg buffer size (default 0)",
     )
     group.add_argument(
-        "--kernel-cols", type=int, action=_KernelOption, help="column count (default 1)"
+        "--kernel-cols",
+        type=int,
+        action=_KernelOption,
+        help="column count; required for a PDI+insts kernel, read from the "
+        "xclbin or ELF otherwise (and must match it if given)",
     )
 
     args = ap.parse_args(argv)

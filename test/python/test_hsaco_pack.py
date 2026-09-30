@@ -23,6 +23,7 @@ Injection itself needs a real ``llvm-objcopy`` and is skipped without one.
 """
 
 import argparse
+import json
 import os
 import re
 import stat
@@ -69,7 +70,7 @@ def _strtab(names):
     return bytes(blob), offsets
 
 
-def make_full_elf(pairs, elf_class=32):
+def make_full_elf(pairs, elf_class=32, num_cols=None):
     """Return a synthetic full ELF with one COMDAT group per (kernel, instance).
 
     The instance symbol signs the group (``sh_info``), and its ``st_shndx``
@@ -80,6 +81,9 @@ def make_full_elf(pairs, elf_class=32):
     ELF32 -- the class ROCR's nested-ELF reader requires, so the packer
     rejects anything else -- while the hsaco it gets packed into is ELF64, and
     one reader handles both; the ELF64 form exercises that reader.
+
+    ``num_cols``, if given, is recorded the way aiebu records the partition
+    size: a ``.note.xrt.configuration`` holding one owner-"XRT", type-6 note.
     """
     is_64 = elf_class == 64
     shdr_fmt = _SHDR if is_64 else _SHDR32
@@ -88,7 +92,9 @@ def make_full_elf(pairs, elf_class=32):
     ehdr_size = _EHDR_SIZE if is_64 else _EHDR32_SIZE
 
     section_names = [".shstrtab", ".strtab", ".symtab"] + [".group"] * len(pairs)
-    shstrtab, sh_off = _strtab([".shstrtab", ".strtab", ".symtab", ".group"])
+    shstrtab, sh_off = _strtab(
+        [".shstrtab", ".strtab", ".symtab", ".group", ".note.xrt.configuration"]
+    )
 
     symbol_names = []
     for kernel, instance in pairs:
@@ -115,6 +121,10 @@ def make_full_elf(pairs, elf_class=32):
     # One 4-byte GRP_COMDAT flag word per group; contents are not read.
     group = struct.pack("<I", 0x1)
     bodies = [shstrtab, strtab, symtab] + [group] * len(pairs)
+    if num_cols is not None:
+        # Elf_Nhdr (namesz, descsz, type), then "XRT\0", then the uint32.
+        section_names.append(".note.xrt.configuration")
+        bodies.append(struct.pack("<III4sI", 4, 4, 6, b"XRT\x00", num_cols))
 
     offset = ehdr_size
     offsets = []
@@ -139,6 +149,8 @@ def make_full_elf(pairs, elf_class=32):
                 4,
                 4,
             )
+        elif name == ".note.xrt.configuration":
+            sh_type, link, info, entsize, align = 7, 0, 0, 0, 1  # SHT_NOTE
         else:
             sh_type, link, info, entsize, align = 3, 0, 0, 0, 1
         headers.append(
@@ -182,7 +194,7 @@ def make_full_elf(pairs, elf_class=32):
 
 
 def _kernel(name, insts, pdi=None, **kw):
-    k = {"name": name, "insts": insts, "pdi": pdi}
+    k = {"name": name, "insts": insts, "pdi": pdi, "num_cols": 1}
     k.update(kw)
     return k
 
@@ -268,11 +280,7 @@ def test_defaults_when_optional_fields_are_omitted():
     k = dump.parse_section(pack.build_section("aie2", [_kernel("k", b"\x00")]))[
         "kernels"
     ][0]
-    assert (k["kernarg_size"], k["num_cols"], k["kind"]) == (
-        0,
-        1,
-        hsaco_format.KIND_PDI_INSTS,
-    )
+    assert (k["kernarg_size"], k["kind"]) == (0, hsaco_format.KIND_PDI_INSTS)
 
 
 @pytest.mark.parametrize(
@@ -280,6 +288,9 @@ def test_defaults_when_optional_fields_are_omitted():
     [
         ([_kernel("k", b"")], "insts must be non-empty"),
         ([_kernel("k", b"\x01", kind=7)], "unknown kind"),
+        # No default column count: a guessed one packs cleanly but is wrong.
+        ([_kernel("k", b"\x01", num_cols=None)], "num_cols is required"),
+        ([_kernel("k", b"\x01", num_cols=0)], "num_cols must be at least 1"),
         (
             [_kernel("k", b"\x01", b"pdi", kind=hsaco_format.KIND_FULL_ELF)],
             "carry no separate PDI",
@@ -413,7 +424,7 @@ def test_full_elf_names_every_comdat_group(tmp_path):
 
 
 def test_full_elf_image_is_embedded_once(tmp_path):
-    blob = make_full_elf([("k0", "i0"), ("k1", "i1"), ("k2", "i2")])
+    blob = make_full_elf([("k0", "i0"), ("k1", "i1"), ("k2", "i2")], num_cols=8)
     path = _write(tmp_path / "final.elf", blob)
 
     section = pack.build_section("aie2p", pack.kernels_from_full_elf(path))
@@ -424,6 +435,54 @@ def test_full_elf_image_is_embedded_once(tmp_path):
     assert all(not k["has_pdi"] for k in info["kernels"])
     # One copy of the ELF plus table/strings, not three copies.
     assert len(section) < 2 * len(blob)
+
+
+def test_full_elf_column_count_comes_from_its_note(tmp_path):
+    path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")], num_cols=4))
+    (kernel,) = pack.kernels_from_full_elf(path)
+    assert kernel["num_cols"] == 4
+    # An explicit count that agrees is accepted as a cross-check.
+    (kernel,) = pack.kernels_from_full_elf(path, num_cols=4)
+    assert kernel["num_cols"] == 4
+
+
+def test_full_elf_column_count_disagreeing_with_its_note_is_rejected(tmp_path):
+    path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")], num_cols=8))
+    with pytest.raises(ValueError, match="compiled for 8 column\\(s\\), but 1"):
+        pack.kernels_from_full_elf(path, num_cols=1)
+
+
+def test_full_elf_without_a_note_needs_an_explicit_column_count(tmp_path):
+    path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")]))
+    with pytest.raises(ValueError, match="does not record a column count"):
+        pack.kernels_from_full_elf(path)
+    (kernel,) = pack.kernels_from_full_elf(path, num_cols=2)
+    assert kernel["num_cols"] == 2
+
+
+@pytest.mark.parametrize(
+    "corrupt",
+    [
+        lambda note: note[:8],  # truncated header
+        lambda note: note[:12] + b"XDP\x00" + note[16:],  # wrong owner
+        lambda note: note[:8] + struct.pack("<I", 5) + note[12:],  # wrong type
+        lambda note: note + b"\x00" * 4,  # trailing bytes
+    ],
+)
+def test_malformed_partition_note_is_rejected(tmp_path, corrupt):
+    good = make_full_elf([("k", "i")], num_cols=4)
+    note = struct.pack("<III4sI", 4, 4, 6, b"XRT\x00", 4)
+    at = good.index(note)
+    bad = corrupt(note)
+    blob = bytearray(good[:at] + bad + good[at + len(note) :])
+    # Keep the section headers where e_shoff says they are, and resize the note.
+    shoff = struct.unpack_from("<I", blob, 32)[0] + len(bad) - len(note)
+    struct.pack_into("<I", blob, 32, shoff)
+    note_header = shoff + _SHDR32_SIZE * 5  # null, 3 tables, 1 group, then note
+    struct.pack_into("<I", blob, note_header + 20, len(bad))
+    path = _write(tmp_path / "final.elf", bytes(blob))
+    with pytest.raises(ValueError, match=r"\.note\.xrt\.configuration"):
+        pack.kernels_from_full_elf(path)
 
 
 def test_full_elf32_names_every_comdat_group(tmp_path):
@@ -608,12 +667,20 @@ def _stub_tool(tmp_path, name, body):
     return str(script)
 
 
-def _stub_xclbinutil(tmp_path, payload=b"PDI-FROM-XCLBIN", count=1):
-    """Return a stub xclbinutil that dumps ``count`` PDIs to the requested dir."""
+def _stub_xclbinutil(tmp_path, payload=b"PDI-FROM-XCLBIN", count=1, width="2"):
+    """Return a stub xclbinutil that dumps ``count`` PDIs to the requested dir.
+
+    Alongside them it writes the section's JSON the way xclbinutil does, with
+    ``width`` as ``partition.column_width`` -- a string, as xclbinutil renders
+    it -- or no ``partition`` at all when ``width`` is None.
+    """
+    partition = {} if width is None else {"partition": {"column_width": width}}
     body = (
         "spec = args[args.index('--dump-section') + 1]\n"
-        "out_dir = os.path.dirname(spec.split(':', 2)[2])\n"
+        "json_path = spec.split(':', 2)[2]\n"
+        "out_dir = os.path.dirname(json_path)\n"
         "os.makedirs(out_dir, exist_ok=True)\n"
+        f"open(json_path, 'w').write({json.dumps({'aie_partition': partition})!r})\n"
         f"open(os.path.join(out_dir, 'partition.pdi'), 'wb').write({payload!r})\n"
         f"for i in range({count} - 1):\n"
         "    open(os.path.join(out_dir, 'extra%d.pdi' % i), 'wb').write(b'x')\n"
@@ -654,7 +721,41 @@ def test_pdi_is_extracted_from_an_xclbin(tmp_path, monkeypatch):
     _use_stub(monkeypatch, "AIE_XCLBINUTIL", _stub_xclbinutil(tmp_path))
     xclbin = _write(tmp_path / "final.xclbin", b"not really an xclbin")
 
-    assert pack.pdi_from_xclbin(xclbin) == b"PDI-FROM-XCLBIN"
+    assert pack.partition_from_xclbin(xclbin) == (b"PDI-FROM-XCLBIN", 2)
+
+
+@needs_posix
+def test_xclbin_column_count_is_read_and_checked(tmp_path, monkeypatch):
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL", _stub_xclbinutil(tmp_path, width="4"))
+    xclbin = _write(tmp_path / "final.xclbin", b"stub")
+    insts = _write(tmp_path / "insts.bin", b"\x01")
+
+    (kernel,) = pack.parse_kernel_arg(f"xclbin:k:{xclbin}:{insts}:64")
+    assert kernel["num_cols"] == 4
+    (kernel,) = pack.parse_kernel_arg(f"xclbin:k:{xclbin}:{insts}:64:4")
+    assert kernel["num_cols"] == 4
+    with pytest.raises(argparse.ArgumentTypeError, match="compiled for 4"):
+        pack.parse_kernel_arg(f"xclbin:k:{xclbin}:{insts}:64:1")
+
+
+@needs_posix
+def test_xclbin_without_a_column_width_needs_an_explicit_one(tmp_path, monkeypatch):
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL", _stub_xclbinutil(tmp_path, width=None))
+    xclbin = _write(tmp_path / "final.xclbin", b"stub")
+    insts = _write(tmp_path / "insts.bin", b"\x01")
+
+    with pytest.raises(argparse.ArgumentTypeError, match="does not record"):
+        pack.parse_kernel_arg(f"xclbin:k:{xclbin}:{insts}:64")
+    (kernel,) = pack.parse_kernel_arg(f"xclbin:k:{xclbin}:{insts}:64:3")
+    assert kernel["num_cols"] == 3
+
+
+@needs_posix
+def test_xclbin_with_a_malformed_column_width_is_rejected(tmp_path, monkeypatch):
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL", _stub_xclbinutil(tmp_path, width="x"))
+    xclbin = _write(tmp_path / "final.xclbin", b"stub")
+    with pytest.raises(ValueError, match="malformed column_width"):
+        pack.partition_from_xclbin(xclbin)
 
 
 @needs_posix
@@ -679,7 +780,7 @@ def test_xclbin_with_several_pdis_is_rejected(tmp_path, monkeypatch):
     xclbin = _write(tmp_path / "final.xclbin", b"stub")
 
     with pytest.raises(ValueError, match="expected exactly one PDI, found 2"):
-        pack.pdi_from_xclbin(xclbin)
+        pack.partition_from_xclbin(xclbin)
 
 
 @needs_posix
@@ -766,7 +867,7 @@ def test_a_rejected_xclbin_keeps_xclbinutils_diagnosis(tmp_path, monkeypatch):
     xclbin = _write(tmp_path / "bad.xclbin", b"not an xclbin")
 
     with pytest.raises(ValueError, match="AIE_PARTITION section not found"):
-        pack.pdi_from_xclbin(xclbin)
+        pack.partition_from_xclbin(xclbin)
 
 
 # ---------------------------------------------------------------------------
@@ -788,12 +889,12 @@ def test_pdi_insts_kernel_specs(tmp_path):
 
 
 def test_elf_kernel_spec_accepts_optional_trailing_fields(tmp_path):
-    path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")]))
+    path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")], num_cols=4))
 
     (bare,) = pack.parse_kernel_arg(f"elf:{path}")
-    assert (bare["kernarg_size"], bare["num_cols"]) == (0, 1)
+    assert (bare["kernarg_size"], bare["num_cols"]) == (0, 4)
     (sized,) = pack.parse_kernel_arg(f"elf:{path}:96")
-    assert (sized["kernarg_size"], sized["num_cols"]) == (96, 1)
+    assert (sized["kernarg_size"], sized["num_cols"]) == (96, 4)
     (full,) = pack.parse_kernel_arg(f"elf:{path}:96:4")
     assert (full["kernarg_size"], full["num_cols"]) == (96, 4)
 
@@ -842,10 +943,21 @@ def test_long_form_pdi_insts(tmp_path):
 def test_long_form_defaults_match_the_colon_form(tmp_path):
     insts = _write(tmp_path / "insts.bin", b"\x01")
     (kernel,) = pack.kernels_from_options(
-        [("kernel_name", "k"), ("kernel_insts", insts)]
+        [("kernel_name", "k"), ("kernel_insts", insts), ("kernel_cols", 1)]
     )
-    assert (kernel["kernarg_size"], kernel["num_cols"]) == (0, 1)
+    assert kernel["kernarg_size"] == 0
     assert kernel["pdi"] is None
+
+
+def test_long_form_pdi_insts_requires_a_column_count(tmp_path):
+    """Nothing a PDI+insts kernel is made of records its partition width."""
+    insts = _write(tmp_path / "insts.bin", b"\x01")
+    pdi = _write(tmp_path / "main.pdi", b"\x03")
+    for extra in ([], [("kernel_pdi", pdi)]):
+        with pytest.raises(argparse.ArgumentTypeError, match="requires --kernel-cols"):
+            pack.kernels_from_options(
+                [("kernel_name", "k"), ("kernel_insts", insts)] + extra
+            )
 
 
 def test_long_form_full_elf(tmp_path):
@@ -872,13 +984,14 @@ def test_long_form_xclbin(tmp_path, monkeypatch):
         ]
     )
     assert kernel["pdi"] == b"PDI-FROM-XCLBIN"
+    assert kernel["num_cols"] == 2
 
 
 def test_long_form_describes_several_kernels(tmp_path):
     """Each starter opens a new kernel; following options attach to it."""
     a = _write(tmp_path / "a.bin", b"\xaa")
     b = _write(tmp_path / "b.bin", b"\xbb")
-    elf_path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")]))
+    elf_path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")], num_cols=8))
 
     kernels = pack.kernels_from_options(
         [
@@ -889,11 +1002,13 @@ def test_long_form_describes_several_kernels(tmp_path):
             ("kernel_name", "second"),
             ("kernel_insts", b),
             ("kernel_kernarg", 32),
+            ("kernel_cols", 1),
         ]
     )
     assert [k["name"] for k in kernels] == ["first", "k:i", "second"]
     assert kernels[0]["num_cols"] == 2
-    assert kernels[1]["num_cols"] == 1  # not inherited from the previous kernel
+    # Not inherited from the previous kernel, which would clash with the note.
+    assert kernels[1]["num_cols"] == 8
     assert kernels[2]["kernarg_size"] == 32
     assert kernels[0]["kernarg_size"] == 0
 
@@ -930,7 +1045,11 @@ def test_malformed_long_form_is_rejected(ops, message):
 def test_long_form_unreadable_file_is_a_usage_error():
     with pytest.raises(argparse.ArgumentTypeError, match="No such file"):
         pack.kernels_from_options(
-            [("kernel_name", "k"), ("kernel_insts", "/nonexistent.bin")]
+            [
+                ("kernel_name", "k"),
+                ("kernel_insts", "/nonexistent.bin"),
+                ("kernel_cols", 1),
+            ]
         )
 
 
@@ -956,6 +1075,8 @@ def test_long_form_handles_a_path_containing_a_colon(tmp_path):
                 "k",
                 "--kernel-insts",
                 insts,
+                "--kernel-cols",
+                "1",
             ]
         )
         == 0
@@ -969,7 +1090,7 @@ def test_mixed_grammars_keep_argv_order(tmp_path):
     """The README calls the two forms freely mixable; the kernel table is ordered."""
     a = _write(tmp_path / "a.bin", b"\xaa")
     b = _write(tmp_path / "b.bin", b"\xbb")
-    elf_path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")]))
+    elf_path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")], num_cols=4))
     hsaco = str(tmp_path / "out.hsaco")
 
     # Long form first, colon form second: the output must follow argv, not the
@@ -977,9 +1098,9 @@ def test_mixed_grammars_keep_argv_order(tmp_path):
     assert (
         pack.main(
             ["--hsaco", hsaco, "--arch", "aie2"]
-            + ["--kernel-name", "first", "--kernel-insts", a]
+            + ["--kernel-name", "first", "--kernel-insts", a, "--kernel-cols", "4"]
             + [f"--kernel=elf:{elf_path}"]
-            + ["--kernel-name", "last", "--kernel-insts", b]
+            + ["--kernel-name", "last", "--kernel-insts", b, "--kernel-cols", "4"]
         )
         == 0
     )
@@ -993,7 +1114,7 @@ def test_mixed_grammars_keep_argv_order(tmp_path):
 
 @needs_objcopy
 def test_main_mixes_long_form_and_colon_form(tmp_path):
-    elf_path = _write(tmp_path / "final.elf", make_full_elf([("k0", "i0")]))
+    elf_path = _write(tmp_path / "final.elf", make_full_elf([("k0", "i0")], num_cols=8))
     insts = _write(tmp_path / "insts.bin", b"\x07\x08")
     hsaco = str(tmp_path / "out.hsaco")
 
@@ -1011,6 +1132,8 @@ def test_main_mixes_long_form_and_colon_form(tmp_path):
                 insts,
                 "--kernel-kernarg",
                 "16",
+                "--kernel-cols",
+                "8",
             ]
         )
         == 0
@@ -1032,7 +1155,7 @@ def test_kernel_ops_do_not_leak_between_runs(tmp_path):
     """A list default on the action would accumulate across parse_args calls."""
     insts = _write(tmp_path / "insts.bin", b"\x01")
     args = ["--hsaco", str(tmp_path / "a.hsaco"), "--arch", "aie2"]
-    argv = args + ["--kernel-name", "k", "--kernel-insts", insts]
+    argv = args + ["--kernel-name", "k", "--kernel-insts", insts, "--kernel-cols", "1"]
 
     first = pack.main(argv)
     # A second identical run must not see the first run's kernel again, which
@@ -1233,7 +1356,7 @@ def test_a_failed_injection_leaves_no_stray_container(tmp_path, monkeypatch, cap
     with pytest.raises(SystemExit):
         pack.main(
             ["--hsaco", path, "--arch", "aie2"]
-            + ["--kernel-name", "k", "--kernel-insts", insts]
+            + ["--kernel-name", "k", "--kernel-insts", insts, "--kernel-cols", "1"]
         )
     assert "nope" in capsys.readouterr().err
     assert not os.path.exists(path)
@@ -1250,7 +1373,7 @@ def test_an_unrunnable_objcopy_leaves_no_stray_container(tmp_path, monkeypatch, 
     with pytest.raises(SystemExit) as excinfo:
         pack.main(
             ["--hsaco", path, "--arch", "aie2"]
-            + ["--kernel-name", "k", "--kernel-insts", insts]
+            + ["--kernel-name", "k", "--kernel-insts", insts, "--kernel-cols", "1"]
         )
     assert excinfo.value.code == 2
     assert "could not write the aie2 section" in capsys.readouterr().err
@@ -1308,7 +1431,9 @@ def test_main_prints_a_block_per_arch_section(tmp_path, capsys):
 
 @needs_objcopy
 def test_main_packs_a_full_elf_end_to_end(tmp_path, capsys):
-    source = _write(tmp_path / "final.elf", make_full_elf([("_Z4mainv", "i0")]))
+    source = _write(
+        tmp_path / "final.elf", make_full_elf([("_Z4mainv", "i0")], num_cols=8)
+    )
     hsaco = str(tmp_path / "out.hsaco")
 
     assert (
@@ -1322,6 +1447,7 @@ def test_main_packs_a_full_elf_end_to_end(tmp_path, capsys):
     assert "kernel main:i0" in out
     assert "kind=FullElf" in out
     assert "kernarg=64" in out
+    assert "cols=8" in out
 
 
 def test_command_names_agree_across_the_three_registrations(tmp_path):

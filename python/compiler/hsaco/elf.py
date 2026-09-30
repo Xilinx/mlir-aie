@@ -6,9 +6,10 @@
 
 """Minimal ELF reading and writing for the hsaco tools.
 
-Deliberately hand-rolled with ``struct``: only three narrow things
+Deliberately hand-rolled with ``struct``: only four narrow things
 are needed here - look a section up by name, walk a full AIE ELF's COMDAT
-groups, and emit an empty container for the packer to inject into.
+groups, read a full AIE ELF's partition size, and emit an empty container for
+the packer to inject into.
 
 Both ELF classes are read, because the tools need both: the hsaco container is
 ELF64, while a real AIE full ELF is ELF32 -- which is not incidental, it is the
@@ -32,6 +33,13 @@ SHT_GROUP = 17
 
 # A group section's first word holds its flags; this is the only defined one.
 GRP_COMDAT = 0x1
+
+# Where the AIE full-ELF producer (aiebu) records the partition size, as read
+# by XRT's xrt::elf::get_partition_size(): one note, owner "XRT", type 6, whose
+# descriptor is the column count as a uint32.
+_PARTITION_NOTE_SECTION = ".note.xrt.configuration"
+_PARTITION_NOTE_OWNER = b"XRT\x00"
+_PARTITION_NOTE_TYPE = 6
 
 # e_shstrndx escape: the real index lives in section header 0's sh_link.
 _SHN_XINDEX = 0xFFFF
@@ -359,6 +367,44 @@ def kernel_names_from_full_elf(blob):
     if not names:
         raise ValueError("no COMDAT groups; not a full ELF")
     return sorted(names)
+
+
+def partition_size_from_full_elf(blob):
+    """Return the column count a full ELF records, or ``None`` if it has none.
+
+    Args:
+        blob (bytes): The whole ELF image.
+
+    Returns:
+        int | None: The ``.note.xrt.configuration`` partition size, or ``None``
+            if the section is absent.
+
+    Raises:
+        ValueError: If the section is present but does not hold exactly one
+            well-formed XRT partition-size note.
+    """
+    section = ElfFile(blob).section_by_name(_PARTITION_NOTE_SECTION)
+    if section is None:
+        return None
+    data = section.data
+    # Elf32_Nhdr and Elf64_Nhdr are both three uint32s, and the name and
+    # descriptor are each padded to 4 bytes.
+    if len(data) < 12:
+        raise ValueError(f"{_PARTITION_NOTE_SECTION} is truncated")
+    namesz, descsz, note_type = struct.unpack_from("<III", data)
+    name_end = 12 + namesz
+    desc_off = name_end + (-namesz % 4)
+    if (
+        data[12:name_end] != _PARTITION_NOTE_OWNER
+        or note_type != _PARTITION_NOTE_TYPE
+        or descsz != 4
+        or len(data) != desc_off + descsz
+    ):
+        raise ValueError(
+            f"{_PARTITION_NOTE_SECTION} is not a single XRT partition-size note"
+        )
+    (num_cols,) = struct.unpack_from("<I", data, desc_off)
+    return num_cols
 
 
 def make_empty_elf64():

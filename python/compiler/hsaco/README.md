@@ -56,7 +56,9 @@ NAME:INSTS[:PDI]:KERNARG_SIZE:NUM_COLS
 
 The direct form: `INSTS` is the raw `insts.bin` and `PDI` the `main.pdi` that
 `aiecc` emitted next to the xclbin. The PDI is optional — omit it for a design
-whose instruction stream is self-contained.
+whose instruction stream is self-contained. `NUM_COLS` is required: neither
+file records the partition it was compiled for, so it must match the design's
+device (4 for `npu1`, 8 for `npu2`, N for `npuX_Ncol`).
 
 ```bash
 aie-hsaco --hsaco vector_add.hsaco --arch aie2p \
@@ -66,15 +68,17 @@ aie-hsaco --hsaco vector_add.hsaco --arch aie2p \
 ### 2. xclbin + instruction stream
 
 ```
-xclbin:NAME:XCLBIN:INSTS:KERNARG_SIZE:NUM_COLS
+xclbin:NAME:XCLBIN:INSTS:KERNARG_SIZE[:NUM_COLS]
 ```
 
 Same as above, but the PDI is extracted from the xclbin's `AIE_PARTITION`
-section instead of being passed directly. All six fields are required.
+section instead of being passed directly. The column count comes from the same
+section's `partition.column_width`; `NUM_COLS`, if given, must match it (see
+[Column count](#column-count)).
 
 ```bash
 aie-hsaco --hsaco vector_add.hsaco --arch aie2p \
-  --kernel 'xclbin:MLIR_AIE:build/final.xclbin:build/insts.bin:64:1'
+  --kernel 'xclbin:MLIR_AIE:build/final.xclbin:build/insts.bin:64'
 ```
 
 This shells out to `xclbinutil`, resolved via
@@ -95,10 +99,29 @@ per group, named `kernel:instance`. Every entry embeds the same ELF image, and
 the section's blob pool stores it once.
 
 ```bash
-aie-hsaco --hsaco vector_add.hsaco --arch aie2p --kernel 'elf:build/final.elf:64:1'
+aie-hsaco --hsaco vector_add.hsaco --arch aie2p --kernel 'elf:build/final.elf:64'
 ```
 
-`KERNARG_SIZE` and `NUM_COLS` default to `0` and `1`.
+`KERNARG_SIZE` defaults to `0`. The column count comes from the ELF's
+`.note.xrt.configuration`; `NUM_COLS`, if given, must match it.
+
+### Column count
+
+`NUM_COLS` is the width of the partition the kernel was compiled for — the
+device's column count, not the number of columns the design happens to use (an
+`npu2` design confined to column 0 is still an 8-column kernel). There is no
+default, because a guessed width packs cleanly and is wrong for every other
+device:
+
+| form | column count |
+|---|---|
+| PDI + insts | `NUM_COLS` / `--kernel-cols`, required |
+| xclbin | `AIE_PARTITION` → `partition.column_width` |
+| full ELF | `.note.xrt.configuration` (XRT note type 6, read by `xrt::elf::get_partition_size()`) |
+
+For the xclbin and full-ELF forms an explicit count is a cross-check: it is an
+error if it disagrees with the file, and is only used on its own when the file
+records none.
 
 ### Two limits of the colon grammar
 
@@ -132,7 +155,7 @@ kernels and freely mixed with `--kernel`.
 | `--kernel-pdi PATH` | PDI (`main.pdi`) |
 | `--kernel-xclbin PATH` | xclbin to extract the PDI from |
 | `--kernel-kernarg N` | kernarg buffer size (default `0`) |
-| `--kernel-cols N` | column count (default `1`) |
+| `--kernel-cols N` | column count; required for PDI+insts, else checked against the file |
 
 ```bash
 aie-hsaco --hsaco vector_add.hsaco --arch aie2p \
@@ -147,13 +170,13 @@ Two kernels and a full ELF in one invocation:
 ```bash
 aie-hsaco --hsaco design.hsaco --arch aie2 \
   --kernel-name first  --kernel-insts build/a.bin --kernel-cols 2 \
-  --kernel-name second --kernel-insts build/b.bin --kernel-kernarg 32 \
+  --kernel-name second --kernel-insts build/b.bin --kernel-kernarg 32 --kernel-cols 2 \
   --kernel-elf build/final.elf
 ```
 
-Nothing is inherited between groups: each kernel's `--kernel-kernarg` and
-`--kernel-cols` fall back to their defaults, not to the previous kernel's
-values. Giving the same option twice within one group, using `--kernel-pdi`
+Nothing is inherited between groups: each kernel's `--kernel-kernarg` falls
+back to its default and its `--kernel-cols` to the file's own count, not to
+the previous kernel's values. Giving the same option twice within one group, using `--kernel-pdi`
 and `--kernel-xclbin` together, or combining `--kernel-elf` with
 `--kernel-insts`, `--kernel-pdi` or `--kernel-xclbin` (a full ELF carries its
 own) is rejected with a usage error. `--kernel-kernarg` and `--kernel-cols`
