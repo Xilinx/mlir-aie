@@ -535,9 +535,46 @@ struct AIEGenerateColumnControlOverlayPass
     return false;
   }
 
+  // True when `tile` is used only by its routing, and its switchbox only
+  // passes streams between neighbouring switchboxes: none starts or ends at
+  // the tile itself.
+  static bool isRoutedThroughOnly(TileOp tile) {
+    auto isNeighbour = [](Port port) {
+      return port.bundle == WireBundle::North ||
+             port.bundle == WireBundle::South ||
+             port.bundle == WireBundle::East || port.bundle == WireBundle::West;
+    };
+    bool hasSwitchbox = false;
+    for (Operation *user : tile->getUsers()) {
+      if (isa<AIE::WireOp>(user))
+        continue;
+      auto switchbox = dyn_cast<AIE::SwitchboxOp>(user);
+      if (!switchbox)
+        return false;
+      hasSwitchbox = true;
+      for (Operation &op : switchbox.getConnections().front()) {
+        if (auto connect = dyn_cast<AIE::ConnectOp>(op)) {
+          if (!isNeighbour(connect.sourcePort()) ||
+              !isNeighbour(connect.destPort()))
+            return false;
+        } else if (auto rules = dyn_cast<AIE::PacketRulesOp>(op)) {
+          if (!isNeighbour(rules.sourcePort()))
+            return false;
+        } else if (auto master = dyn_cast<AIE::MasterSetOp>(op)) {
+          if (!isNeighbour(master.destPort()))
+            return false;
+        }
+      }
+    }
+    return hasSwitchbox;
+  }
+
   // Every occupied column needs its own shim response route. An overlay
-  // routed on only one column must not suppress the remaining columns.
-  static bool deviceHasControlOverlay(DeviceOp device) {
+  // routed on only one column must not suppress the remaining columns. With
+  // route-shim-to-tct=all-tiles, every tile also needs its own response route,
+  // except a tile that is only routed through. Pathfinder declares such a tile
+  // when a flow crosses it, and a first run of this pass never covered it.
+  bool deviceHasControlOverlay(DeviceOp device) {
     auto tileIDMap = getTileToControllerIdMap(true, device.getTargetModel());
     llvm::SmallSet<int, 4> cols;
     llvm::DenseMap<int, TileOp> shims;
@@ -548,10 +585,17 @@ struct AIEGenerateColumnControlOverlayPass
     }
     if (cols.empty())
       return false;
-    return llvm::all_of(cols, [&](int col) {
-      auto it = shims.find(col);
-      return it != shims.end() &&
-             hasRoutedResponse(device, it->second, tileIDMap);
+    if (!llvm::all_of(cols, [&](int col) {
+          auto it = shims.find(col);
+          return it != shims.end() &&
+                 hasRoutedResponse(device, it->second, tileIDMap);
+        }))
+      return false;
+    if (clRouteShimCTRLToTCT != "all-tiles")
+      return true;
+    return llvm::all_of(device.getOps<AIE::TileOp>(), [&](TileOp tile) {
+      return isRoutedThroughOnly(tile) ||
+             hasRoutedResponse(device, tile, tileIDMap);
     });
   }
 
