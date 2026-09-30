@@ -12,7 +12,7 @@ groups, and emit an empty container for the packer to inject into.
 
 Both ELF classes are read, because the tools need both: the hsaco container is
 ELF64, while a real AIE full ELF is ELF32 -- which is not incidental, it is the
-class ROCr's nested-ELF reader (``core/runtime/amd_aie_elf.cpp``) requires.
+class ROCR's nested-ELF reader (``core/runtime/amd_aie_elf.cpp``) requires.
 Only ELF64 is *written*, by ``make_empty_elf64()``.
 """
 
@@ -330,7 +330,7 @@ def kernel_names_from_full_elf(blob):
     symbol's ``st_shndx`` is in turn read as an index back into the symbol
     table to reach the *kernel* symbol -- this is how the AIE full-ELF producer
     encodes the pairing, and is not the usual meaning of ``st_shndx``. It
-    mirrors what ROCr's own packer does; changing it here would desynchronise
+    mirrors what ROCR's own packer does; changing it here would desynchronise
     the two.
 
     Args:
@@ -344,11 +344,11 @@ def kernel_names_from_full_elf(blob):
             COMDAT, or contains no groups at all.
     """
     elf = ElfFile(blob)
-    # ROCr's nested-ELF reader rejects any other class, so an ELF64 payload
+    # ROCR's nested-ELF reader rejects any other class, so an ELF64 payload
     # would pack cleanly and only fail at load.
     if blob[4] != _ELFCLASS32:
         raise ValueError(
-            "full ELF is ELF64, but ROCr's nested-ELF reader requires ELF32"
+            "full ELF is ELF64, but ROCR's nested-ELF reader requires ELF32"
         )
     names = []
     for signature_index in elf.group_signature_indices():

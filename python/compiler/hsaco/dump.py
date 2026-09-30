@@ -135,7 +135,7 @@ def parse_section(section):
 def read_sections_from_hsaco(path):
     """Return ``[(arch, section_bytes), ...]`` for every arch section in an hsaco.
 
-    One hsaco can carry a section per architecture -- ROCr picks the one
+    One hsaco can carry a section per architecture -- ROCR picks the one
     matching the running device -- so all of them are returned, in
     ``hsaco.format.ARCHES`` order.
 

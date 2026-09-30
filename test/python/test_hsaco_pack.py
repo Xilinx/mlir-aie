@@ -77,7 +77,7 @@ def make_full_elf(pairs, elf_class=32):
     full-ELF producer uses.
 
     ``elf_class`` picks ELF32 (the default) or ELF64. A real AIE full ELF is
-    ELF32 -- the class ROCr's nested-ELF reader requires, so the packer
+    ELF32 -- the class ROCR's nested-ELF reader requires, so the packer
     rejects anything else -- while the hsaco it gets packed into is ELF64, and
     one reader handles both; the ELF64 form exercises that reader.
     """
@@ -429,7 +429,7 @@ def test_full_elf_image_is_embedded_once(tmp_path):
 def test_full_elf32_names_every_comdat_group(tmp_path):
     """A real AIE full ELF is ELF32, not ELF64.
 
-    aiecc's --get-full-elf emits ELFCLASS32, and ROCr's nested-ELF reader
+    aiecc's --get-full-elf emits ELFCLASS32, and ROCR's nested-ELF reader
     (core/runtime/amd_aie_elf.cpp) requires it, so an ELF64-only reader here
     rejects every artifact the packer exists to pack.
     """
@@ -458,7 +458,7 @@ def test_elf_without_comdat_groups_is_rejected(tmp_path):
 
 @pytest.mark.parametrize("form", ["api", "colon"])
 def test_elf64_full_elf_is_rejected(tmp_path, form):
-    """ROCr would refuse it at load, so the packer must refuse it first."""
+    """ROCR would refuse it at load, so the packer must refuse it first."""
     path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")], elf_class=64))
     if form == "api":
         with pytest.raises(ValueError, match="requires ELF32"):

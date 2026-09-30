@@ -278,12 +278,12 @@ truncated section fails loudly rather than parsing into plausible garbage.
 
 ## Keeping the layout in sync
 
-`format.py` is a hand-maintained mirror of ROCr's `core/inc/amd_aie_section.h`
+`format.py` is a hand-maintained mirror of ROCR's `core/inc/amd_aie_section.h`
 (in the rocm-systems repo, under `projects/rocr-runtime/runtime/hsa-runtime/`).
 **The C++ header is authoritative.** Because the two now live in separate
 repositories the mirror can drift silently, so `parse_section` rejects a
 section whose `version_major` it does not recognise instead of misreading it.
-When a field is added or a reserved word repurposed on the ROCr side, update
+When a field is added or a reserved word repurposed on the ROCR side, update
 `format.py` to match and bump the version there.
 
 The header is self-describing — it carries its own `header_size` and

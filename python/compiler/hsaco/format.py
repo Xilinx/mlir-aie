@@ -6,7 +6,7 @@
 
 """On-disk layout of the AIE hsaco section, shared by the packer and the dumper.
 
-This is a deliberate mirror of ROCr's ``core/inc/amd_aie_section.h`` (in the
+This is a deliberate mirror of ROCR's ``core/inc/amd_aie_section.h`` (in the
 rocm-systems repo, under ``projects/rocr-runtime/runtime/hsa-runtime/``).
 
 Because the two now live in separate repositories the mirror can drift
