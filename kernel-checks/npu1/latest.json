@@ -1,65 +1,35 @@
 {
  "schema": 1,
  "target": "npu1",
- "id": "bench-1790663757417",
- "url": "",
- "date": "2026-09-29T06:35:57+00:00",
+ "id": "36734464439",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36734464439",
+ "date": "2026-09-30T18:37:49+00:00",
  "commit": {
-  "id": "d53582d3e0f9f8a2b77695bbf4abbd7766d5584a",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/d53582d3e0f9f8a2b77695bbf4abbd7766d5584a",
-  "message": "Single-core Kernel Optimizations and Tooling (#3801)",
-  "timestamp": "2026-09-28T20:24:43Z"
+  "id": "91ee8c89c8b841f2f6f9364b642a69526d595197",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/91ee8c89c8b841f2f6f9364b642a69526d595197",
+  "message": "[AIEVec] Lower arith.negf at 32 lanes on AIE2P (#3813)",
+  "timestamp": "2026-09-30T05:43:03Z"
  },
- "pmode": "default",
+ "pmode": "turbo",
  "device": "Phoenix",
  "device_raw": "RyzenAI-npu1",
  "provenance": {
-  "commit": "d53582d3e0",
-  "peano": "22.0.0+0006955e",
-  "kernels": "0857407c3322",
+  "commit": "91ee8c89c8",
+  "peano": "22.0.0+b0d37423",
+  "kernels": "21d397f78f53",
+  "runtime": "CachedXRTRuntime",
+  "xdna": "2.25.0_20260902",
+  "xrt": "2.25.0",
+  "host": "aie2",
   "device": "RyzenAI-npu1",
-  "pmode": "default"
+  "pmode": "turbo"
  },
  "sane": true,
  "published": true,
- "n_rows": 781,
- "exitstatus": null,
+ "n_rows": 523,
+ "exitstatus": 0,
  "failed": [],
- "truncated": [
-  "bf16_exp/1024x16/bfloat16",
-  "bf16_exp/1024x256/bfloat16",
-  "bn_conv2dk3_dw/4704x8/uint8/input_channels=336/input_width=14/output_channels=336/stride=2",
-  "bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240",
-  "conv2dk3/2048x8/int8_uint8",
-  "conv2dk3/2048x8/uint8",
-  "dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024",
-  "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024",
-  "exp2f_vec/1024x16/float32",
-  "exp2f_vec/1024x256/float32",
-  "gelu/1024x16/bfloat16",
-  "gelu/1024x256/bfloat16",
-  "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024",
-  "layer_norm_f32/1024x16/float32/cols=1024",
-  "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal",
-  "mm/64x32x64x16/bfloat16_float32",
-  "mm/64x32x64x16/int16_int32",
-  "mm/64x32x64x256/bfloat16_float32",
-  "mm_activation_epilogue/1024x16/float32/gelu",
-  "mm_activation_epilogue/1024x16/float32/silu",
-  "mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down",
-  "rgba2hue/7680x16/uint8",
-  "sigmoid/1024x256/bfloat16",
-  "silu/1024x16/bfloat16",
-  "silu/1024x256/bfloat16",
-  "silu_sized/1024x16/bfloat16/llama-decode",
-  "silu_sized/4096x16/bfloat16/llama-prefill",
-  "softmax/1024x256/bfloat16",
-  "softmax/2048x16/bfloat16/llama-prefill",
-  "swiglu/1024x16/bfloat16",
-  "swiglu/1024x256/bfloat16",
-  "tanh/1024x256/bfloat16"
- ],
- "migrated_from": "aie_kernels (npu1, default)",
+ "truncated": [],
  "rows": {
   "passthrough/2048x16/int32": {
    "cycles": {
@@ -72,20 +42,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 193.56,
+    "value": 191.9,
     "unit": "us",
-    "range": "\u00b1 1.6; min 172.8 max 202.2 n=50"
+    "range": "\u00b1 1.4; min 184.1 max 272.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8791,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3020,
+   "kernel_object_bytes": {
+    "value": 1884,
     "unit": "bytes"
    }
   },
@@ -100,20 +62,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1539.55,
+    "value": 737.85,
     "unit": "us",
-    "range": "\u00b1 27.7; min 895.5 max 1643.4 n=50"
+    "range": "\u00b1 4.3; min 707.8 max 746.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8791,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3020,
+   "kernel_object_bytes": {
+    "value": 1884,
     "unit": "bytes"
    }
   },
@@ -128,20 +82,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 197.06,
+    "value": 189.61,
     "unit": "us",
-    "range": "\u00b1 6.8; min 179.9 max 214.4 n=50"
+    "range": "\u00b1 0.7; min 184.9 max 199.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8791,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3020,
+   "kernel_object_bytes": {
+    "value": 1884,
     "unit": "bytes"
    }
   },
@@ -156,20 +102,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 190.5,
+    "value": 173.36,
     "unit": "us",
-    "range": "\u00b1 6.5; min 162.7 max 326.4 n=50"
+    "range": "\u00b1 1.4; min 166.5 max 265.3 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8791,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3020,
+   "kernel_object_bytes": {
+    "value": 1884,
     "unit": "bytes"
    }
   },
@@ -184,20 +122,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 184.43,
+    "value": 162.25,
     "unit": "us",
-    "range": "\u00b1 20.4; min 152.7 max 256.5 n=50"
+    "range": "\u00b1 0.4; min 153.5 max 251.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8791,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3020,
+   "kernel_object_bytes": {
+    "value": 1884,
     "unit": "bytes"
    }
   },
@@ -212,20 +142,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 168.83,
+    "value": 162.05,
     "unit": "us",
-    "range": "\u00b1 9.3; min 150.5 max 226.4 n=50"
+    "range": "\u00b1 1.3; min 157.2 max 250.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8919,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3048,
+   "kernel_object_bytes": {
+    "value": 2600,
     "unit": "bytes"
    }
   },
@@ -240,20 +162,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 292.2,
+    "value": 289.61,
     "unit": "us",
-    "range": "\u00b1 2.0; min 277.6 max 377.6 n=50"
+    "range": "\u00b1 2.3; min 279.5 max 372.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8919,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3048,
+   "kernel_object_bytes": {
+    "value": 2600,
     "unit": "bytes"
    }
   },
@@ -268,20 +182,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 178.17,
+    "value": 173.74,
     "unit": "us",
-    "range": "\u00b1 11.0; min 162.5 max 306.9 n=50"
+    "range": "\u00b1 1.9; min 167.6 max 261.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9079,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3208,
+   "kernel_object_bytes": {
+    "value": 2760,
     "unit": "bytes"
    }
   },
@@ -296,20 +202,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 171.55,
+    "value": 173.21,
     "unit": "us",
-    "range": "\u00b1 2.3; min 162.6 max 334.0 n=50"
+    "range": "\u00b1 1.6; min 164.4 max 268.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9095,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3196,
+   "kernel_object_bytes": {
+    "value": 3304,
     "unit": "bytes"
    }
   },
@@ -317,27 +215,19 @@
    "cycles": {
     "value": 78,
     "unit": "cycles",
-    "range": "median 87 max 131 n=256"
+    "range": "median 78 max 131 n=256"
    },
    "cycles_per_kop": {
     "value": 76.172,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 431.3,
+    "value": 1172.12,
     "unit": "us",
-    "range": "\u00b1 11.7; min 413.1 max 1455.5 n=50"
+    "range": "\u00b1 117.4; min 494.6 max 1431.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9095,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3196,
+   "kernel_object_bytes": {
+    "value": 3304,
     "unit": "bytes"
    }
   },
@@ -352,20 +242,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 172.22,
+    "value": 173.21,
     "unit": "us",
-    "range": "\u00b1 3.8; min 157.8 max 270.3 n=50"
+    "range": "\u00b1 2.9; min 164.1 max 244.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9095,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3244,
+   "kernel_object_bytes": {
+    "value": 3488,
     "unit": "bytes"
    }
   },
@@ -373,27 +255,19 @@
    "cycles": {
     "value": 78,
     "unit": "cycles",
-    "range": "median 87 max 129 n=256"
+    "range": "median 78 max 129 n=256"
    },
    "cycles_per_kop": {
     "value": 76.172,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1346.28,
+    "value": 1273.36,
     "unit": "us",
-    "range": "\u00b1 78.1; min 600.7 max 1509.6 n=50"
+    "range": "\u00b1 100.2; min 514.2 max 1487.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9095,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3244,
+   "kernel_object_bytes": {
+    "value": 3488,
     "unit": "bytes"
    }
   },
@@ -408,20 +282,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 171.53,
+    "value": 161.18,
     "unit": "us",
-    "range": "\u00b1 15.8; min 148.9 max 281.9 n=50"
+    "range": "\u00b1 1.1; min 153.1 max 168.0 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8807,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2900,
+   "kernel_object_bytes": {
+    "value": 2400,
     "unit": "bytes"
    }
   },
@@ -436,20 +302,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 306,
+    "value": 290.4,
     "unit": "us",
-    "range": "\u00b1 2.2; min 289.1 max 401.9 n=50"
+    "range": "\u00b1 2.8; min 276.7 max 302.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8807,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2900,
+   "kernel_object_bytes": {
+    "value": 2400,
     "unit": "bytes"
    }
   },
@@ -464,20 +322,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 191.06,
+    "value": 171.52,
     "unit": "us",
-    "range": "\u00b1 11.8; min 161.1 max 332.6 n=50"
+    "range": "\u00b1 1.8; min 163.2 max 256.3 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8791,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2900,
+   "kernel_object_bytes": {
+    "value": 1736,
     "unit": "bytes"
    }
   },
@@ -492,20 +342,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1159.48,
+    "value": 429.4,
     "unit": "us",
-    "range": "\u00b1 176.8; min 546.1 max 1694.9 n=50"
+    "range": "\u00b1 6.5; min 412.9 max 440.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8791,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2900,
+   "kernel_object_bytes": {
+    "value": 1736,
     "unit": "bytes"
    }
   },
@@ -520,20 +362,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 175.82,
+    "value": 174.42,
     "unit": "us",
-    "range": "\u00b1 5.6; min 164.8 max 304.1 n=50"
+    "range": "\u00b1 2.0; min 164.3 max 281.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8791,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2900,
+   "kernel_object_bytes": {
+    "value": 3016,
     "unit": "bytes"
    }
   },
@@ -548,20 +382,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 431.47,
+    "value": 429.75,
     "unit": "us",
-    "range": "\u00b1 23.4; min 398.5 max 1520.1 n=50"
+    "range": "\u00b1 6.8; min 410.2 max 467.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8791,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2900,
+   "kernel_object_bytes": {
+    "value": 3016,
     "unit": "bytes"
    }
   },
@@ -576,20 +402,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 171.69,
+    "value": 173.93,
     "unit": "us",
-    "range": "\u00b1 2.5; min 162.7 max 200.3 n=50"
+    "range": "\u00b1 1.1; min 167.8 max 264.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8823,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2932,
+   "kernel_object_bytes": {
+    "value": 3816,
     "unit": "bytes"
    }
   },
@@ -604,20 +422,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 514.48,
+    "value": 1210.92,
     "unit": "us",
-    "range": "\u00b1 29.9; min 473.1 max 1296.6 n=50"
+    "range": "\u00b1 94.5; min 533.8 max 1446.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8823,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2932,
+   "kernel_object_bytes": {
+    "value": 3816,
     "unit": "bytes"
    }
   },
@@ -632,20 +442,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 168.35,
+    "value": 160.73,
     "unit": "us",
-    "range": "\u00b1 12.2; min 145.2 max 264.6 n=50"
+    "range": "\u00b1 1.4; min 152.7 max 249.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8855,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2972,
+   "kernel_object_bytes": {
+    "value": 3816,
     "unit": "bytes"
    }
   },
@@ -660,188 +462,132 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 329.45,
+    "value": 304.98,
     "unit": "us",
-    "range": "\u00b1 41.4; min 277.6 max 1224.4 n=50"
+    "range": "\u00b1 12.0; min 288.5 max 1523.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8855,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2972,
+   "kernel_object_bytes": {
+    "value": 3816,
     "unit": "bytes"
    }
   },
   "gelu/1024x16/bfloat16": {
    "cycles": {
-    "value": 1785,
+    "value": 1751,
     "unit": "cycles",
-    "range": "median 1795 max 1802 n=12; truncated"
+    "range": "median 1795 max 1802 n=16"
    },
    "cycles_per_kop": {
-    "value": 1743.164,
+    "value": 1709.961,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 194.21,
+    "value": 187.91,
     "unit": "us",
-    "range": "\u00b1 15.5; min 177.0 max 392.7 n=50"
+    "range": "\u00b1 3.0; min 179.7 max 391.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14617,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9336,
+   "kernel_object_bytes": {
+    "value": 23952,
     "unit": "bytes"
    }
   },
   "gelu/1024x256/bfloat16": {
    "cycles": {
-    "value": 1785,
+    "value": 1751,
     "unit": "cycles",
-    "range": "median 1795 max 1802 n=97; truncated"
+    "range": "median 1795 max 1802 n=256"
    },
    "cycles_per_kop": {
-    "value": 1743.164,
+    "value": 1709.961,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 684.47,
+    "value": 637.23,
     "unit": "us",
-    "range": "\u00b1 4.5; min 662.7 max 835.3 n=50"
+    "range": "\u00b1 4.9; min 623.6 max 711.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14617,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9336,
+   "kernel_object_bytes": {
+    "value": 23952,
     "unit": "bytes"
    }
   },
   "silu/1024x16/bfloat16": {
    "cycles": {
-    "value": 1637,
+    "value": 1600,
     "unit": "cycles",
-    "range": "median 1659 max 1662 n=13; truncated"
+    "range": "median 1653 max 1663 n=16"
    },
    "cycles_per_kop": {
-    "value": 1598.633,
+    "value": 1562.5,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 182.75,
+    "value": 183.93,
     "unit": "us",
-    "range": "\u00b1 2.8; min 174.0 max 346.7 n=50"
+    "range": "\u00b1 1.6; min 173.9 max 288.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14521,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9240,
+   "kernel_object_bytes": {
+    "value": 23888,
     "unit": "bytes"
    }
   },
   "silu/1024x256/bfloat16": {
    "cycles": {
-    "value": 1637,
+    "value": 1600,
     "unit": "cycles",
-    "range": "median 1659 max 1663 n=103; truncated"
+    "range": "median 1654 max 1663 n=256"
    },
    "cycles_per_kop": {
-    "value": 1598.633,
+    "value": 1562.5,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1196.92,
+    "value": 1445.19,
     "unit": "us",
-    "range": "\u00b1 95.3; min 683.2 max 1576.6 n=50"
+    "range": "\u00b1 99.2; min 754.9 max 1580.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14521,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9240,
+   "kernel_object_bytes": {
+    "value": 23888,
     "unit": "bytes"
    }
   },
   "bf16_exp/1024x16/bfloat16": {
    "cycles": {
-    "value": 1057,
+    "value": 1008,
     "unit": "cycles",
-    "range": "median 1088 max 1106 n=12; truncated"
+    "range": "median 1088 max 1106 n=16"
    },
    "cycles_per_kop": {
-    "value": 1032.227,
+    "value": 984.375,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 172.02,
+    "value": 173.94,
     "unit": "us",
-    "range": "\u00b1 8.0; min 161.2 max 324.3 n=50"
+    "range": "\u00b1 1.2; min 169.7 max 258.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14281,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 8888,
+   "kernel_object_bytes": {
+    "value": 19252,
     "unit": "bytes"
    }
   },
   "bf16_exp/1024x256/bfloat16": {
    "cycles": {
-    "value": 1056,
+    "value": 1008,
     "unit": "cycles",
-    "range": "median 1100 max 1106 n=95; truncated"
+    "range": "median 1087 max 1106 n=256"
    },
    "cycles_per_kop": {
-    "value": 1031.25,
+    "value": 984.375,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1084.41,
+    "value": 452.38,
     "unit": "us",
-    "range": "\u00b1 157.2; min 573.2 max 1581.8 n=50"
+    "range": "\u00b1 3.7; min 440.8 max 465.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14281,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 8888,
+   "kernel_object_bytes": {
+    "value": 19252,
     "unit": "bytes"
    }
   },
@@ -856,48 +602,32 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 167.55,
+    "value": 170.08,
     "unit": "us",
-    "range": "\u00b1 7.5; min 158.5 max 288.1 n=50"
+    "range": "\u00b1 0.6; min 161.7 max 259.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14473,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9052,
+   "kernel_object_bytes": {
+    "value": 25060,
     "unit": "bytes"
    }
   },
   "tanh/1024x256/bfloat16": {
    "cycles": {
-    "value": 800,
+    "value": 774,
     "unit": "cycles",
-    "range": "median 801 max 829 n=201; truncated"
+    "range": "median 801 max 829 n=256"
    },
    "cycles_per_kop": {
-    "value": 781.25,
+    "value": 755.859,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 404.85,
+    "value": 388.33,
     "unit": "us",
-    "range": "\u00b1 22.6; min 374.3 max 1414.5 n=50"
+    "range": "\u00b1 10.4; min 374.4 max 509.3 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14473,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9052,
+   "kernel_object_bytes": {
+    "value": 25060,
     "unit": "bytes"
    }
   },
@@ -912,48 +642,32 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 186.16,
+    "value": 180.01,
     "unit": "us",
-    "range": "\u00b1 10.2; min 167.6 max 234.7 n=50"
+    "range": "\u00b1 1.0; min 170.6 max 189.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14361,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9088,
+   "kernel_object_bytes": {
+    "value": 22420,
     "unit": "bytes"
    }
   },
   "sigmoid/1024x256/bfloat16": {
    "cycles": {
-    "value": 1368,
+    "value": 1339,
     "unit": "cycles",
-    "range": "median 1380 max 1381 n=141; truncated"
+    "range": "median 1376 max 1381 n=256"
    },
    "cycles_per_kop": {
-    "value": 1335.938,
+    "value": 1307.617,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 536.72,
+    "value": 1296.53,
     "unit": "us",
-    "range": "\u00b1 15.5; min 517.7 max 684.4 n=50"
+    "range": "\u00b1 129.8; min 606.3 max 1542.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14361,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9088,
+   "kernel_object_bytes": {
+    "value": 22420,
     "unit": "bytes"
    }
   },
@@ -961,55 +675,39 @@
    "cycles": {
     "value": 1845,
     "unit": "cycles",
-    "range": "median 1870 max 1875 n=16"
+    "range": "median 1870 max 1874 n=16"
    },
    "cycles_per_kop": {
     "value": 1801.758,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 185.75,
+    "value": 186.98,
     "unit": "us",
-    "range": "\u00b1 8.0; min 165.6 max 353.6 n=50"
+    "range": "\u00b1 0.8; min 178.7 max 266.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 17529,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 13700,
+   "kernel_object_bytes": {
+    "value": 31744,
     "unit": "bytes"
    }
   },
   "softmax/1024x256/bfloat16": {
    "cycles": {
-    "value": 1865,
+    "value": 1845,
     "unit": "cycles",
-    "range": "median 1870 max 1875 n=137; truncated"
+    "range": "median 1870 max 1877 n=256"
    },
    "cycles_per_kop": {
-    "value": 1821.289,
+    "value": 1801.758,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1316.58,
+    "value": 669.16,
     "unit": "us",
-    "range": "\u00b1 102.8; min 845.4 max 1689.2 n=50"
+    "range": "\u00b1 9.9; min 641.4 max 762.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 17529,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 13700,
+   "kernel_object_bytes": {
+    "value": 31744,
     "unit": "bytes"
    }
   },
@@ -1024,20 +722,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 156.18,
+    "value": 160.66,
     "unit": "us",
-    "range": "\u00b1 4.3; min 143.0 max 279.7 n=50"
+    "range": "\u00b1 0.6; min 152.3 max 288.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9031,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3132,
+   "kernel_object_bytes": {
+    "value": 7880,
     "unit": "bytes"
    }
   },
@@ -1052,20 +742,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 278.91,
+    "value": 292.79,
     "unit": "us",
-    "range": "\u00b1 1.7; min 273.3 max 429.7 n=50"
+    "range": "\u00b1 2.7; min 283.6 max 368.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9031,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3132,
+   "kernel_object_bytes": {
+    "value": 7880,
     "unit": "bytes"
    }
   },
@@ -1073,27 +755,19 @@
    "cycles": {
     "value": 11981,
     "unit": "cycles",
-    "range": "median 12012 max 12043 n=2; truncated"
+    "range": "median 11981 max 12060 n=16"
    },
    "cycles_per_kop": {
     "value": 11700.195,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1197.62,
+    "value": 365.61,
     "unit": "us",
-    "range": "\u00b1 100.4; min 424.7 max 1374.6 n=50"
+    "range": "\u00b1 5.8; min 347.9 max 421.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 11241,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 5480,
+   "kernel_object_bytes": {
+    "value": 3884,
     "unit": "bytes"
    }
   },
@@ -1101,27 +775,19 @@
    "cycles": {
     "value": 11981,
     "unit": "cycles",
-    "range": "median 12010 max 12060 n=18; truncated"
+    "range": "median 11981 max 12060 n=256"
    },
    "cycles_per_kop": {
     "value": 11700.195,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 3418.82,
+    "value": 3661.98,
     "unit": "us",
-    "range": "\u00b1 64.2; min 3341.6 max 4137.0 n=50"
+    "range": "\u00b1 154.8; min 3417.8 max 4160.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 11241,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 5480,
+   "kernel_object_bytes": {
+    "value": 3884,
     "unit": "bytes"
    }
   },
@@ -1129,27 +795,19 @@
    "cycles": {
     "value": 87,
     "unit": "cycles",
-    "range": "median 97 max 140 n=16"
+    "range": "median 87 max 140 n=16"
    },
    "cycles_per_kop": {
     "value": 42.48,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 175.06,
+    "value": 186.68,
     "unit": "us",
-    "range": "\u00b1 6.7; min 159.8 max 251.5 n=50"
+    "range": "\u00b1 5.0; min 167.9 max 304.0 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9448,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3736,
+   "kernel_object_bytes": {
+    "value": 2356,
     "unit": "bytes"
    }
   },
@@ -1164,20 +822,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1245.9,
+    "value": 429.95,
     "unit": "us",
-    "range": "\u00b1 171.1; min 530.9 max 1457.0 n=50"
+    "range": "\u00b1 8.8; min 411.9 max 510.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9448,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3736,
+   "kernel_object_bytes": {
+    "value": 2356,
     "unit": "bytes"
    }
   },
@@ -1192,20 +842,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 185.5,
+    "value": 172.66,
     "unit": "us",
-    "range": "\u00b1 16.9; min 161.3 max 330.4 n=50"
+    "range": "\u00b1 1.2; min 163.9 max 252.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8983,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3252,
+   "kernel_object_bytes": {
+    "value": 1520,
     "unit": "bytes"
    }
   },
@@ -1220,20 +862,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1252.06,
+    "value": 431.44,
     "unit": "us",
-    "range": "\u00b1 140.7; min 488.0 max 1619.9 n=50"
+    "range": "\u00b1 9.4; min 415.9 max 1400.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8983,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3252,
+   "kernel_object_bytes": {
+    "value": 1520,
     "unit": "bytes"
    }
   },
@@ -1248,20 +882,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 156.57,
+    "value": 163.28,
     "unit": "us",
-    "range": "\u00b1 4.8; min 147.3 max 252.3 n=50"
+    "range": "\u00b1 1.4; min 154.7 max 250.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8887,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3000,
+   "kernel_object_bytes": {
+    "value": 1272,
     "unit": "bytes"
    }
   },
@@ -1276,44 +902,28 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 294.89,
+    "value": 289.19,
     "unit": "us",
-    "range": "\u00b1 3.6; min 269.4 max 309.3 n=50"
+    "range": "\u00b1 3.2; min 279.6 max 381.3 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8887,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3000,
+   "kernel_object_bytes": {
+    "value": 1272,
     "unit": "bytes"
    }
   },
   "transpose/1024x16/bfloat16/subtile=4": {
    "cycles": {
-    "value": 141,
+    "value": 115,
     "unit": "cycles",
-    "range": "median 141 max 141 n=16"
+    "range": "median 115 max 115 n=16"
    },
    "npu_us": {
-    "value": 162.63,
+    "value": 162.7,
     "unit": "us",
-    "range": "\u00b1 5.0; min 150.5 max 252.1 n=50"
+    "range": "\u00b1 1.2; min 156.9 max 250.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8839,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2944,
+   "kernel_object_bytes": {
+    "value": 2612,
     "unit": "bytes"
    }
   },
@@ -1324,20 +934,12 @@
     "range": "median 144 max 144 n=16"
    },
    "npu_us": {
-    "value": 168.16,
+    "value": 162.76,
     "unit": "us",
-    "range": "\u00b1 9.5; min 148.8 max 218.7 n=50"
+    "range": "\u00b1 0.8; min 153.6 max 229.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9031,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3136,
+   "kernel_object_bytes": {
+    "value": 2612,
     "unit": "bytes"
    }
   },
@@ -1348,20 +950,12 @@
     "range": "median 63 max 63 n=16"
    },
    "npu_us": {
-    "value": 157.23,
+    "value": 158.9,
     "unit": "us",
-    "range": "\u00b1 6.2; min 142.9 max 262.8 n=50"
+    "range": "\u00b1 1.0; min 152.0 max 167.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8839,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2944,
+   "kernel_object_bytes": {
+    "value": 2756,
     "unit": "bytes"
    }
   },
@@ -1372,20 +966,12 @@
     "range": "median 239 max 239 n=16"
    },
    "npu_us": {
-    "value": 183.78,
+    "value": 173.05,
     "unit": "us",
-    "range": "\u00b1 9.1; min 159.2 max 277.4 n=50"
+    "range": "\u00b1 0.8; min 165.8 max 251.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8871,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2976,
+   "kernel_object_bytes": {
+    "value": 3092,
     "unit": "bytes"
    }
   },
@@ -1393,27 +979,19 @@
    "cycles": {
     "value": 1881,
     "unit": "cycles",
-    "range": "median 1961 max 1973 n=13; init[2] min 518; truncated"
+    "range": "median 1961 max 1973 n=16; init[2] min 518"
    },
    "cycles_per_kop": {
     "value": 7.175,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 232.22,
+    "value": 229.61,
     "unit": "us",
-    "range": "\u00b1 8.9; min 213.3 max 1261.6 n=50"
+    "range": "\u00b1 3.5; min 215.6 max 236.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 10297,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4700,
+   "kernel_object_bytes": {
+    "value": 4028,
     "unit": "bytes"
    }
   },
@@ -1421,27 +999,19 @@
    "cycles": {
     "value": 1881,
     "unit": "cycles",
-    "range": "median 1961 max 1970 n=207; init[2] min 518; truncated"
+    "range": "median 1961 max 1973 n=256; init[2] min 518"
    },
    "cycles_per_kop": {
     "value": 7.175,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1496.33,
+    "value": 1245.83,
     "unit": "us",
-    "range": "\u00b1 85.9; min 1326.3 max 1959.0 n=50"
+    "range": "\u00b1 8.8; min 1210.5 max 1310.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 10297,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4700,
+   "kernel_object_bytes": {
+    "value": 4028,
     "unit": "bytes"
    }
   },
@@ -1456,48 +1026,32 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1222.29,
+    "value": 286.51,
     "unit": "us",
-    "range": "\u00b1 82.8; min 358.9 max 1374.1 n=50"
+    "range": "\u00b1 1.9; min 277.6 max 365.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 10633,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 5044,
+   "kernel_object_bytes": {
+    "value": 4620,
     "unit": "bytes"
    }
   },
   "mm/64x32x64x16/int16_int32": {
    "cycles": {
-    "value": 3219,
+    "value": 3213,
     "unit": "cycles",
-    "range": "median 3281 max 3482 n=7; init[2] min 518; truncated"
+    "range": "median 3281 max 3482 n=16; init[2] min 518"
    },
    "cycles_per_kop": {
-    "value": 12.28,
+    "value": 12.257,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 242.05,
+    "value": 242.66,
     "unit": "us",
-    "range": "\u00b1 3.2; min 229.0 max 1290.5 n=50"
+    "range": "\u00b1 2.2; min 233.3 max 301.3 n=50"
    },
-   "xclbin_bytes": {
-    "value": 10201,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4552,
+   "kernel_object_bytes": {
+    "value": 3368,
     "unit": "bytes"
    }
   },
@@ -1512,20 +1066,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 231.54,
+    "value": 228.15,
     "unit": "us",
-    "range": "\u00b1 12.6; min 212.4 max 389.1 n=50"
+    "range": "\u00b1 2.6; min 215.4 max 327.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 10056,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4408,
+   "kernel_object_bytes": {
+    "value": 3204,
     "unit": "bytes"
    }
   },
@@ -1533,27 +1079,19 @@
    "cycles": {
     "value": 691,
     "unit": "cycles",
-    "range": "median 699 max 730 n=4"
+    "range": "median 699 max 731 n=4"
    },
    "cycles_per_kop": {
     "value": 21.088,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 161.48,
+    "value": 167.49,
     "unit": "us",
-    "range": "\u00b1 5.9; min 153.2 max 259.4 n=50"
+    "range": "\u00b1 6.6; min 153.3 max 244.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9960,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4220,
+   "kernel_object_bytes": {
+    "value": 32280,
     "unit": "bytes"
    }
   },
@@ -1568,20 +1106,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 172.44,
+    "value": 165.74,
     "unit": "us",
-    "range": "\u00b1 10.8; min 154.6 max 381.4 n=50"
+    "range": "\u00b1 1.0; min 157.6 max 253.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9768,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3820,
+   "kernel_object_bytes": {
+    "value": 2612,
     "unit": "bytes"
    }
   },
@@ -1596,20 +1126,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 279.47,
+    "value": 229.41,
     "unit": "us",
-    "range": "\u00b1 59.6; min 211.4 max 650.5 n=50"
+    "range": "\u00b1 1.5; min 223.4 max 300.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 12185,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 6608,
+   "kernel_object_bytes": {
+    "value": 6928,
     "unit": "bytes"
    }
   },
@@ -1624,20 +1146,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 164.91,
+    "value": 159.74,
     "unit": "us",
-    "range": "\u00b1 9.9; min 154.2 max 254.1 n=50"
+    "range": "\u00b1 0.4; min 151.0 max 165.3 n=50"
    },
-   "xclbin_bytes": {
-    "value": 10441,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4824,
+   "kernel_object_bytes": {
+    "value": 5144,
     "unit": "bytes"
    }
   },
@@ -1652,20 +1166,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 237.19,
+    "value": 222.84,
     "unit": "us",
-    "range": "\u00b1 7.8; min 214.2 max 294.9 n=50"
+    "range": "\u00b1 2.7; min 216.9 max 321.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 11449,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 5948,
+   "kernel_object_bytes": {
+    "value": 6284,
     "unit": "bytes"
    }
   },
@@ -1673,27 +1179,19 @@
    "cycles": {
     "value": 1755,
     "unit": "cycles",
-    "range": "median 1755 max 1755 n=72; truncated"
+    "range": "median 1755 max 1755 n=256"
    },
    "cycles_per_kop": {
     "value": 107.117,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1530.64,
+    "value": 1387.7,
     "unit": "us",
-    "range": "\u00b1 108.0; min 1328.9 max 1827.6 n=50"
+    "range": "\u00b1 31.3; min 1325.5 max 1629.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 27273,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 5540,
+   "kernel_object_bytes": {
+    "value": 6284,
     "unit": "bytes"
    }
   },
@@ -1704,24 +1202,16 @@
     "range": "median 11 max 11 n=16"
    },
    "cycles_per_kop": {
-    "value": 11000,
+    "value": 11000.0,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 161.8,
+    "value": 152.84,
     "unit": "us",
-    "range": "\u00b1 9.1; min 140.3 max 187.1 n=50"
+    "range": "\u00b1 0.5; min 148.5 max 240.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8839,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2856,
+   "kernel_object_bytes": {
+    "value": 3672,
     "unit": "bytes"
    }
   },
@@ -1732,80 +1222,56 @@
     "range": "median 14 max 14 n=16"
    },
    "cycles_per_kop": {
-    "value": 14000,
+    "value": 14000.0,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 156.61,
+    "value": 154.94,
     "unit": "us",
-    "range": "\u00b1 12.2; min 138.3 max 283.6 n=50"
+    "range": "\u00b1 2.0; min 147.2 max 238.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 8855,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2880,
+   "kernel_object_bytes": {
+    "value": 3672,
     "unit": "bytes"
    }
   },
   "swiglu/1024x16/bfloat16": {
    "cycles": {
-    "value": 2877,
+    "value": 2858,
     "unit": "cycles",
-    "range": "median 2939 max 2990 n=10; truncated"
+    "range": "median 2939 max 2990 n=16"
    },
    "cycles_per_kop": {
-    "value": 468.262,
+    "value": 465.169,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 224.92,
+    "value": 223.26,
     "unit": "us",
-    "range": "\u00b1 5.5; min 209.4 max 365.7 n=50"
+    "range": "\u00b1 3.0; min 212.7 max 319.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14777,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 10200,
+   "kernel_object_bytes": {
+    "value": 23348,
     "unit": "bytes"
    }
   },
   "swiglu/1024x256/bfloat16": {
    "cycles": {
-    "value": 2876,
+    "value": 2858,
     "unit": "cycles",
-    "range": "median 2939 max 2990 n=84; truncated"
+    "range": "median 2939 max 2990 n=256"
    },
    "cycles_per_kop": {
-    "value": 468.099,
+    "value": 465.169,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 1579.2,
+    "value": 1554.47,
     "unit": "us",
-    "range": "\u00b1 17.6; min 1317.1 max 1827.2 n=50"
+    "range": "\u00b1 63.0; min 1323.9 max 1694.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14777,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 10200,
+   "kernel_object_bytes": {
+    "value": 23348,
     "unit": "bytes"
    }
   },
@@ -1820,20 +1286,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 191.21,
+    "value": 186.58,
     "unit": "us",
-    "range": "\u00b1 9.9; min 176.1 max 349.3 n=50"
+    "range": "\u00b1 1.4; min 180.2 max 368.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9271,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3640,
+   "kernel_object_bytes": {
+    "value": 6160,
     "unit": "bytes"
    }
   },
@@ -1848,20 +1306,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 201.69,
+    "value": 187.84,
     "unit": "us",
-    "range": "\u00b1 9.0; min 174.9 max 351.4 n=50"
+    "range": "\u00b1 1.4; min 182.8 max 314.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9287,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3656,
+   "kernel_object_bytes": {
+    "value": 3592,
     "unit": "bytes"
    }
   },
@@ -1876,20 +1326,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 160.38,
+    "value": 160.6,
     "unit": "us",
-    "range": "\u00b1 3.3; min 152.6 max 243.2 n=50"
+    "range": "\u00b1 0.5; min 155.6 max 253.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 10201,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 5188,
+   "kernel_object_bytes": {
+    "value": 8244,
     "unit": "bytes"
    }
   },
@@ -1904,20 +1346,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 169.03,
+    "value": 171.9,
     "unit": "us",
-    "range": "\u00b1 2.0; min 158.1 max 216.9 n=50"
+    "range": "\u00b1 1.1; min 167.6 max 183.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9095,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3196,
+   "kernel_object_bytes": {
+    "value": 1784,
     "unit": "bytes"
    }
   },
@@ -1932,20 +1366,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 170.44,
+    "value": 170.28,
     "unit": "us",
-    "range": "\u00b1 7.5; min 156.0 max 337.4 n=50"
+    "range": "\u00b1 0.9; min 162.3 max 179.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9095,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3196,
+   "kernel_object_bytes": {
+    "value": 1788,
     "unit": "bytes"
    }
   },
@@ -1960,20 +1386,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 189.22,
+    "value": 172.61,
     "unit": "us",
-    "range": "\u00b1 4.2; min 163.4 max 311.0 n=50"
+    "range": "\u00b1 1.0; min 166.8 max 180.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9384,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3488,
+   "kernel_object_bytes": {
+    "value": 2244,
     "unit": "bytes"
    }
   },
@@ -1988,48 +1406,32 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 188.57,
+    "value": 181.41,
     "unit": "us",
-    "range": "\u00b1 10.4; min 166.9 max 333.2 n=50"
+    "range": "\u00b1 1.0; min 172.8 max 264.3 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9976,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 5064,
+   "kernel_object_bytes": {
+    "value": 2448,
     "unit": "bytes"
    }
   },
   "rgba2hue/7680x16/uint8": {
    "cycles": {
-    "value": 2954,
+    "value": 2909,
     "unit": "cycles",
-    "range": "median 2959 max 2987 n=7; truncated"
+    "range": "median 2959 max 2988 n=16"
    },
    "cycles_per_kop": {
-    "value": 1538.542,
+    "value": 1515.104,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 222.65,
+    "value": 222.9,
     "unit": "us",
-    "range": "\u00b1 5.6; min 195.3 max 288.2 n=50"
+    "range": "\u00b1 23.3; min 197.9 max 618.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 12153,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 7004,
+   "kernel_object_bytes": {
+    "value": 23004,
     "unit": "bytes"
    }
   },
@@ -2044,20 +1446,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 171.4,
+    "value": 162.85,
     "unit": "us",
-    "range": "\u00b1 4.4; min 148.4 max 248.9 n=50"
+    "range": "\u00b1 1.0; min 150.0 max 251.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 13161,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3232,
+   "kernel_object_bytes": {
+    "value": 1412,
     "unit": "bytes"
    }
   },
@@ -2072,20 +1466,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 161.61,
+    "value": 161.14,
     "unit": "us",
-    "range": "\u00b1 8.0; min 149.6 max 263.8 n=50"
+    "range": "\u00b1 0.7; min 152.2 max 168.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 13161,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3236,
+   "kernel_object_bytes": {
+    "value": 2308,
     "unit": "bytes"
    }
   },
@@ -2100,20 +1486,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 177.1,
+    "value": 177.73,
     "unit": "us",
-    "range": "\u00b1 3.0; min 170.1 max 300.3 n=50"
+    "range": "\u00b1 1.6; min 171.7 max 266.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 17897,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4688,
+   "kernel_object_bytes": {
+    "value": 1824,
     "unit": "bytes"
    }
   },
@@ -2121,27 +1499,19 @@
    "cycles": {
     "value": 1331,
     "unit": "cycles",
-    "range": "median 1331 max 1345 n=8"
+    "range": "median 1331 max 1348 n=8"
    },
    "cycles_per_kop": {
     "value": 2.529,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 170.16,
+    "value": 181.46,
     "unit": "us",
-    "range": "\u00b1 3.6; min 159.3 max 304.1 n=50"
+    "range": "\u00b1 9.8; min 168.2 max 272.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 17913,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3792,
+   "kernel_object_bytes": {
+    "value": 1820,
     "unit": "bytes"
    }
   },
@@ -2156,20 +1526,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 172.11,
+    "value": 174.05,
     "unit": "us",
-    "range": "\u00b1 3.7; min 159.6 max 343.6 n=50"
+    "range": "\u00b1 2.2; min 168.3 max 243.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 17273,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 6628,
+   "kernel_object_bytes": {
+    "value": 3748,
     "unit": "bytes"
    }
   },
@@ -2184,20 +1546,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 181.96,
+    "value": 172.98,
     "unit": "us",
-    "range": "\u00b1 12.8; min 156.2 max 339.3 n=50"
+    "range": "\u00b1 1.7; min 162.7 max 188.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 17321,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 5764,
+   "kernel_object_bytes": {
+    "value": 3764,
     "unit": "bytes"
    }
   },
@@ -2212,20 +1566,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 168.32,
+    "value": 170.48,
     "unit": "us",
-    "range": "\u00b1 2.4; min 149.6 max 270.3 n=50"
+    "range": "\u00b1 1.0; min 165.2 max 259.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 21289,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 2828,
+   "kernel_object_bytes": {
+    "value": 2020,
     "unit": "bytes"
    }
   },
@@ -2240,76 +1586,52 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 163.05,
+    "value": 161.24,
     "unit": "us",
-    "range": "\u00b1 4.5; min 151.8 max 222.5 n=50"
+    "range": "\u00b1 0.5; min 154.9 max 250.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 13161,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3232,
+   "kernel_object_bytes": {
+    "value": 1416,
     "unit": "bytes"
    }
   },
   "conv2dk3/2048x8/int8_uint8": {
    "cycles": {
-    "value": 6977,
+    "value": 6973,
     "unit": "cycles",
-    "range": "median 6986 max 6992 n=7; truncated"
+    "range": "median 6985 max 6990 n=8"
    },
    "cycles_per_kop": {
-    "value": 2.957,
+    "value": 2.956,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 214.81,
+    "value": 226.45,
     "unit": "us",
-    "range": "\u00b1 1.6; min 205.9 max 358.6 n=50"
+    "range": "\u00b1 1.8; min 217.8 max 308.0 n=50"
    },
-   "xclbin_bytes": {
-    "value": 46617,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4664,
+   "kernel_object_bytes": {
+    "value": 1784,
     "unit": "bytes"
    }
   },
   "conv2dk3/2048x8/uint8": {
    "cycles": {
-    "value": 6969,
+    "value": 6966,
     "unit": "cycles",
-    "range": "median 6979 max 6985 n=7; truncated"
+    "range": "median 6976 max 6985 n=8"
    },
    "cycles_per_kop": {
-    "value": 2.954,
+    "value": 2.953,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 227.58,
+    "value": 260.41,
     "unit": "us",
-    "range": "\u00b1 3.1; min 210.2 max 378.8 n=50"
+    "range": "\u00b1 21.6; min 224.1 max 1316.0 n=50"
    },
-   "xclbin_bytes": {
-    "value": 46617,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4668,
+   "kernel_object_bytes": {
+    "value": 1788,
     "unit": "bytes"
    }
   },
@@ -2324,20 +1646,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 186.62,
+    "value": 176.08,
     "unit": "us",
-    "range": "\u00b1 12.3; min 157.2 max 334.2 n=50"
+    "range": "\u00b1 1.0; min 164.9 max 185.3 n=50"
    },
-   "xclbin_bytes": {
-    "value": 17849,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9268,
+   "kernel_object_bytes": {
+    "value": 7512,
     "unit": "bytes"
    }
   },
@@ -2352,20 +1666,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 186.88,
+    "value": 174.45,
     "unit": "us",
-    "range": "\u00b1 11.8; min 159.5 max 275.8 n=50"
+    "range": "\u00b1 1.5; min 166.7 max 249.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14073,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9268,
+   "kernel_object_bytes": {
+    "value": 7512,
     "unit": "bytes"
    }
   },
@@ -2373,27 +1679,19 @@
    "cycles": {
     "value": 5596,
     "unit": "cycles",
-    "range": "median 5609 max 5650 n=8"
+    "range": "median 5608 max 5650 n=8"
    },
    "cycles_per_kop": {
     "value": 13.577,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 197.29,
+    "value": 205.95,
     "unit": "us",
-    "range": "\u00b1 3.7; min 188.3 max 331.2 n=50"
+    "range": "\u00b1 4.9; min 192.8 max 302.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 27769,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9268,
+   "kernel_object_bytes": {
+    "value": 7512,
     "unit": "bytes"
    }
   },
@@ -2408,20 +1706,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 190.93,
+    "value": 182.77,
     "unit": "us",
-    "range": "\u00b1 16.4; min 168.2 max 348.4 n=50"
+    "range": "\u00b1 2.3; min 175.4 max 273.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 22649,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9268,
+   "kernel_object_bytes": {
+    "value": 7512,
     "unit": "bytes"
    }
   },
@@ -2436,20 +1726,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 173.95,
+    "value": 174.41,
     "unit": "us",
-    "range": "\u00b1 4.3; min 158.4 max 329.3 n=50"
+    "range": "\u00b1 2.1; min 165.5 max 270.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 18089,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9640,
+   "kernel_object_bytes": {
+    "value": 8092,
     "unit": "bytes"
    }
   },
@@ -2464,20 +1746,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 163.39,
+    "value": 173.48,
     "unit": "us",
-    "range": "\u00b1 1.8; min 159.3 max 280.0 n=50"
+    "range": "\u00b1 3.2; min 159.8 max 262.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14825,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9640,
+   "kernel_object_bytes": {
+    "value": 8092,
     "unit": "bytes"
    }
   },
@@ -2492,20 +1766,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 201.96,
+    "value": 283.88,
     "unit": "us",
-    "range": "\u00b1 3.7; min 188.7 max 346.7 n=50"
+    "range": "\u00b1 84.5; min 196.2 max 1480.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 32489,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9640,
+   "kernel_object_bytes": {
+    "value": 8092,
     "unit": "bytes"
    }
   },
@@ -2520,20 +1786,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 206.89,
+    "value": 208.71,
     "unit": "us",
-    "range": "\u00b1 5.0; min 191.8 max 367.0 n=50"
+    "range": "\u00b1 1.7; min 198.9 max 290.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 40169,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9640,
+   "kernel_object_bytes": {
+    "value": 8092,
     "unit": "bytes"
    }
   },
@@ -2548,20 +1806,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 170.69,
+    "value": 181.64,
     "unit": "us",
-    "range": "\u00b1 3.0; min 164.2 max 303.9 n=50"
+    "range": "\u00b1 1.9; min 174.8 max 290.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 19529,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 10996,
+   "kernel_object_bytes": {
+    "value": 9100,
     "unit": "bytes"
    }
   },
@@ -2576,20 +1826,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 177.78,
+    "value": 178.95,
     "unit": "us",
-    "range": "\u00b1 4.5; min 164.9 max 325.4 n=50"
+    "range": "\u00b1 2.1; min 174.2 max 275.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 19321,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 10668,
+   "kernel_object_bytes": {
+    "value": 8540,
     "unit": "bytes"
    }
   },
@@ -2597,27 +1839,19 @@
    "cycles": {
     "value": 1532,
     "unit": "cycles",
-    "range": "median 1542 max 1550 n=8"
+    "range": "median 1542 max 1552 n=8"
    },
    "cycles_per_kop": {
     "value": 7.861,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 180.49,
+    "value": 171.81,
     "unit": "us",
-    "range": "\u00b1 12.9; min 159.5 max 326.7 n=50"
+    "range": "\u00b1 1.5; min 168.7 max 202.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 16457,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 10996,
+   "kernel_object_bytes": {
+    "value": 9100,
     "unit": "bytes"
    }
   },
@@ -2632,48 +1866,32 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 180.21,
+    "value": 178.31,
     "unit": "us",
-    "range": "\u00b1 2.5; min 164.7 max 316.9 n=50"
+    "range": "\u00b1 2.3; min 170.4 max 281.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 24329,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 10996,
+   "kernel_object_bytes": {
+    "value": 9100,
     "unit": "bytes"
    }
   },
   "bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8": {
    "cycles": {
-    "value": 4658,
+    "value": 4651,
     "unit": "cycles",
-    "range": "median 4667 max 4675 n=8"
+    "range": "median 4669 max 4675 n=8"
    },
    "cycles_per_kop": {
-    "value": 11.271,
+    "value": 11.254,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 201.91,
+    "value": 199.22,
     "unit": "us",
-    "range": "\u00b1 10.0; min 185.2 max 356.6 n=50"
+    "range": "\u00b1 3.0; min 189.7 max 268.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 29241,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 10668,
+   "kernel_object_bytes": {
+    "value": 8540,
     "unit": "bytes"
    }
   },
@@ -2688,20 +1906,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 181.87,
+    "value": 177.69,
     "unit": "us",
-    "range": "\u00b1 7.3; min 163.3 max 202.1 n=50"
+    "range": "\u00b1 1.1; min 170.5 max 186.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 16137,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 12636,
+   "kernel_object_bytes": {
+    "value": 10148,
     "unit": "bytes"
    }
   },
@@ -2716,20 +1926,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 220.97,
+    "value": 209.36,
     "unit": "us",
-    "range": "\u00b1 12.6; min 201.3 max 367.0 n=50"
+    "range": "\u00b1 2.2; min 202.2 max 309.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 13737,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 8780,
+   "kernel_object_bytes": {
+    "value": 5920,
     "unit": "bytes"
    }
   },
@@ -2744,20 +1946,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 212.69,
+    "value": 203.55,
     "unit": "us",
-    "range": "\u00b1 9.2; min 194.0 max 357.1 n=50"
+    "range": "\u00b1 1.4; min 198.4 max 309.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 12889,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 8084,
+   "kernel_object_bytes": {
+    "value": 5224,
     "unit": "bytes"
    }
   },
@@ -2765,27 +1959,19 @@
    "cycles": {
     "value": 9080,
     "unit": "cycles",
-    "range": "median 9082 max 9099 n=7; truncated"
+    "range": "median 9081 max 9099 n=8"
    },
    "cycles_per_kop": {
     "value": 214.475,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 294,
+    "value": 1224.68,
     "unit": "us",
-    "range": "\u00b1 39.8; min 241.0 max 451.1 n=50"
+    "range": "\u00b1 109.3; min 400.5 max 1660.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 15257,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 8084,
+   "kernel_object_bytes": {
+    "value": 5224,
     "unit": "bytes"
    }
   },
@@ -2793,27 +1979,19 @@
    "cycles": {
     "value": 8407,
     "unit": "cycles",
-    "range": "median 8407 max 8414 n=8"
+    "range": "median 8407 max 8413 n=8"
    },
    "cycles_per_kop": {
     "value": 181.31,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 235.49,
+    "value": 236.44,
     "unit": "us",
-    "range": "\u00b1 7.6; min 225.7 max 324.8 n=50"
+    "range": "\u00b1 2.9; min 224.5 max 326.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14313,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 8780,
+   "kernel_object_bytes": {
+    "value": 5920,
     "unit": "bytes"
    }
   },
@@ -2821,27 +1999,19 @@
    "cycles": {
     "value": 12053,
     "unit": "cycles",
-    "range": "median 12053 max 12065 n=5; truncated"
+    "range": "median 12053 max 12065 n=8"
    },
    "cycles_per_kop": {
     "value": 199.289,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 272.25,
+    "value": 272.66,
     "unit": "us",
-    "range": "\u00b1 10.4; min 249.8 max 645.8 n=50"
+    "range": "\u00b1 3.7; min 264.3 max 494.3 n=50"
    },
-   "xclbin_bytes": {
-    "value": 17609,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 464,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9440,
+   "kernel_object_bytes": {
+    "value": 6584,
     "unit": "bytes"
    }
   },
@@ -2856,20 +2026,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 192.56,
+    "value": 195.19,
     "unit": "us",
-    "range": "\u00b1 5.4; min 183.1 max 324.3 n=50"
+    "range": "\u00b1 3.0; min 189.2 max 312.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 27065,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 15704,
+   "kernel_object_bytes": {
+    "value": 9748,
     "unit": "bytes"
    }
   },
@@ -2884,20 +2046,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 166.8,
+    "value": 163.06,
     "unit": "us",
-    "range": "\u00b1 10.4; min 148.5 max 234.6 n=50"
+    "range": "\u00b1 1.0; min 152.1 max 170.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 20473,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4872,
+   "kernel_object_bytes": {
+    "value": 2964,
     "unit": "bytes"
    }
   },
@@ -2912,20 +2066,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 160.03,
+    "value": 160.39,
     "unit": "us",
-    "range": "\u00b1 2.5; min 152.4 max 280.7 n=50"
+    "range": "\u00b1 0.5; min 154.7 max 229.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 20473,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4872,
+   "kernel_object_bytes": {
+    "value": 2964,
     "unit": "bytes"
    }
   },
@@ -2940,20 +2086,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 178.72,
+    "value": 172.64,
     "unit": "us",
-    "range": "\u00b1 11.6; min 157.9 max 197.5 n=50"
+    "range": "\u00b1 2.6; min 168.6 max 246.0 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9400,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3708,
+   "kernel_object_bytes": {
+    "value": 3208,
     "unit": "bytes"
    }
   },
@@ -2968,20 +2106,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 172.74,
+    "value": 178.63,
     "unit": "us",
-    "range": "\u00b1 3.5; min 161.3 max 336.3 n=50"
+    "range": "\u00b1 1.6; min 174.2 max 188.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9400,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3708,
+   "kernel_object_bytes": {
+    "value": 3208,
     "unit": "bytes"
    }
   },
@@ -2996,20 +2126,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 168.87,
+    "value": 163.09,
     "unit": "us",
-    "range": "\u00b1 5.2; min 147.8 max 181.9 n=50"
+    "range": "\u00b1 1.3; min 151.3 max 246.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 11849,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 7244,
+   "kernel_object_bytes": {
+    "value": 4564,
     "unit": "bytes"
    }
   },
@@ -3024,20 +2146,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 164.53,
+    "value": 165.29,
     "unit": "us",
-    "range": "\u00b1 7.1; min 149.3 max 261.1 n=50"
+    "range": "\u00b1 1.2; min 157.6 max 228.3 n=50"
    },
-   "xclbin_bytes": {
-    "value": 11145,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 5916,
+   "kernel_object_bytes": {
+    "value": 4292,
     "unit": "bytes"
    }
   },
@@ -3045,27 +2159,19 @@
    "cycles": {
     "value": 1621,
     "unit": "cycles",
-    "range": "median 1621 max 1622 n=11; truncated"
+    "range": "median 1621 max 1622 n=16"
    },
    "cycles_per_kop": {
     "value": 263.835,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 183.13,
+    "value": 184.62,
     "unit": "us",
-    "range": "\u00b1 5.8; min 170.7 max 350.0 n=50"
+    "range": "\u00b1 2.4; min 177.1 max 276.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 12265,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 7160,
+   "kernel_object_bytes": {
+    "value": 9916,
     "unit": "bytes"
    }
   },
@@ -3073,27 +2179,19 @@
    "cycles": {
     "value": 2757,
     "unit": "cycles",
-    "range": "median 2757 max 2757 n=8; truncated"
+    "range": "median 2757 max 2758 n=16"
    },
    "cycles_per_kop": {
     "value": 336.548,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 219.3,
+    "value": 208.49,
     "unit": "us",
-    "range": "\u00b1 4.1; min 191.4 max 347.5 n=50"
+    "range": "\u00b1 5.2; min 197.9 max 294.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 20585,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 7268,
+   "kernel_object_bytes": {
+    "value": 9916,
     "unit": "bytes"
    }
   },
@@ -3108,20 +2206,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 169.47,
+    "value": 171.54,
     "unit": "us",
-    "range": "\u00b1 5.7; min 156.1 max 255.0 n=50"
+    "range": "\u00b1 1.1; min 162.2 max 292.0 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9576,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3848,
+   "kernel_object_bytes": {
+    "value": 2932,
     "unit": "bytes"
    }
   },
@@ -3136,76 +2226,52 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 173.11,
+    "value": 175.32,
     "unit": "us",
-    "range": "\u00b1 4.9; min 160.9 max 331.6 n=50"
+    "range": "\u00b1 1.5; min 170.3 max 264.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 16537,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 11936,
+   "kernel_object_bytes": {
+    "value": 29888,
     "unit": "bytes"
    }
   },
   "mm_activation_epilogue/1024x16/float32/silu": {
    "cycles": {
-    "value": 2441,
+    "value": 2429,
     "unit": "cycles",
-    "range": "median 2444 max 2454 n=10; truncated"
+    "range": "median 2443 max 2454 n=16"
    },
    "cycles_per_kop": {
-    "value": 297.974,
+    "value": 296.509,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 215.44,
+    "value": 197.06,
     "unit": "us",
-    "range": "\u00b1 2.5; min 192.2 max 228.5 n=50"
+    "range": "\u00b1 1.0; min 192.2 max 274.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 16537,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 11936,
+   "kernel_object_bytes": {
+    "value": 29888,
     "unit": "bytes"
    }
   },
   "mm_activation_epilogue/1024x16/float32/gelu": {
    "cycles": {
-    "value": 3764,
+    "value": 3759,
     "unit": "cycles",
-    "range": "median 3769 max 3776 n=9; truncated"
+    "range": "median 3768 max 3776 n=16"
    },
    "cycles_per_kop": {
-    "value": 459.473,
+    "value": 458.862,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 234.41,
+    "value": 220.52,
     "unit": "us",
-    "range": "\u00b1 11.2; min 212.1 max 385.7 n=50"
+    "range": "\u00b1 3.1; min 207.7 max 319.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 16537,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 11936,
+   "kernel_object_bytes": {
+    "value": 29888,
     "unit": "bytes"
    }
   },
@@ -3220,20 +2286,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 179.03,
+    "value": 173.24,
     "unit": "us",
-    "range": "\u00b1 10.6; min 157.8 max 348.0 n=50"
+    "range": "\u00b1 2.1; min 166.3 max 256.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 16537,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 11936,
+   "kernel_object_bytes": {
+    "value": 29888,
     "unit": "bytes"
    }
   },
@@ -3241,27 +2299,19 @@
    "cycles": {
     "value": 666,
     "unit": "cycles",
-    "range": "median 666 max 666 n=15; truncated"
+    "range": "median 666 max 666 n=16"
    },
    "cycles_per_kop": {
     "value": 36.133,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 171.6,
+    "value": 168.96,
     "unit": "us",
-    "range": "\u00b1 12.1; min 150.0 max 380.0 n=50"
+    "range": "\u00b1 0.9; min 166.2 max 264.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 10313,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4788,
+   "kernel_object_bytes": {
+    "value": 3088,
     "unit": "bytes"
    }
   },
@@ -3269,27 +2319,19 @@
    "cycles": {
     "value": 666,
     "unit": "cycles",
-    "range": "median 666 max 666 n=15; truncated"
+    "range": "median 666 max 666 n=16"
    },
    "cycles_per_kop": {
     "value": 36.133,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 172.75,
+    "value": 169.84,
     "unit": "us",
-    "range": "\u00b1 10.9; min 158.7 max 301.0 n=50"
+    "range": "\u00b1 1.3; min 159.5 max 255.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 10313,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4788,
+   "kernel_object_bytes": {
+    "value": 3088,
     "unit": "bytes"
    }
   },
@@ -3304,76 +2346,72 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 179.17,
+    "value": 179.36,
     "unit": "us",
-    "range": "\u00b1 4.4; min 164.2 max 313.1 n=50"
+    "range": "\u00b1 1.6; min 173.5 max 267.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 11049,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 7748,
+   "kernel_object_bytes": {
+    "value": 2080,
     "unit": "bytes"
    }
   },
   "silu_sized/4096x16/bfloat16/llama-prefill": {
    "cycles": {
-    "value": 6546,
+    "value": 6352,
     "unit": "cycles",
-    "range": "median 6588 max 6588 n=3; truncated"
+    "range": "median 6566 max 6589 n=16"
    },
    "cycles_per_kop": {
-    "value": 1598.145,
+    "value": 1550.781,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 256.23,
+    "value": 547.88,
     "unit": "us",
-    "range": "\u00b1 1.8; min 249.4 max 335.8 n=50"
+    "range": "\u00b1 207.8; min 305.6 max 1382.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14521,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 9244,
+   "kernel_object_bytes": {
+    "value": 23892,
     "unit": "bytes"
    }
   },
   "silu_sized/1024x16/bfloat16/llama-decode": {
    "cycles": {
-    "value": 1639,
+    "value": 1600,
     "unit": "cycles",
-    "range": "median 1658 max 1663 n=13; truncated"
+    "range": "median 1653 max 1663 n=16"
    },
    "cycles_per_kop": {
-    "value": 1600.586,
+    "value": 1562.5,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 182.66,
+    "value": 183.41,
     "unit": "us",
-    "range": "\u00b1 3.0; min 174.3 max 335.8 n=50"
+    "range": "\u00b1 1.1; min 175.3 max 295.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 14521,
+   "kernel_object_bytes": {
+    "value": 23888,
     "unit": "bytes"
+   }
+  },
+  "mul_sized/4096x16/bfloat16/llama-prefill-ffn": {
+   "cycles": {
+    "value": 270,
+    "unit": "cycles",
+    "range": "median 299 max 513 n=16"
    },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
+   "cycles_per_kop": {
+    "value": 65.918,
+    "unit": "cycles/1k-ops"
    },
-   "core_elf_bytes": {
-    "value": 9244,
+   "npu_us": {
+    "value": 223.58,
+    "unit": "us",
+    "range": "\u00b1 3.3; min 210.6 max 298.6 n=50"
+   },
+   "kernel_object_bytes": {
+    "value": 2880,
     "unit": "bytes"
    }
   },
@@ -3388,20 +2426,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 190.9,
+    "value": 190.41,
     "unit": "us",
-    "range": "\u00b1 6.7; min 177.8 max 353.6 n=50"
+    "range": "\u00b1 2.3; min 179.5 max 240.0 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9143,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3296,
+   "kernel_object_bytes": {
+    "value": 2880,
     "unit": "bytes"
    }
   },
@@ -3416,20 +2446,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 193.05,
+    "value": 174.13,
     "unit": "us",
-    "range": "\u00b1 23.6; min 165.3 max 342.0 n=50"
+    "range": "\u00b1 1.2; min 167.9 max 206.1 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9143,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3296,
+   "kernel_object_bytes": {
+    "value": 2880,
     "unit": "bytes"
    }
   },
@@ -3437,27 +2459,19 @@
    "cycles": {
     "value": 30,
     "unit": "cycles",
-    "range": "median 31 max 34 n=16"
+    "range": "median 31 max 33 n=16"
    },
    "cycles_per_kop": {
     "value": 117.188,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 157.86,
+    "value": 169.71,
     "unit": "us",
-    "range": "\u00b1 5.6; min 148.8 max 371.6 n=50"
+    "range": "\u00b1 13.1; min 156.0 max 255.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9111,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3264,
+   "kernel_object_bytes": {
+    "value": 2880,
     "unit": "bytes"
    }
   },
@@ -3472,20 +2486,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 191.58,
+    "value": 190.63,
     "unit": "us",
-    "range": "\u00b1 7.2; min 175.3 max 350.2 n=50"
+    "range": "\u00b1 2.9; min 185.4 max 286.6 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9143,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3248,
+   "kernel_object_bytes": {
+    "value": 2716,
     "unit": "bytes"
    }
   },
@@ -3500,48 +2506,32 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 165.4,
+    "value": 159.66,
     "unit": "us",
-    "range": "\u00b1 10.4; min 144.1 max 288.2 n=50"
+    "range": "\u00b1 1.2; min 156.6 max 247.4 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9111,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3216,
+   "kernel_object_bytes": {
+    "value": 2716,
     "unit": "bytes"
    }
   },
   "softmax/2048x16/bfloat16/llama-prefill": {
    "cycles": {
-    "value": 3306,
+    "value": 3253,
     "unit": "cycles",
-    "range": "median 3308 max 3320 n=8; truncated"
+    "range": "median 3309 max 3320 n=16"
    },
    "cycles_per_kop": {
-    "value": 1614.258,
+    "value": 1588.379,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 218.61,
+    "value": 212.18,
     "unit": "us",
-    "range": "\u00b1 4.6; min 201.6 max 346.0 n=50"
+    "range": "\u00b1 3.1; min 205.3 max 308.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 17529,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 13700,
+   "kernel_object_bytes": {
+    "value": 31744,
     "unit": "bytes"
    }
   },
@@ -3556,20 +2546,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 151.45,
+    "value": 158.73,
     "unit": "us",
-    "range": "\u00b1 3.4; min 142.3 max 261.8 n=50"
+    "range": "\u00b1 0.7; min 153.9 max 167.5 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9352,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3600,
+   "kernel_object_bytes": {
+    "value": 2932,
     "unit": "bytes"
    }
   },
@@ -3580,20 +2562,12 @@
     "range": "median 1041 max 1041 n=16"
    },
    "npu_us": {
-    "value": 250.33,
+    "value": 246.75,
     "unit": "us",
-    "range": "\u00b1 6.5; min 229.9 max 348.0 n=50"
+    "range": "\u00b1 1.8; min 238.3 max 256.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9432,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 300,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3656,
+   "kernel_object_bytes": {
+    "value": 2756,
     "unit": "bytes"
    }
   },
@@ -3604,52 +2578,36 @@
     "range": "median 4968 max 5029 n=4; init[2] min 16"
    },
    "cycles_per_kop": {
-    "value": 1125,
+    "value": 1125.0,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 196.93,
+    "value": 180.68,
     "unit": "us",
-    "range": "\u00b1 9.9; min 170.7 max 342.1 n=50"
+    "range": "\u00b1 1.5; min 174.4 max 271.9 n=50"
    },
-   "xclbin_bytes": {
-    "value": 17321,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 464,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 13292,
+   "kernel_object_bytes": {
+    "value": 35684,
     "unit": "bytes"
    }
   },
   "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal": {
    "cycles": {
-    "value": 5454,
+    "value": 5449,
     "unit": "cycles",
-    "range": "median 5580 max 5580 n=3; init[2] min 16; truncated"
+    "range": "median 5518 max 5580 n=4; init[2] min 16"
    },
    "cycles_per_kop": {
-    "value": 1253.217,
+    "value": 1252.068,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 192.4,
+    "value": 184.34,
     "unit": "us",
-    "range": "\u00b1 9.6; min 167.9 max 342.0 n=50"
+    "range": "\u00b1 1.7; min 175.4 max 222.8 n=50"
    },
-   "xclbin_bytes": {
-    "value": 17321,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 464,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 13292,
+   "kernel_object_bytes": {
+    "value": 35684,
     "unit": "bytes"
    }
   },
@@ -3664,20 +2622,12 @@
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 181.23,
+    "value": 177.82,
     "unit": "us",
-    "range": "\u00b1 2.2; min 166.9 max 199.4 n=50"
+    "range": "\u00b1 0.8; min 171.5 max 255.7 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9688,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 3848,
+   "kernel_object_bytes": {
+    "value": 13440,
     "unit": "bytes"
    }
   },
@@ -3685,29 +2635,32 @@
    "cycles": {
     "value": 3077,
     "unit": "cycles",
-    "range": "median 3110 max 3141 n=4; init[0] min 518"
+    "range": "median 3109 max 3141 n=4; init[0] min 518"
    },
    "cycles_per_kop": {
     "value": 23.476,
     "unit": "cycles/1k-ops"
    },
    "npu_us": {
-    "value": 187.24,
+    "value": 180.21,
     "unit": "us",
-    "range": "\u00b1 10.3; min 168.3 max 343.2 n=50"
+    "range": "\u00b1 2.4; min 174.2 max 269.2 n=50"
    },
-   "xclbin_bytes": {
-    "value": 9832,
-    "unit": "bytes"
-   },
-   "insts_bytes": {
-    "value": 420,
-    "unit": "bytes"
-   },
-   "core_elf_bytes": {
-    "value": 4028,
+   "kernel_object_bytes": {
+    "value": 15968,
     "unit": "bytes"
    }
   }
+ },
+ "cases": {
+  "passed": 274,
+  "failed": 0,
+  "timed": 132,
+  "timing_failed": 0,
+  "untimed": 142
+ },
+ "kernels": {
+  "offered": 74,
+  "checked": 67
  }
 }

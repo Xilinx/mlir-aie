@@ -199,7 +199,7 @@
    "target": "npu2",
    "id": "36734464439",
    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36734464439",
-   "date": "2026-09-30T16:23:09+00:00",
+   "date": "2026-09-30T18:37:50+00:00",
    "commit": {
     "id": "91ee8c89c8b841f2f6f9364b642a69526d595197",
     "url": "https://github.com/Xilinx/mlir-aie/commit/91ee8c89c8b841f2f6f9364b642a69526d595197",
