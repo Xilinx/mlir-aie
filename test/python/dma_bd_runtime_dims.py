@@ -62,11 +62,13 @@ with mlir_mod_ctx() as ctx:
 # CHECK-NEXT: aiex.dma_configure_task_for @of_in {
 # CHECK-NEXT: aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 16 sizes = [1, 1, %[[W0]], 16] strides = [0, 0, 16, 1])
 # CHECK-NEXT: aie.end
+
 # CHECK: arith.muli
 # CHECK: %[[W1:.*]] = arith.extsi %arg1 : i32 to i64
 # CHECK-NEXT: aiex.dma_configure_task_for @of_in {
 # CHECK-NEXT: aie.dma_bd(%arg0 : memref<4096xi32> offset = {{.*}} len = %{{[0-9]+}} sizes = [1, 1, %[[W1]], 16] strides = [0, 0, 16, 1])
 # CHECK-NEXT: aie.end
+
 # CHECK: %[[OK0:.*]] = arith.cmpi ule, %arg2, %{{.*}} : i64
 # CHECK-NEXT: aiex.npu.require(%[[OK0]]) {message = "a runtime DMA offset does not fit its 32-bit field"}
 # CHECK-NEXT: %[[OFF:.*]] = arith.trunci %arg2 : i64 to i32

@@ -193,6 +193,17 @@ def helpers_stage():
         assert False
     except TypeError:
         pass
+    # Staged ceildiv never forms an intermediate beyond its inputs, so an i32
+    # numerator near INT32_MAX cannot wrap.
+    env = {"a": 2**31 - 1, "b": 2}
+    assert c.eval(env) == 2**30
+
+    def intermediates(v):
+        if v.op in ("var", "const"):
+            return [v.eval(env)]
+        return [v.eval(env)] + [x for s in v.args for x in intermediates(s)]
+
+    assert max(intermediates(c)) <= 2**31 - 1
 
 
 # CHECK-LABEL: whole_array_tilers_stage

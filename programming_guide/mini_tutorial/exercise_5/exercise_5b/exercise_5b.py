@@ -45,7 +45,7 @@ def exercise_5b(
         tensor_dims, offset=8, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1]
     )
 
-    # Create a TensorTileSequence from a list of taps
+    # Create a TensorAccessSequence from a list of taps
     taps = TensorAccessSequence.from_taps([tap1, tap2])
 
     i = 0

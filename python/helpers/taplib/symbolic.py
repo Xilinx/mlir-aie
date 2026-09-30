@@ -192,13 +192,14 @@ def smax(a: Any, b: Any) -> Any:
 def sceildiv(a: Any, b: Any) -> Any:
     """Ceiling division for non-negative operands.
 
-    Written as ``(a + b - 1) // b`` rather than ``-(a // -b)`` because the
-    staged ``//`` lowers to ``divsi``, which truncates toward zero: the negated
-    form would be wrong on a runtime value.
+    Staged as ``a // b + (a % b > 0)`` rather than ``-(a // -b)``, because the
+    staged ``//`` lowers to ``divsi``, which truncates toward zero, and rather
+    than ``(a + b - 1) // b``, whose addition can overflow a runtime ``i32``
+    even when the quotient fits.
     """
     if not (is_sym(a) or is_sym(b)):
         return -(-a // b)
-    return (a + b - 1) // b
+    return a // b + sselect(_cmp_lt(0, a % b), 1, 0)
 
 
 def sprod(values: Iterable[Any]) -> Any:
