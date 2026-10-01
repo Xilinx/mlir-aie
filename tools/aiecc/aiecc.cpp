@@ -743,10 +743,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           [dyn = dynamicObjFifos.getValue(), pkt = packetSwObjFifos.getValue(),
            ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
            ldpdi = loadPdiToCtrlPkt.getValue(), bf16 = bf16Emulation.getValue(),
-           skipVerify = skipObjectFifoVerify.getValue()](mlir::MLIRContext *ctx,
-                                                         mlir::ModuleOp mod) {
+           skipVerify = skipObjectFifoVerify.getValue(),
+           opt = optLevel.getValue()](mlir::MLIRContext *ctx,
+                                      mlir::ModuleOp mod) {
             return getInputWithAddressesPipeline(ctx, mod, dyn, pkt, ctrl, bf16,
-                                                 ldpdi, skipVerify,
+                                                 opt, ldpdi, skipVerify,
                                                  /*assignAddresses=*/false);
           }});
 
@@ -926,21 +927,22 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // carved set to match or the object subgraph joins on a key its other inputs
   // do not have.
   auto &unifiedPerCoreLowered = compileInput.split<ModRef>(
-      "lowered_{0}.mlir",
-      [matchesDeviceFilter, compilesCore](const Item<ModRef> &mod) {
+      "lowered_{0}.mlir", [matchesDeviceFilter, compilesCore,
+                           opt = optLevel.getValue()](const Item<ModRef> &mod) {
         return splitLoweredCores(mod.get().get(), matchesDeviceFilter,
-                                 compilesCore);
+                                 compilesCore, opt);
       });
 
   // Per-core strategy
   auto &perCoreLowered = perCore.map<ModRef>(
       "lowered_{0}.mlir",
-      [](const Item<OpInModule<CoreOp>> &item, Item<ModRef> &out) {
+      [opt = optLevel.getValue()](const Item<OpInModule<CoreOp>> &item,
+                                  Item<ModRef> &out) {
         CoreOp core = item.get().op;
         auto tile = mlir::cast<TileOp>(core.getTile().getDefiningOp());
         return loweringPipeline(item.get().module.get(),
                                 core->getParentOfType<DeviceOp>().getSymName(),
-                                tile.getCol(), tile.getRow(), out);
+                                tile.getCol(), tile.getRow(), opt, out);
       });
   // Merge-mode link artifacts for this core, llvm-linked into its own module.
   auto &perCoreIRLinkFiles = perCore.map<std::vector<std::string>>(
