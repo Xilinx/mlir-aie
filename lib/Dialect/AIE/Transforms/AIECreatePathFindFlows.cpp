@@ -115,7 +115,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
       return success();
     }
     // std::map<TileID, SwitchSetting>
-    SwitchSettings settings = analyzer.flowSolutions[srcPoint];
+    SwitchSettings settings = analyzer.routing.settings[srcPoint];
     // add connections for all the Switchboxes in SwitchSettings
     for (const auto &[tileId, setting] : settings) {
       int col = tileId.col;
@@ -1143,12 +1143,11 @@ struct PacketFlowRouting {
 
   PacketFlowRouting(AIEPathfinderPass &pass, DeviceOp device,
                     OpBuilder &builder, DynamicTileAnalysis &analyzer,
-                    const std::map<PathEndPoint, SwitchSettings> &solution,
-                    StreamConflicts &conflicts, bool routeCircuit,
-                    bool circuitSwitchHops, RoutingHazards *hazards)
+                    const Routing &routing, StreamConflicts &conflicts,
+                    bool routeCircuit, bool circuitSwitchHops)
       : pass(pass), device(device), builder(builder), analyzer(analyzer),
-        solution(solution), conflicts(conflicts), routeCircuit(routeCircuit),
-        circuitSwitchHops(circuitSwitchHops), hazards(hazards),
+        routing(routing), conflicts(conflicts), routeCircuit(routeCircuit),
+        circuitSwitchHops(circuitSwitchHops),
         targetModel(device.getTargetModel()),
         numArbiters(targetModel.getNumArbiters()),
         numMselsPerArbiter(targetModel.getNumMselsPerArbiter()),
@@ -1156,14 +1155,14 @@ struct PacketFlowRouting {
         idBits(llvm::Log2_32_Ceil(maxPacketId + 1)), idMask((1 << idBits) - 1) {
   }
 
-  LogicalResult collectFlows();
+  llvm::Error plan();
+  void collectFlows();
   void findCircuitHops();
   void collectSlaveFlows();
   void checkRules();
   void planTiles();
   std::optional<std::string> breakHoldCycles();
   LogicalResult emit();
-  LogicalResult fail(std::string reason);
 
   const SwitchSettings &settingsOf(const PathEndPoint &src,
                                    std::optional<int> id = std::nullopt);
@@ -1181,11 +1180,10 @@ struct PacketFlowRouting {
   DeviceOp device;
   OpBuilder &builder;
   DynamicTileAnalysis &analyzer;
-  const std::map<PathEndPoint, SwitchSettings> &solution;
+  const Routing &routing;
   StreamConflicts &conflicts;
   bool routeCircuit;
   bool circuitSwitchHops;
-  RoutingHazards *hazards;
   const AIETargetModel &targetModel;
   const int numArbiters;
   const int numMselsPerArbiter;
@@ -1271,11 +1269,14 @@ struct PacketFlowRouting {
       hazardSplits;
   std::set<TileID> crowdedTiles;
   std::optional<std::string> planFailure;
+  // The first flow whose source the routing leaves unconnected. The routing
+  // check plans around it, but no routing with one is lowered.
+  std::optional<std::pair<PacketFlowOp, std::string>> incomplete;
   std::map<TileID, ArbiterPlan> plans;
 };
 } // namespace
 
-LogicalResult PacketFlowRouting::collectFlows() {
+void PacketFlowRouting::collectFlows() {
   for (auto tileOp : device.getOps<TileOp>()) {
     int col = tileOp.colIndex();
     int row = tileOp.rowIndex();
@@ -1310,11 +1311,6 @@ LogicalResult PacketFlowRouting::collectFlows() {
         sources.push_back(
             {{srcTile.colIndex(), srcTile.rowIndex()}, pktSource.port()});
       }
-    }
-    if (sources.empty()) {
-      if (hazards)
-        continue;
-      return pktFlowOp.emitOpError("packet_flow has no packet_source");
     }
     // Pass 2: lower each (source, destination) pair so fan-in flows lay
     // down switchbox connections for every source, not just the last one.
@@ -1418,19 +1414,22 @@ LogicalResult PacketFlowRouting::collectFlows() {
             }
           }
         }
-        if (!srcRouted && !hazards)
-          return pktFlowOp.emitOpError()
-                 << "packet flow source (" << srcCoords.col << ", "
-                 << srcCoords.row << ") " << stringifyWireBundle(srcPort.bundle)
-                 << srcPort.channel << " could not be routed to destination ("
-                 << destCoords.col << ", " << destCoords.row << ") "
-                 << stringifyWireBundle(destPort.bundle) << destPort.channel
-                 << "; the pathfinder produced an incomplete routing for this "
-                    "placement.";
+        if (!srcRouted && !incomplete)
+          incomplete = {
+              pktFlowOp,
+              llvm::formatv("packet flow source ({0}, {1}) {2}{3} could not be "
+                            "routed to destination ({4}, {5}) {6}{7}; the "
+                            "pathfinder produced an incomplete routing for "
+                            "this placement.",
+                            srcCoords.col, srcCoords.row,
+                            stringifyWireBundle(srcPort.bundle),
+                            srcPort.channel, destCoords.col, destCoords.row,
+                            stringifyWireBundle(destPort.bundle),
+                            destPort.channel)
+                  .str()};
       }
     }
   }
-  return success();
 }
 
 // The rules the flows through `slaveFlow` state. A full-width mask selects the
@@ -1449,11 +1448,12 @@ SmallVector<std::pair<int, int>, 2> PacketFlowRouting::statedCubes(
 
 const SwitchSettings &PacketFlowRouting::settingsOf(const PathEndPoint &src,
                                                     std::optional<int> id) {
-  if (const SwitchSettings *own =
-          id ? analyzer.pathfinder->getIdSettings(src, *id) : nullptr)
-    return *own;
-  auto it = solution.find(src);
-  return it == solution.end() ? noSettings : it->second;
+  if (id)
+    if (auto own = routing.idSettings.find({src, *id});
+        own != routing.idSettings.end())
+      return own->second;
+  auto it = routing.settings.find(src);
+  return it == routing.settings.end() ? noSettings : it->second;
 }
 
 void PacketFlowRouting::findCircuitHops() {
@@ -1748,16 +1748,25 @@ void PacketFlowRouting::splitFlow(TileID tileId, FlowKey key,
   }
 }
 
-LogicalResult PacketFlowRouting::fail(std::string reason) {
-  if (!hazards)
-    return device.emitError("Unable to find a legal routing: ") << reason;
-  hazards->faults.connections.assign(hazardConnections.begin(),
-                                     hazardConnections.end());
+// Plans the arbiters of every switchbox on the routing, leaving the IR alone.
+// Where that fails, the RoutingFailure names the connections in the way.
+llvm::Error PacketFlowRouting::plan() {
+  collectFlows();
+  findCircuitHops();
+  collectSlaveFlows();
+  checkRules();
+  planTiles();
+  if (!planFailure)
+    planFailure = breakHoldCycles();
+  if (!planFailure)
+    return llvm::Error::success();
+  RoutingFaults faults;
+  faults.connections.assign(hazardConnections.begin(), hazardConnections.end());
   for (const auto &[src, at, a, b, apart] : hazardSplits)
-    hazards->faults.splits.push_back({src, at, a, b, apart});
-  hazards->faults.crowded.assign(crowdedTiles.begin(), crowdedTiles.end());
-  hazards->reason = std::move(reason);
-  return success();
+    faults.splits.push_back({src, at, a, b, apart});
+  faults.crowded.assign(crowdedTiles.begin(), crowdedTiles.end());
+  return llvm::make_error<RoutingFailure>(std::move(*planFailure),
+                                          std::move(faults));
 }
 
 void PacketFlowRouting::checkRules() {
@@ -2467,26 +2476,23 @@ LogicalResult PacketFlowRouting::emit() {
   return success();
 }
 
-LogicalResult AIEPathfinderPass::runOnPacketFlow(
-    DeviceOp device, OpBuilder &builder, DynamicTileAnalysis &analyzer,
-    const std::map<PathEndPoint, SwitchSettings> &solution,
-    StreamConflicts &conflicts, bool circuitSwitchHops,
-    RoutingHazards *hazards) {
-  PacketFlowRouting routing(*this, device, builder, analyzer, solution,
-                            conflicts, clRouteCircuit, circuitSwitchHops,
-                            hazards);
-  if (failed(routing.collectFlows()))
+LogicalResult AIEPathfinderPass::runOnPacketFlow(DeviceOp device,
+                                                 OpBuilder &builder,
+                                                 DynamicTileAnalysis &analyzer,
+                                                 StreamConflicts &conflicts,
+                                                 bool circuitSwitchHops) {
+  PacketFlowRouting routing(*this, device, builder, analyzer, analyzer.routing,
+                            conflicts, clRouteCircuit, circuitSwitchHops);
+  llvm::Error planned = routing.plan();
+  if (routing.incomplete) {
+    llvm::consumeError(std::move(planned));
+    return routing.incomplete->first.emitOpError()
+           << routing.incomplete->second;
+  }
+  if (planned) {
+    emitError(device.getLoc()) << llvm::toString(std::move(planned));
     return failure();
-  routing.findCircuitHops();
-  routing.collectSlaveFlows();
-  routing.checkRules();
-  routing.planTiles();
-  if (routing.planFailure)
-    return routing.fail(std::move(*routing.planFailure));
-  if (std::optional<std::string> reason = routing.breakHoldCycles())
-    return routing.fail(std::move(*reason));
-  if (hazards)
-    return success();
+  }
   if (failed(routing.emit()))
     return failure();
   lowerShimDMAPorts(device, builder, analyzer);
@@ -2553,15 +2559,17 @@ static void unmuxShimDMAPacketPorts(DeviceOp device) {
   }
 }
 
-LogicalResult AIEPathfinderPass::route(DeviceOp d,
-                                       DynamicTileAnalysis &analyzer,
-                                       StreamConflicts &conflicts,
-                                       bool circuitSwitchHops) {
+llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
+                                     StreamConflicts &conflicts,
+                                     const PacketTrees &pinned,
+                                     bool circuitSwitchHops) {
   // Packet flows that can deadlock must not share an arbiter. Every routing
   // the router finds is checked by planning the arbiters on it, and one that
   // cannot be planned counts as illegal, so routing and allocation agree.
   OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
   std::map<PathEndPoint, SmallVector<size_t, 4>> streamsFrom;
+  PacketConstraints constraints;
+  constraints.pinned = pinned;
   if (clRoutePacket && !d.getOps<PacketFlowOp>().empty()) {
     const AIETargetModel &targetModel = d.getTargetModel();
     if (std::optional<std::string> reason = unroutableArbiters(
@@ -2570,39 +2578,30 @@ LogicalResult AIEPathfinderPass::route(DeviceOp d,
               return !circuitSwitchHops ||
                      targetModel.isShimNOCorPLTile(tile.col, tile.row);
             },
-            analyzer.pathfinder->getPinnedTrees())) {
-      return d.emitError("Unable to find a legal routing: ") << *reason;
-    }
+            pinned))
+      return llvm::make_error<RoutingFailure>(std::move(*reason));
     for (auto [i, s] : llvm::enumerate(conflicts.getRequestedStreams()))
       if (s.packetID)
         streamsFrom[{s.src.tile, s.src.port}].push_back(i);
-    analyzer.pathfinder->setPacketConflict(
-        [&](const PathEndPoint &a, const PathEndPoint &b) {
-          auto as = streamsFrom.find(a), bs = streamsFrom.find(b);
-          if (as == streamsFrom.end() || bs == streamsFrom.end())
-            return false;
-          for (size_t s : as->second)
-            for (size_t t : bs->second)
-              if (conflicts.conflict(s, t))
-                return true;
-          return false;
-        });
-    analyzer.pathfinder->setRoutingCheck(
-        [&](const std::map<PathEndPoint, SwitchSettings> &solution) {
-          RoutingHazards hazards;
-          (void)runOnPacketFlow(d, builder, analyzer, solution, conflicts,
-                                circuitSwitchHops, &hazards);
-          LLVM_DEBUG(if (!hazards.reason.empty()) llvm::dbgs()
-                     << "Routing rejected: " << hazards.reason << '\n');
-          if (!hazards.reason.empty())
-            analyzer.routingFailureReason = std::move(hazards.reason);
-          return std::move(hazards.faults);
-        });
+    constraints.conflict = [&](const PathEndPoint &a, const PathEndPoint &b) {
+      auto as = streamsFrom.find(a), bs = streamsFrom.find(b);
+      if (as == streamsFrom.end() || bs == streamsFrom.end())
+        return false;
+      for (size_t s : as->second)
+        for (size_t t : bs->second)
+          if (conflicts.conflict(s, t))
+            return true;
+      return false;
+    };
+    constraints.check = [&](const Routing &routing) {
+      return PacketFlowRouting(*this, d, builder, analyzer, routing, conflicts,
+                               clRouteCircuit, circuitSwitchHops)
+          .plan();
+    };
   }
-  analyzer.routingFailureReason.clear();
-  LogicalResult routed = analyzer.runAnalysis(d);
-  analyzer.pathfinder->setPacketConflict({});
-  analyzer.pathfinder->setRoutingCheck({});
+  analyzer.pathfinder->setPacketConstraints(std::move(constraints));
+  llvm::Error routed = analyzer.runAnalysis(d);
+  analyzer.pathfinder->setPacketConstraints({});
   return routed;
 }
 
@@ -2641,6 +2640,7 @@ void AIEPathfinderPass::runOnOperation() {
         {cast<TileOp>(src.getTile().getDefiningOp()).getTileID(), src.port()});
   };
   bool pinned = false;
+  PacketTrees pinnedTrees;
   if (clRoutePacket && !prioritized.empty() &&
       (!d.getOps<FlowOp>().empty() ||
        !llvm::all_of(d.getOps<PacketFlowOp>(), [&](PacketFlowOp flow) {
@@ -2662,98 +2662,71 @@ void AIEPathfinderPass::runOnOperation() {
     }
     DynamicTileAnalysis aloneAnalyzer;
     StreamConflicts aloneConflicts(alone);
-    std::string reason;
-    LogicalResult routed = failure();
-    {
-      ScopedDiagnosticHandler handler(&getContext(), [&](Diagnostic &diag) {
-        if (diag.getSeverity() == DiagnosticSeverity::Error)
-          reason = diag.str();
-        return success();
+    if (llvm::Error err = route(alone, aloneAnalyzer, aloneConflicts, {},
+                                /*circuitSwitchHops=*/false)) {
+      llvm::handleAllErrors(std::move(err), [&](const RoutingFailure &f) {
+        d.emitError("Unable to find a legal routing: prioritized packet flows "
+                    "(priority_route) keep the route they take alone, and "
+                    "alone they have none: ")
+            << (f.reason.empty() ? f.message() : f.reason);
       });
-      routed = route(alone, aloneAnalyzer, aloneConflicts,
-                     /*circuitSwitchHops=*/false);
-    }
-    if (failed(routed)) {
-      StringRef why = reason;
-      why.consume_front("Unable to find a legal routing: ");
-      d.emitError("Unable to find a legal routing: prioritized packet flows "
-                  "(priority_route) keep the route they take alone, and "
-                  "alone they have none: ")
-          << why;
       signalPassFailure();
       return;
     }
-    PacketTrees trees = aloneAnalyzer.pathfinder->getPacketTrees();
-    for (auto it = trees.begin(); it != trees.end();)
-      it = prioritized.count(it->first) ? std::next(it) : trees.erase(it);
-    analyzer.pathfinder->pinPacketTrees(std::move(trees));
+    pinnedTrees = aloneAnalyzer.routing.packetTrees;
+    for (auto it = pinnedTrees.begin(); it != pinnedTrees.end();)
+      it = prioritized.count(it->first) ? std::next(it) : pinnedTrees.erase(it);
     pinned = true;
   }
-  // If grouped routing fails, packet flows may share channels with any flow
-  // they do not conflict with (see Router::setShareChannels). Failing that,
-  // crowded tiles are capped (Router::capCrowdedFanOut). Failing that too, the
-  // routing starts over with ids one tree cannot split routed apart
-  // (Router::routeIdsApart). The error is the first attempt's.
-  std::optional<Location> failedAt;
-  std::string reason;
-  auto routeSharing = [&](DeviceOp dev, DynamicTileAnalysis &an,
-                          StreamConflicts &c) {
-    ScopedDiagnosticHandler handler(&getContext(), [&](Diagnostic &diag) {
-      if (diag.getSeverity() != DiagnosticSeverity::Error)
-        return failure();
-      failedAt = diag.getLocation();
-      reason = diag.str();
-      return success();
-    });
-    auto routed = [&] {
-      return succeeded(route(dev, an, c, clCircuitSwitchHops));
-    };
-    auto escalate = [&] {
-      return (an.pathfinder->setShareChannels(true) && routed()) ||
-             (an.pathfinder->capCrowdedFanOut() && routed());
-    };
-    if (routed())
-      return success();
-    std::optional<Location> firstAt = failedAt;
-    std::string first = reason;
-    if (escalate() ||
-        (an.pathfinder->routeIdsApart() && (routed() || escalate())))
-      return success();
-    failedAt = firstAt;
-    reason = std::move(first);
-    return failure();
+  // If routing fails, the router relaxes how it routes packet flows (see
+  // Router::relax) and tries again. The error is the first attempt's.
+  auto routeRelaxing = [&](DeviceOp dev, DynamicTileAnalysis &an,
+                           StreamConflicts &c,
+                           const PacketTrees &pin) -> llvm::Error {
+    llvm::Error first = route(dev, an, c, pin, clCircuitSwitchHops);
+    while (first && an.pathfinder->relax()) {
+      llvm::Error err = route(dev, an, c, pin, clCircuitSwitchHops);
+      if (!err) {
+        llvm::consumeError(std::move(first));
+        return llvm::Error::success();
+      }
+      llvm::consumeError(std::move(err));
+    }
+    return first;
   };
-  if (failed(routeSharing(d, analyzer, conflicts))) {
-    Location loc = failedAt.value_or(d.getLoc());
-    std::string error =
-        reason.empty() ? "Unable to find a legal routing" : reason;
-    StringRef why = error;
-    if (pinned && !why.contains("(priority_route)") &&
-        why.consume_front("Unable to find a legal routing: ")) {
+  if (llvm::Error err = routeRelaxing(d, analyzer, conflicts, pinnedTrees)) {
+    llvm::handleAllErrors(std::move(err), [&](RoutingFailure &f) {
       // Say whether the pinned trees are what stands in the way: the design
       // routes if they may move.
-      OwningOpRef<ModuleOp> scratch;
-      DeviceOp free = cloneInScratch(d, scratch);
-      DynamicTileAnalysis freeAnalyzer;
-      StreamConflicts freeConflicts(free);
-      if (succeeded(routeSharing(free, freeAnalyzer, freeConflicts))) {
-        std::string sources;
-        for (auto [i, src] : llvm::enumerate(prioritized))
-          sources += (i == 0                        ? ""
-                      : i + 1 == prioritized.size() ? " and "
-                                                    : ", ") +
-                     llvm::formatv(
-                         "({0}, {1}) {2}:{3}", src.coords.col, src.coords.row,
-                         stringifyWireBundle(src.port.bundle), src.port.channel)
-                         .str();
-        error = "Unable to find a legal routing: packet flows from " + sources +
-                " are prioritized (priority_route), so they keep the route "
-                "they take alone, and the other flows route only if it moves. "
-                "Around it, " +
-                why.str();
+      if (pinned && !f.reason.empty() &&
+          !StringRef(f.reason).contains("(priority_route)")) {
+        OwningOpRef<ModuleOp> scratch;
+        DeviceOp free = cloneInScratch(d, scratch);
+        DynamicTileAnalysis freeAnalyzer;
+        StreamConflicts freeConflicts(free);
+        if (llvm::Error freeErr =
+                routeRelaxing(free, freeAnalyzer, freeConflicts, {})) {
+          llvm::consumeError(std::move(freeErr));
+        } else {
+          std::string sources;
+          for (auto [i, src] : llvm::enumerate(prioritized))
+            sources += (i == 0                        ? ""
+                        : i + 1 == prioritized.size() ? " and "
+                                                      : ", ") +
+                       llvm::formatv("({0}, {1}) {2}:{3}", src.coords.col,
+                                     src.coords.row,
+                                     stringifyWireBundle(src.port.bundle),
+                                     src.port.channel)
+                           .str();
+          f.reason = "packet flows from " + sources +
+                     " are prioritized (priority_route), so they keep the "
+                     "route they take alone, and the other flows route only "
+                     "if it moves. Around it, " +
+                     f.reason;
+        }
       }
-    }
-    emitError(loc) << error;
+      emitError(f.loc.value_or(d.getLoc())) << f.message();
+    });
     signalPassFailure();
     return;
   }
@@ -2762,9 +2735,8 @@ void AIEPathfinderPass::runOnOperation() {
     signalPassFailure();
     return;
   }
-  if (clRoutePacket &&
-      failed(runOnPacketFlow(d, builder, analyzer, analyzer.flowSolutions,
-                             conflicts, clCircuitSwitchHops))) {
+  if (clRoutePacket && failed(runOnPacketFlow(d, builder, analyzer, conflicts,
+                                              clCircuitSwitchHops))) {
     signalPassFailure();
     return;
   }

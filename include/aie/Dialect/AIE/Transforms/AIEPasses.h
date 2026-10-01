@@ -97,13 +97,6 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInsertTraceFlowsPass();
 /// that lower `aie.objectfifo`.
 void registerAIEObjectFifoPipeline();
 
-/// Where a candidate routing puts conflicting packet flows on one arbiter, and
-/// why they conflict; see AIEPathfinderPass::route.
-struct RoutingHazards {
-  RoutingFaults faults;
-  std::string reason;
-};
-
 /// \brief Routes flows in a device by lowering them to stream-switch
 /// configurations.
 ///
@@ -121,17 +114,16 @@ struct AIEPathfinderPass
 
   void runOnOperation() override;
   mlir::LogicalResult runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer);
-  /// Lowers the packet flows along `solution`. With `hazards` set, only plans
-  /// the arbiters, leaving the IR alone, and collects where that fails.
-  mlir::LogicalResult
-  runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder,
-                  DynamicTileAnalysis &analyzer,
-                  const std::map<PathEndPoint, SwitchSettings> &solution,
-                  StreamConflicts &conflicts, bool circuitSwitchHops,
-                  RoutingHazards *hazards = nullptr);
-  /// Routes the flows in `d`, planning the arbiters on each routing found.
-  mlir::LogicalResult route(DeviceOp d, DynamicTileAnalysis &analyzer,
-                            StreamConflicts &conflicts, bool circuitSwitchHops);
+  /// Lowers the packet flows along the routing `analyzer` found.
+  mlir::LogicalResult runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder,
+                                      DynamicTileAnalysis &analyzer,
+                                      StreamConflicts &conflicts,
+                                      bool circuitSwitchHops);
+  /// Routes the flows in `d`, planning the arbiters on each routing found,
+  /// with the packet trees in `pinned` kept as they are.
+  llvm::Error route(DeviceOp d, DynamicTileAnalysis &analyzer,
+                    StreamConflicts &conflicts, const PacketTrees &pinned,
+                    bool circuitSwitchHops);
 
   typedef std::pair<TileID, Port> PhysPort;
 

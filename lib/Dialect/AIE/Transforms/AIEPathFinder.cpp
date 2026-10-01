@@ -25,7 +25,15 @@ using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-pathfinder"
 
-LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
+char RoutingFailure::ID = 0;
+
+void RoutingFailure::log(llvm::raw_ostream &os) const {
+  os << "Unable to find a legal routing";
+  if (!reason.empty())
+    os << ": " << reason;
+}
+
+llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
   // find the maxCol and maxRow
   maxCol = device.getTargetModel().columns();
@@ -49,8 +57,6 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
             {{srcTile.colIndex(), srcTile.rowIndex()}, pktSource.port()});
       }
     }
-    if (sources.empty())
-      return pktFlowOp.emitOpError("packet_flow has no packet_source");
 
     bool priorityFlow = pktFlowOp.getPriorityRoute().value_or(false);
     // Pass 2: add a flow from every source to every destination so
@@ -100,27 +106,23 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // available search all existing SwitchBoxOps for exising connections
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
     if (!pathfinder->addFixedConnection(switchboxOp))
-      return switchboxOp.emitOpError() << "Unable to add fixed connections";
+      return llvm::make_error<RoutingFailure>(
+          "cannot add the fixed connections of the switchbox at tile (" +
+              std::to_string(switchboxOp.colIndex()) + ", " +
+              std::to_string(switchboxOp.rowIndex()) + ")",
+          RoutingFaults{}, switchboxOp.getLoc());
   }
 
   // all flows are now populated, call the congestion-aware pathfinder
   // algorithm
   // check whether the pathfinder algorithm creates a legal routing
-  if (auto maybeFlowSolutions = pathfinder->findPaths(maxIterations)) {
-    flowSolutions = maybeFlowSolutions.value();
-  } else {
-    std::string reason = pathfinder->getFailureReason();
-    if (reason.empty())
-      reason = routingFailureReason;
-    if (reason.empty())
-      reason = pathfinder->getOveruseReason();
-    if (reason.empty())
-      return device.emitError("Unable to find a legal routing");
-    return device.emitError("Unable to find a legal routing: ") << reason;
-  }
+  llvm::Expected<Routing> found = pathfinder->findPaths(maxIterations);
+  if (!found)
+    return found.takeError();
+  routing = std::move(*found);
 
   // initialize all flows as unprocessed to prep for rewrite
-  for (const auto &[PathEndPoint, switchSetting] : flowSolutions) {
+  for (const auto &[PathEndPoint, switchSetting] : routing.settings) {
     processedFlows[PathEndPoint] = false;
   }
 
@@ -146,7 +148,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   }
 
   LLVM_DEBUG(llvm::dbgs() << "\t---End DynamicTileAnalysis Constructor---\n");
-  return success();
+  return llvm::Error::success();
 }
 
 TileOp DynamicTileAnalysis::getTile(OpBuilder &builder, int col, int row) {
@@ -393,6 +395,36 @@ bool Pathfinder::routeIdsApart() {
   for (const auto &[ends, sent] : packetIdsTo)
     ids[ends.first].insert(sent.begin(), sent.end());
   return llvm::any_of(ids, [](const auto &s) { return s.second.size() > 1; });
+}
+
+bool Pathfinder::relax() {
+  for (;;) {
+    switch (relaxStep++) {
+    case 0:
+    case 3:
+      if (setShareChannels(true)) {
+        LLVM_DEBUG(llvm::dbgs() << "Relax: share channels\n");
+        return true;
+      }
+      break;
+    case 1:
+    case 4:
+      if (capCrowdedFanOut()) {
+        LLVM_DEBUG(llvm::dbgs() << "Relax: cap crowded tiles\n");
+        return true;
+      }
+      break;
+    case 2:
+      if (routeIdsApart()) {
+        LLVM_DEBUG(llvm::dbgs() << "Relax: route ids apart\n");
+        return true;
+      }
+      relaxStep = 5;
+      return false;
+    default:
+      return false;
+    }
+  }
 }
 
 // Sort flows to (1) get deterministic routing, and (2) perform routings on
@@ -794,7 +826,7 @@ struct Pathfinder::RouteState {
   int splitPart(int flow, int id);
 
   const Pathfinder &pf;
-  std::map<PathEndPoint, SwitchSettings> routingSolution;
+  Routing routing;
   // Stamp-based "processed" set (avoids O(n) clears per flow).
   std::vector<uint32_t> processedStamp;
   uint32_t curStamp = 0;
@@ -839,11 +871,11 @@ Pathfinder::RouteState::RouteState(const Pathfinder &pf)
     partsOf[f.src].push_back(k);
   for (auto [k, f] : llvm::enumerate(parts))
     groupedFlows[groupOf(f)].push_back(k);
-  if (pf.packetConflict)
+  if (pf.constraints.conflict)
     for (size_t a = 0; a < parts.size(); a++)
       for (size_t b = a + 1; b < parts.size(); b++)
         if (parts[a].packetId && parts[b].packetId &&
-            pf.packetConflict(parts[a].src, parts[b].src)) {
+            pf.constraints.conflict(parts[a].src, parts[b].src)) {
           conflicting[a].set(b);
           conflicting[b].set(a);
         }
@@ -853,8 +885,8 @@ Pathfinder::RouteState::RouteState(const Pathfinder &pf)
 }
 
 int Pathfinder::RouteState::groupOf(const Flow &f) const {
-  return pf.pinnedTrees.count(f.src) ? std::numeric_limits<int>::min()
-                                     : f.packetGroupId;
+  return pf.constraints.pinned.count(f.src) ? std::numeric_limits<int>::min()
+                                            : f.packetGroupId;
 }
 
 SmallVector<int, 4> Pathfinder::RouteState::idsTo(int flow,
@@ -950,7 +982,7 @@ bool Pathfinder::hasRoom(const SwitchboxConnect &sb) const {
   return false;
 }
 
-void Pathfinder::explainNoRouting(const RouteState &st) {
+std::string Pathfinder::explainNoRouting(const RouteState &st) const {
   // A prioritized flow keeps the route it takes alone, so the others
   // may have had to fit around it.
   auto overused = [](const SwitchboxConnect &sb) {
@@ -975,12 +1007,10 @@ void Pathfinder::explainNoRouting(const RouteState &st) {
     prioritized = prioritized ? prioritized : &f;
     for (const auto &[_, hop] : st.treeOf[k]) {
       if (overused(*hop.second.sb)) {
-        failureReason = "packet flows from " + endpointString(f.src) +
-                        " are prioritized (priority_route), so they keep "
-                        "the route they take alone, and it holds a "
-                        "channel " +
-                        link(*hop.second.sb) + " the other flows need.";
-        return;
+        return "packet flows from " + endpointString(f.src) +
+               " are prioritized (priority_route), so they keep the route "
+               "they take alone, and it holds a channel " +
+               link(*hop.second.sb) + " the other flows need.";
       }
       if (hop.second.sb->srcCoords != hop.second.sb->dstCoords)
         held.insert(hop.second.sb);
@@ -989,17 +1019,18 @@ void Pathfinder::explainNoRouting(const RouteState &st) {
   if (prioritized && llvm::any_of(graph, [&](const auto &entry) {
         return overused(entry.second);
       })) {
-    failureReason = "packet flows from " + endpointString(prioritized->src) +
-                    " are prioritized (priority_route), so they keep the "
-                    "route they take alone, and the router found no "
-                    "routing for the other flows around the channels it "
-                    "holds";
+    std::string reason =
+        "packet flows from " + endpointString(prioritized->src) +
+        " are prioritized (priority_route), so they keep the route they take "
+        "alone, and the router found no routing for the other flows around "
+        "the channels it holds";
     for (auto [i, sb] : llvm::enumerate(held))
-      failureReason += (i ? ", " : " ") + link(*sb);
-    failureReason += ".";
+      reason += (i ? ", " : " ") + link(*sb);
+    return reason + ".";
   }
-  if (!failureReason.empty())
-    return;
+  // The routing check says more than the overuse it led to.
+  if (!checkReason.empty())
+    return checkReason;
   // Name the channel the last iteration overused that was overused in the
   // most iterations, on a link with no room if there is one, and the flows
   // the last one routed through it.
@@ -1024,10 +1055,10 @@ void Pathfinder::explainNoRouting(const RouteState &st) {
       }
   }
   if (!worst)
-    return;
+    return {};
   bool crossbar = worst->srcCoords == worst->dstCoords;
   std::vector<std::string> users;
-  for (const auto &[src, settings] : st.routingSolution) {
+  for (const auto &[src, settings] : st.routing.settings) {
     auto it = settings.find(worst->srcCoords);
     if (it == settings.end())
       continue;
@@ -1052,8 +1083,7 @@ void Pathfinder::explainNoRouting(const RouteState &st) {
                 std::to_string(worst->srcCoords.row) + ")"
           : "the links " + link(*worst);
   if (users.empty()) {
-    overuseReason = "the router found no routing that fits " + where + ".";
-    return;
+    return "the router found no routing that fits " + where + ".";
   }
   constexpr size_t shown = 4;
   if (users.size() > shown) {
@@ -1061,17 +1091,14 @@ void Pathfinder::explainNoRouting(const RouteState &st) {
     users.resize(shown);
     users.push_back(std::to_string(more) + " more");
   }
-  overuseReason = "the flows from ";
+  std::string reason = "the flows from ";
   for (auto [k, user] : llvm::enumerate(users))
-    overuseReason += (k == 0                  ? ""
-                      : k + 1 == users.size() ? " and "
-                                              : ", ") +
-                     user;
-  overuseReason +=
-      " need " + where + ", and the router found no routing that fits them.";
+    reason += (k == 0 ? "" : k + 1 == users.size() ? " and " : ", ") + user;
+  return reason + " need " + where +
+         ", and the router found no routing that fits them.";
 }
 
-bool Pathfinder::routePart(RouteState &st, int flow) {
+llvm::Error Pathfinder::routePart(RouteState &st, int flow) {
   const Flow &part = st.parts[flow];
   int packetGroupId = part.packetGroupId;
   bool isPriority = part.isPriorityFlow;
@@ -1087,7 +1114,7 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
   SwitchSettings switchSettings;
   ++st.curStamp;
   const llvm::BitVector *avoid = packetId ? &st.conflicting[flow] : nullptr;
-  auto pin = pinnedTrees.find(src);
+  auto pin = constraints.pinned.find(src);
   // The flow source port feeds into its switchbox, so the tree starts
   // on its In side and the first edge taken is necessarily a crossbar
   // hop.
@@ -1280,7 +1307,7 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
   SmallVector<std::pair<int, const SmallVector<int, 4> *>, 2> joinedAt;
   SmallVector<std::pair<int, std::pair<int, Edge>>, 8> pinnedJoins;
   SmallVector<int, 4> pinnedJoinDsts;
-  if (pin != pinnedTrees.end()) {
+  if (pin != constraints.pinned.end()) {
     for (const auto &[from, to, joined] : pin->second) {
       bool intra = from.coords == to.coords;
       auto fromId = nodeIds.find(from), toId = nodeIds.find(to);
@@ -1290,11 +1317,10 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
           if (out.dst == toId->second &&
               (out.sb->srcCoords == out.sb->dstCoords) == intra)
             e = &out;
-      if (!e) {
-        failureReason = "the route packet flows from " + endpointString(src) +
-                        " take alone does not fit this design.";
-        return false;
-      }
+      if (!e)
+        return llvm::make_error<RoutingFailure>(
+            "the route packet flows from " + endpointString(src) +
+            " take alone does not fit this design.");
       std::pair<int, std::pair<int, Edge>> hop{
           stateId(toId->second, intra ? Out : In),
           {stateId(fromId->second, intra ? In : Out), *e}};
@@ -1347,18 +1373,17 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
       pending.erase(nearest);
       reached.push_back(currId);
     }
-    if (!trace(currId)) {
-      failureReason = "no path leads from " + endpointString(src) + " to " +
-                      endpointString(endPoint) +
-                      " through the connections the switchboxes "
-                      "allow and existing routing leaves free.";
-      return false;
-    }
+    if (!trace(currId))
+      return llvm::make_error<RoutingFailure>(
+          "no path leads from " + endpointString(src) + " to " +
+          endpointString(endPoint) +
+          " through the connections the switchboxes allow and existing "
+          "routing leaves free.");
   }
   // A destination's path was chosen before the tree reached the later
   // ones, so reroute each destination's own branch from the rest of the
   // tree where that is cheaper.
-  if (pin == pinnedTrees.end() && reached.size() + joinedAt.size() > 1)
+  if (pin == constraints.pinned.end() && reached.size() + joinedAt.size() > 1)
     for (int dst : reached) {
       llvm::DenseSet<int> branch;
       int top = dst;
@@ -1458,7 +1483,7 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
   if (packetId) {
     st.treeDsts[flow].append(reached.begin(), reached.end());
     for (const auto &[currId, hop] : planned)
-      packetTrees[src].push_back(
+      st.routing.packetTrees[src].push_back(
           {nodes[stateNode(hop.first)], nodes[stateNode(currId)], false});
   }
   // Below a join the flow's packets follow the tree they joined.
@@ -1467,7 +1492,7 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
       return false;
     const PathEndPoint &pred = nodes[stateNode(predId)];
     const PathEndPoint &curr = nodes[stateNode(state)];
-    packetTrees[src].push_back({pred, curr, true});
+    st.routing.packetTrees[src].push_back({pred, curr, true});
     if (pred.coords == curr.coords) {
       switchSettings[pred.coords].srcs.push_back(pred.port);
       switchSettings[curr.coords].dsts.push_back(curr.port);
@@ -1500,13 +1525,13 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
   st.treeDsts[flow].append(pinnedJoinDsts.begin(), pinnedJoinDsts.end());
   // add this flow to the proposed solution
   if (st.partsOf.at(src).size() == 1) {
-    st.routingSolution[src] = switchSettings;
-    return true;
+    st.routing.settings[src] = switchSettings;
+    return llvm::Error::success();
   }
   for (int id : st.flowIds[flow])
-    idSettings[{src, id}] = switchSettings;
+    st.routing.idSettings[{src, id}] = switchSettings;
   for (const auto &[tile, setting] : switchSettings) {
-    SwitchSetting &all = st.routingSolution[src][tile];
+    SwitchSetting &all = st.routing.settings[src][tile];
     for (auto [in, out] : llvm::zip(setting.srcs, setting.dsts))
       if (!llvm::is_contained(llvm::zip(all.srcs, all.dsts),
                               std::make_tuple(in, out))) {
@@ -1514,7 +1539,7 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
         all.dsts.push_back(out);
       }
   }
-  return true;
+  return llvm::Error::success();
 }
 
 int Pathfinder::applyRoutingFaults(RouteState &st,
@@ -1599,14 +1624,12 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
 // Perform congestion-aware routing for all flows which have been added.
 // Use Dijkstra's shortest path to find routes, and use "demand" as the
 // weights. If the routing finds too much congestion, update the demand
-// weights and repeat the process until a valid solution is found. Returns a
-// map specifying switchbox settings for all flows. If no legal routing can be
-// found after maxIterations, returns empty vector.
-std::optional<std::map<PathEndPoint, SwitchSettings>>
-Pathfinder::findPaths(const int maxIterations) {
+// weights and repeat the process until a valid solution is found. Returns
+// the switchbox settings for all flows, or a RoutingFailure if no legal
+// routing is found after maxIterations.
+llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin Pathfinder::findPaths---\n");
-  failureReason.clear();
-  overuseReason.clear();
+  checkReason.clear();
   // Build the dense routing graph once; topology is invariant across
   // iterations.
   if (!graphBuilt)
@@ -1645,8 +1668,7 @@ Pathfinder::findPaths(const int maxIterations) {
                  << "\t\tPathfinder: maxIterations has been exceeded ("
                  << maxIterations
                  << " iterations)...unable to find routing for flows.\n");
-      explainNoRouting(st);
-      return std::nullopt;
+      return llvm::make_error<RoutingFailure>(explainNoRouting(st));
     }
 
     LLVM_DEBUG(llvm::dbgs() << "\t\t---Begin findPaths iteration #"
@@ -1661,7 +1683,7 @@ Pathfinder::findPaths(const int maxIterations) {
 #ifndef NDEBUG
     totalPathLength = 0;
 #endif
-    st.routingSolution.clear();
+    st.routing = {};
     for (auto &[_, sb] : graph) {
       for (size_t i = 0; i < sb.srcPorts.size(); i++) {
         for (size_t j = 0; j < sb.dstPorts.size(); j++) {
@@ -1679,16 +1701,14 @@ Pathfinder::findPaths(const int maxIterations) {
       dsts.clear();
     for (auto &hops : st.joinedHops)
       hops.clear();
-    packetTrees.clear();
-    idSettings.clear();
 
     // for each flow, find the shortest path from source to destination
     // update used_capacity for the path between them
 
     for (const auto &[_, group] : st.groupedFlows) {
       for (int flow : group)
-        if (!routePart(st, flow))
-          return std::nullopt;
+        if (llvm::Error err = routePart(st, flow))
+          return std::move(err);
       for (auto &[_, sb] : graph) {
         for (size_t i = 0; i < sb.srcPorts.size(); i++) {
           for (size_t j = 0; j < sb.dstPorts.size(); j++) {
@@ -1732,11 +1752,17 @@ Pathfinder::findPaths(const int maxIterations) {
 
     // A routing that fits the fabric can still be one the caller cannot use;
     // steer away from the connections it names as if they were overused.
-    if (illegalEdges == 0 && routingCheck)
-      illegalEdges += applyRoutingFaults(st, routingCheck(st.routingSolution));
+    if (illegalEdges == 0 && constraints.check)
+      llvm::handleAllErrors(
+          constraints.check(st.routing), [&](RoutingFailure &rejected) {
+            LLVM_DEBUG(llvm::dbgs()
+                       << "Routing rejected: " << rejected.reason << '\n');
+            illegalEdges += applyRoutingFaults(st, rejected.faults);
+            checkReason = std::move(rejected.reason);
+          });
 
 #ifndef NDEBUG
-    for (const auto &[PathEndPoint, switchSetting] : st.routingSolution) {
+    for (const auto &[PathEndPoint, switchSetting] : st.routing.settings) {
       LLVM_DEBUG(llvm::dbgs()
                  << "\t\t\tFlow starting at (" << PathEndPoint.coords.col << ","
                  << PathEndPoint.coords.row << "):\t");
@@ -1751,7 +1777,7 @@ Pathfinder::findPaths(const int maxIterations) {
            0); // continue iterations until a legal routing is found
 
   LLVM_DEBUG(llvm::dbgs() << "\t---End Pathfinder::findPaths---\n");
-  return st.routingSolution;
+  return std::move(st.routing);
 }
 
 // Get enum int value from WireBundle.

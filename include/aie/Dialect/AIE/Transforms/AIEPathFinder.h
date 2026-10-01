@@ -14,6 +14,7 @@
 
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/IntEqClasses.h"
+#include "llvm/Support/Error.h"
 
 #include <algorithm>
 #include <functional>
@@ -36,7 +37,7 @@ constexpr int routingCheckPenalty = 5;
 // Cost added to a hop that shares an arbiter unit with a flow to avoid.
 constexpr double conflictSharePenalty = 4;
 // Channels per direction packet streams leave a capped tile by (see
-// Router::capCrowdedFanOut). A heuristic: fewer channels mean fewer master
+// Pathfinder::relax). A heuristic: fewer channels mean fewer master
 // sets per tile, but more flows on each.
 constexpr int packetFanoutCap = 2;
 // A multicast's next destination may branch off any hop its tree already
@@ -281,17 +282,62 @@ struct TreeSplit {
 };
 
 /// What makes a routing unusable: switchbox connections to move, and where a
-/// source's tree has to branch, and crowded tiles (see capCrowdedFanOut).
+/// source's tree has to branch, and crowded tiles (see Pathfinder::relax).
 struct RoutingFaults {
   std::vector<std::pair<TileID, Connect>> connections;
   std::vector<TreeSplit> splits;
   std::vector<TileID> crowded;
 };
 
-/// Checks a routing that fits the fabric. Returns what makes it unusable,
-/// nothing when it is accepted.
-using RoutingCheck = std::function<RoutingFaults(
-    const std::map<PathEndPoint, SwitchSettings> &)>;
+/// A routing findPaths found.
+struct Routing {
+  /// The switch settings of each source's flows.
+  std::map<PathEndPoint, SwitchSettings> settings;
+  /// The packet flows' trees, by source.
+  PacketTrees packetTrees;
+  /// The switch settings of the packets a source sends with an id, where they
+  /// are routed apart from the others the source sends.
+  std::map<std::pair<PathEndPoint, int>, SwitchSettings> idSettings;
+};
+
+/// Why no legal routing was found, reported at `loc`, or the device if unset,
+/// with `reason` if the router can say. A routing check's failure also names
+/// the faults the router has to move.
+class RoutingFailure : public llvm::ErrorInfo<RoutingFailure> {
+public:
+  static char ID;
+
+  explicit RoutingFailure(std::string reason, RoutingFaults faults = {},
+                          std::optional<mlir::Location> loc = std::nullopt)
+      : reason(std::move(reason)), faults(std::move(faults)), loc(loc) {}
+
+  void log(llvm::raw_ostream &os) const override;
+  std::error_code convertToErrorCode() const override {
+    return llvm::inconvertibleErrorCode();
+  }
+
+  std::string reason;
+  RoutingFaults faults;
+  std::optional<mlir::Location> loc;
+};
+
+/// Checks a routing that fits the fabric: a RoutingFailure if it is unusable,
+/// success if it is accepted.
+using RoutingCheck = std::function<llvm::Error(const Routing &)>;
+
+/// What packet flows are routed under.
+struct PacketConstraints {
+  /// Routings the check rejects count as illegal; the connections it names
+  /// are penalized like overused channels so later iterations avoid them, and
+  /// the trees it splits branch where it says from then on.
+  RoutingCheck check;
+  /// Packet flows that conflict are steered off each other's master ports; see
+  /// edgeWeight.
+  PacketConflict conflict;
+  /// Packet flows from these sources take these trees instead of being
+  /// routed.
+  PacketTrees pinned;
+};
 
 class Router {
 public:
@@ -306,50 +352,12 @@ public:
                        bool isPriorityFlow) = 0;
   virtual void sortFlows() = 0;
   virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
-  virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
-  findPaths(int maxIterations) = 0;
-  /// Routings the check rejects count as illegal; the connections it names
-  /// are penalized like overused channels so later iterations avoid them, and
-  /// the trees it splits branch where it says from then on.
-  virtual void setRoutingCheck(RoutingCheck check) {}
-  /// Packet flows that conflict are steered off each other's master ports; see
-  /// edgeWeight.
-  virtual void setPacketConflict(PacketConflict conflict) {}
-  /// Why the last findPaths found no routing, empty if it cannot say.
-  virtual std::string getFailureReason() const { return {}; }
-  /// The channel the last findPaths left overused, empty if none; the routing
-  /// check's reason, when it has one, says more.
-  virtual std::string getOveruseReason() const { return {}; }
-  /// The packet flows' trees in the routing the last findPaths found, by
-  /// source.
-  virtual PacketTrees getPacketTrees() const { return {}; }
-  /// Packet flows from these sources take these trees instead of being
-  /// routed.
-  virtual void pinPacketTrees(PacketTrees trees) {}
-  virtual PacketTrees getPinnedTrees() const { return {}; }
-  /// Packet flows share channels only with flows they share a destination
-  /// with, directly or through others, unless `share`; then with any other
-  /// packet flow. Returns whether that lets flows the last routing kept apart
-  /// share.
-  virtual bool setShareChannels(bool share) { return false; }
-  /// Tiles the routing check found out of packet rules or arbiter msels, with
-  /// no split to free any, during the last findPaths: packet streams leave
-  /// them by packetFanoutCap channels per direction from now on, so by fewer
-  /// sets of master ports. Returns whether that caps any tile not capped
-  /// before.
-  virtual bool capCrowdedFanOut() { return false; }
-  /// Routes the second id of each TreeSplit the routing check asked for at a
-  /// tile the tree cannot branch at apart from the rest from now on, and
-  /// resets channel sharing and tile caps as at the start (see
-  /// AIEPathfinderPass::route). Returns whether a source sends more than one
-  /// id.
-  virtual bool routeIdsApart() { return false; }
-  /// The switch settings of the packets `src` sends with id `id`, if the last
-  /// findPaths routed them apart from others `src` sends; else null.
-  virtual const SwitchSettings *getIdSettings(const PathEndPoint &src,
-                                              int id) const {
-    return nullptr;
-  }
+  /// A RoutingFailure if no legal routing is found in `maxIterations`.
+  virtual llvm::Expected<Routing> findPaths(int maxIterations) = 0;
+  virtual void setPacketConstraints(PacketConstraints constraints) {}
+  /// Loosens the packet constraints by a step after findPaths found no
+  /// routing. Returns false once no step is left.
+  virtual bool relax() { return false; }
 };
 
 class Pathfinder : public Router {
@@ -361,29 +369,20 @@ public:
                std::optional<int> packetId, bool isPriorityFlow) override;
   void sortFlows() override;
   bool addFixedConnection(SwitchboxOp switchboxOp) override;
-  std::optional<std::map<PathEndPoint, SwitchSettings>>
-  findPaths(int maxIterations) override;
-  void setRoutingCheck(RoutingCheck check) override {
-    routingCheck = std::move(check);
+  llvm::Expected<Routing> findPaths(int maxIterations) override;
+  void setPacketConstraints(PacketConstraints c) override {
+    constraints = std::move(c);
   }
-  void setPacketConflict(PacketConflict conflict) override {
-    packetConflict = std::move(conflict);
-  }
-  std::string getFailureReason() const override { return failureReason; }
-  std::string getOveruseReason() const override { return overuseReason; }
-  PacketTrees getPacketTrees() const override { return packetTrees; }
-  void pinPacketTrees(PacketTrees trees) override {
-    pinnedTrees = std::move(trees);
-  }
-  PacketTrees getPinnedTrees() const override { return pinnedTrees; }
-  bool setShareChannels(bool share) override;
-  bool capCrowdedFanOut() override;
-  bool routeIdsApart() override;
-  const SwitchSettings *getIdSettings(const PathEndPoint &src,
-                                      int id) const override {
-    auto it = idSettings.find({src, id});
-    return it == idSettings.end() ? nullptr : &it->second;
-  }
+  /// Packet flows first share channels only with flows they share a
+  /// destination with, directly or through others. The steps, each skipped
+  /// if it changes nothing: they share channels with any packet flow; tiles
+  /// the routing check found out of packet rules or arbiter msels, with no
+  /// split to free any, are capped, so packet streams leave them by
+  /// packetFanoutCap channels per direction, so by fewer sets of master
+  /// ports. Then, if a source sends more than one id, the second id of each
+  /// TreeSplit at a tile the tree cannot branch at is routed apart from the
+  /// rest, sharing and caps start over, and the two steps follow again.
+  bool relax() override;
 
 private:
   // A directed edge in the dense routing graph: from some node to node `dst`,
@@ -439,16 +438,19 @@ private:
       llvm::ArrayRef<int> targets = {});
 
   struct RouteState;
-  // Route `flow`'s tree around those routed before it this iteration. False,
-  // with failureReason set, if it reaches no path to a destination.
-  bool routePart(RouteState &st, int flow);
+  // Route `flow`'s tree around those routed before it this iteration. A
+  // RoutingFailure if it reaches no path to a destination.
+  llvm::Error routePart(RouteState &st, int flow);
   // Steer the next iteration away from what the routing check faulted.
   // Returns the illegal edges the faults count as.
   int applyRoutingFaults(RouteState &st, const RoutingFaults &faults);
-  // Set failureReason or overuseReason to why the last iteration's routing
-  // does not fit.
-  void explainNoRouting(const RouteState &st);
+  // Why the last iteration's routing does not fit.
+  std::string explainNoRouting(const RouteState &st) const;
   bool hasRoom(const SwitchboxConnect &sb) const;
+  // The steps of relax.
+  bool setShareChannels(bool share);
+  bool capCrowdedFanOut();
+  bool routeIdsApart();
 
   // Flows to be routed
   std::vector<Flow> flows;
@@ -478,13 +480,12 @@ private:
 
   int getOrAddNodeId(const PathEndPoint &pep);
 
-  RoutingCheck routingCheck;
-  PacketConflict packetConflict;
-  std::string failureReason, overuseReason;
-  PacketTrees packetTrees, pinnedTrees;
+  PacketConstraints constraints;
+  // Why the routing check rejected the last routing it rejected.
+  std::string checkReason;
   bool shareChannels = false, idsApart = false;
+  int relaxStep = 0;
   std::set<TileID> crowdedTiles, cappedTiles;
-  std::map<std::pair<PathEndPoint, int>, SwitchSettings> idSettings;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR
@@ -495,11 +496,8 @@ class DynamicTileAnalysis {
 public:
   int maxCol, maxRow;
   std::shared_ptr<Router> pathfinder;
-  std::map<PathEndPoint, SwitchSettings> flowSolutions;
+  Routing routing;
   std::map<PathEndPoint, bool> processedFlows;
-  /// Why the last routing the routing check rejected was unusable, reported
-  /// if no usable routing is found.
-  std::string routingFailureReason;
 
   llvm::DenseMap<TileID, TileOp> coordToTile;
   llvm::DenseMap<TileID, SwitchboxOp> coordToSwitchbox;
@@ -513,7 +511,8 @@ public:
   DynamicTileAnalysis(mlir::Operation *op)
       : pathfinder(std::make_shared<Pathfinder>()) {}
 
-  mlir::LogicalResult runAnalysis(DeviceOp &device);
+  /// A RoutingFailure if the flows in `device` have no legal routing.
+  llvm::Error runAnalysis(DeviceOp &device);
 
   int getMaxCol() const { return maxCol; }
   int getMaxRow() const { return maxRow; }
