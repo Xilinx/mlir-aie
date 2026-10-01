@@ -287,7 +287,7 @@ rt = Runtime(
 
 The two-phase `TaskGroup` open/finish dance is the IRON equivalent of the old "ping/pong" buffer-descriptor split: while half the shim DMA BDs are still running, the other half are being reconfigured for the next set of tiles.  This overlap is what keeps the array fed.  The handles in `A_hs` / `B_hs` / `C_hs` are the `.prod()` / `.cons()` endpoints passed as trailing entries in the `Runtime`'s arg list; the shim tile each uses is chosen by the compiler.
 
-`rows_per_step` is the number of A row-blocks per ping-pong half.  Setting it too low starves the cores; too high overflows the shim DMA BD pool.
+`rows_per_step` is the number of A row-blocks per ping-pong half: 2 for a row-major C and 1 for a column-major C.  Fewer would starve the cores; more would overflow the shim DMA BD pool.
 
 ## Compute Microkernels
 
