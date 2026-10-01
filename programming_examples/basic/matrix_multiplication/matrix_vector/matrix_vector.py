@@ -20,7 +20,6 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
-    StreamDims,
     Worker,
     kernels,
 )
@@ -45,7 +44,6 @@ def matrix_vector(
     use_chess: CompileTime[bool] = False,
 ):
     n_cores = 1
-    M_div_n_cores = M // n_cores
     M_div_m_div_n_cores = M // (m * n_cores)
     K_div_k = K // k
 
@@ -66,7 +64,7 @@ def matrix_vector(
     # The vectorized mv kernel reads A in a "32-bit-word transposed" layout
     # (see aie_kernels/linalg/mv_i16.cc); the kernel's contract declares the DMA
     # transform on A's layout, so the design applies what the kernel wants.
-    a_from_stream: StreamDims | None = matvec_kernel.contract.layouts[0].stream
+    a_from_stream: TensorAccessPattern | None = matvec_kernel.contract.layouts[0].stream
 
     def core_fn(of_a, of_b, of_c, zero, matvec):
         elem_out = of_c.acquire(1)
@@ -102,12 +100,8 @@ def matrix_vector(
             )
         )
 
-    A_taps = (
-        TensorAccessPattern.full((M, K))
-        .tile((m, k))
-        .group((M_div_m_div_n_cores, K_div_k))
-    )
-    C_taps = TensorAccessPattern.full((1, M)).tile((1, M_div_n_cores))
+    A_taps = TensorAccessPattern.full((M, K)).tile((m, k)).split(0, M_div_m_div_n_cores)
+    C_taps = TensorAccessPattern.full((1, M)).partition(n_cores)
     b_tap = TensorAccessPattern.full((1, K)).repeat(M_div_m_div_n_cores)
 
     memA_prods = [f.prod() for f in memA_fifos]

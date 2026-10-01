@@ -24,54 +24,72 @@ MM2S0_CTRL, MM2S0_QUEUE = 0x1D210, 0x1D214
 TOKEN = 1 << 31
 
 
-def header():
-    return [0, 0, 0, 0]
+# Each helper returns a list of ops, so a stream is a sum of helper calls.
+
+
+def header(n_ops, n_words, dev_gen=4, rows=6, cols=4, mem_tile_rows=1):
+    return [(rows << 24) | (dev_gen << 16) | (1 << 8), (mem_tile_rows << 8) | cols] + [
+        n_ops,
+        4 * n_words,
+    ]
 
 
 def write32(addr, val):
-    return [0, 0, addr, 0, val, 24]
+    return [[0, 0, addr, 0, val, 24]]
 
 
 def maskwrite32(addr, val, mask):
-    return [3, 0, addr, 0, val, mask, 28]
+    return [[3, 0, addr, 0, val, mask, 28]]
 
 
 def maskpoll32(addr, val, mask):
-    return [4, 0, addr, 0, val, mask, 28]
+    return [[4, 0, addr, 0, val, mask, 28]]
 
 
 def blockwrite(addr, data, col=0, row=0):
-    return [1, col | (row << 8), addr, 4 * (4 + len(data))] + list(data)
+    return [[1, col | (row << 8), addr, 4 * (4 + len(data))] + list(data)]
 
 
 def patch(addr, arg_idx, arg_plus):
     return [
-        129,
-        48,
-        0,
-        0,
-        0,
-        0,
-        addr,
-        0,
-        arg_idx,
-        0,
-        arg_plus & 0xFFFFFFFF,
-        arg_plus >> 32,
+        [
+            129,
+            48,
+            0,
+            0,
+            0,
+            0,
+            addr,
+            0,
+            arg_idx,
+            0,
+            arg_plus & 0xFFFFFFFF,
+            arg_plus >> 32,
+        ]
     ]
 
 
 def tct(col, row, direction, channel, ncol=1, nrow=1):
     return [
-        128,
-        16,
-        direction | (row << 8) | (col << 16),
-        (nrow << 8) | (ncol << 16) | (channel << 24),
+        [
+            128,
+            16,
+            direction | (row << 8) | (col << 16),
+            (nrow << 8) | (ncol << 16) | (channel << 24),
+        ]
     ]
 
 
 def bd_words(
-    length, *, offset=0, d0=None, d1=None, d2_stride=1, iteration=None, valid=True
+    length,
+    *,
+    offset=0,
+    d0=None,
+    d1=None,
+    d2_stride=1,
+    iteration=None,
+    valid=True,
+    next_bd=None,
 ):
     """Shim BD words, static-emitter style: linear when no dims are given."""
     w = [length, offset, 0, 0, 0, 0, 0, 0]
@@ -85,6 +103,8 @@ def bd_words(
     if iteration is not None:
         w[6] = ((iteration[0] & 0x3F) << 20) | ((iteration[1] - 1) & 0xFFFFF)
     w[7] = (1 << 25) if valid else 0
+    if next_bd is not None:
+        w[7] |= (1 << 26) | (next_bd << 27)
     return w
 
 
@@ -111,11 +131,11 @@ def transfer_dynamic(
     """Build the same transfer as the dispatch-time builder emits it.
 
     A BD from the pool (any id), word 1 left zero, unit wraps instead of
-    linear mode, a poll on the BD before reuse.
+    linear mode, a poll for room in the task queue.
     """
     bd = SHIM_BD0 + 0x20 * bd_id
     dims = dict(d0=(1, 1), d1=(1, 1), d2_stride=1) if unit_wraps else {}
-    s = maskpoll32(0x1D228, 0, 1 << (22 + bd_id))
+    s = maskpoll32(0x1D228, 0, 1 << 22)
     s += blockwrite(bd, bd_words(length, **dims))
     s += patch(bd + 4, arg_idx, byte_off)
     if ctrl is not None:
@@ -124,11 +144,10 @@ def transfer_dynamic(
     return s
 
 
-def as_stream(*parts):
-    words = header()
-    for p in parts:
-        words += p
-    return np.array(words, dtype=np.uint32)
+def as_stream(*parts, **device):
+    ops = [op for part in parts for op in part]
+    words = [w for op in ops for w in op]
+    return np.array(header(len(ops), 4 + len(words), **device) + words, dtype=np.uint32)
 
 
 class TestDecode:
@@ -140,8 +159,10 @@ class TestDecode:
             blockwrite(SHIM_BD0, bd_words(64)),
             patch(SHIM_BD0 + 4, 1, 0x400),
             tct(0, 0, 0, 0),
-            [8 | (3 << 16), 0x100, 0x1000, 0],  # loadpdi id 3
-            [6 | (2 << 8)],  # preempt level 2
+            [[8 | (3 << 16), 0x100, 0x1000, 0]],  # loadpdi id 3
+            [[6 | (2 << 8)]],  # preempt level 2
+            [[10 | (1 << 8), 0x400, 0, 0]],  # create_scratchpad, usage 1
+            [[12 | (2 << 8) | (1 << 16), 0x10, 0x1D004]],  # update_reg
         )
         kinds = [op.kind for op in decode(s)]
         assert kinds == [
@@ -154,6 +175,8 @@ class TestDecode:
             "tct",
             "loadpdi",
             "preempt",
+            "scratchpad",
+            "update_reg",
         ]
         # Every op prints, and the positions chain without gaps.
         ops = decode(s)
@@ -162,9 +185,17 @@ class TestDecode:
 
     def test_rejects_unknown_opcode_and_short_header(self):
         with pytest.raises(ValueError, match="unknown TXN opcode"):
-            decode(as_stream([0x42, 0, 0, 0]))
+            decode(as_stream([[0x42, 0, 0, 0]]))
         with pytest.raises(ValueError, match="header"):
             decode([0, 0])
+
+    def test_header_must_match_the_stream(self):
+        s = as_stream(write32(MM2S0_QUEUE, 0), write32(MM2S0_QUEUE, 0))
+        with pytest.raises(ValueError, match="gives 64 bytes, the stream has 40"):
+            decode(s[:10])
+        s[2] = 3
+        with pytest.raises(ValueError, match="counts 3 ops, the stream has 2"):
+            decode(s)
 
 
 class TestTrace:
@@ -216,8 +247,90 @@ class TestTrace:
         (ev,) = trace(s)
         assert (ev.col, ev.row) == (col, row)
 
+    def test_unwritten_bd_is_an_error_not_zeros(self):
+        with pytest.raises(ValueError, match=r"never writes its words \[0, 1, 2"):
+            trace(as_stream(write32(MM2S0_QUEUE, 3)))
+        partial = as_stream(write32(SHIM_BD0, 64), write32(MM2S0_QUEUE, 0))
+        with pytest.raises(ValueError, match=r"BD 0 of tile \(0,0\).*\[1, 2, 3"):
+            trace(partial)
+
+    def test_push_follows_the_bd_chain(self):
+        s = as_stream(
+            blockwrite(SHIM_BD0, bd_words(64, next_bd=5)),
+            blockwrite(SHIM_BD0 + 5 * 0x20, bd_words(32, offset=0x100, next_bd=2)),
+            blockwrite(SHIM_BD0 + 2 * 0x20, bd_words(16, offset=0x200)),
+            write32(MM2S0_QUEUE, 0),
+        )
+        (ev,) = trace(s)
+        assert ev.bd.length == 64
+        assert [t.length for t in ev.chain] == [32, 16]
+        assert [t.address for t in ev.chain] == [("abs", 0x100), ("abs", 0x200)]
+        assert ev.chain_loop is None
+        assert "-> len=32" in explain(s)
+
+    def test_cyclic_chain_records_where_it_loops(self):
+        s = as_stream(
+            blockwrite(SHIM_BD0, bd_words(64, next_bd=1)),
+            blockwrite(SHIM_BD0 + 0x20, bd_words(32, next_bd=0)),
+            write32(MM2S0_QUEUE, 0),
+        )
+        (ev,) = trace(s)
+        assert [t.length for t in ev.chain] == [32] and ev.chain_loop == 0
+
+    def test_register_writes_outside_the_dma_are_events(self):
+        rtp = (2 << 20) | 0x400  # core (0, 2) data memory
+        s = as_stream(
+            write32(rtp, 7),
+            maskwrite32((2 << 20) | 0x1F000, 1, 0x3F),
+            blockwrite(rtp + 8, [5, 6]),
+            transfer_static(0, 1, 0, 256, S2MM0_QUEUE, ctrl=0xF00),
+        )
+        writes = [e for e in trace(s) if e.kind == "write"]
+        assert [(e.col, e.row, e.raw) for e in writes] == [
+            (0, 2, (0x400, 7, 0xFFFFFFFF)),
+            (0, 2, (0x1F000, 1, 0x3F)),
+            (0, 2, (0x408, 5, 0xFFFFFFFF)),
+            (0, 2, (0x40C, 6, 0xFFFFFFFF)),
+        ]
+        assert "write (0,2) 0x1f000 <- 0x00000001 & 0x0000003f" in explain(s)
+
+    def test_memtile_and_core_rows_come_from_the_header(self):
+        # With two memtile rows, row 2 is a memtile: its BD 37 is in range.
+        tile = 2 << 20
+        s = as_stream(
+            blockwrite(tile | (0xA0000 + 37 * 0x20), [64, 0, 0, 0, 0, 0, 0, 1 << 31]),
+            write32(tile | 0xA0604, 37),
+            mem_tile_rows=2,
+        )
+        (ev,) = trace(s)
+        assert (ev.row, ev.bd.length) == (2, 64)
+
 
 class TestCompare:
+    def test_different_device_is_reported(self):
+        transfer = transfer_static(0, 1, 0, 256, S2MM0_QUEUE)
+        (msg,) = compare(as_stream(transfer, dev_gen=3), as_stream(transfer))
+        assert msg.startswith("headers differ")
+
+    def test_different_runtime_parameter_is_reported(self):
+        rtp = (2 << 20) | 0x400
+        transfer = transfer_static(0, 1, 0, 256, S2MM0_QUEUE)
+        a = as_stream(write32(rtp, 128), transfer)
+        b = as_stream(write32(rtp, 64), transfer)
+        (msg,) = compare(a, b)
+        assert "event 0 differs" in msg and "0x00000080" in msg
+
+    def test_chained_bd_difference_is_reported(self):
+        def chained(bd_a, bd_b, tail_len):
+            return as_stream(
+                blockwrite(SHIM_BD0 + bd_a * 0x20, bd_words(64, next_bd=bd_b)),
+                blockwrite(SHIM_BD0 + bd_b * 0x20, bd_words(tail_len)),
+                write32(MM2S0_QUEUE, bd_a),
+            )
+
+        assert compare(chained(0, 1, 32), chained(6, 3, 32)) == []
+        assert compare(chained(0, 1, 32), chained(0, 1, 16))
+
     def test_dynamic_and_static_encodings_of_one_transfer_are_equivalent(self):
         static = as_stream(
             transfer_static(0, 1, 0x800, 256, S2MM0_QUEUE, ctrl=0xF00, token=True),
@@ -429,6 +542,24 @@ class TestLoweredTiles:
             ),
         )
         assert compare(linear, strided)
+
+    def test_memtile_bd_chain(self, device):
+        def chain(second_len):
+            return f"""
+          %t = aiex.dma_configure_task(%mem, MM2S, 0) {{
+            aie.dma_bd(%mbuf : memref<1024xi32> len = 64) {{bd_id = 4 : i32}}
+            aie.next_bd ^bd1
+          ^bd1:
+            aie.dma_bd(%mbuf : memref<1024xi32> offset = 64 len = {second_len}) {{bd_id = 5 : i32}}
+            aie.end
+          }}
+          aiex.dma_start_task(%t)"""
+
+        (ev,) = trace(lowered(device, chain(64)))
+        assert ev.bd.length == 64
+        ((length, (_, address)),) = [(t.length, t.address) for t in ev.chain]
+        assert (length, address) == (64, ev.bd.address[1] + 64)
+        assert compare(lowered(device, chain(64)), lowered(device, chain(32)))
 
     def test_core_bd(self, device):
         s = lowered(

@@ -232,3 +232,43 @@ module {
     }
   }
 }
+
+// -----
+
+// A runtime d1 stride is checked in the element domain, before it is scaled
+// to granules: one unsigned compare of stride-1 refuses 0 and anything that
+// would wrap the 20-bit field (134217792 would otherwise encode as 64).
+// CHECK-LABEL: @rt_d1_stride
+// CHECK: %[[S1:.*]] = arith.subi %arg1, %c1{{.*}} : i64
+// CHECK: %[[OK:.*]] = arith.cmpi ule, %[[S1]], %c1048575{{.*}} : i64
+// CHECK: cf.assert %[[OK]], "a runtime DMA d1 stride must be in [1:1048576] when its size > 1"
+// CHECK: cf.assert %{{.*}}, "a runtime DMA access runs past the end of its 8192-element host buffer"
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @rt_d1_stride(%arg0: memref<8192xi32>, %s: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 4, 32][0, 0, %s, 1]) {id = 0 : i64, metadata = @alloc0} : memref<8192xi32>
+    }
+  }
+}
+
+// -----
+
+// A runtime d2 size has no wrap field of its own; it reaches the hardware
+// through buffer_length, which is computed in 64 bits and guarded.
+// CHECK-LABEL: @rt_d2_size
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d2 size must be in [1:4294967295]"
+// CHECK: %[[LEN:.*]] = arith.muli %arg1, %c128{{.*}} : i64
+// CHECK: %[[FITS:.*]] = arith.cmpi ule, %[[LEN]], %c4294967295{{.*}} : i64
+// CHECK: cf.assert %[[FITS]], "a runtime DMA transfer exceeds the 4294967295-granule BD buffer_length"
+// CHECK: cf.assert %{{.*}}, "a runtime DMA access runs past the end of its 8192-element host buffer"
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @rt_d2_size(%arg0: memref<8192xi32>, %n: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, %n, 4, 32][0, 256, 32, 1]) {id = 0 : i64, metadata = @alloc0} : memref<8192xi32>
+    }
+  }
+}

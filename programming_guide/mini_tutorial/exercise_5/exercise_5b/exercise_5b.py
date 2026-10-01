@@ -11,7 +11,7 @@ import numpy as np
 
 from aie.iron import Out, In, CompileTime, Program, Runtime, Worker, ObjectFifo
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
+from aie.helpers.taplib import TensorAccessPattern
 
 import aie.iron as iron
 
@@ -45,13 +45,10 @@ def exercise_5b(
         tensor_dims, offset=8, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1]
     )
 
-    # Create a TensorAccessSequence from a list of taps
-    taps = TensorAccessSequence.from_taps([tap1, tap2])
+    taps = [tap1, tap2]
 
-    i = 0
-    for t in taps:
+    for i, t in enumerate(taps):
         t.visualize(show_arrows=True, file_path=f"plot{i}.png")
-        i += 1
 
     # Dataflow with ObjectFifos
     of_in = ObjectFifo(tile_ty, name="in")

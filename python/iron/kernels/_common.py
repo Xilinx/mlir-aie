@@ -17,6 +17,7 @@ from aie.helpers.npdtypes import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
@@ -55,7 +56,7 @@ class TensorLayout:
     shape: tuple[int, ...]
     pack: Callable | None = None
     unpack: Callable | None = None
-    stream: list | None = None
+    stream: TensorAccessPattern | None = None
     block: tuple[int, ...] | None = None
 
     def encode(self, values):

@@ -6,12 +6,9 @@
 `taplib` describes how DMAs walk tensors. A DMA buffer descriptor executes a
 strided walk: an element *offset* plus parallel *sizes* and *strides*,
 outermost dimension first. A `TensorAccessPattern` is exactly that walk over
-a tensor of known shape, and every tiling a design needs is built from
+a tensor of known shape. The tilings designs use can be built from
 `TensorAccessPattern.full(dims)` (the row-major walk over the whole tensor)
 with a few operations on those integers.
-
-Coming from `TensorTiler2D` or the `dims_to_stream` keywords? See the
-[taplib migration guide](../migration/taplib.md).
 
 ## Building patterns
 
@@ -24,31 +21,37 @@ Coming from `TensorTiler2D` or the `dims_to_stream` keywords? See the
 | Use the fewest dimensions for the same walk | `tap.coalesce()` |
 | Walk the same data again | `tap.repeat(n)` (a stride-0 outermost dimension) |
 | Have a memtile pad the stream | `tap.pad([(before, after), ...])` |
-| Cut a tensor into equal tiles | `tap.tile(tile_dims)` (a `TileGrid`) |
-| Cut one dimension into `k` equal chunks | `tap.partition(k)` (a `TileGrid`) |
+| Cut a tensor into equal tiles | `tap.tile(tile_dims)` |
+| Cut one dimension into `k` equal chunks | `tap.partition(k)` |
+| Read a tile-blocked buffer back in row-major order | `tap.inverse()` |
 
-A `TileGrid` is a sequence of tile patterns. `grid[i]` is the tile at step
-`i` and `grid[i, j]` the tile at grid position `(i, j)`. It is refined with:
+`tile()` turns a rank-`r` pattern into a rank-`2r` one: the grid
+dimensions first, then the tile dimensions, so the whole result walks every
+tile in row-major order. Everything else is ordinary indexing and
+reordering of those dimensions:
 
 | To | Use |
 | --- | --- |
-| Gather several tiles into each step | `grid.group(repeats, steps=, order=, partial=)` |
-| Visit tiles column by column | `grid.order("col")` |
-| Transpose the walk inside each tile | `grid.permute_tile((1, 0))` |
-| Walk each tile again | `grid.repeat(n)` |
-| Get the whole ungrouped grid as one walk | `grid.tap` |
-| Read a tile-blocked buffer back in row-major order | `grid.inverse()` |
+| One tile | `tiles[i, j]` |
+| A row of tiles | `tiles[i]` |
+| A block of tiles, or every `S`-th tile | `tiles[a:b, j::S]` |
+| Visit tiles column by column | `tiles.permute((1, 0, 2, 3))` |
+| Walk each tile column-major | `tiles.permute((0, 1, 3, 2))` |
+| Walk a group of tiles again | `tiles[i].repeat(n)` |
 
-Patterns and grids are immutable: every operation returns a new one.
+Patterns are immutable: every operation returns a new one, and a list of
+patterns is just a Python `list`.
 
 ```python
 from aie.helpers.taplib import TensorAccessPattern
 
-grid = TensorAccessPattern.full((16, 16)).tile((4, 4)).group((2, 2))
-print(len(grid))  # 4
-print(grid[0])    # TensorAccessPattern([16, 16] offset=0, sizes=[2, 2, 4, 4], strides=[64, 4, 16, 1])
+tiles = TensorAccessPattern.full((16, 16)).tile((4, 4))
+print(tiles)        # TensorAccessPattern([16, 16], offset=0, sizes=[4, 4, 4, 4], strides=[64, 4, 16, 1])
+print(tiles[1, 2])  # TensorAccessPattern([16, 16], offset=72, sizes=[4, 4], strides=[16, 1])
+print(tiles[:2, :2])
+                    # TensorAccessPattern([16, 16], offset=0, sizes=[2, 2, 4, 4], strides=[64, 4, 16, 1])
 print(TensorAccessPattern.full((1, 1024)).partition(4)[2])
-                  # TensorAccessPattern([1, 1024] offset=512, sizes=[1, 256], strides=[0, 1])
+                    # TensorAccessPattern([1, 1024], offset=512, sizes=[1, 256], strides=[0, 1])
 ```
 
 ## Using patterns
@@ -58,22 +61,24 @@ A pattern goes wherever IRON takes a DMA walk:
 - `fill()` and `drain()` in a runtime sequence take it as `tap=`.
 - An `ObjectFifo` takes it as `to_stream` (how the producer's DMA reads its
   object onto the stream) and as `from_stream` / `from_stream_per_cons` (how
-  a consumer's DMA writes the stream into its object). A padded pattern given
-  as `to_stream` sets the fifo's `pad_dimensions` too.
-- `tap.transformation_dims` gives the `[(size, stride), ...]` list, for code
-  that still wants one.
+  a consumer's DMA writes the stream into its object). The pattern walks a
+  tensor the size of what each transfer moves, from offset 0: one object, or
+  one segment of it on a join's output or a distribute's input. A padded
+  pattern as `to_stream` also pads the stream on a MemTile.
+- `tap.transformation_dims` gives the `((size, stride), ...)` pairs, for code
+  that still wants them.
 
 ## Checking a data path on the host
 
-A tensor crosses up to four DMA walks before a core sees it: the shim reads
-the host tensor onto the stream, the memtile writes it into an object, the
-memtile reads that object back out, and the core writes it into its own
-object. On hardware a mistake in any of them just looks like scrambled data
+On its way from the host to a core, a tensor passes through up to four
+DMAs, each walking it with its own pattern: the shim reads the host tensor
+onto the stream, the memtile writes it into an object, the memtile reads that
+object back out, and the core writes it into its own object. On hardware a mistake in any of them just looks like scrambled data
 in the kernel.
 
-`to_stream(tensor)` returns the stream a DMA walking `tensor` with a pattern
-emits, and `from_stream(stream)` the object a DMA writing `stream` with a
-pattern stores. Chaining them with the patterns a design uses shows exactly
+`gather(tensor)` returns the stream a DMA emits when it walks `tensor` with
+a pattern, and `scatter(stream)` the object a DMA stores when it writes
+`stream` with a pattern. Chaining them with the patterns a design uses shows exactly
 what each core receives, with no hardware. This is the `transposes` design's
 `--strategy=combined` path: the memtile shuffles each tile into `s x s`
 blocks so that the kernel only has to transpose each block in place.
@@ -84,18 +89,18 @@ from aie.helpers.taplib import TensorAccessPattern
 
 M, K, m, n, s = 64, 64, 16, 16, 8
 host = np.arange(M * K).reshape(M, K)
-shim = TensorAccessPattern.full((M, K)).tile((m, n)).tap
-memtile_in = TensorAccessPattern.full((n, m)).tile((s, s)).tap.permute((1, 2, 0, 3))
+shim = TensorAccessPattern.full((M, K)).tile((m, n))
+memtile_in = TensorAccessPattern.full((n, m)).tile((s, s)).permute((1, 2, 0, 3))
 
-for t, tile in enumerate(shim.to_stream(host).reshape(-1, m * n)):
+for t, tile in enumerate(shim.gather(host).reshape(-1, m * n)):
     i, j = divmod(t, K // n)
-    obj = memtile_in.from_stream(tile)  # the memtile's (n, m) object
+    obj = memtile_in.scatter(tile)  # the memtile's (n, m) object
     blocks = obj.reshape(n // s, s, m // s, s)
     kernel_out = blocks.transpose(0, 3, 2, 1).reshape(n, m)
     assert (kernel_out == host[i * m : (i + 1) * m, j * n : (j + 1) * n].T).all()
 ```
 
-For a padded pattern, `to_stream(tensor, pad_value=)` fills the padded
+For a padded pattern, `gather(tensor, pad_value=)` fills the padded
 positions, and `padded_sizes` is the shape the receiving object must have.
 To inspect a single walk, use `accesses()`, `access_order()`,
 `access_count()`, `compare_access_orders()` and `visualize()`.
@@ -104,8 +109,8 @@ To inspect a single walk, use `accesses()`, `access_order()`,
 
 Every operation also accepts staged values: an `aie.ir.Value` (a
 `DispatchTime[T]` scalar a runtime sequence receives, or any arithmetic on
-one) can stand in for a size, stride, offset, grid index, repeat count or
-group size. The arithmetic is emitted as `arith` ops where it is used, and
+one) can stand in for a size, stride, offset, index, slice bound or repeat
+count. The arithmetic is emitted as `arith` ops where it is used, and
 each check that would have raised `ValueError` becomes a `cf.assert`
 guard. A fully static specialization folds the guard away, or fails at
 generation time if it is false. The dispatch-time builder instead returns
@@ -124,7 +129,7 @@ def seq(a_h, b_h, start, n, in_prod, out_cons):
         tg.finish()
 ```
 
-`require(cond, message)` from `aie.helpers.taplib.symbolic` adds a guard of
+`require(cond, message)` from `aie.iron` adds a guard of
 your own, such as a shape constraint the design depends on.
 
 Some rules of thumb:
@@ -138,22 +143,22 @@ Some rules of thumb:
 - Staged values of any integer type are accepted. The compiler hoists their
   arithmetic out of the buffer-descriptor block, and a value too wide for its
   descriptor field is refused at dispatch instead of being truncated.
-- Messages must not quote staged values. Use `symbolic.show(x)`, which renders
-  them as `<runtime>`, or keep them constant.
+- A `require()` message travels into the generated C++, so keep it constant
+  rather than quoting a staged value.
 
-`programming_examples/basic/matrix_multiplication/whole_array/whole_array_dyn.py`
+`programming_examples/basic/matrix_multiplication/whole_array/whole_array.py`
 is the whole-array GEMM written this way, with dispatch-time `M`, `K` and `N`.
 
 ### Checking a dispatch-time design
 
 `instructions(**scalars)` on an `@iron.jit` design returns the instruction
 words a call with those values would run, built exactly as a call builds
-them, so no NPU is needed. A dispatch-time stream is never byte-identical to
-a static specialization's: it draws buffer descriptors from a pool, polls
-before reusing one and assembles descriptor words at build time.
-`aie.utils.txn_trace` reduces either stream to the DMA events the hardware
-acts on (queue pushes resolved to the transfer they start, plus token waits)
-and compares those:
+them, so no NPU is needed. A dispatch-time stream is not byte-identical to
+a static specialization's: it draws buffer descriptors from a pool, polls for
+room in a channel's task queue and assembles descriptor words at build time.
+`aie.utils.txn_trace` reduces either stream to the events the hardware acts
+on (queue pushes resolved to the chain of transfers they start, token waits,
+and other register writes such as runtime parameters) and compares those:
 
 ```python
 from aie.utils.txn_trace import compare, explain
@@ -161,7 +166,7 @@ from aie.utils.txn_trace import compare, explain
 words = tiled_copy.specialize().instructions(n_tiles=3, start_tile=1)
 static = tiled_copy.specialize(n_tiles=3, start_tile=1).instructions()
 assert compare(words, static) == []
-print(explain(words))  # one line per DMA event
+print(explain(words))  # one line per event
 ```
 
 `python -m aie.utils.txn_trace insts.bin [other.bin]` does the same from
@@ -174,22 +179,6 @@ GEMM's `tests/dispatch_txn.py` are complete examples.
     options:
       show_root_heading: true
       heading_level: 3
-
-::: helpers.taplib.tas.TileGrid
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: helpers.taplib.tas.TensorAccessSequence
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-### Symbolic helpers
-
-::: helpers.taplib.symbolic
-    options:
-      show_root_heading: false
 
 ### Utilities
 

@@ -112,7 +112,7 @@ rt = Runtime(sequence, [data_ty, of_in.prod(tile=Tile(0, 0))])
 
 The `fill()`/`drain()` methods return a `Task` handle. Prefer the default managed transfers and `TaskGroup` for ordinary data movement; the runtime handles their waits and frees.
 
-For software-pipelined data movement with manual lifetime control, issue the transfer with `managed=False` and do not pass `group=`. Use `range_` and `yield_` from `aie.iron.controlflow` to carry a `Task` through `iter_args` across loop iterations. Call `.await_()` only on transfers issued with `wait=True` (which requests a completion token), then call `.free()` when it is safe to reuse the descriptor. Awaiting alone does not free it. An unwaited transfer may be freed only after a dependent waited transfer proves it has completed. Do not manually free managed tasks: their task group already owns that responsibility. See [dmataskhandle.py](../../../python/iron/runtime/dmataskhandle.py).
+For software-pipelined data movement with manual lifetime control, issue the transfer with `managed=False` and do not pass `group=`. Use `range_` and `yield_` from `aie.iron.controlflow` to carry a `Task` through `iter_args` across loop iterations (see [Control flow in the body](#control-flow-in-the-body)). Call `.await_()` only on transfers issued with `wait=True` (which requests a completion token), then call `.free()` when it is safe to reuse the descriptor. Awaiting alone does not free it. An unwaited transfer may be freed only after a dependent waited transfer proves it has completed. Do not manually free managed tasks: their task group already owns that responsibility. See [dmataskhandle.py](../../../python/iron/runtime/dmataskhandle.py).
 
 #### **Setting Runtime Parameters in the Body**
 
@@ -211,37 +211,51 @@ rt = Runtime(
 )
 ```
 
-### Carrying a task group across loop iterations
+### Pipelining task groups
 
 A software pipeline starts the next step's transfers before finishing the
-previous step's. Here `start_step` is your own function that puts one step's
-fills and drains in a fresh group and returns it without finishing it. With a
-`range_` over a dispatch-time trip count the loop stays rolled, so the
-in-flight group rides the loop as an `iter_args` entry: the body receives a
-group over the carried transfers and `yield_`s the group it started, and the
-loop's result is the last group in flight.
+previous step's. `TaskGroup.pipelined(n_steps, depth=2)` hands out one fresh
+group per step and finishes each group once the next `depth - 1` steps have
+been issued, so `depth` steps are in flight at a time:
 
 ```python
-def start_step(step):
-    tg = TaskGroup()
+for step, tg in TaskGroup.pipelined(n_steps):
     in_h.fill(a_in, tap=in_tiles[step], group=tg)
     out_h.drain(c_out, tap=out_tiles[step], group=tg, wait=True)
-    return tg
-
-prev = start_step(0)
-for iv, prev, last in range_(1, n_steps, iter_args=[prev], insert_yield=False):
-    current = start_step(iv)
-    prev.finish()                     # the step started one iteration ago
-    yield_([current])
-last.finish()
 ```
 
-Every group yielded must hold the same number of transfers, with the same
-ones waited, as the group the loop started with (the carried handles are
-positional); `yield_` raises otherwise. Once a group has been carried, the
-Python object passed in is spent: finish the group the loop hands back.
-`programming_examples/basic/matrix_multiplication/whole_array/whole_array_dyn.py`
-keeps two time-block halves in flight this way.
+The body is the same whether `n_steps` is a Python `int` or a dispatch-time
+value. With an `int` the steps unroll. With a dispatch-time value the loop
+stays rolled: the first `depth - 1` steps run under an `if_(n_steps > step)`
+guard, and the rest run in a `range_` that carries the groups in flight from
+one iteration to the next. The body is therefore traced `depth` times, with
+`step` a Python `int` in the guarded copies and the loop index in the last,
+and every step must issue the same transfers, waited the same way, in the
+same order.
+`programming_examples/basic/matrix_multiplication/whole_array/whole_array.py`
+keeps four row blocks in flight this way.
+
+### Control flow in the body
+
+`range_`, `if_` and `else_` from `aie.iron.controlflow` emit `scf` control
+flow in the body, for loops and branches on dispatch-time values:
+
+```python
+with if_(n_ragged > 0) as branch:
+    ...
+with else_(branch):
+    ...
+```
+
+`range_` can carry values from one iteration to the next: with `iter_args` it
+yields `(iv, args, results)`, where `args` holds the carried values the body
+sees and `results` what the loop returns, each a tuple with one entry per
+`iter_args` entry, and the body ends with `yield_([...])` of the next
+iteration's values. A `Task` or a `TaskGroup` can be carried this way; this is
+what `TaskGroup.pipelined` is built on. A carried group's Python object is
+spent: finish the group the loop hands back. A group is finished in the body
+its transfers were issued in, or in an `if_` inside that body; `finish()`
+raises otherwise.
 
 ## Dispatch-time scalars
 
@@ -285,10 +299,10 @@ bound a `range_`, feed `if_`, be written to a worker's RTP buffer, and stand
 in for any size, stride, offset or index in a taplib access pattern, which
 then emits the pattern as arithmetic on it and turns its shape checks into
 `require` guards (see [Staged patterns](../../../docs/api/taplib.md#staged-patterns-in-a-dispatch-time-sequence)).
-`programming_examples/basic/matrix_multiplication/whole_array/whole_array_dyn.py`
-is a whole-array GEMM with dispatch-time `M`, `K` and `N` built this way, and
-`aie.utils.txn_trace` compares a dispatch-time builder's DMA events with a
-static specialization's without an NPU.
+`programming_examples/basic/matrix_multiplication/whole_array/whole_array.py`
+is a whole-array GEMM with dispatch-time `M`, `K` and `N` built this way;
+[Inspecting the instruction stream](#inspecting-the-instruction-stream) shows
+how to check what it issues without an NPU.
 
 ### Generator-side binding and scope
 
@@ -339,6 +353,63 @@ While any parameters remain dynamic, `inst_path`, `elf_path`, and
 per-call replacement API. Fully specialized designs retain normal full-ELF
 support. Native hosts can request C++ builders, including reconfiguration
 builders, directly from [`aiecc`](../../../tools/aiecc/README.md#parameterized-c-transaction-builders).
+
+### Inspecting the instruction stream
+
+The runtime sequence reaches the NPU as a stream of transaction (TXN)
+instructions: register writes, BD images, queue pushes and token waits.
+`design.instructions(**dispatch_values)` returns the stream one call would
+issue, without an NPU; a fully specialized design takes no arguments.
+`aie.utils.txn_trace` reduces a stream to the events the hardware acts on:
+DMA pushes (with the BDs they run), token waits, and the other register writes
+such as runtime parameters and locks. `explain(words)` lists them and
+`compare(a, b)` returns their differences, empty when the streams are
+equivalent. `python -m aie.utils.txn_trace insts.bin [other.bin]` does the
+same for streams on disk.
+
+```python
+import sys
+
+import aie.iron as iron
+import numpy as np
+from aie.iron.device import from_name
+from aie.utils.txn_trace import compare, explain
+
+sys.path.insert(0, "programming_examples/basic/matrix_multiplication/whole_array")
+from whole_array import whole_array
+
+iron.set_current_device(from_name("npu2"))
+tile = dict(m=32, k=32, n=32, n_aie_cols=1)
+buffers = dict(
+    A=np.ndarray[(512, 256), np.dtype[np.int16]],
+    B=np.ndarray[(256, 256), np.dtype[np.int16]],
+    C=np.ndarray[(512, 256), np.dtype[np.int32]],
+)
+dyn = whole_array.specialize(**buffers, **tile)
+words = dyn.instructions(M=256, K=128, N=128)
+print(explain(words))
+```
+
+## <u>Exercises</u>
+1. Run the code above from the repository root. Before the first `push`, every core in the column (rows 2 to 5) gets the same three `write` events. What are they?
+    <details markdown="1"><summary>Show answer</summary>
+    The sequence writes the worker's two runtime parameters, `K // k = 4` at `0x8800` and the core's output-tile count `(M // m) * (N // n) // 4 = 8` at `0x8804`, then sets the worker's barrier lock to 1 (`0x1f060`). The worker waits on that barrier before it reads them.
+    </details>
+
+2. Compare `w = dyn.instructions(M=512, K=256, N=256)` with `s = whole_array.specialize(M=512, K=256, N=256, **buffers, **tile).instructions()`. Are the streams the same words? Does `compare(w, s)` find a difference?
+    <details markdown="1"><summary>Show answer</summary>
+    The words differ: the dynamic stream is 494 words and the static one 480. The dispatch-time builder takes BD ids from a pool, polls a channel's status register until its task queue has room (`explain(w, raw=True)` shows two `maskpoll` ops), and leaves each BD's address word to the address patch where the static stream also writes the offset there. `compare(w, s)` returns `[]` because both streams program the same transfers.
+    </details>
+
+3. `compare(words, dyn.instructions(M=256, K=128, N=64))` reports only the first difference. Which event is it, and why that one?
+    <details markdown="1"><summary>Show answer</summary>
+    Event 1, the first core's output-tile count, is `0x8` against `0x4`: half of `N` gives each core half as many output tiles. The DMA pushes differ too, but the parameter write comes first in the stream.
+    </details>
+
+4. What does `dyn.instructions(M=100, K=128, N=128)` do?
+    <details markdown="1"><summary>Show answer</summary>
+    It raises `HostRuntimeError`: `M must be a multiple of m * n_aie_rows`. The design's `require` guard rejects the shape before any instruction is built.
+    </details>
 
 -----
 [Up](./README.md)

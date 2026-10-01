@@ -157,11 +157,9 @@ def n32_core_gemm(
     B_ty = np.ndarray[(K * N // 8,), np.dtype[v8bfp16ebs8]]
     C_ty = np.ndarray[(M * N // 8,), np.dtype[v8bfp16ebs8]]
 
-    A_taps = TensorAccessPattern.full((1, M * K // 8)).tile((1, m * K // 8))
-    B_taps = TensorAccessPattern.full((1, N * K // 8)).tile((1, n * K // 8))
-    C_taps = TensorAccessPattern.full((1, M * N // 8)).tile(
-        (1, n_aie_rows * m * n // 8)
-    )
+    A_taps = TensorAccessPattern.full((M * K // 8,)).tile((m * K // 8,))
+    B_taps = TensorAccessPattern.full((N * K // 8,)).tile((n * K // 8,))
+    C_taps = TensorAccessPattern.full((M * N // 8,)).tile((n_aie_rows * m * n // 8,))
 
     num_row_tile = M // m // n_aie_rows
     num_col_tile = N // n // n_aie_cols

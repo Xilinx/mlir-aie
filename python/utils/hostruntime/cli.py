@@ -121,7 +121,9 @@ def run_design_cli(
            the standard message), then call
            ``design.specialize(**compile_kwargs).compile(
            xclbin_path=opts.xclbin_path, inst_path=opts.insts_path,
-           [elf_path=opts.elf_path])``.
+           [elf_path=opts.elf_path])``. A design with ``DispatchTime[T]``
+           parameters builds its instructions per call, so it takes
+           ``--xclbin-path`` alone and refuses ``--insts-path``.
 
       5. Otherwise, call ``run_and_verify(opts)``.
 
@@ -172,11 +174,6 @@ def run_design_cli(
         getattr(opts, "xclbin_path", None) is not None or full_elf_path is not None
     )
     requested_dev = getattr(opts, "dev", None)
-
-    if getattr(opts, "xclbin_path", None) is not None and not getattr(
-        opts, "insts_path", None
-    ):
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
 
     if full_elf_path is not None and getattr(opts, "xclbin_path", None) is not None:
         sys.exit(
@@ -237,7 +234,16 @@ def run_design_cli(
             # Full ELF is self-contained: no xclbin/insts pair.
             spec.compile(full_elf_path=full_elf_path)
             return
-        compile_opts = dict(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+        insts_path = getattr(opts, "insts_path", None)
+        if spec.compilable.dispatch_params:
+            if insts_path:
+                sys.exit(
+                    "--insts-path: a DispatchTime design builds its instructions "
+                    "per call; pass --xclbin-path alone"
+                )
+        elif not insts_path:
+            sys.exit("--xclbin-path requires --insts-path (must be set together)")
+        compile_opts = dict(xclbin_path=opts.xclbin_path, inst_path=insts_path)
         elf_path = getattr(opts, "elf_path", None)
         if elf_path is not None:
             compile_opts["elf_path"] = elf_path

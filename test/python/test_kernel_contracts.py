@@ -1513,7 +1513,8 @@ def test_matrix_kernels_declare_their_blocking_on_the_operand_layouts():
     assert scalar.mac_dims == (1, 1, 1)
     assert scalar.stream_dims == kernels.linalg.StreamDimsABC(None, None, None)
     assert not isinstance(kernels.mv(), kernels.MatrixKernel)
-    assert kernels.mv().contract.layouts[0].stream == [(32, 2), (16, 64), (2, 1)]
+    a_from_stream = kernels.mv().contract.layouts[0].stream
+    assert a_from_stream.transformation_dims == ((32, 2), (16, 64), (2, 1))
 
 
 def test_contract_is_given_at_construction():
@@ -2071,9 +2072,34 @@ def test_mm_stream_dims_match_the_blocking_the_kernel_was_compiled_for(dims, mac
     """
     (m, k, n), (r, s, t) = dims, mac
     d = kernels.mm_stream_dims(m, k, n, mac)
-    assert d.A == [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-    assert d.B == [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
-    assert d.C == [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    assert list(d.A.transformation_dims) == [
+        (m // r, r * k),
+        (k // s, s),
+        (r, k),
+        (s, 1),
+    ]
+    assert list(d.B.transformation_dims) == [
+        (k // s, s * n),
+        (n // t, t),
+        (s, n),
+        (t, 1),
+    ]
+    assert list(d.C.transformation_dims) == [
+        (m // r, r * n),
+        (r, t),
+        (n // t, r * t),
+        (t, 1),
+    ]
     col = kernels.mm_stream_dims(m, k, n, mac, b_col_maj=True, c_col_maj=True)
-    assert col.B == [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
-    assert col.C == [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
+    assert list(col.B.transformation_dims) == [
+        (n // t, t * k),
+        (k // s, s),
+        (t, k),
+        (s, 1),
+    ]
+    assert list(col.C.transformation_dims) == [
+        (n // t, t * m),
+        (t, r),
+        (m // r, r * t),
+        (r, 1),
+    ]

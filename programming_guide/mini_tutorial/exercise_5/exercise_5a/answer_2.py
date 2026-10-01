@@ -51,8 +51,9 @@ def exercise_5a(
 
     # To/from AIE-array runtime data movement
     def sequence(a_in, c_out, in_h, out_h):
-        for t in tiles:
-            in_h.fill(a_in, t)
+        for row in tiles:
+            for t in row:
+                in_h.fill(a_in, t)
         out_h.drain(c_out, wait=True)
 
     rt = Runtime(sequence, [data_ty, data_ty, of_in.prod(), of_out.cons()])

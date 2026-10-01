@@ -6,8 +6,8 @@
 """``from_stream`` example — Iron API design with ``@iron.jit``.
 
 A 24-element int32 vector is forwarded shim -> memtile -> core -> memtile
--> shim.  The memtile->core ObjectFifo's ``from_stream=[(3, 1),
-(8, 3)]`` reshapes the linear stream into the equivalent of a (3, 8) ->
+-> shim.  The memtile->core ObjectFifo's
+``from_stream=TensorAccessPattern.full((8, 3)).T`` reshapes the linear stream into the equivalent of a (3, 8) ->
 (8, 3) transpose by the time the core sees it, so the host output is
 the transposed view of the input ``arange(24)``.
 """
@@ -36,7 +36,7 @@ def from_stream(a_in: In, c_out: Out):
         name="in1",
         obj_type=data_ty,
         # Write the incoming (3, 8) stream into the object as its (8, 3)
-        # transpose; as a list this is from_stream=[(3, 1), (8, 3)].
+        # transpose: sizes [3, 8], strides [1, 3].
         from_stream=TensorAccessPattern.full((8, 3)).T,
     )
 
@@ -63,7 +63,7 @@ def from_stream(a_in: In, c_out: Out):
 
 
 def _expected_output():
-    # The from_stream=[(3,1),(8,3)] reshape is equivalent to viewing
+    # The from_stream reshape is equivalent to viewing
     # arange(24) as a (3, 8) row-major matrix and transposing it to (8, 3).
     return np.arange(24, dtype=np.int32).reshape(3, 8).T.reshape(-1)
 

@@ -3,7 +3,7 @@
 
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
-from util import construct_test
+from util import construct_test, grid_steps, accesses
 
 # RUN: %python %s | FileCheck %s
 
@@ -11,8 +11,10 @@ from util import construct_test
 # CHECK-LABEL: square_tiler_tile_grouping_col_major_groups
 @construct_test
 def square_tiler_tile_grouping_col_major_groups():
-    tiler = TensorAccessPattern.full((32, 32)).tile((8, 8)).order("col").group((2, 2))
-    access_count = tiler.access_count()
+    tiler = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((8, 8)), (2, 2), order="col"
+    )
+    access_count = accesses(tiler)[1]
     assert (access_count == 1).all()
 
     tile1_reference_order = np.array(

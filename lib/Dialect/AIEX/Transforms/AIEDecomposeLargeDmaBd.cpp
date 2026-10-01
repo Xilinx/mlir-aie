@@ -449,25 +449,31 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
       // the repeat slot -- so len has to be recomputed alongside the shape.
       int32_t len = static_cast<int32_t>(lenFromInnermost3(sub.sizes));
 
-      std::optional<int64_t> growth = iterationGrowth(pattern, sub);
-      if (!growth)
-        return failure();
+      // Each queue-push run is one BD invocation, so the run count scales with
+      // the fourth dimension: up when factoring pushes extent into it, down
+      // when merging contiguous dimensions frees it.
+      int64_t oldOuter = pattern.sizes[3];
+      int64_t newOuter = sub.sizes[3];
       int64_t runs = 0;
-      if (*growth > 1) {
+      if (newOuter != oldOuter) {
         if (getTaskRepeatCountVal(taskOp))
           return op.emitOpError()
                  << "cannot decompose a buffer descriptor whose repeat count "
-                    "is a runtime value: decomposition needs to scale it by "
-                 << *growth;
+                    "is a runtime value: decomposition changes its iteration "
+                    "count from "
+                 << oldOuter << " to " << newOuter;
         // Widen before multiplying: the accessor returns int32_t, so the
         // addition alone would overflow in int and wrap past any later check.
-        runs = (static_cast<int64_t>(getTaskRepeatCount(taskOp)) + 1) * *growth;
-        // Diagnose the scale factor here rather than failing at the queue push.
+        runs = (static_cast<int64_t>(getTaskRepeatCount(taskOp)) + 1) * newOuter;
+        if (runs % oldOuter != 0)
+          return failure();
+        runs /= oldOuter;
+        // Diagnose the new count here rather than failing at the queue push.
         uint32_t maxRepeat = targetModel.getMaxRepeatCount();
         if (runs - 1 > maxRepeat)
           return op.emitOpError()
-                 << "decomposition scales the repeat count by " << *growth
-                 << " to " << (runs - 1) << ", beyond the [0:" << maxRepeat
+                 << "decomposition changes the repeat count to " << (runs - 1)
+                 << ", beyond the [0:" << maxRepeat
                  << "] a queue push can carry";
       }
 
@@ -475,7 +481,7 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
         updateTaskBdInPlace(op, static_cast<int32_t>(flatOffset), len,
                             outerSizes, outerStrides);
       });
-      if (*growth > 1)
+      if (newOuter != oldOuter)
         rewriter.modifyOpInPlace(taskOp, [&]() {
           setTaskRepeatCount(taskOp, static_cast<int32_t>(runs - 1));
         });

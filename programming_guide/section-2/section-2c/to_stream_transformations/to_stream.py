@@ -7,8 +7,8 @@
 
 Mirror of the ``from_stream`` example: the core copies a 24-element
 int32 vector through unchanged, and the core->memtile ObjectFifo's
-``to_stream=[(8, 1), (3, 8)]`` reshapes the output as it streams
-back to the shim, producing the same (3, 8) -> (8, 3) transpose of the
+``to_stream=TensorAccessPattern.full((3, 8)).T`` reshapes the output as it
+streams back to the shim, producing the same (3, 8) -> (8, 3) transpose of the
 input ``arange(24)``.
 """
 
@@ -34,8 +34,8 @@ def to_stream(a_in: In, c_out: Out):
     of_in0 = ObjectFifo(data_ty, name="in0")
     of_in1 = of_in0.cons().forward(name="in1", obj_type=data_ty)
 
-    # Read the (3, 8) object out as its (8, 3) transpose; as a list this is
-    # to_stream=[(8, 1), (3, 8)].
+    # Read the (3, 8) object out as its (8, 3) transpose: sizes [8, 3],
+    # strides [1, 8].
     of_out1 = ObjectFifo(
         data_ty, name="out1", to_stream=TensorAccessPattern.full((3, 8)).T
     )

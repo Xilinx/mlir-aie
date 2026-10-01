@@ -83,7 +83,7 @@ def whole_array_mixed(
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        to_stream = [matmul_kernel.stream_dims.A or []] * (stop_row - start_row)
+        to_stream = [matmul_kernel.stream_dims.A] * (stop_row - start_row)
         a_tmp_fifos = a_l3l2.cons().split(
             of_offsets,
             obj_types=[A_l1_ty] * (stop_row - start_row),
@@ -151,58 +151,43 @@ def whole_array_mixed(
     C_ty = np.ndarray[(M * N,), np.dtype[bfloat16]]
 
     tb_max_n_rows = 4
-    tb_n_rows = tb_max_n_rows // 2
 
-    A_tiles = (
-        TensorAccessPattern.full((M, K))
-        .tile((m * n_A_tiles_per_shim, k))
-        .group((1, K // k))
-        .repeat(N // n // n_aie_cols)
-    )
-    B_tiles = (
-        TensorAccessPattern.full((N, K // 8))
-        .tile((n, k // 8))
-        .group((N // n // n_aie_cols, K // k), steps=(n_aie_cols, 1))
-    )
-    C_tiles = (
-        TensorAccessPattern.full((M, N))
-        .tile((m * n_aie_rows, n))
-        .group((tb_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols))
-    )
-    c_index = 0
+    A_tiles = TensorAccessPattern.full((M, K)).tile((m * n_A_tiles_per_shim, k))
+    B_tiles = TensorAccessPattern.full((N, K // 8)).tile((n, k // 8))
+    C_tiles = TensorAccessPattern.full((M, N)).tile((m * n_aie_rows, n))
 
     def sequence(a, b, c, A_prods, B_prods, C_conses):
-        nonlocal c_index
         tg = TaskGroup()
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
-                if c_index >= len(C_tiles):
-                    break
                 row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
                 current_tb_n_rows = min(
                     [tb_max_n_rows // 2, M // m // n_aie_rows - row_base]
                 )
+                if current_tb_n_rows <= 0:
+                    break
                 for col in range(n_aie_cols):
                     C_conses[col].drain(
                         c,
-                        tap=C_tiles[c_index],
+                        tap=C_tiles[
+                            row_base : row_base + current_tb_n_rows, col::n_aie_cols
+                        ],
                         wait=True,
                         group=tg,
                     )
-                    c_index += 1
                     for tile_row in range(current_tb_n_rows):
                         tile_offset = (
                             (row_base + tile_row) * n_shim_mem_A + col
-                        ) % len(A_tiles)
+                        ) % A_tiles.sizes[0]
                         if col < n_aie_rows:
                             A_prods[col].fill(
                                 a,
-                                tap=A_tiles[tile_offset],
+                                tap=A_tiles[tile_offset].repeat(N // n // n_aie_cols),
                                 group=tg,
                             )
                         B_prods[col].fill(
                             b,
-                            tap=B_tiles[col],
+                            tap=B_tiles[col::n_aie_cols],
                             group=tg,
                         )
                 if tb > 0 or (tb == 0 and pingpong > 0):

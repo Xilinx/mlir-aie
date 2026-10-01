@@ -41,8 +41,6 @@ def memcpy(
     line_type = np.ndarray[(line_size,), np.dtype[xfr_dtype]]
     transfer_type = np.ndarray[(size,), np.dtype[xfr_dtype]]
 
-    chunk = size // num_columns // num_channels
-
     of_ins = [
         ObjectFifo(line_type, name=f"in{i}_{j}")
         for i in range(num_columns)
@@ -86,9 +84,9 @@ def memcpy(
             for j in range(num_channels)
         ]
 
-    # One TAP per (column, channel) shim DMA — same as iterating
-    # `(1, chunk)` tiles row-major across the `(1, size)` tensor.
-    taps = TensorAccessPattern.full((1, size)).tile((1, chunk))
+    # One TAP per (column, channel) shim DMA: an equal contiguous slice of
+    # the `(1, size)` tensor.
+    taps = TensorAccessPattern.full((1, size)).partition(num_columns * num_channels)
 
     in_prods = [
         of_ins[i * num_channels + j].prod()

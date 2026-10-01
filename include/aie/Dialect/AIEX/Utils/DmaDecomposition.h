@@ -58,8 +58,8 @@ bool isDecomposableNdDmaPattern(mlir::Operation *forOp,
                                 llvm::ArrayRef<int64_t> stridesInnermostFirst);
 
 /// Decompose an illegal pattern into one or more legal sub-patterns that move
-/// the same data. Prefers dimension factoring (single-op result when possible);
-/// falls back to slicing (multiple ops). Returns failure when no legal
+/// the same data. Prefers merging contiguous dimensions, then dimension
+/// factoring (single-op results); falls back to slicing (multiple ops). Returns failure when no legal
 /// decomposition exists.
 mlir::FailureOr<llvm::SmallVector<NdDmaPattern>> decomposeNdDmaPattern(
     mlir::Operation *forOp, mlir::BaseMemRefType referencedBufType,

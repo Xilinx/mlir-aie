@@ -3,7 +3,7 @@
 
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
-from util import construct_test
+from util import construct_test, grid_steps, accesses
 
 # RUN: %python %s | FileCheck %s
 
@@ -11,8 +11,8 @@ from util import construct_test
 # CHECK-LABEL: rectangular_tiler_col_major_tensor
 @construct_test
 def rectangular_tiler_col_major_tensor():
-    tiler = TensorAccessPattern.full((8, 16)).tile((4, 2)).order("col")
-    access_order, access_count = tiler.accesses()
+    tiler = grid_steps(TensorAccessPattern.full((8, 16)).tile((4, 2)), order="col")
+    access_order, access_count = accesses(tiler)
     reference_access = np.array(
         # fmt: off
         [

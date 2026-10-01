@@ -21,9 +21,9 @@ def tensor_tile():
         and len(tile.tensor_dims) == 2
     )
     assert tile.offset == 4
-    assert tile.sizes == [1, 2]
-    assert tile.strides == [0, 1]
-    assert tile.transformation_dims == [(1, 0), (2, 1)]
+    assert tile.sizes == (1, 2)
+    assert tile.strides == (0, 1)
+    assert tile.transformation_dims == ((1, 0), (2, 1))
     access_order, access_count = tile.accesses()
     assert (
         access_order == np.array([[-1, -1, -1], [-1, 0, 1]], dtype=access_order.dtype)

@@ -4,9 +4,6 @@ from contextlib import contextmanager
 import itertools
 from operator import itemgetter
 
-import functools
-import operator
-
 import numpy as np
 
 from ._aiex_ops_gen import *
@@ -49,9 +46,44 @@ from ..extras import types as T
 from ..extras.dialects import arith
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..helpers.taplib import TensorAccessPattern
+from ..helpers.taplib._symbolic import is_sym, show, sprod
+from ..helpers.taplib.utils import zero_leading_unit_strides
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
+
+
+def _shim_dims(tap: TensorAccessPattern, ndims: int = 4):
+    """Return `tap`'s offset, sizes and strides as a shim buffer descriptor takes them.
+
+    A walk deeper than `ndims` is coalesced and a shallower one is padded
+    with unit dimensions. Slot 0 is the queue repeat: a leading stride-0
+    dimension whose size is not the constant 1, staged or not, stays there
+    and the padding goes after it, so `[R, th, tw]` becomes `[R, 1, th, tw]`.
+
+    Raises:
+        ValueError: If `tap` is padded, or does not fit in `ndims` dimensions.
+    """
+    if tap.padding is not None:
+        raise ValueError("a shim DMA cannot pad; padding is a memtile feature")
+    if tap.rank > ndims:
+        tap = tap.coalesce()
+    if tap.rank > ndims:
+        raise ValueError(
+            f"pattern of rank {tap.rank} (sizes {show(tap.sizes)}) does not fit "
+            f"in {ndims} DMA dimensions; re-tile it"
+        )
+    sizes, strides = list(tap.sizes), list(tap.strides)
+    is_repeat = (
+        tap.rank > 1
+        and not is_sym(strides[0])
+        and strides[0] == 0
+        and (is_sym(sizes[0]) or sizes[0] != 1)
+    )
+    at = int(is_repeat)
+    sizes[at:at] = [1] * (ndims - tap.rank)
+    strides[at:at] = [0] * (ndims - tap.rank)
+    return tap.offset, sizes, zero_leading_unit_strides(sizes, strides, start=at)
 
 
 def npu_write32(address, value, buffer=None, column=None, row=None, **kwargs):
@@ -177,11 +209,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
                 "NpuDmaMemcpyNd can take either a TileAccessPattern OR (sizes and/or strides and/or offsets), but not both."
             )
         if tap:
-            tap = tap._dma_form()
-            sizes = tap.sizes.copy()
-            strides = tap.strides.copy()
-            # A static tap carries an int offset; a symbolic one a runtime Value.
-            offsets = [0] * 3 + [tap.offset]
+            offset, sizes, strides = _shim_dims(tap)
+            offsets = [0] * 3 + [offset]
         else:
             if offsets is None:
                 offsets = [0] * 4
@@ -291,11 +320,7 @@ def shim_dma_bd(
         )
 
     if tap:
-        # The shim BD form: exactly 4 dimensions, a repeat kept in slot 0.
-        tap = tap._dma_form()
-        sizes = tap.sizes.copy()
-        strides = tap.strides.copy()
-        offset = tap.offset
+        offset, sizes, strides = _shim_dims(tap)
 
     if offset is None:
         offset = 0
@@ -304,10 +329,8 @@ def shim_dma_bd(
     if strides is None:
         strides = [0] * 3 + [1]
 
-    if transfer_len is None and all(
-        isinstance(s, (int, np.integer)) for s in sizes[-3:]
-    ):
-        transfer_len = functools.reduce(operator.mul, sizes[-3:])
+    if transfer_len is None and not any(is_sym(s) for s in sizes[-3:]):
+        transfer_len = sprod(sizes[-3:])
 
     dma_bd(
         mem,
@@ -366,11 +389,7 @@ def shim_dma_single_bd_task(
         )
 
     if tap:
-        # The shim BD form: exactly 4 dimensions, a repeat kept in slot 0.
-        tap = tap._dma_form()
-        sizes = tap.sizes.copy()
-        strides = tap.strides.copy()
-        offset = tap.offset
+        offset, sizes, strides = _shim_dims(tap)
 
     # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration
     # dimension. The repeat_count below hoists sizes[0] into that iteration

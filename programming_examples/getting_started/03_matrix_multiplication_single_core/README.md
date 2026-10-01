@@ -66,23 +66,17 @@ DRAM into the memory tile.
 ### L3 &rightarrow; L2: Larger Tiles
 
 ```
-a_taps = TensorAccessPattern.full((M, K)).tile((m, k)).group((1, K // k)).repeat(N // n)
-# All of B, walked one column of k*n tiles at a time; coalesce() merges
-# the contiguous walk down a tile column into a single DMA dimension.
-b_tap = (
-    TensorAccessPattern.full((K, N))
-    .tile((k, n))
-    .group((K // k, N // n), order="col")[0]
-    .coalesce()
-)
-c_taps = TensorAccessPattern.full((M, N)).tile((m, n)).group((1, N // n))
+a_tiles = TensorAccessPattern.full((M, K)).tile((m, k))
+# All of B, walked one column of k*n tiles at a time.
+b_tap = TensorAccessPattern.full((K, N)).tile((k, n)).permute((1, 0, 2, 3))
+c_tiles = TensorAccessPattern.full((M, N)).tile((m, n))
 
 def sequence(A, B, C, a_prod, b_prod, c_cons):
     for tile_row in range(M // m):
         task_group = TaskGroup()
-        a_prod.fill(A, tap=a_taps[tile_row], group=task_group)
+        a_prod.fill(A, tap=a_tiles[tile_row].repeat(N // n), group=task_group)
         b_prod.fill(B, tap=b_tap, group=task_group)
-        c_cons.drain(C, tap=c_taps[tile_row], group=task_group, wait=True)
+        c_cons.drain(C, tap=c_tiles[tile_row], group=task_group, wait=True)
         task_group.finish()
 
 rt = Runtime(
@@ -126,14 +120,14 @@ across columns of `B` to produce the next row of output tiles in `C`:
 ### L2 &rightarrow; L1: Intrinsic Tiles
 
 ```
-tap_A_L2L1 = TensorAccessPattern.full((m, k)).tile((r, s)).group((m // r, k // s))[0]
+tap_A_L2L1 = TensorAccessPattern.full((m, k)).tile((r, s))
 fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
     to_stream=tap_A_L2L1,
     name="A_L2L1"
 )
 ```
 ```
-tap_B_L2L1 = TensorAccessPattern.full((k, n)).tile((s, t)).group((k // s, n // t))[0]
+tap_B_L2L1 = TensorAccessPattern.full((k, n)).tile((s, t))
 fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
     to_stream=tap_B_L2L1,
     name="B_L2L1"

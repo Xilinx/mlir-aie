@@ -5,21 +5,29 @@
 A runtime sequence compiled once with `DispatchTime` scalars and a fully
 static specialization of the same sequence program the same DMA transfers, but
 their word streams are not byte-identical: the dynamic path draws buffer
-descriptors from a free-list pool (different BD ids, a "BD free" poll before
-each reuse), assembles BD words at build time, and leaves the buffer-address
-word to the address patch. This module replays a stream into the register
-state it programs and reduces it to a list of *events*, the things the DMA
-hardware actually acts on:
+descriptors from a free-list pool (different BD ids), polls for room in a
+channel's task queue, assembles BD words at build time, and leaves the
+buffer-address word to the address patch. This module replays a stream into
+the register state it programs and reduces it to a list of *events*, the
+things the hardware actually acts on:
 
-* ``push``: a queue write on a channel, resolved to the BD it starts (transfer
-  length, address as (host argument, byte offset) or an absolute address,
-  the addressing dimensions in a normalized form, iteration, repeat count,
-  whether a task-completion token is issued, and the channel control bits).
+* ``push``: a queue write on a channel, resolved to the chain of BDs it runs
+  (for each, transfer length, address as (host argument, byte offset) or an
+  absolute address, the addressing dimensions in a normalized form, and
+  iteration), the repeat count, whether a task-completion token is issued,
+  and the channel control bits.
 * ``wait``: a task-completion-token wait.
-* ``pdi`` / ``preempt``: load-PDI and preemption markers, kept verbatim.
+* ``write``: a register write outside the DMA BD and channel registers
+  (runtime parameters, locks, anything else the sequence programs).
+* ``loadpdi`` / ``preempt`` / ``scratchpad`` / ``update_reg``: kept verbatim.
 
-Two streams are equivalent when their event lists are equal. ``compare``
-reports the first divergence; ``explain`` prints the events for a human.
+Polls only wait for state another op produces, so they are not events. A push
+of a BD the stream never wrote is an error rather than a transfer of zeros:
+its contents come from somewhere the stream does not show.
+
+Two streams are equivalent when their headers name the same device and their
+event lists are equal. ``compare`` reports the first divergence; ``explain``
+prints the events for a human.
 
 The decoding covers the AIE2 / AIE2p shim, memtile and core DMA register
 layouts used by npu1 and npu2 (register fields from aie-rt's
@@ -32,19 +40,70 @@ import argparse
 import ctypes
 import dataclasses
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import NamedTuple, Sequence
 
 import numpy as np
 
-# Opcodes from include/aie/Runtime/TxnEncoding.h.
-OPC_WRITE = 0
-OPC_BLOCKWRITE = 1
-OPC_MASKWRITE = 3
-OPC_MASKPOLL = 4
-OPC_PREEMPT = 6
-OPC_LOADPDI = 8
-OPC_TCT = 1 << 7
-OPC_DDR_PATCH = (1 << 7) + 1
+
+class Opcode(IntEnum):
+    """TXN opcodes, from include/aie/Runtime/TxnEncoding.h."""
+
+    WRITE = 0
+    BLOCKWRITE = 1
+    MASKWRITE = 3
+    MASKPOLL = 4
+    PREEMPT = 6
+    LOADPDI = 8
+    CREATE_SCRATCHPAD = 10
+    UPDATE_REG = 12
+    TCT = 1 << 7
+    DDR_PATCH = (1 << 7) + 1
+
+
+@dataclass(frozen=True)
+class Header:
+    """The 4-word TXN header."""
+
+    major: int
+    minor: int
+    dev_gen: int  # 3: npu1 (Phoenix, Hawk Point), 4: npu2 (Strix, Krackan)
+    num_rows: int
+    num_cols: int
+    num_mem_tile_rows: int
+    num_ops: int
+    size: int  # bytes, header included
+
+    @staticmethod
+    def of(words: Sequence[int]) -> "Header":
+        w0, w1, num_ops, size = words[:4]
+        return Header(
+            major=w0 & 0xFF,
+            minor=(w0 >> 8) & 0xFF,
+            dev_gen=(w0 >> 16) & 0xFF,
+            num_rows=w0 >> 24,
+            num_cols=w1 & 0xFF,
+            num_mem_tile_rows=(w1 >> 8) & 0xFF,
+            num_ops=num_ops,
+            size=size,
+        )
+
+    @property
+    def device(self) -> tuple[int, ...]:
+        return (
+            self.major,
+            self.minor,
+            self.dev_gen,
+            self.num_rows,
+            self.num_cols,
+            self.num_mem_tile_rows,
+        )
+
+    def tile_kind(self, row: int) -> str:
+        if row == 0:
+            return "shim"
+        return "mem" if row <= self.num_mem_tile_rows else "core"
+
 
 # AIE2 tile addressing.
 _COL_SHIFT = 25
@@ -198,17 +257,24 @@ def _queue_push(bd_id_bits: int) -> type[_Registers]:
 class _DmaLayout(NamedTuple):
     bd_base: int
     bd: type[_Registers]
+    num_bds: int
     ctrl_base: int
     mm2s_delta: int
     channels: int
     queue_push: type[_Registers]
 
+    def owns(self, reg: int) -> bool:
+        """Whether reg is one of this DMA's BD or channel registers."""
+        bds_end = self.bd_base + self.num_bds * _BD_STRIDE
+        ctrl_end = self.ctrl_base + self.mm2s_delta + self.channels * 8
+        return self.bd_base <= reg < bds_end or self.ctrl_base <= reg < ctrl_end
 
-# Rows: 0 shim, 1 memtile, >=2 core. Identical on AIE2 and AIE2p.
+
+# Identical on AIE2 and AIE2p.
 _LAYOUT = {
-    "shim": _DmaLayout(0x1D000, _ShimBd, 0x1D200, 0x10, 2, _queue_push(4)),
-    "mem": _DmaLayout(0xA0000, _MemBd, 0xA0600, 0x30, 6, _queue_push(6)),
-    "core": _DmaLayout(0x1D000, _CoreBd, 0x1DE00, 0x10, 2, _queue_push(4)),
+    "shim": _DmaLayout(0x1D000, _ShimBd, 16, 0x1D200, 0x10, 2, _queue_push(4)),
+    "mem": _DmaLayout(0xA0000, _MemBd, 48, 0xA0600, 0x30, 6, _queue_push(6)),
+    "core": _DmaLayout(0x1D000, _CoreBd, 16, 0x1DE00, 0x10, 2, _queue_push(4)),
 }
 
 # The BD fields `Transfer.packet` and `Transfer.flags` compare. A shim BD has
@@ -236,10 +302,6 @@ def _contiguous(
             return False
         extent *= wrap
     return length <= extent or outer_stride == extent
-
-
-def _tile_kind(row: int) -> str:
-    return "shim" if row == 0 else ("mem" if row == 1 else "core")
 
 
 @dataclass(frozen=True)
@@ -278,21 +340,34 @@ class Op:
             )
         if self.kind == "tct":
             return f"tct       {self.words[2]:#010x} {self.words[3]:#010x}"
+        if self.kind == "update_reg":
+            return (
+                f"update_reg {self.addr:#010x} <- table[{self.data[0]}] "
+                f"func {self.data[1]} arg {self.value:#x}"
+            )
         return f"{self.kind} {self.words}"
 
 
 def decode(words: Sequence[int] | np.ndarray) -> list[Op]:
-    """Split a TXN stream (header included) into instructions."""
+    """Split a TXN stream (header included) into instructions.
+
+    The header's size and op count must match the stream.
+    """
     w = [int(x) & 0xFFFFFFFF for x in words]
     if len(w) < 4:
         raise ValueError("stream shorter than the 4-word TXN header")
+    header = Header.of(w)
+    if header.size != 4 * len(w):
+        raise ValueError(
+            f"TXN header gives {header.size} bytes, the stream has {4 * len(w)}"
+        )
     ops: list[Op] = [Op("header", 0, tuple(w[:4]))]
     pos = 4
     n = len(w)
     while pos < n:
         opc = w[pos]
         base = opc & 0xFF
-        if base == OPC_WRITE:
+        if base == Opcode.WRITE:
             ops.append(
                 Op(
                     "write32",
@@ -303,10 +378,10 @@ def decode(words: Sequence[int] | np.ndarray) -> list[Op]:
                 )
             )
             pos += 6
-        elif base in (OPC_MASKWRITE, OPC_MASKPOLL):
+        elif base in (Opcode.MASKWRITE, Opcode.MASKPOLL):
             ops.append(
                 Op(
-                    "maskwrite32" if base == OPC_MASKWRITE else "maskpoll32",
+                    "maskwrite32" if base == Opcode.MASKWRITE else "maskpoll32",
                     pos,
                     tuple(w[pos : pos + 7]),
                     addr=w[pos + 2],
@@ -315,7 +390,7 @@ def decode(words: Sequence[int] | np.ndarray) -> list[Op]:
                 )
             )
             pos += 7
-        elif base == OPC_BLOCKWRITE:
+        elif base == Opcode.BLOCKWRITE:
             total = w[pos + 3] // 4
             if total < 4:
                 raise ValueError(f"blockwrite at word {pos} shorter than its header")
@@ -329,11 +404,11 @@ def decode(words: Sequence[int] | np.ndarray) -> list[Op]:
                 )
             )
             pos += total
-        elif base == OPC_TCT:
+        elif base == Opcode.TCT:
             total = w[pos + 1] // 4
             ops.append(Op("tct", pos, tuple(w[pos : pos + total])))
             pos += total
-        elif base == OPC_DDR_PATCH:
+        elif base == Opcode.DDR_PATCH:
             total = w[pos + 1] // 4
             arg_plus = w[pos + 10] | (w[pos + 11] << 32)
             ops.append(
@@ -346,14 +421,44 @@ def decode(words: Sequence[int] | np.ndarray) -> list[Op]:
                 )
             )
             pos += total
-        elif base == OPC_LOADPDI:
+        elif base == Opcode.LOADPDI:
             ops.append(Op("loadpdi", pos, tuple(w[pos : pos + 4])))
             pos += 4
-        elif base == OPC_PREEMPT:
+        elif base == Opcode.PREEMPT:
             ops.append(Op("preempt", pos, (opc,), value=opc >> 8))
             pos += 1
+        elif base == Opcode.CREATE_SCRATCHPAD:
+            # Words 2-3 are the DDR address the runtime patches in.
+            ops.append(
+                Op(
+                    "scratchpad",
+                    pos,
+                    tuple(w[pos : pos + 4]),
+                    value=w[pos + 1],
+                    data=((opc >> 8) & 0xFF,),
+                )
+            )
+            pos += 4
+        elif base == Opcode.UPDATE_REG:
+            ops.append(
+                Op(
+                    "update_reg",
+                    pos,
+                    tuple(w[pos : pos + 3]),
+                    addr=w[pos + 2],
+                    value=w[pos + 1],
+                    data=((opc >> 8) & 0xFF, (opc >> 16) & 0xFF),
+                )
+            )
+            pos += 3
         else:
             raise ValueError(f"unknown TXN opcode {opc:#x} at word {pos}")
+    if pos != n:
+        raise ValueError(f"the op at word {ops[-1].pos} runs past the stream")
+    if header.num_ops != len(ops) - 1:
+        raise ValueError(
+            f"TXN header counts {header.num_ops} ops, the stream has {len(ops) - 1}"
+        )
     return ops
 
 
@@ -448,12 +553,14 @@ class Transfer:
 
 @dataclass(frozen=True)
 class Event:
-    kind: str  # push | wait | loadpdi | preempt
+    kind: str  # push | wait | write | loadpdi | preempt | scratchpad | update_reg
     col: int = 0
     row: int = 0
     direction: str = ""  # S2MM | MM2S
     channel: int = 0
     bd: Transfer | None = None
+    chain: tuple[Transfer, ...] = ()  # the BDs after `bd`, in chain order
+    chain_loop: int | None = None  # where in (bd, *chain) the last BD continues
     repeat: int = 0
     issue_token: bool = False
     ctrl: int = 0
@@ -464,56 +571,91 @@ class Event:
         if self.kind == "push":
             tok = " token" if self.issue_token else ""
             rep = f" repeat={self.repeat}" if self.repeat else ""
-            return f"push {where}{rep}{tok} ctrl={self.ctrl:#x}: {self.bd}"
+            chain = "".join(f" -> {t}" for t in self.chain)
+            loop = (
+                f" -> back to BD {self.chain_loop} of the chain"
+                if self.chain_loop is not None
+                else ""
+            )
+            return f"push {where}{rep}{tok} ctrl={self.ctrl:#x}: {self.bd}{chain}{loop}"
         if self.kind == "wait":
             return f"wait {where} cols={self.raw[0]} rows={self.raw[1]}"
+        if self.kind == "write":
+            reg, value, mask = self.raw
+            masked = f" & {mask:#010x}" if mask != 0xFFFFFFFF else ""
+            return f"write ({self.col},{self.row}) {reg:#07x} <- {value:#010x}{masked}"
         return f"{self.kind} {self.raw}"
 
 
 def trace(words: Sequence[int] | np.ndarray) -> list[Event]:
-    """Replay a stream and return the DMA events it triggers, in order."""
+    """Replay a stream and return the events it triggers, in order."""
+    ops = decode(words)
+    header = Header.of(ops[0].words)
     regs: dict[int, int] = {}
     patches: dict[int, tuple] = {}  # BD address-word register -> ("arg", idx, plus)
     events: list[Event] = []
 
-    def bd_words(
-        col: int, row: int, kind: str, bd_id: int
-    ) -> tuple[list[int], tuple | None]:
-        layout = _LAYOUT[kind]
-        tile = (col << _COL_SHIFT) | (row << _ROW_SHIFT)
-        bd_base = tile | (layout.bd_base + bd_id * _BD_STRIDE)
-        w = [regs.get(bd_base + 4 * i, 0) for i in range(ctypes.sizeof(layout.bd) // 4)]
-        # Only shim BDs address host memory, through the word-1 patch.
-        patched = patches.get(bd_base + 4) if kind == "shim" else None
-        return w, patched
-
-    def classify(addr: int) -> tuple[int, int, str, str, int] | None:
-        """Classify a register address.
-
-        Returns (col, row, kind, direction, channel) when addr is a DMA queue
-        register, else None.
-        """
-        col = (addr >> _COL_SHIFT) & 0x7F
+    def locate(addr: int) -> tuple[int, int, str, int]:
         row = (addr >> _ROW_SHIFT) & 0x1F
-        reg = addr & _REG_MASK
-        kind = _tile_kind(row)
+        return (addr >> _COL_SHIFT) & 0x7F, row, header.tile_kind(row), addr & _REG_MASK
+
+    def queue(kind: str, reg: int) -> tuple[str, int] | None:
+        """The (direction, channel) whose queue register reg is, if any."""
         layout = _LAYOUT[kind]
         for direction, delta in (("S2MM", 0), ("MM2S", layout.mm2s_delta)):
             for ch in range(layout.channels):
                 if reg == layout.ctrl_base + delta + ch * 8 + 4:
-                    return col, row, kind, direction, ch
+                    return direction, ch
         return None
 
-    for op in decode(words):
+    def bd_chain(
+        op: Op, col: int, row: int, kind: str, bd_id: int
+    ) -> tuple[list[Transfer], int | None]:
+        layout = _LAYOUT[kind]
+        tile = (col << _COL_SHIFT) | (row << _ROW_SHIFT)
+        transfers: list[Transfer] = []
+        seen: dict[int, int] = {}
+        while bd_id not in seen:
+            seen[bd_id] = len(transfers)
+            bd_base = tile | (layout.bd_base + bd_id * _BD_STRIDE)
+            addrs = [bd_base + 4 * i for i in range(ctypes.sizeof(layout.bd) // 4)]
+            # Only shim BDs address host memory, through the word-1 patch.
+            patched = patches.get(bd_base + 4) if kind == "shim" else None
+            missing = [
+                i
+                for i, a in enumerate(addrs)
+                if a not in regs and not (patched and i == 1)
+            ]
+            if missing:
+                raise ValueError(
+                    f"the push at word {op.pos} runs BD {bd_id} of tile "
+                    f"({col},{row}), but the stream never writes its words {missing}"
+                )
+            w = [regs.get(a, 0) for a in addrs]
+            transfers.append(Transfer.from_words(kind, w, patched))
+            bd = layout.bd.of(w)
+            if not bd.use_next_bd:
+                return transfers, None
+            bd_id = bd.next_bd
+        return transfers, seen[bd_id]
+
+    def write(addr: int, value: int, mask: int) -> None:
+        col, row, kind, reg = locate(addr)
+        if not _LAYOUT[kind].owns(reg):
+            events.append(Event("write", col=col, row=row, raw=(reg, value, mask)))
+
+    for op in ops:
         if op.kind == "write32":
             regs[op.addr] = op.value
         elif op.kind == "maskwrite32":
             regs[op.addr] = (regs.get(op.addr, 0) & ~op.mask) | (op.value & op.mask)
+            write(op.addr, op.value & op.mask, op.mask)
         elif op.kind == "blockwrite":
             # A fresh BD image supersedes an earlier patch of its address word.
             for i, d in enumerate(op.data):
                 regs[op.addr + 4 * i] = d
                 patches.pop(op.addr + 4 * i, None)
+                write(op.addr + 4 * i, d, 0xFFFFFFFF)
         elif op.kind == "patch":
             patches[op.addr] = ("arg", op.data[0], op.data[1])
         elif op.kind == "tct":
@@ -530,24 +672,31 @@ def trace(words: Sequence[int] | np.ndarray) -> list[Event]:
                     raw=((w3 >> 16) & 0xFF, (w3 >> 8) & 0xFF),
                 )
             )
+        elif op.kind == "scratchpad":
+            events.append(Event(op.kind, raw=(op.data[0], op.value)))
+        elif op.kind == "update_reg":
+            events.append(Event(op.kind, raw=(*op.data, op.value, op.addr)))
         elif op.kind in ("loadpdi", "preempt"):
             events.append(Event(op.kind, raw=op.words))
         if op.kind != "write32":
             continue
-        hit = classify(op.addr)
+        col, row, kind, reg = locate(op.addr)
+        hit = queue(kind, reg)
         if hit is None:
+            write(op.addr, op.value, 0xFFFFFFFF)
             continue
-        col, row, kind, direction, ch = hit
+        direction, ch = hit
         push = _LAYOUT[kind].queue_push.of([op.value])
         repeat = push.repeat_count
-        w, patched = bd_words(col, row, kind, push.start_bd_id)
-        bd = Transfer.from_words(kind, w, patched)
+        (bd, *chain), loop = bd_chain(op, col, row, kind, push.start_bd_id)
         # A linear BD re-run repeat+1 times with an iteration dimension that
         # advances by its own length is one linear transfer that long; the
         # static emitter folds a contiguous repeat dimension into the length.
         iter_wrap, iter_stride = bd.iteration[0] + 1, bd.iteration[1]
         if (
             kind == "shim"
+            and not chain
+            and loop is None
             and not bd.dims
             and bd.outer_stride == 1
             and repeat
@@ -564,6 +713,8 @@ def trace(words: Sequence[int] | np.ndarray) -> list[Event]:
                 direction=direction,
                 channel=ch,
                 bd=bd,
+                chain=tuple(chain),
+                chain_loop=loop,
                 repeat=repeat,
                 issue_token=bool(push.enable_token_issue),
                 ctrl=regs.get(op.addr - 4, 0),
@@ -575,10 +726,13 @@ def trace(words: Sequence[int] | np.ndarray) -> list[Event]:
 def compare(
     a: Sequence[int] | np.ndarray, b: Sequence[int] | np.ndarray, *, names=("a", "b")
 ) -> list[str]:
-    """Return the differences between two streams' DMA events.
+    """Return the differences between two streams' devices and events.
 
     Empty when the streams are equivalent.
     """
+    ha, hb = Header.of(decode(a)[0].words), Header.of(decode(b)[0].words)
+    if ha.device != hb.device:
+        return [f"headers differ:\n  {names[0]}: {ha}\n  {names[1]}: {hb}"]
     ea, eb = trace(a), trace(b)
     out: list[str] = []
     for i, (x, y) in enumerate(zip(ea, eb)):
@@ -591,7 +745,7 @@ def compare(
 
 
 def explain(words: Sequence[int] | np.ndarray, *, raw: bool = False) -> str:
-    """Human-readable listing of a stream's DMA events (or raw ops)."""
+    """Human-readable listing of a stream's events (or raw ops)."""
     if raw:
         return "\n".join(str(op) for op in decode(words))
     return "\n".join(f"{i:4d} {e}" for i, e in enumerate(trace(words)))

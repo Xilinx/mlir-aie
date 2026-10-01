@@ -63,8 +63,9 @@ def per_tile(
     worker = Worker(access_order, [of_out.prod(), access_counter])
 
     def sequence(tensor_out, out_h):
-        for t in tiler:
-            out_h.drain(tensor_out, t, wait=True)
+        for row in tiler:
+            for t in row:
+                out_h.drain(tensor_out, t, wait=True)
 
     rt = Runtime(
         sequence,

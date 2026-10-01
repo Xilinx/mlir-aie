@@ -288,37 +288,21 @@ def cascade(
 
     tb_max_n_rows = 5
 
-    # C drain TAPs: one per (tb, col).  group(..., partial=True) handles the
-    # trailing tb that has fewer than tb_max_n_rows rows.
-    C_taps = (
-        TensorAccessPattern.full((M, N))
-        .tile((m, n))
-        .group(
-            (tb_max_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols), partial=True
-        )
-    )
+    # C drain TAPs: rows of a tb, every n_aie_cols-th tile column from col.
+    C_tiles = TensorAccessPattern.full((M, N)).tile((m, n))
 
-    # B fill TAPs: one per col, reused across all (tb, tile_row) for that col.
-    B_taps = (
+    # B fill TAPs: one per col, walked tile column by tile column and reused
+    # across all (tb, tile_row) for that col.
+    B_tiles = (
         TensorAccessPattern.full((K, N))
         .tile((k * n_aie_rows, n))
-        .group(
-            (K // k // n_aie_rows, N // n // n_aie_cols),
-            steps=(1, n_aie_cols),
-            order="col",
-        )
+        .permute((1, 0, 2, 3))
     )
 
-    # A fill TAPs: one per (col, m-block).  Indexed by (m_block_idx * n_aie_cols
-    # + col) — m_block_idx walks all M//m rows once, col iterates the columns
-    # for each row.  Each TAP repeats N//n//n_aie_cols times (broadcast across
-    # the N output-column axis) via repeat().
-    A_taps = (
-        TensorAccessPattern.full((M, K))
-        .tile((m * n_A_tiles_per_shim, k))
-        .group((1, K // k // n_aie_rows), steps=(1, n_aie_rows))
-        .repeat(N // n // n_aie_cols)
-    )
+    # A fill TAPs: one per (col, m-block), every n_aie_rows-th k-tile of a tile
+    # row.  Each TAP repeats N//n//n_aie_cols times (broadcast across the N
+    # output-column axis).
+    A_tiles = TensorAccessPattern.full((M, K)).tile((m * n_A_tiles_per_shim, k))
 
     # Move the shim-tile placement onto the handles (fill/drain no longer take
     # tile=); one prod/cons handle per column, passed as fn_args lists.
@@ -327,28 +311,30 @@ def cascade(
     C_conses = [f.cons(tile=Tile(col, 0)) for col, f in enumerate(C_l2l3_fifos)]
 
     def sequence(A, B, C, A_hs, B_hs, C_hs):
-        c_index = 0
         for tb in range(iron.ceildiv(M // m, tb_max_n_rows)):
-            tb_n_rows = min([tb_max_n_rows, M // m - tb * tb_max_n_rows])
+            row_base = tb * tb_max_n_rows
+            tb_n_rows = min([tb_max_n_rows, M // m - row_base])
             tg = TaskGroup()
             for col in range(n_aie_cols):
                 C_hs[col].drain(
                     C,
-                    tap=C_taps[c_index],
+                    tap=C_tiles[row_base : row_base + tb_n_rows, col::n_aie_cols],
                     wait=True,
                     group=tg,
                 )
-                c_index += 1
                 for tile_row in range(tb_n_rows):
-                    a_idx = ((tb * tb_max_n_rows) + tile_row) * n_aie_cols + col
+                    a_idx = (row_base + tile_row) * n_aie_cols + col
+                    a_row, a_col = divmod(a_idx, n_aie_rows)
                     A_hs[col].fill(
                         A,
-                        tap=A_taps[a_idx],
+                        tap=A_tiles[a_row, a_col::n_aie_rows].repeat(
+                            N // n // n_aie_cols
+                        ),
                         group=tg,
                     )
                     B_hs[col].fill(
                         B,
-                        tap=B_taps[col],
+                        tap=B_tiles[col::n_aie_cols],
                         group=tg,
                     )
             tg.finish()

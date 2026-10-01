@@ -93,9 +93,9 @@ def square_tiler():
         # fmt: on
     )
 
-    tile_access_order = tiler[1].access_order()
+    tile_access_order = tiler[0, 1].access_order()
     assert (tile_access_order == tile1_reference_order).all()
-    assert len(tiler) == 64
+    assert tiler.sizes[:2] == (8, 8)
 
     # CHECK: Pass!
     print("Pass!")

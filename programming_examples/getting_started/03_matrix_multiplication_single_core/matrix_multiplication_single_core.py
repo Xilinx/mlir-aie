@@ -82,15 +82,11 @@ def matrix_multiplication_single_core(
     # into r*s / s*t / r*t sub-tiles for the MMUL intrinsic.  See
     # programming_guide/section-2/section-2c/ for n-D layout transformations.
     fifo_A_L3L2 = ObjectFifo(a_ty, name="A_L3L2")
-    tap_A_L2L1 = (
-        TensorAccessPattern.full((m, k)).tile((r, s)).group((m // r, k // s))[0]
-    )
+    tap_A_L2L1 = TensorAccessPattern.full((m, k)).tile((r, s))
     fifo_A_L2L1 = fifo_A_L3L2.cons().forward(to_stream=tap_A_L2L1, name="A_L2L1")
 
     fifo_B_L3L2 = ObjectFifo(b_ty, name="B_L3L2")
-    tap_B_L2L1 = (
-        TensorAccessPattern.full((k, n)).tile((s, t)).group((k // s, n // t))[0]
-    )
+    tap_B_L2L1 = TensorAccessPattern.full((k, n)).tile((s, t))
     fifo_B_L2L1 = fifo_B_L3L2.cons().forward(to_stream=tap_B_L2L1, name="B_L2L1")
 
     fifo_C_L1L2 = ObjectFifo(c_ty, name="C_L1L2")
@@ -120,27 +116,19 @@ def matrix_multiplication_single_core(
     # Each task group encompasses all data movement for one row of output
     # tiles. See programming_guide/section-2/section-2f/ for multi-level
     # (L3→L2→L1) data-movement patterns.
-    a_taps = (
-        TensorAccessPattern.full((M, K)).tile((m, k)).group((1, K // k)).repeat(N // n)
-    )
-    # All of B, walked one column of k*n tiles at a time; coalesce() merges
-    # the contiguous walk down a tile column into a single DMA dimension.
-    b_tap = (
-        TensorAccessPattern.full((K, N))
-        .tile((k, n))
-        .group((K // k, N // n), order="col")[0]
-        .coalesce()
-    )
-    c_taps = TensorAccessPattern.full((M, N)).tile((m, n)).group((1, N // n))
+    a_tiles = TensorAccessPattern.full((M, K)).tile((m, k))
+    # All of B, walked one column of k*n tiles at a time.
+    b_tap = TensorAccessPattern.full((K, N)).tile((k, n)).permute((1, 0, 2, 3))
+    c_tiles = TensorAccessPattern.full((M, N)).tile((m, n))
 
     def sequence(A, B, C, a_prod, b_prod, c_cons):
         for tile_row in range(M // m):
             task_group = TaskGroup()
-            a_prod.fill(A, tap=a_taps[tile_row], group=task_group)
+            a_prod.fill(A, tap=a_tiles[tile_row].repeat(N // n), group=task_group)
             b_prod.fill(B, tap=b_tap, group=task_group)
             c_cons.drain(
                 C,
-                tap=c_taps[tile_row],
+                tap=c_tiles[tile_row],
                 group=task_group,
                 wait=True,
             )

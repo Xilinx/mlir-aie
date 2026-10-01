@@ -214,17 +214,17 @@ def _transpose_combined(
     kernel_func = kernels.transpose(dim_m=m, dim_n=n, subtile=s, dtype=dtype)
 
     # A is read one (m, n) tile at a time, row-major over the tile grid.
-    tap_in_L3L2 = TensorAccessPattern.full((M, K)).tile((m, n)).tap
+    tap_in_L3L2 = TensorAccessPattern.full((M, K)).tile((m, n))
     # The memtile hands each tile to the core as (s, s) sub-tiles in the
     # order that leaves only an in-place s x s transpose for the kernel:
     # sub-tile columns outermost, then rows within a sub-tile, then sub-tile
     # rows, then columns within it.
-    tap_in_L2L1 = (
-        TensorAccessPattern.full((n, m)).tile((s, s)).tap.permute((1, 2, 0, 3))
-    )
+    tap_in_L2L1 = TensorAccessPattern.full((n, m)).tile((s, s)).permute((1, 2, 0, 3))
     # The transposed (n, m) tiles land in C column-major over the tile grid,
     # so tile (i, j) of A becomes tile (j, i) of C.
-    tap_out_L1L3 = TensorAccessPattern.full((K, M)).tile((n, m)).order("col").tap
+    tap_out_L1L3 = (
+        TensorAccessPattern.full((K, M)).tile((n, m)).permute((1, 0, 2, 3))
+    )
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")
     in_L2L1_fifo = in_L3L2_fifo.cons(from_stream=tap_in_L2L1).forward(

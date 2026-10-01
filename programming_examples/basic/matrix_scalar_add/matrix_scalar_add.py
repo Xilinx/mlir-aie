@@ -62,7 +62,7 @@ def matrix_scalar_add(
 
     worker = Worker(core_fn, fn_args=[of_in.cons(), of_out.prod()])
 
-    tap = TensorAccessPattern.full(matrix_shape).tile(tile_shape)[0]
+    tap = TensorAccessPattern.full(matrix_shape).tile(tile_shape)[0, 0]
 
     def sequence(in_tensor, out_tensor, in_h, out_h):
         in_h.fill(in_tensor, tap)

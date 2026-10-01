@@ -11,7 +11,6 @@ from typing import NamedTuple, get_args
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorAccessPattern
-from aie.iron.dataflow import StreamDims
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.compile.utils import resolve_target_arch
@@ -239,10 +238,8 @@ def _tile_layout(shape, dims=None, *, axes=None, inverse=False, block=None):
     if axes is not None:
         logical = logical.transpose(axes)
     order = logical.ravel()
-    if dims:
-        offsets = np.zeros(1, dtype=np.int64)
-        for size, stride in dims:
-            offsets = (offsets[:, None] + np.arange(size) * stride).ravel()
+    if dims is not None:
+        offsets = dims.gather(np.arange(order.size))
         order = order[np.argsort(offsets) if inverse else offsets]
     undo = np.argsort(order)
     return TensorLayout(
@@ -340,9 +337,9 @@ class StreamDimsABC(NamedTuple):
     ``None`` for an operand a build streams untransformed.
     """
 
-    A: StreamDims | None
-    B: StreamDims | None
-    C: StreamDims | None
+    A: TensorAccessPattern | None
+    B: TensorAccessPattern | None
+    C: TensorAccessPattern | None
 
 
 class _ZeroInitializedKernel(ExternalFunction):
@@ -382,10 +379,11 @@ class _CascadeMatrixKernel(MatrixKernel):
     put_get: Kernel
 
 
-def _blocked(rows: int, cols: int, tile_rows: int, tile_cols: int) -> list:
+def _blocked(
+    rows: int, cols: int, tile_rows: int, tile_cols: int
+) -> TensorAccessPattern:
     """``to_stream`` walking a ``(rows, cols)`` tensor in tile-sized blocks."""
-    grid = TensorAccessPattern.full((rows, cols)).tile((tile_rows, tile_cols))
-    return list(grid.tap.transformation_dims)
+    return TensorAccessPattern.full((rows, cols)).tile((tile_rows, tile_cols))
 
 
 def mm_stream_dims(
@@ -419,7 +417,7 @@ def mm_stream_dims(
     # index -- (r, t) before (n//t, r*t). That is the inverse of tiling.
     c_shape, c_tile = ((n, m), (t, r)) if c_col_maj else ((m, n), (r, t))
     c = TensorAccessPattern.full(c_shape).tile(c_tile).inverse()
-    return StreamDimsABC(A=a, B=b, C=list(c.transformation_dims))
+    return StreamDimsABC(A=a, B=b, C=c)
 
 
 class _MatMulFactory:
@@ -727,7 +725,9 @@ def mv(
     # from the layout (programming_examples/basic/matrix_multiplication/
     # matrix_vector does).
     a_from_stream = (
-        [(dim_m, 2), (dim_k // 2, 2 * dim_m), (2, 1)] if vectorized else None
+        TensorAccessPattern.full((dim_k // 2, dim_m, 2)).permute((1, 0, 2))
+        if vectorized
+        else None
     )
     return _make_extern(
         f"{prefix}_i16_i32",
@@ -1247,8 +1247,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     # B block order, so this comes off _blocked rather than streams.B. At
     # head_dim 512 LK is 8, making the k term degenerate, so only the 256
     # geometry can tell the two orders apart.
-    k_blocks, n_blocks, *within = _blocked(lk, head_dim, s, t)
-    v_dims = [n_blocks, k_blocks, *within]
+    v_dims = _blocked(lk, head_dim, s, t).permute((1, 0, 2, 3))
     return _make_extern(
         "prefill_fv_step",
         _kernel_source("linalg/flash_attn_prefill.cc"),

@@ -71,6 +71,7 @@ N = 4096
 LINE_SIZE = 1024
 RATIOED_N = 2944  # empirical compressed byte count for arange(N) on Phoenix
 RATIOED_PER_LINE = RATIOED_N // (N // LINE_SIZE)  # = 736; per-BD compressed
+RATIOED_TAP = TensorAccessPattern.full((N,))[:RATIOED_N]
 
 COL = 0
 COMPUTE_ROW = 2
@@ -146,11 +147,6 @@ def _maskwrite_compress(row, bd_base, bds, ctrl_addr):
         value=CHAN_BIT,
         mask=CHAN_BIT,
     )
-
-
-def _linear_tap(n_elems):
-    """The first n_elems elements of an N-element host buffer."""
-    return TensorAccessPattern.full((1, N))[:, :n_elems]
 
 
 def _build_multi_cmp_only():
@@ -357,11 +353,7 @@ def dma_compression(
         engage_decompress = config in ("lossless_roundtrip", "multi_lossless_roundtrip")
         # Asymmetric compress-only: ratio-size shim S2MM to match the
         # compressed stream length.
-        out_tap_rt = (
-            _linear_tap(RATIOED_N)
-            if engage_compress and not engage_decompress
-            else None
-        )
+        out_tap_rt = RATIOED_TAP if engage_compress and not engage_decompress else None
 
         of_a = ObjectFifo(line_ty, name="a_shim_to_ct")
         of_b = ObjectFifo(line_ty, name="b_ct_to_consumer")
@@ -471,8 +463,8 @@ def dma_compression(
     has_mm2s_cmp = suffix in ("cmp_only", "both")
     has_s2mm_dcmp = suffix in ("dcmp_only", "both")
     # Ratio-size each shim BD whose channel is doing (de)compression.
-    in_tap = _linear_tap(RATIOED_N) if has_s2mm_dcmp else None
-    out_tap = _linear_tap(RATIOED_N) if has_mm2s_cmp else None
+    in_tap = RATIOED_TAP if has_s2mm_dcmp else None
+    out_tap = RATIOED_TAP if has_mm2s_cmp else None
 
     is_host_compression = config in HOST_CONFIGS or config in MEMTILE_CONFIGS
     base_config = config in ("base", "memtile_base")

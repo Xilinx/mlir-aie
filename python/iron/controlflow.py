@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from typing import Any, Iterator
 
 from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
+from aie.ir import InsertionPoint  # pyright: ignore[reportMissingImports]
 from aie.helpers.dialects.scf import (
     _for,
 )
@@ -48,19 +49,24 @@ def _unwrap(x):
     return x.handle if isinstance(x, Task) else x
 
 
-def range_(*args, iter_args=None, insert_yield=True, **kwargs) -> Iterator[Any]:
+def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
     """``scf.for`` for IRON bodies, with ``Task`` and ``TaskGroup`` support in ``iter_args``.
 
     See [`Task`][iron.runtime.dmataskhandle.Task] and
     [`TaskGroup`][iron.runtime.taskgroup.TaskGroup].
-    Identical to the low-level ``_for`` helper, except a ``Task`` passed as an
-    ``iter_args`` entry is carried across iterations by its SSA handle: the loop
-    body and the loop results receive it re-wrapped as a ``Task`` (so ``.free()``/
-    ``.await_()`` work), and [`yield_`][iron.controlflow.yield_] accepts ``Task``
-    entries too. A ``TaskGroup`` entry is carried as the handles of its
-    transfers and comes back as a group ``finish()`` closes, which is what a
-    software-pipelined DMA loop needs. Every group yielded back must have the
+    Without ``iter_args`` each iteration yields the induction variable. With
+    them it yields ``(iv, args, results)``: the carried values as the body
+    sees them and as the loop returns them, each a tuple with one entry per
+    ``iter_args`` entry. The body must end with
+    [`yield_`][iron.controlflow.yield_] of the next iteration's values.
+
+    A ``Task`` entry is carried across iterations by its SSA handle and comes
+    back re-wrapped as a ``Task`` (so ``.free()``/``.await_()`` work). A
+    ``TaskGroup`` entry is carried as the handles of its transfers and comes
+    back as a group ``finish()`` closes. Every group yielded back must have the
     same shape (transfer count and waited flags) as the one carried in.
+    [`TaskGroup.pipelined`][iron.runtime.taskgroup.TaskGroup.pipelined] builds
+    the usual software pipeline out of this.
     """
     # Each user-level iter_arg becomes one or more raw SSA iter_args. packers
     # records, per user entry, how to rebuild it: ("value", 1), ("task", 1) or
@@ -79,7 +85,6 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs) -> Iterator[Any]:
             else:
                 packers.append(("value", 1, None))
                 raw.append(a)
-        iter_args = raw
 
     def rewrap(values):
         # values: the raw block args / results, as a tuple of Values.
@@ -94,15 +99,13 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs) -> Iterator[Any]:
                 out.append(Task(chunk[0]))
             else:
                 out.append(chunk[0])
-        return out[0] if len(out) == 1 else tuple(out)
+        return tuple(out)
 
     # A loop without iter_args still shadows any enclosing loop's specs, so a
     # yield_ in its body is not checked against them.
     _push_specs([waited for _, _, waited in packers] if packers else None)
     try:
-        for vals in _for(
-            *args, iter_args=iter_args, insert_yield=insert_yield, **kwargs
-        ):
+        for vals in _for(*args, iter_args=raw, insert_yield=not packers, **kwargs):
             if not packers:
                 yield vals
                 continue
@@ -113,6 +116,13 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs) -> Iterator[Any]:
                 if len(raw) == 1:
                     a, results = (a,), (results,)
             yield iv, rewrap(tuple(a)), rewrap(tuple(results))
+            body = iv.owner
+            ops = body.operations
+            if not len(ops) or ops[len(ops) - 1].name != "scf.yield":
+                raise ValueError(
+                    "a range_ body with iter_args must end with yield_([...]), "
+                    f"one entry per iter_arg ({len(packers)} here)"
+                )
     finally:
         _pop_specs()
 
@@ -145,9 +155,9 @@ def yield_(values):
                 f"yield a TaskGroup there, not {v!r}"
             )
         if is_group:
-            if expected is not None and v.spec != expected:
+            if expected is not None and v._waited() != expected:
                 raise ValueError(
-                    f"yielded {v} has transfers waited {list(v.spec)} but the "
+                    f"yielded {v} has transfers waited {list(v._waited())} but the "
                     f"loop carries a group waited {list(expected)}; every "
                     "iteration must issue the same transfers in the same order"
                 )
@@ -159,17 +169,15 @@ def yield_(values):
 
 
 @contextmanager
-def if_(cond, has_else: bool = False):
+def if_(cond):
     """Open an ``scf.if`` region in an IRON body as a ``with`` block.
 
     ``cond`` is an ``i1`` value (a comparison on a staged scalar) or a plain
-    ``bool``. With ``has_else=True`` the op gets an else region, filled with
+    ``bool``. The block's ``as`` target opens the else region with
     [`else_`][iron.controlflow.else_]:
 
     ```python
-    with if_(n_ragged > 0):
-        ...
-    with if_(n_ragged > 0, has_else=True) as branch:
+    with if_(n_ragged > 0) as branch:
         ...
     with else_(branch):
         ...
@@ -177,12 +185,16 @@ def if_(cond, has_else: bool = False):
     """
     if isinstance(cond, bool):
         cond = constant(cond)
-    with _if_(cond, hasElse=has_else) as op:
+    with _if_(cond, hasElse=False) as op:
         yield op
 
 
 @contextmanager
 def else_(branch):
-    """Open the else region of a ``with if_(cond, has_else=True) as branch`` block."""
+    """Open the else region of a ``with if_(cond) as branch`` block."""
+    blocks = branch.elseRegion.blocks
+    if not len(blocks):
+        with InsertionPoint(blocks.append()):
+            _yield_([])
     with _else_(branch):
         yield

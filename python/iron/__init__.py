@@ -64,6 +64,7 @@ from aie.utils.compile.jit import (
     compileconfig,
     get_compile_arg,
 )
+from aie.helpers.taplib._symbolic import require
 from aie.utils.jit import jit
 
 from . import algorithms, kernels
@@ -78,9 +79,7 @@ from .dataflow import (
     ObjectFifo,
     PacketDest,
     PacketFlow,
-    PadDims,
     Release,
-    StreamDims,
     TileDma,
 )
 from .dtype import dtype_to_str, str_to_dtype
@@ -107,8 +106,6 @@ __all__ = [
     "Task",
     "sync_parameters",
     "ObjectFifo",
-    "PadDims",
-    "StreamDims",
     # Lower-level explicit-routing primitives
     "Acquire",
     "Bd",
@@ -134,6 +131,7 @@ __all__ = [
     "jit",
     "compile_context",
     "get_compile_arg",
+    "require",
     # Tensor factories
     "tensor",
     "ones",

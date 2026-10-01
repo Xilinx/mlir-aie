@@ -9,7 +9,12 @@
 // to an early `return std::nullopt` in the C++ TXN builder, so a dispatch with
 // a violating value yields no stream instead of a wrong one.
 
+// RUN: aie-opt %s | aie-opt | FileCheck %s --check-prefix=ROUNDTRIP
 // RUN: aie-translate %s --aie-npu-to-cpp | FileCheck %s
+
+// ROUNDTRIP: %[[OK:.*]] = arith.cmpi eq, %{{.*}}, %{{.*}} : i32
+// ROUNDTRIP: cf.assert %[[OK]], "K must be a multiple of 64"
+// ROUNDTRIP: aiex.npu.write32
 
 // CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq(int32_t [[K:v[0-9]+]]) {
 // CHECK:   std::vector<uint32_t> txn;

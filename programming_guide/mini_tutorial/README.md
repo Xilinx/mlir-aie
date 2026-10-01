@@ -353,57 +353,52 @@ The `TensorAccessPattern` can be visualized in two ways:
 tap.visualize(show_arrows=True, plot_access_count=True)
 ```
 
-`taps` can be grouped in a `TensorAccessSequence` where each `tap` represents a different tile (from the tiling pattern):
+Several `taps` can be kept in a plain list, where each `tap` represents a different tile (from the tiling pattern):
 ```python
-t0 = TensorAccessPattern((8, 8), offset=0, sizes=[1, 1, 4, 4], strides=[0, 0, 8, 1])
-t1 = TensorAccessPattern((8, 8), offset=4, sizes=[1, 1, 4, 4], strides=[0, 0, 8, 1])
-t2 = TensorAccessPattern((8, 8), offset=32, sizes=[1, 1, 4, 4], strides=[0, 0, 8, 1])
+t0 = TensorAccessPattern((8, 8), offset=0, sizes=[4, 4], strides=[8, 1])
+t1 = TensorAccessPattern((8, 8), offset=4, sizes=[4, 4], strides=[8, 1])
+t2 = TensorAccessPattern((8, 8), offset=32, sizes=[4, 4], strides=[8, 1])
 
-taps = TensorAccessSequence.from_taps([t0, t1, t2])
+taps = [t0, t1, t2]
 ```
-The `taps` can then be accessed in the sequence as an array:
+The `taps` can then be used in the sequence like any list:
 ```python
 for t in taps:
 ```
 
-Deducing the sizes and strides for the `tap` can be challenging for the user. `taplib` addresses this with a small algebra on access patterns: `TensorAccessPattern.full(dims)` is the row-major walk over a whole tensor, and tiling, grouping, transposing, slicing and repeating are all a few operations on that walk's integers. `.tile(tile_dims)` divides a walk into a grid of equal tiles and returns a `TileGrid`, which is indexed like a list (`grid[i]` is the `i`-th tile in step order, `grid[i, j]` the tile at a grid position, `len(grid)` the number of tiles):
+Deducing the sizes and strides for the `tap` can be challenging for the user. `taplib` addresses this with a small algebra on access patterns: `TensorAccessPattern.full(dims)` is the row-major walk over a whole tensor, and tiling, transposing, slicing and repeating are all a few operations on that walk's integers. `.tile(tile_dims)` divides a walk into a grid of equal tiles. The result is again a `TensorAccessPattern`: its leading dimensions index the grid and its trailing dimensions walk one tile, so indexing the grid dimensions picks out tiles (`tiles[i, j]` is one tile, `tiles[i]` is the `i`-th row of tiles):
 ```python
 tensor_dims = (8, 8)
 tile_dims = (4, 4)
-grid = TensorAccessPattern.full(tensor_dims).tile(tile_dims)  # a TileGrid of 2 x 2 tiles
-print(len(grid))
-print(grid[0])
+tiles = TensorAccessPattern.full(tensor_dims).tile(tile_dims)  # 2 x 2 tiles
+print(tiles)
+print(tiles[0, 1])
 ```
 ```
-4
-TensorAccessPattern([8, 8] offset=0, sizes=[4, 4], strides=[8, 1])
+TensorAccessPattern([8, 8], offset=0, sizes=[2, 2, 4, 4], strides=[32, 4, 8, 1])
+TensorAccessPattern([8, 8], offset=4, sizes=[4, 4], strides=[8, 1])
 ```
-Each tile is a `TensorAccessPattern`, so it goes straight to `fill()`, `drain()` or an `ObjectFifo`'s `to_stream`/`from_stream`. A `TileGrid` is also a `TensorAccessSequence`, so `grid.visualize()` shows the whole tiling at once.
+Each tile is a `TensorAccessPattern`, so it goes straight to `fill()`, `drain()` or an `ObjectFifo`'s `to_stream`/`from_stream`. The whole tiling is one `TensorAccessPattern` too, so `tiles` itself walks every tile in turn and `tiles.visualize()` shows the whole tiling at once.
 
-A `TileGrid` can be refined before it is indexed. Common refinements are `.order("col")` to visit tiles column by column, `.permute_tile((1, 0))` to walk each tile column-major, `.group((2, 2))` to gather a 2 x 2 block of tiles into a single `tap`, and `.repeat(n)` to walk each tile `n` times. Other operations live on the `TensorAccessPattern` itself: `.partition(k)` cuts a dimension into `k` equal chunks, NumPy-style indexing (`TensorAccessPattern.full((8, 8))[2:6, ::2]`) slices a walk, `.T` or `.permute((1, 0))` transposes it, and `.coalesce()` reduces it to the fewest dimensions that walk the same elements. See the [taplib reference](../../docs/api/taplib.md) for the full API.
+The tiling can be refined before it is indexed, with the same operations as any other `TensorAccessPattern`: `.permute((1, 0, 2, 3))` visits tiles column by column, `.permute((0, 1, 3, 2))` walks each tile column-major, slicing (`tiles[:, 0]`) keeps a column of tiles in a single `tap`, and `.repeat(n)` walks the pattern `n` times. Other operations include `.partition(k)`, which cuts a dimension into `k` equal chunks, NumPy-style indexing (`TensorAccessPattern.full((8, 8))[2:6, ::2]`), `.T`, which reverses the dimensions, and `.coalesce()`, which reduces a walk to the fewest dimensions that visit the same elements. See the [taplib reference](../../docs/api/taplib.md) for the full API.
 
 More on `taplib` in [tiling_exploration](../../programming_examples/basic/tiling_exploration/README.md).
 
-`ObjectFifo`s can express DMA on-the-fly data transformations via their `to_stream` and `from_stream_per_cons` inputs. These inputs are structured as a list of pairs where each pair is expressed as (size, stride) for a dimension of the DMA transformation. The dimensions should be given from highest to lowest:
+`ObjectFifo`s can express DMA on-the-fly data transformations via their `to_stream` and `from_stream_per_cons` inputs. Each takes a `TensorAccessPattern` over one object; `.transformation_dims` shows the (size, stride) pair the DMA walks per dimension, from highest to lowest:
 ```python
-dims = [(size_2, stride_2), (size_1, stride_1), (size_0, stride_0)]
-of_out = ObjectFifo(data_ty, name="out", to_stream=dims)
-```
-A `TensorAccessPattern` can be passed in place of the list; `.transformation_dims` shows the list it stands for:
-```python
-tap = TensorAccessPattern.full((8, 8)).tile((4, 4)).group((2, 2))[0]
-print(tap.transformation_dims)  # [(2, 32), (2, 4), (4, 8), (4, 1)]
+tap = TensorAccessPattern.full((8, 8)).tile((4, 4))
+print(tap.transformation_dims)  # ((2, 32), (2, 4), (4, 8), (4, 1))
 of_out = ObjectFifo(data_ty, name="out", to_stream=tap)
 ```
-Offsets are currently not represented at the ObjectFifo level and as such the dimensions should be applicable over the full size of the objects.
+A walk whose numbers are known can be spelled out directly, as `TensorAccessPattern((8, 8), 0, [2, 2, 4, 4], [32, 4, 8, 1])`. The DMA walks each object from its first element, so the pattern must cover the whole object at offset 0.
 
 More on the ObjectFifo data layout transformations in [Section 2c](../section-2/section-2c/README.md) of the programming guide.
 
 ## <u>Exercises</u>
 1. Familiarize yourself with [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py). Use a `tap` such that the data transformation performed on the input data at runtime matches the one shown in [ref_plot.png](./exercise_5/exercise_5a/ref_plot.png). Don't forget to add the `tap` to the runtime `fill()` operation. Before running the example modify line 83 to `USE_REF_VEC = False`. Run `python3 exercise_5a.py` to verify your answer.
 
-2. Replace the `tap` you added in [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py) with the tiles of a `TileGrid`. For this, you will require `TensorAccessPattern.full()` and `.tile()` defined in [tap.py](../../python/helpers/taplib/tap.py). Run `python3 exercise_5a.py` to verify your answer. You can also observe the two generated plots.
+2. Replace the `tap` you added in [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py) with the tiles of a tiling. For this, you will require `TensorAccessPattern.full()` and `.tile()` defined in [tap.py](../../python/helpers/taplib/tap.py). Run `python3 exercise_5a.py` to verify your answer. You can also observe the two generated plots.
 
 3. Modify the code in [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py) such that the data transformations are applied directly on `of_out`, instead of at runtime. Run `python3 exercise_5a.py` to verify your answer.
 
-4. Familiarize yourself with [exercise_5b](./exercise_5/exercise_5b/exercise_5b.py). Observe how the `taps` in the `TensorAccessSequence` differ slightly from the one in [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py). Run `python3 exercise_5b.py` and observe the two generated plots.
+4. Familiarize yourself with [exercise_5b](./exercise_5/exercise_5b/exercise_5b.py). Observe how the `taps` in the list differ slightly from the one in [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py). Run `python3 exercise_5b.py` and observe the two generated plots.

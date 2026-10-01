@@ -26,14 +26,13 @@ Not covered: a key block that is all padding inside the causal region.
 factor in ``scale_buffer``; that is existing kernel behaviour, not frozen here.
 """
 
-from collections.abc import Sequence
-
 import ml_dtypes
 import numpy as np
 import pytest
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -73,9 +72,9 @@ _LOWEST = float(ml_dtypes.finfo(bfloat16).min)
 _RTOL_EXP2 = 0.07
 
 
-def _reblock(rows: int) -> list[Sequence[int]]:
+def _reblock(rows: int) -> TensorAccessPattern:
     """Reads a row-major ``rows`` x 64 P back in the mmul's 8x8 block order."""
-    return [(rows // 8, 512), (8, 8), (8, 64), (8, 1)]
+    return TensorAccessPattern.full((rows, _B)).tile((8, 8))
 
 
 def _block(mat: np.ndarray) -> np.ndarray:

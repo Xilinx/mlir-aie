@@ -4,16 +4,16 @@
 
 For every tiler configuration below, the algebra spelling of the same tiling
 must visit the same elements in the same order as the legacy tiler at every
-step, and, with ``prune_step=False`` (the form nearly every design uses), it
-must produce byte-identical offset/sizes/strides. The exact-match count is
-CHECKed so a canonical-form change cannot pass silently.
+step and compare equal to it (== matches the coalesced offset, sizes and
+strides). The exact-match count is CHECKed so a canonical-form change cannot
+pass silently.
 """
 
 import itertools
 
 from Inputs.legacy_tensortiler2d import TensorTiler2D
 from aie.helpers.taplib import TensorAccessPattern
-from util import construct_test
+from util import construct_test, grid_steps
 
 # RUN: %python %s | FileCheck %s
 
@@ -30,19 +30,18 @@ def algebra_tiler(
     allow_partial=False,
 ):
     """TensorTiler2D.step_tiler spelled on the algebra."""
-    grid = TensorAccessPattern.full(tensor_dims).tile(tile_dims)
+    tiles = TensorAccessPattern.full(tensor_dims).tile(tile_dims)
     if tile_col_major:
-        grid = grid.permute_tile((1, 0))
-    grid = grid.order("col" if iter_col_major else "row")
-    grid = grid.group(
+        tiles = tiles.permute((0, 1, 3, 2))
+    return grid_steps(
+        tiles,
         tile_group_repeats,
-        steps=tile_group_steps,
-        order="col" if tile_group_col_major else "row",
+        tile_group_steps,
+        order="col" if iter_col_major else "row",
+        group_order="col" if tile_group_col_major else "row",
         partial=allow_partial,
+        repeat=pattern_repeat,
     )
-    if pattern_repeat != 1:
-        grid = grid.repeat(pattern_repeat)
-    return grid
 
 
 def compare(legacy, grid):
@@ -142,7 +141,7 @@ def step_tilers():
 # CHECK-LABEL: whole_array_matmul
 @construct_test
 def whole_array_matmul():
-    """Build the whole-array GEMM's three tilers over the sweep the design supports."""
+    """The whole-array GEMM's taps, as the design builds them, over the sweep it supports."""
     total = exact = 0
     n_aie_rows = 4
     tb_n_rows = 2
@@ -162,12 +161,10 @@ def whole_array_matmul():
                     pattern_repeat=rep,
                     prune_step=False,
                 )
-                grid_A = (
-                    TensorAccessPattern.full((M, K))
-                    .tile((m * n_A_tiles_per_shim, k))
-                    .group((1, K // k))
-                    .repeat(rep)
+                A_tiles = TensorAccessPattern.full((M, K)).tile(
+                    (m * n_A_tiles_per_shim, k)
                 )
+                grid_A = [A_tiles[i].repeat(rep) for i in range(A_tiles.sizes[0])]
                 legacy_B = TensorTiler2D.step_tiler(
                     (K, N),
                     (k, n),
@@ -176,11 +173,10 @@ def whole_array_matmul():
                     tile_group_col_major=True,
                     prune_step=False,
                 )
-                grid_B = (
-                    TensorAccessPattern.full((K, N))
-                    .tile((k, n))
-                    .group((K // k, rep), steps=(1, n_aie_cols), order="col")
+                B_tiles = (
+                    TensorAccessPattern.full((K, N)).tile((k, n)).permute((1, 0, 2, 3))
                 )
+                grid_B = [B_tiles[col::n_aie_cols] for col in range(n_aie_cols)]
                 legacy_C = TensorTiler2D.step_tiler(
                     (M, N),
                     (m * n_aie_rows, n),
@@ -188,11 +184,12 @@ def whole_array_matmul():
                     tile_group_steps=(1, n_aie_cols),
                     prune_step=False,
                 )
-                grid_C = (
-                    TensorAccessPattern.full((M, N))
-                    .tile((m * n_aie_rows, n))
-                    .group((tb_n_rows, rep), steps=(1, n_aie_cols))
-                )
+                C_tiles = TensorAccessPattern.full((M, N)).tile((m * n_aie_rows, n))
+                grid_C = [
+                    C_tiles[row : row + tb_n_rows, col::n_aie_cols]
+                    for row in range(0, C_tiles.sizes[0], tb_n_rows)
+                    for col in range(n_aie_cols)
+                ]
                 for legacy, grid in (
                     (legacy_A, grid_A),
                     (legacy_B, grid_B),
@@ -210,8 +207,8 @@ def whole_array_matmul():
 def prune_step_merges():
     """prune_step=True merges a repeat into the tile in two col-major cases.
 
-    The algebra keeps dimensions separate (coalesce() is explicit), so these
-    are access-equivalent, not byte-identical; record how many differ.
+    The algebra keeps those dimensions separate, but == compares coalesced
+    walks, so the merged forms still compare equal.
     """
     total = exact = 0
     for dims, tile, group in (((8, 8), (2, 2), (2, 2)), ((16, 24), (4, 3), (2, 4))):
@@ -228,8 +225,8 @@ def prune_step_merges():
             n, e = compare(legacy, grid)
             total += n
             exact += e
-    print(f"prune steps={total} exact={exact} merged={total - exact}")
-    # CHECK: prune steps={{[0-9]+}} exact={{[0-9]+}} merged={{[1-9][0-9]*}}
+    print(f"prune steps={total} exact={exact}")
+    # CHECK: prune steps=[[N:[0-9]+]] exact=[[N]]
 
 
 # CHECK-LABEL: partial_tilers
@@ -266,8 +263,7 @@ def partial_tilers():
         total += n
         exact += e
         # With the legacy default prune_step=True the col-major combos merge a
-        # repeat into the tile; the algebra keeps them separate (coalesce() is
-        # explicit), so those are access-equivalent only.
+        # repeat into the tile; == compares coalesced walks, so they still match.
         legacy_pruned = TensorTiler2D.step_tiler(dims, **kwargs)
         n, e = compare(legacy_pruned, grid)
         merged_total += n
@@ -275,4 +271,4 @@ def partial_tilers():
     print(f"partial steps={total} exact={exact}")
     print(f"partial pruned steps={merged_total} exact={merged_exact}")
     # CHECK: partial steps=[[N:[0-9]+]] exact=[[N]]
-    # CHECK: partial pruned steps={{[0-9]+}} exact={{[0-9]+}}
+    # CHECK: partial pruned steps=[[N:[0-9]+]] exact=[[N]]

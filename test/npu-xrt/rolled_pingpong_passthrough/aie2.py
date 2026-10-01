@@ -113,10 +113,7 @@ def design(dev):
             # Rolled ping-pong: issue N_TILES-1 more input BDs while the previous
             # is in flight. The Task flows as iter_arg. All input BDs read from
             # the same tile (offset 0), so the output collects N_TILES copies.
-            result = init_in
-            for _iv, prev, result in range_(
-                1, N_TILES, iter_args=[init_in], insert_yield=False
-            ):
+            for _iv, (prev,), (result,) in range_(1, N_TILES, iter_args=[init_in]):
                 tile_in = in_h.fill(
                     A,
                     sizes=[1, 1, 1, TILE_LEN],

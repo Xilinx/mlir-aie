@@ -1,8 +1,8 @@
 # Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
-from util import construct_test
+from aie.helpers.taplib import TensorAccessPattern
+from util import construct_test, grid_steps
 
 # RUN: %python %s | FileCheck %s
 
@@ -13,258 +13,253 @@ def step_tiler_partial_row():
     tensor_dims = (3 * 5 * 3, 2 * 7 * 2)
 
     # all row major
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .group((5, 7), steps=(3, 3), partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)),
+        (5, 7),
+        steps=(3, 3),
+        partial=True,
     )
     assert len(tiles) == 9
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=4, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=88, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=168, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=170, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=172, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=4, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=88, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=168, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=170, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=172, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # tile col major
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .permute_tile((1, 0))
-        .group((5, 7), steps=(3, 3), partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)).permute((0, 1, 3, 2)),
+        (5, 7),
+        steps=(3, 3),
+        partial=True,
     )
     assert len(tiles) == 9
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=4, sizes=[5, 4, 2, 3], strides=[252, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=88, sizes=[5, 4, 2, 3], strides=[252, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=168, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=170, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=172, sizes=[5, 4, 2, 3], strides=[252, 6, 1, 28]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=4, sizes=[5, 4, 2, 3], strides=[252, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=88, sizes=[5, 4, 2, 3], strides=[252, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=168, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=170, sizes=[5, 5, 2, 3], strides=[252, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=172, sizes=[5, 4, 2, 3], strides=[252, 6, 1, 28]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # tile group col major
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .group((5, 7), steps=(3, 3), order="col", partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)),
+        (5, 7),
+        steps=(3, 3),
+        group_order="col",
+        partial=True,
     )
     assert len(tiles) == 9
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=4, sizes=[4, 5, 3, 2], strides=[6, 252, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=88, sizes=[4, 5, 3, 2], strides=[6, 252, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=168, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=170, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=172, sizes=[4, 5, 3, 2], strides=[6, 252, 28, 1]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=4, sizes=[4, 5, 3, 2], strides=[6, 252, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=88, sizes=[4, 5, 3, 2], strides=[6, 252, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=168, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=170, sizes=[5, 5, 3, 2], strides=[6, 252, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=172, sizes=[4, 5, 3, 2], strides=[6, 252, 28, 1]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # iter col major
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .order("col")
-        .group((5, 7), steps=(3, 3), partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)),
+        (5, 7),
+        steps=(3, 3),
+        order="col",
+        partial=True,
     )
     assert len(tiles) == 9
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=168, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=170, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=4, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=88, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=172, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=168, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=170, sizes=[5, 5, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=4, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=88, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=172, sizes=[5, 4, 3, 2], strides=[252, 6, 28, 1]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # all col major
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .permute_tile((1, 0))
-        .order("col")
-        .group((5, 7), steps=(3, 3), order="col", partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)).permute((0, 1, 3, 2)),
+        (5, 7),
+        steps=(3, 3),
+        order="col",
+        group_order="col",
+        partial=True,
     )
     assert len(tiles) == 9
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=168, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=170, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=4, sizes=[4, 5, 2, 3], strides=[6, 252, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=88, sizes=[4, 5, 2, 3], strides=[6, 252, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=172, sizes=[4, 5, 2, 3], strides=[6, 252, 1, 28]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=168, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=170, sizes=[5, 5, 2, 3], strides=[6, 252, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=4, sizes=[4, 5, 2, 3], strides=[6, 252, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=88, sizes=[4, 5, 2, 3], strides=[6, 252, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=172, sizes=[4, 5, 2, 3], strides=[6, 252, 1, 28]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # pattern repeat
-    tiles = TensorAccessSequence.from_taps(
-        [
-            t.coalesce()
-            for t in TensorAccessPattern.full(tensor_dims)
-            .tile((3, 2))
-            .group((5, 7), steps=(1, 3), order="col", partial=True)
-            .repeat(4)
-        ]
-    )
+    tiles = [
+        t.coalesce()
+        for t in grid_steps(
+            TensorAccessPattern.full(tensor_dims).tile((3, 2)),
+            (5, 7),
+            steps=(1, 3),
+            group_order="col",
+            partial=True,
+            repeat=4,
+        )
+    ]
     assert len(tiles) == 9
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=4, sizes=[4, 4, 15, 2], strides=[0, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=420, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=422, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=424, sizes=[4, 4, 15, 2], strides=[0, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=842, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=844, sizes=[4, 4, 15, 2], strides=[0, 6, 28, 1]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=4, sizes=[4, 4, 15, 2], strides=[0, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=420, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=422, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=424, sizes=[4, 4, 15, 2], strides=[0, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=842, sizes=[4, 5, 15, 2], strides=[0, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=844, sizes=[4, 4, 15, 2], strides=[0, 6, 28, 1]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # CHECK: Pass!
     print("Pass!")
@@ -276,246 +271,239 @@ def step_tiler_partial_col():
 
     # all row major
     tensor_dims = (3 * 5 * 3, 2 * 7 * 2)
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .group((5, 7), steps=(2, 2), partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)),
+        (5, 7),
+        steps=(2, 2),
+        partial=True,
     )
     assert len(tiles) == 8
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[3, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=842, sizes=[3, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=924, sizes=[2, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=926, sizes=[2, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[3, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=842, sizes=[3, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=924, sizes=[2, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=926, sizes=[2, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # tile col major
     tensor_dims = (3 * 5 * 3, 2 * 7 * 2)
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .permute_tile((1, 0))
-        .group((5, 7), steps=(2, 2), partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)).permute((0, 1, 3, 2)),
+        (5, 7),
+        steps=(2, 2),
+        partial=True,
     )
     assert len(tiles) == 8
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 7, 2, 3], strides=[168, 4, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 7, 2, 3], strides=[168, 4, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 7, 2, 3], strides=[168, 4, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 7, 2, 3], strides=[168, 4, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[3, 7, 2, 3], strides=[168, 4, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=842, sizes=[3, 7, 2, 3], strides=[168, 4, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=924, sizes=[2, 7, 2, 3], strides=[168, 4, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=926, sizes=[2, 7, 2, 3], strides=[168, 4, 1, 28]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 7, 2, 3], strides=[168, 4, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 7, 2, 3], strides=[168, 4, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 7, 2, 3], strides=[168, 4, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 7, 2, 3], strides=[168, 4, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[3, 7, 2, 3], strides=[168, 4, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=842, sizes=[3, 7, 2, 3], strides=[168, 4, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=924, sizes=[2, 7, 2, 3], strides=[168, 4, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=926, sizes=[2, 7, 2, 3], strides=[168, 4, 1, 28]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # tile group col major
     tensor_dims = (3 * 5 * 3, 2 * 7 * 2)
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .group((5, 7), steps=(2, 2), order="col", partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)),
+        (5, 7),
+        steps=(2, 2),
+        group_order="col",
+        partial=True,
     )
     assert len(tiles) == 8
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[7, 5, 3, 2], strides=[4, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[7, 5, 3, 2], strides=[4, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[7, 5, 3, 2], strides=[4, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[7, 5, 3, 2], strides=[4, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[7, 3, 3, 2], strides=[4, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=842, sizes=[7, 3, 3, 2], strides=[4, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=924, sizes=[7, 2, 3, 2], strides=[4, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=926, sizes=[7, 2, 3, 2], strides=[4, 168, 28, 1]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[7, 5, 3, 2], strides=[4, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[7, 5, 3, 2], strides=[4, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[7, 5, 3, 2], strides=[4, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[7, 5, 3, 2], strides=[4, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[7, 3, 3, 2], strides=[4, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=842, sizes=[7, 3, 3, 2], strides=[4, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=924, sizes=[7, 2, 3, 2], strides=[4, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=926, sizes=[7, 2, 3, 2], strides=[4, 168, 28, 1]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # iter col major
     tensor_dims = (3 * 5 * 3, 2 * 7 * 2)
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .order("col")
-        .group((5, 7), steps=(2, 2), partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)),
+        (5, 7),
+        steps=(2, 2),
+        order="col",
+        partial=True,
     )
     assert len(tiles) == 8
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[3, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=924, sizes=[2, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=842, sizes=[3, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=926, sizes=[2, 7, 3, 2], strides=[168, 4, 28, 1]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[3, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=924, sizes=[2, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=842, sizes=[3, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=926, sizes=[2, 7, 3, 2], strides=[168, 4, 28, 1]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # all col major
     tensor_dims = (3 * 5 * 3, 2 * 7 * 2)
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .permute_tile((1, 0))
-        .order("col")
-        .group((5, 7), steps=(2, 2), order="col", partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)).permute((0, 1, 3, 2)),
+        (5, 7),
+        steps=(2, 2),
+        order="col",
+        group_order="col",
+        partial=True,
     )
     assert len(tiles) == 8
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[7, 5, 2, 3], strides=[4, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[7, 5, 2, 3], strides=[4, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[7, 3, 2, 3], strides=[4, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=924, sizes=[7, 2, 2, 3], strides=[4, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[7, 5, 2, 3], strides=[4, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[7, 5, 2, 3], strides=[4, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=842, sizes=[7, 3, 2, 3], strides=[4, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=926, sizes=[7, 2, 2, 3], strides=[4, 168, 1, 28]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[7, 5, 2, 3], strides=[4, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[7, 5, 2, 3], strides=[4, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[7, 3, 2, 3], strides=[4, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=924, sizes=[7, 2, 2, 3], strides=[4, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[7, 5, 2, 3], strides=[4, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[7, 5, 2, 3], strides=[4, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=842, sizes=[7, 3, 2, 3], strides=[4, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=926, sizes=[7, 2, 2, 3], strides=[4, 168, 1, 28]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # pattern repeat
     tensor_dims = (3 * 5 * 3, 2 * 7 * 2)
-    tiles = TensorAccessSequence.from_taps(
-        [
-            t.coalesce()
-            for t in TensorAccessPattern.full(tensor_dims)
-            .tile((3, 2))
-            .permute_tile((1, 0))
-            .group((5, 7), steps=(2, 1), partial=True)
-            .repeat(2)
-        ]
-    )
+    tiles = [
+        t.coalesce()
+        for t in grid_steps(
+            TensorAccessPattern.full(tensor_dims).tile((3, 2)).permute((0, 1, 3, 2)),
+            (5, 7),
+            steps=(2, 1),
+            partial=True,
+            repeat=2,
+        )
+    ]
     assert len(tiles) == 8
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[2, 5, 14, 3], strides=[0, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=14, sizes=[2, 5, 14, 3], strides=[0, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[2, 5, 14, 3], strides=[0, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=98, sizes=[2, 5, 14, 3], strides=[0, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[2, 3, 14, 3], strides=[0, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=854, sizes=[2, 3, 14, 3], strides=[0, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=924, sizes=[2, 2, 14, 3], strides=[0, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=938, sizes=[2, 2, 14, 3], strides=[0, 168, 1, 28]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[2, 5, 14, 3], strides=[0, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=14, sizes=[2, 5, 14, 3], strides=[0, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[2, 5, 14, 3], strides=[0, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=98, sizes=[2, 5, 14, 3], strides=[0, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[2, 3, 14, 3], strides=[0, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=854, sizes=[2, 3, 14, 3], strides=[0, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=924, sizes=[2, 2, 14, 3], strides=[0, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=938, sizes=[2, 2, 14, 3], strides=[0, 168, 1, 28]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # CHECK: Pass!
     print("Pass!")
@@ -527,258 +515,253 @@ def step_tiler_partial_both():
     tensor_dims = (3 * 5 * 3, 2 * 7 * 2)
 
     # all row major
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .group((5, 7), steps=(2, 3), partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)),
+        (5, 7),
+        steps=(2, 3),
+        partial=True,
     )
     assert len(tiles) == 12
-    reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=4, sizes=[5, 4, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=88, sizes=[5, 4, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[3, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=842, sizes=[3, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=844, sizes=[3, 4, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=924, sizes=[2, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=926, sizes=[2, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=928, sizes=[2, 4, 3, 2], strides=[168, 6, 28, 1]
-            ),
-        ]
-    )
+    reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=4, sizes=[5, 4, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=88, sizes=[5, 4, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[3, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=842, sizes=[3, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=844, sizes=[3, 4, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=924, sizes=[2, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=926, sizes=[2, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=928, sizes=[2, 4, 3, 2], strides=[168, 6, 28, 1]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # tile col major
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .permute_tile((1, 0))
-        .group((5, 7), steps=(2, 3), partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)).permute((0, 1, 3, 2)),
+        (5, 7),
+        steps=(2, 3),
+        partial=True,
     )
     assert len(tiles) == 12
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 5, 2, 3], strides=[168, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 5, 2, 3], strides=[168, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=4, sizes=[5, 4, 2, 3], strides=[168, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 5, 2, 3], strides=[168, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 5, 2, 3], strides=[168, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=88, sizes=[5, 4, 2, 3], strides=[168, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[3, 5, 2, 3], strides=[168, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=842, sizes=[3, 5, 2, 3], strides=[168, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=844, sizes=[3, 4, 2, 3], strides=[168, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=924, sizes=[2, 5, 2, 3], strides=[168, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=926, sizes=[2, 5, 2, 3], strides=[168, 6, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=928, sizes=[2, 4, 2, 3], strides=[168, 6, 1, 28]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 5, 2, 3], strides=[168, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 5, 2, 3], strides=[168, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=4, sizes=[5, 4, 2, 3], strides=[168, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 5, 2, 3], strides=[168, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 5, 2, 3], strides=[168, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=88, sizes=[5, 4, 2, 3], strides=[168, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[3, 5, 2, 3], strides=[168, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=842, sizes=[3, 5, 2, 3], strides=[168, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=844, sizes=[3, 4, 2, 3], strides=[168, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=924, sizes=[2, 5, 2, 3], strides=[168, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=926, sizes=[2, 5, 2, 3], strides=[168, 6, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=928, sizes=[2, 4, 2, 3], strides=[168, 6, 1, 28]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # tile group col major
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .group((5, 7), steps=(2, 3), order="col", partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)),
+        (5, 7),
+        steps=(2, 3),
+        group_order="col",
+        partial=True,
     )
     assert len(tiles) == 12
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[6, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[6, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=4, sizes=[4, 5, 3, 2], strides=[6, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[6, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[6, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=88, sizes=[4, 5, 3, 2], strides=[6, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[5, 3, 3, 2], strides=[6, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=842, sizes=[5, 3, 3, 2], strides=[6, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=844, sizes=[4, 3, 3, 2], strides=[6, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=924, sizes=[5, 2, 3, 2], strides=[6, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=926, sizes=[5, 2, 3, 2], strides=[6, 168, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=928, sizes=[4, 2, 3, 2], strides=[6, 168, 28, 1]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[6, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[6, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=4, sizes=[4, 5, 3, 2], strides=[6, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[6, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[6, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=88, sizes=[4, 5, 3, 2], strides=[6, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[5, 3, 3, 2], strides=[6, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=842, sizes=[5, 3, 3, 2], strides=[6, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=844, sizes=[4, 3, 3, 2], strides=[6, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=924, sizes=[5, 2, 3, 2], strides=[6, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=926, sizes=[5, 2, 3, 2], strides=[6, 168, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=928, sizes=[4, 2, 3, 2], strides=[6, 168, 28, 1]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # iter col major
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .order("col")
-        .group((5, 7), steps=(2, 3), partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)),
+        (5, 7),
+        steps=(2, 3),
+        order="col",
+        partial=True,
     )
     assert len(tiles) == 12
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[3, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=924, sizes=[2, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=842, sizes=[3, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=926, sizes=[2, 5, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=4, sizes=[5, 4, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=88, sizes=[5, 4, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=844, sizes=[3, 4, 3, 2], strides=[168, 6, 28, 1]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=928, sizes=[2, 4, 3, 2], strides=[168, 6, 28, 1]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[3, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=924, sizes=[2, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=842, sizes=[3, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=926, sizes=[2, 5, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=4, sizes=[5, 4, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=88, sizes=[5, 4, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=844, sizes=[3, 4, 3, 2], strides=[168, 6, 28, 1]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=928, sizes=[2, 4, 3, 2], strides=[168, 6, 28, 1]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # all col major
-    tiles = (
-        TensorAccessPattern.full(tensor_dims)
-        .tile((3, 2))
-        .permute_tile((1, 0))
-        .order("col")
-        .group((5, 7), steps=(2, 3), order="col", partial=True)
+    tiles = grid_steps(
+        TensorAccessPattern.full(tensor_dims).tile((3, 2)).permute((0, 1, 3, 2)),
+        (5, 7),
+        steps=(2, 3),
+        order="col",
+        group_order="col",
+        partial=True,
     )
     assert len(tiles) == 12
-    reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
-        [
-            TensorAccessPattern(
-                tensor_dims, offset=0, sizes=[5, 5, 2, 3], strides=[6, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=84, sizes=[5, 5, 2, 3], strides=[6, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=840, sizes=[5, 3, 2, 3], strides=[6, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=924, sizes=[5, 2, 2, 3], strides=[6, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=2, sizes=[5, 5, 2, 3], strides=[6, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=86, sizes=[5, 5, 2, 3], strides=[6, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=842, sizes=[5, 3, 2, 3], strides=[6, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=926, sizes=[5, 2, 2, 3], strides=[6, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=4, sizes=[4, 5, 2, 3], strides=[6, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=88, sizes=[4, 5, 2, 3], strides=[6, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=844, sizes=[4, 3, 2, 3], strides=[6, 168, 1, 28]
-            ),
-            TensorAccessPattern(
-                tensor_dims, offset=928, sizes=[4, 2, 2, 3], strides=[6, 168, 1, 28]
-            ),
-        ]
-    )
+    reference_tiles = reference_tiles = [
+        TensorAccessPattern(
+            tensor_dims, offset=0, sizes=[5, 5, 2, 3], strides=[6, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=84, sizes=[5, 5, 2, 3], strides=[6, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=840, sizes=[5, 3, 2, 3], strides=[6, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=924, sizes=[5, 2, 2, 3], strides=[6, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=2, sizes=[5, 5, 2, 3], strides=[6, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=86, sizes=[5, 5, 2, 3], strides=[6, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=842, sizes=[5, 3, 2, 3], strides=[6, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=926, sizes=[5, 2, 2, 3], strides=[6, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=4, sizes=[4, 5, 2, 3], strides=[6, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=88, sizes=[4, 5, 2, 3], strides=[6, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=844, sizes=[4, 3, 2, 3], strides=[6, 168, 1, 28]
+        ),
+        TensorAccessPattern(
+            tensor_dims, offset=928, sizes=[4, 2, 2, 3], strides=[6, 168, 1, 28]
+        ),
+    ]
     assert tiles == reference_tiles
-    assert tiles.compare_access_orders(reference_tiles)
+    assert all(a.compare_access_orders(b) for a, b in zip(tiles, reference_tiles))
 
     # CHECK: Pass!
     print("Pass!")

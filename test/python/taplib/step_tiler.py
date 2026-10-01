@@ -3,7 +3,7 @@
 
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
-from util import construct_test
+from util import construct_test, grid_steps, accesses
 
 # RUN: %python %s | FileCheck %s
 
@@ -12,7 +12,9 @@ from util import construct_test
 @construct_test
 def step_tiler():
     # Start with Step == (1, 1)
-    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((2, 2), steps=(1, 1))
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)), (2, 2), steps=(1, 1)
+    )
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[64, 2, 32, 1]
@@ -58,12 +60,14 @@ def step_tiler():
         [ 904,  905,  908,  909,  920,  921,  924,  925,  936,  937,  940,  941,  952,  953,  956,  957,  968,  969,  972,  973,  984,  985,  988,  989, 1000, 1001, 1004, 1005, 1016, 1017, 1020, 1021],
         [ 906,  907,  910,  911,  922,  923,  926,  927,  938,  939,  942,  943,  954,  955,  958,  959,  970,  971,  974,  975,  986,  987,  990,  991, 1002, 1003, 1006, 1007, 1018, 1019, 1022, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
     # Step == (2, 1)
-    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 1))
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)), (2, 2), steps=(2, 1)
+    )
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[128, 2, 32, 1]
@@ -112,12 +116,14 @@ def step_tiler():
         [ 904,  905,  908,  909,  920,  921,  924,  925,  936,  937,  940,  941,  952,  953,  956,  957,  968,  969,  972,  973,  984,  985,  988,  989, 1000, 1001, 1004, 1005, 1016, 1017, 1020, 1021],
         [ 906,  907,  910,  911,  922,  923,  926,  927,  938,  939,  942,  943,  954,  955,  958,  959,  970,  971,  974,  975,  986,  987,  990,  991, 1002, 1003, 1006, 1007, 1018, 1019, 1022, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
     # Step == (1, 2)
-    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((2, 2), steps=(1, 2))
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)), (2, 2), steps=(1, 2)
+    )
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[64, 4, 32, 1]
@@ -166,12 +172,14 @@ def step_tiler():
         [ 904,  905,  920,  921,  908,  909,  924,  925,  936,  937,  952,  953,  940,  941,  956,  957,  968,  969,  984,  985,  972,  973,  988,  989, 1000, 1001, 1016, 1017, 1004, 1005, 1020, 1021],
         [ 906,  907,  922,  923,  910,  911,  926,  927,  938,  939,  954,  955,  942,  943,  958,  959,  970,  971,  986,  987,  974,  975,  990,  991, 1002, 1003, 1018, 1019, 1006, 1007, 1022, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
     # Step == (2, 2)
-    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 2))
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)), (2, 2), steps=(2, 2)
+    )
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[128, 4, 32, 1]
@@ -220,12 +228,14 @@ def step_tiler():
         [ 904,  905,  920,  921,  908,  909,  924,  925,  936,  937,  952,  953,  940,  941,  956,  957,  968,  969,  984,  985,  972,  973,  988,  989, 1000, 1001, 1016, 1017, 1004, 1005, 1020, 1021],
         [ 906,  907,  922,  923,  910,  911,  926,  927,  938,  939,  954,  955,  942,  943,  958,  959,  970,  971,  986,  987,  974,  975,  990,  991, 1002, 1003, 1018, 1019, 1006, 1007, 1022, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
     # Step == (2, 2)
-    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((2, 2), steps=(2, 2))
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)), (2, 2), steps=(2, 2)
+    )
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[2, 2, 2, 2], strides=[128, 4, 32, 1]
@@ -274,15 +284,15 @@ def step_tiler():
         [ 904,  905,  920,  921,  908,  909,  924,  925,  936,  937,  952,  953,  940,  941,  956,  957,  968,  969,  984,  985,  972,  973,  988,  989, 1000, 1001, 1016, 1017, 1004, 1005, 1020, 1021],
         [ 906,  907,  922,  923,  910,  911,  926,  927,  938,  939,  954,  955,  942,  943,  958,  959,  970,  971,  986,  987,  974,  975,  990,  991, 1002, 1003, 1018, 1019, 1006, 1007, 1022, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
     # Repeat across column/row
-    tiles = (
-        TensorAccessPattern.full((32, 32))
-        .tile((2, 2))
-        .group((32 // 4, 32 // 4), steps=(2, 2))
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)),
+        (32 // 4, 32 // 4),
+        steps=(2, 2),
     )
     assert len(tiles) == 4  # (32//(2*(32//4))) * (32//(2*(32//4)))
     assert tiles[0] == TensorAccessPattern(
@@ -332,15 +342,13 @@ def step_tiler():
         [ 736,  737,  992,  993,  740,  741,  996,  997,  744,  745, 1000, 1001,  748,  749, 1004, 1005,  752,  753, 1008, 1009,  756,  757, 1012, 1013,  760,  761, 1016, 1017,  764,  765, 1020, 1021],
         [ 738,  739,  994,  995,  742,  743,  998,  999,  746,  747, 1002, 1003,  750,  751, 1006, 1007,  754,  755, 1010, 1011,  758,  759, 1014, 1015,  762,  763, 1018, 1019,  766,  767, 1022, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
     # Repeat one dimension
-    tiles = (
-        TensorAccessPattern.full((32, 32))
-        .tile((2, 2))
-        .group((1, 32 // 4), steps=(2, 2))
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)), (1, 32 // 4), steps=(2, 2)
     )
     assert len(tiles) == (32 // (2 * 1)) * (32 // (2 * (32 // 4)))
     assert tiles[0] == TensorAccessPattern(
@@ -390,15 +398,13 @@ def step_tiler():
         [ 960,  961,  992,  993,  964,  965,  996,  997,  968,  969, 1000, 1001,  972,  973, 1004, 1005,  976,  977, 1008, 1009,  980,  981, 1012, 1013,  984,  985, 1016, 1017,  988,  989, 1020, 1021],
         [ 962,  963,  994,  995,  966,  967,  998,  999,  970,  971, 1002, 1003,  974,  975, 1006, 1007,  978,  979, 1010, 1011,  982,  983, 1014, 1015,  986,  987, 1018, 1019,  990,  991, 1022, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
     # Repeat other dimension
-    tiles = (
-        TensorAccessPattern.full((32, 32))
-        .tile((2, 2))
-        .group((32 // 4, 1), steps=(2, 2))
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)), (32 // 4, 1), steps=(2, 2)
     )
     assert len(tiles) == (32 // (2 * 1)) * (32 // (2 * (32 // 4)))
     assert tiles[0] == TensorAccessPattern(
@@ -448,12 +454,14 @@ def step_tiler():
         [ 540,  541,  572,  573,  604,  605,  636,  637,  668,  669,  700,  701,  732,  733,  764,  765,  796,  797,  828,  829,  860,  861,  892,  893,  924,  925,  956,  957,  988,  989, 1020, 1021],
         [ 542,  543,  574,  575,  606,  607,  638,  639,  670,  671,  702,  703,  734,  735,  766,  767,  798,  799,  830,  831,  862,  863,  894,  895,  926,  927,  958,  959,  990,  991, 1022, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
     # Different repeats and steps
-    tiles = TensorAccessPattern.full((32, 32)).tile((2, 2)).group((8, 2), steps=(2, 4))
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)), (8, 2), steps=(2, 4)
+    )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
         (32, 32), offset=0, sizes=[8, 2, 2, 2], strides=[128, 8, 32, 1]
@@ -502,16 +510,15 @@ def step_tiler():
         [ 568,  569,  632,  633,  696,  697,  760,  761,  572,  573,  636,  637,  700,  701,  764,  765,  824,  825,  888,  889,  952,  953, 1016, 1017,  828,  829,  892,  893,  956,  957, 1020, 1021],
         [ 570,  571,  634,  635,  698,  699,  762,  763,  574,  575,  638,  639,  702,  703,  766,  767,  826,  827,  890,  891,  954,  955, 1018, 1019,  830,  831,  894,  895,  958,  959, 1022, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
     # Tile col major
-    tiles = (
-        TensorAccessPattern.full((32, 32))
-        .tile((2, 2))
-        .permute_tile((1, 0))
-        .group((8, 2), steps=(2, 4))
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)).permute((0, 1, 3, 2)),
+        (8, 2),
+        steps=(2, 4),
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -561,16 +568,16 @@ def step_tiler():
         [ 568,  570,  632,  634,  696,  698,  760,  762,  572,  574,  636,  638,  700,  702,  764,  766,  824,  826,  888,  890,  952,  954, 1016, 1018,  828,  830,  892,  894,  956,  958, 1020, 1022],
         [ 569,  571,  633,  635,  697,  699,  761,  763,  573,  575,  637,  639,  701,  703,  765,  767,  825,  827,  889,  891,  953,  955, 1017, 1019,  829,  831,  893,  895,  957,  959, 1021, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
     # Tile col major and tile group col major
-    tiles = (
-        TensorAccessPattern.full((32, 32))
-        .tile((2, 2))
-        .permute_tile((1, 0))
-        .group((8, 2), steps=(2, 4), order="col")
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)).permute((0, 1, 3, 2)),
+        (8, 2),
+        steps=(2, 4),
+        group_order="col",
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -620,17 +627,17 @@ def step_tiler():
         [ 540,  542,  604,  606,  668,  670,  732,  734,  572,  574,  636,  638,  700,  702,  764,  766,  796,  798,  860,  862,  924,  926,  988,  990,  828,  830,  892,  894,  956,  958, 1020, 1022],
         [ 541,  543,  605,  607,  669,  671,  733,  735,  573,  575,  637,  639,  701,  703,  765,  767,  797,  799,  861,  863,  925,  927,  989,  991,  829,  831,  893,  895,  957,  959, 1021, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
     # Tile col major and tile group col major and iter col major
-    tiles = (
-        TensorAccessPattern.full((32, 32))
-        .tile((2, 2))
-        .permute_tile((1, 0))
-        .order("col")
-        .group((8, 2), steps=(2, 4), order="col")
+    tiles = grid_steps(
+        TensorAccessPattern.full((32, 32)).tile((2, 2)).permute((0, 1, 3, 2)),
+        (8, 2),
+        steps=(2, 4),
+        order="col",
+        group_order="col",
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -680,7 +687,7 @@ def step_tiler():
         [  92,   94,  220,  222,  348,  350,  476,  478,  124,  126,  252,  254,  380,  382,  508,  510,  604,  606,  732,  734,  860,  862,  988,  990,  636,  638,  764,  766,  892,  894, 1020, 1022],
         [  93,   95,  221,  223,  349,  351,  477,  479,  125,  127,  253,  255,  381,  383,  509,  511,  605,  607,  733,  735,  861,  863,  989,  991,  637,  639,  765,  767,  893,  895, 1021, 1023]])
     # fmt: on
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_order == ref_access_order_tensor).all()
     assert (access_count == 1).all()
 
@@ -691,187 +698,35 @@ def step_tiler():
 # CHECK-LABEL: step_tiler_invalid
 @construct_test
 def step_tiler_invalid():
+    for tensor_dims, tile_dims, why in (
+        ((), (3, 2), "Bad tensor dims"),
+        ((10, 9, 4), (3, 2), "Too many tensor dims"),
+        ((9, 4), (3, -1), "Bad tile dims"),
+        ((9, 4), (3,), "Too few tile dims"),
+        ((9, 4), (1, 1, 1), "Too many tile dims"),
+        ((9, 4), (4, 2), "Indivisible tile (height)"),
+        ((9, 4), (3, 3), "Indivisible tile (width)"),
+    ):
+        try:
+            TensorAccessPattern.full(tensor_dims).tile(tile_dims)
+            raise AssertionError(f"{why}, should fail.")
+        except ValueError:
+            pass
+    tiles = TensorAccessPattern.full((18, 8)).tile((3, 2))
+    for key, why in (
+        ((slice(0, 4, -1), 0), "Bad tile step"),
+        ((0, 0, 0, 0, 0), "Too many indices"),
+        ((6, 0), "Tile index out of range"),
+    ):
+        try:
+            tiles[key]
+            raise AssertionError(f"{why}, should fail.")
+        except (ValueError, IndexError):
+            pass
     try:
-        tiles = (
-            TensorAccessPattern.full(())
-            .tile((3, 2))
-            .permute_tile((1, 0))
-            .group((1, 1), steps=(1, 1))
-            .repeat(5)
-        )
-        raise ValueError("Bad tensor dims, should fail.")
+        tiles.repeat(0)
+        raise AssertionError("Invalid repeat.")
     except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((10, 9, 4))
-            .tile((3, 2))
-            .permute_tile((1, 0))
-            .group((1, 1), steps=(1, 1))
-            .repeat(5)
-        )
-        raise ValueError("Too many tensor dims, should fail.")
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((9, 4))
-            .tile((3, -1))
-            .permute_tile((1, 0))
-            .group((1, 1), steps=(1, 1))
-            .repeat(5)
-        )
-        raise ValueError("Bad tile dims, should fail.")
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((9, 4))
-            .tile((3,))
-            .permute_tile((1, 0))
-            .group((1, 1), steps=(1, 1))
-            .repeat(5)
-        )
-        raise ValueError("Too few tile dims, should fail.")
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((9, 4))
-            .tile((1, 1, 1))
-            .permute_tile((1, 0))
-            .group((1, 1), steps=(1, 1))
-            .repeat(5)
-        )
-        raise ValueError("Too many tile dims, should fail.")
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((9, 4))
-            .tile((3, 2))
-            .permute_tile((1, 0))
-            .group((1, 1), steps=(1, 1))
-            .repeat(0)
-        )
-        raise ValueError("Invalid repeat.")
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((9, 4))
-            .tile((4, 2))
-            .permute_tile((1, 0))
-            .group((1, 1), steps=(1, 1))
-            .repeat(5)
-        )
-        raise ValueError("Indivisible tile (height)")
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((9, 4))
-            .tile((3, 3))
-            .permute_tile((1, 0))
-            .group((1, 1), steps=(1, 1))
-            .repeat(5)
-        )
-        raise ValueError("Indivisible tile (width)")
-    except ValueError:
-        # good
         pass
 
-    try:
-        tiles = (
-            TensorAccessPattern.full((9, 4))
-            .tile((3, 2))
-            .permute_tile((1, 0))
-            .group((1,), steps=(1, 1))
-            .repeat(5)
-        )
-        raise ValueError("Too few tile group dims, should fail.")
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((9, 4))
-            .tile((3, 2))
-            .permute_tile((1, 0))
-            .group((1, -1), steps=(1, 1))
-            .repeat(5)
-        )
-        raise ValueError("Bad tile group dims, should fail.")
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((9, 4))
-            .tile((3, 2))
-            .permute_tile((1, 0))
-            .group((1, 1, 1), steps=(1, 1))
-        )
-        raise ValueError("Too many tile group dims, should fail.")
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((18, 8))
-            .tile((3, 2))
-            .permute_tile((1, 0))
-            .group((2, 3), steps=(1, 1))
-        )
-        raise ValueError(
-            "Indivisible by tile repeat width (but without allow_partial)."
-        )
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((18, 8))
-            .tile((3, 2))
-            .permute_tile((1, 0))
-            .group((4, 2), steps=(1, 1))
-        )
-        raise ValueError(
-            "Indivisible by tile repeat height (but without allow_partial)."
-        )
-    except ValueError:
-        # good
-        pass
-    try:
-        # (2, 2) divides the 6 x 4 tile grid, so only the step is bad.
-        tiles = (
-            TensorAccessPattern.full((18, 8))
-            .tile((3, 2))
-            .permute_tile((1, 0))
-            .group((2, 2), steps=(1, -1))
-        )
-        raise ValueError("Bad tile step dims")
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = (
-            TensorAccessPattern.full((18, 8))
-            .tile((3, 2))
-            .permute_tile((1, 0))
-            .group((4, 2), steps=(1,))
-        )
-        raise ValueError("Too few tile step dims")
-    except ValueError:
-        # good
-        pass
-
-    # CHECK: Pass!
     print("Pass!")

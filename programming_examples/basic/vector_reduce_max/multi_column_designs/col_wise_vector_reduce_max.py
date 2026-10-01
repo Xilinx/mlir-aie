@@ -160,9 +160,8 @@ def vector_reduce_max(
         my_workers.append(Worker(core_body, fn_args=fifo_args, trace=enable_trace))
 
     # One TAP per core — each reads a contiguous ``chunk`` of the input
-    # tensor.  Equivalent to row-major iteration of ``(1, chunk)`` tiles
-    # across the ``(1, in_num_elements)`` tensor.
-    taps = TensorAccessPattern.full((1, in_num_elements)).tile((1, chunk))
+    # tensor.
+    taps = TensorAccessPattern.full((1, in_num_elements)).partition(num_cores)
 
     in_prods = [of_in1s[i].prod() for i in range(num_cores)]
     out_cons = of_outs[num_cores - 1].cons()

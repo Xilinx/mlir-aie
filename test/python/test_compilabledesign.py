@@ -12,6 +12,7 @@ test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
 import dataclasses
+import importlib
 import json
 import os
 import subprocess
@@ -24,7 +25,7 @@ import pytest
 
 import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
-from aie.iron import ObjectFifo, Program, Runtime, Worker, kernels
+from aie.iron import kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
@@ -303,95 +304,122 @@ def test_hash_is_stable_across_two_constructions():
     assert hash(d1) == hash(d2)
 
 
-_SCALE = {
-    "depth": 2,
-    "source": "void scale(int *a, int *b) {}",
-    "flags": [],
-    "names": ("in", "out"),
+_SCALE_HELPER = """
+DEPTH = 2
+
+
+def depth():
+    return DEPTH
+"""
+
+_SCALE_DESIGN = """
+import numpy as np
+
+import scale_flags
+from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron.device import NPU2Col1
+from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import CompileTime, In, Out
+from scale_helper import depth
+
+SOURCE = "void scale(int *a, int *b) {}"
+
+
+def scale(a: In, b: Out, *, N: CompileTime[int]):
+    ty = np.ndarray[(N,), np.dtype[np.int32]]
+    kernel = ExternalFunction(
+        "scale",
+        object_file_name="scale.o",
+        source_string=SOURCE,
+        arg_types=[ty, ty],
+        compile_flags=scale_flags.FLAGS,
+    )
+    of_in = ObjectFifo(ty, depth=depth())
+    of_out = ObjectFifo(ty)
+
+    def core_fn(of_in, of_out, kernel):
+        elem_in = of_in.acquire(1)
+        elem_out = of_out.acquire(1)
+        kernel(elem_in, elem_out)
+        of_in.release(1)
+        of_out.release(1)
+
+    worker = Worker(core_fn, [of_in.cons(), of_out.prod(), kernel])
+
+    def sequence(a, b, a_in, b_out):
+        a_in.fill(a)
+        b_out.drain(b, wait=True)
+
+    rt = Runtime(sequence, [ty, ty, of_in.prod(), of_out.cons()])
+    return Program(NPU2Col1(), rt, workers=[worker]).resolve_program()
+"""
+
+_SCALE_FILES = {
+    "scale_design": _SCALE_DESIGN,
+    "scale_helper": _SCALE_HELPER,
+    "scale_flags": "FLAGS = []\n",
 }
 
 
-def _scale_depth():
-    return _SCALE["depth"]
-
-
-def _scale_gen():
-    def scale(a: In, b: Out, *, N: CompileTime[int]):
-        ty = np.ndarray[(N,), np.dtype[np.int32]]
-        kernel = ExternalFunction(
-            "scale",
-            object_file_name="scale.o",
-            source_string=_SCALE["source"],
-            arg_types=[ty, ty],
-            compile_flags=list(_SCALE["flags"]),
-        )
-        name_in, name_out = _SCALE["names"]
-        of_in = ObjectFifo(ty, depth=_scale_depth(), name=name_in)
-        of_out = ObjectFifo(ty, depth=2, name=name_out)
-
-        def core_fn(of_in, of_out, kernel):
-            elem_in = of_in.acquire(1)
-            elem_out = of_out.acquire(1)
-            kernel(elem_in, elem_out)
-            of_in.release(1)
-            of_out.release(1)
-
-        worker = Worker(core_fn, [of_in.cons(), of_out.prod(), kernel])
-
-        def sequence(a, b, a_in, b_out):
-            a_in.fill(a)
-            b_out.drain(b, wait=True)
-
-        rt = Runtime(sequence, [ty, ty, of_in.prod(), of_out.cons()])
-        return Program(NPU2Col1(), rt, workers=[worker]).resolve_program()
-
-    return scale
-
-
 @pytest.fixture
-def scale_key(monkeypatch):
-    """The artifact key and MLIR of a fresh `_scale_gen` design for a `_SCALE` edit."""
-    set_current_device(NPU2Col1())
-    gen = _scale_gen()
-
-    def key(**edit):
-        for name, value in edit.items():
-            monkeypatch.setitem(_SCALE, name, value)
-        design = CompilableDesign(gen, compile_kwargs={"N": 64})
-        key = design._compute_cache_hash(include_mlir=True)
-        return key, design._compute_cache_hash(), design._generated[0]
-
-    yield key
-    set_current_device(None)
-
-
-def test_artifact_key_covers_what_the_generator_calls(scale_key):
-    """A helper the generator calls changes the design but not its code."""
-    key, recipe, mlir = scale_key()
-    assert scale_key() == (key, recipe, mlir)
-    new_key, new_recipe, new_mlir = scale_key(depth=3)
-    assert new_recipe == recipe and new_mlir != mlir
-    assert new_key != key
+def scale_design(tmp_path):
+    """A design whose generator, helper and kernel flags live in their own module files."""
+    for name, text in _SCALE_FILES.items():
+        (tmp_path / f"{name}.py").write_text(text)
+    sys.path.insert(0, str(tmp_path))
+    try:
+        yield tmp_path, importlib.import_module("scale_design").scale
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in _SCALE_FILES:
+            sys.modules.pop(name, None)
 
 
 @pytest.mark.parametrize(
-    "edit",
-    [{"source": "void scale(int *a, int *b) { *b = *a; }"}, {"flags": ["-O1"]}],
+    "module, old, new",
+    [
+        ("scale_helper", "DEPTH = 2", "DEPTH = 4  # deeper"),
+        ("scale_flags", "FLAGS = []", 'FLAGS = ["-O1"]'),
+        (
+            "scale_design",
+            "void scale(int *a, int *b) {}",
+            "void scale(int *a, int *b) { *b = *a; }",
+        ),
+    ],
 )
-def test_artifact_key_covers_external_kernel_recipes(scale_key, edit):
-    """Same MLIR and object name, different kernel source or flags."""
-    key, recipe, mlir = scale_key()
-    new_key, new_recipe, new_mlir = scale_key(**edit)
-    assert new_recipe == recipe and new_mlir == mlir
-    assert new_key != key
+def test_cache_key_covers_the_sources_the_generator_reaches(
+    scale_design, module, old, new
+):
+    """An edit to a module the generator reaches moves the key; undoing it restores it."""
+    tmp_path, gen = scale_design
+
+    def key():
+        return CompilableDesign(gen, compile_kwargs={"N": 64})._compute_cache_hash()
+
+    path = tmp_path / f"{module}.py"
+    original = path.read_text()
+    before = key()
+    path.write_text(original.replace(old, new))
+    assert key() != before
+    path.write_text(original)
+    assert key() == before
 
 
-def test_artifact_key_ignores_default_name_numbering(scale_key):
-    """Unnamed fifos number differently each generation; the key does not."""
-    key, _, mlir = scale_key(names=(None, None))
-    again, _, mlir_again = scale_key()
-    assert mlir_again != mlir
-    assert again == key
+def test_cache_key_does_not_generate_the_design():
+    def scale(a: In, *, N: CompileTime[int]):
+        raise AssertionError("the key generated the design")
+
+    CompilableDesign(scale, compile_kwargs={"N": 64})._compute_cache_hash()
+
+
+def test_unnamed_fifos_are_named_per_program(scale_design, npu2_device):
+    """The same design generates the same names however many came before it."""
+    _, gen = scale_design
+    first, second = (
+        CompilableDesign(gen, compile_kwargs={"N": 64})._generated[0] for _ in range(2)
+    )
+    assert first == second
+    assert "aie.objectfifo @of0(" in first and "aie.objectfifo @of1(" in first
 
 
 def test_hash_differs_for_different_kwargs_value():
@@ -603,13 +631,34 @@ def test_dispatch_specialization_keyword_only_binding():
         design.split_runtime_args(("tensor", 6), {})
 
 
-def test_tensor_types_cannot_prebind_runtime_tensor_parameters():
-    def gen(a: In, *, count: DispatchTime[np.int32]):
-        pass
+def test_tensor_type_binds_and_keys_the_design():
+    observed = []
 
-    tensor_type = np.ndarray[(16, 32), np.dtype[np.int16]]
-    with pytest.raises(TypeError, match="runtime tensors"):
-        CompilableDesign(gen, compile_kwargs={"a": tensor_type})
+    def gen(a: In):
+        observed.append(a)
+
+    small = np.ndarray[(16, 32), np.dtype[np.int16]]
+    large = np.ndarray[(32, 32), np.dtype[np.int16]]
+    design = CompilableDesign(gen).specialize(a=small)
+    design.generate_mlir()
+    assert observed == [small]
+    assert design.split_runtime_args(("tensor",), {}) == (["tensor"], {})
+    assert (
+        design._compute_cache_hash()
+        == CompilableDesign(gen, compile_kwargs={"a": small})._compute_cache_hash()
+    )
+    assert (
+        design._compute_cache_hash() != design.specialize(a=large)._compute_cache_hash()
+    )
+    assert design._compute_cache_hash() != CompilableDesign(gen)._compute_cache_hash()
+
+
+def test_unbound_tensor_parameter_names_specialize():
+    def gen(a: In):
+        a.shape
+
+    with pytest.raises(RuntimeError, match=r"specialize\(a=np.ndarray"):
+        CompilableDesign(gen).generate_mlir()
 
 
 def test_dispatch_keyword_only_specialization_generates_constant():
@@ -1384,7 +1433,7 @@ def test_generate_mlir_unplaced_style_uses_return_value():
 
 
 def test_construction_rejects_tensor_name_in_compile_kwargs():
-    """compile_kwargs must not contain names annotated as In/Out/InOut.
+    """compile_kwargs may hold only a type for a name annotated In/Out/InOut.
 
     Rejected at construction, not generation: `a` is a real parameter, so the
     design would otherwise be hashable and the misplaced key would reach the
@@ -2173,7 +2222,7 @@ def test_dispatch_library_selected_once_per_compile(
 
     design = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
     monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
-    monkeypatch.setattr(design, "_compute_cache_hash", lambda **_kw: "cached")
+    monkeypatch.setattr(design, "_compute_cache_hash", lambda: "cached")
     directory = tmp_path / "cached"
     directory.mkdir()
     if cache_hit:

@@ -54,6 +54,7 @@ from ..extras.util import (
     get_user_code_loc,
     region_adder,
 )
+from ..helpers.taplib import TensorAccessPattern
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
 from ..ir import (
@@ -614,6 +615,33 @@ class external_buffer(MemRefValue):
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
 class object_fifo(ObjectFifoCreateOp):
+    @staticmethod
+    def stream_dims(dims, what, can_pad=False):
+        """Return `dims` as the `(size, stride)` pairs a DMA walks each transfer by.
+
+        `dims` is the pair list itself or a TensorAccessPattern over what one
+        transfer moves: an object, or a segment of one when a link joins or
+        distributes it. The DMA starts each walk at the transfer's first
+        element, so a pattern must have offset 0.
+
+        Raises:
+            ValueError: If the pattern is staged, has a nonzero offset, or
+                pads where `can_pad` is False.
+        """
+        if not isinstance(dims, TensorAccessPattern):
+            return [] if dims is None else dims
+        if dims.is_symbolic:
+            raise ValueError(f"{what} {dims!r} must have compile-time values")
+        if dims.offset != 0:
+            raise ValueError(
+                f"{what} {dims!r} has offset {dims.offset}, but an objectfifo "
+                "walks each transfer from its first element; apply the offset "
+                "where the buffer is addressed instead"
+            )
+        if dims.padding is not None and not can_pad:
+            raise ValueError(f"only a producer's walk can pad, but {what} is {dims!r}")
+        return list(dims.transformation_dims)
+
     def __init__(
         self,
         name,
@@ -646,6 +674,22 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer = [[] for _ in range(len(consumerTiles))]
         if dimensionsToStream is None:
             dimensionsToStream = []
+        if isinstance(dimensionsToStream, TensorAccessPattern) and (
+            dimensionsToStream.padding is not None
+        ):
+            if padDimensions is not None:
+                raise ValueError(
+                    "dimensionsToStream is a padded TensorAccessPattern; "
+                    "do not also pass padDimensions"
+                )
+            padDimensions = list(dimensionsToStream.padding)
+        dimensionsToStream = self.stream_dims(
+            dimensionsToStream, "dimensionsToStream", can_pad=True
+        )
+        dimensionsFromStreamPerConsumer = [
+            self.stream_dims(dims, "dimensionsFromStreamPerConsumer")
+            for dims in dimensionsFromStreamPerConsumer
+        ]
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
         consumerElemType = None
         if self.consumer_datatype is not None:

@@ -276,3 +276,33 @@ module {
     }
   }
 }
+
+
+// -----
+
+// Test 8: MERGE — 72 iterations exceed the 64-iteration slot, but d2 continues
+// d1 contiguously (221184 = 96 * 2304). Merging them frees the slot, so the BD
+// keeps one invocation per run and the 72 runs the queue pushed shrink to 1.
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=MERGE
+
+// MERGE-LABEL: @merge_task_bd
+// MERGE:         aiex.dma_configure_task_for @a {
+// MERGE:           aie.dma_bd
+// MERGE-SAME:          len = 1769472 sizes = [1, 72, 768, 32] strides = [0, 32, 2304, 1]
+// MERGE:         } {issue_token = true}
+module {
+  aie.device(npu2) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @merge_task_bd(%in: memref<1769472xf32>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<1769472xf32> offset = 0 len = 24576 sizes = [72, 8, 96, 32] strides = [32, 221184, 2304, 1])
+        aie.end
+      } {issue_token = true, repeat_count = 71 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}

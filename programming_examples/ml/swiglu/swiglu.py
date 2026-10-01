@@ -58,7 +58,6 @@ def swiglu(
     line_type = np.ndarray[(line_size,), np.dtype[xfr_dtype]]
     transfer_type = np.ndarray[(size,), np.dtype[xfr_dtype]]
     transfer_type_wts = np.ndarray[(2 * size,), np.dtype[xfr_dtype]]
-    chunk = size // num_columns
 
     of_ins = [ObjectFifo(line_type, name=f"in{i}") for i in range(num_columns)]
     of_wts = [ObjectFifo(line_type, depth=4, name=f"w{i}") for i in range(num_columns)]
@@ -88,8 +87,8 @@ def swiglu(
         for i in range(num_columns)
     ]
 
-    taps = TensorAccessPattern.full((1, size)).tile((1, chunk))
-    taps_wts = TensorAccessPattern.full((1, 2 * size)).tile((1, 2 * chunk))
+    taps = TensorAccessPattern.full((1, size)).partition(num_columns)
+    taps_wts = TensorAccessPattern.full((1, 2 * size)).partition(num_columns)
 
     def sequence(a, w, b, in_prods, wts_prods, out_conses):
         tg = TaskGroup()

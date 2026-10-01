@@ -132,9 +132,9 @@ def slice_all_integer_key():
     # Names one element, so it is a one-element walk -- not zero dimensions,
     # and not a read through a stand-in array's backing storage.
     tap = TensorAccessPattern.full((1024, 1024, 1024))[1023, 1023, 1023]
-    assert tap.sizes == [1] and tap.strides == [1]
+    assert tap.sizes == (1,) and tap.strides == (1,)
     assert tap.offset == 1023 * 1024 * 1024 + 1023 * 1024 + 1023
     print(f"all-integer key -> offset {tap.offset}, sizes {tap.sizes}")
 
 
-# CHECK: all-integer key -> offset 1073741823, sizes [1]
+# CHECK: all-integer key -> offset 1073741823, sizes (1,)

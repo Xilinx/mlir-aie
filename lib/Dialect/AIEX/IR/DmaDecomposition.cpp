@@ -78,6 +78,39 @@ void divisorsDescending(int64_t n, SmallVectorImpl<int64_t> &out) {
   out.append(small.rbegin(), small.rend());
 }
 
+/// Fold each dimension into the next-inner one where the pair walks memory
+/// contiguously (stride[d+1] == size[d] * stride[d]) and the merged size still
+/// fits the inner slot's wrap. The element order is unchanged; the freed
+/// outermost slot becomes a unit dimension.
+NdDmaPattern mergeContiguousDims(const AIE::AIETargetModel &tm, int col,
+                                 int row, uint64_t elemWidth, uint32_t gran,
+                                 const NdDmaPattern &pattern) {
+  NdDmaPattern merged = pattern;
+  unsigned d = 0;
+  while (d + 1 < kNdDmaDims) {
+    int64_t n = merged.sizes[d] * merged.sizes[d + 1];
+    if (merged.sizes[d] <= 1 || merged.sizes[d + 1] <= 1 ||
+        merged.strides[d] <= 0 ||
+        merged.strides[d + 1] != merged.sizes[d] * merged.strides[d] ||
+        n > maxLegalInputSizeForDim(tm, col, row, d, merged.strides[d],
+                                    elemWidth, gran)) {
+      ++d;
+      continue;
+    }
+    merged.offsets[d] += merged.offsets[d + 1] * merged.sizes[d];
+    merged.sizes[d] = n;
+    for (unsigned i = d + 1; i + 1 < kNdDmaDims; ++i) {
+      merged.sizes[i] = merged.sizes[i + 1];
+      merged.strides[i] = merged.strides[i + 1];
+      merged.offsets[i] = merged.offsets[i + 1];
+    }
+    merged.sizes[kNdDmaDims - 1] = 1;
+    merged.strides[kNdDmaDims - 1] = 0;
+    merged.offsets[kNdDmaDims - 1] = 0;
+  }
+  return merged;
+}
+
 FailureOr<SmallVector<NdDmaPattern>>
 decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
                    const AIE::AIETargetModel &tm, int col, int row,
@@ -282,6 +315,15 @@ AIEX::decomposeNdDmaPattern(Operation *forOp, BaseMemRefType referencedBufType,
   if (patternPassesVerification(forOp, referencedBufType, targetModel, tileCol,
                                 tileRow, pattern))
     return failure();
+
+  DataLayout dataLayout = DataLayout::closest(forOp);
+  NdDmaPattern merged = mergeContiguousDims(
+      targetModel, tileCol, tileRow,
+      dataLayout.getTypeSizeInBits(referencedBufType.getElementType()),
+      targetModel.getAddressGenGranularity(), pattern);
+  if (patternPassesVerification(forOp, referencedBufType, targetModel, tileCol,
+                                tileRow, merged))
+    return SmallVector<NdDmaPattern>{merged};
 
   return decomposeRecursive(forOp, referencedBufType, targetModel, tileCol,
                             tileRow, pattern);

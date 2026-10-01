@@ -22,8 +22,6 @@ from .objectfifo import (
     ObjectFifoEndpoint,
     ObjectFifoHandle,
     ObjectFifoLink,
-    PadDims,
-    StreamDims,
 )
 from .tile_dma import Acquire, Bd, BdIteration, DmaChannel, Release, TileDma
 
@@ -32,8 +30,6 @@ __all__ = [
     "ObjectFifoHandle",
     "ObjectFifoLink",
     "ObjectFifoEndpoint",
-    "PadDims",
-    "StreamDims",
     "CascadeFlow",
     "Flow",
     "PacketDest",

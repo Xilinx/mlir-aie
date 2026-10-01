@@ -27,7 +27,6 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
-    StreamDims,
     TaskGroup,
     Worker,
 )
@@ -87,18 +86,13 @@ def n32_core_gemm(
 
     # Input A: 4 shim-rows, each shim→memtile carries an L2 strip and
     # the memtile then fans out the L1 sub-tiles to all 8 cores in that row.
-    a_l3l2_dims: StreamDims = [(m, k), (mtk // k, m * k), (k, 1)]
-    a_l2l1_in_dims: StreamDims = [
-        (mtk // k * 4, m * k // 4),
-        (k // s, s),
-        (m // 4, k),
-        (s, 1),
-    ]
-    a_l2l1_out_dims: StreamDims = [
-        (k // s, r * s),
-        (m // 4 // r, r * k),
-        (r * s, 1),
-    ]
+    a_l3l2_dims = TensorAccessPattern.full((mtk // k, m, k)).permute((1, 0, 2))
+    a_l2l1_in_dims = TensorAccessPattern.full(
+        (mtk // k * 4, m // 4, k // s, s)
+    ).permute((0, 2, 1, 3))
+    a_l2l1_out_dims = TensorAccessPattern.full((m // 4 // r, k // s, r * s)).permute(
+        (1, 0, 2)
+    )
 
     for row in range(n_aie_rows):
         a_l3l2 = ObjectFifo(
@@ -132,7 +126,7 @@ def n32_core_gemm(
 
     # Output C: per-col, 4 cores join at memtile, memtile→shim with the
     # final layout transform.
-    c_l2l3_dims: StreamDims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    c_l2l3_dims = TensorAccessPattern.full((m, n)).tile((r, t)).inverse()
     for col in range(n_aie_cols):
         c_l2l3 = ObjectFifo(
             C_l2_ty, name=f"C_L2L3_{col}", depth=2, to_stream=c_l2l3_dims
@@ -183,8 +177,8 @@ def n32_core_gemm(
     B_ty = np.ndarray[(K * N // 8,), np.dtype[v8bfp16ebs8]]
     C_ty = np.ndarray[(M * N,), np.dtype[bfloat16]]
 
-    A_taps = TensorAccessPattern.full((M, K)).tile((m, mtk)).group((1, K // mtk))
-    B_taps = TensorAccessPattern.full((1, N * K // 8)).tile((1, n * K // 8))
+    A_taps = TensorAccessPattern.full((M, K)).tile((m, mtk))
+    B_taps = TensorAccessPattern.full((N * K // 8,)).tile((n * K // 8,))
     C_taps = TensorAccessPattern.full((M, N)).tile((n_aie_rows * m, n))
 
     num_row_tile = M // m // n_aie_rows
@@ -234,11 +228,10 @@ def n32_core_gemm(
                     group=tg,
                     wait=False,
                 )
-            c_base_idx = group_idx * n_aie_cols
             for col in range(n_aie_cols):
                 C_conses[col].drain(
                     c,
-                    tap=C_taps[c_base_idx + col],
+                    tap=C_taps[group_idx // num_col_tile, b_base_idx + col],
                     group=tg,
                     wait=True,
                 )

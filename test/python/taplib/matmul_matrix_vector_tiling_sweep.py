@@ -29,16 +29,10 @@ def matrix_vector_tiling_sweep():
                 A_iter = iter(
                     TensorAccessPattern.full((M, K))
                     .tile((m, k))
-                    .group((M_div_m_div_n_cores, K // k))
+                    .split(0, M_div_m_div_n_cores)
                 )
-                B_tap = (
-                    TensorAccessPattern.full((1, K))
-                    .tile((1, K))
-                    .repeat(M_div_m_div_n_cores)[0]
-                )
-                C_iter = iter(
-                    TensorAccessPattern.full((1, C_sz)).tile((1, C_sz_div_n_cores))
-                )
+                B_tap = TensorAccessPattern.full((1, K)).repeat(M_div_m_div_n_cores)
+                C_iter = iter(TensorAccessPattern.full((1, C_sz)).partition(n_cores))
 
                 B_sizes = [M_div_m_div_n_cores, 1, 1, K]
                 B_strides = [0, 0, 0, 1]
@@ -56,7 +50,7 @@ def matrix_vector_tiling_sweep():
                     A_sizes = [M_div_m_div_n_cores, K_div_k, m, k]
                     A_strides = [m_x_K, k, K, 1]
 
-                    # Tile iter way to calculating sizes/strides/offsets
+                    # Tiling way of calculating sizes/strides/offsets
                     A_tap = next(A_iter)
                     if (
                         A_sizes != A_tap.sizes
@@ -76,7 +70,7 @@ def matrix_vector_tiling_sweep():
                     C_sizes = [1, 1, 1, C_sz_div_n_cores]
                     C_strides = [0, 0, 0, 1]
 
-                    # Tile iter way to calculating sizes/strides/offsets
+                    # Tiling way of calculating sizes/strides/offsets
                     C_tap = next(C_iter)
                     if (
                         C_sizes != C_tap.sizes

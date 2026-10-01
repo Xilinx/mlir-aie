@@ -3,7 +3,7 @@
 
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
-from util import construct_test
+from util import construct_test, grid_steps, accesses
 
 #### Tests for Repeat
 # - [x] Repeat1: Test repeat whole tensor, tile row wise
@@ -29,12 +29,13 @@ def tile_repeat1():
     TENSOR_HEIGHT = 16
     TENSOR_WIDTH = 16
     REPEAT_COUNT = 3
-    tiles = (
-        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
-        .tile((TENSOR_HEIGHT, TENSOR_WIDTH))
-        .repeat(REPEAT_COUNT)
+    tiles = grid_steps(
+        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH)).tile(
+            (TENSOR_HEIGHT, TENSOR_WIDTH)
+        ),
+        repeat=REPEAT_COUNT,
     )
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_count == REPEAT_COUNT).all()
 
     reference_order = np.array(
@@ -76,13 +77,13 @@ def tile_repeat2():
     TENSOR_HEIGHT = 16
     TENSOR_WIDTH = 16
     REPEAT_COUNT = 6
-    tiles = (
+    tiles = grid_steps(
         TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
         .tile((TENSOR_HEIGHT, TENSOR_WIDTH))
-        .permute_tile((1, 0))
-        .repeat(REPEAT_COUNT)
+        .permute((0, 1, 3, 2)),
+        repeat=REPEAT_COUNT,
     )
-    access_order, access_count = tiles.accesses()
+    access_order, access_count = accesses(tiles)
     assert (access_count == REPEAT_COUNT).all()
 
     reference_order = np.array(
@@ -126,10 +127,11 @@ def tile_repeat3():
     TILE_HEIGHT = 4
     TILE_WIDTH = 4
     REPEAT_COUNT = 3
-    tiles = (
-        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
-        .tile((TILE_HEIGHT, TILE_WIDTH))
-        .repeat(REPEAT_COUNT)
+    tiles = grid_steps(
+        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH)).tile(
+            (TILE_HEIGHT, TILE_WIDTH)
+        ),
+        repeat=REPEAT_COUNT,
     )
     tile = tiles[0]
     access_order, access_count = tile.accesses()
@@ -173,11 +175,12 @@ def tile_repeat4():
     TILE_HEIGHT = 4
     TILE_WIDTH = 4
     REPEAT_COUNT = 3
-    tiles = (
-        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
-        .tile((TILE_HEIGHT, TILE_WIDTH))
-        .order("col")
-        .repeat(REPEAT_COUNT)
+    tiles = grid_steps(
+        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH)).tile(
+            (TILE_HEIGHT, TILE_WIDTH)
+        ),
+        order="col",
+        repeat=REPEAT_COUNT,
     )
     tile = tiles[0]
     access_order, access_count = tile.accesses()
@@ -221,12 +224,12 @@ def tile_repeat5():
     TILE_HEIGHT = 4
     TILE_WIDTH = 4
     REPEAT_COUNT = 3
-    tiles = (
+    tiles = grid_steps(
         TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
         .tile((TILE_HEIGHT, TILE_WIDTH))
-        .permute_tile((1, 0))
-        .order("col")
-        .repeat(REPEAT_COUNT)
+        .permute((0, 1, 3, 2)),
+        order="col",
+        repeat=REPEAT_COUNT,
     )
     tile = tiles[0]
     access_order, access_count = tile.accesses()
@@ -271,11 +274,12 @@ def tile_repeat6():
     TILE_WIDTH = 4
     REPEAT_COUNT = 3
     TILE_GROUP_WIDTH = 2
-    tiles = (
-        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
-        .tile((TILE_HEIGHT, TILE_WIDTH))
-        .group((1, TILE_GROUP_WIDTH))
-        .repeat(REPEAT_COUNT)
+    tiles = grid_steps(
+        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH)).tile(
+            (TILE_HEIGHT, TILE_WIDTH)
+        ),
+        (1, TILE_GROUP_WIDTH),
+        repeat=REPEAT_COUNT,
     )
     tile = tiles[0]
     access_order, access_count = tile.accesses()
@@ -333,12 +337,12 @@ def tile_repeat7():
     TILE_WIDTH = 4
     REPEAT_COUNT = 3
     TILE_GROUP_WIDTH = 2
-    tiles = (
+    tiles = grid_steps(
         TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
         .tile((TILE_HEIGHT, TILE_WIDTH))
-        .permute_tile((1, 0))
-        .group((1, TILE_GROUP_WIDTH))
-        .repeat(REPEAT_COUNT)
+        .permute((0, 1, 3, 2)),
+        (1, TILE_GROUP_WIDTH),
+        repeat=REPEAT_COUNT,
     )
     tile = tiles[0]
     access_order, access_count = tile.accesses()
@@ -396,11 +400,12 @@ def tile_repeat8():
     TILE_WIDTH = 4
     REPEAT_COUNT = 3
     TILE_GROUP_HEIGHT = 2
-    tiles = (
-        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
-        .tile((TILE_HEIGHT, TILE_WIDTH))
-        .group((TILE_GROUP_HEIGHT, 1))
-        .repeat(REPEAT_COUNT)
+    tiles = grid_steps(
+        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH)).tile(
+            (TILE_HEIGHT, TILE_WIDTH)
+        ),
+        (TILE_GROUP_HEIGHT, 1),
+        repeat=REPEAT_COUNT,
     )
     tile = tiles[0]
     access_order, access_count = tile.accesses()
@@ -456,12 +461,12 @@ def tile_repeat9():
     TILE_WIDTH = 4
     REPEAT_COUNT = 3
     TILE_GROUP_HEIGHT = 2
-    tiles = (
+    tiles = grid_steps(
         TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
         .tile((TILE_HEIGHT, TILE_WIDTH))
-        .permute_tile((1, 0))
-        .group((TILE_GROUP_HEIGHT, 1))
-        .repeat(REPEAT_COUNT)
+        .permute((0, 1, 3, 2)),
+        (TILE_GROUP_HEIGHT, 1),
+        repeat=REPEAT_COUNT,
     )
     tile = tiles[0]
     access_order, access_count = tile.accesses()
@@ -518,11 +523,13 @@ def tile_repeat10():
     REPEAT_COUNT = 3
     TILE_GROUP_HEIGHT = 2
     TILE_GROUP_WIDTH = 2
-    tiles = (
-        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
-        .tile((TILE_HEIGHT, TILE_WIDTH))
-        .group((TILE_GROUP_HEIGHT, TILE_GROUP_WIDTH), order="col")
-        .repeat(REPEAT_COUNT)
+    tiles = grid_steps(
+        TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH)).tile(
+            (TILE_HEIGHT, TILE_WIDTH)
+        ),
+        (TILE_GROUP_HEIGHT, TILE_GROUP_WIDTH),
+        group_order="col",
+        repeat=REPEAT_COUNT,
     )
     tile = tiles[0].coalesce()
     access_order, access_count = tile.accesses()
@@ -594,12 +601,12 @@ def tile_repeat11():
     REPEAT_COUNT = 3
     TILE_GROUP_HEIGHT = 2
     TILE_GROUP_WIDTH = 2
-    tiles = (
+    tiles = grid_steps(
         TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
         .tile((TILE_HEIGHT, TILE_WIDTH))
-        .permute_tile((1, 0))
-        .group((TILE_GROUP_HEIGHT, TILE_GROUP_WIDTH))
-        .repeat(REPEAT_COUNT)
+        .permute((0, 1, 3, 2)),
+        (TILE_GROUP_HEIGHT, TILE_GROUP_WIDTH),
+        repeat=REPEAT_COUNT,
     )
     tile = tiles[0].coalesce()
     access_order, access_count = tile.accesses()

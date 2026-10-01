@@ -6,7 +6,7 @@
 
 Same device/worker/ObjectFifo structure as ``whole_array.py``, but the host
 runtime sequence is written with ``range_`` loops and SSA arithmetic over the
-problem dimensions M/K/N instead of Python-unrolled ``TileGrid`` taps. The
+problem dimensions M/K/N instead of Python-unrolled taps. The
 DMAs use ``fifo.fill``/``fifo.drain`` with runtime-valued sizes / strides /
 offsets, so a single body serves both lowerings.
 
@@ -14,7 +14,7 @@ One design, two lowerings, selected by explicit specialization:
 
 * **static** — call ``specialize(M=..., K=..., N=...)``. The bounds are constant, so
   ``aie-unroll-runtime-sequence-loops`` flattens the loops and everything folds
-  to the same BDs the ``TileGrid`` version emits (binary TXN path).
+  to the same BDs the Python-unrolled version emits (binary TXN path).
 * **dynamic** — bind compile-time K, and pass M/N at execution time. The ``scf.for`` loops
   survive to the EmitC path (``--aie-npu-to-cpp``), so one xclbin runs many
   shapes; the C++ builder assembles the TXN per call. K is fixed because the
@@ -29,6 +29,7 @@ import argparse
 import aie.iron as iron
 import numpy as np
 from aie.extras.dialects import arith
+from aie.helpers.taplib import TensorAccessPattern
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import (
     CompileTime,
@@ -156,10 +157,7 @@ def whole_array_dynamic(
                 [m * k * j for j in range(n_aie_rows)],
                 obj_types=[A_l1_ty] * n_aie_rows,
                 names=[f"A_L2L1_{col}_{row}" for row in range(n_aie_rows)],
-                to_stream=[
-                    [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-                    for _ in range(n_aie_rows)
-                ],
+                to_stream=[TensorAccessPattern.full((m, k)).tile((r, s))] * n_aie_rows,
             )
         )
 
@@ -170,7 +168,7 @@ def whole_array_dynamic(
             .forward(
                 obj_type=B_l1_ty,
                 name=f"B_L2L1_{col}",
-                to_stream=[(k // s, s * n), (n // t, t), (s, n), (t, 1)],
+                to_stream=TensorAccessPattern.full((k, n)).tile((s, t)),
             )
         )
 
@@ -178,7 +176,7 @@ def whole_array_dynamic(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            to_stream=[(m // r, r * n), (r, t), (n // t, r * t), (t, 1)],
+            to_stream=TensorAccessPattern.full((m, n)).tile((r, t)).inverse(),
         )
         C_l1l2_fifos[col] = (
             C_l2l3[col]

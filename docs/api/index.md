@@ -43,8 +43,7 @@ layers are here for advanced designs, op-by-op construction, and compiler work.
 
     ---
 
-    `TensorAccessPattern`, `TileGrid`, and `TensorAccessSequence` for
-    describing how data is tiled and streamed.
+    `TensorAccessPattern` for describing how data is tiled and streamed.
 
 -   :material-library: **[Python Kernel Library](kernels.md)**
 

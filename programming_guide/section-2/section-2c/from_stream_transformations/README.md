@@ -14,7 +14,7 @@ In the [from_stream.py](./from_stream.py) design we first bring `24xi32` data fr
 # Input
 of_in0 = ObjectFifo(data_ty, name="in0")
 of_in1 = of_in0.cons().forward(
-    name="in1", obj_type=data_ty, from_stream=[(3, 1), (8, 3)]
+    name="in1", obj_type=data_ty, from_stream=TensorAccessPattern.full((8, 3)).T
 )
 
 # Output
@@ -24,7 +24,7 @@ of_out0 = of_out1.cons().forward(name="out0", obj_type=data_ty)
 
 The process on the Worker acquires one object from `of_in1` to consume and one object from `of_out1` to produce into. It then reads the value of the input object and loads it into the output one before releasing both objects.
 
-The data layout transformation `from_stream=[(3, 1), (8, 3)]` expresses the access pattern in which the Worker will write the data from the AXI stream into a local `24xi32` tensor. This access pattern can also be expressed with `for` loops as follows:
+The data layout transformation `from_stream=TensorAccessPattern.full((8, 3)).T`, the transpose of an `8x3` view of the object, walks sizes `[3, 8]` with strides `[1, 3]`. It expresses the access pattern in which the Worker will write the data from the AXI stream into a local `24xi32` tensor. This access pattern can also be expressed with `for` loops as follows:
 ```python
 for i in range(3):
     for j in range(8):

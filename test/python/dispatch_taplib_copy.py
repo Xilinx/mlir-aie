@@ -110,8 +110,8 @@ try:
     print("out-of-range dispatch: accepted")
 except HostRuntimeError as e:
     print("out-of-range dispatch: refused:", e)
-# The guard taplib emitted for the grid index names the reason.
-# CHECK: out-of-range dispatch: refused: dispatch refused for DispatchTime[T] value(s) {'n_tiles': 4, 'start_tile': 6}: grid index {{[0-9]}} exceeds the grid
+# The guard taplib emitted for the index names the reason.
+# CHECK: out-of-range dispatch: refused: dispatch refused for DispatchTime[T] value(s) {'n_tiles': 4, 'start_tile': 6}: index exceeds the dimension
 
 
 @iron.jit
@@ -158,16 +158,15 @@ for reps in (1, 65, 256):
 # CHECK: reps=65: repeat {64} equivalent=True
 # CHECK: reps=256: repeat {255} equivalent=True
 
-# A repeat count is never truncated into its field. Past the queue's 8-bit
-# repeat count, below 1, or too wide for the 31- or 32-bit operand it narrows
-# to, the dispatch is refused.
+# A repeat count is never truncated into its field. Below 1, or past the
+# queue's 8-bit repeat count however wide, the dispatch is refused.
 for reps in (257, 0, 2**31 + 1, 2**32 + 2):
     try:
         dyn_reps.instructions(reps=reps)
         print(f"reps={reps}: accepted")
     except HostRuntimeError as e:
         print(f"reps={reps}: refused:", str(e).split("}: ", 1)[1])
-# CHECK: reps=257: refused: a runtime DMA repeat count exceeds the task queue's [0:255] range (at most 256 executions)
+# CHECK: reps=257: refused: a runtime DMA repeat count must be in [1:256]
 # CHECK: reps=0: refused: repeat count must be >= 1, got <runtime>
-# CHECK: reps=2147483649: refused: a runtime DMA size or stride does not fit in 31 bits
-# CHECK: reps=4294967298: refused: a runtime DMA repeat count does not fit in 32 bits
+# CHECK: reps=2147483649: refused: a runtime DMA repeat count must be in [1:256]
+# CHECK: reps=4294967298: refused: a runtime DMA repeat count must be in [1:256]

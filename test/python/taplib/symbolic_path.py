@@ -1,358 +1,213 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Drive every staged branch of the TensorAccessPattern algebra without MLIR.
+"""Drive the staged branches of the TensorAccessPattern algebra on real MLIR values.
 
-``Sym`` is an expression-tree stand-in for a runtime scalar: it satisfies the
-``__aie_symbolic__`` protocol in ``aie.helpers.taplib.symbolic``, overloads the
-integer operators the algebra uses, records the ``select`` and ``require``
-decisions the helpers make, and can be evaluated with concrete values. Each
-test builds a tiling on ``Sym`` shapes and a ``Sym`` step, evaluates the
-resulting offset/sizes/strides for a grid of concrete values, and checks them
-against the algebra run on those concrete values directly. That proves the
-staged code path computes the same numbers as the integer path, which is the
-property the dynamic runtime-sequence builder relies on.
+A function's i32 arguments stand in for the runtime scalars of a dynamic
+runtime sequence; the printed IR shows what the algebra emits. To evaluate a
+staged pattern, the same builder runs on i32 constants and canonicalize folds
+every offset, size and stride to a constant, which must equal the pattern
+built on Python ints. A guard that holds folds away; one that fails is left
+behind as a `cf.assert`.
 """
 
 import itertools
 
-import numpy as np
+from aie.dialects import func
+from aie.dialects.aie import AIEDevice, device, object_fifo, tile
+from aie.dialects.aiex import runtime_sequence, shim_dma_single_bd_task
+from aie.extras import types as T
+from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.arith import ScalarValue, constant
 from aie.helpers.taplib import TensorAccessPattern
-from aie.helpers.taplib.symbolic import (
-    is_sym,
-    require,
-    sceildiv,
-    smin,
-    sprod,
-    sselect,
-)
+from aie.iron import require
+from aie.ir import Context, IntegerAttr, InsertionPoint, Location, Module, Value
+from aie.passmanager import PassManager
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
 
 
-REQUIRED: list = []
+def fields(tap):
+    return [*tap.tensor_dims, tap.offset, *tap.sizes, *tap.strides]
 
 
-class Sym:
-    """A recorded integer expression over named runtime scalars."""
+def staged(build, names, values=None):
+    """Build a function returning the fields of the patterns `build(**scalars)` makes.
 
-    __aie_symbolic__ = True
-    __slots__ = ("op", "args")
+    The scalars are i32 arguments, or i32 constants of `values` when given.
+    Returns the module and the patterns.
+    """
+    module = Module.create()
+    taps = []
+    with InsertionPoint(module.body):
+        arg_types = [] if values is not None else [T.i32()] * len(names)
 
-    def __init__(self, op, *args):
-        self.op = op
-        self.args = args
+        @func.FuncOp.from_py_func(*arg_types, name="staged")
+        def _(*args):
+            if values is not None:
+                scalars = [constant(v, T.i32()) for v in values]
+            else:
+                scalars = [ScalarValue(a) for a in args]
+            taps.extend(build(**dict(zip(names, scalars))))
+            return [
+                x if isinstance(x, Value) else constant(x, T.i32())
+                for t in taps
+                for x in fields(t)
+            ]
 
-    @staticmethod
-    def var(name):
-        return Sym("var", name)
-
-    @staticmethod
-    def _lift(v):
-        return v if isinstance(v, Sym) else Sym("const", int(v))
-
-    def _bin(self, op, other, rev=False):
-        other = self._lift(other)
-        return Sym(op, other, self) if rev else Sym(op, self, other)
-
-    def __add__(self, o):
-        return self._bin("add", o)
-
-    def __radd__(self, o):
-        return self._bin("add", o, True)
-
-    def __sub__(self, o):
-        return self._bin("sub", o)
-
-    def __rsub__(self, o):
-        return self._bin("sub", o, True)
-
-    def __mul__(self, o):
-        return self._bin("mul", o)
-
-    def __rmul__(self, o):
-        return self._bin("mul", o, True)
-
-    def __floordiv__(self, o):
-        return self._bin("div", o)
-
-    def __rfloordiv__(self, o):
-        return self._bin("div", o, True)
-
-    def __mod__(self, o):
-        return self._bin("rem", o)
-
-    def __rmod__(self, o):
-        return self._bin("rem", o, True)
-
-    def __lt__(self, o):
-        return self._bin("lt", o)
-
-    def __le__(self, o):
-        return self._bin("le", o)
-
-    def __gt__(self, o):
-        return self._bin("gt", o)
-
-    def __ge__(self, o):
-        return self._bin("ge", o)
-
-    def __eq__(self, o):
-        return self._bin("eq", o)
-
-    def __ne__(self, o):
-        return self._bin("ne", o)
-
-    __hash__ = object.__hash__
-
-    def _select(self, a, b):
-        return Sym("select", self, self._lift(a), self._lift(b))
-
-    def _require(self, message):
-        REQUIRED.append((self, message))
-
-    def __bool__(self):
-        raise TypeError("a Sym has no truth value at generation time")
-
-    __index__ = __int__ = __bool__
-
-    def eval(self, env):
-        """Evaluate with Python-int semantics on non-negative operands."""
-        if self.op == "var":
-            return env[self.args[0]]
-        if self.op == "const":
-            return self.args[0]
-        if self.op == "select":
-            c, a, b = (x.eval(env) for x in self.args)
-            return a if c else b
-        a, b = (x.eval(env) for x in self.args)
-        return {
-            "add": lambda: a + b,
-            "sub": lambda: a - b,
-            "mul": lambda: a * b,
-            "div": lambda: a // b,
-            "rem": lambda: a % b,
-            "lt": lambda: a < b,
-            "le": lambda: a <= b,
-            "gt": lambda: a > b,
-            "ge": lambda: a >= b,
-            "eq": lambda: a == b,
-            "ne": lambda: a != b,
-        }[self.op]()
-
-    def __repr__(self):
-        return f"Sym({self.op}, {', '.join(map(repr, self.args))})"
+    return module, taps
 
 
-def ev(v, env):
-    return v.eval(env) if isinstance(v, Sym) else int(v)
-
-
-def evaluated_tap(tap, env):
-    """Return the concrete TensorAccessPattern a staged TensorAccessPattern denotes under ``env``."""
-    return TensorAccessPattern(
-        [ev(d, env) for d in tap.tensor_dims],
-        ev(tap.offset, env),
-        [ev(s, env) for s in tap.sizes],
-        [ev(s, env) for s in tap.strides],
+def evaluate(build, **values):
+    """Return the concrete patterns `build` makes on `values`, and its failing guards."""
+    module, taps = staged(build, list(values), list(values.values()))
+    PassManager.parse("builtin.module(func.func(canonicalize))").run(module.operation)
+    body = module.body.operations[0].regions[0].blocks[0]
+    ops = list(body.operations)
+    for v in ops[-1].operands:
+        assert v.owner.name == "arith.constant", v.owner
+    ints = iter(
+        IntegerAttr(v.owner.attributes["value"]).value for v in ops[-1].operands
     )
+    concrete = []
+    for t in taps:
+        dims = [next(ints) for _ in t.tensor_dims]
+        offset = next(ints)
+        sizes = [next(ints) for _ in t.sizes]
+        strides = [next(ints) for _ in t.strides]
+        concrete.append(TensorAccessPattern(dims, offset, sizes, strides))
+    failed = [str(op.attributes["msg"]) for op in ops if op.name == "cf.assert"]
+    return concrete, failed
 
 
-def check_requires(env, expect_ok):
-    """Every recorded guard evaluates to ``expect_ok`` under ``env`` (all of them when ok)."""
-    results = [cond.eval(env) for cond, _ in REQUIRED]
-    if expect_ok:
-        assert all(results), [m for (_, m), r in zip(REQUIRED, results) if not r]
-    else:
-        assert not all(results)
-
-
-# CHECK-LABEL: helpers_stage
+# CHECK-LABEL: guards_stage
 @construct_test
-def helpers_stage():
-    a, b = Sym.var("a"), Sym.var("b")
-    assert is_sym(a) and not is_sym(3)
-    m = smin(a, b)
-    assert m.op == "select"
-    c = sceildiv(a, b)
-    p = sprod([a, 3, b])
-    s = sselect(a > b, a, 7)
-    REQUIRED.clear()
-    require(a % 4 == 0, "a must be a multiple of 4")
-    assert len(REQUIRED) == 1
-    for env in ({"a": 8, "b": 3}, {"a": 3, "b": 8}, {"a": 12, "b": 12}):
-        assert m.eval(env) == min(env["a"], env["b"])
-        assert c.eval(env) == -(-env["a"] // env["b"])
-        assert p.eval(env) == env["a"] * 3 * env["b"]
-        assert s.eval(env) == (env["a"] if env["a"] > env["b"] else 7)
-    assert (
-        REQUIRED[0][0].eval({"a": 8}) is True and REQUIRED[0][0].eval({"a": 6}) is False
-    )
-    try:
-        bool(a)
-        assert False
-    except TypeError:
-        pass
-    # Staged ceildiv never forms an intermediate beyond its inputs, so an i32
-    # numerator near INT32_MAX cannot wrap.
-    env = {"a": 2**31 - 1, "b": 2}
-    assert c.eval(env) == 2**30
+def guards_stage():
+    def build(a, lo, hi):
+        require(a % 4 == 0, "a must be a multiple of 4")
+        return [TensorAccessPattern.full((8, a))[2:6, lo:hi]]
 
-    def intermediates(v):
-        if v.op in ("var", "const"):
-            return [v.eval(env)]
-        return [v.eval(env)] + [x for s in v.args for x in intermediates(s)]
-
-    assert max(intermediates(c)) <= 2**31 - 1
+    with Context(), Location.unknown():
+        module, (tap,) = staged(build, ["a", "lo", "hi"])
+        assert tap.is_symbolic and tap.sizes[0] == 4
+        print(module)
+        _, failed = evaluate(build, a=16, lo=4, hi=12)
+        assert failed == []
+        _, failed = evaluate(build, a=18, lo=4, hi=20)
+        print(failed)
+    # CHECK: func.func @staged(%[[A:.*]]: i32, %[[LO:.*]]: i32, %[[HI:.*]]: i32)
+    # CHECK: arith.remsi %[[A]]
+    # CHECK: cf.assert %{{.*}}, "a must be a multiple of 4"
+    # CHECK: cf.assert %{{.*}}, "slice start must be >= 0 on a runtime dimension"
+    # CHECK: cf.assert %{{.*}}, "slice stop exceeds the dimension"
+    # CHECK: cf.assert %{{.*}}, "slice selects no elements"
+    # CHECK: ['"a must be a multiple of 4"', '"slice stop exceeds the dimension"']
 
 
-# CHECK-LABEL: whole_array_tilers_stage
+# CHECK-LABEL: loop_index_stage
 @construct_test
-def whole_array_tilers_stage():
-    """Build the GEMM's three tilings on symbolic M, K, N and a symbolic step."""
-    m, k, n, n_aie_rows, n_aie_cols, tb_n_rows = 32, 32, 32, 4, 2, 2
-    M, K, N, step = (Sym.var(x) for x in ("M", "K", "N", "step"))
-    REQUIRED.clear()
-    rep = N // n // n_aie_cols
-    grids = {
-        "A": TensorAccessPattern.full((M, K))
-        .tile((m * 2, k))
-        .group((1, K // k))
-        .repeat(rep),
-        "B": TensorAccessPattern.full((K, N))
-        .tile((k, n))
-        .group((K // k, rep), steps=(1, n_aie_cols), order="col"),
-        "C": TensorAccessPattern.full((M, N))
-        .tile((m * n_aie_rows, n))
-        .group((tb_n_rows, rep), steps=(1, n_aie_cols)),
-    }
-    tiles = {name: g[step] for name, g in grids.items()}
-    counts = {name: g.num_steps for name, g in grids.items()}
-    for name in tiles:
-        assert is_sym(tiles[name].offset) and is_sym(counts[name])
-        try:
-            len(grids[name])
-            assert False
-        except TypeError:
-            pass
-    n_guards = len(REQUIRED)
-    assert n_guards > 0
+def loop_index_stage():
+    """A `range_` induction variable is an index; it indexes a pattern as an i64."""
+    with Context(), Location.unknown():
+        module = Module.create()
+        with InsertionPoint(module.body):
+
+            @func.FuncOp.from_py_func(T.index(), name="loop")
+            def _(iv):
+                chunk = TensorAccessPattern.full((1, 4096)).partition(8)[iv]
+                return [chunk.offset]
+
+        print(module)
+    # CHECK: func.func @loop(%[[IV:.*]]: index) -> i64
+    # CHECK: arith.index_cast %[[IV]] : index to i64
+
+
+# CHECK-LABEL: whole_array_tilings_fold
+@construct_test
+def whole_array_tilings_fold():
+    """The GEMM's tilings on staged M, K, N and a staged row block."""
+    m, k, n, n_aie_rows, n_aie_cols, rows = 32, 32, 32, 4, 2, 2
+
+    def build(M, K, N, step):
+        require(M % (m * n_aie_rows) == 0, "M must be a multiple of m * n_aie_rows")
+        require(K % k == 0, "K must be a multiple of k")
+        require(N % (n * n_aie_cols) == 0, "N must be a multiple of n * n_aie_cols")
+        A_tiles = TensorAccessPattern.full((M, K)).tile((m * 2, k))
+        B_tiles = TensorAccessPattern.full((K, N)).tile((k, n)).permute((1, 0, 2, 3))
+        C_tiles = TensorAccessPattern.full((M, N)).tile((m * n_aie_rows, n))
+        return [A_tiles[step * 2 + 1].repeat(N // n // n_aie_cols)] + [
+            t
+            for col in range(n_aie_cols)
+            for t in (
+                B_tiles[col::n_aie_cols],
+                C_tiles[step * rows : step * rows + rows, col::n_aie_cols],
+            )
+        ]
+
     checked = 0
-    for Mv, Kv, Nv in itertools.product((256, 512), (128, 256), (128, 256)):
-        env = {"M": Mv, "K": Kv, "N": Nv}
-        concrete = {
-            "A": TensorAccessPattern.full((Mv, Kv))
-            .tile((m * 2, k))
-            .group((1, Kv // k))
-            .repeat(Nv // n // n_aie_cols),
-            "B": TensorAccessPattern.full((Kv, Nv))
-            .tile((k, n))
-            .group(
-                (Kv // k, Nv // n // n_aie_cols), steps=(1, n_aie_cols), order="col"
-            ),
-            "C": TensorAccessPattern.full((Mv, Nv))
-            .tile((m * n_aie_rows, n))
-            .group((tb_n_rows, Nv // n // n_aie_cols), steps=(1, n_aie_cols)),
-        }
-        for name in tiles:
-            assert counts[name].eval(env) == len(concrete[name])
-            for s in range(len(concrete[name])):
-                env["step"] = s
-                got = evaluated_tap(tiles[name], env)
-                want = concrete[name][s]
-                # A unit repeat stays as a dimension on the staged path (rank is
-                # structural), so compare the walks, and the numbers where the
-                # ranks agree.
-                assert got.compare_access_orders(want), (name, s, got, want)
-                if len(got.sizes) == len(want.sizes):
-                    assert got == want, (name, s, got, want)
+    with Context(), Location.unknown():
+        for Mv, Kv, Nv in itertools.product((256, 512), (128, 256), (128, 256)):
+            for s in range(Mv // (m * n_aie_rows) // rows):
+                got, failed = evaluate(build, M=Mv, K=Kv, N=Nv, step=s)
+                assert failed == [], failed
+                assert got == build(Mv, Kv, Nv, s), (Mv, Kv, Nv, s)
                 checked += 1
-        env["step"] = 0
-        check_requires(env, expect_ok=True)
-    # A shape the tiler must refuse fails a guard.
-    check_requires({"M": 100, "K": 128, "N": 128, "step": 0}, expect_ok=False)
-    print(f"staged GEMM tiles checked={checked} guards={n_guards}")
-    # CHECK: staged GEMM tiles checked={{[1-9][0-9]*}} guards={{[1-9][0-9]*}}
+        _, failed = evaluate(build, M=100, K=128, N=128, step=0)
+    print(f"staged GEMM steps checked={checked}")
+    print(failed[0])
+    # CHECK: staged GEMM steps checked=12
+    # CHECK: "M must be a multiple of m * n_aie_rows"
 
 
-# CHECK-LABEL: partial_and_slices_stage
+# CHECK-LABEL: slices_and_partition_fold
 @construct_test
-def partial_and_slices_stage():
-    N, step, lo, hi = (Sym.var(x) for x in ("N", "step", "lo", "hi"))
-    REQUIRED.clear()
-    g = (
-        TensorAccessPattern.full((3, N))
-        .tile((3, 2))
-        .group((1, 7), steps=(1, 3), partial=True)
-    )
-    t = g[step]
-    assert t.sizes[0].op == "select"  # min(R, ceildiv(remaining, S)) as a select tree
-    for Nv in (28, 40, 64):
-        gc = (
-            TensorAccessPattern.full((3, Nv))
-            .tile((3, 2))
-            .group((1, 7), steps=(1, 3), partial=True)
-        )
-        assert g.num_steps.eval({"N": Nv}) == len(gc)
-        for s in range(len(gc)):
-            got = evaluated_tap(t, {"N": Nv, "step": s})
-            want = gc[s]
-            # The staged path cannot know a per-step repeat resolved to 1, so
-            # it keeps that dimension; the walks are identical either way.
-            assert got.compare_access_orders(want), (Nv, s, got, want)
-            if len(got.sizes) == len(want.sizes):
-                assert got == want, (Nv, s, got, want)
-    # Slicing with staged bounds.
-    v = TensorAccessPattern.full((8, N))[2:6, lo:hi]
-    for Nv, lov, hiv in ((16, 0, 16), (32, 4, 12), (64, 1, 63)):
-        got = evaluated_tap(v, {"N": Nv, "lo": lov, "hi": hiv})
-        assert got == TensorAccessPattern.full((8, Nv))[2:6, lov:hiv]
-    # partition on a staged length.
-    parts = TensorAccessPattern.full((1, N)).partition(4)
-    p = parts[step]
-    for Nv in (64, 4096):
-        for s in range(4):
-            got = evaluated_tap(p, {"N": Nv, "step": s})
-            assert got == TensorAccessPattern.full((1, Nv)).partition(4)[s]
-    check_requires({"N": 64, "step": 1, "lo": 4, "hi": 12}, expect_ok=True)
+def slices_and_partition_fold():
+    def build(N, step, lo, hi):
+        tiles = TensorAccessPattern.full((3, N)).tile((3, 2))
+        return [
+            *(tiles[0, j::3] for j in range(3)),
+            TensorAccessPattern.full((8, N))[2:6, lo:hi],
+            TensorAccessPattern.full((1, N)).partition(4)[step],
+        ]
+
+    with Context(), Location.unknown():
+        for Nv, lo, hi in ((28, 0, 16), (40, 4, 12), (64, 1, 63)):
+            for s in range(4):
+                got, failed = evaluate(build, N=Nv, step=s, lo=lo, hi=hi)
+                assert failed == [], failed
+                assert got == build(Nv, s, lo, hi), (Nv, s)
+    print("ragged slices and partitions fold to the concrete patterns")
+    # CHECK: ragged slices and partitions fold to the concrete patterns
 
 
 # CHECK-LABEL: shim_form_stage
 @construct_test
 def shim_form_stage():
-    """_dma_form() keeps a staged walk's rank and pads to the shim form; validators become guards."""
-    M, K = Sym.var("M"), Sym.var("K")
-    REQUIRED.clear()
-    t = TensorAccessPattern.full((M, K)).tile((32, 32))[Sym.var("step")]
-    assert isinstance(t, TensorAccessPattern)
-    d = t._dma_form()
-    assert len(d.sizes) == 4 and d.sizes[:2] == [1, 1] and d.strides[:2] == [0, 0]
-    env = {"M": 64, "K": 128, "step": 3}
-    assert (
-        evaluated_tap(t, env) == TensorAccessPattern.full((64, 128)).tile((32, 32))[3]
-    )
-    # The TensorAccessPattern validators recorded guards rather than branching.
-    assert any(
-        "sizes" in msg or "Offset" in msg or "divisible" in msg for _, msg in REQUIRED
-    )
-    check_requires(env, expect_ok=True)
-    # A repeat keeps slot 0 on the staged path too.
-    r = TensorAccessPattern.full((1, K)).repeat(3)._dma_form()
-    assert r.sizes[0] == 3 and r.strides[0] == 0
-    assert np.array_equal(
-        evaluated_tap(r, {"K": 16}).access_order(),
-        TensorAccessPattern.full((1, 16)).repeat(3).access_order(),
-    )
-    # Literal unit dimensions are dropped to fit, as on the concrete path.
-    N = Sym.var("N")
-    u = TensorAccessPattern((N,), Sym.var("off"), [1, 1, 1, 1, N], [0, 0, 0, 0, 1])
-    u = u._dma_form()
-    assert len(u.sizes) == 4 and u.sizes[:3] == [1, 1, 1]
-    assert evaluated_tap(u, {"N": 16, "off": 0}) == TensorAccessPattern(
-        (16,), 0, [1, 1, 1, 1, 16], [0, 0, 0, 0, 1]
-    )
-    try:
-        TensorAccessPattern((N,), 0, [N, N, 1, N, N, N], [0, 0, 0, 0, 0, 1])._dma_form()
-        assert False
-    except ValueError as e:
-        assert "does not fit" in str(e)
+    """A staged walk keeps its rank in a shim BD, padded to four dimensions."""
+    with mlir_mod_ctx() as ctx:
+
+        @device(AIEDevice.npu2)
+        def _():
+            of = object_fifo("of", tile(0, 0), tile(0, 2), 2, T.memref(32, T.i32()))
+
+            @runtime_sequence(T.memref(4096, T.i32()), T.i32(), T.i32(), T.i32())
+            def _(buf, K, step, N):
+                tile_tap = TensorAccessPattern.full((64, K)).tile((32, 32))[0, step]
+                shim_dma_single_bd_task(of, buf, tap=tile_tap)
+                repeated = TensorAccessPattern.full((1, K)).repeat(3)
+                shim_dma_single_bd_task(of, buf, tap=repeated)
+                too_deep = TensorAccessPattern(
+                    (N,), 0, [N, N, 1, N, N, N], [0, 0, 0, 0, 0, 1]
+                )
+                try:
+                    shim_dma_single_bd_task(of, buf, tap=too_deep)
+                    assert False
+                except ValueError as e:
+                    print(e)
+
+        print(ctx.module)
+    # CHECK: pattern of rank 5 (sizes [<runtime>, <runtime>, <runtime>, <runtime>, <runtime>]) does not fit in 4 DMA dimensions
+    # CHECK: runtime_sequence
+    # CHECK: aie.dma_bd({{.*}} sizes = [1, 1, 32, 32] strides = [0, 0, %{{.*}}, 1])
+    # CHECK: aie.dma_bd({{.*}} sizes = [3, 1, 1, %{{.*}}] strides = [0, 0, 0, 1])
+    # CHECK: repeat_count = 2

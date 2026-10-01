@@ -136,32 +136,15 @@ def single_core(
 
     rows_per_block = 4
 
-    A_tiles = (
-        TensorAccessPattern.full((M, K))
-        .tile((m, k))
-        .group((1, K_div_k))
-        .repeat(N_div_n)
-    )
+    A_tiles = TensorAccessPattern.full((M, K)).tile((m, k))
     if b_col_maj:
-        b_tap = (
-            TensorAccessPattern.full((N, K)).tile((n, k)).group((N_div_n, K_div_k))[0]
-        )
+        b_tap = TensorAccessPattern.full((N, K)).tile((n, k))
     else:
-        b_tap = (
-            TensorAccessPattern.full((K, N))
-            .tile((k, n))
-            .group((K_div_k, N_div_n), order="col")[0]
-        )
-    C_tiles = (
-        TensorAccessPattern.full((M, N))
-        .tile((m, n))
-        .group((rows_per_block // 2, N_div_n))
-    )
-    c_index = 0
+        b_tap = TensorAccessPattern.full((K, N)).tile((k, n)).permute((1, 0, 2, 3))
+    C_tiles = TensorAccessPattern.full((M, N)).tile((m, n))
 
     def sequence(A, B, C, inA_h, inB_h, outC_h):
         tgs = []
-        nonlocal c_index
         for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):
             for pingpong in [0, 1]:
                 row_base = (
@@ -172,11 +155,11 @@ def single_core(
                     break
                 tgs.append(TaskGroup())
                 for tile_row in range(num_tile_rows):
-                    tile_offset = (row_base + tile_row) % len(A_tiles)
-                    inA_h.fill(A, tap=A_tiles[tile_offset], group=tgs[-1])
+                    a_tap = A_tiles[row_base + tile_row].repeat(N_div_n)
+                    inA_h.fill(A, tap=a_tap, group=tgs[-1])
                     inB_h.fill(B, tap=b_tap, group=tgs[-1])
-                outC_h.drain(C, tap=C_tiles[c_index], group=tgs[-1], wait=True)
-                c_index += 1
+                c_tap = C_tiles[row_base : row_base + num_tile_rows]
+                outC_h.drain(C, tap=c_tap, group=tgs[-1], wait=True)
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
                     tgs[-2].finish()
                     del tgs[-2]

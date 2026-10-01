@@ -7,6 +7,7 @@
 import sys
 import numpy as np
 
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import Out, In, CompileTime, Program, Runtime, Worker, ObjectFifo
 from aie.iron.controlflow import range_
 
@@ -26,8 +27,8 @@ def exercise_5a(
 
     # Dataflow with ObjectFifos
     of_in = ObjectFifo(data_ty, name="in")
-    dims = [(2, 8), (3, 16), (8, 1)]
-    of_out = ObjectFifo(data_ty, name="out", to_stream=dims)
+    tiles = TensorAccessPattern.full((3, 16)).tile((3, 8))
+    of_out = ObjectFifo(data_ty, name="out", to_stream=tiles)
 
     # Task for the core to perform
     def core_fn(of_in, of_out):

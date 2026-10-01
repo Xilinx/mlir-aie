@@ -7,8 +7,8 @@
 
 Two halves so callers can distinguish "recipe changed" from "rebuild needed":
 
-* `_compute_recipe_hash`   — generator identity + compile_kwargs +
-  aiecc/compile flags. Target-independent design identity.
+* `_compute_recipe_hash`   — generator identity + the sources it reaches +
+  compile_kwargs + aiecc/compile flags. Target-independent design identity.
 * `_compute_artifact_hash` — source / object content + tool mtimes +
   target device.  Captures things that change the *output* of compilation
   without changing the *recipe*.
@@ -34,9 +34,12 @@ import json
 import logging
 import marshal
 import os
-from functools import partial
+import site
+import sys
+import sysconfig
+from functools import cache, partial
 from pathlib import Path
-from types import CodeType
+from types import CodeType, FunctionType, ModuleType
 from typing import Any, Callable, Mapping
 
 from ._introspect import _introspect_generator
@@ -113,6 +116,83 @@ def _code_identity(code: CodeType) -> bytes:
     return marshal.dumps(_without_location(code), 4)
 
 
+# Digests of the design sources seen so far, by path, with the mtime and size
+# they were read at. The digest is the identity; a matching mtime and size only
+# spare rereading the file.
+_SOURCE_DIGESTS: dict[Path, tuple[int, int, str]] = {}
+
+
+@cache
+def _installed_dirs() -> tuple[Path, ...]:
+    paths = sysconfig.get_paths()
+    dirs = {paths[k] for k in ("stdlib", "platstdlib", "purelib", "platlib")}
+    dirs.add(site.getusersitepackages())
+    return tuple(Path(d).resolve() for d in dirs)
+
+
+@cache
+def _design_source(package: str, file: str | None) -> Path | None:
+    """The source a module's identity is read from, or None for one the key does not follow.
+
+    That is any Python source but the interpreter's and installed packages',
+    whose versions do not move under a design, except mlir-aie's own, which
+    decides what the design generates.
+    """
+    if not file or not file.endswith(".py"):
+        return None
+    path = Path(file).resolve()
+    if package != "aie" and any(path.is_relative_to(d) for d in _installed_dirs()):
+        return None
+    return path
+
+
+def _source_digest(path: Path) -> str:
+    try:
+        stat = path.stat()
+    except OSError:
+        return _content_digest(path)
+    seen = _SOURCE_DIGESTS.get(path)
+    if seen is not None and seen[:2] == (stat.st_mtime_ns, stat.st_size):
+        return seen[2]
+    digest = _content_digest(path)
+    _SOURCE_DIGESTS[path] = (stat.st_mtime_ns, stat.st_size, digest)
+    return digest
+
+
+def _module_of(value) -> ModuleType | None:
+    if isinstance(value, ModuleType):
+        return value
+    owner = value if isinstance(value, (type, FunctionType)) else type(value)
+    name = getattr(owner, "__module__", None)
+    return sys.modules.get(name) if isinstance(name, str) else None
+
+
+def _reached_sources(roots) -> bytes:
+    """Identify the sources of every module the roots reach through module globals.
+
+    A generator's own code does not show what the helpers it calls do, so each
+    module it reaches by a global (a module, or a function, class or object
+    defined in one) is identified by its whole source, and so on from there.
+    No design is generated to find them.
+    """
+    seen, digests = set(), {}
+    stack = [m for m in map(_module_of, roots) if m is not None]
+    while stack:
+        module = stack.pop()
+        if module.__name__ in seen:
+            continue
+        seen.add(module.__name__)
+        path = _design_source(
+            module.__name__.partition(".")[0], getattr(module, "__file__", None)
+        )
+        if path is None and module.__name__ != "__main__":
+            continue
+        if path is not None:
+            digests[module.__name__] = _source_digest(path)
+        stack += filter(None, map(_module_of, list(vars(module).values())))
+    return repr(sorted(digests.items())).encode()
+
+
 def _compute_recipe_hash(
     generator: Callable | Path,
     compile_kwargs: Mapping[str, Any],
@@ -122,7 +202,7 @@ def _compute_recipe_hash(
     include_paths: list[Path] | tuple[Path, ...] = (),
     insts_only: bool = False,
 ) -> str:
-    """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
+    """Hash of the "recipe": generator bytecode + reached sources + CompileTime[T] kwargs + flags.
 
     Captures the target-independent generator and compile configuration. It
     omits device identity, so equal recipe hashes can produce different
@@ -147,6 +227,8 @@ def _compute_recipe_hash(
         h.update(_code_identity(generator.__code__))
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(getattr(generator, "__module__", "").encode())
+        cells = [c.cell_contents for c in generator.__closure__ or ()]
+        h.update(_reached_sources([generator, *cells, *compile_kwargs.values()]))
         hints, sig, (_, _, dispatch_params, _) = _introspect_generator(generator)
         # Dispatch defaults are call-time values; explicitly bound defaults are
         # unused. Neither changes the compiled program.
@@ -365,9 +447,8 @@ def _compute_hash(
     insts_only: bool = False,
     emit_elf: bool = False,
     work_dir: Path | None = None,
-    mlir_text: str | None = None,
 ) -> str:
-    """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes (+ ``mlir_text``)."""
+    """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(
         generator,
         compile_kwargs,
@@ -389,8 +470,4 @@ def _compute_hash(
         emit_elf,
         work_dir,
     )
-    h = hashlib.sha256(f"{recipe}|{artifact}".encode())
-    if mlir_text is not None:
-        h.update(b"|mlir|")
-        h.update(mlir_text.encode())
-    return h.hexdigest()[:24]
+    return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]

@@ -33,13 +33,12 @@ import json
 import logging
 import operator
 import os
-import re
 import sys
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, get_origin
 
 import numpy as np
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
@@ -87,26 +86,6 @@ from .context import compile_context
 _COMPILE_LOCK_TIMEOUT_SECONDS = 1800
 
 logger = logging.getLogger(__name__)
-
-
-_AUTO_NAME = re.compile(r'(?<=[@"])(of|buf_|lock_)\d+(?!\d)')
-
-
-def _design_key_text(mlir_text: str, kernels) -> str:
-    """Return the generated design as the artifact key reads it.
-
-    ObjectFifo, Buffer and Lock take default names from process-wide
-    counters, so the same design names them differently once the process
-    has generated others; they are renumbered by first use. The MLIR only
-    names each external kernel's object file, so the kernels' recipes
-    (source and compile flags) follow it.
-    """
-    names = {}
-    text = _AUTO_NAME.sub(
-        lambda m: names.setdefault(m[0], f"{m[1]}{len(names)}"), mlir_text
-    )
-    recipes = sorted(repr((f.object_file_name, f.object_file._source)) for f in kernels)
-    return text + "".join(recipes)
 
 
 def config_param_names(cls) -> frozenset[str]:
@@ -324,22 +303,37 @@ class CompilableDesign:
 
         # Active dispatch values never enter compile_kwargs. Explicitly bound
         # dispatch names have already become compile-time parameters above.
+        # A tensor name may hold only its type: the tensor itself is a
+        # call-time value.
         # Guard 0-A: compile_kwargs holds only compile-time names. Checked at
         # construction because __hash__ can run before any generation, so a
         # misplaced key would reach the cache key first.
         name = getattr(mlir_generator, "__name__", mlir_generator)
-        for kind, names in (
-            ("runtime tensors (In/Out/InOut)", self.tensor_params),
-            ("runtime scalars (DispatchTime[T])", self.dispatch_params),
+        tensor_values = {
+            n
+            for n in self.tensor_params
+            if n in self.compile_kwargs
+            and get_origin(self.compile_kwargs[n]) is not np.ndarray
+        }
+        for kind, misplaced, allowed in (
+            (
+                "runtime tensors (In/Out/InOut)",
+                tensor_values,
+                "only their type, np.ndarray[shape, np.dtype[T]]",
+            ),
+            (
+                "runtime scalars (DispatchTime[T])",
+                set(self.compile_kwargs) & set(self.dispatch_params),
+                "nothing",
+            ),
         ):
-            misplaced = set(self.compile_kwargs) & set(names)
             if misplaced:
                 raise TypeError(
                     f"CompilableDesign for {name!r}: compile_kwargs contains "
                     f"name(s) annotated as {kind}, not CompileTime[T] "
                     f"parameters: {misplaced}.\n"
-                    f"  They are supplied at call time, not compile time, and "
-                    f"must never enter the cache key.\n"
+                    f"  They are supplied at call time; the cache key may hold "
+                    f"{allowed}.\n"
                     f"  CompileTime[T] params are: {self.compile_params}."
                 )
 
@@ -533,7 +527,7 @@ class CompilableDesign:
             kernel_dir = xclbin_path.parent / f"{xclbin_path.stem}.prj"
             lock_file_path = kernel_dir / ".lock"
         else:
-            cache_hash = self._compute_cache_hash(include_mlir=True)
+            cache_hash = self._compute_cache_hash()
             kernel_dir = NPU_CACHE_HOME / cache_hash
             lock_file_path = kernel_dir / ".lock"
             xclbin_path = kernel_dir / "final.xclbin"
@@ -557,7 +551,6 @@ class CompilableDesign:
                     full_elf=False,
                     emit_elf=elf_path is not None,
                     work_dir=kernel_dir,
-                    include_mlir=True,
                 )
                 dispatch_library = companion_path if has_dispatch else None
                 outputs = {
@@ -768,7 +761,7 @@ class CompilableDesign:
             elf_path = Path(full_elf_path).resolve()
             kernel_dir = elf_path.parent / f"{elf_path.stem}.prj"
         else:
-            cache_hash = self._compute_cache_hash(include_mlir=True)
+            cache_hash = self._compute_cache_hash()
             kernel_dir = NPU_CACHE_HOME / cache_hash
             elf_path = kernel_dir / "design.elf"
         lock_file_path = kernel_dir / ".lock"
@@ -777,9 +770,7 @@ class CompilableDesign:
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
-                build_key = self._compute_cache_hash(
-                    full_elf=True, work_dir=kernel_dir, include_mlir=True
-                )
+                build_key = self._compute_cache_hash(full_elf=True, work_dir=kernel_dir)
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"full_elf": elf_path}
                 ):
@@ -900,7 +891,7 @@ class CompilableDesign:
             inst_path = Path(inst_path).resolve()
             kernel_dir = inst_path.parent / f"{inst_path.stem}.prj"
         else:
-            cache_hash = self._compute_cache_hash(include_mlir=True)
+            cache_hash = self._compute_cache_hash()
             kernel_dir = NPU_CACHE_HOME / cache_hash
             inst_path = kernel_dir / "insts.bin"
         lock_file_path = kernel_dir / ".lock"
@@ -910,7 +901,7 @@ class CompilableDesign:
 
             if explicit_path:
                 build_key = self._compute_cache_hash(
-                    full_elf=False, work_dir=kernel_dir, include_mlir=True
+                    full_elf=False, work_dir=kernel_dir
                 )
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"insts": inst_path}
@@ -1450,19 +1441,7 @@ class CompilableDesign:
         full_elf: bool | None = None,
         emit_elf: bool = False,
         work_dir: Path | None = None,
-        include_mlir: bool = False,
     ) -> str:
-        # With include_mlir the generated design is part of the key: the
-        # recipe hash covers the generator's code, not the helpers it calls,
-        # so without it an edit to a helper served the previous artifact.
-        # Generation is cached per design, so only the first lookup in a
-        # process pays for it, even on a disk hit (~50-100 ms for the
-        # 4-column whole-array GEMM); __hash__ (identity) leaves it out.
-        if full_elf is None:
-            full_elf = self.full_elf
-        design_text = None
-        if include_mlir:
-            design_text = _design_key_text(*self._generated_for(full_elf=full_elf))
         return _compute_hash(
             self.mlir_generator,
             self.compile_kwargs,
@@ -1470,14 +1449,13 @@ class CompilableDesign:
             self.object_files,
             self.aiecc_flags,
             self.compile_flags,
-            full_elf,
+            self.full_elf if full_elf is None else full_elf,
             self._resolve_fold_ddr_addr_offset(),
             bool(self.dispatch_params),
             self.include_paths,
             self.insts_only,
             emit_elf,
             work_dir,
-            design_text,
         )
 
     def _reuse_explicit_outputs(
@@ -1643,7 +1621,13 @@ class CompilableDesign:
             parameters=list(compile_only_params.values())
         )
         try:
-            compile_only_sig.bind(**self.compile_kwargs)
+            compile_only_sig.bind(
+                **{
+                    k: v
+                    for k, v in self.compile_kwargs.items()
+                    if k not in self.tensor_params
+                }
+            )
         except TypeError as exc:
             raise TypeError(
                 f"CompilableDesign for '{self.generator_name}': "

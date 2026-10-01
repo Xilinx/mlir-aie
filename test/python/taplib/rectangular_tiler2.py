@@ -53,13 +53,9 @@ def rectangular_tiler2():
         # fmt: on
     )
 
-    tile_count = 0
-    for t in tiler:
-        if tile_count == 12:
-            tile_access_order = t.access_order()
-            assert (tile_access_order == tile1_reference_order).all()
-        tile_count += 1
-    assert tile_count == (12 // 3) * (8 // 2)
+    tile_access_order = tiler[3, 0].access_order()
+    assert (tile_access_order == tile1_reference_order).all()
+    assert sum(1 for row in tiler for _ in row) == (12 // 3) * (8 // 2)
 
     # CHECK: Pass!
     print("Pass!")

@@ -174,7 +174,7 @@ class Worker(ObjectFifoEndpoint):
                 if arg._owner_worker is not None and arg._owner_worker is not self:
                     if not arg._explicit_tile:
                         raise ValueError(
-                            f"Buffer '{arg._name}' has no explicit tile and is shared "
+                            f"Buffer {arg._name or arg._arr_type} has no explicit tile and is shared "
                             f"across Workers; pin it to a tile (Buffer(tile=...)) so "
                             f"placement is unambiguous."
                         )

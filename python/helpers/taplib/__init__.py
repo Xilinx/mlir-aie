@@ -2,10 +2,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from .tap import TensorAccessPattern
-from .tas import TensorAccessSequence, TileGrid
 
-__all__ = [
-    "TensorAccessPattern",
-    "TensorAccessSequence",
-    "TileGrid",
-]
+__all__ = ["TensorAccessPattern"]
