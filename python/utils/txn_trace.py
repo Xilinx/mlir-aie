@@ -32,7 +32,7 @@ import argparse
 import ctypes
 import dataclasses
 from dataclasses import dataclass
-from typing import Iterable, NamedTuple, Sequence
+from typing import NamedTuple, Sequence
 
 import numpy as np
 
@@ -303,22 +303,10 @@ def decode(words: Sequence[int] | np.ndarray) -> list[Op]:
                 )
             )
             pos += 6
-        elif base == OPC_MASKWRITE:
+        elif base in (OPC_MASKWRITE, OPC_MASKPOLL):
             ops.append(
                 Op(
-                    "maskwrite32",
-                    pos,
-                    tuple(w[pos : pos + 7]),
-                    addr=w[pos + 2],
-                    value=w[pos + 4],
-                    mask=w[pos + 5],
-                )
-            )
-            pos += 7
-        elif base == OPC_MASKPOLL:
-            ops.append(
-                Op(
-                    "maskpoll32",
+                    "maskwrite32" if base == OPC_MASKWRITE else "maskpoll32",
                     pos,
                     tuple(w[pos : pos + 7]),
                     addr=w[pos + 2],
@@ -482,16 +470,8 @@ class Event:
         return f"{self.kind} {self.raw}"
 
 
-@dataclass
-class _ChannelState:
-    ctrl: int = 0
-
-
-def trace(
-    words: Sequence[int] | np.ndarray, *, ops: Iterable[Op] | None = None
-) -> list[Event]:
+def trace(words: Sequence[int] | np.ndarray) -> list[Event]:
     """Replay a stream and return the DMA events it triggers, in order."""
-    ops = list(ops) if ops is not None else decode(words)
     regs: dict[int, int] = {}
     patches: dict[int, tuple] = {}  # BD address-word register -> ("arg", idx, plus)
     events: list[Event] = []
@@ -524,16 +504,15 @@ def trace(
                     return col, row, kind, direction, ch
         return None
 
-    for op in ops:
+    for op in decode(words):
         if op.kind == "write32":
             regs[op.addr] = op.value
         elif op.kind == "maskwrite32":
             regs[op.addr] = (regs.get(op.addr, 0) & ~op.mask) | (op.value & op.mask)
         elif op.kind == "blockwrite":
+            # A fresh BD image supersedes an earlier patch of its address word.
             for i, d in enumerate(op.data):
                 regs[op.addr + 4 * i] = d
-            # A fresh BD image supersedes an earlier patch of its address word.
-            for i in range(len(op.data)):
                 patches.pop(op.addr + 4 * i, None)
         elif op.kind == "patch":
             patches[op.addr] = ("arg", op.data[0], op.data[1])
