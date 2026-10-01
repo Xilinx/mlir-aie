@@ -171,6 +171,13 @@
     .worse { color: var(--bad); font-weight: 650; }
     .better { color: var(--ok); font-weight: 650; }
     .flat { color: var(--faint); }
+    /* Changes: grey within the threshold; amber or light green past it; red
+       or green on a tint past three times it. The sign always shows. */
+    .chg.worse { color: var(--warn); font-weight: 600; }
+    .chg.better { color: var(--ok); font-weight: 500; opacity: 0.85; }
+    .chg.strong { font-weight: 700; padding: 0 4px; border-radius: 3px; opacity: 1; }
+    .chg.worse.strong { color: var(--bad); background: var(--bad-soft); }
+    .chg.better.strong { color: var(--ok); background: var(--ok-soft); }
     .stale { color: var(--faint); }
     .case-name { overflow-wrap: anywhere; }
     .case-name .rest { color: var(--muted); }
@@ -215,6 +222,36 @@
     .chart h3 .case-name { font-family: var(--mono); font-weight: 500; font-size: 12px; }
     .chart .canvas { position: relative; height: 200px; }
     details.group { margin: 0 0 14px; }
+
+    /* Kernel page: a card per case, the four metrics side by side. */
+    .glance { display: grid; gap: 12px; }
+    .glance-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px 10px; }
+    .glance-card header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 10px; }
+    .case-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+    .case-title .shape { font-family: var(--mono); font-size: 15px; font-weight: 650; color: var(--ink); }
+    .case-title .dtype { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border-radius: 4px; background: var(--paper); border: 1px solid var(--rule); color: var(--ink); }
+    .case-title .params { font-size: 13px; color: var(--muted); }
+    .glance-card header .ratio { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+    .glance-card header .why { font-size: 12.5px; }
+    .glance-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--rule); }
+    a.glance-metric { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px 4px; color: var(--ink); border-left: 1px solid var(--rule); min-width: 0; }
+    a.glance-metric:first-child { border-left: 0; padding-left: 0; }
+    a.glance-metric:hover { background: var(--paper); text-decoration: none; }
+    .glance-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .glance-row { display: grid; grid-template-columns: 34px 1fr; align-items: baseline; gap: 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .glance-row .npu { font-size: 11.5px; font-weight: 600; }
+    .glance-row .npu.n-npu1 { color: var(--npu1); }
+    .glance-row .npu.n-npu2 { color: var(--npu2); }
+    .glance-row .vals { overflow-wrap: anywhere; }
+    .glance-row .before { color: var(--faint); }
+    .glance-row .after { font-weight: 650; }
+    .glance-row .after.cyc { font-size: 14px; }
+    .spark { display: block; height: 34px; margin-top: 2px; }
+    .spark svg { display: block; width: 100%; height: 34px; overflow: visible; }
+    .key { display: inline-flex; align-items: center; gap: 5px; margin-right: 12px; }
+    .key i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+    .key i.n-npu1 { background: var(--npu1); }
+    .key i.n-npu2 { background: var(--npu2); }
     details.group > summary { cursor: pointer; padding: 6px 0; font-size: 14px; }
     details.group > summary .factory { font-weight: 650; font-family: var(--mono); }
     details.group > .charts { margin-top: 8px; }
@@ -234,6 +271,8 @@
       .headline { font-size: 18px; }
       /* Only prose: hiding a column would slide the NPU group headers. */
       #kernels .summary.wide { display: none; }
+      .glance-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      a.glance-metric:nth-child(3) { border-left: 0; padding-left: 0; }
     }
     @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
   </style>
@@ -307,13 +346,11 @@
       <div id="kernel-head"></div>
       <section class="block">
         <div class="block-head"><h2>Cases</h2><p id="kernel-cases-about"></p></div>
-        <div class="table-wrap"><table>
-          <thead id="kernel-cases-head"></thead>
-          <tbody id="kernel-cases"></tbody>
-        </table></div>
+        <div id="kernel-cases" class="glance"></div>
       </section>
       <section class="block">
-        <div class="block-head"><h2>History</h2><span id="kernel-metric" class="seg" role="group" aria-label="metric"></span></div>
+        <div class="block-head"><h2>Full charts</h2><span id="kernel-metric" class="seg" role="group" aria-label="metric"></span></div>
+        <p class="note"><span class="key"><i class="n-npu1"></i>npu1</span><span class="key"><i class="n-npu2"></i>npu2</span>Dashed lines mark a change of Peano, host, runtime or driver; hover for which.</p>
         <div id="kernel-charts" class="charts"></div>
         <div id="kernel-charts-empty" class="empty" hidden>No history for this kernel yet.</div>
       </section>
@@ -331,7 +368,7 @@
         <label><input id="all-modes" type="checkbox"> Include other power modes</label>
       </form>
       <p id="metric-about" class="note"></p>
-      <p class="note">Hollow diamonds are runs started by hand; the rest are nightlies.</p>
+      <p class="note" id="charts-key"><span class="key"><i class="n-npu1"></i>npu1</span><span class="key"><i class="n-npu2"></i>npu2</span>Hollow diamonds are runs started by hand; the rest are nightlies. A dashed line marks a change of Peano, host, runtime or driver; hover it for which.</p>
       <div id="charts"></div>
       <div id="empty" class="empty" hidden></div>
     </section>
@@ -724,11 +761,44 @@
         href ? link(href, factory) : factory, el('span', { className: 'rest' }, rest));
     }
 
+    // A case id's parts: "factory/shape/dtype/key=value/flag...".
+    function caseParts(kase) {
+      const [factory, ...rest] = kase.split('/');
+      const out = { factory, shape: '', dtype: '', params: [] };
+      for (const part of rest) {
+        if (!out.shape && /^\d+(x\d+)*$/.test(part)) out.shape = part;
+        else if (!out.dtype && !part.includes('=') && out.shape) out.dtype = part;
+        else {
+          const cut = part.indexOf('=');
+          out.params.push(cut < 0 ? part : `${part.slice(0, cut).replace(/_/g, ' ')} ${part.slice(cut + 1)}`);
+        }
+      }
+      return out;
+    }
+
+    // A case without its factory, for the factory's own page: the shape, the
+    // types, then the parameters in words.
+    function caseTitle(kase) {
+      const c = caseParts(kase);
+      return el('span', { className: 'case-title', title: kase },
+        el('span', { className: 'shape' }, c.shape ? c.shape.replace(/x/g, ' × ') : c.factory),
+        c.dtype ? el('span', { className: 'dtype' }, c.dtype.replace(/_/g, ' ')) : '',
+        c.params.length ? el('span', { className: 'params' }, c.params.join(', ')) : '');
+    }
+
     // A change beside a value: colored only past the metric's threshold,
     // gray when the value is from an earlier night than the latest.
-    function changeSpan(d, cls, current) {
-      const tone = current === false ? 'stale' : cls || 'flat';
-      return el('span', { className: `chg ${tone}`, textContent: formatChange(d) });
+    function changeSpan(d, cls, current, metric) {
+      return el('span', { className: `chg ${toneOf(d, cls, current, metric)}`, textContent: formatChange(d) });
+    }
+
+    // A change's classes: 'flat' within the threshold, 'worse' or 'better'
+    // past it, plus 'strong' past three times it; 'stale' when the value is
+    // from an earlier night than the latest.
+    function toneOf(d, cls, current, metric) {
+      if (current === false) return 'stale';
+      if (!cls) return 'flat';
+      return metric && Math.abs(d) >= 3 * threshold(metric) ? `${cls} strong` : cls;
     }
 
     // A cycles row's range, "median M max X n=N[; ...][; truncated]": the
@@ -1153,13 +1223,16 @@
       }
       // A size moves in place: its change in KiB beside it.
       if (m.unit === 'bytes' && m.delta) {
-        const tone = c.current === false ? 'stale' : m.cls || 'flat';
+        const tone = toneOf(m.change, m.cls, c.current, metric);
         value.append(' ', el('span', { className: `chg ${tone} delta`, title: `${formatChange(m.change)} since the previous nightly`,
                                        textContent: formatBytesDelta(m.delta) }));
       }
       if (!withChange) return [value];
       const change = el('td', { className: 'num' });
-      if (m.change !== null && m.change !== undefined) change.append(changeSpan(m.change, m.cls, c.current));
+      if (m.change !== null && m.change !== undefined) {
+        change.append(changeSpan(m.change, m.cls, c.current, metric));
+        change.title = `from ${formatNumber(m.value - m.delta, m.unit)}`;
+      }
       return [value, change];
     }
 
@@ -1294,37 +1367,116 @@
       }
       head.append(builds);
 
-      // Cases: cycles lead; cycles per 1k ops, size and host time follow.
-      const both = nights.length > 1;
-      $('kernel-cases-head').replaceChildren(
-        el('tr', { className: 'group' }, el('th', { rowSpan: 2 }, 'Case'),
-          ...nights.map(n => el('th', { colSpan: 5, className: 'npu-start' }, n.npu)),
-          both ? el('th', { rowSpan: 2, className: 'num npu-start', title: `${nights[1].npu} cycles over ${nights[0].npu} cycles` }, `${nights[1].npu} ÷ ${nights[0].npu}`) : ''),
-        el('tr', {}, ...nights.flatMap(n => [
-          el('th', { className: 'num npu-start' }, 'Cycles'), changeHead(n),
-          el('th', { className: 'num' }, 'Per 1k ops'), el('th', { className: 'num' }, 'Object size'), el('th', { className: 'num faint' }, 'Host time')])));
-      const rows = casesOf(nights, factory).map(kase => {
-        const tr = el('tr', {}, el('td', {}, caseName(kase)));
-        const values = [];
-        for (const n of nights) {
-          const c = n.latest.cases.get(kase);
-          const why = caseVerdict(n, kase);
-          if (!c) {
-            tr.append(el('td', { colSpan: 5, className: 'npu-start' }, why ? el('span', { className: `note ${why.cls}`, title: why.title }, why.text) : el('span', { className: 'faint' }, '—')));
-            values.push(null);
-            continue;
-          }
-          tr.append(...metricCells(c, 'cycles', true, 'cyc npu-start'), ...metricCells(c, 'cycles_per_kop'),
-            ...metricCells(c, 'kernel_object_bytes'), ...metricCells(c, 'npu_us', false, 'faint'));
-          values.push(c.metrics.get('cycles') ? c.metrics.get('cycles').value : null);
-        }
-        if (both) tr.append(el('td', { className: 'num npu-start' }, values[0] && values[1] ? `${(values[1] / values[0]).toFixed(2)}×` : ''));
-        return tr;
-      });
-      $('kernel-cases').replaceChildren(...rows);
-      $('kernel-cases-about').textContent = `Latest night per NPU. Hover a cycle count for the median and slowest call behind it.`;
+      // Cases: a card each, the four metrics side by side; the trend lines
+      // fill in once the histories load (fillSparks).
+      const cards = casesOf(nights, factory).map(kase => glanceCard(kase, nights));
+      $('kernel-cases').replaceChildren(...cards);
+      kernelCards = cards;
+      const about = $('kernel-cases-about');
+      about.replaceChildren(...nights.map(n => el('span', { className: 'key' }, el('i', { className: `n-${n.npu}` }), n.npu)),
+        'Latest nightly per NPU, from the one before. Each line is that metric over recent nightlies, relative to the latest: ',
+        'up is worse, and the shaded band is the change that counts. Click a metric for its full chart.');
       return true;
     }
+
+    let kernelCards = [];
+
+    // One case's card: per metric, each NPU's before → after and change, and
+    // a holder for its trend line.
+    function glanceCard(kase, nights) {
+      const header = el('header', {}, caseTitle(kase));
+      for (const n of nights) {
+        const why = !n.latest.cases.get(kase) && caseVerdict(n, kase);
+        if (why) header.append(el('span', { className: `why note ${why.cls}`, title: why.title }, `${n.npu}: ${why.text}`));
+      }
+      const cyc = nights.map(n => { const c = n.latest.cases.get(kase); const m = c && c.metrics.get('cycles'); return m ? m.value : null; });
+      if (nights.length > 1 && cyc[0] && cyc[1]) {
+        header.append(el('span', { className: 'ratio', title: `${nights[1].npu} cycles over ${nights[0].npu} cycles` },
+          `${nights[1].npu} ÷ ${nights[0].npu} cycles ${(cyc[1] / cyc[0]).toFixed(2)}×`));
+      }
+      const grid = el('div', { className: 'glance-metrics' });
+      const card = el('article', { className: 'glance-card' }, header, grid);
+      card.kase = kase;
+      card.sparks = new Map();
+      for (const metric of ALL_METRICS) {
+        const cell = el('a', { className: 'glance-metric', href: chartsLink(kase, metric), title: `${METRICS[metric]}\nClick for the full chart.` },
+          el('span', { className: 'glance-label' }, label(metric)));
+        for (const n of nights) {
+          const c = n.latest.cases.get(kase);
+          const m = c && c.metrics.get(metric);
+          cell.append(el('span', { className: 'glance-row' }, el('span', { className: `npu n-${n.npu}` }, n.npu),
+            m ? glanceValues(m, metric, c.current) : el('span', { className: 'faint' }, '—')));
+        }
+        const spark = el('span', { className: 'spark' });
+        card.sparks.set(metric, spark);
+        cell.append(spark);
+        grid.append(cell);
+      }
+      return card;
+    }
+
+    // "before → after change", or the value alone with nothing to compare.
+    function glanceValues(m, metric, current) {
+      const after = el('span', { className: `after${metric === 'cycles' ? ' cyc' : ''}${current === false ? ' stale' : ''}`,
+                                 textContent: formatNumber(m.value, m.unit) });
+      if (current === false) after.title = 'not measured in the latest nightly; this is from an earlier one';
+      if (m.change === null || m.change === undefined) return el('span', { className: 'vals' }, after);
+      const tone = toneOf(m.change, m.cls, current, metric);
+      const change = m.unit === 'bytes'
+        ? el('span', { className: `chg ${tone}`, title: formatChange(m.change) }, formatBytesDelta(m.delta))
+        : el('span', { className: `chg ${tone}` }, formatChange(m.change));
+      return el('span', { className: 'vals' }, el('span', { className: 'before' }, `${formatNumber(m.value - m.delta, m.unit)} → `), after, ' ', change);
+    }
+
+    // A trend line per NPU, each relative to its own latest value, so npu1
+    // and npu2 share an axis whatever their scale: up is worse. The band is
+    // ± the metric's threshold; the axis spans at least 2.5 times that.
+    // lines: [[npu, [values, oldest first]]]. An SVG string.
+    function sparkSvg(lines, metric) {
+      const W = 160, H = 34, pad = 3;
+      const rel = lines.filter(([, vs]) => vs.length && vs[vs.length - 1])
+        .map(([npu, vs]) => [npu, vs.map(v => v / vs[vs.length - 1] - 1)]);
+      if (!rel.length) return '';
+      const t = threshold(metric);
+      const span = Math.max(2.5 * t, ...rel.flatMap(([, r]) => r.map(Math.abs)));
+      const n = Math.max(2, ...rel.map(([, r]) => r.length));
+      const x = i => pad + (W - 2 * pad) * i / (n - 1);
+      const y = r => (H / 2 - r / span * (H / 2 - pad)).toFixed(1);
+      const parts = [`<rect x="0" y="${y(t)}" width="${W}" height="${(y(-t) - y(t)).toFixed(1)}" style="fill:var(--grid)"/>`,
+                     `<line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" style="stroke:var(--rule)"/>`];
+      for (const [npu, r] of rel) {
+        const off = n - r.length;
+        const pts = r.map((v, i) => `${x(off + i).toFixed(1)},${y(v)}`);
+        if (pts.length > 1) parts.push(`<polyline points="${pts.join(' ')}" fill="none" style="stroke:var(--${npu})" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`);
+        const [lx, ly] = pts[pts.length - 1].split(',');
+        parts.push(`<circle cx="${lx}" cy="${ly}" r="2.2" style="fill:var(--${npu})"/>`);
+      }
+      return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${label(metric)} trend">${parts.join('')}</svg>`;
+    }
+
+    const SPARK_POINTS = 20;
+
+    // Draws each card's trend lines from loaded histories, nightlies only
+    // (all runs for a series with no nightly), turbo when there is any.
+    function fillSparks(cards, data, npus) {
+      const nightly = nightlies(data);
+      const index = new Map();
+      for (const src of [data, nightly]) for (const s of src.series) index.set(`${s.npu}|${s.kase}|${s.metric}`, s);
+      const valuesOf = s => {
+        if (!s) return [];
+        const pts = s.byMode.get(EXPECTED_PMODE) || [...s.byMode.values()][0] || [];
+        return pts.slice(-SPARK_POINTS).map(p => p.row.value);
+      };
+      for (const card of cards) {
+        for (const [metric, holder] of card.sparks) {
+          const lines = npus.map(npu => [npu, valuesOf(index.get(`${npu}|${card.kase}|${metric}`))]);
+          holder.innerHTML = sparkSvg(lines, metric);
+          const n = Math.max(...lines.map(([, v]) => v.length));
+          holder.title = n > 1 ? `the last ${n} nightlies` : 'one nightly so far: nothing to draw a line through';
+        }
+      }
+    }
+
 
     // ------------------------------------------------------------------
     // Charts
@@ -1403,20 +1555,17 @@
         const at = opts && opts.at;
         if (!at || !at.length) return;
         const { ctx, chartArea: { top, bottom, left, right }, scales: { x } } = chart;
+        // A line only: what changed is in the tooltip, not over the data.
         ctx.save();
         ctx.setLineDash([3, 3]);
-        ctx.strokeStyle = ctx.fillStyle = opts.color || '#888';
-        ctx.font = '10px sans-serif';
+        ctx.strokeStyle = opts.color || '#888';
         for (const m of at) {
           const px = x.getPixelForValue(m.index);
+          if (px < left || px > right) continue;
           ctx.beginPath();
           ctx.moveTo(px, top);
           ctx.lineTo(px, bottom);
           ctx.stroke();
-          // The label sits on whichever side has room.
-          const toRight = px < (left + right) / 2;
-          ctx.textAlign = toRight ? 'left' : 'right';
-          ctx.fillText(m.label, px + (toRight ? 3 : -3), top + 10);
         }
         ctx.restore();
       },
@@ -1471,9 +1620,8 @@
     function draw(target, g, modes, data) {
       const npus = [...g.byNpu.keys()];
       const { nights, index } = nightsOf(data, npus, modes);
-      const days = nights.map(n => shortDate(n.date));
-      const labels = days.map((d, i) => days.filter(x => x === d).length > 1
-        ? `${d} ${new Date(nights[i].date).toISOString().slice(11, 16)}` : d);
+      // Dates on the axis, once a day; the time is in the tooltip.
+      const labels = nights.map(n => shortDate(n.date));
       const datasets = [];
       for (const [npu, s] of g.byNpu) {
         for (const mode of modes.filter(m => s.byMode.has(m))) {
@@ -1504,9 +1652,10 @@
       const split = npus.length === 2 && mids.every(m => m > 0) && Math.max(...mids) / Math.min(...mids) > 3;
       if (split) for (const d of datasets) if (d.npu === npus[1]) d.yAxisID = 'y1';
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
-      const axis = (sets, npu, extra) => ({ ...yRange(sets), ...extra,
-        title: split ? { display: true, text: npu, color: npuColor(npu) } : { display: false },
-        ticks: { color: split ? npuColor(npu) : fg, maxTicksLimit: 5, callback: v => formatNumber(v, g.unit) } });
+      // Split axes take their NPU's color instead of a title.
+      const axis = (sets, npu, extra) => ({ ...yRange(sets), ...extra, title: { display: false },
+        ticks: { color: split ? npuColor(npu) : fg, maxTicksLimit: 4, font: { size: 11 }, callback: v => formatNumber(v, g.unit) } });
+      const markers = nightMarkers(data, npus, index);
       const first = i => [...nights[i].byNpu.values()][0];
       const chart = new Chart(target, {
         type: 'line',
@@ -1517,18 +1666,25 @@
           maintainAspectRatio: false,
           interaction: { mode: 'index', intersect: false },
           scales: {
-            x: { ticks: { color: fg, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } },
+            x: { ticks: { color: fg, maxRotation: 0, autoSkip: true, maxTicksLimit: 6, font: { size: 11 },
+                          callback: (_v, i) => i > 0 && labels[i] === labels[i - 1] ? '' : labels[i] }, grid: { display: false } },
             y: axis(datasets.filter(d => d.yAxisID !== 'y1'), npus[0], { grid: { color: grid } }),
             ...(split ? { y1: axis(datasets.filter(d => d.yAxisID === 'y1'), npus[1], { position: 'right', grid: { display: false } }) } : {}),
           },
           plugins: {
-            legend: { display: datasets.filter(d => !d.band).length > 1, align: 'end',
-                      labels: { color: fg, boxWidth: 12, boxHeight: 2, filter: (item, d) => !d.datasets[item.datasetIndex].band } },
-            markers: { at: nightMarkers(data, npus, index), color: cssVar('--faint', '#8a93a3') },
+            // The NPU colors are keyed once above the charts; a legend only
+            // tells power modes apart.
+            legend: { display: modes.length > 1 && datasets.filter(d => !d.band).length > 1, align: 'end',
+                      labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 }, filter: (item, d) => !d.datasets[item.datasetIndex].band } },
+            markers: { at: markers, color: cssVar('--faint', '#8a93a3') },
             tooltip: {
               filter: item => !item.dataset.band,
               callbacks: {
-                title: items => items.length ? formatDate(nights[items[0].dataIndex].date) : '',
+                title: items => {
+                  if (!items.length) return '';
+                  const i = items[0].dataIndex, m = markers.find(x => x.index === i);
+                  return [formatDate(nights[i].date), ...(m ? [`changed: ${m.label}`] : [])];
+                },
                 afterTitle: items => {
                   const o = items.length && first(items[0].dataIndex);
                   return o && o.commit.id ? `${o.commit.id.slice(0, 7)} ${(o.commit.message || '').split('\n')[0]}` : '';
@@ -1797,6 +1953,10 @@
       $('tab-kernel').textContent = factory || 'Kernel';
       const found = renderKernel(factory, nights);
       if (!found) { $('kernel-metric').replaceChildren(); $('kernel-charts-empty').hidden = true; return; }
+      const cards = kernelCards, npus = nights.map(n => n.npu);
+      loadHistories(npus, ALL_METRICS).then(data => {
+        if (currentKernel === factory && kernelCards === cards) fillSparks(cards, data, npus);
+      });
       const pick = metric => {
         kernelMetric = metric;
         history.replaceState(null, '', hashFor({ view: 'kernel', kernel: factory, ...(metric === 'cycles' ? {} : { metric }) }));

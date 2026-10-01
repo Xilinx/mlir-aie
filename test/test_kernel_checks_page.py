@@ -193,8 +193,10 @@ global.fetch = async url => {
 def test_chart_draws_a_line_per_npu_and_mode_on_shared_nights(page):
     page("""
 draw(el0, groupOf(db), ['turbo', 'performance'], db);
-// npu1 and npu2 of one nightly (run t1) share a night; same-day nights carry the time.
-assert.deepEqual(chart.data.labels, ['1 Jan 00:01', '1 Jan 00:01', '1 Jan 00:03', '1 Jan 00:04', '1 Jan 00:04', '1 Jan 00:05']);
+// npu1 and npu2 of one nightly (run t1) share a night.
+// Dates only, each day once on the axis; the time is in the tooltip.
+assert.deepEqual(chart.data.labels, Array(6).fill('1 Jan'));
+assert.deepEqual([0, 1, 2].map(i => chart.options.scales.x.ticks.callback(null, i)), ['1 Jan', '', '']);
 const lines = chart.data.datasets.filter(d => !d.band);
 assert.deepEqual(lines.map(d => d.label), ['npu1 turbo', 'npu1 performance', 'npu2 turbo']);
 assert.deepEqual(lines[0].data, [100, null, null, 110, null, 121]);
@@ -206,7 +208,7 @@ assert.deepEqual(lines.map(d => d.borderDash.length > 0), [false, true, false]);
 assert.equal(lines[2].yAxisID, 'y1');
 assert.equal(chart.options.scales.y1.position, 'right');
 const cb = chart.options.plugins.tooltip.callbacks;
-assert.equal(cb.title([{ dataIndex: 5 }]), '1970-01-01 00:05 UTC');
+assert.deepEqual(cb.title([{ dataIndex: 5 }]), ['1970-01-01 00:05 UTC']);
 assert.equal(cb.afterTitle([{ dataIndex: 5 }]), 'abcdef1 same revision');
 assert.equal(cb.label({ dataset: lines[0], dataIndex: 5, raw: 121 }), 'npu1 turbo: 121 cycles');
 assert.deepEqual(cb.footer([{ dataIndex: 0 }]), ['npu1: Peano ?, turbo', 'npu2: Peano ?, turbo']);
@@ -304,6 +306,8 @@ assert.deepEqual(chart.options.plugins.markers.at, [
   { index: 3, label: 'npu1: host bench-2, runtime XRTHostRuntime, xrt 2.20.0' },
 ]);
 const footer = chart.options.plugins.tooltip.callbacks.footer;
+// What changed is in the tooltip, not drawn over the chart.
+assert.equal(chart.options.plugins.tooltip.callbacks.title([{ dataIndex: 2 }])[1], 'changed: npu1: peano 22.0.0+bbbb');
 assert.deepEqual(footer([{ dataIndex: 3 }]), ['npu1: Peano 22.0.0+bbbb, performance']);
 assert.deepEqual(footer([{ dataIndex: 1 }]), ['npu1: Peano ?, performance']);
 assert.equal(footer([]), '');
@@ -653,7 +657,8 @@ assert.equal(rows[2].children[1].colSpan, 3);
 assert.deepEqual(rows[3].children.slice(1).map(c => c.text), ['1,100', '+10.0%', '4.0 KiB', '2,200', '', '']);
 assert.ok(rows[3].children[1].className.includes('cyc'));
 assert.equal(rows[3].children[1].title, 'fastest 1100, median 1150, slowest 1200 over 16 calls');
-assert.equal(rows[3].children[2].children[0].className, 'chg worse');
+// +10% is past three times the 2% threshold.
+assert.equal(rows[3].children[2].children[0].className, 'chg worse strong');
 assert.equal(rows[3].children[0].children[0].children[0].href,
   '#view=charts&metric=cycles&show=all&kernel=softmax%2F1024%2Fbfloat16');
 assert.deepEqual(rows.slice(4, 7).map(r => r.children[1].text), ['timing failed', 'fails correctness', 'correctness only']);
@@ -678,19 +683,42 @@ assert.deepEqual(links, [
 assert.equal(head.children[3].tag, 'ul');
 assert.deepEqual(head.children[3].children.map(li => li.text),
   ['npu11 build, 3 cases pass, 2 timed 1 fail', 'npu21 build, 1 case pass, 1 timed']);
-const [groups, columns] = $('kernel-cases-head').children;
-assert.deepEqual(groups.children.map(c => c.text), ['Case', 'npu1', 'npu2', 'npu2 ÷ npu1']);
-assert.deepEqual(columns.children.map(c => c.text).slice(0, 5), ['Cycles', 'Changevs 1 Jan', 'Per 1k ops', 'Object size', 'Host time']);
-const rows = $('kernel-cases').children;
-assert.deepEqual(rows.map(r => r.children[0].children[0].title), [
+// A card per case, the four metrics side by side.
+const cards = $('kernel-cases').children;
+assert.deepEqual(cards.map(c => c.kase), [
   'softmax/1024/bfloat16', 'softmax/16/bfloat16', 'softmax/2048/bfloat16', 'softmax/32/bfloat16', 'softmax/64/bfloat16',
 ]);
-assert.deepEqual(rows[0].children.slice(1).map(c => c.text),
-  ['1,100', '+10.0%', '', '4.0 KiB', '', '2,200', '', '', '', '', '2.00×']);
-assert.equal(rows[1].children[1].text, 'timing failed');
-assert.equal(rows[1].children[1].colSpan, 5);
-assert.equal(rows[2].children[1].text, 'fails correctness');
+const [header, grid] = cards[0].children;
+assert.equal(header.children[0].title, 'softmax/1024/bfloat16');
+assert.equal(header.children[0].text, '1024bfloat16');
+assert.equal(header.children.at(-1).text, 'npu2 ÷ npu1 cycles 2.00×');
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Cycles', 'Cycles / 1k ops', 'Object size', 'Host time']);
+// Before → after and the change; npu2 has only one nightly.
+assert.equal(grid.children[0].text, 'Cyclesnpu11,000 → 1,100 +10.0%npu22,200');
+assert.equal(grid.children[0].href, '#view=charts&metric=cycles&show=all&kernel=softmax%2F1024%2Fbfloat16');
+assert.equal(grid.children[2].text, 'Object sizenpu14.0 KiBnpu2—');
+assert.ok(cards[1].children[0].text.includes('npu1: timing failed'));
+assert.ok(cards[2].children[0].text.includes('npu1: fails correctness'));
+// The trend lines, once the histories are in.
+fillSparks(cards, db, ['npu1', 'npu2']);
+const spark = cards[0].sparks.get('cycles');
+assert.ok(spark.innerHTML.includes('<polyline') && spark.innerHTML.includes('var(--npu2)'));
+assert.equal(spark.title, 'the last 2 nightlies');
+assert.equal(cards[0].sparks.get('npu_us').innerHTML, '');
 assert.equal(renderKernel('nope', nights), false);
+""")
+
+
+def test_case_titles_and_trend_lines(page):
+    page("""
+assert.deepEqual(caseParts('bn_conv2dk3/1792x8/int8_uint8/input_channels=8/stride=2/lut'),
+  { factory: 'bn_conv2dk3', shape: '1792x8', dtype: 'int8_uint8', params: ['input channels 8', 'stride 2', 'lut'] });
+assert.equal(caseTitle('mm/64x32x64x16/int16_int32').text, '64 × 32 × 64 × 16int16 int32');
+// Each NPU relative to its own latest value: 10x apart, both lines end mid-axis.
+const svg = sparkSvg([['npu1', [100, 110]], ['npu2', [1000, 1100]]], 'cycles');
+assert.equal((svg.match(/<polyline/g) || []).length, 2);
+assert.equal((svg.match(/cy="17.0"/g) || []).length, 2);
+assert.equal(sparkSvg([['npu1', []]], 'cycles'), '');
 """)
 
 
