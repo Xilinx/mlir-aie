@@ -34,6 +34,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+import numpy as np
+
 from aie.utils.compile.cache.utils import _create_function_cache_key
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
 
@@ -546,6 +548,27 @@ class CallableDesign:
         for a multi-device design where a single return is ambiguous.
         """
         return self.compilable.get_pdi_paths()
+
+    def instructions(self, **kwargs) -> np.ndarray:
+        """Compile (if needed) and return the instruction words a call would run.
+
+        ``kwargs`` takes call-time ``CompileTime[T]`` values and, for a design
+        with ``DispatchTime[T]`` parameters, the dispatch values whose
+        instruction stream to build. Nothing runs on an NPU, so this is how a
+        dispatch-time design is checked against a static specialization with
+        ``aie.utils.txn_trace``.
+        """
+        from aie.utils.npukernel import NPUKernel
+
+        call_compile_kwargs, dispatch_scalars, _ = self._extract_compile_kwargs(kwargs)
+        compilable = self._build_compilable(call_compile_kwargs)
+        _, inst_path = compilable.compile()
+        kernel = NPUKernel(
+            insts_path=inst_path,
+            dispatch_params=compilable.dispatch_params,
+            dispatch_lib_path=compilable.get_dispatch_lib_path(),
+        )
+        return kernel.instructions(**dispatch_scalars)
 
     def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:
         """Return the resolved MLIR text for this kernel without compiling.

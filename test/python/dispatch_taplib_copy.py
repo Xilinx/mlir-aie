@@ -7,11 +7,12 @@
 """Tiled copy with DispatchTime tile count and start tile.
 
 The taps are computed by taplib *inside* the runtime sequence body (a staged
-grid index into a TensorAccessPattern partition). The design compiles once; its host-side
-C++ transaction builder is then driven at several (start, n) pairs and the DMA
-events it produces are compared with a fully static specialization of the
-same generator. A dispatch that steps outside the buffer is refused by the
-`npu.require` guards taplib emitted. No NPU is needed.
+grid index into a TensorAccessPattern partition). The design compiles once;
+`instructions()` then drives its host-side C++ transaction builder at several
+(start, n) pairs, and the DMA events it produces are compared with a fully
+static specialization of the same generator. A dispatch that steps outside
+the buffer is refused by the `npu.require` guards taplib emitted. No NPU is
+needed.
 """
 
 import aie.iron as iron
@@ -30,7 +31,6 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU1Col1
-from aie.utils.compile.jit._dispatch_bridge import DispatchBridge
 from aie.utils.hostruntime.hostruntime import HostRuntimeError
 from aie.utils.txn_trace import compare, trace
 
@@ -85,13 +85,10 @@ def tiled_copy(
 dyn = tiled_copy.specialize()  # both scalars stay dispatch-time
 print("guards emitted:", "aiex.npu.require" in dyn.as_mlir())
 # CHECK: guards emitted: True
-dyn.compile()
-bridge = DispatchBridge(dyn.get_dispatch_lib_path(), dyn.compilable.dispatch_params)
 
 for start, n in ((0, 3), (1, 6), (2, 2), (0, MAX_TILES), (5, 3)):
-    words = bridge.generate({"n_tiles": n, "start_tile": start})
-    _, static_insts = tiled_copy.specialize(n_tiles=n, start_tile=start).compile()
-    static = np.fromfile(static_insts, dtype=np.uint32)
+    words = dyn.instructions(n_tiles=n, start_tile=start)
+    static = tiled_copy.specialize(n_tiles=n, start_tile=start).instructions()
     diffs = compare(words, static, names=("dynamic", "static"))
     events = trace(words)
     pushes = [e for e in events if e.kind == "push" and e.direction == "MM2S"]
@@ -109,7 +106,7 @@ for start, n in ((0, 3), (1, 6), (2, 2), (0, MAX_TILES), (5, 3)):
 # CHECK: start=5 n=3: 3 tiles from 5..7 equivalent=True
 
 try:
-    bridge.generate({"n_tiles": 4, "start_tile": 6})
+    dyn.instructions(n_tiles=4, start_tile=6)
     print("out-of-range dispatch: accepted")
 except HostRuntimeError as e:
     print("out-of-range dispatch: refused:", e)
