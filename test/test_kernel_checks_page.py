@@ -112,6 +112,13 @@ assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes']);
 """)
 
 
+def test_narrow_screens_hide_no_kernels_table_column():
+    # Each NPU's header spans its columns; hiding one slides the headers.
+    css = PAGE.read_text().split("<style>", 1)[1].split("</style>", 1)[0]
+    rules = re.findall(r"#kernels[^{]*\{[^}]*display:\s*none", css)
+    assert all(".summary" in r for r in rules), rules
+
+
 def test_repeated_commits_stay_separate_runs(page):
     page("""
 assert.equal(db.order.length, 7);

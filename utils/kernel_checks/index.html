@@ -163,6 +163,7 @@
     th, td { padding: 6px 12px; text-align: left; vertical-align: baseline; border-top: 1px solid var(--rule); }
     thead th { border-top: 0; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface); position: sticky; top: 0; z-index: 1; white-space: nowrap; }
     thead tr.group th { font-size: 13px; color: var(--ink); padding-bottom: 0; }
+    thead tr.group th.npu-start { text-align: center; }
     th.num, td.num { text-align: right; white-space: nowrap; }
     td.cyc { font-weight: 650; font-size: 14px; }
     td.npu-start, th.npu-start { border-left: 1px solid var(--rule); }
@@ -231,7 +232,8 @@
       .family { grid-template-columns: 1fr; gap: 4px; }
       a.tile { width: calc(50% - 3px); }
       .headline { font-size: 18px; }
-      #kernels .wide { display: none; }
+      /* Only prose: hiding a column would slide the NPU group headers. */
+      #kernels .summary.wide { display: none; }
     }
     @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
   </style>
