@@ -13,25 +13,31 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/IntEqClasses.h"
 #include "llvm/Support/Error.h"
 
-#include <algorithm>
 #include <functional>
-#include <iostream>
-#include <list>
+#include <limits>
+#include <map>
 #include <optional>
 #include <set>
 
 namespace xilinx::AIE {
 
-#define OVER_CAPACITY_COEFF 0.1
-#define USED_CAPACITY_COEFF 0.02
-#define DEMAND_COEFF 1.1
-#define DEMAND_BASE 1.0
-#define MAX_CIRCUIT_STREAM_CAPACITY 1
-#define MAX_PACKET_STREAM_CAPACITY 32
-
+// A connection's demand, the cost Dijkstra weighs it by, is
+// (demandBase + overCapacityCoeff * iterations it was over capacity) *
+// (demandBase + usedCapacityCoeff * streams using it).
+constexpr double overCapacityCoeff = 0.1;
+constexpr double usedCapacityCoeff = 0.02;
+constexpr double demandBase = 1.0;
+// A full connection's demand grows by this factor, or a prioritized flow's
+// by priorityDemandCoeff, each time another stream takes it.
+constexpr double demandCoeff = 1.1;
+constexpr double priorityDemandCoeff = std::numeric_limits<int>::max();
+constexpr int maxCircuitStreamCapacity = 1;
+constexpr int maxPacketStreamCapacity = 32;
 // History added to a connection each time the routing check rejects it.
 constexpr int routingCheckPenalty = 5;
 // Cost added to a hop that shares an arbiter unit with a flow to avoid.
@@ -48,14 +54,36 @@ constexpr double treeSeedFactor = 0.9;
 // A destination's branch is rerouted only when that saves more than this.
 constexpr double rerouteMinSaving = 1e-6;
 
-enum class Connectivity { INVALID = 0, AVAILABLE = 1 };
-
 // A shim's DMA, NOC and PLIO ports reach its switchbox through the shim mux,
 // on the South channel these return for a port that sends or receives.
 int shimMuxChannelFrom(Port src);
 int shimMuxChannelTo(Port dst);
 
-using SwitchboxConnect = struct SwitchboxConnect {
+/// The connections from the source ports to the destination ports of a
+/// switchbox, if `srcCoords == dstCoords`, or of the wires from one switchbox
+/// to its neighbour at `dstCoords`.
+struct SwitchboxConnect {
+  /// A connection from a source port to a destination port.
+  struct Cell {
+    bool available = false;
+    // weight of Dijkstra's shortest path
+    double demand = 0;
+    // iterations the connection was over capacity
+    int overCapacity = 0;
+    // circuit streams using the connection
+    int usedCapacity = 0;
+    // packet streams using the connection
+    int packetFlowCount = 0;
+    // only packet streams of this group may share the connection
+    int packetGroupId = -1;
+    // packet ids routed through the connection (and its crossbar row and
+    // column), by the flow routing each; it may be shared only among distinct
+    // ids.
+    llvm::SmallDenseMap<int, int, 2> packetIds;
+    // whether a prioritized flow uses the connection
+    bool isPriority = false;
+  };
+
   SwitchboxConnect() = default;
   SwitchboxConnect(TileID coords) : srcCoords(coords), dstCoords(coords) {}
   SwitchboxConnect(TileID srcCoords, TileID dstCoords)
@@ -64,52 +92,34 @@ using SwitchboxConnect = struct SwitchboxConnect {
   TileID srcCoords, dstCoords;
   std::vector<Port> srcPorts;
   std::vector<Port> dstPorts;
-  // connectivity between ports
-  std::vector<std::vector<Connectivity>> connectivity;
-  // weights of Dijkstra's shortest path
-  std::vector<std::vector<double>> demand;
-  // history of Channel being over capacity
-  std::vector<std::vector<int>> overCapacity;
-  // how many circuit streams are actually using this Channel
-  std::vector<std::vector<int>> usedCapacity;
-  // how many packet streams are actually using this Channel
-  std::vector<std::vector<int>> packetFlowCount;
-  // only sharing the channel with the same packet group id
-  std::vector<std::vector<int>> packetGroupId;
-  // packet ids currently routed through each channel (and its crossbar
-  // row/column), by the flow routing each; a channel may be shared only among
-  // distinct ids.
-  std::vector<std::vector<std::map<int, int>>> packetIds;
+  // The connection from srcPorts[i] to dstPorts[j] is cells[i * dstPorts.size()
+  // + j].
+  std::vector<Cell> cells;
   // Units of dst ports tied to one arbiter (see planArbiters in
   // AIECreatePathFindFlows.cpp); a unit's leader lists the packet flows
   // (indices into the router's flows) leaving by any of its ports
   llvm::IntEqClasses dstUnits;
   std::vector<llvm::SmallVector<int, 2>> unitPacketFlows;
-  // flags indicating priority routings
-  std::vector<std::vector<bool>> isPriority;
   // source ports the design already gives packet rules, which circuit streams
   // cannot enter
   std::vector<bool> packetOnlySrc;
   // dst ports packet streams may no longer take
   std::vector<bool> circuitOnlyDst;
 
-  // resize the matrices to the size of srcPorts and dstPorts
+  Cell &at(size_t i, size_t j) { return cells[i * dstPorts.size() + j]; }
+  const Cell &at(size_t i, size_t j) const {
+    return cells[i * dstPorts.size() + j];
+  }
+
+  // The index of `p` in srcPorts or dstPorts, or -1.
+  int srcIndex(Port p) const { return indexIn(srcPorts, p); }
+  int dstIndex(Port p) const { return indexIn(dstPorts, p); }
+
+  // Size the cells and the per-port state to srcPorts and dstPorts.
   void resize() {
-    connectivity.resize(
-        srcPorts.size(),
-        std::vector<Connectivity>(dstPorts.size(), Connectivity::INVALID));
-    demand.resize(srcPorts.size(), std::vector<double>(dstPorts.size(), 0.0));
-    overCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
-    usedCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
-    packetFlowCount.resize(srcPorts.size(),
-                           std::vector<int>(dstPorts.size(), 0));
-    packetGroupId.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
-    packetIds.resize(srcPorts.size(),
-                     std::vector<std::map<int, int>>(dstPorts.size()));
-    isPriority.resize(srcPorts.size(),
-                      std::vector<bool>(dstPorts.size(), false));
-    packetOnlySrc.resize(srcPorts.size(), false);
-    circuitOnlyDst.resize(dstPorts.size(), false);
+    cells.assign(srcPorts.size() * dstPorts.size(), Cell());
+    packetOnlySrc.assign(srcPorts.size(), false);
+    circuitOnlyDst.assign(dstPorts.size(), false);
     unitPacketFlows.resize(dstPorts.size());
     resetUnits();
   }
@@ -145,48 +155,38 @@ using SwitchboxConnect = struct SwitchboxConnect {
 
   // update demand at the beginning of each dijkstraShortestPaths iteration
   void updateDemand() {
-    for (size_t i = 0; i < srcPorts.size(); i++) {
-      for (size_t j = 0; j < dstPorts.size(); j++) {
-        double history = DEMAND_BASE + OVER_CAPACITY_COEFF * overCapacity[i][j];
-        double congestion =
-            DEMAND_BASE + USED_CAPACITY_COEFF * usedCapacity[i][j];
-        demand[i][j] = history * congestion;
-      }
-    }
+    for (Cell &c : cells)
+      c.demand = (demandBase + overCapacityCoeff * c.overCapacity) *
+                 (demandBase + usedCapacityCoeff * c.usedCapacity);
   }
 
-  // Inside each dijkstraShortestPaths interation, bump demand when exceeds
-  // capacity. If isPriority is true, then set demand to INF to ensure routing
-  // consistency for prioritized flows
-  void bumpDemand(size_t i, size_t j) {
-    if (usedCapacity[i][j] >= MAX_CIRCUIT_STREAM_CAPACITY) {
-      demand[i][j] *=
-          isPriority[i][j] ? std::numeric_limits<int>::max() : DEMAND_COEFF;
-    }
+  // Inside each dijkstraShortestPaths iteration, bump demand when it exceeds
+  // capacity, all but ruling the connection out if a prioritized flow uses it,
+  // to keep prioritized flows' routes.
+  static void bumpDemand(Cell &c) {
+    if (c.usedCapacity >= maxCircuitStreamCapacity)
+      c.demand *= c.isPriority ? priorityDemandCoeff : demandCoeff;
+  }
+
+private:
+  static int indexIn(llvm::ArrayRef<Port> ports, Port p) {
+    const Port *it = llvm::find(ports, p);
+    return it == ports.end() ? -1 : it - ports.begin();
   }
 };
 
-using PathEndPoint = struct PathEndPoint {
+struct PathEndPoint {
   PathEndPoint() = default;
   PathEndPoint(TileID coords, Port port) : coords(coords), port(port) {}
 
   TileID coords;
   Port port;
 
-  friend std::ostream &operator<<(std::ostream &os, const PathEndPoint &s) {
-    os << "PathEndPoint(" << s.coords << ": " << s.port << ")";
-    return os;
-  }
-
-  GENERATE_TO_STRING(PathEndPoint)
-
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                        const PathEndPoint &s) {
-    os << to_string(s);
-    return os;
+    return os << "PathEndPoint(" << s.coords << ": " << s.port << ")";
   }
 
-  // Needed for the std::maps that store PathEndPoint.
   bool operator<(const PathEndPoint &rhs) const {
     return std::tie(coords, port) < std::tie(rhs.coords, rhs.port);
   }
@@ -196,7 +196,8 @@ using PathEndPoint = struct PathEndPoint {
   }
 };
 
-using Flow = struct Flow {
+struct Flow {
+  // Packet flows of one group may share channels; -1 for a circuit flow.
   int packetGroupId;
   bool isPriorityFlow;
   PathEndPoint src;
@@ -210,7 +211,7 @@ using Flow = struct Flow {
 // A SwitchSetting defines the required settings for a Switchbox for a flow
 // SwitchSetting.srcs is the fanin
 // SwitchSetting.dsts is the fanout
-using SwitchSetting = struct SwitchSetting {
+struct SwitchSetting {
   SwitchSetting() = default;
   SwitchSetting(std::vector<Port> srcs) : srcs(std::move(srcs)) {}
   SwitchSetting(std::vector<Port> srcs, std::vector<Port> dsts)
@@ -219,43 +220,27 @@ using SwitchSetting = struct SwitchSetting {
   std::vector<Port> srcs;
   std::vector<Port> dsts;
 
-  // friend definition (will define the function as a non-member function of
-  // the namespace surrounding the class).
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const SwitchSetting &setting) {
-    os << "{"
-       << join(llvm::map_range(setting.srcs,
-                               [](const Port &port) {
-                                 std::ostringstream ss;
-                                 ss << port;
-                                 return ss.str();
-                               }),
-               ", ")
-       << " -> "
-       << "{"
-       << join(llvm::map_range(setting.dsts,
-                               [](const Port &port) {
-                                 std::ostringstream ss;
-                                 ss << port;
-                                 return ss.str();
-                               }),
-               ", ")
-       << "}";
-    return os;
-  }
-
-  GENERATE_TO_STRING(SwitchSetting)
-
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                        const SwitchSetting &s) {
-    os << to_string(s);
-    return os;
+    os << "{";
+    llvm::interleaveComma(s.srcs, os);
+    os << " -> {";
+    llvm::interleaveComma(s.dsts, os);
+    return os << "}";
   }
 
   bool operator<(const SwitchSetting &rhs) const { return srcs < rhs.srcs; }
 };
 
 using SwitchSettings = std::map<TileID, SwitchSetting>;
+
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const SwitchSettings &ss) {
+  os << "\tSwitchSettings: ";
+  for (const auto &[coords, setting] : ss)
+    os << coords << ": " << setting << " | ";
+  return os << "\n";
+}
 
 /// A hop of a packet flow's tree, from one port to the next; `joined` when the
 /// flow takes it by joining another flow's tree.
@@ -339,40 +324,22 @@ struct PacketConstraints {
   PacketTrees pinned;
 };
 
-class Router {
+/// Congestion-negotiated routing: each iteration routes every flow by
+/// Dijkstra, given each connection's demand, and raises the demand of the
+/// connections used over capacity, until no connection is.
+class Pathfinder {
 public:
-  Router() = default;
-  // This has to go first so it can serve as a key function.
-  // https://lld.llvm.org/missingkeyfunction
-  virtual ~Router() = default;
-  virtual void initialize(int maxCol, int maxRow,
-                          const AIETargetModel &targetModel) = 0;
-  virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-                       Port dstPort, std::optional<int> packetId,
-                       bool isPriorityFlow) = 0;
-  virtual void sortFlows() = 0;
-  virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
+  void initialize(int maxCol, int maxRow, const AIETargetModel &targetModel);
+  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
+               std::optional<int> packetId, bool isPriorityFlow);
+  void sortFlows();
+  bool addFixedConnection(SwitchboxOp switchboxOp);
   /// A RoutingFailure if no legal routing is found in `maxIterations`.
-  virtual llvm::Expected<Routing> findPaths(int maxIterations) = 0;
-  virtual void setPacketConstraints(PacketConstraints constraints) {}
+  llvm::Expected<Routing> findPaths(int maxIterations);
+  void setPacketConstraints(PacketConstraints c) { constraints = std::move(c); }
   /// Loosens the packet constraints by a step after findPaths found no
   /// routing. Returns false once no step is left.
-  virtual bool relax() { return false; }
-};
-
-class Pathfinder : public Router {
-public:
-  Pathfinder() = default;
-  void initialize(int maxCol, int maxRow,
-                  const AIETargetModel &targetModel) override;
-  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
-               std::optional<int> packetId, bool isPriorityFlow) override;
-  void sortFlows() override;
-  bool addFixedConnection(SwitchboxOp switchboxOp) override;
-  llvm::Expected<Routing> findPaths(int maxIterations) override;
-  void setPacketConstraints(PacketConstraints c) override {
-    constraints = std::move(c);
-  }
+  ///
   /// Packet flows first share channels only with flows they share a
   /// destination with, directly or through others. The steps, each skipped
   /// if it changes nothing: they share channels with any packet flow; tiles
@@ -382,13 +349,12 @@ public:
   /// ports. Then, if a source sends more than one id, the second id of each
   /// TreeSplit at a tile the tree cannot branch at is routed apart from the
   /// rest, sharing and caps start over, and the two steps follow again.
-  bool relax() override;
+  bool relax();
 
 private:
   // A directed edge in the dense routing graph: from some node to node `dst`,
-  // realized by switchbox-connect `sb` at matrix position (i, j). `sb`, `i` and
-  // `j` index live into `graph` so demand reads always see the current
-  // iteration's weights.
+  // realized by cell (i, j) of `sb`. `sb` points into `graph`, so demand reads
+  // always see the current iteration's weights.
   struct Edge {
     int dst;
     SwitchboxConnect *sb;
@@ -412,8 +378,8 @@ private:
 
   // Build the dense integer node numbering and per-node adjacency from `graph`
   // and `flows`. Topology is fixed across congestion iterations, so this runs
-  // once. Edge order per node matches the legacy PathEndPoint-sorted order to
-  // preserve identical routing output.
+  // once. A node's edges are in the order of the PathEndPoints they reach, so
+  // Dijkstra breaks ties the same way every run.
   void buildRoutingGraph();
 
   // The cost of taking `e`, as dijkstraShortestPaths weighs it.
@@ -422,14 +388,14 @@ private:
                     const llvm::BitVector *avoidBranch);
 
   // Dijkstra over the dense graph from the states in `seeds`, each starting at
-  // its cost in `seedCosts`. Fills
-  // `preds` (predecessor state id, or -1) and `predEdge` (the edge taken to
-  // reach each state). Reuses the scratch buffers below. Master ports on an
-  // arbiter with flows in `avoid` cost conflictSharePenalty more, and from a
-  // state in `branchAvoid`, as much again for the flows it maps to. A channel
-  // a flow with the same `packetId` already shares costs as a full one. States
-  // in `stops` are reached but not left. The search ends once every state in
-  // `targets` is settled; only their `distance` and paths are final then.
+  // its cost in `seedCosts`. Fills `preds` (predecessor state id, or -1) and
+  // `predEdge` (the edge taken to reach each state). Reuses the scratch buffers
+  // below. Master ports on an arbiter with flows in `avoid` cost
+  // conflictSharePenalty more, and from a state in `branchAvoid`, as much again
+  // for the flows it maps to. A channel a flow with the same `packetId` already
+  // shares costs as a full one. States in `stops` are reached but not left. The
+  // search ends once every state in `targets` is settled; only their `distance`
+  // and paths are final then.
   void dijkstraShortestPaths(
       llvm::ArrayRef<int> seeds, llvm::ArrayRef<double> seedCosts,
       std::optional<int> packetId, const llvm::BitVector *avoid = nullptr,
@@ -457,11 +423,8 @@ private:
   // The packet ids each source sends each destination.
   std::map<std::pair<PathEndPoint, PathEndPoint>, llvm::SmallVector<int, 2>>
       packetIdsTo;
-  // Represent all routable paths as a graph
-  // The key is a pair of TileIDs representing the connectivity from srcTile to
-  // dstTile If srcTile == dstTile, it represents connections inside the same
-  // switchbox otherwise, it represents connections (South, North, West, East)
-  // accross two switchboxes
+  // The routing graph, by the tiles a SwitchboxConnect connects: a tile to
+  // itself for its switchbox, or to a neighbour for the wires between them.
   std::map<std::pair<TileID, TileID>, SwitchboxConnect> graph;
 
   // Dense routing graph (built once by buildRoutingGraph()).
@@ -485,32 +448,13 @@ private:
   std::string checkReason;
   bool shareChannels = false, idsApart = false;
   int relaxStep = 0;
-  std::set<TileID> crowdedTiles, cappedTiles;
+  llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
 };
 
-// DynamicTileAnalysis integrates the Pathfinder class into the MLIR
-// environment. It passes flows to the Pathfinder as ordered pairs of ints.
-// Detailed routing is received as SwitchboxSettings
-// It then converts these settings to MLIR operations
+/// Routes the flows of a device with a Pathfinder, and finds or creates the
+/// tiles, switchboxes and shim muxes the routing is lowered onto.
 class DynamicTileAnalysis {
 public:
-  int maxCol, maxRow;
-  std::shared_ptr<Router> pathfinder;
-  Routing routing;
-  std::map<PathEndPoint, bool> processedFlows;
-
-  llvm::DenseMap<TileID, TileOp> coordToTile;
-  llvm::DenseMap<TileID, SwitchboxOp> coordToSwitchbox;
-  llvm::DenseMap<TileID, ShimMuxOp> coordToShimMux;
-  llvm::DenseMap<int, PLIOOp> coordToPLIO;
-
-  const int maxIterations = 1000; // how long until declared unroutable
-
-  DynamicTileAnalysis() : pathfinder(std::make_shared<Pathfinder>()) {}
-  DynamicTileAnalysis(std::shared_ptr<Router> p) : pathfinder(std::move(p)) {}
-  DynamicTileAnalysis(mlir::Operation *op)
-      : pathfinder(std::make_shared<Pathfinder>()) {}
-
   /// A RoutingFailure if the flows in `device` have no legal routing.
   llvm::Error runAnalysis(DeviceOp &device);
 
@@ -519,31 +463,34 @@ public:
 
   TileOp getTile(mlir::OpBuilder &builder, int col, int row);
   TileOp getTile(mlir::OpBuilder &builder, const TileID &tileId);
-
   SwitchboxOp getSwitchbox(mlir::OpBuilder &builder, int col, int row);
-
   ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
+
+  /// The ops at `tile` the analysis has found or created, or null.
+  TileOp lookupTile(TileID tile) const { return coordToTile.lookup(tile); }
+  SwitchboxOp lookupSwitchbox(TileID tile) const {
+    return coordToSwitchbox.lookup(tile);
+  }
+  ShimMuxOp lookupShimMux(int col) const {
+    return coordToShimMux.lookup({col, 0});
+  }
+
+  Pathfinder pathfinder;
+  /// The routing runAnalysis found.
+  Routing routing;
+  /// The sources of the circuit flows lowered so far.
+  std::set<PathEndPoint> processedFlows;
+
+private:
+  // how long until declared unroutable
+  static constexpr int maxIterations = 1000;
+
+  int maxCol = 0, maxRow = 0;
+  llvm::DenseMap<TileID, TileOp> coordToTile;
+  llvm::DenseMap<TileID, SwitchboxOp> coordToSwitchbox;
+  llvm::DenseMap<TileID, ShimMuxOp> coordToShimMux;
 };
 
-// Get enum int value from WireBundle.
-int getWireBundleAsInt(WireBundle bundle);
-
 } // namespace xilinx::AIE
-
-namespace llvm {
-
-inline raw_ostream &operator<<(raw_ostream &os,
-                               const xilinx::AIE::SwitchSettings &ss) {
-  std::stringstream s;
-  s << "\tSwitchSettings: ";
-  for (const auto &[coords, setting] : ss) {
-    s << coords << ": " << setting << " | ";
-  }
-  s << "\n";
-  os << s.str();
-  return os;
-}
-
-} // namespace llvm
 
 #endif

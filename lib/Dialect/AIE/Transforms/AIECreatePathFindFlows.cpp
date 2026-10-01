@@ -105,7 +105,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     // add all switchbox connections to implement the flow
     TileID srcSbId = {srcCoords.col, srcCoords.row};
     PathEndPoint srcPoint = {srcSbId, srcPort};
-    if (analyzer.processedFlows[srcPoint]) {
+    if (analyzer.processedFlows.count(srcPoint)) {
       // This FlowOp is a broadcast sibling of a flow whose route was already
       // materialized (the analyzer merges all destinations sharing a source
       // into one net, so the first sibling emitted connections for every
@@ -114,8 +114,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
       rewriter.eraseOp(Op);
       return success();
     }
-    // std::map<TileID, SwitchSetting>
-    SwitchSettings settings = analyzer.routing.settings[srcPoint];
+    const SwitchSettings &settings = analyzer.routing.settings.at(srcPoint);
     // add connections for all the Switchboxes in SwitchSettings
     for (const auto &[tileId, setting] : settings) {
       int col = tileId.col;
@@ -162,7 +161,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     LLVM_DEBUG(llvm::dbgs()
                << "\n\t\tFinished adding ConnectOps to implement flowOp.\n");
 
-    analyzer.processedFlows[srcPoint] = true;
+    analyzer.processedFlows.insert(srcPoint);
     rewriter.eraseOp(Op);
     return success();
   }
@@ -1291,9 +1290,8 @@ void PacketFlowRouting::collectFlows() {
   for (const RoutedStream &s : conflicts.getStreams())
     routes.push_back(s.hops);
 
-  for (const auto &[point, processed] : analyzer.processedFlows)
-    if (processed)
-      circuitSources.insert(point);
+  circuitSources.insert(analyzer.processedFlows.begin(),
+                        analyzer.processedFlows.end());
   if (routeCircuit)
     for (FlowOp flow : device.getOps<FlowOp>())
       circuitSources.insert(sourceOf(flow));
@@ -2599,9 +2597,9 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
           .plan();
     };
   }
-  analyzer.pathfinder->setPacketConstraints(std::move(constraints));
+  analyzer.pathfinder.setPacketConstraints(std::move(constraints));
   llvm::Error routed = analyzer.runAnalysis(d);
-  analyzer.pathfinder->setPacketConstraints({});
+  analyzer.pathfinder.setPacketConstraints({});
   return routed;
 }
 
@@ -2624,7 +2622,7 @@ void AIEPathfinderPass::runOnOperation() {
       warning << " So can " << pairs.size() - 1 << " other pair"
               << (pairs.size() > 2 ? "s" : "") << " of flows.";
   }
-  DynamicTileAnalysis &analyzer = getAnalysis<DynamicTileAnalysis>();
+  DynamicTileAnalysis analyzer;
   // A prioritized flow keeps the route it takes alone, so route the packet
   // flows from prioritized sources without the rest of the design first, and
   // pin their trees for the rest to route around.
@@ -2679,12 +2677,12 @@ void AIEPathfinderPass::runOnOperation() {
     pinned = true;
   }
   // If routing fails, the router relaxes how it routes packet flows (see
-  // Router::relax) and tries again. The error is the first attempt's.
+  // Pathfinder::relax) and tries again. The error is the first attempt's.
   auto routeRelaxing = [&](DeviceOp dev, DynamicTileAnalysis &an,
                            StreamConflicts &c,
                            const PacketTrees &pin) -> llvm::Error {
     llvm::Error first = route(dev, an, c, pin, clCircuitSwitchHops);
-    while (first && an.pathfinder->relax()) {
+    while (first && an.pathfinder.relax()) {
       llvm::Error err = route(dev, an, c, pin, clCircuitSwitchHops);
       if (!err) {
         llvm::consumeError(std::move(first));
@@ -2770,24 +2768,15 @@ void AIEPathfinderPass::runOnOperation() {
   };
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
     for (int row = 0; row <= analyzer.getMaxRow(); row++) {
-      TileOp tile;
-      if (analyzer.coordToTile.count({col, row}))
-        tile = analyzer.coordToTile[{col, row}];
-      else
-        continue;
-      SwitchboxOp sw;
-      if (analyzer.coordToSwitchbox.count({col, row}))
-        sw = analyzer.coordToSwitchbox[{col, row}];
-      else
+      TileOp tile = analyzer.lookupTile({col, row});
+      SwitchboxOp sw = analyzer.lookupSwitchbox({col, row});
+      if (!tile || !sw)
         continue;
       Location loc = tile.getLoc();
-      if (col > 0) {
-        // connections east-west between stream switches
-        if (analyzer.coordToSwitchbox.count({col - 1, row})) {
-          auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
+      // connections east-west between stream switches
+      if (col > 0)
+        if (SwitchboxOp westsw = analyzer.lookupSwitchbox({col - 1, row}))
           wire(loc, westsw, WireBundle::East, sw, WireBundle::West);
-        }
-      }
       if (row > 0) {
         // connections between abstract 'core' of tile
         wire(loc, tile, WireBundle::Core, sw, WireBundle::Core);
@@ -2795,33 +2784,16 @@ void AIEPathfinderPass::runOnOperation() {
         wire(loc, tile, WireBundle::DMA, sw, WireBundle::DMA);
         // connections north-south inside array ( including connection to shim
         // row)
-        if (analyzer.coordToSwitchbox.count({col, row - 1})) {
-          auto southsw = analyzer.coordToSwitchbox[{col, row - 1}];
+        if (SwitchboxOp southsw = analyzer.lookupSwitchbox({col, row - 1}))
           wire(loc, southsw, WireBundle::North, sw, WireBundle::South);
-        }
-      } else if (row == 0) {
-        if (tile.isShimNOCTile()) {
-          if (analyzer.coordToShimMux.count({col, 0})) {
-            auto shimsw = analyzer.coordToShimMux[{col, 0}];
-            wire(loc, shimsw,
-                 WireBundle::North, // Changed to connect into the north
-                 sw, WireBundle::South);
-            // PLIO is attached to shim mux
-            if (analyzer.coordToPLIO.count(col)) {
-              auto plio = analyzer.coordToPLIO[col];
-              wire(loc, plio, WireBundle::North, shimsw, WireBundle::South);
-            }
-
-            // abstract 'DMA' connection on tile is attached to shim mux ( in
-            // row 0 )
-            wire(loc, tile, WireBundle::DMA, shimsw, WireBundle::DMA);
-          }
-        } else if (tile.isShimPLTile()) {
-          // PLIO is attached directly to switch
-          if (analyzer.coordToPLIO.count(col)) {
-            auto plio = analyzer.coordToPLIO[col];
-            wire(loc, plio, WireBundle::North, sw, WireBundle::South);
-          }
+      } else if (tile.isShimNOCTile()) {
+        if (ShimMuxOp shimsw = analyzer.lookupShimMux(col)) {
+          wire(loc, shimsw,
+               WireBundle::North, // Changed to connect into the north
+               sw, WireBundle::South);
+          // abstract 'DMA' connection on tile is attached to shim mux ( in
+          // row 0 )
+          wire(loc, tile, WireBundle::DMA, shimsw, WireBundle::DMA);
         }
       }
     }
