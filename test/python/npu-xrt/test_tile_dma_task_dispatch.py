@@ -58,7 +58,7 @@ def _window(start, chunks, dtype, explicit_len):
         into.fill(A)
         into.endpoint(mem).task(
             Bd(resident, acquires=[Acquire(empty)], releases=[Release(full)])
-        ).start().free()
+        ).start()
         window = Bd(
             resident,
             sizes=[1, 1, n, CHUNK],

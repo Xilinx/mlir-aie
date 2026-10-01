@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
@@ -41,11 +42,19 @@ struct AIESplitLongRepeatsPass
     SmallVector<DMAStartTaskOp> starts;
     device.walk([&](DMAStartTaskOp start) { starts.push_back(start); });
     for (DMAStartTaskOp start : starts) {
-      DMAConfigureTaskOp cfg = start.getTaskOp();
-      if (!cfg)
-        continue;
-      std::optional<int64_t> rc =
-          getConstantIntValue(start.getPushRepeatCount(cfg));
+      // A start's own count needs no configure. Otherwise the count is the
+      // task's, read through any control flow that carries the task.
+      std::optional<int64_t> rc;
+      if (std::optional<uint32_t> own = start.getRepeatCount()) {
+        rc = *own;
+      } else {
+        DMAConfigureTaskOp cfg = start.getTaskOp();
+        if (!cfg)
+          cfg = getUniqueReachableConfigure(start.getTask());
+        if (!cfg)
+          continue;
+        rc = getConstantIntValue(start.getPushRepeatCount(cfg));
+      }
       if (!rc || *rc <= maxRepeat)
         continue;
       int64_t pushes = (*rc + maxRepeat + 1) / (maxRepeat + 1);

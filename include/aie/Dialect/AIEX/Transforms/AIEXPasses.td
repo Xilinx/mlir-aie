@@ -377,7 +377,9 @@ def AIESplitLongRepeats : Pass<"aie-split-long-repeats", "AIE::DeviceOp"> {
     target's queue-push field as several starts of the same task: full-size
     ones first, then the remainder. Only the last keeps the task's token, so
     an await still completes after every pass. A runtime repeat count is left
-    for `aie-dma-to-npu` to guard.
+    for `aie-dma-to-npu` to guard. A start on a task carried through `scf`
+    control flow uses its own count, or else the count of the one configure
+    the task can come from.
 
     Runs before `aie-assign-runtime-sequence-bd-ids`, which then counts one
     queue slot per start. A start that would need more than `max-pushes`

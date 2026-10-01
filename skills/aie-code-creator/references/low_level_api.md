@@ -141,13 +141,13 @@ def sequence(A, C, n):
     into.fill(A)                                        # shim end of `into` (MM2S)
     into.endpoint(mem).task(                            # mem end of `into` (S2MM)
         Bd(buf, acquires=[Acquire(empty)], releases=[Release(full)])
-    ).start().free()
+    ).start()
     out.endpoint(mem).task(                             # mem end of `out` (MM2S)
         Bd(buf, length=n, acquires=[Acquire(full)], releases=[Release(empty)])
-    ).start().free()
+    ).start()
     out.drain(C, transfer_len=n, wait=True)             # shim end of `out` (S2MM)
 ```
 
-`task(*bds, runs=1, wait=False)` writes the descriptors where it is called; `start()` pushes the task and may be called again, so a task built before a loop is restarted with one push per iteration. `free()` returns its BDs after the last start. A `Bd` in a task takes no `next`, and takes both an acquire and a release or neither. The buffers and locks a task or `TileDma` uses are found from its `Bd`s; register the flows with `rt.add_flow`. `wait=True` works on mem/core tile tasks too: the compiler routes their completion token back to the shim, so `task.await_()` returns (`test/python/npu-xrt/test_tile_dma_task_token.py`).
+`task(*bds, runs=1, wait=False)` writes the descriptors where it is called; `start()` pushes the task and may be called again, so a task built before a loop is restarted with one push per iteration. `free()` returns its BDs, so call it only after the last start and once the task is known to have finished, through its own `await_()` or a waited transfer that depends on it. A BD freed earlier can be reprogrammed for the next task on the tile while its transfer is still queued. In a straight-line sequence, leave tasks unfreed: when a tile runs out of BDs, the compiler takes them back from tasks it can prove finished. A `Bd` in a task takes no `next`, and takes both an acquire and a release or neither. The buffers and locks a task or `TileDma` uses are found from its `Bd`s; register the flows with `rt.add_flow`. `wait=True` works on mem/core tile tasks too: the compiler routes their completion token back to the shim, so `task.await_()` returns (`test/python/npu-xrt/test_tile_dma_task_token.py`).
 
 Both `Flow` and `PacketFlow` (and `CascadeFlow`, documented in `python_api.md`) implement the `Resolvable` protocol (`aie.iron.resolvable.Resolvable`) — a structural `Protocol` requiring `resolve(loc, ip)` and `tiles()`. This is the advertised way to work with low-level primitives from an otherwise high-level design: implement `Resolvable` on your primitive and pass it to `rt.add_flow(...)` so `Program.resolve_program()` picks it up during placement/resolution, rather than dropping the whole design down to the `@device`/`@core` skeleton above. There's generally no reason to write a full design in low-level primitives — reach for `Resolvable` when you need one custom piece of topology, and keep everything else on `Worker`/`ObjectFifo`.

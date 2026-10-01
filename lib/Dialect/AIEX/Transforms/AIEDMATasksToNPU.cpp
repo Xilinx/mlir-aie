@@ -57,6 +57,18 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
   matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
+    if (!task_op && !op.getTask().getDefiningOp<DMAConfigureTaskForOp>()) {
+      // A task carried through runtime control flow. The push names one head
+      // BD, so it lowers only if every value the task can carry comes from
+      // the same configure.
+      task_op = getUniqueReachableConfigure(op.getTask());
+      if (!task_op)
+        return op.emitOpError(
+            "starts a task carried through control flow that does not come "
+            "from exactly one aiex.dma_configure_task, so its queue push has "
+            "no single buffer descriptor ID. Start the task where it is "
+            "configured.");
+    }
     if (!task_op) {
       // Cannot rewrite this; probably points to a DMAStartTaskForOp,
       // which we will lower once it has been rewritten into a DMAStartTaskOp.
@@ -104,39 +116,12 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
 // init and per-iteration reconfiguration agree -- so the first one found
 // gives the right channel.
 //
-// Walk such a value back to a configure via RegionBranchOpInterface, which
-// generically maps a successor input (a region's block argument, or a result
-// of the region-branch op) back to every operand that can feed it -- the
-// entry from the parent op (a loop's init) and any back-edge from a region
-// terminator (a loop body's yield, or an scf.if branch's yield) -- rather than
-// hand-matching scf::ForOp/scf::IfOp. This generalizes to arbitrary nesting
-// depth for free: an edge can itself be another region-branch successor
-// input, resolved on a later worklist pop.
+// getReachableConfigures walks such a value back to its configures through
+// RegionBranchOpInterface, at any nesting depth.
 static DMAConfigureTaskOp resolveConfigureThroughCF(Value task) {
-  llvm::SmallPtrSet<Value, 8> seen;
-  SmallVector<Value> worklist{task};
-  while (!worklist.empty()) {
-    Value v = worklist.pop_back_val();
-    if (!v || !seen.insert(v).second)
-      continue;
-    if (auto cfg = v.getDefiningOp<DMAConfigureTaskOp>())
-      return cfg;
-
-    Operation *regionBranchOp;
-    if (auto res = dyn_cast<OpResult>(v))
-      regionBranchOp = res.getOwner();
-    else
-      regionBranchOp = cast<BlockArgument>(v).getOwner()->getParentOp();
-    auto rbi = dyn_cast<RegionBranchOpInterface>(regionBranchOp);
-    if (!rbi)
-      continue;
-
-    RegionBranchInverseSuccessorMapping mapping;
-    rbi.getSuccessorInputOperandMapping(mapping);
-    for (OpOperand *operand : mapping.lookup(v))
-      worklist.push_back(operand->get());
-  }
-  return nullptr;
+  SmallVector<DMAConfigureTaskOp> configures;
+  (void)getReachableConfigures(task, configures);
+  return configures.empty() ? nullptr : configures.front();
 }
 
 struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {

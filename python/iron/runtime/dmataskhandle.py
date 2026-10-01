@@ -59,6 +59,12 @@ class Task:
         start costs one queue push. ``repeat_count`` replaces the task's
         configured count for this start only.
 
+        A task carried through a ``range_`` ``iter_args`` entry can be started
+        only if every value it can carry comes from the same configure (the
+        loop yields it unchanged), since the push names one head buffer
+        descriptor. A task reconfigured inside the loop is started where it is
+        configured, before it is yielded; compilation otherwise fails.
+
         Returns:
             This task.
 
