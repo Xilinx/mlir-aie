@@ -7,7 +7,7 @@
 
 Same shape as ``transform.py`` but distributes the work across all
 available NPU columns.  The design body delegates to
-:func:`aie.iron.algorithms.transform_parallel`.
+``aie.iron.algorithms.transform_parallel``.
 """
 
 import argparse

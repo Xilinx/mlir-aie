@@ -1616,6 +1616,9 @@ def test_parse_dma_sizes_matches_real_mlir_format(tmp_path):
     sample_mlir = """\
 module {
   aie.device(npu1) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_in(%shim, MM2S, 0)
+    aie.shim_dma_allocation @of_out(%shim, S2MM, 0)
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -1700,6 +1703,9 @@ def test_parse_dma_sizes_handles_repeated_transfer(tmp_path):
     sample_mlir = """\
 module {
   aie.device(npu1) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_in(%shim, MM2S, 0)
+    aie.shim_dma_allocation @of_in_again(%shim, MM2S, 1)
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -1729,6 +1735,9 @@ def test_parse_dma_sizes_handles_disjoint_fan_out(tmp_path):
     sample_mlir = """\
 module {
   aie.device(npu1) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_in_a(%shim, MM2S, 0)
+    aie.shim_dma_allocation @of_in_b(%shim, MM2S, 1)
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
       %c0_i32 = arith.constant 0 : i32
       %c512_i32 = arith.constant 512 : i32

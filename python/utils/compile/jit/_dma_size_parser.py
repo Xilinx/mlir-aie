@@ -7,12 +7,14 @@
 
 aiecc writes ``input_with_addresses.mlir`` into the kernel directory as part
 of compilation.  The host-facing ``aie.runtime_sequence`` carries fully
-typed memref arguments — e.g.::
+typed memref arguments — e.g.:
 
-    aie.runtime_sequence @sequence(%arg0: memref<65536xbf16>,
-                                   %arg1: memref<65536xbf16>) {
-      ...
-    }
+```mlir
+aie.runtime_sequence @sequence(%arg0: memref<65536xbf16>,
+                               %arg1: memref<65536xbf16>) {
+  ...
+}
+```
 
 The argument types ARE the kernel's host-side contract, so we read each
 tensor's memref shape and compute its footprint in bits. Dispatch scalars

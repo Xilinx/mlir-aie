@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -50,6 +51,17 @@ struct AIEObjectFifoAllocatePass
   DenseMap<Operation *, SmallVector<Value>> poolUsers;
   DenseMap<Operation *, SmallVector<Operation *>> lockUsers;
   DenseMap<Operation *, Value> lockPlacements;
+  /// What runs on each channel the design programs itself, by the
+  /// `aie.route_endpoint` naming it: dma_starts in its tile's DMA program and
+  /// tasks the runtime sequence configures for it.
+  DenseMap<Operation *, SmallVector<DMAStartOp>> endpointStarts;
+  DenseMap<Operation *, SmallVector<AIEX::DMAConfigureTaskForOp>> endpointTasks;
+  /// BDs spoken for on each channel of a placed tile, by (col, row, channel):
+  /// the chains DMA programs start on it by index, plus the largest task the
+  /// runtime sequence configures on it by index.
+  DenseMap<std::tuple<int, int, int>, int64_t> fixedBDs;
+  /// The same, with every channel the last assignment handed out added.
+  DenseMap<std::tuple<int, int, int>, int64_t> channelDemand;
   RouteEndpoint channelFailure;
   ObjectFifoPoolOp bufferFailure;
   Value lockFailure;
@@ -557,6 +569,8 @@ struct AIEObjectFifoAllocatePass
   /// Distinct unresolved tiles may be neighbors after placement, so they
   /// cannot be assumed local when assigning a placed endpoint's channels.
   bool reachesAdjacentTile(RouteEndpoint endpoint) {
+    if (auto route = dyn_cast<RouteEndpointOp>(endpoint.getOperation()))
+      return programReachesAdjacentTile(route);
     auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
     if (!dma || !dma.getTileLike().isMemTile()) {
       return false;
@@ -571,6 +585,182 @@ struct AIEObjectFifoAllocatePass
 
   TileLike tileOf(RouteEndpoint endpoint) {
     return dyn_cast<TileLike>(endpoint.getTile().getDefiningOp());
+  }
+
+  /// A DMA channel the design programs itself, by naming this endpoint from a
+  /// dma_start or a runtime task, rather than one an objectFIFO lowers to.
+  static bool isProgramOwned(RouteEndpoint endpoint) {
+    auto route = dyn_cast<RouteEndpointOp>(endpoint.getOperation());
+    return route && route.getBundle() == WireBundle::DMA &&
+           !route.getTileLike().isShimTile();
+  }
+
+  /// Blocks of the BD chain `start` begins, following next_bd.
+  static SmallVector<Block *> chainOf(DMAStartOp start) {
+    SmallVector<Block *> chain;
+    SmallPtrSet<Block *, 8> seen;
+    SmallVector<Block *> work{start.getDest()};
+    while (!work.empty()) {
+      Block *block = work.pop_back_val();
+      if (!seen.insert(block).second || block->getOps<DMABDOp>().empty())
+        continue;
+      chain.push_back(block);
+      if (auto next = dyn_cast<NextBDOp>(block->getTerminator()))
+        work.push_back(next.getDest());
+    }
+    return chain;
+  }
+
+  static int64_t countBDs(DMAStartOp start) {
+    int64_t bds = 0;
+    for (Block *block : chainOf(start))
+      bds += llvm::range_size(block->getOps<DMABDOp>());
+    return bds;
+  }
+
+  static int64_t countBDs(Region &taskBody) {
+    int64_t bds = 0;
+    taskBody.walk([&](DMABDOp) { bds++; });
+    return bds;
+  }
+
+  /// BDs a program-owned endpoint's channel needs at once: its static chains,
+  /// which stay configured, and the largest of its runtime tasks.
+  int64_t endpointBDs(Operation *endpoint) {
+    int64_t bds = 0, largestTask = 0;
+    for (DMAStartOp start : endpointStarts.lookup(endpoint))
+      bds += countBDs(start);
+    for (auto task : endpointTasks.lookup(endpoint))
+      largestTask = std::max(largestTask, countBDs(task.getBody()));
+    return bds + largestTask;
+  }
+
+  /// Whether a program-owned MemTile channel's BDs touch a neighbor's buffers
+  /// or locks, which only the lower channels can.
+  bool programReachesAdjacentTile(RouteEndpointOp endpoint) {
+    if (!endpoint.getTileLike().isMemTile())
+      return false;
+    auto remote = [&](Operation *op) {
+      Value tile;
+      if (auto bd = dyn_cast<DMABDOp>(op)) {
+        if (auto buffer =
+                dyn_cast_or_null<BufferOp>(bd.getBuffer().getDefiningOp()))
+          tile = buffer.getTile();
+      } else if (auto use = dyn_cast<UseLockOp>(op)) {
+        if (auto lock = dyn_cast_or_null<LockOp>(use.getLock().getDefiningOp()))
+          tile = lock.getTile();
+      }
+      return tile && !sameTile(tile, endpoint.getTile());
+    };
+    for (DMAStartOp start : endpointStarts.lookup(endpoint))
+      for (Block *block : chainOf(start))
+        if (llvm::any_of(block->getOperations(),
+                         [&](Operation &op) { return remote(&op); }))
+          return true;
+    for (auto task : endpointTasks.lookup(endpoint)) {
+      bool reaches = false;
+      task.getBody().walk([&](Operation *op) { reaches |= remote(op); });
+      if (reaches)
+        return true;
+    }
+    return false;
+  }
+
+  /// Find what programs each endpoint-named channel, and the BDs already spoken
+  /// for on channels named by index.
+  void collectChannelPrograms() {
+    endpointStarts.clear();
+    endpointTasks.clear();
+    fixedBDs.clear();
+    DenseMap<std::tuple<int, int, int>, int64_t> largestTask;
+    auto key = [](Value tile,
+                  int channel) -> std::optional<std::tuple<int, int, int>> {
+      auto placed = cast<TileLike>(tile.getDefiningOp());
+      auto col = placed.tryGetCol(), row = placed.tryGetRow();
+      if (!col || !row)
+        return std::nullopt;
+      return std::make_tuple(*col, *row, channel);
+    };
+    for (auto program : device.getOps<DmaBody>())
+      for (Block &block : program.getDmaBody())
+        for (auto start : block.getOps<DMAStartOp>()) {
+          if (auto endpoint = start.getEndpointOp()) {
+            endpointStarts[endpoint].push_back(start);
+          } else if (auto at =
+                         key(program.getTile(), start.getChannelIndex())) {
+            fixedBDs[*at] += countBDs(start);
+          }
+        }
+    device.walk([&](Operation *op) {
+      if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
+        if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(
+                SymbolTable::lookupNearestSymbolFrom(
+                    device, task.getAlloc().getRootReference())))
+          endpointTasks[endpoint].push_back(task);
+      } else if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op)) {
+        if (auto at = key(task.getTile(), task.getChannel())) {
+          int64_t &largest = largestTask[*at];
+          largest = std::max(largest, countBDs(task.getBody()));
+        }
+      }
+    });
+    for (auto &[at, bds] : largestTask)
+      fixedBDs[at] += bds;
+  }
+
+  /// BDs `channel` of the tile at (`col`, `row`) can use that `demand` leaves
+  /// over, counting every channel whose BD ids overlap its own. Negative when
+  /// overcommitted.
+  int64_t bdRoom(TileLike tile, int col, int row, int channel,
+                 const DenseMap<std::tuple<int, int, int>, int64_t> &demand) {
+    const AIETargetModel &target = device.getTargetModel();
+    uint32_t numBDs = target.getNumBDs(col, row);
+    int numChannels = std::max(tile.getNumSourceConnections(WireBundle::DMA),
+                               tile.getNumDestConnections(WireBundle::DMA));
+    auto sharesBDs = [&](int other) {
+      for (uint32_t bd = 0; bd < numBDs; ++bd)
+        if (target.isBdChannelAccessible(col, row, bd, channel) &&
+            target.isBdChannelAccessible(col, row, bd, other))
+          return true;
+      return false;
+    };
+    int64_t room = target.getNumBDsForChannel(col, row, channel);
+    for (int other = 0; other < numChannels; ++other)
+      if (sharesBDs(other))
+        if (auto it = demand.find({col, row, other}); it != demand.end())
+          room -= it->second;
+    return room;
+  }
+
+  /// On a tile whose BD ids are split between channels, the free channel whose
+  /// BDs have the most room left once every channel sharing them has its
+  /// demand; ties, and tiles without such a split, go to the lowest index.
+  /// Falls back to first-free where coordinates are unknown.
+  int chooseChannel(DMAChannelAnalysis &channels, RouteEndpoint endpoint,
+                    const DenseMap<std::tuple<int, int, int>, int64_t> &demand,
+                    bool adjacent) {
+    TileLike tile = tileOf(endpoint);
+    DMAChannelDir dir = endpoint.getRouteDirection();
+    std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
+    if (!col || !row)
+      return channels.getDMAChannelIndex(tile, dir, adjacent,
+                                         endpoint.getOperation());
+    int best = -1;
+    int64_t bestRoom = 0;
+    int limit = DMAChannelAnalysis::getDMAChannelLimit(tile, dir, adjacent);
+    for (int channel = 0; channel < limit; ++channel) {
+      if (!channels.isChannelFree(tile, dir, channel))
+        continue;
+      int64_t room = bdRoom(tile, *col, *row, channel, demand);
+      if (best < 0 || room > bestRoom) {
+        best = channel;
+        bestRoom = room;
+      }
+    }
+    if (best < 0)
+      return -1;
+    return channels.reservePinnedChannel(tile, dir, best,
+                                         endpoint.getOperation());
   }
 
   void noteChannelOwner(InFlightDiagnostic &diag, Operation *owner,
@@ -590,25 +780,62 @@ struct AIEObjectFifoAllocatePass
     }
   }
 
+  // No allocation can move a stream port the design names, so a clash fails
+  // the pass before the search rather than surfacing inside it.
+  LogicalResult checkStreamPorts() {
+    DMAChannelAnalysis channels(device);
+    // The endpoint verifier lets one route at most name each endpoint.
+    DenseSet<Operation *> packetEndpoints;
+    for (auto flow : device.getOps<RouteOp>()) {
+      if (!flow.getPacket() && !clPacketSwObjectFifos)
+        continue;
+      packetEndpoints.insert(
+          lookupEndpoint(flow.getSourceAttr()).getOperation());
+      for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+        packetEndpoints.insert(lookupEndpoint(dest).getOperation());
+    }
+    bool clash = false;
+    for (auto endpoint : device.getOps<RouteEndpoint>()) {
+      if (endpoint.getRouteBundle() != WireBundle::Core)
+        continue;
+      std::optional<int> channel = endpoint.getRouteChannel();
+      if (!channel)
+        return endpoint->emitOpError("a stream port names its own channel");
+      clash |= failed(channels.checkAIEStreamIndex(
+          tileOf(endpoint), {endpoint.getRouteDirection(), *channel},
+          endpoint.getOperation(),
+          packetEndpoints.contains(endpoint.getOperation())));
+    }
+    return failure(clash);
+  }
+
   LogicalResult assignChannels(DMAChannelAnalysis &channels,
                                bool diagnose = true) {
     channelAssignments.clear();
     channelFailure = nullptr;
     SmallVector<RouteEndpoint> pending;
+    // BDs per placed (col, row, channel) as channels are handed out, for
+    // choosing among a tile's channels by the BD ids they can use.
+    DenseMap<std::tuple<int, int, int>, int64_t> demand = fixedBDs;
+    auto noteDemand = [&](RouteEndpoint endpoint, int channel) {
+      TileLike tile = tileOf(endpoint);
+      auto col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (!col || !row)
+        return;
+      int64_t bds = 0;
+      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation()))
+        bds = dma.getNumBDs();
+      else if (isProgramOwned(endpoint))
+        bds = endpointBDs(endpoint.getOperation());
+      demand[{*col, *row, channel}] += bds;
+    };
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       DMAChannelDir dir = endpoint.getRouteDirection();
       std::optional<int> channel = endpoint.getRouteChannel();
       // A core's stream port is named by the design, not drawn from the tile's
-      // DMA channels.
-      if (endpoint.getRouteBundle() == WireBundle::Core) {
-        if (!channel) {
-          if (!diagnose)
-            return failure();
-          return endpoint->emitOpError("a stream port names its own channel");
-        }
-        channels.checkAIEStreamIndex(tileOf(endpoint), {dir, *channel});
+      // DMA channels; checkStreamPorts has claimed it.
+      if (endpoint.getRouteBundle() == WireBundle::Core)
         continue;
-      }
 
       if (channel) {
         if (reachesAdjacentTile(endpoint) &&
@@ -633,22 +860,42 @@ struct AIEObjectFifoAllocatePass
             noteChannelOwner(diag, owner, channel);
           return failure();
         }
+        noteDemand(endpoint, *channel);
         continue;
       }
       pending.push_back(endpoint);
     }
 
     // Endpoints reaching a spilled buffer draw from a restricted channel
-    // range, so they are served before the unrestricted ones.
+    // range, so they are served before the unrestricted ones. Channels the
+    // design programs itself come after the objectFIFOs', whose BDs they are
+    // then chosen around, the most demanding first.
+    DenseMap<Operation *, int64_t> programBDs;
+    for (auto endpoint : pending)
+      if (isProgramOwned(endpoint))
+        programBDs[endpoint.getOperation()] =
+            endpointBDs(endpoint.getOperation());
     llvm::stable_sort(pending, [&](RouteEndpoint a, RouteEndpoint b) {
-      return reachesAdjacentTile(a) && !reachesAdjacentTile(b);
+      bool aAdjacent = reachesAdjacentTile(a);
+      bool bAdjacent = reachesAdjacentTile(b);
+      if (aAdjacent != bAdjacent)
+        return aAdjacent;
+      bool aProgram = isProgramOwned(a), bProgram = isProgramOwned(b);
+      if (aProgram != bProgram)
+        return bProgram;
+      return aProgram && programBDs.lookup(a.getOperation()) >
+                             programBDs.lookup(b.getOperation());
     });
 
     for (auto endpoint : pending) {
       DMAChannelDir dir = endpoint.getRouteDirection();
-      int channel = channels.getDMAChannelIndex(tileOf(endpoint), dir,
-                                                reachesAdjacentTile(endpoint),
-                                                endpoint.getOperation());
+      int channel =
+          isProgramOwned(endpoint)
+              ? chooseChannel(channels, endpoint, demand,
+                              reachesAdjacentTile(endpoint))
+              : channels.getDMAChannelIndex(tileOf(endpoint), dir,
+                                            reachesAdjacentTile(endpoint),
+                                            endpoint.getOperation());
       if (channel < 0) {
         channelFailure = endpoint;
         if (!diagnose)
@@ -674,8 +921,35 @@ struct AIEObjectFifoAllocatePass
         return failure();
       }
       channelAssignments[endpoint.getOperation()] = channel;
+      noteDemand(endpoint, channel);
     }
+    channelDemand = std::move(demand);
     return success();
+  }
+
+  /// Channels are chosen by BD room but never refused for lack of it: a task
+  /// that frees its BDs before the next starts lets demand exceed the BDs.
+  /// Otherwise BD id assignment fails, so say where.
+  void warnOvercommittedBDs() {
+    const AIETargetModel &target = device.getTargetModel();
+    for (auto endpoint : device.getOps<RouteEndpoint>()) {
+      auto it = channelAssignments.find(endpoint.getOperation());
+      TileLike tile = tileOf(endpoint);
+      std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (it == channelAssignments.end() || !isProgramOwned(endpoint) || !col ||
+          !row)
+        continue;
+      int channel = it->second;
+      int64_t room = bdRoom(tile, *col, *row, channel, channelDemand);
+      if (room >= 0)
+        continue;
+      int64_t numBDs = target.getNumBDsForChannel(*col, *row, channel);
+      endpoint->emitWarning("channel ")
+          << channel << " can use " << numBDs
+          << " BDs, but it and the channels sharing them need " << numBDs - room
+          << " at once; BD id assignment fails unless tasks free their BDs "
+             "before others start";
+    }
   }
 
   /// Keep a successful largest-first allocation unchanged. On channel
@@ -936,6 +1210,65 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
+  /// Give each dma_start naming an endpoint the channel it was assigned.
+  LogicalResult resolveStart(DMAStartOp start, RouteEndpointOp endpoint,
+                             int channel) {
+    DMAChannelDir dir = endpoint.getRouteDirection();
+    if (start.getChannelDir() != dir)
+      return start.emitOpError("starts ")
+             << stringifyDMAChannelDir(start.getChannelDir()) << " on "
+             << start.getEndpoint() << ", but its route makes it "
+             << stringifyDMAChannelDir(dir);
+    // Only a runtime task's BDs are given the packet header.
+    if (endpoint.getPacket())
+      return start.emitOpError("names ")
+             << start.getEndpoint()
+             << ", the source of a packet-switched route; a DMA program's "
+                "BDs would not carry its header";
+    start.setChannelAttr(builder.getI32IntegerAttr(channel));
+    return success();
+  }
+
+  /// A runtime task naming an endpoint is configured on the endpoint's tile
+  /// and channel directly.
+  void resolveTask(AIEX::DMAConfigureTaskForOp task, RouteEndpointOp endpoint,
+                   int channel) {
+    builder.setInsertionPoint(task);
+    auto configured = AIEX::DMAConfigureTaskOp::create(
+        builder, task.getLoc(), builder.getIndexType(), endpoint.getTile(),
+        DMAChannelDirAttr::get(builder.getContext(),
+                               endpoint.getRouteDirection()),
+        builder.getI32IntegerAttr(channel),
+        builder.getBoolAttr(task.getIssueToken()),
+        builder.getI32IntegerAttr(task.getRepeatCount()),
+        task.getRepeatCountVal(), endpoint.getPacketAttr());
+    task.getResult().replaceAllUsesWith(configured.getResult());
+    configured.getBody().takeBody(task.getBody());
+    task.erase();
+  }
+
+  /// Rewrite the programs and tasks naming an endpoint to its channel while
+  /// the route giving its direction is still there. A shim end with a fifo
+  /// name keeps its tasks, which emitShimAllocations points at the allocation.
+  LogicalResult resolveEndpointUses() {
+    for (auto endpoint : device.getOps<RouteEndpointOp>()) {
+      auto starts = endpointStarts.lookup(endpoint);
+      auto tasks = endpointTasks.lookup(endpoint);
+      if (starts.empty() && tasks.empty())
+        continue;
+      std::optional<int> channel = endpoint.getRouteChannel();
+      assert(channel && "assignChannels gives every routed endpoint one");
+      for (DMAStartOp start : starts)
+        if (failed(resolveStart(start, endpoint, *channel)))
+          return failure();
+      if (endpoint.getTileLike().isShimTile() && endpoint.getFifoName())
+        continue;
+      for (auto task : tasks)
+        resolveTask(task, endpoint, *channel);
+    }
+    return success();
+  }
+
   /// A shim endpoint has no memory of its own, so the runtime needs its channel
   /// spelled out under the name the sequence refers to.
   void emitShimAllocations() {
@@ -1049,8 +1382,9 @@ struct AIEObjectFifoAllocatePass
     lockUsers.clear();
     lockPlacements.clear();
 
-    if (failed(collectFixedMemory()))
+    if (failed(collectFixedMemory()) || failed(checkStreamPorts()))
       return signalPassFailure();
+    collectChannelPrograms();
 
     // Preserve successful largest-first allocations, including their locality
     // repairs. Only try demand ordering when that search fails.
@@ -1127,11 +1461,12 @@ struct AIEObjectFifoAllocatePass
       if (auto it = channelAssignments.find(endpoint.getOperation());
           it != channelAssignments.end())
         endpoint.setRouteChannel(it->second);
+    warnOvercommittedBDs();
 
     if (failed(bindRearmTargets())) {
       return signalPassFailure();
     }
-    if (failed(lowerFlows())) {
+    if (failed(lowerFlows()) || failed(resolveEndpointUses())) {
       return signalPassFailure();
     }
     emitShimAllocations();

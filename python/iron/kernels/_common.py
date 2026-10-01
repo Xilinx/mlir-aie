@@ -350,6 +350,7 @@ class ArchTraits:
         native_tanh: Has a tanh instruction; otherwise tanh reads a LUT.
         native_exp2: Has an exp2 instruction; otherwise exp2 is a polynomial.
         bfp16: Has the bfp16ebs8 block type.
+        ctz_popcount: Peano lowers ``__builtin_ctz`` and ``__builtin_popcount``.
         lut_16b_run: uint16 entries per bank run in an ``aie::lut`` table.
     """
 
@@ -361,13 +362,14 @@ class ArchTraits:
     native_exp2: bool
     bfp16: bool
     lut_16b_run: int
+    ctz_popcount: bool
 
 
 ARCH_TRAITS = {
     t.name: t
     for t in (
-        ArchTraits("aie2", 20, "npu1", 16, False, False, False, 8),
-        ArchTraits("aie2p", 21, "npu2", 32, True, True, True, 16),
+        ArchTraits("aie2", 20, "npu1", 16, False, False, False, 8, False),
+        ArchTraits("aie2p", 21, "npu2", 32, True, True, True, 16, True),
     )
 }
 

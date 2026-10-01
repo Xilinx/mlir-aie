@@ -189,8 +189,7 @@ class Worker(ObjectFifoEndpoint):
                     # tile (AIE compute tiles can read N/S/E/W neighbors' L1
                     # directly), honor that placement — Program.resolve discovers
                     # the neighbor tile via Buffer.tiles().
-                    if arg._tile is None:
-                        arg._tile = self._tile
+                    arg.place(self._tile)
             elif isinstance(arg, ScratchpadParameter):
                 pass  # ScratchpadParameters are device-level symbols; no tile placement needed
             elif isinstance(arg, ObjectFifo):

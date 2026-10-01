@@ -28,13 +28,11 @@
 
 // Row-major variants needed by matmul_PV.  Because there is no separate link
 // step, all kernel symbols must be defined in this single translation unit.
-extern "C" {
 
 // Expanded along n only: mm_aie2p.h's 2x2 expansion keeps four 64-float
 // accumulators plus two A and two B tiles live, which does not fit the
 // registers. The mac order per output tile, and so the result, is the same.
-void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
-  event0();
+static void matmul_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
   constexpr unsigned r = 8, s = 8, t = 8;
@@ -75,6 +73,13 @@ void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
     }
   }
   ::aie::set_rounding(saved_rounding);
+}
+
+extern "C" {
+
+void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
+  event0();
+  matmul_rowmaj(a_in, b_in, c_out);
   event1();
 }
 
@@ -86,10 +91,10 @@ void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
 // scale pattern in one shuffle. Out of line so its two callers share one copy
 // of the unrolled body.
 static __attribute__((noinline)) void
-scale_blocked_rows(bfloat16 *O, const bfloat16 *scale) {
+scale_blocked_rows(bfloat16 *O, const bfloat16 *scale, int32_t rows) {
   using Vec8bf16 = aie::vector<bfloat16, 8>;
   using Vec64bf16 = aie::vector<bfloat16, VECTOR_LENGTH>;
-  for (int32_t l = 0; l < 8; l++) {
+  for (int32_t l = 0; l < rows / 8; l++) {
     Vec8bf16 scale_row = aie::load_v<8>(scale + l * 8);
     Vec64bf16 scale_vec =
         aie::transpose(scale_row.grow_replicate<VECTOR_LENGTH>(), 8, 8);
@@ -120,12 +125,14 @@ alignas(64) static const int16_t sm_lane_idx[VECTOR_LENGTH] = {
     32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
     48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63};
 
+// Row i keeps the columns before i + diagonal + 1, so a diagonal of
+// VECTOR_LENGTH or more keeps them all.
 static inline __attribute__((always_inline)) aie::mask<VECTOR_LENGTH>
 suffix_mask(aie::vector<int16_t, VECTOR_LENGTH> lane, int32_t i,
-            int32_t valid_cols, bool diagonal) {
+            int32_t valid_cols, int32_t diagonal) {
   int32_t start = valid_cols;
-  if (diagonal && i + 1 < start)
-    start = i + 1;
+  if (i + diagonal + 1 < start)
+    start = i + diagonal + 1;
   return aie::ge(lane, aie::broadcast<int16_t, VECTOR_LENGTH>(start));
 }
 
@@ -189,7 +196,7 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
                                  const bfloat16 *__restrict m_prev,
                                  bfloat16 *__restrict m_new,
                                  bfloat16 *__restrict l_new, int32_t rows,
-                                 int32_t valid_cols, bool diagonal,
+                                 int32_t valid_cols, int32_t diagonal,
                                  bfloat16 scale) {
   using Vec16bf16 = aie::vector<bfloat16, SM_LANES>;
   using Vec16f = aie::vector<float, SM_LANES>;
@@ -211,7 +218,7 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
   const int32_t group_rows = (rows + SM_ROWS - 1) & ~(SM_ROWS - 1);
 
   // Lanes a row discards hold lowest from here on.
-  if (diagonal || valid_cols < VECTOR_LENGTH) {
+  if (diagonal < VECTOR_LENGTH - 1 || valid_cols < VECTOR_LENGTH) {
     bfloat16 *__restrict row = A;
     AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
     AIE_LOOP_UNROLL(4)
@@ -363,6 +370,67 @@ static void zero_rows_from(bfloat16 *V, int32_t row) {
   }
 }
 
+// The online state is four B_q-long regions, so a vector walking one is at
+// most B_q wide: the widest of 64, 32 and 16 lanes that divides B_q.
+template <typename F>
+static inline void for_state_width(int32_t B_q, F walk) {
+  if (B_q % VECTOR_LENGTH == 0)
+    walk(std::integral_constant<int, VECTOR_LENGTH>{});
+  else if (B_q % 32 == 0)
+    walk(std::integral_constant<int, 32>{});
+  else
+    walk(std::integral_constant<int, 16>{});
+}
+
+template <int W>
+static inline void advance_state_w(bfloat16 *scale_buffer, int32_t B_q) {
+  using VecW = aie::vector<bfloat16, W>;
+  for (int32_t i = 0; i < B_q; i += W) {
+    VecW m_i_minus_1 = aie::load_v<W>(scale_buffer + i);
+    VecW m_i = aie::load_v<W>(scale_buffer + B_q + i);
+    VecW l_i_minus_1 = aie::load_v<W>(scale_buffer + 2 * B_q + i);
+    VecW accum_exp_val = aie::load_v<W>(scale_buffer + 3 * B_q + i);
+
+    aie::accum<accfloat, W> l_i_accum = aie::zeros<accfloat, W>();
+    aie::accum<accfloat, W> diff =
+        aie::accum<accfloat, W>(aie::sub(m_i_minus_1, m_i));
+    l_i_accum.from_vector(exp2_bf16(diff.template to_vector<float>()));
+    VecW max_diff_exp = l_i_accum.template to_vector<bfloat16>();
+
+    aie::store_v(scale_buffer + 3 * B_q + i, max_diff_exp);
+    aie::accum<accfloat, W> l_i =
+        aie::add(aie::mul(max_diff_exp, l_i_minus_1), accum_exp_val);
+    aie::store_v(scale_buffer + 2 * B_q + i,
+                 l_i.template to_vector<bfloat16>());
+    aie::store_v(scale_buffer + i, m_i);
+  }
+}
+
+template <int W>
+static inline void init_state_w(bfloat16 *scale_buffer, int32_t size) {
+  using VecW = aie::vector<bfloat16, W>;
+  VecW lowest_vec =
+      aie::broadcast<bfloat16, W>(std::numeric_limits<bfloat16>::lowest());
+  VecW zeros_vec = aie::broadcast<bfloat16, W>(0.0f);
+  for (int32_t i = 0; i < size; i += W) {
+    // VJUNG: m_{i-1} vector
+    aie::store_v(scale_buffer + i, lowest_vec);
+    // VJUNG: m_{i} vector
+    aie::store_v(scale_buffer + size + i, zeros_vec);
+    // VJUNG: l_{i} vector
+    aie::store_v(scale_buffer + 2 * size + i, zeros_vec);
+  }
+}
+
+template <int W>
+static inline void invert_sums_w(bfloat16 *scale_buffer, int32_t B_q) {
+  for (int32_t i = 0; i < B_q; i += W) {
+    aie::vector<bfloat16, W> l_vec = aie::load_v<W>(scale_buffer + 2 * B_q + i);
+    l_vec = aie::inv(l_vec);
+    aie::store_v(scale_buffer + 2 * B_q + i, l_vec);
+  }
+}
+
 extern "C" {
 void partial_softmax_bf16(bfloat16 *input, bfloat16 *output,
                           bfloat16 *scale_buffer, const int32_t input_size,
@@ -397,10 +465,14 @@ void matmul_bf16_bf16_wrapper_scalar(bfloat16 *a_in, bfloat16 *b_in,
 void matmul_PV(bfloat16 *Q, bfloat16 *K, bfloat16 *out, bfloat16 *scale_buffer,
                const int32_t B_q, int32_t first_iter, int32_t *idx_buffer,
                int32_t S_kv_eff) {
+  event0();
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
-  if (idx_buffer[0] > idx_buffer[1]) {
+  // The key block is DIM_K wide; skip it where it lies above the causal
+  // diagonal for every row of the query block, as partial_softmax does.
+  if (idx_buffer[1] * B_q + B_q <= idx_buffer[0] * DIM_K) {
     ::aie::set_rounding(saved_rounding);
+    event1();
     return;
   }
 
@@ -414,11 +486,12 @@ void matmul_PV(bfloat16 *Q, bfloat16 *K, bfloat16 *out, bfloat16 *scale_buffer,
   // scale_buffer[3*B_q:3*B_q + B_q] VJUNG: Skip this for the first iteration as
   // 1/exp(m_{i-1} - m_{i}) degenerates to inf due to m intizalized to -inf
   if (first_iter != 0) {
-    scale_blocked_rows(out, scale_buffer + 3 * B_q);
+    scale_blocked_rows(out, scale_buffer + 3 * B_q, B_q);
   }
 
-  matmul_bf16_bf16_rowmaj(Q, K, out);
+  matmul_rowmaj(Q, K, out);
   ::aie::set_rounding(saved_rounding);
+  event1();
 }
 
 void rescale_O(bfloat16 *O, bfloat16 *scale_buffer, int32_t B_q,
@@ -426,18 +499,15 @@ void rescale_O(bfloat16 *O, bfloat16 *scale_buffer, int32_t B_q,
   event0();
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
-  for (int32_t i = 0; i < B_q; i += VECTOR_LENGTH) {
-    using Vec64bf16 = aie::vector<bfloat16, VECTOR_LENGTH>;
-    Vec64bf16 l_vec = aie::load_v<VECTOR_LENGTH>(scale_buffer + 2 * B_q + i);
-    l_vec = aie::inv(l_vec);
-    aie::store_v(scale_buffer + 2 * B_q + i, l_vec);
-  }
+  for_state_width(B_q, [&](auto w) {
+    invert_sums_w<decltype(w)::value>(scale_buffer, B_q);
+  });
 
   // VJUNG: Only after all KV are processed
   // VJUNG: TODO: Make this generic for every tile size
   // VJUNG: Need to scale depending on the data layout at the output of GEMM
   // VJUNG: Scale O_{i} by 1/l_{i}
-  scale_blocked_rows(O, scale_buffer + 2 * B_q);
+  scale_blocked_rows(O, scale_buffer + 2 * B_q, B_q);
   ::aie::set_rounding(saved_rounding);
   event1();
 }
@@ -451,8 +521,11 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
   int32_t q_block_idx = idx_buffer[1];
   int32_t kv_block_idx = idx_buffer[0];
 
-  // Causal full mask: skip blocks strictly above diagonal
-  if (kv_block_idx > q_block_idx) {
+  // Causal diagonal in global positions: query row i keeps the key columns
+  // before i + diagonal + 1, so a query block narrower than the key block masks
+  // at the right column. Skip a block above the diagonal for every row.
+  const int32_t diagonal = q_block_idx * B_q - kv_block_idx * B_kv;
+  if (diagonal + B_q <= 0) {
     zero_vectorized<bfloat16, DIM_M, DIM_N>(P);
     ::aie::set_rounding(saved_rounding);
     return;
@@ -499,18 +572,22 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
       scale_bits > 0 && scale_bits < 0x7f80) {
     partial_softmax_rows(A, P, scale_buffer, scale_buffer + B_q,
                          scale_buffer + 3 * B_q, valid_q_rows, valid_kv_cols,
-                         kv_block_idx == q_block_idx, inv_scale);
+                         diagonal, inv_scale);
   } else {
     // Everything a valid row discards is a suffix of that row: the columns from
     // valid_kv_cols on, and on the diagonal block the columns past the
     // diagonal, so the earlier start covers both. A lane mask covers a suffix
     // that starts mid-vector; its bits are built directly because mask's own
     // runtime shift is a loop.
-    if (valid_kv_cols < B_kv || kv_block_idx == q_block_idx) {
+    if (valid_kv_cols < B_kv || diagonal < B_kv - 1) {
       for (int32_t i = 0; i < valid_q_rows; i++) {
         int32_t start = valid_kv_cols;
-        if (kv_block_idx == q_block_idx && i + 1 < start) {
-          start = i + 1;
+        if (i + diagonal + 1 < start) {
+          start = i + diagonal + 1;
+        }
+        // A row the diagonal leaves no key of is masked whole.
+        if (start < 0) {
+          start = 0;
         }
         int32_t base = start & ~(VECTOR_LENGTH - 1);
         if (base < B_kv) {
@@ -553,29 +630,9 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
     aie::store_v(P + n, zeros_vec);
   }
 
-  for (int32_t i = 0; i < B_q; i += VECTOR_LENGTH) {
-
-    Vec64bf16 m_i_minus_1 = aie::load_v<VECTOR_LENGTH>(scale_buffer + i);
-    Vec64bf16 m_i = aie::load_v<VECTOR_LENGTH>(scale_buffer + B_q + i);
-    Vec64bf16 l_i_minus_1 =
-        aie::load_v<VECTOR_LENGTH>(scale_buffer + 2 * B_q + i);
-    Vec64bf16 accum_exp_val =
-        aie::load_v<VECTOR_LENGTH>(scale_buffer + 3 * B_q + i);
-
-    aie::accum<accfloat, VECTOR_LENGTH> l_i_accum =
-        aie::zeros<accfloat, VECTOR_LENGTH>();
-
-    aie::accum<accfloat, VECTOR_LENGTH> diff =
-        aie::accum<accfloat, VECTOR_LENGTH>(aie::sub(m_i_minus_1, m_i));
-    l_i_accum.from_vector(exp2_bf16(diff.to_vector<float>()));
-    Vec64bf16 max_diff_exp = l_i_accum.to_vector<bfloat16>();
-
-    aie::store_v(scale_buffer + 3 * B_q + i, max_diff_exp);
-    aie::accum<accfloat, VECTOR_LENGTH> l_i =
-        aie::add(aie::mul(max_diff_exp, l_i_minus_1), accum_exp_val);
-    aie::store_v(scale_buffer + 2 * B_q + i, l_i.to_vector<bfloat16>());
-    aie::store_v(scale_buffer + i, m_i);
-  }
+  for_state_width(B_q, [&](auto w) {
+    advance_state_w<decltype(w)::value>(scale_buffer, B_q);
+  });
   ::aie::set_rounding(saved_rounding);
   event1();
 }
@@ -584,19 +641,9 @@ void init_scale_buffer(bfloat16 *scale_buffer, int32_t size) {
   event0();
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
-  using Vec64bf16 = aie::vector<bfloat16, VECTOR_LENGTH>;
-  Vec64bf16 lowest_vec = aie::broadcast<bfloat16, VECTOR_LENGTH>(
-      std::numeric_limits<bfloat16>::lowest());
-  Vec64bf16 zeros_vec = aie::broadcast<bfloat16, VECTOR_LENGTH>(0.0f);
-
-  for (int32_t i = 0; i < size; i += VECTOR_LENGTH) {
-    // VJUNG: m_{i-1} vector
-    aie::store_v(scale_buffer + i, lowest_vec);
-    // VJUNG: m_{i} vector
-    aie::store_v(scale_buffer + size + i, zeros_vec);
-    // VJUNG: l_{i} vector
-    aie::store_v(scale_buffer + 2 * size + i, zeros_vec);
-  }
+  for_state_width(size, [&](auto w) {
+    init_state_w<decltype(w)::value>(scale_buffer, size);
+  });
   ::aie::set_rounding(saved_rounding);
   event1();
 }

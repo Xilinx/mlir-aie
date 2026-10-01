@@ -76,7 +76,7 @@ module {
 
 // Test 3: LOWER — end-to-end through BD-ID assignment and tasks-to-npu.
 //
-// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-split-long-repeats,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=LOWER
 
 // LOWER-LABEL: @lower_task_bd
@@ -215,7 +215,7 @@ module {
 //
 // RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=REPEAT-LEN
-// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-split-long-repeats,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=REPEAT-LOWER
 
 // The 4096-element innermost run needs two dimensions, so the outermost 8 moves
@@ -271,6 +271,76 @@ module {
           {burst_length = 0 : i32}
         aie.end
       } {issue_token = true, repeat_count = 31 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// Scaling 201 executions by 8 gives 1608 runs, past one push's 256. That is
+// no longer an error: aie-split-long-repeats issues it as six full pushes and
+// a 72-run remainder, and only the last push carries the token. A start that
+// overrides the count repeats the same BD, so decomposition scales it too:
+// 2 runs become 16.
+// REPEAT-LEN-LABEL: @split_repeat_task_bd
+// REPEAT-LEN:         aie.dma_bd
+// REPEAT-LEN-SAME:        len = 32768
+// REPEAT-LEN:         repeat_count = 1607 : i32
+// REPEAT-LEN:         aiex.dma_start_task(%{{.*}}) {repeat_count = 15 : i32}
+// REPEAT-LOWER-LABEL: @split_repeat_task_bd
+// REPEAT-LOWER:         %[[FULL:.*]] = arith.constant 255 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[FULL]] {issue_token = false}
+// REPEAT-LOWER-COUNT-5: repeat %c255_i32_{{[0-9]+}} {issue_token = false}
+// REPEAT-LOWER:         %[[REST:.*]] = arith.constant 71 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[REST]] {issue_token = true}
+// REPEAT-LOWER:         %[[OVERRIDE:.*]] = arith.constant 15 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[OVERRIDE]] {issue_token = true}
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @split_repeat_task_bd(%in: memref<16x16x4096xi8>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<16x16x4096xi8> offset = 4096 len = 262144 sizes = [1, 8, 8, 4096] strides = [0, 131072, 8192, 1])
+          {burst_length = 0 : i32}
+        aie.end
+      } {issue_token = true, repeat_count = 200 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+      aiex.dma_start_task(%tk) {repeat_count = 1 : i32}
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+
+// -----
+
+// Test 8: FACTOR_DEEP — a row too long for d0, repeated with a stride. The row
+// factors twice into a single BD; the first factoring alone would only become
+// legal by slicing the row into a thousand pieces.
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=FACTOR-DEEP
+
+// FACTOR-DEEP-LABEL: @factor_deep_task_bd
+// FACTOR-DEEP:         aiex.dma_configure_task_for @a
+// FACTOR-DEEP-NEXT:      aie.dma_bd(%{{.*}} offset = 32064 len = 32064 sizes = [64, 2, 8, 2004] strides = [128256, 16032, 2004, 1])
+// FACTOR-DEEP-NEXT:      aie.end
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @factor_deep_task_bd(%in: memref<8208384xbf16>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<8208384xbf16> offset = 32064 len = 2052096 sizes = [1, 1, 64, 32064] strides = [0, 0, 128256, 1])
+        aie.end
+      } {issue_token = true}
       aiex.dma_start_task(%tk)
       aiex.dma_await_task(%tk)
     }

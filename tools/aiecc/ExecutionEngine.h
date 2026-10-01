@@ -152,11 +152,15 @@ resolveLiveEdges(const Graph &g, llvm::ArrayRef<std::string> names,
 //
 // When `cutEdges` is non-empty (the --checkpoint/--get frontier), the graph
 // also shows where a checkpoint would cut it.
+// `checkEdges` are reachable roots that run without producing user outputs.
 inline void writeDotGraph(const Graph &g,
                           const std::vector<EdgeBase *> &outputs,
                           llvm::raw_ostream &os,
-                          llvm::ArrayRef<EdgeBase *> cutEdges = {}) {
-  llvm::DenseSet<EdgeBase *> reachable = reachableEdges(outputs);
+                          llvm::ArrayRef<EdgeBase *> cutEdges = {},
+                          llvm::ArrayRef<EdgeBase *> checkEdges = {}) {
+  std::vector<EdgeBase *> roots = outputs;
+  roots.insert(roots.end(), checkEdges.begin(), checkEdges.end());
+  llvm::DenseSet<EdgeBase *> reachable = reachableEdges(roots);
   llvm::DenseSet<EdgeBase *> outputSet(outputs.begin(), outputs.end());
 
   // The checkpoint cut: the frontier edges plus the prefix (everything needed

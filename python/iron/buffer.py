@@ -115,6 +115,20 @@ class Buffer(Resolvable):
         """The tile this buffer is on."""
         return self._tile
 
+    def place(self, tile: Tile) -> Tile:
+        """Put this buffer on ``tile`` unless it already has one.
+
+        Args:
+            tile: The tile to place an unplaced buffer on.
+
+        Returns:
+            The tile the buffer is on, which differs from ``tile`` if it was
+            already placed elsewhere.
+        """
+        if self._tile is None:
+            self._tile = tile
+        return self._tile
+
     def tiles(self) -> list:
         """Tile dependency for Program.resolve tile discovery.
 

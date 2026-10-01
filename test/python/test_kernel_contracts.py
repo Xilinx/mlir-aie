@@ -72,6 +72,8 @@ NOT_JUDGED = {
     "cascade_mm": "the GET half of a cascade pair; test_kernels_e2e.py builds and judges the pair",
     "cascade_mm_put": "the PUT half of that pair; its result leaves on the cascade stream",
     "set_rounding": "sets core state and has no data output; the rounding-mode tests cover it",
+    "sample_select": "a state machine across a position's select_streams * slice / chunk calls; test_sample_e2e.py judges it",
+    "sample_combine": "reads sample_select's summaries, which the generic builder cannot draw; test_sample_e2e.py judges the pair",
     **{
         name: "one half of a MobileNet bottleneck cascade pair; test_bn_cascade_pairs.py builds and judges the pair"
         for name in (
@@ -1321,6 +1323,40 @@ def test_mha_binds_its_translation_unit_as_one_object():
     assert fn.name in str(kd.design(kernels.mha, calls=2).as_mlir())
     with pytest.raises(ValueError, match="multiple of"):
         kernels.mha(dim_m=17)
+
+
+@pytest.mark.parametrize("emulate", [False, True])
+@pytest.mark.parametrize("pv", [False, True])
+@pytest.mark.parametrize("b_col_maj", [False, True])
+@pytest.mark.parametrize("device,arch", [(NPU1Col1, "aie2"), (NPU2Col1, "aie2p")])
+def test_mha_answers_its_micro_tile_without_building_a_kernel(
+    pv, emulate, b_col_maj, device, arch
+):
+    """``mha.mac_dims`` is the micro-tile ``mha`` declares, for either product."""
+    kw = dict(pv=pv, emulate_bf16_mmul_with_bfp16=emulate)
+    # mha.cc includes mm_aie2p.h even on AIE2, unlike mm.cc.
+    expected = (8, 8, 8) if pv or (emulate and arch == "aie2p") else (4, 8, 8)
+    previous = get_current_device(probe_runtime=False)
+    target = device()
+    set_current_device(target)
+    try:
+        instances = ExternalFunction._instances.copy()
+        assert kernels.mha.mac_dims(**kw) == expected
+        assert kernels.mha.mac_dims(device=target, **kw) == expected
+        assert kernels.mha.mac_dims(arch=arch, **kw) == expected
+        assert ExternalFunction._instances == instances
+        with pytest.raises(ValueError, match="unsupported arch"):
+            kernels.mha.mac_dims(arch="unsupported", **kw)
+        fn = kernels.mha(dim_m=64, dim_k=64, dim_n=64, b_col_maj=b_col_maj, **kw)
+        assert fn.mac_dims == expected
+        assert fn.stream_dims == kernels.mm_stream_dims(
+            64, 64, 64, expected, b_col_maj=b_col_maj and not pv
+        )
+        assert ("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" in fn._compile_flags) == (
+            emulate and arch == "aie2p"
+        )
+    finally:
+        set_current_device(previous)
 
 
 _C_ELEMENT_NAMES = {bfloat16: "bf16", np.float32: "float", np.int32: "int"}
