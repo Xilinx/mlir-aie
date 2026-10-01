@@ -10,20 +10,27 @@
 // A switchbox routes on the slave port and id alone, so a flow sharing both
 // with a priority_route flow is carried as a control packet there too.
 
-// Same id and source, one priority and one not. The shared hops carry id 2 as
-// a control packet, and id 31, which shares the source, keeps its own amsel
-// and exact rule, so it does not reach the priority flow's DMA : 1.
+// Same id and source, one priority and one not. Both id 2 flows take the
+// priority flow's route alone, and id 31, which shares the source, routes on
+// its own. A control-packet reload keeps the overlay's rules, so the source's
+// rules tag the control packet's rule, and id 31's rule follows it.
 
-// CHECK-LABEL: aie.switchbox(%tile_2_2) {
-// CHECK-NEXT:    %[[PLAIN:.*]] = aie.amsel<{{[0-9]}}> ({{[0-9]}})
+// CHECK-LABEL: aie.switchbox(%mem_tile_2_1) {
+// CHECK-NEXT:    %[[PLAIN:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:    %[[CTRL:.*]] = aie.amsel<5> (3)
-// CHECK-NEXT:    aie.masterset(DMA : 1, %[[CTRL]]) {is_ctrl_pkt_overlay}
-// CHECK-NEXT:    aie.masterset(North : {{[0-9]+}}, %[[PLAIN]], %[[CTRL]]) {is_ctrl_pkt_overlay}
-// CHECK-NEXT:    aie.packet_rules(South : {{[0-9]+}}) {
-// CHECK-NEXT:      aie.rule(31, 2, %[[CTRL]])
+// CHECK-NEXT:    aie.masterset(North : {{[0-9]+}}, %[[PLAIN]])
+// CHECK-NEXT:    aie.masterset(North : {{[0-9]+}}, %[[CTRL]]) {is_ctrl_pkt_overlay}
+// CHECK-NEXT:    aie.packet_rules(DMA : 0) {
+// CHECK-NEXT:      aie.rule(31, 2, %[[CTRL]]) {is_ctrl_pkt_overlay, priority_route}
 // CHECK-NEXT:      aie.rule(31, 31, %[[PLAIN]])
-// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
+// CHECK-NEXT:    }
 // CHECK-NEXT:  }
+// CHECK-LABEL: aie.switchbox(%tile_2_2) {
+// CHECK:         aie.masterset(DMA : 1, %[[CTRL:.*]]) {is_ctrl_pkt_overlay}
+// CHECK:         aie.masterset(North : {{[0-9]+}}, %[[CTRL]]) {is_ctrl_pkt_overlay}
+// CHECK:         aie.packet_rules(South : {{[0-9]+}}) {
+// CHECK-NEXT:      aie.rule(31, 2, %[[CTRL]])
+// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
 
 module {
   aie.device(npu2_3col) {
@@ -49,14 +56,24 @@ module {
 // -----
 
 // Same id and destination from different sources, one priority and one not.
-// The priority flow stays a control packet up to its last hop.
+// The other flow joins the priority flow's master set where they meet, by a
+// rule of its own outside the overlay.
 
+// CHECK-LABEL: aie.switchbox(%tile_3_2) {
+// CHECK-NEXT:    %[[CTRL:.*]] = aie.amsel<5> (3)
+// CHECK-NEXT:    aie.masterset(North : 1, %[[CTRL]]) {is_ctrl_pkt_overlay}
+// CHECK-NEXT:    aie.packet_rules(DMA : 1) {
+// CHECK-NEXT:      aie.rule(31, 15, %[[CTRL]])
+// CHECK-NEXT:    }
+// CHECK-NEXT:    aie.packet_rules(South : 5) {
+// CHECK-NEXT:      aie.rule(31, 15, %[[CTRL]])
+// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
 // CHECK-LABEL: aie.switchbox(%tile_3_5) {
 // CHECK-NEXT:    %[[CTRL:.*]] = aie.amsel<5> (3)
 // CHECK-NEXT:    aie.masterset(DMA : 0, %[[CTRL]]) {is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.rule(31, 15, %[[CTRL]])
-// CHECK-DAG:     aie.rule(31, 15, %[[CTRL]])
-// CHECK:       }
+// CHECK-NEXT:    aie.packet_rules(South : 4) {
+// CHECK-NEXT:      aie.rule(31, 15, %[[CTRL]])
+// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
 
 module {
   aie.device(npu2_4col) {

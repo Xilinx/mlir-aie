@@ -352,6 +352,8 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
     auto &ids = packetIdsTo[{{srcCoords, srcPort}, {dstCoords, dstPort}}];
     if (!llvm::is_contained(ids, *packetId))
       ids.push_back(*packetId);
+    if (isPriorityFlow)
+      priorityIds[{srcCoords, srcPort}].insert(*packetId);
   }
   // A source has one flow, with all its destinations.
   PathEndPoint src{srcCoords, srcPort}, dst{dstCoords, dstPort};
@@ -779,7 +781,8 @@ struct Pathfinder::RouteState {
   int groupOf(const Flow &f) const;
   SmallVector<int, 4> idsTo(int flow, int dstState) const;
   void findSameIds();
-  int splitPart(int flow, int id);
+  int splitPart(int flow, const std::set<int> &ids);
+  bool isPinned(const Flow &f) const;
 
   const Pathfinder &pf;
   Routing routing;
@@ -847,11 +850,33 @@ Pathfinder::RouteState::RouteState(const Pathfinder &pf)
   for (const auto &[ends, ids] : pf.packetIdsTo)
     flowIds[partsOf.at(ends.first).front()].insert(ids.begin(), ids.end());
   findSameIds();
+  // A pinned source's other packets follow the pinned tree where it reaches
+  // all their destinations, and otherwise route as a part of their own.
+  for (size_t k = 0, n = parts.size(); k < n; k++) {
+    if (!isPinned(parts[k]))
+      continue;
+    const PathEndPoint &src = parts[k].src;
+    const std::vector<TreeHop> &tree = pf.constraints.pinned.at(src);
+    auto onTree = [&](const PathEndPoint &dst) {
+      return llvm::any_of(tree, [&](const TreeHop &h) { return h.to == dst; });
+    };
+    std::set<int> others;
+    for (const auto &[ends, ids] : pf.packetIdsTo)
+      if (ends.first == src && !onTree(ends.second))
+        for (int id : ids)
+          if (!pf.priorityIds.at(src).count(id))
+            others.insert(id);
+    if (!others.empty())
+      splitPart(k, others);
+  }
+}
+
+bool Pathfinder::RouteState::isPinned(const Flow &f) const {
+  return f.isPriorityFlow && pf.constraints.pinned.count(f.src);
 }
 
 int Pathfinder::RouteState::groupOf(const Flow &f) const {
-  return pf.constraints.pinned.count(f.src) ? std::numeric_limits<int>::min()
-                                            : f.packetGroupId;
+  return isPinned(f) ? std::numeric_limits<int>::min() : f.packetGroupId;
 }
 
 SmallVector<int, 4> Pathfinder::RouteState::idsTo(int flow,
@@ -875,14 +900,19 @@ void Pathfinder::RouteState::findSameIds() {
         sameId[a].push_back(b);
 }
 
-int Pathfinder::RouteState::splitPart(int flow, int id) {
+int Pathfinder::RouteState::splitPart(int flow, const std::set<int> &ids) {
   int part = parts.size();
   Flow f = parts[flow];
-  LLVM_DEBUG(llvm::dbgs() << "\t\tRouting id " << id << " from "
-                          << describeTilePort(f.src.coords, f.src.port)
-                          << " apart\n");
-  flowIds[flow].erase(id);
-  flowIds.push_back({id});
+  LLVM_DEBUG({
+    llvm::dbgs() << "\t\tRouting ids";
+    for (int id : ids)
+      llvm::dbgs() << ' ' << id;
+    llvm::dbgs() << " from " << describeTilePort(f.src.coords, f.src.port)
+                 << " apart\n";
+  });
+  for (int id : ids)
+    flowIds[flow].erase(id);
+  flowIds.push_back(ids);
   auto carries = [&](int k, const PathEndPoint &p) {
     auto it = pf.packetIdsTo.find({f.src, p});
     return it != pf.packetIdsTo.end() &&
@@ -892,9 +922,17 @@ int Pathfinder::RouteState::splitPart(int flow, int id) {
                  [&](const PathEndPoint &p) { return !carries(part, p); });
   llvm::erase_if(parts[flow].dsts,
                  [&](const PathEndPoint &p) { return !carries(flow, p); });
-  f.packetId = id;
-  if (parts[flow].packetId == id)
+  f.packetId = *ids.begin();
+  if (ids.count(*parts[flow].packetId))
     parts[flow].packetId = *flowIds[flow].begin();
+  auto prioritized = [&](const std::set<int> &carried) {
+    auto prio = pf.priorityIds.find(f.src);
+    return prio != pf.priorityIds.end() && llvm::any_of(carried, [&](int id) {
+             return prio->second.count(id);
+           });
+  };
+  f.isPriorityFlow = prioritized(ids);
+  parts[flow].isPriorityFlow = prioritized(flowIds[flow]);
   parts.push_back(f);
   partsOf[f.src].push_back(part);
   groupedFlows[groupOf(f)].push_back(part);
@@ -915,7 +953,8 @@ int Pathfinder::RouteState::splitPart(int flow, int id) {
   for (auto [at, other] : partSplits[flow])
     partSplits[other].insert({at, part});
   for (auto [at, a, b, apart] : splitsOf[flow])
-    if ((a == id || b == id) && flowIds[flow].count(a == id ? b : a)) {
+    if (ids.count(a) != ids.count(b) &&
+        flowIds[flow].count(ids.count(a) ? b : a)) {
       partSplits[flow].insert({at, part});
       partSplits[part].insert({at, flow});
     }
@@ -1111,9 +1150,8 @@ struct Pathfinder::TreeBuilder {
 Pathfinder::TreeBuilder::TreeBuilder(Pathfinder &pf, RouteState &st, int flow)
     : pf(pf), st(st), flow(flow), part(st.parts[flow]),
       avoid(part.packetId ? &st.conflicting[flow] : nullptr) {
-  if (auto pin = pf.constraints.pinned.find(part.src);
-      pin != pf.constraints.pinned.end())
-    pinned = &pin->second;
+  if (st.isPinned(part))
+    pinned = &pf.constraints.pinned.at(part.src);
   // The flow source port feeds into its switchbox, so the tree starts
   // on its In side and the first edge taken is necessarily a crossbar
   // hop.
@@ -1615,7 +1653,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     };
     if (idsApart && flow == other && !split.apart &&
         !st.parts[flow].isPriorityFlow && inseparable())
-      other = st.splitPart(flow, split.b);
+      other = st.splitPart(flow, {split.b});
     if (flow != other) {
       if (st.partSplits[flow].insert({split.at, other}).second)
         illegalEdges++;

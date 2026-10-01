@@ -5,19 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Priority flow 2 and flow 1 both leave tile (0, 3) by DMA : 0, so they take
-// one arbiter. The priority flow takes its highest msel, though flow 1 comes
-// first.
+// Priority flow 2 and flow 1 both reach (0, 3) DMA : 0. A control-packet
+// reload keeps the priority flow's master sets, so flow 1 leaves by DMA : 0
+// only alone, by the priority flow's amsel, and reaches it by a slave port of
+// its own.
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
 // CHECK-LABEL: aie.switchbox(%{{.*}}tile_0_3) {
-// CHECK-DAG:     %[[LOW:.*]] = aie.amsel<[[ARB:[0-9]]]> (2)
-// CHECK-DAG:     %[[HIGH:.*]] = aie.amsel<[[ARB]]> (3)
-// CHECK-DAG:     aie.masterset(DMA : 0, %[[LOW]], %[[HIGH]])
-// CHECK-DAG:     aie.masterset(North : {{[0-9]}}, %[[LOW]])
+// CHECK-DAG:     %[[HIGH:.*]] = aie.amsel<5> (3)
+// CHECK-DAG:     aie.masterset(DMA : 0, %[[HIGH]]) {is_ctrl_pkt_overlay}
 // CHECK-DAG:     aie.rule(31, 2, %[[HIGH]])
-// CHECK-DAG:     aie.rule(31, 1, %[[LOW]])
+// CHECK-DAG:     aie.rule(31, 1, %[[HIGH]])
+// CHECK:       }
 
 module {
   aie.device(npu2_1col) {

@@ -505,10 +505,12 @@ groupRules(ArrayRef<std::pair<int, int>> stated, ArrayRef<int> derived,
 
 namespace {
 /// What a group of flows on one slave port claims: the rules its flows state,
-/// and the ids they leave to the router.
+/// and the ids they leave to the router; and whether they are the control
+/// overlay's.
 struct GroupClaims {
   ArrayRef<std::pair<int, int>> stated;
   ArrayRef<int> derived;
+  bool overlay = false;
 };
 
 /// A packet rule of a slave port, and the group it selects.
@@ -636,6 +638,35 @@ static SmallVector<PortRule> portRules(ArrayRef<GroupClaims> groups,
   if (std::optional<SmallVector<PortRule>> ordered =
           orderedRules(groups, existing, idBits, slots - existing.size()))
     return *ordered;
+  return rules;
+}
+
+// The rules of a slave port, in slot order after the `existing` ones. A
+// control-packet reload keeps the control overlay's rules, so its groups take
+// the rules they take with no other flows, in the first slots, and the other
+// groups' rules follow.
+static SmallVector<PortRule>
+slavePortRules(ArrayRef<GroupClaims> groups,
+               ArrayRef<std::pair<int, int>> existing, int idBits,
+               size_t slots) {
+  SmallVector<std::pair<int, int>> taken(existing);
+  SmallVector<PortRule> rules;
+  for (bool overlay : {true, false}) {
+    SmallVector<size_t, 4> members;
+    SmallVector<GroupClaims> claims;
+    for (auto [g, group] : llvm::enumerate(groups))
+      if (group.overlay == overlay) {
+        members.push_back(g);
+        claims.push_back(group);
+      }
+    if (claims.empty())
+      continue;
+    for (const PortRule &r : portRules(claims, taken, idBits, slots))
+      rules.push_back({r.mask, r.value, members[r.group]});
+    for (const PortRule &r : rules)
+      if (groups[r.group].overlay == overlay)
+        taken.push_back({r.mask, r.value});
+  }
   return rules;
 }
 
@@ -1003,20 +1034,17 @@ tooFewArbiters(DeviceOp device, const StreamConflicts &conflicts,
 }
 
 /// Where a stream leaves a tile it is known to pass: by which master port from
-/// which slave port, if known, and whether it is known to be packet switched
-/// there.
+/// which slave port, if known.
 struct Leaving {
   size_t stream;
   std::optional<Port> slave;
   Port master;
-  bool packetSwitched;
 };
 
 /// Where each stream leaves each tile on the trees in `pinnedTrees`, and the
 /// tiles those trees pass.
 std::pair<std::map<TileID, SmallVector<Leaving, 8>>, std::set<TileID>>
 leavingPinnedTrees(const StreamConflicts &conflicts,
-                   llvm::function_ref<bool(TileID)> pinsHops,
                    const PacketTrees &pinnedTrees,
                    const PrioritizedPackets &prioritized) {
   // Each hop of a pinned tree by the hop before it, unset where two lead to it.
@@ -1033,7 +1061,9 @@ leavingPinnedTrees(const StreamConflicts &conflicts,
   for (auto [i, s] : llvm::enumerate(conflicts.getRequestedStreams())) {
     if (!s.packetID)
       continue;
-    auto tree = preds.find({s.src.tile, s.src.port});
+    // Only the prioritized packets of a source take its tree.
+    auto tree = prioritized.contains(s) ? preds.find({s.src.tile, s.src.port})
+                                        : preds.end();
     SmallVector<std::pair<Port, PathEndPoint>, 8> hops;
     PathEndPoint at{s.dst.tile, s.dst.port}, src{s.src.tile, s.src.port};
     for (size_t n = 0;
@@ -1046,15 +1076,11 @@ leavingPinnedTrees(const StreamConflicts &conflicts,
       at = *pred->second;
     }
     if (!(at == src)) {
-      leaving[s.dst.tile].push_back({i, std::nullopt, s.dst.port, true});
+      leaving[s.dst.tile].push_back({i, std::nullopt, s.dst.port});
       continue;
     }
-    bool isPrioritized = prioritized.contains(s);
     for (auto [slave, hop] : hops) {
-      leaving[hop.coords].push_back(
-          {i, slave, hop.port,
-           hop == PathEndPoint{s.dst.tile, s.dst.port} || isPrioritized ||
-               pinsHops(hop.coords)});
+      leaving[hop.coords].push_back({i, slave, hop.port});
       onTrees.insert(hop.coords);
     }
   }
@@ -1095,34 +1121,18 @@ std::string explainSharedArbiter(TileID tileId, size_t a, size_t b,
 /// Says why no routing can work if two streams that must be kept apart leave
 /// `tileId` by master ports that streams leaving by one each join, which puts
 /// them on one arbiter.
-std::optional<std::string>
-sharedArbiterAt(TileID tileId, ArrayRef<Leaving> here,
-                const StreamConflicts &conflicts,
-                const PrioritizedPackets &prioritized) {
+std::optional<std::string> sharedArbiterAt(TileID tileId,
+                                           ArrayRef<Leaving> here,
+                                           const StreamConflicts &conflicts) {
   ArrayRef<RoutedStream> streams = conflicts.getStreams();
   // A stream packet switched at a master port takes its one arbiter, and
-  // packets with one id on a slave port take one packet rule's arbiter. A
-  // hop that could be circuit switched is not where a prioritized stream
-  // shares its slave or master port.
-  std::set<Port> forcedSlaves, forcedMasters;
-  for (const Leaving &l : here) {
-    const RoutedStream &s = streams[l.stream];
-    if (prioritized.contains(s)) {
-      if (l.slave)
-        forcedSlaves.insert(*l.slave);
-      forcedMasters.insert(l.master);
-    }
-  }
-  auto packetSwitched = [&](const Leaving &l) {
-    return l.packetSwitched || forcedMasters.count(l.master) ||
-           (l.slave && forcedSlaves.count(*l.slave));
-  };
+  // packets with one id on a slave port take one packet rule's arbiter.
   // The visits on one arbiter with each. A stream passing a tile twice takes
   // an arbiter on each visit, so the nodes are visits.
   std::map<size_t, SmallVector<ArbiterLink, 4>> with;
   for (auto [x, l] : llvm::enumerate(here))
     for (auto [y, m] : llvm::enumerate(here)) {
-      if (x == y || !packetSwitched(l) || !packetSwitched(m))
+      if (x == y)
         continue;
       if (l.master == m.master)
         with[x].push_back({y, l.master, false});
@@ -1169,10 +1179,10 @@ unroutableArbiters(DeviceOp device, const StreamConflicts &conflicts,
   if (pinnedTrees.empty())
     return std::nullopt;
   auto [leaving, onTrees] =
-      leavingPinnedTrees(conflicts, pinsHops, pinnedTrees, prioritized);
+      leavingPinnedTrees(conflicts, pinnedTrees, prioritized);
   for (TileID tileId : onTrees)
     if (std::optional<std::string> reason =
-            sharedArbiterAt(tileId, leaving[tileId], conflicts, prioritized))
+            sharedArbiterAt(tileId, leaving[tileId], conflicts))
       return reason;
   return std::nullopt;
 }
@@ -1699,17 +1709,100 @@ std::optional<ArbiterPlan> PacketFlowRouting::planTile(
     TileID tileId, SmallVectorImpl<std::pair<size_t, size_t>> &blocking) {
   ArrayRef<SlaveFlow> flows = tileFlows.at(tileId);
   auto key = [&](size_t f) { return FlowKey{flows[f].slave, flows[f].id}; };
-  return planArbiters(
-      targetModel, flows,
+  auto conflict = [&](size_t a, size_t b) {
+    return apart.count(
+               {tileId, std::min(key(a), key(b)), std::max(key(a), key(b))}) ||
+           conflictingStreams(tileId, flows[a], flows[b]);
+  };
+  auto excluded = [&](size_t f, int arbiter) {
+    return offArbiter.count({tileId, key(f), arbiter}) > 0;
+  };
+  SmallVector<size_t, 8> overlay, others;
+  for (auto [i, f] : llvm::enumerate(flows))
+    (f.isCtrlPkt ? overlay : others).push_back(i);
+  if (overlay.empty() || others.empty())
+    return planArbiters(targetModel, flows, conflict, excluded,
+                        reservedAmsels[tileId], blocking);
+
+  // A control-packet reload keeps the control overlay's switch settings, so
+  // its flows take the arbiters they take on their own, and the other flows
+  // plan around them.
+  auto subset = [&](ArrayRef<size_t> members) {
+    SmallVector<SlaveFlow, 8> sub;
+    for (size_t m : members)
+      sub.push_back(flows[m]);
+    return sub;
+  };
+  SmallVector<std::pair<size_t, size_t>, 4> stuck;
+  std::optional<ArbiterPlan> plan = planArbiters(
+      targetModel, subset(overlay),
       [&](size_t a, size_t b) {
-        return apart.count({tileId, std::min(key(a), key(b)),
-                            std::max(key(a), key(b))}) ||
-               conflictingStreams(tileId, flows[a], flows[b]);
+        return conflictingStreams(tileId, flows[overlay[a]], flows[overlay[b]])
+            .has_value();
       },
+      [](size_t, int) { return false; }, reservedAmsels[tileId], stuck);
+  if (!plan) {
+    for (auto [a, b] : stuck)
+      blocking.push_back({overlay[a], overlay[b]});
+    return std::nullopt;
+  }
+
+  // A flow that leaves by the overlay's master ports alone takes the amsel
+  // that selects them (checkRules lets no other flow reach them).
+  auto arbiterOf = [&](size_t f) {
+    return plan->slaveAmsels.at(key(f)) % numArbiters;
+  };
+  SmallVector<size_t, 8> placed(overlay), rest;
+  for (size_t f : others) {
+    auto same = llvm::find_if(plan->amselMasters, [&](const auto &entry) {
+      return entry.second == flows[f].masters;
+    });
+    if (same == plan->amselMasters.end()) {
+      rest.push_back(f);
+      continue;
+    }
+    for (size_t g : placed)
+      if (arbiterOf(g) == same->first % numArbiters &&
+          flows[g].slave != flows[f].slave && conflict(f, g))
+        blocking.push_back({g, f});
+    if (excluded(f, same->first % numArbiters))
+      blocking.push_back({overlay.front(), f});
+    plan->slaveAmsels[key(f)] = same->first;
+    placed.push_back(f);
+  }
+  if (!blocking.empty() || rest.empty())
+    return blocking.empty() ? plan : std::nullopt;
+
+  std::set<int> reserved = reservedAmsels[tileId];
+  for (int amsel : llvm::make_first_range(plan->amselMasters))
+    reserved.insert(amsel);
+  stuck.clear();
+  std::optional<ArbiterPlan> around = planArbiters(
+      targetModel, subset(rest),
+      [&](size_t a, size_t b) { return conflict(rest[a], rest[b]); },
       [&](size_t f, int arbiter) {
-        return offArbiter.count({tileId, key(f), arbiter}) > 0;
+        return excluded(rest[f], arbiter) ||
+               llvm::any_of(placed, [&](size_t g) {
+                 return arbiterOf(g) == arbiter &&
+                        flows[g].slave != flows[rest[f]].slave &&
+                        conflict(rest[f], g);
+               });
       },
-      reservedAmsels[tileId], blocking);
+      reserved, stuck);
+  if (!around) {
+    for (auto [a, b] : stuck)
+      blocking.push_back({rest[a], rest[b]});
+    for (size_t f : rest)
+      for (size_t g : placed)
+        if (flows[g].slave != flows[f].slave && conflict(f, g))
+          blocking.push_back({g, f});
+    return std::nullopt;
+  }
+  plan->slaveAmsels.insert(around->slaveAmsels.begin(),
+                           around->slaveAmsels.end());
+  plan->amselMasters.insert(around->amselMasters.begin(),
+                            around->amselMasters.end());
+  return plan;
 }
 
 void PacketFlowRouting::moveFlow(TileID tileId, FlowKey key) {
@@ -1877,15 +1970,17 @@ void PacketFlowRouting::checkRules() {
         describePort(slavePort.second));
   }
   for (const auto &[tileId, byFlow] : tileSlaveFlows) {
-    // The packet rules the flows entering on `slave` need, without the packets
-    // `without` sends to a master port if set.
-    auto rulesNeeded =
+    // The packet rules the flows entering on `slave` add, without the packets
+    // `without` sends to a master port if set, or only the control overlay's.
+    // `groupMasters`, if set, gets the master ports each rule group selects.
+    auto newRules =
         [&, tileId = tileId, &byFlow = byFlow](
-            Port slave,
-            std::optional<std::pair<PathEndPoint, Port>> without = {}) {
-          std::map<SmallVector<Port, 4>, RuleGroup> groups;
+            Port slave, std::optional<std::pair<PathEndPoint, Port>> without,
+            bool overlayOnly,
+            SmallVector<SmallVector<Port, 4>> *groupMasters = nullptr) {
+          std::map<std::pair<bool, SmallVector<Port, 4>>, RuleGroup> groups;
           for (const auto &[key, f] : byFlow) {
-            if (f.slave != slave)
+            if (f.slave != slave || (overlayOnly && !f.isCtrlPkt))
               continue;
             SmallVector<Port, 4> masters = f.masters;
             auto sources = slaveFlowSources.find({{tileId, slave}, f.id});
@@ -1899,7 +1994,7 @@ void PacketFlowRouting::checkRules() {
             }
             if (masters.empty())
               continue;
-            RuleGroup &group = groups[masters];
+            RuleGroup &group = groups[{f.isCtrlPkt, masters}];
             auto cubes = statedCubes({{tileId, f.slave}, f.id});
             if (cubes.empty())
               group.derived.push_back(f.id);
@@ -1907,14 +2002,21 @@ void PacketFlowRouting::checkRules() {
               if (!llvm::is_contained(group.stated, cube))
                 group.stated.push_back(cube);
           }
-          SmallVector<std::pair<int, int>> existing =
-              existingCubes[{tileId, slave}];
           SmallVector<GroupClaims> claims;
-          for (const auto &[masters, group] : groups)
-            claims.push_back({group.stated, group.derived});
-          return existing.size() + portRules(claims, existing, idBits,
-                                             targetModel.getNumSlaveSlots())
-                                       .size();
+          for (const auto &[masters, group] : groups) {
+            claims.push_back({group.stated, group.derived, masters.first});
+            if (groupMasters)
+              groupMasters->push_back(masters.second);
+          }
+          return slavePortRules(claims, existingCubes[{tileId, slave}], idBits,
+                                targetModel.getNumSlaveSlots());
+        };
+    auto rulesNeeded =
+        [&, tileId = tileId](
+            Port slave,
+            std::optional<std::pair<PathEndPoint, Port>> without = {}) {
+          return existingCubes[{tileId, slave}].size() +
+                 newRules(slave, without, false).size();
         };
     // Packets for a destination on the tile that reach it by a slave port of
     // their own take their rules with them. The source's tree splits apart the
@@ -1996,6 +2098,60 @@ void PacketFlowRouting::checkRules() {
     std::set<Port> slaves;
     for (const auto &[key, f] : byFlow)
       slaves.insert(f.slave);
+    // A control-packet reload keeps the control overlay's master sets, so
+    // another flow reaches the overlay's master ports only by one of them.
+    std::set<Port> overlayMasters;
+    std::set<SmallVector<Port, 4>> overlaySets;
+    for (const auto &[key, f] : byFlow)
+      if (f.isCtrlPkt) {
+        overlayMasters.insert(f.masters.begin(), f.masters.end());
+        overlaySets.insert(f.masters);
+      }
+    for (const auto &[key, f] : byFlow) {
+      const Port *shared = llvm::find_if(
+          f.masters, [&](Port m) { return overlayMasters.count(m); });
+      if (f.isCtrlPkt || shared == f.masters.end() ||
+          overlaySets.count(f.masters))
+        continue;
+      moveFlow(tileId, key);
+      if (!planFailure)
+        planFailure = llvm::formatv(
+            "at tile ({0}, {1}), packets with id {2} entering on {3} leave by "
+            "{4}, a master port of the prioritized flows (the control "
+            "overlay), and by others; a control-packet reload keeps their "
+            "master sets.",
+            tileId.col, tileId.row, f.id, describePort(f.slave),
+            describePort(*shared));
+    }
+    // A control-packet reload keeps the control overlay's rules, which match
+    // first, so they must send no other flow's packets elsewhere.
+    for (Port slave : slaves) {
+      SmallVector<SmallVector<Port, 4>> ruleMasters;
+      SmallVector<PortRule> overlay = newRules(slave, {}, true, &ruleMasters);
+      for (const auto &[key, f] : byFlow) {
+        if (f.slave != slave || f.isCtrlPkt)
+          continue;
+        for (auto own : claim(f)) {
+          const auto *rule = llvm::find_if(overlay, [&](const PortRule &r) {
+            return cubesIntersect(own, {r.mask, r.value}) &&
+                   ruleMasters[r.group] != f.masters;
+          });
+          if (rule == overlay.end())
+            continue;
+          moveFlow(tileId, key);
+          if (!planFailure)
+            planFailure = llvm::formatv(
+                "at tile ({0}, {1}), the packet rule (mask 0x{2:X-}, id "
+                "0x{3:X-}) of the prioritized flows (the control overlay) on "
+                "{4} also matches packet id 0x{5:X-}, and a control-packet "
+                "reload keeps their rules; use an id the rule does not match, "
+                "or route the flow apart.",
+                tileId.col, tileId.row, rule->mask, rule->value,
+                describePort(slave), f.id);
+          break;
+        }
+      }
+    }
     for (Port slave : slaves) {
       size_t needed = rulesNeeded(slave);
       if (needed <= targetModel.getNumSlaveSlots())
@@ -2216,6 +2372,8 @@ LogicalResult PacketFlowRouting::emit() {
       const SmallVector<PhysPort, 4> &groupDests =
           packetFlows[candidate.front()];
       return candidate.front().first.second == slave.first.second &&
+             ctrlPktFlows.contains(candidate.front()) ==
+                 ctrlPktFlows.contains(slave) &&
              groupDests.size() == dests.size() &&
              llvm::all_of(dests, [&](const PhysPort &dest) {
                return llvm::is_contained(groupDests, dest);
@@ -2370,13 +2528,14 @@ LogicalResult PacketFlowRouting::emit() {
           if (slaveGroups[oi].front().first != port)
             continue;
           plan.groups.push_back(oi);
-          claims.push_back({statedRules[oi], derivedIds[oi]});
+          claims.push_back({statedRules[oi], derivedIds[oi],
+                            ctrlPktFlows.contains(slaveGroups[oi].front())});
         }
         SmallVector<std::pair<int, int>> existing;
         for (PacketRuleOp rule : existingRules.lookup(slave))
           existing.push_back({rule.maskInt(), rule.valueInt()});
-        plan.rules =
-            portRules(claims, existing, idBits, targetModel.getNumSlaveSlots());
+        plan.rules = slavePortRules(claims, existing, idBits,
+                                    targetModel.getNumSlaveSlots());
         LLVM_DEBUG({
           llvm::dbgs() << "packet rules " << describePort(slave) << ":";
           for (const PortRule &r : plan.rules)
@@ -2386,7 +2545,8 @@ LogicalResult PacketFlowRouting::emit() {
         });
       }
 
-      // Every id the group claims takes one of its rules first.
+      // Every id the group claims takes a rule to its amsel first: its own,
+      // or one of the control overlay's for the same destinations.
       assert(llvm::all_of(llvm::seq(0, idMask + 1),
                           [&](int id) {
                             bool own =
@@ -2398,8 +2558,13 @@ LogicalResult PacketFlowRouting::emit() {
                                 plan.rules, [&](const PortRule &r) {
                                   return (id & r.mask) == r.value;
                                 });
-                            return !own || (first != plan.rules.end() &&
-                                            plan.groups[first->group] == gi);
+                            return !own ||
+                                   (first != plan.rules.end() &&
+                                    slaveAMSels.at(
+                                        slaveGroups[plan.groups[first->group]]
+                                            .front()) ==
+                                        slaveAMSels.at(
+                                            slaveGroups[gi].front()));
                           }) &&
              "packet rules send a claimed id elsewhere");
 
@@ -2408,17 +2573,12 @@ LogicalResult PacketFlowRouting::emit() {
         if (plan.groups[plan.rules[r].group] == gi)
           last = r + 1;
 
-      // Check if this group is a ctrl-pkt overlay flow
-      bool isCtrlPktGroup = ctrlPacketFlows.count(group.front()) > 0;
-
       PacketRulesOp packetrules = slaveRules.lookup(slave);
       if (!packetrules) {
         packetrules = PacketRulesOp::create(builder, tileLoc, slave.bundle,
                                             slave.channel);
         PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
                                         tileLoc);
-        if (isCtrlPktGroup)
-          packetrules->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
         slaveRules[slave] = packetrules;
       } else {
         // After the amsels its new rules use.
@@ -2439,12 +2599,35 @@ LogicalResult PacketFlowRouting::emit() {
         auto rule = PacketRuleOp::create(
             builder, tileLoc, r.mask, r.value,
             amselOps.at(slaveAMSels.at(ruleGroup.front())));
+        if (ctrlPacketFlows.count(ruleGroup.front()))
+          rule->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
         if (prioritizedSourcePorts.contains(port) &&
             llvm::any_of(ruleGroup, [&](const auto &member) {
               return ctrlPktFlows.contains(member);
             }))
           rule->setAttr(kPriorityRouteAttrName, builder.getUnitAttr());
       }
+    }
+
+    // A control-packet reload skips the control overlay's rules. A port of
+    // its rules alone says so once; a port it shares says so rule by rule.
+    for (auto rulesOp : b.getOps<PacketRulesOp>()) {
+      auto rules = rulesOp.getRules().getOps<PacketRuleOp>();
+      bool blockTagged = rulesOp->hasAttr(kCtrlPktOverlayAttrName);
+      auto tagged = [&](PacketRuleOp rule) {
+        return blockTagged || rule->hasAttr(kCtrlPktOverlayAttrName);
+      };
+      bool all = llvm::all_of(rules, tagged);
+      for (PacketRuleOp rule : rules) {
+        if (!all && tagged(rule))
+          rule->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
+        else
+          rule->removeAttr(kCtrlPktOverlayAttrName);
+      }
+      if (all && !rules.empty())
+        rulesOp->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
+      else
+        rulesOp->removeAttr(kCtrlPktOverlayAttrName);
     }
   }
   return success();
@@ -2591,41 +2774,45 @@ void AIEPathfinderPass::runOnOperation() {
               << (pairs.size() > 2 ? "s" : "") << " of flows.";
   }
   DynamicTileAnalysis analyzer;
-  // A prioritized flow keeps the route it takes alone, so route the packet
-  // flows from prioritized sources without the rest of the design first, and
-  // pin their trees for the rest to route around.
+  // A prioritized flow keeps the route it takes alone, so route the
+  // prioritized flows without the rest of the design first, and pin their
+  // trees for the rest to route around. A switchbox routes on the id alone,
+  // so packets sharing a source and id with a prioritized flow go with it;
+  // other packets from their sources route freely.
+  auto sourcesOf = [](PacketFlowOp flow) {
+    return llvm::map_range(
+        flow.getPorts().getOps<PacketSourceOp>(), [](PacketSourceOp src) {
+          return PathEndPoint{
+              cast<TileOp>(src.getTile().getDefiningOp()).getTileID(),
+              src.port()};
+        });
+  };
   std::set<PathEndPoint> prioritized;
+  std::set<std::pair<PathEndPoint, int>> prioritizedIds;
   for (PacketFlowOp flow : d.getOps<PacketFlowOp>())
     if (flow.getPriorityRoute().value_or(false))
-      for (auto src : flow.getPorts().getOps<PacketSourceOp>())
-        prioritized.insert(
-            {cast<TileOp>(src.getTile().getDefiningOp()).getTileID(),
-             src.port()});
-  auto isPrioritized = [&](PacketSourceOp src) {
-    return prioritized.count(
-        {cast<TileOp>(src.getTile().getDefiningOp()).getTileID(), src.port()});
+      for (PathEndPoint src : sourcesOf(flow)) {
+        prioritized.insert(src);
+        prioritizedIds.insert({src, flow.IDInt()});
+      }
+  auto isPrioritized = [&](PacketFlowOp flow) {
+    return llvm::any_of(sourcesOf(flow), [&](const PathEndPoint &src) {
+      return prioritizedIds.count({src, flow.IDInt()}) > 0;
+    });
   };
   bool pinned = false;
   PacketTrees pinnedTrees;
   if (clRoutePacket && !prioritized.empty() &&
       (!d.getOps<FlowOp>().empty() ||
-       !llvm::all_of(d.getOps<PacketFlowOp>(), [&](PacketFlowOp flow) {
-         return llvm::all_of(flow.getPorts().getOps<PacketSourceOp>(),
-                             isPrioritized);
-       }))) {
+       !llvm::all_of(d.getOps<PacketFlowOp>(), isPrioritized))) {
     OwningOpRef<ModuleOp> scratch;
     DeviceOp alone = cloneInScratch(d, scratch);
     for (FlowOp flow : llvm::make_early_inc_range(alone.getOps<FlowOp>()))
       flow.erase();
     for (PacketFlowOp flow :
-         llvm::make_early_inc_range(alone.getOps<PacketFlowOp>())) {
-      for (PacketSourceOp src :
-           llvm::make_early_inc_range(flow.getPorts().getOps<PacketSourceOp>()))
-        if (!isPrioritized(src))
-          src.erase();
-      if (flow.getPorts().getOps<PacketSourceOp>().empty())
+         llvm::make_early_inc_range(alone.getOps<PacketFlowOp>()))
+      if (!isPrioritized(flow))
         flow.erase();
-    }
     DynamicTileAnalysis aloneAnalyzer;
     StreamConflicts aloneConflicts(alone);
     if (llvm::Error err = route(alone, aloneAnalyzer, aloneConflicts, {},
@@ -2640,8 +2827,6 @@ void AIEPathfinderPass::runOnOperation() {
       return;
     }
     pinnedTrees = aloneAnalyzer.routing.packetTrees;
-    for (auto it = pinnedTrees.begin(); it != pinnedTrees.end();)
-      it = prioritized.count(it->first) ? std::next(it) : pinnedTrees.erase(it);
     pinned = true;
   }
   // If routing fails, the router relaxes how it routes packet flows (see

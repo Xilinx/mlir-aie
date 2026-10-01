@@ -20,9 +20,9 @@
 // CHECK-DAG:     %[[A4:.*]] = aie.amsel<4> (3)
 // CHECK-DAG:     %[[A5:.*]] = aie.amsel<5> (3)
 // CHECK:         aie.packet_rules(West : {{[0-9]}}) {
-// CHECK-NEXT:      aie.rule(31, 17, %[[A4]])
+// CHECK-NEXT:      aie.rule(31, 17, %[[A5]])
 // CHECK:         aie.packet_rules(North : {{[0-9]}}) {
-// CHECK-NEXT:      aie.rule(31, 22, %[[A5]])
+// CHECK-NEXT:      aie.rule(31, 22, %[[A4]])
 
 module {
   aie.device(npu1_2col) {

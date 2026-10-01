@@ -5,22 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The control overlay stays materialized. The router merges flow 9 into an
-// overlay rule at the shim, and that rule still claims id 9, so flow 9 stays
-// materialized as well. The shim mux connect both use is kept, and routing
-// the result again adds nothing.
+// The control overlay stays materialized. Flow 9 enters the shim on the
+// overlay's slave port, but the router gives it a rule of its own after the
+// overlay's, so flow 9 is lifted back to a packet_flow. The shim mux connect
+// both use is kept, and routing the result again routes flow 9.
 
-// RUN: aie-opt --aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
-// RUN: aie-opt --aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" --aie-create-pathfinder-flows --aie-find-flows --aie-create-pathfinder-flows %s | FileCheck %s
+// RUN: aie-opt --aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s --check-prefixes=CHECK,FIND
+// RUN: aie-opt --aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" --aie-create-pathfinder-flows --aie-find-flows --aie-create-pathfinder-flows %s | FileCheck %s --check-prefixes=CHECK,ROUTE
 
-// CHECK-NOT:  aie.packet_flow
 // CHECK:      aie.shim_mux
 // CHECK-NEXT:   aie.connect<DMA : 0, North : 3>
 // CHECK-NEXT: }
+// CHECK:      aie.packet_rules(South : 3) {
+// CHECK-NEXT:   aie.rule(30, 26, %{{.*}}) {is_ctrl_pkt_overlay, priority_route}
+// CHECK-NEXT:   aie.rule(31, 15, %{{.*}}) {is_ctrl_pkt_overlay, priority_route}
+// FIND-NEXT:  }
+// ROUTE-NEXT:   aie.rule(31, 9,
 // CHECK:      aie.switchbox(%{{.*}}tile_0_2)
-// CHECK:        aie.masterset(DMA : 1,
-// CHECK:        aie.rule(31, 9,
-// CHECK-NOT:  aie.packet_flow
+// FIND-NOT:     aie.masterset(DMA : 1,
+// ROUTE:        aie.masterset(DMA : 1,
+// ROUTE:        aie.rule(31, 9,
+// FIND:       aie.packet_flow(9)
+// ROUTE-NOT:  aie.packet_flow
 
 module {
   aie.device(npu1_1col) {
