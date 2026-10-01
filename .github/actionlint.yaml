@@ -8,7 +8,7 @@ self-hosted-runner:
   labels:
     - aie2-4col      # NPU1, 4 columns
     - aie2p-8col     # NPU2, 8 columns
-    - bench          # runners reserved for benchmark timing
+    - bench          # runners reserved for timing
     - devlab-dispatch
     - npu2
     - ryzenai
