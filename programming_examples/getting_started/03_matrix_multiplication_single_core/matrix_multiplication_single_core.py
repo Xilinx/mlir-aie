@@ -128,7 +128,7 @@ def matrix_multiplication_single_core(
     b_tap = (
         TensorAccessPattern.full((K, N))
         .tile((k, n))
-        .group((K // k, N // n), col_major=True)[0]
+        .group((K // k, N // n), order="col")[0]
         .coalesce()
     )
     c_taps = TensorAccessPattern.full((M, N)).tile((m, n)).group((1, N // n))

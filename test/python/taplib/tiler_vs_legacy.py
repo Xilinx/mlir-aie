@@ -37,7 +37,7 @@ def algebra_tiler(
     grid = grid.group(
         tile_group_repeats,
         steps=tile_group_steps,
-        col_major=tile_group_col_major,
+        order="col" if tile_group_col_major else "row",
         partial=allow_partial,
     )
     if pattern_repeat != 1:
@@ -179,7 +179,7 @@ def whole_array_matmul():
                 grid_B = (
                     TensorAccessPattern.full((K, N))
                     .tile((k, n))
-                    .group((K // k, rep), steps=(1, n_aie_cols), col_major=True)
+                    .group((K // k, rep), steps=(1, n_aie_cols), order="col")
                 )
                 legacy_C = TensorTiler2D.step_tiler(
                     (M, N),

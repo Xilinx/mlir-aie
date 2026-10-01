@@ -15,8 +15,7 @@ def square_tiler_col_major_tensor_tile_grouping_rectangular_col_major_groups():
         TensorAccessPattern.full((16, 16))
         .tile((4, 4))
         .order("col")
-        .group((2, 1), col_major=True)
-        
+        .group((2, 1), order="col")
     )
     access_order, access_count = tiler.accesses()
     reference_access = np.array(

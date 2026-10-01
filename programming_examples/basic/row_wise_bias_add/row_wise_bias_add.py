@@ -85,7 +85,7 @@ def row_wise_bias_add(
     tap = (
         TensorAccessPattern.full((M, N))
         .tile((m, n))
-        .group((M // m, N // n), col_major=True)[0]
+        .group((M // m, N // n), order="col")[0]
         .coalesce()
     )
     bias_tap = TensorAccessPattern.full((1, N)).tile((1, n)).group((1, N // n))[0]

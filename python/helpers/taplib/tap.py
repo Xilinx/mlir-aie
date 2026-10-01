@@ -2,29 +2,27 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Tensor access patterns: strided walks over a tensor, and the algebra that builds them.
 
-A :class:`TensorAccessPattern` is an element offset plus parallel ``sizes`` and
-``strides`` lists, outermost dimension first, in elements of the tensor it
+A `TensorAccessPattern` is an element offset plus parallel `sizes` and
+`strides` lists, outermost dimension first, in elements of the tensor it
 walks. That is exactly what a DMA buffer descriptor executes, so the same
-object is what a runtime ``fill``/``drain`` takes and what an ObjectFifo takes
-as ``to_stream`` / ``from_stream``.
+object is what a runtime `fill`/`drain` takes and what an ObjectFifo takes
+as `to_stream` / `from_stream`.
 
-Start from :meth:`TensorAccessPattern.full` (the row-major walk of a whole
-tensor) and refine it: index it like a NumPy array, :meth:`~TensorAccessPattern.permute`
-or :attr:`~TensorAccessPattern.T` it, :meth:`~TensorAccessPattern.repeat` it, or
-:meth:`~TensorAccessPattern.tile` it into a :class:`~aie.helpers.taplib.TileGrid`.
-Every operation returns a new pattern.
+Start from `TensorAccessPattern.full()` (the row-major walk of a whole
+tensor) and refine it: index it like a NumPy array, `permute()` or `T` it,
+`repeat()` it, or `tile()` it into a `TileGrid`. Every operation returns a
+new pattern.
 
 Every operation is integer arithmetic, so the same code runs on Python ints
-at generation time and on staged runtime values (see :mod:`.symbolic`) inside
+at generation time and on staged runtime values (see `symbolic`) inside
 a dynamic runtime sequence. The few decisions that inspect a value go through
 a helper that stays branch-free when the value is staged: a minimum
-(:func:`~.symbolic.smin`) or a divisibility or bounds check
-(:func:`~.symbolic.require`, which becomes a dispatch-time guard).
+(`smin()`) or a divisibility or bounds check (`require()`, which becomes a
+dispatch-time guard).
 """
 
 from __future__ import annotations
 
-import itertools
 import operator
 from typing import TYPE_CHECKING, Any, Generator, Sequence
 
@@ -45,6 +43,19 @@ if TYPE_CHECKING:
 IntLike = Any  # int, np.integer, or a staged aie.ir.Value
 
 
+def _accesses(
+    walk: np.ndarray, tensor_dims: Sequence[int]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Access order and count of a walk given as flat indices (-1 = padding)."""
+    idx = walk.reshape(-1)
+    idx = idx[idx >= 0]
+    numel = int(np.prod(tensor_dims))
+    order = np.full(numel, -1, dtype=TensorAccessPattern._DTYPE)
+    np.maximum.at(order, idx, np.arange(idx.size, dtype=order.dtype))
+    count = np.bincount(idx, minlength=numel).astype(TensorAccessPattern._DTYPE)
+    return order.reshape(tensor_dims), count.reshape(tensor_dims)
+
+
 def _clean_leading_units(sizes: list, strides: list) -> list:
     """Zero the stride of every leading unit dimension (they never step)."""
     strides = list(strides)
@@ -56,14 +67,14 @@ def _clean_leading_units(sizes: list, strides: list) -> list:
 
 
 class TensorAccessPattern:
-    """A strided walk over a tensor: ``offset`` plus outermost-first ``sizes`` and ``strides``.
+    """A strided walk over a tensor: `offset` plus outermost-first `sizes` and `strides`.
 
-    Build one with :meth:`full` and refine it, or give the numbers directly.
+    Build one with `full()` and refine it, or give the numbers directly.
     Instances are immutable; every method returns a new pattern (or a
-    :class:`~aie.helpers.taplib.TileGrid` of patterns).
+    `TileGrid` of patterns).
 
     Two patterns are equal when they walk the same tensor the same way:
-    size-1 dimensions never step, so they are ignored by ``==``.
+    size-1 dimensions never step, so they are ignored by `==`.
     """
 
     _DTYPE = np.int32
@@ -86,11 +97,11 @@ class TensorAccessPattern:
             offset (IntLike): Element offset of the first element visited.
             sizes (Sequence[IntLike]): Extent of each dimension, outermost first.
             strides (Sequence[IntLike]): Element step of each dimension, outermost first.
-            padding (Sequence[Sequence[int]] | None, optional): A ``(before, after)``
-                pair of constant elements per dimension; see :meth:`pad`. Defaults to None.
+            padding (Sequence[Sequence[int]] | None, optional): A `(before, after)`
+                pair of constant elements per dimension; see `pad()`. Defaults to None.
 
         Raises:
-            ValueError: If ``sizes`` and ``strides`` differ in length or a
+            ValueError: If `sizes` and `strides` differ in length or a
                 concrete value is out of range.
         """
         tensor_dims = [sint(d) for d in tensor_dims]
@@ -152,7 +163,7 @@ class TensorAccessPattern:
 
     @classmethod
     def full(cls, tensor_dims: Sequence[IntLike]) -> TensorAccessPattern:
-        """Return the row-major walk over a whole tensor of shape ``tensor_dims``.
+        """Return the row-major walk over a whole tensor of shape `tensor_dims`.
 
         Args:
             tensor_dims (Sequence[IntLike]): Shape of the tensor.
@@ -167,7 +178,7 @@ class TensorAccessPattern:
 
     @property
     def tensor_dims(self) -> Sequence[IntLike]:
-        """A copy of the dimensions of the tensor (a 1-D tensor reads as ``[1, n]``)."""
+        """A copy of the dimensions of the tensor (a 1-D tensor reads as `[1, n]`)."""
         return list(self._tensor_dims)
 
     @property
@@ -187,12 +198,12 @@ class TensorAccessPattern:
 
     @property
     def transformation_dims(self) -> Sequence[tuple[IntLike, IntLike]]:
-        """The pattern as ``[(size, stride), ...]``, outermost first."""
+        """The pattern as `[(size, stride), ...]`, outermost first."""
         return list(zip(self._sizes, self._strides))
 
     @property
     def padding(self) -> tuple[tuple[int, int], ...] | None:
-        """``(before, after)`` padding per dimension, or None if the pattern is unpadded."""
+        """`(before, after)` padding per dimension, or None if the pattern is unpadded."""
         return self._padding
 
     @property
@@ -215,9 +226,7 @@ class TensorAccessPattern:
     @property
     def is_symbolic(self) -> bool:
         """Whether any value of the pattern is staged."""
-        return sym_any(
-            [self._offset, *self._sizes, *self._strides, *self._tensor_dims]
-        )
+        return sym_any([self._offset, *self._sizes, *self._strides, *self._tensor_dims])
 
     def _with(self, offset=None, sizes=None, strides=None) -> TensorAccessPattern:
         if self._padding is not None:
@@ -240,7 +249,7 @@ class TensorAccessPattern:
     # ------------------------------------------------------- reshaping the walk
 
     def permute(self, axes: Sequence[int]) -> TensorAccessPattern:
-        """Reorder dimensions: result dimension ``i`` is this pattern's dimension ``axes[i]``.
+        """Reorder dimensions: result dimension `i` is this pattern's dimension `axes[i]`.
 
         Whether a shim DMA can execute the result depends on the
         address-generation granule rule (the innermost stride times the
@@ -248,7 +257,7 @@ class TensorAccessPattern:
         the dynamic lowering enforce.
 
         Args:
-            axes (Sequence[int]): A permutation of ``range(rank)``.
+            axes (Sequence[int]): A permutation of `range(rank)`.
 
         Returns:
             TensorAccessPattern: The reordered walk.
@@ -261,22 +270,22 @@ class TensorAccessPattern:
 
     @property
     def T(self) -> TensorAccessPattern:  # noqa: N802
-        """The walk with its dimensions reversed, like ``numpy.ndarray.T``.
+        """The walk with its dimensions reversed, like `numpy.ndarray.T`.
 
-        ``TensorAccessPattern.full((M, N)).T`` walks an ``(M, N)`` tensor
+        `TensorAccessPattern.full((M, N)).T` walks an `(M, N)` tensor
         column by column.
         """
         return self.permute(range(self.rank - 1, -1, -1))
 
     def split(self, dim: int, inner: IntLike) -> TensorAccessPattern:
-        """Split dimension ``dim`` of size ``n`` into ``(n // inner, inner)``.
+        """Split dimension `dim` of size `n` into `(n // inner, inner)`.
 
-        The outer part strides by ``inner * stride``; the inner part keeps the
+        The outer part strides by `inner * stride`; the inner part keeps the
         original stride.
 
         Args:
             dim (int): The dimension to split.
-            inner (IntLike): Size of the new inner dimension; must divide ``n``.
+            inner (IntLike): Size of the new inner dimension; must divide `n`.
 
         Returns:
             TensorAccessPattern: The walk with one more dimension.
@@ -285,14 +294,15 @@ class TensorAccessPattern:
         inner = sint(inner)
         n, s = self._sizes[dim], self._strides[dim]
         require(
-            n % inner == 0, f"dimension {dim} of size {show(n)} is not divisible by {show(inner)}"
+            n % inner == 0,
+            f"dimension {dim} of size {show(n)} is not divisible by {show(inner)}",
         )
         sizes = self._sizes[:dim] + [n // inner, inner] + self._sizes[dim + 1 :]
         strides = self._strides[:dim] + [s * inner, s] + self._strides[dim + 1 :]
         return self._with(sizes=sizes, strides=strides)
 
     def merge(self, dim: int) -> TensorAccessPattern:
-        """Merge dimensions ``dim`` and ``dim + 1`` into one.
+        """Merge dimensions `dim` and `dim + 1` into one.
 
         Only legal when they are contiguous, i.e. ``strides[dim] ==
         sizes[dim + 1] * strides[dim + 1]``. Whether to merge is a structural
@@ -359,7 +369,7 @@ class TensorAccessPattern:
         return out
 
     def repeat(self, count: IntLike) -> TensorAccessPattern:
-        """Walk the whole pattern ``count`` times: a new outermost dimension with stride 0.
+        """Walk the whole pattern `count` times: a new outermost dimension with stride 0.
 
         On a shim DMA the outermost dimension becomes the queue repeat; on a
         memtile it is a plain zero-stride dimension.
@@ -374,12 +384,12 @@ class TensorAccessPattern:
     def __getitem__(self, key: Any) -> TensorAccessPattern:
         """Restrict the walk with NumPy basic indexing.
 
-        ``key`` is an integer, a slice, ``Ellipsis`` or ``None``, or a tuple of
+        `key` is an integer, a slice, `Ellipsis` or `None`, or a tuple of
         those, applied to the pattern's dimensions exactly as NumPy applies it
         to an array's: an integer selects one index and removes the dimension,
-        a slice keeps it with a new start, extent and step, and ``None``
-        inserts a size-1 dimension. ``TensorAccessPattern.full(shape)[key]``
-        walks exactly the elements of ``np.zeros(shape)[key]``, in order.
+        a slice keeps it with a new start, extent and step, and `None`
+        inserts a size-1 dimension. `TensorAccessPattern.full(shape)[key]`
+        walks exactly the elements of `np.zeros(shape)[key]`, in order.
         Starts, stops and integer indices may be staged; a slice step must be
         a positive Python int.
 
@@ -472,10 +482,10 @@ class TensorAccessPattern:
         return self._with(offset=offset, sizes=sizes, strides=strides)
 
     def tile(self, tile_dims: Sequence[IntLike]) -> TileGrid:
-        """Divide every dimension into tiles of ``tile_dims``.
+        """Divide every dimension into tiles of `tile_dims`.
 
-        Dimension ``i`` of size ``n_i`` becomes a grid axis of ``n_i // t_i``
-        tiles and a tile dimension of ``t_i`` elements.
+        Dimension `i` of size `n_i` becomes a grid axis of `n_i // t_i`
+        tiles and a tile dimension of `t_i` elements.
 
         Args:
             tile_dims (Sequence[IntLike]): One tile extent per dimension; each
@@ -507,11 +517,11 @@ class TensorAccessPattern:
         )
 
     def partition(self, parts: IntLike, dim: int = -1) -> TileGrid:
-        """Split dimension ``dim`` into ``parts`` equal contiguous pieces.
+        """Split dimension `dim` into `parts` equal contiguous pieces.
 
-        ``TensorAccessPattern.full((N,)).partition(k)[i]`` is the ``i``-th of
-        ``k`` equal chunks of a flat range. Other dimensions are kept whole,
-        so the grid has exactly ``parts`` steps.
+        `TensorAccessPattern.full((N,)).partition(k)[i]` is the `i`-th of
+        `k` equal chunks of a flat range. Other dimensions are kept whole,
+        so the grid has exactly `parts` steps.
 
         Args:
             parts (IntLike): Number of pieces; must divide the dimension.
@@ -532,15 +542,15 @@ class TensorAccessPattern:
         """Surround every walk of each dimension with constant elements.
 
         A memtile MM2S channel can pad the stream it emits: for dimension
-        ``i`` it inserts ``before`` constant elements ahead of each pass over
-        the dimension and ``after`` behind it, so the stream is
-        ``prod(padded_sizes)`` elements long. Give a padded pattern to an
-        ObjectFifo as ``to_stream`` and it sets the padding too (the pad value
+        `i` it inserts `before` constant elements ahead of each pass over
+        the dimension and `after` behind it, so the stream is
+        `prod(padded_sizes)` elements long. Give a padded pattern to an
+        ObjectFifo as `to_stream` and it sets the padding too (the pad value
         is set on the fifo). Padding is applied last: a padded pattern cannot
         be reshaped further.
 
         Args:
-            padding (Sequence[Sequence[int]]): One ``(before, after)`` pair per
+            padding (Sequence[Sequence[int]]): One `(before, after)` pair per
                 dimension, outermost first, as compile-time ints.
 
         Returns:
@@ -553,7 +563,7 @@ class TensorAccessPattern:
         )
 
     def _dma_form(self, ndims: int = 4) -> TensorAccessPattern:
-        # The walk in exactly ``ndims`` dimensions, as a shim buffer descriptor
+        # The walk in exactly `ndims` dimensions, as a shim buffer descriptor
         # takes it: unit dimensions are dropped if it is too deep, and it is
         # left-padded with unit dimensions if it is too shallow.
         if self._padding is not None:
@@ -605,23 +615,28 @@ class TensorAccessPattern:
         idx = np.zeros((), dtype=np.int64) + int(self._offset)
         for size, stride in zip(self._sizes, self._strides):
             idx = idx[..., None] + np.arange(int(size), dtype=np.int64) * int(stride)
+        numel = int(np.prod(self._tensor_dims))
+        if idx.max() >= numel:
+            raise ValueError(
+                f"{self} reaches element {idx.max()} of a {numel}-element tensor"
+            )
         if self._padding is not None:
             idx = np.pad(idx, self._padding, constant_values=-1)
         return idx
 
     def to_stream(self, tensor: Any, pad_value: Any = 0) -> np.ndarray:
-        """Return the stream a DMA walking ``tensor`` with this pattern emits.
+        """Return the stream a DMA walking `tensor` with this pattern emits.
 
-        This is what an ObjectFifo given this pattern as ``to_stream`` sends,
+        This is what an ObjectFifo given this pattern as `to_stream` sends,
         padding included.
 
         Args:
-            tensor (array_like): A tensor of shape :attr:`tensor_dims` (any
+            tensor (array_like): A tensor of shape `tensor_dims` (any
                 shape with the same number of elements is accepted).
             pad_value (optional): The value padded positions hold. Defaults to 0.
 
         Returns:
-            np.ndarray: A 1-D array of ``prod(padded_sizes)`` elements.
+            np.ndarray: A 1-D array of `prod(padded_sizes)` elements.
         """
         arr = np.asarray(tensor)
         idx = self._walk().reshape(-1)
@@ -632,16 +647,16 @@ class TensorAccessPattern:
         return out
 
     def from_stream(self, stream: Any, out: np.ndarray | None = None) -> np.ndarray:
-        """Write ``stream`` into a tensor the way a DMA walking this pattern does.
+        """Write `stream` into a tensor the way a DMA walking this pattern does.
 
-        This is what an ObjectFifo given this pattern as ``from_stream`` stores:
-        stream element ``k`` lands at the ``k``-th position of the walk.
+        This is what an ObjectFifo given this pattern as `from_stream` stores:
+        stream element `k` lands at the `k`-th position of the walk.
 
         Args:
             stream (array_like): The stream, one element per step of the walk.
             out (np.ndarray | None, optional): The tensor to write into; elements the
                 walk does not visit keep their values. Defaults to a zero tensor
-                of shape :attr:`tensor_dims`.
+                of shape `tensor_dims`.
 
         Returns:
             np.ndarray: The written tensor.
@@ -677,101 +692,40 @@ class TensorAccessPattern:
     def accesses(self) -> tuple[np.ndarray, np.ndarray]:
         """Return the access_order and access_count arrays.
 
-        The access_order ndarray sequentially counts access to elements in the
-        tensor. If an element is accessed more than once, only the last count is reflected.
-
-        The access_count ndarray contains the number of times each element is
-        accessed by the tensor access pattern.
+        The access_order array numbers the accesses to each element of the
+        tensor in walk order, -1 where the walk never goes; an element accessed
+        more than once holds its last number. The access_count array holds the
+        number of times the walk accesses each element.
 
         Returns:
             tuple[np.ndarray, np.ndarray]: access_order, access_count
         """
-        return self._calculate_accesses(calc_order=True, calc_count=True)
+        return _accesses(self._walk(), self._tensor_dims)
 
     def access_order(self) -> np.ndarray:
-        """Return the access_order ndarray, which sequentially counts access to elements in the tensor.
-
-        If an element is accessed more than once, only the last count is reflected.
-
-        Returns:
-            np.ndarray: access_order
-        """
-        access_order_tensor, _ = self._calculate_accesses(
-            calc_order=True, calc_count=False
-        )
-        return access_order_tensor
+        """Return the access_order array of `accesses()`."""
+        return self.accesses()[0]
 
     def access_count(self) -> np.ndarray:
-        """Return the access_count ndarray, which contains the number of times each element is accessed.
-
-        Returns:
-            np.ndarray: access_count
-        """
-        _, access_count_tensor = self._calculate_accesses(
-            calc_order=False, calc_count=True
-        )
-        return access_count_tensor
-
-    def _calculate_accesses(
-        self, calc_order: bool, calc_count: bool
-    ) -> tuple[np.ndarray, np.ndarray]:
-        # This is an internal method for calculating both the access_order and access_count
-        # arrays. If needed, it will create both at once to avoid looping through the tensor
-        # more than necessary.
-
-        # TODO: should access order be a list of lists instead of generate two separate tensors?
-        # TODO: for performance, should cache and return copies? Or just cache?
-        if not calc_order and not calc_count:
-            raise ValueError("Must select calc_order, calc_count, or both")
-        self._require_concrete("accesses()")
-
-        # Initialize access order and count maps; we create them as flat arrays
-        total_elems = np.prod(self._tensor_dims)
-        access_order_tensor = np.full(total_elems, -1, dtype=self._DTYPE)
-        access_count_tensor = np.full(total_elems, 0, dtype=self._DTYPE)
-        access_count = 0
-
-        # Get an iterator for the access indices
-        access_idx_generator = self.access_generator()
-
-        for access_idx in access_idx_generator:
-            # Count the accesses
-            if calc_count:
-                access_count_tensor[access_idx] += 1
-            # Enumerate the accesses
-            if calc_order:
-                access_order_tensor[access_idx] = access_count
-                access_count += 1
-
-        # Reshape to match tensor type since we created them initially as flat arrays
-        access_order_tensor = access_order_tensor.reshape(self._tensor_dims)
-        access_count_tensor = access_count_tensor.reshape(self._tensor_dims)
-        return access_order_tensor, access_count_tensor
+        """Return the access_count array of `accesses()`."""
+        return self.accesses()[1]
 
     def access_generator(self) -> Generator[int, None, None]:
-        """Return an iterator over the access indices into the flattened tensor that this access pattern represents.
+        """Yield the flat tensor index of each element the walk accesses, in order.
 
-        This can be used to calculate the access count or to enumerate accesses.
+        Padded positions are skipped, since they read no element.
 
         Yields:
             int: The next access index
         """
-        self._require_concrete("access_generator()")
-        total_elems = np.prod(self._tensor_dims)
-
-        # Use itertools.product to collapse len(sizes) nested forloop into one forloop
-        for dims in itertools.product(*[range(0, n) for n in self._sizes]):
-            yield (
-                self._offset + np.sum(np.multiply(dims, self._strides))
-            ) % total_elems
+        idx = self._walk().reshape(-1)
+        yield from (int(i) for i in idx[idx >= 0])
 
     def compare_access_orders(self, other: TensorAccessPattern) -> bool:
-        """Compare access patterns for functional equivalency.
+        """Return whether two patterns walk the same elements in the same order.
 
-        Sometimes access patterns with different sizes/strides are functionally equivalent;
-        to detect functional equivalency, this function uses iterators produced by
-        access_generator() to compare the access patterns. This is more performant than
-        comparing the numpy array access_order or access_count tensors.
+        Patterns with different sizes and strides can still be functionally
+        equivalent; this compares the walks themselves, padding included.
 
         Args:
             other (TensorAccessPattern): The TensorAccessPattern to compare to
@@ -782,20 +736,11 @@ class TensorAccessPattern:
         Returns:
             bool: True if the TensorAccessPatterns are functionally equivalent; false otherwise.
         """
-        # This function compares using access generators, which is more performant
-        # than actually generating the access order or access count tensors.
         if not isinstance(other, TensorAccessPattern):
             raise ValueError(
                 "Can only compare access order against another TensorAccessPattern"
             )
-        my_generator = self.access_generator()
-        other_generator = other.access_generator()
-        return all(
-            my_idx == other_idx
-            for my_idx, other_idx in itertools.zip_longest(
-                my_generator, other_generator
-            )
-        )
+        return np.array_equal(self._walk().reshape(-1), other._walk().reshape(-1))
 
     def visualize(
         self,

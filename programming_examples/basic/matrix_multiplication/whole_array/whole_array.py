@@ -244,9 +244,7 @@ def _build_design(
         B_tiles = (
             TensorAccessPattern.full((K, N))
             .tile((k, n))
-            .group(
-                (K // k, N // n // n_aie_cols), steps=(1, n_aie_cols), col_major=True
-            )
+            .group((K // k, N // n // n_aie_cols), steps=(1, n_aie_cols), order="col")
         )
     if c_col_maj:
         # Splitting n_aie_rows out of the tile dim is what lets the grouping emit

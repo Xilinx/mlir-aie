@@ -37,7 +37,7 @@ def to_stream(a_in: In, c_out: Out):
     # Read the (3, 8) object out as its (8, 3) transpose; as a list this is
     # to_stream=[(8, 1), (3, 8)].
     of_out1 = ObjectFifo(
-        data_ty, name="out1", to_stream=TensorAccessPattern.full((3, 8)).permute((1, 0))
+        data_ty, name="out1", to_stream=TensorAccessPattern.full((3, 8)).T
     )
     of_out0 = of_out1.cons().forward(name="out0", obj_type=data_ty)
 

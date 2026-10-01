@@ -47,8 +47,8 @@ def _as_stream_dims(
 ) -> list[Sequence[int]] | None:
     """Normalize a stream transform to the ``[(size, stride), ...]`` list.
 
-    Accepts the list itself or a :class:`~aie.helpers.taplib.TensorAccessPattern`
-    (its unpadded walk; see :func:`_pad_dims_of` for the padding).
+    Accepts the list itself or a `TensorAccessPattern`
+    (its unpadded walk; see `_pad_dims_of()` for the padding).
 
     ObjectFifo dimensions cannot encode an offset, so a pattern whose offset
     is not a literal ``0`` is rejected rather than silently dropped.

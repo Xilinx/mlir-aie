@@ -83,7 +83,7 @@ def group_tiler_partial_row():
             t.coalesce()
             for t in TensorAccessPattern.full(tensor_dims)
             .tile((3, 2))
-            .group((5, 7), col_major=True, partial=True)
+            .group((5, 7), order="col", partial=True)
         ]
     )
     reference_taps = TensorAccessSequence.from_taps(
@@ -154,7 +154,7 @@ def group_tiler_partial_row():
             .tile((3, 2))
             .permute_tile((1, 0))
             .order("col")
-            .group((5, 7), col_major=True, partial=True)
+            .group((5, 7), order="col", partial=True)
         ]
     )
     reference_taps = TensorAccessSequence.from_taps(
@@ -297,7 +297,7 @@ def group_tiler_partial_col():
             t.coalesce()
             for t in TensorAccessPattern.full(tensor_dims)
             .tile((3, 2))
-            .group((5, 7), col_major=True, partial=True)
+            .group((5, 7), order="col", partial=True)
         ]
     )
     reference_taps = TensorAccessSequence.from_taps(
@@ -368,7 +368,7 @@ def group_tiler_partial_col():
             .tile((3, 2))
             .permute_tile((1, 0))
             .order("col")
-            .group((5, 7), col_major=True, partial=True)
+            .group((5, 7), order="col", partial=True)
         ]
     )
     reference_taps = TensorAccessSequence.from_taps(
@@ -513,7 +513,7 @@ def group_tiler_partial_both():
             t.coalesce()
             for t in TensorAccessPattern.full(tensor_dims)
             .tile((3, 2))
-            .group((5, 7), col_major=True, partial=True)
+            .group((5, 7), order="col", partial=True)
         ]
     )
 
@@ -586,7 +586,7 @@ def group_tiler_partial_both():
             .tile((3, 2))
             .permute_tile((1, 0))
             .order("col")
-            .group((5, 7), col_major=True, partial=True)
+            .group((5, 7), order="col", partial=True)
         ]
     )
 

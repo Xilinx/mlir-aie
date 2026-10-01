@@ -214,43 +214,66 @@ def simple_tiler_invalid():
         # good
         pass
     try:
-        tiles = TensorAccessPattern.full((10, 9, 4)).tile((3, 2)).permute_tile((1, 0)).repeat(5)
+        tiles = (
+            TensorAccessPattern.full((10, 9, 4))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .repeat(5)
+        )
         raise ValueError("Too many tensor dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorAccessPattern.full((9, 4)).tile((3, -1)).permute_tile((1, 0)).repeat(5)
+        tiles = (
+            TensorAccessPattern.full((9, 4))
+            .tile((3, -1))
+            .permute_tile((1, 0))
+            .repeat(5)
+        )
         raise ValueError("Bad tile dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorAccessPattern.full((9, 4)).tile((3,)).permute_tile((1, 0)).repeat(5)
+        tiles = (
+            TensorAccessPattern.full((9, 4)).tile((3,)).permute_tile((1, 0)).repeat(5)
+        )
         raise ValueError("Too few tile dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorAccessPattern.full((9, 4)).tile((1, 1, 1)).permute_tile((1, 0)).repeat(5)
+        tiles = (
+            TensorAccessPattern.full((9, 4))
+            .tile((1, 1, 1))
+            .permute_tile((1, 0))
+            .repeat(5)
+        )
         raise ValueError("Too many tile dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorAccessPattern.full((9, 4)).tile((3, 2)).permute_tile((1, 0)).repeat(0)
+        tiles = (
+            TensorAccessPattern.full((9, 4)).tile((3, 2)).permute_tile((1, 0)).repeat(0)
+        )
         raise ValueError("Invalid repeat.")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorAccessPattern.full((9, 4)).tile((4, 2)).permute_tile((1, 0)).repeat(5)
+        tiles = (
+            TensorAccessPattern.full((9, 4)).tile((4, 2)).permute_tile((1, 0)).repeat(5)
+        )
         raise ValueError("Indivisible tile (height)")
     except ValueError:
         # good
         pass
     try:
-        tiles = TensorAccessPattern.full((9, 4)).tile((3, 3)).permute_tile((1, 0)).repeat(5)
+        tiles = (
+            TensorAccessPattern.full((9, 4)).tile((3, 3)).permute_tile((1, 0)).repeat(5)
+        )
         raise ValueError("Indivisible tile (width)")
     except ValueError:
         # good

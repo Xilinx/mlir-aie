@@ -215,10 +215,13 @@ def whole_array_tilers_stage():
     REQUIRED.clear()
     rep = N // n // n_aie_cols
     grids = {
-        "A": TensorAccessPattern.full((M, K)).tile((m * 2, k)).group((1, K // k)).repeat(rep),
+        "A": TensorAccessPattern.full((M, K))
+        .tile((m * 2, k))
+        .group((1, K // k))
+        .repeat(rep),
         "B": TensorAccessPattern.full((K, N))
         .tile((k, n))
-        .group((K // k, rep), steps=(1, n_aie_cols), col_major=True),
+        .group((K // k, rep), steps=(1, n_aie_cols), order="col"),
         "C": TensorAccessPattern.full((M, N))
         .tile((m * n_aie_rows, n))
         .group((tb_n_rows, rep), steps=(1, n_aie_cols)),
@@ -245,7 +248,7 @@ def whole_array_tilers_stage():
             "B": TensorAccessPattern.full((Kv, Nv))
             .tile((k, n))
             .group(
-                (Kv // k, Nv // n // n_aie_cols), steps=(1, n_aie_cols), col_major=True
+                (Kv // k, Nv // n // n_aie_cols), steps=(1, n_aie_cols), order="col"
             ),
             "C": TensorAccessPattern.full((Mv, Nv))
             .tile((m * n_aie_rows, n))
@@ -277,11 +280,19 @@ def whole_array_tilers_stage():
 def partial_and_slices_stage():
     N, step, lo, hi = (Sym.var(x) for x in ("N", "step", "lo", "hi"))
     REQUIRED.clear()
-    g = TensorAccessPattern.full((3, N)).tile((3, 2)).group((1, 7), steps=(1, 3), partial=True)
+    g = (
+        TensorAccessPattern.full((3, N))
+        .tile((3, 2))
+        .group((1, 7), steps=(1, 3), partial=True)
+    )
     t = g[step]
     assert t.sizes[0].op == "select"  # min(R, ceildiv(remaining, S)) as a select tree
     for Nv in (28, 40, 64):
-        gc = TensorAccessPattern.full((3, Nv)).tile((3, 2)).group((1, 7), steps=(1, 3), partial=True)
+        gc = (
+            TensorAccessPattern.full((3, Nv))
+            .tile((3, 2))
+            .group((1, 7), steps=(1, 3), partial=True)
+        )
         assert g.num_steps.eval({"N": Nv}) == len(gc)
         for s in range(len(gc)):
             got = evaluated_tap(t, {"N": Nv, "step": s})
@@ -318,8 +329,7 @@ def shim_form_stage():
     assert len(d.sizes) == 4 and d.sizes[:2] == [1, 1] and d.strides[:2] == [0, 0]
     env = {"M": 64, "K": 128, "step": 3}
     assert (
-        evaluated_tap(t, env)
-        == TensorAccessPattern.full((64, 128)).tile((32, 32))[3]
+        evaluated_tap(t, env) == TensorAccessPattern.full((64, 128)).tile((32, 32))[3]
     )
     # The TensorAccessPattern validators recorded guards rather than branching.
     assert any(
@@ -338,14 +348,11 @@ def shim_form_stage():
     u = TensorAccessPattern((N,), Sym.var("off"), [1, 1, 1, 1, N], [0, 0, 0, 0, 1])
     u = u._dma_form()
     assert len(u.sizes) == 4 and u.sizes[:3] == [1, 1, 1]
-    assert (
-        evaluated_tap(u, {"N": 16, "off": 0})
-        == TensorAccessPattern((16,), 0, [1, 1, 1, 1, 16], [0, 0, 0, 0, 1])
+    assert evaluated_tap(u, {"N": 16, "off": 0}) == TensorAccessPattern(
+        (16,), 0, [1, 1, 1, 1, 16], [0, 0, 0, 0, 1]
     )
     try:
-        TensorAccessPattern(
-            (N,), 0, [N, N, 1, N, N, N], [0, 0, 0, 0, 0, 1]
-        )._dma_form()
+        TensorAccessPattern((N,), 0, [N, N, 1, N, N, N], [0, 0, 0, 0, 0, 1])._dma_form()
         assert False
     except ValueError as e:
         assert "does not fit" in str(e)

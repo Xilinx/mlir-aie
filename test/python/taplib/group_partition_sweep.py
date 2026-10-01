@@ -10,13 +10,6 @@ from util import construct_test
 # RUN: %python %s | FileCheck %s
 
 
-def indices(lay):
-    idx = np.zeros((), dtype=np.int64) + lay.offset
-    for size, stride in zip(lay.sizes, lay.strides):
-        idx = idx[..., None] + np.arange(size, dtype=np.int64) * stride
-    return idx.reshape(-1)
-
-
 # CHECK-LABEL: every_grouping_partitions_the_tensor
 @construct_test
 def every_grouping_partitions_the_tensor():
@@ -35,27 +28,24 @@ def every_grouping_partitions_the_tensor():
             for s0, s1, r0, r1 in itertools.product(
                 (1, 2, 3), (1, 2, 4), (1, 2, 3), (1, 2)
             ):
-                for col_major in (False, True):
+                for order in ("row", "col"):
                     for partial in (False, True):
                         try:
                             g = grid.group(
                                 (r0, r1),
                                 steps=(s0, s1),
-                                col_major=col_major,
+                                order=order,
                                 partial=partial,
                             )
                         except ValueError as e:
                             assert not partial and "not divisible" in str(e), e
                             continue
-                        seen = np.zeros(rows * cols, dtype=int)
-                        for k in range(g.num_steps):
-                            seen[indices(g[k])] += 1
-                        assert (seen == 1).all(), (
+                        assert (g.access_count() == 1).all(), (
                             (rows, cols),
                             (tr, tc),
                             (s0, s1),
                             (r0, r1),
-                            col_major,
+                            order,
                             partial,
                         )
                         checked += 1
@@ -66,11 +56,25 @@ def every_grouping_partitions_the_tensor():
 # CHECK-LABEL: inverse_round_trips
 @construct_test
 def inverse_round_trips():
-    """tile() then inverse(): reading the blocked buffer back is the identity."""
+    """Store a grid's tiles one after another, then read them back with inverse().
+
+    The blocked buffer must come back in logical row-major order, whatever the
+    step order or in-tile order, and for a grid over a sub-view as well.
+    """
     for rows, cols, tr, tc in ((8, 8, 2, 4), (12, 6, 3, 2), (16, 32, 4, 8)):
-        grid = TensorAccessPattern.full((rows, cols)).tile((tr, tc))
-        blocked = indices(grid.tap)
-        assert (blocked[indices(grid.inverse())] == np.arange(rows * cols)).all()
+        host = np.arange(rows * 2 * cols).reshape(rows, 2 * cols)
+        full = TensorAccessPattern.full((rows, cols)).tile((tr, tc))
+        sub = TensorAccessPattern.full((rows, 2 * cols))[:, cols:].tile((tr, tc))
+        for grid, src in (
+            (full, host[:, :cols]),
+            (full.order("col"), host[:, :cols]),
+            (full.permute_tile((1, 0)), host[:, :cols]),
+            (full.order("col").permute_tile((1, 0)), host[:, :cols]),
+            (sub, host),
+        ):
+            blocked = np.concatenate([tile.to_stream(src) for tile in grid])
+            view = grid.inverse().to_stream(blocked).reshape(rows, cols)
+            assert (view == host[:, -cols:] if grid is sub else view == src).all()
     print("inverse round trips")
     # CHECK: inverse round trips
 
@@ -79,6 +83,7 @@ def inverse_round_trips():
 @construct_test
 def slices_match_numpy():
     a = np.arange(6 * 8).reshape(6, 8)
+    full = TensorAccessPattern.full((6, 8))
     for key in (
         slice(1, 5),
         (slice(None), slice(2, 7)),
@@ -86,8 +91,8 @@ def slices_match_numpy():
         (3, slice(None)),
         (slice(None), 4),
     ):
-        assert (indices(TensorAccessPattern.full((6, 8))[key]) == a[key].reshape(-1)).all(), key
-    assert (indices(TensorAccessPattern.full((6, 8)).permute((1, 0))) == a.T.reshape(-1)).all()
-    assert indices(TensorAccessPattern.full((6, 8)).split(1, 4).merge(1)).tolist() == list(range(48))
+        assert (full[key].to_stream(a) == a[key].reshape(-1)).all(), key
+    assert (full.T.to_stream(a) == a.T.reshape(-1)).all()
+    assert full.split(1, 4).merge(1).to_stream(a).tolist() == list(range(48))
     print("slices, permute, split/merge match numpy")
     # CHECK: slices, permute, split/merge match numpy

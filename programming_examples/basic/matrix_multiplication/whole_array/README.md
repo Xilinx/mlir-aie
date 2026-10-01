@@ -243,7 +243,7 @@ A_tiles = (
 B_tiles = (
     Layout.full((K, N))
     .tile((k, n))
-    .group((K // k, N // n // n_aie_cols), steps=(1, n_aie_cols), col_major=True)
+    .group((K // k, N // n // n_aie_cols), steps=(1, n_aie_cols), order="col")
 )
 C_tiles = (
     Layout.full((M, N))

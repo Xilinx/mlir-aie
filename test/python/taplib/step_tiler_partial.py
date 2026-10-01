@@ -17,7 +17,6 @@ def step_tiler_partial_row():
         TensorAccessPattern.full(tensor_dims)
         .tile((3, 2))
         .group((5, 7), steps=(3, 3), partial=True)
-        
     )
     assert len(tiles) == 9
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -60,7 +59,6 @@ def step_tiler_partial_row():
         .tile((3, 2))
         .permute_tile((1, 0))
         .group((5, 7), steps=(3, 3), partial=True)
-        
     )
     assert len(tiles) == 9
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -101,8 +99,7 @@ def step_tiler_partial_row():
     tiles = (
         TensorAccessPattern.full(tensor_dims)
         .tile((3, 2))
-        .group((5, 7), steps=(3, 3), col_major=True, partial=True)
-        
+        .group((5, 7), steps=(3, 3), order="col", partial=True)
     )
     assert len(tiles) == 9
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -145,7 +142,6 @@ def step_tiler_partial_row():
         .tile((3, 2))
         .order("col")
         .group((5, 7), steps=(3, 3), partial=True)
-        
     )
     assert len(tiles) == 9
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -188,8 +184,7 @@ def step_tiler_partial_row():
         .tile((3, 2))
         .permute_tile((1, 0))
         .order("col")
-        .group((5, 7), steps=(3, 3), col_major=True, partial=True)
-        
+        .group((5, 7), steps=(3, 3), order="col", partial=True)
     )
     assert len(tiles) == 9
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -232,7 +227,7 @@ def step_tiler_partial_row():
             t.coalesce()
             for t in TensorAccessPattern.full(tensor_dims)
             .tile((3, 2))
-            .group((5, 7), steps=(1, 3), col_major=True, partial=True)
+            .group((5, 7), steps=(1, 3), order="col", partial=True)
             .repeat(4)
         ]
     )
@@ -285,7 +280,6 @@ def step_tiler_partial_col():
         TensorAccessPattern.full(tensor_dims)
         .tile((3, 2))
         .group((5, 7), steps=(2, 2), partial=True)
-        
     )
     assert len(tiles) == 8
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -326,7 +320,6 @@ def step_tiler_partial_col():
         .tile((3, 2))
         .permute_tile((1, 0))
         .group((5, 7), steps=(2, 2), partial=True)
-        
     )
     assert len(tiles) == 8
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -365,8 +358,7 @@ def step_tiler_partial_col():
     tiles = (
         TensorAccessPattern.full(tensor_dims)
         .tile((3, 2))
-        .group((5, 7), steps=(2, 2), col_major=True, partial=True)
-        
+        .group((5, 7), steps=(2, 2), order="col", partial=True)
     )
     assert len(tiles) == 8
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -407,7 +399,6 @@ def step_tiler_partial_col():
         .tile((3, 2))
         .order("col")
         .group((5, 7), steps=(2, 2), partial=True)
-        
     )
     assert len(tiles) == 8
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -448,8 +439,7 @@ def step_tiler_partial_col():
         .tile((3, 2))
         .permute_tile((1, 0))
         .order("col")
-        .group((5, 7), steps=(2, 2), col_major=True, partial=True)
-        
+        .group((5, 7), steps=(2, 2), order="col", partial=True)
     )
     assert len(tiles) == 8
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -541,7 +531,6 @@ def step_tiler_partial_both():
         TensorAccessPattern.full(tensor_dims)
         .tile((3, 2))
         .group((5, 7), steps=(2, 3), partial=True)
-        
     )
     assert len(tiles) == 12
     reference_tiles = TensorAccessSequence.from_taps(
@@ -593,7 +582,6 @@ def step_tiler_partial_both():
         .tile((3, 2))
         .permute_tile((1, 0))
         .group((5, 7), steps=(2, 3), partial=True)
-        
     )
     assert len(tiles) == 12
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -643,8 +631,7 @@ def step_tiler_partial_both():
     tiles = (
         TensorAccessPattern.full(tensor_dims)
         .tile((3, 2))
-        .group((5, 7), steps=(2, 3), col_major=True, partial=True)
-        
+        .group((5, 7), steps=(2, 3), order="col", partial=True)
     )
     assert len(tiles) == 12
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -696,7 +683,6 @@ def step_tiler_partial_both():
         .tile((3, 2))
         .order("col")
         .group((5, 7), steps=(2, 3), partial=True)
-        
     )
     assert len(tiles) == 12
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(
@@ -748,8 +734,7 @@ def step_tiler_partial_both():
         .tile((3, 2))
         .permute_tile((1, 0))
         .order("col")
-        .group((5, 7), steps=(2, 3), col_major=True, partial=True)
-        
+        .group((5, 7), steps=(2, 3), order="col", partial=True)
     )
     assert len(tiles) == 12
     reference_tiles = reference_tiles = TensorAccessSequence.from_taps(

@@ -12,11 +12,7 @@ from util import construct_test
 @construct_test
 def rectangular_tiler_col_major_tensor_and_tile():
     tiler = (
-        TensorAccessPattern.full((16, 8))
-        .tile((4, 2))
-        .permute_tile((1, 0))
-        .order("col")
-        
+        TensorAccessPattern.full((16, 8)).tile((4, 2)).permute_tile((1, 0)).order("col")
     )
     access_order, access_count = tiler.accesses()
     reference_access = np.array(

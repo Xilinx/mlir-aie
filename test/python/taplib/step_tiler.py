@@ -283,7 +283,6 @@ def step_tiler():
         TensorAccessPattern.full((32, 32))
         .tile((2, 2))
         .group((32 // 4, 32 // 4), steps=(2, 2))
-        
     )
     assert len(tiles) == 4  # (32//(2*(32//4))) * (32//(2*(32//4)))
     assert tiles[0] == TensorAccessPattern(
@@ -342,7 +341,6 @@ def step_tiler():
         TensorAccessPattern.full((32, 32))
         .tile((2, 2))
         .group((1, 32 // 4), steps=(2, 2))
-        
     )
     assert len(tiles) == (32 // (2 * 1)) * (32 // (2 * (32 // 4)))
     assert tiles[0] == TensorAccessPattern(
@@ -401,7 +399,6 @@ def step_tiler():
         TensorAccessPattern.full((32, 32))
         .tile((2, 2))
         .group((32 // 4, 1), steps=(2, 2))
-        
     )
     assert len(tiles) == (32 // (2 * 1)) * (32 // (2 * (32 // 4)))
     assert tiles[0] == TensorAccessPattern(
@@ -515,7 +512,6 @@ def step_tiler():
         .tile((2, 2))
         .permute_tile((1, 0))
         .group((8, 2), steps=(2, 4))
-        
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -574,8 +570,7 @@ def step_tiler():
         TensorAccessPattern.full((32, 32))
         .tile((2, 2))
         .permute_tile((1, 0))
-        .group((8, 2), steps=(2, 4), col_major=True)
-        
+        .group((8, 2), steps=(2, 4), order="col")
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -635,8 +630,7 @@ def step_tiler():
         .tile((2, 2))
         .permute_tile((1, 0))
         .order("col")
-        .group((8, 2), steps=(2, 4), col_major=True)
-        
+        .group((8, 2), steps=(2, 4), order="col")
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(

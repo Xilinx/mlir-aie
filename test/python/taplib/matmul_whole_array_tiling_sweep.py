@@ -34,7 +34,6 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
         .group((1, K // k))  # Size of "group" of tiles
         # Repeat data so can distribute across whole column
         .repeat(N // n // n_aie_cols)
-        
     )
     if b_col_maj:
         # These assertions are probably too broad.
@@ -55,7 +54,6 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
                     1,
                 ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
             )
-            
         )
     else:
         B_tiles = (
@@ -70,9 +68,8 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
                     1,
                     n_aie_cols,
                 ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
-                col_major=True,  # Send all tiles in column before moving on to next column
+                order="col",  # Send all tiles in column before moving on to next column
             )
-            
         )
     C_tiles = (
         TensorAccessPattern.full((M, N))  # Size of C matrix
@@ -87,7 +84,6 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
                 n_aie_cols,
             ),  # Collect every n_aie_cols row at a time (mirroring how we sent in B data)
         )
-        
     )
     c_index = 0
 

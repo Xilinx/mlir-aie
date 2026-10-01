@@ -109,7 +109,6 @@ def group_tiler():
         .tile((3, 2))
         .order("col")
         .group((5, 7))
-        
     )
     assert taps_col_iter[0] == tile0_0
     assert taps_col_iter[1] == tile1_0
@@ -330,7 +329,7 @@ def group_tiler():
             t.coalesce()
             for t in TensorAccessPattern.full((3 * 5 * 3, 2 * 7 * 2))
             .tile((3, 2))
-            .group((5, 7), col_major=True)
+            .group((5, 7), order="col")
         ]
     )
     tile0_0 = TensorAccessPattern(
@@ -405,7 +404,7 @@ def group_tiler():
             for t in TensorAccessPattern.full((3 * 5 * 3, 2 * 7 * 2))
             .tile((3, 2))
             .permute_tile((1, 0))
-            .group((5, 7), col_major=True)
+            .group((5, 7), order="col")
         ]
     )
     tile0_0 = TensorAccessPattern(
@@ -481,7 +480,13 @@ def group_tiler():
 @construct_test
 def group_tiler_invalid():
     try:
-        taps = TensorAccessPattern.full(()).tile((3, 2)).permute_tile((1, 0)).group((1, 1)).repeat(5)
+        taps = (
+            TensorAccessPattern.full(())
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((1, 1))
+            .repeat(5)
+        )
         raise ValueError("Bad tensor dims, should fail.")
     except ValueError:
         # good
@@ -512,7 +517,11 @@ def group_tiler_invalid():
         pass
     try:
         taps = (
-            TensorAccessPattern.full((9, 4)).tile((3,)).permute_tile((1, 0)).group((1, 1)).repeat(5)
+            TensorAccessPattern.full((9, 4))
+            .tile((3,))
+            .permute_tile((1, 0))
+            .group((1, 1))
+            .repeat(5)
         )
         raise ValueError("Too few tile dims, should fail.")
     except ValueError:
@@ -569,7 +578,11 @@ def group_tiler_invalid():
 
     try:
         taps = (
-            TensorAccessPattern.full((9, 4)).tile((3, 2)).permute_tile((1, 0)).group((1,)).repeat(5)
+            TensorAccessPattern.full((9, 4))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((1,))
+            .repeat(5)
         )
         raise ValueError("Too few tile group dims, should fail.")
     except ValueError:
@@ -588,13 +601,23 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        taps = TensorAccessPattern.full((9, 4)).tile((3, 2)).permute_tile((1, 0)).group((1, 1, 1))
+        taps = (
+            TensorAccessPattern.full((9, 4))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((1, 1, 1))
+        )
         raise ValueError("Too many tile group dims, should fail.")
     except ValueError:
         # good
         pass
     try:
-        taps = TensorAccessPattern.full((18, 8)).tile((3, 2)).permute_tile((1, 0)).group((2, 3))
+        taps = (
+            TensorAccessPattern.full((18, 8))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((2, 3))
+        )
         raise ValueError(
             "Indivisible by tile repeat width (but without allow_partial)."
         )
@@ -602,7 +625,12 @@ def group_tiler_invalid():
         # good
         pass
     try:
-        taps = TensorAccessPattern.full((18, 8)).tile((3, 2)).permute_tile((1, 0)).group((4, 2))
+        taps = (
+            TensorAccessPattern.full((18, 8))
+            .tile((3, 2))
+            .permute_tile((1, 0))
+            .group((4, 2))
+        )
         raise ValueError(
             "Indivisible by tile repeat height (but without allow_partial)."
         )

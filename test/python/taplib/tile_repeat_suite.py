@@ -33,7 +33,6 @@ def tile_repeat1():
         TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
         .tile((TENSOR_HEIGHT, TENSOR_WIDTH))
         .repeat(REPEAT_COUNT)
-        
     )
     access_order, access_count = tiles.accesses()
     assert (access_count == REPEAT_COUNT).all()
@@ -82,7 +81,6 @@ def tile_repeat2():
         .tile((TENSOR_HEIGHT, TENSOR_WIDTH))
         .permute_tile((1, 0))
         .repeat(REPEAT_COUNT)
-        
     )
     access_order, access_count = tiles.accesses()
     assert (access_count == REPEAT_COUNT).all()
@@ -523,7 +521,7 @@ def tile_repeat10():
     tiles = (
         TensorAccessPattern.full((TENSOR_HEIGHT, TENSOR_WIDTH))
         .tile((TILE_HEIGHT, TILE_WIDTH))
-        .group((TILE_GROUP_HEIGHT, TILE_GROUP_WIDTH), col_major=True)
+        .group((TILE_GROUP_HEIGHT, TILE_GROUP_WIDTH), order="col")
         .repeat(REPEAT_COUNT)
     )
     tile = tiles[0].coalesce()

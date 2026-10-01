@@ -305,7 +305,7 @@ def cascade(
         .group(
             (K // k // n_aie_rows, N // n // n_aie_cols),
             steps=(1, n_aie_cols),
-            col_major=True,
+            order="col",
         )
     )
 

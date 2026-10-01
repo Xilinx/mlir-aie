@@ -15,8 +15,7 @@ def square_tiler_col_major_tensor_and_tile_tile_grouping():
         TensorAccessPattern.full((32, 32))
         .tile((4, 4))
         .permute_tile((1, 0))
-        .group((2, 2), col_major=True)
-        
+        .group((2, 2), order="col")
     )
     access_count = tiler.access_count()
     assert (access_count == 1).all()

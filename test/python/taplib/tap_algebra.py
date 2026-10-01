@@ -123,11 +123,9 @@ def tile_grid_indexing():
         for j in range(n // t):
             want = base[i * r : (i + 1) * r, j * t : (j + 1) * t].ravel()
             assert (visited(grid[i, j]) == want).all()
-            assert (visited(grid.at(i, j)) == want).all()
             assert grid[i * (n // t) + j] == grid[i, j]
             assert grid.order("col")[j * (m // r) + i] == grid[i, j]
-    # Iteration agrees with tile_at.
-    assert [lay for lay in grid] == [grid.tile_at(s) for s in range(16)]
+    assert list(grid) == [grid[s] for s in range(16)]
     assert len(grid) == 16
     # Inside-tile transpose.
     ct = grid.permute_tile((1, 0))
@@ -163,7 +161,7 @@ def group_semantics():
         assert first + 4 < tiles_per_row
     # Column-major repeats swap which repeat dimension is outermost.
     g2 = TensorAccessPattern.full((8, 8)).tile((2, 2)).group((2, 2))
-    g2c = TensorAccessPattern.full((8, 8)).tile((2, 2)).group((2, 2), col_major=True)
+    g2c = TensorAccessPattern.full((8, 8)).tile((2, 2)).group((2, 2), order="col")
     assert g2.tile_shape == [2, 2, 2, 2] and g2.tile_strides == [16, 2, 8, 1]
     assert g2c.tile_strides == [2, 16, 8, 1]
     # Row/col step order survives grouping.
@@ -216,7 +214,9 @@ def matmul_transformation_dims():
         (t, k),
         (s, 1),
     ]
-    assert TensorAccessPattern.full((n, m)).tile((t, r)).inverse().transformation_dims == [
+    assert TensorAccessPattern.full((n, m)).tile(
+        (t, r)
+    ).inverse().transformation_dims == [
         (n // t, t * m),
         (t, r),
         (m // r, r * t),
@@ -238,8 +238,14 @@ def matmul_transformation_dims():
     for grid in (
         TensorAccessPattern.full((8, 12)).tile((2, 3)).order("col"),
         TensorAccessPattern.full((8, 12)).tile((2, 3)).permute_tile((1, 0)),
-        TensorAccessPattern.full((8, 12)).tile((2, 3)).order("col").permute_tile((1, 0)),
-        TensorAccessPattern.full((4, 6, 8)).tile((2, 3, 4)).order((2, 0, 1)).permute_tile((1, 2, 0)),
+        TensorAccessPattern.full((8, 12))
+        .tile((2, 3))
+        .order("col")
+        .permute_tile((1, 0)),
+        TensorAccessPattern.full((4, 6, 8))
+        .tile((2, 3, 4))
+        .order((2, 0, 1))
+        .permute_tile((1, 2, 0)),
     ):
         cat = np.concatenate([visited(grid[i]) for i in range(len(grid))])
         size = int(np.prod(grid.tap.tensor_dims))
@@ -259,12 +265,14 @@ def partition_and_partial():
         )
     # Partition along a leading axis keeps the rows contiguous.
     rows = TensorAccessPattern.full((64, 32)).partition(4, dim=0)
-    assert rows[1] == TensorAccessPattern(
-        (64, 32), 512, [1, 1, 16, 32], [0, 0, 32, 1]
-    )
+    assert rows[1] == TensorAccessPattern((64, 32), 512, [1, 1, 16, 32], [0, 0, 32, 1])
     # A ragged group: 14 tiles, repeat 7 spaced 3 apart -> repeat capped at 5,
     # then 5, 5, 4 tiles for the three groups.
-    g = TensorAccessPattern.full((3, 28)).tile((3, 2)).group((1, 7), steps=(1, 3), partial=True)
+    g = (
+        TensorAccessPattern.full((3, 28))
+        .tile((3, 2))
+        .group((1, 7), steps=(1, 3), partial=True)
+    )
     assert g.grid_shape == [1, 3]
     assert [g[i].sizes[0] for i in range(3)] == [5, 5, 4]
     base = np.arange(3 * 28).reshape(3, 28)

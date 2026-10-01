@@ -263,7 +263,7 @@ def _build_design(
                 .group(
                     (K // k, N // n // n_aie_cols),
                     steps=(1, n_aie_cols),
-                    col_major=True,
+                    order="col",
                 )
             )
         if c_col_maj:

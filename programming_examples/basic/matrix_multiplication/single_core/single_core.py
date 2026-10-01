@@ -150,7 +150,7 @@ def single_core(
         b_tap = (
             TensorAccessPattern.full((K, N))
             .tile((k, n))
-            .group((K_div_k, N_div_n), col_major=True)[0]
+            .group((K_div_k, N_div_n), order="col")[0]
         )
     C_tiles = (
         TensorAccessPattern.full((M, N))

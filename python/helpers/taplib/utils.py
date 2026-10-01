@@ -163,7 +163,7 @@ def validate_offset(offset: int, tensor_dims: Sequence[int] | None) -> int:
 
 
 def row_major_strides(dims: Sequence) -> list:
-    """Row-major (C-order) element strides for a tensor of shape ``dims``.
+    """Row-major (C-order) element strides for a tensor of shape `dims`.
 
     Args:
         dims (Sequence): Tensor dimensions; entries may be staged values.
@@ -178,7 +178,7 @@ def row_major_strides(dims: Sequence) -> list:
 
 
 def validate_permutation(axes: Sequence[int], rank: int, what: str) -> tuple[int, ...]:
-    """Check that ``axes`` is a permutation of ``range(rank)``.
+    """Check that `axes` is a permutation of `range(rank)`.
 
     Args:
         axes (Sequence[int]): The permutation to check.
@@ -186,7 +186,7 @@ def validate_permutation(axes: Sequence[int], rank: int, what: str) -> tuple[int
         what (str): Name of the argument, for the error message.
 
     Raises:
-        ValueError: If ``axes`` is not a permutation of ``range(rank)``.
+        ValueError: If `axes` is not a permutation of `range(rank)`.
 
     Returns:
         tuple[int, ...]: The permutation as a tuple of ints.

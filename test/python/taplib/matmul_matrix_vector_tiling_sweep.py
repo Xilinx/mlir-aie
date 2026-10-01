@@ -30,13 +30,11 @@ def matrix_vector_tiling_sweep():
                     TensorAccessPattern.full((M, K))
                     .tile((m, k))
                     .group((M_div_m_div_n_cores, K // k))
-                    
                 )
                 B_tap = (
                     TensorAccessPattern.full((1, K))
                     .tile((1, K))
                     .repeat(M_div_m_div_n_cores)[0]
-                    
                 )
                 C_iter = iter(
                     TensorAccessPattern.full((1, C_sz)).tile((1, C_sz_div_n_cores))

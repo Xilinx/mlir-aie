@@ -72,7 +72,7 @@ a_taps = Layout.full((M, K)).tile((m, k)).group((1, K // k)).repeat(N // n)
 b_tap = (
     Layout.full((K, N))
     .tile((k, n))
-    .group((K // k, N // n), col_major=True)[0]
+    .group((K // k, N // n), order="col")[0]
     .coalesce()
 )
 c_taps = Layout.full((M, N)).tile((m, n)).group((1, N // n))

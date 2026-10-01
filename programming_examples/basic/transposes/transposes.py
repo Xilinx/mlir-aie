@@ -79,7 +79,7 @@ def _transpose_dma(
         )
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     tensor_ty = np.ndarray[(M, K), np.dtype[dtype]]
-    tap_in = TensorAccessPattern.full((M, K)).permute((1, 0))
+    tap_in = TensorAccessPattern.full((M, K)).T
     of_in = ObjectFifo(tensor_ty)
     of_out = of_in.cons().forward(AnyComputeTile)
 
@@ -110,7 +110,7 @@ def _transpose_dma_packet(
         )
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     tensor_ty = np.ndarray[(M, K), np.dtype[dtype]]
-    tap_in = TensorAccessPattern.full((M, K)).permute((1, 0))
+    tap_in = TensorAccessPattern.full((M, K)).T
     of_in = ObjectFifo(tensor_ty, name="in")
     of_out = of_in.cons().forward()
 
