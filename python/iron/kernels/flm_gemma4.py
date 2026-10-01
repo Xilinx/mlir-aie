@@ -38,6 +38,7 @@ from ._common import (
     _include_dirs,
     _kernel_source,
     _make_extern,
+    _portable_flags,
     _runtime_lib_include,
     dtypes,
 )
@@ -579,6 +580,28 @@ def _decode_kernel(
     # IRON's designs look up every entry point by its symbol, this one too.
     setattr(fn, symbol, fn)
     return fn
+
+
+def _decode_core(base: ExternalFunction, source: str, symbol, arg_types, contract):
+    """``symbol`` of ``flm_gemma4/<source>``, a lock-free wrapper that includes ``base``'s source.
+
+    It builds with ``base``'s flags and include path, so the wrapper sees the
+    same geometry and lock ids, and is judged by ``contract``.
+    """
+    path = str(_kernel_source(f"flm_gemma4/{source}"))
+    flags = [f for f in base.compile_flags if f not in _portable_flags()]
+    lut = [i for i, f in enumerate(flags) if f.startswith("-DAIE_LUT_KERNEL_SOURCE=")]
+    if lut:
+        flags[lut[0]] = f'-DAIE_LUT_KERNEL_SOURCE="{path}"'
+        path = base.source_file
+    return _make_extern(
+        symbol,
+        path,
+        arg_types,
+        include_dirs=base.include_dirs,
+        compile_flags=flags,
+        contract=contract,
+    )
 
 
 @dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
