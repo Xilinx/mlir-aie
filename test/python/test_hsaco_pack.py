@@ -28,8 +28,8 @@ import os
 import re
 import stat
 import struct
+import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -778,15 +778,31 @@ def test_xclbin_kernel_spec_packs_the_extracted_pdi(tmp_path, monkeypatch):
 
 
 @needs_posix
-def test_xclbin_is_read_through_a_temp_dir_with_glob_characters(tmp_path, monkeypatch):
-    """The scratch dir is a path, not a pattern: '[42]' must not be a class."""
-    _use_stub(monkeypatch, "AIE_XCLBINUTIL", _stub_xclbinutil(tmp_path))
+def test_xclbin_is_read_through_a_temp_dir_with_glob_characters(tmp_path):
+    """The scratch dir is a path, not a pattern: '[42]' must not be a class.
+
+    Run in a child process so TMPDIR is honoured the way a user's would be --
+    tempfile caches its directory per process, so this one's is already fixed.
+    """
     odd = tmp_path / "job[42]"
     odd.mkdir()
-    monkeypatch.setattr(tempfile, "tempdir", str(odd))
     xclbin = _write(tmp_path / "final.xclbin", b"stub")
+    env = dict(os.environ, TMPDIR=str(odd), AIE_XCLBINUTIL=_stub_xclbinutil(tmp_path))
 
-    assert pack.partition_from_xclbin(xclbin) == (b"PDI-FROM-XCLBIN", 2)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from aie.compiler.hsaco import pack; "
+            "print(pack.partition_from_xclbin(sys.argv[1]))",
+            xclbin,
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "(b'PDI-FROM-XCLBIN', 2)"
 
 
 @needs_posix
