@@ -597,15 +597,19 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
       if (inLoop(memcpy) || !type || !type.getElementType().isIntOrFloat())
         return std::nullopt;
       uint64_t elements = 1;
-      for (OpFoldResult size : memcpy.getMixedSizes()) {
+      SmallVector<OpFoldResult> sizes = memcpy.getMixedSizes();
+      for (OpFoldResult size : sizes) {
         std::optional<int64_t> n = getConstantIntValue(size);
         if (!n)
           return std::nullopt;
         elements *= *n;
       }
+      // The outermost dimension re-runs the BD (as iterations, or as repeats
+      // when its stride is 0), and each run sends its own header.
+      uint64_t runs = *getConstantIntValue(sizes.front());
       known = true;
-      total +=
-          elements * type.getElementTypeBitWidth() / 8 + headerBytes(packet);
+      total += elements * type.getElementTypeBitWidth() / 8 +
+               runs * headerBytes(packet);
     }
   }
   if (!known)
