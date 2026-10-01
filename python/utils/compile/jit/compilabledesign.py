@@ -1452,9 +1452,9 @@ class CompilableDesign:
         # With include_mlir the generated design is part of the key: the
         # recipe hash covers the generator's code, not the helpers it calls,
         # so without it an edit to a helper served the previous artifact.
-        # Generation is cached per design and needed by every compile, so
-        # keying the artifact directory on it costs a hit nothing; __hash__
-        # (identity, no generation) leaves it out.
+        # Generation is cached per design, so only the first lookup in a
+        # process pays for it, even on a disk hit (~50-100 ms for the
+        # 4-column whole-array GEMM); __hash__ (identity) leaves it out.
         design_text = None
         if include_mlir:
             design_text = _design_key_text(
