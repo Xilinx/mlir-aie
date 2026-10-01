@@ -1182,16 +1182,22 @@ getTracePipeline(mlir::MLIRContext *ctx) {
 // Vector → AIEVec → buffer/lock/DMA setup → control-overlay → SCF lowering.
 // Operates on the whole module; the inner pipeline nests under DeviceOp.
 // Inspects `mod` for target arch (drives `convert-vector-to-aievec` opts).
+// `optLevel` >= 3 adds the vector pointer passes.
 inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     mlir::MLIRContext *ctx, mlir::ModuleOp mod, bool dynamicObjFifos,
     bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
-    bool loadPdiToCtrlPkt = false, bool skipObjectFifoVerify = false,
-    bool assignAddresses = true) {
+    unsigned optLevel, bool loadPdiToCtrlPkt = false,
+    bool skipObjectFifoVerify = false, bool assignAddresses = true) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   std::string target = detectAIETarget(mod);
   if (target == "aie2" || target == "aieml" || target == "aie2p") {
+    // Operates on scf.for loops inside aie.core, so it must run before
+    // SCF-to-CF lowering.
+    if (optLevel >= 3) {
+      pm->addPass(createAIEHoistVectorTransferPointersPass());
+    }
     if (mlir::failed(mlir::parsePassPipeline(
             llvm::formatv("convert-vector-to-aievec{{aie-target={0}{1}}",
                           target, bf16Emulation ? " bf16-emulation=true" : "")
@@ -1283,6 +1289,11 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   }
   dpm2.addPass(createAIEAssignCoreLinkFilesPass());
   dpm2.addPass(createAIEVectorTransferLoweringPass());
+  // Consumes the vector.load/store produced by the transfer lowering above,
+  // and needs scf.for loops.
+  if (optLevel >= 3) {
+    dpm2.addPass(createAIEVectorToPointerLoopsPass());
+  }
   pm->addPass(xilinx::AIEX::createAIESCFToControlFlowPass());
   return pm;
 }
@@ -1456,10 +1467,12 @@ getRoutingPipeline(mlir::MLIRContext *ctx) {
 
 // Per-core LLVM-lowering pipeline. Destructive: extracts the CoreOp at
 // (col, row) and removes the `aie.device` wrapper. col/row=-1 means
-// "all cores" (unified mode).
+// "all cores" (unified mode). `optLevel` >= 3 adds
+// aievec-split-load-ups-chains.
 inline std::unique_ptr<mlir::PassManager>
 getCoreLLVMLoweringPipeline(mlir::MLIRContext *ctx, llvm::StringRef deviceName,
-                            int col, int row, llvm::StringRef aieTarget) {
+                            int col, int row, llvm::StringRef aieTarget,
+                            unsigned optLevel) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   mlir::OpPassManager &devicePm = pm->nest<xilinx::AIE::DeviceOp>();
   devicePm.addPass(xilinx::AIE::createAIELocalizeLocksPass());
@@ -1473,6 +1486,11 @@ getCoreLLVMLoweringPipeline(mlir::MLIRContext *ctx, llvm::StringRef deviceName,
   pm->addPass(xilinx::AIE::createAIECoreToStandardPass(coreOpts));
 
   pm->addPass(xilinx::AIEX::createAIEXToStandardPass());
+
+  // Matches aievec.ups, so it must run before the AIEVec-to-LLVM lowering.
+  if (optLevel >= 3) {
+    pm->addPass(xilinx::aievec::createSplitVectorLoadUpsChainsPass());
+  }
 
   xilinx::ConvertAIEVecToLLVMOptions aievecOpts;
   aievecOpts.aieTarget = llvm::StringRef(aieTarget).lower();
@@ -1575,10 +1593,12 @@ cloneWithOnlyDevice(mlir::ModuleOp src, llvm::StringRef devName) {
 // "all cores" (unified mode); otherwise the named core's body.
 inline mlir::LogicalResult
 loweringPipeline(mlir::ModuleOp src, llvm::StringRef devName, int col, int row,
+                 unsigned optLevel,
                  Item<mlir::OwningOpRef<mlir::ModuleOp>> &out) {
   mlir::OwningOpRef<mlir::ModuleOp> clone = cloneWithOnlyDevice(src, devName);
-  auto pm = getCoreLLVMLoweringPipeline(clone->getContext(), devName, col, row,
-                                        detectAIETarget(src, devName));
+  auto pm =
+      getCoreLLVMLoweringPipeline(clone->getContext(), devName, col, row,
+                                  detectAIETarget(src, devName), optLevel);
   if (mlir::failed(runPasses(*pm, *clone))) {
     return mlir::failure();
   }
@@ -1600,6 +1620,7 @@ loweringPipeline(mlir::ModuleOp src, llvm::StringRef devName, int col, int row,
 inline mlir::LogicalResult appendLoweredCores(
     mlir::ModuleOp mod, xilinx::AIE::DeviceOp dev,
     llvm::function_ref<bool(xilinx::AIE::CoreOp)> shouldCompile,
+    unsigned optLevel,
     std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>>
         &out) {
   std::string devName = dev.getSymName().str();
@@ -1625,7 +1646,7 @@ inline mlir::LogicalResult appendLoweredCores(
   });
 
   Item<mlir::OwningOpRef<mlir::ModuleOp>> lowered;
-  if (mlir::failed(loweringPipeline(mod, devName, -1, -1, lowered))) {
+  if (mlir::failed(loweringPipeline(mod, devName, -1, -1, optLevel, lowered))) {
     return mlir::failure();
   }
 
@@ -1693,7 +1714,8 @@ inline mlir::FailureOr<
     std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>>>
 splitLoweredCores(mlir::ModuleOp mod,
                   llvm::function_ref<bool(xilinx::AIE::DeviceOp)> lowerDevice,
-                  llvm::function_ref<bool(xilinx::AIE::CoreOp)> shouldCompile) {
+                  llvm::function_ref<bool(xilinx::AIE::CoreOp)> shouldCompile,
+                  unsigned optLevel) {
   llvm::SmallVector<xilinx::AIE::DeviceOp> devices;
   mod.walk([&](xilinx::AIE::DeviceOp dev) {
     if (lowerDevice(dev)) {
@@ -1702,7 +1724,8 @@ splitLoweredCores(mlir::ModuleOp mod,
   });
   std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>> out;
   for (xilinx::AIE::DeviceOp dev : devices) {
-    if (mlir::failed(appendLoweredCores(mod, dev, shouldCompile, out))) {
+    if (mlir::failed(
+            appendLoweredCores(mod, dev, shouldCompile, optLevel, out))) {
       return mlir::failure();
     }
   }
@@ -1725,6 +1748,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   // Decompose oversized non-contiguous ND transfers (wrap/stride exceeding the
   // hardware BD field limits) into legal sub-transfers before BD lowering.
   dpm.addPass(X::createAIEDecomposeLargeDmaBdPass());
+  dpm.addPass(X::createAIESplitLongRepeatsPass());
   // A runtime-bound scf.for that survived unroll takes the dynamic BD pool path
   // (rewritten to pool pop/push, ids drawn at runtime); the static allocator
   // below skips it. Straight-line sequences fall through unchanged.
@@ -1734,6 +1758,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(mlir::createCanonicalizerPass());
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
@@ -1791,8 +1816,10 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
+  dpm.addPass(X::createAIESplitLongRepeatsPass());
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(mlir::createCanonicalizerPass());
   dpm.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());

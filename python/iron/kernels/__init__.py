@@ -14,6 +14,7 @@ Submodules:
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
+- `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
 - `flm_gemma4` — core kernels extracted from FastFlowLM's Gemma 4
   implementation (AIE2P): prefill attention, the q4nx LM head and the decode
@@ -23,8 +24,8 @@ Submodules:
   and ``.stream_dims`` read the blocking and DMA transforms off the
   contract's operand layouts)
 - `mm(...).zero` and `mv(...).zero` construct companion zero-fill kernels;
-  `mm.mac_dims(...)` and `cascade_mm.mac_dims(...)` query micro-kernel geometry
-  without constructing a kernel.
+  `mm.mac_dims(...)`, `cascade_mm.mac_dims(...)` and `mha.mac_dims(...)` query
+  micro-kernel geometry without constructing a kernel.
 - `zero` — independent zero-fill kernel
 
 Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
@@ -242,6 +243,7 @@ from .reduce import (
     reduce_min,
     reduce_min_ref,
 )
+from .sample import exp64_ref, sample_combine, sample_ref, sample_select
 from .transformer import (
     layer_norm_affine_cast,
     layer_norm_affine_cast_ref,
@@ -292,6 +294,10 @@ __all__ = [
     "rms_norm",
     "q4nx_dequant",
     "q4nx_dequant_ref",
+    "sample_select",
+    "sample_combine",
+    "sample_ref",
+    "exp64_ref",
     "rms_norm_ref",
     "layer_norm",
     "layer_norm_ref",

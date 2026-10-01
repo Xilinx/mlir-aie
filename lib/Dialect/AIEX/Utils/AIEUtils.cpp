@@ -8,6 +8,8 @@
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "llvm/ADT/SmallPtrSet.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -258,4 +260,47 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
     os << p.getSymName() << " " << static_cast<unsigned>(*stateTableIdx) << " "
        << typeStr << " " << kindStr << "\n";
   }
+}
+
+bool AIEX::getReachableConfigures(
+    Value task, SmallVectorImpl<DMAConfigureTaskOp> &configures) {
+  bool complete = true;
+  llvm::SmallPtrSet<Value, 8> seen;
+  SmallVector<Value> worklist{task};
+  while (!worklist.empty()) {
+    Value v = worklist.pop_back_val();
+    if (!v || !seen.insert(v).second)
+      continue;
+    if (auto cfg = v.getDefiningOp<DMAConfigureTaskOp>()) {
+      configures.push_back(cfg);
+      continue;
+    }
+
+    Operation *regionBranchOp;
+    if (auto res = dyn_cast<OpResult>(v))
+      regionBranchOp = res.getOwner();
+    else
+      regionBranchOp = cast<BlockArgument>(v).getOwner()->getParentOp();
+    auto rbi = dyn_cast_or_null<RegionBranchOpInterface>(regionBranchOp);
+    if (!rbi) {
+      complete = false;
+      continue;
+    }
+
+    RegionBranchInverseSuccessorMapping mapping;
+    rbi.getSuccessorInputOperandMapping(mapping);
+    auto operands = mapping.lookup(v);
+    if (operands.empty())
+      complete = false;
+    for (OpOperand *operand : operands)
+      worklist.push_back(operand->get());
+  }
+  return complete;
+}
+
+AIEX::DMAConfigureTaskOp AIEX::getUniqueReachableConfigure(Value task) {
+  SmallVector<DMAConfigureTaskOp> configures;
+  if (!getReachableConfigures(task, configures) || configures.size() != 1)
+    return nullptr;
+  return configures.front();
 }

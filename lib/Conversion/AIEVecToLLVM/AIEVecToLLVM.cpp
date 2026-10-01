@@ -803,14 +803,22 @@ public:
 
     auto v64f32Ty = VectorType::get({64}, rewriter.getF32Type());
 
+    // The masks below address individual lanes, but vector.shuffle indexes
+    // the leading dimension, so an n-D operand has to be flattened first.
+    Value srcVal = adaptor.getSource();
+    auto fltSrcVecTy = getFlattenedVectorType(srcVecTy);
+    if (srcVecTy != fltSrcVecTy)
+      srcVal = vector::ShapeCastOp::create(rewriter, loc, fltSrcVecTy, srcVal)
+                   .getResult();
+
     // Widen the accumulator to ACC2048, filling the unused lanes with poison.
     SmallVector<int64_t> expandMask;
     for (unsigned i = 0; i < laneSize; ++i)
       expandMask.push_back(i);
     for (unsigned i = laneSize; i < 64; ++i)
       expandMask.push_back(-1);
-    auto srcExpanded = vector::ShuffleOp::create(
-        rewriter, loc, adaptor.getSource(), adaptor.getSource(), expandMask);
+    auto srcExpanded =
+        vector::ShuffleOp::create(rewriter, loc, srcVal, srcVal, expandMask);
 
     // conf selects the fp32 accumulator datapath, matching the ACC2048
     // accfloat add/sub lowerings and the AIE API's neg(v64accfloat):
@@ -824,8 +832,15 @@ public:
     SmallVector<int64_t> extractMask;
     for (unsigned i = 0; i < laneSize; ++i)
       extractMask.push_back(i);
-    auto finalResult = vector::ShuffleOp::create(rewriter, loc, negResult,
-                                                 negResult, extractMask);
+    Value finalResult = vector::ShuffleOp::create(rewriter, loc, negResult,
+                                                  negResult, extractMask)
+                            .getResult();
+
+    // Restore the operand's shape.
+    if (srcVecTy != fltSrcVecTy)
+      finalResult =
+          vector::ShapeCastOp::create(rewriter, loc, srcVecTy, finalResult)
+              .getResult();
 
     rewriter.replaceOp(op, finalResult);
     return success();
@@ -4624,8 +4639,6 @@ class MatMulOpConversion
 // Input: vXxbf16 (X must be 64), Output: v64accfloat
 static Value transposeAndConvertRHS(OpBuilder &rewriter, Location loc,
                                     Type i32ty, Value rhs64bf16) {
-  auto v32f32Ty = VectorType::get({32}, rewriter.getF32Type());
-
   // Transpose RHS 8x8 matrix in bf16 format (more efficient)
   // Cast v64bf16 to v32i32 for transpose operations
   auto rhs64i32 = forceCastValueToType(
@@ -4665,29 +4678,19 @@ static Value transposeAndConvertRHS(OpBuilder &rewriter, Location loc,
       forceCastValueToType(rewriter, loc, rhsTransposedI32,
                            VectorType::get({64}, rewriter.getBF16Type()));
 
-  // Convert transposed RHS v64bfloat16 to v64accfloat (in two v32 chunks)
-  SmallVector<int64_t> firstHalfMask, secondHalfMask;
-  for (int i = 0; i < 32; ++i) {
-    firstHalfMask.push_back(i);
-    secondHalfMask.push_back(32 + i);
-  }
-
-  auto rhsT32bf16_lo = vector::ShuffleOp::create(
-      rewriter, loc, rhsTransposedBF16, rhsTransposedBF16, firstHalfMask);
-  auto rhsT32bf16_hi = vector::ShuffleOp::create(
-      rewriter, loc, rhsTransposedBF16, rhsTransposedBF16, secondHalfMask);
-
-  auto rhsT32f32_lo = xllvm::Vector32BF16ToV32AccFloatAIE2pIntrOp::create(
-      rewriter, loc, v32f32Ty, rhsT32bf16_lo);
-  auto rhsT32f32_hi = xllvm::Vector32BF16ToV32AccFloatAIE2pIntrOp::create(
-      rewriter, loc, v32f32Ty, rhsT32bf16_hi);
-
-  // Concat to v64accfloat
-  SmallVector<int64_t> concatMask;
-  for (int i = 0; i < 64; ++i)
-    concatMask.push_back(i);
-  return vector::ShuffleOp::create(rewriter, loc, rhsT32f32_lo, rhsT32f32_hi,
-                                   concatMask);
+  // Widen the transposed RHS to v64accfloat by multiplying it by 1.0, which is
+  // exact and runs on the multiplier instead of the conversion unit.
+  auto v64bf16Ty = VectorType::get({64}, rewriter.getBF16Type());
+  auto ones = LLVM::ConstantOp::create(
+      rewriter, loc, v64bf16Ty,
+      DenseElementsAttr::get(
+          v64bf16Ty, rewriter.getFloatAttr(rewriter.getBF16Type(), 1.0)));
+  // bf16 x bf16 elementwise multiply into an fp32 accumulator.
+  auto conf = LLVM::ConstantOp::create(rewriter, loc, i32ty,
+                                       rewriter.getI32IntegerAttr(60));
+  return xllvm::MulConfBF16I1024ACC2048AIE2pIntrOp::create(
+      rewriter, loc, VectorType::get({64}, rewriter.getF32Type()),
+      rhsTransposedBF16, ones, conf);
 }
 
 // Helper function to perform BFP16-based 8×8 matmul via mac_8x8_8x8T_conf

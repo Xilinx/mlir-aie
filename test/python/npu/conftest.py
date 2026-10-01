@@ -3,11 +3,14 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-from contextlib import contextmanager
+import copy
 import re
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 
 import pytest
+
+_controller_config = None
 
 # Tests in this directory run under both host runtimes (the %run_on_npu*_xrt%
 # and %run_on_npu2_hrx% RUN lines). A few exercise features the HRX backend does
@@ -33,6 +36,8 @@ def pytest_configure(config):
     rootdir -- and pytest does not read a conftest.py above the rootdir.
     Without this, every run of these tests warns about an unknown mark.
     """
+    global _controller_config
+    _controller_config = config
     config.addinivalue_line(
         "markers",
         "extensive: the full sweep (every case x edge data x seed); deselect with "
@@ -45,10 +50,44 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "perf: times a kernel and records benchmark-action rows; select with -m perf",
+        "perf: times a kernel and records performance rows; select with -m perf",
     )
     config._perf_rows = []
     config._perf_meta = {}
+    config._reported_perf_rows = 0
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    if hasattr(item.config, "workerinput"):
+        report = outcome.get_result()
+        if report.when != "call" and not report.failed:
+            return
+        first_unreported = item.config._reported_perf_rows
+        report.npu_perf_rows = copy.deepcopy(item.config._perf_rows[first_unreported:])
+        item.config._reported_perf_rows = len(item.config._perf_rows)
+        report.npu_perf_meta = copy.deepcopy(item.config._perf_meta)
+
+
+def _merge_dict(destination, source):
+    for key, value in source.items():
+        if isinstance(value, dict) and isinstance(destination.get(key), dict):
+            _merge_dict(destination[key], value)
+        else:
+            destination[key] = value
+
+
+def pytest_runtest_logreport(report):
+    config = _controller_config
+    if config is None or hasattr(config, "workerinput"):
+        return
+    rows = getattr(report, "npu_perf_rows", ())
+    if rows:
+        rows_by_name = {row["name"]: row for row in config._perf_rows}
+        rows_by_name.update((row["name"], row) for row in rows)
+        config._perf_rows = list(rows_by_name.values())
+    _merge_dict(config._perf_meta, getattr(report, "npu_perf_meta", {}))
 
 
 def _running_on_hrx() -> bool:
@@ -73,7 +112,7 @@ def pytest_addoption(parser):
     parser.addoption(
         "--perf-out",
         default=None,
-        help="write benchmark-action rows here, if the NPU checks pass",
+        help="write the performance rows here, if the NPU checks pass",
     )
     parser.addoption(
         "--perf-meta", default=None, help="write run provenance and any failures here"
@@ -94,6 +133,12 @@ def pytest_addoption(parser):
         "--no-cycles", action="store_true", help="skip the traced cycle-count run"
     )
     parser.addoption(
+        "--shard",
+        metavar="I/N",
+        default=None,
+        help="run only every Nth selected test, starting at the Ith (0-based)",
+    )
+    parser.addoption(
         "--baseline-sources",
         metavar="DIR",
         default=None,
@@ -105,11 +150,12 @@ def pytest_addoption(parser):
 
 @pytest.fixture
 def record_perf(request):
-    """Record the benchmark-action rows a timed test produces.
+    """Record the performance rows a timed test produces.
 
-    The row name is ``<case>/<metric>``, which is the series key
-    ``benchmark-action`` charts on gh-pages; ``test_perf_series_names.py``
-    pins the whole set, so a renamed case restarts a chart and has to say so.
+    The row name is ``<case>/<metric>``, which is the series key the published
+    history (``utils/kernel_checks/publish.py``) charts on gh-pages;
+    ``test_perf_series_names.py`` pins the whole set, so a renamed case
+    restarts a chart and has to say so.
     """
     config = request.config
 
@@ -164,6 +210,8 @@ def pytest_sessionfinish(session, exitstatus):
     from pathlib import Path
 
     config = session.config
+    if hasattr(config, "workerinput"):
+        return
     rows = getattr(config, "_perf_rows", [])
     meta = getattr(config, "_perf_meta", {})
     reporter = config.pluginmanager.get_plugin("terminalreporter")
@@ -226,13 +274,40 @@ def _device_generation() -> str | None:
     return ARCH_TRAITS[arch].device
 
 
+def _shard(config, items):
+    """Keep the ``--shard I/N`` slice of ``items``, deselecting the rest.
+
+    Round-robin rather than contiguous: neighbouring cases share a kernel and
+    cost about the same, so striding spreads the expensive kernels evenly.
+    """
+    spec = config.getoption("--shard")
+    if spec is None:
+        return
+    try:
+        index, count = (int(part) for part in spec.split("/"))
+    except ValueError:
+        raise pytest.UsageError(f"--shard expects I/N, got {spec!r}") from None
+    if not 0 <= index < count:
+        raise pytest.UsageError(f"--shard {spec}: need 0 <= I < N")
+    kept = items[index::count]
+    dropped = [item for i, item in enumerate(items) if i % count != index]
+    if dropped:
+        config.hook.pytest_deselected(items=dropped)
+    items[:] = kept
+
+
+# trylast: pytest's own -m deselection runs in this hook too, and the shards
+# must split what it leaves, or each shard would carry a different share of
+# deselected tests.
+@pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(config, items):
-    """Skip HRX-unsupported tests under HRX, and device-restricted tests elsewhere.
+    """Shard, then skip HRX-unsupported and device-restricted tests.
 
     ``@pytest.mark.supported_devices("npu2")`` names the generations a
     test's kernels exist for (IRON's marker of the same name); the test is
     skipped on any other device.
     """
+    _shard(config, items)
     generation = _device_generation()
     for item in items:
         marker = item.get_closest_marker("supported_devices")

@@ -1,0 +1,61 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// Builds the same design at -O2 and -O3, checks that the -O3-only vector
+// passes changed the IR only at -O3, and runs both binaries on the device.
+//
+// RUN: mkdir -p %t.o2 %t.o3
+// RUN: %aiecc -O2 --get=input_with_symbols.mlir --get='lowered_{0}.mlir' \
+// RUN:   --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin \
+// RUN:   --npu-insts-name=insts.bin --output-dir=%t.o2 --tmpdir=%t.o2 %S/aie.mlir
+// RUN: %aiecc -O3 --get=input_with_symbols.mlir --get='lowered_{0}.mlir' \
+// RUN:   --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin \
+// RUN:   --npu-insts-name=insts.bin --output-dir=%t.o3 --tmpdir=%t.o3 %S/aie.mlir
+//
+// RUN: FileCheck %s --check-prefix=O2-IR < %t.o2/input_with_symbols.mlir
+// RUN: FileCheck %s --check-prefix=O2-LOWERED < %t.o2/lowered_main_core_0_2.mlir
+// RUN: FileCheck %s --check-prefix=O3-IR < %t.o3/input_with_symbols.mlir
+// RUN: FileCheck %s --check-prefix=O3-LOWERED < %t.o3/lowered_main_core_0_2.mlir
+//
+// RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %run_on_npu2% %t.exe -x %t.o2/aie.xclbin -k MLIR_AIE -i %t.o2/insts.bin | FileCheck %s --check-prefix=HW
+// RUN: %run_on_npu2% %t.exe -x %t.o3/aie.xclbin -k MLIR_AIE -i %t.o3/insts.bin | FileCheck %s --check-prefix=HW
+
+// -O2: the row loop keeps its 2-D, IV-indexed accesses.
+// O2-IR-LABEL: aie.core
+// O2-IR-NOT: memref.collapse_shape
+// O2-IR-NOT: ptr.
+// O2-IR: vector.load %{{.*}}[%{{.*}}, %{{.*}}] : memref<16x64xi16>, vector<64xi16>
+// O2-IR: vector.store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}] : memref<16x64xi32>, vector<64xi32>
+// O2-IR-NOT: ptr.
+
+// -O2: the v64xi16 load is loaded whole and shuffled into halves before the
+// ups.
+// O2-LOWERED: llvm.shufflevector
+// O2-LOWERED: xllvm.intr.aie2p.acc32.v32.I512.ups
+
+// -O3: aie-hoist-vector-transfer-pointers flattens both buffers, and
+// O3-IR-LABEL: aie.core
+// O3-IR-DAG: memref.collapse_shape %{{.*}} {{\[\[}}0, 1]] : memref<16x64xi16> into memref<1024xi16>
+// O3-IR-DAG: memref.collapse_shape %{{.*}} {{\[\[}}0, 1]] : memref<16x64xi32> into memref<1024xi32>
+// aie-vector-to-pointer-loops turns the indices into ptr iter_args, each
+// advanced by its own row size in bytes (64 x i16 = 128, 64 x i32 = 256).
+// O3-IR-DAG: ptr.to_ptr %{{.*}} : memref<1024xi16, #ptr.generic_space>
+// O3-IR-DAG: ptr.to_ptr %{{.*}} : memref<1024xi32, #ptr.generic_space>
+// O3-IR: vector.load %{{.*}}[%c0] : memref<1024xi16, #ptr.generic_space>, vector<64xi16>
+// O3-IR: ptr.ptr_add %{{.*}}, %c128 :
+// O3-IR: vector.store %{{.*}}, %{{.*}}[%c0] : memref<1024xi32, #ptr.generic_space>, vector<64xi32>
+// O3-IR: ptr.ptr_add %{{.*}}, %c256 :
+
+// -O3: aievec-split-load-ups-chains loads the two halves separately, so no
+// shuffle comes before the ups; one shuffle concatenates the results.
+// O3-LOWERED-NOT: llvm.shufflevector
+// O3-LOWERED: xllvm.intr.aie2p.acc32.v32.I512.ups
+// O3-LOWERED-NOT: llvm.shufflevector
+// O3-LOWERED: xllvm.intr.aie2p.acc32.v32.I512.ups
+// O3-LOWERED: llvm.shufflevector
+// O3-LOWERED-NOT: llvm.shufflevector
+
+// HW: PASS!

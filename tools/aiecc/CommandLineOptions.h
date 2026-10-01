@@ -68,6 +68,14 @@ inline cl::opt<bool> noEnforceDmaQueueDepth(
     cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
              "slot"));
 
+// Out of BD ids, the compiler may take them back from a started task it can
+// prove finished by polling its channel. The poll hangs if that task's
+// completion depends on a push issued after it, which the compiler cannot see.
+inline cl::opt<bool> reclaimRuntimeBds(
+    "reclaim-runtime-bds",
+    cl::desc("Reuse the BD ids of started, unreleased runtime-sequence tasks "
+             "when a tile runs out, polling for their completion"));
+
 inline cl::opt<bool> verifyEach(
     "verify-each",
     cl::desc("Verify the IR after every pass, not once per pass pipeline "
@@ -430,6 +438,31 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
   return table;
 }
 
+inline void printOutputSelectorTable(llvm::raw_ostream &os) {
+  for (const OutputSelector &s : outputSelectors())
+    os << "  --get-" << s.niceName << "  (" << s.edgeName << ")\n";
+}
+
+// `--get-<name>` is resolved by applyOutputSelectorFlags() below before
+// llvm::cl ever parses argv, so the shorthands are never registered as a
+// cl::opt and are invisible to --help/--help-hidden without this.
+// cl::extrahelp appends the text after the normal --help output.
+inline std::string outputSelectorHelpText() {
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  os << "\nOUTPUT SELECTORS:\n"
+        "  Named shorthands for --get=<name> (see above), and the artifact "
+        "each\n  selects (relative to --output-dir):\n";
+  printOutputSelectorTable(os);
+  return text;
+}
+
+// cl::extrahelp only keeps a StringRef, so the backing std::string needs its
+// own storage; declared first so it is initialized before the extrahelp that
+// references it (declaration order fixes initialization order within a TU).
+inline const std::string kOutputSelectorHelpText = outputSelectorHelpText();
+inline llvm::cl::extrahelp outputSelectorExtraHelp(kOutputSelectorHelpText);
+
 // Resolve the `--get-<niceName>` shorthands in `args` before cl parsing: set
 // each recognized selector's bool and drop its token; a token after a `--`
 // separator (host passthrough) is left untouched. Returns false after
@@ -453,9 +486,7 @@ inline bool applyOutputSelectorFlags(std::vector<std::string> &args) {
       if (!sel) {
         llvm::errs() << "aiecc: unknown output selector '--get-" << nice
                      << "'; available selectors are:\n";
-        for (const OutputSelector &s : outputSelectors())
-          llvm::errs() << "  --get-" << s.niceName << "  (" << s.edgeName
-                       << ")\n";
+        printOutputSelectorTable(llvm::errs());
         return false;
       }
       *sel->flag = true;

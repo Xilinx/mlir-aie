@@ -239,7 +239,7 @@ inline llvm::json::Value makePartitionJson(xilinx::AIE::DeviceOp devOp,
 }
 
 // Patch-info JSON for external buffers (the runtime control-packet buffer).
-// Consumed by `aiebu-asm` via the `patch_info_file` field in the full-ELF
+// Consumed by aiebu via the `patch_info_file` field in the full-ELF
 // config JSON. `ctrlPktArgIdx` is the runtime-sequence argument slot the
 // control-packet buffer occupies (the sequence's pre-lowering argument count,
 // since ctrl-packet-to-DMA appends the ctrl buffer as the next argument).
@@ -254,11 +254,12 @@ inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
                                 {"name", "runtime_control_packet"}}}}}};
 }
 
-// Full-ELF config.json fed to `aiebu-asm -t aie2_config`. One xrt-kernel per
-// device with ≥1 runtime sequence; PDIs array is shared (all devices) so
-// aiebu-asm can resolve any load_pdi reference. Argument count is
-// max(3, max runtime-seq arity). PDI IDs are read from `aiecc.pdi_id` on each
-// DeviceOp (stamped by `assignDevicePdiIds`).
+// Full-ELF config.json for aiebu's aie2_config assembler (in-process, or
+// `aiebu-asm -t aie2_config`). One xrt-kernel per device with ≥1 runtime
+// sequence; PDIs array is shared (all devices) so aiebu can resolve any
+// load_pdi reference. Argument count is max(3, max runtime-seq arity). PDI IDs
+// are read from `aiecc.pdi_id` on each DeviceOp (stamped by
+// `assignDevicePdiIds`).
 //
 // `ctrlPktPaths` / `patchInfoPaths` (both keyed per runtime sequence as
 // "<device>_<sequence>" via `npuSeqKey`, optional) carry that sequence's

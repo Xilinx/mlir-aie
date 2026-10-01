@@ -473,6 +473,12 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     lower routes to circuit/packet flows and emit shim runtime allocations.
     Existing buffers, locks and pinned channels stay fixed.
 
+    A route endpoint that a DMA program or runtime task names is given its
+    channel after the objectFIFOs' endpoints, by the BDs its chains need. Each
+    `aie.dma_start` naming it then takes that channel's index, and each
+    `aiex.dma_configure_task_for` naming it becomes an
+    `aiex.dma_configure_task` on the endpoint's tile and channel.
+
     MemTile memory checks count each fixed buffer once (including aliased tile
     coordinates), even without new allocations. Pool sizes use BufferOp's
     DataLayout byte sizing, including BFP. Planning shares the basic sequential
@@ -642,7 +648,9 @@ def AIEGenerateColumnControlOverlay
            "clRouteShimCTRLToTCT", "route-shim-to-tct", "std::string",
            /*default=*/"\"shim-only\"",
            "Flag to generate TCT routing between tile CTRL and shim SOUTH "
-           "ports. Available options: ['shim-only', 'all-tiles', 'disable'].">,
+           "ports. Available options: ['shim-only', 'all-tiles', 'disable']. "
+           "'shim-only' also routes any tile a runtime sequence task issues "
+           "a token from.">,
        Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool",
               /*default=*/"false",
               "Flag to generate routing between shim dma DMA and tile CTRL "

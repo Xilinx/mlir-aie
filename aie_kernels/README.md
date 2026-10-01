@@ -22,7 +22,7 @@ Kernels are grouped by family, and each family directory matches a module under 
 - When the two architectures need different code, the family holds `X_aie2.h` and `X_aie2p.h` and a small `X.cc` that includes the right one.
 - [`common/`](./common) holds helpers shared across families.
 
-The tables below describe the sources. Which kernels each NPU builds, and whether they passed the nightly hardware sweep, is in the [kernels view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels) of the Nightly Kernel Checks page, generated from `aie.iron.kernels` each night.
+The tables below describe the sources. Which kernels each NPU builds, and whether they passed the nightly hardware sweep, is in the [kernels view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels) of the Nightly Kernel Checks page, generated from `aie.iron.kernels` each night; each kernel's name there opens its own page with its cases' latest numbers and history.
 
 ## activation
 | Name | Coding style | Purpose | Datatypes |
@@ -33,7 +33,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [swiglu.cc](./activation/swiglu.cc) | AIE API | SwiGLU gated activation (tanh path from `activations.h`) | `bfloat16` |
 | [tanh.cc](./activation/tanh.cc) | AIE API | Tanh activation (tanh path from `activations.h`: native on AIE2P, LUT on AIE2) | `bfloat16` |
 | [sigmoid.cc](./activation/sigmoid.cc) | AIE API | Sigmoid activation (tanh path from `activations.h`) | `bfloat16` |
-| [softmax.cc](./activation/softmax.cc) | AIE API | Softmax; on AIE2P also `partial_softmax` (flash-attn) and `mask` | `bfloat16` |
+| [softmax.cc](./activation/softmax.cc) | AIE API | Softmax; on AIE2P also `softmax_rows` (optionally causal), `partial_softmax` (flash-attn) and `mask` | `bfloat16` |
 | [bf16_exp.cc](./activation/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |
 | [exp2f_vec.cc](./activation/exp2f_vec.cc) | AIE API | Element-wise `2^x` (degree-5 minimax poly; higher accuracy on negatives) | `float32` |
 
@@ -108,7 +108,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [mm_bfp_mixed.cc](./linalg/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul (AIE2P only) | `bfp16` |
 | [mv_bf16.cc](./linalg/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV) | `bfloat16` |
 | [mv_i16.cc](./linalg/mv_i16.cc) | AIE API | Matrix/Vector multiply, A word-transposed | `int16_t`→`int32_t` |
-| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention **decode** toolkit (matmul_PV, partial_softmax, rescale_O, …); composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16` |
+| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention **decode** toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 16 rows; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16` |
 | [flash_attn_prefill.cc](./linalg/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 sliding-window | `bfloat16` |
 
 ## norm
@@ -128,6 +128,12 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [reduce_add.cc](./reduce/reduce_add.cc) | Intrinsics | Sum of elements in a tensor | `int32_t` |
 | [reduce_max.cc](./reduce/reduce_max.cc) | Intrinsics | Max value across a tensor | `int32_t`, `bfloat16` |
 | [reduce_min.cc](./reduce/reduce_min.cc) | Intrinsics | Min value across a tensor | `int32_t` |
+
+## sample
+| Name | Coding style | Purpose | Datatypes |
+|-|-|-|-|
+| [sample_select.cc](./sample/sample_select.cc) | AIE API | One column's half of exact top-k sampling: reduces its slice of the logits to a summary (the entries above the k-th largest, and a bitmap of the ties at it); geometry via `-DSAMPLE_*`, shared with [sample.h](./sample/sample.h) | `bfloat16` → `int32_t` |
+| [sample_combine.cc](./sample/sample_combine.cc) | Generic C | Draws one token from every column's summary, bit for bit as `aie.iron.kernels.sample.sample_ref` does: IEEE soft-float weights through [exp64.h](./sample/exp64.h), summed exactly in fixed point | `int32_t` |
 
 ## transformer
 | Name | Coding style | Purpose | Datatypes |

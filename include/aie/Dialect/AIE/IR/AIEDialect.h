@@ -115,6 +115,7 @@ struct IsFlowEndPoint : mlir::OpTrait::TraitBase<ConcreteType, IsFlowEndPoint> {
 };
 
 class TileOp;
+class RouteEndpointOp;
 
 uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
                                  uint32_t burstLength);
@@ -287,6 +288,12 @@ void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
 
+mlir::ParseResult parseDMAStartChannel(mlir::OpAsmParser &parser,
+                                       mlir::Attribute &channel);
+
+void printDMAStartChannel(mlir::OpAsmPrinter &printer, mlir::Operation *op,
+                          mlir::Attribute channel);
+
 mlir::ParseResult
 parseObjectFifoAcquireObjects(mlir::OpAsmParser &parser,
                               ObjectFifoPortAttr &port,
@@ -353,10 +360,22 @@ verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,
                         llvm::ArrayRef<DMABDOp> bds,
                         bool packetEnabledByContext = false);
 
+// Validate the use_locks of one BD block and return them. A BD has one acquire
+// field and one release field; by convention the block uses either no lock or
+// both, except that an out-of-order BD may release alone. Either result is
+// null when the block has no such lock.
+mlir::LogicalResult verifyBdLockPair(mlir::Block &block, bool outOfOrder,
+                                     UseLockOp &acquire, UseLockOp &release);
+
 // BD ids already assigned within a tile's static DMA program (the
 // aie.dma_bd chain(s) inside one DmaBody-implementing op: aie.mem,
 // aie.memtile_dma, aie.shim_dma).
 llvm::SmallVector<uint32_t> getAssignedBdIds(DmaBody program);
+
+// Fails, with an error on each, if a dma_start in `device` still names a route
+// endpoint in place of a channel index. For passes and translations that need
+// the index, which aie-objectfifo-allocate assigns.
+mlir::LogicalResult verifyDMAChannelsResolved(DeviceOp device);
 
 } // namespace xilinx::AIE
 

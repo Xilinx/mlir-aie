@@ -246,41 +246,28 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
   // dialect, so downgradeIRForPeano runs again on the result: the pre-link pass
   // above cannot see the newer spellings the reprint introduces, and the
   // reprint also restores the `align` attributes it had stripped.
+  //
+  // The result stays in memory until `opt` materializes it as its input, so
+  // the core IR is written to disk once per core (peano-compat's file when
+  // nothing is merged, this edge's otherwise) instead of written and copied.
   auto &peanoLinked =
       bundle(peanoCompat.out, irLinkFiles.out)
-          .map<File>(
+          .map<std::string>(
               "peano-linked_{0}.ll",
               [](const Item<std::string> &ir,
                  const Item<std::vector<std::string>> &links,
-                 Item<File> &out) -> mlir::LogicalResult {
+                 Item<std::string> &out) -> mlir::LogicalResult {
                 if (links.get().empty()) {
-                  // Nothing to merge: the downgraded core IR is the
-                  // object input. Copy it to this edge's own output path
-                  // -- aliasing the peano-compat item's path collides
-                  // with it (the engine requires each item's output path
-                  // to be unique).
-                  if (std::error_code ec =
-                          llvm::sys::fs::copy_file(ir.asFile(), out.filePath)) {
-                    llvm::errs() << "aiecc: peano-linked: cannot copy '"
-                                 << ir.asFile() << "' to '" << out.filePath
-                                 << "': " << ec.message() << "\n";
-                    return mlir::failure();
-                  }
-                  out.value = File{};
+                  // Nothing to merge: the downgraded core IR is the object
+                  // input as is. Alias it, so `opt` reads peano-compat's file
+                  // and the IR is neither copied nor written twice.
+                  out.aliasSource = &ir;
                   return mlir::success();
                 }
                 if (dryRun) {
-                  // Placeholder so path bookkeeping resolves without requiring
-                  // the merge artifacts to exist, as the ShellCommand edges do.
-                  std::error_code ec;
-                  llvm::raw_fd_ostream placeholder(out.filePath, ec);
-                  if (ec) {
-                    llvm::errs()
-                        << "aiecc: peano-linked: cannot write '" << out.filePath
-                        << "': " << ec.message() << "\n";
-                    return mlir::failure();
-                  }
-                  out.value = File{};
+                  // Empty placeholder, so the dry run does not require the
+                  // merge artifacts to exist, as the ShellCommand edges do.
+                  out.value.emplace();
                   return mlir::success();
                 }
                 // AIELLVMLink takes module *contents*, not paths (its `Files`
@@ -306,15 +293,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                                   "the core module\n";
                   return mlir::failure();
                 }
-                std::error_code ec;
-                llvm::raw_fd_ostream os(out.filePath, ec);
-                if (ec) {
-                  llvm::errs() << "aiecc: peano-linked: cannot write '"
-                               << out.filePath << "': " << ec.message() << "\n";
-                  return mlir::failure();
-                }
-                os << downgradeIRForPeano(merged, /*stripAlign=*/false);
-                out.value = File{};
+                out.value = downgradeIRForPeano(merged, /*stripAlign=*/false);
                 return mlir::success();
               })
           .threadSafe();
@@ -647,13 +626,14 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
 
 // Assemble the full compilation artifact graph into `g` and return the list of
 // requested output edges. Edges named via `--cut` are appended to `cutEdges`
-// (and built) so a `--checkpoint` can capture them as its cut points. A
-// non-null `cache` is --device-cache, which the graph uses only when this
-// build's outputs allow it.
-static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
-                                              Graph &g,
-                                              std::vector<EdgeBase *> &cutEdges,
-                                              DeviceCache *cache) {
+// (and built) so a `--checkpoint` can capture them as its cut points. Edges
+// that must run but write nothing are appended to `checkEdges`. A non-null
+// `cache` is --device-cache, which the graph uses only when this build's
+// outputs allow it.
+static std::vector<EdgeBase *>
+buildMainGraph(mlir::MLIRContext &context, Graph &g,
+               std::vector<EdgeBase *> &cutEdges,
+               std::vector<EdgeBase *> &checkEdges, DeviceCache *cache) {
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -763,10 +743,11 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
           [dyn = dynamicObjFifos.getValue(), pkt = packetSwObjFifos.getValue(),
            ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
            ldpdi = loadPdiToCtrlPkt.getValue(), bf16 = bf16Emulation.getValue(),
-           skipVerify = skipObjectFifoVerify.getValue()](mlir::MLIRContext *ctx,
-                                                         mlir::ModuleOp mod) {
+           skipVerify = skipObjectFifoVerify.getValue(),
+           opt = optLevel.getValue()](mlir::MLIRContext *ctx,
+                                      mlir::ModuleOp mod) {
             return getInputWithAddressesPipeline(ctx, mod, dyn, pkt, ctrl, bf16,
-                                                 ldpdi, skipVerify,
+                                                 opt, ldpdi, skipVerify,
                                                  /*assignAddresses=*/false);
           }});
 
@@ -946,21 +927,22 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
   // carved set to match or the object subgraph joins on a key its other inputs
   // do not have.
   auto &unifiedPerCoreLowered = compileInput.split<ModRef>(
-      "lowered_{0}.mlir",
-      [matchesDeviceFilter, compilesCore](const Item<ModRef> &mod) {
+      "lowered_{0}.mlir", [matchesDeviceFilter, compilesCore,
+                           opt = optLevel.getValue()](const Item<ModRef> &mod) {
         return splitLoweredCores(mod.get().get(), matchesDeviceFilter,
-                                 compilesCore);
+                                 compilesCore, opt);
       });
 
   // Per-core strategy
   auto &perCoreLowered = perCore.map<ModRef>(
       "lowered_{0}.mlir",
-      [](const Item<OpInModule<CoreOp>> &item, Item<ModRef> &out) {
+      [opt = optLevel.getValue()](const Item<OpInModule<CoreOp>> &item,
+                                  Item<ModRef> &out) {
         CoreOp core = item.get().op;
         auto tile = mlir::cast<TileOp>(core.getTile().getDefiningOp());
         return loweringPipeline(item.get().module.get(),
                                 core->getParentOfType<DeviceOp>().getSymName(),
-                                tile.getCol(), tile.getRow(), out);
+                                tile.getCol(), tile.getRow(), opt, out);
       });
   // Merge-mode link artifacts for this core, llvm-linked into its own module.
   auto &perCoreIRLinkFiles = perCore.map<std::vector<std::string>>(
@@ -2023,6 +2005,21 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
                 return mlir::success();
               });
 
+  // Every input is named in the full-ELF config by its absolute path.
+  // `aiebu-asm` reads each from there, so the inputs are materialized. The
+  // in-process assembler reads the PDIs (which bootgen writes) from there too,
+  // but is handed the in-memory inputs under their would-be paths, so those
+  // are never written. Either way the config matches what `aiebu-asm` needs.
+#ifdef AIECC_HAS_AIEBU_CONFIG_ELF
+  auto fullElfInputPath = [](const auto &item) {
+    return absolutePath(item.path());
+  };
+#else
+  auto fullElfInputPath = [](const auto &item) {
+    return absolutePath(item.asFile());
+  };
+#endif // AIECC_HAS_AIEBU_CONFIG_ELF
+
   // Combined ELF: all PDIs + NPU insts bundled
   // + control packet data, if any.
   auto &fullElfConfig =
@@ -2030,40 +2027,72 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
              fullElfCtrlpkt.out, fullElfPatchInfo.out)
           .join<llvm::json::Value>(
               "full_elf_config.json",
-              [](const Node<OpInModule<DeviceOp>> &devices,
-                 const Node<File> &pdis,
-                 const Node<std::vector<char>> &instsBins,
-                 const Node<std::vector<char>> &ctrlPkts,
-                 const Node<llvm::json::Value> &patchInfos,
-                 Item<llvm::json::Value> &out) -> mlir::LogicalResult {
+              [fullElfInputPath](
+                  const Node<OpInModule<DeviceOp>> &devices,
+                  const Node<File> &pdis,
+                  const Node<std::vector<char>> &instsBins,
+                  const Node<std::vector<char>> &ctrlPkts,
+                  const Node<llvm::json::Value> &patchInfos,
+                  Item<llvm::json::Value> &out) -> mlir::LogicalResult {
                 llvm::StringMap<std::string> pdiPaths, instsPaths;
                 llvm::StringMap<std::string> ctrlPktPaths, patchInfoPaths;
                 for (const auto &item : pdis.items) {
-                  pdiPaths[item.key] = absolutePath(item.asFile());
+                  pdiPaths[item.key] = fullElfInputPath(item);
                 }
                 for (const auto &item : instsBins.items) {
-                  instsPaths[item.key] = absolutePath(item.asFile());
+                  instsPaths[item.key] = fullElfInputPath(item);
                 }
                 for (const auto &item : ctrlPkts.items) {
-                  ctrlPktPaths[item.key] = absolutePath(item.asFile());
+                  ctrlPktPaths[item.key] = fullElfInputPath(item);
                 }
                 for (const auto &item : patchInfos.items) {
-                  patchInfoPaths[item.key] = absolutePath(item.asFile());
+                  patchInfoPaths[item.key] = fullElfInputPath(item);
                 }
                 out.value = makeFullElfConfigJson(devices, pdiPaths, instsPaths,
                                                   ctrlPktPaths, patchInfoPaths);
                 return mlir::success();
               });
 
-  // TODO(aiebu-aie2_config): unlike the instruction and control-packet ELFs,
-  // the full ELF is assembled by shelling out to `aiebu-asm -t aie2_config`
-  // rather than calling the in-process aiebu library. The library's
-  // `aiebu_assembler_buffer_type_aie2_config` entry point is a no-op in this
-  // XRT build (it returns a 0-byte ELF), whereas the CLI tool assembles the
-  // same config correctly. This is the one remaining shell-out edge in the ELF
-  // path; it should move in-memory once the library's aie2_config support is
-  // understood/fixed. Until then this stays a declarative ShellCommand edge so
-  // the driver never grows ad-hoc subprocess or temp-file machinery.
+#ifdef AIECC_HAS_AIEBU_CONFIG_ELF
+  auto &fullElf =
+      bundle(fullElfConfig.out, npuInstsFullElf.out, fullElfCtrlpkt.out,
+             fullElfPatchInfo.out)
+          .join<File>(
+              fullElfName.getValue(),
+              [fullElfInputPath](const Node<llvm::json::Value> &config,
+                                 const Node<std::vector<char>> &instsBins,
+                                 const Node<std::vector<char>> &ctrlPkts,
+                                 const Node<llvm::json::Value> &patchInfos,
+                                 Item<File> &out) -> mlir::LogicalResult {
+                // The config is still written: the Python JIT reads the
+                // kernel name from it.
+                const auto &configItem = config.items.front();
+                (void)configItem.asFile();
+                if (dryRun) {
+                  std::error_code ec;
+                  llvm::raw_fd_ostream f(out.filePath, ec);
+                  out.value = File{};
+                  return mlir::success();
+                }
+                std::vector<std::pair<std::string, std::vector<char>>> files;
+                files.reserve(instsBins.items.size() + ctrlPkts.items.size() +
+                              patchInfos.items.size());
+                for (const auto &item : instsBins.items) {
+                  files.emplace_back(fullElfInputPath(item), item.get());
+                }
+                for (const auto &item : ctrlPkts.items) {
+                  files.emplace_back(fullElfInputPath(item), item.get());
+                }
+                for (const auto &item : patchInfos.items) {
+                  std::string json = item.asString();
+                  files.emplace_back(
+                      fullElfInputPath(item),
+                      std::vector<char>(json.begin(), json.end()));
+                }
+                return assembleFullElf(configItem.asString(), files, out,
+                                       verbose, ShellCommand::progress);
+              });
+#else
   auto &fullElf =
       fullElfConfig.map<File>(fullElfName.getValue(), ShellCommand{"aiebu-asm"}
                                                           .arg("-t")
@@ -2072,6 +2101,7 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
                                                           .input()
                                                           .arg("-o")
                                                           .output());
+#endif // AIECC_HAS_AIEBU_CONFIG_ELF
 
   //--------------------------------------------------------------------------//
   // Host program
@@ -2112,12 +2142,12 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
       generateCtrlpkt || generateXclbin || generateFullElf || wantAiesim ||
       doCompileHost || !getOutputs.empty() || !cutOutputs.empty();
   // Every other artifact depends on the post-link checks through
-  // physicalWithElfs. A core-ELF build ends before that edge, so name the
-  // checks here.
+  // physicalWithElfs. A core-ELF build ends before that edge, so run the
+  // checks too, without writing the module they check.
   if (generateCoreElfs || !anySpecificOutput) {
     outputs.push_back(&compiledElfs);
     if (&physicalForElfs != &physical) {
-      outputs.push_back(&physicalForElfs);
+      checkEdges.push_back(&physicalForElfs);
     }
   }
 
@@ -2235,6 +2265,7 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
   if (!keepIntermediates.getValue()) {
     std::vector<EdgeBase *> roots = outputs;
     roots.insert(roots.end(), cutEdges.begin(), cutEdges.end());
+    roots.insert(roots.end(), checkEdges.begin(), checkEdges.end());
     llvm::DenseSet<EdgeBase *> needed =
         reachableEdges(roots, {&sequencePlacement});
     *sequenceCoresOnly = !needed.count(&perCore) && !needed.count(&physical);
@@ -2248,6 +2279,7 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
   if (cache) {
     std::vector<EdgeBase *> roots = outputs;
     roots.insert(roots.end(), cutEdges.begin(), cutEdges.end());
+    roots.insert(roots.end(), checkEdges.begin(), checkEdges.end());
     llvm::DenseSet<EdgeBase *> needed =
         reachableEdges(roots, {&physical, &physicalWithElfs});
     cache->active = !keepIntermediates.getValue() && !keepLoc &&
@@ -2478,6 +2510,7 @@ int main(int argc, char **argv) {
   Graph g;
   std::vector<EdgeBase *>
       cutEdges; // the --cut points, captured by --checkpoint
+  std::vector<EdgeBase *> checkEdges;
   // Chess objects and a dry run's placeholders are nothing to reuse, and a
   // resume restores its own frontier.
   std::optional<DeviceCache> deviceCache;
@@ -2491,13 +2524,13 @@ int main(int argc, char **argv) {
                         verbose);
   }
   std::vector<EdgeBase *> outputs = buildMainGraph(
-      context, g, cutEdges, deviceCache ? &*deviceCache : nullptr);
+      context, g, cutEdges, checkEdges, deviceCache ? &*deviceCache : nullptr);
 
   // --emit-dot: visualize the (pruned) static graph and exit without running.
   // Needs no input file (the graph is static), so it runs before the input-file
   // check below. A --cut/--checkpoint cut is marked in the output.
   if (emitDot) {
-    writeDotGraph(g, outputs, llvm::outs(), cutEdges);
+    writeDotGraph(g, outputs, llvm::outs(), cutEdges, checkEdges);
     return 0;
   }
 
@@ -2531,8 +2564,10 @@ int main(int argc, char **argv) {
   llvm::DenseMap<EdgeBase *, RestoredNode> satisfied;
   if (resume.active) {
     // With --get, a resume targets exactly the requested edge(s) (a surgical
-    // suffix) rather than adding to the manifest's full build.
+    // suffix) rather than adding to the manifest's full build, so it skips the
+    // post-link checks, whose inputs the checkpoint may not hold.
     if (!getOutputs.empty()) {
+      checkEdges.clear();
       llvm::DenseSet<llvm::StringRef> want(getOutputs.begin(),
                                            getOutputs.end());
       std::vector<EdgeBase *> filtered;
@@ -2571,8 +2606,10 @@ int main(int argc, char **argv) {
   const std::vector<EdgeBase *> noOutputs;
   const std::vector<EdgeBase *> &runOutputs =
       cutEdges.empty() ? outputs : noOutputs;
+  const std::vector<EdgeBase *> &buildAlso =
+      cutEdges.empty() ? checkEdges : cutEdges;
   if (mlir::failed(engine.run(g, runOutputs, satisfied,
-                              DeserializeContext{&context}, cutEdges))) {
+                              DeserializeContext{&context}, buildAlso))) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
     // edge's already-computed inputs and print a command that reloads them and
     // re-runs just the failed edge. Opt-in via --enable-repeater-scripts.
