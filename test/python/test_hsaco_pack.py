@@ -29,6 +29,7 @@ import re
 import stat
 import struct
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -291,6 +292,8 @@ def test_defaults_when_optional_fields_are_omitted():
         # No default column count: a guessed one packs cleanly but is wrong.
         ([_kernel("k", b"\x01", num_cols=None)], "num_cols is required"),
         ([_kernel("k", b"\x01", num_cols=0)], "num_cols must be at least 1"),
+        # An empty PDI was given and is broken; packing it would read as "none".
+        ([_kernel("k", b"\x01", b"")], "pdi must be non-empty"),
         (
             [_kernel("k", b"\x01", b"pdi", kind=hsaco_format.KIND_FULL_ELF)],
             "carry no separate PDI",
@@ -772,6 +775,18 @@ def test_xclbin_kernel_spec_packs_the_extracted_pdi(tmp_path, monkeypatch):
     k = dump.parse_section(pack.build_section("aie2p", kernels))["kernels"][0]
     assert k["name"] == "MLIR_AIE"
     assert (k["kernarg_size"], k["num_cols"], k["pdi_size"]) == (64, 2, 15)
+
+
+@needs_posix
+def test_xclbin_is_read_through_a_temp_dir_with_glob_characters(tmp_path, monkeypatch):
+    """The scratch dir is a path, not a pattern: '[42]' must not be a class."""
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL", _stub_xclbinutil(tmp_path))
+    odd = tmp_path / "job[42]"
+    odd.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(odd))
+    xclbin = _write(tmp_path / "final.xclbin", b"stub")
+
+    assert pack.partition_from_xclbin(xclbin) == (b"PDI-FROM-XCLBIN", 2)
 
 
 @needs_posix

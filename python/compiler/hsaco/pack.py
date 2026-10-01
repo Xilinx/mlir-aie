@@ -178,6 +178,10 @@ def build_section(arch, kernels):
         insts_off, insts_size = place(k["insts"])
         if insts_size == 0:
             raise ValueError(f"kernel {k['name']!r}: insts must be non-empty")
+        # None means "no PDI"; an empty one was given and is broken, and place()
+        # would otherwise record it indistinguishably from an absent one.
+        if k.get("pdi") is not None and not k["pdi"]:
+            raise ValueError(f"kernel {k['name']!r}: pdi must be non-empty if given")
         pdi_off, pdi_size = place(k.get("pdi"))
         kind = int(k.get("kind", KIND_PDI_INSTS))
         # Bounded by KIND_COUNT, the same rule dump.parse_section applies, so
@@ -417,7 +421,7 @@ def partition_from_xclbin(path):
                 f"{path}: xclbinutil could not read the AIE_PARTITION section"
                 + (f": {detail}" if detail else "")
             ) from e
-        pdis = glob.glob(f"{d}/**/*.pdi", recursive=True)
+        pdis = glob.glob(f"{glob.escape(d)}/**/*.pdi", recursive=True)
         if len(pdis) != 1:
             raise ValueError(f"{path}: expected exactly one PDI, found {len(pdis)}")
         with open(pdis[0], "rb") as f:
