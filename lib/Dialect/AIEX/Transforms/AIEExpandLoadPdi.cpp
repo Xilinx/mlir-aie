@@ -34,6 +34,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <map>
+#include <set>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEEXPANDLOADPDI
@@ -194,6 +195,38 @@ static LogicalResult verifyReloadKeepsOverlay(AIE::DeviceOp device,
   return failure(result.wasInterrupted());
 }
 
+// A control-packet reload reaches a tile only if `overlay` routes control
+// packets to its TileControl port. `packets` are the reload's.
+static LogicalResult
+verifyOverlayReachesTiles(NpuLoadPdiOp loadPdiOp, AIE::DeviceOp overlay,
+                          iterator_range<Block::iterator> packets) {
+  std::set<AIE::TileID> reached;
+  overlay.walk([&](AIE::SwitchboxOp sb) {
+    for (Operation &op : sb.getConnections().front()) {
+      std::optional<AIE::Port> dest;
+      if (auto master = dyn_cast<AIE::MasterSetOp>(op))
+        dest = master.destPort();
+      else if (auto connect = dyn_cast<AIE::ConnectOp>(op))
+        dest = connect.destPort();
+      if (dest == AIE::Port{AIE::WireBundle::TileControl, 0})
+        reached.insert({sb.colIndex(), sb.rowIndex()});
+    }
+  });
+  for (Operation &op : packets) {
+    auto packet = dyn_cast<NpuControlPacketOp>(op);
+    if (!packet)
+      continue;
+    AIE::TileID tile{packet.getColumnFromAddr(), packet.getRowFromAddr()};
+    if (reached.count(tile))
+      continue;
+    return loadPdiOp.emitError()
+           << "a control-packet reload configures tile (" << tile.col << ", "
+           << tile.row << "), but @" << kCtrlPktOverlayName
+           << " routes no control packets to it";
+  }
+  return success();
+}
+
 // The empty device whose PDI load makes the firmware reset the array. `parity`
 // alternates so that two consecutive loads never name the same PDI (see
 // transformLoadPdi).
@@ -275,13 +308,15 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
   builder.setInsertionPoint(loadPdiOp);
 
   // Emit the preload load_pdi (either empty-device reset or ctrl_pkt_overlay).
+  NpuLoadPdiOp preload;
   if (ctrlPkt) {
-    NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
-                         /*id=*/nullptr, /*size=*/nullptr,
-                         /*address=*/nullptr,
-                         /*expand_mode=*/
-                         AIEX::ExpandModeAttr::get(builder.getContext(),
-                                                   AIEX::ExpandMode::none));
+    preload =
+        NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
+                             /*id=*/nullptr, /*size=*/nullptr,
+                             /*address=*/nullptr,
+                             /*expand_mode=*/
+                             AIEX::ExpandModeAttr::get(builder.getContext(),
+                                                       AIEX::ExpandMode::none));
   } else {
     NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
                          loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
@@ -302,6 +337,11 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
     loadPdiOp.emitError("Failed to generate configuration operations");
     return failure();
   }
+  if (ctrlPkt &&
+      failed(verifyOverlayReachesTiles(
+          loadPdiOp, moduleOp.lookupSymbol<AIE::DeviceOp>(kCtrlPktOverlayName),
+          {std::next(preload->getIterator()), loadPdiOp->getIterator()})))
+    return failure();
 
   // Erase the original load_pdi operation
   loadPdiOp.erase();

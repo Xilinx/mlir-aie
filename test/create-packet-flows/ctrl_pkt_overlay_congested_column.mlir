@@ -8,8 +8,9 @@
 // A design loaded by control packets must route the column control overlay
 // the same way the standalone overlay does, or loading it reprograms the
 // switches its own control packets travel through (#3837). Here the design's
-// circuit flows crowd the memtile's north ports. The overlay keeps the master
-// ports, msels and rules it has on its own.
+// circuit flows crowd the memtile's north ports, so one detours through
+// column 1, whose tiles the design declares for the overlay to cover them. The
+// overlay keeps the master ports, msels and rules it has on its own.
 
 // RUN: aie-opt --pass-pipeline="builtin.module(aie-generate-column-control-overlay{route-shim-to-tile-ctrl=true emit-standalone-overlay=true},aie.device(aie-create-pathfinder-flows))" %s -o %t
 // RUN: sed -n '/@design {/,/^  }/p' %t | FileCheck %s
@@ -59,6 +60,8 @@ module {
     %tile_0_4 = aie.tile(0, 4)
     %tile_0_5 = aie.tile(0, 5)
     %shim_noc_tile_1_0 = aie.tile(1, 0)
+    %mem_tile_1_1 = aie.tile(1, 1)
+    %tile_1_2 = aie.tile(1, 2)
     aie.flow(%shim_noc_tile_1_0, DMA : 1, %mem_tile_0_1, DMA : 0)
     aie.flow(%mem_tile_0_1, DMA : 0, %shim_noc_tile_1_0, DMA : 0)
     aie.flow(%mem_tile_0_1, DMA : 1, %tile_0_2, DMA : 0)
