@@ -14,13 +14,18 @@
 #include "mlir/Interfaces/LoopLikeInterface.h"
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/GraphTraits.h"
+#include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Support/Debug.h"
 
 #include <deque>
 #include <set>
 #include <variant>
+
+#define DEBUG_TYPE "aie-stream-dependency"
 
 using namespace mlir;
 using namespace xilinx;
@@ -1350,6 +1355,41 @@ SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() {
   return pairs;
 }
 
+namespace {
+// A wait in the graph holdCycle searches: a head stuck at one node waits on
+// one at `to`, for the reason `step` gives, if any.
+struct WaitEdge {
+  size_t to;
+  std::optional<HoldCycle::Step> step;
+};
+// The graph holdCycle searches, built as it is walked. Node `entry` leads to
+// every root.
+struct WaitGraph {
+  llvm::function_ref<ArrayRef<WaitEdge>(size_t)> successors;
+  size_t entry;
+};
+using WaitNode = std::pair<const WaitGraph *, size_t>;
+} // namespace
+
+namespace llvm {
+template <>
+struct GraphTraits<const WaitGraph *> {
+  using NodeRef = WaitNode;
+  struct ToNode {
+    const WaitGraph *graph;
+    NodeRef operator()(const WaitEdge &e) const { return {graph, e.to}; }
+  };
+  using ChildIteratorType = mapped_iterator<const WaitEdge *, ToNode>;
+  static NodeRef getEntryNode(const WaitGraph *g) { return {g, g->entry}; }
+  static ChildIteratorType child_begin(NodeRef n) {
+    return map_iterator(n.first->successors(n.second).begin(), ToNode{n.first});
+  }
+  static ChildIteratorType child_end(NodeRef n) {
+    return map_iterator(n.first->successors(n.second).end(), ToNode{n.first});
+  }
+};
+} // namespace llvm
+
 std::optional<HoldCycle>
 StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
   // The packets one source sends with one id move down every branch as one.
@@ -1427,15 +1467,18 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
       passing[trees[t].hops[h].first].push_back({t, h});
     }
 
-  struct Edge {
-    size_t to;
-    std::optional<HoldCycle::Step> step;
-  };
-  std::vector<std::optional<SmallVector<Edge, 4>>> edges(nodes.size());
+  using Edge = WaitEdge;
+  SmallVector<size_t> roots;
+  std::vector<std::optional<SmallVector<Edge, 4>>> edges(nodes.size() + 1);
   auto successors = [&](size_t n) -> ArrayRef<Edge> {
     if (edges[n])
       return *edges[n];
     SmallVector<Edge, 4> out;
+    if (n == nodes.size()) {
+      for (size_t root : roots)
+        out.push_back({root, std::nullopt});
+      return *(edges[n] = std::move(out));
+    }
     const Node &node = nodes[n];
     const Tree &u = trees[node.tree];
     switch (node.kind) {
@@ -1506,60 +1549,23 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
     return e.step->waiting < numRequested || e.step->sharer < numRequested ||
            e.step->holding < numRequested;
   };
-  SmallVector<size_t> roots;
   for (size_t n = 0; n < nodes.size(); n++)
     if (nodes[n].kind == Kind::Hop && llvm::any_of(successors(n), counts))
       roots.push_back(n);
 
-  // Tarjan's strongly connected components, iteratively.
-  std::vector<int> index(nodes.size(), -1), low(nodes.size(), 0),
-      component(nodes.size(), -1);
-  std::vector<bool> onStack(nodes.size(), false);
-  std::vector<size_t> stack;
-  std::vector<std::pair<size_t, size_t>> frames;
-  int counter = 0, components = 0;
-  auto visit = [&](size_t n) {
-    index[n] = low[n] = counter++;
-    stack.push_back(n);
-    onStack[n] = true;
-    frames.emplace_back(n, 0);
-  };
-  for (size_t root : roots) {
-    if (index[root] >= 0)
-      continue;
-    visit(root);
-    while (!frames.empty()) {
-      auto [n, next] = frames.back();
-      ArrayRef<Edge> out = successors(n);
-      if (next < out.size()) {
-        frames.back().second++;
-        size_t w = out[next].to;
-        if (index[w] < 0)
-          visit(w);
-        else if (onStack[w])
-          low[n] = std::min(low[n], index[w]);
-        continue;
-      }
-      frames.pop_back();
-      if (!frames.empty())
-        low[frames.back().first] = std::min(low[frames.back().first], low[n]);
-      if (low[n] != index[n])
-        continue;
-      size_t w;
-      do {
-        w = stack.back();
-        stack.pop_back();
-        onStack[w] = false;
-        component[w] = components;
-      } while (w != n);
-      components++;
-    }
-  }
+  const WaitGraph graph{successors, nodes.size()};
+  std::vector<int> component(nodes.size() + 1, -1);
+  int components = 0;
+  for (auto scc = llvm::scc_begin(&graph); !scc.isAtEnd(); ++scc, ++components)
+    for (WaitNode n : *scc)
+      component[n.second] = components;
 
   // A counted wait within one component lies on a closed walk. A packet holds
   // its arbiter until its tail passes, so no state has two trees holding one
   // arbiter, and a walk that needs that is no deadlock. The search fixes or
-  // rules out a holder per arbiter until the shortest walk left agrees.
+  // rules out a holder per arbiter until the shortest walk left agrees. Each
+  // clash splits it in two, so past maxWalkSearches it keeps the first walk,
+  // which at worst steers the router off a routing that cannot deadlock.
   using Grant = std::pair<TileID, int>;
   struct Holders {
     std::optional<size_t> fixed;
@@ -1608,16 +1614,25 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
         cycle.steps.push_back(*edge->step);
     return cycle;
   };
+  constexpr int maxWalkSearches = 1024;
   for (size_t x : roots)
     for (const Edge &e : successors(x)) {
       if (!counts(e) || component[e.to] != component[x])
         continue;
+      std::optional<SmallVector<const Edge *>> first;
       SmallVector<Constraints> pending{{}};
-      while (!pending.empty()) {
+      for (int search = 0; !pending.empty(); search++) {
+        if (search == maxWalkSearches) {
+          LLVM_DEBUG(llvm::dbgs() << "Hold cycle search gave up after "
+                                  << search << " walks\n");
+          return toCycle(*first);
+        }
         Constraints c = pending.pop_back_val();
         std::optional<SmallVector<const Edge *>> path = closeWalk(x, e, c);
         if (!path)
           continue;
+        if (!first)
+          first = path;
         std::map<Grant, size_t> held;
         std::optional<std::pair<Grant, size_t>> clash;
         for (const Edge *edge : *path) {
