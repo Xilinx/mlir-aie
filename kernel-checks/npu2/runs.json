@@ -237,6 +237,50 @@
     "offered": 77,
     "checked": 70
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "36824236975",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36824236975",
+   "date": "2026-10-01T06:38:44+00:00",
+   "commit": {
+    "id": "36cc79f810671bce4491531b893fcb90b4d997cb",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/36cc79f810671bce4491531b893fcb90b4d997cb",
+    "message": "[AIEVec] Flatten n-D elementwise ops to rank 1 before AIE2P lowering (#3814)",
+    "timestamp": "2026-10-01T02:28:20Z"
+   },
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "36cc79f810",
+    "peano": "22.0.0+0006955e",
+    "kernels": "291f1745fee3",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 583,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 295,
+    "failed": 0,
+    "timed": 148,
+    "timing_failed": 0,
+    "untimed": 147
+   },
+   "kernels": {
+    "offered": 79,
+    "checked": 70
+   }
   }
  ]
 }

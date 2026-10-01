@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "91ee8c89c8b841f2f6f9364b642a69526d595197",
- "date": "2026-09-30T18:36:23.427429+00:00",
+ "commit": "36cc79f810671bce4491531b893fcb90b4d997cb",
+ "date": "2026-10-01T06:37:11.368855+00:00",
  "swept": true,
  "kernels": [
   {
@@ -219,6 +219,40 @@
     "q4nx_dequant/1536x2/uint8/ct_k=16/group=24/k_tile=48/m_tile=48",
     "q4nx_dequant/512x2/uint8/ct_k=16/group=8/k_tile=32/m_tile=16"
    ]
+  },
+  {
+   "factory": "sample_select",
+   "family": "sample",
+   "summary": "One column's half of sampling: its slice's summary, for sample_combine.",
+   "sources": [
+    "sample/sample_select.cc"
+   ],
+   "builds": [
+    "sample_select"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "no case in test/python/npu/kernel_cases.py"
+  },
+  {
+   "factory": "sample_combine",
+   "family": "sample",
+   "summary": "Draw from columns summaries of sample_select, as sample_ref does.",
+   "sources": [
+    "sample/sample_combine.cc"
+   ],
+   "builds": [
+    "sample_combine"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "no case in test/python/npu/kernel_cases.py"
   },
   {
    "factory": "layer_norm",
