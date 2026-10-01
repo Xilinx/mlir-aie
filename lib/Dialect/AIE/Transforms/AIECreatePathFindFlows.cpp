@@ -11,16 +11,13 @@
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h"
 
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -38,7 +35,40 @@ using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-create-pathfinder-flows"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEROUTEPATHFINDERFLOWS
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
+using PhysPort = std::pair<TileID, Port>;
+
 namespace {
+/// \brief Routes flows in a device by lowering them to stream-switch
+/// configurations.
+///
+/// Overall flow:
+/// 1. Rewrite all flows in the device into switchboxes + shim-mux.
+/// 2. Run multiple passes of the rewrite pattern, rewriting stream-switch
+///    configurations to routes.
+/// 3. Rewrite flows to stream-switches using 'weights' from the analysis pass.
+/// 4. Check that a region is legal.
+/// 5. Rewrite stream-switches (within a bounding box) back to flows.
+struct AIEPathfinderPass
+    : xilinx::AIE::impl::AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
+  void runOnOperation() override;
+  LogicalResult runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer);
+  /// Lowers the packet flows along the routing `analyzer` found.
+  LogicalResult runOnPacketFlow(DeviceOp d, OpBuilder &builder,
+                                DynamicTileAnalysis &analyzer,
+                                StreamConflicts &conflicts,
+                                bool circuitSwitchHops);
+  /// Routes the flows in `d`, planning the arbiters on each routing found,
+  /// with the packet trees in `pinned` kept as they are.
+  llvm::Error route(DeviceOp d, DynamicTileAnalysis &analyzer,
+                    StreamConflicts &conflicts, const PacketTrees &pinned,
+                    bool circuitSwitchHops);
+};
+
 // allocates channels between switchboxes ( but does not assign them)
 // instantiates shim-muxes AND allocates channels ( no need to rip these up in )
 struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
@@ -88,18 +118,15 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     auto srcChannel = flowOp.getSourceChannel();
     Port srcPort = {srcBundle, srcChannel};
 
-#ifndef NDEBUG
-    auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
-    auto dstBundle = flowOp.getDestBundle();
-    auto dstChannel = flowOp.getDestChannel();
-    LLVM_DEBUG(llvm::dbgs()
-               << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.col
-               << ", " << srcCoords.row << ")" << stringifyWireBundle(srcBundle)
-               << srcChannel << " -> (" << dstCoords.col << ", "
-               << dstCoords.row << ")" << stringifyWireBundle(dstBundle)
-               << dstChannel << "\n\t");
-#endif
+    LLVM_DEBUG({
+      auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
+      llvm::dbgs() << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.col
+                   << ", " << srcCoords.row << ")"
+                   << stringifyWireBundle(srcBundle) << srcChannel << " -> ("
+                   << dstTile.colIndex() << ", " << dstTile.rowIndex() << ")"
+                   << stringifyWireBundle(flowOp.getDestBundle())
+                   << flowOp.getDestChannel() << "\n\t";
+    });
 
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
     // add all switchbox connections to implement the flow
@@ -169,8 +196,6 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 
 } // namespace
 
-namespace xilinx::AIE {
-
 LogicalResult AIEPathfinderPass::runOnFlow(DeviceOp d,
                                            DynamicTileAnalysis &analyzer) {
   // Apply rewrite rule to switchboxes to add assignments to every 'connect'
@@ -188,24 +213,6 @@ LogicalResult AIEPathfinderPass::runOnFlow(DeviceOp d,
     return failure();
   return success();
 }
-
-template <typename MyOp>
-struct AIEOpRemoval : OpConversionPattern<MyOp> {
-  using OpConversionPattern<MyOp>::OpConversionPattern;
-  using OpAdaptor = typename MyOp::Adaptor;
-
-  explicit AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyOp>(context, benefit) {}
-
-  LogicalResult
-  matchAndRewrite(MyOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
 
 /// The switchbox a master port feeds, and the slave port it feeds there.
 static std::optional<std::pair<TileID, Port>> linkedInput(TileID tile,
@@ -228,44 +235,26 @@ static std::optional<std::pair<TileID, Port>> linkedInput(TileID tile,
   }
 }
 
-bool AIEPathfinderPass::findPathToDest(const SwitchSettings &settings,
-                                       TileID currTile,
-                                       WireBundle currDestBundle,
-                                       int currDestChannel, TileID finalTile,
-                                       WireBundle finalDestBundle,
-                                       int finalDestChannel) {
-
-  if ((currTile == finalTile) && (currDestBundle == finalDestBundle) &&
-      (currDestChannel == finalDestChannel)) {
+/// Whether the connection out of `out` at `tile` leads, through `settings`, to
+/// `finalPort` at `finalTile`.
+static bool findPathToDest(const SwitchSettings &settings, TileID tile,
+                           Port out, TileID finalTile, Port finalPort) {
+  if (tile == finalTile && out == finalPort)
     return true;
-  }
-
-  std::optional<std::pair<TileID, Port>> next =
-      linkedInput(currTile, {currDestBundle, currDestChannel});
+  std::optional<std::pair<TileID, Port>> next = linkedInput(tile, out);
   if (!next)
     return false;
-  auto [neighbourTile, neighbourSource] = *next;
-  WireBundle neighbourSourceBundle = neighbourSource.bundle;
-  int neighbourSourceChannel = neighbourSource.channel;
-  for (const auto &[sbNode, setting] : settings) {
-    TileID tile = {sbNode.col, sbNode.row};
-    if (tile == neighbourTile) {
-      assert(setting.srcs.size() == setting.dsts.size());
-      for (size_t i = 0; i < setting.srcs.size(); i++) {
-        Port src = setting.srcs[i];
-        Port dest = setting.dsts[i];
-        if ((src.bundle == neighbourSourceBundle) &&
-            (src.channel == neighbourSourceChannel)) {
-          if (findPathToDest(settings, neighbourTile, dest.bundle, dest.channel,
-                             finalTile, finalDestBundle, finalDestChannel)) {
-            return true;
-          }
-        }
-      }
-    }
-  }
-
-  return false;
+  TileID neighbour = next->first;
+  Port in = next->second;
+  auto setting = settings.find(neighbour);
+  if (setting == settings.end())
+    return false;
+  return llvm::any_of(
+      llvm::zip(setting->second.srcs, setting->second.dsts), [&](auto link) {
+        auto [src, dest] = link;
+        return src == in &&
+               findPathToDest(settings, neighbour, dest, finalTile, finalPort);
+      });
 }
 
 namespace {
@@ -1137,15 +1126,14 @@ namespace {
 // What runOnPacketFlow learns about the packet flows, from the connections
 // the routing lays down to the arbiters planned for them.
 struct PacketFlowRouting {
-  using PhysPort = AIEPathfinderPass::PhysPort;
   using FlowKey = std::pair<Port, int>;
 
-  PacketFlowRouting(AIEPathfinderPass &pass, DeviceOp device,
-                    OpBuilder &builder, DynamicTileAnalysis &analyzer,
-                    const Routing &routing, StreamConflicts &conflicts,
-                    bool routeCircuit, bool circuitSwitchHops)
-      : pass(pass), device(device), builder(builder), analyzer(analyzer),
-        routing(routing), conflicts(conflicts), routeCircuit(routeCircuit),
+  PacketFlowRouting(DeviceOp device, OpBuilder &builder,
+                    DynamicTileAnalysis &analyzer, const Routing &routing,
+                    StreamConflicts &conflicts, bool routeCircuit,
+                    bool circuitSwitchHops)
+      : device(device), builder(builder), analyzer(analyzer), routing(routing),
+        conflicts(conflicts), routeCircuit(routeCircuit),
         circuitSwitchHops(circuitSwitchHops),
         targetModel(device.getTargetModel()),
         numArbiters(targetModel.getNumArbiters()),
@@ -1175,7 +1163,6 @@ struct PacketFlowRouting {
   SmallVector<std::pair<int, int>, 2>
   statedCubes(const std::pair<PhysPort, int> &slaveFlow) const;
 
-  AIEPathfinderPass &pass;
   DeviceOp device;
   OpBuilder &builder;
   DynamicTileAnalysis &analyzer;
@@ -1362,9 +1349,7 @@ void PacketFlowRouting::collectFlows() {
             for (auto [src, dest] :
                  llvm::zip(setting->second.srcs, setting->second.dsts))
               if (src == input && !(tile == destCoords && dest == destPort) &&
-                  pass.findPathToDest(settings, tile, dest.bundle, dest.channel,
-                                      destCoords, destPort.bundle,
-                                      destPort.channel)) {
+                  findPathToDest(settings, tile, dest, destCoords, destPort)) {
                 at = linkedInput(tile, dest);
                 break;
               }
@@ -1380,9 +1365,7 @@ void PacketFlowRouting::collectFlows() {
             Port src = setting.srcs[i];
             Port dest = setting.dsts[i];
             // reject false broadcast
-            if (!pass.findPathToDest(settings, currTile, dest.bundle,
-                                     dest.channel, destCoords, destPort.bundle,
-                                     destPort.channel))
+            if (!findPathToDest(settings, currTile, dest, destCoords, destPort))
               continue;
             if (currTile == srcSB && src.bundle == srcPort.bundle &&
                 src.channel == srcPort.channel)
@@ -2479,7 +2462,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(DeviceOp device,
                                                  DynamicTileAnalysis &analyzer,
                                                  StreamConflicts &conflicts,
                                                  bool circuitSwitchHops) {
-  PacketFlowRouting routing(*this, device, builder, analyzer, analyzer.routing,
+  PacketFlowRouting routing(device, builder, analyzer, analyzer.routing,
                             conflicts, clRouteCircuit, circuitSwitchHops);
   llvm::Error planned = routing.plan();
   if (routing.incomplete) {
@@ -2494,15 +2477,9 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(DeviceOp device,
   if (failed(routing.emit()))
     return failure();
   lowerShimDMAPorts(device, builder, analyzer);
-
-  ConversionTarget target(getContext());
-  target.addIllegalOp<PacketFlowOp>();
-  RewritePatternSet patterns(&getContext());
-  patterns.insert<AIEOpRemoval<PacketFlowOp>>(device.getContext());
-
-  if (failed(applyPartialConversion(device, target, std::move(patterns))))
-    return failure();
-
+  for (PacketFlowOp flow :
+       llvm::make_early_inc_range(device.getOps<PacketFlowOp>()))
+    flow.erase();
   return success();
 }
 
@@ -2592,7 +2569,7 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
       return false;
     };
     constraints.check = [&](const Routing &routing) {
-      return PacketFlowRouting(*this, d, builder, analyzer, routing, conflicts,
+      return PacketFlowRouting(d, builder, analyzer, routing, conflicts,
                                clRouteCircuit, circuitSwitchHops)
           .plan();
     };
@@ -2800,8 +2777,6 @@ void AIEPathfinderPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<DeviceOp>> createAIEPathfinderPass() {
+std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEPathfinderPass() {
   return std::make_unique<AIEPathfinderPass>();
 }
-
-} // namespace xilinx::AIE

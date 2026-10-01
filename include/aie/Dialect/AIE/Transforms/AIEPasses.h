@@ -10,9 +10,7 @@
 #define AIE_PASSES_H
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
-#include "aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h"
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -28,7 +26,6 @@ inline constexpr llvm::StringLiteral kObjectFifoUnrollHintAttrName =
     "aie.unroll_hint";
 
 #define GEN_PASS_DECL
-#define GEN_PASS_DEF_AIEROUTEPATHFINDERFLOWS
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPlaceTilesPass();
@@ -96,42 +93,6 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInsertTraceFlowsPass();
 /// Register `aie-objectFifo-stateful-transform` as a pipeline over the passes
 /// that lower `aie.objectfifo`.
 void registerAIEObjectFifoPipeline();
-
-/// \brief Routes flows in a device by lowering them to stream-switch
-/// configurations.
-///
-/// Overall flow:
-/// 1. Rewrite all flows in the device into switchboxes + shim-mux.
-/// 2. Run multiple passes of the rewrite pattern, rewriting stream-switch
-///    configurations to routes.
-/// 3. Rewrite flows to stream-switches using 'weights' from the analysis pass.
-/// 4. Check that a region is legal.
-/// 5. Rewrite stream-switches (within a bounding box) back to flows.
-struct AIEPathfinderPass
-    : impl::AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
-
-  AIEPathfinderPass() = default;
-
-  void runOnOperation() override;
-  mlir::LogicalResult runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer);
-  /// Lowers the packet flows along the routing `analyzer` found.
-  mlir::LogicalResult runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder,
-                                      DynamicTileAnalysis &analyzer,
-                                      StreamConflicts &conflicts,
-                                      bool circuitSwitchHops);
-  /// Routes the flows in `d`, planning the arbiters on each routing found,
-  /// with the packet trees in `pinned` kept as they are.
-  llvm::Error route(DeviceOp d, DynamicTileAnalysis &analyzer,
-                    StreamConflicts &conflicts, const PacketTrees &pinned,
-                    bool circuitSwitchHops);
-
-  typedef std::pair<TileID, Port> PhysPort;
-
-  bool findPathToDest(const SwitchSettings &settings, TileID currTile,
-                      WireBundle currDestBundle, int currDestChannel,
-                      TileID finalTile, WireBundle finalDestBundle,
-                      int finalDestChannel);
-};
 
 } // namespace xilinx::AIE
 
