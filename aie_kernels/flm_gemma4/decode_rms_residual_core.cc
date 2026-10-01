@@ -5,8 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A lock-free entry point around decode_rms_residual.cc's post-attention norm
-// and residual add, for testing them in isolation.
 #include "decode_rms_residual.cc"
 
 // residual_add writes the sum back into its residual, so the wrapper adds a

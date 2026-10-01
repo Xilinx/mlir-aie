@@ -5,8 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// One swa_attn_kv_round without the v lock, for the kernel harness.
-// _ATTN_KV_L_SLOT in python/iron/kernels/flm_gemma4.py describes sv and ly.
 #include "decode_swa_attn_kv.cc"
 
 extern "C" void swa_attn_kv_round_core(bf16 *sv, float *ly_in, float *ly_out) {

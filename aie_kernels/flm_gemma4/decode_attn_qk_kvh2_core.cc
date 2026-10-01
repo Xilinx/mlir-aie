@@ -5,9 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// One round of decode_attn_qk_kvh2.cc, both attn_qk_half calls, without the k
-// lock, for the kernel harness. k holds the two KV heads' k objects back to
-// back. The running max arrives after q in qm and leaves after the scores in s.
+// k holds the two KV heads' k objects back to back; m travels as in
+// decode_attn_qk_core.cc.
 #include "decode_attn_qk_kvh2.cc"
 
 extern "C" void attn_qk_kvh2_round_core(bf16 *qm, bf16 *k, bf16 *s, float *c,

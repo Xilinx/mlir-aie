@@ -5,8 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Lock-free entry points around decode_rope.cc's per-head arithmetic, for
-// testing it in isolation.
 #include "decode_rope.cc"
 
 #if FLM_GEMMA4_DECODE_ROPE_SWA

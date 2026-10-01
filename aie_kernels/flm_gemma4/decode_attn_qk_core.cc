@@ -5,9 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// attn_qk_round of decode_attn_qk.cc without its k lock, for the kernel
-// harness. The running max arrives after q in qm and leaves after the scores in
-// s.
+// The running max arrives after q in qm and leaves after the scores in s.
 #include "decode_attn_qk.cc"
 
 extern "C" void attn_qk_round_core(bf16 *qm, bf16 *k, bf16 *s, float *c,

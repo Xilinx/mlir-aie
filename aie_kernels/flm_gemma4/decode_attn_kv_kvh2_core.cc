@@ -5,10 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// attn_kv_s_begin, then attn_kv_v_half's arithmetic for KV head kv_head,
-// without the v lock, for the kernel harness. One call folds in one head; see
-// flm_gemma4_attn_kv_kvh2_core.
-// _ATTN_KV_L_SLOT in python/iron/kernels/flm_gemma4.py describes sv and ly.
+// One call folds in one KV head; see flm_gemma4_attn_kv_kvh2_core.
 #include "decode_attn_kv_kvh2.cc"
 
 extern "C" void attn_kv_kvh2_round_core(bf16 *sv, float *ly_in, float *ly_out,

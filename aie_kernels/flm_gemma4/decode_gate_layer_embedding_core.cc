@@ -5,8 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Lock-free test entry point around decode_gate_layer_embedding.cc's
-// activation, which works in place: it runs on a copy of x in y.
+// _activate works in place, so it runs on a copy of x in y.
 
 #include "decode_gate_layer_embedding.cc"
 

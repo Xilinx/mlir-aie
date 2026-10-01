@@ -5,8 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Lock-free test entry point around decode_glu.cc's arithmetic.
-
 #include "decode_glu.cc"
 
 extern "C" void glu_core(bf16 *x, bf16 *y) {

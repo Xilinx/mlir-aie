@@ -5,10 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Lock-free test entry points around prefill.cc's arithmetic. The running
-// state arrives in In buffers and leaves in packed Out buffers. The copies of
-// that state sit outside the event0/event1 pair, so a trace interval covers
-// the same arithmetic the production entry point runs.
+// The copies of the running state sit outside the event0/event1 pair, so a
+// trace interval covers the same arithmetic the production entry point runs.
 #include "prefill.cc"
 
 #include <stdint.h>
