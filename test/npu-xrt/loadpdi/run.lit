@@ -5,4 +5,4 @@
 //
 // RUN: %aiecc -v --get-full-elf %S/aie.mlir
 // RUN: %host_clang -o test.exe %S/test_elf.cpp -std=c++17 %host_link_flags %xrt_flags
-// RUN: ./test.exe
+// RUN: %run_on_npu2% ./test.exe
