@@ -28,6 +28,14 @@
 // RUN: ls %t.bare | FileCheck %s --check-prefix=BARE --implicit-check-not=.mlir
 // BARE: elfs_main_core_0_2
 
+// A resume runs the checks the cut left out; a --get resume runs only what it
+// names, so it needs neither the checks nor the input module.
+// RUN: rm -rf %t.res && mkdir -p %t.res && cp %t.d/large_stack_kernel.o %t.d/small.mlir %t.res
+// RUN: cd %t.res && aiecc --get-core-elfs --tmpdir=%t.res.prj --cut='elfs_{0}.elf' --checkpoint=%t.res.ckpt small.mlir
+// RUN: cd %t.res && not aiecc --resume=%t.res.ckpt/manifest.json 2>&1 | FileCheck %s --check-prefix=SMALL
+// RUN: rm %t.res/small.mlir
+// RUN: cd %t.res && aiecc --resume=%t.res.ckpt/manifest.json '--get=elfs_{0}.elf'
+
 // DOT keeps the post-link check reachable without marking it as an output.
 // RUN: aiecc --get-core-elfs --emit-dot | FileCheck %s --check-prefix=DOT
 // DOT: [label="checked_bank_placement.mlir"];

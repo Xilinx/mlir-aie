@@ -2564,8 +2564,10 @@ int main(int argc, char **argv) {
   llvm::DenseMap<EdgeBase *, RestoredNode> satisfied;
   if (resume.active) {
     // With --get, a resume targets exactly the requested edge(s) (a surgical
-    // suffix) rather than adding to the manifest's full build.
+    // suffix) rather than adding to the manifest's full build, so it skips the
+    // post-link checks, whose inputs the checkpoint may not hold.
     if (!getOutputs.empty()) {
+      checkEdges.clear();
       llvm::DenseSet<llvm::StringRef> want(getOutputs.begin(),
                                            getOutputs.end());
       std::vector<EdgeBase *> filtered;
