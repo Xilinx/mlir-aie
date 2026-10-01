@@ -519,7 +519,7 @@ struct AIEGenerateColumnControlOverlayPass
 
       for (auto [dest, op] : outputs) {
         if (tileID == to && dest == toPort) {
-          if (op->hasAttr("is_ctrl_pkt_overlay"))
+          if (op->hasAttr(kCtrlPktOverlayAttrName))
             return true;
           continue;
         }

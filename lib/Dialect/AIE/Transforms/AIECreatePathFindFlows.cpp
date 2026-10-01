@@ -11,25 +11,22 @@
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h"
 
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 
 #include <algorithm>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <numeric>
 #include <optional>
-#include <queue>
 #include <set>
 
 using namespace mlir;
@@ -38,7 +35,46 @@ using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-create-pathfinder-flows"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEROUTEPATHFINDERFLOWS
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
+using PhysPort = std::pair<TileID, Port>;
+
+// The backtracking searches for an arbiter plan and for a set of streams that
+// cannot share an arbiter are exact up to this many steps.
+constexpr int maxSearchSteps = 100000;
+// The hold-cycle search replans a tile at most this many times.
+constexpr int maxHoldCycleReplans = 256;
+
 namespace {
+/// \brief Routes flows in a device by lowering them to stream-switch
+/// configurations.
+///
+/// Overall flow:
+/// 1. Rewrite all flows in the device into switchboxes + shim-mux.
+/// 2. Run multiple passes of the rewrite pattern, rewriting stream-switch
+///    configurations to routes.
+/// 3. Rewrite flows to stream-switches using 'weights' from the analysis pass.
+/// 4. Check that a region is legal.
+/// 5. Rewrite stream-switches (within a bounding box) back to flows.
+struct AIEPathfinderPass
+    : xilinx::AIE::impl::AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
+  void runOnOperation() override;
+  LogicalResult runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer);
+  /// Lowers the packet flows along the routing `analyzer` found.
+  LogicalResult runOnPacketFlow(DeviceOp d, OpBuilder &builder,
+                                DynamicTileAnalysis &analyzer,
+                                StreamConflicts &conflicts,
+                                bool circuitSwitchHops);
+  /// Routes the flows in `d`, planning the arbiters on each routing found,
+  /// with the packet trees in `pinned` kept as they are.
+  llvm::Error route(DeviceOp d, DynamicTileAnalysis &analyzer,
+                    StreamConflicts &conflicts, const PacketTrees &pinned,
+                    bool circuitSwitchHops);
+};
+
 // allocates channels between switchboxes ( but does not assign them)
 // instantiates shim-muxes AND allocates channels ( no need to rip these up in )
 struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
@@ -88,24 +124,21 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     auto srcChannel = flowOp.getSourceChannel();
     Port srcPort = {srcBundle, srcChannel};
 
-#ifndef NDEBUG
-    auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
-    auto dstBundle = flowOp.getDestBundle();
-    auto dstChannel = flowOp.getDestChannel();
-    LLVM_DEBUG(llvm::dbgs()
-               << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.col
-               << ", " << srcCoords.row << ")" << stringifyWireBundle(srcBundle)
-               << srcChannel << " -> (" << dstCoords.col << ", "
-               << dstCoords.row << ")" << stringifyWireBundle(dstBundle)
-               << dstChannel << "\n\t");
-#endif
+    LLVM_DEBUG({
+      auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
+      llvm::dbgs() << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.col
+                   << ", " << srcCoords.row << ")"
+                   << stringifyWireBundle(srcBundle) << srcChannel << " -> ("
+                   << dstTile.colIndex() << ", " << dstTile.rowIndex() << ")"
+                   << stringifyWireBundle(flowOp.getDestBundle())
+                   << flowOp.getDestChannel() << "\n\t";
+    });
 
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
     // add all switchbox connections to implement the flow
     TileID srcSbId = {srcCoords.col, srcCoords.row};
     PathEndPoint srcPoint = {srcSbId, srcPort};
-    if (analyzer.processedFlows[srcPoint]) {
+    if (analyzer.processedFlows.count(srcPoint)) {
       // This FlowOp is a broadcast sibling of a flow whose route was already
       // materialized (the analyzer merges all destinations sharing a source
       // into one net, so the first sibling emitted connections for every
@@ -114,8 +147,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
       rewriter.eraseOp(Op);
       return success();
     }
-    // std::map<TileID, SwitchSetting>
-    SwitchSettings settings = analyzer.routing.settings[srcPoint];
+    const SwitchSettings &settings = analyzer.routing.settings.at(srcPoint);
     // add connections for all the Switchboxes in SwitchSettings
     for (const auto &[tileId, setting] : settings) {
       int col = tileId.col;
@@ -162,15 +194,13 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     LLVM_DEBUG(llvm::dbgs()
                << "\n\t\tFinished adding ConnectOps to implement flowOp.\n");
 
-    analyzer.processedFlows[srcPoint] = true;
+    analyzer.processedFlows.insert(srcPoint);
     rewriter.eraseOp(Op);
     return success();
   }
 };
 
 } // namespace
-
-namespace xilinx::AIE {
 
 LogicalResult AIEPathfinderPass::runOnFlow(DeviceOp d,
                                            DynamicTileAnalysis &analyzer) {
@@ -189,24 +219,6 @@ LogicalResult AIEPathfinderPass::runOnFlow(DeviceOp d,
     return failure();
   return success();
 }
-
-template <typename MyOp>
-struct AIEOpRemoval : OpConversionPattern<MyOp> {
-  using OpConversionPattern<MyOp>::OpConversionPattern;
-  using OpAdaptor = typename MyOp::Adaptor;
-
-  explicit AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyOp>(context, benefit) {}
-
-  LogicalResult
-  matchAndRewrite(MyOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
 
 /// The switchbox a master port feeds, and the slave port it feeds there.
 static std::optional<std::pair<TileID, Port>> linkedInput(TileID tile,
@@ -229,44 +241,45 @@ static std::optional<std::pair<TileID, Port>> linkedInput(TileID tile,
   }
 }
 
-bool AIEPathfinderPass::findPathToDest(const SwitchSettings &settings,
-                                       TileID currTile,
-                                       WireBundle currDestBundle,
-                                       int currDestChannel, TileID finalTile,
-                                       WireBundle finalDestBundle,
-                                       int finalDestChannel) {
-
-  if ((currTile == finalTile) && (currDestBundle == finalDestBundle) &&
-      (currDestChannel == finalDestChannel)) {
+/// Whether the connection out of `out` at `tile` leads, through `settings`, to
+/// `finalPort` at `finalTile`.
+static bool findPathToDest(const SwitchSettings &settings, TileID tile,
+                           Port out, TileID finalTile, Port finalPort) {
+  if (tile == finalTile && out == finalPort)
     return true;
-  }
-
-  std::optional<std::pair<TileID, Port>> next =
-      linkedInput(currTile, {currDestBundle, currDestChannel});
+  std::optional<std::pair<TileID, Port>> next = linkedInput(tile, out);
   if (!next)
     return false;
-  auto [neighbourTile, neighbourSource] = *next;
-  WireBundle neighbourSourceBundle = neighbourSource.bundle;
-  int neighbourSourceChannel = neighbourSource.channel;
-  for (const auto &[sbNode, setting] : settings) {
-    TileID tile = {sbNode.col, sbNode.row};
-    if (tile == neighbourTile) {
-      assert(setting.srcs.size() == setting.dsts.size());
-      for (size_t i = 0; i < setting.srcs.size(); i++) {
-        Port src = setting.srcs[i];
-        Port dest = setting.dsts[i];
-        if ((src.bundle == neighbourSourceBundle) &&
-            (src.channel == neighbourSourceChannel)) {
-          if (findPathToDest(settings, neighbourTile, dest.bundle, dest.channel,
-                             finalTile, finalDestBundle, finalDestChannel)) {
-            return true;
-          }
-        }
-      }
-    }
-  }
+  TileID neighbour = next->first;
+  Port in = next->second;
+  auto setting = settings.find(neighbour);
+  if (setting == settings.end())
+    return false;
+  return llvm::any_of(
+      llvm::zip(setting->second.srcs, setting->second.dsts), [&](auto link) {
+        auto [src, dest] = link;
+        return src == in &&
+               findPathToDest(settings, neighbour, dest, finalTile, finalPort);
+      });
+}
 
-  return false;
+/// Every node `successors` reaches from `start`, with the node a breadth-first
+/// search first reaches it from; `start` maps to itself. Stops once `goal` is
+/// reached, if given.
+template <typename Node, typename Successors>
+static std::map<Node, Node>
+breadthFirstParents(Node start, Successors successors,
+                    std::optional<Node> goal = std::nullopt) {
+  std::map<Node, Node> parent{{start, start}};
+  std::deque<Node> work{start};
+  while (!work.empty() && !(goal && parent.count(*goal))) {
+    Node u = work.front();
+    work.pop_front();
+    for (Node v : successors(u))
+      if (parent.try_emplace(v, u).second)
+        work.push_back(v);
+  }
+  return parent;
 }
 
 namespace {
@@ -644,6 +657,17 @@ struct ArbiterPlan {
   std::map<int, SmallVector<Port, 4>> amselMasters;
 };
 
+/// The master ports `flows` tie to one arbiter: a slave flow's arbiter takes
+/// every master port it leaves by (see planArbiters).
+template <typename SlaveFlows>
+llvm::EquivalenceClasses<Port> tiedMasters(SlaveFlows &&flows) {
+  llvm::EquivalenceClasses<Port> tied;
+  for (const SlaveFlow &f : flows)
+    for (Port m : f.masters)
+      tied.unionSets(f.masters.front(), m);
+  return tied;
+}
+
 /// Chooses arbiters for a switchbox's slave flows so that no two flows that
 /// can deadlock (`conflict`) and enter on different slave ports share one.
 /// A master port is tied to one arbiter, so every master port a slave flow
@@ -665,10 +689,7 @@ planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
     return arbiter + msel * numArbiters;
   };
 
-  llvm::EquivalenceClasses<Port> tied;
-  for (const SlaveFlow &f : flows)
-    for (Port m : f.masters)
-      tied.unionSets(f.masters.front(), m);
+  llvm::EquivalenceClasses<Port> tied = tiedMasters(flows);
 
   struct Unit {
     SmallVector<size_t, 4> flows;
@@ -744,11 +765,10 @@ planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
   SmallVector<int, 8> arbiterOf(units.size(), -1);
   SmallVector<size_t, 6> load(numArbiters, 0);
   int steps = 0;
-  constexpr int stepBudget = 100000;
   std::function<bool(size_t)> place = [&](size_t depth) {
     if (depth == order.size())
       return true;
-    if (++steps > stepBudget)
+    if (++steps > maxSearchSteps)
       return false;
     size_t u = order[depth];
     SmallVector<int, 6> candidates(numArbiters);
@@ -824,27 +844,23 @@ SmallVector<TileID> cutTiles(const AIETargetModel &targetModel, TileID src,
     }
     return next;
   };
-  auto path = [&](std::optional<TileID> avoid) {
-    std::map<TileID, TileID> via{{src, src}};
-    std::queue<TileID> queue;
-    queue.push(src);
-    while (!queue.empty() && !via.count(dst)) {
-      TileID t = queue.front();
-      queue.pop();
-      for (TileID n : neighbors(t))
-        if (n != avoid && via.try_emplace(n, t).second)
-          queue.push(n);
-    }
-    SmallVector<TileID> tiles;
-    if (via.count(dst))
-      for (TileID t = via.at(dst); t != src; t = via.at(t))
-        tiles.push_back(t);
-    return std::pair{via.count(dst) > 0, tiles};
+  auto reach = [&](std::optional<TileID> avoid) {
+    return breadthFirstParents(
+        src,
+        [&](TileID t) {
+          SmallVector<TileID, 4> next = neighbors(t);
+          llvm::erase(next, avoid);
+          return next;
+        },
+        std::optional{dst});
   };
-  auto [reachable, interior] = path(std::nullopt);
-  if (!reachable)
+  std::map<TileID, TileID> via = reach(std::nullopt);
+  if (!via.count(dst))
     return {};
-  llvm::erase_if(interior, [&](TileID t) { return path(t).first; });
+  SmallVector<TileID> interior;
+  for (TileID t = via.at(dst); t != src; t = via.at(t))
+    interior.push_back(t);
+  llvm::erase_if(interior, [&](TileID t) { return reach(t).count(dst) > 0; });
   return interior;
 }
 
@@ -914,12 +930,11 @@ unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
 
     SmallVector<size_t, 8> clique, best;
     int steps = 0;
-    constexpr int stepBudget = 100000;
     std::function<void(ArrayRef<size_t>)> grow = [&](ArrayRef<size_t> cands) {
       if (clique.size() > best.size())
         best = clique;
       for (auto [k, s] : llvm::enumerate(cands)) {
-        if (best.size() > free || ++steps > stepBudget ||
+        if (best.size() > free || ++steps > maxSearchSteps ||
             clique.size() + cands.size() - k <= best.size())
           return;
         SmallVector<size_t, 8> next;
@@ -1039,24 +1054,21 @@ unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
       }
     for (size_t x : llvm::make_first_range(with)) {
       // The chain of visits that joins `x` to each visit it reaches.
-      std::map<size_t, std::tuple<size_t, Port, bool>> via{
-          {x, {x, Port{}, false}}};
-      std::deque<size_t> work{x};
-      while (!work.empty()) {
-        size_t u = work.front();
-        work.pop_front();
-        for (auto [v, port, rule] : with.at(u))
-          if (via.try_emplace(v, u, port, rule).second)
-            work.push_back(v);
-      }
+      std::map<size_t, size_t> via = breadthFirstParents(x, [&](size_t u) {
+        return llvm::map_range(
+            with.at(u), [](const auto &link) { return std::get<0>(link); });
+      });
       size_t a = here[x].stream;
       for (size_t y : llvm::make_first_range(via)) {
         size_t b = here[y].stream;
         if (b <= a || !conflicts.mustSeparate(a, b))
           continue;
         SmallVector<std::tuple<size_t, Port, bool>, 4> chain;
-        for (size_t v = y; v != x; v = std::get<0>(via.at(v)))
-          chain.push_back({v, std::get<1>(via.at(v)), std::get<2>(via.at(v))});
+        for (size_t v = y; v != x; v = via.at(v))
+          chain.push_back(
+              *llvm::find_if(with.at(via.at(v)), [&](const auto &link) {
+                return std::get<0>(link) == v;
+              }));
         std::string reason;
         llvm::raw_string_ostream os(reason);
         os << "at tile (" << tileId.col << ", " << tileId.row
@@ -1068,8 +1080,8 @@ unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
           auto [v, port, rule] = link;
           os << (k == 0 ? "" : ", which")
              << (rule ? " takes one packet rule on " : " leaves by ")
-             << stringifyWireBundle(port.bundle) << ":" << port.channel
-             << " with " << describeStream(streams[here[v].stream]);
+             << describePort(port) << " with "
+             << describeStream(streams[here[v].stream]);
         }
         os << ", and a master port or packet rule takes one arbiter. "
            << conflicts.explain(a, b);
@@ -1138,15 +1150,14 @@ namespace {
 // What runOnPacketFlow learns about the packet flows, from the connections
 // the routing lays down to the arbiters planned for them.
 struct PacketFlowRouting {
-  using PhysPort = AIEPathfinderPass::PhysPort;
   using FlowKey = std::pair<Port, int>;
 
-  PacketFlowRouting(AIEPathfinderPass &pass, DeviceOp device,
-                    OpBuilder &builder, DynamicTileAnalysis &analyzer,
-                    const Routing &routing, StreamConflicts &conflicts,
-                    bool routeCircuit, bool circuitSwitchHops)
-      : pass(pass), device(device), builder(builder), analyzer(analyzer),
-        routing(routing), conflicts(conflicts), routeCircuit(routeCircuit),
+  PacketFlowRouting(DeviceOp device, OpBuilder &builder,
+                    DynamicTileAnalysis &analyzer, const Routing &routing,
+                    StreamConflicts &conflicts, bool routeCircuit,
+                    bool circuitSwitchHops)
+      : device(device), builder(builder), analyzer(analyzer), routing(routing),
+        conflicts(conflicts), routeCircuit(routeCircuit),
         circuitSwitchHops(circuitSwitchHops),
         targetModel(device.getTargetModel()),
         numArbiters(targetModel.getNumArbiters()),
@@ -1176,7 +1187,6 @@ struct PacketFlowRouting {
   SmallVector<std::pair<int, int>, 2>
   statedCubes(const std::pair<PhysPort, int> &slaveFlow) const;
 
-  AIEPathfinderPass &pass;
   DeviceOp device;
   OpBuilder &builder;
   DynamicTileAnalysis &analyzer;
@@ -1193,7 +1203,8 @@ struct PacketFlowRouting {
 
   std::map<TileID, mlir::Operation *> tiles;
 
-  // Map from a port and flowID to
+  // The master ports packets with each flow ID leave by, keyed by the slave
+  // port they enter.
   std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
   std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> ctrlPacketFlows;
   SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
@@ -1219,8 +1230,14 @@ struct PacketFlowRouting {
   // deadlock on an arbiter. Flows with one source, destination and id may
   // state different masks, so carry different ids, and each is a stream of
   // its own.
-  std::map<std::tuple<TileID, Port, TileID, Port, int>, SmallVector<size_t, 1>>
-      packetStreamIndex;
+  struct StreamEnds {
+    PathEndPoint src, dst;
+    int id;
+    bool operator<(const StreamEnds &rhs) const {
+      return std::tie(src, dst, id) < std::tie(rhs.src, rhs.dst, rhs.id);
+    }
+  };
+  std::map<StreamEnds, SmallVector<size_t, 1>> packetStreamIndex;
   DenseMap<std::pair<PhysPort, int>, SmallVector<size_t, 2>> slaveFlowStreams;
   // Each source's part of a SlaveFlow (see SlaveFlow). A switchbox routes on
   // the id alone, so sources sharing an id there go everywhere any of them
@@ -1264,9 +1281,7 @@ struct PacketFlowRouting {
   // from the flows of its source that tie it to one of `partners`, where
   // nothing else does. The next routing may reach the tile by another slave
   // port, so the split holds for the tile.
-  std::set<
-      std::tuple<PathEndPoint, TileID, int, int, std::optional<PathEndPoint>>>
-      hazardSplits;
+  std::set<TreeSplit> hazardSplits;
   std::set<TileID> crowdedTiles;
   std::optional<std::string> planFailure;
   // The first flow whose source the routing leaves unconnected. The routing
@@ -1285,15 +1300,15 @@ void PacketFlowRouting::collectFlows() {
 
   for (auto [i, s] : llvm::enumerate(conflicts.getStreams()))
     if (s.packetID)
-      packetStreamIndex[{s.src.tile, s.src.port, s.dst.tile, s.dst.port,
+      packetStreamIndex[{{s.src.tile, s.src.port},
+                         {s.dst.tile, s.dst.port},
                          *s.packetID}]
           .push_back(i);
   for (const RoutedStream &s : conflicts.getStreams())
     routes.push_back(s.hops);
 
-  for (const auto &[point, processed] : analyzer.processedFlows)
-    if (processed)
-      circuitSources.insert(point);
+  circuitSources.insert(analyzer.processedFlows.begin(),
+                        analyzer.processedFlows.end());
   if (routeCircuit)
     for (FlowOp flow : device.getOps<FlowOp>())
       circuitSources.insert(sourceOf(flow));
@@ -1336,7 +1351,7 @@ void PacketFlowRouting::collectFlows() {
         // stream the design already routes.
         SmallVector<size_t, 1> flowStreams;
         if (auto stream = packetStreamIndex.find(
-                {srcCoords, srcPort, destCoords, destPort, flowID});
+                {srcPoint, {destCoords, destPort}, flowID});
             stream != packetStreamIndex.end()) {
           int mask = static_cast<int>(pktFlowOp.getMask().value_or(~0));
           for (size_t i : stream->second)
@@ -1364,9 +1379,7 @@ void PacketFlowRouting::collectFlows() {
             for (auto [src, dest] :
                  llvm::zip(setting->second.srcs, setting->second.dsts))
               if (src == input && !(tile == destCoords && dest == destPort) &&
-                  pass.findPathToDest(settings, tile, dest.bundle, dest.channel,
-                                      destCoords, destPort.bundle,
-                                      destPort.channel)) {
+                  findPathToDest(settings, tile, dest, destCoords, destPort)) {
                 at = linkedInput(tile, dest);
                 break;
               }
@@ -1382,9 +1395,7 @@ void PacketFlowRouting::collectFlows() {
             Port src = setting.srcs[i];
             Port dest = setting.dsts[i];
             // reject false broadcast
-            if (!pass.findPathToDest(settings, currTile, dest.bundle,
-                                     dest.channel, destCoords, destPort.bundle,
-                                     destPort.channel))
+            if (!findPathToDest(settings, currTile, dest, destCoords, destPort))
               continue;
             if (currTile == srcSB && src.bundle == srcPort.bundle &&
                 src.channel == srcPort.channel)
@@ -1490,10 +1501,6 @@ void PacketFlowRouting::findCircuitHops() {
         for (Port p : setting.dsts)
           claimedMasters.insert({tileId, p});
       }
-  auto isDirectional = [](WireBundle bundle) {
-    return bundle == WireBundle::North || bundle == WireBundle::South ||
-           bundle == WireBundle::East || bundle == WireBundle::West;
-  };
   for (auto &[tileId, connects] : switchboxes) {
     if (!circuitSwitchHops ||
         targetModel.isShimNOCorPLTile(tileId.col, tileId.row))
@@ -1646,19 +1653,12 @@ void PacketFlowRouting::moveUnit(TileID tileId, FlowKey key) {
   auto self = flows->second.find(key);
   if (self == flows->second.end())
     return;
-  std::set<Port> unit(self->second.masters.begin(), self->second.masters.end());
-  std::set<FlowKey> joined;
-  for (bool grew = true; grew;) {
-    grew = false;
-    for (const auto &[other, f] : flows->second)
-      if (f.masters.size() > 1 && !joined.count(other) &&
-          llvm::any_of(f.masters, [&](Port m) { return unit.count(m); })) {
-        joined.insert(other);
-        unit.insert(f.masters.begin(), f.masters.end());
-        moveFlow(tileId, other);
-        grew = true;
-      }
-  }
+  llvm::EquivalenceClasses<Port> tied =
+      tiedMasters(llvm::make_second_range(flows->second));
+  for (const auto &[other, f] : flows->second)
+    if (f.masters.size() > 1 &&
+        tied.isEquivalent(f.masters.front(), self->second.masters.front()))
+      moveFlow(tileId, other);
 }
 
 void PacketFlowRouting::splitFlow(TileID tileId, FlowKey key,
@@ -1690,20 +1690,14 @@ void PacketFlowRouting::splitFlow(TileID tileId, FlowKey key,
   // The master ports tied to `partner`'s arbiter through flows other than
   // `key`, and other than its siblings if `skipSiblings`.
   auto tied = [&](FlowKey partner, bool skipSiblings) {
-    auto p = flows->second.find(partner);
-    std::set<Port> unit(p->second.masters.begin(), p->second.masters.end());
-    std::set<FlowKey> joined{key};
-    for (bool grew = true; grew;) {
-      grew = false;
-      for (const auto &[other, f] : flows->second)
-        if (f.masters.size() > 1 && !joined.count(other) &&
-            !(skipSiblings && siblings.count(other)) && sharesMaster(f, unit)) {
-          joined.insert(other);
-          unit.insert(f.masters.begin(), f.masters.end());
-          grew = true;
-        }
-    }
-    return unit;
+    llvm::EquivalenceClasses<Port> classes =
+        tiedMasters(llvm::make_filter_range(
+            llvm::make_second_range(flows->second), [&](const SlaveFlow &f) {
+              FlowKey other{f.slave, f.id};
+              return other != key && !(skipSiblings && siblings.count(other));
+            }));
+    auto unit = classes.members(flows->second.at(partner).masters.front());
+    return std::set<Port>(unit.begin(), unit.end());
   };
   auto split = [&](FlowKey other,
                    std::optional<PathEndPoint> apart = std::nullopt) {
@@ -1736,8 +1730,7 @@ void PacketFlowRouting::splitFlow(TileID tileId, FlowKey key,
           apart.push_back({tileId, m});
       if (PathEndPoint{tileId, key.first} == *src || apart.empty() ||
           !llvm::all_of(apart, [&](const PathEndPoint &p) {
-            return packetStreamIndex.count(
-                {src->coords, src->port, p.coords, p.port, other.second});
+            return packetStreamIndex.count({*src, p, other.second});
           })) {
         split(other);
         continue;
@@ -1762,8 +1755,7 @@ llvm::Error PacketFlowRouting::plan() {
     return llvm::Error::success();
   RoutingFaults faults;
   faults.connections.assign(hazardConnections.begin(), hazardConnections.end());
-  for (const auto &[src, at, a, b, apart] : hazardSplits)
-    faults.splits.push_back({src, at, a, b, apart});
+  faults.splits.assign(hazardSplits.begin(), hazardSplits.end());
   faults.crowded.assign(crowdedTiles.begin(), crowdedTiles.end());
   return llvm::make_error<RoutingFailure>(std::move(*planFailure),
                                           std::move(faults));
@@ -1797,15 +1789,12 @@ void PacketFlowRouting::checkRules() {
       continue;
     const PathEndPoint &second = other->first;
     planFailure = llvm::formatv(
-        "at tile ({0}, {1}), packets with id {2} from ({3}, {4}) {5}:{6} and "
-        "({7}, {8}) {9}:{10} enter on {11}:{12} and leave by different ports; "
-        "a switchbox routes on the id alone, so each source's packets would "
-        "also go where the other's do.",
-        tileId.col, tileId.row, id, first.coords.col, first.coords.row,
-        stringifyWireBundle(first.port.bundle), first.port.channel,
-        second.coords.col, second.coords.row,
-        stringifyWireBundle(second.port.bundle), second.port.channel,
-        stringifyWireBundle(slavePort.second.bundle), slavePort.second.channel);
+        "at tile ({0}, {1}), packets with id {2} from {3} and {4} enter on {5} "
+        "and leave by different ports; a switchbox routes on the id alone, so "
+        "each source's packets would also go where the other's do.",
+        tileId.col, tileId.row, id, describeTilePort(first.coords, first.port),
+        describeTilePort(second.coords, second.port),
+        describePort(slavePort.second));
   }
   for (const auto &[tileId, byFlow] : tileSlaveFlows) {
     // The packet rules the flows entering on `slave` need, without the packets
@@ -1879,8 +1868,7 @@ void PacketFlowRouting::checkRules() {
       const std::set<int> &apartIds = dstIds[src][apart];
       for (const auto &[dst, ids] : dstIds[src]) {
         auto carries = [&, &src = src, &dst = dst](int id) {
-          return packetStreamIndex.count(
-                     {src.coords, src.port, dst.coords, dst.port, id}) > 0;
+          return packetStreamIndex.count({src, dst, id}) > 0;
         };
         auto b = llvm::find_if_not(apartIds, carries);
         if (!(dst == apart) && b != apartIds.end())
@@ -1918,13 +1906,12 @@ void PacketFlowRouting::checkRules() {
         int witness = (own.second & own.first) |
                       (other.second & other.first & ~own.first);
         planFailure = llvm::formatv(
-            "at tile ({0}, {1}), packet flows through {2}{3} claim rule (mask "
-            "0x{4:X-}, id 0x{5:X-}) and rule (mask 0x{6:X-}, id 0x{7:X-}), "
-            "which both match id 0x{8:X-}; widen one mask to carry both, or "
+            "at tile ({0}, {1}), packet flows through {2} claim rule (mask "
+            "0x{3:X-}, id 0x{4:X-}) and rule (mask 0x{5:X-}, id 0x{6:X-}), "
+            "which both match id 0x{7:X-}; widen one mask to carry both, or "
             "route them apart.",
-            tileId.col, tileId.row, stringifyWireBundle(fa.slave.bundle),
-            fa.slave.channel, own.first, own.second, other.first, other.second,
-            witness);
+            tileId.col, tileId.row, describePort(fa.slave), own.first,
+            own.second, other.first, other.second, witness);
       }
     std::set<Port> slaves;
     for (const auto &[key, f] : byFlow)
@@ -1941,10 +1928,10 @@ void PacketFlowRouting::checkRules() {
       if (planFailure)
         continue;
       planFailure = llvm::formatv(
-          "at tile ({0}, {1}), the packet flows entering on {2}:{3} need {4} "
-          "packet rules, and a slave port holds {5}.",
-          tileId.col, tileId.row, stringifyWireBundle(slave.bundle),
-          slave.channel, needed, targetModel.getNumSlaveSlots());
+          "at tile ({0}, {1}), the packet flows entering on {2} need {3} "
+          "packet rules, and a slave port holds {4}.",
+          tileId.col, tileId.row, describePort(slave), needed,
+          targetModel.getNumSlaveSlots());
     }
   }
 }
@@ -1960,11 +1947,10 @@ void PacketFlowRouting::planTiles() {
       llvm::dbgs() << "No arbiter plan at tile (" << tileId.col << ", "
                    << tileId.row << "):\n";
       for (const SlaveFlow &f : flows) {
-        llvm::dbgs() << "  " << stringifyWireBundle(f.slave.bundle) << ':'
-                     << f.slave.channel << " id " << f.id << " ->";
+        llvm::dbgs() << "  " << describePort(f.slave) << " id " << f.id
+                     << " ->";
         for (Port m : f.masters)
-          llvm::dbgs() << ' ' << stringifyWireBundle(m.bundle) << ':'
-                       << m.channel;
+          llvm::dbgs() << ' ' << describePort(m);
         llvm::dbgs() << '\n';
       }
       for (auto [a, b] : blocking)
@@ -2034,7 +2020,7 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
   // Every cycle the search meets: the routing moves the flows of each, as the
   // first may run only through flows it cannot move.
   SmallVector<HoldCycle, 2> cycles;
-  int budget = 256;
+  int replans = 0;
   std::function<bool()> search = [&]() {
     arbitrate();
     std::optional<HoldCycle> cycle = conflicts.holdCycle(routes);
@@ -2058,12 +2044,12 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
         off = {step.tile, sharerNew ? sharer : holder, step.arbiter};
       else
         continue;
-      if (budget <= 0)
+      if (replans == maxHoldCycleReplans)
         return false;
       if ((pair && !apart.insert(*pair).second) ||
           (off && !offArbiter.insert(*off).second))
         continue;
-      budget--;
+      replans++;
       ArbiterPlan saved = plans.at(step.tile);
       SmallVector<std::pair<size_t, size_t>, 4> blocking;
       if (std::optional<ArbiterPlan> plan = planTile(step.tile, blocking)) {
@@ -2122,28 +2108,20 @@ LogicalResult PacketFlowRouting::emit() {
   // Compute the master set IDs
   // A map from a switchbox output port to its associated amsel values
   std::map<PhysPort, SmallVector<int, 4>> mastersets;
-  for (const auto &[physPort, ports] : masterAMSels) {
-    TileID tileId = physPort.first;
-    int amselValue = physPort.second;
-    for (auto port : ports) {
-      PhysPort physPort = {tileId, port};
-      mastersets[physPort].push_back(amselValue);
-    }
-  }
+  for (const auto &[tileAmsel, ports] : masterAMSels)
+    for (Port port : ports)
+      mastersets[{tileAmsel.first, port}].push_back(tileAmsel.second);
 
-  LLVM_DEBUG(llvm::dbgs() << "CHECK mastersets\n");
-#ifndef NDEBUG
-  for (const auto &[physPort, values] : mastersets) {
-    TileID tileId = physPort.first;
-    WireBundle bundle = physPort.second.bundle;
-    int channel = physPort.second.channel;
-    LLVM_DEBUG(llvm::dbgs()
-               << "master " << tileId << " " << stringifyWireBundle(bundle)
-               << " : " << channel << '\n');
-    for (auto value : values)
-      LLVM_DEBUG(llvm::dbgs() << "amsel: " << value << '\n');
-  }
-#endif
+  LLVM_DEBUG({
+    llvm::dbgs() << "CHECK mastersets\n";
+    for (const auto &[master, values] : mastersets) {
+      llvm::dbgs() << "master " << master.first << " "
+                   << stringifyWireBundle(master.second.bundle) << " : "
+                   << master.second.channel << '\n';
+      for (int value : values)
+        llvm::dbgs() << "amsel: " << value << '\n';
+    }
+  });
 
   // Compute mask values
   // Merging as many stream flows as possible
@@ -2152,39 +2130,21 @@ LogicalResult PacketFlowRouting::emit() {
   SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> slaveGroups;
   SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
   while (!workList.empty()) {
-    auto slave1 = workList.pop_back_val();
-    Port slavePort1 = slave1.first.second;
-
-    bool foundgroup = false;
-    for (auto &group : slaveGroups) {
-      auto slave2 = group.front();
-      if (Port slavePort2 = slave2.first.second; slavePort1 != slavePort2)
-        continue;
-
-      bool matched = true;
-      auto dests1 = packetFlows[slave1];
-      auto dests2 = packetFlows[slave2];
-      if (dests1.size() != dests2.size())
-        continue;
-
-      for (auto dest1 : dests1) {
-        if (llvm::find(dests2, dest1) == dests2.end()) {
-          matched = false;
-          break;
-        }
-      }
-
-      if (matched) {
-        group.push_back(slave1);
-        foundgroup = true;
-        break;
-      }
-    }
-
-    if (!foundgroup) {
-      SmallVector<std::pair<PhysPort, int>, 4> group({slave1});
-      slaveGroups.push_back(group);
-    }
+    std::pair<PhysPort, int> slave = workList.pop_back_val();
+    const SmallVector<PhysPort, 4> &dests = packetFlows[slave];
+    auto *group = llvm::find_if(slaveGroups, [&](const auto &candidate) {
+      const SmallVector<PhysPort, 4> &groupDests =
+          packetFlows[candidate.front()];
+      return candidate.front().first.second == slave.first.second &&
+             groupDests.size() == dests.size() &&
+             llvm::all_of(dests, [&](const PhysPort &dest) {
+               return llvm::is_contained(groupDests, dest);
+             });
+    });
+    if (group != slaveGroups.end())
+      group->push_back(slave);
+    else
+      slaveGroups.push_back({slave});
   }
 
   // What each group claims on its slave port, as cubes, split into the rules
@@ -2209,9 +2169,8 @@ LogicalResult PacketFlowRouting::emit() {
   auto claimsOf = [&](size_t gi) {
     SmallVector<std::pair<int, int>, 8> claims(statedRules[gi].begin(),
                                                statedRules[gi].end());
-    for (int id : derivedIds[gi]) {
+    for (int id : derivedIds[gi])
       claims.push_back({idMask, id});
-    }
     return claims;
   };
 
@@ -2219,21 +2178,11 @@ LogicalResult PacketFlowRouting::emit() {
 
   // Update tiles map if any new tile op declaration is needed for constructing
   // the flow.
-  for (const auto &swMap : mastersets) {
-    TileID tileId = swMap.first.first;
-    TileOp tileOp = analyzer.getTile(builder, tileId);
-    if (llvm::none_of(tiles,
-                      [&tileOp](const std::pair<const xilinx::AIE::TileID,
-                                                Operation *> &tileMapEntry) {
-                        return tileMapEntry.second == tileOp.getOperation();
-                      })) {
-      tiles[{tileOp.colIndex(), tileOp.rowIndex()}] = tileOp;
-    }
-  }
+  for (const PhysPort &master : llvm::make_first_range(mastersets))
+    tiles.try_emplace(master.first, analyzer.getTile(builder, master.first));
 
-  for (auto map : tiles) {
-    Operation *tileOp = map.second;
-    TileOp tile = cast<TileOp>(map.second);
+  for (Operation *tileOp : llvm::make_second_range(tiles)) {
+    TileOp tile = cast<TileOp>(tileOp);
     TileID tileId = tile.getTileID();
     Location tileLoc = tile.getLoc();
 
@@ -2249,53 +2198,29 @@ LogicalResult PacketFlowRouting::emit() {
       ConnectOp::create(builder, tileLoc, hop.src.bundle, hop.src.channel,
                         hop.dst.bundle, hop.dst.channel);
 
-    std::vector<bool> amselOpNeededVector(numMselsPerArbiter * numArbiters);
-    for (const auto &map : mastersets) {
-      if (tileId != map.first.first)
-        continue;
-
-      for (auto value : map.second) {
-        amselOpNeededVector[value] = true;
-      }
-    }
-    // Create all the amsel Ops
+    // The master sets of this tile, in port order, and the amsels they take.
+    auto tileMastersets =
+        llvm::make_filter_range(mastersets, [&](const auto &entry) {
+          return entry.first.first == tileId;
+        });
+    llvm::SmallBitVector amselNeeded(numMselsPerArbiter * numArbiters);
+    for (const auto &[master, amsels] : tileMastersets)
+      for (int amsel : amsels)
+        amselNeeded.set(amsel);
     std::map<int, AMSelOp> amselOps;
-    for (int i = 0; i < numMselsPerArbiter; i++) {
-      for (int a = 0; a < numArbiters; a++) {
-        int amselValue = a + i * numArbiters;
-        if (amselOpNeededVector[amselValue]) {
-          int arbiterID = a;
-          int msel = i;
-          auto amsel = AMSelOp::create(builder, tileLoc, arbiterID, msel);
-          amselOps[amselValue] = amsel;
-        }
-      }
-    }
-    // Create all the master set Ops
-    // First collect the master sets for this tile.
-    SmallVector<Port, 4> tileMasters;
-    for (const auto &map : mastersets) {
-      if (tileId != map.first.first)
-        continue;
-      tileMasters.push_back(map.first.second);
-    }
-    // Sort them so we get a reasonable order
-    std::sort(tileMasters.begin(), tileMasters.end());
-    for (auto tileMaster : tileMasters) {
-      WireBundle bundle = tileMaster.bundle;
-      int channel = tileMaster.channel;
-      SmallVector<int, 4> msels = mastersets[{tileId, tileMaster}];
+    for (int msel = 0; msel < numMselsPerArbiter; msel++)
+      for (int arbiter = 0; arbiter < numArbiters; arbiter++)
+        if (int amsel = arbiter + msel * numArbiters; amselNeeded.test(amsel))
+          amselOps[amsel] = AMSelOp::create(builder, tileLoc, arbiter, msel);
+    for (const auto &[master, msels] : tileMastersets) {
       SmallVector<Value, 4> amsels;
-      for (auto msel : msels) {
-        assert(amselOps.count(msel) == 1);
-        amsels.push_back(amselOps[msel]);
-      }
-
-      auto msOp = MasterSetOp::create(builder, tileLoc, builder.getIndexType(),
-                                      bundle, channel, amsels,
-                                      keepPktHeaderAttr[{tileId, tileMaster}]);
-      if (ctrlPktOverlayMasterPorts.contains({tileId, tileMaster}))
-        msOp->setAttr("is_ctrl_pkt_overlay", builder.getUnitAttr());
+      for (int msel : msels)
+        amsels.push_back(amselOps.at(msel));
+      auto msOp = MasterSetOp::create(
+          builder, tileLoc, builder.getIndexType(), master.second.bundle,
+          master.second.channel, amsels, keepPktHeaderAttr.lookup(master));
+      if (ctrlPktOverlayMasterPorts.contains(master))
+        msOp->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
     }
 
     // Generate the packet rules, adding to any the switchbox already has.
@@ -2320,20 +2245,15 @@ LogicalResult PacketFlowRouting::emit() {
       if (tileId != port.first)
         continue;
 
-      WireBundle bundle = port.second.bundle;
-      int channel = port.second.channel;
-      auto slave = port.second;
+      Port slave = port.second;
 
-      SmallVector<int, 4> matchIds;
-      for (auto member : group)
-        matchIds.push_back(member.second);
-
+      SmallVector<int, 4> matchIds =
+          llvm::to_vector<4>(llvm::make_second_range(group));
       for (int id : matchIds)
-        if (id > static_cast<int>(maxPacketId)) {
+        if (id > static_cast<int>(maxPacketId))
           return mlir::emitError(tileLoc)
                  << "packet id " << id << " exceeds the maximum of "
                  << maxPacketId;
-        }
 
       SmallVector<std::pair<int, int>> avoidCubes;
       for (size_t oi = 0; oi < slaveGroups.size(); ++oi) {
@@ -2364,12 +2284,11 @@ LogicalResult PacketFlowRouting::emit() {
             int witness = (own.second & own.first) |
                           (other.second & other.first & ~own.first);
             return mlir::emitError(tileLoc)
-                   << "packet flows through " << stringifyWireBundle(bundle)
-                   << channel << " claim rule (mask 0x"
-                   << llvm::utohexstr(own.first) << ", id 0x"
-                   << llvm::utohexstr(own.second) << ") and rule (mask 0x"
-                   << llvm::utohexstr(other.first) << ", id 0x"
-                   << llvm::utohexstr(other.second)
+                   << "packet flows through " << describePort(slave)
+                   << " claim rule (mask 0x" << llvm::utohexstr(own.first)
+                   << ", id 0x" << llvm::utohexstr(own.second)
+                   << ") and rule (mask 0x" << llvm::utohexstr(other.first)
+                   << ", id 0x" << llvm::utohexstr(other.second)
                    << "), which both match id 0x" << llvm::utohexstr(witness)
                    << "; widen one mask to carry both, or route them apart";
           }
@@ -2394,8 +2313,7 @@ LogicalResult PacketFlowRouting::emit() {
         plan.rules = portRules(claims, existing, idBits,
                                device.getTargetModel().getNumSlaveSlots());
         LLVM_DEBUG({
-          llvm::dbgs() << "packet rules " << stringifyWireBundle(bundle)
-                       << channel << ":";
+          llvm::dbgs() << "packet rules " << describePort(slave) << ":";
           for (const PortRule &r : plan.rules)
             llvm::dbgs() << " rule(" << r.mask << ", " << r.value
                          << ") -> group " << plan.groups[r.group];
@@ -2404,20 +2322,21 @@ LogicalResult PacketFlowRouting::emit() {
       }
 
       // Every id the group claims takes one of its rules first.
-      for ([[maybe_unused]] int id = 0; id <= idMask; ++id) {
-        [[maybe_unused]] bool own =
-            llvm::is_contained(derivedIds[gi], id) ||
-            llvm::any_of(statedRules[gi], [&](std::pair<int, int> c) {
-              return (id & c.first) == (c.second & c.first);
-            });
-        [[maybe_unused]] auto *first =
-            llvm::find_if(plan.rules, [&](const PortRule &r) {
-              return (id & r.mask) == r.value;
-            });
-        assert((!own || (first != plan.rules.end() &&
-                         plan.groups[first->group] == gi)) &&
-               "packet rules send a claimed id elsewhere");
-      }
+      assert(llvm::all_of(llvm::seq(0, idMask + 1),
+                          [&](int id) {
+                            bool own =
+                                llvm::is_contained(derivedIds[gi], id) ||
+                                llvm::any_of(statedRules[gi], [&](auto c) {
+                                  return (id & c.first) == (c.second & c.first);
+                                });
+                            const auto *first = llvm::find_if(
+                                plan.rules, [&](const PortRule &r) {
+                                  return (id & r.mask) == r.value;
+                                });
+                            return !own || (first != plan.rules.end() &&
+                                            plan.groups[first->group] == gi);
+                          }) &&
+             "packet rules send a claimed id elsewhere");
 
       size_t last = plan.emitted;
       for (size_t r = plan.emitted; r < plan.rules.size(); ++r)
@@ -2427,17 +2346,17 @@ LogicalResult PacketFlowRouting::emit() {
       // Check if this group is a ctrl-pkt overlay flow
       bool isCtrlPktGroup = ctrlPacketFlows.count(group.front()) > 0;
 
-      PacketRulesOp packetrules;
-      if (slaveRules.count(slave) == 0) {
-        packetrules = PacketRulesOp::create(builder, tileLoc, bundle, channel);
+      PacketRulesOp packetrules = slaveRules.lookup(slave);
+      if (!packetrules) {
+        packetrules = PacketRulesOp::create(builder, tileLoc, slave.bundle,
+                                            slave.channel);
         PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
                                         tileLoc);
         if (isCtrlPktGroup)
-          packetrules->setAttr("is_ctrl_pkt_overlay", builder.getUnitAttr());
+          packetrules->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
         slaveRules[slave] = packetrules;
       } else {
         // After the amsels its new rules use.
-        packetrules = slaveRules[slave];
         packetrules->moveBefore(b.getTerminator());
       }
 
@@ -2446,11 +2365,7 @@ LogicalResult PacketFlowRouting::emit() {
       // A fan-out whose cover exceeds the slave port's packet-rule slots needs
       // channel-level restructuring, not masking.
       uint32_t slotLimit = device.getTargetModel().getNumSlaveSlots();
-      uint32_t existingSlots = 0;
-      for (auto rule : rules.getOps<PacketRuleOp>()) {
-        (void)rule;
-        existingSlots++;
-      }
+      size_t existingSlots = llvm::range_size(rules.getOps<PacketRuleOp>());
       if (existingSlots + (last - plan.emitted) > slotLimit) {
         packetrules->emitOpError("slave port packet rules exceed the ")
             << slotLimit << "-slot limit (" << existingSlots << " + "
@@ -2469,7 +2384,7 @@ LogicalResult PacketFlowRouting::emit() {
             llvm::any_of(ruleGroup, [&](const auto &member) {
               return ctrlPktFlows.contains(member);
             }))
-          rule->setAttr("priority_route", builder.getUnitAttr());
+          rule->setAttr(kPriorityRouteAttrName, builder.getUnitAttr());
       }
     }
   }
@@ -2481,7 +2396,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(DeviceOp device,
                                                  DynamicTileAnalysis &analyzer,
                                                  StreamConflicts &conflicts,
                                                  bool circuitSwitchHops) {
-  PacketFlowRouting routing(*this, device, builder, analyzer, analyzer.routing,
+  PacketFlowRouting routing(device, builder, analyzer, analyzer.routing,
                             conflicts, clRouteCircuit, circuitSwitchHops);
   llvm::Error planned = routing.plan();
   if (routing.incomplete) {
@@ -2496,15 +2411,9 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(DeviceOp device,
   if (failed(routing.emit()))
     return failure();
   lowerShimDMAPorts(device, builder, analyzer);
-
-  ConversionTarget target(getContext());
-  target.addIllegalOp<PacketFlowOp>();
-  RewritePatternSet patterns(&getContext());
-  patterns.insert<AIEOpRemoval<PacketFlowOp>>(device.getContext());
-
-  if (failed(applyPartialConversion(device, target, std::move(patterns))))
-    return failure();
-
+  for (PacketFlowOp flow :
+       llvm::make_early_inc_range(device.getOps<PacketFlowOp>()))
+    flow.erase();
   return success();
 }
 
@@ -2594,14 +2503,14 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
       return false;
     };
     constraints.check = [&](const Routing &routing) {
-      return PacketFlowRouting(*this, d, builder, analyzer, routing, conflicts,
+      return PacketFlowRouting(d, builder, analyzer, routing, conflicts,
                                clRouteCircuit, circuitSwitchHops)
           .plan();
     };
   }
-  analyzer.pathfinder->setPacketConstraints(std::move(constraints));
+  analyzer.pathfinder.setPacketConstraints(std::move(constraints));
   llvm::Error routed = analyzer.runAnalysis(d);
-  analyzer.pathfinder->setPacketConstraints({});
+  analyzer.pathfinder.setPacketConstraints({});
   return routed;
 }
 
@@ -2624,7 +2533,7 @@ void AIEPathfinderPass::runOnOperation() {
       warning << " So can " << pairs.size() - 1 << " other pair"
               << (pairs.size() > 2 ? "s" : "") << " of flows.";
   }
-  DynamicTileAnalysis &analyzer = getAnalysis<DynamicTileAnalysis>();
+  DynamicTileAnalysis analyzer;
   // A prioritized flow keeps the route it takes alone, so route the packet
   // flows from prioritized sources without the rest of the design first, and
   // pin their trees for the rest to route around.
@@ -2664,11 +2573,11 @@ void AIEPathfinderPass::runOnOperation() {
     StreamConflicts aloneConflicts(alone);
     if (llvm::Error err = route(alone, aloneAnalyzer, aloneConflicts, {},
                                 /*circuitSwitchHops=*/false)) {
-      llvm::handleAllErrors(std::move(err), [&](const RoutingFailure &f) {
-        d.emitError("Unable to find a legal routing: prioritized packet flows "
-                    "(priority_route) keep the route they take alone, and "
-                    "alone they have none: ")
-            << (f.reason.empty() ? f.message() : f.reason);
+      llvm::handleAllErrors(std::move(err), [&](RoutingFailure &f) {
+        f.reason = "prioritized packet flows (priority_route) keep the route "
+                   "they take alone, and alone they have none" +
+                   (f.reason.empty() ? "." : ": " + f.reason);
+        d.emitError() << f.message();
       });
       signalPassFailure();
       return;
@@ -2679,12 +2588,12 @@ void AIEPathfinderPass::runOnOperation() {
     pinned = true;
   }
   // If routing fails, the router relaxes how it routes packet flows (see
-  // Router::relax) and tries again. The error is the first attempt's.
+  // Pathfinder::relax) and tries again. The error is the first attempt's.
   auto routeRelaxing = [&](DeviceOp dev, DynamicTileAnalysis &an,
                            StreamConflicts &c,
                            const PacketTrees &pin) -> llvm::Error {
     llvm::Error first = route(dev, an, c, pin, clCircuitSwitchHops);
-    while (first && an.pathfinder->relax()) {
+    while (first && an.pathfinder.relax()) {
       llvm::Error err = route(dev, an, c, pin, clCircuitSwitchHops);
       if (!err) {
         llvm::consumeError(std::move(first));
@@ -2713,11 +2622,7 @@ void AIEPathfinderPass::runOnOperation() {
             sources += (i == 0                        ? ""
                         : i + 1 == prioritized.size() ? " and "
                                                       : ", ") +
-                       llvm::formatv("({0}, {1}) {2}:{3}", src.coords.col,
-                                     src.coords.row,
-                                     stringifyWireBundle(src.port.bundle),
-                                     src.port.channel)
-                           .str();
+                       describeTilePort(src.coords, src.port);
           f.reason = "packet flows from " + sources +
                      " are prioritized (priority_route), so they keep the "
                      "route they take alone, and the other flows route only "
@@ -2770,24 +2675,15 @@ void AIEPathfinderPass::runOnOperation() {
   };
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
     for (int row = 0; row <= analyzer.getMaxRow(); row++) {
-      TileOp tile;
-      if (analyzer.coordToTile.count({col, row}))
-        tile = analyzer.coordToTile[{col, row}];
-      else
-        continue;
-      SwitchboxOp sw;
-      if (analyzer.coordToSwitchbox.count({col, row}))
-        sw = analyzer.coordToSwitchbox[{col, row}];
-      else
+      TileOp tile = analyzer.lookupTile({col, row});
+      SwitchboxOp sw = analyzer.lookupSwitchbox({col, row});
+      if (!tile || !sw)
         continue;
       Location loc = tile.getLoc();
-      if (col > 0) {
-        // connections east-west between stream switches
-        if (analyzer.coordToSwitchbox.count({col - 1, row})) {
-          auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
+      // connections east-west between stream switches
+      if (col > 0)
+        if (SwitchboxOp westsw = analyzer.lookupSwitchbox({col - 1, row}))
           wire(loc, westsw, WireBundle::East, sw, WireBundle::West);
-        }
-      }
       if (row > 0) {
         // connections between abstract 'core' of tile
         wire(loc, tile, WireBundle::Core, sw, WireBundle::Core);
@@ -2795,41 +2691,22 @@ void AIEPathfinderPass::runOnOperation() {
         wire(loc, tile, WireBundle::DMA, sw, WireBundle::DMA);
         // connections north-south inside array ( including connection to shim
         // row)
-        if (analyzer.coordToSwitchbox.count({col, row - 1})) {
-          auto southsw = analyzer.coordToSwitchbox[{col, row - 1}];
+        if (SwitchboxOp southsw = analyzer.lookupSwitchbox({col, row - 1}))
           wire(loc, southsw, WireBundle::North, sw, WireBundle::South);
-        }
-      } else if (row == 0) {
-        if (tile.isShimNOCTile()) {
-          if (analyzer.coordToShimMux.count({col, 0})) {
-            auto shimsw = analyzer.coordToShimMux[{col, 0}];
-            wire(loc, shimsw,
-                 WireBundle::North, // Changed to connect into the north
-                 sw, WireBundle::South);
-            // PLIO is attached to shim mux
-            if (analyzer.coordToPLIO.count(col)) {
-              auto plio = analyzer.coordToPLIO[col];
-              wire(loc, plio, WireBundle::North, shimsw, WireBundle::South);
-            }
-
-            // abstract 'DMA' connection on tile is attached to shim mux ( in
-            // row 0 )
-            wire(loc, tile, WireBundle::DMA, shimsw, WireBundle::DMA);
-          }
-        } else if (tile.isShimPLTile()) {
-          // PLIO is attached directly to switch
-          if (analyzer.coordToPLIO.count(col)) {
-            auto plio = analyzer.coordToPLIO[col];
-            wire(loc, plio, WireBundle::North, sw, WireBundle::South);
-          }
+      } else if (tile.isShimNOCTile()) {
+        if (ShimMuxOp shimsw = analyzer.lookupShimMux(col)) {
+          wire(loc, shimsw,
+               WireBundle::North, // Changed to connect into the north
+               sw, WireBundle::South);
+          // abstract 'DMA' connection on tile is attached to shim mux ( in
+          // row 0 )
+          wire(loc, tile, WireBundle::DMA, shimsw, WireBundle::DMA);
         }
       }
     }
   }
 }
 
-std::unique_ptr<OperationPass<DeviceOp>> createAIEPathfinderPass() {
+std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEPathfinderPass() {
   return std::make_unique<AIEPathfinderPass>();
 }
-
-} // namespace xilinx::AIE

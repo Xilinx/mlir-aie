@@ -22,10 +22,52 @@
 
 namespace xilinx::AIE {
 
+/// Whether `bundle` links a switchbox to a neighbouring one.
+inline bool isDirectional(WireBundle bundle) {
+  return bundle == WireBundle::North || bundle == WireBundle::South ||
+         bundle == WireBundle::East || bundle == WireBundle::West;
+}
+
 /// A tile port at the edge of the stream fabric.
 struct StreamEndpoint {
   TileID tile;
   Port port;
+
+  bool operator==(const StreamEndpoint &rhs) const {
+    return std::tie(tile, port) == std::tie(rhs.tile, rhs.port);
+  }
+  bool operator!=(const StreamEndpoint &rhs) const { return !(*this == rhs); }
+};
+
+/// One DMA channel of one tile.
+struct TileDMAChannel {
+  TileID tile;
+  DMAChannelDir dir;
+  int channel;
+
+  bool operator==(const TileDMAChannel &rhs) const {
+    return std::tie(tile, dir, channel) ==
+           std::tie(rhs.tile, rhs.dir, rhs.channel);
+  }
+  bool operator<(const TileDMAChannel &rhs) const {
+    return std::tie(tile, dir, channel) <
+           std::tie(rhs.tile, rhs.dir, rhs.channel);
+  }
+};
+
+/// The BD chain a DMA channel runs, as one aie.dma_start, aie.dma or runtime
+/// task programs it.
+struct DmaChannelProgram {
+  mlir::Operation *op;
+  TileDMAChannel dma;
+  llvm::SmallVector<mlir::Block *> bds{};
+  llvm::SmallVector<mlir::Region *> regions{};
+  /// Whether the BD chain runs forever.
+  bool loops = false;
+  /// The first of `bds` a looping chain returns to once it has run them all.
+  size_t loopStart = 0;
+  /// Times one start of the channel runs the chain: its repeat count plus one.
+  uint64_t passes = 1;
 };
 
 /// A switchbox a stream passes: the port it enters by and, where it is packet
@@ -90,6 +132,12 @@ std::vector<RoutedStream> traceRoutedStreams(DeviceOp device);
 /// destination and packet id, before any of them is routed.
 std::vector<RoutedStream> requestedStreams(DeviceOp device);
 
+/// Names a port the way diagnostics do, e.g. "DMA:1".
+std::string describePort(Port port);
+
+/// Names a tile port the way diagnostics do, e.g. "(0, 2) DMA:1".
+std::string describeTilePort(TileID tile, Port port);
+
 /// Names the stream by its endpoints and packet id, e.g.
 /// "packet flow (0, 1) DMA:0 -> (0, 2) DMA:1 (id 3)".
 std::string describeStream(const RoutedStream &stream);
@@ -127,27 +175,27 @@ private:
   /// Bytes the looping BD chain `program` sends before an acquire runs out of
   /// tokens, counting each BD as `bytesOf` says.
   std::optional<uint64_t>
-  loopedVolume(mlir::Operation *program,
+  loopedVolume(const DmaChannelProgram &program,
                llvm::function_ref<uint64_t(DMABDOp)> bytesOf) const;
   /// Visits, in order, the BDs the looping BD chain `program` runs until an
   /// acquire runs out of tokens. False if it cannot tell when that is.
-  bool walkLoop(mlir::Operation *program,
+  bool walkLoop(const DmaChannelProgram &program,
                 llvm::function_ref<void(DMABDOp)> visit) const;
   /// Tokens every agent but `self` can release to `lock` over a run. A core
   /// runs its body once.
   std::optional<uint64_t> tokensFromOthers(LockOp lock,
-                                           mlir::Operation *self) const;
-  std::optional<uint64_t> releasesOver(mlir::Operation *program,
+                                           const DmaChannelProgram *self) const;
+  std::optional<uint64_t> releasesOver(const DmaChannelProgram &program,
                                        LockOp lock) const;
 
   mutable DeviceOp device;
   llvm::ArrayRef<RoutedStream> streams;
-  std::map<std::tuple<int, int, DMAChannelDir, int>,
-           llvm::SmallVector<mlir::Operation *, 2>>
-      programs;
+  std::map<TileDMAChannel, llvm::SmallVector<DmaChannelProgram, 1>> programs;
+  /// The npu.dma_memcpy_nd ops that run on each shim channel.
+  std::map<TileDMAChannel, llvm::SmallVector<mlir::Operation *>> memcpys;
   /// The channel program each use_lock in a BD chain belongs to.
-  llvm::DenseMap<mlir::Operation *, mlir::Operation *> lockUseProgram;
-  mutable llvm::DenseSet<mlir::Operation *> visiting;
+  llvm::DenseMap<mlir::Operation *, const DmaChannelProgram *> lockUseProgram;
+  mutable llvm::DenseSet<const DmaChannelProgram *> visiting;
 };
 
 /// Which agent waits on which. An agent is a core or one DMA channel. P waits
@@ -214,7 +262,7 @@ private:
 
   std::vector<Agent> agents;
   std::vector<llvm::SmallVector<Edge, 4>> edges;
-  std::map<std::tuple<int, int, bool, int, int>, unsigned> agentIDs;
+  std::map<std::tuple<TileID, bool, DMAChannelDir, int>, unsigned> agentIDs;
   llvm::DenseSet<unsigned> modeled;
 };
 
@@ -249,9 +297,9 @@ private:
   std::vector<RoutedStream> streams;
   StreamVolumeAnalysis volumes;
   StreamWaitGraph graph;
-  mutable std::map<size_t, bool> stalls;
-  mutable std::map<size_t, bool> silence;
-  mutable std::map<std::pair<size_t, size_t>, bool> blocks;
+  /// canStall, silent and canBlock, once asked.
+  mutable std::vector<std::optional<bool>> stalls, silence;
+  mutable llvm::DenseMap<std::pair<size_t, size_t>, bool> blocks;
 };
 
 /// The streams a device asks for or already routes, and which pairs of them
@@ -303,6 +351,11 @@ public:
 private:
   bool blocks(size_t s, size_t t);
   bool related(size_t s, size_t t) const;
+  /// What makes a packet stream one with the others of its tree: the same
+  /// source, the same id, and whether a flow op asks for it.
+  using TreeKey = std::tuple<TileID, Port, int, bool>;
+  /// The tree stream `s` belongs to; nullopt for a circuit stream.
+  std::optional<TreeKey> treeKey(size_t s) const;
   /// The packet trees tree `a` waits on through trees that each block the
   /// next, each with the pair of streams, the first of the tree before it,
   /// that it was reached by.
@@ -315,7 +368,8 @@ private:
   /// The streams of each tree, and the tree of each stream.
   std::vector<llvm::SmallVector<size_t, 2>> treeMembers;
   std::vector<size_t> treeOf;
-  std::map<size_t, llvm::DenseMap<size_t, std::pair<size_t, size_t>>> waits;
+  std::vector<std::optional<llvm::DenseMap<size_t, std::pair<size_t, size_t>>>>
+      waits;
   std::optional<StreamDeadlockAnalysis> analysis;
 };
 
