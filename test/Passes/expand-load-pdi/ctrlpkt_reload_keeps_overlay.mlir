@@ -218,3 +218,42 @@ module {
     }
   }
 }
+
+// -----
+
+// The design routes through a tile the overlay sends no control packets to,
+// so a control-packet reload cannot configure it.
+
+module {
+  aie.device(npu1_1col) @ctrl_pkt_overlay {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+    }
+  }
+  aie.device(npu1_1col) @design {
+    %t = aie.tile(0, 2)
+    %u = aie.tile(0, 3)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+      aie.connect<South : 3, North : 1>
+    }
+    aie.switchbox(%u) {
+      aie.connect<South : 1, DMA : 0>
+    }
+  }
+  aie.device(npu1_1col) @main {
+    aie.runtime_sequence(%arg0: memref<1xi32>) {
+      // expected-error@+1 {{a control-packet reload configures tile (0, 3), but @ctrl_pkt_overlay routes no control packets to it}}
+      aiex.npu.load_pdi {device_ref = @design, expand_mode = 2 : i32}
+    }
+  }
+}

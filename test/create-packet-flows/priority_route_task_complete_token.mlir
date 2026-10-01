@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
 
 // The id 15 flows are the routes the column control overlay adds for each
 // shim's task-complete tokens; the host learns a dma_wait is done from them.
@@ -14,7 +15,10 @@
 // fill (1, 1) DMA:0, draining which needs id 2, which carries @in2, which the
 // host issues only after the token for @in1 arrives through (0, 0). So the
 // token takes another arbiter there. At (1, 0) the host waits only for @out,
-// last, so sharing is safe.
+// last, so sharing is safe. Alone, id 0 and the token share an arbiter at
+// (0, 0), as in @ctrl_pkt_overlay, so a reload would not keep this routing.
+
+// WARN: warning: the prioritized flows (the control overlay) take other packet rules at (0, 0) North:2 than they take alone
 
 // CHECK-LABEL: aie.switchbox(%shim_noc_tile_0_0)
 // CHECK-DAG:     %[[TCT:.*]] = aie.amsel<4> (3)

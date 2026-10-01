@@ -42,6 +42,36 @@ namespace xilinx::AIE {
 
 using PhysPort = std::pair<TileID, Port>;
 
+/// The packet rules (mask, value, amsel) the control overlay sets on each
+/// slave port, in slot order.
+using OverlayRules =
+    std::map<PhysPort, SmallVector<std::tuple<int, int, int>, 2>>;
+
+/// What the prioritized flows (the control overlay) take when routed alone,
+/// which a control-packet reload keeps.
+struct PinnedOverlay {
+  PacketTrees trees;
+  OverlayRules rules;
+};
+
+static OverlayRules overlayRules(DeviceOp d) {
+  const int numArbiters = d.getTargetModel().getNumArbiters();
+  OverlayRules rules;
+  for (SwitchboxOp box : d.getOps<SwitchboxOp>())
+    for (PacketRulesOp port : box.getOps<PacketRulesOp>())
+      for (PacketRuleOp rule : port.getRules().front().getOps<PacketRuleOp>())
+        if (port->hasAttr(kCtrlPktOverlayAttrName) ||
+            rule->hasAttr(kCtrlPktOverlayAttrName)) {
+          auto amsel = cast<AMSelOp>(rule.getAmsel().getDefiningOp());
+          rules[{box.getTileOp().getTileID(),
+                 {port.getSourceBundle(), port.sourceIndex()}}]
+              .push_back(
+                  {rule.maskInt(), rule.valueInt(),
+                   amsel.arbiterIndex() + amsel.getMselValue() * numArbiters});
+        }
+  return rules;
+}
+
 // The backtracking searches for an arbiter plan and for a set of streams that
 // cannot share an arbiter are exact up to this many steps.
 constexpr int maxSearchSteps = 100000;
@@ -67,12 +97,13 @@ struct AIEPathfinderPass
   LogicalResult runOnPacketFlow(DeviceOp d, OpBuilder &builder,
                                 DynamicTileAnalysis &analyzer,
                                 const StreamConflicts &conflicts,
+                                const PinnedOverlay &pinned,
                                 bool circuitSwitchHops);
   /// Routes the flows in `d`, planning the arbiters on each routing found,
-  /// with the packet trees in `pinned` kept as they are.
+  /// with the overlay in `pinned` kept as it is.
   llvm::Error route(DeviceOp d, DynamicTileAnalysis &analyzer,
-                    const StreamConflicts &conflicts, const PacketTrees &pinned,
-                    bool circuitSwitchHops);
+                    const StreamConflicts &conflicts,
+                    const PinnedOverlay &pinned, bool circuitSwitchHops);
 };
 
 // allocates channels between switchboxes ( but does not assign them)
@@ -1249,10 +1280,11 @@ struct PacketFlowRouting {
 
   PacketFlowRouting(DeviceOp device, OpBuilder &builder,
                     DynamicTileAnalysis &analyzer, const Routing &routing,
-                    const StreamConflicts &conflicts, bool routeCircuit,
+                    const StreamConflicts &conflicts,
+                    const PinnedOverlay &pinned, bool routeCircuit,
                     bool circuitSwitchHops)
       : device(device), builder(builder), analyzer(analyzer), routing(routing),
-        conflicts(conflicts), routeCircuit(routeCircuit),
+        conflicts(conflicts), pinned(pinned), routeCircuit(routeCircuit),
         circuitSwitchHops(circuitSwitchHops),
         targetModel(device.getTargetModel()),
         numArbiters(targetModel.getNumArbiters()),
@@ -1287,6 +1319,7 @@ struct PacketFlowRouting {
   DynamicTileAnalysis &analyzer;
   const Routing &routing;
   const StreamConflicts &conflicts;
+  const PinnedOverlay &pinned;
   bool routeCircuit;
   bool circuitSwitchHops;
   const AIETargetModel &targetModel;
@@ -1720,32 +1753,67 @@ std::optional<ArbiterPlan> PacketFlowRouting::planTile(
   SmallVector<size_t, 8> overlay, others;
   for (auto [i, f] : llvm::enumerate(flows))
     (f.isCtrlPkt ? overlay : others).push_back(i);
-  if (overlay.empty() || others.empty())
+  if (overlay.empty() || (others.empty() && pinned.rules.empty()))
     return planArbiters(targetModel, flows, conflict, excluded,
                         reservedAmsels[tileId], blocking);
 
-  // A control-packet reload keeps the control overlay's switch settings, so
-  // its flows take the arbiters they take on their own, and the other flows
-  // plan around them.
   auto subset = [&](ArrayRef<size_t> members) {
     SmallVector<SlaveFlow, 8> sub;
     for (size_t m : members)
       sub.push_back(flows[m]);
     return sub;
   };
+  // A control-packet reload keeps the control overlay's switch settings, so
+  // its flows take the amsels they take on their own, and the other flows
+  // plan around them. If the design's conflicts rule those amsels out, the
+  // overlay's flows are planned anew, and the pass warns after routing that
+  // a reload would not keep them.
+  auto keepPinned = [&]() -> std::optional<ArbiterPlan> {
+    ArbiterPlan kept;
+    for (size_t f : overlay) {
+      auto rules = pinned.rules.find({tileId, flows[f].slave});
+      if (rules == pinned.rules.end())
+        return std::nullopt;
+      const auto *rule = llvm::find_if(rules->second, [&](const auto &r) {
+        auto [mask, value, amsel] = r;
+        return (flows[f].id & mask) == (value & mask);
+      });
+      if (rule == rules->second.end())
+        return std::nullopt;
+      int amsel = std::get<2>(*rule);
+      if (excluded(f, amsel % numArbiters) ||
+          reservedAmsels[tileId].count(amsel) ||
+          kept.amselMasters.try_emplace(amsel, flows[f].masters)
+                  .first->second != flows[f].masters)
+        return std::nullopt;
+      kept.slaveAmsels[key(f)] = amsel;
+    }
+    for (auto [k, a] : llvm::enumerate(overlay))
+      for (size_t b : llvm::drop_begin(overlay, k + 1))
+        if (kept.slaveAmsels.at(key(a)) % numArbiters ==
+                kept.slaveAmsels.at(key(b)) % numArbiters &&
+            flows[a].slave != flows[b].slave && conflict(a, b))
+          return std::nullopt;
+    return kept;
+  };
   SmallVector<std::pair<size_t, size_t>, 4> stuck;
-  std::optional<ArbiterPlan> plan = planArbiters(
-      targetModel, subset(overlay),
-      [&](size_t a, size_t b) {
-        return conflictingStreams(tileId, flows[overlay[a]], flows[overlay[b]])
-            .has_value();
-      },
-      [](size_t, int) { return false; }, reservedAmsels[tileId], stuck);
+  std::optional<ArbiterPlan> plan;
+  if (!pinned.rules.empty())
+    plan = keepPinned();
   if (!plan) {
-    for (auto [a, b] : stuck)
-      blocking.push_back({overlay[a], overlay[b]});
-    return std::nullopt;
+    plan = planArbiters(
+        targetModel, subset(overlay),
+        [&](size_t a, size_t b) { return conflict(overlay[a], overlay[b]); },
+        [&](size_t f, int arbiter) { return excluded(overlay[f], arbiter); },
+        reservedAmsels[tileId], stuck);
+    if (!plan) {
+      for (auto [a, b] : stuck)
+        blocking.push_back({overlay[a], overlay[b]});
+      return std::nullopt;
+    }
   }
+  if (others.empty())
+    return plan;
 
   // A flow that leaves by the overlay's master ports alone takes the amsel
   // that selects them (checkRules lets no other flow reach them).
@@ -2635,9 +2703,11 @@ LogicalResult PacketFlowRouting::emit() {
 
 LogicalResult AIEPathfinderPass::runOnPacketFlow(
     DeviceOp device, OpBuilder &builder, DynamicTileAnalysis &analyzer,
-    const StreamConflicts &conflicts, bool circuitSwitchHops) {
+    const StreamConflicts &conflicts, const PinnedOverlay &pinned,
+    bool circuitSwitchHops) {
   PacketFlowRouting routing(device, builder, analyzer, analyzer.routing,
-                            conflicts, clRouteCircuit, circuitSwitchHops);
+                            conflicts, pinned, clRouteCircuit,
+                            circuitSwitchHops);
   llvm::Error planned = routing.plan();
   if (routing.incomplete) {
     llvm::consumeError(std::move(planned));
@@ -2710,7 +2780,7 @@ static void unmuxShimDMAPacketPorts(DeviceOp device) {
 
 llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
                                      const StreamConflicts &conflicts,
-                                     const PacketTrees &pinned,
+                                     const PinnedOverlay &pinned,
                                      bool circuitSwitchHops) {
   // Packet flows that can deadlock must not share an arbiter. Every routing
   // the router finds is checked by planning the arbiters on it, and one that
@@ -2718,7 +2788,7 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
   OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
   std::map<PathEndPoint, SmallVector<size_t, 4>> streamsFrom;
   PacketConstraints constraints;
-  constraints.pinned = pinned;
+  constraints.pinned = pinned.trees;
   if (clRoutePacket && !d.getOps<PacketFlowOp>().empty()) {
     const AIETargetModel &targetModel = d.getTargetModel();
     if (std::optional<std::string> reason = unroutableArbiters(
@@ -2727,7 +2797,7 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
               return !circuitSwitchHops ||
                      targetModel.isShimNOCorPLTile(tile.col, tile.row);
             },
-            pinned))
+            pinned.trees))
       return llvm::make_error<RoutingFailure>(std::move(*reason));
     for (auto [i, s] : llvm::enumerate(conflicts.getRequestedStreams()))
       if (s.packetID)
@@ -2743,7 +2813,7 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
       return false;
     };
     constraints.check = [&](const Routing &routing) {
-      return PacketFlowRouting(d, builder, analyzer, routing, conflicts,
+      return PacketFlowRouting(d, builder, analyzer, routing, conflicts, pinned,
                                clRouteCircuit, circuitSwitchHops)
           .plan();
     };
@@ -2800,19 +2870,58 @@ void AIEPathfinderPass::runOnOperation() {
       return prioritizedIds.count({src, flow.IDInt()}) > 0;
     });
   };
+  // The last flow to end at a port sets whether packets keep their header
+  // there. A control-packet reload keeps the prioritized flows' setting.
+  auto keepsHeader = [](PacketFlowOp flow, const PathEndPoint &dst) {
+    return flow.getKeepPktHeader().value_or(
+        dst.port.bundle != WireBundle::DMA &&
+        !(dst.coords.row == 0 && dst.port.bundle == WireBundle::South));
+  };
+  std::map<PathEndPoint, std::pair<PacketFlowOp, PacketFlowOp>> lastTo;
+  for (PacketFlowOp flow : d.getOps<PacketFlowOp>())
+    for (PacketDestOp dst : flow.getPorts().getOps<PacketDestOp>()) {
+      auto &[prio, last] = lastTo[{
+          cast<TileOp>(dst.getTile().getDefiningOp()).getTileID(), dst.port()}];
+      last = flow;
+      if (isPrioritized(flow))
+        prio = flow;
+    }
+  for (const auto &[dst, flows] : lastTo) {
+    auto [prio, last] = flows;
+    if (!prio || keepsHeader(prio, dst) == keepsHeader(last, dst))
+      continue;
+    last.emitError() << "packet flow " << last.IDInt()
+                     << " is the last to end at "
+                     << describeTilePort(dst.coords, dst.port)
+                     << ", so it sets whether packets keep their header "
+                        "there, but the prioritized flows (the control "
+                        "overlay) ending there set it otherwise, and a "
+                        "control-packet reload keeps their setting.";
+    return signalPassFailure();
+  }
   bool pinned = false;
-  PacketTrees pinnedTrees;
+  PinnedOverlay overlay;
   if (clRoutePacket && !prioritized.empty() &&
       (!d.getOps<FlowOp>().empty() ||
        !llvm::all_of(d.getOps<PacketFlowOp>(), isPrioritized))) {
     OwningOpRef<ModuleOp> scratch;
+    // A control-packet reload installs @ctrl_pkt_overlay, which holds the
+    // overlay's flows and the tiles alone, without the design's own
+    // switchboxes. Otherwise the prioritized flows route around those.
+    auto reload = d->getAttrOfType<BoolAttr>("has_ctrl_pkt_overlay");
+    bool standalone = reload && reload.getValue();
     DeviceOp alone = cloneInScratch(d, scratch);
-    for (FlowOp flow : llvm::make_early_inc_range(alone.getOps<FlowOp>()))
-      flow.erase();
-    for (PacketFlowOp flow :
-         llvm::make_early_inc_range(alone.getOps<PacketFlowOp>()))
-      if (!isPrioritized(flow))
-        flow.erase();
+    SmallVector<Operation *> others;
+    for (Operation &op : alone.getBody()->without_terminator()) {
+      auto flow = dyn_cast<PacketFlowOp>(op);
+      if (flow ? !isPrioritized(flow)
+               : isa<FlowOp>(op) || (standalone && !isa<TileOp>(op)))
+        others.push_back(&op);
+    }
+    for (Operation *op : others)
+      op->dropAllReferences();
+    for (Operation *op : others)
+      op->erase();
     DynamicTileAnalysis aloneAnalyzer;
     StreamConflicts aloneConflicts(alone);
     if (llvm::Error err = route(alone, aloneAnalyzer, aloneConflicts, {},
@@ -2826,14 +2935,22 @@ void AIEPathfinderPass::runOnOperation() {
       signalPassFailure();
       return;
     }
-    pinnedTrees = aloneAnalyzer.routing.packetTrees;
+    OpBuilder aloneBuilder = OpBuilder::atBlockTerminator(alone.getBody());
+    if (failed(runOnPacketFlow(alone, aloneBuilder, aloneAnalyzer,
+                               aloneConflicts, {},
+                               /*circuitSwitchHops=*/false))) {
+      signalPassFailure();
+      return;
+    }
+    overlay.rules = overlayRules(alone);
+    overlay.trees = aloneAnalyzer.routing.packetTrees;
     pinned = true;
   }
   // If routing fails, the router relaxes how it routes packet flows (see
   // Pathfinder::relax) and tries again. The error is the first attempt's.
   auto routeRelaxing = [&](DeviceOp dev, DynamicTileAnalysis &an,
                            const StreamConflicts &c,
-                           const PacketTrees &pin) -> llvm::Error {
+                           const PinnedOverlay &pin) -> llvm::Error {
     llvm::Error first = route(dev, an, c, pin, clCircuitSwitchHops);
     while (first && an.pathfinder.relax()) {
       llvm::Error err = route(dev, an, c, pin, clCircuitSwitchHops);
@@ -2845,7 +2962,7 @@ void AIEPathfinderPass::runOnOperation() {
     }
     return first;
   };
-  if (llvm::Error err = routeRelaxing(d, analyzer, conflicts, pinnedTrees)) {
+  if (llvm::Error err = routeRelaxing(d, analyzer, conflicts, overlay)) {
     llvm::handleAllErrors(std::move(err), [&](RoutingFailure &f) {
       // Say whether the pinned trees are what stands in the way: the design
       // routes if they may move.
@@ -2880,9 +2997,24 @@ void AIEPathfinderPass::runOnOperation() {
     return;
   }
   if (clRoutePacket && failed(runOnPacketFlow(d, builder, analyzer, conflicts,
-                                              clCircuitSwitchHops))) {
+                                              overlay, clCircuitSwitchHops))) {
     signalPassFailure();
     return;
+  }
+  if (pinned) {
+    OverlayRules rules = overlayRules(d);
+    for (const auto &[port, portRules] : overlay.rules)
+      rules.try_emplace(port);
+    for (const auto &[port, portRules] : rules)
+      if (portRules != overlay.rules[port]) {
+        emitWarning(d.getLoc())
+            << "the prioritized flows (the control overlay) take other "
+               "packet rules at "
+            << describeTilePort(port.first, port.second)
+            << " than they take alone, as in @ctrl_pkt_overlay, so a "
+               "control-packet reload would not keep them.";
+        break;
+      }
   }
 
   // Populate wires between switchboxes and tiles. Re-running the pass on

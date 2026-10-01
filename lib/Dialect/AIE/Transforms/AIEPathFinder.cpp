@@ -146,6 +146,26 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // Canonicalize all flows after both packet and circuit flows are collected.
   pathfinder.sortFlows();
 
+  // A control-packet reload configures a switchbox only if the overlay
+  // routes control packets to its tile.
+  if (auto reload = device->getAttrOfType<BoolAttr>("has_ctrl_pkt_overlay");
+      reload && reload.getValue()) {
+    llvm::DenseSet<TileID> reached;
+    for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
+      if (!pktFlowOp.getPriorityRoute().value_or(false))
+        continue;
+      for (auto pktDest : pktFlowOp.getPorts().getOps<PacketDestOp>())
+        if (pktDest.getBundle() == WireBundle::TileControl)
+          reached.insert(
+              cast<TileOp>(pktDest.getTile().getDefiningOp()).getTileID());
+    }
+    if (!reached.empty())
+      for (int row = 0; row <= maxRow; row++)
+        for (int col = 0; col <= maxCol; col++)
+          if (!reached.contains({col, row}))
+            pathfinder.excludeTile({col, row});
+  }
+
   // add existing connections so Pathfinder knows which resources are
   // available search all existing SwitchBoxOps for exising connections
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
@@ -589,6 +609,16 @@ LogicalResult Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
     sb.packetOnlySrc.set(srcIdx);
   }
   return success();
+}
+
+void Pathfinder::excludeTile(TileID coords) {
+  auto it = graph.find({coords, coords});
+  if (it == graph.end())
+    return;
+  SwitchboxConnect &sb = it->second;
+  for (size_t i = 0; i < sb.srcPorts.size(); i++)
+    for (size_t j = 0; j < sb.dstPorts.size(); j++)
+      sb.at(i, j).available = false;
 }
 
 static constexpr double INF = std::numeric_limits<double>::max();

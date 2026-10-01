@@ -316,6 +316,8 @@ public:
   /// Reserves the connections `switchboxOp` already makes, so routing avoids
   /// them. Fails if it makes one the switchbox cannot.
   mlir::LogicalResult addFixedConnection(SwitchboxOp switchboxOp);
+  /// Keeps routes out of the switchbox at `coords`.
+  void excludeTile(TileID coords);
   /// A RoutingFailure if no legal routing is found in `maxIterations`.
   llvm::Expected<Routing> findPaths(int maxIterations);
   void setPacketConstraints(PacketConstraints c) { constraints = std::move(c); }

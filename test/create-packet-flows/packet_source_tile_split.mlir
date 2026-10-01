@@ -139,7 +139,7 @@ module {
     }
     aie.packet_flow(14) { aie.packet_source<%t_0_2, DMA : 1> aie.packet_dest<%t_0_1, DMA : 3> aie.packet_dest<%t_0_5, DMA : 1> } {priority_route = true}
     aie.packet_flow(21) { aie.packet_source<%t_0_5, DMA : 0> aie.packet_dest<%t_0_2, DMA : 1> }
-    aie.packet_flow(8) { aie.packet_source<%t_0_5, DMA : 1> aie.packet_dest<%t_0_1, DMA : 3> } {keep_pkt_header = true}
+    aie.packet_flow(8) { aie.packet_source<%t_0_5, DMA : 1> aie.packet_dest<%t_0_1, DMA : 3> }
   }
 }
 
