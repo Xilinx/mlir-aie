@@ -1,4 +1,4 @@
-//===- AIEPathfinder.cpp ----------------------------------------*- C++ -*-===//
+//===- AIEPathFinder.cpp ----------------------------------------*- C++ -*-===//
 //
 // Copyright (C) 2021-2022 Xilinx, Inc.
 // Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
@@ -16,11 +16,55 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 
+#include <limits>
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-pathfinder"
+
+namespace {
+// A connection's demand, the cost Dijkstra weighs it by, is
+// (demandBase + overCapacityCoeff * iterations it was over capacity) *
+// (demandBase + usedCapacityCoeff * streams using it).
+constexpr double overCapacityCoeff = 0.1;
+constexpr double usedCapacityCoeff = 0.02;
+constexpr double demandBase = 1.0;
+// A full connection's demand grows by this factor, or a prioritized flow's
+// by priorityDemandCoeff, each time another stream takes it.
+constexpr double demandCoeff = 1.1;
+constexpr double priorityDemandCoeff =
+    static_cast<double>(std::numeric_limits<int>::max());
+constexpr int maxCircuitStreamCapacity = 1;
+constexpr int maxPacketStreamCapacity = 32;
+// History added to a connection each time the routing check rejects it.
+constexpr int routingCheckPenalty = 5;
+// Cost added to a hop that shares an arbiter unit with a flow to avoid.
+constexpr double conflictSharePenalty = 4;
+// Channels per direction packet streams leave a capped tile by (see
+// Pathfinder::relax). A heuristic: fewer channels mean fewer master
+// sets per tile, but more flows on each.
+constexpr int packetFanoutCap = 2;
+// A multicast's next destination may branch off any hop its tree already
+// takes, starting at this cost per hop back to the source: enough of a
+// discount to share hops, while still preferring the shortest path to each
+// destination.
+constexpr double treeSeedFactor = 0.9;
+// A destination's branch is rerouted only when that saves more than this.
+constexpr double rerouteMinSaving = 1e-6;
+} // namespace
+
+void SwitchboxConnect::updateDemand() {
+  for (Cell &c : cells)
+    c.demand = (demandBase + overCapacityCoeff * c.overCapacity) *
+               (demandBase + usedCapacityCoeff * c.usedCapacity);
+}
+
+void SwitchboxConnect::bumpDemand(Cell &c) {
+  if (c.usedCapacity >= maxCircuitStreamCapacity)
+    c.demand *= c.isPriority ? priorityDemandCoeff : demandCoeff;
+}
 
 char RoutingFailure::ID = 0;
 
@@ -102,7 +146,7 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // add existing connections so Pathfinder knows which resources are
   // available search all existing SwitchBoxOps for exising connections
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
-    if (!pathfinder.addFixedConnection(switchboxOp))
+    if (failed(pathfinder.addFixedConnection(switchboxOp)))
       return llvm::make_error<RoutingFailure>(
           llvm::formatv("cannot add the fixed connections of the switchbox "
                         "at tile ({0}, {1})",
@@ -418,8 +462,6 @@ void Pathfinder::sortFlows() {
   });
 }
 
-// Keep track of connections already used in the AIE; Pathfinder algorithm
-// will avoid using these.
 int xilinx::AIE::shimMuxChannelFrom(Port src) {
   // DMA0 -> N3, DMA1 -> N7; NOC0/1 -> N2/3, NOC2/3 -> N6/7.
   if (src.bundle == WireBundle::DMA)
@@ -438,7 +480,7 @@ int xilinx::AIE::shimMuxChannelTo(Port dst) {
   return dst.channel;
 }
 
-bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
+LogicalResult Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   int col = switchboxOp.colIndex();
   int row = switchboxOp.rowIndex();
   TileID coords = {col, row};
@@ -456,7 +498,7 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
     // driver on the same output port; a repeated source port is a broadcast.
     if (srcIdx < 0 || dstIdx < 0 || !sb.at(srcIdx, dstIdx).available ||
         !claimedDsts.insert(dstIdx).second) {
-      return false;
+      return failure();
     }
     reserved.emplace_back(srcIdx, dstIdx);
   }
@@ -473,7 +515,7 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
     // Reject an output port absent from the switchbox model or already driven
     // by a circuit connect or another masterset.
     if (dstIdx < 0 || !claimedDsts.insert(dstIdx).second) {
-      return false;
+      return failure();
     }
     reservedMasterDsts.push_back(dstIdx);
   }
@@ -521,10 +563,10 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   for (PacketRulesOp rulesOp : switchboxOp.getOps<PacketRulesOp>()) {
     int srcIdx = sb.srcIndex(rulesOp.sourcePort());
     if (srcIdx < 0)
-      return false;
-    sb.packetOnlySrc[srcIdx] = true;
+      return failure();
+    sb.packetOnlySrc.set(srcIdx);
   }
-  return true;
+  return success();
 }
 
 static constexpr double INF = std::numeric_limits<double>::max();
@@ -624,7 +666,7 @@ void Pathfinder::buildRoutingGraph() {
 
 double Pathfinder::edgeWeight(const Edge &e, std::optional<int> packetId,
                               const llvm::BitVector *avoid,
-                              const llvm::BitVector *avoidBranch) {
+                              const llvm::BitVector *avoidBranch) const {
   const SwitchboxConnect::Cell &cell = e.sb->at(e.i, e.j);
   double w = cell.demand;
   // Sharing it would take a second stream's capacity, which the demand

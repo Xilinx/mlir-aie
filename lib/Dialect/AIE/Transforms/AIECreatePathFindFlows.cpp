@@ -25,7 +25,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <deque>
-#include <functional>
 #include <numeric>
 #include <optional>
 #include <set>
@@ -566,8 +565,7 @@ orderedRules(ArrayRef<GroupClaims> groups,
   // never serve better.
   SmallVector<PortRule> rules;
   std::set<std::pair<uint64_t, size_t>> dead;
-  std::function<bool(uint64_t, size_t)> search = [&](uint64_t taken,
-                                                     size_t left) {
+  auto search = [&](auto &self, uint64_t taken, size_t left) -> bool {
     uint64_t open = claimed & ~taken;
     size_t openGroups =
         llvm::count_if(claims, [&](uint64_t ids) { return ids & open; });
@@ -599,7 +597,7 @@ orderedRules(ArrayRef<GroupClaims> groups,
         }
       int mask = idMask & ~(all ^ any);
       rules.push_back({mask, all, g});
-      if (search(taken | own, left - 1))
+      if (self(self, taken | own, left - 1))
         return true;
       rules.pop_back();
     }
@@ -607,7 +605,7 @@ orderedRules(ArrayRef<GroupClaims> groups,
     return false;
   };
   for (size_t length = 1; length <= budget; ++length)
-    if (search(taken, length))
+    if (search(search, taken, length))
       return rules;
   return std::nullopt;
 }
@@ -766,11 +764,14 @@ planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
   SmallVector<int, 8> arbiterOf(units.size(), -1);
   SmallVector<size_t, 6> load(numArbiters, 0);
   int steps = 0;
-  std::function<bool(size_t)> place = [&](size_t depth) {
+  auto place = [&](auto &self, size_t depth) -> bool {
     if (depth == order.size())
       return true;
-    if (++steps > maxSearchSteps)
+    if (++steps > maxSearchSteps) {
+      LLVM_DEBUG(llvm::dbgs() << "Arbiter search gave up after "
+                              << maxSearchSteps << " steps\n");
       return false;
+    }
     size_t u = order[depth];
     SmallVector<int, 6> candidates(numArbiters);
     std::iota(candidates.begin(), candidates.end(), 0);
@@ -796,14 +797,14 @@ planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
         continue;
       arbiterOf[u] = a;
       load[a] += units[u].masterSets.size();
-      if (place(depth + 1))
+      if (self(self, depth + 1))
         return true;
       load[a] -= units[u].masterSets.size();
       arbiterOf[u] = -1;
     }
     return false;
   };
-  if (!place(0)) {
+  if (!place(place, 0)) {
     blocking.append(crossPairs.begin(), crossPairs.end());
     return std::nullopt;
   }
@@ -931,7 +932,7 @@ unroutableArbiters(DeviceOp device, const StreamConflicts &conflicts,
 
     SmallVector<size_t, 8> clique, best;
     int steps = 0;
-    std::function<void(ArrayRef<size_t>)> grow = [&](ArrayRef<size_t> cands) {
+    auto grow = [&](auto &self, ArrayRef<size_t> cands) -> void {
       if (clique.size() > best.size())
         best = clique;
       for (auto [k, s] : llvm::enumerate(cands)) {
@@ -943,11 +944,11 @@ unroutableArbiters(DeviceOp device, const StreamConflicts &conflicts,
           if (conflicts.mustSeparate(s, t))
             next.push_back(t);
         clique.push_back(s);
-        grow(next);
+        self(self, next);
         clique.pop_back();
       }
     };
-    grow(candidates);
+    grow(grow, candidates);
     if (best.size() <= free)
       continue;
 
@@ -2017,7 +2018,7 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
   // first may run only through flows it cannot move.
   SmallVector<HoldCycle, 2> cycles;
   int replans = 0;
-  std::function<bool()> search = [&]() {
+  auto search = [&](auto &self) -> bool {
     arbitrate();
     std::optional<HoldCycle> cycle = conflicts.holdCycle(routes);
     if (!cycle)
@@ -2050,7 +2051,7 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
       SmallVector<std::pair<size_t, size_t>, 4> blocking;
       if (std::optional<ArbiterPlan> plan = planTile(step.tile, blocking)) {
         plans[step.tile] = std::move(*plan);
-        if (search())
+        if (self(self))
           return true;
         plans[step.tile] = std::move(saved);
       }
@@ -2061,7 +2062,7 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
     }
     return false;
   };
-  if (!search()) {
+  if (!search(search)) {
     arbitrate();
     for (const HoldCycle &cycle : cycles)
       for (const HoldCycle::Step &step : cycle.steps)
@@ -2162,7 +2163,7 @@ LogicalResult PacketFlowRouting::emit() {
   }
 
   // Everything a group claims, for the other groups on its port to avoid.
-  auto claimsOf = [&](size_t gi) {
+  [[maybe_unused]] auto claimsOf = [&](size_t gi) {
     SmallVector<std::pair<int, int>, 8> claims(statedRules[gi].begin(),
                                                statedRules[gi].end());
     for (int id : derivedIds[gi])
@@ -2251,14 +2252,6 @@ LogicalResult PacketFlowRouting::emit() {
                  << "packet id " << id << " exceeds the maximum of "
                  << maxPacketId;
 
-      SmallVector<std::pair<int, int>> avoidCubes;
-      for (size_t oi = 0; oi < slaveGroups.size(); ++oi) {
-        if (oi != gi && slaveGroups[oi].front().first == port) {
-          auto claims = claimsOf(oi);
-          avoidCubes.append(claims.begin(), claims.end());
-        }
-      }
-
       // Rules the switchbox already has, e.g. hand-authored, match first.
       for (PacketRuleOp rule : existingRules.lookup(slave))
         for (int id : matchIds)
@@ -2270,26 +2263,19 @@ LogicalResult PacketFlowRouting::emit() {
             return failure();
           }
 
-      // Groups on one slave port carry different destination sets, so two of
-      // them must not claim the same id. A mask written on an aie.packet_flow
-      // claims every id it matches, including ids no flow in this design
-      // mentions, so the overlap does not show in the ids alone.
-      for (std::pair<int, int> own : claimsOf(gi)) {
-        for (std::pair<int, int> other : avoidCubes) {
-          if (cubesIntersect(own, other)) {
-            int witness = (own.second & own.first) |
-                          (other.second & other.first & ~own.first);
-            return mlir::emitError(tileLoc)
-                   << "packet flows through " << describePort(slave)
-                   << " claim rule (mask 0x" << llvm::utohexstr(own.first)
-                   << ", id 0x" << llvm::utohexstr(own.second)
-                   << ") and rule (mask 0x" << llvm::utohexstr(other.first)
-                   << ", id 0x" << llvm::utohexstr(other.second)
-                   << "), which both match id 0x" << llvm::utohexstr(witness)
-                   << "; widen one mask to carry both, or route them apart";
-          }
-        }
-      }
+      // Groups on one slave port carry different destination sets, so
+      // checkRules let no two of them claim the same id.
+      assert(llvm::all_of(
+                 llvm::seq<size_t>(0, slaveGroups.size()),
+                 [&](size_t oi) {
+                   return oi == gi || slaveGroups[oi].front().first != port ||
+                          llvm::none_of(claimsOf(gi), [&](auto own) {
+                            return llvm::any_of(claimsOf(oi), [&](auto other) {
+                              return cubesIntersect(own, other);
+                            });
+                          });
+                 }) &&
+             "groups on one slave port claim the same id");
 
       // The rules of the slave port, planned at its first group, go out in
       // order: each group adds those up to its last.
@@ -2306,8 +2292,8 @@ LogicalResult PacketFlowRouting::emit() {
         SmallVector<std::pair<int, int>> existing;
         for (PacketRuleOp rule : existingRules.lookup(slave))
           existing.push_back({rule.maskInt(), rule.valueInt()});
-        plan.rules = portRules(claims, existing, idBits,
-                               device.getTargetModel().getNumSlaveSlots());
+        plan.rules =
+            portRules(claims, existing, idBits, targetModel.getNumSlaveSlots());
         LLVM_DEBUG({
           llvm::dbgs() << "packet rules " << describePort(slave) << ":";
           for (const PortRule &r : plan.rules)
@@ -2358,24 +2344,18 @@ LogicalResult PacketFlowRouting::emit() {
 
       Block &rules = packetrules.getRules().front();
 
-      // A fan-out whose cover exceeds the slave port's packet-rule slots needs
-      // channel-level restructuring, not masking.
-      uint32_t slotLimit = device.getTargetModel().getNumSlaveSlots();
-      size_t existingSlots = llvm::range_size(rules.getOps<PacketRuleOp>());
-      if (existingSlots + (last - plan.emitted) > slotLimit) {
-        packetrules->emitOpError("slave port packet rules exceed the ")
-            << slotLimit << "-slot limit (" << existingSlots << " + "
-            << last - plan.emitted << ").";
-        return failure();
-      }
+      assert(llvm::range_size(rules.getOps<PacketRuleOp>()) +
+                     (last - plan.emitted) <=
+                 targetModel.getNumSlaveSlots() &&
+             "checkRules lets a slave port take more rules than it holds");
 
       builder.setInsertionPoint(rules.getTerminator());
       for (; plan.emitted < last; ++plan.emitted) {
         const PortRule &r = plan.rules[plan.emitted];
         const auto &ruleGroup = slaveGroups[plan.groups[r.group]];
-        auto rule =
-            PacketRuleOp::create(builder, tileLoc, r.mask, r.value,
-                                 amselOps[slaveAMSels[ruleGroup.front()]]);
+        auto rule = PacketRuleOp::create(
+            builder, tileLoc, r.mask, r.value,
+            amselOps.at(slaveAMSels.at(ruleGroup.front())));
         if (prioritizedSourcePorts.contains(port) &&
             llvm::any_of(ruleGroup, [&](const auto &member) {
               return ctrlPktFlows.contains(member);
