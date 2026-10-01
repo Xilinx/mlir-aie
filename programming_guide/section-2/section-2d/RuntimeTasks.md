@@ -213,17 +213,25 @@ rt = Runtime(
 
 ### Carrying a task group across loop iterations
 
-A software pipeline issues the next step's transfers before finishing the
-previous step's. With a `range_` over a dispatch-time trip count the loop
-stays rolled, so the in-flight group rides the loop as an `iter_args` entry:
-the body receives a group over the carried transfers and `yield_`s the group
-it issued, and the loop's result is the last group in flight.
+A software pipeline starts the next step's transfers before finishing the
+previous step's. Here `start_step` is your own function that puts one step's
+fills and drains in a fresh group and returns it without finishing it. With a
+`range_` over a dispatch-time trip count the loop stays rolled, so the
+in-flight group rides the loop as an `iter_args` entry: the body receives a
+group over the carried transfers and `yield_`s the group it started, and the
+loop's result is the last group in flight.
 
 ```python
-prev = issue(0)                       # a TaskGroup
+def start_step(step):
+    tg = TaskGroup()
+    in_h.fill(a_in, tap=in_tiles[step], group=tg)
+    out_h.drain(c_out, tap=out_tiles[step], group=tg, wait=True)
+    return tg
+
+prev = start_step(0)
 for iv, prev, last in range_(1, n_steps, iter_args=[prev], insert_yield=False):
-    current = issue(iv)               # step iv's fills and drains, in one group
-    prev.finish()                     # the step issued one iteration ago
+    current = start_step(iv)
+    prev.finish()                     # the step started one iteration ago
     yield_([current])
 last.finish()
 ```
@@ -249,8 +257,9 @@ rejected.
   Calls cannot override it; use another specialization to change it.
 
 Defaults do not specialize parameters. Tensor capacities and worker tiling
-remain compile-time properties; callers must keep dispatch values within the
-design's valid ranges and buffer capacities.
+remain compile-time properties. A design checks that dispatch values fit its
+buffer capacities and tiling with `require` guards, and the host refuses a
+call that breaks one.
 
 `DispatchTime` parameters must be keyword-only, even when defaulted or
 explicitly specialized. Prefer tensors first, then dispatch scalars, then
@@ -273,9 +282,9 @@ copy.specialize(count=3)(a, b)    # Compile with count fixed to 3.
 
 Inside the sequence body a dispatch scalar is an ordinary staged value: it can
 bound a `range_`, feed `if_`, be written to a worker's RTP buffer, and stand
-in for any size, stride, offset or index in the taplib layout algebra, which
-then emits the tap as arithmetic on it and turns its shape checks into
-`require` guards (see [Staged taps](../../../docs/api/taplib.md#staged-taps-in-a-dispatch-time-sequence)).
+in for any size, stride, offset or index in a taplib access pattern, which
+then emits the pattern as arithmetic on it and turns its shape checks into
+`require` guards (see [Staged patterns](../../../docs/api/taplib.md#staged-patterns-in-a-dispatch-time-sequence)).
 `programming_examples/basic/matrix_multiplication/whole_array/whole_array_dyn.py`
 is a whole-array GEMM with dispatch-time `M`, `K` and `N` built this way, and
 `aie.utils.txn_trace` compares a dispatch-time builder's DMA events with a

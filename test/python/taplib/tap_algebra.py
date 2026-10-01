@@ -201,7 +201,7 @@ def repeat_and_dma_form():
 @construct_test
 def matmul_transformation_dims():
     m, k, n, r, s, t = 64, 64, 64, 4, 8, 4
-    # A operand: what TensorTiler2D.group_tiler((m,k),(r,s),(m//r,k//s))[0] gives today.
+    # A operand: what TensorTiler2D.group_tiler((m,k),(r,s),(m//r,k//s))[0] gave.
     a = TensorAccessPattern.full((m, k)).tile((r, s)).tap.transformation_dims
     assert a == [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
     legacy = TensorTiler2D.group_tiler((m, k), (r, s), (m // r, k // s))[0]

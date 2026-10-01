@@ -11,7 +11,7 @@ This design shows an extremely simple single-AIE design: incrementing every valu
 
 It demonstrates a number of features that scale to more realistic designs:
 
-* A 2D DMA pattern (`Layout.full(matrix_shape).tile(tile_shape)[0]`) accesses `8x16` subtiles from a `16x128` input/output matrix. Thinking about input/output spaces as large grids with smaller grids of work dispatched to individual AIE cores is a fundamental, reusable concept.
+* A 2D DMA pattern (`TensorAccessPattern.full(matrix_shape).tile(tile_shape)[0]`) accesses `8x16` subtiles from a `16x128` input/output matrix. Thinking about input/output spaces as large grids with smaller grids of work dispatched to individual AIE cores is a fundamental, reusable concept.
 * The body of work each AIE core does combines data movement (object-FIFO acquire and release) with compute.
 * The overall structural design combines a static description (cores, connections, parts of the data movement) with a runtime sequence that controls dispatch.
 * The output buffer is initialized by the host. The design writes the selected output tile and leaves the remaining output positions at their initial values.

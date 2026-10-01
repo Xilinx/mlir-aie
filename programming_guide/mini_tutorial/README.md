@@ -366,23 +366,21 @@ The `taps` can then be accessed in the sequence as an array:
 for t in taps:
 ```
 
-Deducing the sizes and strides for the `tap` can be challenging for the user. `taplib` addresses this with a small *layout algebra*: a `Layout` is a strided view over a tensor (an offset plus sizes and strides), `Layout.full(dims)` is the row-major walk over a whole tensor, and tiling, grouping, transposing, slicing and repeating are all compositions of a few operations on that view. `.tile(tile_dims)` divides a view into a grid of equal tiles and returns a `TileGrid`, which is indexed like a list (`grid[i]` is the `i`-th tile in step order, `grid[i, j]` the tile at a grid position, `len(grid)` the number of tiles):
+Deducing the sizes and strides for the `tap` can be challenging for the user. `taplib` addresses this with a small algebra on access patterns: `TensorAccessPattern.full(dims)` is the row-major walk over a whole tensor, and tiling, grouping, transposing, slicing and repeating are all a few operations on that walk's integers. `.tile(tile_dims)` divides a walk into a grid of equal tiles and returns a `TileGrid`, which is indexed like a list (`grid[i]` is the `i`-th tile in step order, `grid[i, j]` the tile at a grid position, `len(grid)` the number of tiles):
 ```python
 tensor_dims = (8, 8)
 tile_dims = (4, 4)
-grid = Layout.full(tensor_dims).tile(tile_dims)  # a TileGrid of 2 x 2 tiles
+grid = TensorAccessPattern.full(tensor_dims).tile(tile_dims)  # a TileGrid of 2 x 2 tiles
 print(len(grid))
 print(grid[0])
-print(grid[0].tap())
 ```
 ```
 4
-Layout([8, 8], offset=0, sizes=[4, 4], strides=[8, 1])
-TensorAccessPattern([8, 8] offset=0, sizes=[1, 1, 4, 4], strides=[0, 0, 8, 1])
+TensorAccessPattern([8, 8] offset=0, sizes=[4, 4], strides=[8, 1])
 ```
-Each tile is a `Layout`. `fill()`, `drain()` and an `ObjectFifo`'s `to_stream`/`from_stream` accept a `Layout` directly; `.tap()` converts it to the 4-dimensional `TensorAccessPattern` form wherever a `tap` is required, and `.stream_dims()` gives the `[(size, stride), ...]` list it stands for (see below). `grid.materialize()` collects every tile into a `TensorAccessSequence`, e.g. to visualize the whole tiling at once.
+Each tile is a `TensorAccessPattern`, so it goes straight to `fill()`, `drain()` or an `ObjectFifo`'s `to_stream`/`from_stream`. A `TileGrid` is also a `TensorAccessSequence`, so `grid.visualize()` shows the whole tiling at once.
 
-A `TileGrid` can be refined before it is indexed. Common refinements are `.order("col")` to visit tiles column by column, `.permute_tile((1, 0))` to walk each tile column-major, `.group((2, 2))` to gather a 2 x 2 block of tiles into a single `tap`, and `.repeat(n)` to walk each tile `n` times. Other operations live on the `Layout` itself: `.partition(k)` cuts a dimension into `k` equal chunks, NumPy-style indexing (`Layout.full((8, 8))[2:6, ::2]`) slices a view, `.permute((1, 0))` transposes it, and `.coalesce()` reduces a view to the fewest dimensions that walk the same elements. See [layout.py](../../python/helpers/taplib/layout.py) for the full API.
+A `TileGrid` can be refined before it is indexed. Common refinements are `.order("col")` to visit tiles column by column, `.permute_tile((1, 0))` to walk each tile column-major, `.group((2, 2))` to gather a 2 x 2 block of tiles into a single `tap`, and `.repeat(n)` to walk each tile `n` times. Other operations live on the `TensorAccessPattern` itself: `.partition(k)` cuts a dimension into `k` equal chunks, NumPy-style indexing (`TensorAccessPattern.full((8, 8))[2:6, ::2]`) slices a walk, `.T` or `.permute((1, 0))` transposes it, and `.coalesce()` reduces it to the fewest dimensions that walk the same elements. See the [taplib reference](../../docs/api/taplib.md) for the full API.
 
 More on `taplib` in [tiling_exploration](../../programming_examples/basic/tiling_exploration/README.md).
 
@@ -391,10 +389,11 @@ More on `taplib` in [tiling_exploration](../../programming_examples/basic/tiling
 dims = [(size_2, stride_2), (size_1, stride_1), (size_0, stride_0)]
 of_out = ObjectFifo(data_ty, name="out", to_stream=dims)
 ```
-A `Layout` can be passed in place of the list; `.stream_dims()` shows the list it stands for:
+A `TensorAccessPattern` can be passed in place of the list; `.transformation_dims` shows the list it stands for:
 ```python
-dims = Layout.full((8, 8)).tile((4, 4)).group((2, 2))[0].stream_dims()
-of_out = ObjectFifo(data_ty, name="out", to_stream=dims)
+tap = TensorAccessPattern.full((8, 8)).tile((4, 4)).group((2, 2))[0]
+print(tap.transformation_dims)  # [(2, 32), (2, 4), (4, 8), (4, 1)]
+of_out = ObjectFifo(data_ty, name="out", to_stream=tap)
 ```
 Offsets are currently not represented at the ObjectFifo level and as such the dimensions should be applicable over the full size of the objects.
 
@@ -403,7 +402,7 @@ More on the ObjectFifo data layout transformations in [Section 2c](../section-2/
 ## <u>Exercises</u>
 1. Familiarize yourself with [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py). Use a `tap` such that the data transformation performed on the input data at runtime matches the one shown in [ref_plot.png](./exercise_5/exercise_5a/ref_plot.png). Don't forget to add the `tap` to the runtime `fill()` operation. Before running the example modify line 83 to `USE_REF_VEC = False`. Run `python3 exercise_5a.py` to verify your answer.
 
-2. Replace the `tap` you added in [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py) with the tiles of a `TileGrid`. For this, you will require `Layout.full()` and `.tile()` defined in [layout.py](../../python/helpers/taplib/layout.py). Run `python3 exercise_5a.py` to verify your answer. You can also observe the two generated plots.
+2. Replace the `tap` you added in [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py) with the tiles of a `TileGrid`. For this, you will require `TensorAccessPattern.full()` and `.tile()` defined in [tap.py](../../python/helpers/taplib/tap.py). Run `python3 exercise_5a.py` to verify your answer. You can also observe the two generated plots.
 
 3. Modify the code in [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py) such that the data transformations are applied directly on `of_out`, instead of at runtime. Run `python3 exercise_5a.py` to verify your answer.
 

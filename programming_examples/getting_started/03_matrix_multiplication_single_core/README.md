@@ -66,16 +66,16 @@ DRAM into the memory tile.
 ### L3 &rightarrow; L2: Larger Tiles
 
 ```
-a_taps = Layout.full((M, K)).tile((m, k)).group((1, K // k)).repeat(N // n)
+a_taps = TensorAccessPattern.full((M, K)).tile((m, k)).group((1, K // k)).repeat(N // n)
 # All of B, walked one column of k*n tiles at a time; coalesce() merges
 # the contiguous walk down a tile column into a single DMA dimension.
 b_tap = (
-    Layout.full((K, N))
+    TensorAccessPattern.full((K, N))
     .tile((k, n))
     .group((K // k, N // n), order="col")[0]
     .coalesce()
 )
-c_taps = Layout.full((M, N)).tile((m, n)).group((1, N // n))
+c_taps = TensorAccessPattern.full((M, N)).tile((m, n)).group((1, N // n))
 
 def sequence(A, B, C, a_prod, b_prod, c_cons):
     for tile_row in range(M // m):
@@ -126,21 +126,21 @@ across columns of `B` to produce the next row of output tiles in `C`:
 ### L2 &rightarrow; L1: Intrinsic Tiles
 
 ```
-tap_A_L2L1 = Layout.full((m, k)).tile((r, s)).group((m // r, k // s))[0]
+tap_A_L2L1 = TensorAccessPattern.full((m, k)).tile((r, s)).group((m // r, k // s))[0]
 fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
     to_stream=tap_A_L2L1, 
     name="A_L2L1"
 )
 ```
 ```
-tap_B_L2L1 = Layout.full((k, n)).tile((s, t)).group((k // s, n // t))[0]
+tap_B_L2L1 = TensorAccessPattern.full((k, n)).tile((s, t)).group((k // s, n // t))[0]
 fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
     to_stream=tap_B_L2L1, 
     name="B_L2L1"
 )
 ```
 ```
-tap_C_L1L2 = Layout.full((m, n)).tile((r, t)).inverse()
+tap_C_L1L2 = TensorAccessPattern.full((m, n)).tile((r, t)).inverse()
 fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
     to_stream=tap_C_L1L2,
     name="C_L2L3"

@@ -30,5 +30,5 @@ These programming examples provide a good starting point to illustrate how to bu
 * [Row Wise Bias Add](./row_wise_bias_add) - Adds a bias vector to each row of a matrix using DMA tiling.
 * [Event Trace](./event_trace) - Demonstrates the AIE hardware trace unit for measuring kernel cycle counts and stall events. See also [Section 4b](../../programming_guide/section-4/section-4b/) of the programming guide.
 * [Packet Switch](./packet_switch) - Demonstrates packet-switched routing for multiplexing multiple data streams over shared interconnect.
-* [Tiling Exploration](./tiling_exploration) - Interactive exploration of `TensorAccessPattern` and the `Layout`/`TileGrid` algebra for n-dimensional DMA tiling. Includes visualization tools.
+* [Tiling Exploration](./tiling_exploration) - Interactive exploration of the `TensorAccessPattern`/`TileGrid` algebra for n-dimensional DMA tiling. Includes visualization tools.
 * [Memcpy](./memcpy) - **Exercise design.** A parameterized multi-column memcpy with an intentionally unoptimized runtime sequence. The goal is to add task groups to achieve peak bandwidth. See [getting_started/00_memcpy](../getting_started/00_memcpy/) for the reference solution.

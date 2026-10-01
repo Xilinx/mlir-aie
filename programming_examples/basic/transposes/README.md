@@ -89,8 +89,8 @@ encounter the elements in the order the arrow traverses them.
 
 The first two transformations occur in the DMAs. In
 [`transposes.py`](./transposes.py) the `combined` strategy expresses
-both as `Layout`s (`tap_in_L3L2`, `tap_in_L2L1`) and feeds
-the L2→L1 layout through the L3→L2 ObjectFifo's consumer
+both as `TensorAccessPattern`s (`tap_in_L3L2`, `tap_in_L2L1`) and feeds
+the L2→L1 pattern through the L3→L2 ObjectFifo's consumer
 (`.cons(from_stream=tap_in_L2L1).forward(...)`):
 
 First, the ObjectFifo from L3 (host) to L2 (mem tile) tiles the
