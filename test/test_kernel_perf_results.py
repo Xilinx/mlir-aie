@@ -169,7 +169,7 @@ def test_case_names_with_nested_options_are_preserved(hooks, tmp_path):
 
 
 def test_xdist_report_merges_worker_results(hooks):
-    config = SimpleNamespace(_perf_rows=[], _perf_meta={})
+    config = SimpleNamespace(_perf_rows=[], _perf_meta={}, _error_report={})
     hooks._controller_config = config
     hooks.pytest_runtest_logreport(
         SimpleNamespace(
@@ -178,6 +178,7 @@ def test_xdist_report_merges_worker_results(hooks):
                 "preflight": {"npu": "npu2"},
                 "baseline": {"cases": {"softmax": {"cycles": [110, 100]}}},
             },
+            npu_error_report={"softmax": {"passed": True, "outputs": []}},
         )
     )
     hooks.pytest_runtest_logreport(
@@ -190,6 +191,7 @@ def test_xdist_report_merges_worker_results(hooks):
                 "measurement_sane": True,
                 "baseline": {"cases": {"relu": {"cycles": [55, 50]}}},
             },
+            npu_error_report={"relu": {"passed": False, "outputs": []}},
         )
     )
     assert config._perf_rows == [
@@ -205,4 +207,8 @@ def test_xdist_report_merges_worker_results(hooks):
                 "relu": {"cycles": [55, 50]},
             }
         },
+    }
+    assert config._error_report == {
+        "softmax": {"passed": True, "outputs": []},
+        "relu": {"passed": False, "outputs": []},
     }
