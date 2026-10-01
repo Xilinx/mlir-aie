@@ -27,6 +27,8 @@ class DMATask(RuntimeTask):
         wait: bool = False,
         offset_parameter: str | None = None,
         packet: tuple[int, int] | None = None,
+        length_parameter: str | None = None,
+        length_unit: int | None = None,
         sizes=None,
         strides=None,
         offset=None,
@@ -51,6 +53,12 @@ class DMATask(RuntimeTask):
             wait (bool, optional): Whether this task should conclude with a call to await or a call to free. Defaults to False.
             offset_parameter (str | None, optional): Name of a ScratchpadParameter whose
                 value is used as the element offset for this DMA transfer. Defaults to None.
+            length_parameter (str | None, optional): Name of a ScratchpadParameter
+                n; the transfer moves its static length plus n * length_unit
+                elements (per iteration). Defaults to None.
+            length_unit (int | None, optional): Elements added per unit of
+                length_parameter, a multiple of 16 bytes. Required with
+                length_parameter. Defaults to None.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
                 BD with a packet header `(pkt_type, pkt_id)`. Pairs with
                 downstream packet-switched routing (e.g. an
@@ -77,6 +85,8 @@ class DMATask(RuntimeTask):
         self._tap = tap
         self._wait = wait
         self._offset_parameter = offset_parameter
+        self._length_parameter = length_parameter
+        self._length_unit = length_unit
         self._packet = packet
         self._sizes = sizes
         self._strides = strides
@@ -117,6 +127,8 @@ class DMATask(RuntimeTask):
                 tap=self._tap,
                 issue_token=self._wait,
                 offset_parameter=self._offset_parameter,
+                length_parameter=self._length_parameter,
+                length_unit=self._length_unit,
                 packet=self._packet,  # pyright: ignore[reportArgumentType]
             )
         else:
@@ -130,6 +142,8 @@ class DMATask(RuntimeTask):
                 transfer_len=self._transfer_len,
                 issue_token=self._wait,
                 offset_parameter=self._offset_parameter,
+                length_parameter=self._length_parameter,
+                length_unit=self._length_unit,
                 packet=self._packet,  # pyright: ignore[reportArgumentType]
             )
         dma_start_task(self._task)
@@ -148,6 +162,8 @@ def emit_shim_transfer(
     offset=None,
     transfer_len=None,
     managed: bool = True,
+    length_parameter=None,
+    length_unit: int | None = None,
 ) -> Task:
     """Emit one shim DMA transfer on the ``alloc`` channel, inside the active sequence.
 
@@ -166,6 +182,10 @@ def emit_shim_transfer(
     group close. When False, the caller owns the transfer's lifetime via the
     returned Task's ``.free()``/``.await_()`` -- used for hand-rolled software
     pipelines that carry the task across ``scf.for`` iterations.
+
+    ``offset_parameter`` and ``length_parameter`` take a ScratchpadParameter (or
+    its name). A ``length_parameter`` n makes the transfer move its static
+    length plus ``n * length_unit`` elements (per iteration); see DMATask.
 
     Returns:
         Task: A handle to the transfer.
@@ -199,14 +219,12 @@ def emit_shim_transfer(
             "do not also pass group=."
         )
 
-    offset_param_name = None
-    if offset_parameter is not None:
-        if isinstance(offset_parameter, ScratchpadParameter):
-            offset_param_name = offset_parameter.name
-            if offset_parameter not in rt._scratchpad_parameters:
-                rt._scratchpad_parameters.append(offset_parameter)
-        else:
-            offset_param_name = offset_parameter
+    def param_name(param) -> str | None:
+        if isinstance(param, ScratchpadParameter):
+            if param not in rt._scratchpad_parameters:
+                rt._scratchpad_parameters.append(param)
+            return param.name
+        return param
 
     task = DMATask(
         alloc,
@@ -214,8 +232,10 @@ def emit_shim_transfer(
         tap=tap,
         task_group=group,
         wait=wait,
-        offset_parameter=offset_param_name,
+        offset_parameter=param_name(offset_parameter),
         packet=packet,
+        length_parameter=param_name(length_parameter),
+        length_unit=length_unit,
         sizes=sizes,
         strides=strides,
         offset=offset,

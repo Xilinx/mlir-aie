@@ -237,6 +237,33 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   return success();
 }
 
+LogicalResult AIEX::emitUpdateBdLengthFromParameter(OpBuilder &builder,
+                                                    Operation *bdOp,
+                                                    BaseMemRefType bufType,
+                                                    int64_t lengthUnit,
+                                                    uint64_t registerAddr) {
+  auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("length_state_table_idx");
+  assert(idxAttr && "emitUpdateBdLengthFromParameter called without "
+                    "length_state_table_idx attribute");
+
+  uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
+  int64_t unitBytes = lengthUnit * (bufType.getElementTypeBitWidth() / 8);
+  if (unitBytes <= 0 || unitBytes % 16 != 0)
+    return bdOp->emitOpError("length_unit must be a multiple of 16 bytes, got ")
+           << unitBytes << " bytes";
+
+  // A length parameter uses the core encoding, so StateTable[idx] holds
+  // n << 2. The length register counts 32-bit words, so func=mul with
+  // func_arg=unitBytes/16 adds (n << 2) * unitBytes / 16 = n * unitBytes / 4
+  // words.
+  AIEX::NpuUpdateFromScratchpadOp::create(
+      builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
+      /*func_arg=*/static_cast<uint32_t>(unitBytes / 16),
+      /*address=*/static_cast<uint32_t>(registerAddr),
+      /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
+  return success();
+}
+
 void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
   SmallVector<AIEX::ScratchpadParameterOp> allParams;
   moduleOp.walk([&](AIEX::ScratchpadParameterOp p) { allParams.push_back(p); });

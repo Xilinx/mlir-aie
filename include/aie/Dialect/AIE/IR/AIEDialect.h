@@ -349,6 +349,26 @@ void collectBuffers(
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 
+// Validate a BD's runtime length (`length_parameter`, see aie.dma_bd) against
+// its static pattern, shared by aie.dma_bd and aiex.npu.dma_memcpy_nd.
+// `lenElems` is the static length of one iteration, in elements. `contiguous`
+// says the BD is lowered in linear mode; otherwise the added length continues
+// the third dimension, so `innerSizes` (the three innermost sizes,
+// innermost-first) must give it a size above one and a row that divides the
+// length unit.
+mlir::LogicalResult verifyLengthParameter(mlir::Operation *op,
+                                          std::optional<int64_t> lengthUnit,
+                                          mlir::BaseMemRefType buffer,
+                                          std::optional<int64_t> lenElems,
+                                          bool contiguous,
+                                          llvm::ArrayRef<int64_t> innerSizes);
+
+// Validate the tile a runtime-length BD is lowered on: the firmware update
+// targets the AIE2/AIE2P shim BD layout, whose first word is the length.
+mlir::LogicalResult verifyLengthParameterTile(mlir::Operation *op,
+                                              const AIETargetModel &targetModel,
+                                              int col, int row);
+
 // Validate the sender-side out_of_order_id field on a single BD. Callable from
 // the AIEX dialect, whose runtime-sequence task BDs skip DMABDOp::verify.
 mlir::LogicalResult

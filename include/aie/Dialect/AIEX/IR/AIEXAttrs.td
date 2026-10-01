@@ -10,26 +10,31 @@
 
 include "mlir/IR/EnumAttr.td"
 
-def StateTableFuncMul  : I32EnumAttrCase<"Mul", 0, "mul">;
+def StateTableFuncMul : I32EnumAttrCase<"Mul", 0, "mul">;
 def StateTableFuncIncr : I32EnumAttrCase<"Incr", 1, "incr">;
 def StateTableFuncDecr : I32EnumAttrCase<"Decr", 2, "decr">;
 
-def StateTableFunc : I32EnumAttr<"StateTableFunc",
-    "Function to apply between scratchpad value and register pair",
-    [StateTableFuncMul, StateTableFuncIncr, StateTableFuncDecr]> {
+def StateTableFunc
+    : I32EnumAttr<
+          "StateTableFunc",
+          "Function to apply between scratchpad value and register pair",
+          [StateTableFuncMul, StateTableFuncIncr, StateTableFuncDecr]> {
   let cppNamespace = "::xilinx::AIEX";
 }
 
 def ScratchpadParameterKindCore : I32EnumAttrCase<"Core", 0, "core">;
 def ScratchpadParameterKindAddr : I32EnumAttrCase<"Addr", 1, "addr">;
 
-def ScratchpadParameterKind : I32EnumAttr<"ScratchpadParameterKind",
-    "Usage kind of a scratchpad runtime parameter: "
-    "`core` parameters are read by AIE cores via "
-    "`aiex.read_scratchpad_parameter` (values are shift-2 encoded); "
-    "`addr` parameters are used as BD address offsets via the "
-    "`offset_parameter` attribute on DMA ops (values written raw)",
-    [ScratchpadParameterKindCore, ScratchpadParameterKindAddr]> {
+def ScratchpadParameterKind
+    : I32EnumAttr<
+          "ScratchpadParameterKind",
+          "Usage kind of a scratchpad runtime parameter: "
+          "`core` parameters are read by AIE cores via "
+          "`aiex.read_scratchpad_parameter` or set DMA lengths via the "
+          "`length_parameter` attribute (values are shift-2 encoded); "
+          "`addr` parameters are used as BD address offsets via the "
+          "`offset_parameter` attribute on DMA ops (values written raw)",
+          [ScratchpadParameterKindCore, ScratchpadParameterKindAddr]> {
   let cppNamespace = "::xilinx::AIEX";
 }
 

@@ -1090,6 +1090,46 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     iteration here, but `iteration_size = 1` means *two* executions on
     `writebd`. The `iteration` attribute is rejected on the other path; express
     iteration there via the outermost `sizes`/`strides` dimension instead.
+
+    ## Runtime length
+
+    A shim DMA BD in a runtime sequence can take part of its length from an
+    `aiex.scratchpad_parameter`: with `length_parameter = @n` and
+    `length_unit = u`, the BD moves `len + n * u` elements, where `n` is the
+    value the host writes to the parameter. `len` stays the length for `n = 0`.
+    The lowering writes the BD with the static length, then emits an
+    `aiex.npu.update_from_scratchpad` that adds `n * u` to the BD's
+    `Buffer_Length` word. A BD with an iteration dimension gets the added
+    length on every iteration.
+
+    ```
+    aiex.scratchpad_parameter @n : i32
+    ...
+    %t = aiex.dma_configure_task_for @of_in {
+      aie.dma_bd(%in : memref<4096xbf16> offset = 0 len = 64)
+          {length_parameter = @n, length_unit = 64 : i32}
+      aie.end
+    }
+    ```
+
+    The parameter uses the same encoding as one read by a core with
+    `aiex.read_scratchpad_parameter`, so one parameter can set both a core's
+    trip count and the length of the transfers feeding it. It cannot also be an
+    `offset_parameter`, which uses the other encoding.
+
+    Constraints, all from the firmware's register update, which adds to the
+    length word and the address word after it and clears the low two bits of
+    both:
+    - Shim NOC tiles on AIE2 and AIE2P only.
+    - `len` and `length_unit` must both be multiples of 16 bytes.
+    - With a data layout transformation that is not a contiguous scan, the
+      added length continues the third dimension. That dimension needs a size
+      above one (a size-1 dimension's stride is not encoded), and
+      `length_unit` must be a multiple of the product of the two innermost
+      sizes.
+    - An `aiex.dma_configure_task` whose BD has an iteration dimension runs
+      only once unless the task sets `repeat_count`; this is not specific to
+      the runtime length, but a runtime length makes it easy to miss.
   }];
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$buffer,
@@ -1137,6 +1177,14 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // offset. After lowering, $offset_parameter is removed in favor of this
       // attribute.
       OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // If set, the aiex.scratchpad_parameter value n lengthens the BD at run
+      // time: it moves len + n * length_unit elements. See the "## Runtime
+      // length" section above.
+      OptionalAttr<FlatSymbolRefAttr>:$length_parameter,
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$length_unit,
+      // Set by --aie-lower-scratchpad-parameters from $length_parameter, which
+      // it replaces, like $offset_state_table_idx.
+      OptionalAttr<UI8Attr>:$length_state_table_idx,
       // should never be assigned by user...
       OptionalAttr<AIEI32Attr>:$next_bd_id);
 

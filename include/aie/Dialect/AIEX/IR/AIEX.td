@@ -614,6 +614,14 @@ def AIE_NpuDmaMemcpyNdOp
     If the attribute is set, then every time the DMA BD gets issued, a packet header is generated prior to the transmission of data.
     The packet header is used to guide arbitration throughout a packet-routed data flow, where each switch box arbitrates the data packet to stream to a successor based on the packet header.
 
+    #### Runtime Length
+
+    With `length_parameter = @n` and `length_unit = u`, the transfer moves `u * n` more elements than
+    its sizes describe, where `n` is the value the host writes to the `aiex.scratchpad_parameter` `@n`.
+    The extra elements continue the third dimension (or the linear transfer), and every iteration of
+    the outermost dimension gets them. The constraints are those of `length_parameter` on
+    [`aie.dma_bd`](AIEDialect.html#aiedma_bd-xilinxaiedmabdop).
+
   }];
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$memref,
@@ -646,7 +654,14 @@ def AIE_NpuDmaMemcpyNdOp
       // scratchpad state-table index whose value is used as the BD address
       // offset. After lowering, $offset_parameter is removed in favor of this
       // attribute.
-      OptionalAttr<UI8Attr>:$offset_state_table_idx);
+      OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // If set, the aiex.scratchpad_parameter value n lengthens the transfer
+      // at run time by n * length_unit elements; see "Runtime Length" above.
+      OptionalAttr<FlatSymbolRefAttr>:$length_parameter,
+      OptionalAttr<ConfinedAttr<I64Attr, [IntMinValue<1>]>>:$length_unit,
+      // Set by --aie-lower-scratchpad-parameters from $length_parameter, which
+      // it replaces, like $offset_state_table_idx.
+      OptionalAttr<UI8Attr>:$length_state_table_idx);
 
   let assemblyFormat = [{
     `(` $memref ``
@@ -1837,13 +1852,18 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     cannot also be read from cores.
     If used as an address offset on a BD, the parameter is a multiple of the BD's element size.
 
+    Parameters can also lengthen shim BDs when used as the `length_parameter`
+    attribute in `aie.dma_bd` and `aiex.npu.dma_memcpy_nd`. A length parameter
+    has the same kind as one read by a core, so a single parameter can set both a
+    core's trip count and the length of the transfers feeding that core.
+
     Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
     The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
-    `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
+    `core` if read by a core via `aiex.read_scratchpad_parameter` or used as a DMA length via the `length_parameter` attribute, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
     Indices are unique across the entire module.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
-    For `kind == addr`, the `type` must be `i32`.
+    For `kind == addr`, and for any parameter used as a `length_parameter`, the `type` must be `i32`.
     For `kind == core`, the encoding uses a 30-bit value range because the firmware masks
     the lower 2 bits of the scratchpad register (see `aiex.read_scratchpad_parameter`
     for details on how values are shifted to work around this).

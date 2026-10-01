@@ -289,11 +289,12 @@ class Program:
                     fl.resolve()
 
             # Resolve parameters only discoverable once the sequence body has
-            # traced (offset_parameter= passed directly to fill()/drain(),
-            # rather than declared up front via Worker fn_args). device_body's
-            # own insertion point is scoped to its @device region, so by now
-            # the ambient insertion point is back to module scope -- the same
-            # place the fn_args-declared parameters above were resolved.
+            # traced (offset_parameter=/length_parameter= passed directly to
+            # fill()/drain(), rather than declared up front via Worker
+            # fn_args). device_body's own insertion point is scoped to its
+            # @device region, so by now the ambient insertion point is back to
+            # module scope -- the same place the fn_args-declared parameters
+            # above were resolved.
             for p in self._rt._scratchpad_parameters:
                 p.resolve()
 

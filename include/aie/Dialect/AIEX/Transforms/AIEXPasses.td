@@ -580,8 +580,9 @@ def AIELowerScratchpadParameters
       and `aiex.set_lock` for each core lock.
 
     Sets a `kind` attribute on each `aiex.scratchpad_parameter` based on how
-    it is used: `core` if read by `aiex.read_scratchpad_parameter`, `addr` if
-    used as a DMA `offset_parameter`. A parameter may not be used as both.
+    it is used: `core` if read by `aiex.read_scratchpad_parameter` or used as
+    a DMA `length_parameter`, `addr` if used as a DMA `offset_parameter`. A
+    parameter may not be used as both.
 
     Optionally emits a `params.txt` file describing every parameter in the
     module (name, global state_table_idx, type, and kind).

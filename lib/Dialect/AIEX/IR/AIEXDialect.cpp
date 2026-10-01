@@ -452,7 +452,9 @@ struct LinearizeContiguousTransfer
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
         op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
+        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr(),
+        op.getLengthParameterAttr(), op.getLengthUnitAttr(),
+        op.getLengthStateTableIdxAttr());
     return mlir::success();
   }
 };
@@ -628,6 +630,11 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return getConstantIntValue(s).has_value();
   });
 
+  bool hasLengthParameter =
+      getLengthParameterAttr() || getLengthStateTableIdxAttr();
+  if (hasLengthParameter && (!allStridesConstant || !allSizesConstant))
+    return emitOpError("length_parameter requires constant sizes and strides");
+
   // Dynamic path: any runtime size/stride/offset. A runtime offset flows into
   // the address-patch arg_plus as arith (see AIEDmaToNpu.cpp emitBufferAddress-
   // Patch); runtime sizes/strides use the dynamic BD-word encoder. The shared
@@ -652,6 +659,22 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
   if (errorMessage.has_value()) {
     return emitOpError(errorMessage.value());
+  }
+
+  if (hasLengthParameter) {
+    if (failed(AIE::verifyLengthParameter(
+            *this, getLengthUnit(), buffer,
+            inputSizes[0] * inputSizes[1] * inputSizes[2],
+            AIEX::isContiguousTransfer(inputSizes, inputStrides),
+            llvm::ArrayRef<int64_t>(inputSizes).take_front(3))))
+      return failure();
+    AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+    if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+            dev, getMetadata().getRootReference()))
+      if (AIE::TileOp tile = allocOp.getTileOp())
+        if (failed(AIE::verifyLengthParameterTile(
+                *this, targetModel, tile.getCol(), tile.getRow())))
+          return failure();
   }
 
   // The experimental HSA target uses this op on AIE1, skip all the AIE2
@@ -694,7 +717,10 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     llvm::SmallVector<int64_t, 4> inputOffsets = llvm::map_to_vector(
         llvm::reverse(getMixedOffsets()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    if (AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
+    // aie-decompose-large-dma-bd leaves a transfer with a runtime length
+    // alone, so it must be legal as written.
+    if (!hasLengthParameter &&
+        AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
                                          col, row, inputOffsets, inputSizes,
                                          inputStrides)) {
       // ok: will be decomposed before lowering

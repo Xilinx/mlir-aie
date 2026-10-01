@@ -73,10 +73,9 @@ static void warnIfRuntimeOffsetMayRound(Operation *op, Type bufType) {
 
 /// Returns true iff the parameter-sync preamble (create_scratchpad + set_lock)
 /// should be emitted into this sequence. Reads the explicit attribute if
-/// present; otherwise defaults to true iff the parent device contains any
-/// ReadScratchpadParameterOp in a core, or any 'offset_parameter' attribute on
-/// a DMA BD, and the runtime sequence does not already contain a
-// `aiex.sync_scratchpad_parameters_from_host` marker.
+/// present; otherwise defaults to true iff the parent device uses any
+/// scratchpad parameter, from a core or a DMA BD, and the runtime sequence does
+/// not already contain a `aiex.sync_scratchpad_parameters_from_host` marker.
 static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
   if (auto attr = seqOp.getEmitParameterSyncPreambleAttr()) {
     return attr.getValue();
@@ -97,7 +96,9 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
     }
     if (llvm::isa<ReadScratchpadParameterOp>(op) ||
         op->hasAttr("offset_parameter") ||
-        op->hasAttr("offset_state_table_idx")) {
+        op->hasAttr("offset_state_table_idx") ||
+        op->hasAttr("length_parameter") ||
+        op->hasAttr("length_state_table_idx")) {
       found = true;
     }
   });
@@ -333,33 +334,43 @@ struct AIELowerScratchpadParametersPass
 
     // Step 2: determine each parameter's kind from its usage, erroring on
     // mixed use.  A parameter is "core" if any aiex.read_scratchpad_parameter
-    // references it; "addr" if any DMA op references it via offset_parameter.
-    // If both, emit an error.
+    // or DMA length_parameter references it; "addr" if any DMA op references
+    // it via offset_parameter. If both, emit an error.
+    // A length parameter shares the core encoding (value << 2) so that one
+    // parameter can drive both a core's trip count and the DMA lengths
+    // feeding it; the lowering compensates in the update's multiplier.
     DenseMap<StringRef, bool> usedAsCore;
+    DenseMap<StringRef, bool> usedAsLength;
     DenseMap<StringRef, bool> usedAsAddr;
     moduleOp.walk([&](ReadScratchpadParameterOp op) {
       usedAsCore[op.getParameter()] = true;
     });
-    auto markAddr = [&](Operation *op, FlatSymbolRefAttr ref) {
-      if (ref)
-        usedAsAddr[ref.getValue()] = true;
+    auto markDmaUses = [&](FlatSymbolRefAttr offsetRef,
+                           FlatSymbolRefAttr lengthRef) {
+      if (offsetRef)
+        usedAsAddr[offsetRef.getValue()] = true;
+      if (lengthRef)
+        usedAsLength[lengthRef.getValue()] = true;
     };
     moduleOp.walk([&](NpuDmaMemcpyNdOp op) {
-      markAddr(op, op.getOffsetParameterAttr());
+      markDmaUses(op.getOffsetParameterAttr(), op.getLengthParameterAttr());
     });
-    moduleOp.walk(
-        [&](AIE::DMABDOp op) { markAddr(op, op.getOffsetParameterAttr()); });
+    moduleOp.walk([&](AIE::DMABDOp op) {
+      markDmaUses(op.getOffsetParameterAttr(), op.getLengthParameterAttr());
+    });
 
     for (auto p : allParams) {
       StringRef name = p.getSymName();
       bool core = usedAsCore.lookup(name);
+      bool length = usedAsLength.lookup(name);
       bool addr = usedAsAddr.lookup(name);
-      if (core && addr) {
+      if ((core || length) && addr) {
         p.emitError("parameter '")
-            << name
-            << "' is used both as an aiex.read_scratchpad_parameter source "
-               "(core) and as a DMA offset_parameter (addr); a parameter must "
-               "have a single kind";
+            << name << "' is used both as "
+            << (core ? "an aiex.read_scratchpad_parameter source"
+                     : "a DMA length_parameter")
+            << " (core) and as a DMA offset_parameter (addr); a parameter "
+               "must have a single kind";
         return signalPassFailure();
       }
       p.setKindAttr(ScratchpadParameterKindAttr::get(
@@ -373,48 +384,59 @@ struct AIELowerScratchpadParametersPass
           builder.getIntegerType(8, /*isSigned=*/false), i));
     }
 
-    // Step 3b: rewrite DMA `offset_parameter` symbol references to a plain
-    // `offset_state_table_idx` integer attribute, so downstream `aie`-dialect
-    // passes do not need to resolve `aiex.scratchpad_parameter` symbols.
-    auto rewriteOffsetParam = [&](Operation *op, FlatSymbolRefAttr ref,
-                                  Type bufType) {
-      if (!ref) {
-        return success();
-      }
+    // Step 3b: rewrite DMA `offset_parameter` / `length_parameter` symbol
+    // references to plain `offset_state_table_idx` / `length_state_table_idx`
+    // integer attributes, so downstream `aie`-dialect passes do not need to
+    // resolve `aiex.scratchpad_parameter` symbols.
+    auto rewriteParam = [&](Operation *op, FlatSymbolRefAttr ref,
+                            StringRef attrName, StringRef idxAttrName) {
       auto paramOp =
           moduleOp.lookupSymbol<ScratchpadParameterOp>(ref.getAttr());
       if (!paramOp) {
-        op->emitOpError("offset_parameter '")
-            << ref.getValue()
-            << "' not found. Declare it at module scope with "
-               "aiex.scratchpad_parameter.";
+        op->emitOpError() << attrName << " '" << ref.getValue()
+                          << "' not found. Declare it at module scope with "
+                             "aiex.scratchpad_parameter.";
         return failure();
       }
       if (!paramOp.getType().isInteger(32)) {
-        auto err = op->emitOpError("offset_parameter '")
-                   << ref.getValue() << "' must have type i32, got "
-                   << paramOp.getType() << ".";
+        auto err = op->emitOpError()
+                   << attrName << " '" << ref.getValue()
+                   << "' must have type i32, got " << paramOp.getType() << ".";
         err.attachNote(paramOp.getLoc()) << "Parameter declared here.";
         return failure();
       }
       uint8_t stateIdx =
           static_cast<uint8_t>(paramOp.getStateTableIdx().value());
-      op->setAttr("offset_state_table_idx",
+      op->setAttr(idxAttrName,
                   builder.getIntegerAttr(
                       builder.getIntegerType(8, /*isSigned=*/false), stateIdx));
-      op->removeAttr("offset_parameter");
-      warnIfRuntimeOffsetMayRound(op, bufType);
+      op->removeAttr(attrName);
+      return success();
+    };
+    auto rewriteParams = [&](Operation *op, FlatSymbolRefAttr offsetRef,
+                             FlatSymbolRefAttr lengthRef, Type bufType) {
+      if (offsetRef) {
+        if (failed(rewriteParam(op, offsetRef, "offset_parameter",
+                                "offset_state_table_idx")))
+          return failure();
+        warnIfRuntimeOffsetMayRound(op, bufType);
+      }
+      if (lengthRef)
+        return rewriteParam(op, lengthRef, "length_parameter",
+                            "length_state_table_idx");
       return success();
     };
     WalkResult rewriteResult = moduleOp.walk([&](Operation *op) {
       if (auto dmaOp = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
-        if (failed(rewriteOffsetParam(op, dmaOp.getOffsetParameterAttr(),
-                                      dmaOp.getMemref().getType()))) {
+        if (failed(rewriteParams(op, dmaOp.getOffsetParameterAttr(),
+                                 dmaOp.getLengthParameterAttr(),
+                                 dmaOp.getMemref().getType()))) {
           return WalkResult::interrupt();
         }
       } else if (auto bdOp = dyn_cast<AIE::DMABDOp>(op)) {
-        if (failed(rewriteOffsetParam(op, bdOp.getOffsetParameterAttr(),
-                                      bdOp.getBuffer().getType()))) {
+        if (failed(rewriteParams(op, bdOp.getOffsetParameterAttr(),
+                                 bdOp.getLengthParameterAttr(),
+                                 bdOp.getBuffer().getType()))) {
           return WalkResult::interrupt();
         }
       }

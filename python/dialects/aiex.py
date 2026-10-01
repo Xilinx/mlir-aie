@@ -136,6 +136,12 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
         axcache (optional): The raw 4-bit AxCACHE value for the DMA's AXI-MM transfers. If
             omitted, the target model's default AxCACHE value is used.
+        length_parameter (optional): Name of a core-kind scratchpad parameter n; the
+            transfer then moves the static length plus n * length_unit elements
+            (per iteration). Shim tiles only; see the length_parameter docs on
+            aie.dma_bd.
+        length_unit (optional): Elements added per unit of length_parameter; a
+            multiple of 16 bytes. Required with length_parameter.
 
     Note:
         Contiguous row-major access patterns are automatically folded to canonical linear form
@@ -168,6 +174,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         axcache: int | None = None,
         packet: tuple[int] | None = None,
         offset_parameter: str | None = None,
+        length_parameter: str | None = None,
+        length_unit: int | None = None,
     ):
         if tap and not (offsets is None and sizes is None and strides is None):
             raise ValueError(
@@ -212,6 +220,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             axcache=axcache,
             packet=packet,
             offset_parameter=offset_parameter,
+            length_parameter=length_parameter,
+            length_unit=length_unit,
         )
 
 
@@ -283,6 +293,8 @@ def shim_dma_bd(
     axcache: int | None = None,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
+    length_parameter: str | None = None,
+    length_unit: int | None = None,
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -316,6 +328,8 @@ def shim_dma_bd(
         axcache=axcache,
         packet=packet,
         offset_parameter=offset_parameter,
+        length_parameter=length_parameter,
+        length_unit=length_unit,
     )
 
 
@@ -332,6 +346,8 @@ def shim_dma_single_bd_task(
     axcache: int | None = None,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
+    length_parameter: str | None = None,
+    length_unit: int | None = None,
 ):
     """_summary_
     Enables data transfers between the AIE Engine array and external memory.
@@ -349,6 +365,12 @@ def shim_dma_single_bd_task(
         axcache (optional): The raw 4-bit AxCACHE value for the DMA's AXI-MM transfers. If
             omitted, the target model's default AxCACHE value is used.
         packet (optional): The packet header information represented as a (packet_type, packet_id) tuple.
+        length_parameter (optional): Name of a core-kind scratchpad parameter n; the
+            transfer then moves the static length plus n * length_unit elements
+            (per iteration). Shim tiles only; see the length_parameter docs on
+            aie.dma_bd.
+        length_unit (optional): Elements added per unit of length_parameter; a
+            multiple of 16 bytes. Required with length_parameter.
 
     Example:
         out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, 1, N], issue_token=True)
@@ -433,6 +455,8 @@ def shim_dma_single_bd_task(
                 axcache=axcache,
                 packet=packet,
                 offset_parameter=offset_parameter,
+                length_parameter=length_parameter,
+                length_unit=length_unit,
             )
             EndOp()
     return task

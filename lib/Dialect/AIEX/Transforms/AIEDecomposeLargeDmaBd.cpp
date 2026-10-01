@@ -281,7 +281,8 @@ static NpuDmaMemcpyNdOp createDecomposedOp(RewriterBase &rewriter,
       op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
       op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(), op.getD2ZeroAfterAttr(),
       op.getBurstLengthAttr(), op.getAxcacheAttr(), op.getOffsetParameterAttr(),
-      op.getOffsetStateTableIdxAttr());
+      op.getOffsetStateTableIdxAttr(), op.getLengthParameterAttr(),
+      op.getLengthUnitAttr(), op.getLengthStateTableIdxAttr());
 }
 
 static int64_t allocateNextId(NpuDmaMemcpyNdOp op, int64_t startId,
@@ -552,6 +553,9 @@ static void orderSlices(Block &block, Slices &state) {
 static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
   if (!allConstant(op))
     return;
+  // A runtime length stays whole; see DMABDOp::verify.
+  if (op.getLengthParameterAttr() || op.getLengthStateTableIdxAttr())
+    return;
 
   NdDmaPattern pattern = patternFromOp(op);
   if (isContiguousTransfer(pattern.sizes, pattern.strides))
@@ -605,7 +609,9 @@ static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
         op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
+        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr(),
+        op.getLengthParameterAttr(), op.getLengthUnitAttr(),
+        op.getLengthStateTableIdxAttr());
     return;
   }
 
@@ -671,6 +677,9 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
       return cannotReduce() << "a descriptor that takes no locks";
     return success();
   }
+  // A runtime length stays whole; see DMABDOp::verify.
+  if (op.getLengthParameterAttr() || op.getLengthStateTableIdxAttr())
+    return success();
 
   int col = tile.getCol();
   int row = tile.getRow();

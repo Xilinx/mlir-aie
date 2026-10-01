@@ -434,6 +434,22 @@ struct AIEDMATasksToNPUPass
         return failure();
     }
 
+    // A length_state_table_idx adds the runtime length to the BD's
+    // Buffer_Length (word 0), which the BD write has already set to the static
+    // length. The verifier requires a length_unit with it.
+    auto lengthUnit = bd_op.getLengthUnit();
+    if (bd_op.getLengthStateTableIdxAttr() && lengthUnit) {
+      if (failed(AIE::verifyLengthParameterTile(bd_op, target_model, col, row)))
+        return failure();
+      if (runtimeRegisterAddr)
+        return bd_op->emitOpError("length_parameter requires a constant bd_id");
+      auto bufType = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
+      if (failed(emitUpdateBdLengthFromParameter(
+              builder, bd_op, bufType, *lengthUnit,
+              target_model.getDmaBdAddress(col, row, bd_id))))
+        return failure();
+    }
+
     return success();
   }
 
