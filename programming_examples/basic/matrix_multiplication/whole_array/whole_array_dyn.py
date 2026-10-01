@@ -106,6 +106,7 @@ def whole_array_dyn(
     dims = matmul_kernel.stream_dims
 
     dev = iron.get_current_device()
+    assert dev is not None
     if n_aie_cols > dev.cols:
         raise ValueError(
             f"n_aie_cols={n_aie_cols} but the device has {dev.cols} columns"

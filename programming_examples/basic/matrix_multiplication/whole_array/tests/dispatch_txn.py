@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 import aie.iron as iron
-from aie.iron.device import NPU1Col1
+from aie.iron.device import from_name
 from aie.utils.hostruntime.hostruntime import HostRuntimeError
 from aie.utils.txn_trace import compare, trace
 
@@ -23,8 +23,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from whole_array import whole_array  # noqa: E402
 from whole_array_dyn import whole_array_dyn  # noqa: E402
 
-iron.set_current_device(NPU1Col1())
-TILE = dict(m=32, k=32, n=32, n_aie_cols=1, dtype_in_str="i16", dtype_out_str="i32")
+iron.set_current_device(from_name("npu"))
+m = 32
+TILE = dict(m=m, k=32, n=32, n_aie_cols=1, dtype_in_str="i16", dtype_out_str="i32")
 CAPACITY = dict(A_elements=512 * 256, B_elements=256 * 256, C_elements=512 * 256)
 
 dyn = whole_array_dyn.specialize(**CAPACITY, **TILE)
@@ -48,7 +49,7 @@ for M, K, N in (
     line = f"M={M} K={K} N={N}: {len(pushes(words))} pushes, matches static specialization={not diffs}"
     # whole_array.py needs an even number of row blocks; where it can compile,
     # the dynamic design must produce exactly its DMA events, waits included.
-    if (M // TILE["m"] // 4) % 2 == 0:
+    if (M // m // 4) % 2 == 0:
         original = whole_array.specialize(M=M, K=K, N=N, **TILE).instructions()
         line += f", same events as whole_array.py={not compare(words, original)}"
     print(line)

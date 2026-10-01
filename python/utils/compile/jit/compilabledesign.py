@@ -93,7 +93,7 @@ _AUTO_NAME = re.compile(r'(?<=[@"])(of|buf_|lock_)\d+(?!\d)')
 
 
 def _design_key_text(mlir_text: str, kernels) -> str:
-    """The generated design as the artifact key reads it.
+    """Return the generated design as the artifact key reads it.
 
     ObjectFifo, Buffer and Lock take default names from process-wide
     counters, so the same design names them differently once the process

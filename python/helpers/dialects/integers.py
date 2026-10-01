@@ -1,7 +1,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from ...dialects import arith, emitc  # pyright: ignore[reportMissingImports]
+from ...dialects import (  # pyright: ignore[reportMissingImports]
+    arith,  # pyright: ignore[reportAttributeAccessIssue]
+    emitc,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     NpuRequireOp,
 )

@@ -23,7 +23,9 @@ from typing import Any, Iterable
 
 import numpy as np
 
-from ...dialects import arith  # pyright: ignore[reportMissingImports]
+from ...dialects import (  # pyright: ignore[reportMissingImports]
+    arith,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     NpuRequireOp,
 )
