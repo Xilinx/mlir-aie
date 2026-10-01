@@ -30,3 +30,17 @@ func.func @neg_v32f32(%src : vector<32xf32>) -> vector<32xf32> {
   %0 = aievec.neg %src : vector<32xf32>
   return %0 : vector<32xf32>
 }
+
+// An n-D operand is flattened for the shuffles and reshaped afterwards.
+// CHECK-LABEL: neg_v2x16f32
+// CHECK-SAME: %[[ARG0:[a-zA-Z0-9]+]]: vector<2x16xf32>
+func.func @neg_v2x16f32(%src : vector<2x16xf32>) -> vector<2x16xf32> {
+  // CHECK: %[[FLAT:.*]] = vector.shape_cast %[[ARG0]] : vector<2x16xf32> to vector<32xf32>
+  // CHECK: %[[SHUF0:.*]] = vector.shuffle %[[FLAT]], %[[FLAT]] {{\[}}0,
+  // CHECK: %[[NEG:.*]] = "xllvm.intr.aie2p.ACC2048.accfloat.neg.conf"(%[[SHUF0]], {{.*}}) : (vector<64xf32>, i32) -> vector<64xf32>
+  // CHECK: %[[SHUF1:.*]] = vector.shuffle %[[NEG]], %[[NEG]] {{\[}}0,
+  // CHECK: %[[RES:.*]] = vector.shape_cast %[[SHUF1]] : vector<32xf32> to vector<2x16xf32>
+  // CHECK: return %[[RES]] : vector<2x16xf32>
+  %0 = aievec.neg %src : vector<2x16xf32>
+  return %0 : vector<2x16xf32>
+}
