@@ -1,0 +1,9 @@
+<map id="xilinx::AIEX::QueueEffect" name="xilinx::AIEX::QueueEffect">
+<area shape="rect" id="Node000001" title="What one op in a loop body does to a channel queue." alt="" coords="49,93,231,119"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,56,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="58,37,127,91,123,95,55,41"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="81,5,199,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="143,45,143,93,137,93,137,45"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="224,5,275,31"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="225,41,157,95,153,91,222,37"/>
+</map>
