@@ -67,6 +67,7 @@ def test_header_row_matches_python_row(arch):
         "AIE_HAS_NATIVE_EXP2": int(t.native_exp2),
         "AIE_HAS_BFP16": int(t.bfp16),
         "AIE_LUT_16B_RUN": t.lut_16b_run,
+        "AIE_HAS_CTZ_POPCOUNT": int(t.ctz_popcount),
     }
     source = '#include "aie_arch.h"\n' + "".join(
         f'static_assert({name} == {value}, "{name}");\n'
