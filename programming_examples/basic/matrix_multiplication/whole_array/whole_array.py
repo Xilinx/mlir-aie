@@ -19,11 +19,12 @@ The script has two modes:
 
 import argparse
 import sys
+from typing import NamedTuple
 
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
+from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence, TileGrid
 from aie.iron import (
     CompileTime,
     In,
@@ -31,7 +32,6 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
-    StreamDims,
     TaskGroup,
     Worker,
     str_to_dtype,
@@ -51,17 +51,24 @@ def _device_for(dev_str, n_aie_cols):
     return from_name(dev_str, n_cols=n_aie_cols if dev_str == "npu" else None)
 
 
-def _transfer_groups(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj):
-    """Return the runtime sequence's shim transfers, one list per task group.
+class TileGrids(NamedTuple):
+    """The A, B and C tile grids the runtime sequence fills and drains."""
 
-    Each transfer is ``(tensor, col, tap)``: the shim column ``col`` fills
-    ``"A"`` or ``"B"``, or drains ``"C"``, with the access pattern ``tap``.
+    A: TileGrid
+    B: TileGrid
+    C: TileGrid
+    rows_per_step: int  # row blocks per time-block half
+
+
+def tile_grids(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj) -> TileGrids:
+    """Tile A, B and C for the runtime sequence.
+
+    ``M``, ``K`` and ``N`` may be ints or dispatch-time scalars:
+    whole_array_dyn.py builds the same grids on the live shape.
     """
     n_aie_rows = 4
-    n_shim_mem_A = min(n_aie_rows, n_aie_cols)
-    n_A_tiles_per_shim = n_aie_rows // n_aie_cols if n_aie_cols < 4 else 1
-    tb_max_n_rows = 4 if not c_col_maj else 2
-    tb_n_rows = tb_max_n_rows // 2
+    n_A_tiles_per_shim = max(1, n_aie_rows // n_aie_cols)
+    rows_per_step = 1 if c_col_maj else 2
 
     A_tiles = (
         TensorAccessPattern.full((M, K))
@@ -91,35 +98,138 @@ def _transfer_groups(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj):
             .group((N // n // n_aie_cols, n_aie_rows), steps=(n_aie_cols, 1))
         )
     else:
+        # partial: the last step may hold fewer than rows_per_step row blocks.
         C_tiles = (
             TensorAccessPattern.full((M, N))
             .tile((m * n_aie_rows, n))
-            .group((tb_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols))
+            .group(
+                (rows_per_step, N // n // n_aie_cols),
+                steps=(1, n_aie_cols),
+                partial=True,
+            )
+        )
+    return TileGrids(A_tiles, B_tiles, C_tiles, rows_per_step)
+
+
+def step_transfers(grids: TileGrids, step, n_rows: int, n_aie_cols: int) -> list:
+    """Return the shim transfers of one time-block half.
+
+    Each transfer is ``(tensor, col, tap)``: the shim column ``col`` fills
+    ``"A"`` or ``"B"``, or drains ``"C"``, with the access pattern ``tap``.
+    ``step`` may be a dispatch-time scalar; ``n_rows`` row blocks are issued.
+    """
+    n_aie_rows = 4
+    n_shim_mem_A = min(n_aie_rows, n_aie_cols)
+    row_base = step * grids.rows_per_step
+    transfers = []
+    for col in range(n_aie_cols):
+        transfers.append(("C", col, grids.C[step * n_aie_cols + col]))
+        for tile_row in range(n_rows):
+            tile_offset = (
+                (row_base + tile_row) * n_shim_mem_A + col
+            ) % grids.A.num_steps
+            if col < n_aie_rows:
+                transfers.append(("A", col, grids.A[tile_offset]))
+            transfers.append(("B", col, grids.B[col]))
+    return transfers
+
+
+def issue(transfers, A, B, C, A_hs, B_hs, C_hs) -> TaskGroup:
+    """Issue ``transfers`` as one group; the C drains are waited on."""
+    tg = TaskGroup()
+    for tensor, col, tap in transfers:
+        if tensor == "C":
+            C_hs[col].drain(C, tap=tap, wait=True, group=tg)
+        elif tensor == "A":
+            A_hs[col].fill(A, tap=tap, group=tg)
+        else:
+            B_hs[col].fill(B, tap=tap, group=tg)
+    return tg
+
+
+def _transfer_groups(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj):
+    """Return the runtime sequence's shim transfers, one list per time-block half."""
+    grids = tile_grids(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj)
+    n_row_tiles = M // m // 4
+    return [
+        step_transfers(
+            grids,
+            step,
+            min(grids.rows_per_step, n_row_tiles - step * grids.rows_per_step),
+            n_aie_cols,
+        )
+        for step in range(iron.ceildiv(n_row_tiles, grids.rows_per_step))
+    ]
+
+
+def fifos(m, k, n, n_aie_cols, dtype_in, dtype_out, dims):
+    """Build the shim -> memtile -> core fifos.
+
+    Returns the A and B fifos the runtime fills, the C fifos it drains, and
+    the core-facing A (per row), B (per column) and C (``[row][col]``) fifos.
+    """
+    n_aie_rows = 4
+    fifo_depth = 2
+    n_shim_mem_A = min(n_aie_rows, n_aie_cols)
+    n_A_tiles_per_shim = max(1, n_aie_rows // n_aie_cols)
+
+    A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
+    B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
+    C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
+    A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
+    B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
+    C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
+
+    A_l3l2_fifos: list[ObjectFifo] = []
+    A_l2l1_fifos: list[ObjectFifo] = []
+    B_l3l2_fifos: list[ObjectFifo] = []
+    B_l2l1_fifos: list[ObjectFifo] = []
+    C_l1l2_fifos: list[list[ObjectFifo]] = [[] for _ in range(n_aie_rows)]
+    C_l2l3_fifos: list[ObjectFifo] = []
+
+    for i in range(n_shim_mem_A):
+        a_l3l2 = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
+        A_l3l2_fifos.append(a_l3l2)
+        start_row = i * n_A_tiles_per_shim
+        stop_row = start_row + n_A_tiles_per_shim
+        A_l2l1_fifos.extend(
+            a_l3l2.cons().split(
+                [m * k * j for j in range(stop_row - start_row)],
+                obj_types=[A_l1_ty] * (stop_row - start_row),
+                names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
+                to_stream=[dims.A or []] * (stop_row - start_row),
+            )
         )
 
-    groups = []
-    c_index = 0
-    for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
-        for pingpong in [0, 1]:
-            if c_index >= len(C_tiles):
-                break
-            row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
-            current_tb_n_rows = min(
-                [tb_max_n_rows // 2, M // m // n_aie_rows - row_base]
+    for col in range(n_aie_cols):
+        b_l3l2 = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
+        B_l3l2_fifos.append(b_l3l2)
+        B_l2l1_fifos.append(
+            b_l3l2.cons().forward(
+                obj_type=B_l1_ty, name=f"B_L2L1_{col}", to_stream=dims.B
             )
-            transfers = []
-            for col in range(n_aie_cols):
-                transfers.append(("C", col, C_tiles[c_index]))
-                c_index += 1
-                for tile_row in range(current_tb_n_rows):
-                    tile_offset = ((row_base + tile_row) * n_shim_mem_A + col) % len(
-                        A_tiles
-                    )
-                    if col < n_aie_rows:
-                        transfers.append(("A", col, A_tiles[tile_offset]))
-                    transfers.append(("B", col, B_tiles[col]))
-            groups.append(transfers)
-    return groups
+        )
+        c_l2l3 = ObjectFifo(
+            C_l2_ty, name=f"C_L2L3_{col}", depth=fifo_depth, to_stream=dims.C
+        )
+        C_l2l3_fifos.append(c_l2l3)
+        c_tmp_fifos = c_l2l3.prod().join(
+            [m * n * i for i in range(n_aie_rows)],
+            obj_types=[C_l1_ty] * n_aie_rows,
+            names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
+            depths=[fifo_depth] * n_aie_rows,
+        )
+        for j in range(n_aie_rows):
+            C_l1l2_fifos[j].append(c_tmp_fifos[j])
+
+    return (
+        A_l3l2_fifos,
+        B_l3l2_fifos,
+        C_l2l3_fifos,
+        A_l2l1_fifos,
+        B_l2l1_fifos,
+        C_l1l2_fifos,
+    )
 
 
 def _build_design(
@@ -187,76 +297,19 @@ def _build_design(
     assert k % s == 0
     assert n % t == 0
 
-    fifo_depth = 2
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
-
-    if n_aie_cols > n_aie_rows:
-        n_shim_mem_A = n_aie_rows
-    else:
-        n_shim_mem_A = n_aie_cols
-
-    n_A_tiles_per_shim = n_aie_rows // n_aie_cols if n_aie_cols < 4 else 1
 
     A_ty = np.ndarray[(M * K,), np.dtype[dtype_in]]
     B_ty = np.ndarray[(K * N,), np.dtype[dtype_in]]
     C_ty = np.ndarray[(M * N,), np.dtype[dtype_out]]
-    A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
-    B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
-    C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
-    A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
-    B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
-    C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
-
-    A_l3l2_fifos: list[ObjectFifo] = []
-    A_l2l1_fifos: list[ObjectFifo] = []
-    B_l3l2_fifos: list[ObjectFifo] = []
-    B_l2l1_fifos: list[ObjectFifo] = []
-    C_l1l2_fifos: list[list[ObjectFifo]] = [[] for _ in range(n_aie_rows)]
-    C_l2l3_fifos: list[ObjectFifo] = []
-
-    for i in range(n_shim_mem_A):
-        a_l3l2 = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
-        A_l3l2_fifos.append(a_l3l2)
-        start_row = i * n_A_tiles_per_shim
-        stop_row = start_row + n_A_tiles_per_shim
-        of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        a_dims: list[StreamDims] = [dims.A or []] * (stop_row - start_row)
-        a_tmp_fifos = a_l3l2.cons().split(
-            of_offsets,
-            obj_types=[A_l1_ty] * (stop_row - start_row),
-            names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-            to_stream=a_dims,
-        )
-        A_l2l1_fifos.extend(a_tmp_fifos)
-
-    for col in range(n_aie_cols):
-        b_l3l2 = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
-        B_l3l2_fifos.append(b_l3l2)
-        B_l2l1_fifos.append(
-            b_l3l2.cons().forward(
-                obj_type=B_l1_ty,
-                name=f"B_L2L1_{col}",
-                to_stream=dims.B,
-            )
-        )
-
-        c_l2l3 = ObjectFifo(
-            C_l2_ty,
-            name=f"C_L2L3_{col}",
-            depth=fifo_depth,
-            to_stream=dims.C,
-        )
-        C_l2l3_fifos.append(c_l2l3)
-        of_offsets = [m * n * i for i in range(n_aie_rows)]
-
-        c_tmp_fifos = c_l2l3.prod().join(
-            of_offsets,
-            obj_types=[C_l1_ty] * n_aie_rows,
-            names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
-            depths=[fifo_depth] * n_aie_rows,
-        )
-        for j in range(n_aie_rows):
-            C_l1l2_fifos[j].append(c_tmp_fifos[j])
+    (
+        A_l3l2_fifos,
+        B_l3l2_fifos,
+        C_l2l3_fifos,
+        A_l2l1_fifos,
+        B_l2l1_fifos,
+        C_l1l2_fifos,
+    ) = fifos(m, k, n, n_aie_cols, dtype_in, dtype_out, dims)
 
     def core_fn(in_a, in_b, out_c, zero, matmul):
         loop = range(1)  # Workaround for issue #1547
@@ -302,14 +355,7 @@ def _build_design(
         # group that is finished only after the next half's are issued.
         prev = None
         for transfers in groups:
-            tg = TaskGroup()
-            for tensor, col, tap in transfers:
-                if tensor == "C":
-                    C_hs[col].drain(C, tap=tap, wait=True, group=tg)
-                elif tensor == "A":
-                    A_hs[col].fill(A, tap=tap, group=tg)
-                else:
-                    B_hs[col].fill(B, tap=tap, group=tg)
+            tg = issue(transfers, A, B, C, A_hs, B_hs, C_hs)
             if prev is not None:
                 prev.finish()
             prev = tg

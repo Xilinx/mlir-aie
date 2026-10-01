@@ -40,18 +40,15 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorAccessPattern
 from aie.helpers.taplib.symbolic import require
 from aie.iron import (
     Buffer,
     CompileTime,
     DispatchTime,
     In,
-    ObjectFifo,
     Out,
     Program,
     Runtime,
-    TaskGroup,
     Worker,
     WorkerRuntimeBarrier,
     kernels,
@@ -62,7 +59,7 @@ from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_close_with_benchmark
-from whole_array import _device_for
+from whole_array import _device_for, fifos, issue, step_transfers, tile_grids
 
 
 @iron.jit
@@ -116,62 +113,18 @@ def whole_array_dyn(
         if not 0 < size < 2**31:
             raise ValueError(f"{name}_elements={size} must be in [1, 2**31)")
 
-    fifo_depth = 2
-    n_shim_mem_A = n_aie_rows if n_aie_cols > n_aie_rows else n_aie_cols
-    n_A_tiles_per_shim = n_aie_rows // n_aie_cols if n_aie_cols < 4 else 1
-
     A_ty = np.ndarray[(A_elements,), np.dtype[dtype_in]]
     B_ty = np.ndarray[(B_elements,), np.dtype[dtype_in]]
     C_ty = np.ndarray[(C_elements,), np.dtype[dtype_out]]
-    A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
-    B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
-    C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
-    A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
-    B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
-    C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
     rtp_ty = np.ndarray[(2,), np.dtype[np.int32]]
-
-    A_l3l2_fifos: list[ObjectFifo] = []
-    A_l2l1_fifos: list[ObjectFifo] = []
-    B_l3l2_fifos: list[ObjectFifo] = []
-    B_l2l1_fifos: list[ObjectFifo] = []
-    C_l1l2_fifos: list[list[ObjectFifo]] = [[] for _ in range(n_aie_rows)]
-    C_l2l3_fifos: list[ObjectFifo] = []
-
-    for i in range(n_shim_mem_A):
-        a_l3l2 = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
-        A_l3l2_fifos.append(a_l3l2)
-        start_row = i * n_A_tiles_per_shim
-        stop_row = start_row + n_A_tiles_per_shim
-        A_l2l1_fifos.extend(
-            a_l3l2.cons().split(
-                [m * k * j for j in range(stop_row - start_row)],
-                obj_types=[A_l1_ty] * (stop_row - start_row),
-                names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-                to_stream=[dims.A or []] * (stop_row - start_row),
-            )
-        )
-
-    for col in range(n_aie_cols):
-        b_l3l2 = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
-        B_l3l2_fifos.append(b_l3l2)
-        B_l2l1_fifos.append(
-            b_l3l2.cons().forward(
-                obj_type=B_l1_ty, name=f"B_L2L1_{col}", to_stream=dims.B
-            )
-        )
-        c_l2l3 = ObjectFifo(
-            C_l2_ty, name=f"C_L2L3_{col}", depth=fifo_depth, to_stream=dims.C
-        )
-        C_l2l3_fifos.append(c_l2l3)
-        c_tmp_fifos = c_l2l3.prod().join(
-            [m * n * i for i in range(n_aie_rows)],
-            obj_types=[C_l1_ty] * n_aie_rows,
-            names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
-            depths=[fifo_depth] * n_aie_rows,
-        )
-        for j in range(n_aie_rows):
-            C_l1l2_fifos[j].append(c_tmp_fifos[j])
+    (
+        A_l3l2_fifos,
+        B_l3l2_fifos,
+        C_l2l3_fifos,
+        A_l2l1_fifos,
+        B_l2l1_fifos,
+        C_l1l2_fifos,
+    ) = fifos(m, k, n, n_aie_cols, dtype_in, dtype_out, dims)
 
     # Each worker's trip counts arrive as runtime parameters: rtp[0] = K // k,
     # rtp[1] = output tiles per core. The sequence writes them, then releases
@@ -224,9 +177,6 @@ def whole_array_dyn(
     )
     flat_workers = [w for row in workers for w in row]
 
-    tb_max_n_rows = 4 if not c_col_maj else 2
-    tb_n_rows = tb_max_n_rows // 2
-
     A_prods = [f.prod() for f in A_l3l2_fifos]
     B_prods = [f.prod() for f in B_l3l2_fifos]
     C_conses = [f.cons() for f in C_l2l3_fifos]
@@ -253,69 +203,17 @@ def whole_array_dyn(
                 rtps[row][col][1] = n_tiles_per_core
                 barriers[row][col].set(1)
 
-        # The same tilers as whole_array.py, on the live shape. Every grid
-        # size, stride and index below is staged arithmetic on M, K, N.
-        A_tiles = (
-            TensorAccessPattern.full((M, K))
-            .tile((m * n_A_tiles_per_shim, k))
-            .group((1, K // k))
-            .repeat(N // n // n_aie_cols)
-        )
-        if b_col_maj:
-            B_tiles = (
-                TensorAccessPattern.full((N, K))
-                .tile((n, k))
-                .group((N // n // n_aie_cols, K // k), steps=(n_aie_cols, 1))
-            )
-        else:
-            B_tiles = (
-                TensorAccessPattern.full((K, N))
-                .tile((k, n))
-                .group(
-                    (K // k, N // n // n_aie_cols),
-                    steps=(1, n_aie_cols),
-                    order="col",
-                )
-            )
-        if c_col_maj:
-            C_tiles = (
-                TensorAccessPattern.full((N, M))
-                .tile((n, m))
-                .order("col")
-                .group((N // n // n_aie_cols, n_aie_rows), steps=(n_aie_cols, 1))
-            )
-        else:
-            # partial: the last group may hold fewer than tb_n_rows row blocks.
-            C_tiles = (
-                TensorAccessPattern.full((M, N))
-                .tile((m * n_aie_rows, n))
-                .group(
-                    (tb_n_rows, N // n // n_aie_cols),
-                    steps=(1, n_aie_cols),
-                    partial=True,
-                )
-            )
-
+        # The same tile grids as whole_array.py, on the live shape. Every
+        # grid size, stride and index is staged arithmetic on M, K, N.
+        grids = tile_grids(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj)
+        tb_n_rows = grids.rows_per_step
         n_row_tiles = M // m // n_aie_rows
         n_full_steps = n_row_tiles // tb_n_rows
         n_ragged_rows = n_row_tiles % tb_n_rows
 
         def issue_step(step, n_rows):
-            """Issue one time block half: n_rows (static) row blocks per column."""
-            tg = TaskGroup()
-            row_base = step * tb_n_rows
-            for col in range(n_aie_cols):
-                C_hs[col].drain(
-                    C, tap=C_tiles[step * n_aie_cols + col], wait=True, group=tg
-                )
-                for tile_row in range(n_rows):
-                    tile_offset = (
-                        (row_base + tile_row) * n_shim_mem_A + col
-                    ) % A_tiles.num_steps
-                    if col < n_aie_rows:
-                        A_hs[col].fill(A, tap=A_tiles[tile_offset], group=tg)
-                    B_hs[col].fill(B, tap=B_tiles[col], group=tg)
-            return tg
+            transfers = step_transfers(grids, step, n_rows, n_aie_cols)
+            return issue(transfers, A, B, C, A_hs, B_hs, C_hs)
 
         # Two time-block halves in flight, as in whole_array.py: a step's group
         # is finished only after the next step's is issued. The in-flight group

@@ -21,7 +21,7 @@ At a high level, the code does the following (in order):
 
 1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) A `sequence()` function handed to `Runtime(...)` sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation, via `handle.fill()` / `handle.drain()` calls that consume `TileGrid`-generated access patterns.
 
-1. **Generating the Design:** The `_build_design()` function constructs the IRON design and resolves it to an MLIR module. The `@iron.jit`-decorated `whole_array()` is the single entry point for compilation; `main()` either compiles + runs on hardware or compiles ahead-of-time to caller-specified xclbin/insts paths (used by the Makefile so `test.cpp` + `sweep.sh` can drive the design).  `_transfer_groups()` lists every shim transfer the runtime sequence issues; the sequence replays it, and `generate_taps()` returns its access patterns, without building the design, for the visualization notebook.
+1. **Generating the Design:** The `_build_design()` function constructs the IRON design and resolves it to an MLIR module. The `@iron.jit`-decorated `whole_array()` is the single entry point for compilation; `main()` either compiles + runs on hardware or compiles ahead-of-time to caller-specified xclbin/insts paths (used by the Makefile so `test.cpp` + `sweep.sh` can drive the design).  `tile_grids()`, `step_transfers()` and `issue()` build the access patterns, list each step's shim transfers and issue them; `whole_array_dyn.py` reuses all three. `_transfer_groups()` lists every transfer for a static shape: the sequence replays it, and `generate_taps()` returns its access patterns, without building the design, for the visualization notebook.
 
 In summary, this design leverages an AI Engine accelerator to accomplish matrix multiplication efficiently by breaking large matrices into smaller, manageable submatrices. The design uses parallelism, pipelining, and efficient data movement strategies to minimize computation time on the AI Engine array.
 
@@ -106,7 +106,7 @@ The 4 × `n_aie_cols` `workers` list is the design's "tile grid"; each `Worker` 
 
 We use `ObjectFifo`s to abstractly describe the data movement and synchronization between AIE Compute, Memory and Shim tiles. An `ObjectFifo` presents a First-In-First-Out interface; under the hood it takes care of DMA configuration, lock acquisition / release, and double-buffering.
 
-The design names FIFOs after the level-of-hierarchy hop they implement (L3 = host DDR / shim, L2 = memtile, L1 = compute tile):
+`fifos()` builds them, and names each FIFO after the level-of-hierarchy hop it implements (L3 = host DDR / shim, L2 = memtile, L1 = compute tile):
 
 1. **Host → Memory tiles (L3 → L2):** `A_l3l2_fifos[i]` / `B_l3l2_fifos[col]` move the input matrices from the host through the shim tiles into the memtiles.
 
@@ -231,7 +231,7 @@ Both `zero_kernel` and `matmul_kernel` come from the library — `kernels.mm(dim
 
 `Runtime(sequence, [A_ty, B_ty, C_ty, ...])` wires a host-side `sequence` function whose parameters (`A`, `B`, `C`) stand in for the three external buffers on the AIE's shim tiles, followed by the ObjectFifo handles passed as the trailing entries.  Inside the body, `handle.fill(buffer, tap=tap)` on a producer handle and `handle.drain(buffer, tap=tap)` on a consumer handle describe the per-shim DMA transfers — `tap` is a `TensorAccessPattern` that encodes the wraps/strides for tiling `M`&times;`K`, `K`&times;`N`, and `M`&times;`N` into the sub-matrices the in-array FIFOs expect.
 
-`_transfer_groups()` builds the TAPs as `TileGrid`s from `TensorAccessPattern.full` (`grid[i]` is the i-th tile's `TensorAccessPattern`):
+`tile_grids()` builds the TAPs as `TileGrid`s from `TensorAccessPattern.full` (`grid[i]` is the i-th tile's `TensorAccessPattern`):
 
 ```python
 A_tiles = (
@@ -248,43 +248,31 @@ B_tiles = (
 C_tiles = (
     TensorAccessPattern.full((M, N))
     .tile((m * n_aie_rows, n))
-    .group((tb_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols))
+    .group((rows_per_step, N // n // n_aie_cols), steps=(1, n_aie_cols), partial=True)
 )
 ```
 
 (The two `b_col_maj=1` / `c_col_maj=1` branches build slightly different `.tile().group()` chains that emit the col-major DMA pattern.)
 
-It then walks the tile-row blocks in ping-pong halves and lists each half's transfers as `(tensor, col, tap)`:
+The sequence walks the tile-row blocks in ping-pong halves ("steps"). `step_transfers()` lists one step's transfers as `(tensor, col, tap)`:
 
 ```python
-for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
-    for pingpong in [0, 1]:
-        transfers = []
-        for col in range(n_aie_cols):
-            transfers.append(("C", col, C_tiles[c_index]))
-            c_index += 1
-            for tile_row in range(current_tb_n_rows):
-                # interleave A and B fills with the C drain
-                if col < n_aie_rows:
-                    transfers.append(("A", col, A_tiles[…]))
-                transfers.append(("B", col, B_tiles[col]))
-        groups.append(transfers)
+for col in range(n_aie_cols):
+    transfers.append(("C", col, grids.C[step * n_aie_cols + col]))
+    for tile_row in range(n_rows):
+        # interleave A and B fills with the C drain
+        if col < n_aie_rows:
+            transfers.append(("A", col, grids.A[…]))
+        transfers.append(("B", col, grids.B[col]))
 ```
 
-The runtime body — a plain `sequence(A, B, C, A_hs, B_hs, C_hs)` function that receives the three host buffers plus the shim ObjectFifo handles — issues each half as one `TaskGroup` and finishes it only after the next half is issued:
+The runtime body — a plain `sequence(A, B, C, A_hs, B_hs, C_hs)` function that receives the three host buffers plus the shim ObjectFifo handles — issues each step as one `TaskGroup` (`issue()`) and finishes it only after the next step is issued:
 
 ```python
 def sequence(A, B, C, A_hs, B_hs, C_hs):
     prev = None
     for transfers in groups:
-        tg = TaskGroup()
-        for tensor, col, tap in transfers:
-            if tensor == "C":
-                C_hs[col].drain(C, tap=tap, wait=True, group=tg)
-            elif tensor == "A":
-                A_hs[col].fill(A, tap=tap, group=tg)
-            else:
-                B_hs[col].fill(B, tap=tap, group=tg)
+        tg = issue(transfers, A, B, C, A_hs, B_hs, C_hs)
         if prev is not None:
             prev.finish()    # awaits the previous half's BDs
         prev = tg
@@ -299,7 +287,7 @@ rt = Runtime(
 
 The two-phase `TaskGroup` open/finish dance is the IRON equivalent of the old "ping/pong" buffer-descriptor split: while half the shim DMA BDs are still running, the other half are being reconfigured for the next set of tiles.  This overlap is what keeps the array fed.  The handles in `A_hs` / `B_hs` / `C_hs` are the `.prod()` / `.cons()` endpoints passed as trailing entries in the `Runtime`'s arg list; the shim tile each uses is chosen by the compiler.
 
-`tb_max_n_rows` controls how many tile-rows live in one ping-pong half; `tb_n_rows = tb_max_n_rows // 2` is the number of A row-blocks per half.  Setting either parameter too low starves the cores; too high overflows the shim DMA BD pool.
+`rows_per_step` is the number of A row-blocks per ping-pong half.  Setting it too low starves the cores; too high overflows the shim DMA BD pool.
 
 ## Compute Microkernels
 
@@ -343,8 +331,9 @@ Any shape whose matrices fit the buffers (packed row-major at the front)
 runs; a larger one is refused with `A (M x K) does not fit A_elements` and
 the like.
 
-The tiling is the same taplib algebra as the static design, evaluated inside
-the runtime sequence on the staged shape: taps become arithmetic on `M`,
+The tiling is the static design's own `tile_grids()`, `step_transfers()` and
+`issue()`, evaluated inside the runtime sequence on the staged shape: taps
+become arithmetic on `M`,
 `K`, `N`; the time-block loop stays rolled (`range_`); the ragged last row
 block is a peeled `if_`; the shape asserts become `require` guards that
 refuse an illegal dispatch before anything reaches the NPU. Each core's trip

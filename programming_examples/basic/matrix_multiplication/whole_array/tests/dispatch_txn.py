@@ -47,8 +47,9 @@ for M, K, N in (
     static = whole_array_dyn.specialize(M=M, K=K, N=N, **CAPACITY, **TILE)
     diffs = compare(words, static.instructions(), names=("dynamic", "static"))
     line = f"M={M} K={K} N={N}: {len(pushes(words))} pushes, matches static specialization={not diffs}"
-    # whole_array.py needs an even number of row blocks; where it can compile,
-    # the dynamic design must produce exactly its DMA events, waits included.
+    # whole_array.py issues a ragged last row block before finishing the step
+    # ahead of it; the dynamic design finishes that step first. Elsewhere it
+    # must produce exactly whole_array.py's DMA events, waits included.
     if (M // m // 4) % 2 == 0:
         original = whole_array.specialize(M=M, K=K, N=N, **TILE).instructions()
         line += f", same events as whole_array.py={not compare(words, original)}"
