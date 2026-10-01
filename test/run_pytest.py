@@ -53,8 +53,7 @@ def test_npu_pytest_arguments(monkeypatch, environment):
 def test_crashed_item_is_rerun(tmp_path):
     attempts = tmp_path / "attempts"
     test_file = tmp_path / "test_crash.py"
-    test_file.write_text(
-        """
+    test_file.write_text("""
 import os
 from pathlib import Path
 
@@ -65,8 +64,7 @@ def test_crash_once():
     attempts.write_text(str(count + 1))
     if count == 0:
         os._exit(3)
-"""
-    )
+""")
     environment = os.environ.copy()
     environment["ATTEMPTS_FILE"] = str(attempts)
     environment["MLIR_AIE_NPU_TEST"] = "1"
