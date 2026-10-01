@@ -1725,6 +1725,7 @@ class WaitGraph:
             a = d.allocs.get(sym)
             return None if a is None else (*a["tile"], a["dir"], a["ch"])
 
+        num_stream_agents = len(self.agents)
         for events in d.sequences:
             waited = []
 
@@ -1787,6 +1788,13 @@ class WaitGraph:
                         for w in waited:
                             if w != agent:
                                 self.add_edge(agent, w, self.HOST)
+                    # An issue on a channel the model cannot see may start any.
+                    if not keys:
+                        for a in range(num_stream_agents):
+                            if not self.agents[a][2]:
+                                for w in waited:
+                                    if w != a:
+                                        self.add_edge(a, w, self.HOST)
                 elif ev[0] in (
                     "wait",
                     "await",
@@ -1799,11 +1807,20 @@ class WaitGraph:
                         agent = agent_of(key)
                         if agent not in waited:
                             waited.append(agent)
+        # The host drives a shim channel nothing programs, and may wait on any
+        # other shim tile first.
+        self.on_shim = [
+            not is_core and d.target.kind((c, r)) == "shim"
+            for c, r, is_core, _, _ in self.agents
+        ]
         for a in range(len(self.agents)):
             if a in self.modeled or not waits_on_locks(a):
                 continue
             for b in range(len(self.agents)):
-                if b != a and self.agents[b][:2] == self.agents[a][:2]:
+                if b != a and (
+                    self.agents[b][:2] == self.agents[a][:2]
+                    or (self.on_shim[a] and self.on_shim[b])
+                ):
                     self.add_edge(a, b, self.LOCK)
 
     def _key(self, tile, is_core, dr, ch):
@@ -1957,7 +1974,8 @@ class Analysis:
             if a not in self.graph.modeled and a not in waiters[:i]:
                 out.append(
                     f"Nothing in the design programs {self.graph.describe(a)}, so it "
-                    "is assumed to wait on anything on its tile."
+                    "is assumed to wait on anything on its tile"
+                    + (" or on another shim tile." if self.graph.on_shim[a] else ".")
                 )
         return out
 
