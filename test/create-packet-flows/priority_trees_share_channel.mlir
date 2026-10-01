@@ -40,7 +40,7 @@ module {
     }
     aie.packet_flow(3) { aie.packet_source<%t_1_1, DMA : 1> aie.packet_dest<%t_0_2, Core : 0> }
     aie.packet_flow(29) { aie.packet_source<%t_0_1, DMA : 5> aie.packet_dest<%t_1_3, Core : 0> } {priority_route = true}
-    aie.packet_flow(30) { aie.packet_source<%t_0_1, DMA : 5> aie.packet_dest<%t_0_2, Core : 0> }
+    aie.packet_flow(30) { aie.packet_source<%t_0_1, DMA : 5> aie.packet_dest<%t_0_2, Core : 0> } {priority_route = true}
     aie.packet_flow(12) { aie.packet_source<%t_0_1, DMA : 0> aie.packet_dest<%t_0_2, Core : 0> } {priority_route = true}
   }
 }

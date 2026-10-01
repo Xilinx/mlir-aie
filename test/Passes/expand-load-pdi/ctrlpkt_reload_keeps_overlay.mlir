@@ -1,0 +1,220 @@
+//===- ctrlpkt_reload_keeps_overlay.mlir -----------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-expand-load-pdi %s
+
+// A control-packet reload skips the ops marked is_ctrl_pkt_overlay and writes
+// the rest over the overlay's routes, so the design must leave those routes
+// exactly as the overlay sets them.
+
+module {
+  aie.device(npu1_1col) @ctrl_pkt_overlay {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+    }
+  }
+  aie.device(npu1_1col) @design {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      %b = aie.amsel<0> (0)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.masterset(DMA : 0, %b)
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 5) {
+        aie.rule(31, 2, %a)
+        aie.rule(31, 3, %b)
+      }
+    }
+  }
+  aie.device(npu1_1col) @main {
+    aie.runtime_sequence(%arg0: memref<1xi32>) {
+      aiex.npu.load_pdi {device_ref = @design, expand_mode = 2 : i32}
+    }
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu1_1col) @ctrl_pkt_overlay {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+    }
+  }
+  aie.device(npu1_1col) @design {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      %b = aie.amsel<5> (2)
+      // expected-error@+1 {{a control-packet reload skips this op, but @ctrl_pkt_overlay sets tile (0, 2) master TileControl : 0 differently}}
+      aie.masterset(TileControl : 0, %a, %b) {is_ctrl_pkt_overlay}
+      aie.masterset(DMA : 0, %b)
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 5) {
+        aie.rule(31, 2, %b)
+      }
+    }
+  }
+  aie.device(npu1_1col) @main {
+    aie.runtime_sequence(%arg0: memref<1xi32>) {
+      aiex.npu.load_pdi {device_ref = @design, expand_mode = 2 : i32}
+    }
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu1_1col) @ctrl_pkt_overlay {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+    }
+  }
+  aie.device(npu1_1col) @design {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      %b = aie.amsel<0> (0)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.masterset(DMA : 0, %b)
+      // expected-error@+1 {{a control-packet reload rewrites tile (0, 2) slave South : 1, which the control packets of @ctrl_pkt_overlay route through}}
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 2, %b)
+        aie.rule(31, 1, %a)
+      }
+    }
+  }
+  aie.device(npu1_1col) @main {
+    aie.runtime_sequence(%arg0: memref<1xi32>) {
+      aiex.npu.load_pdi {device_ref = @design, expand_mode = 2 : i32}
+    }
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu1_1col) @ctrl_pkt_overlay {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+    }
+  }
+  aie.device(npu1_1col) @design {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+      // expected-error@+1 {{a control-packet reload skips this op, but @ctrl_pkt_overlay does not set tile (0, 2) slave South : 5}}
+      aie.packet_rules(South : 5) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+    }
+  }
+  aie.device(npu1_1col) @main {
+    aie.runtime_sequence(%arg0: memref<1xi32>) {
+      aiex.npu.load_pdi {device_ref = @design, expand_mode = 2 : i32}
+    }
+  }
+}
+
+// -----
+
+// The overlay's rules take the first slots of a port the design shares, so
+// the reload writes only the slots after them.
+
+module {
+  aie.device(npu1_1col) @ctrl_pkt_overlay {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+    }
+  }
+  aie.device(npu1_1col) @design {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      %b = aie.amsel<0> (0)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.masterset(DMA : 0, %b)
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a) {is_ctrl_pkt_overlay}
+        aie.rule(31, 2, %b)
+      }
+    }
+  }
+  aie.device(npu1_1col) @main {
+    aie.runtime_sequence(%arg0: memref<1xi32>) {
+      aiex.npu.load_pdi {device_ref = @design, expand_mode = 2 : i32}
+    }
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu1_1col) @ctrl_pkt_overlay {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 1, %a)
+      } {is_ctrl_pkt_overlay}
+    }
+  }
+  aie.device(npu1_1col) @design {
+    %t = aie.tile(0, 2)
+    aie.switchbox(%t) {
+      %a = aie.amsel<5> (3)
+      %b = aie.amsel<0> (0)
+      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.masterset(DMA : 0, %b)
+      aie.packet_rules(South : 1) {
+        // expected-error@+1 {{a control-packet reload rewrites tile (0, 2) slave South : 1 slot 0, which the control packets of @ctrl_pkt_overlay route through}}
+        aie.rule(31, 2, %b)
+        aie.rule(31, 1, %a) {is_ctrl_pkt_overlay}
+      }
+    }
+  }
+  aie.device(npu1_1col) @main {
+    aie.runtime_sequence(%arg0: memref<1xi32>) {
+      aiex.npu.load_pdi {device_ref = @design, expand_mode = 2 : i32}
+    }
+  }
+}

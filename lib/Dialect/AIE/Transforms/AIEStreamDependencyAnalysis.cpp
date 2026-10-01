@@ -1704,7 +1704,8 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) const {
         continue;
       std::optional<SmallVector<const Edge *>> first;
       SmallVector<Constraints> pending{{}};
-      for (int search = 0; !pending.empty(); search++) {
+      int search = 0;
+      for (; !pending.empty(); search++) {
         if (search == maxWalkSearches) {
           LLVM_DEBUG(llvm::dbgs() << "Hold cycle search gave up after "
                                   << search << " walks\n");
@@ -1739,6 +1740,8 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) const {
         pending.push_back(std::move(exclude));
         pending.push_back(std::move(fix));
       }
+      LLVM_DEBUG(llvm::dbgs() << "Hold cycle search closed no walk after "
+                              << search << " walks\n");
     }
   return std::nullopt;
 }

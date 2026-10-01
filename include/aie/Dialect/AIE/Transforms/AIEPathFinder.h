@@ -296,8 +296,8 @@ struct PacketConstraints {
   /// Packet flows that conflict are steered off each other's master ports; see
   /// edgeWeight.
   PacketConflict conflict;
-  /// Packet flows from these sources take these trees instead of being
-  /// routed.
+  /// The prioritized packet flows from these sources take these trees
+  /// instead of being routed.
   PacketTrees pinned;
 };
 
@@ -402,6 +402,8 @@ private:
   // The packet ids each source sends each destination.
   std::map<std::pair<PathEndPoint, PathEndPoint>, llvm::SmallVector<int, 2>>
       packetIdsTo;
+  // The packet ids each source sends in prioritized flows.
+  std::map<PathEndPoint, std::set<int>> priorityIds;
   // Where each source's flow to each destination was declared.
   std::map<std::pair<PathEndPoint, PathEndPoint>, mlir::Location> flowLocs;
   std::optional<mlir::Location> flowLoc(const PathEndPoint &src,

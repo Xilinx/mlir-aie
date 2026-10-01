@@ -8,11 +8,11 @@
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 // RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s | FileCheck %s
 
-// Prioritized flow 16 from (9,8) Core:1 leaves (9,8) with flow 12 on arbiter 5
-// and comes back into (9,8) Core:0 with flow 2 on arbiter 4. Each visit takes
-// its own arbiter, so flows 2 and 12 share none, and the design routes. Taking
-// the two visits as one put them on one arbiter and rejected it. Reduced from
-// router_properties.py xcvc1902 seed 48.
+// Prioritized flow 16 from (9,8) Core:1 leaves (9,8) with prioritized flow 12
+// on arbiter 5 and comes back into (9,8) Core:0 with flow 2 on arbiter 4. Each
+// visit takes its own arbiter, so flows 2 and 12 share none, and the design
+// routes. Taking the two visits as one put them on one arbiter and rejected
+// it. Reduced from router_properties.py xcvc1902 seed 48.
 
 // CHECK-LABEL: %switchbox_9_8 = aie.switchbox(%tile_9_8) {
 // CHECK-DAG:     %[[A5_2:.*]] = aie.amsel<5> (2)
@@ -49,7 +49,7 @@ module {
     }
     aie.flow(%t_8_7, DMA : 1, %t_9_3, Core : 0)
     aie.packet_flow(2) { aie.packet_source<%t_8_5, DMA : 0> aie.packet_source<%t_8_4, Core : 0> aie.packet_dest<%t_9_3, Core : 1> aie.packet_dest<%t_9_6, Core : 1> aie.packet_dest<%t_9_8, Core : 0> } {priority_route = true}
-    aie.packet_flow(12) { aie.packet_source<%t_9_8, Core : 1> aie.packet_dest<%t_8_7, Core : 0> } {keep_pkt_header = true}
+    aie.packet_flow(12) { aie.packet_source<%t_9_8, Core : 1> aie.packet_dest<%t_8_7, Core : 0> } {keep_pkt_header = true, priority_route = true}
     aie.packet_flow(16) { aie.packet_source<%t_9_8, Core : 1> aie.packet_source<%t_9_3, Core : 1> aie.packet_dest<%t_8_7, Core : 0> aie.packet_dest<%t_8_8, Core : 0> aie.packet_dest<%t_9_8, Core : 0> } {priority_route = true}
   }
 }

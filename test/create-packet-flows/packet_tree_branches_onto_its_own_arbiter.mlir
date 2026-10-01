@@ -28,7 +28,7 @@ module {
     %t_0_5 = aie.tile(0, 5)
     %t_3_5 = aie.tile(3, 5)
     aie.packet_flow(28) { aie.packet_source<%t_0_4, DMA : 0> aie.packet_source<%t_3_5, Core : 0> aie.packet_dest<%t_0_1, DMA : 2> aie.packet_dest<%t_0_1, DMA : 4> }
-    aie.packet_flow(1) { aie.packet_source<%t_0_4, DMA : 0> aie.packet_source<%t_0_2, DMA : 0> aie.packet_dest<%t_0_0, DMA : 0> aie.packet_dest<%t_0_1, DMA : 2> } {priority_route = true}
+    aie.packet_flow(1) { aie.packet_source<%t_0_4, DMA : 0> aie.packet_source<%t_0_2, DMA : 0> aie.packet_dest<%t_0_0, DMA : 0> aie.packet_dest<%t_0_1, DMA : 2> }
     aie.packet_flow(23) { aie.packet_source<%t_0_4, DMA : 0> aie.packet_dest<%t_0_5, DMA : 0> }
   }
 }

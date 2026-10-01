@@ -18,7 +18,7 @@
 // CHECK:         %[[S01_2:.*]] = aie.amsel<3> (3)
 // CHECK:         %[[S01_3:.*]] = aie.amsel<4> (3)
 // CHECK:         %[[S01_4:.*]] = aie.amsel<5> (3)
-// CHECK:         %[[S01_5:.*]] = aie.masterset(DMA : 1, %[[S01_1]])
+// CHECK:         %[[S01_5:.*]] = aie.masterset(DMA : 1, %[[S01_4]]) {is_ctrl_pkt_overlay}
 // CHECK:         %[[S01_6:.*]] = aie.masterset(North : 0, %[[S01_2]]) {is_ctrl_pkt_overlay}
 // CHECK:         %[[S01_7:.*]] = aie.masterset(North : 1, %[[S01_1]], %[[S01_4]]) {is_ctrl_pkt_overlay}
 // CHECK:         %[[S01_8:.*]] = aie.masterset(North : 2, %[[S01_0]]) {is_ctrl_pkt_overlay}
@@ -27,10 +27,10 @@
 // CHECK:         aie.rule(31, 26, %[[S01_3]]) {priority_route}
 // CHECK:         } {is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : 1) {
-// CHECK:         aie.rule(31, 20, %[[S01_1]])
-// CHECK:         aie.rule(31, 0, %[[S01_4]])
-// CHECK:         aie.rule(31, 29, %[[S01_4]])
-// CHECK:         }
+// CHECK:         aie.rule(31, 20, %[[S01_4]])
+// CHECK:         aie.rule(31, 0, %[[S01_1]])
+// CHECK:         aie.rule(31, 29, %[[S01_1]])
+// CHECK:         } {is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : 0) {
 // CHECK:         aie.rule(31, 0, %[[S01_2]])
 // CHECK:         } {is_ctrl_pkt_overlay}
@@ -38,23 +38,23 @@
 // CHECK:         aie.rule(31, 0, %[[S01_0]])
 // CHECK:         } {is_ctrl_pkt_overlay}
 // CHECK-LABEL: aie.switchbox(%tile_0_2)
-// CHECK:         %[[S02_0:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[S02_0:.*]] = aie.amsel<4> (2)
 // CHECK:         %[[S02_1:.*]] = aie.amsel<5> (2)
 // CHECK:         %[[S02_2:.*]] = aie.amsel<3> (3)
 // CHECK:         %[[S02_3:.*]] = aie.amsel<4> (3)
 // CHECK:         %[[S02_4:.*]] = aie.amsel<5> (3)
-// CHECK:         %[[S02_5:.*]] = aie.masterset(Core : 0, %[[S02_0]])
+// CHECK:         %[[S02_5:.*]] = aie.masterset(Core : 0, %[[S02_3]]) {is_ctrl_pkt_overlay}
 // CHECK:         %[[S02_6:.*]] = aie.masterset(DMA : 0, %[[S02_1]], %[[S02_4]]) {is_ctrl_pkt_overlay}
 // CHECK:         %[[S02_7:.*]] = aie.masterset(North : 0, %[[S02_1]]) {is_ctrl_pkt_overlay}
 // CHECK:         %[[S02_8:.*]] = aie.masterset(North : 2, %[[S02_2]]) {is_ctrl_pkt_overlay}
-// CHECK:         %[[S02_9:.*]] = aie.masterset(North : 3, %[[S02_3]]) {is_ctrl_pkt_overlay}
+// CHECK:         %[[S02_9:.*]] = aie.masterset(North : 3, %[[S02_0]]) {is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : 4) {
 // CHECK:         aie.rule(31, 26, %[[S02_2]])
 // CHECK:         } {is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : 1) {
-// CHECK:         aie.rule(11, 0, %[[S02_3]])
-// CHECK:         aie.rule(31, 29, %[[S02_0]])
-// CHECK:         }
+// CHECK:         aie.rule(11, 0, %[[S02_0]])
+// CHECK:         aie.rule(31, 29, %[[S02_3]])
+// CHECK:         } {is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : 0) {
 // CHECK:         aie.rule(31, 0, %[[S02_1]])
 // CHECK:         } {is_ctrl_pkt_overlay}
@@ -146,8 +146,8 @@ module {
       aie.end
     }
     aie.packet_flow(0) { aie.packet_source<%t_0_0, DMA : 1> aie.packet_source<%t_0_0, DMA : 0> aie.packet_dest<%t_0_2, DMA : 0> aie.packet_dest<%t_0_5, DMA : 1> } {priority_route = true}
-    aie.packet_flow(29) { aie.packet_source<%t_0_0, DMA : 1> aie.packet_dest<%t_0_2, Core : 0> }
-    aie.packet_flow(20) { aie.packet_source<%t_0_0, DMA : 1> aie.packet_dest<%t_0_1, DMA : 1> aie.packet_dest<%t_0_3, DMA : 1> }
+    aie.packet_flow(29) { aie.packet_source<%t_0_0, DMA : 1> aie.packet_dest<%t_0_2, Core : 0> } {priority_route = true}
+    aie.packet_flow(20) { aie.packet_source<%t_0_0, DMA : 1> aie.packet_dest<%t_0_1, DMA : 1> aie.packet_dest<%t_0_3, DMA : 1> } {priority_route = true}
     aie.packet_flow(26) { aie.packet_source<%t_0_1, DMA : 1> aie.packet_dest<%t_0_3, DMA : 1> } {priority_route = true}
     aie.shim_dma_allocation @in0_0(%t_0_0, MM2S, 0, <pkt_id = 0, pkt_type = 0>)
     aie.shim_dma_allocation @in0_1(%t_0_0, MM2S, 1, <pkt_id = 29, pkt_type = 0>)

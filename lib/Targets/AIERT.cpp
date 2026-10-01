@@ -805,15 +805,27 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
       TxnLocBracket bracket(*this, packetRulesOp.getLoc());
       int slot = 0;
       Block &block = packetRulesOp.getRules().front();
+      // The overlay's rules take the first slots of a port they share with the
+      // design's rules, and the overlay already enabled the port.
+      bool overlayPort =
+          skipCtrlPktOverlay &&
+          llvm::any_of(block.getOps<PacketRuleOp>(), [](PacketRuleOp rule) {
+            return rule->hasAttr("is_ctrl_pkt_overlay");
+          });
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
+        if (skipCtrlPktOverlay && slotOp->hasAttr("is_ctrl_pkt_overlay")) {
+          slot++;
+          continue;
+        }
         AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
         int arbiter = amselOp.arbiterIndex();
         int msel = amselOp.getMselValue();
-        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortEnable,
-                                &aiert->devInst, tileLoc,
-                                WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
-                                    packetRulesOp.getSourceBundle()),
-                                packetRulesOp.sourceIndex());
+        if (!overlayPort)
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortEnable,
+                                  &aiert->devInst, tileLoc,
+                                  WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                      packetRulesOp.getSourceBundle()),
+                                  packetRulesOp.sourceIndex());
         auto packetInit = XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0);
         // TODO Need to better define packet id,type used here
         TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotEnable,
