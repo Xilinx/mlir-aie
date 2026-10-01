@@ -254,6 +254,14 @@ def _checked_cases(path):
     }, failed
 
 
+def _reason(report) -> str:
+    """The first line of a failed test's error, short enough for a table."""
+    crash = getattr(getattr(report, "longrepr", None), "reprcrash", None)
+    text = getattr(crash, "message", None) or str(report.longrepr or "")
+    line = text.strip().splitlines()[0] if text.strip() else ""
+    return line[:200]
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Write the performance rows once the NPU checks have passed.
 
@@ -295,6 +303,16 @@ def pytest_sessionfinish(session, exitstatus):
         meta["exitstatus"] = int(exitstatus)
         meta["n_rows"] = len(rows)
         meta["failed"] = failed
+        # Why each timing-run test failed, for the pull request report.
+        meta["reasons"] = {
+            r.nodeid: _reason(r)
+            for k in ("failed", "error")
+            for r in stats.get(k, [])
+        }
+        # How long each timed case ran in a row before its last check.
+        meta["runs_per_case"] = (
+            2 + config.getoption("--warmup") + config.getoption("--iters")
+        )
         Path(meta_path).write_text(json.dumps(meta, indent=1))
 
     sane = meta["measurement_sane"]

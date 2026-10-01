@@ -16,6 +16,10 @@ name: Nightly Kernel Checks on Ryzen AI
 # the turbo power mode: in any other mode the timing step fails
 # rather than chart numbers taken at another clock.
 #
+# A dispatch can soak a compiler: more random inputs (seeds) or more runs in
+# a row (iters, each timed case checked again after its last run), for a bug
+# that the default run is too short to show. A soak never publishes.
+#
 # A kernel that fails its checks costs only its own series a point: the
 # rest of the run still publishes, as long as the NPU checks (preflight and
 # the measurement sanity test) passed. The job still goes red.
@@ -32,6 +36,16 @@ on:
         default: ''
       peano:
         description: 'Peano to use instead of the pin: a nightly version, its commit, or a wheel URL'
+        required: false
+        default: ''
+      # A soak: a compiler bug can pass the default run and show only on
+      # rarer data or after many runs in a row. Raising either never publishes.
+      seeds:
+        description: 'random inputs per case (default 3)'
+        required: false
+        default: ''
+      iters:
+        description: 'timed runs per case, each checked again after the last (default 50)'
         required: false
         default: ''
   schedule:
@@ -67,7 +81,8 @@ jobs:
     # reserved for timing, and the concurrency group below is what stops two
     # timing jobs sharing one NPU.
     runs-on: [self-hosted, bench, "${{ matrix.runner_type }}"]
-    timeout-minutes: 120
+    # A soak (more seeds or runs) gets the time it asks for.
+    timeout-minutes: ${{ (inputs.seeds || inputs.iters) && 600 || 120 }}
     # Never share an NPU; preserve queued runs (up to GitHub's 100-run limit).
     concurrency:
       group: kernel-checks-${{ matrix.runner_type }}
@@ -162,6 +177,8 @@ jobs:
 
       - name: Run kernel correctness suite
         id: correctness
+        env:
+          SEEDS: ${{ inputs.seeds }}
         run: |
           sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
@@ -170,12 +187,20 @@ jobs:
           export XRT_CONTEXT_CACHE_SIZE=2
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
           # Every case in test/python/npu/kernel_cases.py, under every edge-data
-          # case its contract admits, for three random seeds, plus dedicated
-          # setup and cascade-pair tests that cannot use the generic harness.
+          # case its contract admits, for three random seeds (or a soak's),
+          # plus dedicated setup and cascade-pair tests that cannot use the
+          # generic harness.
+          # A soak turns off the runner's retry: a failure that passes when
+          # retried is what a soak is looking for.
+          if [[ ! ${SEEDS:-3} =~ ^[1-9][0-9]{0,3}$ ]]; then
+            echo "::error::seeds must be a whole number from 1 to 9999"
+            exit 1
+          fi
           MLIR_AIE_NPU_TEST=1 python utils/run_pytest.py \
             test/python/npu/test_kernels_e2e.py \
             test/python/npu/test_kernel_cascade_conv.py -m "extensive or kernel_check" -v \
-            --junitxml=correctness.xml --seeds 3 2>&1 | tee correctness.log
+            --junitxml=correctness.xml --seeds "${SEEDS:-3}" ${SEEDS:+--reruns 0} \
+            2>&1 | tee correctness.log
 
       - name: Run kernel performance checks
         id: perf
@@ -184,23 +209,28 @@ jobs:
         if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
         env:
           ONLY: ${{ inputs.only }}
+          ITERS: ${{ inputs.iters }}
           # A run that publishes must find the device in $PERF_PMODE: a
           # nightly measured in another mode charts numbers nobody should
           # compare, and the preflight above can only ask for the mode. Any
           # other run records whatever mode it finds. The condition is the
           # publish job's.
-          REQUIRED_PMODE: ${{ (github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.only && !inputs.peano) && env.PERF_PMODE || 'any' }}
+          REQUIRED_PMODE: ${{ (github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.only && !inputs.peano && !inputs.seeds && !inputs.iters) && env.PERF_PMODE || 'any' }}
         run: |
           sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
           export XRT_CONTEXT_CACHE_SIZE=2
+          if [[ ! ${ITERS:-50} =~ ^[1-9][0-9]{0,5}$ ]]; then
+            echo "::error::iters must be a whole number from 1 to 999999"
+            exit 1
+          fi
           MLIR_AIE_NPU_TEST=1 python utils/run_pytest.py \
             test/python/npu/test_kernels_perf.py -m perf -v \
             --perf-out perf.json --perf-meta meta.json --pmode "$REQUIRED_PMODE" \
             --correctness-results correctness.xml \
-            --warmup 10 --iters 50 \
+            --warmup 10 --iters "${ITERS:-50}" ${SEEDS:+--reruns 0} ${ITERS:+--reruns 0} \
             ${ONLY:+-k "($ONLY) or test_measurement_is_sane"} 2>&1 | tee perf.log
           # perf.json holds every kernel that passed, unless the NPU checks
           # failed, in which case there is none and downstream steps skip.
@@ -314,7 +344,7 @@ jobs:
     # Publish whichever NPUs produced results, even if the other leg failed.
     # A filtered or re-pinned dispatch would chart a subset or another
     # compiler into the series, so it never publishes.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.only && !inputs.peano }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.only && !inputs.peano && !inputs.seeds && !inputs.iters }}
     permissions:
       contents: write
     uses: ./.github/workflows/publishKernelResults.yml

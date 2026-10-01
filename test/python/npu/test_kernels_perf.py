@@ -157,6 +157,24 @@ def _measure(
         warmup=config.getoption("--warmup"),
         iters=config.getoption("--iters"),
     )
+    # A compiler bug can leave a kernel right on its first run and wrong after
+    # many, so check it once more after the timing loop, into fresh poisoned
+    # outputs (the timed runs' outputs could hide a run that wrote nothing).
+    _, again = kd.upload(inputs, out_n, out_dt, poison=True, fn=fn)
+    again = again if isinstance(again, tuple) else (again,)
+    design(*ins, *again)
+    got = tuple(o.numpy().copy() for o in again)
+    verdict = fn.judge(
+        got if len(got) > 1 else got[0],
+        ref,
+        calls=case.calls,
+        inputs=inputs,
+        scalars=case.scalars,
+    )
+    runs = 2 + config.getoption("--warmup") + config.getoption("--iters")
+    assert verdict, (
+        f"{case.name}: wrong on run {runs} (right on the first): {verdict.detail}"
+    )
     if not config.getoption("--no-cycles"):
         # A separate traced run: tracing perturbs the timing above.
         intervals = kd.traced_intervals(fn, calls=case.calls)

@@ -85,6 +85,10 @@ class Leg:
     baseline_peano: str = ""
     baseline_commit: dict | None = None
     cases: int = 0
+    # How hard this run looked: the inputs the sweep checked, and how many
+    # runs in a row each timed case made before its last check.
+    inputs: int = 0
+    runs: int = 0
     failures: list[Failure] = field(default_factory=list)
     regressed: list[Change] = field(default_factory=list)
     improved: list[Change] = field(default_factory=list)
@@ -130,15 +134,24 @@ def failed(test) -> bool:
     return test.find("failure") is not None or test.find("error") is not None
 
 
-def failures(directory: Path) -> tuple[list[Failure], set[str]]:
-    """Return the failing cases, and every case the extensive sweep ran."""
+def _timing_reason(text: str, case: str) -> str:
+    """A timing-run failure's message, without what the table already says."""
+    text = text.removeprefix("AssertionError: ").removeprefix(f"{case}: ").strip()
+    return text or "failed in the timing run; see perf.log"
+
+
+def failures(directory: Path) -> tuple[list[Failure], set[str], int]:
+    """Return the failing cases, every case the extensive sweep ran, and the
+    number of inputs it checked."""
     by_case: dict[str, Failure] = {}
     swept = set()
+    inputs = 0  # of the sweep; a dedicated test is not an input
     correctness_failures = set()
     xml = directory / "correctness.xml"
     if xml.exists():
         for case, variant, test in sweep(xml):
             swept.add(case)
+            inputs += variant != "dedicated"
             f = by_case.setdefault(case, Failure(case))
             f.total += 1
             if failed(test):
@@ -150,18 +163,21 @@ def failures(directory: Path) -> tuple[list[Failure], set[str]]:
     meta = directory / "meta.json"
     if meta.exists():
         # The timing run checks each case again; its failures reach only meta.
-        for nodeid in json.loads(meta.read_text()).get("failed", []):
+        record = json.loads(meta.read_text())
+        reasons = record.get("reasons", {})
+        for nodeid in record.get("failed", []):
             if "test_kernel_extensive[" in nodeid or nodeid in correctness_failures:
                 continue
             match = _BRACKETED.search(nodeid)
             case = match[1] if match else nodeid
             f = by_case.setdefault(case, Failure(case))
             if not f.failed:
-                f.reason = "failed in the timing run; see perf.log"
+                f.reason = _timing_reason(reasons.get(nodeid, ""), case)
             f.failed.append("timing run")
     return (
         sorted((f for f in by_case.values() if f.failed), key=lambda f: f.case),
         swept,
+        inputs,
     )
 
 
@@ -223,7 +239,8 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
     perf_path = directory / "perf.json"
     rows = json.loads(perf_path.read_text()) if perf_path.exists() else []
     result = Leg(npu, measured=bool(rows))
-    result.failures, swept = failures(directory)
+    result.failures, swept, result.inputs = failures(directory)
+    result.runs = int(meta.get("runs_per_case") or 0)
     failing = {f.case for f in result.failures}
     result.peano = _peano(rows, meta.get("provenance", ""))
     measured = {_split(row["name"])[0] for row in rows}
@@ -301,6 +318,24 @@ def _details(summary: str, body: list[str]) -> list[str]:
     return ["<details>", f"<summary>{summary}</summary>", "", *body, "", "</details>"]
 
 
+def _coverage(legs: list[Leg]) -> str:
+    """Say how hard the run looked, and how to look harder."""
+    inputs = max((leg.inputs for leg in legs), default=0)
+    runs = max((leg.runs for leg in legs), default=0)
+    if not inputs and not runs:
+        return ""
+    parts = []
+    if inputs:
+        parts.append(f"{inputs} inputs per NPU (random and edge)")
+    if runs:
+        parts.append(f"each timed case again after {runs} runs in a row")
+    return (
+        "Checked " + " and ".join(parts) + ". A bug that shows only on rarer "
+        "data or after longer runs can still pass: to soak a compiler, "
+        "dispatch this workflow with `peano` and larger `seeds` or `iters`."
+    )
+
+
 def render(legs: list[Leg], run_url: str = "") -> str:
     failing = sum(len(leg.failures) for leg in legs)
     regressed = sum(len(leg.regressed) for leg in legs)
@@ -322,6 +357,8 @@ def render(legs: list[Leg], run_url: str = "") -> str:
         + " \u00b7 ".join(links),
         "",
     ]
+    if coverage := _coverage(legs):
+        out += [coverage, ""]
 
     summary = []
     for leg in legs:

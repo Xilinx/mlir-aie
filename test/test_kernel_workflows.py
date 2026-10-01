@@ -68,6 +68,29 @@ def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path
     assert args[args.index("--pmode") + 1] == "any"
 
 
+@pytest.mark.parametrize("soak", [{}, {"ITERS": "5000"}, {"SEEDS": "50"}])
+def test_a_soak_does_not_retry_a_failure(soak, tmp_path):
+    """The runner retries a failed NPU test once, which hides a failure that
+    comes and goes: the kind a soak is run to find."""
+    steps = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
+    run = next(step["run"] for step in steps if step.get("id") == "perf")
+    launcher = "MLIR_AIE_NPU_TEST=1 python utils/run_pytest.py"
+    command = run[run.index(launcher) :].split("2>&1", 1)[0]
+    result = subprocess.run(
+        ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
+        cwd=tmp_path,
+        env={**os.environ, "ONLY": "", "REQUIRED_PMODE": "any", **soak},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    args = result.stdout.splitlines()
+    # run_pytest.py puts its own --reruns first; the last one wins.
+    assert ("--reruns" in args) == bool(soak)
+    if soak:
+        assert args[len(args) - 1 - args[::-1].index("--reruns") + 1] == "0"
+
+
 # Synthetic release listing: duplicate platform wheels and a rebuilt commit.
 NIGHTLY_PAGE = """
 <a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026010301+aaaaaaaa-py3-none-manylinux_2_28_x86_64.whl">

@@ -125,6 +125,32 @@ def test_failures_combine_sweep_and_timing_without_counting_skips(read_leg):
     assert failures["synthetic/1/i8"].failed == ["random/s0"]
     assert failures["synthetic/1/i8"].reason == "bad"
     assert failures["timing/1/i8"].failed == ["timing run"]
+    assert failures["timing/1/i8"].reason == "failed in the timing run; see perf.log"
+    assert leg.inputs == 2
+
+
+def test_timing_failure_reason_and_coverage_reach_the_comment(read_leg, report):
+    nodeid = "test_kernel_perf[timing/1/i8]"
+    leg = read_leg(
+        {},
+        cases=[("timing/1/i8/random/s0", "")],
+        meta=dict(
+            META,
+            failed=[nodeid],
+            reasons={
+                nodeid: "AssertionError: timing/1/i8: "
+                "wrong on run 62 (right on the first)"
+            },
+            runs_per_case=62,
+        ),
+    )
+    assert leg.failures[0].reason == "wrong on run 62 (right on the first)"
+    assert leg.runs == 62
+    comment = report.render([leg])
+    assert "Checked 1 inputs per NPU (random and edge) and each timed case" in comment
+    assert "after 62 runs in a row" in comment
+    assert "`seeds` or `iters`" in comment
+    assert "Checked" not in report.render([report.Leg("npu2", measured=False)])
 
 
 def test_dedicated_checks_report_failures_without_crediting_unmarked_tests(
