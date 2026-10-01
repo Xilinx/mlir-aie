@@ -330,12 +330,14 @@ struct AIEAssignBufferDescriptorIDsPass
             assert(llvm::range_size(block.getSuccessors()) == 1 &&
                    "should have only one successor block");
             Block *nextBlock = block.getSuccessor(0);
-            if (!blockBdIdMap.contains(nextBlock))
-              assert(nextBlock->getOperations().size() == 1 &&
-                     isa<EndOp>(nextBlock->getOperations().front()) &&
-                     "bb that's not in blockMap can only have aie.end");
-            else
+            if (blockBdIdMap.contains(nextBlock)) {
               nextBdId = blockBdIdMap[nextBlock];
+            } else if (nextBlock->getOperations().size() != 1 ||
+                       !isa<EndOp>(nextBlock->getOperations().front())) {
+              bd.emitOpError("must be followed by a block with a dma_bd or "
+                             "by a block with only aie.end");
+              return signalPassFailure();
+            }
             bd.setNextBdId(nextBdId);
           }
         }
