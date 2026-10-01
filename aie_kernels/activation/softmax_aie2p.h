@@ -20,7 +20,6 @@ using namespace aie;
 void softmax_simple_bf16(bfloat16 *restrict input_vector,
                          bfloat16 *restrict output_vector,
                          const int32_t vector_size) {
-  event0();
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
 
@@ -110,7 +109,6 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
     *it_soft_out++ = out_vals.to_vector<bfloat16>();
   }
 
-  event1();
   ::aie::set_rounding(saved_rounding);
 
   return;
@@ -195,7 +193,9 @@ extern "C" {
 
 void softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
                   const int32_t input_size) {
+  event0();
   softmax_simple_bf16(input, output, input_size);
+  event1();
 }
 
 void partial_softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
@@ -216,6 +216,28 @@ void mask_bf16(bfloat16 *inout, const int32_t unmasked_size,
   for (int32_t i = unmasked_size; i < total_size; i++) {
     inout[i] = std::numeric_limits<bfloat16>::lowest();
   }
+}
+
+// softmax_bf16 over `rows` rows of `row_len` each.
+void softmax_rows_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
+                       const int32_t rows, const int32_t row_len) {
+  event0();
+  for (int32_t r = 0; r < rows; r++) {
+    softmax_simple_bf16(input + r * row_len, output + r * row_len, row_len);
+  }
+  event1();
+}
+
+// softmax_rows_bf16 under a causal mask, the first row being query row_offset.
+void softmax_rows_causal_bf16(bfloat16 *restrict input,
+                              bfloat16 *restrict output, const int32_t rows,
+                              const int32_t row_len, const int32_t row_offset) {
+  event0();
+  for (int32_t r = 0; r < rows; r++) {
+    mask_bf16(input + r * row_len, row_offset + r + 1, row_len);
+    softmax_simple_bf16(input + r * row_len, output + r * row_len, row_len);
+  }
+  event1();
 }
 
 } // extern "C"
