@@ -51,6 +51,77 @@ def _device_for(dev_str, n_aie_cols):
     return from_name(dev_str, n_cols=n_aie_cols if dev_str == "npu" else None)
 
 
+def _transfer_groups(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj):
+    """Return the runtime sequence's shim transfers, one list per task group.
+
+    Each transfer is ``(tensor, col, tap)``: the shim column ``col`` fills
+    ``"A"`` or ``"B"``, or drains ``"C"``, with the access pattern ``tap``.
+    """
+    n_aie_rows = 4
+    n_shim_mem_A = min(n_aie_rows, n_aie_cols)
+    n_A_tiles_per_shim = n_aie_rows // n_aie_cols if n_aie_cols < 4 else 1
+    tb_max_n_rows = 4 if not c_col_maj else 2
+    tb_n_rows = tb_max_n_rows // 2
+
+    A_tiles = (
+        TensorAccessPattern.full((M, K))
+        .tile((m * n_A_tiles_per_shim, k))
+        .group((1, K // k))
+        .repeat(N // n // n_aie_cols)
+    )
+    if b_col_maj:
+        B_tiles = (
+            TensorAccessPattern.full((N, K))
+            .tile((n, k))
+            .group((N // n // n_aie_cols, K // k), steps=(n_aie_cols, 1))
+        )
+    else:
+        B_tiles = (
+            TensorAccessPattern.full((K, N))
+            .tile((k, n))
+            .group((K // k, N // n // n_aie_cols), steps=(1, n_aie_cols), order="col")
+        )
+    if c_col_maj:
+        # Splitting n_aie_rows out of the tile dim is what lets the grouping emit
+        # the (col-fast, row_block-slow) DMA pattern; order("col") matches it.
+        C_tiles = (
+            TensorAccessPattern.full((N, M))
+            .tile((n, m))
+            .order("col")
+            .group((N // n // n_aie_cols, n_aie_rows), steps=(n_aie_cols, 1))
+        )
+    else:
+        C_tiles = (
+            TensorAccessPattern.full((M, N))
+            .tile((m * n_aie_rows, n))
+            .group((tb_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols))
+        )
+
+    groups = []
+    c_index = 0
+    for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
+        for pingpong in [0, 1]:
+            if c_index >= len(C_tiles):
+                break
+            row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
+            current_tb_n_rows = min(
+                [tb_max_n_rows // 2, M // m // n_aie_rows - row_base]
+            )
+            transfers = []
+            for col in range(n_aie_cols):
+                transfers.append(("C", col, C_tiles[c_index]))
+                c_index += 1
+                for tile_row in range(current_tb_n_rows):
+                    tile_offset = ((row_base + tile_row) * n_shim_mem_A + col) % len(
+                        A_tiles
+                    )
+                    if col < n_aie_rows:
+                        transfers.append(("A", col, A_tiles[tile_offset]))
+                    transfers.append(("B", col, B_tiles[col]))
+            groups.append(transfers)
+    return groups
+
+
 def _build_design(
     dev,
     M,
@@ -67,8 +138,6 @@ def _build_design(
     emulate_bf16_mmul_with_bfp16,
     use_chess,
     scalar,
-    *,
-    generate_taps=False,
 ):
     """Build the whole-array matmul IRON design and resolve to MLIR."""
     dev_str = "npu2" if isinstance(dev, NPU2) else "npu"
@@ -127,10 +196,6 @@ def _build_design(
         n_shim_mem_A = n_aie_cols
 
     n_A_tiles_per_shim = n_aie_rows // n_aie_cols if n_aie_cols < 4 else 1
-
-    A_taps = []
-    B_taps = []
-    C_taps = []
 
     A_ty = np.ndarray[(M * K,), np.dtype[dtype_in]]
     B_ty = np.ndarray[(K * N,), np.dtype[dtype_in]]
@@ -225,95 +290,29 @@ def _build_design(
         ),
     )
 
-    tb_max_n_rows = 4 if not c_col_maj else 2
-    tb_n_rows = tb_max_n_rows // 2
-
-    A_tiles = (
-        TensorAccessPattern.full((M, K))
-        .tile((m * n_A_tiles_per_shim, k))
-        .group((1, K // k))
-        .repeat(N // n // n_aie_cols)
-    )
-    if b_col_maj:
-        B_tiles = (
-            TensorAccessPattern.full((N, K))
-            .tile((n, k))
-            .group((N // n // n_aie_cols, K // k), steps=(n_aie_cols, 1))
-        )
-    else:
-        B_tiles = (
-            TensorAccessPattern.full((K, N))
-            .tile((k, n))
-            .group((K // k, N // n // n_aie_cols), steps=(1, n_aie_cols), order="col")
-        )
-    if c_col_maj:
-        # Splitting n_aie_rows out of the tile dim is what lets the grouping emit
-        # the (col-fast, row_block-slow) DMA pattern; order("col") matches it.
-        C_tiles = (
-            TensorAccessPattern.full((N, M))
-            .tile((n, m))
-            .order("col")
-            .group((N // n // n_aie_cols, n_aie_rows), steps=(n_aie_cols, 1))
-        )
-    else:
-        C_tiles = (
-            TensorAccessPattern.full((M, N))
-            .tile((m * n_aie_rows, n))
-            .group((tb_n_rows, N // n // n_aie_cols), steps=(1, n_aie_cols))
-        )
     flat_workers = [w for row in workers for w in row]
 
     A_prods = [f.prod() for f in A_l3l2_fifos]
     B_prods = [f.prod() for f in B_l3l2_fifos]
     C_conses = [f.cons() for f in C_l2l3_fifos]
+    groups = _transfer_groups(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj)
 
     def sequence(A, B, C, A_hs, B_hs, C_hs):
-        c_index = 0
         # Two time-block halves in flight: each half's transfers form a
         # group that is finished only after the next half's are issued.
         prev = None
-        for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
-            for pingpong in [0, 1]:
-                if c_index >= len(C_tiles):
-                    break
-                tg = TaskGroup()
-
-                row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
-                current_tb_n_rows = min(
-                    [tb_max_n_rows // 2, M // m // n_aie_rows - row_base]
-                )
-
-                for col in range(n_aie_cols):
-                    C_taps.append(C_tiles[c_index])
-                    C_hs[col].drain(
-                        C,
-                        tap=C_tiles[c_index],
-                        wait=True,
-                        group=tg,
-                    )
-                    c_index += 1
-
-                    for tile_row in range(current_tb_n_rows):
-                        tile_offset = (
-                            (row_base + tile_row) * n_shim_mem_A + col
-                        ) % len(A_tiles)
-                        if col < n_aie_rows:
-                            A_hs[col].fill(
-                                A,
-                                tap=A_tiles[tile_offset],
-                                group=tg,
-                            )
-                        B_hs[col].fill(
-                            B,
-                            tap=B_tiles[col],
-                            group=tg,
-                        )
-                        A_taps.append(A_tiles[tile_offset])
-                        B_taps.append(B_tiles[col])
-
-                if prev is not None:
-                    prev.finish()
-                prev = tg
+        for transfers in groups:
+            tg = TaskGroup()
+            for tensor, col, tap in transfers:
+                if tensor == "C":
+                    C_hs[col].drain(C, tap=tap, wait=True, group=tg)
+                elif tensor == "A":
+                    A_hs[col].fill(A, tap=tap, group=tg)
+                else:
+                    B_hs[col].fill(B, tap=tap, group=tg)
+            if prev is not None:
+                prev.finish()
+            prev = tg
         if prev is not None:
             prev.finish()
 
@@ -322,20 +321,7 @@ def _build_design(
         [A_ty, B_ty, C_ty, A_prods, B_prods, C_conses],
     )
 
-    # resolve_program() runs the sequence body, which populates the closure
-    # A_taps/B_taps/C_taps lists as a side effect. The generate_taps path needs
-    # that side effect, so resolve first and discard the module for that mode.
-    program = Program(dev, rt, workers=flat_workers)
-    module = program.resolve_program()
-
-    if generate_taps:
-        return (
-            TensorAccessSequence.from_taps(A_taps),
-            TensorAccessSequence.from_taps(B_taps),
-            TensorAccessSequence.from_taps(C_taps),
-        )
-
-    return module
+    return Program(dev, rt, workers=flat_workers).resolve_program()
 
 
 @iron.jit
@@ -378,41 +364,18 @@ def whole_array(
     )
 
 
-def generate_taps(
-    M,
-    K,
-    N,
-    m,
-    k,
-    n,
-    n_aie_cols,
-    dtype_in_str,
-    dtype_out_str,
-    b_col_maj=0,
-    c_col_maj=0,
-    emulate_bf16_mmul_with_bfp16=False,
-    dev="npu",
-):
-    """Return ``(A_taps, B_taps, C_taps)`` for the visualization notebook."""
-    dev_obj = _device_for(dev, n_aie_cols)
-    iron.set_current_device(dev_obj)
-    return _build_design(
-        dev_obj,
-        M,
-        K,
-        N,
-        m,
-        k,
-        n,
-        n_aie_cols,
-        dtype_in_str,
-        dtype_out_str,
-        b_col_maj,
-        c_col_maj,
-        emulate_bf16_mmul_with_bfp16,
-        use_chess=False,
-        scalar=False,
-        generate_taps=True,
+def generate_taps(M, K, N, m, k, n, n_aie_cols, b_col_maj=0, c_col_maj=0):
+    """Return ``(A_taps, B_taps, C_taps)`` for the visualization notebook.
+
+    Each is a ``TensorAccessSequence`` of the patterns the runtime sequence
+    fills or drains for that matrix, in order.
+    """
+    groups = _transfer_groups(M, K, N, m, k, n, n_aie_cols, b_col_maj, c_col_maj)
+    return tuple(
+        TensorAccessSequence.from_taps(
+            [tap for transfers in groups for t, _, tap in transfers if t == tensor]
+        )
+        for tensor in "ABC"
     )
 
 
