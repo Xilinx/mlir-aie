@@ -71,56 +71,15 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1
 
-      - name: Verify Python
-        # actions/setup-python isn't used here: its installer invokes a
-        # setup.ps1 under Windows PowerShell, which is blocked by this
-        # runner's default script execution policy. Python 3.13 is already
-        # provisioned on the runner as a host prerequisite (see
-        # Windows_runner_setup_mlir-aie.md), matching how the Linux
-        # self-hosted job also relies on a pre-provisioned interpreter
-        # instead of actions/setup-python.
-        shell: cmd
-        run: |
-          python --version
-          if errorlevel 1 exit /b 1
+      # Python 3.13 is required, not just preferred: the XRT SDK's pyxrt.pyd
+      # is built for CPython 3.13 and fails to import ("DLL load failed") under
+      # the devlab-dispatch image's system Python 3.12. The persistent runners
+      # this job used to run on had 3.13 pre-provisioned instead.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
 
-      - name: Ensure Windows XRT SDK
-        # Persistent devlab runners are hand-provisioned with the XRT SDK per
-        # docs/buildHostWinNative.md Section 3, but the devlab-dispatch pool
-        # recreates its runners per job, so that one-time host setup doesn't
-        # stick. Self-heal here instead of failing outright: fetch the same
-        # SDK archive the guide points to and extract it to the canonical
-        # C:\Xilinx\XRT path if XRT isn't already present on this runner.
-        shell: cmd
-        run: |
-          if defined XRT_ROOT if exist "%XRT_ROOT%" goto :xrt_ready
-          if exist "C:\Xilinx\XRT" goto :xrt_default
-
-          echo XRT SDK not found on this runner - downloading it
-          if exist "xrt_sdk_download" rmdir /s /q "xrt_sdk_download"
-          mkdir xrt_sdk_download
-          curl.exe --fail --location --connect-timeout 15 --max-time 300 --retry 3 --retry-all-errors --retry-delay 5 -o "xrt_sdk_download\xrt_windows_sdk.zip" "https://github.com/Xilinx/XRT/releases/download/2.21.75/xrt_windows_sdk.zip"
-          if errorlevel 1 exit /b 1
-
-          python -c "import zipfile; zipfile.ZipFile(r'xrt_sdk_download\xrt_windows_sdk.zip').extractall(r'xrt_sdk_download')"
-          if errorlevel 1 exit /b 1
-
-          if not exist "xrt_sdk_download\xrt_sdk\xrt" (
-            echo ##[error]xrt_sdk\xrt not found after extracting xrt_windows_sdk.zip - check the archive layout
-            exit /b 1
-          )
-
-          if not exist "C:\Xilinx" mkdir "C:\Xilinx"
-          move /y "xrt_sdk_download\xrt_sdk\xrt" "C:\Xilinx\XRT"
-          if errorlevel 1 exit /b 1
-          rmdir /s /q "xrt_sdk_download"
-
-          :xrt_default
-          echo XRT_ROOT=C:\Xilinx\XRT>>"%GITHUB_ENV%"
-          exit /b 0
-
-          :xrt_ready
-          echo Using existing XRT_ROOT=%XRT_ROOT%
+      - uses: ./.github/actions/setup_windows_xrt
 
       - name: Cache Windows OpenSSL
         # slproweb.com (the official source for this installer) was observed
@@ -132,7 +91,7 @@ jobs:
         # the first run - or a run after a 7-day-unused cache eviction - pays
         # for the slow download; every other ephemeral runner just restores
         # from cache in seconds.
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: C:\OpenSSL-Win64
           key: openssl-win64-4_0_3-0f5436092d1303db9052d3c114fbc6326abe0276861619e26da5156ddf7ca087
@@ -210,31 +169,24 @@ jobs:
         # modifying the existing VS install: same winget-based approach the
         # doc already uses for other tools, independent of VS versioning.
         #
-        # The mlir-aie build itself is driven with clang-cl (set via
-        # CMAKE_C_COMPILER/CMAKE_CXX_COMPILER below), not clang++: CMake's
-        # WINDOWS_EXPORT_ALL_SYMBOLS target property - which upstream MLIR's
-        # Python bindings rely on to export every public symbol of the
-        # monolithic MLIRPythonCAPI/MLIRPythonSupport DSOs - only takes
-        # effect for MSVC-like toolchains (CMake's MSVC variable is only ever
-        # TRUE for clang-cl or real cl.exe, never for clang++'s GNU driver,
-        # even when it targets windows-msvc). Under clang++ it silently
-        # no-ops, leaving every Python extension module's import of
-        # PyMlirContext/PyOperation/etc. unresolved at link time.
+        # Deliberately NOT added to GITHUB_PATH: a PATH entry ahead of MSVC's
+        # makes CMake pick clang++ over cl.exe for the mlir-aie build. Only the
+        # test step puts it on PATH.
         shell: cmd
         run: |
-          if exist "C:\Program Files\LLVM\bin\clang++.exe" if exist "C:\Program Files\LLVM\bin\clang-cl.exe" goto :llvm_ready
+          if exist "C:\Program Files\LLVM\bin\clang++.exe" goto :llvm_ready
 
           echo LLVM/clang not found on this runner - installing it
           winget install -e --id LLVM.LLVM --silent --accept-package-agreements --accept-source-agreements
           if errorlevel 1 exit /b 1
 
-          if not exist "C:\Program Files\LLVM\bin\clang-cl.exe" (
-            echo ##[error]C:\Program Files\LLVM\bin\clang-cl.exe still missing after installing LLVM.LLVM via winget
+          if not exist "C:\Program Files\LLVM\bin\clang++.exe" (
+            echo ##[error]C:\Program Files\LLVM\bin\clang++.exe still missing after installing LLVM.LLVM via winget
             exit /b 1
           )
 
           :llvm_ready
-          echo C:\Program Files\LLVM\bin>>"%GITHUB_PATH%"
+          echo LLVM/clang ready at C:\Program Files\LLVM\bin
 
       - name: Setup IRON environment
         shell: cmd
@@ -331,20 +283,14 @@ jobs:
           REM script's own download. EXTRA_CMAKE_ARGS carries the Windows-only
           REM -D flags; paths are forward-slashed and must be space-free since
           REM the script expands args unquoted (read -ra on a plain string).
-          REM FindOpenSSL.cmake only searches the MT/MTd (static-CRT) lib
-          REM paths/names when OPENSSL_MSVC_STATIC_RT is set - otherwise it
-          REM defaults to MD mode and won't find the MT-only static libs this
-          REM installer lays down, even with OPENSSL_USE_STATIC_LIBS=TRUE.
-          REM CMAKE_C_COMPILER/CMAKE_CXX_COMPILER select clang-cl (bare name,
-          REM resolved via the PATH entry the LLVM toolchain step above adds)
-          REM instead of CMake's default of whatever "clang"/"clang++" it
-          REM finds first - see the comment on that step for why clang-cl is
-          REM required here, not just clang++ in its GNU-driver mode.
+          REM The compiler is pinned to MSVC cl.exe (as the wheel build in
+          REM utils/mlir_aie_wheels/setup.py does) so no other compiler on
+          REM PATH can be picked up by CMake's search.
           set "XRT_ROOT_FWD=%XRT_ROOT:\=/%"
           set "PYTHON_EXE_FWD=%PYTHON_EXE:\=/%"
           set "PEANO_INSTALL_DIR_FWD=%PEANO_INSTALL_DIR:\=/%"
           set "OPENSSL_ROOT_FWD=C:/OpenSSL-Win64"
-          set "EXTRA_CMAKE_ARGS=-DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON -DXRT_ROOT=%XRT_ROOT_FWD% -DPython3_EXECUTABLE=%PYTHON_EXE_FWD% -DOPENSSL_ROOT_DIR=%OPENSSL_ROOT_FWD% -DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_MSVC_STATIC_RT=TRUE"
+          set "EXTRA_CMAKE_ARGS=-DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON -DXRT_ROOT=%XRT_ROOT_FWD% -DPython3_EXECUTABLE=%PYTHON_EXE_FWD% -DOPENSSL_ROOT_DIR=%OPENSSL_ROOT_FWD% -DOPENSSL_USE_STATIC_LIBS=TRUE"
 
           REM arg 4 = provisioned Peano, else the script derives its own.
           "C:\Program Files\Git\bin\bash.exe" utils/build-mlir-aie-from-wheels.sh my_install/mlir build install "%PEANO_INSTALL_DIR_FWD%"
@@ -355,6 +301,13 @@ jobs:
         run: |
           call .\iron_env.cmd
           if errorlevel 1 exit /b 1
+
+          REM Host-side tests resolve %host_clang% / the dispatch bridge's C++
+          REM compiler via clang++ on PATH; append LLVM so it is found without
+          REM shadowing the MLIR wheel's tools. Tests that shell out to "bash"
+          REM must get Git's bash, not the System32 WSL stub (which fails with
+          REM "Windows Subsystem for Linux has no installed distributions").
+          set "PATH=C:\Program Files\Git\bin;%PATH%;C:\Program Files\LLVM\bin"
 
           if exist "%NPU_CACHE_HOME%" rmdir /s /q "%NPU_CACHE_HOME%"
           mkdir "%NPU_CACHE_HOME%"

@@ -1,0 +1,45 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: "Ensure Windows XRT SDK"
+
+description: >-
+  Ensure the Windows XRT SDK is present and XRT_ROOT is set. Persistent devlab
+  runners are hand-provisioned with the SDK per docs/buildHostWinNative.md
+  Section 3, but devlab-dispatch runners may come up without it, so fetch the
+  same archive the guide points to and extract it to C:\Xilinx\XRT.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Ensure Windows XRT SDK
+      shell: cmd
+      run: |
+        if defined XRT_ROOT if exist "%XRT_ROOT%" goto :xrt_ready
+        if exist "C:\Xilinx\XRT" goto :xrt_default
+
+        echo XRT SDK not found on this runner - downloading it
+        if exist "xrt_sdk_download" rmdir /s /q "xrt_sdk_download"
+        mkdir xrt_sdk_download
+        curl.exe --fail --location --connect-timeout 15 --max-time 300 --retry 3 --retry-all-errors --retry-delay 5 -o "xrt_sdk_download\xrt_windows_sdk.zip" "https://github.com/Xilinx/XRT/releases/download/2.21.75/xrt_windows_sdk.zip"
+        if errorlevel 1 exit /b 1
+
+        python -c "import zipfile; zipfile.ZipFile(r'xrt_sdk_download\xrt_windows_sdk.zip').extractall(r'xrt_sdk_download')"
+        if errorlevel 1 exit /b 1
+
+        if not exist "xrt_sdk_download\xrt_sdk\xrt" (
+          echo ##[error]xrt_sdk\xrt not found after extracting xrt_windows_sdk.zip - check the archive layout
+          exit /b 1
+        )
+
+        if not exist "C:\Xilinx" mkdir "C:\Xilinx"
+        move /y "xrt_sdk_download\xrt_sdk\xrt" "C:\Xilinx\XRT"
+        if errorlevel 1 exit /b 1
+        rmdir /s /q "xrt_sdk_download"
+
+        :xrt_default
+        echo XRT_ROOT=C:\Xilinx\XRT>>"%GITHUB_ENV%"
+        exit /b 0
+
+        :xrt_ready
+        echo Using existing XRT_ROOT=%XRT_ROOT%

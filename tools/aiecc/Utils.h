@@ -90,12 +90,8 @@ public:
   CaptureStdio &operator=(const CaptureStdio &) = delete;
 
 private:
-  // Only read/written inside the #ifndef _WIN32 bodies above: on Windows
-  // this class is a no-op (enable is silently ignored), so these fields
-  // are otherwise dead and Clang flags them as unused private fields.
-  [[maybe_unused]] std::string &out;
-  [[maybe_unused]] int savedOut = -1;
-  [[maybe_unused]] int savedErr = -1;
+  std::string &out;
+  int savedOut = -1, savedErr = -1;
   std::string tmpPath;
 };
 

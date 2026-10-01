@@ -137,13 +137,9 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     -Wno-deprecated-declarations
     -Wno-sign-compare
     -Wno-type-limits
-    -Wno-unused)
-endif()
-if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32)
-  # See bootgen-lib below for why -fPIC is also passed explicitly here.
-  # PIC is an ELF/Unix concept; Clang targeting windows-msvc (PE/COFF)
-  # rejects the flag outright, even when driven with the GNU-style CLI.
-  target_compile_options(bootgen-lms-hash-sigs PRIVATE -fPIC)
+    -Wno-unused
+    # See bootgen-lib below for why -fPIC is also passed explicitly here.
+    -fPIC)
 endif()
 
 add_library(bootgen-lib STATIC ${libsources})
@@ -178,20 +174,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 else()
   set(bootgen_warning_ignores)
 endif()
-if (WIN32)
-  # The flex-generated lexers (bisonflex/*.yy.cpp) guard their #include
-  # <unistd.h> on this define. unistd.h doesn't exist on Windows at all,
-  # regardless of whether the compiler driver is clang-cl or clang++ in
-  # GNU-driver mode targeting windows-msvc - so this must be platform-gated,
-  # not compiler-ID-gated.
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_definitions(bootgen-lib PRIVATE YY_NO_UNISTD_H)
-endif()
-if (MSVC)
-  # CMAKE_CXX_COMPILER_ID is "Clang" for clang-cl too (never "MSVC" for any
-  # Clang flavor) - MSVC is the variable that actually tracks the
-  # MSVC-compatible frontend (real cl.exe or clang-cl), so it's what must be
-  # checked here. Needed for real: clang-cl defaults to exceptions disabled
-  # (like cl.exe), and the vendored bootgen sources use try/throw.
+  # Enable correct unwind semantics on MSVC
   target_compile_options(bootgen-lib PRIVATE /EHsc)
   # Suppress MSVC warning noise
   target_compile_options(bootgen-lib PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
@@ -222,8 +207,7 @@ set_target_properties(bootgen PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(bootgen PUBLIC ${bootgen_include_dirs} ${OPENSSL_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/include)
 target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
-if (MSVC)
-  # See bootgen-lib above for why this is MSVC, not CMAKE_CXX_COMPILER_ID.
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(bootgen PRIVATE /EHsc)
   target_compile_options(bootgen PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
@@ -241,17 +225,11 @@ add_library(cdo_driver_mlir_aie STATIC ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c
 target_include_directories(
   cdo_driver_mlir_aie PUBLIC $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/cdo-driver>
   $<INSTALL_INTERFACE:include/cdo_driver>)
-if (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-  # Not mutually exclusive with the MSVC block below: clang-cl is both
-  # "Clang" (CMAKE_C_COMPILER_ID) and MSVC-compatible (MSVC variable), and
-  # accepts these GNU-style warning flags exactly like clang++ does, so this
-  # must stay keyed on the compiler ID (matching bootgen-lms-hash-sigs and
-  # bootgen-lib/bootgen's warning_ignores above), not on NOT MSVC.
+if (NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(cdo_driver_mlir_aie PRIVATE -Wno-cast-qual -Wno-sign-compare)
 endif()
 
-if (MSVC)
-  # See bootgen-lib above for why this is MSVC, not CMAKE_CXX_COMPILER_ID.
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(cdo_driver_mlir_aie PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
 install(
