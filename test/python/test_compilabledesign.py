@@ -17,14 +17,14 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import CodeType, SimpleNamespace
+from types import CodeType
 
 import numpy as np
 import pytest
 
 import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
-from aie.iron import kernels
+from aie.iron import ObjectFifo, Program, Runtime, Worker, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
@@ -303,27 +303,95 @@ def test_hash_is_stable_across_two_constructions():
     assert hash(d1) == hash(d2)
 
 
-def test_artifact_key_covers_external_kernel_recipes(monkeypatch):
-    """Same MLIR and object name, different kernel source: a new artifact key."""
+_SCALE = {
+    "depth": 2,
+    "source": "void scale(int *a, int *b) {}",
+    "flags": [],
+    "names": ("in", "out"),
+}
 
-    def kernel(source):
-        return SimpleNamespace(
-            object_file_name="k.o", object_file=SimpleNamespace(_source=source)
+
+def _scale_depth():
+    return _SCALE["depth"]
+
+
+def _scale_gen():
+    def scale(a: In, b: Out, *, N: CompileTime[int]):
+        ty = np.ndarray[(N,), np.dtype[np.int32]]
+        kernel = ExternalFunction(
+            "scale",
+            object_file_name="scale.o",
+            source_string=_SCALE["source"],
+            arg_types=[ty, ty],
+            compile_flags=list(_SCALE["flags"]),
         )
+        name_in, name_out = _SCALE["names"]
+        of_in = ObjectFifo(ty, depth=_scale_depth(), name=name_in)
+        of_out = ObjectFifo(ty, depth=2, name=name_out)
 
-    design = CompilableDesign(_gemm_gen(), compile_kwargs={"M": 512})
+        def core_fn(of_in, of_out, kernel):
+            elem_in = of_in.acquire(1)
+            elem_out = of_out.acquire(1)
+            kernel(elem_in, elem_out)
+            of_in.release(1)
+            of_out.release(1)
 
-    def key(source):
-        monkeypatch.setattr(
-            design,
-            "_generated_for",
-            lambda *, full_elf: ("module {}", [kernel(source)]),
-        )
-        return design._compute_cache_hash(include_mlir=True)
+        worker = Worker(core_fn, [of_in.cons(), of_out.prod(), kernel])
 
-    assert key(("a.cc", "-O2")) == key(("a.cc", "-O2"))
-    assert key(("a.cc", "-O2")) != key(("b.cc", "-O2"))
-    assert key(("a.cc", "-O2")) != key(("a.cc", "-O3"))
+        def sequence(a, b, a_in, b_out):
+            a_in.fill(a)
+            b_out.drain(b, wait=True)
+
+        rt = Runtime(sequence, [ty, ty, of_in.prod(), of_out.cons()])
+        return Program(NPU2Col1(), rt, workers=[worker]).resolve_program()
+
+    return scale
+
+
+@pytest.fixture
+def scale_key(monkeypatch):
+    """The artifact key and MLIR of a fresh `_scale_gen` design for a `_SCALE` edit."""
+    set_current_device(NPU2Col1())
+    gen = _scale_gen()
+
+    def key(**edit):
+        for name, value in edit.items():
+            monkeypatch.setitem(_SCALE, name, value)
+        design = CompilableDesign(gen, compile_kwargs={"N": 64})
+        key = design._compute_cache_hash(include_mlir=True)
+        return key, design._compute_cache_hash(), design._generated[0]
+
+    yield key
+    set_current_device(None)
+
+
+def test_artifact_key_covers_what_the_generator_calls(scale_key):
+    """A helper the generator calls changes the design but not its code."""
+    key, recipe, mlir = scale_key()
+    assert scale_key() == (key, recipe, mlir)
+    new_key, new_recipe, new_mlir = scale_key(depth=3)
+    assert new_recipe == recipe and new_mlir != mlir
+    assert new_key != key
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [{"source": "void scale(int *a, int *b) { *b = *a; }"}, {"flags": ["-O1"]}],
+)
+def test_artifact_key_covers_external_kernel_recipes(scale_key, edit):
+    """Same MLIR and object name, different kernel source or flags."""
+    key, recipe, mlir = scale_key()
+    new_key, new_recipe, new_mlir = scale_key(**edit)
+    assert new_recipe == recipe and new_mlir == mlir
+    assert new_key != key
+
+
+def test_artifact_key_ignores_default_name_numbering(scale_key):
+    """Unnamed fifos number differently each generation; the key does not."""
+    key, _, mlir = scale_key(names=(None, None))
+    again, _, mlir_again = scale_key()
+    assert mlir_again != mlir
+    assert again == key
 
 
 def test_hash_differs_for_different_kwargs_value():

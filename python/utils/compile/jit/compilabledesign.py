@@ -28,12 +28,12 @@ current target.
 
 from __future__ import annotations
 
-import hashlib
 import inspect
 import json
 import logging
 import operator
 import os
+import re
 import sys
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -89,9 +89,24 @@ _COMPILE_LOCK_TIMEOUT_SECONDS = 1800
 logger = logging.getLogger(__name__)
 
 
-def _kernel_recipes(kernels) -> list[str]:
-    """Sorted, stable text of each external kernel's build recipe."""
-    return sorted(repr((f.object_file_name, f.object_file._source)) for f in kernels)
+_AUTO_NAME = re.compile(r'(?<=[@"])(of|buf_|lock_)\d+(?!\d)')
+
+
+def _design_key_text(mlir_text: str, kernels) -> str:
+    """The generated design as the artifact key reads it.
+
+    ObjectFifo, Buffer and Lock take default names from process-wide
+    counters, so the same design names them differently once the process
+    has generated others; they are renumbered by first use. The MLIR only
+    names each external kernel's object file, so the kernels' recipes
+    (source and compile flags) follow it.
+    """
+    names = {}
+    text = _AUTO_NAME.sub(
+        lambda m: names.setdefault(m[0], f"{m[1]}{len(names)}"), mlir_text
+    )
+    recipes = sorted(repr((f.object_file_name, f.object_file._source)) for f in kernels)
+    return text + "".join(recipes)
 
 
 def config_param_names(cls) -> frozenset[str]:
@@ -1437,17 +1452,16 @@ class CompilableDesign:
         # With include_mlir the generated design is part of the key: the
         # recipe hash covers the generator's code, not the helpers it calls,
         # so without it an edit to a helper served the previous artifact.
-        # The MLIR only names each external kernel's object file, so the
-        # kernels' recipes (source and compile flags) are keyed with it.
         # Generation is cached per design and needed by every compile, so
         # keying the artifact directory on it costs a hit nothing; __hash__
         # (identity, no generation) leaves it out.
-        mlir_text = None
+        design_text = None
         if include_mlir:
-            mlir_text, kernels = self._generated_for(
-                full_elf=self.full_elf if full_elf is None else full_elf
+            design_text = _design_key_text(
+                *self._generated_for(
+                    full_elf=self.full_elf if full_elf is None else full_elf
+                )
             )
-            mlir_text += "".join(_kernel_recipes(kernels))
         return _compute_hash(
             self.mlir_generator,
             self.compile_kwargs,
@@ -1462,7 +1476,7 @@ class CompilableDesign:
             self.insts_only,
             emit_elf,
             work_dir,
-            mlir_text,
+            design_text,
         )
 
     def _explicit_build_key(
@@ -1472,23 +1486,10 @@ class CompilableDesign:
         emit_elf: bool = False,
         work_dir: Path | None = None,
     ) -> str:
-        """Identify an explicit-path build by everything it reads but its recorded inputs.
-
-        The cache hash (which already keys the generated MLIR) names the
-        recipe and tools; each kernel's recipe covers what the MLIR only
-        names, such as its compile flags.
-        """
-        mlir_text, kernels = self._generated_for(full_elf=full_elf)
-        h = hashlib.sha256()
-        h.update(
-            self._compute_cache_hash(
-                full_elf=full_elf, emit_elf=emit_elf, work_dir=work_dir
-            ).encode()
+        """Identify an explicit-path build by everything it reads but its recorded inputs."""
+        return self._compute_cache_hash(
+            full_elf=full_elf, emit_elf=emit_elf, work_dir=work_dir, include_mlir=True
         )
-        h.update(mlir_text.encode())
-        for recipe in _kernel_recipes(kernels):
-            h.update(recipe.encode())
-        return h.hexdigest()
 
     def _reuse_explicit_outputs(
         self,
