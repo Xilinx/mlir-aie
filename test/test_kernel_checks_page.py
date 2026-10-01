@@ -22,7 +22,11 @@ def page(tmp_path):
     node = shutil.which("node")
     if not node:
         pytest.skip("node is required to test the kernel checks page")
-    script = PAGE.read_text().split("<script>", 1)[1].split("</script>", 1)[0]
+    script = (
+        PAGE.read_text(encoding="utf-8")
+        .split("<script>", 1)[1]
+        .split("</script>", 1)[0]
+    )
     setup = """
 const assert = require('node:assert/strict');
 // Disable the automatic data fetch and capture the Chart.js configuration.
@@ -90,17 +94,19 @@ const el0 = {};
         # large enough that inlining it blows Windows' ~32767-char command
         # line limit (FileNotFoundError: [WinError 206] ... too long).
         script_file = tmp_path / "page_test.js"
-        script_file.write_text(setup + script + data + checks)
+        script_file.write_text(setup + script + data + checks, encoding="utf-8")
         subprocess.run([node, str(script_file)], check=True)
 
     return run
 
 
 def test_thresholds_match_the_report_and_color_only_past_them(page):
-    html = PAGE.read_text()
+    html = PAGE.read_text(encoding="utf-8")
     match = re.search(r"^\s*const THRESHOLDS = (\{.*\});$", html, re.MULTILINE)
     assert match, "the page carries no THRESHOLDS constant"
-    shared = json.loads((ROOT / "utils/kernel_checks/thresholds.json").read_text())
+    shared = json.loads(
+        (ROOT / "utils/kernel_checks/thresholds.json").read_text(encoding="utf-8")
+    )
     expected = {m: s for m, s in shared.items() if not m.startswith("_")}
     assert json.loads(match[1]) == expected
     page("""

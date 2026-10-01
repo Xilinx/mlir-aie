@@ -19,7 +19,9 @@ WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 def workflow(name):
     # Avoid YAML 1.1 interpreting GitHub's "on" key as a boolean.
-    return yaml.load((WORKFLOWS / name).read_text(), Loader=yaml.BaseLoader)
+    return yaml.load(
+        (WORKFLOWS / name).read_text(encoding="utf-8"), Loader=yaml.BaseLoader
+    )
 
 
 # Resolve bash in PATH order: a bare "bash" argv[0] goes through CreateProcess's
@@ -209,7 +211,7 @@ def test_report_uses_restored_baseline_and_updates_summary(tmp_path):
                 (tmp_path / "baseline/latest.json").write_text(json.dumps(baseline))
         elif "run" in step and "gh api" not in step["run"]:
             subprocess.run(
-                ["bash", "-eo", "pipefail", "-c", step["run"]],
+                [BASH, "-eo", "pipefail", "-c", step["run"]],
                 cwd=tmp_path,
                 env=env,
                 check=True,
