@@ -5,6 +5,7 @@
 #
 
 import os
+import shutil
 import sys
 from typing import TYPE_CHECKING, Any
 
@@ -154,6 +155,10 @@ LitConfigHelper.apply_config_to_lit(
         "opencv": opencv_config,
     },
 )
+
+# The bundled XRT-free hrx-xclbinutil lets designs build an xclbin without XRT.
+if shutil.which("xclbinutil", path=config.aie_tools_dir) is not None:
+    config.available_features.add("hrxxclbinutil")
 
 LitConfigHelper.setup_host_compiler_substitutions(config)
 LitConfigHelper.setup_aiecc_substitution(config)

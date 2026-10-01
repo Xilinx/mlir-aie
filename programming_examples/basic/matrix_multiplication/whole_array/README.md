@@ -306,20 +306,26 @@ This code showcases efficient performance in matrix multiplication-intensive wor
 ## Dispatch-Time Shapes: `whole_array_dyn.py`
 
 `whole_array.py` bakes `M`, `K` and `N` into the compiled artifact. The
-sibling design `whole_array_dyn.py` compiles once for a *capacity*
-(`--M-max`, `--K-max`, `--N-max`: the largest matrices the host buffers hold)
-and takes the live shape as `DispatchTime` scalars. Every call rebuilds the
-instruction stream on the host in C++ from the same xclbin, in well under a
-millisecond and with no Python in the loop:
+sibling design `whole_array_dyn.py` takes the live shape as `DispatchTime`
+scalars and compiles once for the sizes of its host buffers
+(`A_elements`, `B_elements`, `C_elements`). Every call rebuilds the
+instruction stream on the host in C++ from the same xclbin, with no Python in
+the loop:
 
 ```python
-gemm = whole_array_dyn.specialize(M_max=4096, K_max=4096, N_max=4096,
+gemm = whole_array_dyn.specialize(A_elements=4096 * 4096,
+                                  B_elements=4096 * 4096,
+                                  C_elements=4096 * 4096,
                                   m=64, k=64, n=32, n_aie_cols=4,
                                   dtype_in_str="bf16", dtype_out_str="f32")
 gemm(A, B, C, M=512, K=1024, N=2048)    # one compile serves every shape
 gemm(A, B, C, M=4096, K=4096, N=4096)
-gemm(A, B, C, M=100, K=64, N=64)        # refused: M must be a multiple of m * 4
+gemm(A, B, C, M=100, K=64, N=64)        # refused: M must be a multiple of m * n_aie_rows
 ```
+
+Any shape whose matrices fit the buffers (packed row-major at the front)
+runs; a larger one is refused with `A (M x K) does not fit A_elements` and
+the like.
 
 The tiling is the same taplib algebra as the static design, evaluated inside
 the runtime sequence on the staged shape: taps become arithmetic on `M`,
@@ -327,17 +333,24 @@ the runtime sequence on the staged shape: taps become arithmetic on `M`,
 block is a peeled `if_`; the shape asserts become `require` guards that
 refuse an illegal dispatch before anything reaches the NPU. Each core's trip
 counts (`K // k` and its output-tile count) arrive as runtime parameters
-written by the sequence before it releases a per-worker barrier.
+written by the sequence before it releases a per-worker barrier. The core
+releases the barrier again once it has read them, so its next dispatch waits
+for fresh values.
+
+The command line compiles once for the largest of the shapes it is given and
+runs them all on that one xclbin:
 
 ```
-python3 whole_array_dyn.py -M 512 -K 512 -N 512 --M-max 1024 --K-max 1024 --N-max 1024 ...
+python3 whole_array_dyn.py --dev npu2 --shapes 512x512x512 512x256x512 768x256x256
 ```
 
 `whole_array_dyn.specialize(M=.., K=.., N=..)` is a fully static
-specialization that takes the ordinary static path. `test/python/dispatch_taplib_gemm.py`
+specialization that takes the ordinary static path. `tests/dispatch_txn.py`
 compares the dispatch-time builder's DMA events against such specializations
 and against `whole_array.py` with `aie.utils.txn_trace`, which is also how to
-debug a dispatch-time sequence: `python -m aie.utils.txn_trace insts.bin`.
+debug a dispatch-time sequence: `gemm.instructions(M=.., K=.., N=..)` returns
+the words a call would run, and `python -m aie.utils.txn_trace insts.bin`
+explains a stream saved to disk.
 Like `whole_array.py` it keeps two time-block halves in flight: a step's
 `TaskGroup` is carried to the next loop iteration as a `range_` iter_arg and
 finished only after the next step's has been issued, so for every shape
