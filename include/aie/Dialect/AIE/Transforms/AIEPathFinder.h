@@ -307,8 +307,11 @@ struct PacketConstraints {
 class Pathfinder {
 public:
   void initialize(int maxCol, int maxRow, const AIETargetModel &targetModel);
+  /// Adds a flow from `src` to `dst`; failures to route it are reported at
+  /// `loc` when given.
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
-               std::optional<int> packetId, bool isPriorityFlow);
+               std::optional<int> packetId, bool isPriorityFlow,
+               std::optional<mlir::Location> loc = std::nullopt);
   void sortFlows();
   /// Reserves the connections `switchboxOp` already makes, so routing avoids
   /// them. Fails if it makes one the switchbox cannot.
@@ -399,6 +402,10 @@ private:
   // The packet ids each source sends each destination.
   std::map<std::pair<PathEndPoint, PathEndPoint>, llvm::SmallVector<int, 2>>
       packetIdsTo;
+  // Where each source's flow to each destination was declared.
+  std::map<std::pair<PathEndPoint, PathEndPoint>, mlir::Location> flowLocs;
+  std::optional<mlir::Location> flowLoc(const PathEndPoint &src,
+                                        const PathEndPoint *dst) const;
   // The routing graph, by the tiles a SwitchboxConnect connects: a tile to
   // itself for its switchbox, or to a neighbour for the wires between them.
   std::map<std::pair<TileID, TileID>, SwitchboxConnect> graph;

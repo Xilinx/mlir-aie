@@ -2619,7 +2619,7 @@ void AIEPathfinderPass::runOnOperation() {
         f.reason = "prioritized packet flows (priority_route) keep the route "
                    "they take alone, and alone they have none" +
                    (f.reason.empty() ? "." : ": " + f.reason);
-        d.emitError() << f.message();
+        emitError(f.loc.value_or(d.getLoc())) << f.message();
       });
       signalPassFailure();
       return;

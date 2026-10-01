@@ -117,7 +117,8 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                      << stringifyWireBundle(dstPort.bundle) << dstPort.channel
                      << "\n");
           pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort,
-                             pktFlowOp.IDInt(), priorityFlow);
+                             pktFlowOp.IDInt(), priorityFlow,
+                             pktFlowOp.getLoc());
         }
       }
     }
@@ -138,7 +139,8 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                << stringifyWireBundle(dstPort.bundle) << dstPort.channel
                << "\n");
     pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort,
-                       /*packetId=*/std::nullopt, /*isPriorityFlow=*/false);
+                       /*packetId=*/std::nullopt, /*isPriorityFlow=*/false,
+                       flowOp.getLoc());
   }
 
   // Canonicalize all flows after both packet and circuit flows are collected.
@@ -237,6 +239,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
   graph.clear();
   flows.clear();
   packetIdsTo.clear();
+  flowLocs.clear();
   graphBuilt = false;
   nodeIds.clear();
   nodes.clear();
@@ -341,7 +344,10 @@ void Pathfinder::initialize(int maxCol, int maxRow,
 // due to fanout.
 void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                          Port dstPort, std::optional<int> packetId,
-                         bool isPriorityFlow) {
+                         bool isPriorityFlow,
+                         std::optional<mlir::Location> loc) {
+  if (loc)
+    flowLocs.try_emplace({{srcCoords, srcPort}, {dstCoords, dstPort}}, *loc);
   if (packetId) {
     auto &ids = packetIdsTo[{{srcCoords, srcPort}, {dstCoords, dstPort}}];
     if (!llvm::is_contained(ids, *packetId))
@@ -360,6 +366,16 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
   } else {
     flow->dsts.push_back(dst);
   }
+}
+
+// Where the flow from `src` to `dst`, or to any destination if `dst` is null,
+// was declared.
+std::optional<mlir::Location>
+Pathfinder::flowLoc(const PathEndPoint &src, const PathEndPoint *dst) const {
+  for (const auto &[ends, loc] : flowLocs)
+    if (ends.first == src && (!dst || ends.second == *dst))
+      return loc;
+  return std::nullopt;
 }
 
 bool Pathfinder::shareAllChannels() {
@@ -1291,8 +1307,9 @@ llvm::Error Pathfinder::TreeBuilder::placePinned() {
     if (!e)
       return llvm::make_error<RoutingFailure>(
           "the route packet flows from " +
-          describeTilePort(part.src.coords, part.src.port) +
-          " take alone does not fit this design.");
+              describeTilePort(part.src.coords, part.src.port) +
+              " take alone does not fit this design.",
+          RoutingFaults{}, pf.flowLoc(part.src, nullptr));
     std::pair<int, std::pair<int, Edge>> hop{
         stateId(toId->second, intra ? Out : In),
         {stateId(fromId->second, intra ? In : Out), *e}};
@@ -1355,10 +1372,11 @@ llvm::Error Pathfinder::TreeBuilder::grow() {
     if (!trace(currId))
       return llvm::make_error<RoutingFailure>(
           "no path leads from " +
-          describeTilePort(part.src.coords, part.src.port) + " to " +
-          describeTilePort(endPoint.coords, endPoint.port) +
-          " through the connections the switchboxes allow and existing "
-          "routing leaves free.");
+              describeTilePort(part.src.coords, part.src.port) + " to " +
+              describeTilePort(endPoint.coords, endPoint.port) +
+              " through the connections the switchboxes allow and existing "
+              "routing leaves free.",
+          RoutingFaults{}, pf.flowLoc(part.src, &endPoint));
   }
   return llvm::Error::success();
 }
