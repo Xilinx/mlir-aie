@@ -79,6 +79,26 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 |-|-|-|-|
 | [fused_mm_tile.cc](./fused/fused_mm_tile.cc) | AIE API | Fused GEMM with in-L1 f32 accumulate and activation epilogue (`acc_init` / `k_step` / `epilogue_chunk`, from [mm_fused.h](./fused/mm_fused.h)); tile geometry via `-DMM_FUSED_*`, activation mode and clamp bounds as runtime arguments to `epilogue_chunk` | `bfloat16` |
 
+### flm_gemma4
+Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kernel code in its prefill, LM-head or decode-layer design, called from that core's Worker body. AIE2P only, and not intended for other models. Several take their core lock ids as `-DFLM_GEMMA4_*_LOCK` flags, and the `decode_*` kernels build for the model geometry in `-DFLM_GEMMA4_DECODE_*` flags.
+
+| Name | Coding style | Purpose | Datatypes |
+|-|-|-|-|
+| [prefill.cc](./flm_gemma4/prefill.cc) | AIE API | Flash-attention prefill, head dim 512 (global) or 256 (sliding window), on [flash_attn_prefill.h](./linalg/flash_attn_prefill.h) | `bfloat16` |
+| [q4nx_lm_head.cc](./flm_gemma4/q4nx_lm_head.cc) | AIE API | LM head over q4nx weights: RMS norm, block accumulation, tanh softcap | `uint8_t`, `bfloat16` |
+| [decode_attn_qk.cc](./flm_gemma4/decode_attn_qk.cc) | AIE API | Decode attention scores q·k with a running max, global or sliding window | `bfloat16` |
+| [decode_attn_qk_kvh2.cc](./flm_gemma4/decode_attn_qk_kvh2.cc) | AIE API | As `decode_attn_qk.cc`, global, two KV heads | `bfloat16` |
+| [decode_attn_kv.cc](./flm_gemma4/decode_attn_kv.cc) | AIE API | Decode attention softmax and s·v, global, one KV head | `bfloat16` |
+| [decode_attn_kv_kvh2.cc](./flm_gemma4/decode_attn_kv_kvh2.cc) | AIE API | As `decode_attn_kv.cc`, two KV heads | `bfloat16` |
+| [decode_swa_attn_kv.cc](./flm_gemma4/decode_swa_attn_kv.cc) | AIE API | As `decode_attn_kv.cc`, sliding window | `bfloat16` |
+| [decode_rope.cc](./flm_gemma4/decode_rope.cc) | AIE API | RoPE with the q/k/v RMS norms | `bfloat16` |
+| [decode_rms_residual.cc](./flm_gemma4/decode_rms_residual.cc) | AIE API | The layer's four RMS norms and two residual adds | `bfloat16` |
+| [decode_proj_main.cc](./flm_gemma4/decode_proj_main.cc) | AIE API | q4nx matrix-vector projections (q/k/v/o, gate/up/down) | `bfloat16` |
+| [decode_glu.cc](./flm_gemma4/decode_glu.cc) | AIE API | Gated linear unit (GELU) | `bfloat16` |
+| [decode_per_layer_up.cc](./flm_gemma4/decode_per_layer_up.cc) | AIE API | Per-layer-input up projection and norm | `bfloat16` |
+| [decode_proj_layer_embedding.cc](./flm_gemma4/decode_proj_layer_embedding.cc) | AIE API | Per-layer-embedding projection and norm | `bfloat16` |
+| [decode_gate_layer_embedding.cc](./flm_gemma4/decode_gate_layer_embedding.cc) | AIE API | Per-layer-embedding gate projection with GELU | `bfloat16` |
+
 ## linalg
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
