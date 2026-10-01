@@ -868,14 +868,19 @@ SmallVector<TileID> cutTiles(const AIETargetModel &targetModel, TileID src,
 
 /// The tile, port and id of each packet a prioritized flow (priority_route)
 /// sends.
-using PrioritizedPackets = std::set<std::tuple<TileID, Port, int>>;
+struct PrioritizedPackets {
+  std::set<std::tuple<TileID, Port, int>> packets;
+  bool contains(const RoutedStream &s) const {
+    return s.packetID && packets.count({s.src.tile, s.src.port, *s.packetID});
+  }
+};
 
 PrioritizedPackets prioritizedPackets(DeviceOp device) {
   PrioritizedPackets prioritized;
   for (PacketFlowOp flow : device.getOps<PacketFlowOp>())
     if (flow.getPriorityRoute().value_or(false))
       for (auto src : flow.getPorts().getOps<PacketSourceOp>())
-        prioritized.insert(
+        prioritized.packets.insert(
             {cast<TileOp>(src.getTile().getDefiningOp()).getTileID(),
              src.port(), flow.IDInt()});
   return prioritized;
@@ -931,8 +936,7 @@ tooFewArbiters(DeviceOp device, const StreamConflicts &conflicts,
     pinned[s.dst.tile].push_back(i);
     if (s.src.tile == s.dst.tile)
       continue;
-    bool circuitless =
-        prioritized.count({s.src.tile, s.src.port, *s.packetID}) > 0;
+    bool circuitless = prioritized.contains(s);
     if (circuitless || pinsHops(s.src.tile))
       pinned[s.src.tile].push_back(i);
     for (TileID t : cutTiles(targetModel, s.src.tile, s.dst.tile))
@@ -1033,8 +1037,7 @@ leavingPinnedTrees(const StreamConflicts &conflicts,
       leaving[s.dst.tile].push_back({i, std::nullopt, s.dst.port, true});
       continue;
     }
-    bool isPrioritized =
-        prioritized.count({s.src.tile, s.src.port, *s.packetID}) > 0;
+    bool isPrioritized = prioritized.contains(s);
     for (auto [slave, hop] : hops) {
       leaving[hop.coords].push_back(
           {i, slave, hop.port,
@@ -1092,7 +1095,7 @@ sharedArbiterAt(TileID tileId, ArrayRef<Leaving> here,
   std::set<Port> forcedSlaves, forcedMasters;
   for (const Leaving &l : here) {
     const RoutedStream &s = streams[l.stream];
-    if (prioritized.count({s.src.tile, s.src.port, *s.packetID})) {
+    if (prioritized.contains(s)) {
       if (l.slave)
         forcedSlaves.insert(*l.slave);
       forcedMasters.insert(l.master);
