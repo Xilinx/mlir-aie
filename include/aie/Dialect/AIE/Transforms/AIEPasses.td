@@ -299,15 +299,21 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
     and aie.packet_rules operations.
 
     An arbiter holds its grant until end of packet, so two slave ports sharing
-    one arbiter serialize even on different master ports. Where that can
-    deadlock, amsel allocation separates them; with no independent arbiter free
-    it keeps the sharing and warns. Only oversubscribed switchboxes are
-    affected.
+    one arbiter serialize even on different master ports. A switchbox with
+    more packet master ports than arbiters first turns packet hops that alone
+    use both their ports into aie.connect, which passes the header through to
+    the next switchbox and needs no arbiter. Where master ports still have to
+    share, amsel allocation keeps apart the flows that can deadlock, judged
+    from the design's locks, streams, BD lengths and runtime waits. Where a
+    routing leaves no such allocation, the router routes the flows involved
+    elsewhere. If flows that can deadlock pairwise must take more arbiters at
+    some switchbox than it has, whatever the routing, or no routing keeps them
+    apart, the pass fails and names the flows and what it assumed about them.
 
     This reads buffer descriptor lengths from the DMA bodies (aie.mem,
-    aie.memtile_dma, aie.shim_dma), so run the pass after those exist. Channels
-    with no body here (e.g. shim channels, once the runtime sequence is lowered
-    away) are simply left to the remaining rules.
+    aie.memtile_dma, aie.shim_dma), so run the pass after those exist. A
+    channel with no body here is assumed to wait on anything on its tile, and
+    a flow whose volume is unknown to overrun its receiver.
   }];
 
   let constructor = "xilinx::AIE::createAIEPathfinderPass()";
@@ -318,6 +324,10 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
               "Flag to enable aie.flow lowering.">,
        Option<"clRoutePacket", "route-packet", "bool", /*default=*/"true",
               "Flag to enable aie.packetflow lowering.">,
+       Option<"clCircuitSwitchHops", "circuit-switch-hops", "bool",
+              /*default=*/"true",
+              "Circuit-switch exclusive packet hops at switchboxes with more "
+              "packet master ports than free arbiters.">,
   ];
 }
 
