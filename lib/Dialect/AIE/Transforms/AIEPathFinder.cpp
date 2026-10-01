@@ -741,9 +741,7 @@ double Pathfinder::edgeWeight(const Edge &e, std::optional<int> packetId,
 
 // Dijkstra over the dense graph from the states in `seeds`, searching states
 // (node, PortSide) rather than bare nodes. Fills the `preds` and `predEdge`
-// scratch buffers, both indexed by state id. The push/relax control flow
-// (including the WHITE-node always-push behavior and the absence of a heap
-// decrease-key) is inherited from the legacy PathEndPoint-keyed version.
+// scratch buffers, both indexed by state id.
 void Pathfinder::dijkstraShortestPaths(
     ArrayRef<int> seeds, ArrayRef<double> seedCosts,
     std::optional<int> packetId, const llvm::BitVector *avoid,
@@ -797,19 +795,16 @@ void Pathfinder::dijkstraShortestPaths(
         continue;
       int dst = stateId(e.dst, isIntra ? Out : In);
       double w = edgeWeight(e, packetId, avoid, avoidBranch);
-      bool relax = distance[s] + w < distance[dst];
+      if (colors[dst] == BLACK || distance[s] + w >= distance[dst])
+        continue;
+      distance[dst] = distance[s] + w;
+      preds[dst] = s;
+      predEdge[dst] = e;
       if (colors[dst] == WHITE) {
-        if (relax) {
-          distance[dst] = distance[s] + w;
-          preds[dst] = s;
-          predEdge[dst] = e;
-          colors[dst] = GRAY;
-        }
+        colors[dst] = GRAY;
         Q.push(dst);
-      } else if (colors[dst] == GRAY && relax) {
-        distance[dst] = distance[s] + w;
-        preds[dst] = s;
-        predEdge[dst] = e;
+      } else {
+        Q.update(dst);
       }
     }
     colors[s] = BLACK;
