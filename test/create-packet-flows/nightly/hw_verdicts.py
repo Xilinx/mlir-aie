@@ -54,7 +54,7 @@ def main():
 
 
 # CHECK-NOT: WRONG
-# CHECK: hw-verdicts: 107 routings, 0 disagree with HW
+# CHECK: hw-verdicts: 113 routings, 0 disagree with HW
 
 if __name__ == "__main__":
     main()
