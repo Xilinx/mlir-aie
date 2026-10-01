@@ -99,6 +99,36 @@ print(seq)
 
 
 @iron.jit
+def empty_group(a: In, b: Out, *, n_tiles: DispatchTime[np.int32] = 4):
+    def body(a, b, n, in_prod, out_cons, chunks):
+        for _iv, carried, last in range_(
+            0, n, iter_args=[TaskGroup()], insert_yield=False
+        ):
+            carried.finish()
+            yield_([TaskGroup()])
+        last.finish()
+        for _iv, (carried, acc), (last, _total) in range_(
+            0, n, iter_args=[TaskGroup(), n], insert_yield=False
+        ):
+            carried.finish()
+            yield_([TaskGroup(), acc])
+        last.finish()
+
+    return build(body, n_tiles)
+
+
+mlir = empty_group.specialize().as_mlir()
+print(mlir[mlir.index("aie.runtime_sequence") :])
+# A group with no transfers carries no handles, alone or next to a value.
+
+# CHECK-LABEL: aie.runtime_sequence
+# CHECK: scf.for %{{[^ ]*}} = %{{[^ ]*}} to %{{[^ ]*}} step %{{[^ ]*}} {
+# CHECK-NEXT: }
+# CHECK: %{{.*}} = scf.for %{{[^ ]*}} = %{{.*}} iter_args(%[[ACC:[^ ]*]] = %{{.*}}) -> (i32)
+# CHECK-NEXT: scf.yield %[[ACC]] : i32
+
+
+@iron.jit
 def spent_group(a: In, b: Out, *, n_tiles: DispatchTime[np.int32] = 4):
     def body(a, b, n, in_prod, out_cons, chunks):
         tg = TaskGroup()

@@ -117,9 +117,12 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs) -> Iterator[Any]:
         for vals in _for(
             *args, iter_args=iter_args, insert_yield=insert_yield, **kwargs
         ):
-            iv, a, results = vals
-            if len(raw) == 1:
-                a, results = (a,), (results,)
+            if not raw:
+                iv, a, results = vals, (), ()
+            else:
+                iv, a, results = vals
+                if len(raw) == 1:
+                    a, results = (a,), (results,)
             yield iv, rewrap(tuple(a)), rewrap(tuple(results))
     finally:
         _pop_specs()
