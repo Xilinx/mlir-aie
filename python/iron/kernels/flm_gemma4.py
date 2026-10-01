@@ -428,6 +428,423 @@ def _prefill_finalize_sample(rng, calls, *, lq):
     return [rng.uniform(1.0, 300.0, (calls, lq)).astype(np.float32)]
 
 
+# The prefill arithmetic behind attn_qk_step's and attn_fv_step's locks and
+# attn_block_mid's state, built from flm_gemma4/prefill_core.cc.
+
+# FastFlowLM's softmax scale: log2(e) in bf16, with no 1 / sqrt(head_dim).
+_LOG2E_BF16 = float(bfloat16(np.log2(np.e)))
+# prefill.cc's NEG_INF: the most negative finite bf16.
+_PREFILL_NEG_INF = float.fromhex("-0x1.FEp127")
+# aie::exp2<bfloat16> overshoots 2**x by up to 6.98% with its bf16 roundings
+# (linalg.mha_softmax, test_mha_e2e.py). The reference's own cast to bf16
+# adds half a step, 2**-9.
+_PREFILL_EXP2_RTOL = 0.075
+# AIE2P has no float32 multiplier. aie::mul on floats runs Peano's
+# accuracy_safe product of bf16 limbs; this bound leaves a wide margin over it.
+_PREFILL_F32_MUL_RTOL = 2.0**-16
+
+
+def _prefill_lq(head_dim):
+    if head_dim not in (256, 512):
+        raise ValueError(f"head_dim must be 256 or 512, not {head_dim}")
+    return _ATTN_PREFILL_LQ if head_dim == 512 else _SWA_PREFILL_LQ
+
+
+def _prefill_core(symbol, head_dim, arg_types, contract) -> ExternalFunction:
+    """``symbol`` of ``flm_gemma4/prefill_core.cc``, built with ``head_dim``'s prefill flags."""
+    _prefill_lq(head_dim)
+    base = flm_gemma4_swa_prefill() if head_dim == 256 else flm_gemma4_attn_prefill()
+    return _wrapper(base, "prefill_core.cc", symbol, arg_types, contract)
+
+
+def _tiles(x, rows, cols, *, col_major=False):
+    """Return ``(calls, rows, cols)`` from 8x8 row-major tiles, in row- or column-major tile order."""
+    t = np.asarray(x, np.float64).reshape(-1, rows // 8, cols // 8, 8, 8)
+    if col_major:
+        t = t.reshape(-1, cols // 8, rows // 8, 8, 8).transpose(0, 2, 1, 3, 4)
+    return t.transpose(0, 1, 3, 2, 4).reshape(-1, rows, cols)
+
+
+def _to_tiles(x, *, col_major=False):
+    """Invert ``_tiles``, flattened per call."""
+    calls, rows, cols = x.shape
+    t = x.reshape(calls, rows // 8, 8, cols // 8, 8).transpose(0, 1, 3, 2, 4)
+    if col_major:
+        t = t.transpose(0, 2, 1, 3, 4)
+    return t.reshape(calls, -1)
+
+
+def _bf16_rounding_error(x):
+    """0 where ``x`` is a bf16 value, else one bf16 step at ``x``."""
+    x = np.asarray(x, np.float64)
+    exact = x.astype(np.float32).astype(bfloat16).astype(np.float64) == x
+    return np.where(exact, 0.0, np.ldexp(1.0, np.frexp(np.abs(x))[1] - 8))
+
+
+def _bfp16_error(x):
+    """Bound on the bf16 -> bfp16ebs8 conversion error, blocks of 8 along the last axis.
+
+    0 on the block's grid of 2**(E - 6), E the exponent of its largest value;
+    elsewhere two grid steps, which also covers a rounding carry that raises E.
+    """
+    x = np.asarray(x, np.float64)
+    blocks = x.reshape(*x.shape[:-1], -1, 8)
+    top = np.abs(blocks).max(axis=-1, keepdims=True)
+    step = np.ldexp(1.0, np.frexp(top)[1] - 7)
+    on_grid = np.mod(blocks, step) == 0
+    return np.where(on_grid | (top == 0), 0.0, 2 * step).reshape(x.shape)
+
+
+def _bfp16_product_error(a, b):
+    """Bound on ``|a @ b - Q(a) @ Q(b)|`` for the bfp16-emulated mmul, ``Q`` along the inner axis."""
+    ea, eb = _bfp16_error(a), _bfp16_error(np.swapaxes(b, -1, -2))
+    eb = np.swapaxes(eb, -1, -2)
+    return np.abs(a) @ eb + ea @ np.abs(b) + ea @ eb
+
+
+def _grid_bf16(rng, shape, step):
+    """Integers -127..127 times ``step``: bf16 values on every bfp16ebs8 block's grid."""
+    return (rng.integers(-127, 128, size=shape) * step).astype(bfloat16)
+
+
+def flm_gemma4_prefill_round_begin_ref(*, head_dim=512):
+    """Numpy reference for [`flm_gemma4_prefill_round_begin`][iron.kernels.flm_gemma4.flm_gemma4_prefill_round_begin].
+
+    The bytes of ``y | c | l | prev_m | new_m``: zeros, ones, zeros and two
+    rows of NEG_INF.
+    """
+    lq = _prefill_lq(head_dim)
+    return np.concatenate(
+        [
+            np.zeros(lq * head_dim, np.float32).view(np.uint8),
+            np.ones(lq, np.float32).view(np.uint8),
+            np.zeros(lq, np.float32).view(np.uint8),
+            np.full(2 * lq, _PREFILL_NEG_INF, bfloat16).view(np.uint8),
+        ]
+    )
+
+
+@dtypes([{"head_dim": 256}])
+def flm_gemma4_prefill_round_begin(*, head_dim: int = 512) -> ExternalFunction:
+    """``attn_round_begin`` of the prefill kernels, its five outputs packed as bytes.
+
+    ``out`` is ``y | c | l | prev_m | new_m``.
+    """
+    lq = _prefill_lq(head_dim)
+    n = 4 * lq * head_dim + 12 * lq
+    return _prefill_core(
+        "attn_round_begin_core",
+        head_dim,
+        [np.ndarray[(n,), np.dtype[np.uint8]]],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(Out,),
+            reference=partial(flm_gemma4_prefill_round_begin_ref, head_dim=head_dim),
+            tolerance=Tolerance.exact(note="constant stores"),
+            ops_per_call=0,
+        ),
+    )
+
+
+def _prefill_keep(lq, lk, inner_k, inner_q, inner_k_current):
+    """apply_mask_and_get_max's mask: key ``inner_k_current + lane`` against query ``inner_q + row``."""
+    row, lane = np.indices((lq, lk))
+    key = inner_k_current + lane
+    return (key <= inner_q + row) & (key > inner_k + row)
+
+
+def flm_gemma4_prefill_qk_core_ref(
+    q, k, m, inner_k, inner_q, inner_k_current, *, head_dim=512
+):
+    """Numpy reference for [`flm_gemma4_prefill_qk_core`][iron.kernels.flm_gemma4.flm_gemma4_prefill_qk_core]: ``s | m``.
+
+    ``s = q @ k.T``, NEG_INF where masked, and ``m`` folds in ``s``
+    lanewise. The tolerance covers the bfp16 operands and the bf16 narrowing.
+    """
+    lq = lk = _prefill_lq(head_dim)
+    q, k = _tiles(q, lq, head_dim), _tiles(k, lk, head_dim, col_major=True)
+    s = q @ k.transpose(0, 2, 1)
+    keep = _prefill_keep(lq, lk, inner_k, inner_q, inner_k_current)
+    s = np.where(keep, s, _PREFILL_NEG_INF)
+    m = np.maximum(np.asarray(m, np.float64).reshape(-1, lq, lk), s)
+    return np.concatenate([s.reshape(len(s), -1), m.reshape(len(m), -1)], axis=1)
+
+
+def _prefill_qk_bound(q, k, m, inner_k, inner_q, inner_k_current, *, head_dim):
+    lq = lk = _prefill_lq(head_dim)
+    q, k = _tiles(q, lq, head_dim), _tiles(k, lk, head_dim, col_major=True)
+    kt = k.transpose(0, 2, 1)
+    s = np.abs(q @ kt)
+    # bfp16 operands; float32 accumulation over head_dim products.
+    err = _bfp16_product_error(q, kt) + head_dim * 2.0**-24 * (np.abs(q) @ np.abs(kt))
+    # The device's narrowing (floor or nearest) and the reference's cast.
+    bound = err + 2.0**-7 * (s + err) + 2.0**-8 * s
+    bound = np.where(_prefill_keep(lq, lk, inner_k, inner_q, inner_k_current), bound, 0)
+    bound = bound.reshape(len(bound), -1)
+    return np.concatenate([bound, bound], axis=1)
+
+
+def _prefill_qk_sample(rng, calls, *, head_dim):
+    # Operands on the bfp16 grid, so the mmul converts them exactly. A running
+    # max near the scores' spread, so either side wins some lanes.
+    lq = lk = _prefill_lq(head_dim)
+    q = _grid_bf16(rng, (calls, lq, head_dim), 2.0**-6)
+    k = _grid_bf16(rng, (calls, lk, head_dim), 2.0**-6)
+    m = rng.normal(0.0, 20.0, (calls, lq * lk)).astype(bfloat16)
+    return [
+        _to_tiles(q.astype(np.float32)).astype(bfloat16),
+        _to_tiles(k.astype(np.float32), col_major=True).astype(bfloat16),
+        m,
+    ]
+
+
+@dtypes([{"head_dim": 256}])
+def flm_gemma4_prefill_qk_core(*, head_dim: int = 512) -> ExternalFunction:
+    """``attn_qk_step``'s arithmetic for one key chunk, without its k lock.
+
+    ``attn_qk_core(q, k, m, inner_k, inner_q, inner_k_current, out)``:
+    ``s = q @ k.T`` through the bfp16-emulated mmul, masked, and ``m``
+    folded with it, into ``out = s | m``. The three positions are
+    ``apply_mask_and_get_max``'s, which attn_qk_step derives from its RTPs.
+    q and k arrive in the mmul's 8x8 tiles, k's tiles in column-major order.
+    """
+    lq = lk = _prefill_lq(head_dim)
+    kv = np.ndarray[(lq * head_dim,), _BF16]
+    m = np.ndarray[(lq * lk,), _BF16]
+    return _prefill_core(
+        "attn_qk_core",
+        head_dim,
+        [kv, kv, m, np.int32, np.int32, np.int32, np.ndarray[(2 * lq * lk,), _BF16]],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, In, Param, Param, Param, Out),
+            sample=partial(_prefill_qk_sample, head_dim=head_dim),
+            reference=partial(flm_gemma4_prefill_qk_core_ref, head_dim=head_dim),
+            tolerance=Tolerance.bounded(
+                partial(_prefill_qk_bound, head_dim=head_dim),
+                note="bfp16ebs8 operand rounding (zero on the sample's grid), "
+                "float32 accumulation, and the bf16 narrowing of s",
+            ),
+            ops_per_call=2 * lq * lk * head_dim,
+        ),
+    )
+
+
+def flm_gemma4_prefill_fv_core_ref(y, sv, *, head_dim=512):
+    """Numpy reference for [`flm_gemma4_prefill_fv_core`][iron.kernels.flm_gemma4.flm_gemma4_prefill_fv_core]: ``y + s @ v``.
+
+    ``y`` and ``s`` are in the mmul's 8x8 tiles, ``v`` in column-major tile
+    order; the tolerance covers the bfp16 operands.
+    """
+    lq = lk = _prefill_lq(head_dim)
+    s, v = _prefill_sv(sv, lq, lk, head_dim)
+    return _to_tiles(_tiles(y, lq, head_dim) + s @ v)
+
+
+def _prefill_sv(sv, lq, lk, head_dim):
+    sv = np.asarray(sv).reshape(-1, lq * lk + lk * head_dim)
+    s = _tiles(sv[:, : lq * lk], lq, lk)
+    return s, _tiles(sv[:, lq * lk :], lk, head_dim, col_major=True)
+
+
+def _prefill_fv_core_bound(y, sv, *, head_dim):
+    lq = lk = _prefill_lq(head_dim)
+    s, v = _prefill_sv(sv, lq, lk, head_dim)
+    mag = np.abs(_tiles(y, lq, head_dim)) + np.abs(s) @ np.abs(v)
+    # bfp16 operands; float32 accumulation of lk / 8 mmul steps into y and
+    # the reference's float32 cast, far inside 2**-20.
+    return _to_tiles(_bfp16_product_error(s, v) + 2.0**-20 * mag)
+
+
+def _prefill_fv_sample(rng, calls, *, head_dim):
+    # Softmax weights in [0, 1) and v on the bfp16 grid, so the mmul converts
+    # them exactly.
+    lq = lk = _prefill_lq(head_dim)
+    y = rng.normal(0.0, 4.0, (calls, lq * head_dim)).astype(np.float32)
+    s = rng.integers(0, 128, (calls, lq, lk)) * 2.0**-7
+    v = _grid_bf16(rng, (calls, lk, head_dim), 2.0**-6).astype(np.float64)
+    sv = np.concatenate([_to_tiles(s), _to_tiles(v, col_major=True)], axis=1)
+    return [y, sv.astype(bfloat16)]
+
+
+@dtypes([{"head_dim": 256}])
+def flm_gemma4_prefill_fv_core(*, head_dim: int = 512) -> ExternalFunction:
+    """``attn_fv_step``'s arithmetic for one key chunk, without its v lock.
+
+    ``attn_fv_core(y, sv, y_out)``: ``y_out = y + s @ v`` through
+    ``flm_attn_fv``'s bfp16-emulated mmul, with ``sv = s | v``. y and s are in
+    the mmul's 8x8 tiles, v's tiles in column-major order.
+    """
+    lq = lk = _prefill_lq(head_dim)
+    y = np.ndarray[(lq * head_dim,), _F32]
+    return _prefill_core(
+        "attn_fv_core",
+        head_dim,
+        [y, np.ndarray[(lq * lk + lk * head_dim,), _BF16], y],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out),
+            sample=partial(_prefill_fv_sample, head_dim=head_dim),
+            reference=partial(flm_gemma4_prefill_fv_core_ref, head_dim=head_dim),
+            tolerance=Tolerance.bounded(
+                partial(_prefill_fv_core_bound, head_dim=head_dim),
+                note="bfp16ebs8 operand rounding (zero on the sample's grid) "
+                "and float32 accumulation",
+            ),
+            ops_per_call=2 * lq * lk * head_dim,
+        ),
+    )
+
+
+def _prefill_block_mid_math(in_bf16, in_f32, head_dim):
+    """attn_block_mid in float64: ``(p, new_m, y, l, c, d, dc)``, ``p`` as ``(calls, lq, 128)``.
+
+    ``d`` and ``dc`` are the differences the kernel narrows to bf16 before
+    its exp2: ``s - new_m`` and ``prev_m - new_m``.
+    """
+    lq = lk = _prefill_lq(head_dim)
+    b = np.asarray(in_bf16, np.float64).reshape(-1, lq * 128 + lq * lk + lq)
+    f = np.asarray(in_f32, np.float64).reshape(-1, lq * head_dim + lq)
+    # s arrives as attn_qk_step stores it: (chunk, query row, lane).
+    s = b[:, : lq * 128].reshape(-1, 128 // lk, lq, lk).transpose(0, 2, 1, 3)
+    s = s.reshape(-1, lq, 128)
+    new_m = b[:, lq * 128 : lq * 128 + lq * lk].reshape(-1, lq, lk).max(axis=2)
+    prev_m = b[:, -lq:]
+    d = s - new_m[..., None]
+    dc = prev_m - new_m
+    with np.errstate(over="ignore", under="ignore"):
+        p = np.exp2(d * _LOG2E_BF16)
+    c = np.exp2(dc * _LOG2E_BF16)
+    y = f[:, : lq * head_dim].reshape(-1, lq // 8, head_dim // 8, 8, 8)
+    y = y * c.reshape(-1, lq // 8, 1, 8, 1)
+    row_sums = p.sum(axis=2) + c * f[:, lq * head_dim :]
+    return p, new_m, y.reshape(len(y), -1), row_sums, c, d, dc
+
+
+def _prefill_block_mid_s(p, lq):
+    """``p`` as attn_block_mid leaves s: per chunk, row-major or, at lq 16, 8x8 tiles."""
+    t = p.reshape(-1, lq, 128 // lq, lq).transpose(0, 2, 1, 3)
+    if lq == 16:
+        t = t.reshape(-1, 8, 2, 8, 2, 8).transpose(0, 1, 2, 4, 3, 5)
+    return t.reshape(len(p), -1)
+
+
+def flm_gemma4_prefill_block_mid_core_ref(in_bf16, in_f32, *, head_dim=512):
+    """Numpy reference for [`flm_gemma4_prefill_block_mid_core`][iron.kernels.flm_gemma4.flm_gemma4_prefill_block_mid_core].
+
+    ``(s | new_m, y | l | c)``: ``new_m`` the row max of ``m``,
+    ``p = 2**((s - new_m) * log2e)`` and ``c = 2**((prev_m - new_m) * log2e)``
+    with FastFlowLM's bf16 log2(e), ``l = sum(p) + c * l`` and ``y = c * y``.
+    """
+    lq = _prefill_lq(head_dim)
+    p, new_m, y, row_sums, c, _, _ = _prefill_block_mid_math(in_bf16, in_f32, head_dim)
+    return (
+        np.concatenate([_prefill_block_mid_s(p, lq), new_m], axis=1),
+        np.concatenate([y, row_sums, c], axis=1),
+    )
+
+
+def _prefill_exp2_bound(value, arg_error):
+    """Bound on an exp2 output: the interpolant's error and an argument off by ``arg_error``."""
+    with np.errstate(over="ignore", invalid="ignore"):
+        rel = (1 + _PREFILL_EXP2_RTOL) * np.exp2(arg_error) - 1
+        return np.where(value > 0, value * rel, 0.0)
+
+
+def _prefill_block_mid_bound(in_bf16, in_f32, *, head_dim):
+    lq = _prefill_lq(head_dim)
+    p, new_m, _, _, c, d, dc = _prefill_block_mid_math(in_bf16, in_f32, head_dim)
+    f = np.asarray(in_f32, np.float64).reshape(len(p), -1)
+    y, l_in = np.abs(f[:, : lq * head_dim]), f[:, lq * head_dim :]
+    # The kernel narrows s - new_m to bf16; prev_m - new_m to bf16, and its
+    # product with log2(e) to bf16 again. aie::exp2 also narrows its float
+    # argument to bf16: on npu2 its error grows with one bf16 step of the
+    # argument, 2**0.25 at arguments in [-64, -32).
+    with np.errstate(over="ignore"):
+        arg_error = _bf16_rounding_error(d * _LOG2E_BF16)
+    bp = _prefill_exp2_bound(p, _bf16_rounding_error(d) * _LOG2E_BF16 + arg_error)
+    e1 = _bf16_rounding_error(dc)
+    e2 = np.where(e1 == 0, _bf16_rounding_error(dc * _LOG2E_BF16), 2.0**-6 * np.abs(dc))
+    bc = _prefill_exp2_bound(c, e1 * _LOG2E_BF16 + e2)
+    # calculate_l sums p through the bfp16-emulated mmul: blocks of 8 keys,
+    # at most two grid steps each from the largest p the device can return.
+    top = (p + bp).reshape(len(p), lq, 16, 8).max(axis=3)
+    quant = (16 * np.ldexp(1.0, np.frexp(top)[1] - 7) * (top > 0)).sum(axis=2)
+    cl = (c + bc) * np.abs(l_in)
+    bl = bp.sum(axis=2) + quant + bc * np.abs(l_in) + _PREFILL_F32_MUL_RTOL * cl
+    bl += 2.0**-20 * (p.sum(axis=2) + cl)
+    rows = (bc + _PREFILL_F32_MUL_RTOL * (c + bc)).reshape(-1, lq // 8, 1, 8, 1)
+    by = (y.reshape(-1, lq // 8, head_dim // 8, 8, 8) * rows).reshape(len(p), -1)
+    return (
+        np.concatenate([_prefill_block_mid_s(bp, lq), np.zeros_like(new_m)], axis=1),
+        np.concatenate([by, bl, bc], axis=1),
+    )
+
+
+def _prefill_block_mid_sample(rng, calls, *, head_dim):
+    """State as attn_qk_step leaves it, on grids that make the kernel's bf16 differences exact.
+
+    Scores are multiples of 1/8 in [-12, 12], so every ``s - new_m`` is a
+    bf16. The last chunk masks the keys past each row's own, as the causal
+    diagonal does. ``prev_m`` sits 0.5 to 4 below the scores' row max (a
+    power of two, whose product with the bf16 log2(e) is a bf16) or 1 above
+    it (c = 1).
+    """
+    lq = lk = _prefill_lq(head_dim)
+    chunks = 128 // lk
+    s = rng.integers(-96, 97, (calls, chunks, lq, lk)) / 8.0
+    s[:, -1] = np.where(np.triu(np.ones((lq, lk), bool), 1), _PREFILL_NEG_INF, s[:, -1])
+    row_max = s.max(axis=(1, 3))
+    prev_m = row_max - rng.choice([-1.0, 0.5, 1.0, 2.0, 4.0], (calls, lq))
+    m = np.maximum(s.max(axis=1), prev_m[..., None])
+    in_bf16 = np.concatenate(
+        [s.reshape(calls, -1), m.reshape(calls, -1), prev_m], axis=1
+    )
+    y = rng.normal(0.0, 4.0, (calls, lq * head_dim))
+    l_in = rng.uniform(1.0, 300.0, (calls, lq))
+    return [
+        in_bf16.astype(bfloat16),
+        np.concatenate([y, l_in], axis=1).astype(np.float32),
+    ]
+
+
+@dtypes([{"head_dim": 256}])
+def flm_gemma4_prefill_block_mid_core(*, head_dim: int = 512) -> ExternalFunction:
+    """``attn_block_mid`` of the prefill kernels, its state passed in and out.
+
+    ``attn_block_mid_core(in_bf16, in_f32, out_bf16, out_f32)`` with
+    ``in_bf16 = s | m | prev_m``, ``in_f32 = y | l``, ``out_bf16 = s | new_m``
+    and ``out_f32 = y | l | c``: the row max, FastFlowLM's softmax, the
+    correction ``c`` and the rescaled ``l`` and ``y``.
+    """
+    lq = lk = _prefill_lq(head_dim)
+    return _prefill_core(
+        "attn_block_mid_core",
+        head_dim,
+        [
+            np.ndarray[(lq * 128 + lq * lk + lq,), _BF16],
+            np.ndarray[(lq * head_dim + lq,), _F32],
+            np.ndarray[(lq * 128 + lq,), _BF16],
+            np.ndarray[(lq * head_dim + 2 * lq,), _F32],
+        ],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out, Out),
+            sample=partial(_prefill_block_mid_sample, head_dim=head_dim),
+            reference=partial(flm_gemma4_prefill_block_mid_core_ref, head_dim=head_dim),
+            tolerance=Tolerance.bounded(
+                partial(_prefill_block_mid_bound, head_dim=head_dim),
+                note="aie::exp2's 6.98% (linalg.mha_softmax), bf16 rounding of "
+                "the exp2 arguments, in the kernel (zero on the sample's grid) "
+                "and inside aie::exp2 (measured on npu2), bfp16ebs8 "
+                "rounding of p in the row sums, the emulated float32 multiply",
+            ),
+            # Per score: subtract, scale, exp2, sum; per y element: one multiply.
+            ops_per_call=4 * lq * 128 + lq * head_dim,
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class FlmGemma4DecodeGeometry:
     """The model geometry the ``flm_gemma4/decode_*.cc`` kernels build for.
@@ -590,7 +1007,7 @@ def _decode_kernel(
     return fn
 
 
-def _decode_core(base: ExternalFunction, source: str, symbol, arg_types, contract):
+def _wrapper(base: ExternalFunction, source: str, symbol, arg_types, contract):
     """``symbol`` of ``flm_gemma4/<source>``, a lock-free wrapper that includes ``base``'s source.
 
     It builds with ``base``'s flags and include path, so the wrapper sees the
@@ -654,6 +1071,101 @@ def flm_gemma4_decode_glu(
         locks,
         geometry,
         lut=True,
+    )
+
+
+# getGeluBf16 reads one line, slope and offset, per 1/8-wide segment of
+# [-4, 4) from aie_runtime_lib's table and clamps to the end segments, 0 and x,
+# outside. Over every bf16 input those lines stay within 1.04e-3 of tanh-GELU
+# (1.45e-3 if an input within 2**-7 of a segment boundary indexes its
+# neighbour), measured on the host from the table; rounded up.
+_GELU_LUT_ERROR = 2e-3
+# The table's largest slope.
+_GELU_LUT_MAX_SLOPE = 1.13
+
+
+def _gelu_tanh(x):
+    x = np.asarray(x, np.float64)
+    return 0.5 * x * (1 + np.tanh(np.sqrt(2 / np.pi) * (x + 0.044715 * x**3)))
+
+
+def _gelu_lut_bound(x):
+    """Bound on getGeluBf16's bf16 result against tanh-GELU at ``x``.
+
+    The table's lines, plus one bf16 ulp (2**-7 relative) of the slope, which
+    the multiplier takes as bf16, times ``|x|`` up to the clamp at 4, plus one
+    ulp for the floor store of the result.
+    """
+    x = np.asarray(x, np.float64)
+    e = _GELU_LUT_ERROR + 2.0**-7 * _GELU_LUT_MAX_SLOPE * np.minimum(np.abs(x), 4.0)
+    return e + 2.0**-7 * (np.abs(_gelu_tanh(x)) + e)
+
+
+def _glu_split(x):
+    x = np.asarray(x, np.float64)
+    half = x.shape[-1] // 2
+    return x[..., :half], x[..., half:]
+
+
+def flm_gemma4_glu_core_ref(x):
+    """Numpy reference for [`flm_gemma4_glu_core`][iron.kernels.flm_gemma4.flm_gemma4_glu_core]: ``gelu(gate) * up``.
+
+    ``x`` holds, per call, the up half then the gate half. GELU is the tanh
+    form Gemma 4 uses; the tolerance covers the kernel's table.
+    """
+    up, gate = _glu_split(x)
+    return (_gelu_tanh(gate) * up).astype(np.float32)
+
+
+def _glu_core_bound(x):
+    up, gate = _glu_split(x)
+    g, d = np.abs(_gelu_tanh(gate)), _gelu_lut_bound(gate)
+    # The product of two bf16 values is exact in float32; its floor store adds
+    # one ulp, and the reference's float32 result 2**-24 relative.
+    return np.abs(up) * (d + 2.0**-7 * (g + d)) + 2.0**-23 * np.abs(up) * g
+
+
+def _glu_core_sample(rng, calls, *, n):
+    # Gate values reach both clamps of the table; up values are signed.
+    up = rng.uniform(-4.0, 4.0, (calls, n // 2))
+    gate = rng.uniform(-6.0, 6.0, (calls, n // 2))
+    return [np.concatenate([up, gate], axis=1).astype(bfloat16)]
+
+
+@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+def flm_gemma4_glu_core(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    """``pseduo_glu`` of [`flm_gemma4_decode_glu`][iron.kernels.flm_gemma4.flm_gemma4_decode_glu]: ``gelu(gate) * up`` for one slice.
+
+    ``glu_core(x, y)``: ``x`` is ``glu_slice`` bf16, the up half then the
+    gate half; ``y`` is ``glu_slice // 2`` bf16. GELU goes through
+    aie_runtime_lib's table (``getGeluBf16``).
+
+    Args:
+        geometry: The model the kernel builds for.
+    """
+    n = geometry.glu_slice
+    return _wrapper(
+        flm_gemma4_decode_glu(geometry=geometry),
+        "decode_glu_core.cc",
+        "glu_core",
+        [np.ndarray[(n,), _BF16], np.ndarray[(n // 2,), _BF16]],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out),
+            reference=flm_gemma4_glu_core_ref,
+            sample=partial(_glu_core_sample, n=n),
+            tolerance=Tolerance.bounded(
+                _glu_core_bound,
+                note="the GELU table's error against tanh-GELU, measured on the "
+                "host from aie_runtime_lib's table, plus a bf16 ulp of its slope "
+                "and the floor bf16 stores of the GELU and the product",
+            ),
+            uses_lut=True,
+            # Per output: the table line's multiply and add, then the product.
+            ops_per_call=3 * (n // 2),
+        ),
     )
 
 
@@ -780,6 +1292,156 @@ def flm_gemma4_decode_attn_kv(
     return fn
 
 
+# The kv round cores' state buffer: y, then l in a 16-float slot that keeps
+# the buffer a multiple of 64 bytes. The kernel copies the slot's last 8
+# floats through. Their first input is s then v, because a core has two
+# input DMA channels.
+_ATTN_KV_L_SLOT = 16
+_ATTN_KV_S = _DECODE_KEYS_PER_ROUND * 8 + 32
+_ATTN_KV_ROUND_TOLERANCE = (
+    "The bf16 mmul runs as a bfp16 mac: each operand rounds to an 8-bit "
+    "mantissa within 2**-6 of the maximum of its 8-key block, so s * v errs "
+    "by up to 2**-6 (|s|max(v) + max(s)|v|) + 2**-12 max(s)max(v). l's row sum "
+    "narrows to bf16, within 2**-7 of it. 2**-20 relative covers the float32 "
+    "multiplies and adds"
+)
+
+
+def _attn_kv_ly(dh):
+    return np.ndarray[(8 * dh + _ATTN_KV_L_SLOT,), _F32]
+
+
+def _attn_kv_round_terms(sv, ly, kv_head, *, dh, impl):
+    """Return a round's scores, c, y, l and the v rows each query head reads.
+
+    The scores are ``(calls, 8 heads, 16 keys)``, y ``(calls, 8, dh)`` and the
+    v rows ``(calls, 8, 16, dh)``. ``impl`` names the ``attn_fv`` whose v
+    layout to read: ``"1x8x1"`` one KV head, ``"2x4x1"`` two KV heads in one
+    buffer, ``"kvh2"`` KV head ``kv_head`` of two, the other heads reading
+    zeros.
+    """
+    sv, ly = np.asarray(sv), np.asarray(ly, dtype=np.float32)
+    s, v = sv[:, :_ATTN_KV_S], sv[:, _ATTN_KV_S:].astype(np.float64)
+    n, col_q = len(s), dh // 8
+    scores = s[:, :128].astype(np.float64).reshape(n, 8, 16)
+    c = np.ascontiguousarray(s[:, 128:144]).view(np.float32).astype(np.float64)
+    y = ly[:, : 8 * dh].reshape(n, col_q, 8, 8).transpose(0, 2, 1, 3)
+    denom = ly[:, 8 * dh : 8 * dh + 8].astype(np.float64)
+    if impl == "1x8x1":
+        # v is (key half, column block, key, column).
+        one = v.reshape(n, 2, col_q, 8, 8).transpose(0, 1, 3, 2, 4)
+        rows = np.broadcast_to(one.reshape(n, 1, 16, dh), (n, 8, 16, dh))
+    elif impl == "2x4x1":
+        # v is (key half, KV head, column block, key, column).
+        two = v.reshape(n, 2, 2, col_q, 8, 8).transpose(0, 2, 1, 4, 3, 5)
+        rows = np.repeat(two.reshape(n, 2, 16, dh), 4, axis=1)
+    else:
+        # v is (column block, key half, key, column).
+        one = v.reshape(n, col_q, 2, 8, 8).transpose(0, 2, 3, 1, 4)
+        rows = np.zeros((n, 8, 16, dh))
+        rows[:, 4 * kv_head : 4 * kv_head + 4] = one.reshape(n, 1, 16, dh)
+    return scores, c, y.reshape(n, 8, dh).astype(np.float64), denom, rows
+
+
+def _attn_kv_pack(y, denom, tail):
+    n, _, dh = y.shape
+    y = y.reshape(n, 8, dh // 8, 8).transpose(0, 2, 1, 3).reshape(n, 8 * dh)
+    return np.concatenate([y, denom, tail], axis=1).astype(np.float32)
+
+
+def _attn_kv_round_ref(sv, ly, kv_head=0, *, dh, impl):
+    scores, c, y, denom, rows = _attn_kv_round_terms(sv, ly, kv_head, dh=dh, impl=impl)
+    y = c[..., None] * y + np.einsum("nhk,nhkd->nhd", scores, rows)
+    denom = c * denom + scores.sum(-1)
+    return _attn_kv_pack(y, denom, np.asarray(ly)[:, 8 * dh + 8 :])
+
+
+def _attn_kv_round_bound(sv, ly, kv_head=0, *, dh, impl):
+    scores, c, y, denom, rows = _attn_kv_round_terms(sv, ly, kv_head, dh=dh, impl=impl)
+    n = len(scores)
+    a, b = np.abs(scores), np.abs(rows)
+    a_max = np.repeat(a.reshape(n, 8, 2, 8).max(-1), 8, axis=2)
+    b_max = np.repeat(b.reshape(n, 8, 2, 8, dh).max(3), 8, axis=2)
+    bfp = 2**-6 * (
+        np.einsum("nhk,nhkd->nhd", a_max, b) + np.einsum("nhk,nhkd->nhd", a, b_max)
+    ) + 2**-12 * np.einsum("nhk,nhkd->nhd", a_max, b_max)
+    y_bound = bfp + 2**-20 * (
+        np.abs(c[..., None] * y) + np.einsum("nhk,nhkd->nhd", a, b)
+    )
+    sums = a.sum(-1)
+    l_bound = 2**-7 * sums + 2**-20 * (np.abs(c * denom) + sums)
+    return _attn_kv_pack(y_bound, l_bound, np.zeros((n, _ATTN_KV_L_SLOT - 8)))
+
+
+def _attn_kv_round_sample(rng, calls, *, dh, kv_width):
+    # Scores are exponentials of non-positive numbers, and each correction c
+    # is one too, stored as float32 in the scores' tail.
+    v = rng.standard_normal((calls, _DECODE_KEYS_PER_ROUND * kv_width))
+    sv = np.concatenate([np.zeros((calls, _ATTN_KV_S)), v], axis=1).astype(bfloat16)
+    sv[:, :128] = rng.uniform(0.0, 1.0, (calls, 128)).astype(bfloat16)
+    c = rng.uniform(0.05, 1.0, (calls, 8)).astype(np.float32)
+    sv[:, 128:144] = c.view(bfloat16)
+    ly = 4 * rng.standard_normal((calls, 8 * dh + _ATTN_KV_L_SLOT))
+    ly[:, 8 * dh : 8 * dh + 8] = rng.uniform(1.0, 100.0, (calls, 8))
+    return [sv, ly.astype(np.float32)]
+
+
+def _attn_kv_round_core(
+    base, source, symbol, *, dh, kv_width, impl, rows, ref, stack_bytes=None
+):
+    ly = _attn_kv_ly(dh)
+    sv = np.ndarray[(_ATTN_KV_S + _DECODE_KEYS_PER_ROUND * kv_width,), _BF16]
+    head = (np.int32,) if impl == "kvh2" else ()
+    return _wrapper(
+        base,
+        source,
+        symbol,
+        [sv, ly, ly, *head],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out, *(Param for _ in head)),
+            reference=ref,
+            sample=partial(_attn_kv_round_sample, dh=dh, kv_width=kv_width),
+            tolerance=Tolerance.bounded(
+                partial(_attn_kv_round_bound, dh=dh, impl=impl),
+                note=_ATTN_KV_ROUND_TOLERANCE,
+            ),
+            # Two per multiply-add of the rows' s @ v, one per rescaled y.
+            ops_per_call=2 * rows * _DECODE_KEYS_PER_ROUND * dh + 8 * dh,
+            stack_bytes=stack_bytes,
+        ),
+    )
+
+
+def flm_gemma4_attn_kv_core(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    """One ``attn_kv_round`` of [`flm_gemma4_decode_attn_kv`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv] without its v lock.
+
+    ``attn_kv_round_core(sv, ly_in, ly_out)``: ``ly_out`` is ``ly_in`` with
+    ``l = c * l + rowsum(s)`` and ``y = c * y + s @ v`` per query head. ``sv``
+    holds ``s``, then ``v``. ``ly`` holds ``y``, then ``l`` in a 16-float slot.
+    """
+    base = flm_gemma4_decode_attn_kv(geometry=geometry)
+    dh = geometry.dh
+    return _attn_kv_round_core(
+        base,
+        "decode_attn_kv_core.cc",
+        "attn_kv_round_core",
+        dh=dh,
+        kv_width=dh,
+        impl="1x8x1",
+        rows=8,
+        ref=partial(flm_gemma4_attn_kv_core_ref, dh=dh),
+        stack_bytes=2304,  # aiecc measured_stack_size
+    )
+
+
+def flm_gemma4_attn_kv_core_ref(sv, ly, *, dh=512):
+    """Numpy reference for [`flm_gemma4_attn_kv_core`][iron.kernels.flm_gemma4.flm_gemma4_attn_kv_core], in float64."""
+    return _attn_kv_round_ref(sv, ly, dh=dh, impl="1x8x1")
+
+
 def flm_gemma4_decode_attn_kv_kvh2(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E4B_DECODE, **locks: int
 ) -> ExternalFunction:
@@ -817,6 +1479,39 @@ def flm_gemma4_decode_attn_kv_kvh2(
     )
     fn.attn_kv_finish = bind("attn_kv_finish", [t["y"], t["o"], t["l"]])
     return fn
+
+
+def flm_gemma4_attn_kv_kvh2_core(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E4B_DECODE
+) -> ExternalFunction:
+    """``attn_kv_s_begin``, then one KV head's ``attn_kv_v_half``, without the v lock.
+
+    The entry points are those of
+    [`flm_gemma4_decode_attn_kv_kvh2`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv_kvh2].
+    ``attn_kv_kvh2_round_core(sv, ly_in, ly_out, kv_head)``: ``ly_out`` is
+    ``ly_in`` with ``l = c * l + rowsum(s)`` and ``y = c * y``, plus ``s @ v``
+    for query heads ``4 * kv_head`` to ``4 * kv_head + 3``. ``sv`` holds
+    ``s``, then ``v``. ``ly`` holds ``y``, then ``l`` in a 16-float slot.
+    Both KV heads' v buffers do not fit in core memory beside ``ly``, so a
+    call reads one.
+    """
+    base = flm_gemma4_decode_attn_kv_kvh2(geometry=geometry)
+    dh = geometry.dh
+    return _attn_kv_round_core(
+        base,
+        "decode_attn_kv_kvh2_core.cc",
+        "attn_kv_kvh2_round_core",
+        dh=dh,
+        kv_width=dh,
+        impl="kvh2",
+        rows=4,
+        ref=partial(flm_gemma4_attn_kv_kvh2_core_ref, dh=dh),
+    )
+
+
+def flm_gemma4_attn_kv_kvh2_core_ref(sv, ly, kv_head, *, dh=512):
+    """Numpy reference for [`flm_gemma4_attn_kv_kvh2_core`][iron.kernels.flm_gemma4.flm_gemma4_attn_kv_kvh2_core], in float64."""
+    return _attn_kv_round_ref(sv, ly, int(kv_head), dh=dh, impl="kvh2")
 
 
 @dtypes(
@@ -916,6 +1611,187 @@ def flm_gemma4_decode_attn_qk_kvh2(
     return fn
 
 
+# The running max attn_qk_begin starts from, bf16's lowest finite value.
+_ATTN_QK_M_START = -float.fromhex("0x1.FEp127")
+_ATTN_QK_EXP_FLOOR = -87.0
+# Table entries are within 2**-8 of exp (measured over decode_lut_exp.h), and
+# exp_ilut multiplies by exp_flut.
+_ATTN_QK_TABLE_REL = (1 + 2.0**-8) ** 2 - 1
+# Absolute slack for exponents near the clamp, where table entries are
+# subnormal and may flush to zero.
+_ATTN_QK_ATOL = 2.0**-120
+
+
+def _attn_qk_parts(qm, k, iter, L0):
+    """Return the scores, mask, old and new running max, ``exp`` scores and corrections.
+
+    ``qm`` holds 8 query rows as 8x8 tiles, ``[dh / 8][row][8 dims]``, then
+    the 16 running maxima. Each KV head's k object holds 16 keys as 8x8
+    tiles, ``[dh / 8][key half][key][8 dims]``, the heads back to back. Query
+    row ``r`` meets KV head ``r // (8 / kv_heads)``.
+    """
+    qm, k = np.asarray(qm, np.float64), np.asarray(k, np.float64)
+    q, m_in = qm[:, :-16], qm[:, -16:]
+    calls, dh = q.shape[0], q.shape[1] // 8
+    kv = k.shape[1] // (_DECODE_KEYS_PER_ROUND * dh)
+    qr = q.reshape(calls, dh // 8, 8, 8).transpose(0, 2, 1, 3).reshape(calls, 8, dh)
+    kr = k.reshape(calls, kv, dh // 8, 2, 8, 8).transpose(0, 1, 3, 4, 2, 5)
+    kr = np.repeat(kr.reshape(calls, kv, 16, dh), 8 // kv, axis=1)
+    s = np.einsum("crd,crkd->crk", qr, kr)
+    valid = np.arange(16) < np.int64(L0) - 16 * np.int64(iter)
+    m_old = m_in[:, :8]
+    m_new = np.maximum(m_old, np.where(valid, s, -np.inf).max(axis=-1))
+    d = np.where(valid, s - m_new[..., None], 0.0)
+    e = np.where(valid, np.exp(np.maximum(d, _ATTN_QK_EXP_FLOOR)), 0.0)
+    c = np.exp(np.maximum(m_old - m_new, _ATTN_QK_EXP_FLOOR))
+    return s, valid, m_in, m_new, d, e, c
+
+
+def flm_gemma4_attn_qk_core_ref(qm, k, iter, L0):
+    """Numpy reference for [`flm_gemma4_attn_qk_core`][iron.kernels.flm_gemma4.flm_gemma4_attn_qk_core].
+
+    Keys ``j`` with ``j < L0 - 16 * iter`` are valid. Per query row the new
+    running max is ``max(m_in, valid scores)``; ``s`` holds ``exp(score -
+    max)`` for valid keys and 0 for the others, then the 16 running maxima
+    (rows 8 to 15 copied from ``m_in``). The second output is ``c = exp(m_in
+    - max)``. Both exponents are clamped at -87, as the kernel does.
+    """
+    _, _, m_in, m_new, _, e, c = _attn_qk_parts(qm, k, iter, L0)
+    m_out = m_in.copy()
+    m_out[:, :8] = m_new
+    return np.concatenate([e.reshape(len(e), -1), m_out], axis=1), c
+
+
+def _attn_qk_exp_bound(ref, d, delta, rel):
+    """Bound ``|kernel - ref|`` for an exponent ``d <= 0`` off by up to ``delta``.
+
+    The kernel clamps its exponent at -87, and its exponent is at most 0.
+    """
+    lo = np.exp(np.clip(d - delta, _ATTN_QK_EXP_FLOOR, 0.0)) * (1 - rel)
+    hi = np.exp(np.clip(d + delta, _ATTN_QK_EXP_FLOOR, 0.0)) * (1 + rel)
+    return np.maximum(hi - ref, ref - lo) + _ATTN_QK_ATOL
+
+
+def _attn_qk_core_bound(qm, k, iter, L0):
+    """Per-element bound for the kernel's bf16 narrowings and exp table.
+
+    The sample data makes the bfp16-emulated mmul exact, so a score's error
+    is its floor narrowing to bf16, under one ulp. A new max taken from the
+    scores has the same error. The bf16 subtraction narrows once more, and
+    the table's fixed-point input truncates the exponent to 2**-8. The table
+    entries add ``_ATTN_QK_TABLE_REL``. The exponentiated scores narrow to
+    bf16 once more; the float32 corrections do not.
+    """
+    s, valid, m_in, m_new, d, e, c = _attn_qk_parts(qm, k, iter, L0)
+    m_old = m_in[:, :8]
+    # A max kept from m_in is exact.
+    u_m = np.where(m_new > m_old, _bf16_ulp(m_new), 0.0)
+    u_s, u_m = _bf16_ulp(s), u_m[..., None]
+    delta = u_s + u_m + _bf16_ulp(np.abs(d) + u_s + u_m) + 2.0**-8
+    rel = (1 + _ATTN_QK_TABLE_REL) * (1 + 2.0**-7) - 1
+    b_e = np.where(valid, _attn_qk_exp_bound(e, d, delta, rel), 0.0)
+    dc, u_m = m_old - m_new, u_m[..., 0]
+    delta_c = u_m + _bf16_ulp(np.abs(dc) + u_m) + 2.0**-8
+    b_c = _attn_qk_exp_bound(c, dc, delta_c, _ATTN_QK_TABLE_REL)
+    b_m = np.zeros((len(s), 16))
+    b_m[:, :8] = u_m
+    return np.concatenate([b_e.reshape(len(s), -1), b_m], axis=1), b_c
+
+
+def _attn_qk_core_sample(rng, calls, *, dh, kv_heads):
+    # Multiples of 2**-4 and 2**-6 with 4-bit magnitudes: every bfp16ebs8
+    # block holds them exactly, and their dot products are exact in float32.
+    # Scores spread over a few units, so the exponents cover the table.
+    q = rng.integers(-15, 16, (calls, 8 * dh)) * 2.0**-4
+    k = rng.integers(-15, 16, (calls, kv_heads * _DECODE_KEYS_PER_ROUND * dh))
+    # A first round's running max, a max under the scores and one above them.
+    m = rng.choice([_ATTN_QK_M_START, -1.0, 0.5, 8.0], (calls, 16))
+    m += rng.integers(0, 8, (calls, 16)) * 2.0**-3
+    qm = np.concatenate([q, m], axis=1).astype(bfloat16)
+    return [qm, (k * 2.0**-6).astype(bfloat16)]
+
+
+def _attn_qk_core_contract(dh, kv_heads, reference):
+    return KernelContract(
+        trace=Trace.whole_call(),
+        roles=(In, In, Out, Out, Param, Param),
+        sample=partial(_attn_qk_core_sample, dh=dh, kv_heads=kv_heads),
+        reference=reference,
+        tolerance=Tolerance.bounded(
+            _attn_qk_core_bound,
+            note="floor bf16 narrowings of score, max and difference, the "
+            "2**-8 fixed-point exponent and the exp tables' measured 2**-8 "
+            "entries; the sample keeps the bfp16-emulated mmul exact",
+        ),
+        ops_per_call=2 * 8 * _DECODE_KEYS_PER_ROUND * dh,
+    )
+
+
+def _attn_qk_core_types(geometry, dh, kv_heads):
+    t = _decode_attn_types(geometry, dh, dh)
+    q_heads = _decode_q_heads_padded(geometry)
+    # q, then the running max.
+    qm = np.ndarray[(q_heads * dh + 16,), _BF16]
+    k = np.ndarray[(kv_heads * _DECODE_KEYS_PER_ROUND, dh), _BF16]
+    # The scores, then the running max.
+    s = np.ndarray[(_DECODE_KEYS_PER_ROUND * q_heads + 16,), _BF16]
+    return [qm, k, s, t["c"], np.int32, np.int32]
+
+
+@dtypes(
+    [
+        {"sliding_window": True},
+        {"sliding_window": True, "geometry": FLM_GEMMA4_E4B_DECODE},
+    ]
+)
+def flm_gemma4_attn_qk_core(
+    *,
+    sliding_window: bool = False,
+    geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE,
+) -> ExternalFunction:
+    """One ``attn_qk_round`` of [`flm_gemma4_decode_attn_qk`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk], without its k lock.
+
+    ``attn_qk_round_core(qm, k, s, c, iter, L0)`` takes the running max
+    after q in ``qm`` and writes it after the scores in ``s``. ``c`` holds the
+    corrections the round stores in the tail of its s object.
+    """
+    base = flm_gemma4_decode_attn_qk(sliding_window=sliding_window, geometry=geometry)
+    dh = geometry.swa_dh if sliding_window else geometry.dh
+    kv_heads = geometry.num_kv_heads
+    return _wrapper(
+        base,
+        "decode_attn_qk_core.cc",
+        "attn_qk_round_core",
+        _attn_qk_core_types(geometry, dh, kv_heads),
+        _attn_qk_core_contract(dh, kv_heads, flm_gemma4_attn_qk_core_ref),
+    )
+
+
+def flm_gemma4_attn_qk_kvh2_core(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E4B_DECODE
+) -> ExternalFunction:
+    """One round of [`flm_gemma4_decode_attn_qk_kvh2`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk_kvh2], without its k lock.
+
+    ``attn_qk_kvh2_round_core(qm, k, s, c, iter, L0)`` runs
+    ``attn_qk_half`` for both KV heads, whose k objects ``k`` holds back to
+    back. Otherwise as
+    [`flm_gemma4_attn_qk_core`][iron.kernels.flm_gemma4.flm_gemma4_attn_qk_core].
+    """
+    base = flm_gemma4_decode_attn_qk_kvh2(geometry=geometry)
+    return _wrapper(
+        base,
+        "decode_attn_qk_kvh2_core.cc",
+        "attn_qk_kvh2_round_core",
+        _attn_qk_core_types(geometry, geometry.dh, 2),
+        _attn_qk_core_contract(geometry.dh, 2, flm_gemma4_attn_qk_kvh2_core_ref),
+    )
+
+
+def flm_gemma4_attn_qk_kvh2_core_ref(qm, k, iter, L0):
+    """Numpy reference for [`flm_gemma4_attn_qk_kvh2_core`][iron.kernels.flm_gemma4.flm_gemma4_attn_qk_kvh2_core]; see ``flm_gemma4_attn_qk_core_ref``."""
+    return flm_gemma4_attn_qk_core_ref(qm, k, iter, L0)
+
+
 @dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
 def flm_gemma4_decode_swa_attn_kv(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
@@ -953,6 +1829,38 @@ def flm_gemma4_decode_swa_attn_kv(
     )
     fn.swa_attn_kv_finish = bind("swa_attn_kv_finish", [t["y"], t["o"], t["l"]])
     return fn
+
+
+@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+def flm_gemma4_swa_attn_kv_core(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    """One ``swa_attn_kv_round`` of [`flm_gemma4_decode_swa_attn_kv`][iron.kernels.flm_gemma4.flm_gemma4_decode_swa_attn_kv] without its v lock.
+
+    ``swa_attn_kv_round_core(sv, ly_in, ly_out)``: ``ly_out`` is ``ly_in``
+    with ``l = c * l + rowsum(s)`` and ``y = c * y + s @ v`` per query head,
+    each head reading its KV head's half of ``v`` when there are two. ``sv``
+    holds ``s``, then ``v``. ``ly`` holds ``y``, then ``l`` in a 16-float
+    slot.
+    """
+    base = flm_gemma4_decode_swa_attn_kv(geometry=geometry)
+    dh, kv_heads = geometry.swa_dh, geometry.num_kv_heads
+    return _attn_kv_round_core(
+        base,
+        "decode_swa_attn_kv_core.cc",
+        "swa_attn_kv_round_core",
+        dh=dh,
+        kv_width=kv_heads * dh,
+        impl="1x8x1" if kv_heads == 1 else "2x4x1",
+        rows=8,
+        ref=partial(flm_gemma4_swa_attn_kv_core_ref, dh=dh, kv_heads=kv_heads),
+    )
+
+
+def flm_gemma4_swa_attn_kv_core_ref(sv, ly, *, dh=256, kv_heads=1):
+    """Numpy reference for [`flm_gemma4_swa_attn_kv_core`][iron.kernels.flm_gemma4.flm_gemma4_swa_attn_kv_core], in float64."""
+    impl = "1x8x1" if kv_heads == 1 else "2x4x1"
+    return _attn_kv_round_ref(sv, ly, dh=dh, impl=impl)
 
 
 @dtypes(
@@ -1014,6 +1922,155 @@ def flm_gemma4_decode_rope(
     )
 
 
+_ROPE_CORE_VARIANTS = [
+    {"geometry": FLM_GEMMA4_E4B_DECODE},
+    {"sliding_window": True},
+    {"sliding_window": True, "geometry": FLM_GEMMA4_E4B_DECODE},
+]
+# rms_scale's error: two Newton steps of the fast inverse square root, and
+# a float32 sum of squares of up to 512 terms, both far below this.
+_RMS_SCALE_REL = 2.0**-12
+_BF16_TINY = 2.0**-126
+
+
+def _rms(x):
+    """Return ``1 / sqrt(mean(x^2) + 1e-6)`` per row, in float64."""
+    return 1 / np.sqrt(np.mean(np.square(x), axis=-1, keepdims=True) + 1e-6)
+
+
+def _rope_core_terms(x, rope_w):
+    """Return the rotation's two products per output, float64, each (calls, 2, dh)."""
+    rope_w = np.asarray(rope_w, np.float64)
+    dh = rope_w.shape[-1] // 3
+    x = np.asarray(x, np.float64).reshape(len(rope_w), 2, dh)
+    cos, sin = rope_w[:, None, : dh // 2], rope_w[:, None, dh // 2 : dh]
+    w = rope_w[:, dh:].reshape(-1, 2, dh)
+    n = x * _rms(x) * w
+    n1, n2 = n[..., : dh // 2], n[..., dh // 2 :]
+    a = np.concatenate([n1 * cos, n1 * sin], axis=-1)
+    b = np.concatenate([-n2 * sin, n2 * cos], axis=-1)
+    return a, b
+
+
+def flm_gemma4_rope_core_ref(x, rope_w):
+    """Numpy reference for [`flm_gemma4_rope_core`][iron.kernels.flm_gemma4.flm_gemma4_rope_core].
+
+    Per call, ``x`` is a q head then a k head and ``rope_w`` is ``[cos |
+    sin | q weight | k weight]``. Each head ``n = x * w / sqrt(mean(x^2) +
+    1e-6)`` is rotated by halves: ``y1 = n1 cos - n2 sin``, ``y2 = n1 sin +
+    n2 cos``, with ``n1``, ``n2`` its first and second half.
+    """
+    a, b = _rope_core_terms(x, rope_w)
+    y = (a + b).reshape(len(a), -1)
+    return y.astype(np.float32).astype(bfloat16)
+
+
+def _rope_core_bound(x, rope_w):
+    a, b = _rope_core_terms(x, rope_w)
+    terms, y = np.abs(a) + np.abs(b), np.abs(a + b)
+    eps = 2.0**-7 + _RMS_SCALE_REL
+    bound = eps * (1 + 2.0**-7) * terms + 1.5 * 2.0**-7 * y + _BF16_TINY
+    return bound.reshape(len(a), -1)
+
+
+def _rope_core_sample(rng, calls, *, dh):
+    x = rng.normal(0, rng.uniform(0.1, 10, (calls, 1)), (calls, 2 * dh))
+    theta = rng.uniform(-np.pi, np.pi, (calls, dh // 2))
+    w = rng.uniform(0.25, 2, (calls, 2 * dh))
+    rope_w = np.concatenate([np.cos(theta), np.sin(theta), w], axis=1)
+    return [x.astype(bfloat16), rope_w.astype(bfloat16)]
+
+
+@dtypes(_ROPE_CORE_VARIANTS)
+def flm_gemma4_rope_core(
+    *,
+    sliding_window: bool = False,
+    geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE,
+) -> ExternalFunction:
+    """``_rotate_t`` of [`flm_gemma4_decode_rope`][iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one q and one k head.
+
+    ``rope_head_core(x, rope_w, y)``: ``x`` is a q head then a k head,
+    ``rope_w`` the base kernel's ``[cos | sin | q weight | k weight]``.
+    The kernel normalizes ``x`` in place; the write lands in the core's input
+    element, which the next DMA fill overwrites.
+    """
+    base = flm_gemma4_decode_rope(sliding_window=sliding_window, geometry=geometry)
+    dh = geometry.swa_dh if sliding_window else geometry.dh
+    heads = np.ndarray[(2 * dh,), _BF16]
+    return _wrapper(
+        base,
+        "decode_rope_core.cc",
+        "rope_head_core",
+        [heads, np.ndarray[(3 * dh,), _BF16], heads],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out),
+            reference=flm_gemma4_rope_core_ref,
+            sample=partial(_rope_core_sample, dh=dh),
+            tolerance=Tolerance.bounded(
+                _rope_core_bound,
+                note="bf16 ulp <= 2**-7 |v|. The kernel floors each normalized "
+                "value to bf16 (1 ulp, plus the rms scale's error, under "
+                "2**-12), so each rotation product is off by that much; it "
+                "floors the rotated sum to bf16 (1 ulp) and the reference "
+                "rounds it to nearest (1/2 ulp)",
+            ),
+            # Per element: square-add and two multiplies for the norm, then
+            # a multiply and a multiply-add for the rotation.
+            ops_per_call=2 * 7 * dh,
+        ),
+    )
+
+
+def flm_gemma4_v_norm_core_ref(x):
+    """Numpy reference for [`flm_gemma4_v_norm_core`][iron.kernels.flm_gemma4.flm_gemma4_v_norm_core]: ``x / sqrt(mean(x^2) + 1e-6)``."""
+    x = np.asarray(x, np.float64)
+    return (x * _rms(x)).astype(np.float32).astype(bfloat16)
+
+
+def _v_norm_core_bound(x):
+    x = np.asarray(x, np.float64)
+    y = np.abs(x * _rms(x))
+    return (1.5 * 2.0**-7 + 2 * _RMS_SCALE_REL) * y + _BF16_TINY
+
+
+def _v_norm_core_sample(rng, calls, *, dh):
+    x = rng.normal(0, rng.uniform(0.1, 10, (calls, 1)), (calls, dh))
+    return [x.astype(bfloat16)]
+
+
+@dtypes(_ROPE_CORE_VARIANTS)
+def flm_gemma4_v_norm_core(
+    *,
+    sliding_window: bool = False,
+    geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE,
+) -> ExternalFunction:
+    """``rms_norm_unweighted`` of [`flm_gemma4_decode_rope`][iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one v head."""
+    base = flm_gemma4_decode_rope(sliding_window=sliding_window, geometry=geometry)
+    dh = geometry.swa_dh if sliding_window else geometry.dh
+    head = np.ndarray[(dh,), _BF16]
+    return _wrapper(
+        base,
+        "decode_rope_core.cc",
+        "v_norm_core",
+        [head, head],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out),
+            reference=flm_gemma4_v_norm_core_ref,
+            sample=partial(_v_norm_core_sample, dh=dh),
+            tolerance=Tolerance.bounded(
+                _v_norm_core_bound,
+                note="bf16 ulp <= 2**-7 |v|: the kernel floors to bf16 (1 ulp), "
+                "the reference rounds to nearest (1/2 ulp), and the rms scale "
+                "is within 2**-12",
+            ),
+            # Per element: square-add, then one multiply.
+            ops_per_call=3 * dh,
+        ),
+    )
+
+
 @dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
 def flm_gemma4_decode_rms_residual(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
@@ -1069,6 +2126,66 @@ def flm_gemma4_decode_rms_residual(
         ),
         locks,
         geometry,
+    )
+
+
+def _rms_residual_core_terms(x, w, residual):
+    """Return the normalized ``x`` and its sum with ``residual`` in float64."""
+    x, w = np.asarray(x, np.float64), np.asarray(w, np.float64)
+    rms = 1 / np.sqrt(np.mean(np.square(x), axis=1, keepdims=True) + 1e-6)
+    n = x * w * rms
+    return n, n + np.asarray(residual, np.float64)
+
+
+def flm_gemma4_rms_residual_core_ref(x, w, residual):
+    """Numpy reference for [`flm_gemma4_rms_residual_core`][iron.kernels.flm_gemma4.flm_gemma4_rms_residual_core].
+
+    ``residual + x * w / sqrt(mean(x^2) + 1e-6)``, rounded to bf16.
+    """
+    return (
+        _rms_residual_core_terms(x, w, residual)[1].astype(np.float32).astype(bfloat16)
+    )
+
+
+def _rms_residual_core_bound(x, w, residual):
+    n, s = map(np.abs, _rms_residual_core_terms(x, w, residual))
+    norm = (2.0**-7 + 2.0**-12) * (1 + 2.0**-7) * n
+    return norm + (1.5 * 2.0**-7 + 2.0**-12) * s + 2 * 2.0**-126
+
+
+@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+def flm_gemma4_rms_residual_core(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    """``rms_norm`` then ``residual_add`` of [`flm_gemma4_decode_rms_residual`][iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual].
+
+    The post-attention norm and residual add. ``rms_residual_core(x, w,
+    residual, y)``, all ``model_dim`` bf16: ``y = residual + rms_norm(x) * w``.
+    """
+    base = flm_gemma4_decode_rms_residual(geometry=geometry)
+    row = np.ndarray[(geometry.model_dim,), _BF16]
+    return _wrapper(
+        base,
+        "decode_rms_residual_core.cc",
+        "rms_residual_core",
+        [row, row, row, row],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, In, Out),
+            reference=flm_gemma4_rms_residual_core_ref,
+            tolerance=Tolerance.bounded(
+                _rms_residual_core_bound,
+                note="bf16 ulp <= 2**-7 |v|. The kernel floors the normalized "
+                "value to bf16 (1 ulp, plus the fast inverse sqrt's and the "
+                "float32 sum of squares' error, under 2**-12), floors the sum "
+                "to bf16 (1 ulp, plus its float32 add's error, under 2**-12), "
+                "and the reference rounds the sum to nearest (1/2 ulp). Each "
+                "flush of a subnormal adds the smallest normal",
+            ),
+            # Per element: square-add and two multiplies, then the add.
+            ops_per_call=5 * geometry.model_dim,
+            stack_bytes=1792,  # aiecc measured_stack_size
+        ),
     )
 
 
@@ -1185,6 +2302,65 @@ def flm_gemma4_decode_per_layer_up(
     )
 
 
+_BF16_PROJ_M, _BF16_PROJ_K = 32, 256
+
+
+def flm_gemma4_bf16_proj_core_ref(w, x):
+    """Numpy reference for [`flm_gemma4_bf16_proj_core`][iron.kernels.flm_gemma4.flm_gemma4_bf16_proj_core]: one weight block times ``x``.
+
+    The block is stored column by column: ``w[k * 32 + m]`` multiplies
+    ``x[k]`` into out-feature ``m``. Sums in float64.
+    """
+    w = np.asarray(w, np.float64).reshape(-1, _BF16_PROJ_K, _BF16_PROJ_M)
+    x = np.asarray(x, np.float64).reshape(-1, _BF16_PROJ_K)
+    return np.einsum("ckm,ck->cm", w, x).astype(np.float32)
+
+
+def _bf16_proj_core_sample(rng, calls):
+    # Integers in [-8, 8]: every product and partial sum (below 2**14) is
+    # exact in float32 in any order, and each survives a bfp16 block
+    # conversion unchanged.
+    w = rng.integers(-8, 9, (calls, _DECODE_BF16_BLOCK)).astype(bfloat16)
+    x = rng.integers(-8, 9, (calls, _BF16_PROJ_K)).astype(bfloat16)
+    return [w, x]
+
+
+@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+def flm_gemma4_bf16_proj_core(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    """``_mvm_bf16_bf16`` of the per-layer-input projections, one block.
+
+    ``bf16_proj_block_core(w, x, y)``: zeroes a float32 accumulator in its own
+    frame, accumulates one 32 by 256 bf16 weight block times 256 inputs into
+    it, as ``linear_proj`` does, and copies it to ``y``. The block does not
+    depend on ``geometry``.
+    """
+    base = flm_gemma4_decode_per_layer_up(geometry=geometry)
+    return _wrapper(
+        base,
+        "decode_per_layer_up_core.cc",
+        "bf16_proj_block_core",
+        [
+            np.ndarray[(_DECODE_BF16_BLOCK,), _BF16],
+            np.ndarray[(_BF16_PROJ_K,), _BF16],
+            np.ndarray[(_BF16_PROJ_M,), _F32],
+        ],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out),
+            reference=flm_gemma4_bf16_proj_core_ref,
+            sample=_bf16_proj_core_sample,
+            tolerance=Tolerance.exact(
+                note="the sample keeps every product and sum exact in float32"
+            ),
+            ops_per_call=2 * _DECODE_BF16_BLOCK,
+            acc_dtype=np.float32,
+            reduction=_BF16_PROJ_K,
+        ),
+    )
+
+
 @dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
 def flm_gemma4_decode_proj_layer_embedding(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
@@ -1292,6 +2468,61 @@ def flm_gemma4_decode_gate_layer_embedding(
         locks,
         geometry,
         lut=True,
+    )
+
+
+def flm_gemma4_pli_gelu_core_ref(x):
+    """Numpy reference for [`flm_gemma4_pli_gelu_core`][iron.kernels.flm_gemma4.flm_gemma4_pli_gelu_core]: tanh-GELU.
+
+    The tolerance covers the kernel's table.
+    """
+    return _gelu_tanh(x).astype(np.float32)
+
+
+def _pli_gelu_core_bound(x):
+    # Plus the reference's float32 result, 2**-24 relative.
+    return _gelu_lut_bound(x) + 2.0**-23 * np.abs(_gelu_tanh(x))
+
+
+def _pli_gelu_core_sample(rng, calls, *, n):
+    # Reaches both clamps of the table.
+    return [rng.uniform(-6.0, 6.0, (calls, n)).astype(bfloat16)]
+
+
+@dtypes([{"geometry": FLM_GEMMA4_E4B_DECODE}])
+def flm_gemma4_pli_gelu_core(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> ExternalFunction:
+    """``_activate`` of [`flm_gemma4_decode_gate_layer_embedding`][iron.kernels.flm_gemma4.flm_gemma4_decode_gate_layer_embedding]: GELU over ``pli_d`` values.
+
+    ``pli_gelu_core(x, y)``: copies ``x`` into ``y`` and applies GELU there,
+    through aie_runtime_lib's table (``getGeluBf16``). Both are ``pli_d``
+    bf16.
+
+    Args:
+        geometry: The model the kernel builds for.
+    """
+    n = geometry.pli_d
+    return _wrapper(
+        flm_gemma4_decode_gate_layer_embedding(geometry=geometry),
+        "decode_gate_layer_embedding_core.cc",
+        "pli_gelu_core",
+        [np.ndarray[(n,), _BF16], np.ndarray[(n,), _BF16]],
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out),
+            reference=flm_gemma4_pli_gelu_core_ref,
+            sample=partial(_pli_gelu_core_sample, n=n),
+            tolerance=Tolerance.bounded(
+                _pli_gelu_core_bound,
+                note="the GELU table's error against tanh-GELU, measured on the "
+                "host from aie_runtime_lib's table, plus a bf16 ulp of its slope "
+                "and the floor bf16 store",
+            ),
+            uses_lut=True,
+            # Per value: the table line's multiply and add.
+            ops_per_call=2 * n,
+        ),
     )
 
 

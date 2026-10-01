@@ -21,6 +21,7 @@ marks kernels whose source exists only for AIE2P.
 
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
+from aie.iron.kernels import FLM_GEMMA4_E4B_DECODE
 from cases import Case
 from ml_dtypes import bfloat16
 
@@ -369,6 +370,7 @@ CASES: list[Case] = [
     Case("q4nx_dequant", calls=4, devices=("npu2",), smoke=True),
     # Gemma 4's FastFlowLM kernels: the entry point each factory returns.
     Case("flm_gemma4_attn_prefill", calls=4, devices=("npu2",), smoke=True),
+    Case("flm_gemma4_bf16_proj_core", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_q4nx_lm_head", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_q4nx_lm_head_epilogue", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_q4nx_lm_head_rms", calls=4, devices=("npu2",), smoke=True),
@@ -397,6 +399,95 @@ CASES: list[Case] = [
     ),
     check("flm_gemma4_prefill_finalize", devices=("npu2",), smoke=True),
     check("flm_gemma4_prefill_finalize", dict(head_dim=256), devices=("npu2",)),
+    Case("flm_gemma4_glu_core", calls=4, devices=("npu2",), smoke=True),
+    Case("flm_gemma4_pli_gelu_core", calls=4, devices=("npu2",), smoke=True),
+    Case("flm_gemma4_rope_core", calls=4, devices=("npu2",), smoke=True),
+    Case("flm_gemma4_rope_core", dict(sliding_window=True), calls=4, devices=("npu2",)),
+    check("flm_gemma4_v_norm_core", devices=("npu2",), smoke=True),
+    Case("flm_gemma4_rms_residual_core", calls=4, devices=("npu2",), smoke=True),
+    check(
+        "flm_gemma4_rms_residual_core",
+        dict(geometry=FLM_GEMMA4_E4B_DECODE),
+        devices=("npu2",),
+    ),
+    # One decode attention qk round; the scalars are iter and L0.
+    Case(
+        "flm_gemma4_attn_qk_core",
+        calls=4,
+        scalars=(1, 21),
+        devices=("npu2",),
+        smoke=True,
+    ),
+    Case(
+        "flm_gemma4_attn_qk_core",
+        dict(sliding_window=True),
+        calls=4,
+        scalars=(0, 100),
+        devices=("npu2",),
+    ),
+    Case(
+        "flm_gemma4_attn_qk_core",
+        dict(sliding_window=True, geometry=FLM_GEMMA4_E4B_DECODE),
+        calls=4,
+        scalars=(2, 40),
+        devices=("npu2",),
+    ),
+    Case(
+        "flm_gemma4_attn_qk_kvh2_core",
+        calls=4,
+        scalars=(3, 60),
+        devices=("npu2",),
+        smoke=True,
+    ),
+    Case("flm_gemma4_attn_kv_core", calls=4, devices=("npu2",), smoke=True),
+    Case(
+        "flm_gemma4_attn_kv_kvh2_core",
+        calls=4,
+        scalars=(0,),
+        devices=("npu2",),
+        smoke=True,
+    ),
+    check(
+        "flm_gemma4_attn_kv_kvh2_core",
+        scalars=(1,),
+        devices=("npu2",),
+        tag="kv_head1",
+    ),
+    Case("flm_gemma4_swa_attn_kv_core", calls=4, devices=("npu2",), smoke=True),
+    # Two KV heads build the swa core's 2x4x1 attn_fv.
+    check(
+        "flm_gemma4_swa_attn_kv_core",
+        dict(geometry=FLM_GEMMA4_E4B_DECODE),
+        devices=("npu2",),
+    ),
+    check("flm_gemma4_prefill_round_begin", devices=("npu2",), smoke=True),
+    check("flm_gemma4_prefill_round_begin", dict(head_dim=256), devices=("npu2",)),
+    # Mask positions (inner_k, inner_q, inner_k_current): the global build's
+    # chunk crosses the causal edge; the sliding-window one, with a window of
+    # 8, crosses both edges.
+    Case(
+        "flm_gemma4_prefill_qk_core",
+        scalars=(-8, 100, 96),
+        calls=4,
+        devices=("npu2",),
+        smoke=True,
+    ),
+    Case(
+        "flm_gemma4_prefill_qk_core",
+        dict(head_dim=256),
+        scalars=(92, 100, 96),
+        calls=4,
+        devices=("npu2",),
+    ),
+    Case("flm_gemma4_prefill_fv_core", calls=4, devices=("npu2",), smoke=True),
+    Case("flm_gemma4_prefill_fv_core", dict(head_dim=256), calls=4, devices=("npu2",)),
+    Case("flm_gemma4_prefill_block_mid_core", calls=4, devices=("npu2",), smoke=True),
+    Case(
+        "flm_gemma4_prefill_block_mid_core",
+        dict(head_dim=256),
+        calls=4,
+        devices=("npu2",),
+    ),
     check(
         "q4nx_dequant",
         dict(m_tile=16, k_tile=32, group=8, ct_k=16),
