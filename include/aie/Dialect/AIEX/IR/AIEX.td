@@ -797,7 +797,7 @@ def AIE_NpuAssertBdFieldOp : AIEX_Op<"npu.assert_bd_field", []> {
   let summary =
       "Guard a runtime BD-field value against its hardware field width";
   let arguments = (ins AnyTypeOf<[I32, I64]>:$value, I32Attr:$max,
-                       DefaultValuedAttr<I32Attr, "0">:$min);
+      DefaultValuedAttr<I32Attr, "0">:$min);
   let results = (outs);
   let assemblyFormat = [{
     `(` $value `)` attr-dict `:` type($value)
@@ -1355,11 +1355,10 @@ def AIE_DMAConfigureTaskOp
 // The tile is only known once the symbol resolves, so the buffers the body
 // names are checked on the dma_configure_task it becomes.
 def AIE_DMAConfigureTaskForOp
-    : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">,
-                                         DeclareOpInterfaceMethods<
-                                             SymbolUserOpInterface>,
-                                         SkipAccessibilityCheckTrait,
-                                         DMAConfigureTaskLike]>,
+    : AIEX_Op<"dma_configure_task_for",
+              [HasAncestor<"AIE::RuntimeSequenceOp">,
+               DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+               SkipAccessibilityCheckTrait, DMAConfigureTaskLike]>,
       Results<(outs Index:$result)> {
   let summary = "As dma_configure_task, but specify tile, direction and "
                 "channel by reference to a Shim DMA allocation op or a route "

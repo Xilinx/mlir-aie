@@ -288,7 +288,6 @@ void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
 
-/// DMAStartOp's channel: a hardware index or a route endpoint symbol.
 mlir::ParseResult parseDMAStartChannel(mlir::OpAsmParser &parser,
                                        mlir::Attribute &channel);
 
