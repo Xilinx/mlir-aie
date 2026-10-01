@@ -407,10 +407,7 @@ def test_depfile_targets_are_not_inputs(tmp_path):
 
 @pytest.mark.skipif(
     os.name == "nt",
-    reason="backslash is a POSIX filename character but the path separator on "
-    "Windows, so 'a\\b.h' cannot be created as a single-component file there; "
-    "the slash/backslash confusion this guards against cannot arise on a "
-    "platform where backslash is already the native separator.",
+    reason="backslash is the path separator on Windows",
 )
 def test_depfile_naming_a_missing_input_records_an_incomplete_manifest(tmp_path):
     """Peano writes a backslash in a path as a slash, so a header named
@@ -429,11 +426,7 @@ def test_depfile_naming_a_missing_input_records_an_incomplete_manifest(tmp_path)
 
 @pytest.mark.skipif(
     os.name == "nt",
-    reason="Windows canonicalizes '..' segments in a path lexically, before "
-    "the filesystem resolves any reparse point the path crosses, so "
-    "'link/../h.h' never actually traverses the symlink the way a POSIX "
-    "stat() does; the dotdot-after-symlink distinction this test exercises "
-    "does not exist there.",
+    reason="Windows collapses '..' lexically before following symlinks",
 )
 def test_depfile_dotdot_is_taken_after_following_a_symlink(tmp_path):
     """``link/../h.h`` is the file the compiler opened only when ``..`` follows

@@ -20,6 +20,7 @@ PowerShell is also supported. While the main instructions use `cmd.exe`, the cor
 5. [Run a complete NPU program](#5-run-a-complete-npu-program)
 6. [Addendum A: PowerShell](#addendum-a-powershell)
 7. [Addendum B: Build `mlir-aie` wheels locally](#addendum-b-build-mlir-aie-wheels-locally)
+8. [Addendum C: Build from source and run the tests](#addendum-c-build-from-source-and-run-the-tests)
 
 ## 1. Install the Windows development environment
 
@@ -211,10 +212,12 @@ Local wheel builds compile components that link against OpenSSL. Install the ful
 https://slproweb.com/products/Win32OpenSSL.html
 ```
 
+Install it to `C:\OpenSSL-Win64`, not the default under `C:\Program Files`. The build splits `CMAKE_ARGS` on spaces, so the path must not contain one. For an unattended install, run the installer with `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="C:\OpenSSL-Win64"`.
+
 From an x64 Native Tools prompt in a configured checkout, set the OpenSSL location and CMake arguments:
 
 ```bat
-set "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64"
+set "OPENSSL_ROOT_DIR=C:\OpenSSL-Win64"
 set "PATH=%OPENSSL_ROOT_DIR%\bin;%PATH%"
 set "CMAKE_ARGS=-DOPENSSL_ROOT_DIR=%OPENSSL_ROOT_DIR% -DOPENSSL_USE_STATIC_LIBS=TRUE"
 ```
@@ -253,5 +256,62 @@ Use `--cp312` or `--cp314` only when the selected XRT distribution supplies matc
 utils\mlir_aie_wheels\wheelhouse
 C:\tmp\aiewhls
 ```
+
+</details>
+
+<a id="addendum-c-build-from-source-and-run-the-tests"></a>
+<details>
+<summary><strong>Addendum C: Build from source and run the tests</strong></summary>
+
+These steps match the Windows CI job in `.github/workflows/buildAndTestRyzenAIWindows.yml`. Use them to build `mlir-aie` against a prebuilt MLIR wheel and run the lit suites on the NPU.
+
+### C.1 Prerequisites
+
+In addition to sections 1–3:
+
+- OpenSSL installed at `C:\OpenSSL-Win64`, per [B.1](#addendum-b-build-mlir-aie-wheels-locally).
+- A host `clang++` for the host-side lit tests. Install it with the Visual Studio **C++ Clang Compiler for Windows** component, or with `winget install -e --id LLVM.LLVM` (which is what CI uses). Without a host compiler, `clang++` resolves to Peano's AIE cross-compiler and the host tests fail.
+- Git for Windows at `C:\Program Files\Git`. Its `bash.exe` runs the build script and the tests that shell out to `bash`.
+
+### C.2 Build
+
+From an x64 Native Tools prompt at the checkout root:
+
+```bat
+python utils\iron_setup.py --dev
+call .\iron_env.cmd
+
+REM Download and unpack the MLIR wheel pinned by utils/clone-llvm.sh
+for /f "usebackq delims=" %v in (`"C:\Program Files\Git\bin\bash.exe" utils/clone-llvm.sh --get-wheel-version`) do set MLIR_VERSION=%v
+mkdir my_install
+pushd my_install
+curl.exe -fL -o "mlir-%MLIR_VERSION%-py3-none-win_amd64.whl" "https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-%MLIR_VERSION%-py3-none-win_amd64.whl"
+python -c "import zipfile,glob; zipfile.ZipFile(glob.glob('mlir-*.whl')[0]).extractall('.')"
+REM Point the wheel's LLVMExports.cmake at this machine's DIA SDK
+python -c "import sys; sys.path.insert(0, r'..\utils\mlir_aie_wheels\scripts'); from pathlib import Path; import download_mlir; download_mlir._fixup_llvm_diaguids(Path('mlir'))"
+REM Future-dated wheel timestamps make ninja loop; stamp them to the past
+python -c "import os; [os.utime(os.path.join(r,f),(315600000,315600000)) for r,_,fs in os.walk('mlir') for f in fs]"
+popd
+
+for /f "usebackq delims=" %p in (`python -c "import sys; print(sys.executable)"`) do set PYTHON_EXE=%p
+set "EXTRA_CMAKE_ARGS=-DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON -DXRT_ROOT=%XRT_ROOT:\=/% -DPython3_EXECUTABLE=%PYTHON_EXE:\=/% -DOPENSSL_ROOT_DIR=C:/OpenSSL-Win64 -DOPENSSL_USE_STATIC_LIBS=TRUE"
+"C:\Program Files\Git\bin\bash.exe" utils/build-mlir-aie-from-wheels.sh my_install/mlir build install "%PEANO_INSTALL_DIR:\=/%"
+```
+
+The compiler is pinned to `cl` so that CMake doesn't pick up a `clang++` on `PATH`. Inside a `.cmd` script, write `%%v` and `%%p` instead of `%v` and `%p`.
+
+### C.3 Run the tests
+
+```bat
+call .\iron_env.cmd
+set "PATH=C:\Program Files\Git\bin;%PATH%;C:\Program Files\LLVM\bin"
+
+ninja -C build check-aie
+ninja -C build check-aie-concurrency
+ninja -C build check-reference-designs
+ninja -C build check-programming-guide
+```
+
+Git's `bin` goes first so that `bash` resolves to Git's bash rather than the WSL stub in `System32`. LLVM goes last so that its tools don't shadow the MLIR wheel's tools. Tests that need `make` are reported as unsupported, as they are in CI.
 
 </details>

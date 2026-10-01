@@ -44,10 +44,7 @@ NO_CASE = "no case in test/python/npu/kernel_cases.py"
 
 
 def _library_path(path: str) -> str:
-    # Normalize to POSIX separators first: on Windows ``path`` (from
-    # ExternalFunction.source_file) comes back backslash-separated, so a
-    # literal "/aie_kernels/" split would never match and the whole absolute
-    # path would leak into the catalogue instead of the library-relative one.
+    # source_file is backslash-separated on Windows.
     return Path(path).as_posix().rsplit("/aie_kernels/", 1)[-1]
 
 

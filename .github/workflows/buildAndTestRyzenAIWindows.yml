@@ -50,13 +50,8 @@ jobs:
     # in python/aie_lit_utils/lit_config_helpers.py); JIT-style Python
     # examples (@iron.jit) still run and cover the NPU end to end.
     runs-on: [self-hosted, windows, devlab-dispatch, strix-halo]
-    # Normal exec is 19-21 min; observed hang on this job 71.4 min (2026-08-04).
-    # Bumped from 90: slproweb.com was observed serving the OpenSSL installer
-    # at a throttled ~50KB/s, so the one-time cache-seeding download (see the
-    # "Cache Windows OpenSSL" step) can take ~85min on its own; every run
-    # after that seeds from the GH Actions cache in seconds and finishes in
-    # the normal 19-21min.
-    timeout-minutes: 180
+    # Normal exec is ~31 min; observed hang on this job 71.4 min (2026-08-04).
+    timeout-minutes: 90
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
@@ -71,61 +66,17 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1
 
-      # Python 3.13 is required, not just preferred: the XRT SDK's pyxrt.pyd
-      # is built for CPython 3.13 and fails to import ("DLL load failed") under
-      # the devlab-dispatch image's system Python 3.12. The persistent runners
-      # this job used to run on had 3.13 pre-provisioned instead.
+      # pyxrt.pyd in the XRT SDK is built for CPython 3.13 only.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.13"
 
       - uses: ./.github/actions/setup_windows_xrt
 
-      - name: Cache Windows OpenSSL
-        # slproweb.com (the official source for this installer) was observed
-        # serving it at a throttled ~50KB/s from this runner pool's network
-        # path - a 251MB file at that rate takes ~85min, which no per-attempt
-        # curl timeout can paper over. Cache the verified, installed output
-        # directory in GitHub's cache backend (keyed on the pinned version +
-        # sha256, so a version bump below naturally invalidates it) so only
-        # the first run - or a run after a 7-day-unused cache eviction - pays
-        # for the slow download; every other ephemeral runner just restores
-        # from cache in seconds.
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: C:\OpenSSL-Win64
-          key: openssl-win64-4_0_3-0f5436092d1303db9052d3c114fbc6326abe0276861619e26da5156ddf7ca087
-
       - name: Ensure Windows OpenSSL
-        # Persistent devlab runners have the full (non-Light) Win64 OpenSSL
-        # package installed by hand per docs/buildHostWinNative.md Addendum
-        # B.1, but the devlab-dispatch pool recreates its runners per job.
-        # Self-heal here the same way as the XRT SDK step above: fetch the
-        # pinned installer from its official source, verify its hash (silent
-        # installers skip the interactive prompt that would normally catch a
-        # bad download), and run it unattended. Installed to C:\OpenSSL-Win64
-        # (not the doc's default C:\Program Files\OpenSSL-Win64): the build
-        # step below forwards OPENSSL_ROOT_DIR to a bash script that splits
-        # EXTRA_CMAKE_ARGS unquoted, so a space in the path silently truncates
-        # the flag - this was observed breaking FindOpenSSL on a runner where
-        # 8.3 short-name generation (the previous space-avoidance workaround)
-        # turned out to be disabled. The ~251MB installer is fetched with curl
-        # (bundled in modern Windows) rather than plain
-        # urllib.request.urlretrieve, which has no timeout and was observed
-        # hanging far past its historical ~3min duration on two separate
-        # ephemeral runners; curl bounds each attempt and retries instead of
-        # stalling for the whole job. Cache restores (see the "Cache Windows
-        # OpenSSL" step above) avoid this download most of the time; on a
-        # cache miss, -C - resumes across curl's own retries instead of
-        # restarting from byte 0, since at the observed ~50KB/s the 251MB file
-        # takes ~85min and no single --max-time window can hope to complete it
-        # in one pass.
-        # Check for the static libcrypto lib CMake's FindOpenSSL actually
-        # needs (via OPENSSL_USE_STATIC_LIBS in the build step below), not
-        # just the top-level directory: a devlab-dispatch runner was seen
-        # with a pre-existing OpenSSL-Win64 install that had headers but no
-        # static libs, which satisfied the old directory check yet broke the
-        # cmake configure two steps later.
+        # Full (non-Light) package per docs/buildHostWinNative.md Addendum B.1,
+        # in a space-free dir: build-mlir-aie-from-wheels.sh splits
+        # EXTRA_CMAKE_ARGS on spaces. Checks the static lib FindOpenSSL needs.
         shell: cmd
         run: |
           if exist "C:\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" goto :openssl_ready
@@ -134,7 +85,7 @@ jobs:
           set "OPENSSL_EXE=Win64OpenSSL-4_0_3.exe"
           set "OPENSSL_SHA256=0f5436092d1303db9052d3c114fbc6326abe0276861619e26da5156ddf7ca087"
           if exist "%OPENSSL_EXE%" del /f /q "%OPENSSL_EXE%"
-          curl.exe --fail --location --connect-timeout 15 --max-time 1500 --retry 8 --retry-all-errors --retry-delay 10 -C - -o "%OPENSSL_EXE%" "https://slproweb.com/download/%OPENSSL_EXE%"
+          curl.exe --fail --location --connect-timeout 15 --speed-limit 102400 --speed-time 60 --retry 5 --retry-all-errors --retry-delay 5 -C - -o "%OPENSSL_EXE%" "https://slproweb.com/download/%OPENSSL_EXE%"
           if errorlevel 1 exit /b 1
 
           python -c "import hashlib,sys; h = hashlib.sha256(open(r'%OPENSSL_EXE%', 'rb').read()).hexdigest(); sys.exit(0 if h == '%OPENSSL_SHA256%' else 1)"
@@ -156,28 +107,15 @@ jobs:
           echo OpenSSL static libs ready at C:\OpenSSL-Win64
 
       - name: Ensure Windows LLVM/clang toolchain
-        # Host-side lit tests (e.g. test/Runtime/TxnEncoding/*_host.test) compile
-        # small x86_64 host executables via %host_clang, which the lit config
-        # resolves to a real clang++ if one can be found. Persistent devlab
-        # runners get one from the "C++ Clang Compiler for Windows" Visual
-        # Studio component documented in docs/buildHostWinNative.md Section
-        # 1.1, but the devlab-dispatch pool's golden image does not include
-        # it, so the lookup falls through to a bare "clang++" that resolves
-        # at test-run time to Peano's bare-metal AIE cross-compiler instead --
-        # it is missing host headers like mm_malloc.h and fails every host
-        # test. Self-heal with the standalone LLVM package instead of
-        # modifying the existing VS install: same winget-based approach the
-        # doc already uses for other tools, independent of VS versioning.
-        #
-        # Deliberately NOT added to GITHUB_PATH: a PATH entry ahead of MSVC's
-        # makes CMake pick clang++ over cl.exe for the mlir-aie build. Only the
-        # test step puts it on PATH.
+        # Host-side lit tests need a host clang++, else %host_clang falls back
+        # to Peano's AIE cross-compiler. Not added to GITHUB_PATH, which would
+        # make CMake pick clang++ over cl; only the test step appends it.
         shell: cmd
         run: |
           if exist "C:\Program Files\LLVM\bin\clang++.exe" goto :llvm_ready
 
           echo LLVM/clang not found on this runner - installing it
-          winget install -e --id LLVM.LLVM --silent --accept-package-agreements --accept-source-agreements
+          winget install -e --id LLVM.LLVM --version 23.1.2 --silent --accept-package-agreements --accept-source-agreements
           if errorlevel 1 exit /b 1
 
           if not exist "C:\Program Files\LLVM\bin\clang++.exe" (
@@ -206,12 +144,11 @@ jobs:
           if errorlevel 1 exit /b 1
 
           REM utils\clone-llvm.sh is a bash script; Git for Windows ships its
-          REM own bash.exe (installed as part of "Git for Windows" in the
-          REM runner setup guide) that can run it directly. Its bin directory
+          REM own bash.exe that can run it directly. Its bin directory
           REM isn't on PATH by default (only Git\cmd, for git.exe itself is),
           REM so call it by its default winget install path.
           if not exist "C:\Program Files\Git\bin\bash.exe" (
-            echo ##[error]C:\Program Files\Git\bin\bash.exe not found - install Git for Windows per the runner setup guide
+            echo ##[error]C:\Program Files\Git\bin\bash.exe not found - install Git for Windows per docs/buildHostWinNative.md
             exit /b 1
           )
           for /f "usebackq delims=" %%v in (`"C:\Program Files\Git\bin\bash.exe" utils/clone-llvm.sh --get-wheel-version`) do set MLIR_VERSION=%%v
@@ -220,9 +157,8 @@ jobs:
           mkdir my_install
           pushd my_install
           REM Fetch the ~1GB wheel with curl, not pip download: pip has no stall
-          REM detection, and a throttled release-assets connection was observed
-          REM trickling for 27+ min after a read timeout. --speed-limit/--speed-time
-          REM abort a stalled transfer and --retry -C - resumes it.
+          REM detection. --speed-limit/--speed-time abort a stalled transfer and
+          REM --retry -C - resumes it.
           curl.exe --fail --location --connect-timeout 15 --speed-limit 1048576 --speed-time 60 --retry 5 --retry-all-errors --retry-delay 5 -C - -o "mlir-%MLIR_VERSION%-py3-none-win_amd64.whl" "https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-%MLIR_VERSION%-py3-none-win_amd64.whl"
           if errorlevel 1 exit /b 1
           dir mlir-*.whl
@@ -249,7 +185,7 @@ jobs:
           popd
 
           if not defined PEANO_INSTALL_DIR (
-            echo ##[error]PEANO_INSTALL_DIR is not set - ensure the runner is provisioned per the runner setup guide
+            echo ##[error]PEANO_INSTALL_DIR is not set - check that iron_env.cmd from utils\iron_setup.py was called
             exit /b 1
           )
           if not exist "%PEANO_INSTALL_DIR%" (
@@ -257,22 +193,11 @@ jobs:
             exit /b 1
           )
           if not defined XRT_ROOT (
-            echo ##[error]XRT_ROOT is not set - ensure XRT is installed and XRT_ROOT is set per the runner setup guide
+            echo ##[error]XRT_ROOT is not set - install the XRT SDK per docs/buildHostWinNative.md Section 3
             exit /b 1
           )
           if not exist "%XRT_ROOT%" (
             echo ##[error]XRT_ROOT="%XRT_ROOT%" does not exist - check XRT installation on the runner
-            exit /b 1
-          )
-
-          REM tools/bootgen unconditionally requires OpenSSL (used by aiecc
-          REM for in-process PDI generation). Per docs/buildHostWinNative.md
-          REM Addendum B.1, this must be the full Win64 OpenSSL package from
-          REM Shining Light Productions (NOT the "Light" variant, which lacks
-          REM dev headers); the "Ensure Windows OpenSSL" step above installs
-          REM it to C:\OpenSSL-Win64 (space-free, see that step's comment).
-          if not exist "C:\OpenSSL-Win64" (
-            echo ##[error]C:\OpenSSL-Win64 not found - install the full Win64 OpenSSL package per docs/buildHostWinNative.md Addendum B.1
             exit /b 1
           )
 
@@ -281,11 +206,9 @@ jobs:
           REM Build with the same script as the Linux job (one source of truth).
           REM Wheel is already prepped above, so pass it as arg 1 to skip the
           REM script's own download. EXTRA_CMAKE_ARGS carries the Windows-only
-          REM -D flags; paths are forward-slashed and must be space-free since
-          REM the script expands args unquoted (read -ra on a plain string).
-          REM The compiler is pinned to MSVC cl.exe (as the wheel build in
-          REM utils/mlir_aie_wheels/setup.py does) so no other compiler on
-          REM PATH can be picked up by CMake's search.
+          REM -D flags; paths are forward-slashed and space-free since the
+          REM script expands args unquoted. cl is pinned as in the wheel build
+          REM (utils/mlir_aie_wheels/setup.py) so CMake can't pick clang++.
           set "XRT_ROOT_FWD=%XRT_ROOT:\=/%"
           set "PYTHON_EXE_FWD=%PYTHON_EXE:\=/%"
           set "PEANO_INSTALL_DIR_FWD=%PEANO_INSTALL_DIR:\=/%"
@@ -302,11 +225,8 @@ jobs:
           call .\iron_env.cmd
           if errorlevel 1 exit /b 1
 
-          REM Host-side tests resolve %host_clang% / the dispatch bridge's C++
-          REM compiler via clang++ on PATH; append LLVM so it is found without
-          REM shadowing the MLIR wheel's tools. Tests that shell out to "bash"
-          REM must get Git's bash, not the System32 WSL stub (which fails with
-          REM "Windows Subsystem for Linux has no installed distributions").
+          REM Append LLVM so host tests find clang++ without shadowing the MLIR
+          REM wheel's tools; prepend Git's bash ahead of the System32 WSL stub.
           set "PATH=C:\Program Files\Git\bin;%PATH%;C:\Program Files\LLVM\bin"
 
           if exist "%NPU_CACHE_HOME%" rmdir /s /q "%NPU_CACHE_HOME%"
