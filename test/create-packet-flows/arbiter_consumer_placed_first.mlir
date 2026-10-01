@@ -40,6 +40,17 @@ module {
 
     // Placed last, and the one that has to share.
     aie.packet_flow(5) { aie.packet_source<%m, DMA : 5>  aie.packet_dest<%s0, DMA : 0> }
+
+    // The host issues every shim channel up front.
+    aie.runtime_sequence() {
+      %bd = arith.constant 0 : i32
+      aiex.npu.push_queue(0, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(1, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(2, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(3, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(4, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(5, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+    }
   }
 }
 

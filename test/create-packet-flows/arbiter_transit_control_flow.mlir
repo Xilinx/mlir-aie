@@ -47,16 +47,27 @@ module {
 
     // Placed last, and the one that has to share.
     aie.packet_flow(5) { aie.packet_source<%m, DMA : 5>  aie.packet_dest<%s0, DMA : 1> }
+
+    // The host issues the other shims' channels up front. Nothing here
+    // programs shim (0,0).
+    aie.runtime_sequence() {
+      %bd = arith.constant 0 : i32
+      aiex.npu.push_queue(1, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(2, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(3, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(4, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(5, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+    }
   }
 }
 
 // NOWARN-NOT: warning
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
-// CHECK:         %[[FIRST:.*]] = aie.amsel<0> (0)
-// CHECK:         %[[OWN:.*]] = aie.amsel<1> (0)
-// CHECK:         %[[SHARED:.*]] = aie.amsel<0> (1)
-// CHECK-NOT:     aie.amsel<1>
+// CHECK:         %[[OWN:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[FIRST:.*]] = aie.amsel<1> (0)
+// CHECK:         %[[SHARED:.*]] = aie.amsel<1> (1)
+// CHECK-NOT:     aie.amsel<0>
 // CHECK:         %[[TRANSIT:.*]] = aie.amsel<5> (3)
 // CHECK-NOT:     aie.amsel<5>
 // CHECK:         aie.packet_rules(DMA : 5) {
