@@ -20,14 +20,10 @@ import tempfile
 import threading
 import weakref
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import aie.utils.config as config
-
-if TYPE_CHECKING:
-    from aie.ir import (  # pyright: ignore[reportMissingImports]
-        Module,  # pyright: ignore[reportAttributeAccessIssue]
-    )
+from aie import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+from aie.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 
 logger = logging.getLogger(__name__)
 
@@ -659,7 +655,7 @@ def _run_aiecc(mlir_file: str, args: list[str], cwd: str | Path | None = None):
 
 
 def compile_mlir_module(
-    mlir_module: "str | Module",
+    mlir_module: "str | ir.Module",
     insts_path: str | Path | None = None,
     pdi_path: str | Path | None = None,
     xclbin_path: str | Path | None = None,
@@ -772,16 +768,6 @@ def compile_mlir_module(
         args.append("--verbose")
     if options:
         args.extend(options)
-    # Stringify once: ``ExternalFunction._instances`` is a process-wide registry
-    # that outlives any single compile (kernels can be reused, and shared by
-    # name, across designs -- see ``resolve()`` -- so it is never cleared here).
-    # ``resolve()`` declares every kernel actually used by this module as an
-    # ``@name`` symbol in its own text, so that text -- not the registry -- is
-    # what scopes "belongs to the current compile": it is what keeps a stale
-    # instance left over from an earlier, unrelated compile (e.g. a prior aie2
-    # design in the same long-lived process) from being auto-built, and from
-    # tripping the cross-arch ``built_for_arch`` check below, against a design
-    # that never referenced it.
     mlir_text = mlir_module if isinstance(mlir_module, str) else str(mlir_module)
 
     # Auto-build any source-bearing ExternalFunction kernels into work_dir
@@ -793,15 +779,18 @@ def compile_mlir_module(
         # so a module-level import here deadlocks on a cold aie.utils.compile entry.
         from aie.iron.kernel import ExternalFunction
 
+        # ``_instances`` outlives any single compile: kernels can be reused,
+        # and shared by name, across designs (see ``resolve()``), so it is
+        # never cleared here. ``resolve()`` declares every kernel a module
+        # uses, so the module's declarations scope this compile: an instance
+        # left over from an earlier, unrelated design in the same process is
+        # neither built nor checked against this design's arch.
         target_arch = resolve_target_arch(device)
-        referenced = [
-            f
-            for f in ExternalFunction._instances
-            if getattr(f, "_source_file", None)
-            and re.search(rf"@{re.escape(f.name)}\b", mlir_text)
-        ]
         compile_external_kernels(
-            _select_declared_kernels(referenced, mlir_text),
+            _select_declared_kernels(
+                [f for f in ExternalFunction._instances if f.source_file],
+                _declared_objects(mlir_module),
+            ),
             str(work_dir),
             target_arch,
             embed_bitcode=_check_lut_banks_enabled(options or []),
@@ -1117,87 +1106,48 @@ def _compiled_into(func, kernel_dir, embed_bitcode=False) -> bool:
     return os.path.abspath(compiled_dir) == os.path.abspath(kernel_dir)
 
 
-_FUNC_DECL_RE = re.compile(
-    r'func\.func\s+private\s+@("(?:[^"\\]|\\.)*"|[^\s(]+)\s*(?=\()'
-)
-_ATTRIBUTES_RE = re.compile(r"\s*attributes\s*(?=\{)")
-_LINK_WITH_RE = re.compile(r'link_with\s*=\s*"([^"]*)"')
-_CLOSERS = {"(": ")", "[": "]", "{": "}", "<": ">"}
+def _declared_objects(mlir_module: "str | ir.Module") -> dict[str, set[str | None]]:
+    """Map each function ``mlir_module`` declares to the objects it links with.
 
-
-def _skip_nested(text: str, pos: int, stop_at_space: bool = False) -> int:
-    """Return the index just past the nested group or token starting at ``pos``.
-
-    Tracks ``()[]{}<>`` nesting and skips string literals, so the scan is not
-    confused by line breaks or delimiters inside them.  With ``stop_at_space``
-    the scan also ends at whitespace outside any group (the end of a type).
+    A module can hold several device symbol tables, each declaring a symbol
+    with its own ``link_with``; a declaration without one maps to ``None``.
     """
-    stack = []
-    while pos < len(text):
-        c = text[pos]
-        if c == '"':
-            pos += 1
-            while pos < len(text) and text[pos] != '"':
-                pos += 2 if text[pos] == "\\" else 1
-        elif text.startswith("->", pos):
-            pos += 1
-        elif c in _CLOSERS:
-            stack.append(_CLOSERS[c])
-        elif stack and c == stack[-1]:
-            stack.pop()
-            if not stack and not stop_at_space:
-                return pos + 1
-        elif not stack and (c.isspace() or c in ")]}>"):
-            return pos
-        pos += 1
-    return pos
+    if isinstance(mlir_module, str):
+        with ir.Context(), ir.Location.unknown():
+            return _declared_objects(ir.Module.parse(mlir_module))
+    declared: dict[str, set[str | None]] = {}
+
+    def collect(op):
+        decl = op.opview
+        if isinstance(decl, FuncOp) and decl.is_external:
+            attrs = decl.attributes
+            link_with = (
+                ir.StringAttr(attrs["link_with"]).value
+                if "link_with" in attrs
+                else None
+            )
+            declared.setdefault(decl.sym_name.value, set()).add(link_with)
+        return ir.WalkResult.ADVANCE
+
+    mlir_module.operation.walk(collect)
+    return declared
 
 
-def _skip_space(text: str, pos: int) -> int:
-    """Return the index of the first non-whitespace character at or after ``pos``."""
-    while pos < len(text) and text[pos].isspace():
-        pos += 1
-    return pos
+def _select_declared_kernels(funcs, link_with: dict[str, set[str | None]]) -> list:
+    """Keep the kernels whose object is the one a declaration links a symbol with.
 
-
-def _declared_link_with(text: str, pos: int):
-    """Return the ``link_with`` of the declaration whose argument list is at ``pos``.
-
-    The signature, result types and ``attributes`` dictionary may each start on
-    a new line, so this follows the declaration's structure rather than reading
-    to the end of the line.
-    """
-    pos = _skip_space(text, _skip_nested(text, pos))
-    if text.startswith("->", pos):
-        pos = _skip_space(text, pos + 2)
-        pos = _skip_nested(text, pos, stop_at_space=True)
-    attrs = _ATTRIBUTES_RE.match(text, pos)
-    if not attrs:
-        return None
-    body = text[attrs.end() : _skip_nested(text, attrs.end())]
-    found = _LINK_WITH_RE.search(body)
-    return found.group(1) if found else None
-
-
-def _select_declared_kernels(funcs, mlir_text: str) -> list:
-    """Keep the kernels whose object is the one ``mlir_text`` links a symbol with.
-
+    ``link_with`` is :func:`_declared_objects` of the module being compiled.
     Instances can share a symbol: an inline library kernel keeps its bare name
     across archs, and each arch's factory gives it its own object. The
     declaration's ``link_with`` picks the one this module uses. A symbol no
     instance links as declared (or declared without ``link_with``) keeps every
-    instance, so one built for another arch still reports that. A module can
-    hold several device symbol tables, each declaring the symbol with its own
-    ``link_with``, so every declared object is kept.
+    instance, so one built for another arch still reports that. When several
+    device symbol tables declare the symbol, every declared object is kept.
     """
-    link_with = {}
-    for decl in _FUNC_DECL_RE.finditer(mlir_text):
-        link_with.setdefault(decl.group(1).strip('"'), set()).add(
-            _declared_link_with(mlir_text, decl.end())
-        )
+    funcs = [f for f in funcs if f.name in link_with]
     objects = {}
     for f in funcs:
-        if None not in link_with.get(f.name, {None}):
+        if None not in link_with[f.name]:
             objects.setdefault(f.name, set()).add(f.object_file_name)
     resolved = {
         name

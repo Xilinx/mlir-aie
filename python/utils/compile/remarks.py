@@ -79,7 +79,9 @@ import argparse
 import collections
 import concurrent.futures
 import contextlib
+import dataclasses
 import enum
+import importlib.util
 import inspect
 import json
 import os
@@ -92,7 +94,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import get_args
 
+import numpy as np
 import yaml
+from aie.utils import bfp, config
+from aie.utils.bfp import dtype_name
 
 from .utils import cxx_core_compile_command
 
@@ -449,8 +454,6 @@ class Linked:
 
 def linked(obj: Path, entry: str) -> Linked:
     """Functions and undefined symbols ``entry`` reaches in the object ``obj``."""
-    from aie.utils import config
-
     out = subprocess.run(
         [
             config.readobj_path(),
@@ -940,8 +943,6 @@ def kernel_builds():
 
 
 def _build_name(factory: str, kwargs: dict) -> str:
-    from aie.utils.bfp import dtype_name
-
     def text(v):
         if isinstance(v, enum.Enum):
             return v.value
@@ -951,9 +952,6 @@ def _build_name(factory: str, kwargs: dict) -> str:
 
 
 def _parameter_value(param: inspect.Parameter, text: str):
-    import numpy as np
-    from aie.utils import bfp
-
     kind = type(param.default)
     if param.default is None or param.default is param.empty:
         kind = next(
@@ -1022,18 +1020,16 @@ def case_builds(
     """Yield ``(name, ExternalFunction)`` for every build the cases in ``path`` run.
 
     ``path`` is a Python file defining ``CASES`` (``kernel_cases.py``); each
-    case needs a ``name``, a ``fn()`` that returns its kernel, and optionally
-    the ``devices`` it runs on. The file is read at run time, so the test tree
-    stays out of this package's imports. A case's shape and options become
+    case is a dataclass with a ``name``, a ``fn()`` that returns its kernel,
+    and the ``devices`` it runs on (empty for any). The file is read at run
+    time, so the test tree stays out of this package's imports. A case's
+    shape and options become
     ``-D`` flags, so most cases build an object no factory default does; the
     rows carry the case's name, the key its device series use too. Of the
     cases ``only`` matches, those that share an object compile once, under
     the first name. ``coverage`` counts where every case went, for
     :func:`case_coverage`.
     """
-    import dataclasses
-    import importlib.util
-
     coverage = collections.Counter() if coverage is None else coverage
     directory = str(Path(path).resolve().parent)
     sys.path.insert(0, directory)  # a cases file imports its sibling modules
@@ -1050,7 +1046,7 @@ def case_builds(
         if only and not re.search(only, case.name):
             coverage["only"] += 1
             continue
-        devices = getattr(case, "devices", ())
+        devices = case.devices
         if devices and device not in devices:
             coverage["devices"] += 1
             continue
@@ -1110,8 +1106,6 @@ def current_kernel_sources(baseline: str) -> tuple[str, str | None]:
     before/after of an uncommitted edit then compares the baseline against
     the old kernels and reads as no change.
     """
-    from aie.utils import config
-
     current = config.aie_kernels_dir()
     if not os.environ.get("MLIR_AIE_KERNEL_SOURCES"):
         return current, (
@@ -1477,9 +1471,9 @@ def _run(a: argparse.Namespace) -> int:
             workdir,
             a.jobs,
             rows,
-            locations,
-            sweep,
-            failed,
+            locations=locations,
+            builds=sweep,
+            skip=failed,
         )
         meta["baseline"] = {
             "sources": a.baseline_sources,

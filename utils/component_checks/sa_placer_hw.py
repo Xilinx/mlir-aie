@@ -68,7 +68,7 @@ def run_seed(seed: int, warmup: int, iters: int) -> dict:
         and npu_match is not None
     )
     # min (group 2), not avg: a single busy neighbor call inflates the mean
-    # far more than it moves the min (feedback_npu_latency_use_min_not_avg).
+    # far more than it moves the min.
     min_latency_us = float(npu_match.group(2)) if npu_match else None
     return {
         "seed": seed,
@@ -103,9 +103,8 @@ def main(argv=None) -> int:
         type=int,
         nargs="+",
         default=[3, 2, 7],
-        help="SA seeds to check on hardware (default: 3 2 7, the checked-in "
-        "default plus the two other seeds already verified in "
-        "project_mobilenet_placement_ablation)",
+        help="SA seeds to check on hardware (default: 3 2 7, the design's "
+        "default seed plus two others known to place and verify)",
     )
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--iters", type=int, default=5)

@@ -149,7 +149,7 @@ def _callees_identity(generator: Callable) -> bytes:
     for a top-level one) and stops outside it: the IRON core and third-party
     code are versioned with the install, not edited per design.
     """
-    home = getattr(generator, "__module__", None) or ""
+    home = generator.__module__ or ""
     package = home.rpartition(".")[0]
 
     def in_package(module: str) -> bool:
@@ -185,7 +185,7 @@ def _callees_identity(generator: Callable) -> bytes:
             visit(obj.__defaults__, f"{name}.__defaults__")
             visit(tuple(sorted((obj.__kwdefaults__ or {}).items())), f"{name}.kw")
         names = _names(obj.__code__)
-        scope = dict(getattr(obj, "__globals__", {}))
+        scope = dict(obj.__globals__)
         where = {n: f"{obj.__module__}.{n}" for n in scope}
         # A closure reaches its helpers and constants through cells rather
         # than globals; those shadow a global of the same name.

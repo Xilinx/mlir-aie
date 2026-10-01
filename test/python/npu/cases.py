@@ -28,6 +28,7 @@ from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import from_name
 from aie.iron.kernels import Param
 from aie.utils import bfp, get_current_device
+from aie.utils.accuracy import error_stats
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
@@ -317,8 +318,6 @@ def error_report(fn, got, inputs, *, calls: int, scalars=()) -> list[dict]:
     ``judge`` takes, normalized the same way: decoded, per call, padding
     trimmed.
     """
-    from aie.utils.accuracy import error_stats
-
     c = fn.contract
     plain = _reference_outputs(fn, inputs, scalars, widen=False)
     try:

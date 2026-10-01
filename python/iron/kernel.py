@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
-from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
+from ..dialects import arith, memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..dialects.aie import external_func
 from ..helpers.dialects.func import call
 from ..helpers.util import try_convert_np_type_to_mlir_type
@@ -114,17 +114,18 @@ def _view_byte_offset(arg) -> tuple[int | None, str | None]:
     ``None`` when a shift is only known at run time; a value that is not a
     view sits at offset 0.
     """
+    if not isinstance(arg, ir.Value):
+        return 0, None
     offset = 0
-    owner = getattr(arg, "owner", None)
-    while owner is not None and getattr(owner, "name", None) == "memref.view":
-        shift = getattr(owner.operands[1], "owner", None)
-        if shift is None or getattr(shift, "name", None) != "arith.constant":
+    owner = arg.owner
+    while isinstance(owner, memref.ViewOp):
+        shift = owner.byte_shift.owner
+        if not isinstance(shift, arith.ConstantOp):
             return None, None
-        offset += ir.IntegerAttr(shift.attributes["value"]).value
-        owner = getattr(owner.operands[0], "owner", None)
-    attributes = getattr(owner, "attributes", None)
-    if attributes is not None and "sym_name" in attributes:
-        return offset, ir.StringAttr(attributes["sym_name"]).value
+        offset += ir.IntegerAttr(shift.value).value
+        owner = owner.source.owner
+    if isinstance(owner, ir.OpView) and "sym_name" in owner.attributes:
+        return offset, ir.StringAttr(owner.attributes["sym_name"]).value
     return offset, None
 
 
@@ -238,6 +239,14 @@ class Kernel(Resolvable):
     the core's LLVM module before codegen.  The mode is explicit metadata --
     it is never inferred from the file suffix.
     """
+
+    # What the kernel computes (aie.iron.kernels.KernelContract); only an
+    # ExternalFunction takes one at construction. Typed Any rather than
+    # KernelContract because pyright analyzes the sources and the staged
+    # package as two module trees, so naming the class here would make the
+    # factories' own KernelContract a different type. The class-level default
+    # also covers a discovery binding, which is created without __init__.
+    contract: Any = None
 
     def __init__(
         self,
@@ -526,8 +535,8 @@ class Kernel(Resolvable):
                 f"Kernel '{self._name}' expects {len(self._arg_types)} "
                 f"argument(s), but {len(args)} were provided."
             )
-        contract = getattr(self, "contract", None)
-        for index, align in getattr(contract, "alignments", ()):
+        alignments = self.contract.alignments if self.contract else ()
+        for index, align in alignments:
             offset, buffer = _view_byte_offset(args[index])
             if offset is not None and offset % align:
                 pad = align - offset % align
@@ -582,14 +591,6 @@ class ExternalFunction(Kernel):
         )
         binding._cached_digest = None
         cls._instances.add(binding)
-
-    # What the kernel computes (aie.iron.kernels.KernelContract), given at
-    # construction. Typed Any rather than KernelContract because pyright
-    # analyzes the sources and the staged package as two module trees, so
-    # naming the class here would make the factories' own KernelContract a
-    # different type. The class-level default covers a discovery binding,
-    # which is created without running __init__.
-    contract: Any = None
 
     @property
     def built_for_arch(self) -> str | None:

@@ -39,6 +39,7 @@ import aie.iron as iron
 import numpy as np
 import pytest
 from aie.iron import (
+    CascadeFlow,
     CompileTime,
     In,
     InOut,
@@ -50,6 +51,8 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.algorithms import kernel_design as kd
+from aie.iron.buffer import Buffer
+from aie.iron.device import Tile
 from aie.utils.verify import compare, poisoned
 from cases import error_report, inputs_for
 from kernel_cases import CASES
@@ -527,10 +530,6 @@ def _cascade_design(
     n: CompileTime[int],
     tiles: CompileTime[int],
 ):
-    from aie.iron import CascadeFlow
-    from aie.iron.buffer import Buffer
-    from aie.iron.device import Tile
-
     in_dt, out_dt = _CASCADE_DTYPES[combo]
     kw = dict(dim_m=m, dim_k=k, dim_n=n, input_dtype=in_dt, output_dtype=out_dt)
     get = kernels.cascade_mm(**kw)

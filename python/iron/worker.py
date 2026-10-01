@@ -214,10 +214,9 @@ class Worker(ObjectFifoEndpoint):
         handed = {k.name for k in kernels}
         self._setup_kernels = []
         for k in kernels:
-            make_setup = getattr(getattr(k, "contract", None), "setup", None)
-            if make_setup is None:
+            if k.contract is None or k.contract.setup is None:
                 continue
-            setup = make_setup()
+            setup = k.contract.setup()
             if setup.name not in handed:
                 handed.add(setup.name)
                 self._setup_kernels.append(setup)

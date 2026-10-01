@@ -22,6 +22,7 @@ from dataclasses import dataclass, replace
 from typing import Callable
 
 import numpy as np
+from aie.utils.accuracy import round_to, ulp_distance
 from aie.utils.benchmark import print_benchmark
 from ml_dtypes import bfloat16
 
@@ -430,8 +431,6 @@ def bf16_ulp_distance(a, b) -> np.ndarray:
     map to the same point, so a kernel that produces the other zero is not
     penalized. ``aie.utils.accuracy.ulp_distance`` takes other dtypes.
     """
-    from aie.utils.accuracy import ulp_distance
-
     return ulp_distance(a, b, bfloat16)
 
 
@@ -563,11 +562,8 @@ def compare(
             raise ValueError(
                 f"Tolerance in ULPs is defined for bfloat16 outputs, got {actual.dtype}"
             )
-        from aie.utils.accuracy import round_to
-
-        # e32 is already float32, so casting it to bfloat16 rounds twice
-        # (float64 -> float32 -> bfloat16); round_to rounds the float64 e
-        # directly, so ties break the same way a correctly rounded bf16
+        # A cast to bfloat16 goes through float32 and can round twice;
+        # round_to rounds the reference once, as a correctly rounded bf16
         # implementation would.
         e_bf = round_to(e, bfloat16)
         ulp = np.zeros(n, np.int64)

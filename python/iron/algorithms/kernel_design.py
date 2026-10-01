@@ -27,7 +27,9 @@ from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
 )
 from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from aie.helpers.util import np_ndarray_type_to_memref_type
-from aie.ir import IndexType  # pyright: ignore[reportMissingImports]
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    IndexType,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.iron.buffer import Buffer
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
@@ -216,7 +218,11 @@ def _encode_params(fn, params):
 
 
 def _byte_offsets(fn, arg_byte_offsets):
-    """Check ``(argument, byte offset)`` pairs: tensor Params, element-aligned, below ``VIEW_PAD``."""
+    """Check ``(argument, byte offset)`` pairs.
+
+    Each argument must be a tensor Param and each offset element-aligned and
+    below ``VIEW_PAD``.
+    """
     types = fn.arg_types()
     params = _fifo_plan(fn)[2]
     result = {}

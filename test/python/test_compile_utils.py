@@ -3,7 +3,7 @@
 #
 # RUN: %pytest --noconftest %s
 
-"""Compiler invocation tests without MLIR bindings or an installed toolchain."""
+"""Compiler invocation tests without an installed toolchain."""
 
 import importlib.util
 import os
@@ -11,27 +11,24 @@ from pathlib import Path
 import subprocess
 import sys
 import types
-from unittest.mock import patch
 
 import pytest
 
 
 @pytest.fixture
-def compile_utils():
+def compile_utils(monkeypatch):
     source = Path(__file__).resolve().parents[2] / "python/utils/compile/utils.py"
     spec = importlib.util.spec_from_file_location("compile_utils", source)
     module = importlib.util.module_from_spec(spec)
-    aie = types.ModuleType("aie")
-    aie.utils = types.ModuleType("aie.utils")
-    aie.utils.config = types.SimpleNamespace(
-        aiecc_path=lambda: "tools/aiecc",
-        peano_install_dir=lambda: "tools/peano",
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(
+        module,
+        "config",
+        types.SimpleNamespace(
+            aiecc_path=lambda: "tools/aiecc",
+            peano_install_dir=lambda: "tools/peano",
+        ),
     )
-    with patch.dict(
-        sys.modules,
-        {"aie": aie, "aie.utils": aie.utils, "aie.utils.config": aie.utils.config},
-    ):
-        spec.loader.exec_module(module)
     return module
 
 
@@ -195,7 +192,7 @@ def test_compile_mlir_module_ignores_stale_external_functions(
     class FakeExternalFunction:
         def __init__(self, name, built_for_arch):
             self.name = name
-            self._source_file = "kernel.cc"
+            self.source_file = "kernel.cc"
             self.built_for_arch = built_for_arch
 
     referenced = FakeExternalFunction("referenced_kernel", "aie2")
@@ -242,40 +239,28 @@ def test_declared_link_with_picks_among_kernels_sharing_a_symbol(compile_utils):
     aie2 = types.SimpleNamespace(name="setup", object_file_name="setup_aaaa.ll")
     aie2p = types.SimpleNamespace(name="setup", object_file_name="setup_bbbb.ll")
     other = types.SimpleNamespace(name="kernel", object_file_name="kernel.o")
-    text = (
-        'func.func private @setup() attributes {link_with = "setup_bbbb.ll"}\n'
-        "func.func private @kernel(%arg0: i32)\n"
-    )
-    select = compile_utils._select_declared_kernels
+
+    def select(funcs, text):
+        declared = compile_utils._declared_objects(text)
+        return compile_utils._select_declared_kernels(funcs, declared)
+
+    text = """module {
+      func.func private @setup() attributes {link_with = "setup_bbbb.ll"}
+      func.func private @kernel(%arg0: i32)
+    }"""
     assert select([aie2, aie2p, other], text) == [aie2p, other]
-    stale = 'func.func private @setup() attributes {link_with = "setup_cccc.ll"}\n'
+    stale = """module {
+      func.func private @setup() attributes {link_with = "setup_cccc.ll"}
+    }"""
     assert select([aie2, aie2p], stale) == [aie2, aie2p]
-    both = (
-        'func.func private @setup() attributes {link_with = "setup_aaaa.ll"}\n'
-        'func.func private @setup() attributes {link_with = "setup_bbbb.ll"}\n'
-    )
+    both = """module {
+      module @a {
+        func.func private @setup() attributes {link_with = "setup_aaaa.ll"}
+      }
+      module @b {
+        func.func private @setup() attributes {link_with = "setup_bbbb.ll"}
+        func.func private @kernel(%arg0: i32)
+      }
+    }"""
     assert select([aie2, aie2p, other], both) == [aie2, aie2p, other]
-
-
-def test_declared_link_with_spans_lines(compile_utils):
-    """A declaration's ``link_with`` is found when it is split across lines."""
-    aie2 = types.SimpleNamespace(name="setup", object_file_name="setup_aaaa.ll")
-    aie2p = types.SimpleNamespace(name="setup", object_file_name="setup_bbbb.ll")
-    select = compile_utils._select_declared_kernels
-    for text in (
-        "func.func private @setup(\n"
-        "    %arg0: memref<16xi32, affine_map<(d0) -> (d0)>>,\n"
-        "    %arg1: i32)\n"
-        '    attributes {link_with = "setup_bbbb.ll"}\n',
-        "func.func private @setup(%arg0: i32) -> (i32, i32)\n"
-        '  attributes {\n    note = "}{",\n    link_with = "setup_bbbb.ll"\n  }\n',
-        "func.func private @setup()\n  -> memref<4 x i32>\n"
-        '  attributes {link_with = "setup_bbbb.ll"}\n',
-    ):
-        assert select([aie2, aie2p], text) == [aie2p]
-    # A later declaration's attributes are not taken for an earlier one's.
-    text = (
-        "func.func private @setup(%arg0: i32)\n"
-        'func.func private @other() attributes {link_with = "setup_bbbb.ll"}\n'
-    )
-    assert select([aie2, aie2p], text) == [aie2, aie2p]
+    assert select([aie2, other], "module {}") == []
