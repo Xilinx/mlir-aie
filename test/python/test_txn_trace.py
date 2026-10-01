@@ -3,15 +3,19 @@
 
 # RUN: %pytest %s
 
-"""Unit tests for aie.utils.txn_trace: no NPU, no MLIR pipeline required.
+"""Unit tests for aie.utils.txn_trace: no NPU required.
 
-The streams are assembled by hand with the word layouts from
+The shim streams are assembled by hand with the word layouts from
 include/aie/Runtime/TxnEncoding.h, mirroring what the static emitter and the
-dynamic (dispatch-time) builder produce for the same transfers.
+dynamic (dispatch-time) builder produce for the same transfers. The memtile
+and core streams are lowered from runtime-sequence DMA tasks by the compiler.
 """
 
 import numpy as np
 import pytest
+from aie.dialects.aie import translate_npu_to_binary
+from aie.ir import Context, Location, Module
+from aie.passmanager import PassManager
 from aie.utils.txn_trace import compare, decode, explain, trace
 
 SHIM_BD0 = 0x1D000
@@ -323,3 +327,124 @@ class TestCompare:
         text = explain(s)
         assert "push (0,0) S2MM ch0" in text and "wait (0,0) S2MM ch0" in text
         assert "blockwrite" in explain(s, raw=True)
+
+
+def lowered(device, *tasks):
+    """The instruction stream for runtime-sequence DMA tasks on tile (0, 1)
+    (`%mem`, a 1024-word buffer `%mbuf`) and tile (0, 2) (`%core`, `%cbuf`)."""
+    src = f"""
+    module {{
+      aie.device({device}) {{
+        %shim = aie.tile(0, 0)
+        %mem = aie.tile(0, 1)
+        %core = aie.tile(0, 2)
+        %mbuf = aie.buffer(%mem) {{address = 0x4000 : i32}} : memref<1024xi32>
+        %cbuf = aie.buffer(%core) {{address = 0x800 : i32}} : memref<256xi32>
+        aie.runtime_sequence() {{
+          {"".join(tasks)}
+        }}
+      }}
+    }}"""
+    with Context(), Location.unknown():
+        module = Module.parse(src)
+        PassManager.parse(
+            "builtin.module(aie.device(aie-dma-tasks-to-npu,aie-dma-to-npu))"
+        ).run(module.operation)
+        return translate_npu_to_binary(module.operation)
+
+
+def task(tile, direction, channel, bd, bd_id, attrs=""):
+    name = f"%t{bd_id}"
+    return f"""
+          {name} = aiex.dma_configure_task(%{tile}, {direction}, {channel}) {{
+            aie.dma_bd({bd}) {{bd_id = {bd_id} : i32}}
+            aie.end
+          }} {attrs}
+          aiex.dma_start_task({name})"""
+
+
+PAD = (
+    "pad [<const_pad_before=0, const_pad_after=0>, "
+    "<const_pad_before=1, const_pad_after=2>, "
+    "<const_pad_before=0, const_pad_after=0>]"
+)
+MEM_ND = "%mbuf : memref<1024xi32> offset = 8 len = 192 sizes = [4, 6, 8] strides = [64, 8, 1]"
+
+
+@pytest.mark.parametrize("device", ["npu1", "npu2"])
+class TestLoweredTiles:
+    def test_memtile_bd_above_15(self, device):
+        s = lowered(
+            device,
+            task(
+                "mem",
+                "MM2S",
+                3,
+                f"{MEM_ND} {PAD}",
+                37,
+                "{repeat_count = 2 : i32, issue_token = true}",
+            ),
+        )
+        (ev,) = trace(s)
+        assert (ev.col, ev.row, ev.direction, ev.channel) == (0, 1, "MM2S", 3)
+        assert ev.repeat == 2 and ev.issue_token
+        assert ev.bd.length == 192
+        assert ev.bd.dims == ((8, 1), (6, 8)) and ev.bd.outer_stride == 64
+        assert ev.bd.padding == ((0, 0), (1, 2), (0, 0))
+        assert "pad=[0/0 1/2 0/0]" in explain(s)
+
+    def test_memtile_bd_id_and_padding_compare(self, device):
+        bd = f"{MEM_ND} {PAD}"
+        low = lowered(device, task("mem", "MM2S", 0, bd, 2))
+        high = lowered(device, task("mem", "MM2S", 0, bd, 41))
+        assert compare(low, high) == []
+        unpadded = lowered(device, task("mem", "MM2S", 0, MEM_ND, 41))
+        assert compare(high, unpadded)
+
+    def test_memtile_contiguous_nd_equals_linear(self, device):
+        linear = lowered(
+            device, task("mem", "S2MM", 1, "%mbuf : memref<1024xi32> len = 512", 20)
+        )
+        nd = lowered(
+            device,
+            task(
+                "mem",
+                "S2MM",
+                1,
+                "%mbuf : memref<1024xi32> len = 512 sizes = [2, 16, 16] "
+                "strides = [256, 16, 1]",
+                20,
+            ),
+        )
+        assert compare(linear, nd) == []
+        strided = lowered(
+            device,
+            task(
+                "mem",
+                "S2MM",
+                1,
+                "%mbuf : memref<1024xi32> len = 512 sizes = [2, 16, 16] "
+                "strides = [256, 32, 1]",
+                20,
+            ),
+        )
+        assert compare(linear, strided)
+
+    def test_core_bd(self, device):
+        s = lowered(
+            device,
+            task(
+                "core",
+                "S2MM",
+                1,
+                "%cbuf : memref<256xi32> offset = 4 len = 64 sizes = [8, 8] "
+                "strides = [16, 1]",
+                9,
+            ),
+        )
+        (ev,) = trace(s)
+        assert (ev.col, ev.row, ev.direction, ev.channel) == (0, 2, "S2MM", 1)
+        assert ev.bd.length == 64
+        assert ev.bd.address == ("abs", (0x800 + 4 * 4) // 4)
+        assert ev.bd.dims == ((8, 1), (8, 16))
+        assert ev.bd.padding == ()

@@ -22,14 +22,16 @@ Two streams are equivalent when their event lists are equal. ``compare``
 reports the first divergence; ``explain`` prints the events for a human.
 
 The decoding covers the AIE2 / AIE2p shim, memtile and core DMA register
-layouts used by npu1 and npu2 (register offsets from ``AIETargetModel``).
+layouts used by npu1 and npu2 (register fields from aie-rt's
+``xaiemlgbl_params.h``).
 """
 
 from __future__ import annotations
 
+import argparse
 import dataclasses
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import Iterable, NamedTuple, Sequence
 
 import numpy as np
 
@@ -48,13 +50,28 @@ _COL_SHIFT = 25
 _ROW_SHIFT = 20
 _REG_MASK = (1 << _ROW_SHIFT) - 1
 
-# Per tile kind: (BD base, BD stride, control base, MM2S control delta,
-# channels per direction). Rows: 0 shim, 1 memtile, >=2 core.
+_BD_STRIDE = 0x20
+
+
+class _DmaLayout(NamedTuple):
+    bd_base: int
+    bd_words: int
+    ctrl_base: int
+    mm2s_delta: int
+    channels: int
+    bd_id_mask: int
+
+
+# Rows: 0 shim, 1 memtile, >=2 core. Identical on AIE2 and AIE2p.
 _LAYOUT = {
-    "shim": (0x1D000, 0x20, 0x1D200, 0x10, 2),
-    "mem": (0xA0000, 0x20, 0xA0600, 0x30, 6),
-    "core": (0x1D000, 0x20, 0x1DE00, 0x10, 2),
+    "shim": _DmaLayout(0x1D000, 8, 0x1D200, 0x10, 2, 0xF),
+    "mem": _DmaLayout(0xA0000, 8, 0xA0600, 0x30, 6, 0x3F),
+    "core": _DmaLayout(0x1D000, 6, 0x1DE00, 0x10, 2, 0xF),
 }
+
+
+def _bits(word: int, lsb: int, width: int) -> int:
+    return (word >> lsb) & ((1 << width) - 1)
 
 
 def _contiguous(
@@ -208,64 +225,97 @@ def decode(words: Sequence[int] | np.ndarray) -> list[Op]:
 class Transfer:
     """A buffer descriptor as the DMA sees it.
 
-    The form is independent of how the stream encoded it.
+    The form is independent of how the stream encoded it. Fields that pack
+    several register bits (`packet`, `flags`) keep the tile's own encoding,
+    so they compare between BDs of one tile kind.
     """
 
-    length: int  # buffer_length register value (shim: 32-bit words)
+    length: int  # buffer_length register value, in 32-bit words
     address: tuple  # ("arg", idx, byte_offset) or ("abs", address)
     dims: tuple[
         tuple[int, int], ...
-    ]  # (wrap, stride) innermost first; unit wraps dropped
-    outer_stride: int  # stride applied when every dim wraps (d2 on shim)
+    ]  # (wrap, stride) innermost first; unit wraps dropped unless padded
+    outer_stride: int  # stride applied when every dim wraps
     iteration: tuple[int, int]  # (wrap, stride)
-    packet: int  # word 2 bits 16..30 (packet id/type/enable, out-of-order id)
-    flags: int  # word 7 with the next-BD fields masked out (locks, valid, tlast)
+    packet: int  # packet enable, type and id, and out-of-order BD id
+    flags: int  # locks, valid, TLAST suppress, compression; no chaining
     burst_axcache: tuple[int, int]
+    padding: tuple[tuple[int, int], ...] = ()  # memtile (before, after) per dim
 
     @staticmethod
     def from_words(kind: str, w: Sequence[int], patched: tuple | None) -> "Transfer":
-        if len(w) < 8:
-            raise ValueError("a BD has 8 words")
-        if kind != "shim":
-            # Memtile / core BDs (8 words too) differ in layout; keep them raw
-            # but still normalized on the fields shared with the shim form.
-            return Transfer(
-                length=w[0] & 0x1FFFF,
-                address=patched or ("abs", w[1]),
-                dims=tuple((x, y) for x, y in zip(w[2:7:2], w[3:8:2])),
-                outer_stride=0,
-                iteration=(0, 0),
-                packet=0,
-                flags=w[7],
-                burst_axcache=(0, 0),
+        n_words = _LAYOUT[kind].bd_words
+        if len(w) < n_words:
+            raise ValueError(f"a {kind} BD has {n_words} words")
+        padding = ()
+        burst_axcache = (0, 0)
+        if kind == "shim":
+            length = w[0]
+            address = w[1] | ((w[2] & 0xFFFF) << 32)
+            dims = (
+                (_bits(w[3], 20, 10), _bits(w[3], 0, 20) + 1),
+                (_bits(w[4], 20, 10), _bits(w[4], 0, 20) + 1),
             )
-        d0 = ((w[3] >> 20) & 0x3FF, (w[3] & 0xFFFFF) + 1)
-        d1 = ((w[4] >> 20) & 0x3FF, (w[4] & 0xFFFFF) + 1)
-        d2_stride = (w[5] & 0xFFFFF) + 1
-        # A dimension with wrap 1 never applies its own stride (the counter
-        # wraps after every element and the next dimension steps), and wrap 0
-        # means unused; both are absent from the effective pattern. Linear mode
-        # (no dims) and [1, 1] wraps with an outer stride of 1 move the same
-        # bytes.
-        dims = tuple(d for d in (d0, d1) if d[0] > 1)
-        # A contiguous ND scan (innermost stride 1, every outer stride the
-        # product of the inner wraps, the next block following on) moves the
-        # same words as linear mode; the static emitter folds it to linear.
-        if dims and _contiguous(dims, d2_stride, w[0]):
-            dims, d2_stride = (), 1
-        if patched is None:
-            address = ("abs", w[1] | ((w[2] & 0xFFFF) << 32))
+            outer_stride = _bits(w[5], 0, 20) + 1
+            iteration = (_bits(w[6], 20, 6), _bits(w[6], 0, 20) + 1)
+            packet = _bits(w[2], 16, 15)
+            flags = w[7] & ~(0xF << 27) & ~(1 << 26)
+            burst_axcache = (w[4] >> 30, _bits(w[5], 24, 4))
+        elif kind == "mem":
+            length = _bits(w[0], 0, 17)
+            address = _bits(w[1], 0, 19)
+            dims = tuple(
+                (_bits(x, 17, 10), _bits(x, 0, 17) + 1) for x in (w[2], w[3], w[4])
+            )
+            if dims[2][0]:
+                outer_stride = _bits(w[5], 0, 17) + 1
+            else:
+                # A zero d2 wrap leaves d2 unbounded, as the shim's d2 is:
+                # buffer_length ends the transfer and d3 never steps.
+                dims, outer_stride = dims[:2], dims[2][1]
+            iteration = (_bits(w[6], 17, 6), _bits(w[6], 0, 17) + 1)
+            packet = _bits(w[0], 17, 15)
+            flags = w[7] | (w[2] >> 31) << 32 | (w[4] >> 31) << 33
+            pads = (
+                (_bits(w[1], 26, 6), _bits(w[5], 17, 6)),
+                (_bits(w[3], 27, 5), _bits(w[5], 23, 5)),
+                (_bits(w[4], 27, 4), _bits(w[5], 28, 4)),
+            )
+            if any(b or a for b, a in pads):
+                padding = pads
         else:
-            address = patched
+            length = _bits(w[0], 0, 14)
+            address = _bits(w[0], 14, 14)
+            dims = (
+                (_bits(w[3], 13, 8), _bits(w[2], 0, 13) + 1),
+                (_bits(w[3], 21, 8), _bits(w[2], 13, 13) + 1),
+            )
+            outer_stride = _bits(w[3], 0, 13) + 1
+            iteration = (_bits(w[4], 13, 6), _bits(w[4], 0, 13) + 1)
+            packet = _bits(w[1], 16, 15)
+            flags = w[5] & ~(0xF << 27) & ~(1 << 26) | (w[1] >> 31) << 32
+        if not padding:
+            # A dimension with wrap 1 never applies its own stride (the
+            # counter wraps after every element and the next dimension
+            # steps), and wrap 0 means unused; both are absent from the
+            # effective pattern. Linear mode (no dims) and [1, 1] wraps with
+            # an outer stride of 1 move the same bytes.
+            dims = tuple(d for d in dims if d[0] > 1)
+            # A contiguous ND scan (innermost stride 1, every outer stride the
+            # product of the inner wraps, the next block following on) moves
+            # the same words as linear mode; the static emitter folds it.
+            if dims and _contiguous(dims, outer_stride, length):
+                dims, outer_stride = (), 1
         return Transfer(
-            length=w[0],
-            address=address,
+            length=length,
+            address=patched or ("abs", address),
             dims=dims,
-            outer_stride=d2_stride,
-            iteration=((w[6] >> 20) & 0x3F, (w[6] & 0xFFFFF) + 1),
-            packet=(w[2] >> 16) & 0x7FFF,
-            flags=w[7] & ~(0xF << 27) & ~(1 << 26),
-            burst_axcache=(w[4] >> 30, (w[5] >> 24) & 0xF),
+            outer_stride=outer_stride,
+            iteration=iteration,
+            packet=packet,
+            flags=flags,
+            burst_axcache=burst_axcache,
+            padding=padding,
         )
 
     def __str__(self) -> str:
@@ -279,7 +329,15 @@ class Transfer:
             if self.iteration[0]
             else ""
         )
-        return f"len={self.length} @{addr} dims=[{dims}] outer={self.outer_stride}{it}"
+        pad = (
+            " pad=[" + " ".join(f"{b}/{a}" for b, a in self.padding) + "]"
+            if self.padding
+            else ""
+        )
+        return (
+            f"len={self.length} @{addr} dims=[{dims}] outer={self.outer_stride}"
+            f"{pad}{it}"
+        )
 
 
 @dataclass(frozen=True)
@@ -323,11 +381,12 @@ def trace(
     def bd_words(
         col: int, row: int, kind: str, bd_id: int
     ) -> tuple[list[int], tuple | None]:
-        base, stride, _, _, _ = _LAYOUT[kind]
+        layout = _LAYOUT[kind]
         tile = (col << _COL_SHIFT) | (row << _ROW_SHIFT)
-        bd_base = tile | (base + bd_id * stride)
-        w = [regs.get(bd_base + 4 * i, 0) for i in range(8)]
-        patched = patches.get(bd_base + (0 if kind == "core" else 4))
+        bd_base = tile | (layout.bd_base + bd_id * _BD_STRIDE)
+        w = [regs.get(bd_base + 4 * i, 0) for i in range(layout.bd_words)]
+        # Only shim BDs address host memory, through the word-1 patch.
+        patched = patches.get(bd_base + 4) if kind == "shim" else None
         return w, patched
 
     def classify(addr: int) -> tuple[int, int, str, str, int] | None:
@@ -340,10 +399,10 @@ def trace(
         row = (addr >> _ROW_SHIFT) & 0x1F
         reg = addr & _REG_MASK
         kind = _tile_kind(row)
-        _, _, ctrl_base, mm2s_delta, nchan = _LAYOUT[kind]
-        for direction, delta in (("S2MM", 0), ("MM2S", mm2s_delta)):
-            for ch in range(nchan):
-                if reg == ctrl_base + delta + ch * 8 + 4:
+        layout = _LAYOUT[kind]
+        for direction, delta in (("S2MM", 0), ("MM2S", layout.mm2s_delta)):
+            for ch in range(layout.channels):
+                if reg == layout.ctrl_base + delta + ch * 8 + 4:
                     return col, row, kind, direction, ch
         return None
 
@@ -382,7 +441,7 @@ def trace(
         if hit is None:
             continue
         col, row, kind, direction, ch = hit
-        bd_id = op.value & 0xF
+        bd_id = op.value & _LAYOUT[kind].bd_id_mask
         repeat = (op.value >> 16) & 0xFF
         issue = bool(op.value >> 31)
         w, patched = bd_words(col, row, kind, bd_id)
@@ -448,8 +507,6 @@ def load(path) -> np.ndarray:
 
 
 def main(argv=None) -> int:
-    import argparse
-
     p = argparse.ArgumentParser(
         description="Decode or compare NPU TXN instruction streams."
     )
