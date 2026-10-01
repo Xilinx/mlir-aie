@@ -350,6 +350,30 @@ assert.ok(!metricCells(same, 'kernel_object_bytes')[0].children.some(x => x.clas
 """)
 
 
+def test_failures_say_where_the_logs_are_and_how_to_rerun(page):
+    page("""
+const e2e = 'test.python.npu.test_kernels_e2e::test_kernel_extensive[sigmoid/1024x16/bfloat16/random/s2]';
+assert.equal(caseOfTest(e2e), 'sigmoid/1024x16/bfloat16');
+assert.equal(reproCommand(e2e),
+  "python -m pytest 'test/python/npu/test_kernels_e2e.py::test_kernel_extensive[sigmoid/1024x16/bfloat16/random/s2]' --seeds 3 -v");
+assert.equal(reproCommand('test_kernels_perf.py::test_kernel_perf[add/1024x16/bfloat16]'),
+  "python -m pytest 'test/python/npu/test_kernels_perf.py::test_kernel_perf[add/1024x16/bfloat16]' -v");
+assert.equal(reproByName('add/1024x16/bfloat16', 'test_kernel_perf'),
+  "python -m pytest test/python/npu/test_kernels_perf.py -m perf -v -k 'add/1024x16/bfloat16'");
+assert.ok(reproByName('conv/8x8/int8/width=28', 'test_kernel_extensive').endsWith("-k 'conv'  # every conv case"));
+const run = { id: '7', url: 'https://example.invalid/runs/7', device: 'Krackan', commit: '91ee8c89c8b841f2', failed: [e2e] };
+const counts = { failing: [], timingFailed: [] };
+const items = attentionFor({ npu: 'npu2', run, counts, moved: null }, Date.parse('2026-09-30T12:00:00Z'));
+const item = items.find(i => i.body.some(b => typeof b === 'string' && b.startsWith('1 test failed')));
+assert.ok(item, 'a failed test the catalogue does not name still gets a line');
+const block = item.body[item.body.length - 1];
+assert.equal(block.tag, 'details');
+const pre = block.children.find(c => c.tag === 'pre');
+assert.ok(pre.text.startsWith('git checkout 91ee8c89c8b8\\npython -m pytest'));
+assert.ok(block.text.includes('kernel-checks-npu2-7'));
+""")
+
+
 def test_cycle_spread_and_truncation_are_read_from_the_range(page):
     page("""
 assert.deepEqual(cyclesSpread('median 2939 max 2990 n=84; truncated'),

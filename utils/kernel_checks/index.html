@@ -136,6 +136,10 @@
     #attention .what { min-width: 0; }
     #attention .cases { margin: 4px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
     #attention .cases li { display: block; border: 0; padding: 1px 0; overflow-wrap: anywhere; }
+    #attention details.repro { margin-top: 6px; font-size: 12.5px; }
+    #attention details.repro summary { cursor: pointer; color: var(--muted); }
+    #attention details.repro p { margin: 6px 0 4px; }
+    #attention details.repro pre { margin: 0; padding: 8px 10px; background: var(--none-soft); border-radius: 6px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
 
     /* The kernel map: every kernel as a tile, its two halves npu1 and npu2. */
     .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); align-items: center; }
@@ -391,6 +395,7 @@
     'use strict';
     const NPUS = ['npu1', 'npu2'];
     const REPO = 'https://github.com/Xilinx/mlir-aie';
+    const DOCS_URL = 'https://xilinx.github.io/mlir-aie/dev/programming_guide/kernels_library/#testing-performance-and-static-checks';
     // The newest publish.py format this page reads; a newer file is set aside
     // (and said so) rather than misread.
     const SCHEMA = 1;
@@ -1010,6 +1015,48 @@
       return band;
     }
 
+    // A failed test as pytest or JUnit named it, as the command that runs it
+    // again. The extensive sweep's id names its seed: sN needs --seeds N+1.
+    function reproCommand(id) {
+      const node = id.replace(/^test\.python\.npu\.(\w+)::/, 'test/python/npu/$1.py::')
+        .replace(/^(test_\w+\.py::)/, 'test/python/npu/$1');
+      const seed = /::test_kernel_extensive\[.*\/s(\d+)\]$/.exec(node);
+      const seeds = seed && +seed[1] > 0 ? ` --seeds ${+seed[1] + 1}` : '';
+      return `python -m pytest '${node}'${seeds} -v`;
+    }
+
+    // The case a failed test id checked: the sweep's ids add data and seed.
+    function caseOfTest(id) {
+      const m = /::(test_\w+)\[(.*)\]$/.exec(id);
+      if (!m) return id.replace(/^.*::/, '');
+      return m[1] === 'test_kernel_extensive' ? m[2].replace(/\/[^/]+\/s\d+$/, '') : m[2];
+    }
+
+    // Without the failed test's id, select the case by name; -k cannot
+    // parse every character a case name has, so fall back to its factory.
+    function reproByName(kase, test) {
+      const [file, mark] = test === 'test_kernel_perf' ? ['test_kernels_perf.py', '-m perf'] : ['test_kernels_e2e.py', '-m extensive --seeds 3'];
+      const exact = /^[\w:+\-.\[\]/]+$/.test(kase);
+      const k = exact ? kase : kase.split('/')[0];
+      return `python -m pytest test/python/npu/${file} ${mark} -v -k '${k}'${exact ? '' : `  # every ${k} case`}`;
+    }
+
+    // Where a failure's logs are, and how to run it again.
+    function reproBlock(npu, run, ids, byName = [], test = '') {
+      const intro = [];
+      if (run.url) intro.push('Logs: ', link(run.url, `run ${run.id}`), `, artifact kernel-checks-${npu}-${run.id}. `);
+      const commands = ids.length ? ids.map(reproCommand) : byName.map(kase => reproByName(kase, test));
+      if (!commands.length) return intro.length ? el('p', {}, ...intro) : null;
+      intro.push(`On a ${run.device || npu} machine, from a checkout with the environment set up (`,
+        link(DOCS_URL, 'see the docs'), '):');
+      const lines = [];
+      if (run.commit) lines.push(`git checkout ${run.commit.slice(0, 12)}`);
+      lines.push(...commands.slice(0, 6));
+      if (commands.length > 6) lines.push(`# and ${commands.length - 6} more, listed in the run's log`);
+      return el('details', { className: 'repro' }, el('summary', {}, 'Logs and how to reproduce'),
+        el('p', {}, ...intro), el('pre', {}, lines.join('\n')));
+    }
+
     // What someone triaging the night should look at, per NPU, worst first.
     function attentionFor(night, now) {
       const { npu, run, counts, moved } = night;
@@ -1036,10 +1083,17 @@
         const text = w.text.startsWith(`${npu}: `) ? w.text.slice(npu.length + 2) : w.text;
         items.push({ level: w.level, npu, body: [`${text[0].toUpperCase()}${text.slice(1)}.`] });
       }
-      if (counts.failing.length) items.push({ level: 'bad', npu, body: [`${plural(counts.failing.length, 'case')} failed correctness and ${counts.failing.length === 1 ? 'was' : 'were'} not timed:`, cases(counts.failing)] });
+      const failedIds = run.failed || [];
+      const repro = (test, names) => reproBlock(npu, run,
+        failedIds.filter(id => id.includes(`::${test}[`) && names.includes(caseOfTest(id))), names, test);
+      if (counts.failing.length) items.push({ level: 'bad', npu, body: [`${plural(counts.failing.length, 'case')} failed correctness and ${counts.failing.length === 1 ? 'was' : 'were'} not timed:`, cases(counts.failing), repro('test_kernel_extensive', counts.failing)].filter(Boolean) });
       const worse = ((moved && moved.regressed) || []).filter(x => GATED.includes(x.series.metric));
       if (worse.length) items.push({ level: 'bad', npu, body: [`${plural(worse.length, 'series')} got worse past ${worse.length === 1 ? 'its' : 'their'} threshold. `, link('#moved-block', 'See what moved')] });
-      if (counts.timingFailed.length) items.push({ level: 'warn', npu, body: [`${plural(counts.timingFailed.length, 'case')} passed correctness but failed the timing run, so ${counts.timingFailed.length === 1 ? 'its chart has' : 'their charts have'} a gap:`, cases(counts.timingFailed)] });
+      if (counts.timingFailed.length) items.push({ level: 'warn', npu, body: [`${plural(counts.timingFailed.length, 'case')} passed correctness but failed the timing run, so ${counts.timingFailed.length === 1 ? 'its chart has' : 'their charts have'} a gap:`, cases(counts.timingFailed), repro('test_kernel_perf', counts.timingFailed)].filter(Boolean) });
+      // Failed tests the catalogue does not name: its night may be a later run.
+      const named = new Set([...counts.failing, ...counts.timingFailed]);
+      const others = failedIds.filter(id => !named.has(caseOfTest(id)));
+      if (others.length) items.push({ level: 'warn', npu, body: [`${plural(others.length, 'test')} failed in this run:`, cases([...new Set(others.map(caseOfTest))]), reproBlock(npu, run, others)].filter(Boolean) });
       const truncated = run.truncated || [];
       if (truncated.length) items.push({ level: 'warn', npu, body: [`${plural(truncated.length, 'case')} filled the trace buffer before every call; the cycle count is over the calls it held:`, cases(truncated)] });
       const rank = { bad: 0, warn: 1, info: 2 };
