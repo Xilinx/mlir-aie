@@ -29,6 +29,7 @@ layouts used by npu1 and npu2 (register fields from aie-rt's
 from __future__ import annotations
 
 import argparse
+import ctypes
 import dataclasses
 from dataclasses import dataclass
 from typing import Iterable, NamedTuple, Sequence
@@ -53,25 +54,172 @@ _REG_MASK = (1 << _ROW_SHIFT) - 1
 _BD_STRIDE = 0x20
 
 
+class _Registers(ctypes.LittleEndianStructure):
+    """Consecutive 32-bit registers decoded into named bit fields."""
+
+    @classmethod
+    def of(cls, words: Sequence[int]):
+        n = ctypes.sizeof(cls) // 4
+        if len(words) < n:
+            raise ValueError(f"{cls.__name__} has {n} words")
+        return cls.from_buffer_copy(np.asarray(words[:n], dtype="<u4").tobytes())
+
+
+def _words(*words: list[tuple[str | None, int]]) -> list:
+    """`_fields_` for registers given as (name, bits) lists, each LSB first.
+
+    A None name is reserved. Every word must add up to 32 bits, so no field
+    can straddle two registers.
+    """
+    fields = []
+    for i, word in enumerate(words):
+        if sum(bits for _, bits in word) != 32:
+            raise ValueError(f"register word {i} does not add up to 32 bits")
+        fields += [
+            (name or f"_reserved{i}_{j}", ctypes.c_uint32, bits)
+            for j, (name, bits) in enumerate(word)
+        ]
+    return fields
+
+
+_PACKET = [
+    ("packet_type", 3),
+    ("packet_id", 5),
+    ("out_of_order_bd_id", 6),
+    ("enable_packet", 1),
+]
+_LOCKS = [
+    ("lock_acq_id", 4),
+    (None, 1),
+    ("lock_acq_value", 7),
+    ("lock_acq_enable", 1),
+    ("lock_rel_id", 4),
+    (None, 1),
+    ("lock_rel_value", 7),
+]
+_CHAIN_FLAGS = [
+    ("valid_bd", 1),
+    ("use_next_bd", 1),
+    ("next_bd", 4),
+    ("tlast_suppress", 1),
+]
+
+
+class _ShimBd(_Registers):
+    _fields_ = _words(
+        [("buffer_length", 32)],
+        [(None, 2), ("base_address_low", 30)],
+        [("base_address_high", 16), *_PACKET, (None, 1)],
+        [("d0_stepsize", 20), ("d0_wrap", 10), ("secure_access", 1), (None, 1)],
+        [("d1_stepsize", 20), ("d1_wrap", 10), ("burst_length", 2)],
+        [("d2_stepsize", 20), ("axqos", 4), ("axcache", 4), ("smid", 4)],
+        [("iteration_stepsize", 20), ("iteration_wrap", 6), ("iteration_current", 6)],
+        [*_LOCKS, *_CHAIN_FLAGS],
+    )
+
+
+class _MemBd(_Registers):
+    _fields_ = _words(
+        [
+            ("buffer_length", 17),
+            ("out_of_order_bd_id", 6),
+            ("packet_id", 5),
+            ("packet_type", 3),
+            ("enable_packet", 1),
+        ],
+        [
+            ("base_address", 19),
+            ("use_next_bd", 1),
+            ("next_bd", 6),
+            ("d0_zero_before", 6),
+        ],
+        [("d0_stepsize", 17), ("d0_wrap", 10), (None, 4), ("tlast_suppress", 1)],
+        [("d1_stepsize", 17), ("d1_wrap", 10), ("d1_zero_before", 5)],
+        [
+            ("d2_stepsize", 17),
+            ("d2_wrap", 10),
+            ("d2_zero_before", 4),
+            ("enable_compression", 1),
+        ],
+        [
+            ("d3_stepsize", 17),
+            ("d0_zero_after", 6),
+            ("d1_zero_after", 5),
+            ("d2_zero_after", 4),
+        ],
+        [
+            ("iteration_stepsize", 17),
+            ("iteration_wrap", 6),
+            ("iteration_current", 6),
+            (None, 3),
+        ],
+        [
+            ("lock_acq_id", 8),
+            ("lock_acq_value", 7),
+            ("lock_acq_enable", 1),
+            ("lock_rel_id", 8),
+            ("lock_rel_value", 7),
+            ("valid_bd", 1),
+        ],
+    )
+
+
+class _CoreBd(_Registers):
+    _fields_ = _words(
+        [("buffer_length", 14), ("base_address", 14), (None, 4)],
+        [(None, 16), *_PACKET, ("enable_compression", 1)],
+        [("d0_stepsize", 13), ("d1_stepsize", 13), (None, 6)],
+        [("d2_stepsize", 13), ("d0_wrap", 8), ("d1_wrap", 8), (None, 3)],
+        [
+            ("iteration_stepsize", 13),
+            ("iteration_wrap", 6),
+            ("iteration_current", 6),
+            (None, 7),
+        ],
+        [*_LOCKS, *_CHAIN_FLAGS],
+    )
+
+
+def _queue_push(bd_id_bits: int) -> type[_Registers]:
+    class _QueuePush(_Registers):
+        _fields_ = _words(
+            [
+                ("start_bd_id", bd_id_bits),
+                (None, 16 - bd_id_bits),
+                ("repeat_count", 8),
+                (None, 7),
+                ("enable_token_issue", 1),
+            ]
+        )
+
+    return _QueuePush
+
+
 class _DmaLayout(NamedTuple):
     bd_base: int
-    bd_words: int
+    bd: type[_Registers]
     ctrl_base: int
     mm2s_delta: int
     channels: int
-    bd_id_mask: int
+    queue_push: type[_Registers]
 
 
 # Rows: 0 shim, 1 memtile, >=2 core. Identical on AIE2 and AIE2p.
 _LAYOUT = {
-    "shim": _DmaLayout(0x1D000, 8, 0x1D200, 0x10, 2, 0xF),
-    "mem": _DmaLayout(0xA0000, 8, 0xA0600, 0x30, 6, 0x3F),
-    "core": _DmaLayout(0x1D000, 6, 0x1DE00, 0x10, 2, 0xF),
+    "shim": _DmaLayout(0x1D000, _ShimBd, 0x1D200, 0x10, 2, _queue_push(4)),
+    "mem": _DmaLayout(0xA0000, _MemBd, 0xA0600, 0x30, 6, _queue_push(6)),
+    "core": _DmaLayout(0x1D000, _CoreBd, 0x1DE00, 0x10, 2, _queue_push(4)),
 }
 
-
-def _bits(word: int, lsb: int, width: int) -> int:
-    return (word >> lsb) & ((1 << width) - 1)
+# The BD fields `Transfer.packet` and `Transfer.flags` compare. A shim BD has
+# no compression bit, which reads as compression off.
+_PACKET_FIELDS = tuple(name for name, _ in _PACKET)
+_FLAG_FIELDS = (
+    *(name for name, _ in _LOCKS if name),
+    "valid_bd",
+    "tlast_suppress",
+    "enable_compression",
+)
 
 
 def _contiguous(
@@ -225,9 +373,7 @@ def decode(words: Sequence[int] | np.ndarray) -> list[Op]:
 class Transfer:
     """A buffer descriptor as the DMA sees it.
 
-    The form is independent of how the stream encoded it. Fields that pack
-    several register bits (`packet`, `flags`) keep the tile's own encoding,
-    so they compare between BDs of one tile kind.
+    The form is independent of how the stream encoded it.
     """
 
     length: int  # buffer_length register value, in 32-bit words
@@ -237,63 +383,35 @@ class Transfer:
     ]  # (wrap, stride) innermost first; unit wraps dropped unless padded
     outer_stride: int  # stride applied when every dim wraps
     iteration: tuple[int, int]  # (wrap, stride)
-    packet: int  # packet enable, type and id, and out-of-order BD id
-    flags: int  # locks, valid, TLAST suppress, compression; no chaining
+    packet: tuple[int, ...]  # type, id, out-of-order BD id, enable
+    flags: tuple[int, ...]  # locks, valid, TLAST suppress, compression; no chaining
     burst_axcache: tuple[int, int]
     padding: tuple[tuple[int, int], ...] = ()  # memtile (before, after) per dim
 
     @staticmethod
     def from_words(kind: str, w: Sequence[int], patched: tuple | None) -> "Transfer":
-        n_words = _LAYOUT[kind].bd_words
-        if len(w) < n_words:
-            raise ValueError(f"a {kind} BD has {n_words} words")
+        bd = _LAYOUT[kind].bd.of(w)
+        dims = ((bd.d0_wrap, bd.d0_stepsize + 1), (bd.d1_wrap, bd.d1_stepsize + 1))
+        outer_stride = bd.d2_stepsize + 1
         padding = ()
         burst_axcache = (0, 0)
         if kind == "shim":
-            length = w[0]
-            address = w[1] | ((w[2] & 0xFFFF) << 32)
-            dims = (
-                (_bits(w[3], 20, 10), _bits(w[3], 0, 20) + 1),
-                (_bits(w[4], 20, 10), _bits(w[4], 0, 20) + 1),
-            )
-            outer_stride = _bits(w[5], 0, 20) + 1
-            iteration = (_bits(w[6], 20, 6), _bits(w[6], 0, 20) + 1)
-            packet = _bits(w[2], 16, 15)
-            flags = w[7] & ~(0xF << 27) & ~(1 << 26)
-            burst_axcache = (w[4] >> 30, _bits(w[5], 24, 4))
-        elif kind == "mem":
-            length = _bits(w[0], 0, 17)
-            address = _bits(w[1], 0, 19)
-            dims = tuple(
-                (_bits(x, 17, 10), _bits(x, 0, 17) + 1) for x in (w[2], w[3], w[4])
-            )
-            if dims[2][0]:
-                outer_stride = _bits(w[5], 0, 17) + 1
-            else:
-                # A zero d2 wrap leaves d2 unbounded, as the shim's d2 is:
-                # buffer_length ends the transfer and d3 never steps.
-                dims, outer_stride = dims[:2], dims[2][1]
-            iteration = (_bits(w[6], 17, 6), _bits(w[6], 0, 17) + 1)
-            packet = _bits(w[0], 17, 15)
-            flags = w[7] | (w[2] >> 31) << 32 | (w[4] >> 31) << 33
-            pads = (
-                (_bits(w[1], 26, 6), _bits(w[5], 17, 6)),
-                (_bits(w[3], 27, 5), _bits(w[5], 23, 5)),
-                (_bits(w[4], 27, 4), _bits(w[5], 28, 4)),
+            address = bd.base_address_low << 2 | bd.base_address_high << 32
+            burst_axcache = (bd.burst_length, bd.axcache)
+        else:
+            address = bd.base_address
+        if kind == "mem":
+            # A zero d2 wrap leaves a memtile's d2 unbounded, as the shim's
+            # d2 is: buffer_length ends the transfer and d3 never steps.
+            if bd.d2_wrap:
+                dims += ((bd.d2_wrap, bd.d2_stepsize + 1),)
+                outer_stride = bd.d3_stepsize + 1
+            pads = tuple(
+                (getattr(bd, f"d{d}_zero_before"), getattr(bd, f"d{d}_zero_after"))
+                for d in range(3)
             )
             if any(b or a for b, a in pads):
                 padding = pads
-        else:
-            length = _bits(w[0], 0, 14)
-            address = _bits(w[0], 14, 14)
-            dims = (
-                (_bits(w[3], 13, 8), _bits(w[2], 0, 13) + 1),
-                (_bits(w[3], 21, 8), _bits(w[2], 13, 13) + 1),
-            )
-            outer_stride = _bits(w[3], 0, 13) + 1
-            iteration = (_bits(w[4], 13, 6), _bits(w[4], 0, 13) + 1)
-            packet = _bits(w[1], 16, 15)
-            flags = w[5] & ~(0xF << 27) & ~(1 << 26) | (w[1] >> 31) << 32
         if not padding:
             # A dimension with wrap 1 never applies its own stride (the
             # counter wraps after every element and the next dimension
@@ -304,16 +422,16 @@ class Transfer:
             # A contiguous ND scan (innermost stride 1, every outer stride the
             # product of the inner wraps, the next block following on) moves
             # the same words as linear mode; the static emitter folds it.
-            if dims and _contiguous(dims, outer_stride, length):
+            if dims and _contiguous(dims, outer_stride, bd.buffer_length):
                 dims, outer_stride = (), 1
         return Transfer(
-            length=length,
+            length=bd.buffer_length,
             address=patched or ("abs", address),
             dims=dims,
             outer_stride=outer_stride,
-            iteration=iteration,
-            packet=packet,
-            flags=flags,
+            iteration=(bd.iteration_wrap, bd.iteration_stepsize + 1),
+            packet=tuple(getattr(bd, f) for f in _PACKET_FIELDS),
+            flags=tuple(getattr(bd, f, 0) for f in _FLAG_FIELDS),
             burst_axcache=burst_axcache,
             padding=padding,
         )
@@ -384,7 +502,7 @@ def trace(
         layout = _LAYOUT[kind]
         tile = (col << _COL_SHIFT) | (row << _ROW_SHIFT)
         bd_base = tile | (layout.bd_base + bd_id * _BD_STRIDE)
-        w = [regs.get(bd_base + 4 * i, 0) for i in range(layout.bd_words)]
+        w = [regs.get(bd_base + 4 * i, 0) for i in range(ctypes.sizeof(layout.bd) // 4)]
         # Only shim BDs address host memory, through the word-1 patch.
         patched = patches.get(bd_base + 4) if kind == "shim" else None
         return w, patched
@@ -441,10 +559,9 @@ def trace(
         if hit is None:
             continue
         col, row, kind, direction, ch = hit
-        bd_id = op.value & _LAYOUT[kind].bd_id_mask
-        repeat = (op.value >> 16) & 0xFF
-        issue = bool(op.value >> 31)
-        w, patched = bd_words(col, row, kind, bd_id)
+        push = _LAYOUT[kind].queue_push.of([op.value])
+        repeat = push.repeat_count
+        w, patched = bd_words(col, row, kind, push.start_bd_id)
         bd = Transfer.from_words(kind, w, patched)
         # A linear BD re-run repeat+1 times with an iteration dimension that
         # advances by its own length is one linear transfer that long; the
@@ -469,7 +586,7 @@ def trace(
                 channel=ch,
                 bd=bd,
                 repeat=repeat,
-                issue_token=issue,
+                issue_token=bool(push.enable_token_issue),
                 ctrl=regs.get(op.addr - 4, 0),
             )
         )
