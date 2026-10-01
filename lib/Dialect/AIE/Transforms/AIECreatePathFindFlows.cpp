@@ -66,12 +66,12 @@ struct AIEPathfinderPass
   /// Lowers the packet flows along the routing `analyzer` found.
   LogicalResult runOnPacketFlow(DeviceOp d, OpBuilder &builder,
                                 DynamicTileAnalysis &analyzer,
-                                StreamConflicts &conflicts,
+                                const StreamConflicts &conflicts,
                                 bool circuitSwitchHops);
   /// Routes the flows in `d`, planning the arbiters on each routing found,
   /// with the packet trees in `pinned` kept as they are.
   llvm::Error route(DeviceOp d, DynamicTileAnalysis &analyzer,
-                    StreamConflicts &conflicts, const PacketTrees &pinned,
+                    const StreamConflicts &conflicts, const PacketTrees &pinned,
                     bool circuitSwitchHops);
 };
 
@@ -876,7 +876,7 @@ SmallVector<TileID> cutTiles(const AIETargetModel &targetModel, TileID src,
 /// join, which puts them on one arbiter; `pinnedTrees`, the trees prioritized
 /// sources keep, say which master ports their streams leave tiles by.
 std::optional<std::string>
-unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
+unroutableArbiters(DeviceOp device, const StreamConflicts &conflicts,
                    llvm::function_ref<bool(TileID)> pinsHops,
                    const PacketTrees &pinnedTrees) {
   const AIETargetModel &targetModel = device.getTargetModel();
@@ -1154,7 +1154,7 @@ struct PacketFlowRouting {
 
   PacketFlowRouting(DeviceOp device, OpBuilder &builder,
                     DynamicTileAnalysis &analyzer, const Routing &routing,
-                    StreamConflicts &conflicts, bool routeCircuit,
+                    const StreamConflicts &conflicts, bool routeCircuit,
                     bool circuitSwitchHops)
       : device(device), builder(builder), analyzer(analyzer), routing(routing),
         conflicts(conflicts), routeCircuit(routeCircuit),
@@ -1191,7 +1191,7 @@ struct PacketFlowRouting {
   OpBuilder &builder;
   DynamicTileAnalysis &analyzer;
   const Routing &routing;
-  StreamConflicts &conflicts;
+  const StreamConflicts &conflicts;
   bool routeCircuit;
   bool circuitSwitchHops;
   const AIETargetModel &targetModel;
@@ -2391,11 +2391,9 @@ LogicalResult PacketFlowRouting::emit() {
   return success();
 }
 
-LogicalResult AIEPathfinderPass::runOnPacketFlow(DeviceOp device,
-                                                 OpBuilder &builder,
-                                                 DynamicTileAnalysis &analyzer,
-                                                 StreamConflicts &conflicts,
-                                                 bool circuitSwitchHops) {
+LogicalResult AIEPathfinderPass::runOnPacketFlow(
+    DeviceOp device, OpBuilder &builder, DynamicTileAnalysis &analyzer,
+    const StreamConflicts &conflicts, bool circuitSwitchHops) {
   PacketFlowRouting routing(device, builder, analyzer, analyzer.routing,
                             conflicts, clRouteCircuit, circuitSwitchHops);
   llvm::Error planned = routing.plan();
@@ -2469,7 +2467,7 @@ static void unmuxShimDMAPacketPorts(DeviceOp device) {
 }
 
 llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
-                                     StreamConflicts &conflicts,
+                                     const StreamConflicts &conflicts,
                                      const PacketTrees &pinned,
                                      bool circuitSwitchHops) {
   // Packet flows that can deadlock must not share an arbiter. Every routing
@@ -2590,7 +2588,7 @@ void AIEPathfinderPass::runOnOperation() {
   // If routing fails, the router relaxes how it routes packet flows (see
   // Pathfinder::relax) and tries again. The error is the first attempt's.
   auto routeRelaxing = [&](DeviceOp dev, DynamicTileAnalysis &an,
-                           StreamConflicts &c,
+                           const StreamConflicts &c,
                            const PacketTrees &pin) -> llvm::Error {
     llvm::Error first = route(dev, an, c, pin, clCircuitSwitchHops);
     while (first && an.pathfinder.relax()) {

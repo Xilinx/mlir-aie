@@ -148,6 +148,8 @@ std::string describeStream(const RoutedStream &stream);
 class StreamVolumeAnalysis {
 public:
   StreamVolumeAnalysis(DeviceOp device, llvm::ArrayRef<RoutedStream> streams);
+  StreamVolumeAnalysis(const StreamVolumeAnalysis &) = delete;
+  StreamVolumeAnalysis &operator=(const StreamVolumeAnalysis &) = delete;
 
   /// Bytes the stream's source sends with the stream's packet id, headers
   /// included where the receiver keeps them, or nullopt when that is
@@ -271,7 +273,8 @@ private:
 /// at a full receiver holds up whatever else waits on that grant.
 class StreamDeadlockAnalysis {
 public:
-  StreamDeadlockAnalysis(DeviceOp device, std::vector<RoutedStream> streams);
+  /// `streams` must outlive the analysis.
+  StreamDeadlockAnalysis(DeviceOp device, llvm::ArrayRef<RoutedStream> streams);
 
   /// Whether stream `f`, stalled at its receiver, can keep stream `g` from
   /// ever arriving: `f` carries more than its receiver takes in before
@@ -294,7 +297,7 @@ private:
   bool canStall(size_t f) const;
   llvm::SmallVector<unsigned> blockingChain(size_t f, size_t g) const;
 
-  std::vector<RoutedStream> streams;
+  llvm::ArrayRef<RoutedStream> streams;
   StreamVolumeAnalysis volumes;
   StreamWaitGraph graph;
   /// canStall, silent and canBlock, once asked.
@@ -307,6 +310,8 @@ private:
 class StreamConflicts {
 public:
   explicit StreamConflicts(DeviceOp device);
+  StreamConflicts(const StreamConflicts &) = delete;
+  StreamConflicts &operator=(const StreamConflicts &) = delete;
 
   llvm::ArrayRef<RoutedStream> getStreams() const { return streams; }
 
@@ -320,16 +325,16 @@ public:
   /// one destination already wait on each other there, so neither conflicts.
   /// The packets one source sends with one id move down every branch as one,
   /// so the same holds for any two streams of such trees.
-  bool conflict(size_t s, size_t t);
+  bool conflict(size_t s, size_t t) const;
 
   /// Whether a routing that puts packet streams `s` and `t` on one arbiter
   /// anywhere has a hold cycle: they conflict, or the tree of one, stuck at a
   /// receiver, waits on the other through trees that each block the next.
-  bool mustSeparate(size_t s, size_t t);
+  bool mustSeparate(size_t s, size_t t) const;
 
   /// Why `s` and `t` conflict. Requires mustSeparate(s, t), or (s, t) from
   /// unavoidable().
-  std::string explain(size_t s, size_t t);
+  std::string explain(size_t s, size_t t) const;
 
   /// The requested streams where the first can hold up the second however
   /// they are routed, as one source or receiver already orders them. Only
@@ -337,19 +342,19 @@ public:
   /// between two of them is the design's, not a hazard of any routing. Nor do
   /// pairs that need StreamDeadlockAnalysis::assumptions: the routing cannot
   /// help those either, and the design may well not do what is assumed.
-  llvm::SmallVector<std::pair<size_t, size_t>> unavoidable();
+  llvm::SmallVector<std::pair<size_t, size_t>> unavoidable() const;
 
   /// A cycle of waits the packet streams can deadlock in when routed along
   /// `routes`, indexed like getStreams(), that the routing of some requested
   /// stream takes part in; nullopt when there is none.
   std::optional<HoldCycle>
-  holdCycle(llvm::ArrayRef<llvm::SmallVector<StreamHop, 8>> routes);
+  holdCycle(llvm::ArrayRef<llvm::SmallVector<StreamHop, 8>> routes) const;
 
   /// The waits of `cycle`, one sentence each.
-  std::string explain(const HoldCycle &cycle);
+  std::string explain(const HoldCycle &cycle) const;
 
 private:
-  bool blocks(size_t s, size_t t);
+  bool blocks(size_t s, size_t t) const;
   bool related(size_t s, size_t t) const;
   /// What makes a packet stream one with the others of its tree: the same
   /// source, the same id, and whether a flow op asks for it.
@@ -359,8 +364,9 @@ private:
   /// The packet trees tree `a` waits on through trees that each block the
   /// next, each with the pair of streams, the first of the tree before it,
   /// that it was reached by.
-  const llvm::DenseMap<size_t, std::pair<size_t, size_t>> &waitsFrom(size_t a);
-  StreamDeadlockAnalysis &getAnalysis();
+  const llvm::DenseMap<size_t, std::pair<size_t, size_t>> &
+  waitsFrom(size_t a) const;
+  const StreamDeadlockAnalysis &getAnalysis() const;
 
   DeviceOp device;
   std::vector<RoutedStream> streams;
@@ -368,9 +374,10 @@ private:
   /// The streams of each tree, and the tree of each stream.
   std::vector<llvm::SmallVector<size_t, 2>> treeMembers;
   std::vector<size_t> treeOf;
-  std::vector<std::optional<llvm::DenseMap<size_t, std::pair<size_t, size_t>>>>
+  mutable std::vector<
+      std::optional<llvm::DenseMap<size_t, std::pair<size_t, size_t>>>>
       waits;
-  std::optional<StreamDeadlockAnalysis> analysis;
+  mutable std::optional<StreamDeadlockAnalysis> analysis;
 };
 
 } // namespace xilinx::AIE

@@ -1193,11 +1193,11 @@ std::string StreamWaitGraph::describe(unsigned id) const {
   return s;
 }
 
-StreamDeadlockAnalysis::StreamDeadlockAnalysis(
-    DeviceOp device, std::vector<RoutedStream> streams)
-    : streams(std::move(streams)), volumes(device, this->streams),
-      graph(device, this->streams, volumes), stalls(this->streams.size()),
-      silence(this->streams.size()) {}
+StreamDeadlockAnalysis::StreamDeadlockAnalysis(DeviceOp device,
+                                               ArrayRef<RoutedStream> streams)
+    : streams(streams), volumes(device, streams),
+      graph(device, streams, volumes), stalls(streams.size()),
+      silence(streams.size()) {}
 
 bool StreamDeadlockAnalysis::canStall(size_t f) const {
   std::optional<bool> &stall = stalls[f];
@@ -1341,13 +1341,13 @@ StreamConflicts::treeKey(size_t s) const {
                  s < numRequested};
 }
 
-StreamDeadlockAnalysis &StreamConflicts::getAnalysis() {
+const StreamDeadlockAnalysis &StreamConflicts::getAnalysis() const {
   if (!analysis)
     analysis.emplace(device, streams);
   return *analysis;
 }
 
-bool StreamConflicts::blocks(size_t s, size_t t) {
+bool StreamConflicts::blocks(size_t s, size_t t) const {
   const RoutedStream &a = streams[s], &b = streams[t];
   if (a.src == b.src || a.dst == b.dst)
     return false;
@@ -1366,14 +1366,14 @@ bool StreamConflicts::related(size_t s, size_t t) const {
   return false;
 }
 
-bool StreamConflicts::conflict(size_t s, size_t t) {
+bool StreamConflicts::conflict(size_t s, size_t t) const {
   return !related(s, t) && (blocks(s, t) || blocks(t, s));
 }
 
 // The chains holdCycle follows from a tree stuck at a receiver to the trees
 // it waits on, which hold for any routing.
 const DenseMap<size_t, std::pair<size_t, size_t>> &
-StreamConflicts::waitsFrom(size_t a) {
+StreamConflicts::waitsFrom(size_t a) const {
   std::optional<DenseMap<size_t, std::pair<size_t, size_t>>> &cached = waits[a];
   if (cached)
     return *cached;
@@ -1402,7 +1402,7 @@ StreamConflicts::waitsFrom(size_t a) {
   return reached;
 }
 
-bool StreamConflicts::mustSeparate(size_t s, size_t t) {
+bool StreamConflicts::mustSeparate(size_t s, size_t t) const {
   if (related(s, t))
     return false;
   return blocks(s, t) || blocks(t, s) ||
@@ -1410,8 +1410,8 @@ bool StreamConflicts::mustSeparate(size_t s, size_t t) {
          waitsFrom(treeOf[t]).contains(treeOf[s]);
 }
 
-std::string StreamConflicts::explain(size_t s, size_t t) {
-  StreamDeadlockAnalysis &a = getAnalysis();
+std::string StreamConflicts::explain(size_t s, size_t t) const {
+  const StreamDeadlockAnalysis &a = getAnalysis();
   if (a.canBlock(s, t))
     return a.explainBlock(s, t);
   if (a.canBlock(t, s))
@@ -1428,9 +1428,9 @@ std::string StreamConflicts::explain(size_t s, size_t t) {
   return llvm::join(steps, " ");
 }
 
-SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() {
+SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() const {
   SmallVector<std::pair<size_t, size_t>> pairs;
-  StreamDeadlockAnalysis &a = getAnalysis();
+  const StreamDeadlockAnalysis &a = getAnalysis();
   for (size_t s = 0; s < numRequested; s++)
     for (size_t t = 0; t < numRequested; t++) {
       if (s == t || !(streams[s].packetID || streams[t].packetID) ||
@@ -1481,7 +1481,7 @@ struct GraphTraits<const WaitGraph *> {
 } // namespace llvm
 
 std::optional<HoldCycle>
-StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
+StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) const {
   // The packets one source sends with one id move down every branch as one.
   struct Tree {
     SmallVector<size_t, 2> members;
@@ -1749,7 +1749,7 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
   return std::nullopt;
 }
 
-std::string StreamConflicts::explain(const HoldCycle &cycle) {
+std::string StreamConflicts::explain(const HoldCycle &cycle) const {
   std::string s;
   llvm::raw_string_ostream os(s);
   for (auto [i, step] : llvm::enumerate(cycle.steps)) {
