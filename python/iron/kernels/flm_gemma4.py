@@ -63,6 +63,30 @@ class _PrefillKernel(ExternalFunction):
     attn_epilogue: ExternalFunction
 
 
+def _prefill_flags(dh, in_prod_lock=2, in_cons_lock=3) -> list[str]:
+    return [
+        # The bf16 mmul lowers onto two bfp16-emulated macs on AIE2P.
+        "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
+        f"-DFLM_GEMMA4_PREFILL_HEAD_DIM={dh}",
+        f"-DFLM_GEMMA4_PREFILL_IN_PROD_LOCK={int(in_prod_lock)}",
+        f"-DFLM_GEMMA4_PREFILL_IN_CONS_LOCK={int(in_cons_lock)}",
+    ]
+
+
+def _prefill_sibling(symbol, head_dim, contract) -> ExternalFunction:
+    """``symbol`` of a prefill build as a kernel of its own, judged by ``contract``."""
+    if head_dim not in (256, 512):
+        raise ValueError(f"head_dim must be 256 or 512, not {head_dim}")
+    base = flm_gemma4_swa_prefill() if head_dim == 256 else flm_gemma4_attn_prefill()
+    return _make_extern(
+        symbol,
+        _kernel_source("flm_gemma4/prefill.cc"),
+        getattr(base, symbol).arg_types(),
+        compile_flags=_prefill_flags(head_dim),
+        contract=contract,
+    )
+
+
 def _prefill(
     name, dh, lq, chunk, reference, in_prod_lock, in_cons_lock
 ) -> ExternalFunction:
@@ -84,13 +108,7 @@ def _prefill(
         _kernel_source("flm_gemma4/prefill.cc"),
         [np.ndarray[(64,), _BF16], row_bf16, y, np.int32],
         cls=_PrefillKernel,
-        compile_flags=[
-            # The bf16 mmul lowers onto two bfp16-emulated macs on AIE2P.
-            "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
-            f"-DFLM_GEMMA4_PREFILL_HEAD_DIM={dh}",
-            f"-DFLM_GEMMA4_PREFILL_IN_PROD_LOCK={int(in_prod_lock)}",
-            f"-DFLM_GEMMA4_PREFILL_IN_CONS_LOCK={int(in_cons_lock)}",
-        ],
+        compile_flags=_prefill_flags(dh, in_prod_lock, in_cons_lock),
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(Out, In, In, Param),
@@ -1148,6 +1166,29 @@ def _q4nx_lm_head_sample(rng, calls, *, dim, m_tile, k_tile, group):
     return [w, x, sums.astype(bfloat16)]
 
 
+def _lm_head_flags(dim, m_tile, k_tile, group) -> list[str]:
+    return [
+        f"-DQ4NX_M_TILE={m_tile}",
+        f"-DQ4NX_K_TILE={k_tile}",
+        f"-DQ4NX_GROUP={group}",
+        f"-DFLM_GEMMA4_LM_HEAD_DIM={dim}",
+        # Without it the bf16 mmul emulation runs about 8x slower.
+        "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
+    ]
+
+
+def _lm_head_sibling(symbol, contract, **geometry) -> ExternalFunction:
+    """``symbol`` of an LM-head build as a kernel of its own, judged by ``contract``."""
+    base = flm_gemma4_q4nx_lm_head(**geometry)
+    return _make_extern(
+        symbol,
+        _kernel_source("flm_gemma4/q4nx_lm_head.cc"),
+        getattr(base, symbol).arg_types(),
+        compile_flags=_lm_head_flags(**geometry),
+        contract=contract,
+    )
+
+
 def flm_gemma4_q4nx_lm_head(
     *, dim: int = 1536, m_tile: int = 32, k_tile: int = 256, group: int = 32
 ) -> ExternalFunction:
@@ -1188,14 +1229,7 @@ def flm_gemma4_q4nx_lm_head(
         "q4nx_lm_head_block",
         _kernel_source("flm_gemma4/q4nx_lm_head.cc"),
         [np.ndarray[(m_tile * k_tile * 5 // 8 // 2,), _BF16], x, y_acc, sums, np.int32],
-        compile_flags=[
-            f"-DQ4NX_M_TILE={m_tile}",
-            f"-DQ4NX_K_TILE={k_tile}",
-            f"-DQ4NX_GROUP={group}",
-            f"-DFLM_GEMMA4_LM_HEAD_DIM={dim}",
-            # Without it the bf16 mmul emulation runs about 8x slower.
-            "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
-        ],
+        compile_flags=_lm_head_flags(dim, m_tile, k_tile, group),
         cls=_LmHeadKernel,
         contract=KernelContract(
             trace=Trace.whole_call(),
