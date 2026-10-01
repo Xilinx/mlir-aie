@@ -122,6 +122,8 @@
     .night.bad { background: var(--bad); }
     .night.other { background: var(--none-soft); border: 1px solid var(--none); }
     .night.latest { outline: 2px solid var(--ink); outline-offset: 1px; }
+    .night.manual { height: 11px; opacity: 0.55; }
+    th .sub { display: block; font-weight: 400; font-size: 11px; color: var(--faint); }
 
     /* Needs attention: only there when something is wrong. */
     #attention ul { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
@@ -247,7 +249,7 @@
       <a id="tab-kernel" href="#view=kernel" hidden>Kernel</a>
     </nav>
     <div class="links">
-      <a href="../latest/programming_guide/kernels_library/#testing-performance-and-static-checks">How the checks work</a>
+      <a href="https://xilinx.github.io/mlir-aie/dev/programming_guide/kernels_library/#testing-performance-and-static-checks">How the checks work</a>
       <a href="https://github.com/Xilinx/mlir-aie/tree/main/aie_kernels">Kernel sources</a>
       <button id="theme" type="button" aria-label="switch between light and dark theme">Dark</button>
     </div>
@@ -327,6 +329,7 @@
         <label><input id="all-modes" type="checkbox"> Include other power modes</label>
       </form>
       <p id="metric-about" class="note"></p>
+      <p class="note">Hollow diamonds are runs started by hand; the rest are nightlies.</p>
       <div id="charts"></div>
       <div id="empty" class="empty" hidden></div>
     </section>
@@ -376,6 +379,11 @@
     const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated);
     // Provenance fields whose change between runs is marked on the charts.
     const MARKED = ['peano', 'host', 'runtime', 'xrt', 'xdna'];
+    // Runs started by hand (publish.py records the GitHub event). They are
+    // charted, but the overview and the change columns compare nightly with
+    // nightly; a run without the field predates it and counts as nightly.
+    const MANUAL_EVENTS = ['workflow_dispatch'];
+    const isManual = r => Boolean(r) && MANUAL_EVENTS.includes(r.event);
     const NIGHTS_SHOWN = 21;
 
     // ------------------------------------------------------------------
@@ -393,7 +401,7 @@
     // the history-file shape collect() reads, one entry per metric.
     function historiesOf(npu, records) {
       const byMetric = new Map();
-      const runs = records.map(r => ({ id: r.id, date: r.date, commit: r.commit || {}, pmode: r.pmode, provenance: r.provenance || {} }));
+      const runs = records.map(r => ({ id: r.id, date: r.date, commit: r.commit || {}, pmode: r.pmode, event: r.event, provenance: r.provenance || {} }));
       records.forEach((r, i) => {
         for (const [kase, cells] of Object.entries(r.rows || {})) {
           for (const [metric, cell] of Object.entries(cells)) {
@@ -422,7 +430,7 @@
           const id = `${npu}|${r.id}`;
           if (!observations.has(id)) {
             observations.set(id, { id, npu, run: r.id, mode: r.pmode || 'unknown', commit: r.commit || {},
-                                   date: Date.parse(r.date), provenance: r.provenance || {} });
+                                   date: Date.parse(r.date), provenance: r.provenance || {}, manual: isManual(r) });
           }
           return id;
         });
@@ -435,7 +443,7 @@
             const o = observations.get(ids[i]);
             if (!s.byMode.has(o.mode)) s.byMode.set(o.mode, []);
             const range = sv.ranges && sv.ranges[i];
-            s.byMode.get(o.mode).push({ id: o.id, date: o.date, row: { value, unit: h.unit, ...(range ? { range } : {}) } });
+            s.byMode.get(o.mode).push({ id: o.id, date: o.date, manual: o.manual, row: { value, unit: h.unit, ...(range ? { range } : {}) } });
           });
         }
       }
@@ -444,6 +452,20 @@
       }
       const order = [...observations.values()].sort((a, b) => a.date - b.date);
       return { series: [...series.values()], order };
+    }
+
+    // The same data without the runs started by hand, for nightly-to-nightly
+    // comparisons.
+    const nightlyViews = new WeakMap();
+    function nightlies(db) {
+      if (!db) return db;
+      if (!nightlyViews.has(db)) {
+        const series = db.series.map(s => ({ ...s, byMode: new Map([...s.byMode]
+          .map(([mode, pts]) => [mode, pts.filter(p => !p.manual)]).filter(([, pts]) => pts.length)) }))
+          .filter(s => s.byMode.size);
+        nightlyViews.set(db, { series, order: db.order.filter(o => !o.manual) });
+      }
+      return nightlyViews.get(db);
     }
 
     // The published run before `latest` in the same power mode, from the
@@ -557,10 +579,15 @@
       const newer = Boolean(runsIndex) && !readable(runsIndex);
       if (newer) runsIndex = null;
       const runs = runsIndex && runsIndex.runs ? runsIndex.runs : [];
-      const recorded = runs.length ? runs[runs.length - 1] : null;
+      // The latest nightly; with no published nightly yet, the latest run.
+      const nightly = runs.filter(r => !isManual(r));
+      const pool = nightly.some(r => r.published) ? nightly : runs;
+      const recorded = pool.length ? pool[pool.length - 1] : null;
       // Provenance is compared with the last run that measured anything: a
       // refused or failed run records little of it.
-      const previous = runs.slice(0, -1).reverse().find(r => r.published) || null;
+      const previous = pool.slice(0, -1).reverse().find(r => r.published) || null;
+      // Runs started by hand after it: charted, not compared.
+      const manualSince = recorded ? runs.slice(runs.indexOf(recorded) + 1).filter(isManual) : [];
       const last = db ? latestCases(db, npu).last : null;
       const run = {
         recorded: Boolean(recorded),
@@ -583,6 +610,8 @@
         truncated: recorded ? recorded.truncated : [],
         correctnessError: recorded ? recorded.correctness_error : undefined,
         refused: recorded ? recorded.refused : undefined,
+        manual: isManual(recorded),
+        manualSince,
         previous,
       };
       if (!run.commitUrl && run.commit) run.commitUrl = `${REPO}/commit/${run.commit}`;
@@ -604,6 +633,11 @@
       if (failed.length) out.push({ level: 'warn', text: `${failed.length} test${failed.length > 1 ? 's' : ''} failed in this run`, detail: failed.join('\n') });
       const truncated = run.truncated || [];
       if (truncated.length) out.push({ level: 'warn', text: `${truncated.length} case${truncated.length > 1 ? 's' : ''} with a truncated trace: the cycles min is over part of the calls`, detail: truncated.join('\n') });
+      const since = run.manualSince || [];
+      if (since.length) {
+        const latest = since[since.length - 1];
+        out.push({ level: 'info', text: `${plural(since.length, 'run')} started by hand since, the latest ${formatDate(Date.parse(latest.date))}: charted in Trends, not compared here` });
+      }
       const prev = run.previous;
       if (prev && prev.provenance && run.published) {
         for (const k of MARKED) {
@@ -734,7 +768,10 @@
     // The latest night of one NPU: its run, its catalogue, what moved (only
     // when that run is the one that published the numbers compared), and its
     // latest numbers per case.
-    function nightOf(npu, runsIndex, recent, catalogue) {
+    function nightOf(npu, runsIndex, all, catalogue) {
+      // Nightly against nightly, unless no nightly has published yet.
+      const nightly = all && nightlies(all);
+      const recent = nightly && nightly.order.some(o => o.npu === npu) ? nightly : all;
       const run = latestRun(npu, runsIndex, recent, catalogue);
       const published = recent ? movedSeries(recent, npu) : null;
       const moved = published && (!run.recorded ||
@@ -748,7 +785,11 @@
         flagged.get(x.series.kase).push(x);
       }
       const runs = (readable(runsIndex) && runsIndex.runs) || [];
-      return { npu, run, catalogue, moved, latest, flagged, counts: catalogueCounts(catalogue), runs };
+      // The run the change columns compare with, for most cases.
+      const last = latest.last;
+      const own = last ? recent.order.filter(o => o.npu === npu && o.mode === last.mode) : [];
+      const since = own.length > 1 ? own[own.length - 2].date : null;
+      return { npu, run, catalogue, moved, latest, flagged, since, counts: catalogueCounts(catalogue), runs };
     }
 
     // How one kernel fared on one NPU last night, worst first:
@@ -766,12 +807,12 @@
       const failed = k.failed || [], timing = k.timing_failed || [];
       const describe = xs => xs.map(x => `${x.series.kase} ${label(x.series.metric).toLowerCase()} ${formatChange(x.change)}`).join('\n');
       if (failed.length) return { level: 'bad', text: `${failed.length} fail`, title: `fails correctness:\n${failed.join('\n')}` };
-      if (worse.length) return { level: 'bad', text: formatChange(worse[0].change), title: `worse since the night before:\n${describe(worse)}` };
+      if (worse.length) return { level: 'bad', text: formatChange(worse[0].change), title: `worse since the previous nightly:\n${describe(worse)}` };
       if (timing.length) return { level: 'warn', text: 'timing', title: `passed correctness, failed the timing run:\n${timing.join('\n')}` };
       if (truncated.length) return { level: 'warn', text: 'trace', title: `trace buffer filled before every call:\n${truncated.join('\n')}` };
       if (!k.passed) return { level: 'none', text: '', title: k.reason || 'not checked on hardware' };
       const pass = `${plural(k.passed, 'case')} pass, ${k.timed || 0} timed`;
-      if (better.length) return { level: 'better', text: formatChange(better[0].change), title: `${pass}\nbetter since the night before:\n${describe(better)}` };
+      if (better.length) return { level: 'better', text: formatChange(better[0].change), title: `${pass}\nbetter since the previous nightly:\n${describe(better)}` };
       return { level: 'ok', text: '', title: pass };
     }
 
@@ -805,12 +846,14 @@
 
     function nightStrip(night) {
       const runs = night.runs.slice(-NIGHTS_SHOWN);
-      const strip = el('div', { className: 'nights', title: 'recent nights, oldest first' },
-        el('span', { className: 'label' }, 'Recent nights'));
-      runs.forEach((r, i) => {
-        const cls = `night ${nightLevel(r)}${i === runs.length - 1 ? ' latest' : ''}`;
-        strip.append(r.url ? link(r.url, '', { className: cls, title: nightTitle(r), ariaLabel: nightTitle(r) })
-          : el('span', { className: cls, title: nightTitle(r) }));
+      const anyManual = runs.some(isManual);
+      const strip = el('div', { className: 'nights', title: `recent runs, oldest first${anyManual ? '; the short, faded ones were started by hand' : ''}` },
+        el('span', { className: 'label' }, 'Recent runs'));
+      runs.forEach(r => {
+        const cls = `night ${nightLevel(r)}${isManual(r) ? ' manual' : ''}${String(r.id) === String(night.run.id) ? ' latest' : ''}`;
+        const title = `${isManual(r) ? 'Started by hand, not compared\n' : ''}${nightTitle(r)}`;
+        strip.append(r.url ? link(r.url, '', { className: cls, title, ariaLabel: title })
+          : el('span', { className: cls, title }));
       });
       return runs.length ? strip : '';
     }
@@ -907,7 +950,7 @@
           // A field the earlier run did not record is not a change.
           if (change[2] === '?') continue;
           const what = change[1] === 'peano' ? 'Peano' : change[1] === 'xrt' ? 'XRT' : change[1] === 'xdna' ? 'The driver' : `The ${change[1]}`;
-          const why = change[1] === 'peano' ? 'Movement may come from the compiler.' : 'Numbers may not compare with the night before.';
+          const why = change[1] === 'peano' ? 'Movement may come from the compiler.' : 'Numbers may not compare with the previous nightly.';
           items.push({ level: 'info', npu, body: [`${what} changed from ${change[2]} to ${change[3]}. ${why}`] });
           continue;
         }
@@ -1041,12 +1084,12 @@
       }
       const hostLink = link(hashFor({ view: 'charts', metric: 'npu_us', show: 'moved' }), 'Trends');
       $('moved-about').replaceChildren(
-        `Cycles and object size, against the night before; each counts past ${pct('cycles')}%.`,
+        `Cycles and object size, the latest nightly against the one before; each counts past ${pct('cycles')}%. Runs started by hand are left out.`,
         other ? el('span', {}, ` Host time moved on ${plural(other, 'series')}, which is noisy; see `, hostLink, '.') : '');
       const empty = $('moved-empty');
       empty.hidden = worse.length + better.length > 0;
       $('moved-wrap').hidden = !empty.hidden;
-      empty.textContent = !compared ? 'Nothing to compare yet: the latest night has no earlier night in the same power mode, or published nothing.'
+      empty.textContent = !compared ? 'Nothing to compare yet: the latest nightly has no earlier nightly in the same power mode, or published nothing.'
         : 'Nothing moved past its threshold last night.';
       return { worse: worse.length, better: better.length };
     }
@@ -1105,13 +1148,21 @@
       return [value, change];
     }
 
+    // A change column's header says what it compares with.
+    function changeHead(n) {
+      return el('th', { className: 'num', title: n.since
+          ? `each case against the previous nightly that measured it on ${n.npu}; for most, ${formatDate(n.since)}`
+          : `${n.npu} has no earlier nightly to compare with yet` },
+        'Change', el('span', { className: 'sub' }, n.since ? `vs ${shortDate(n.since)}` : 'none yet'));
+    }
+
     function kernelsHead(nights) {
       const head = $('kernels-head');
       head.replaceChildren(
         el('tr', { className: 'group' }, el('th', { rowSpan: 2 }, 'Kernel and case'),
           ...nights.map(n => el('th', { colSpan: 3, className: 'npu-start' }, n.npu, el('span', { className: 'faint' }, n.run.device ? ` ${n.run.device}` : '')))),
-        el('tr', {}, ...nights.flatMap(() => [
-          el('th', { className: 'num npu-start' }, 'Cycles'), el('th', { className: 'num' }, 'Change'), el('th', { className: 'num wide' }, 'Object size')])));
+        el('tr', {}, ...nights.flatMap(n => [
+          el('th', { className: 'num npu-start' }, 'Cycles'), changeHead(n), el('th', { className: 'num wide' }, 'Object size')])));
     }
 
     // One row per factory, then one per case: cycles and their change, and
@@ -1234,8 +1285,8 @@
         el('tr', { className: 'group' }, el('th', { rowSpan: 2 }, 'Case'),
           ...nights.map(n => el('th', { colSpan: 5, className: 'npu-start' }, n.npu)),
           both ? el('th', { rowSpan: 2, className: 'num npu-start', title: `${nights[1].npu} cycles over ${nights[0].npu} cycles` }, `${nights[1].npu} ÷ ${nights[0].npu}`) : ''),
-        el('tr', {}, ...nights.flatMap(() => [
-          el('th', { className: 'num npu-start' }, 'Cycles'), el('th', { className: 'num' }, 'Change'),
+        el('tr', {}, ...nights.flatMap(n => [
+          el('th', { className: 'num npu-start' }, 'Cycles'), changeHead(n),
           el('th', { className: 'num' }, 'Per 1k ops'), el('th', { className: 'num' }, 'Object size'), el('th', { className: 'num faint' }, 'Host time')])));
       const rows = casesOf(nights, factory).map(kase => {
         const tr = el('tr', {}, el('td', {}, caseName(kase)));
@@ -1419,8 +1470,12 @@
             rows[i] = p.row;
           }
           const color = npuColor(npu);
+          // Runs started by hand: hollow diamonds.
+          const manual = nights.map(n => Boolean(n.byNpu.get(npu) && n.byNpu.get(npu).manual));
           datasets.push({ label: modes.length > 1 ? `${npu} ${mode}` : npu, npu, data: values, rows, fill: false, spanGaps: true, tension: 0,
-                          borderColor: color, backgroundColor: color, pointRadius: 2.5, borderWidth: 2,
+                          borderColor: color, backgroundColor: color, borderWidth: 2,
+                          pointRadius: manual.map(m => m ? 4 : 2.5), pointStyle: manual.map(m => m ? 'rectRot' : 'circle'),
+                          pointBackgroundColor: manual.map(m => m ? '#fff' : color),
                           borderDash: mode === EXPECTED_PMODE ? [] : [5, 4] },
                         ...band(values, rows, color).map(b => ({ ...b, npu })));
         }
@@ -1470,7 +1525,7 @@
                 footer: items => {
                   if (!items.length) return '';
                   const n = nights[items[0].dataIndex];
-                  return [...n.byNpu].map(([npu, o]) => `${npu}: Peano ${(o.provenance || {}).peano || '?'}, ${o.mode}`);
+                  return [...n.byNpu].map(([npu, o]) => `${npu}: Peano ${(o.provenance || {}).peano || '?'}, ${o.mode}${o.manual ? ', started by hand' : ''}`);
                 },
               },
             },

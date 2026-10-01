@@ -658,7 +658,7 @@ assert.deepEqual(head.children[3].children.map(li => li.text),
   ['npu11 build, 3 cases pass, 2 timed 1 fail', 'npu21 build, 1 case pass, 1 timed']);
 const [groups, columns] = $('kernel-cases-head').children;
 assert.deepEqual(groups.children.map(c => c.text), ['Case', 'npu1', 'npu2', 'npu2 ÷ npu1']);
-assert.deepEqual(columns.children.map(c => c.text).slice(0, 5), ['Cycles', 'Change', 'Per 1k ops', 'Object size', 'Host time']);
+assert.deepEqual(columns.children.map(c => c.text).slice(0, 5), ['Cycles', 'Changevs 1 Jan', 'Per 1k ops', 'Object size', 'Host time']);
 const rows = $('kernel-cases').children;
 assert.deepEqual(rows.map(r => r.children[0].children[0].title), [
   'softmax/1024/bfloat16', 'softmax/16/bfloat16', 'softmax/2048/bfloat16', 'softmax/32/bfloat16', 'softmax/64/bfloat16',

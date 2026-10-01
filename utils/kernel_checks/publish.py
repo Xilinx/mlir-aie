@@ -6,12 +6,13 @@
 Each NPU the hardware checks ran on (``npu1``, ``npu2``) has a directory on
 the branch, ``kernel-checks/<npu>/``, holding:
 
-    runs/<id>.json         one record per run: the Actions run, commit, power
-                           mode, provenance, sanity result, failures, and
-                           every row as rows[case][metric] = {value, unit, range}
+    runs/<id>.json         one record per run: the Actions run, what started
+                           it (``event``), commit, power mode, provenance,
+                           sanity result, failures, and every row as
+                           rows[case][metric] = {value, unit, range}
     runs.json              the records without their rows, oldest first
-    latest.json            the newest record that published rows; the PR
-                           report's baseline
+    latest.json            the newest nightly record that published rows; the
+                           PR report's baseline
     history/<metric>.json  one series per case for that metric, a value per
                            run, for the charts
 
@@ -20,6 +21,7 @@ the page, where the package is not installed.
 
     publish.py perf --target npu1 --results results/npu1 --run-id 42
         --run-url https://github.com/.../actions/runs/42 --out kernel-checks/npu1
+        [--event schedule|workflow_dispatch]
     publish.py migrate --out kernel-checks/npu1
     publish.py rebuild --out kernel-checks/npu1 [--drop-pmode default]
 
@@ -31,6 +33,12 @@ run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
 ones one per ISO week, ``MAX_RUNS`` at most. ``rebuild --drop-pmode MODE``
 also deletes the records of every run measured in ``MODE``, for retiring a
 power mode nobody should compare against.
+
+Both the scheduled nightly and an unfiltered dispatch on main publish. A
+record's ``event`` is the GitHub event that started its run; a run started by
+hand (``workflow_dispatch``) is charted like any other, but only a nightly
+(``schedule``, or a record older than the field) becomes ``latest.json``, so
+PR reports always compare with the last nightly.
 """
 
 import argparse
@@ -206,6 +214,14 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
     return record
 
 
+MANUAL_EVENTS = ("workflow_dispatch",)
+
+
+def is_nightly(record: dict) -> bool:
+    """Whether ``record`` is a scheduled run; one without ``event`` predates it."""
+    return record.get("event") not in MANUAL_EVENTS
+
+
 def summary(record: dict) -> dict:
     """Return the record without its rows, for ``runs.json``."""
     return {k: v for k, v in record.items() if k != "rows"}
@@ -331,8 +347,10 @@ def rebuild(
     )
     published = [r for r in kept if r.get("published") and r.get("rows")]
     latest = out / "latest.json"
-    if published:
-        latest.write_text(json.dumps(published[-1], indent=1))
+    # The newest nightly is the baseline; only manual runs, the newest of those.
+    baseline = [r for r in published if is_nightly(r)] or published
+    if baseline:
+        latest.write_text(json.dumps(baseline[-1], indent=1))
     elif latest.exists():
         latest.unlink()
 
@@ -359,6 +377,7 @@ def rebuild(
             "date": r["date"],
             "commit": r.get("commit", {}),
             "pmode": r.get("pmode"),
+            **({"event": r["event"]} if r.get("event") else {}),
             "provenance": {
                 k: v
                 for k, v in r.get("provenance", {}).items()
@@ -417,6 +436,11 @@ def main(argv=None) -> int:
     p.add_argument("--commit-message", default="")
     p.add_argument("--commit-date", default="")
     p.add_argument("--date", default="", help="ISO date of the run (default: now)")
+    p.add_argument(
+        "--event",
+        default=os.environ.get("GITHUB_EVENT_NAME", ""),
+        help="the GitHub event that started the run (default: $GITHUB_EVENT_NAME)",
+    )
     p = sub.add_parser("migrate", help="turn a data.js into run records, once")
     p.add_argument("--out", required=True, type=Path)
     p = sub.add_parser("rebuild", help="rewrite the derived files from the records")
@@ -438,6 +462,7 @@ def main(argv=None) -> int:
         "url": args.run_url,
         "date": args.date or iso(now_utc()),
         "commit": commit_info(args.commit, args.commit_message, args.commit_date),
+        **({"event": args.event} if args.event else {}),
     }
     record = publish(args.out, args.results, target=args.target, run=run)
     print(
