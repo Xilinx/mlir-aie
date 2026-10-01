@@ -42,6 +42,12 @@ public:
   /// columns is two independent queues.
   using ChannelKey = std::array<int, 4>;
 
+  static ChannelKey keyOf(AIE::TileOp tile, AIE::DMAChannelDir direction,
+                          int64_t channel) {
+    return {tile.getCol(), tile.getRow(), static_cast<int>(direction),
+            static_cast<int>(channel)};
+  }
+
   /// True when a push on `key` would land on a full queue. `depth` of 0 means
   /// the target has no queued-task model and nothing can overflow.
   bool wouldOverflow(const ChannelKey &key, uint32_t depth) const {
@@ -52,7 +58,7 @@ public:
   }
 
   /// Record a push. Every push occupies a slot, not just issue_token ones, and
-  /// a repeat_count of N still occupies exactly one.
+  /// one push occupies exactly one whatever its repeat_count.
   void push(const ChannelKey &key, bool issuesToken) {
     auto &q = queued[key];
     q.pushes.push_back(issuesToken && !q.unknownTokens);

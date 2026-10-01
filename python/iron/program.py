@@ -202,13 +202,14 @@ class Program:
                 for lk in self._rt.locks:
                     lk.resolve()
 
-                # Resolve any Buffers referenced by explicit TileDma programs
-                # (those aren't reached via worker.fn_args).
+                # Resolve any Buffers and Locks referenced by explicit TileDma
+                # programs (those aren't reached via worker.fn_args).
                 for td in self._rt.tile_dmas:
-                    bufs, _ = td.all_buffers_and_locks()
+                    bufs, locks = td.all_buffers_and_locks()
+                    for lk in locks:
+                        lk.resolve()
                     for b in bufs:
-                        if b.tile is None:
-                            b._tile = td.tile
+                        b.place(td.tile)
                         b.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
@@ -279,6 +280,7 @@ class Program:
                     reuse_output_buffer=self._reuse_output_buffer,
                     egress_shim_col=self._egress_shim_col,
                     load_pdi_device_ref=load_pdi_device_ref,
+                    device=self._device,
                 )
 
                 # Flow transfers name their allocations while the sequence runs.

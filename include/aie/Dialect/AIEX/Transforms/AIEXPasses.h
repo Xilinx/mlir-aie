@@ -49,6 +49,8 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEAssignRuntimeSequenceBDIDsPass(
     const AIEAssignRuntimeSequenceBDIDsOptions &options);
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIESplitLongRepeatsPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEReserveRuntimeBDIDsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEUnrollRuntimeSequenceLoopsPass();
