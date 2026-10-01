@@ -236,6 +236,13 @@ public:
           rewriter, loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
           createConstantI32(rewriter, loc, bdIdMask));
       cmd = arith::OrIOp::create(rewriter, loc, cmd, bdField);
+      // The 0xFF mask would wrap a runtime repeat_count past the field (256
+      // pushes a task that runs once), so guard it as the verifier does a
+      // constant one.
+      if (!repeat_cnt)
+        NpuAssertBdFieldOp::create(
+            rewriter, loc, op.getRepeatCount(),
+            rewriter.getI32IntegerAttr(tm.getMaxRepeatCount()));
       Value masked =
           arith::AndIOp::create(rewriter, loc, op.getRepeatCount(),
                                 createConstantI32(rewriter, loc, 0xFF));
@@ -622,11 +629,11 @@ public:
     // returns the hw repeat_count for the queue push.
     SmallVector<Value> words;
     Value repeatCount;
-    if (failed(buildShimBdWords(
-            rewriter, loc, targetModel, fields, op.getMixedSizes(),
-            op.getMixedStrides(), op.getElementTypeBitwidth(),
-            op.getBurstLength(), op.getAxcacheOrDefault(),
-            /*bufLenOverride=*/Value(), repeatCount, words)))
+    if (failed(buildBdWords(rewriter, loc, targetModel, tileCol, tileRow,
+                            fields, op.getMixedSizes(), op.getMixedStrides(),
+                            op.getElementTypeBitwidth(), op.getBurstLength(),
+                            op.getAxcacheOrDefault(),
+                            /*bufLenOverride=*/Value(), repeatCount, words)))
       return failure();
     Value bdBase =
         getBdRegisterBase(rewriter, loc, targetModel, tileCol, tileRow,
@@ -722,168 +729,57 @@ public:
     int col = op.getColumn();
     int row = op.getRow();
 
-    int num_words = 0;
-    if (isa<AIE::AIE2TargetModel>(tm)) {
-      // Tile DMAs have 6 words, MemTile and Shim have 8 words
-      if (tm.isCoreTile(col, row))
-        num_words = 6;
-      else
-        num_words = 8;
-    } else {
-      llvm_unreachable(
-          "Unsupported AIETargetModel in WriteBdToBlockWritePattern");
-    }
+    const AIE::DmaBdLayout *layout = tm.getDmaBdLayout(col, row);
+    if (!layout)
+      return op->emitOpError("has no buffer descriptor layout on this tile");
+    if (!tm.isMemTile(col, row) &&
+        (op.getD0ZeroBefore() || op.getD1ZeroBefore() || op.getD2ZeroBefore() ||
+         op.getD0ZeroAfter() || op.getD1ZeroAfter() || op.getD2ZeroAfter()))
+      return op->emitOpError("Zero padding is only available on MemTile");
 
-    std::vector<uint32_t> words(num_words, 0);
+    std::vector<uint32_t> words(layout->numWords, 0);
+    auto set = [&](const AIE::DmaBdField &field, uint64_t value) {
+      if (field.exists())
+        words[field.word] |= field.place(value);
+    };
+    uint64_t bufferOffset = op.getBufferOffset();
+    if (tm.isCoreTile(col, row))
+      bufferOffset /= 4;
+    set(layout->bufferLength, op.getBufferLength());
+    set(layout->bufferOffset, bufferOffset);
+    set(layout->enablePacket, op.getEnablePacket());
+    set(layout->packetType, op.getPacketType());
+    set(layout->packetId, op.getPacketId());
+    set(layout->outOfOrderId, op.getOutOfOrderId());
+    set(layout->d0Size, op.getD0Size());
+    set(layout->d0Stride, op.getD0Stride());
+    set(layout->d1Size, op.getD1Size());
+    set(layout->d1Stride, op.getD1Stride());
+    set(layout->d2Stride, op.getD2Stride());
+    set(layout->iterationCurrent, op.getIterationCurrent());
+    set(layout->iterationSize, op.getIterationSize());
+    set(layout->iterationStride, op.getIterationStride());
+    set(layout->d0ZeroBefore, op.getD0ZeroBefore());
+    set(layout->d1ZeroBefore, op.getD1ZeroBefore());
+    set(layout->d2ZeroBefore, op.getD2ZeroBefore());
+    set(layout->d0ZeroAfter, op.getD0ZeroAfter());
+    set(layout->d1ZeroAfter, op.getD1ZeroAfter());
+    set(layout->d2ZeroAfter, op.getD2ZeroAfter());
+    if (layout->burstLength.exists())
+      set(layout->burstLength,
+          getShimBurstLengthEncoding(tm, op.getBurstLength()));
+    set(layout->axcache, op.getAxcacheOrDefault());
+    set(layout->nextBd, op.getNextBd());
+    set(layout->useNextBd, op.getUseNextBd());
+    set(layout->validBd, op.getValidBd());
+    set(layout->lockRelValue, op.getLockRelVal());
+    set(layout->lockRelId, op.getLockRelId());
+    set(layout->lockAcqEnable, op.getLockAcqEnable());
+    set(layout->lockAcqValue, op.getLockAcqVal());
+    set(layout->lockAcqId, op.getLockAcqId());
 
     uint32_t bd_id = op.getBdId();
     uint64_t bd_addr = tm.getDmaBdAddress(col, row, bd_id);
-    if (tm.isShimNOCTile(col, row)) {
-      // DMA_BDX_0
-      words[0] = op.getBufferLength();
-
-      // DMA_BDX_1
-      words[1] = op.getBufferOffset();
-
-      // DMA_BDX_2
-      // En Packet , OoO BD ID , Packet ID , Packet Type
-      words[2] |= (op.getEnablePacket() & 0x1) << 30;
-      words[2] |= (op.getOutOfOrderId() & 0x3f) << 24;
-      words[2] |= (op.getPacketId() & 0x1f) << 19;
-      words[2] |= (op.getPacketType() & 0x7) << 16;
-
-      // DMA_BDX_3
-      // TODO: Secure Access
-      words[3] |= (op.getD0Size() & 0x3ff) << 20;
-      words[3] |= op.getD0Stride() & 0xfffff;
-
-      // DMA_BDX_4
-      words[4] = (getShimBurstLengthEncoding(tm, op.getBurstLength()) & 0x3)
-                 << 30;
-      words[4] |= (op.getD1Size() & 0x3ff) << 20;
-      words[4] |= op.getD1Stride() & 0xfffff;
-
-      // DMA_BDX_5
-      // TODO: SIMID, AXQoS
-      words[5] |= (op.getAxcacheOrDefault() & 0xf) << 24;
-      words[5] |= op.getD2Stride() & 0xfffff;
-
-      // DMA_BDX_6
-      words[6] |= (op.getIterationCurrent() & 0x3f) << 26;
-      words[6] |= (op.getIterationSize() & 0x3f) << 20;
-      words[6] |= op.getIterationStride() & 0xfffff;
-
-      // DMA_BDX_7
-      // TODO: TLAST Suppress
-      words[7] |= (op.getNextBd() & 0xf) << 27;
-      words[7] |= (op.getUseNextBd() & 0x1) << 26;
-      words[7] |= (op.getValidBd() & 0x1) << 25;
-      words[7] |= (op.getLockRelVal() & 0x7f) << 18;
-      words[7] |= (op.getLockRelId() & 0xf) << 13;
-      words[7] |= (op.getLockAcqEnable() & 0x1) << 12;
-      words[7] |= (op.getLockAcqVal() & 0x7f) << 5;
-      words[7] |= op.getLockAcqId() & 0xf;
-      if (op.getD0ZeroBefore() || op.getD1ZeroBefore() ||
-          op.getD2ZeroBefore() || op.getD0ZeroAfter() || op.getD1ZeroAfter() ||
-          op.getD2ZeroAfter()) {
-        op->emitError("Zero padding is only available on MemTile");
-      }
-    } else if (tm.isMemTile(op.getColumn(), op.getRow())) {
-
-      // DMA_BDX_0
-      words[0] |= (op.getEnablePacket() & 0x1) << 31;
-      words[0] |= (op.getPacketType() & 0x7) << 28;
-      words[0] |= (op.getPacketId() & 0x1f) << 23;
-      words[0] |= (op.getOutOfOrderId() & 0x3f) << 17;
-      words[0] |= op.getBufferLength() & 0x1ffff;
-
-      // DMA_BDX_1
-      words[1] |= (op.getD0ZeroBefore() & 0x3F) << 26;
-      words[1] |= (op.getNextBd() & 0x3f) << 20;
-      words[1] |= (op.getUseNextBd() & 0x1) << 19;
-      words[1] |= op.getBufferOffset() & 0x7ffff;
-
-      // DMA_BDX_2
-      words[2] |= (op.getD0Size() & 0x3ff) << 17;
-      words[2] |= op.getD0Stride() & 0x1ffff;
-
-      // DMA_BDX_3
-      // TODO: Secure Access
-      words[3] |= (op.getD1ZeroBefore() & 0x1F) << 27;
-      words[3] |= (op.getD1Size() & 0x3ff) << 17;
-      words[3] |= op.getD1Stride() & 0x1ffff;
-
-      // DMA_BDX_4
-      // TODO: D2Size
-      words[4] |= (op.getD2ZeroBefore() & 0xF) << 27;
-      words[4] |= op.getD2Stride() & 0x1ffff;
-
-      // DMA_BDX_5
-      // ToDO: D3Stride
-      words[5] |= (op.getD2ZeroAfter() & 0xF) << 28;
-      words[5] |= (op.getD1ZeroAfter() & 0x1F) << 23;
-      words[5] |= (op.getD0ZeroAfter() & 0x3F) << 17;
-
-      // DMA_BDX_6
-      words[6] |= (op.getIterationCurrent() & 0x3f) << 23;
-      words[6] |= (op.getIterationSize() & 0x3f) << 17;
-      words[6] |= op.getIterationStride() & 0x1ffff;
-
-      // DMA_BDX_7
-      words[7] |= (op.getValidBd() & 0x1) << 31;
-      words[7] |= (op.getLockRelVal() & 0x7f) << 24;
-      words[7] |= (op.getLockRelId() & 0xff) << 16;
-      words[7] |= (op.getLockAcqEnable() & 0x1) << 15;
-      words[7] |= (op.getLockAcqVal() & 0x7f) << 8;
-      words[7] |= op.getLockAcqId() & 0xff;
-    } else {
-      // AIE2 Tile DMA - 6 words
-      // DMA_BDX_0
-      // Base_Address [27:14], Buffer_Length [13:0]
-      words[0] = ((op.getBufferOffset() / 4) & 0x3fff) << 14;
-      words[0] |= op.getBufferLength() & 0x3fff;
-
-      // DMA_BDX_1
-      // Enable_Compression [31], Enable_Packet [30], Out_Of_Order_BD_ID
-      // [29:24], Packet_ID [23:19], Packet_Type [18:16]
-      words[1] = 0; // Enable_Compression
-      words[1] |= (op.getEnablePacket() & 0x1) << 30;
-      words[1] |= (op.getOutOfOrderId() & 0x3f) << 24;
-      words[1] |= (op.getPacketId() & 0x1f) << 19;
-      words[1] |= (op.getPacketType() & 0x7) << 16;
-
-      // DMA_BDX_2
-      // D1_Stepsize [25:13], D0_Stepsize [12:0]
-      words[2] = (op.getD1Stride() & 0x1fff) << 13;
-      words[2] |= op.getD0Stride() & 0x1fff;
-
-      // DMA_BDX_3
-      // D1_Wrap [28:21], D0_Wrap [20:13], D2_Stepsize [12:0]
-      words[3] = (op.getD1Size() & 0xff) << 21;
-      words[3] |= (op.getD0Size() & 0xff) << 13;
-      words[3] |= op.getD2Stride() & 0x1fff;
-
-      // DMA_BDX_4
-      // Iteration_Current [24:19], Iteration_Wrap [18:13], Iteration_Stepsize
-      // [12:0]
-      words[4] = (op.getIterationCurrent() & 0x3f) << 19;
-      words[4] |= (op.getIterationSize() & 0x3f) << 13;
-      words[4] |= op.getIterationStride() & 0x1fff;
-
-      // DMA_BDX_5
-      // TLAST_Suppress [31], Next_BD [30:27], Use_Next_BD [26], Valid_BD [25],
-      // Lock_Rel_Value [24:18], Lock_Rel_ID [16:13], Lock_Acq_Enable [12],
-      // Lock_Acq_Value [11:5], Lock_Acq_ID [3:0]
-      words[5] = 0; // TLAST_Suppress
-      words[5] |= (op.getNextBd() & 0xf) << 27;
-      words[5] |= (op.getUseNextBd() & 0x1) << 26;
-      words[5] |= (op.getValidBd() & 0x1) << 25;
-      words[5] |= (op.getLockRelVal() & 0x7f) << 18;
-      words[5] |= (op.getLockRelId() & 0xf) << 13;
-      words[5] |= (op.getLockAcqEnable() & 0x1) << 12;
-      words[5] |= (op.getLockAcqVal() & 0x7f) << 5;
-      words[5] |= op.getLockAcqId() & 0xf;
-    }
 
     memref::GlobalOp global = nullptr;
     {

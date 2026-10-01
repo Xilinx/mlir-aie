@@ -50,8 +50,32 @@ module {
   aie.device(npu1) {
     aie.runtime_sequence @s(%arg0: memref<4xi32>) {
       %c = arith.constant 5000 : i32
-      // expected-error@+1 {{constant value 5000 exceeds the guarded field range [0:1023]}}
+      // expected-error@+1 {{constant value 5000 is outside the guarded field range [0:1023]}}
       aiex.npu.assert_bd_field(%c) {max = 1023 : i32} : i32
+    }
+  }
+}
+
+// -----
+
+// And one under its min.
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @s(%arg0: memref<4xi32>) {
+      %c = arith.constant 2 : i32
+      // expected-error@+1 {{constant value 2 is outside the guarded field range [4:1023]}}
+      aiex.npu.assert_bd_field(%c) {max = 1023 : i32, min = 4 : i32} : i32
+    }
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @s(%arg0: memref<4xi32>, %n: i32) {
+      // expected-error@+1 {{min 8 exceeds max 4.}}
+      aiex.npu.assert_bd_field(%n) {max = 4 : i32, min = 8 : i32} : i32
     }
   }
 }

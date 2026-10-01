@@ -8,6 +8,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
@@ -170,12 +171,19 @@ struct AIEGenerateColumnControlOverlayPass
     // A standalone `@ctrl_pkt_overlay` device references a single overlay
     // shape, so every participating device must expose the same set of tiles
     // for that shape to be identical across them.
-    if (clEmitStandaloneOverlay)
+    // The same holds for the tiles whose task-complete tokens need a route.
+    llvm::SmallSet<AIE::TileID, 4> sharedTokenTiles;
+    if (clEmitStandaloneOverlay) {
       shareTilesAcrossDevices(participating);
+      sharedTokenTiles = collectTokenIssuingTiles(participating);
+    }
 
     // Apply the overlay in-place to participating devices.
     for (auto dev : participating) {
-      if (failed(applyOverlayToDevice(dev)))
+      llvm::SmallSet<AIE::TileID, 4> tokenTiles =
+          clEmitStandaloneOverlay ? sharedTokenTiles
+                                  : collectTokenIssuingTiles(dev);
+      if (failed(applyOverlayToDevice(dev, tokenTiles)))
         return signalPassFailure();
       if (clEmitStandaloneOverlay)
         dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
@@ -183,7 +191,8 @@ struct AIEGenerateColumnControlOverlayPass
 
     // Emit standalone `@ctrl_pkt_overlay` device.
     if (clEmitStandaloneOverlay) {
-      if (failed(createOverlayDevice(module, builder, participating))) {
+      if (failed(createOverlayDevice(module, builder, participating,
+                                     sharedTokenTiles))) {
         return signalPassFailure();
       }
     }
@@ -234,8 +243,10 @@ struct AIEGenerateColumnControlOverlayPass
   // Emit a standalone `@ctrl_pkt_overlay` device holding only the overlay and
   // the union of tiles it references. Downstream consumers compile it on its
   // own to ship a reconfigure-only PDI.
-  LogicalResult createOverlayDevice(ModuleOp module, OpBuilder &builder,
-                                    ArrayRef<DeviceOp> participating) {
+  LogicalResult
+  createOverlayDevice(ModuleOp module, OpBuilder &builder,
+                      ArrayRef<DeviceOp> participating,
+                      const llvm::SmallSet<AIE::TileID, 4> &tokenTiles) {
     if (participating.empty())
       return success();
 
@@ -271,16 +282,19 @@ struct AIEGenerateColumnControlOverlayPass
     collectTileUnion(participating, unionTiles, prototypeTile);
     cloneMissingTiles(overlayDevice, unionTiles, prototypeTile);
 
-    if (failed(applyOverlayToDevice(overlayDevice)))
+    if (failed(applyOverlayToDevice(overlayDevice, tokenTiles)))
       return failure();
 
     overlayDevice->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
     return success();
   }
 
-  // Apply the column-control overlay to `device` in place. Returns failure on
-  // a routing conflict.
-  LogicalResult applyOverlayToDevice(DeviceOp device) {
+  // Apply the column-control overlay to `device` in place, routing the
+  // TileControl port of every tile in `tokenTiles` back to its shim. Returns
+  // failure on a routing conflict.
+  LogicalResult
+  applyOverlayToDevice(DeviceOp device,
+                       const llvm::SmallSet<AIE::TileID, 4> &tokenTiles) {
     const auto &targetModel = device.getTargetModel();
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
 
@@ -336,7 +350,8 @@ struct AIEGenerateColumnControlOverlayPass
         for (auto &[tId, tOp] : tiles) {
           if (tId.col != col)
             continue;
-          if (clRouteShimCTRLToTCT == "shim-only" && !tOp.isShimNOCorPLTile())
+          if (clRouteShimCTRLToTCT == "shim-only" && !tOp.isShimNOCorPLTile() &&
+              !tokenTiles.contains(tId))
             continue;
           // A routed response only covers the tile it comes from.
           if (hasRoutedResponse(device, tOp, tileIDMap))
@@ -383,6 +398,38 @@ struct AIEGenerateColumnControlOverlayPass
       }
     }
     return success();
+  }
+
+  // Tiles a runtime sequence asks a task-complete token of. The token leaves
+  // the tile through its TileControl port, so without a route from there to
+  // the shim an await on it never returns.
+  static llvm::SmallSet<AIE::TileID, 4>
+  collectTokenIssuingTiles(ArrayRef<DeviceOp> devices) {
+    llvm::SmallSet<AIE::TileID, 4> tiles;
+    auto addTile = [&](Value tileValue) {
+      if (!tileValue)
+        return;
+      if (auto tile = dyn_cast_or_null<TileOp>(tileValue.getDefiningOp()))
+        tiles.insert({tile.colIndex(), tile.rowIndex()});
+    };
+    for (DeviceOp device : devices)
+      device.walk([&](Operation *op) {
+        if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op)) {
+          if (task.getIssueToken())
+            addTile(task.getTile());
+        } else if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
+          if (!task.getIssueToken())
+            return;
+          if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(
+                  SymbolTable::lookupSymbolIn(device, task.getAlloc())))
+            addTile(endpoint.getTile());
+        } else if (auto push = dyn_cast<AIEX::NpuPushQueueOp>(op)) {
+          if (push.getIssueToken())
+            tiles.insert({static_cast<int>(push.getColumn()),
+                          static_cast<int>(push.getRow())});
+        }
+      });
+    return tiles;
   }
 
   // Return true when the user has explicitly disabled overlay generation for
