@@ -317,3 +317,32 @@ module {
     }
   }
 }
+
+
+// -----
+
+// Test 8: FACTOR_DEEP — a row too long for d0, repeated with a stride. The row
+// factors twice into a single BD; the first factoring alone would only become
+// legal by slicing the row into a thousand pieces.
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=FACTOR-DEEP
+
+// FACTOR-DEEP-LABEL: @factor_deep_task_bd
+// FACTOR-DEEP:         aiex.dma_configure_task_for @a
+// FACTOR-DEEP-NEXT:      aie.dma_bd(%{{.*}} offset = 32064 len = 32064 sizes = [64, 2, 8, 2004] strides = [128256, 16032, 2004, 1])
+// FACTOR-DEEP-NEXT:      aie.end
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @factor_deep_task_bd(%in: memref<8208384xbf16>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<8208384xbf16> offset = 32064 len = 2052096 sizes = [1, 1, 64, 32064] strides = [0, 0, 128256, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}

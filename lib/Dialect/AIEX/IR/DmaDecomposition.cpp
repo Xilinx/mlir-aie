@@ -83,6 +83,67 @@ void divisorsDescending(int64_t n, SmallVectorImpl<int64_t> &out) {
   out.append(small.rbegin(), small.rend());
 }
 
+/// Split dim d (size N = a*b, stride s) into an inner dim (b, s) kept at
+/// position d and an outer dim (a, b*s) inserted at position d+1, shifting the
+/// higher dims outward. The factored pair stays adjacent so the sub-traversal
+/// of dim d is contiguous and its place in the overall nesting is unchanged
+/// => element order is preserved. The outermost slot must be free and carry no
+/// base offset. Returns every such factoring, largest inner factor first.
+SmallVector<NdDmaPattern> factorings(const NdDmaPattern &pattern,
+                                     uint64_t elemWidth, uint32_t gran) {
+  SmallVector<NdDmaPattern> out;
+  bool outerSlotHasOffset = pattern.offsets[3] != 0 && pattern.strides[3] != 0;
+  if (pattern.sizes[3] != 1 || outerSlotHasOffset)
+    return out;
+  for (unsigned d = 0; d < 3; ++d) {
+    int64_t n = pattern.sizes[d];
+    if (n <= 1)
+      continue;
+    int64_t s = pattern.strides[d];
+
+    SmallVector<int64_t, 32> divisors;
+    divisorsDescending(n, divisors);
+    for (int64_t b : divisors) {
+      int64_t a = n / b;
+      if (a <= 1 || b <= 1)
+        continue;
+
+      // Both factors must remain granule-realizable on the innermost dim.
+      if (d == 0 && (!isConstMultipleOfGranule(b, elemWidth, gran)))
+        continue;
+
+      NdDmaPattern factored = pattern;
+      // Shift dims (d+1 .. 2) outward to (d+2 .. 3).
+      for (unsigned i = 3; i > d + 1; --i) {
+        factored.sizes[i] = pattern.sizes[i - 1];
+        factored.strides[i] = pattern.strides[i - 1];
+        factored.offsets[i] = pattern.offsets[i - 1];
+      }
+      factored.sizes[d] = b;           // inner factor
+      factored.strides[d] = s;         // inner keeps original stride/offset
+      factored.sizes[d + 1] = a;       // outer factor
+      factored.strides[d + 1] = b * s; // outer stride
+      factored.offsets[d + 1] = 0;
+      out.push_back(std::move(factored));
+    }
+  }
+  return out;
+}
+
+/// The first legal pattern factoring alone reaches, without slicing.
+std::optional<NdDmaPattern>
+factorToLegal(Operation *forOp, BaseMemRefType bufType,
+              const AIE::AIETargetModel &tm, int col, int row,
+              const NdDmaPattern &pattern, uint64_t elemWidth, uint32_t gran) {
+  if (patternPassesVerification(forOp, bufType, tm, col, row, pattern))
+    return pattern;
+  for (const NdDmaPattern &factored : factorings(pattern, elemWidth, gran))
+    if (std::optional<NdDmaPattern> legal = factorToLegal(
+            forOp, bufType, tm, col, row, factored, elemWidth, gran))
+      return legal;
+  return std::nullopt;
+}
+
 FailureOr<SmallVector<NdDmaPattern>>
 decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
                    const AIE::AIETargetModel &tm, int col, int row,
@@ -111,49 +172,16 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   if (outermost < 0)
     return failure();
 
-  // (1) Order-preserving dimension factoring: split dim d (size N = a*b,
-  // stride s) into an inner dim (b, s) kept at position d and an outer dim
-  // (a, b*s) inserted at position d+1, shifting the higher dims outward. The
-  // factored pair stays adjacent so the sub-traversal of dim d is contiguous
-  // and its place in the overall nesting is unchanged => element order is
-  // preserved. The outermost slot must be free and carry no base offset.
+  // (1) Order-preserving dimension factoring. A single legal pattern is
+  // preferred over the first factoring that only succeeds by slicing.
   bool outerSlotHasOffset = pattern.offsets[3] != 0 && pattern.strides[3] != 0;
-  if (pattern.sizes[3] == 1 && !outerSlotHasOffset) {
-    for (unsigned d = 0; d < 3; ++d) {
-      int64_t n = pattern.sizes[d];
-      if (n <= 1)
-        continue;
-      int64_t s = pattern.strides[d];
-
-      SmallVector<int64_t, 32> divisors;
-      divisorsDescending(n, divisors);
-      for (int64_t b : divisors) {
-        int64_t a = n / b;
-        if (a <= 1 || b <= 1)
-          continue;
-
-        // Both factors must remain granule-realizable on the innermost dim.
-        if (d == 0 && (!isConstMultipleOfGranule(b, elemWidth, gran)))
-          continue;
-
-        NdDmaPattern factored = pattern;
-        // Shift dims (d+1 .. 2) outward to (d+2 .. 3).
-        for (unsigned i = 3; i > d + 1; --i) {
-          factored.sizes[i] = pattern.sizes[i - 1];
-          factored.strides[i] = pattern.strides[i - 1];
-          factored.offsets[i] = pattern.offsets[i - 1];
-        }
-        factored.sizes[d] = b;           // inner factor
-        factored.strides[d] = s;         // inner keeps original stride/offset
-        factored.sizes[d + 1] = a;       // outer factor
-        factored.strides[d + 1] = b * s; // outer stride
-        factored.offsets[d + 1] = 0;
-
-        auto sub = decomposeRecursive(forOp, bufType, tm, col, row, factored);
-        if (succeeded(sub))
-          return sub;
-      }
-    }
+  if (std::optional<NdDmaPattern> legal =
+          factorToLegal(forOp, bufType, tm, col, row, pattern, elemWidth, gran))
+    return SmallVector<NdDmaPattern>{*legal};
+  for (const NdDmaPattern &factored : factorings(pattern, elemWidth, gran)) {
+    auto sub = decomposeRecursive(forOp, bufType, tm, col, row, factored);
+    if (succeeded(sub))
+      return sub;
   }
 
   // (2) Order-preserving slicing: only the OUTERMOST active dimension may be
