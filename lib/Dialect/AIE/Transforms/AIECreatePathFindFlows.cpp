@@ -866,31 +866,64 @@ SmallVector<TileID> cutTiles(const AIETargetModel &targetModel, TileID src,
   return interior;
 }
 
-/// Packet streams take an arbiter at the tile they end at whatever the
-/// routing, and where `pinsHops` says hops cannot be circuit switched, or the
-/// stream is prioritized, at the tile they start at and every tile each of
-/// their routes passes too. Two that must be kept apart
-/// (StreamConflicts::mustSeparate) pass any tile on different slave ports --
-/// sharing one means they merged, unsafely, upstream -- so a set of them that
-/// must be kept apart pairwise needs an arbiter apiece. Says why no routing
-/// can work if some tile has such a set larger than its free arbiters, or if
-/// two of them leave a tile by master ports that streams leaving by one each
-/// join, which puts them on one arbiter; `pinnedTrees`, the trees prioritized
-/// sources keep, say which master ports their streams leave tiles by.
-std::optional<std::string>
-unroutableArbiters(DeviceOp device, const StreamConflicts &conflicts,
-                   llvm::function_ref<bool(TileID)> pinsHops,
-                   const PacketTrees &pinnedTrees) {
-  const AIETargetModel &targetModel = device.getTargetModel();
-  const int numArbiters = targetModel.getNumArbiters();
-  const int numMselsPerArbiter = targetModel.getNumMselsPerArbiter();
-  std::set<std::tuple<TileID, Port, int>> prioritized;
+/// The tile, port and id of each packet a prioritized flow (priority_route)
+/// sends.
+using PrioritizedPackets = std::set<std::tuple<TileID, Port, int>>;
+
+PrioritizedPackets prioritizedPackets(DeviceOp device) {
+  PrioritizedPackets prioritized;
   for (PacketFlowOp flow : device.getOps<PacketFlowOp>())
     if (flow.getPriorityRoute().value_or(false))
       for (auto src : flow.getPorts().getOps<PacketSourceOp>())
         prioritized.insert(
             {cast<TileOp>(src.getTile().getDefiningOp()).getTileID(),
              src.port(), flow.IDInt()});
+  return prioritized;
+}
+
+/// The largest set of `candidates` that must be kept apart pairwise
+/// (StreamConflicts::mustSeparate). The search stops once it finds one larger
+/// than `limit` or runs out of steps.
+SmallVector<size_t, 8> largestApartSet(const StreamConflicts &conflicts,
+                                       ArrayRef<size_t> candidates,
+                                       size_t limit) {
+  SmallVector<size_t, 8> clique, best;
+  int steps = 0;
+  auto grow = [&](auto &self, ArrayRef<size_t> cands) -> void {
+    if (clique.size() > best.size())
+      best = clique;
+    for (auto [k, s] : llvm::enumerate(cands)) {
+      if (best.size() > limit || ++steps > maxSearchSteps ||
+          clique.size() + cands.size() - k <= best.size())
+        return;
+      SmallVector<size_t, 8> next;
+      for (size_t t : cands.drop_front(k + 1))
+        if (conflicts.mustSeparate(s, t))
+          next.push_back(t);
+      clique.push_back(s);
+      self(self, next);
+      clique.pop_back();
+    }
+  };
+  grow(grow, candidates);
+  return best;
+}
+
+/// Packet streams take an arbiter at the tile they end at whatever the
+/// routing, and where `pinsHops` says hops cannot be circuit switched, or the
+/// stream is prioritized, at the tile they start at and every tile each of
+/// their routes passes too. Two that must be kept apart pass any tile on
+/// different slave ports -- sharing one means they merged, unsafely, upstream
+/// -- so a set of them that must be kept apart pairwise needs an arbiter
+/// apiece. Says why no routing can work if some tile has such a set larger
+/// than its free arbiters.
+std::optional<std::string>
+tooFewArbiters(DeviceOp device, const StreamConflicts &conflicts,
+               llvm::function_ref<bool(TileID)> pinsHops,
+               const PrioritizedPackets &prioritized) {
+  const AIETargetModel &targetModel = device.getTargetModel();
+  const int numArbiters = targetModel.getNumArbiters();
+  const int numMselsPerArbiter = targetModel.getNumMselsPerArbiter();
   std::map<TileID, SmallVector<size_t, 8>> pinned;
   for (auto [i, s] : llvm::enumerate(conflicts.getRequestedStreams())) {
     if (!s.packetID)
@@ -929,26 +962,7 @@ unroutableArbiters(DeviceOp device, const StreamConflicts &conflicts,
     }
     if (std::min(srcs.size(), dsts.size()) <= free)
       continue;
-
-    SmallVector<size_t, 8> clique, best;
-    int steps = 0;
-    auto grow = [&](auto &self, ArrayRef<size_t> cands) -> void {
-      if (clique.size() > best.size())
-        best = clique;
-      for (auto [k, s] : llvm::enumerate(cands)) {
-        if (best.size() > free || ++steps > maxSearchSteps ||
-            clique.size() + cands.size() - k <= best.size())
-          return;
-        SmallVector<size_t, 8> next;
-        for (size_t t : cands.drop_front(k + 1))
-          if (conflicts.mustSeparate(s, t))
-            next.push_back(t);
-        clique.push_back(s);
-        self(self, next);
-        clique.pop_back();
-      }
-    };
-    grow(grow, candidates);
+    SmallVector<size_t, 8> best = largestApartSet(conflicts, candidates, free);
     if (best.size() <= free)
       continue;
 
@@ -969,9 +983,26 @@ unroutableArbiters(DeviceOp device, const StreamConflicts &conflicts,
        << free << " free. For example, " << conflicts.explain(best[0], best[1]);
     return reason;
   }
-  if (pinnedTrees.empty())
-    return std::nullopt;
+  return std::nullopt;
+}
 
+/// Where a stream leaves a tile it is known to pass: by which master port from
+/// which slave port, if known, and whether it is known to be packet switched
+/// there.
+struct Leaving {
+  size_t stream;
+  std::optional<Port> slave;
+  Port master;
+  bool packetSwitched;
+};
+
+/// Where each stream leaves each tile on the trees in `pinnedTrees`, and the
+/// tiles those trees pass.
+std::pair<std::map<TileID, SmallVector<Leaving, 8>>, std::set<TileID>>
+leavingPinnedTrees(const StreamConflicts &conflicts,
+                   llvm::function_ref<bool(TileID)> pinsHops,
+                   const PacketTrees &pinnedTrees,
+                   const PrioritizedPackets &prioritized) {
   // Each hop of a pinned tree by the hop before it, unset where two lead to it.
   std::map<PathEndPoint, std::map<PathEndPoint, std::optional<PathEndPoint>>>
       preds;
@@ -981,20 +1012,8 @@ unroutableArbiters(DeviceOp device, const StreamConflicts &conflicts,
       if (!first && it->second && !(*it->second == hop.from))
         it->second.reset();
     }
-  // Where each stream leaves each tile it is known to pass, by which master
-  // port from which slave port, if known, and whether it is known to be
-  // packet switched there.
-  struct Leaving {
-    size_t stream;
-    std::optional<Port> slave;
-    Port master;
-    bool packetSwitched;
-  };
   std::map<TileID, SmallVector<Leaving, 8>> leaving;
   std::set<TileID> onTrees;
-  auto isPrioritized = [&](const RoutedStream &s) {
-    return prioritized.count({s.src.tile, s.src.port, *s.packetID}) > 0;
-  };
   for (auto [i, s] : llvm::enumerate(conflicts.getRequestedStreams())) {
     if (!s.packetID)
       continue;
@@ -1014,83 +1033,132 @@ unroutableArbiters(DeviceOp device, const StreamConflicts &conflicts,
       leaving[s.dst.tile].push_back({i, std::nullopt, s.dst.port, true});
       continue;
     }
+    bool isPrioritized =
+        prioritized.count({s.src.tile, s.src.port, *s.packetID}) > 0;
     for (auto [slave, hop] : hops) {
       leaving[hop.coords].push_back(
           {i, slave, hop.port,
-           hop == PathEndPoint{s.dst.tile, s.dst.port} || isPrioritized(s) ||
+           hop == PathEndPoint{s.dst.tile, s.dst.port} || isPrioritized ||
                pinsHops(hop.coords)});
       onTrees.insert(hop.coords);
     }
   }
+  return {std::move(leaving), std::move(onTrees)};
+}
 
-  for (TileID tileId : onTrees) {
-    // A stream packet switched at a master port takes its one arbiter, and
-    // packets with one id on a slave port take one packet rule's arbiter. A
-    // hop that could be circuit switched is not where a prioritized stream
-    // shares its slave or master port.
-    SmallVector<Leaving, 8> &here = leaving[tileId];
-    std::set<Port> forcedSlaves, forcedMasters;
-    for (const Leaving &l : here)
-      if (isPrioritized(streams[l.stream])) {
-        if (l.slave)
-          forcedSlaves.insert(*l.slave);
-        forcedMasters.insert(l.master);
-      }
-    auto packetSwitched = [&](const Leaving &l) {
-      return l.packetSwitched || forcedMasters.count(l.master) ||
-             (l.slave && forcedSlaves.count(*l.slave));
-    };
-    // The visits on one arbiter with each, by the master port they leave by
-    // with it or the slave port they share a rule on. A stream passing a tile
-    // twice takes an arbiter on each visit, so the nodes are visits.
-    std::map<size_t, SmallVector<std::tuple<size_t, Port, bool>, 4>> with;
-    for (auto [x, l] : llvm::enumerate(here))
-      for (auto [y, m] : llvm::enumerate(here)) {
-        if (x == y || !packetSwitched(l) || !packetSwitched(m))
-          continue;
-        if (l.master == m.master)
-          with[x].push_back({y, l.master, false});
-        else if (l.slave && m.slave && *l.slave == *m.slave &&
-                 streams[l.stream].packetID == streams[m.stream].packetID)
-          with[x].push_back({y, *l.slave, true});
-      }
-    for (size_t x : llvm::make_first_range(with)) {
-      // The chain of visits that joins `x` to each visit it reaches.
-      std::map<size_t, size_t> via = breadthFirstParents(x, [&](size_t u) {
-        return llvm::map_range(
-            with.at(u), [](const auto &link) { return std::get<0>(link); });
-      });
-      size_t a = here[x].stream;
-      for (size_t y : llvm::make_first_range(via)) {
-        size_t b = here[y].stream;
-        if (b <= a || !conflicts.mustSeparate(a, b))
-          continue;
-        SmallVector<std::tuple<size_t, Port, bool>, 4> chain;
-        for (size_t v = y; v != x; v = via.at(v))
-          chain.push_back(
-              *llvm::find_if(with.at(via.at(v)), [&](const auto &link) {
-                return std::get<0>(link) == v;
-              }));
-        std::string reason;
-        llvm::raw_string_ostream os(reason);
-        os << "at tile (" << tileId.col << ", " << tileId.row
-           << "), the routes prioritized flows (priority_route) keep put "
-           << describeStream(streams[a]) << " and "
-           << describeStream(streams[b])
-           << " on one arbiter: " << describeStream(streams[a]);
-        for (auto [k, link] : llvm::enumerate(llvm::reverse(chain))) {
-          auto [v, port, rule] = link;
-          os << (k == 0 ? "" : ", which")
-             << (rule ? " takes one packet rule on " : " leaves by ")
-             << describePort(port) << " with "
-             << describeStream(streams[here[v].stream]);
-        }
-        os << ", and a master port or packet rule takes one arbiter. "
-           << conflicts.explain(a, b);
-        return reason;
-      }
+/// A visit of `here` on one arbiter with another: the other visit, and the
+/// master port they leave by or the slave port they share a packet rule on.
+struct ArbiterLink {
+  size_t visit;
+  Port port;
+  bool rule;
+};
+
+/// Says why `a` and `b`, which must be kept apart, end up on one arbiter at
+/// `tileId` through the visits in `chain`.
+std::string explainSharedArbiter(TileID tileId, size_t a, size_t b,
+                                 ArrayRef<ArbiterLink> chain,
+                                 ArrayRef<Leaving> here,
+                                 const StreamConflicts &conflicts) {
+  ArrayRef<RoutedStream> streams = conflicts.getStreams();
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "at tile (" << tileId.col << ", " << tileId.row
+     << "), the routes prioritized flows (priority_route) keep put "
+     << describeStream(streams[a]) << " and " << describeStream(streams[b])
+     << " on one arbiter: " << describeStream(streams[a]);
+  for (auto [k, link] : llvm::enumerate(chain))
+    os << (k == 0 ? "" : ", which")
+       << (link.rule ? " takes one packet rule on " : " leaves by ")
+       << describePort(link.port) << " with "
+       << describeStream(streams[here[link.visit].stream]);
+  os << ", and a master port or packet rule takes one arbiter. "
+     << conflicts.explain(a, b);
+  return reason;
+}
+
+/// Says why no routing can work if two streams that must be kept apart leave
+/// `tileId` by master ports that streams leaving by one each join, which puts
+/// them on one arbiter.
+std::optional<std::string>
+sharedArbiterAt(TileID tileId, ArrayRef<Leaving> here,
+                const StreamConflicts &conflicts,
+                const PrioritizedPackets &prioritized) {
+  ArrayRef<RoutedStream> streams = conflicts.getStreams();
+  // A stream packet switched at a master port takes its one arbiter, and
+  // packets with one id on a slave port take one packet rule's arbiter. A
+  // hop that could be circuit switched is not where a prioritized stream
+  // shares its slave or master port.
+  std::set<Port> forcedSlaves, forcedMasters;
+  for (const Leaving &l : here) {
+    const RoutedStream &s = streams[l.stream];
+    if (prioritized.count({s.src.tile, s.src.port, *s.packetID})) {
+      if (l.slave)
+        forcedSlaves.insert(*l.slave);
+      forcedMasters.insert(l.master);
     }
   }
+  auto packetSwitched = [&](const Leaving &l) {
+    return l.packetSwitched || forcedMasters.count(l.master) ||
+           (l.slave && forcedSlaves.count(*l.slave));
+  };
+  // The visits on one arbiter with each. A stream passing a tile twice takes
+  // an arbiter on each visit, so the nodes are visits.
+  std::map<size_t, SmallVector<ArbiterLink, 4>> with;
+  for (auto [x, l] : llvm::enumerate(here))
+    for (auto [y, m] : llvm::enumerate(here)) {
+      if (x == y || !packetSwitched(l) || !packetSwitched(m))
+        continue;
+      if (l.master == m.master)
+        with[x].push_back({y, l.master, false});
+      else if (l.slave && m.slave && *l.slave == *m.slave &&
+               streams[l.stream].packetID == streams[m.stream].packetID)
+        with[x].push_back({y, *l.slave, true});
+    }
+  for (size_t x : llvm::make_first_range(with)) {
+    // The chain of visits that joins `x` to each visit it reaches.
+    std::map<size_t, size_t> via = breadthFirstParents(x, [&](size_t u) {
+      return llvm::map_range(
+          with.at(u), [](const ArbiterLink &link) { return link.visit; });
+    });
+    size_t a = here[x].stream;
+    for (size_t y : llvm::make_first_range(via)) {
+      size_t b = here[y].stream;
+      if (b <= a || !conflicts.mustSeparate(a, b))
+        continue;
+      SmallVector<ArbiterLink, 4> chain;
+      for (size_t v = y; v != x; v = via.at(v))
+        chain.push_back(
+            *llvm::find_if(with.at(via.at(v)), [&](const ArbiterLink &link) {
+              return link.visit == v;
+            }));
+      std::reverse(chain.begin(), chain.end());
+      return explainSharedArbiter(tileId, a, b, chain, here, conflicts);
+    }
+  }
+  return std::nullopt;
+}
+
+/// Says why no routing can work, if the arbiters packet streams take
+/// whatever the routing do not fit: too few free ones at a tile, or two
+/// streams that must be kept apart put on one by the trees in `pinnedTrees`,
+/// which prioritized sources keep.
+std::optional<std::string>
+unroutableArbiters(DeviceOp device, const StreamConflicts &conflicts,
+                   llvm::function_ref<bool(TileID)> pinsHops,
+                   const PacketTrees &pinnedTrees) {
+  PrioritizedPackets prioritized = prioritizedPackets(device);
+  if (std::optional<std::string> reason =
+          tooFewArbiters(device, conflicts, pinsHops, prioritized))
+    return reason;
+  if (pinnedTrees.empty())
+    return std::nullopt;
+  auto [leaving, onTrees] =
+      leavingPinnedTrees(conflicts, pinsHops, pinnedTrees, prioritized);
+  for (TileID tileId : onTrees)
+    if (std::optional<std::string> reason =
+            sharedArbiterAt(tileId, leaving[tileId], conflicts, prioritized))
+      return reason;
   return std::nullopt;
 }
 } // namespace
