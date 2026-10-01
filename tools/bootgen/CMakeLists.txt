@@ -241,7 +241,12 @@ add_library(cdo_driver_mlir_aie STATIC ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c
 target_include_directories(
   cdo_driver_mlir_aie PUBLIC $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/cdo-driver>
   $<INSTALL_INTERFACE:include/cdo_driver>)
-if (NOT MSVC)
+if (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+  # Not mutually exclusive with the MSVC block below: clang-cl is both
+  # "Clang" (CMAKE_C_COMPILER_ID) and MSVC-compatible (MSVC variable), and
+  # accepts these GNU-style warning flags exactly like clang++ does, so this
+  # must stay keyed on the compiler ID (matching bootgen-lms-hash-sigs and
+  # bootgen-lib/bootgen's warning_ignores above), not on NOT MSVC.
   target_compile_options(cdo_driver_mlir_aie PRIVATE -Wno-cast-qual -Wno-sign-compare)
 endif()
 
