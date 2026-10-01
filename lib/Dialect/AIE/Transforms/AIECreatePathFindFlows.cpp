@@ -17,6 +17,7 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallSet.h"
@@ -664,16 +665,10 @@ planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
     return arbiter + msel * numArbiters;
   };
 
-  std::map<Port, Port> leader;
-  std::function<Port(Port)> find = [&](Port p) {
-    auto [it, inserted] = leader.try_emplace(p, p);
-    if (it->second == p)
-      return p;
-    return it->second = find(it->second);
-  };
+  llvm::EquivalenceClasses<Port> tied;
   for (const SlaveFlow &f : flows)
     for (Port m : f.masters)
-      leader[find(m)] = find(f.masters.front());
+      tied.unionSets(f.masters.front(), m);
 
   struct Unit {
     SmallVector<size_t, 4> flows;
@@ -684,7 +679,8 @@ planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
   std::map<Port, size_t> unitOf;
   SmallVector<size_t, 8> flowUnit;
   for (auto [i, f] : llvm::enumerate(flows)) {
-    auto [it, inserted] = unitOf.try_emplace(find(f.masters.front()), 0);
+    auto [it, inserted] =
+        unitOf.try_emplace(tied.getLeaderValue(f.masters.front()), 0);
     if (inserted) {
       it->second = units.size();
       units.emplace_back();

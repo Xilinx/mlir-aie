@@ -13,6 +13,7 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/IntEqClasses.h"
 
 #include <algorithm>
 #include <functional>
@@ -79,10 +80,9 @@ using SwitchboxConnect = struct SwitchboxConnect {
   // distinct ids.
   std::vector<std::vector<std::map<int, int>>> packetIds;
   // Units of dst ports tied to one arbiter (see planArbiters in
-  // AIECreatePathFindFlows.cpp); each dst port links to its unit, and a unit's
-  // root lists the packet flows (indices into the router's flows) leaving by
-  // any of its ports
-  std::vector<int> dstUnit;
+  // AIECreatePathFindFlows.cpp); a unit's leader lists the packet flows
+  // (indices into the router's flows) leaving by any of its ports
+  llvm::IntEqClasses dstUnits;
   std::vector<llvm::SmallVector<int, 2>> unitPacketFlows;
   // flags indicating priority routings
   std::vector<std::vector<bool>> isPriority;
@@ -114,34 +114,32 @@ using SwitchboxConnect = struct SwitchboxConnect {
   }
 
   void resetUnits() {
-    dstUnit.resize(dstPorts.size());
-    for (size_t j = 0; j < dstPorts.size(); j++)
-      dstUnit[j] = j;
+    dstUnits.clear();
+    dstUnits.grow(dstPorts.size());
     for (auto &flows : unitPacketFlows)
       flows.clear();
   }
 
-  int unitOf(int j) {
-    while (dstUnit[j] != j)
-      j = dstUnit[j] = dstUnit[dstUnit[j]];
-    return j;
+  llvm::ArrayRef<int> unitFlows(int j) const {
+    return unitPacketFlows[dstUnits.findLeader(j)];
   }
 
   void addToUnit(int j, int flow) {
-    auto &flows = unitPacketFlows[unitOf(j)];
+    auto &flows = unitPacketFlows[dstUnits.findLeader(j)];
     if (!llvm::is_contained(flows, flow))
       flows.push_back(flow);
   }
 
   void joinUnits(int j, int k) {
-    j = unitOf(j);
-    k = unitOf(k);
+    j = dstUnits.findLeader(j);
+    k = dstUnits.findLeader(k);
     if (j == k)
       return;
-    dstUnit[k] = j;
-    for (int flow : unitPacketFlows[k])
-      addToUnit(j, flow);
-    unitPacketFlows[k].clear();
+    int leader = dstUnits.join(j, k);
+    int other = leader == j ? k : j;
+    for (int flow : unitPacketFlows[other])
+      addToUnit(leader, flow);
+    unitPacketFlows[other].clear();
   }
 
   // update demand at the beginning of each dijkstraShortestPaths iteration

@@ -701,7 +701,7 @@ double Pathfinder::edgeWeight(const Edge &e, std::optional<int> packetId,
     w *= DEMAND_COEFF;
   if (e.sb->srcCoords == e.sb->dstCoords)
     for (const llvm::BitVector *flows : {avoid, avoidBranch})
-      if (flows && llvm::any_of(e.sb->unitPacketFlows[e.sb->unitOf(e.j)],
+      if (flows && llvm::any_of(e.sb->unitFlows(e.j),
                                 [&](int f) { return flows->test(f); }))
         w += conflictSharePenalty;
   return w;
@@ -1184,7 +1184,7 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
             branchAvoid.try_emplace(from, st.conflicting.size()).first->second;
         llvm::BitVector &on =
             onArbiter.try_emplace(from, st.conflicting.size()).first->second;
-        for (int other : e.sb->unitPacketFlows[e.sb->unitOf(e.j)]) {
+        for (int other : e.sb->unitFlows(e.j)) {
           on.set(other);
           if (other != flow)
             avoid |= st.conflicting[other];
