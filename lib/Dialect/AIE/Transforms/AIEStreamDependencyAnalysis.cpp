@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h"
+#include "aie/Dialect/AIE/Transforms/AIERoutingDiagnostics.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -906,7 +907,7 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
       neverFull.insert({s.dst.tile, DMAChannelDir::S2MM, s.dst.port.channel});
   auto waitsOnLocks = [&](unsigned agent) {
     const Agent &a = agents[agent];
-    return a.isCore || !neverFull.count({a.tile, a.dir, a.channel});
+    return a.isCore || !neverFull.count(a.dma);
   };
 
   // Who acquires and who releases each lock.
@@ -924,13 +925,12 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
   // Agents whose waits the design spells out; see the end of this constructor
   // for the rest.
   for (auto core : device.getOps<CoreOp>()) {
-    unsigned agent =
-        getOrCreate(core.getTileOp().getTileID(), true, DMAChannelDir::MM2S, 0);
+    unsigned agent = getOrCreate(Agent::core(core.getTileOp().getTileID()));
     modeled.insert(agent);
     core.walk([&](UseLockOp use) { noteLock(use, agent); });
   }
   for (const DmaChannelProgram &p : collectDmaPrograms(device)) {
-    unsigned agent = getOrCreate(p.dma.tile, false, p.dma.dir, p.dma.channel);
+    unsigned agent = getOrCreate(Agent::channel(p.dma));
     modeled.insert(agent);
     forEachInProgram<UseLockOp>(p,
                                 [&](UseLockOp use) { noteLock(use, agent); });
@@ -947,19 +947,12 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
           addEdge(p, q, EdgeKind::Lock);
   }
 
-  auto endpointAgent = [&](const StreamEndpoint &endpoint,
-                           bool sending) -> std::optional<unsigned> {
-    if (endpoint.port.bundle == WireBundle::Core)
-      return getOrCreate(endpoint.tile, true, DMAChannelDir::MM2S, 0);
-    if (endpoint.port.bundle == WireBundle::DMA)
-      return getOrCreate(endpoint.tile, false,
-                         sending ? DMAChannelDir::MM2S : DMAChannelDir::S2MM,
-                         endpoint.port.channel);
-    return std::nullopt;
-  };
   for (const RoutedStream &s : streams) {
-    std::optional<unsigned> from = endpointAgent(s.src, true);
-    std::optional<unsigned> to = endpointAgent(s.dst, false);
+    std::optional<unsigned> from, to;
+    if (std::optional<Agent> agent = Agent::at(s.src, true))
+      from = getOrCreate(*agent);
+    if (std::optional<Agent> agent = Agent::at(s.dst, false))
+      to = getOrCreate(*agent);
     if (!from || !to || *from == *to)
       continue;
     addEdge(*from, *to, EdgeKind::Stream);
@@ -1026,7 +1019,7 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
       return std::nullopt;
     };
     auto agentOf = [&](const TileDMAChannel &dma) {
-      return getOrCreate(dma.tile, false, dma.dir, dma.channel);
+      return getOrCreate(Agent::channel(dma));
     };
 
     llvm::SetVector<TileDMAChannel, SmallVector<TileDMAChannel>,
@@ -1067,13 +1060,13 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
   // tile is driven by the host, which may wait on any other shim tile first.
   const AIETargetModel &targetModel = getTargetModel(device);
   for (Agent &a : agents)
-    a.onShim =
-        !a.isCore && targetModel.isShimNOCorPLTile(a.tile.col, a.tile.row);
+    a.onShim = !a.isCore &&
+               targetModel.isShimNOCorPLTile(a.dma.tile.col, a.dma.tile.row);
   for (unsigned a = 0; a < agents.size(); a++) {
     if (modeled.contains(a) || !waitsOnLocks(a))
       continue;
     for (unsigned b = 0; b < agents.size(); b++)
-      if (b != a && (agents[b].tile == agents[a].tile ||
+      if (b != a && (agents[b].dma.tile == agents[a].dma.tile ||
                      (agents[a].onShim && agents[b].onShim)))
         addEdge(a, b, EdgeKind::Lock);
   }
@@ -1092,29 +1085,29 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
   });
 }
 
-// A tile has one core agent, whatever channel it is asked for by.
-static std::tuple<TileID, bool, DMAChannelDir, int>
-agentKey(TileID tile, bool isCore, DMAChannelDir dir, int channel) {
-  if (isCore)
-    return {tile, true, DMAChannelDir::S2MM, 0};
-  return {tile, false, dir, channel};
+std::optional<StreamWaitGraph::Agent>
+StreamWaitGraph::Agent::at(const StreamEndpoint &endpoint, bool sending) {
+  if (endpoint.port.bundle == WireBundle::Core)
+    return core(endpoint.tile);
+  if (endpoint.port.bundle == WireBundle::DMA)
+    return channel({endpoint.tile,
+                    sending ? DMAChannelDir::MM2S : DMAChannelDir::S2MM,
+                    endpoint.port.channel});
+  return std::nullopt;
 }
 
-unsigned StreamWaitGraph::getOrCreate(TileID tile, bool isCore,
-                                      DMAChannelDir dir, int channel) {
+unsigned StreamWaitGraph::getOrCreate(const Agent &agent) {
   auto [it, inserted] =
-      agentIDs.try_emplace(agentKey(tile, isCore, dir, channel), agents.size());
+      agentIDs.try_emplace({agent.isCore, agent.dma}, agents.size());
   if (inserted) {
-    agents.push_back({tile, isCore, dir, channel});
+    agents.push_back(agent);
     edges.emplace_back();
   }
   return it->second;
 }
 
-std::optional<unsigned> StreamWaitGraph::lookup(TileID tile, bool isCore,
-                                                DMAChannelDir dir,
-                                                int channel) const {
-  auto it = agentIDs.find(agentKey(tile, isCore, dir, channel));
+std::optional<unsigned> StreamWaitGraph::lookup(const Agent &agent) const {
+  auto it = agentIDs.find({agent.isCore, agent.dma});
   if (it == agentIDs.end())
     return std::nullopt;
   return it->second;
@@ -1129,12 +1122,8 @@ void StreamWaitGraph::addEdge(unsigned from, unsigned to, EdgeKind kind) {
 
 std::optional<unsigned> StreamWaitGraph::agentAt(const StreamEndpoint &endpoint,
                                                  bool sending) const {
-  if (endpoint.port.bundle == WireBundle::Core)
-    return lookup(endpoint.tile, true, DMAChannelDir::MM2S, 0);
-  if (endpoint.port.bundle == WireBundle::DMA)
-    return lookup(endpoint.tile, false,
-                  sending ? DMAChannelDir::MM2S : DMAChannelDir::S2MM,
-                  endpoint.port.channel);
+  if (std::optional<Agent> agent = Agent::at(endpoint, sending))
+    return lookup(*agent);
   return std::nullopt;
 }
 
@@ -1185,19 +1174,19 @@ std::string StreamWaitGraph::describe(unsigned id) const {
   const Agent &a = agents[id];
   std::string s;
   llvm::raw_string_ostream os(s);
-  os << "(" << a.tile.col << ", " << a.tile.row << ") ";
+  os << "(" << a.dma.tile.col << ", " << a.dma.tile.row << ") ";
   if (a.isCore)
     os << "core";
   else
-    os << stringifyDMAChannelDir(a.dir) << " " << a.channel;
+    os << stringifyDMAChannelDir(a.dma.dir) << " " << a.dma.channel;
   return s;
 }
 
-StreamDeadlockAnalysis::StreamDeadlockAnalysis(
-    DeviceOp device, std::vector<RoutedStream> streams)
-    : streams(std::move(streams)), volumes(device, this->streams),
-      graph(device, this->streams, volumes), stalls(this->streams.size()),
-      silence(this->streams.size()) {}
+StreamDeadlockAnalysis::StreamDeadlockAnalysis(DeviceOp device,
+                                               ArrayRef<RoutedStream> streams)
+    : streams(streams), volumes(device, streams),
+      graph(device, streams, volumes), stalls(streams.size()),
+      silence(streams.size()) {}
 
 bool StreamDeadlockAnalysis::canStall(size_t f) const {
   std::optional<bool> &stall = stalls[f];
@@ -1293,16 +1282,6 @@ SmallVector<std::string> StreamDeadlockAnalysis::assumptions(size_t f,
   return assumed;
 }
 
-std::string AIE::describePort(Port port) {
-  return llvm::formatv("{0}:{1}", stringifyWireBundle(port.bundle),
-                       port.channel);
-}
-
-std::string AIE::describeTilePort(TileID tile, Port port) {
-  return llvm::formatv("({0}, {1}) {2}", tile.col, tile.row,
-                       describePort(port));
-}
-
 std::string AIE::describeStream(const RoutedStream &stream) {
   std::string s;
   llvm::raw_string_ostream os(s);
@@ -1341,13 +1320,13 @@ StreamConflicts::treeKey(size_t s) const {
                  s < numRequested};
 }
 
-StreamDeadlockAnalysis &StreamConflicts::getAnalysis() {
+const StreamDeadlockAnalysis &StreamConflicts::getAnalysis() const {
   if (!analysis)
     analysis.emplace(device, streams);
   return *analysis;
 }
 
-bool StreamConflicts::blocks(size_t s, size_t t) {
+bool StreamConflicts::blocks(size_t s, size_t t) const {
   const RoutedStream &a = streams[s], &b = streams[t];
   if (a.src == b.src || a.dst == b.dst)
     return false;
@@ -1366,14 +1345,14 @@ bool StreamConflicts::related(size_t s, size_t t) const {
   return false;
 }
 
-bool StreamConflicts::conflict(size_t s, size_t t) {
+bool StreamConflicts::conflict(size_t s, size_t t) const {
   return !related(s, t) && (blocks(s, t) || blocks(t, s));
 }
 
 // The chains holdCycle follows from a tree stuck at a receiver to the trees
 // it waits on, which hold for any routing.
 const DenseMap<size_t, std::pair<size_t, size_t>> &
-StreamConflicts::waitsFrom(size_t a) {
+StreamConflicts::waitsFrom(size_t a) const {
   std::optional<DenseMap<size_t, std::pair<size_t, size_t>>> &cached = waits[a];
   if (cached)
     return *cached;
@@ -1402,7 +1381,7 @@ StreamConflicts::waitsFrom(size_t a) {
   return reached;
 }
 
-bool StreamConflicts::mustSeparate(size_t s, size_t t) {
+bool StreamConflicts::mustSeparate(size_t s, size_t t) const {
   if (related(s, t))
     return false;
   return blocks(s, t) || blocks(t, s) ||
@@ -1410,8 +1389,8 @@ bool StreamConflicts::mustSeparate(size_t s, size_t t) {
          waitsFrom(treeOf[t]).contains(treeOf[s]);
 }
 
-std::string StreamConflicts::explain(size_t s, size_t t) {
-  StreamDeadlockAnalysis &a = getAnalysis();
+std::string StreamConflicts::explain(size_t s, size_t t) const {
+  const StreamDeadlockAnalysis &a = getAnalysis();
   if (a.canBlock(s, t))
     return a.explainBlock(s, t);
   if (a.canBlock(t, s))
@@ -1428,9 +1407,9 @@ std::string StreamConflicts::explain(size_t s, size_t t) {
   return llvm::join(steps, " ");
 }
 
-SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() {
+SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() const {
   SmallVector<std::pair<size_t, size_t>> pairs;
-  StreamDeadlockAnalysis &a = getAnalysis();
+  const StreamDeadlockAnalysis &a = getAnalysis();
   for (size_t s = 0; s < numRequested; s++)
     for (size_t t = 0; t < numRequested; t++) {
       if (s == t || !(streams[s].packetID || streams[t].packetID) ||
@@ -1481,7 +1460,7 @@ struct GraphTraits<const WaitGraph *> {
 } // namespace llvm
 
 std::optional<HoldCycle>
-StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
+StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) const {
   // The packets one source sends with one id move down every branch as one.
   struct Tree {
     SmallVector<size_t, 2> members;
@@ -1749,7 +1728,7 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
   return std::nullopt;
 }
 
-std::string StreamConflicts::explain(const HoldCycle &cycle) {
+std::string StreamConflicts::explain(const HoldCycle &cycle) const {
   std::string s;
   llvm::raw_string_ostream os(s);
   for (auto [i, step] : llvm::enumerate(cycle.steps)) {

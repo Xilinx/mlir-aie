@@ -629,6 +629,7 @@ def AIE_FlowOp : AIE_Op<"flow", []> {
     int sourceIndex() { return getSourceChannel(); }
     int destIndex() { return getDestChannel(); }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_AMSelOp
@@ -892,6 +893,7 @@ def AIE_PacketSourceOp : AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return getChannel(); }
     Port port() { return {getBundle(), channelIndex()}; }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_PacketDestOp : AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
@@ -914,6 +916,7 @@ def AIE_PacketDestOp : AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return getChannel(); }
     Port port() { return {getBundle(), channelIndex()}; }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_DMABDPACKETOp : AIE_Op<"dma_bd_packet", []> {
