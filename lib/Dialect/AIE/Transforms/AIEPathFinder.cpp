@@ -703,7 +703,7 @@ double Pathfinder::edgeWeight(const Edge &e, std::optional<int> packetId,
     for (const llvm::BitVector *flows : {avoid, avoidBranch})
       if (flows && llvm::any_of(e.sb->unitPacketFlows[e.sb->unitOf(e.j)],
                                 [&](int f) { return flows->test(f); }))
-        w += CONFLICT_SHARE_PENALTY;
+        w += conflictSharePenalty;
   return w;
 }
 
@@ -1082,7 +1082,7 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
   // current demand, from everything the tree reaches so far to the next
   // destination, whose path is then traced back to the tree. Growing
   // from the tree rather than the source lets destinations share hops;
-  // see TREE_SEED_FACTOR for what a branch off the tree costs.
+  // see treeSeedFactor for what a branch off the tree costs.
   int srcId = nodeIds.at(src);
   SwitchSettings switchSettings;
   ++st.curStamp;
@@ -1201,7 +1201,7 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
     for (auto [state, hops] : llvm::zip_equal(tree, treeHops))
       if (!drop.count(state) && !off.count(state)) {
         seeds.push_back(state);
-        seedCosts.push_back(TREE_SEED_FACTOR * hops);
+        seedCosts.push_back(treeSeedFactor * hops);
       }
     llvm::DenseSet<int> blocked;
     if (!off.empty()) {
@@ -1371,7 +1371,7 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
         continue;
       search(branch, dst, splitOff(dst));
       double cost =
-          TREE_SEED_FACTOR * treeHops[llvm::find(tree, top) - tree.begin()];
+          treeSeedFactor * treeHops[llvm::find(tree, top) - tree.begin()];
       for (int s = dst; s != top;) {
         const auto &[from, e] = planned.find(s)->second;
         auto avoidBranch = branchAvoid.find(from);
@@ -1380,7 +1380,7 @@ bool Pathfinder::routePart(RouteState &st, int flow) {
             avoidBranch == branchAvoid.end() ? nullptr : &avoidBranch->second);
         s = from;
       }
-      if (distance[dst] + REROUTE_MIN_SAVING >= cost)
+      if (distance[dst] + rerouteMinSaving >= cost)
         continue;
       for (int s : branch) {
         st.processedStamp[s] = 0;
@@ -1586,7 +1586,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     if (i == sb.srcPorts.end() || j == sb.dstPorts.end())
       continue;
     sb.overCapacity[i - sb.srcPorts.begin()][j - sb.dstPorts.begin()] +=
-        ROUTING_CHECK_PENALTY;
+        routingCheckPenalty;
     for (auto [flow, hops] : llvm::enumerate(st.joinedHops))
       for (const auto &[other, e] : hops)
         if (e.sb == &sb && sb.srcPorts[e.i] == conn.src &&
@@ -1618,7 +1618,7 @@ Pathfinder::findPaths(const int maxIterations) {
       for (auto [j, port] : llvm::enumerate(sb.dstPorts))
         sb.circuitOnlyDst[j] =
             cappedTiles.count(sb.srcCoords) &&
-            port.channel >= PACKET_FANOUT_CAP &&
+            port.channel >= packetFanoutCap &&
             llvm::is_contained({WireBundle::North, WireBundle::South,
                                 WireBundle::East, WireBundle::West},
                                port.bundle);

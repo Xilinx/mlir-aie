@@ -627,9 +627,6 @@ static SmallVector<PortRule> portRules(ArrayRef<GroupClaims> groups,
 }
 
 namespace {
-constexpr int numArbiters = 6;
-constexpr int numMselsPerArbiter = 4;
-
 /// Packets with one id entering a switchbox on one slave port, and the master
 /// ports they leave by.
 struct SlaveFlow {
@@ -656,12 +653,14 @@ struct ArbiterPlan {
 /// `blocking` with the conflicting pairs that stood in the way; it stays empty
 /// when the master sets alone outnumber the free msels.
 std::optional<ArbiterPlan>
-planArbiters(ArrayRef<SlaveFlow> flows,
+planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
              llvm::function_ref<bool(size_t, size_t)> conflict,
              llvm::function_ref<bool(size_t, int)> excluded,
              const std::set<int> &reservedAmsels,
              SmallVectorImpl<std::pair<size_t, size_t>> &blocking) {
-  auto amselOf = [](int arbiter, int msel) {
+  const int numArbiters = targetModel.getNumArbiters();
+  const int numMselsPerArbiter = targetModel.getNumMselsPerArbiter();
+  auto amselOf = [&](int arbiter, int msel) {
     return arbiter + msel * numArbiters;
   };
 
@@ -727,8 +726,8 @@ planArbiters(ArrayRef<SlaveFlow> flows,
         crossPairs.push_back({a, b});
       }
 
-  SmallVector<SmallVector<int, 4>, numArbiters> freeMsels(numArbiters);
-  SmallVector<SmallVector<size_t, 4>, numArbiters> excludedUnits(numArbiters);
+  SmallVector<SmallVector<int, 4>, 6> freeMsels(numArbiters);
+  SmallVector<SmallVector<size_t, 4>, 6> excludedUnits(numArbiters);
   for (int a = 0; a < numArbiters; a++) {
     for (int m = 0; m < numMselsPerArbiter; m++)
       if (!reservedAmsels.count(amselOf(a, m)))
@@ -747,7 +746,7 @@ planArbiters(ArrayRef<SlaveFlow> flows,
   });
 
   SmallVector<int, 8> arbiterOf(units.size(), -1);
-  SmallVector<size_t, numArbiters> load(numArbiters, 0);
+  SmallVector<size_t, 6> load(numArbiters, 0);
   int steps = 0;
   constexpr int stepBudget = 100000;
   std::function<bool(size_t)> place = [&](size_t depth) {
@@ -756,7 +755,7 @@ planArbiters(ArrayRef<SlaveFlow> flows,
     if (++steps > stepBudget)
       return false;
     size_t u = order[depth];
-    SmallVector<int, numArbiters> candidates(numArbiters);
+    SmallVector<int, 6> candidates(numArbiters);
     std::iota(candidates.begin(), candidates.end(), 0);
     if (units[u].isCtrlPkt)
       std::reverse(candidates.begin(), candidates.end());
@@ -794,7 +793,7 @@ planArbiters(ArrayRef<SlaveFlow> flows,
 
   // Control packets take the highest msels, as they do elsewhere.
   ArbiterPlan plan;
-  SmallVector<size_t, numArbiters> low(numArbiters, 0), high(numArbiters, 0);
+  SmallVector<size_t, 6> low(numArbiters, 0), high(numArbiters, 0);
   for (const Unit &unit : units) {
     int a = arbiterOf[&unit - units.data()];
     std::map<SmallVector<Port, 4>, int> setAmsel;
@@ -869,6 +868,8 @@ unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
                    llvm::function_ref<bool(TileID)> pinsHops,
                    const PacketTrees &pinnedTrees) {
   const AIETargetModel &targetModel = device.getTargetModel();
+  const int numArbiters = targetModel.getNumArbiters();
+  const int numMselsPerArbiter = targetModel.getNumMselsPerArbiter();
   std::set<std::tuple<TileID, Port, int>> prioritized;
   for (PacketFlowOp flow : device.getOps<PacketFlowOp>())
     if (flow.getPriorityRoute().value_or(false))
@@ -1102,100 +1103,36 @@ static PathEndPoint sourceOf(FlowOp flow) {
                       {flow.getSourceBundle(), flow.getSourceChannel()}};
 }
 
-// Add support for shimDMA
-// From shimDMA to BLI: 1) shimDMA 0 --> North 3
-//                      2) shimDMA 1 --> North 7
-// From BLI to shimDMA: 1) North   2 --> shimDMA 0
-//                      2) North   3 --> shimDMA 1
+// The router names a shim DMA by its own port; move the rules and master sets
+// that use one behind the shim mux, onto the South channel it reaches the
+// switchbox by (see shimMuxChannelFrom).
 static void lowerShimDMAPorts(DeviceOp device, OpBuilder &builder,
                               DynamicTileAnalysis &analyzer) {
-  for (auto switchbox : make_early_inc_range(device.getOps<SwitchboxOp>())) {
-    auto retVal = switchbox->getOperand(0);
-    auto tileOp = retVal.getDefiningOp<TileOp>();
-
-    // Check if it is a shim Tile
+  for (auto switchbox : device.getOps<SwitchboxOp>()) {
+    TileOp tileOp = switchbox.getTileOp();
     if (!tileOp.isShimNOCTile())
       continue;
-
-    // Check if the switchbox is empty
-    if (&switchbox.getBody()->front() == switchbox.getBody()->getTerminator())
-      continue;
-
-    Region &r = switchbox.getConnections();
-    Block &b = r.front();
-
-    // Find if the corresponding shimmux exsists or not
-    int shimExist = 0;
-    ShimMuxOp shimOp;
-    for (auto shimmux : device.getOps<ShimMuxOp>()) {
-      if (shimmux.getTile() == tileOp) {
-        shimExist = 1;
-        shimOp = shimmux;
-        break;
+    auto connectInMux = [&](Port src, Port dst) {
+      builder.setInsertionPointAfter(tileOp);
+      ShimMuxOp shimMux = analyzer.getShimMux(builder, tileOp.colIndex());
+      builder.setInsertionPointToStart(&shimMux.getConnections().front());
+      getOrCreateConnect(builder, shimMux, tileOp.getLoc(), src.bundle,
+                         src.channel, dst.bundle, dst.channel);
+    };
+    for (Operation &op : switchbox.getConnections().front()) {
+      if (auto rules = dyn_cast<PacketRulesOp>(op);
+          rules && rules.getSourceBundle() == WireBundle::DMA) {
+        int ch = shimMuxChannelFrom(rules.sourcePort());
+        connectInMux(rules.sourcePort(), {WireBundle::North, ch});
+        rules.setSourceBundle(WireBundle::South);
+        rules.setSourceChannel(ch);
       }
-    }
-
-    for (Operation &Op : b.getOperations()) {
-      if (auto pktrules = dyn_cast<PacketRulesOp>(Op)) {
-
-        // check if there is MM2S DMA in the switchbox of the 0th row
-        if (pktrules.getSourceBundle() == WireBundle::DMA) {
-
-          // If there is, then it should be put into the corresponding shimmux
-          // If shimmux not defined then create shimmux
-          if (!shimExist) {
-            builder.setInsertionPointAfter(tileOp);
-            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());
-            shimExist = 1;
-          }
-
-          Region &r0 = shimOp.getConnections();
-          Block &b0 = r0.front();
-          builder.setInsertionPointToStart(&b0);
-
-          pktrules.setSourceBundle(WireBundle::South);
-          if (pktrules.getSourceChannel() == 0) {
-            pktrules.setSourceChannel(3);
-            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
-                               WireBundle::DMA, 0, WireBundle::North, 3);
-          }
-          if (pktrules.getSourceChannel() == 1) {
-            pktrules.setSourceChannel(7);
-            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
-                               WireBundle::DMA, 1, WireBundle::North, 7);
-          }
-        }
-      }
-
-      if (auto mtset = dyn_cast<MasterSetOp>(Op)) {
-
-        // check if there is S2MM DMA in the switchbox of the 0th row
-        if (mtset.getDestBundle() == WireBundle::DMA) {
-
-          // If there is, then it should be put into the corresponding shimmux
-          // If shimmux not defined then create shimmux
-          if (!shimExist) {
-            builder.setInsertionPointAfter(tileOp);
-            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());
-            shimExist = 1;
-          }
-
-          Region &r0 = shimOp.getConnections();
-          Block &b0 = r0.front();
-          builder.setInsertionPointToStart(&b0);
-
-          mtset.setDestBundle(WireBundle::South);
-          if (mtset.getDestChannel() == 0) {
-            mtset.setDestChannel(2);
-            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
-                               WireBundle::North, 2, WireBundle::DMA, 0);
-          }
-          if (mtset.getDestChannel() == 1) {
-            mtset.setDestChannel(3);
-            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
-                               WireBundle::North, 3, WireBundle::DMA, 1);
-          }
-        }
+      if (auto masterSet = dyn_cast<MasterSetOp>(op);
+          masterSet && masterSet.getDestBundle() == WireBundle::DMA) {
+        int ch = shimMuxChannelTo(masterSet.destPort());
+        connectInMux({WireBundle::North, ch}, masterSet.destPort());
+        masterSet.setDestBundle(WireBundle::South);
+        masterSet.setDestChannel(ch);
       }
     }
   }
@@ -1217,6 +1154,8 @@ struct PacketFlowRouting {
         solution(solution), conflicts(conflicts), routeCircuit(routeCircuit),
         circuitSwitchHops(circuitSwitchHops), hazards(hazards),
         targetModel(device.getTargetModel()),
+        numArbiters(targetModel.getNumArbiters()),
+        numMselsPerArbiter(targetModel.getNumMselsPerArbiter()),
         maxPacketId(targetModel.getMaxPacketId()),
         idBits(llvm::Log2_32_Ceil(maxPacketId + 1)), idMask((1 << idBits) - 1) {
   }
@@ -1252,6 +1191,8 @@ struct PacketFlowRouting {
   bool circuitSwitchHops;
   RoutingHazards *hazards;
   const AIETargetModel &targetModel;
+  const int numArbiters;
+  const int numMselsPerArbiter;
   const uint32_t maxPacketId;
   const int idBits;
   const int idMask;
@@ -1676,7 +1617,7 @@ std::optional<ArbiterPlan> PacketFlowRouting::planTile(
   ArrayRef<SlaveFlow> flows = tileFlows.at(tileId);
   auto key = [&](size_t f) { return FlowKey{flows[f].slave, flows[f].id}; };
   return planArbiters(
-      flows,
+      targetModel, flows,
       [&](size_t a, size_t b) {
         return apart.count({tileId, std::min(key(a), key(b)),
                             std::max(key(a), key(b))}) ||
@@ -2581,33 +2522,37 @@ static DeviceOp cloneInScratch(DeviceOp d, OwningOpRef<ModuleOp> &scratch) {
 // the same DMA channel share them.
 static void unmuxShimDMAPacketPorts(DeviceOp device) {
   for (auto shimMux : device.getOps<ShimMuxOp>()) {
-    auto hasConnect = [&](WireBundle srcBundle, int srcCh,
-                          WireBundle destBundle, int destCh) {
+    auto hasConnect = [&](Port src, Port dst) {
       return llvm::any_of(shimMux.getConnections().getOps<ConnectOp>(),
                           [&](ConnectOp c) {
-                            return c.sourcePort() == Port{srcBundle, srcCh} &&
-                                   c.destPort() == Port{destBundle, destCh};
+                            return c.sourcePort() == src && c.destPort() == dst;
                           });
     };
     for (auto switchbox : device.getOps<SwitchboxOp>()) {
       if (switchbox.getTileOp() != shimMux.getTileOp())
         continue;
       for (auto rules : switchbox.getConnections().getOps<PacketRulesOp>())
-        for (int ch : {0, 1})
-          if (rules.sourcePort() == Port{WireBundle::South, ch ? 7 : 3} &&
-              hasConnect(WireBundle::DMA, ch, WireBundle::North, ch ? 7 : 3)) {
+        for (int ch : {0, 1}) {
+          Port dma{WireBundle::DMA, ch};
+          Port north{WireBundle::North, shimMuxChannelFrom(dma)};
+          if (rules.sourcePort() == Port{WireBundle::South, north.channel} &&
+              hasConnect(dma, north)) {
             rules.setSourceBundle(WireBundle::DMA);
             rules.setSourceChannel(ch);
             break;
           }
+        }
       for (auto masterSet : switchbox.getConnections().getOps<MasterSetOp>())
-        for (int ch : {0, 1})
-          if (masterSet.destPort() == Port{WireBundle::South, ch ? 3 : 2} &&
-              hasConnect(WireBundle::North, ch ? 3 : 2, WireBundle::DMA, ch)) {
+        for (int ch : {0, 1}) {
+          Port dma{WireBundle::DMA, ch};
+          Port north{WireBundle::North, shimMuxChannelTo(dma)};
+          if (masterSet.destPort() == Port{WireBundle::South, north.channel} &&
+              hasConnect(north, dma)) {
             masterSet.setDestBundle(WireBundle::DMA);
             masterSet.setDestChannel(ch);
             break;
           }
+        }
     }
   }
 }

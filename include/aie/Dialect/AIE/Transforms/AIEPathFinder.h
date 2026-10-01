@@ -29,18 +29,22 @@ namespace xilinx::AIE {
 #define DEMAND_BASE 1.0
 #define MAX_CIRCUIT_STREAM_CAPACITY 1
 #define MAX_PACKET_STREAM_CAPACITY 32
-#define ROUTING_CHECK_PENALTY 5
-#define CONFLICT_SHARE_PENALTY 4
-// See Router::capCrowdedFanOut.
-#define PACKET_FANOUT_CAP 2
+
+// History added to a connection each time the routing check rejects it.
+constexpr int routingCheckPenalty = 5;
+// Cost added to a hop that shares an arbiter unit with a flow to avoid.
+constexpr double conflictSharePenalty = 4;
+// Channels per direction packet streams leave a capped tile by (see
+// Router::capCrowdedFanOut). A heuristic: fewer channels mean fewer master
+// sets per tile, but more flows on each.
+constexpr int packetFanoutCap = 2;
 // A multicast's next destination may branch off any hop its tree already
 // takes, starting at this cost per hop back to the source: enough of a
 // discount to share hops, while still preferring the shortest path to each
 // destination.
-#define TREE_SEED_FACTOR 0.9
-
+constexpr double treeSeedFactor = 0.9;
 // A destination's branch is rerouted only when that saves more than this.
-#define REROUTE_MIN_SAVING 1e-6
+constexpr double rerouteMinSaving = 1e-6;
 
 enum class Connectivity { INVALID = 0, AVAILABLE = 1 };
 
@@ -332,7 +336,7 @@ public:
   virtual bool setShareChannels(bool share) { return false; }
   /// Tiles the routing check found out of packet rules or arbiter msels, with
   /// no split to free any, during the last findPaths: packet streams leave
-  /// them by PACKET_FANOUT_CAP channels per direction from now on, so by fewer
+  /// them by packetFanoutCap channels per direction from now on, so by fewer
   /// sets of master ports. Returns whether that caps any tile not capped
   /// before.
   virtual bool capCrowdedFanOut() { return false; }
@@ -424,7 +428,7 @@ private:
   // its cost in `seedCosts`. Fills
   // `preds` (predecessor state id, or -1) and `predEdge` (the edge taken to
   // reach each state). Reuses the scratch buffers below. Master ports on an
-  // arbiter with flows in `avoid` cost CONFLICT_SHARE_PENALTY more, and from a
+  // arbiter with flows in `avoid` cost conflictSharePenalty more, and from a
   // state in `branchAvoid`, as much again for the flows it maps to. A channel
   // a flow with the same `packetId` already shares costs as a full one. States
   // in `stops` are reached but not left. The search ends once every state in
