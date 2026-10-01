@@ -316,19 +316,14 @@ public:
   /// A RoutingFailure if no legal routing is found in `maxIterations`.
   llvm::Expected<Routing> findPaths(int maxIterations);
   void setPacketConstraints(PacketConstraints c) { constraints = std::move(c); }
-  /// Loosens the packet constraints by a step after findPaths found no
-  /// routing. Returns false once no step is left, or when no packet stream
-  /// took part in the failure, so that no step can help.
-  ///
-  /// Packet flows first share channels only with flows they share a
-  /// destination with, directly or through others. The steps, each skipped
-  /// if it changes nothing: they share channels with any packet flow; tiles
-  /// the routing check found out of packet rules or arbiter msels, with no
-  /// split to free any, are capped, so packet streams leave them by
-  /// packetFanoutCap channels per direction, so by fewer sets of master
-  /// ports. Then, if a source sends more than one id, the second id of each
-  /// TreeSplit at a tile the tree cannot branch at is routed apart from the
-  /// rest, sharing and caps start over, and the two steps follow again.
+  /// Loosens the packet constraints by one step after findPaths found no
+  /// routing; false once no step is left or no packet stream took part in the
+  /// failure. Packet flows start sharing channels only within their
+  /// destination group. The steps, each skipped if it changes nothing: share
+  /// channels with any packet flow; cap the fan-out of tiles the routing check
+  /// found out of packet rules or msels to packetFanoutCap channels per
+  /// direction; route the second id of an unbranchable split apart, which
+  /// restarts sharing and caps; then share and cap again.
   bool relax();
 
 private:
@@ -395,7 +390,7 @@ private:
   std::string explainNoRouting(const RouteState &st) const;
   bool hasRoom(const SwitchboxConnect &sb) const;
   // The steps of relax.
-  bool setShareChannels(bool share);
+  bool shareAllChannels();
   bool capCrowdedFanOut();
   bool routeIdsApart();
 
@@ -431,7 +426,7 @@ private:
   // rejected a routing, or packet streams cross a link left overused.
   bool packetsFailed = true;
   bool shareChannels = false, idsApart = false;
-  int relaxStep = 0;
+  size_t relaxStep = 0;
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
 };
 

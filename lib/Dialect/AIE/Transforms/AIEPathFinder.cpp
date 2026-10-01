@@ -16,6 +16,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 
+#include <iterator>
 #include <limits>
 
 using namespace mlir;
@@ -229,10 +230,10 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
 
 void Pathfinder::initialize(int maxCol, int maxRow,
                             const AIETargetModel &targetModel) {
-  // Reset all state so a Pathfinder instance can be safely reused across
-  // analyses/devices. In particular the dense-graph cache below must be
-  // rebuilt for the new topology; leaving graphBuilt set would reuse stale
-  // node IDs and adjacency.
+  // Reset the graph and flows so a Pathfinder can be reused across analyses
+  // and devices; the dense-graph cache must be rebuilt for the new topology.
+  // The relax state (shareChannels, idsApart, relaxStep, cappedTiles,
+  // crowdedTiles) survives, so the ladder advances across attempts.
   graph.clear();
   flows.clear();
   packetIdsTo.clear();
@@ -361,12 +362,9 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
   }
 }
 
-bool Pathfinder::setShareChannels(bool share) {
-  bool apart = false;
-  for (const Flow &f : flows)
-    apart |= f.packetGroupId > 0;
-  shareChannels = share;
-  return share && apart;
+bool Pathfinder::shareAllChannels() {
+  shareChannels = true;
+  return llvm::any_of(flows, [](const Flow &f) { return f.packetGroupId > 0; });
 }
 
 bool Pathfinder::capCrowdedFanOut() {
@@ -387,38 +385,44 @@ bool Pathfinder::routeIdsApart() {
   return llvm::any_of(ids, [](const auto &s) { return s.second.size() > 1; });
 }
 
+namespace {
+enum class RelaxStep { ShareChannels, CapCrowdedTiles, RouteIdsApart };
+constexpr RelaxStep relaxLadder[] = {
+    RelaxStep::ShareChannels, RelaxStep::CapCrowdedTiles,
+    RelaxStep::RouteIdsApart, RelaxStep::ShareChannels,
+    RelaxStep::CapCrowdedTiles};
+} // namespace
+
 bool Pathfinder::relax() {
   if (!packetsFailed) {
     LLVM_DEBUG(llvm::dbgs() << "No packet stream crosses an overused link\n");
     return false;
   }
-  for (;;) {
-    switch (relaxStep++) {
-    case 0:
-    case 3:
-      if (setShareChannels(true)) {
+  while (relaxStep < std::size(relaxLadder)) {
+    switch (relaxLadder[relaxStep++]) {
+    case RelaxStep::ShareChannels:
+      if (shareAllChannels()) {
         LLVM_DEBUG(llvm::dbgs() << "Relax: share channels\n");
         return true;
       }
       break;
-    case 1:
-    case 4:
+    case RelaxStep::CapCrowdedTiles:
       if (capCrowdedFanOut()) {
         LLVM_DEBUG(llvm::dbgs() << "Relax: cap crowded tiles\n");
         return true;
       }
       break;
-    case 2:
+    case RelaxStep::RouteIdsApart:
       if (routeIdsApart()) {
         LLVM_DEBUG(llvm::dbgs() << "Relax: route ids apart\n");
         return true;
       }
-      relaxStep = 5;
-      return false;
-    default:
+      // With one id per source, the steps after it would only repeat.
+      relaxStep = std::size(relaxLadder);
       return false;
     }
   }
+  return false;
 }
 
 // Sort flows to (1) get deterministic routing, and (2) perform routings on
@@ -427,7 +431,7 @@ void Pathfinder::sortFlows() {
   for (auto &flow : flows)
     llvm::sort(flow.dsts);
 
-  // The groups setShareChannels describes, whatever order the flows were
+  // The groups shareAllChannels merges, whatever order the flows were
   // added in: packet flows to a common destination are in one.
   llvm::IntEqClasses groups(flows.size());
   std::map<PathEndPoint, unsigned> firstTo;
@@ -588,13 +592,12 @@ int Pathfinder::getOrAddNodeId(const PathEndPoint &pep) {
 // Build the dense integer node numbering and per-node adjacency once. The graph
 // topology is fixed across congestion iterations (only the demand weights
 // change), so this is computed a single time and the edges carry live pointers
-// into `graph` for demand lookups. Edge order per node matches the legacy
-// PathEndPoint-sorted channel order to preserve identical routing output.
+// into `graph` for demand lookups. A node's edges are sorted by the
+// PathEndPoint they reach, so Dijkstra breaks ties the same way every run.
 void Pathfinder::buildRoutingGraph() {
   // Seed the dense node set with all flow endpoints (the only nodes Dijkstra is
-  // ever started from or traced back to). Remaining nodes are discovered lazily
-  // as edge destinations below, exactly mirroring the legacy on-demand channel
-  // expansion in dijkstraShortestPaths.
+  // ever started from or traced back to). Remaining nodes are discovered as
+  // edge destinations below.
   for (auto &f : flows) {
     getOrAddNodeId(f.src);
     for (auto &d : f.dsts)
@@ -605,8 +608,8 @@ void Pathfinder::buildRoutingGraph() {
   // edge destinations are discovered, so re-read nodes.size() each iteration.
   for (size_t id = 0; id < nodes.size(); id++) {
     PathEndPoint src = nodes[id];
-    // Collect destination PathEndPoints exactly as the legacy lazy channel
-    // discovery did, then sort by PathEndPoint for deterministic edge order.
+    // The ports the crossbar connects this one to, and the neighbours' ports
+    // its wire reaches.
     std::vector<PathEndPoint> dests;
     auto intraIt = graph.find({src.coords, src.coords});
     if (intraIt != graph.end()) {
@@ -787,10 +790,19 @@ struct Pathfinder::RouteState {
   // it joined. A join the routing check faults is not made again.
   std::vector<SmallVector<std::pair<int, Edge>, 8>> joinedHops;
   std::set<std::pair<int, int>> noJoin;
-  // Where the routing check split each flow's tree: the tile it branches at,
-  // the ids to branch apart there, and the state of the destination that
-  // reaches the tile apart, or -1.
-  std::vector<std::set<std::tuple<TileID, int, int, int>>> splitsOf;
+  // Where the routing check split a flow's tree: the tile it branches at, the
+  // ids to branch apart there, and the state of the destination that reaches
+  // the tile apart, if one does.
+  struct IdSplit {
+    TileID at;
+    int a, b;
+    std::optional<int> apart;
+    bool operator<(const IdSplit &other) const {
+      return std::tie(at, a, b, apart) <
+             std::tie(other.at, other.a, other.b, other.apart);
+    }
+  };
+  std::vector<std::set<IdSplit>> splitsOf;
   // A split one tree cannot make, since a destination takes both ids, moves
   // the second id to a part of its own. Parts of a source split apart at a
   // tile leave it by different master ports: the part routed later keeps off
@@ -1240,10 +1252,10 @@ llvm::DenseSet<int> Pathfinder::TreeBuilder::splitOff(int dst) const {
   };
   for (auto [at, a, b, apart] : st.splitsOf[flow])
     for (int other : reached) {
-      bool splits = apart < 0 ? (only(dst, a, b) && only(other, b, a)) ||
-                                    (only(dst, b, a) && only(other, a, b))
-                              : (only(dst, a, b) && other == apart) ||
-                                    (dst == apart && only(other, a, b));
+      bool splits = !apart ? (only(dst, a, b) && only(other, b, a)) ||
+                                 (only(dst, b, a) && only(other, a, b))
+                           : (only(dst, a, b) && other == *apart) ||
+                                 (dst == *apart && only(other, a, b));
       if (!splits)
         continue;
       SmallVector<int, 8> below;
@@ -1389,7 +1401,8 @@ void Pathfinder::TreeBuilder::reroute() {
         tree.erase(tree.begin() + k);
         treeHops.erase(treeHops.begin() + k);
       }
-    (void)trace(dst);
+    [[maybe_unused]] bool traced = trace(dst);
+    assert(traced && "a rerouted branch reaches its destination");
   }
 }
 
@@ -1554,7 +1567,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     int flow = partWith(split.a), other = partWith(split.b);
     if (flow < 0 || other < 0)
       continue;
-    int apart = -1;
+    std::optional<int> apart;
     if (split.apart) {
       auto it = nodeIds.find(*split.apart);
       if (it == nodeIds.end())
