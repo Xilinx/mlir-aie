@@ -26,8 +26,14 @@ class DMAChannelAnalysis {
   /// Keep the reserving operation so diagnostics retain its MLIR location.
   mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
       usedChannels;
-  /// True for packet-only occupancy; circuit occupancy is exclusive.
-  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, bool> usedStreams;
+  /// The first claimant of a core stream port, and whether only packets use
+  /// it; circuit occupancy is exclusive.
+  struct StreamClaim {
+    mlir::Operation *owner;
+    bool packet;
+  };
+  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, StreamClaim>
+      usedStreams;
 
 public:
   DMAChannelAnalysis(DeviceOp &device);
@@ -53,8 +59,10 @@ public:
   mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
                                       int channel);
 
-  /// Claim a raw stream port; packet users may share it with other packets.
+  /// Claim a raw stream port for `user`, reporting on it when the port is
+  /// taken; packet users may share it with other packets.
   mlir::LogicalResult checkAIEStreamIndex(TileLike tile, DMAChannel chan,
+                                          mlir::Operation *user,
                                           bool packet = false);
 };
 

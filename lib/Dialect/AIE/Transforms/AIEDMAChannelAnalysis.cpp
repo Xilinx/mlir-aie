@@ -35,12 +35,14 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
 
   for (auto flowOp : device.getOps<FlowOp>()) {
     if (flowOp.getSourceBundle() == WireBundle::Core) {
-      usedStreams[{getTileKey(flowOp.getSource()), DMAChannelDir::MM2S,
-                   flowOp.getSourceChannel()}] = false;
+      usedStreams.try_emplace({getTileKey(flowOp.getSource()),
+                               DMAChannelDir::MM2S, flowOp.getSourceChannel()},
+                              StreamClaim{flowOp, false});
     }
     if (flowOp.getDestBundle() == WireBundle::Core) {
-      usedStreams[{getTileKey(flowOp.getDest()), DMAChannelDir::S2MM,
-                   flowOp.getDestChannel()}] = false;
+      usedStreams.try_emplace({getTileKey(flowOp.getDest()),
+                               DMAChannelDir::S2MM, flowOp.getDestChannel()},
+                              StreamClaim{flowOp, false});
     }
   }
 
@@ -50,12 +52,12 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
       if (source.getBundle() == WireBundle::Core)
         usedStreams.try_emplace({getTileKey(source.getTile()),
                                  DMAChannelDir::MM2S, source.channelIndex()},
-                                true);
+                                StreamClaim{source, true});
     for (auto dest : ports.getOps<PacketDestOp>())
       if (dest.getBundle() == WireBundle::Core)
         usedStreams.try_emplace({getTileKey(dest.getTile()),
                                  DMAChannelDir::S2MM, dest.channelIndex()},
-                                true);
+                                StreamClaim{dest, true});
   }
 
   // Shim allocations reserve channels outside the DMA bodies above.
@@ -138,13 +140,19 @@ Operation *DMAChannelAnalysis::getDMAChannelOwner(TileLike tile,
 
 LogicalResult DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile,
                                                       DMAChannel chan,
+                                                      Operation *user,
                                                       bool packet) {
   auto [it, inserted] = usedStreams.try_emplace(
-      {getTileKey(tile->getResult(0)), chan.direction, chan.channel}, packet);
-  if (inserted || (packet && it->second)) {
+      {getTileKey(tile->getResult(0)), chan.direction, chan.channel},
+      StreamClaim{user, packet});
+  if (inserted || (packet && it->second.packet)) {
     return success();
   }
-  if (chan.direction == DMAChannelDir::MM2S)
-    return tile->emitOpError("number of output Core channels exceeded!");
-  return tile->emitOpError("number of input Core channels exceeded!");
+  auto diag = user->emitOpError("Core ")
+              << (chan.direction == DMAChannelDir::MM2S ? "output " : "input ")
+              << chan.channel
+              << " is already in use on this tile; a core stream port carries "
+                 "one circuit or only packet flows";
+  diag.attachNote(it->second.owner->getLoc()) << "the other stream is here";
+  return diag;
 }
