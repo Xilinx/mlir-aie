@@ -257,6 +257,14 @@ CASES: list[Case] = [
         dict(dim_k=48, epilogue="silu", clamp=(-0.125, 0.75)),
         data_cases=("random", "zeros", "ones", "alternating"),
     ),
+    # The core's power-up rounding, and the gelu of FastFlowLM's shipped mm
+    # overlay, which rounds after each step.
+    check("fused_mm", dict(dim_k=48, rounding="floor")),
+    check(
+        "fused_mm",
+        dict(dim_k=48, epilogue="gelu", rounding="floor", gelu="bf16_steps"),
+        data_cases=("random", "zeros", "ones", "alternating"),
+    ),
     # Prepacked bfp16ebs8 B. The first is amd/IRON's aie2p flm GEMM tile
     # (M64, MA32, N64, CT_K128, 8x8x8, OUT_CHUNK 512), so its k step and
     # drain are IRON's; K is one CT_K chunk rather than 512 to fit L1. The
@@ -289,6 +297,27 @@ CASES: list[Case] = [
         ),
         devices=("npu2",),
         data_cases=("random", "zeros", "ones", "alternating"),
+    ),
+    # The same tile as IRON builds it to match the shipped overlay: every
+    # mode compiled in, floor rounding, and the overlay's gelu.
+    check(
+        "fused_mm",
+        dict(
+            dim_m=64,
+            band_m=32,
+            dim_k=128,
+            dim_n=64,
+            chunk_k=128,
+            out_chunk=512,
+            epilogue="gelu",
+            epilogue_modes=("none", "gelu", "silu", "sigmoid"),
+            rounding="floor",
+            gelu="bf16_steps",
+            bfp16_b=True,
+        ),
+        devices=("npu2",),
+        data_cases=("random", "zeros", "ones", "alternating"),
+        smoke=True,
     ),
     # IRON's other aie2p flm tile, picked when K is a single 512 slice
     # (N128, CT_K32, MA64). Its 32 KiB accumulator leaves room for only
