@@ -289,25 +289,28 @@ buildShimBdWords(OpBuilder &builder, Location loc,
       arith::SelectOp::create(builder, loc, iterStridePos, hwS[3], zeroI32);
 
   // Guard a RUNTIME size or stride against its narrow BD field (masking would
-  // silently truncate); constants are verifier-checked. d0/d1 wrap (10-bit)
-  // and d0-d2 stride (20-bit) only in ND mode, iteration wrap (6-bit) and
-  // stride always. Guard is on the hardware value.
+  // silently truncate); constants are verifier-checked. d0/d1 wrap and d0-d2
+  // stride only in ND mode, iteration wrap and stride always. Guard is on the
+  // hardware value.
   auto guardField = [&](OpFoldResult inSize, Value hwVal, int64_t fieldMax) {
     if (getConstantIntValue(inSize))
       return; // constant: verifier already enforced the bound.
     NpuAssertBdFieldOp::create(builder, loc, hwVal,
                                builder.getI32IntegerAttr(fieldMax));
   };
+  constexpr auto shim = AIE::AIETileType::ShimNOCTile;
+  int64_t wrapMax = (1LL << targetModel.getDmaBdWrapBits(shim)) - 1;
+  int64_t strideMax = (1LL << targetModel.getDmaBdStepBits(shim)) - 1;
   if (!isLinear) {
-    guardField(sizesRev[0], hwS[0], ShimBdFieldWidths::d0WrapMax());
-    guardField(sizesRev[1], hwS[1], ShimBdFieldWidths::d1WrapMax());
+    guardField(sizesRev[0], hwS[0], wrapMax);
+    guardField(sizesRev[1], hwS[1], wrapMax);
   }
   auto outerStride = cst(stridesRev[3]);
   if (!outerStride || *outerStride != 0)
     guardField(sizesRev[3], outerStride ? hwS[3] : iterSizeField,
-               ShimBdFieldWidths::iterWrapMax());
+               maxHardwareSize3(targetModel, shim, /*pureRepeat=*/false));
   for (int i = isLinear ? 3 : 0; i < 4; i++)
-    guardField(stridesRev[i], hwT[i], ShimBdFieldWidths::strideMax());
+    guardField(stridesRev[i], hwT[i], strideMax);
 
   // Guard a RUNTIME size/stride whose byte extent must be a whole number of
   // granules (mirrors verifyStridesWraps). Guard is on the input element count;

@@ -887,7 +887,6 @@ def AIE_NpuRequireOp : AIEX_Op<"npu.require", []> {
     contract as `npu.assert_bd_field`: the builder yields no stream rather
     than a wrong one, and the host reports `message` as the reason.
   }];
-  let hasVerifier = 1;
   let hasCanonicalizer = 1;
 }
 

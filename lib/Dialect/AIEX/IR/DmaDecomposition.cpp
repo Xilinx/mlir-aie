@@ -39,9 +39,8 @@ int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
       maxInput = (maxInput / divisor) * divisor;
     return maxInput;
   }
-  if (dim == 3) // a zero-stride repeat rides the queue's repeat_count
-    return stride == 0 ? tm.getMaxRepeatCount() + 1
-                       : 1LL << tm.getDmaBdIterBits(col, row);
+  if (dim == 3)
+    return maxHardwareSize3(tm, tm.getTileType(col, row), stride == 0) + 1;
   return (1LL << wrapBits) - 1;
 }
 

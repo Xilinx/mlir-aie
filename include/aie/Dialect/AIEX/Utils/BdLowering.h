@@ -36,21 +36,6 @@ class AIETargetModel;
 
 namespace xilinx::AIEX {
 
-// Shim-NOC BD hardware field widths (bits), shared by the dynamic verifier and
-// the runtime-value guard so both reject the same field overflows.
-// TODO: fold into a getDmaBdWrapBits(tileType) accessor on AIETargetModel (also
-// covers the widths hardcoded per tile type in verifyStridesWraps).
-struct ShimBdFieldWidths {
-  static constexpr int64_t kD0WrapBits = 10;
-  static constexpr int64_t kD1WrapBits = 10;
-  static constexpr int64_t kIterWrapBits = 6;
-  static constexpr int64_t kStrideBits = 20;
-  static constexpr int64_t d0WrapMax() { return (1 << kD0WrapBits) - 1; }
-  static constexpr int64_t d1WrapMax() { return (1 << kD1WrapBits) - 1; }
-  static constexpr int64_t iterWrapMax() { return (1 << kIterWrapBits) - 1; }
-  static constexpr int64_t strideMax() { return (1 << kStrideBits) - 1; }
-};
-
 // The address generator transfers whole granules only, so a size or stride is
 // realizable iff its byte extent (value * elemWidth) is a granule multiple.
 // Dividing through by gcd(elemWidth, gran), that is `value % divisor == 0` with

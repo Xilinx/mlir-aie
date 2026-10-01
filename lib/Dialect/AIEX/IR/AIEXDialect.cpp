@@ -130,6 +130,12 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
   }
 }
 
+int64_t AIEX::maxHardwareSize3(const AIE::AIETargetModel &targetModel,
+                               AIE::AIETileType tileType, bool pureRepeat) {
+  return pureRepeat ? targetModel.getMaxRepeatCount()
+                    : (1LL << targetModel.getDmaBdIterBits(tileType)) - 1;
+}
+
 mlir::LogicalResult
 AIEX::verifyStridesWraps(mlir::Operation *forOp,
                          mlir::BaseMemRefType referencedBufType, int tileCol,
@@ -154,7 +160,6 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
 
   uint32_t wrap_bits = targetModel.getDmaBdWrapBits(tileCol, tileRow);
   uint32_t step_bits = targetModel.getDmaBdStepBits(tileCol, tileRow);
-  uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
 
   for (int i = 0; i < 4; i++) {
     if (inputSizes[i] <= 0) {
@@ -211,10 +216,9 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
     return forOp->emitOpError(
         "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
-  // A zero-stride size 3 is a pure repeat: the lowerings leave the iteration
-  // fields 0 and carry the count in the queue push's repeat_count instead.
-  int64_t maxSize3 = inputStrides[3] == 0 ? targetModel.getMaxRepeatCount()
-                                          : (1 << iter_bits) - 1;
+  int64_t maxSize3 =
+      maxHardwareSize3(targetModel, targetModel.getTileType(tileCol, tileRow),
+                       inputStrides[3] == 0);
   if (hardwareSizes[3] > maxSize3)
     return forOp->emitOpError(
         "Size 3 exceeds the [1:" + std::to_string(maxSize3 + 1) + "] range.");
@@ -568,13 +572,13 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   int64_t iterHw = iterRaw > 1 ? iterRaw - 1 : 0;
   std::optional<int64_t> outerStride = getConstantIntValue(strides.front());
   bool pureRepeat = outerStride && *outerStride == 0;
-  if (failed(checkSize(sizesRev[0], d0Hw, ShimBdFieldWidths::d0WrapMax(),
-                       "d0 size")) ||
-      failed(checkSize(sizesRev[1], d1Hw, ShimBdFieldWidths::d1WrapMax(),
-                       "d1 size")) ||
+  AIE::AIETileType tileType =
+      targetModel.getTileType(tile.getCol(), tile.getRow());
+  int64_t wrapMax = (1LL << targetModel.getDmaBdWrapBits(tileType)) - 1;
+  if (failed(checkSize(sizesRev[0], d0Hw, wrapMax, "d0 size")) ||
+      failed(checkSize(sizesRev[1], d1Hw, wrapMax, "d1 size")) ||
       failed(checkSize(sizesRev[3], iterHw,
-                       pureRepeat ? targetModel.getMaxRepeatCount()
-                                  : ShimBdFieldWidths::iterWrapMax(),
+                       maxHardwareSize3(targetModel, tileType, pureRepeat),
                        pureRepeat ? "repeat count" : "iteration size")))
     return failure();
 
@@ -968,12 +972,6 @@ LogicalResult AIEX::NpuAssertBdFieldOp::verify() {
 // NpuRequireOp
 //===----------------------------------------------------------------------===//
 
-// A constant-false guard is not a verifier error: a specialized sequence may
-// hold one in a region canonicalization later folds away (a peeled ragged
-// tail whose row count is zero). One that survives to the static lowering is
-// diagnosed there (AIETargetNPU) and refuses the dispatch on the C++ path.
-LogicalResult AIEX::NpuRequireOp::verify() { return success(); }
-
 namespace {
 // A constraint proven at compile time carries no runtime check.
 struct EraseSatisfiedRequire : OpRewritePattern<AIEX::NpuRequireOp> {
@@ -987,9 +985,7 @@ struct EraseSatisfiedRequire : OpRewritePattern<AIEX::NpuRequireOp> {
     return success();
   }
 };
-} // namespace
 
-namespace {
 // A constraint already required on the same condition earlier in the block
 // adds nothing: after CSE every tap's re-derived check is the same value.
 struct EraseRepeatedRequire : OpRewritePattern<AIEX::NpuRequireOp> {

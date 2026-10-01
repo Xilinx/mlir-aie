@@ -50,6 +50,12 @@ verifyStridesWraps(mlir::Operation *forOp,
 bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
                       llvm::ArrayRef<int64_t> strides);
 
+// The largest hardware size 3 (count - 1) a BD on a `tileType` tile accepts. A
+// zero-stride size 3 is a pure repeat: the lowerings leave the iteration fields
+// 0 and carry the count in the queue push's repeat_count instead.
+int64_t maxHardwareSize3(const AIE::AIETargetModel &targetModel,
+                         AIE::AIETileType tileType, bool pureRepeat);
+
 // Returns true when sizes/strides (innermost-first, same convention as
 // NpuDmaMemcpyNdOp) describe a contiguous row-major scan:
 //   strides[0] == 1
