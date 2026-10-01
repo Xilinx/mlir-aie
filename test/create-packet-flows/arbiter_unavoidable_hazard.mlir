@@ -8,9 +8,11 @@
 // RUN: aie-opt --split-input-file --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s
 
 // Flows from one source that can deadlock there are reported, as no routing
-// can keep them apart, along with what the router assumed to find it.
+// can keep them apart, when the design shows they do.
 
-// CHECK: warning: Flows can deadlock however they are routed: packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (0, 3) S2MM 1, which receives packet flow (0, 2) DMA:0 -> (0, 3) DMA:1 (id 2). The volume packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) carries is unknown, so it is assumed to overrun its receiver. Both come from (0, 2) DMA:0, and the order it sends in is not modeled. Nothing in the design programs (0, 3) S2MM 0, so it is assumed to wait on anything on its tile. So can 1 other pair of flows.
+// Nothing programs either end, so a deadlock is only assumed.
+
+// CHECK-NOT: warning
 
 module {
   aie.device(npu1_1col) {
@@ -242,9 +244,9 @@ module {
 // -----
 
 // A core that releases the lock in a loop can restart the chain, sending id 2
-// after id 1.
+// after id 1, but in what order is not modeled, so that is only assumed.
 
-// CHECK: warning: Flows can deadlock however they are routed: packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (0, 3) S2MM 1, which receives packet flow (0, 2) DMA:0 -> (0, 3) DMA:1 (id 2). The volume packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) carries is unknown, so it is assumed to overrun its receiver. Both come from (0, 2) DMA:0, and the order it sends in is not modeled.{{$}}
+// CHECK-NOT: warning
 module {
   aie.device(npu1_1col) {
     %t02 = aie.tile(0, 2)

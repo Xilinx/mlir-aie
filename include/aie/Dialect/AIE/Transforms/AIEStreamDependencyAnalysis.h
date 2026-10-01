@@ -285,7 +285,9 @@ public:
   /// The requested streams where the first can hold up the second however
   /// they are routed, as one source or receiver already orders them. Only
   /// pairs with a packet stream count: circuits take no arbiter, so a wait
-  /// between two of them is the design's, not a hazard of any routing.
+  /// between two of them is the design's, not a hazard of any routing. Nor do
+  /// pairs that need StreamDeadlockAnalysis::assumptions: the routing cannot
+  /// help those either, and the design may well not do what is assumed.
   llvm::SmallVector<std::pair<size_t, size_t>> unavoidable();
 
   /// A cycle of waits the packet streams can deadlock in when routed along

@@ -15,8 +15,6 @@
 // free, so a penalty on the channel they share moves them to the next one
 // together. The router must put them on different channels.
 
-// Nothing programs the DMAs, so the design itself may deadlock.
-// NOWARN: warning: Flows can deadlock however they are routed
 // NOWARN-NOT: {{warning|error}}
 
 // CHECK-LABEL: aie.switchbox(%tile_0_5)

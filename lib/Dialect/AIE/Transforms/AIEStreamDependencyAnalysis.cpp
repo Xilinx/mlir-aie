@@ -1061,6 +1061,19 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
       if (b != a && agents[b].tile == agents[a].tile)
         addEdge(a, b, EdgeKind::Lock);
   }
+
+  LLVM_DEBUG({
+    for (unsigned a = 0; a < agents.size(); a++)
+      for (const Edge &e : edges[a])
+        llvm::dbgs() << "Wait: " << describe(a) << " on " << describe(e.to)
+                     << (e.kind == EdgeKind::Lock     ? " (lock)"
+                         : e.kind == EdgeKind::Stream ? " (stream)"
+                                                      : " (host)")
+                     << (e.kind == EdgeKind::Lock && !modeled.contains(a)
+                             ? ", assumed"
+                             : "")
+                     << "\n";
+  });
 }
 
 unsigned StreamWaitGraph::getOrCreate(TileID tile, bool isCore,
@@ -1386,11 +1399,18 @@ std::string StreamConflicts::explain(size_t s, size_t t) {
 
 SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() {
   SmallVector<std::pair<size_t, size_t>> pairs;
+  StreamDeadlockAnalysis &a = getAnalysis();
   for (size_t s = 0; s < numRequested; s++)
-    for (size_t t = 0; t < numRequested; t++)
-      if (s != t && (streams[s].packetID || streams[t].packetID) &&
-          related(s, t) && getAnalysis().canBlock(s, t))
+    for (size_t t = 0; t < numRequested; t++) {
+      if (s == t || !(streams[s].packetID || streams[t].packetID) ||
+          !related(s, t) || !a.canBlock(s, t))
+        continue;
+      if (a.assumptions(s, t).empty())
         pairs.push_back({s, t});
+      else
+        LLVM_DEBUG(llvm::dbgs() << "Unavoidable only by assumption: "
+                                << a.explainBlock(s, t) << "\n");
+    }
   return pairs;
 }
 
@@ -1684,8 +1704,11 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
             break;
           }
         }
-        if (!clash)
+        if (!clash) {
+          LLVM_DEBUG(llvm::dbgs() << "Hold cycle search closed a walk after "
+                                  << search + 1 << " walks\n");
           return toCycle(*path);
+        }
         Constraints fix = c, exclude = c;
         fix[clash->first].fixed = clash->second;
         exclude[clash->first].excluded.push_back(clash->second);
