@@ -7,6 +7,10 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from ...dialects.aiex import dma_await_task, dma_free_task
+
 
 class TaskGroup:
     """A grouping of runtime data transfers awaited and freed together.
@@ -97,38 +101,24 @@ class TaskGroup:
         Marks this object spent and drops it from the sequence's open groups;
         the loop re-creates a group over the handles on the other side.
         """
-        from ...dialects.aiex import dma_await_task
         from ._context import active_sequence
 
         if self._carried:
             raise RuntimeError(f"{self} has already been carried into a loop")
-        # Keyed by object identity: a Value's == emits an arith.cmpi rather
-        # than comparing identities. An await and a free of one transfer
-        # share the task object.
-        seen: dict[int, int] = {}
-        handles: list = []
-        waited: list[bool] = []
-        for fn, (task,) in self._actions:
-            if id(task) not in seen:
-                seen[id(task)] = len(handles)
-                # Actions hold the configure op (or a carried Value); the loop
-                # carries the op's !index result.
-                handles.append(getattr(task, "result", task))
-                waited.append(False)
-            if fn == dma_await_task:
-                waited[seen[id(task)]] = True
+        transfers = self._transfers()
+        # Actions hold the configure op (or a carried Value); the loop carries
+        # the op's !index result.
+        handles = [getattr(task, "result", task) for task, _ in transfers]
         self._carried = True
         self._actions = []
         active = active_sequence()
         if self in active._open_task_groups:
             active._open_task_groups.remove(self)
-        return handles, tuple(waited)
+        return handles, tuple(w for _, w in transfers)
 
     @classmethod
     def _carry_in(cls, handles, waited: tuple[bool, ...]) -> "TaskGroup":
         """Rebuild a group over loop-carried handles (a body argument or result)."""
-        from ...dialects.aiex import dma_await_task, dma_free_task
-
         if len(handles) != len(waited):
             raise ValueError("carried task group: handle count does not match its spec")
         tg = cls()
@@ -141,14 +131,19 @@ class TaskGroup:
     @property
     def spec(self) -> tuple[bool, ...]:
         """Which of the group's transfers (in issue order) are waited."""
-        from ...dialects.aiex import dma_await_task
+        return tuple(w for _, w in self._transfers())
 
-        waited: dict[int, bool] = {}
+    def _transfers(self) -> list[tuple[Any, bool]]:
+        """Each transfer once, in issue order, with whether it is waited."""
+        # Keyed by object identity: a Value's == emits an arith.cmpi rather
+        # than comparing identities. An await and a free of one transfer
+        # share the task object.
+        seen: dict[int, list] = {}
         for fn, (task,) in self._actions:
-            waited.setdefault(id(task), False)
+            entry = seen.setdefault(id(task), [task, False])
             if fn == dma_await_task:
-                waited[id(task)] = True
-        return tuple(waited.values())
+                entry[1] = True
+        return [(task, waited) for task, waited in seen.values()]
 
     def __hash__(self) -> int:
         return id(self)

@@ -251,7 +251,7 @@ class CallableDesign:
                 dispatch_params=compilable.dispatch_params,
                 dispatch_lib_path=compilable.get_dispatch_lib_path(),
             )
-        if compilable.use_cache:
+        if compilable.use_cache and cache_key is not None:
             self._kernel_cache[cache_key] = kernel
         return kernel
 
@@ -557,16 +557,9 @@ class CallableDesign:
         dispatch-time design is checked against a static specialization with
         ``aie.utils.txn_trace``.
         """
-        from aie.utils.npukernel import NPUKernel
-
         call_compile_kwargs, dispatch_scalars, _ = self._extract_compile_kwargs(kwargs)
         compilable = self._build_compilable(call_compile_kwargs)
-        _, inst_path = compilable.compile()
-        kernel = NPUKernel(
-            insts_path=inst_path,
-            dispatch_params=compilable.dispatch_params,
-            dispatch_lib_path=compilable.get_dispatch_lib_path(),
-        )
+        kernel = self._compile_and_build_kernel(compilable, None, None)
         return kernel.instructions(**dispatch_scalars)
 
     def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:

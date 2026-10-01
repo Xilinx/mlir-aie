@@ -67,22 +67,18 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs) -> Iterator[Any]:
     # ("group", n, waited-flags).
     packers = []
     raw = []
-    specs = []
     if iter_args is not None:
         for a in iter_args:
             if isinstance(a, TaskGroup):
                 handles, waited = a._carry_out()
                 packers.append(("group", len(handles), waited))
                 raw.extend(handles)
-                specs.append(waited)
             elif isinstance(a, Task):
                 packers.append(("task", 1, None))
                 raw.append(a.handle)
-                specs.append(None)
             else:
                 packers.append(("value", 1, None))
                 raw.append(a)
-                specs.append(None)
         iter_args = raw
 
     def rewrap(values):
@@ -100,23 +96,16 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs) -> Iterator[Any]:
                 out.append(chunk[0])
         return out[0] if len(out) == 1 else tuple(out)
 
-    if not packers:
-        # Shadow any enclosing loop's specs so a yield_ in this body is not
-        # checked against them.
-        _push_specs(None)
-        try:
-            yield from _for(
-                *args, iter_args=iter_args, insert_yield=insert_yield, **kwargs
-            )
-        finally:
-            _pop_specs()
-        return
-
-    _push_specs(specs)
+    # A loop without iter_args still shadows any enclosing loop's specs, so a
+    # yield_ in its body is not checked against them.
+    _push_specs([waited for _, _, waited in packers] if packers else None)
     try:
         for vals in _for(
             *args, iter_args=iter_args, insert_yield=insert_yield, **kwargs
         ):
+            if not packers:
+                yield vals
+                continue
             if not raw:
                 iv, a, results = vals, (), ()
             else:

@@ -10,6 +10,7 @@ from typing import NamedTuple, get_args
 
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.dataflow import StreamDims
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit.markers import In, InOut, Out
@@ -383,8 +384,6 @@ class _CascadeMatrixKernel(MatrixKernel):
 
 def _blocked(rows: int, cols: int, tile_rows: int, tile_cols: int) -> list:
     """``to_stream`` walking a ``(rows, cols)`` tensor in tile-sized blocks."""
-    from aie.helpers.taplib import TensorAccessPattern
-
     grid = TensorAccessPattern.full((rows, cols)).tile((tile_rows, tile_cols))
     return list(grid.tap.transformation_dims)
 
@@ -410,8 +409,6 @@ def mm_stream_dims(
     ``c_col_maj`` a C tile emitted as ``(n, m)``, matching the kernel's
     ``-DB_COL_MAJ`` / ``-DC_COL_MAJ`` builds.
     """
-    from aie.helpers.taplib import TensorAccessPattern
-
     r, s, t = mac_dims
     m, k, n = dim_m, dim_k, dim_n
     # A and B are read row-major and emitted as (r x s) / (s x t) blocks.

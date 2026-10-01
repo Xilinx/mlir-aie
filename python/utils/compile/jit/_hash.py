@@ -367,12 +367,7 @@ def _compute_hash(
     work_dir: Path | None = None,
     mlir_text: str | None = None,
 ) -> str:
-    """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes.
-
-    ``mlir_text`` is the generated design; the recipe hash covers the
-    generator's own code but not the helpers it calls, so an edit reaching
-    the design only through a helper changes the key through the MLIR.
-    """
+    """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes (+ ``mlir_text``)."""
     recipe = _compute_recipe_hash(
         generator,
         compile_kwargs,

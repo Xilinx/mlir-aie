@@ -385,9 +385,6 @@ class ObjectFifo(Resolvable):
             else:
                 depth = self._depth
 
-        from_stream = _as_stream_dims(from_stream)
-        if from_stream is None:
-            from_stream = self._from_stream_per_cons
         self._cons.append(
             ObjectFifoHandle(
                 self,

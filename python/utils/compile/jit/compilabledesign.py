@@ -553,10 +553,11 @@ class CompilableDesign:
             inst_exists = companion_path is not None and companion_path.exists()
 
             if explicit_paths:
-                build_key = self._explicit_build_key(
+                build_key = self._compute_cache_hash(
                     full_elf=False,
                     emit_elf=elf_path is not None,
                     work_dir=kernel_dir,
+                    include_mlir=True,
                 )
                 dispatch_library = companion_path if has_dispatch else None
                 outputs = {
@@ -776,7 +777,9 @@ class CompilableDesign:
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
-                build_key = self._explicit_build_key(full_elf=True, work_dir=kernel_dir)
+                build_key = self._compute_cache_hash(
+                    full_elf=True, work_dir=kernel_dir, include_mlir=True
+                )
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"full_elf": elf_path}
                 ):
@@ -906,8 +909,8 @@ class CompilableDesign:
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
-                build_key = self._explicit_build_key(
-                    full_elf=False, work_dir=kernel_dir
+                build_key = self._compute_cache_hash(
+                    full_elf=False, work_dir=kernel_dir, include_mlir=True
                 )
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"insts": inst_path}
@@ -1455,13 +1458,11 @@ class CompilableDesign:
         # Generation is cached per design, so only the first lookup in a
         # process pays for it, even on a disk hit (~50-100 ms for the
         # 4-column whole-array GEMM); __hash__ (identity) leaves it out.
+        if full_elf is None:
+            full_elf = self.full_elf
         design_text = None
         if include_mlir:
-            design_text = _design_key_text(
-                *self._generated_for(
-                    full_elf=self.full_elf if full_elf is None else full_elf
-                )
-            )
+            design_text = _design_key_text(*self._generated_for(full_elf=full_elf))
         return _compute_hash(
             self.mlir_generator,
             self.compile_kwargs,
@@ -1469,7 +1470,7 @@ class CompilableDesign:
             self.object_files,
             self.aiecc_flags,
             self.compile_flags,
-            self.full_elf if full_elf is None else full_elf,
+            full_elf,
             self._resolve_fold_ddr_addr_offset(),
             bool(self.dispatch_params),
             self.include_paths,
@@ -1477,18 +1478,6 @@ class CompilableDesign:
             emit_elf,
             work_dir,
             design_text,
-        )
-
-    def _explicit_build_key(
-        self,
-        *,
-        full_elf: bool,
-        emit_elf: bool = False,
-        work_dir: Path | None = None,
-    ) -> str:
-        """Identify an explicit-path build by everything it reads but its recorded inputs."""
-        return self._compute_cache_hash(
-            full_elf=full_elf, emit_elf=emit_elf, work_dir=work_dir, include_mlir=True
         )
 
     def _reuse_explicit_outputs(
