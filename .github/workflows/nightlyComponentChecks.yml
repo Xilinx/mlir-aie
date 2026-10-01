@@ -29,7 +29,7 @@ defaults:
 
 env:
   DEBIAN_FRONTEND: noninteractive
-  PERF_PMODE: performance
+  PERF_PMODE: turbo
 
 jobs:
   seed-sweep:
@@ -107,7 +107,7 @@ jobs:
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON"
           ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
 
-      - name: NPU preflight and preferred performance mode
+      - name: NPU preflight and power mode
         id: preflight
         run: |
           sudo prlimit -lunlimited --pid $$
@@ -119,12 +119,13 @@ jobs:
           BDF=$(printf '%s\n' "$EXAMINE" | grep -oE '\[[0-9a-f:.]+\]' | head -1 | tr -d '[]')
           [ -n "$BDF" ]
           echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
-          if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$PERF_PMODE"; then
-            :
-          else
-            echo "::warning::Cannot set --pmode $PERF_PMODE non-interactively with $XRT_SMI; the hardware check will continue and record the active mode"
+          # The bench runners set turbo at boot (see nightlyKernelChecks.yml),
+          # so this only records the mode the check runs in.
+          PLATFORM=$("$XRT_SMI" examine -d "$BDF" --report platform)
+          printf '%s\n' "$PLATFORM"
+          if ! grep -qiE "mode[[:space:]]*:[[:space:]]*$PERF_PMODE\b" <<<"$PLATFORM"; then
+            echo "::warning::Device is not in --pmode $PERF_PMODE; the check continues in the mode recorded above"
           fi
-          "$XRT_SMI" examine -d "$BDF" --report platform
 
       - name: Run the mobilenet seed check
         if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}

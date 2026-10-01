@@ -2,11 +2,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""MobileNet V3 — IRON API rewrite.
+"""MobileNet V3 on the IRON API.
 
-Replaces the placed-dialect implementation in aie2_mobilenet.py with the
-high-level IRON API.  Computation is organized by block family, each in
-its own sibling module under `bottleneck/`:
+Computation is organized by block family, each in its own sibling module
+under `bottleneck/`:
 
   init.py      — 3x3 stride-2 input conv
   regular.py   — bn0–bn9  (single compute tile per block)
@@ -55,9 +54,6 @@ from aie.utils.verify import Tolerance, compare
 from . import mb_utils
 from .bottleneck._common import sa_placer_flags
 from .bottleneck.cascade import cascade_bottlenecks
-
-# Sibling imports below resolve via the script's parent dir (auto-added
-# to sys.path[0] when invoked as ``python3 .../aie2_mobilenet_iron.py``).
 from .bottleneck.init import init_conv
 from .bottleneck.pipeline import pipeline_bottlenecks
 from .bottleneck.post_l1 import post_l1

@@ -54,7 +54,8 @@ the same for a kernel in your own design; only the drivers change:
 
 Every rule and lever holds either way. The MobileNet, ResNet and llama
 numbers below are examples of a consumer design exercising a kernel, not
-requirements; the short hashes cite the mlir-aie commits that measured them.
+requirements; the short hashes cite the mlir-aie commits that measured them
+(`git fetch origin pull/3807/head` brings them in after the squash merge).
 
 ## Workflow
 

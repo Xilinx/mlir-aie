@@ -33,7 +33,7 @@ Open in this order to grasp the design:
 From `programming_examples/ml`:
 
 ```bash
-python3 -m mobilenet.aie2_mobilenet_iron                  # compile, run 5 launches, verify
+python3 -m mobilenet.aie2_mobilenet_iron                  # compile, 20 warmup + 5 timed launches, verify
 python3 -m mobilenet.aie2_mobilenet_iron -w 2 -i 20       # warmup / timed launches
 python3 -m mobilenet.test_e2e block bn3                   # one bottleneck standalone
 python3 -m mobilenet.test_e2e chain cascade               # bn13 -> bn14
