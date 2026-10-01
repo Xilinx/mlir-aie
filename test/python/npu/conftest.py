@@ -3,11 +3,14 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-from contextlib import contextmanager
+import copy
 import re
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 
 import pytest
+
+_controller_config = None
 
 # Tests in this directory run under both host runtimes (the %run_on_npu*_xrt%
 # and %run_on_npu2_hrx% RUN lines). A few exercise features the HRX backend does
@@ -33,6 +36,8 @@ def pytest_configure(config):
     rootdir -- and pytest does not read a conftest.py above the rootdir.
     Without this, every run of these tests warns about an unknown mark.
     """
+    global _controller_config
+    _controller_config = config
     config.addinivalue_line(
         "markers",
         "extensive: the full sweep (every case x edge data x seed); deselect with "
@@ -50,6 +55,43 @@ def pytest_configure(config):
     config._perf_rows = []
     config._perf_meta = {}
     config._error_report = {}
+    config._reported_perf_rows = 0
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    if hasattr(item.config, "workerinput"):
+        report = outcome.get_result()
+        if report.when != "call" and not report.failed:
+            return
+        first_unreported = item.config._reported_perf_rows
+        report.npu_perf_rows = copy.deepcopy(item.config._perf_rows[first_unreported:])
+        item.config._reported_perf_rows = len(item.config._perf_rows)
+        report.npu_perf_meta = copy.deepcopy(item.config._perf_meta)
+        report.npu_error_report = item.config._error_report
+        item.config._error_report = {}
+
+
+def _merge_dict(destination, source):
+    for key, value in source.items():
+        if isinstance(value, dict) and isinstance(destination.get(key), dict):
+            _merge_dict(destination[key], value)
+        else:
+            destination[key] = value
+
+
+def pytest_runtest_logreport(report):
+    config = _controller_config
+    if config is None or hasattr(config, "workerinput"):
+        return
+    rows = getattr(report, "npu_perf_rows", ())
+    if rows:
+        rows_by_name = {row["name"]: row for row in config._perf_rows}
+        rows_by_name.update((row["name"], row) for row in rows)
+        config._perf_rows = list(rows_by_name.values())
+    _merge_dict(config._perf_meta, getattr(report, "npu_perf_meta", {}))
+    config._error_report.update(getattr(report, "npu_error_report", {}))
 
 
 def _running_on_hrx() -> bool:
@@ -202,6 +244,8 @@ def pytest_sessionfinish(session, exitstatus):
     from pathlib import Path
 
     config = session.config
+    if hasattr(config, "workerinput"):
+        return
     rows = getattr(config, "_perf_rows", [])
     meta = getattr(config, "_perf_meta", {})
     reporter = config.pluginmanager.get_plugin("terminalreporter")

@@ -7,9 +7,9 @@
 
 import importlib.util
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
-import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -166,3 +166,43 @@ def test_case_names_with_nested_options_are_preserved(hooks, tmp_path):
     case = "mm/64x32x64x4/bfloat16_float32/b_col_maj=True"
     path = report(tmp_path, [(f"test_kernel_extensive[{case}/random/s2]", None)])
     assert hooks._checked_cases(path) == ({case}, [])
+
+
+def test_xdist_report_merges_worker_results(hooks):
+    config = SimpleNamespace(_perf_rows=[], _perf_meta={})
+    hooks._controller_config = config
+    hooks.pytest_runtest_logreport(
+        SimpleNamespace(
+            npu_perf_rows=[{"name": "softmax/cycles", "value": 100}],
+            npu_perf_meta={
+                "preflight": {"npu": "npu2"},
+                "baseline": {"cases": {"softmax": {"cycles": [110, 100]}}},
+            },
+        )
+    )
+    hooks.pytest_runtest_logreport(
+        SimpleNamespace(
+            npu_perf_rows=[
+                {"name": "softmax/cycles", "value": 99},
+                {"name": "relu/cycles", "value": 50},
+            ],
+            npu_perf_meta={
+                "measurement_sane": True,
+                "baseline": {"cases": {"relu": {"cycles": [55, 50]}}},
+            },
+        )
+    )
+    assert config._perf_rows == [
+        {"name": "softmax/cycles", "value": 99},
+        {"name": "relu/cycles", "value": 50},
+    ]
+    assert config._perf_meta == {
+        "preflight": {"npu": "npu2"},
+        "measurement_sane": True,
+        "baseline": {
+            "cases": {
+                "softmax": {"cycles": [110, 100]},
+                "relu": {"cycles": [55, 50]},
+            }
+        },
+    }
