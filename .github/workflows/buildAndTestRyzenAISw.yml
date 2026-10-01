@@ -138,7 +138,6 @@ jobs:
                 -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
                 -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
                 -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-                -DCMAKE_BUILD_TYPE=Release \
                 -DXRT_ROOT=/opt/xilinx/xrt \
                 -DAIE_ENABLE_PYTHON_PASSES=OFF \
                 -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
