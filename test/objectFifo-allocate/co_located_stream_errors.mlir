@@ -25,9 +25,11 @@ module @existing_dest {
     // expected-error @+1 {{number of input Core channels exceeded}}
     %alias = aie.logical_tile<CoreTile>(0, 2)
     %source = aie.tile(1, 0)
+    // expected-note @+1 {{the other circuit flow is here}}
     aie.flow(%source, DMA : 1, %home, Core : 0)
     aie.route_endpoint @source(%source) DMA
     aie.route_endpoint @dest(%alias) Core {channelIndex = 0 : i32}
+    // expected-error @+1 {{ends at (0, 2) Core : 0, where another circuit flow ends; a port takes one circuit}}
     aie.route from @source to [@dest]
   }
 }
