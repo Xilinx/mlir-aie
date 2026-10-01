@@ -11,19 +11,26 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIE/Transforms/AIERoutingDiagnostics.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/IntEqClasses.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <functional>
 #include <limits>
 #include <map>
 #include <optional>
 #include <set>
+#include <string>
 #include <tuple>
+#include <vector>
 
 namespace xilinx::AIE {
 
@@ -185,7 +192,7 @@ struct PathEndPoint {
 
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                        const PathEndPoint &s) {
-    return os << "PathEndPoint(" << s.coords << ": " << s.port << ")";
+    return os << describeTilePort(s.coords, s.port);
   }
 
   bool operator<(const PathEndPoint &rhs) const {
@@ -224,9 +231,9 @@ struct SwitchSetting {
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                        const SwitchSetting &s) {
     os << "{";
-    llvm::interleaveComma(s.srcs, os);
-    os << " -> {";
-    llvm::interleaveComma(s.dsts, os);
+    llvm::interleaveComma(llvm::map_range(s.srcs, describePort), os);
+    os << "} -> {";
+    llvm::interleaveComma(llvm::map_range(s.dsts, describePort), os);
     return os << "}";
   }
 

@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h"
+#include "aie/Dialect/AIE/Transforms/AIERoutingDiagnostics.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -1291,16 +1292,6 @@ SmallVector<std::string> StreamDeadlockAnalysis::assumptions(size_t f,
           ", so it is assumed to wait on anything on its tile" +
           (graph.getAgent(a).onShim ? " or on another shim tile." : "."));
   return assumed;
-}
-
-std::string AIE::describePort(Port port) {
-  return llvm::formatv("{0}:{1}", stringifyWireBundle(port.bundle),
-                       port.channel);
-}
-
-std::string AIE::describeTilePort(TileID tile, Port port) {
-  return llvm::formatv("({0}, {1}) {2}", tile.col, tile.row,
-                       describePort(port));
 }
 
 std::string AIE::describeStream(const RoutedStream &stream) {

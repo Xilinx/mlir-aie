@@ -132,12 +132,6 @@ std::vector<RoutedStream> traceRoutedStreams(DeviceOp device);
 /// destination and packet id, before any of them is routed.
 std::vector<RoutedStream> requestedStreams(DeviceOp device);
 
-/// Names a port the way diagnostics do, e.g. "DMA:1".
-std::string describePort(Port port);
-
-/// Names a tile port the way diagnostics do, e.g. "(0, 2) DMA:1".
-std::string describeTilePort(TileID tile, Port port);
-
 /// Names the stream by its endpoints and packet id, e.g.
 /// "packet flow (0, 1) DMA:0 -> (0, 2) DMA:1 (id 3)".
 std::string describeStream(const RoutedStream &stream);

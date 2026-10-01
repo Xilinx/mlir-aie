@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
-#include "aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h"
+#include "aie/Dialect/AIE/Transforms/AIERoutingDiagnostics.h"
 #include "d_ary_heap.h"
 
 #include "llvm/ADT/MapVector.h"
@@ -897,11 +897,9 @@ std::string Pathfinder::explainNoRouting(const RouteState &st) const {
     prioritized = prioritized ? prioritized : &f;
     for (const auto &[_, hop] : st.treeOf[k]) {
       if (overused(*hop.second.sb)) {
-        return "packet flows from " +
-               describeTilePort(f.src.coords, f.src.port) +
-               " are prioritized (priority_route), so they keep the route "
-               "they take alone, and it holds a channel " +
-               link(*hop.second.sb) + " the other flows need.";
+        return describePrioritized(describeTilePort(f.src.coords, f.src.port)) +
+               ", and it holds a channel " + link(*hop.second.sb) +
+               " the other flows need.";
       }
       if (hop.second.sb->srcCoords != hop.second.sb->dstCoords)
         held.insert(hop.second.sb);
@@ -910,15 +908,13 @@ std::string Pathfinder::explainNoRouting(const RouteState &st) const {
   if (prioritized && llvm::any_of(graph, [&](const auto &entry) {
         return overused(entry.second);
       })) {
-    std::string reason =
-        "packet flows from " +
-        describeTilePort(prioritized->src.coords, prioritized->src.port) +
-        " are prioritized (priority_route), so they keep the route they take "
-        "alone, and the router found no routing for the other flows around "
-        "the channels it holds";
-    for (auto [i, sb] : llvm::enumerate(held))
-      reason += (i ? ", " : " ") + link(*sb);
-    return reason + ".";
+    return describePrioritized(describeTilePort(prioritized->src.coords,
+                                                prioritized->src.port)) +
+           ", and the router found no routing for the other flows around the "
+           "channels it holds " +
+           joinNames(llvm::to_vector(
+               llvm::map_range(llvm::make_pointee_range(held), link))) +
+           ".";
   }
   // The routing check says more than the overuse it led to.
   if (!checkReason.empty())
@@ -975,16 +971,7 @@ std::string Pathfinder::explainNoRouting(const RouteState &st) const {
   if (users.empty()) {
     return "the router found no routing that fits " + where + ".";
   }
-  constexpr size_t shown = 4;
-  if (users.size() > shown) {
-    size_t more = users.size() - shown;
-    users.resize(shown);
-    users.push_back(std::to_string(more) + " more");
-  }
-  std::string reason = "the flows from ";
-  for (auto [k, user] : llvm::enumerate(users))
-    reason += (k == 0 ? "" : k + 1 == users.size() ? " and " : ", ") + user;
-  return reason + " need " + where +
+  return "the flows from " + joinNames(users) + " need " + where +
          ", and the router found no routing that fits them.";
 }
 

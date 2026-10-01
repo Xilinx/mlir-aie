@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
+#include "aie/Dialect/AIE/Transforms/AIERoutingDiagnostics.h"
 #include "aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h"
 
 #include "mlir/IR/PatternMatch.h"
@@ -1428,16 +1429,11 @@ void PacketFlowRouting::collectFlows() {
         if (!srcRouted && !incomplete)
           incomplete = {
               pktFlowOp,
-              llvm::formatv("packet flow source ({0}, {1}) {2}{3} could not be "
-                            "routed to destination ({4}, {5}) {6}{7}; the "
-                            "pathfinder produced an incomplete routing for "
-                            "this placement.",
-                            srcCoords.col, srcCoords.row,
-                            stringifyWireBundle(srcPort.bundle),
-                            srcPort.channel, destCoords.col, destCoords.row,
-                            stringifyWireBundle(destPort.bundle),
-                            destPort.channel)
-                  .str()};
+              "packet flow source " + describeTilePort(srcCoords, srcPort) +
+                  " could not be routed to destination " +
+                  describeTilePort(destCoords, destPort) +
+                  "; the pathfinder produced an incomplete routing for this "
+                  "placement."};
       }
     }
   }
@@ -2615,16 +2611,13 @@ void AIEPathfinderPass::runOnOperation() {
                 routeRelaxing(free, freeAnalyzer, freeConflicts, {})) {
           llvm::consumeError(std::move(freeErr));
         } else {
-          std::string sources;
-          for (auto [i, src] : llvm::enumerate(prioritized))
-            sources += (i == 0                        ? ""
-                        : i + 1 == prioritized.size() ? " and "
-                                                      : ", ") +
-                       describeTilePort(src.coords, src.port);
-          f.reason = "packet flows from " + sources +
-                     " are prioritized (priority_route), so they keep the "
-                     "route they take alone, and the other flows route only "
-                     "if it moves. Around it, " +
+          f.reason = describePrioritized(llvm::to_vector(llvm::map_range(
+                         prioritized,
+                         [](const PathEndPoint &src) {
+                           return describeTilePort(src.coords, src.port);
+                         }))) +
+                     ", and the other flows route only if it moves. Around "
+                     "it, " +
                      f.reason;
         }
       }
