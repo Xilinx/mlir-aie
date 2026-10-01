@@ -369,6 +369,17 @@ symbol reaches against `trace=`. Markers in a sibling kernel of the same
 file, around an inner loop, or skipped by an early return do not count as
 `whole_call`.
 
+A pull request that touches `aie_kernels/`, `python/iron/kernels/` or the
+case table gets one comment, updated on each push, that lists each new or
+changed factory with its contract, trace and cases, and what it still
+lacks. [`utils/kernel_checks/contribution.py`](../utils/kernel_checks/contribution.py)
+writes it by reading the files, never running them; it is a reminder and
+never fails the pull request. To see it before pushing:
+
+```bash
+python3 utils/kernel_checks/contribution.py --base origin/main --head HEAD
+```
+
 ## Testing, performance and static checks
 
 Every tier below reads the contract and the case table; none restates
