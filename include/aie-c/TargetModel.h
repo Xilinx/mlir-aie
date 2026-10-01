@@ -140,6 +140,18 @@ aieTargetModelGetNumLocks(AieTargetModel targetModel, int col, int row);
 MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumBDs(AieTargetModel targetModel,
                                                     int col, int row);
 
+/// Largest value a lock register holds.
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetMaxLockValue(AieTargetModel targetModel);
+
+/// Largest repeat count one DMA task queue push can carry (unsupported = 0).
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetMaxRepeatCount(AieTargetModel targetModel);
+
+/// How many tasks one DMA channel's task queue holds (unsupported = 0).
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetDmaTaskQueueDepth(AieTargetModel targetModel);
+
 /// Field widths of a DMA buffer descriptor, which differ by tile type. The step
 /// field counts address granules, not elements -- see
 /// aieGetTargetModelAddressGenGranularity.

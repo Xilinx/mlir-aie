@@ -11,6 +11,7 @@
 
 include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "aie/Dialect/AIE/IR/AIEInterfaces.td"
+include "aie/Dialect/AIEX/IR/AIEXInterfaces.td"
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
@@ -129,7 +130,7 @@ and launch them onto a tile's DMA task queue.
 | `aiex.npu.writebd` | Write a complete buffer descriptor (all fields explicit: buffer length/offset, the `d0..d2` sizes/strides, iteration, lock acquire/release, packet header, next-BD) to a BD slot on a tile. The low-level form behind `dma_memcpy_nd`. | any tile with a DMA engine (shim, mem, core) | `aiex.npu.writebd {column = 0 : i32, row = 0 : i32, bd_id = 0 : i32, buffer_length = 1024 : i32, /* ... */}` |
 | `aiex.npu.push_queue` | Push a BD id onto a tile channel's task queue to launch it, with an outer-dimension `repeat_count` and optional completion token. | any tile channel; `MM2S` / `S2MM` | `aiex.npu.push_queue(0, 0, MM2S : 0) bd_id %bd repeat %rep {issue_token = false} : i32, i32` |
 | `aiex.npu.address_patch` | Patch a runtime buffer address into the instruction stream: takes runtime argument `arg_idx` plus `arg_plus` offset and writes it into a BD address field. Used to bind host buffers whose address is only known at launch. | shim BD addresses | `aiex.npu.address_patch(%off : i32) {addr = 0 : ui32, arg_idx = 0 : i32}` |
-| `aiex.npu.assert_bd_field` *(compiler-emitted)* | Guard a runtime BD-field value against its hardware field width (`value <= max`); emitted by the dynamic DMA lowering when a runtime scalar lands in a narrow BD field (e.g. a 10-bit wrap). On the host-C++ path it aborts stream generation for an out-of-range value; on the binary path `value` is a verified constant and it is a no-op. | dynamic-BD lowering path | `aiex.npu.assert_bd_field(%v) {max = 1023 : i32} : i32` |
+| `aiex.npu.assert_bd_field` *(compiler-emitted)* | Guard a runtime BD-field value against its hardware field width (`min <= value <= max`, `min` defaulting to 0); emitted by the dynamic DMA lowering when a runtime scalar lands in a narrow BD field (e.g. a 10-bit wrap). On the host-C++ path it aborts stream generation for an out-of-range value; on the binary path `value` is a verified constant and it is a no-op. | dynamic-BD lowering path | `aiex.npu.assert_bd_field(%v) {max = 1023 : i32} : i32` |
 | `aiex.npu.assert_bd_divisible` *(compiler-emitted)* | Guard a runtime BD size/stride against the address-gen granule (`value % divisor == 0`, or `value == 1` when `allow_unit`); emitted by the dynamic DMA lowering. Same host-C++ / binary behavior as `assert_bd_field`. | dynamic-BD lowering path | `aiex.npu.assert_bd_divisible(%v) {divisor = 4 : i32} : i32` |
 
 See [Section 2d](programming_guide/section-2/section-2d/DMATasks.md) for a full
@@ -150,8 +151,8 @@ compiler allocates the BD ids for you.
 | `aiex.dma_free_task` | Tell the BD allocator the task's BD ids may be reused. Only safe once the task is known complete. | the task's tile/channel | `aiex.dma_free_task(%t)` |
 | `aiex.dma_start_bd_chain` | Materialize an abstract `aie.bd_chain` with concrete arguments as a task on `tile`/`direction`/`channel` and start it immediately. | any tile; `MM2S` / `S2MM` | `%t = aiex.dma_start_bd_chain @chain(%a) : (memref<32xi32>) on (%tile, MM2S, 0)` |
 | `aiex.dma_start_bd_chain_for` | As `dma_start_bd_chain`, but the endpoint is a referenced `aie.shim_dma_allocation` symbol. | shim (via allocation) | `%t = aiex.dma_start_bd_chain_for @chain(%a) : (memref<32xi32>) for @alloc` |
-| `aiex.dma_bd_pool_pop` *(compiler-emitted)* | Draw a free BD id from the per-tile runtime free-list pool and return it as an SSA value: the dynamic counterpart to the static BD-id allocator, inserted by the `aie-lower-dynamic-bd-pool` pass inside a runtime-bound `scf.for`. | any tile (dynamic-BD path) | `%bd = aiex.dma_bd_pool_pop(0, 0) : i32` |
-| `aiex.dma_bd_pool_push` *(compiler-emitted)* | Return a BD id obtained from `dma_bd_pool_pop` to the per-tile pool for reuse: the dynamic counterpart to `dma_free_task`. | any tile (dynamic-BD path) | `aiex.dma_bd_pool_push(0, 0) bd_id %bd : i32` |
+| `aiex.dma_bd_pool_pop` *(compiler-emitted)* | Draw a free BD id from a tile's runtime free-list pool for the ids `[bd_begin, bd_end)` and return it as an SSA value: the dynamic counterpart to the static BD-id allocator, inserted by the `aie-lower-dynamic-bd-pool` pass inside a runtime-bound `scf.for`. | any tile (dynamic-BD path) | `%bd = aiex.dma_bd_pool_pop(0, 1) partition [0, 24) : i32` |
+| `aiex.dma_bd_pool_push` *(compiler-emitted)* | Return a BD id obtained from `dma_bd_pool_pop` to its pool for reuse: the dynamic counterpart to `dma_free_task`. | any tile (dynamic-BD path) | `aiex.dma_bd_pool_push(0, 1) partition [0, 24) bd_id %bd : i32` |
 
 ### 4. Synchronization (wait on a task-complete token)
 
@@ -795,29 +796,33 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
 def AIE_NpuAssertBdFieldOp : AIEX_Op<"npu.assert_bd_field", []> {
   let summary =
       "Guard a runtime BD-field value against its hardware field width";
-  let arguments = (ins I32:$value, I32Attr:$max);
+  let arguments = (ins AnyTypeOf<[I32, I64]>:$value, I32Attr:$max,
+      DefaultValuedAttr<I32Attr, "0">:$min);
   let results = (outs);
   let assemblyFormat = [{
     `(` $value `)` attr-dict `:` type($value)
   }];
   let description = [{
     Asserts, at TXN-build time, that a runtime value assigned to a buffer-
-    descriptor field fits its hardware field: `value <= max`. Emitted by the
-    dynamic DMA lowering for a runtime scalar landing in a narrow field (e.g. the
-    10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would silently
-    truncate an out-of-range value.
+    descriptor field fits its hardware field: `min <= value <= max`. Emitted by
+    the dynamic DMA lowering for a runtime scalar landing in a narrow field
+    (e.g. the 10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would
+    silently truncate an out-of-range value. The queue push's 8-bit
+    repeat_count is guarded the same way, and a runtime transfer length gets a
+    `min` of one address-gen granule.
 
     This op only ever appears on the dynamic (runtime-value) DMA lowering path;
     a fully static sequence never produces it. When `value` is a constant, the
-    verifier hard-errors if it exceeds `max`, so it is caught at compile time.
+    verifier hard-errors if it is outside `[min, max]`, so it is caught at
+    compile time.
 
     The TXN instruction stream has no on-device trap, so a runtime guard runs
     host-side in the generated C++ TXN builder: --aie-npu-to-cpp lowers this op
-    to an early `if (value > max) return std::nullopt;` so the builder yields no
-    stream for an illegal value instead of a corrupt one. On the binary
-    (--aie-npu-to-binary) path `value` is always a verified constant, so the op
-    carries no runtime check and is emitted as a no-op (skipped, contributing no
-    TXN words).
+    to an early `if (value < min || value > max) return std::nullopt;` so the
+    builder yields no stream for an illegal value instead of a corrupt one. On
+    the binary (--aie-npu-to-binary) path `value` is always a verified
+    constant, so the op carries no runtime check and is emitted as a no-op
+    (skipped, contributing no TXN words).
   }];
   let hasVerifier = 1;
 }
@@ -1280,7 +1285,7 @@ def AIE_NpuLoadPdiOp : AIEX_Op<"npu.load_pdi", []> {
 
 def AIE_DMAConfigureTaskOp
     : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">,
-                                     TileElement]>,
+                                     TileElement, DMAConfigureTaskLike]>,
       Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task "
                 "on a Channel and Direction on a Tile";
@@ -1290,6 +1295,8 @@ def AIE_DMAConfigureTaskOp
     Such configurations are generated by materializing abstract aie.bd_chains using aiex.start_task, or can be created manually using this op.
 
     Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
+
+    An `aie.dma_bd` in a task may give more than 4 dimensions when all are constant; `aie-decompose-large-dma-bd` iterates every one past the innermost three.
   }];
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
@@ -1345,13 +1352,38 @@ def AIE_DMAConfigureTaskOp
     }]>];
 }
 
+// The tile is only known once the symbol resolves, so the buffers the body
+// names are checked on the dma_configure_task it becomes.
 def AIE_DMAConfigureTaskForOp
-    : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">,
-                                         DeclareOpInterfaceMethods<
-                                             SymbolUserOpInterface>]>,
+    : AIEX_Op<"dma_configure_task_for",
+              [HasAncestor<"AIE::RuntimeSequenceOp">,
+               DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+               SkipAccessibilityCheckTrait, DMAConfigureTaskLike]>,
       Results<(outs Index:$result)> {
   let summary = "As dma_configure_task, but specify tile, direction and "
-                "channel by reference to a Shim DMA allocation op";
+                "channel by reference to a Shim DMA allocation op or a route "
+                "endpoint";
+  let description = [{
+    `alloc` names either an `aie.shim_dma_allocation` or an
+    `aie.route_endpoint` with a `DMA` bundle. An endpoint may be on any tile:
+    `--aie-objectfifo-allocate` picks its channel and rewrites this op to an
+    `aiex.dma_configure_task` on that tile and channel. The direction is the
+    one the endpoint's route gives it. A shim endpoint with a `fifoName` is
+    instead renamed to the `aie.shim_dma_allocation` allocation records for it.
+
+    Example:
+    ```
+      aie.route_endpoint @b_in(%memtile) DMA
+      aie.route from @b_shim to [@b_in]
+      aie.runtime_sequence(...) {
+        %t = aiex.dma_configure_task_for @b_in {
+          aie.dma_bd(%buf : memref<1024xi32>, 0, 1024)
+          aie.end
+        }
+        aiex.dma_start_task(%t)
+      }
+    ```
+  }];
 
   let arguments = (ins SymbolRefAttr:$alloc,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
@@ -1382,6 +1414,8 @@ def AIE_DMAFreeTaskOp
   let description = [{
     This operation informs the static buffer descriptor allocator pass in the compiler that the buffer descriptor IDs it has allocated to the BDs inside the referenced task can be reused thereafter.
 
+    With the `reclaim-bds` option of `aie-assign-runtime-sequence-bd-ids`, freeing is optional for a started task: when a tile runs out of BD ids, the pass takes them back from a started task that was never freed, once a poll of its channel's status proves it finished. A later `dma_free_task` of such a task is a no-op. The pass cannot see dependencies through cores or other tiles, so a task it may have to wait on must not depend on a push issued after it.
+
     Potential future implementations of dynamic buffer descriptor allocators may lower this to a `free` instruction.
   }];
   let arguments = (ins Index:$task);
@@ -1405,21 +1439,46 @@ def AIE_DMAStartTaskOp
   let description = [{
     Submits the referenced task for execution on the tile, channel and direction it has been configured to run on.
     Once submitted, if the task is configured to issue a token, you can await completion of the task using `aiex.await_task`.
+
+    A task may be started more than once; each start is one queue push. For
+    this start only, `repeat_count` replaces the task's repeat count and
+    `no_token` withholds its token. A constant repeat count past the target's
+    maximum is split into several pushes by `aie-split-long-repeats`.
   }];
 
-  let arguments = (ins Index:$task);
+  let arguments = (ins Index:$task, OptionalAttr<I32Attr>:$repeat_count,
+      UnitAttr:$no_token);
 
   let assemblyFormat = [{
     `(` $task `)` attr-dict
   }];
 
+  let builders = [OpBuilder<(ins "mlir::Value":$task), [{
+    build($_builder, $_state, task, /*repeat_count=*/nullptr,
+          /*no_token=*/nullptr);
+  }]>];
+
   let extraClassDeclaration = [{
     DMAConfigureTaskOp getTaskOp();
+    // The repeat count this push carries: the start's override if present,
+    // else the task's (a runtime operand or the compile-time attribute).
+    mlir::OpFoldResult getPushRepeatCount(DMAConfigureTaskOp task);
+    bool getPushIssueToken(DMAConfigureTaskOp task) {
+      return task.getIssueToken() && !getNoToken();
+    }
   }];
 
   let extraClassDefinition = [{
     DMAConfigureTaskOp DMAStartTaskOp::getTaskOp() { return dyn_cast_or_null<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+    mlir::OpFoldResult DMAStartTaskOp::getPushRepeatCount(DMAConfigureTaskOp task) {
+      if (std::optional<uint32_t> rc = getRepeatCount())
+        return mlir::IntegerAttr::get(
+            mlir::IntegerType::get(getContext(), 32), *rc);
+      return task.getRepeatCountValue();
+    }
   }];
+
+  let hasVerifier = 1;
 }
 
 def AIE_DMAAwaitTaskOp
@@ -1460,13 +1519,19 @@ def AIE_DMAAwaitTaskOp
 def AIE_DMABdPoolPopOp
     : AIEX_Op<"dma_bd_pool_pop", [HasAncestor<"AIE::RuntimeSequenceOp">]>,
       Results<(outs I32:$bd_id)> {
-  let summary = "Pop a free Buffer Descriptor ID from the runtime free-list "
-                "pool for a tile";
+  let summary = "Pop a free Buffer Descriptor ID from a runtime free-list "
+                "pool";
   let description = [{
-    Draws a buffer-descriptor ID from the per-tile runtime free-list pool and
-    returns it as an SSA value. This is the dynamic counterpart to the static
-    BD-ID allocator: inside a runtime-bound `scf.for` the ID is chosen at
-    runtime rather than baked at compile time.
+    Draws a buffer-descriptor ID from the runtime free-list pool that holds the
+    IDs `[bd_begin, bd_end)` of a tile and returns it as an SSA value. This is
+    the dynamic counterpart to the static BD-ID allocator: inside a
+    runtime-bound `scf.for` the ID is chosen at runtime rather than baked at
+    compile time.
+
+    The pool is named by its ID range rather than by its tile or channel,
+    because the range is what the channel can submit: a mem tile gives its even
+    channels the low half of its BD table and its odd channels the high half.
+    Every op naming the same tile and range shares one pool.
 
     Only meaningful on the dynamic EmitC lowering path (the static binary TXN
     stream has no runtime pool). The `aie-lower-dynamic-bd-pool` pass inserts
@@ -1475,33 +1540,40 @@ def AIE_DMABdPoolPopOp
     (`std::nullopt`).
   }];
 
-  let arguments = (ins I32Attr:$column, I32Attr:$row);
+  let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$bd_begin,
+      I32Attr:$bd_end);
 
   let assemblyFormat = [{
-    `(` $column `,` $row `)` attr-dict `:` type($bd_id)
+    `(` $column `,` $row `)` `partition` ` ` `[` $bd_begin `,` $bd_end `)`
+    attr-dict `:` type($bd_id)
   }];
+
+  let hasVerifier = 1;
 }
 
 def AIE_DMABdPoolPushOp
     : AIEX_Op<"dma_bd_pool_push", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
-  let summary =
-      "Return a Buffer Descriptor ID to the runtime free-list pool for a tile";
+  let summary = "Return a Buffer Descriptor ID to a runtime free-list pool";
   let description = [{
     Returns a buffer-descriptor ID previously obtained from
-    `aiex.dma_bd_pool_pop` to the per-tile runtime free-list pool, making it
-    available for reuse. This is the dynamic counterpart to the static
-    allocator's free/await recycling.
+    `aiex.dma_bd_pool_pop` to the pool for IDs `[bd_begin, bd_end)` of a tile,
+    making it available for reuse. This is the dynamic counterpart to the
+    static allocator's free/await recycling.
 
     Only meaningful on the dynamic EmitC lowering path. The
     `aie-lower-dynamic-bd-pool` pass inserts this op in place of a
-    `dma_free_task` / the recycling half of a `dma_await_task`.
+    `dma_free_task`.
   }];
 
-  let arguments = (ins I32Attr:$column, I32Attr:$row, I32:$bd_id);
+  let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$bd_begin,
+      I32Attr:$bd_end, I32:$bd_id);
 
   let assemblyFormat = [{
-    `(` $column `,` $row `)` `bd_id` $bd_id attr-dict `:` type($bd_id)
+    `(` $column `,` $row `)` `partition` ` ` `[` $bd_begin `,` $bd_end `)`
+    `bd_id` $bd_id attr-dict `:` type($bd_id)
   }];
+
+  let hasVerifier = 1;
 }
 
 def AIE_DMAStartBdChainOp

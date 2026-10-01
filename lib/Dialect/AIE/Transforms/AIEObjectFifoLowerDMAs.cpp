@@ -186,31 +186,36 @@ struct AIEObjectFifoLowerDMAsPass
     NextBDOp::create(builder, loc, successor);
   }
 
-  void lowerEndpoint(ObjectFifoDmaEndpointOp endpoint, int channel) {
+  LogicalResult lowerEndpoint(ObjectFifoDmaEndpointOp endpoint, int channel) {
     bool drains = endpoint.drains();
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
     SmallVector<Value> buffers = buffersOf(pool);
     if (buffers.empty()) {
-      return;
+      return success();
     }
 
     SmallVector<Descriptor> descriptors =
         descriptorsFor(endpoint, buffers, drains);
     if (descriptors.empty()) {
-      return;
+      return success();
     }
+    // Allocation budgeted the channel's BDs by getNumBDs.
+    if (static_cast<int64_t>(descriptors.size()) !=
+        endpoint.getNumDescriptors())
+      return endpoint.emitOpError()
+             << "lowers to " << descriptors.size()
+             << " descriptors per pass, but its channel was allocated for "
+             << endpoint.getNumDescriptors();
 
     Location loc = endpoint.getLoc();
-    // Only the draining end replays; the filling end covers the batch in one
-    // acquire, which is why emitDescriptor scales its lock count instead.
-    int repeat = drains ? pool.getRepeatCount().value_or(1) : 1;
+    // emitDescriptor scales the filling end's lock count instead.
+    int64_t repeat = endpoint.getRepeat();
     std::optional<int32_t> iterCount = endpoint.getIterCount();
 
-    // A single-descriptor chain can use the DMA start queue's repeat count.
-    bool repeatInHardware = repeat > 1 && descriptors.size() == 1 && !iterCount;
+    bool repeatInHardware = endpoint.repeatsInHardware();
     int taskCount =
         iterCount ? *iterCount - 1 : (repeatInHardware ? repeat - 1 : 0);
-    int copies = repeatInHardware ? 1 : repeat;
+    int64_t copies = repeatInHardware ? 1 : repeat;
 
     DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
     Block *endBlock = findEndOpBlock(program.getDmaBody());
@@ -232,7 +237,7 @@ struct AIEObjectFifoLowerDMAsPass
     size_t emitted = 0;
     Block *current = bdBlock;
     for (Descriptor &descriptor : descriptors) {
-      for (int copy = 0; copy < copies; copy++) {
+      for (int64_t copy = 0; copy < copies; copy++) {
         Block *successor;
         if (emitted + 1 < total) {
           successor = builder.createBlock(endBlock);
@@ -251,6 +256,7 @@ struct AIEObjectFifoLowerDMAsPass
         emitted++;
       }
     }
+    return success();
   }
 
   void runOnOperation() override {
@@ -265,7 +271,8 @@ struct AIEObjectFifoLowerDMAsPass
         endpoint.emitOpError("has no channel; run --aie-objectfifo-allocate");
         return signalPassFailure();
       }
-      lowerEndpoint(endpoint, *channel);
+      if (failed(lowerEndpoint(endpoint, *channel)))
+        return signalPassFailure();
       endpoint.erase();
     }
 

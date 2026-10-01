@@ -1,13 +1,39 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+from contextvars import ContextVar
+
 from aie.helpers.dialects.scf import (
     _for,
 )
 from aie.helpers.dialects.scf import (
     yield_ as _yield_,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    InsertionPoint,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.iron.runtime.dmataskhandle import Task
+
+
+class _YieldFrame:
+    """One active ``range_`` loop with iter_args.
+
+    Holds the loop body block and the values its terminating ``yield_``
+    passed, if any.
+    """
+
+    def __init__(self, body):
+        self.body = body
+        self.values: list | None = None
+
+
+# One frame per active range_ loop with iter_args. yield_ records its values
+# only when it terminates the loop body itself, not a nested scf.if or loop.
+# A ContextVar, like the active runtime sequence, so concurrent emitters never
+# share frames.
+_yield_frames: ContextVar[tuple[_YieldFrame, ...]] = ContextVar(
+    "iron_yield_frames", default=()
+)
 
 
 def _unwrap(x):
@@ -25,31 +51,49 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs):
     See [`Task`][iron.runtime.dmataskhandle.Task].
     Identical to the low-level ``_for`` helper, except a ``Task`` passed as an
     ``iter_args`` entry is carried across iterations by its SSA handle: the loop
-    body and the loop results receive it re-wrapped as a ``Task`` (so ``.free()``/
-    ``.await_()`` work), and [`yield_`][iron.controlflow.yield_] accepts ``Task``
-    entries too. This is what a hand-rolled software-pipelined DMA loop needs.
+    body and the loop results receive it re-wrapped as a copy of the ``Task``
+    passed in (so ``.start()``/``.free()``/``.await_()`` work; a loop result
+    takes the lifetime and endpoint of the ``Task`` the loop body's own
+    ``yield_`` passed; a raw handle yielded there keeps the copy of the
+    ``Task`` passed in), and
+    [`yield_`][iron.controlflow.yield_] accepts ``Task`` entries too. This is
+    what a hand-rolled software-pipelined DMA loop needs.
     """
     wrapped = {}
     if iter_args is not None:
         raw = []
         for i, a in enumerate(iter_args):
             if isinstance(a, Task):
-                wrapped[i] = True
+                wrapped[i] = a
             raw.append(_unwrap(a))
         iter_args = raw
 
     def rewrap_args(a):
         # a is a single value, a tuple of iter_args, or absent (iv only).
         if isinstance(a, tuple):
-            return tuple(Task(v) if wrapped.get(i) else v for i, v in enumerate(a))
-        return Task(a) if wrapped.get(0) else a
+            return tuple(
+                wrapped[i]._with_handle(v) if i in wrapped else v
+                for i, v in enumerate(a)
+            )
+        return wrapped[0]._with_handle(a) if 0 in wrapped else a
 
     for vals in _for(*args, iter_args=iter_args, insert_yield=insert_yield, **kwargs):
-        if not wrapped:
-            yield vals
-        elif isinstance(vals, tuple) and len(vals) == 3:
+        if isinstance(vals, tuple) and len(vals) == 3:
             iv, a, results = vals
-            yield iv, rewrap_args(a), rewrap_args(results)
+            results = rewrap_args(results)
+            frame = _YieldFrame(InsertionPoint.current.block)
+            outer = _yield_frames.get()
+            _yield_frames.set(outer + (frame,))
+            try:
+                yield iv, rewrap_args(a), results
+            finally:
+                _yield_frames.set(outer)
+            # A loop result is the Task the body yielded, so it takes that
+            # Task's lifetime and endpoint, not the initial one's.
+            result_tasks = results if isinstance(results, tuple) else (results,)
+            for i, task in enumerate(frame.values or ()):
+                if i in wrapped and isinstance(task, Task):
+                    result_tasks[i]._carry(task)
         else:
             # iv-only (no iter_args) never has wrapped positions.
             yield vals
@@ -60,4 +104,8 @@ def yield_(values):
 
     See [`Task`][iron.runtime.dmataskhandle.Task].
     """
+    values = list(values)
+    frames = _yield_frames.get()
+    if frames and InsertionPoint.current.block == frames[-1].body:
+        frames[-1].values = values
     _yield_([_unwrap(v) for v in values])

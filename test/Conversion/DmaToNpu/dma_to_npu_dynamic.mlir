@@ -33,10 +33,19 @@ module {
 // -----
 
 // A contiguous transfer with a runtime size takes linear mode: the count goes
-// into buffer_length (word 0, full width) and no d0/d1 guard is needed.
+// into buffer_length (word 0, full width) and no d0/d1 wrap guard is needed.
+// The i64 size is still bounded before it is narrowed to i32 (2^32 + 1 would
+// wrap to 1), and the length is multiplied out in i64 and bounded before it is
+// narrowed too, so no wrapped length reaches the block-write.
 // CHECK-LABEL: @lin
-// CHECK-NOT: aiex.npu.assert_bd_field
-// CHECK: aiex.npu.blockwrite_values
+// CHECK: aiex.npu.assert_bd_field(%arg1) {max = 2147483647 : i32} : i64
+// CHECK: %[[N:.*]] = arith.trunci %arg1 : i64 to i32
+// CHECK-NOT: aiex.npu.assert_bd_field({{.*}}) {max = 1023
+// CHECK: %[[WN:.*]] = arith.extui %[[N]] : i32 to i64
+// CHECK: %[[LEN:.*]] = arith.muli %{{.*}}, %[[WN]] : i64
+// CHECK: aiex.npu.assert_bd_field(%[[LEN]]) {max = 2147483647 : i32} : i64
+// CHECK: %[[LEN32:.*]] = arith.trunci %[[LEN]] : i64 to i32
+// CHECK: aiex.npu.blockwrite_values(%{{.*}} : i32) values %[[LEN32]],
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)

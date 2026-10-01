@@ -11,11 +11,11 @@ import numpy as np
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect, DMABDOp as _DMABDOp
-from ._ods_common import _cext
+from ._ods_common import _cext, get_op_result_or_value
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
 from ..helpers.dialects.func import call
-from ..extras.dialects.arith import ScalarValue, constant
+from ..extras.dialects.arith import ScalarValue, constant, extsi, index_cast, trunci
 from ..extras.dialects._shaped_value import ShapedValue
 from ..extras.dialects.memref import (
     MemRefValue,
@@ -63,11 +63,15 @@ from ..ir import (
     DenseElementsAttr,
     DenseI32ArrayAttr,
     DictAttr,
+    FlatSymbolRefAttr,
     FunctionType,
+    IndexType,
     InsertionPoint,
     IntegerAttr,
     IntegerType,
     MemRefType,
+    OpView,
+    Operation,
     StringAttr,
     TypeAttr,
     UnitAttr,
@@ -100,7 +104,7 @@ def use_lock(
 
 
 # Included in aie instead of aiex to avoid circular imports, as buffer uses this
-from ._aiex_ops_gen import NpuWriteRTPOp
+from ._aiex_ops_gen import NpuAssertBdFieldOp, NpuWriteRTPOp
 
 
 class npu_write_rtp(NpuWriteRTPOp):
@@ -124,6 +128,43 @@ def _as_i32(v):
     if isinstance(v, (int, np.integer)):
         return constant(int(v), T.i32())
     return v
+
+
+def _bd_value(v):
+    if not isinstance(v, (Value, OpView, Operation)):
+        raise TypeError(
+            f"A BD field must be an int or an integer SSA value, got "
+            f"{type(v).__name__}."
+        )
+    return get_op_result_or_value(v)
+
+
+def _as_bd_i32(v):
+    """Narrow a runtime integer Value to the i32 of a BD's offset, length or
+    repeat count, asserting at runtime that it fits. Ints, i32 Values and None
+    pass through."""
+    if v is None or isinstance(v, (int, np.integer)):
+        return v
+    v = _bd_value(v)
+    if v.type == T.i32():
+        return v
+    if isinstance(v.type, IndexType):
+        v = index_cast(v, to=T.i64())
+    NpuAssertBdFieldOp(value=v, max=(1 << 31) - 1)
+    return trunci(T.i32(), v)
+
+
+def _as_bd_i64(v):
+    """Widen a runtime integer or index Value to the i64 of a BD size, stride or
+    offset. Ints, i64 Values and None pass through."""
+    if v is None or isinstance(v, (int, np.integer)):
+        return v
+    v = _bd_value(v)
+    if v.type == T.i64():
+        return v
+    if isinstance(v.type, IndexType):
+        return index_cast(v, to=T.i64())
+    return extsi(T.i64(), v)
 
 
 def _split_i32_scalar(v):
@@ -156,11 +197,13 @@ def dma_bd(
     (``transfer_len`` maps to the op's ``len`` operand; the Python name avoids
     shadowing the builtin and matches ``shim_dma_bd``.)
 
-    Example::
+    For example:
 
-        %len = ...
-        aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
-                   offset=0 len=%len)
+    ```mlir
+    %len = ...
+    aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
+               offset=0 len=%len)
+    ```
     """
     dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
     dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
@@ -920,12 +963,29 @@ def another_bd(dma_op):
     raise Exception("couldn't find empty region to add to.")
 
 
+def _dma_channel_attr(channel):
+    """A DMA program's channel: an index, or the `aie.route_endpoint` (op or
+    symbol name) whose channel allocation picks."""
+    if isinstance(channel, (IntegerAttr, FlatSymbolRefAttr)):
+        return channel
+    if isinstance(channel, (int, np.integer)):
+        return IntegerAttr.get(T.i32(), int(channel))
+    if isinstance(channel, str):
+        return FlatSymbolRefAttr.get(channel)
+    if isinstance(channel, RouteEndpointOp):
+        return FlatSymbolRefAttr.get(channel.sym_name.value)
+    raise TypeError(
+        "A DMA channel is an index or an aie.route_endpoint (op or symbol "
+        f"name), not {type(channel).__name__}."
+    )
+
+
 @_cext.register_operation(_Dialect, replace=True)
 class DMAStartOp(DMAStartOp):
     def __init__(
         self,
         channel_dir,
-        channel_index,
+        channel,
         *,
         dest: Successor | Block | None = None,
         chain: Successor | Block | None = None,
@@ -945,7 +1005,7 @@ class DMAStartOp(DMAStartOp):
             chain = InsertionPoint.current.block
         super().__init__(
             channel_dir,
-            channel_index,
+            _dma_channel_attr(channel),
             dest,
             chain,
             repeat_count=repeat_count,
@@ -966,7 +1026,7 @@ class DMAStartOp(DMAStartOp):
 
 def dma_start(
     channel_dir,
-    channel_index,
+    channel,
     *,
     dest: Successor | Block | ContextManagedBlock | None = None,
     chain: Successor | Block | ContextManagedBlock | None = None,
@@ -980,7 +1040,7 @@ def dma_start(
     dest_block = dest.block if isinstance(dest, ContextManagedBlock) else dest
     op = DMAStartOp(
         channel_dir,
-        channel_index,
+        channel,
         dest=dest_block,
         chain=chain_block,
         loc=loc,
