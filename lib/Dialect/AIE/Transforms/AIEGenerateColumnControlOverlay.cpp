@@ -17,6 +17,7 @@
 
 #include <map>
 #include <optional>
+#include <set>
 #include <tuple>
 
 namespace xilinx::AIE {
@@ -337,10 +338,14 @@ struct AIEGenerateColumnControlOverlayPass
             continue;
           if (clRouteShimCTRLToTCT == "shim-only" && !tOp.isShimNOCorPLTile())
             continue;
+          // A routed response only covers the tile it comes from.
+          if (hasRoutedResponse(device, tOp, tileIDMap))
+            continue;
           tilesOnCol.push_back(tOp);
         }
 
-        if (failed(generatePacketFlowsForControl(
+        if (!tilesOnCol.empty() &&
+            failed(generatePacketFlowsForControl(
                 builder, device, shimTile, AIE::WireBundle::South, tilesOnCol,
                 AIE::WireBundle::TileControl, 0, tileIDMap, false)))
           return failure();
@@ -442,16 +447,256 @@ struct AIEGenerateColumnControlOverlayPass
     return flows;
   }
 
-  // Return true when `device` already contains a control-packet overlay,
-  // identified by the `is_ctrl_pkt_overlay` marker the overlay's routed
-  // switchbox configuration carries.
-  static bool deviceHasControlOverlay(DeviceOp device) {
-    return device
-        .walk([](Operation *op) {
-          return op->hasAttr("is_ctrl_pkt_overlay") ? WalkResult::interrupt()
-                                                    : WalkResult::advance();
-        })
-        .wasInterrupted();
+  // The packet ID of control packets to and from `tile`.
+  static int getControllerID(TileOp tile, DenseMap<TileID, int> &tileIDMap) {
+    if (auto id = tile->getAttrOfType<AIE::PacketInfoAttr>("controller_id"))
+      return id.getPktId();
+    return tileIDMap[{tile.colIndex(), tile.rowIndex()}];
+  }
+
+  // Name of the shim DMA allocation the runtime sequence issues or receives
+  // control packets through.
+  static std::string getCtrlPktAllocName(int col, bool isShimMM2S, int chan) {
+    std::string name = "ctrlpkt";
+    name += "_col" + std::to_string(col);
+    name += isShimMM2S ? "_mm2s" : "_s2mm";
+    name += "_chan" + std::to_string(chan);
+    return name;
+  }
+
+  // True when packets with ID `pktID` entering the switchbox of `from` on any
+  // of `startPorts` are routed to `toPort` of `to`'s switchbox, through a
+  // connect or master marked is_ctrl_pkt_overlay. The ID is traced through the
+  // routed switchboxes rather than inferred from the final rule.
+  static bool hasRoutedPacket(DeviceOp device, int pktID, TileID from,
+                              ArrayRef<Port> startPorts, TileID to,
+                              Port toPort) {
+    DenseMap<TileID, AIE::SwitchboxOp> switchboxes;
+    for (auto switchbox : device.getOps<AIE::SwitchboxOp>()) {
+      auto tile = dyn_cast<TileLike>(switchbox.getTile().getDefiningOp());
+      if (!tile)
+        continue;
+      std::optional<int> c = tile.tryGetCol(), r = tile.tryGetRow();
+      if (c && r)
+        switchboxes[{*c, *r}] = switchbox;
+    }
+
+    SmallVector<std::pair<TileID, Port>> worklist;
+    for (Port port : startPorts)
+      worklist.push_back({from, port});
+    std::set<std::tuple<int, int, int, int>> visited;
+    while (!worklist.empty()) {
+      auto [tileID, port] = worklist.pop_back_val();
+      if (!visited
+               .insert({tileID.col, tileID.row, static_cast<int>(port.bundle),
+                        port.channel})
+               .second)
+        continue;
+      auto switchbox = switchboxes.lookup(tileID);
+      if (!switchbox)
+        continue;
+      Block &connections = switchbox.getConnections().front();
+
+      SmallVector<std::pair<Port, Operation *>> outputs;
+      for (auto connect : connections.getOps<AIE::ConnectOp>())
+        if (connect.sourcePort() == port)
+          outputs.push_back({connect.destPort(), connect});
+      // The first rule matching the packet ID picks the master. Pathfinder
+      // marks a slave's packet_rules only from the first group it routes, so
+      // the marker on the rules is not reliable.
+      for (auto rules : connections.getOps<AIE::PacketRulesOp>()) {
+        if (rules.sourcePort() != port)
+          continue;
+        for (auto rule : rules.getRules().front().getOps<AIE::PacketRuleOp>()) {
+          if ((pktID & rule.maskInt()) != rule.valueInt())
+            continue;
+          for (auto master : connections.getOps<AIE::MasterSetOp>())
+            if (llvm::is_contained(master.getAmsels(), rule.getAmsel()))
+              outputs.push_back({master.destPort(), master});
+          break;
+        }
+      }
+
+      for (auto [dest, op] : outputs) {
+        if (tileID == to && dest == toPort) {
+          if (op->hasAttr("is_ctrl_pkt_overlay"))
+            return true;
+          continue;
+        }
+        TileID next = tileID;
+        switch (dest.bundle) {
+        case WireBundle::North:
+          next.row++;
+          break;
+        case WireBundle::South:
+          next.row--;
+          break;
+        case WireBundle::East:
+          next.col++;
+          break;
+        case WireBundle::West:
+          next.col--;
+          break;
+        default:
+          continue;
+        }
+        worklist.push_back(
+            {next, Port{getConnectingBundle(dest.bundle), dest.channel}});
+      }
+    }
+    return false;
+  }
+
+  // A routed response must actually connect TileControl:0 of `src` to South:0
+  // on its column's shim. A priority request ending at TileControl is not a
+  // response, even though pathfinder marks it is_ctrl_pkt_overlay.
+  static bool hasRoutedResponse(DeviceOp device, TileOp src,
+                                DenseMap<TileID, int> &tileIDMap) {
+    int col = src.colIndex();
+    return hasRoutedPacket(device, getControllerID(src, tileIDMap),
+                           {col, src.rowIndex()},
+                           {Port{WireBundle::TileControl, 0}}, {col, 0},
+                           Port{WireBundle::South, 0});
+  }
+
+  // A routed request must connect DMA:`shimChan` of `shimTile` to
+  // TileControl:0 of `dest`. Pathfinder moves the shim DMA behind the shim
+  // mux, so the request enters the shim's switchbox on the South port the mux
+  // connects that DMA channel to.
+  static bool hasRoutedRequest(DeviceOp device, TileOp shimTile, int shimChan,
+                               TileOp dest, DenseMap<TileID, int> &tileIDMap) {
+    SmallVector<Port> startPorts = {Port{WireBundle::DMA, shimChan}};
+    for (auto shimMux : device.getOps<AIE::ShimMuxOp>()) {
+      if (shimMux.getTile() != shimTile.getResult())
+        continue;
+      for (auto connect :
+           shimMux.getConnections().front().getOps<AIE::ConnectOp>())
+        if (connect.sourcePort() == Port{WireBundle::DMA, shimChan} &&
+            connect.destPort().bundle == WireBundle::North)
+          startPorts.push_back(
+              Port{WireBundle::South, connect.destPort().channel});
+    }
+    return hasRoutedPacket(device, getControllerID(dest, tileIDMap),
+                           {shimTile.colIndex(), shimTile.rowIndex()},
+                           startPorts, {dest.colIndex(), dest.rowIndex()},
+                           Port{WireBundle::TileControl, 0});
+  }
+
+  // True when `tile` is used only by its routing, and its switchbox only
+  // passes streams between neighbouring switchboxes: none starts or ends at
+  // the tile itself.
+  static bool isRoutedThroughOnly(TileOp tile) {
+    auto isNeighbour = [](Port port) {
+      return port.bundle == WireBundle::North ||
+             port.bundle == WireBundle::South ||
+             port.bundle == WireBundle::East || port.bundle == WireBundle::West;
+    };
+    bool hasSwitchbox = false;
+    for (Operation *user : tile->getUsers()) {
+      if (isa<AIE::WireOp>(user))
+        continue;
+      auto switchbox = dyn_cast<AIE::SwitchboxOp>(user);
+      if (!switchbox)
+        return false;
+      hasSwitchbox = true;
+      for (Operation &op : switchbox.getConnections().front()) {
+        if (auto connect = dyn_cast<AIE::ConnectOp>(op)) {
+          if (!isNeighbour(connect.sourcePort()) ||
+              !isNeighbour(connect.destPort()))
+            return false;
+        } else if (auto rules = dyn_cast<AIE::PacketRulesOp>(op)) {
+          if (!isNeighbour(rules.sourcePort()))
+            return false;
+        } else if (auto master = dyn_cast<AIE::MasterSetOp>(op)) {
+          if (!isNeighbour(master.destPort()))
+            return false;
+        }
+      }
+    }
+    return hasSwitchbox;
+  }
+
+  // Every occupied column needs its own shim response route. An overlay
+  // routed on only one column must not suppress the remaining columns. With
+  // route-shim-to-tct=all-tiles, every tile also needs its own response route,
+  // except a tile that is only routed through. Pathfinder declares such a tile
+  // when a flow crosses it, and a first run of this pass never covered it.
+  bool hasRoutedResponses(DeviceOp device, DenseMap<TileID, int> &tileIDMap) {
+    llvm::SmallSet<int, 4> cols;
+    llvm::DenseMap<int, TileOp> shims;
+    for (auto tile : device.getOps<AIE::TileOp>()) {
+      cols.insert(tile.colIndex());
+      if (tile.rowIndex() == 0)
+        shims[tile.colIndex()] = tile;
+    }
+    if (cols.empty())
+      return false;
+    if (!llvm::all_of(cols, [&](int col) {
+          auto it = shims.find(col);
+          return it != shims.end() &&
+                 hasRoutedResponse(device, it->second, tileIDMap);
+        }))
+      return false;
+    if (clRouteShimCTRLToTCT != "all-tiles")
+      return true;
+    return llvm::all_of(device.getOps<AIE::TileOp>(), [&](TileOp tile) {
+      return isRoutedThroughOnly(tile) ||
+             hasRoutedResponse(device, tile, tileIDMap);
+    });
+  }
+
+  // With route-shim-to-tile-ctrl, every tile applyOverlayToDevice sends
+  // requests to needs a routed request from its shim DMA channel, and that
+  // channel needs its shim DMA allocation. Tiles only routed through do not
+  // widen the columns and rows covered, as a first run never covered them.
+  static bool hasRoutedRequests(DeviceOp device,
+                                DenseMap<TileID, int> &tileIDMap) {
+    llvm::DenseMap<TileID, TileOp> tiles;
+    llvm::DenseMap<int, int> maxRowOfCol;
+    std::optional<int> minCol, maxCol;
+    int maxOccupiedRow = 0;
+    for (auto tile : device.getOps<AIE::TileOp>()) {
+      int col = tile.colIndex(), row = tile.rowIndex();
+      tiles[{col, row}] = tile;
+      if (isRoutedThroughOnly(tile))
+        continue;
+      minCol = std::min(minCol.value_or(col), col);
+      maxCol = std::max(maxCol.value_or(col), col);
+      maxOccupiedRow = std::max(maxOccupiedRow, row);
+      maxRowOfCol[col] = std::max(maxRowOfCol.lookup(col), row);
+    }
+    if (!minCol || !maxCol)
+      return false;
+    auto rowToShimChanMap =
+        getRowToShimChanMap(device.getTargetModel(), WireBundle::DMA);
+    for (int col = *minCol; col <= *maxCol; col++) {
+      TileOp shimTile = tiles.lookup({col, 0});
+      if (!shimTile)
+        return false;
+      auto it = maxRowOfCol.find(col);
+      int maxRow = it != maxRowOfCol.end() ? it->second : maxOccupiedRow;
+      for (int row = 0; row <= maxRow; row++) {
+        TileOp tile = tiles.lookup({col, row});
+        int chan = rowToShimChanMap[row];
+        if (!tile ||
+            !device.lookupSymbol(getCtrlPktAllocName(col, true, chan)) ||
+            !hasRoutedRequest(device, shimTile, chan, tile, tileIDMap))
+          return false;
+      }
+    }
+    return true;
+  }
+
+  // True when `device` already carries every route this pass would add.
+  // Responses alone do not complete an overlay that also routes requests.
+  // Responses are only skipped when route-shim-to-tct=disable leaves requests
+  // as the sole routes requested; with neither requested, they still decide.
+  bool deviceHasControlOverlay(DeviceOp device) {
+    auto tileIDMap = getTileToControllerIdMap(true, device.getTargetModel());
+    if ((clRouteShimCTRLToTCT != "disable" || !clRouteShimDmaToTileCTRL) &&
+        !hasRoutedResponses(device, tileIDMap))
+      return false;
+    return !clRouteShimDmaToTileCTRL || hasRoutedRequests(device, tileIDMap);
   }
 
   AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, Location loc,
@@ -575,7 +820,10 @@ struct AIEGenerateColumnControlOverlayPass
         // them. Dropping them here would silently reroute the switchbox.
         it->second.setKeepPktHeader(keep_pkt_header.getValue());
         it->second.setPriorityRoute(ctrl_pkt_flow.getValue());
-      } else {
+      } else if (!isShimMM2S || !hasRoutedRequest(device, shimTile, shimChan,
+                                                  tOp, tileIDMap)) {
+        // A request the switchboxes already route is not declared again; its
+        // shim DMA allocation below is still emitted.
         AIE::PacketFlowOp created =
             isShimMM2S
                 ? createPacketFlowOp(builder, tOp.getLoc(), ctrlPktFlowID,
@@ -601,11 +849,8 @@ struct AIEGenerateColumnControlOverlayPass
       AIE::DMAChannelDir dir =
           isShimMM2S ? AIE::DMAChannelDir::MM2S : AIE::DMAChannelDir::S2MM;
       int chan = rowToShimChanMap[tOp.rowIndex()];
-      int col = shimTile.colIndex();
-      std::string dma_name = "ctrlpkt";
-      dma_name += "_col" + std::to_string(col);   // col
-      dma_name += isShimMM2S ? "_mm2s" : "_s2mm"; // dir
-      dma_name += "_chan" + std::to_string(chan); // chan
+      std::string dma_name =
+          getCtrlPktAllocName(shimTile.colIndex(), isShimMM2S, chan);
 
       // check to see if ShimDMAAllocationOp already exists
       if (device.lookupSymbol(dma_name))
