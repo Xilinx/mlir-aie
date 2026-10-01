@@ -1,0 +1,5 @@
+<map id="CanonicalizeTrivialWriteAccessSubviewOpPattern" name="CanonicalizeTrivialWriteAccessSubviewOpPattern">
+<area shape="rect" id="Node000001" title="Pattern to canonicalize trivial vector.transfer_write operations on subviews." alt="" coords="8,93,195,133"/>
+<area shape="rect" id="Node000002" href="$classOpRewritePattern.html" title=" " alt="" coords="5,5,197,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="104,59,104,93,99,93,99,59"/>
+</map>
