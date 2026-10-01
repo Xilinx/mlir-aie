@@ -164,20 +164,26 @@ extern "C" {
 // The round and block counts are computed here: a shift in the core body
 // lowers to a vector srs intrinsic that the core's link step cannot resolve.
 void attn_rounds(int *L_begin_buffer, int *L_end_buffer, int *n_out) {
+  event0();
   n_out[0] = (L_end_buffer[0] >> 7) - (L_begin_buffer[0] >> 7);
+  event1();
 }
 
 #if FLM_GEMMA4_PREFILL_HEAD_DIM == 256
 void attn_blocks(int *L_begin_buffer, int *window_size_buffer, const int i,
                  int *n_out) {
+  event0();
   const int pointer_block_q = L_begin_buffer[0] + i * 128;
   int pointer_block_k = pointer_block_q - window_size_buffer[0];
   pointer_block_k = pointer_block_k > 0 ? pointer_block_k : 0;
   n_out[0] = ((pointer_block_q - pointer_block_k) >> 7) + 1;
+  event1();
 }
 #else
 void attn_blocks(int *L_begin_buffer, const int i, int *n_out) {
+  event0();
   n_out[0] = (L_begin_buffer[0] >> 7) + i + 1;
+  event1();
 }
 #endif
 
@@ -194,7 +200,9 @@ void attn_round_begin(bfloat16 *prev_m, bfloat16 *new_m, float *c, float *l,
 }
 
 void attn_block_begin(bfloat16 *m, bfloat16 *prev_m) {
+  event0();
   block_begin_impl<DH>(m, prev_m);
+  event1();
 }
 
 void attn_qk_step(bfloat16 *s, bfloat16 *__restrict q,
@@ -243,16 +251,20 @@ void attn_fv_step(float *y, bfloat16 *s, bfloat16 *__restrict in_ping,
 }
 
 void attn_block_end(bfloat16 *prev_m, bfloat16 *new_m) {
+  event0();
   aie::vector<bfloat16, LQ> v = aie::load_v<LQ>(new_m);
   aie::store_v(prev_m, v);
+  event1();
 }
 
 void attn_finalize(float *l, bfloat16 *inv_l) {
+  event0();
   aie::vector<float, LQ> l_vec = aie::load_v<LQ>(l);
   l_vec = aie::inv(l_vec);
   aie::accum<accfloat, LQ> l_acc;
   l_acc.from_vector(l_vec);
   aie::store_v(inv_l, l_acc.template to_vector<bfloat16>());
+  event1();
 }
 
 // Chunk c of LQ * DH / 64 of this round's output, row block c / (DH / 8).

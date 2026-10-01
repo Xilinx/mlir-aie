@@ -51,15 +51,19 @@ extern "C" {
 /// Once per token: normalize x in place, its RMS weight packed at x + DIM, then
 /// precompute the per-32-column sums of x that every weight block reuses.
 void q4nx_lm_head_rms(bfloat16 *x, bfloat16 *b_group_sums) {
+  event0();
   rms_norm<DIM>(x, x, x + DIM);
   for (int k = 0; k < K_BLOCKS; k++) {
     group_sums_32<K_TILE>(b_group_sums + k * (K_TILE / 32), x + k * K_TILE);
   }
+  event1();
 }
 
 /// Once per output tile, before the k loop.
 void q4nx_lm_head_zero(float *y_acc) {
+  event0();
   zero_vectorized<float, M_TILE, 1, false>(y_acc);
+  event1();
 }
 
 /// One weight block: y_acc += w * x[k]. k selects the slice of x and of the
@@ -75,11 +79,13 @@ void q4nx_lm_head_block(const q4nx_block_t *w, const bfloat16 *x, float *y_acc,
 /// Once per output tile, after the k loop: y = c * tanh(y_acc / c).
 void q4nx_lm_head_epilogue(bfloat16 *y, const float *y_acc,
                            const float *softcap) {
+  event0();
   narrow_to_bf16<M_TILE>(y, y_acc);
   aie::vector<bfloat16, M_TILE> y_vec = aie::load_v<M_TILE>(y);
   bfloat16 cap = (bfloat16)(*softcap);
   aie::accum<accfloat, M_TILE> scaled = aie::mul(y_vec, aie::inv(cap));
   y_vec = aie::tanh(scaled.template to_vector<float>());
   aie::store_v(y, aie::mul(y_vec, cap).template to_vector<bfloat16>());
+  event1();
 }
 }

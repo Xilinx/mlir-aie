@@ -22,7 +22,7 @@ attribute of it named by its C symbol: ``fn.attn_qk_round``.
 
 from dataclasses import dataclass, field
 from functools import partial
-from typing import TypeVar
+from typing import TypeVar, get_args
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction, Kernel
@@ -41,7 +41,8 @@ from ._common import (
     _runtime_lib_include,
     dtypes,
 )
-from .linalg import _zero_output, _ZeroInitializedKernel
+from .activation import _bf16_ulp, _vtanh_error
+from .linalg import _ZeroInitializedKernel
 from .quant import _bf16_floor
 
 _BF16, _F32 = np.dtype[bfloat16], np.dtype[np.float32]
@@ -221,6 +222,201 @@ def flm_gemma4_swa_prefill(
         in_prod_lock,
         in_cons_lock,
     )
+
+
+@dtypes([{"head_dim": 256}])
+def flm_gemma4_prefill_block_begin(*, head_dim: int = 512) -> ExternalFunction:
+    """``attn_block_begin`` of the prefill kernels: row ``j`` of ``m`` is ``prev_m[j]``."""
+    return _prefill_sibling(
+        "attn_block_begin",
+        head_dim,
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(Out, In),
+            reference=flm_gemma4_prefill_block_begin_ref,
+            tolerance=Tolerance.exact(note="bf16 broadcast"),
+            ops_per_call=0,
+        ),
+    )
+
+
+def flm_gemma4_prefill_block_begin_ref(prev_m):
+    """Numpy reference for [`flm_gemma4_prefill_block_begin`][iron.kernels.flm_gemma4.flm_gemma4_prefill_block_begin].
+
+    ``m`` is ``(LQ, LK)`` with ``LK == LQ`` in both builds.
+    """
+    prev_m = np.asarray(prev_m)
+    return np.repeat(prev_m, prev_m.shape[-1], axis=-1)
+
+
+@dtypes([{"head_dim": 256}])
+def flm_gemma4_prefill_block_end(*, head_dim: int = 512) -> ExternalFunction:
+    """``attn_block_end`` of the prefill kernels: ``prev_m = new_m``."""
+    return _prefill_sibling(
+        "attn_block_end",
+        head_dim,
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(Out, In),
+            reference=flm_gemma4_prefill_block_end_ref,
+            tolerance=Tolerance.exact(note="bf16 copy"),
+            ops_per_call=0,
+        ),
+    )
+
+
+def flm_gemma4_prefill_block_end_ref(new_m):
+    """Numpy reference for [`flm_gemma4_prefill_block_end`][iron.kernels.flm_gemma4.flm_gemma4_prefill_block_end]."""
+    return np.array(new_m, copy=True)
+
+
+def _rtp_words(rng, word0):
+    """Return ``(calls, 8)`` RTP buffers: ``word0`` in word 0, junk the kernel ignores after it."""
+    words = rng.integers(-(1 << 31), 1 << 31, size=(len(word0), 8), dtype=np.int64)
+    words[:, 0] = word0
+    return words.astype(np.int32)
+
+
+def _word0(buffer):
+    return np.asarray(buffer).reshape(-1, 8)[:, 0].astype(np.int32)
+
+
+def flm_gemma4_prefill_rounds_ref(l_begin, l_end):
+    """``(L_end >> 7) - (L_begin >> 7)``: the 128-row rounds a dispatch spans."""
+    n = (_word0(l_end) >> 7) - (_word0(l_begin) >> 7)
+    return n.reshape(-1, 1)
+
+
+def _prefill_rounds_sample(rng, calls):
+    # Dispatch bounds, some round-aligned, the first an empty one.
+    begin = rng.integers(0, 1 << 15, size=calls)
+    begin[::2] &= ~127
+    end = begin + rng.integers(0, 1 << 13, size=calls)
+    end[0] = begin[0]
+    return [_rtp_words(rng, begin), _rtp_words(rng, end)]
+
+
+@dtypes([{"head_dim": 256}])
+def flm_gemma4_prefill_rounds(*, head_dim: int = 512) -> ExternalFunction:
+    """``attn_rounds`` of the prefill kernels: the rounds between ``L_begin`` and ``L_end``."""
+    return _prefill_sibling(
+        "attn_rounds",
+        head_dim,
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out),
+            sample=_prefill_rounds_sample,
+            reference=flm_gemma4_prefill_rounds_ref,
+            tolerance=Tolerance.exact(note="integer shifts and a subtraction"),
+            out_valid=1,
+            ops_per_call=1,
+        ),
+    )
+
+
+def flm_gemma4_prefill_blocks_ref(l_begin, i, *, window_size=None):
+    """Key blocks round ``i`` folds in: all up to its own, or those in the window.
+
+    ``window_size`` is the sliding-window build's RTP buffer, ``None`` for the
+    head-dim-512 build.
+    """
+    begin = _word0(l_begin)
+    if window_size is None:
+        n = (begin >> 7) + np.int32(i) + 1
+    else:
+        q = begin + np.int32(i) * 128
+        k = np.maximum(q - _word0(window_size), 0)
+        n = ((q - k) >> 7) + 1
+    return n.astype(np.int32).reshape(-1, 1)
+
+
+def _prefill_swa_blocks_ref(l_begin, window_size, i):
+    return flm_gemma4_prefill_blocks_ref(l_begin, i, window_size=window_size)
+
+
+def _prefill_blocks_sample(rng, calls, *, window):
+    # Positions below the window clamp the first key block to 0: the first
+    # call starts at 0, the second past any window.
+    begin = rng.integers(0, 1 << 12, size=calls)
+    begin[0] = 0
+    if calls > 1:
+        begin[1] = rng.integers(1 << 12, 1 << 15)
+    begin[::2] &= ~127
+    buffers = [_rtp_words(rng, begin)]
+    if window:
+        buffers.append(_rtp_words(rng, np.resize([512, 1024], calls)))
+    return buffers
+
+
+@dtypes([{"head_dim": 256}])
+def flm_gemma4_prefill_blocks(*, head_dim: int = 512) -> ExternalFunction:
+    """``attn_blocks`` of the prefill kernels: the key blocks round ``i`` folds in.
+
+    At a head dim of 256, the sliding-window build, it also reads the window
+    size: ``attn_blocks(L_begin, window_size, i, n_out)``.
+    """
+    window = head_dim == 256
+    return _prefill_sibling(
+        "attn_blocks",
+        head_dim,
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Param, Out) if window else (In, Param, Out),
+            sample=partial(_prefill_blocks_sample, window=window),
+            reference=(
+                _prefill_swa_blocks_ref if window else flm_gemma4_prefill_blocks_ref
+            ),
+            tolerance=Tolerance.exact(note="integer shifts, adds and a clamp"),
+            out_valid=1,
+            ops_per_call=1,
+        ),
+    )
+
+
+@dtypes([{"head_dim": 256}])
+def flm_gemma4_prefill_finalize(*, head_dim: int = 512) -> ExternalFunction:
+    """``attn_finalize`` of the prefill kernels: ``inv_l = bf16(1 / l)`` per query row.
+
+    Args:
+        head_dim: 512 builds the global kernel's 8 rows; 256 builds the
+            sliding-window kernel's 16 rows.
+    """
+    return _prefill_sibling(
+        "attn_finalize",
+        head_dim,
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out),
+            reference=flm_gemma4_prefill_finalize_ref,
+            sample=partial(
+                _prefill_finalize_sample,
+                lq=_ATTN_PREFILL_LQ if head_dim == 512 else _SWA_PREFILL_LQ,
+            ),
+            # Floor narrowing lands at most one bf16 step from the nearest-even
+            # cast of 1 / l if aie::inv errs by less than half a step (2**-9
+            # relative).
+            tolerance=Tolerance.bf16_ulps(
+                1,
+                note="floor bf16 narrowing of AIE2P's scalar inv instruction, "
+                "whose error the AIE-ML v2 intrinsics guide does not document",
+            ),
+        ),
+    )
+
+
+def flm_gemma4_prefill_finalize_ref(row_sums):
+    """Numpy reference for [`flm_gemma4_prefill_finalize`][iron.kernels.flm_gemma4.flm_gemma4_prefill_finalize]: ``1 / l``.
+
+    The tolerance covers the kernel's hardware reciprocal and its floor
+    narrowing to bf16.
+    """
+    return 1.0 / np.asarray(row_sums, dtype=np.float32)
+
+
+def _prefill_finalize_sample(rng, calls, *, lq):
+    # Softmax row sums: at least 1, since the row maximum adds exp2(0), and at
+    # most a few hundred keys' worth.
+    return [rng.uniform(1.0, 300.0, (calls, lq)).astype(np.float32)]
 
 
 @dataclass(frozen=True)
@@ -1189,6 +1385,31 @@ def _lm_head_sibling(symbol, contract, **geometry) -> ExternalFunction:
     )
 
 
+def _lm_head_zero(fn) -> ExternalFunction:
+    """``fn``'s ``q4nx_lm_head_zero``, the initializer of its accumulator.
+
+    It names ``fn``'s object and compile recipe, so the design compiles and
+    links one copy of ``q4nx_lm_head.cc``.
+    """
+    y_acc = fn.arg_types()[2]
+    return ExternalFunction(
+        "q4nx_lm_head_zero",
+        object_file_name=fn.object_file_name,
+        source_file=fn.source_file,
+        arg_types=[y_acc],
+        include_dirs=fn.include_dirs,
+        compile_flags=fn.compile_flags,
+        symbol_prefix=fn.object_file.symbol_prefix,
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(Out,),
+            reference=lambda: np.zeros((1, *get_args(y_acc)[0]), np.float32),
+            tolerance=Tolerance.exact(note="zero fill"),
+            ops_per_call=0,
+        ),
+    )
+
+
 def flm_gemma4_q4nx_lm_head(
     *, dim: int = 1536, m_tile: int = 32, k_tile: int = 256, group: int = 32
 ) -> ExternalFunction:
@@ -1236,7 +1457,7 @@ def flm_gemma4_q4nx_lm_head(
             # The token and its sums are fixed while the blocks stream past.
             roles=(In, Param, InOut, Param, Param),
             parameter_bindings=((4, 0),),
-            initializers=((2, partial(_zero_output, index=2)),),
+            initializers=((2, _lm_head_zero),),
             reference=partial(flm_gemma4_q4nx_lm_head_ref, **geometry),
             sample=partial(_q4nx_lm_head_sample, dim=dim, **geometry),
             tolerance=Tolerance.exact(
@@ -1257,6 +1478,139 @@ def flm_gemma4_q4nx_lm_head(
         "q4nx_lm_head_epilogue", [np.ndarray[(m_tile,), _BF16], y_acc, rtp]
     )
     return fn
+
+
+def _lm_head_softcap(rtp):
+    """Return the float32 softcap in word 0 of the LM head's RTP buffer."""
+    word = np.ascontiguousarray(rtp, np.int32).reshape(-1)[:1]
+    return float(word.view(np.float32)[0])
+
+
+def flm_gemma4_q4nx_lm_head_epilogue_ref(y_acc, rtp):
+    """Numpy reference for [`flm_gemma4_q4nx_lm_head_epilogue`][iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head_epilogue]: ``c * tanh(y_acc / c)``.
+
+    ``rtp`` holds the float32 bits of ``c`` in word 0. The reference computes
+    in float64 and rounds to bf16 once; the tolerance covers the kernel's
+    narrowings and its tanh.
+    """
+    c = _lm_head_softcap(rtp)
+    y = np.asarray(y_acc, np.float64)
+    return (c * np.tanh(y / c)).astype(bfloat16)
+
+
+def _lm_head_epilogue_bound(y_acc, rtp):
+    """Bound on the epilogue's error against its reference.
+
+    The kernel floors ``y_acc`` and ``1 / c`` to bf16, each within ``2**-7``
+    relative, so its tanh argument lies within ``2**-6 * |u|`` of ``u``. Over
+    that interval tanh moves by at most ``tanh(hi) - tanh(lo)``, and vtanh
+    adds ``_vtanh_error`` at its worst endpoint plus one ulp of ``t``: that
+    bound was measured in ``conv_even``, and the kernel runs in floor mode.
+    ``c`` scales both. The floor store of ``c * t`` adds one ulp, and the
+    reference's nearest-even store half of one. ``c`` must be a bf16 value.
+    """
+    c = _lm_head_softcap(rtp)
+    a = np.abs(np.asarray(y_acc, np.float64) / c)
+    lo, hi = a * (1 - 2.0**-6), a * (1 + 2.0**-6)
+    t = np.tanh(a)
+    vtanh = np.maximum.reduce([_vtanh_error(lo), _vtanh_error(a), _vtanh_error(hi)])
+    err = np.tanh(hi) - np.tanh(lo) + vtanh + _bf16_ulp(t)
+    out = c * np.minimum(t + err, 1.0)
+    return c * err + 1.5 * _bf16_ulp(out)
+
+
+def _lm_head_epilogue_sample(rng, calls, *, m_tile, softcap=30.0):
+    # u = y / c spans [-4, 4]: vtanh's identity band, its piecewise middle
+    # and its saturation past |u| = 3.
+    y_acc = rng.uniform(-4 * softcap, 4 * softcap, (calls, m_tile))
+    rtp = np.zeros(_LM_HEAD_RTP_WORDS, np.int32)
+    rtp[0] = np.float32(softcap).view(np.int32)
+    return [y_acc.astype(np.float32), rtp]
+
+
+def flm_gemma4_q4nx_lm_head_epilogue(
+    *, dim: int = 1536, m_tile: int = 32, k_tile: int = 256, group: int = 32
+) -> ExternalFunction:
+    """``q4nx_lm_head_epilogue`` of the LM head: ``y = c * tanh(y_acc / c)``.
+
+    The softcap ``c`` is float32 bits in word 0 of a 32-word RTP buffer. The
+    tolerance assumes ``c`` is a bf16 value, so the kernel's narrowing of it
+    is exact; Gemma 4's 30 is.
+    """
+    return _lm_head_sibling(
+        "q4nx_lm_head_epilogue",
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(Out, In, Param),
+            reference=flm_gemma4_q4nx_lm_head_epilogue_ref,
+            sample=partial(_lm_head_epilogue_sample, m_tile=m_tile),
+            tolerance=Tolerance.bounded(
+                _lm_head_epilogue_bound,
+                note="c times vtanh's error, measured on npu2 (see "
+                "activation._vtanh_error), plus the floor bf16 roundings",
+            ),
+        ),
+        dim=dim,
+        m_tile=m_tile,
+        k_tile=k_tile,
+        group=group,
+    )
+
+
+def _lm_head_rms_y(x, dim):
+    """Per call, ``x * w / sqrt(mean(x^2) + 1e-6)`` in float64, shape (calls, dim)."""
+    x = np.asarray(x, np.float64).reshape(-1, 2, dim)
+    token, w = x[:, 0], x[:, 1]
+    return token * w / np.sqrt(np.mean(token**2, axis=1, keepdims=True) + 1e-6)
+
+
+def flm_gemma4_q4nx_lm_head_rms_ref(x, *, dim=1536):
+    """Numpy reference for [`flm_gemma4_q4nx_lm_head_rms`][iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head_rms]: column sums of the normalized token.
+
+    ``x`` holds, per call, the token then its RMS weight. The reference
+    narrows each normalized value to bf16 and sums each 32 of them in float64.
+    """
+    y = _lm_head_rms_y(x, dim).astype(np.float32).astype(bfloat16)
+    sums = y.astype(np.float64).reshape(len(y), dim // 32, 32).sum(axis=2)
+    return sums.astype(np.float32)
+
+
+def _lm_head_rms_bound(x, *, dim):
+    y = np.abs(_lm_head_rms_y(x, dim)).reshape(-1, dim // 32, 32)
+    return 3 * 2.0**-7 * y.sum(axis=2)
+
+
+def flm_gemma4_q4nx_lm_head_rms(
+    *, dim: int = 1536, m_tile: int = 32, k_tile: int = 256, group: int = 32
+) -> ExternalFunction:
+    """``q4nx_lm_head_rms`` of [`flm_gemma4_q4nx_lm_head`][iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head]: the token's RMS norm and per-32 column sums.
+
+    The kernel normalizes the token in place. The contract declares the token
+    ``In``: the write lands in the core's input element, and the next DMA fill
+    overwrites it. The column sums depend on every normalized value.
+    """
+    return _lm_head_sibling(
+        "q4nx_lm_head_rms",
+        KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out),
+            reference=partial(flm_gemma4_q4nx_lm_head_rms_ref, dim=dim),
+            tolerance=Tolerance.bounded(
+                partial(_lm_head_rms_bound, dim=dim),
+                note="bf16 ulp <= 2**-7 |v|. Per term: the kernel floors to bf16 "
+                "(1 ulp), the reference rounds to nearest (1/2 ulp), and the fast "
+                "inverse sqrt after two Newton steps adds 5e-6 relative. The "
+                "kernel floors the sum to bf16 (1 ulp of the sum). 2.5 ulps of "
+                "the sum of |y| plus that 5e-6 stays under 3 * 2**-7 of it",
+            ),
+            # Per element: square and add, two multiplies, one column-sum add.
+            ops_per_call=5 * dim,
+        ),
+        dim=dim,
+        m_tile=m_tile,
+        k_tile=k_tile,
+        group=group,
+    )
 
 
 def flm_gemma4_attn_prefill_ref(l_bf16, y):
