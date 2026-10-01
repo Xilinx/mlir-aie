@@ -17,6 +17,7 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..dialects.aie import external_func
 from ..helpers.dialects.func import call
+from ..helpers.npdtypes import is_block_float
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from .buffer import Buffer
 from .resolvable import Resolvable
@@ -36,9 +37,7 @@ def _as_dtype(dt):
     Older numpy versions coerce custom ``np.generic`` subclasses to void rather
     than rejecting them, so preserve the block formats before conversion.
     """
-    from ..helpers.npdtypes import v8bfp16ebs8, v16bfp16ebs16
-
-    if dt is v8bfp16ebs8 or dt is v16bfp16ebs16:
+    if is_block_float(dt):
         return dt
     try:
         return np.dtype(dt)
@@ -635,8 +634,6 @@ class ExternalFunction(Kernel):
 
     def expected(self, inputs: list, *, scalars: tuple = ()):
         """Return reference output(s), cast to each output argument's dtype."""
-        from aie.helpers.npdtypes import v8bfp16ebs8
-
         c = self._require_contract()
         if c.reference is None:
             raise ValueError(f"{self.name}: contract has no reference")
@@ -651,20 +648,18 @@ class ExternalFunction(Kernel):
         for i, value in zip(c.out_indices, results):
             dt = self.arg_dtype(i)
             outputs.append(
-                np.asarray(value).astype(np.float32 if dt is v8bfp16ebs8 else dt)
+                np.asarray(value).astype(np.float32 if is_block_float(dt) else dt)
             )
         return tuple(outputs) if multiple else outputs[0]
 
     def output_dtype(self, ref_dtype=None):
         """Host dtype(s) of the device output buffer(s).
 
-        Defaults to the declared argument dtypes, with bfp16ebs8 represented
-        as packed bytes. The optional reference dtype override is retained
-        for compatibility. Multiple outputs return a tuple in argument order.
+        Defaults to the declared argument dtypes, with block-floating-point
+        types represented as packed bytes. The optional reference dtype
+        override is retained for compatibility. Multiple outputs return a
+        tuple in argument order.
         """
-        import numpy as np
-        from aie.helpers.npdtypes import v8bfp16ebs8
-
         outputs = self._require_contract().out_indices
         multiple = len(outputs) > 1
         dtypes = (
@@ -677,7 +672,7 @@ class ExternalFunction(Kernel):
         ):
             raise ValueError("provide one reference dtype per output")
         result = tuple(
-            np.uint8 if self.arg_dtype(i) is v8bfp16ebs8 else dt
+            np.uint8 if is_block_float(self.arg_dtype(i)) else dt
             for i, dt in zip(outputs, dtypes)
         )
         return result if multiple else result[0]
