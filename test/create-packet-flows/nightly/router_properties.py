@@ -612,9 +612,10 @@ class Design:
                 indent = "      "
                 lines = []
                 if ev[0] == "memcpy":
-                    _, sym, pkt, nbytes, in_loop = ev
+                    _, sym, pkt, nbytes, in_loop, runs = ev
                     a = len(args)
                     n = nbytes // 4
+                    run = n // runs
                     args.append(f"%a{a}: memref<{n}xi32>")
                     pk = (
                         f", packet = <pkt_id = {pkt}, pkt_type = 0>"
@@ -622,8 +623,8 @@ class Design:
                         else ""
                     )
                     lines.append(
-                        f"aiex.npu.dma_memcpy_nd(%a{a}[0, 0, 0, 0][1, 1, 1, {n}]"
-                        f"[0, 0, 0, 1]{pk}) {{ metadata = @{sym}, id = {a} : i64, "
+                        f"aiex.npu.dma_memcpy_nd(%a{a}[0, 0, 0, 0][{runs}, 1, 1, {run}]"
+                        f"[{run}, 0, 0, 1]{pk}) {{ metadata = @{sym}, id = {a} : i64, "
                         f"issue_token = true }} : memref<{n}xi32>"
                     )
                 elif ev[0] == "start":
@@ -953,7 +954,9 @@ def load_design(text):
                         n *= v
                     nbytes = None if dynamic else n * bits // 8
                     pkt = _pkt(a["packet"]) if "packet" in a else None
-                    events.append(("memcpy", sym, pkt, nbytes, in_loop))
+                    # Each run of the BD's outermost dimension sends a header.
+                    runs = None if dynamic else sizes[0]
+                    events.append(("memcpy", sym, pkt, nbytes, in_loop, runs))
                 elif x.name in (
                     "aiex.dma_configure_task",
                     "aiex.dma_configure_task_for",
@@ -1420,7 +1423,7 @@ class Volumes:
                         return None
                     runs += p["repeat"] + 1
             total += nbytes * runs
-        for _, sym, pkt, nbytes, in_loop in self.memcpys:
+        for _, sym, pkt, nbytes, in_loop, runs in self.memcpys:
             a = self.d.allocs.get(sym)
             if a is None or (*a["tile"], a["dir"], a["ch"]) != key:
                 continue
@@ -1431,7 +1434,7 @@ class Volumes:
             if in_loop or nbytes is None:
                 return None
             known = True
-            total += nbytes + header(pkt)
+            total += nbytes + runs * header(pkt)
         return total if known else None
 
     def looped_volume(self, p, bytes_of):
@@ -1490,7 +1493,7 @@ class Volumes:
         progs = self.programs.get(key, [])
         if len(progs) != 1 or progs[0]["kind"] != "start":
             return None
-        for _, sym, _, _, _ in self.memcpys:
+        for _, sym, _, _, _, _ in self.memcpys:
             a = self.d.allocs.get(sym)
             if a is not None and (*a["tile"], a["dir"], a["ch"]) == key:
                 return None
@@ -1658,9 +1661,10 @@ class Volumes:
 
 
 class WaitGraph:
-    """StreamWaitGraph. Agents are (col, row, is_core, dir, channel)."""
+    """StreamWaitGraph. Agents are (col, row, kind, dir, channel)."""
 
     LOCK, STREAM, HOST = range(3)
+    CHANNEL, CORE, CONTROLLER = range(3)
 
     def __init__(self, d, streams, volumes):
         self.agents, self.edges, self.ids, self.modeled = [], [], {}, set()
@@ -1671,8 +1675,8 @@ class WaitGraph:
         }
 
         def waits_on_locks(a):
-            c, r, is_core, dr, ch = self.agents[a]
-            return is_core or dr != S2MM or (c, r, ch) not in never_full
+            c, r, kind, dr, ch = self.agents[a]
+            return kind == self.CORE or dr != S2MM or (c, r, ch) not in never_full
 
         acquirers, releasers = {}, {}
 
@@ -1686,12 +1690,12 @@ class WaitGraph:
                 s.append(agent)
 
         for tile, uses in d.cores.items():
-            agent = self.get_or_create(tile, True, MM2S, 0)
+            agent = self.get_or_create(tile, self.CORE, MM2S, 0)
             self.modeled.add(agent)
             for u in uses:
                 note(("lock", *u), agent)
         for p in d.programs:
-            agent = self.get_or_create(p["tile"], False, p["dir"], p["ch"])
+            agent = self.get_or_create(p["tile"], self.CHANNEL, p["dir"], p["ch"])
             self.modeled.add(agent)
             for op in program_ops(p):
                 if op[0] == "lock":
@@ -1706,10 +1710,12 @@ class WaitGraph:
 
         def endpoint_agent(ep, sending):
             if ep[2] == CORE:
-                return self.get_or_create(ep[:2], True, MM2S, 0)
+                return self.get_or_create(ep[:2], self.CORE, MM2S, 0)
+            if ep[2] == CTRL and sending:
+                return self.get_or_create(ep[:2], self.CONTROLLER, MM2S, 0)
             if ep[2] == DMA:
                 return self.get_or_create(
-                    ep[:2], False, MM2S if sending else S2MM, ep[3]
+                    ep[:2], self.CHANNEL, MM2S if sending else S2MM, ep[3]
                 )
             return None
 
@@ -1732,7 +1738,7 @@ class WaitGraph:
             def agent_of(key):
                 if key is None or key[2] is None:
                     return None
-                return self.get_or_create(key[:2], False, key[2], key[3])
+                return self.get_or_create(key[:2], self.CHANNEL, key[2], key[3])
 
             def chain_key(ev):
                 return by_symbol(ev[2]) if ev[2] else ev[1]
@@ -1791,7 +1797,7 @@ class WaitGraph:
                     # An issue on a channel the model cannot see may start any.
                     if not keys:
                         for a in range(num_stream_agents):
-                            if not self.agents[a][2]:
+                            if self.agents[a][2] == self.CHANNEL:
                                 for w in waited:
                                     if w != a:
                                         self.add_edge(a, w, self.HOST)
@@ -1803,31 +1809,47 @@ class WaitGraph:
                     "host_alts",
                 ):
                     # A wait on a channel the model cannot see may be on any.
+                    # The host learns a channel is done from a task-complete
+                    # token its column's controllers send.
                     for key in keys or issued:
-                        agent = agent_of(key)
-                        if agent not in waited:
-                            waited.append(agent)
+                        for agent in [agent_of(key)] + [
+                            a
+                            for a in range(num_stream_agents)
+                            if self.agents[a][2] == self.CONTROLLER
+                            and self.agents[a][0] == key[0]
+                        ]:
+                            if agent not in waited:
+                                waited.append(agent)
         # The host drives a shim channel nothing programs, and may wait on any
         # other shim tile first.
         self.on_shim = [
-            not is_core and d.target.kind((c, r)) == "shim"
-            for c, r, is_core, _, _ in self.agents
+            kind == self.CHANNEL and d.target.kind((c, r)) == "shim"
+            for c, r, kind, _, _ in self.agents
         ]
         for a in range(len(self.agents)):
-            if a in self.modeled or not waits_on_locks(a):
+            if (
+                a in self.modeled
+                or self.agents[a][2] == self.CONTROLLER
+                or not waits_on_locks(a)
+            ):
                 continue
             for b in range(len(self.agents)):
-                if b != a and (
-                    self.agents[b][:2] == self.agents[a][:2]
-                    or (self.on_shim[a] and self.on_shim[b])
+                if (
+                    b != a
+                    and self.agents[b][2] != self.CONTROLLER
+                    and (
+                        self.agents[b][:2] == self.agents[a][:2]
+                        or (self.on_shim[a] and self.on_shim[b])
+                    )
                 ):
                     self.add_edge(a, b, self.LOCK)
 
-    def _key(self, tile, is_core, dr, ch):
-        return (tile[0], tile[1], is_core, 0 if is_core else dr, 0 if is_core else ch)
+    def _key(self, tile, kind, dr, ch):
+        tile_only = kind != self.CHANNEL
+        return (tile[0], tile[1], kind, 0 if tile_only else dr, 0 if tile_only else ch)
 
-    def get_or_create(self, tile, is_core, dr, ch):
-        k = self._key(tile, is_core, dr, ch)
+    def get_or_create(self, tile, kind, dr, ch):
+        k = self._key(tile, kind, dr, ch)
         if k not in self.ids:
             self.ids[k] = len(self.agents)
             self.agents.append(k)
@@ -1840,15 +1862,17 @@ class WaitGraph:
 
     def agent_at(self, ep, sending):
         if ep[2] == CORE:
-            return self.ids.get(self._key(ep[:2], True, MM2S, 0))
+            return self.ids.get(self._key(ep[:2], self.CORE, MM2S, 0))
+        if ep[2] == CTRL and sending:
+            return self.ids.get(self._key(ep[:2], self.CONTROLLER, MM2S, 0))
         if ep[2] == DMA:
             return self.ids.get(
-                self._key(ep[:2], False, MM2S if sending else S2MM, ep[3])
+                self._key(ep[:2], self.CHANNEL, MM2S if sending else S2MM, ep[3])
             )
         return None
 
     def drainers_of(self, a):
-        if self.agents[a][2]:
+        if self.agents[a][2] == self.CORE:
             return [a]
         return [b for b, kind in self.edges[a] if kind != self.STREAM]
 
@@ -1875,8 +1899,12 @@ class WaitGraph:
         return []
 
     def describe(self, a):
-        c, r, is_core, dr, ch = self.agents[a]
-        return f"({c}, {r}) core" if is_core else f"({c}, {r}) {DIRS[dr]} {ch}"
+        c, r, kind, dr, ch = self.agents[a]
+        if kind == self.CORE:
+            return f"({c}, {r}) core"
+        if kind == self.CONTROLLER:
+            return f"({c}, {r}) TileControl"
+        return f"({c}, {r}) {DIRS[dr]} {ch}"
 
 
 class Analysis:
@@ -3823,6 +3851,7 @@ def add_host(rng, d):
                         pkt,
                         rng.choice([64, 128, 256]),
                         rng.random() < 0.15,
+                        rng.choice([1, 1, 2, 4]),
                     )
                 )
         waits.append(("wait", sym))
@@ -3831,7 +3860,7 @@ def add_host(rng, d):
             continue
         sym = f"out{ep[0]}_{ep[3]}"
         d.allocs[sym] = dict(tile=ep[:2], dir=S2MM, ch=ep[3], pkt=None)
-        events.append(("memcpy", sym, None, rng.choice([64, 128, 256]), False))
+        events.append(("memcpy", sym, None, rng.choice([64, 128, 256]), False, 1))
         waits.append(("wait", sym))
     if not events:
         return
@@ -3856,7 +3885,8 @@ def add_host(rng, d):
 
 def size_receivers(rng, d, bounded):
     """Give lock-bounded receivers one buffer: exactly what their senders
-    send, that without packet headers kept, or less. Returns the modes."""
+    send, a word less, that without packet headers kept, or less. Returns the
+    modes."""
     an = Analysis(d)
     an.graph
     modes = []
@@ -3871,10 +3901,15 @@ def size_receivers(rng, d, bounded):
         )
         if v0 < 8:
             continue
-        mode = rng.choice(["exact", "header", "overrun"])
+        mode = rng.choice(["exact", "short", "header", "overrun"])
         if mode == "header" and sum(v) == v0:
             mode = "exact"
-        cap = {"exact": sum(v), "header": v0, "overrun": v0 // 2 // 4 * 4}[mode]
+        cap = {
+            "exact": sum(v),
+            "short": sum(v) - 4,
+            "header": v0,
+            "overrun": v0 // 2 // 4 * 4,
+        }[mode]
         if prod is not None:
             c, r, lid, _ = d.locks[prod]
             d.locks[prod] = (c, r, lid, 1)
@@ -3953,8 +3988,26 @@ def random_design(rng, dev):
     assign_ids(rng, d)
     bounded = add_programs(rng, d, window)
     add_host(rng, d)
+    if rng.random() < 0.3:
+        add_task_tokens(d)
     d.sized = size_receivers(rng, d, bounded)
     return d
+
+
+def add_task_tokens(d):
+    """The routes aiecc's column control overlay adds on NPUs: the shim of
+    each column in use sends the task-complete tokens the host's waits wait
+    for from its TileControl port to South 0, as priority packets with id 15.
+    Skipped when a flow of the design takes id 15."""
+    tct = 15
+    if not d.dev.startswith("npu") or any(
+        tct & (f["mask"] or 31) == f["id"] & (f["mask"] or 31) for f in d.packet_flows
+    ):
+        return
+    for c in sorted({c for c, _ in d.used_tiles()}):
+        d.add_packet_flow(
+            tct, [(c, 0, CTRL, 0)], [(c, 0, SOUTH, 0)], keep=True, priority=True
+        )
 
 
 def fix_ir(rng, d, con):

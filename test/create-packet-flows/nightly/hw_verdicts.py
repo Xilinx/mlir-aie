@@ -10,7 +10,9 @@ what happened on hardware.
 
 Each file in Inputs/hw_verdicts is a design as the router got it, then, after
 `// -----`, the routing that ran on an NPU2 (Strix): this router's, the one
-the router at main made, or one forced onto a shared arbiter or link. Its
+the router at main or an earlier version of this one made (`_main`, `_old`),
+or one forced onto a shared arbiter or link. The prio_ designs carry the
+routes aiecc's column control overlay adds for the task-complete tokens. Its
 first line says whether that run passed or hung. Every routing that hung must
 break a rule; every one that passed must not, unless it is marked cautious:
 what kept it from hanging is timing, buffering or a program hidden from the
@@ -52,7 +54,7 @@ def main():
 
 
 # CHECK-NOT: WRONG
-# CHECK: hw-verdicts: 99 routings, 0 disagree with HW
+# CHECK: hw-verdicts: 107 routings, 0 disagree with HW
 
 if __name__ == "__main__":
     main()
