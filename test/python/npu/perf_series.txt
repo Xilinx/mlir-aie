@@ -107,6 +107,9 @@ expand/576x16/uint8_bfloat16
 expand/576x256/uint8_bfloat16
 filter2d/160x4/uint8/line_width=160/short-row
 filter2d/1920x16/uint8
+flm_gemma4_attn_prefill/8x4/bfloat16
+flm_gemma4_q4nx_lm_head/2560x4/bfloat16_float32
+flm_gemma4_swa_prefill/16x4/bfloat16
 fused_mm/16x64x16x4/bfloat16/band_m=16/bfp16_b=True/chunk_k=32/out_chunk=64
 fused_mm/32x32x16x4/bfloat16
 fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)

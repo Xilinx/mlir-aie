@@ -15,6 +15,10 @@ Submodules:
 - `norm` — rms_norm, rms_norm_eps, layer_norm
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
+- `flm_gemma4` — core kernels extracted from FastFlowLM's Gemma 4
+  implementation (AIE2P): prefill attention, the q4nx LM head and the decode
+  layer's cores, each with its object's entry points as attributes. Not
+  intended for other models.
 - `linalg` — mm, mv, cascade_mm, mm_bfp (a ``MatrixKernel``: ``.mac_dims``
   and ``.stream_dims`` read the blocking and DMA transforms off the
   contract's operand layouts)
@@ -133,6 +137,29 @@ from .eltwise import (
     scale,
     scale_ref,
 )
+from .flm_gemma4 import (
+    FLM_GEMMA4_E2B_DECODE,
+    FLM_GEMMA4_E4B_DECODE,
+    FlmGemma4DecodeGeometry,
+    flm_gemma4_attn_prefill,
+    flm_gemma4_attn_prefill_ref,
+    flm_gemma4_decode_attn_kv,
+    flm_gemma4_decode_attn_kv_kvh2,
+    flm_gemma4_decode_attn_qk,
+    flm_gemma4_decode_attn_qk_kvh2,
+    flm_gemma4_decode_gate_layer_embedding,
+    flm_gemma4_decode_glu,
+    flm_gemma4_decode_per_layer_up,
+    flm_gemma4_decode_proj_layer_embedding,
+    flm_gemma4_decode_proj_main,
+    flm_gemma4_decode_rms_residual,
+    flm_gemma4_decode_rope,
+    flm_gemma4_decode_swa_attn_kv,
+    flm_gemma4_q4nx_lm_head,
+    flm_gemma4_q4nx_lm_head_ref,
+    flm_gemma4_swa_prefill,
+    flm_gemma4_swa_prefill_ref,
+)
 from .fused import fused_mm
 from .linalg import (
     MatrixKernel,
@@ -233,6 +260,27 @@ __all__ = [
     "mm_activation_epilogue",
     "mm_activation_epilogue_ref",
     "mm_activation_epilogue_lut_ref",
+    "FLM_GEMMA4_E2B_DECODE",
+    "FLM_GEMMA4_E4B_DECODE",
+    "FlmGemma4DecodeGeometry",
+    "flm_gemma4_attn_prefill",
+    "flm_gemma4_attn_prefill_ref",
+    "flm_gemma4_swa_prefill",
+    "flm_gemma4_swa_prefill_ref",
+    "flm_gemma4_q4nx_lm_head",
+    "flm_gemma4_q4nx_lm_head_ref",
+    "flm_gemma4_decode_glu",
+    "flm_gemma4_decode_attn_kv",
+    "flm_gemma4_decode_attn_kv_kvh2",
+    "flm_gemma4_decode_attn_qk",
+    "flm_gemma4_decode_attn_qk_kvh2",
+    "flm_gemma4_decode_swa_attn_kv",
+    "flm_gemma4_decode_rope",
+    "flm_gemma4_decode_rms_residual",
+    "flm_gemma4_decode_proj_main",
+    "flm_gemma4_decode_per_layer_up",
+    "flm_gemma4_decode_proj_layer_embedding",
+    "flm_gemma4_decode_gate_layer_embedding",
     "reduce_add",
     "reduce_min",
     "reduce_max",
