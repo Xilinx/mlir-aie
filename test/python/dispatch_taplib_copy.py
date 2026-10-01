@@ -149,24 +149,25 @@ def repeated_read(
 
 
 dyn_reps = repeated_read.specialize()
-for reps in (1, 64):
+for reps in (1, 65, 256):
     words = dyn_reps.instructions(reps=reps)
     static = repeated_read.specialize(reps=reps).instructions()
     repeats = {e.repeat for e in trace(words) if e.kind == "push"}
     print(f"reps={reps}: repeat {repeats} equivalent={not compare(words, static)}")
 # CHECK: reps=1: repeat {0} equivalent=True
-# CHECK: reps=64: repeat {63} equivalent=True
+# CHECK: reps=65: repeat {64} equivalent=True
+# CHECK: reps=256: repeat {255} equivalent=True
 
-# A repeat count is never truncated into its field. Past the BD's 6-bit
-# iteration wrap, below 1, or too wide for the 31- or 32-bit operand it
-# narrows to, the dispatch is refused.
-for reps in (65, 0, 2**31 + 1, 2**32 + 2):
+# A repeat count is never truncated into its field. Past the queue's 8-bit
+# repeat count, below 1, or too wide for the 31- or 32-bit operand it narrows
+# to, the dispatch is refused.
+for reps in (257, 0, 2**31 + 1, 2**32 + 2):
     try:
         dyn_reps.instructions(reps=reps)
         print(f"reps={reps}: accepted")
     except HostRuntimeError as e:
         print(f"reps={reps}: refused:", str(e).split("}: ", 1)[1])
-# CHECK: reps=65: refused: a runtime size or stride overflows its buffer descriptor field (at most 63)
+# CHECK: reps=257: refused: a runtime DMA repeat count exceeds the task queue's [0:255] range (at most 256 executions)
 # CHECK: reps=0: refused: repeat count must be >= 1, got <runtime>
 # CHECK: reps=2147483649: refused: a runtime DMA size or stride does not fit in 31 bits
 # CHECK: reps=4294967298: refused: a runtime DMA repeat count does not fit in 32 bits

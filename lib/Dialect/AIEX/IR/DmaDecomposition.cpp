@@ -25,8 +25,8 @@ using namespace xilinx::AIEX;
 namespace {
 
 int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
-                                unsigned dim, uint64_t elemWidth,
-                                uint32_t gran) {
+                                unsigned dim, int64_t stride,
+                                uint64_t elemWidth, uint32_t gran) {
   uint32_t wrapBits = tm.getDmaBdWrapBits(col, row);
   if (wrapBits == 0)
     return 0;
@@ -39,8 +39,9 @@ int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
       maxInput = (maxInput / divisor) * divisor;
     return maxInput;
   }
-  if (dim == 3)
-    return 1LL << 6; // iteration wrap is 6 bits
+  if (dim == 3) // a zero-stride repeat rides the queue's repeat_count
+    return stride == 0 ? tm.getMaxRepeatCount() + 1
+                       : 1LL << tm.getDmaBdIterBits(col, row);
   return (1LL << wrapBits) - 1;
 }
 
@@ -164,8 +165,8 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   {
     unsigned d = static_cast<unsigned>(outermost);
     int64_t n = pattern.sizes[d];
-    int64_t chunkSize =
-        maxLegalInputSizeForDim(tm, col, row, d, elemWidth, gran);
+    int64_t chunkSize = maxLegalInputSizeForDim(
+        tm, col, row, d, pattern.strides[d], elemWidth, gran);
     // An offset-bearing singleton cannot be reused by factoring; slice instead.
     if (pattern.sizes[3] == 1 && outerSlotHasOffset && n <= chunkSize)
       chunkSize = 1;

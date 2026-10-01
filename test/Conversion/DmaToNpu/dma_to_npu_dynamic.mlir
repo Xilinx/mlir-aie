@@ -172,3 +172,37 @@ module {
     }
   }
 }
+
+// -----
+
+// A runtime pure repeat (constant zero outer stride) never touches the 6-bit
+// iteration wrap, so it gets no iteration guard; the queue push refuses a
+// count past its 8-bit repeat_count instead.
+// CHECK-LABEL: @rt_repeat
+// CHECK-NOT: aiex.npu.assert_bd_field
+// CHECK: aiex.npu.require(%{{.*}}) {message = "a runtime DMA repeat count exceeds the task queue's [0:255] range
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @rt_repeat(%arg0: memref<32xi32>, %r: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][%r, 1, 1, 32][0, 0, 0, 1]) {id = 0 : i64, metadata = @alloc0} : memref<32xi32>
+    }
+  }
+}
+
+// -----
+
+// With a runtime outer stride the iteration wrap is written whenever that
+// stride is positive, so the field it would land in is guarded.
+// CHECK-LABEL: @rt_outer_stride
+// CHECK: aiex.npu.assert_bd_field(%{{.*}}) {max = 63 : i32}
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @rt_outer_stride(%arg0: memref<8192xi32>, %r: i64, %s: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][%r, 1, 1, 32][%s, 0, 0, 1]) {id = 0 : i64, metadata = @alloc0} : memref<8192xi32>
+    }
+  }
+}

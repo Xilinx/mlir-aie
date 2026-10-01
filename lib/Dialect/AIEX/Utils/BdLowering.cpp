@@ -278,6 +278,16 @@ buildShimBdWords(OpBuilder &builder, Location loc,
   };
   bool isLinear = knownContiguous();
 
+  // word[6] iteration_size: a zero outer stride is a pure repeat (carried by
+  // repeat_count), so both iteration fields must be 0 like AIEDmaToNpu; gate
+  // iteration_size on the stride while leaving hwS[3] for repeatCountOut.
+  // hwT[3] already collapses to 0.
+  Value zeroI32 = createConstantI32(builder, loc, 0);
+  Value iterStridePos = arith::CmpIOp::create(
+      builder, loc, arith::CmpIPredicate::sgt, inT[3], zeroI32);
+  Value iterSizeField =
+      arith::SelectOp::create(builder, loc, iterStridePos, hwS[3], zeroI32);
+
   // Guard a RUNTIME size or stride against its narrow BD field (masking would
   // silently truncate); constants are verifier-checked. d0/d1 wrap (10-bit)
   // and d0-d2 stride (20-bit) only in ND mode, iteration wrap (6-bit) and
@@ -292,7 +302,10 @@ buildShimBdWords(OpBuilder &builder, Location loc,
     guardField(sizesRev[0], hwS[0], ShimBdFieldWidths::d0WrapMax());
     guardField(sizesRev[1], hwS[1], ShimBdFieldWidths::d1WrapMax());
   }
-  guardField(sizesRev[3], hwS[3], ShimBdFieldWidths::iterWrapMax());
+  auto outerStride = cst(stridesRev[3]);
+  if (!outerStride || *outerStride != 0)
+    guardField(sizesRev[3], outerStride ? hwS[3] : iterSizeField,
+               ShimBdFieldWidths::iterWrapMax());
   for (int i = isLinear ? 3 : 0; i < 4; i++)
     guardField(stridesRev[i], hwT[i], ShimBdFieldWidths::strideMax());
 
@@ -333,15 +346,7 @@ buildShimBdWords(OpBuilder &builder, Location loc,
         arith::OrIOp::create(builder, loc, wordsOut[5],
                              buildBdWord(builder, loc, {{hwT[2], 0xFFFFF, 0}}));
   }
-  // word[6]: iteration_size [25:20], iteration_stride [19:0]. A zero outer
-  // stride is a pure repeat (carried by repeat_count), so both fields must be 0
-  // like AIEDmaToNpu; gate iteration_size on the stride while leaving hwS[3]
-  // for repeatCountOut. hwT[3] already collapses to 0.
-  Value zeroI32 = createConstantI32(builder, loc, 0);
-  Value iterStridePos = arith::CmpIOp::create(
-      builder, loc, arith::CmpIPredicate::sgt, inT[3], zeroI32);
-  Value iterSizeField =
-      arith::SelectOp::create(builder, loc, iterStridePos, hwS[3], zeroI32);
+  // word[6]: iteration_size [25:20], iteration_stride [19:0].
   wordsOut[6] = buildBdWord(builder, loc,
                             {{iterSizeField, 0x3F, 20}, {hwT[3], 0xFFFFF, 0}});
 

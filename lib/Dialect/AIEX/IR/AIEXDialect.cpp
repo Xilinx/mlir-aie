@@ -211,9 +211,13 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
     return forOp->emitOpError(
         "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
-  if (hardwareSizes[3] > (1 << iter_bits) - 1)
+  // A zero-stride size 3 is a pure repeat: the lowerings leave the iteration
+  // fields 0 and carry the count in the queue push's repeat_count instead.
+  int64_t maxSize3 = inputStrides[3] == 0 ? targetModel.getMaxRepeatCount()
+                                          : (1 << iter_bits) - 1;
+  if (hardwareSizes[3] > maxSize3)
     return forOp->emitOpError(
-        "Size 3 exceeds the [1:" + std::to_string(1 << iter_bits) + "] range.");
+        "Size 3 exceeds the [1:" + std::to_string(maxSize3 + 1) + "] range.");
   if (hardwareStrides[0] > (1 << step_bits) - 1)
     return forOp->emitOpError("Stride 0 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
@@ -562,12 +566,16 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   int64_t d1Hw = hwSize(sizesRev[1]);
   int64_t iterRaw = hwSize(sizesRev[3]);
   int64_t iterHw = iterRaw > 1 ? iterRaw - 1 : 0;
+  std::optional<int64_t> outerStride = getConstantIntValue(strides.front());
+  bool pureRepeat = outerStride && *outerStride == 0;
   if (failed(checkSize(sizesRev[0], d0Hw, ShimBdFieldWidths::d0WrapMax(),
                        "d0 size")) ||
       failed(checkSize(sizesRev[1], d1Hw, ShimBdFieldWidths::d1WrapMax(),
                        "d1 size")) ||
-      failed(checkSize(sizesRev[3], iterHw, ShimBdFieldWidths::iterWrapMax(),
-                       "iteration size")))
+      failed(checkSize(sizesRev[3], iterHw,
+                       pureRepeat ? targetModel.getMaxRepeatCount()
+                                  : ShimBdFieldWidths::iterWrapMax(),
+                       pureRepeat ? "repeat count" : "iteration size")))
     return failure();
 
   // Realizability of the CONSTANT size/stride operands (divisibility +

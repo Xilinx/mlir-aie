@@ -19,7 +19,23 @@ module {
       %c32 = arith.constant 32 : i64
       %c128 = arith.constant 128 : i64
       // expected-error@+1 {{Size 3 exceeds the [1:64] range}}
-      aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c128,%c2,%c2,%c8][%c0,%c16,%c8,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<128x4x2x8xi32>
+      aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c128,%c2,%c2,%c8][%c32,%c16,%c8,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<128x4x2x8xi32>
+    }
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
+  }
+}
+
+// -----
+
+// A zero-stride size 3 is a pure repeat, carried by the queue push's 8-bit
+// repeat_count rather than the 6-bit iteration wrap: 256 runs fit, 257 do not.
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence(%in : memref<32xi32>) {
+      aiex.npu.dma_memcpy_nd (%in[0, 0, 0, 0][256, 1, 2, 16][0, 0, 16, 1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<32xi32>
+      // expected-error@+1 {{Size 3 exceeds the [1:256] range}}
+      aiex.npu.dma_memcpy_nd (%in[0, 0, 0, 0][257, 1, 2, 16][0, 0, 16, 1]) { metadata = @of_fromMem, id = 1 : i64 } : memref<32xi32>
     }
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
