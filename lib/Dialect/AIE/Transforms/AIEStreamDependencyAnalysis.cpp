@@ -257,11 +257,6 @@ std::map<ChannelKey, std::set<int>> collectSentPacketIDs(DeviceOp device) {
   return ids;
 }
 
-bool isDirectional(WireBundle bundle) {
-  return bundle == WireBundle::North || bundle == WireBundle::South ||
-         bundle == WireBundle::East || bundle == WireBundle::West;
-}
-
 class StreamTracer {
 public:
   explicit StreamTracer(DeviceOp device)

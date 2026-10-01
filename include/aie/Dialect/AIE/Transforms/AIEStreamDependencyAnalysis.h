@@ -22,6 +22,12 @@
 
 namespace xilinx::AIE {
 
+/// Whether `bundle` links a switchbox to a neighbouring one.
+inline bool isDirectional(WireBundle bundle) {
+  return bundle == WireBundle::North || bundle == WireBundle::South ||
+         bundle == WireBundle::East || bundle == WireBundle::West;
+}
+
 /// A tile port at the edge of the stream fabric.
 struct StreamEndpoint {
   TileID tile;

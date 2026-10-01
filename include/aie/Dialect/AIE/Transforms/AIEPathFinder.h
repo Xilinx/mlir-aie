@@ -23,6 +23,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <tuple>
 
 namespace xilinx::AIE {
 
@@ -264,6 +265,11 @@ struct TreeSplit {
   TileID at;
   int a, b;
   std::optional<PathEndPoint> apart;
+
+  bool operator<(const TreeSplit &rhs) const {
+    return std::tie(src, at, a, b, apart) <
+           std::tie(rhs.src, rhs.at, rhs.a, rhs.b, rhs.apart);
+  }
 };
 
 /// What makes a routing unusable: switchbox connections to move, and where a

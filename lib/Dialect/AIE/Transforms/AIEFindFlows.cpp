@@ -384,8 +384,8 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     bool marked = llvm::any_of(c.usedOps, [](Operation *op) {
       Operation *rulesParent =
           isa_and_nonnull<PacketRuleOp>(op) ? op->getParentOp() : nullptr;
-      return (op && op->hasAttr("is_ctrl_pkt_overlay")) ||
-             (rulesParent && rulesParent->hasAttr("is_ctrl_pkt_overlay"));
+      return (op && op->hasAttr(kCtrlPktOverlayAttrName)) ||
+             (rulesParent && rulesParent->hasAttr(kCtrlPktOverlayAttrName));
     });
     if (marked && (srcBundle == WireBundle::TileControl ||
                    destPort.bundle == WireBundle::TileControl)) {
@@ -430,11 +430,11 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
           if (ms.getDestBundle() == destPort.bundle &&
               ms.getDestChannel() == destPort.channel) {
             keepPktHeader = ms.getKeepPktHeaderAttr();
-            markedDest = ms->hasAttr("is_ctrl_pkt_overlay");
+            markedDest = ms->hasAttr(kCtrlPktOverlayAttrName);
           }
         }
         if (isa_and_nonnull<PacketRuleOp>(op) &&
-            op->hasAttr("priority_route")) {
+            op->hasAttr(kPriorityRouteAttrName)) {
           markedSource = true;
         }
       }
