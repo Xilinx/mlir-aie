@@ -5,7 +5,7 @@
 #
 # RUN: %pytest %s
 
-"""The builds the flm_gemma4 factories refuse."""
+"""The flm_gemma4 factories refuse the builds their kernels do not support."""
 
 import dataclasses
 

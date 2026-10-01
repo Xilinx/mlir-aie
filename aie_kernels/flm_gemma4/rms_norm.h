@@ -40,9 +40,9 @@ float rms_scale(const bf16 *x) {
   const float threehalfs = 1.5F;
   float x2 = scalar_mul(sum, 0.5F);
   float divrms = sum;
-  uint32_t i_u32 = *(uint32_t *)&divrms;
+  uint32_t i_u32 = __builtin_bit_cast(uint32_t, divrms);
   i_u32 = 0x5f3759df - (i_u32 >> 1);
-  divrms = *(float *)&i_u32;
+  divrms = __builtin_bit_cast(float, i_u32);
   divrms = scalar_mul(
       divrms, (threehalfs - scalar_mul(scalar_mul(x2, divrms), divrms)));
   divrms = scalar_mul(
