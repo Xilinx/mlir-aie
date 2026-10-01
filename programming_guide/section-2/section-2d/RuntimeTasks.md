@@ -158,7 +158,8 @@ for i in range(4):
 
 def core_fn(of_in, of_out, rtp, barrier):
     barrier.wait_for_value(1)
-    runtime_parameter = rtp
+    runtime_parameter = rtp[0]
+    barrier.release_with_value(1)
 
 ...
 
@@ -172,6 +173,8 @@ def sequence(a, b, c):
 
 rt = Runtime(sequence, [data_ty, data_ty, data_ty])
 ```
+`wait_for_value` does not change the barrier, so `release_with_value` moves it off `1` once the parameters are read. Without it, a worker that loops back for a second dispatch sees the barrier still at `1` and reads the previous dispatch's parameters before the `sequence` has rewritten them.
+
 Currently, a `WorkerRuntimeBarrier` may take any value between 0 and 63. This is due to the fact that these barriers leverage the lock mechansim of the architecture under-the-hood.
 
 > **NOTE:**  Similar to the `Buffer` it is possible to create a single barrier and pass it as input to multiple workers. At lower stages of compiler abstraction this will result in a different lock being employed for each worker.

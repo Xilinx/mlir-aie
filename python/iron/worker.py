@@ -317,7 +317,10 @@ class WorkerRuntimeBarrier:
     def wait_for_value(self, value: int):
         """Wait for the barrier to be set to `value`.
 
-        Should be called from inside a core function.
+        Should be called from inside a core function. The wait leaves the
+        barrier at ``value``; a worker that loops over dispatches calls
+        ``release_with_value`` after reading its runtime parameters so the
+        next iteration waits for the next ``set``.
 
         Args:
             value (int): The value to wait for.
@@ -349,10 +352,10 @@ class WorkerRuntimeBarrier:
             set_lock_value(worker_lock, value)
 
     def release_with_value(self, value: int):
-        """Release and decrement the barrier by `value` inside the core.
+        """Release the barrier, adding ``value`` to it, inside the core.
 
         Args:
-            value (int): The value to decrement by in Release.
+            value (int): The value to add.
         """
         if len(self.worker_locks) == 0:
             raise ValueError(
