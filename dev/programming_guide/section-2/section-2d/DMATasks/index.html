@@ -1636,6 +1636,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#running-out-of-buffer-descriptors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running Out of Buffer Descriptors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tasks-on-mem-and-compute-tiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tasks on Mem and Compute Tiles
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3849,6 +3871,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#running-out-of-buffer-descriptors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running Out of Buffer Descriptors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tasks-on-mem-and-compute-tiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tasks on Mem and Compute Tiles
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -4088,7 +4132,7 @@
 - <strong><code>mem</code></strong>: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
 - <strong><code>tap</code></strong> (optional): A <code>TensorAccessPattern</code> is an alternative method of specifying <code>offset</code>/<code>sizes</code>/<code>strides</code> for determining an access pattern over the <code>mem</code> buffer.
 - <strong><code>offset</code></strong> (optional): Starting point for the data transfer. Default values is <code>0</code>.
-- <strong><code>sizes</code></strong>: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
+- <strong><code>sizes</code></strong>: The extent of data to be transferred across each dimension. A buffer descriptor holds four; when <code>sizes</code> and <code>strides</code> are all constant, more may be given, and the compiler splits the extra ones off into further tasks.
 - <strong><code>strides</code></strong> (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
 - <strong><code>issue_token</code></strong> (optional): If a token is issued, one may call <code>dma_await_task</code> on the returned task. Default is <code>False</code>.
 - <strong><code>burst_length</code></strong> (optional): The configuration of the burst length for the DMA task. If <code>0</code>, defaults to the highest available value.</p>
@@ -4097,6 +4141,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">out_task</span> <span class="o">=</span> <span class="n">shim_dma_single_bd_task</span><span class="p">(</span><span class="n">of_out</span><span class="p">,</span> <span class="n">C</span><span class="p">,</span> <span class="n">sizes</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">N</span><span class="p">],</span> <span class="n">issue_token</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div></p>
 <p>The example above describes a linear transfer of <code>N</code> data elements from the <code>C</code> buffer in host memory into an ObjectFifo with matching metadata labeled "of_out". The <code>sizes</code> dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to <code>1</code>.</p>
+<p>The leftmost dimension, and with more than four every dimension left of the innermost three, is iterated: the BD runs once per index of it, and the task's repeat count is set to match. A transfer of <code>[2, 3, 4, 8, 16]</code> therefore runs a <code>[4, 8, 16]</code> BD 6 times. Where its outer two dimensions merge into one, it stays one task; otherwise the compiler issues one task per index of the outermost dimension, and only the last of them issues the token.</p>
 <h4 id="host-synchronization-with-dma_await_task"><strong>Host Synchronization with <code>dma_await_task</code></strong><a class="headerlink" href="#host-synchronization-with-dma_await_task" title="Permanent link">&para;</a></h4>
 <p>Synchronization between DMA channels and the host is facilitated by the <code>dma_await_task</code> operations, ensuring data consistency and proper execution order. The <code>dma_await_task</code> operation waits until all the BDs associated with a task have completed.</p>
 <p><strong>Function Signature</strong>:
@@ -4129,13 +4174,13 @@
 </code></pre></div></p>
 <h4 id="best-practices-for-data-movement-and-synchronization-with-dma_task-operations"><strong>Best Practices for Data Movement and Synchronization with <code>dma_task</code> Operations</strong><a class="headerlink" href="#best-practices-for-data-movement-and-synchronization-with-dma_task-operations" title="Permanent link">&para;</a></h4>
 <ul>
-<li><strong>Await or Free to Reuse Buffer Descriptors</strong>: While the exact buffer descriptor (BD) used for each operation is not visible to the user with the <code>dma_task</code> operations, there are still a finite number (maximum of <code>16</code> on a Shim Tile). Thus, it is important to use <code>dma_await_task</code> or <code>dma_free_task</code> before the number of BDs are exhausted so that they may be reused.</li>
+<li><strong>Await or Free to Reuse Buffer Descriptors</strong>: While the exact buffer descriptor (BD) used for each operation is not visible to the user with the <code>dma_task</code> operations, there are still a finite number (maximum of <code>16</code> on a Shim Tile). <code>dma_await_task</code> and <code>dma_free_task</code> return a task's BDs for reuse. Where a sequence does neither, the compiler can take BDs back from started tasks it can prove finished, if you ask it to (see <a href="#running-out-of-buffer-descriptors">Running Out of Buffer Descriptors</a>).</li>
 <li><strong>Note Non-blocking Transfers</strong>: Overlap data transfers with computation by leveraging the non-blocking nature of <code>dma_start_task</code>.</li>
 <li><strong>Minimize Synchronization Overhead</strong>: Synchronize/wait judiciously to avoid excessive overhead that might degrade performance.</li>
 </ul>
 <h4 id="conclusion"><strong>Conclusion</strong><a class="headerlink" href="#conclusion" title="Permanent link">&para;</a></h4>
 <h4 id="the-dma-task-queue"><strong>The DMA Task Queue</strong><a class="headerlink" href="#the-dma-task-queue" title="Permanent link">&para;</a></h4>
-<p>Each DMA channel has a <em>task queue</em> holding a bounded number of outstanding transfers -- 4 on AIE2. Starting a task pushes onto that channel's queue; the transfer leaves the queue as the DMA runs it.</p>
+<p>Each DMA channel has a <em>task queue</em> holding a bounded number of outstanding transfers -- 4 on AIE2, read in IRON as <code>dev.dma_task_queue_depth</code>. Starting a task pushes onto that channel's queue; the transfer leaves the queue as the DMA runs it.</p>
 <p>The queue does <strong>not</strong> backpressure. A push that arrives when the queue is full is dropped, the transfer never runs, and anything waiting on it (a <code>dma_await_task</code>, or a downstream receive) blocks forever. Nothing reports this at the time it happens.</p>
 <p>Whether it happens depends on how fast the consumer drains, not on the program. Measured on a Strix NPU, 14 back-to-back pushes on one shim channel time out every run, while the same 14 pushes behind a faster consumer complete -- identical instructions, opposite outcomes. Eight pushes of 1KB are fine; eight of 8KB behind a slow consumer overflow.</p>
 <p>Two things follow. First, keep the number of started-but-not-awaited tasks on any one channel at or below the queue depth; a <code>dma_await_task</code> on a channel consumes the oldest outstanding completion token and retires its task and everything queued ahead of it, not necessarily the task named by its operand. Second, where you cannot bound it by construction, the compiler does it for you: by default it inserts a poll of the channel's live queue occupancy before any push that could find it full, so the sequence waits for a free slot instead of racing.</p>
@@ -4144,6 +4189,63 @@
 </code></pre></div>
 <p>The relevant passes take an <code>enforce-queue-depth</code> option directly, should you need it: <code>aie-assign-runtime-sequence-bd-ids</code> for static <code>dma_start_task</code> sequences, <code>aie-lower-dynamic-bd-pool</code> for dynamic-pool tasks (including runtime-bound loops), and <code>aie-dma-to-npu</code> for the final combined queue accounting of task pushes and <code>npu_dma_memcpy_nd</code>.</p>
 <p>Enforcement needs a pollable occupancy register, and not every target reports one. Where it cannot be applied the compiler warns and the build succeeds, with a note saying so.</p>
+<h4 id="running-out-of-buffer-descriptors"><strong>Running Out of Buffer Descriptors</strong><a class="headerlink" href="#running-out-of-buffer-descriptors" title="Permanent link">&para;</a></h4>
+<p>When a task needs more BDs than a tile has free, compilation fails with "Too many simultaneously active buffer descriptors". With <code>aiecc --reclaim-runtime-bds</code> (the <code>reclaim-bds</code> option of <code>aie-assign-runtime-sequence-bd-ids</code>), the compiler instead takes BDs back from a task that was started earlier and never awaited or freed. It only takes BDs from a task it can prove finished, and it proves that from the channel's status register, the same one the queue-depth polls read:</p>
+<ul>
+<li>If a poll already in the sequence proves the task finished, no new instruction is added. For example, a queue-depth poll that leaves at most 4 tasks unfinished on a channel proves every older task on it finished.</li>
+<li>Otherwise the compiler inserts a poll just before the task that needs the BDs. It picks the oldest task that has other tasks queued behind it on its channel, and waits until the channel's queue is short enough that this task must have finished. Only if every candidate is the last task on its channel does it wait for that channel to go idle.</li>
+</ul>
+<p>A task that is started again later in the sequence keeps its BDs; the compiler never takes them. A <code>dma_free_task</code> of a task whose BDs were taken is a no-op, and a <code>dma_await_task</code> of it still waits for its completion token. Sequences that fit in the BD pool compile the same with or without the option; it only changes sequences that would otherwise fail. Each poll the compiler inserts is reported as a remark naming the tile and the task it waits for.</p>
+<p>Every such poll waits for one specific task on one channel. The compiler can see the order of the pushes, but it cannot see what else a transfer depends on: a core, another tile, or data a later push brings in. So the rule for a design is that <strong>a task the compiler may have to wait on must not depend on anything started after it.</strong> If a fill can only finish once a drain issued later in the sequence makes room, and the compiler has to reuse that fill's BDs before the drain is issued, the poll waits forever. Issue the pushes a transfer depends on before the pushes queued behind it, as a fill-then-drain loop does. Or await the task yourself at the point that is safe.</p>
+<p>That rule is why reclaiming is off by default: a design that breaks it compiles and then hangs, where without the option it fails to compile. <code>test/npu-xrt/runtime_bd_reclaim</code> runs 160 tasks through one Shim Tile's 16 BDs, none freed.</p>
+<p>A transfer whose access pattern does not fit one BD is split by the compiler (<code>aie-decompose-large-dma-bd</code>). If it splits into more pieces than the channel's queue holds, each piece becomes a task of its own, so that with <code>--reclaim-runtime-bds</code> the BDs of finished pieces can be taken back. A transfer may split into at most 1024 pieces. Only the last piece issues the completion token, so a <code>dma_await_task</code> of the transfer still waits for all of it. The compiler interleaves the pieces with the transfers started alongside it, in proportion to how far through each is. That way a transfer started earlier in the sequence cannot use up the BDs its counterpart, started after it, needs to make progress. The pieces only move past other tasks' configures and starts, RTP writes and lock sets. They never move ahead of their own start, nor past a <code>dma_await_task</code>, a sync, a poll or a register write.</p>
+<p>A task whose repeat count is larger than one queue push carries (<code>dev.max_repeat_count</code>) is split into several pushes by <code>aie-split-long-repeats</code>, so a task can run any number of times.</p>
+<h4 id="tasks-on-mem-and-compute-tiles"><strong>Tasks on Mem and Compute Tiles</strong><a class="headerlink" href="#tasks-on-mem-and-compute-tiles" title="Permanent link">&para;</a></h4>
+<p>The tasks above move data between host memory and a Shim Tile. The same <code>dma_configure_task</code> / <code>dma_start_task</code> / <code>dma_await_task</code> / <code>dma_free_task</code> ops also drive the DMA of a mem or compute tile, which a <code>TileDma</code> (see <a href="../../section-2g/">Section 2g</a>) otherwise configures once, when the design loads. Driven from the sequence, a descriptor can change from one call to the next, for example to re-read an operand held in a mem tile with a size only known at dispatch time.</p>
+<p>In IRON, a task lives on a <code>DmaEndpoint</code>: one DMA channel of one tile. <code>flow.endpoint(tile)</code> is the end of a <code>Flow</code> on <code>tile</code>, whose direction comes from the route and whose channel the compiler may assign. <code>DmaEndpoint(tile, direction, channel)</code> pins a channel by index.</p>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>end.task(*bds, runs=1, wait=False, out_of_order=False)</code></td>
+<td>Configures a <code>TileDmaTask</code> that walks the <code>Bd</code>s in order, <code>runs</code> times per start (<code>dma_configure_task</code>). A bare <code>Buffer</code> stands for <code>Bd(buffer)</code></td>
+</tr>
+<tr>
+<td><code>task.start(repeat_count=None)</code></td>
+<td>Pushes the task onto its channel queue (<code>dma_start_task</code>), optionally with a different repeat count. A task can be started again</td>
+</tr>
+<tr>
+<td><code>task.await_()</code></td>
+<td>Waits for a task built with <code>wait=True</code> (<code>dma_await_task</code>)</td>
+</tr>
+<tr>
+<td><code>task.free()</code></td>
+<td>Returns the task's BDs after its last start (<code>dma_free_task</code>)</td>
+</tr>
+<tr>
+<td><code>lock.set(value)</code></td>
+<td>Overwrites a <code>Lock</code>'s value from the host (<code>aiex.set_lock</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>Bd</code>s are the class a <code>TileDma</code> uses, so locks, packet headers and access patterns are written the same way, and a <code>Bd</code>'s offset, length, sizes and strides may be dispatch-time values. Three things differ: a task runs its <code>Bd</code>s in order, so <code>next</code> is not allowed; <code>iteration</code> is taken from the outermost <code>sizes</code> / <code>strides</code> dimension instead; and a <code>Bd</code> takes both an acquire and a release or neither. With <code>out_of_order=True</code>, an S2MM channel is armed as <code>DmaChannel.out_of_order</code> arms it, a <code>Bd</code> with no <code>bd_id</code> takes its position, and <code>runs</code> counts packets.</p>
+<p>A task is configured where <code>task()</code> is called, and each start only pushes it, so building a task before a loop leaves the loop body only the pushes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">c</span><span class="p">):</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>    <span class="n">load</span> <span class="o">=</span> <span class="n">into</span><span class="o">.</span><span class="n">endpoint</span><span class="p">(</span><span class="n">mem</span><span class="p">)</span><span class="o">.</span><span class="n">task</span><span class="p">(</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>        <span class="n">Bd</span><span class="p">(</span><span class="n">resident</span><span class="p">,</span> <span class="n">acquires</span><span class="o">=</span><span class="p">[</span><span class="n">Acquire</span><span class="p">(</span><span class="n">empty</span><span class="p">)],</span> <span class="n">releases</span><span class="o">=</span><span class="p">[</span><span class="n">Release</span><span class="p">(</span><span class="n">full</span><span class="p">)])</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="p">)</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">range_</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>        <span class="n">into</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>        <span class="n">load</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>        <span class="o">...</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>    <span class="n">load</span><span class="o">.</span><span class="n">free</span><span class="p">()</span>
+</code></pre></div>
+<p>With <code>wait=True</code>, a mem or compute tile reports completion over a route back to the shim that the compiler adds, so <code>await_()</code> works on any tile. A tile's DMA can only address buffers on that tile; only a Shim Tile reaches host memory, which is what <code>fill</code> / <code>drain</code> are for. <a href="https://github.com/Xilinx/mlir-aie/blob/main/test/npu-xrt/flow_endpoints/flow_endpoints.py"><code>test/npu-xrt/flow_endpoints</code></a> and <a href="https://github.com/Xilinx/mlir-aie/blob/main/test/python/npu-xrt/test_tile_dma_task_dispatch.py"><code>test/python/npu-xrt/test_tile_dma_task_dispatch.py</code></a> are hardware-tested designs that use them.</p>
 <p>Both the <code>npu_dma_memcpy_nd</code>/<code>dma_wait</code> interface and the <code>shim_dma_single_bd_task</code>/<code>dma_await_task</code>/<code>dma_free_task</code> interface are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.</p>
 <hr />
 <p><a href="../">Up</a></p>

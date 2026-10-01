@@ -3932,7 +3932,7 @@
 
 <h1 id="core-data-memory">Core Data Memory<a class="headerlink" href="#core-data-memory" title="Permanent link">&para;</a></h1>
 <p>Every AIE compute tile has one small block of local data memory, 64 kB on npu2
-for example. Three things share that block:</p>
+for example; IRON reads the size as <code>dev.core_memory_bytes</code>. Three things share that block:</p>
 <ul>
 <li>the <strong>stack</strong>, at offset zero by default;</li>
 <li>the <strong><code>aie.buffer</code>s</strong> that the buffer allocator places on the tile: the L1
@@ -3961,8 +3961,8 @@ build reports the number to set and stops.</p>
 <h2 id="the-stack-stack_size">The stack: <code>stack_size</code><a class="headerlink" href="#the-stack-stack_size" title="Permanent link">&para;</a></h2>
 <p><code>stack_size</code> is a per-core attribute on <code>aie.core</code>. A core that leaves it
 absent uses the target default from
-<code>AIETargetModel::getDefaultCoreStackSize()</code>, currently 1024 bytes. IRON spells
-it on the <code>Worker</code>:</p>
+<code>AIETargetModel::getDefaultCoreStackSize()</code>, currently 1024 bytes, which IRON
+reads as <code>dev.default_core_stack_bytes</code>. IRON spells it on the <code>Worker</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">Worker</span><span class="p">(</span><span class="n">core_fn</span><span class="p">,</span> <span class="p">[</span><span class="n">args</span><span class="p">],</span> <span class="n">stack_size</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
 </code></pre></div>
 <p>The stack grows upward from its assigned address. A core whose frames exceed

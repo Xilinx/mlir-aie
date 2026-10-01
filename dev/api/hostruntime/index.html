@@ -17608,9 +17608,9 @@ because most correctness-test harnesses do not benchmark.</p>
 
         <p>Resolve a parsed-argparse namespace to a <code>aie.iron.device.Device</code>.</p>
 <p>Collapses the boilerplate variants the example suite used to repeat
-across ~30 sites::</p>
-<div class="highlight"><pre><span></span><code>from_name(args.dev, n_cols=None)   # &quot;use all cols&quot;
-from_name(args.dev, n_cols=1)      # &quot;single col&quot;
+across ~30 sites:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">from_name</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">dev</span><span class="p">,</span> <span class="n">n_cols</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>   <span class="c1"># &quot;use all cols&quot;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">from_name</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">dev</span><span class="p">,</span> <span class="n">n_cols</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>      <span class="c1"># &quot;single col&quot;</span>
 </code></pre></div>
 <p>into one helper with an explicit <code>n_cols</code> parameter.</p>
 
@@ -17774,7 +17774,9 @@ flag) takes precedence over the default when
 <span class="normal"><a href="#__codelineno-0-322">322</a></span>
 <span class="normal"><a href="#__codelineno-0-323">323</a></span>
 <span class="normal"><a href="#__codelineno-0-324">324</a></span>
-<span class="normal"><a href="#__codelineno-0-325">325</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="k">def</span><span class="w"> </span><span class="nf">device_from_args</span><span class="p">(</span>
+<span class="normal"><a href="#__codelineno-0-325">325</a></span>
+<span class="normal"><a href="#__codelineno-0-326">326</a></span>
+<span class="normal"><a href="#__codelineno-0-327">327</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="k">def</span><span class="w"> </span><span class="nf">device_from_args</span><span class="p">(</span>
 <a id="__codelineno-0-273" name="__codelineno-0-273"></a>    <span class="n">args</span><span class="p">,</span>
 <a id="__codelineno-0-274" name="__codelineno-0-274"></a>    <span class="o">*</span><span class="p">,</span>
 <a id="__codelineno-0-275" name="__codelineno-0-275"></a>    <span class="n">dev_attr</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;dev&quot;</span><span class="p">,</span>
@@ -17783,51 +17785,53 @@ flag) takes precedence over the default when
 <a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve a parsed-argparse namespace to a `aie.iron.device.Device`.</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a>
 <a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">    Collapses the boilerplate variants the example suite used to repeat</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    across ~30 sites::</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    across ~30 sites:</span>
 <a id="__codelineno-0-282" name="__codelineno-0-282"></a>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">        from_name(args.dev, n_cols=None)   # &quot;use all cols&quot;</span>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">        from_name(args.dev, n_cols=1)      # &quot;single col&quot;</span>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">    into one helper with an explicit ``n_cols`` parameter.</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">    ```python</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">    from_name(args.dev, n_cols=None)   # &quot;use all cols&quot;</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">    from_name(args.dev, n_cols=1)      # &quot;single col&quot;</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">    ```</span>
 <a id="__codelineno-0-287" name="__codelineno-0-287"></a>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">        args: An ``argparse.Namespace`` with a ``.dev`` attribute (or</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">            whatever ``dev_attr`` names).  When ``n_cols=&quot;auto&quot;`` and</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">            ``args`` also has an ``.n_cols`` attribute, that attribute</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">            overrides the default.</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">        dev_attr: Name of the device-string attribute on ``args``.</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">            Defaults to ``&quot;dev&quot;``.</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">        n_cols: Column-count selector.  ``&quot;auto&quot;`` (default) means</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">            single column on every NPU family — the dominant pattern</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">            across the example suite and the safest &quot;I haven&#39;t thought</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">            about this yet&quot; choice.  Pass an explicit ``int`` (``2``,</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">            ``4``, ...) or ``None`` (full width) to override.  An</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">            ``.n_cols`` attribute on ``args`` (e.g. from a future CLI</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">            flag) takes precedence over the default when</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">            ``n_cols=&quot;auto&quot;``.</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">        Device | None: The selected device, or ``None`` when the CLI leaves</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">        device selection to the runtime.</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>    <span class="n">dev</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">dev_attr</span><span class="p">)</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="k">if</span> <span class="n">dev</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a>        <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a>    <span class="c1"># Lazy import: argparse.py is otherwise pure-stdlib and avoids the</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="c1"># aie.iron import edge until a caller actually needs to resolve a Device.</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.device</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_name</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="n">resolved_cols</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a>    <span class="k">if</span> <span class="n">n_cols</span> <span class="o">==</span> <span class="s2">&quot;auto&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>        <span class="n">resolved_cols</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;n_cols&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>        <span class="k">if</span> <span class="n">resolved_cols</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>            <span class="n">resolved_cols</span> <span class="o">=</span> <span class="mi">1</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">n_cols</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;n_cols must be an int, None, or &#39;auto&#39;; got </span><span class="si">{</span><span class="n">n_cols</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a>        <span class="n">resolved_cols</span> <span class="o">=</span> <span class="n">n_cols</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="k">return</span> <span class="n">from_name</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span> <span class="n">n_cols</span><span class="o">=</span><span class="n">resolved_cols</span><span class="p">)</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">    into one helper with an explicit ``n_cols`` parameter.</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">        args: An ``argparse.Namespace`` with a ``.dev`` attribute (or</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">            whatever ``dev_attr`` names).  When ``n_cols=&quot;auto&quot;`` and</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">            ``args`` also has an ``.n_cols`` attribute, that attribute</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">            overrides the default.</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">        dev_attr: Name of the device-string attribute on ``args``.</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">            Defaults to ``&quot;dev&quot;``.</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">        n_cols: Column-count selector.  ``&quot;auto&quot;`` (default) means</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">            single column on every NPU family — the dominant pattern</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">            across the example suite and the safest &quot;I haven&#39;t thought</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">            about this yet&quot; choice.  Pass an explicit ``int`` (``2``,</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">            ``4``, ...) or ``None`` (full width) to override.  An</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">            ``.n_cols`` attribute on ``args`` (e.g. from a future CLI</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">            flag) takes precedence over the default when</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">            ``n_cols=&quot;auto&quot;``.</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">        Device | None: The selected device, or ``None`` when the CLI leaves</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">        device selection to the runtime.</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="n">dev</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">dev_attr</span><span class="p">)</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="k">if</span> <span class="n">dev</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>    <span class="c1"># Lazy import: argparse.py is otherwise pure-stdlib and avoids the</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>    <span class="c1"># aie.iron import edge until a caller actually needs to resolve a Device.</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.device</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_name</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="n">resolved_cols</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="k">if</span> <span class="n">n_cols</span> <span class="o">==</span> <span class="s2">&quot;auto&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>        <span class="n">resolved_cols</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s2">&quot;n_cols&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>        <span class="k">if</span> <span class="n">resolved_cols</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>            <span class="n">resolved_cols</span> <span class="o">=</span> <span class="mi">1</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">n_cols</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;n_cols must be an int, None, or &#39;auto&#39;; got </span><span class="si">{</span><span class="n">n_cols</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a>        <span class="n">resolved_cols</span> <span class="o">=</span> <span class="n">n_cols</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>    <span class="k">return</span> <span class="n">from_name</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span> <span class="n">n_cols</span><span class="o">=</span><span class="n">resolved_cols</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

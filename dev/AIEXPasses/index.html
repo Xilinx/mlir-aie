@@ -3626,6 +3626,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-split-long-repeats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-split-long-repeats
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="-aie-split-long-repeats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-substitute-shim-dma-allocations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4404,6 +4432,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-split-long-repeats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-split-long-repeats
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="-aie-split-long-repeats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-substitute-shim-dma-allocations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4575,6 +4631,7 @@
 <h4 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>-enforce-queue-depth  : Insert an aiex.npu.maskpoll before any dma_start_task that could push onto a full DMA task queue, so the sequence waits for a free slot instead of racing on drain timing. On by default: the stall only happens where the DMA cannot drain ahead of the pushes, which is exactly where the alternative is a dropped transfer. Targets that report no pollable occupancy register fall back to warning.
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>-warn-unsafe-bd-reuse : Warn when a BD id released by aiex.dma_free_task without any completion guarantee is later reused on the same tile. Off by default: the common fill/drain idiom frees tasks on one channel having awaited another, and that cross-channel reasoning runs through the compute core, which the runtime sequence cannot see, so this reports designs that are correct by an argument the compiler does not have. Useful when chasing a suspected BD aliasing hang.
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>-reclaim-bds          : When a tile runs out of BD ids, take them back from a started task that was never released instead of failing, inserting an aiex.npu.maskpoll that proves it finished if no existing poll does. Emits a remark for each inserted poll. Off by default: the poll hangs if the task&#39;s completion depends, through a core or another tile, on a push issued after it.
 </code></pre></div>
 <h3 id="-aie-create-cores"><code>-aie-create-cores</code><a class="headerlink" href="#-aie-create-cores" title="Permanent link">&para;</a></h3>
 <p><em>Create CoreOp, MemOp, and FlowOp of AIE dialect</em></p>
@@ -4615,9 +4672,15 @@ operations.</p>
 ND wrap/stride encoding exceeds the hardware buffer-descriptor field limits
 (and that cannot be linearized because the access is non-contiguous) into
 one or more hardware-legal ND transfers that move exactly the same data.</p>
-<p>On the task path, multiple sub-patterns are linked with <code>aie.next_bd</code>
-blocks inside the configure region; <code>bd_id</code> / <code>next_bd_id</code> are left for
-later passes to assign.</p>
+<p>On the task path, sub-patterns are linked with <code>aie.next_bd</code> blocks inside
+the configure region; <code>bd_id</code> / <code>next_bd_id</code> are left for later passes to
+assign. Past the channel's task-queue depth, or when they need repeat
+counts of their own, each becomes a single-BD task instead; only the last
+issues the token, and their starts are interleaved with the starts issued
+alongside them. A task-path descriptor may give more than 4 dimensions if
+all are constant; ones that do not fold are split into a task per index.
+See "Running Out of Buffer Descriptors" in
+programming_guide/section-2/section-2d/DMATasks.md.</p>
 <p>Two techniques are used: dimension factoring (split an oversized dimension
 of size N=a*b across a free dimension slot) is preferred, falling back to
 slicing an oversized dimension into ceil(N/limit) sub-transfers with
@@ -4801,6 +4864,22 @@ flat NPU emitter control-flow ops it silently drops -- a miscompile.</p>
 pipelines that contain runtime sequences: core/host <code>scf</code> is lowered to
 <code>cf</code> as usual (e.g. before <code>aie-standard-lowering</code>), while runtime-sequence
 control flow is preserved for its own lowering.</p>
+<h3 id="-aie-split-long-repeats"><code>-aie-split-long-repeats</code><a class="headerlink" href="#-aie-split-long-repeats" title="Permanent link">&para;</a></h3>
+<p><em>Split a task start whose repeat count overflows a queue push</em></p>
+<p>Issues each <code>aiex.dma_start_task</code> whose constant repeat count is past the
+target's queue-push field as several starts of the same task: full-size
+ones first, then the remainder. Only the last keeps the task's token, so
+an await still completes after every pass. A runtime repeat count is left
+for <code>aie-dma-to-npu</code> to guard. A start on a task carried through <code>scf</code>
+control flow uses its own count, or else the count of the one configure
+the task can come from.</p>
+<p>Runs before <code>aie-assign-runtime-sequence-bd-ids</code>, which then counts one
+queue slot per start. A start that needs more pushes than the queue holds
+is a warning, since the sequence then waits for the channel to drain. One
+that needs more than <code>max-pushes</code> is an error.</p>
+<h4 id="options_6">Options<a class="headerlink" href="#options_6" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>-max-pushes : Most queue pushes one start may be split into
+</code></pre></div>
 <h3 id="-aie-substitute-shim-dma-allocations"><code>-aie-substitute-shim-dma-allocations</code><a class="headerlink" href="#-aie-substitute-shim-dma-allocations" title="Permanent link">&para;</a></h3>
 <p><em>Replace symbolic references to <code>aie.shim_dma_allocation</code> ops with their <code>(tile, direction, channel)</code> triple</em></p>
 <h3 id="-aie-transform-bfp-types"><code>-aie-transform-bfp-types</code><a class="headerlink" href="#-aie-transform-bfp-types" title="Permanent link">&para;</a></h3>

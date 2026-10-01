@@ -4019,7 +4019,13 @@ disable rules.</p>
   <em>style</em> of a docstring once you've written one (blank-line placement,
   imperative first line, terminal punctuation) — see
   <a href="#linting-python">Linting Python</a>. Writing a docstring in the first place is
-  still expected for anything public-facing, just not yet machine-enforced.</li>
+  still expected for anything public-facing, just not yet machine-enforced.
+  Docstrings render as Markdown, not reStructuredText: write <code>``Name``</code>
+  (or an mkdocstrings cross-reference) instead of <code>:class:</code>/<code>:meth:</code>/<code>:func:</code>
+  roles, fenced <code>```python</code> blocks at the docstring's text indent
+  instead of <code>Example::</code> literal blocks, and a Google <code>Note:</code> section instead
+  of <code>.. note::</code>. <code>mkdocs build --strict</code> does not catch these, so check
+  them by eye.</li>
 <li><strong>C++</strong> — use Doxygen-style triple-slash comments (<code>///</code>, with <code>\brief</code>,
   <code>\param</code>, <code>\returns</code> as needed) on public declarations in headers. These feed
   the <a href="../api/cpp_doxygen/">C++ API reference</a>.</li>
