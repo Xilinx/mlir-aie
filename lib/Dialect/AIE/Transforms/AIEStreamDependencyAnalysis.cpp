@@ -153,54 +153,78 @@ std::optional<ChannelKey> channelOfSymbol(DeviceOp device, StringRef symbol) {
                     static_cast<int>(alloc.getChannelIndex()));
 }
 
-// The op that creates `task`, following it back through the results and
+// The ops that can create `task`, following it back through the results and
 // block arguments of runtime control flow (scf.for iter_args, scf.if results).
-// Every creator that can reach one value targets the same channel, so the
-// first one found gives it.
-Operation *taskCreator(Value task) {
+// Empty when some value it can come from has no creator here.
+SmallVector<Operation *> taskCreators(Value task) {
+  SmallVector<Operation *> creators;
   llvm::SmallPtrSet<Value, 8> seen;
   SmallVector<Value> worklist{task};
   while (!worklist.empty()) {
     Value v = worklist.pop_back_val();
-    if (!v || !seen.insert(v).second)
+    if (!seen.insert(v).second)
       continue;
     Operation *op = v.getDefiningOp();
     if (isa_and_nonnull<AIEX::DMAConfigureTaskOp, AIEX::DMAConfigureTaskForOp,
                         AIEX::DMAStartBdChainOp, AIEX::DMAStartBdChainForOp>(
-            op))
-      return op;
+            op)) {
+      creators.push_back(op);
+      continue;
+    }
     Operation *owner =
         op ? op : cast<BlockArgument>(v).getOwner()->getParentOp();
     auto branch = dyn_cast_or_null<RegionBranchOpInterface>(owner);
     if (!branch)
-      continue;
+      return {};
     RegionBranchInverseSuccessorMapping mapping;
     branch.getSuccessorInputOperandMapping(mapping);
-    for (OpOperand *operand : mapping.lookup(v))
+    auto it = mapping.find(v);
+    if (it == mapping.end())
+      return {};
+    for (OpOperand *operand : it->second)
       worklist.push_back(operand->get());
   }
-  return nullptr;
+  return creators;
 }
 
-std::optional<ChannelKey> channelOfTask(DeviceOp device, Value task) {
-  Operation *op = taskCreator(task);
-  auto onTile = [](Value tileValue, DMAChannelDir dir,
-                   int channel) -> std::optional<ChannelKey> {
-    std::optional<TileID> tile = tileOf(tileValue);
-    if (!tile)
-      return std::nullopt;
-    return channelKey(*tile, dir, channel);
-  };
-  if (auto configure = dyn_cast_or_null<AIEX::DMAConfigureTaskOp>(op))
-    return onTile(configure.getTile(), configure.getDirection(),
-                  configure.getChannel());
-  if (auto chain = dyn_cast_or_null<AIEX::DMAStartBdChainOp>(op))
-    return onTile(chain.getTile(), chain.getDirection(), chain.getChannel());
-  if (auto configure = dyn_cast_or_null<AIEX::DMAConfigureTaskForOp>(op))
-    return channelOfSymbol(device, configure.getAlloc().getRootReference());
-  if (auto chain = dyn_cast_or_null<AIEX::DMAStartBdChainForOp>(op))
-    return channelOfSymbol(device, chain.getAlloc());
-  return std::nullopt;
+// The channels `task` can run on; empty when that is not known here.
+SmallVector<ChannelKey> channelsOfTask(DeviceOp device, Value task) {
+  SmallVector<ChannelKey> keys;
+  for (Operation *op : taskCreators(task)) {
+    std::optional<ChannelKey> key;
+    auto onTile = [&](Value tileValue, DMAChannelDir dir, int channel) {
+      if (std::optional<TileID> tile = tileOf(tileValue))
+        key = channelKey(*tile, dir, channel);
+    };
+    if (auto configure = dyn_cast<AIEX::DMAConfigureTaskOp>(op))
+      onTile(configure.getTile(), configure.getDirection(),
+             configure.getChannel());
+    else if (auto chain = dyn_cast<AIEX::DMAStartBdChainOp>(op))
+      onTile(chain.getTile(), chain.getDirection(), chain.getChannel());
+    else if (auto configure = dyn_cast<AIEX::DMAConfigureTaskForOp>(op))
+      key = channelOfSymbol(device, configure.getAlloc().getRootReference());
+    else if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op))
+      key = channelOfSymbol(device, chain.getAlloc());
+    if (!key)
+      return {};
+    if (!llvm::is_contained(keys, *key))
+      keys.push_back(*key);
+  }
+  return keys;
+}
+
+// Visits the ops in `region` in program order, going through the body of
+// each loop twice, so that what one iteration does follows all the previous
+// iteration did.
+void walkLoopsTwice(Region &region, function_ref<void(Operation *)> fn) {
+  for (Operation &op : region.getOps()) {
+    fn(&op);
+    auto branch = dyn_cast<RegionBranchOpInterface>(op);
+    int passes = branch && branch.hasLoop() ? 2 : 1;
+    for (int pass = 0; pass < passes; pass++)
+      for (Region &r : op.getRegions())
+        walkLoopsTwice(r, fn);
+  }
 }
 
 // Packet ids each sending channel is programmed with.
@@ -973,43 +997,58 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
 
   // The host issues a channel's transfer only after every wait before it in
   // the runtime sequence completes. Each issue is modeled: a later one can
-  // follow waits the first did not.
+  // follow waits the first did not. A wait on a channel not known here may be
+  // on any the sequence issues.
   for (auto sequence : device.getOps<RuntimeSequenceOp>()) {
-    llvm::SetVector<unsigned> waited;
-    auto channelAgent =
-        [&](std::optional<ChannelKey> key) -> std::optional<unsigned> {
-      if (!key)
-        return std::nullopt;
-      auto [col, row, dir, channel] = *key;
+    auto bySymbol = [&](SymbolRefAttr symbol) -> SmallVector<ChannelKey> {
+      if (std::optional<ChannelKey> key =
+              channelOfSymbol(device, symbol.getRootReference()))
+        return {*key};
+      return {};
+    };
+    auto issued = [&](Operation *op) -> std::optional<SmallVector<ChannelKey>> {
+      if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
+        return bySymbol(memcpy.getMetadata());
+      if (auto start = dyn_cast<AIEX::DMAStartTaskOp>(op))
+        return channelsOfTask(device, start.getTask());
+      if (isa<AIEX::DMAStartBdChainOp, AIEX::DMAStartBdChainForOp>(op))
+        return channelsOfTask(device, op->getResult(0));
+      return std::nullopt;
+    };
+    auto awaited =
+        [&](Operation *op) -> std::optional<SmallVector<ChannelKey>> {
+      if (auto dmaWait = dyn_cast<AIEX::NpuDmaWaitOp>(op))
+        return bySymbol(dmaWait.getSymbolAttr());
+      if (auto await = dyn_cast<AIEX::DMAAwaitTaskOp>(op))
+        return channelsOfTask(device, await.getTask());
+      return std::nullopt;
+    };
+    auto agentOf = [&](const ChannelKey &key) {
+      auto [col, row, dir, channel] = key;
       return getOrCreate({col, row}, false, dir, channel);
     };
-    auto issue = [&](std::optional<ChannelKey> key) {
-      std::optional<unsigned> agent = channelAgent(key);
-      if (!agent)
-        return;
-      modeled.insert(*agent);
-      for (unsigned w : waited)
-        if (w != *agent)
-          addEdge(*agent, w, EdgeKind::Host);
-    };
-    auto wait = [&](std::optional<ChannelKey> key) {
-      if (std::optional<unsigned> agent = channelAgent(key))
-        waited.insert(*agent);
-    };
-    auto bySymbol = [&](SymbolRefAttr symbol) {
-      return channelOfSymbol(device, symbol.getRootReference());
-    };
+
+    llvm::SetVector<ChannelKey> issuedKeys;
     sequence.walk([&](Operation *op) {
-      if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
-        issue(bySymbol(memcpy.getMetadata()));
-      else if (auto start = dyn_cast<AIEX::DMAStartTaskOp>(op))
-        issue(channelOfTask(device, start.getTask()));
-      else if (isa<AIEX::DMAStartBdChainOp, AIEX::DMAStartBdChainForOp>(op))
-        issue(channelOfTask(device, op->getResult(0)));
-      else if (auto dmaWait = dyn_cast<AIEX::NpuDmaWaitOp>(op))
-        wait(bySymbol(dmaWait.getSymbolAttr()));
-      else if (auto await = dyn_cast<AIEX::DMAAwaitTaskOp>(op))
-        wait(channelOfTask(device, await.getTask()));
+      if (std::optional<SmallVector<ChannelKey>> keys = issued(op))
+        issuedKeys.insert(keys->begin(), keys->end());
+    });
+
+    llvm::SetVector<unsigned> waited;
+    walkLoopsTwice(sequence.getBody(), [&](Operation *op) {
+      if (std::optional<SmallVector<ChannelKey>> keys = issued(op)) {
+        for (const ChannelKey &key : *keys) {
+          unsigned agent = agentOf(key);
+          modeled.insert(agent);
+          for (unsigned w : waited)
+            if (w != agent)
+              addEdge(agent, w, EdgeKind::Host);
+        }
+      } else if (std::optional<SmallVector<ChannelKey>> keys = awaited(op)) {
+        for (const ChannelKey &key :
+             keys->empty() ? issuedKeys.getArrayRef() : ArrayRef(*keys))
+          waited.insert(agentOf(key));
+      }
     });
   }
 
