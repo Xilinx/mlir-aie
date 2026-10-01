@@ -320,6 +320,18 @@ NB_MODULE(_aie, m) {
            [](PyAieTargetModel &self, int col, int row) {
              return aieTargetModelGetNumBDs(self.get(), col, row);
            })
+      .def("get_max_lock_value",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetMaxLockValue(self.get());
+           })
+      .def("get_max_repeat_count",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetMaxRepeatCount(self.get());
+           })
+      .def("get_dma_task_queue_depth",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetDmaTaskQueueDepth(self.get());
+           })
       .def("get_dma_bd_wrap_bits",
            [](PyAieTargetModel &self, int col, int row) {
              return aieTargetModelGetDmaBdWrapBits(self.get(), col, row);

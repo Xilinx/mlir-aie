@@ -15,53 +15,32 @@ to size asymmetric BDs so neither side hangs on a length mismatch.
 
 import os
 import sys
+from dataclasses import dataclass
 
 import aie.iron as iron
 import numpy as np
 from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
-    AIEDevice,
     AIETileType,
-    DMAChannelDir,
-    LockAction,
-    WireBundle,
 )
-from aie.dialects.aie import (
-    buffer,
-    core,
-    device,
-    dma_bd,
-    dma_start,
-    flow,
-    lock,
-    mem,
-    next_bd,
-    shim_dma_allocation,  # pyright: ignore[reportAttributeAccessIssue]
-    tile,
-    use_lock,
-)
-from aie.dialects.aie import (
-    end as aie_end,  # pyright: ignore[reportAttributeAccessIssue]
-)
-from aie.dialects.aiex import (
-    dma_await_task,
-    dma_start_task,
-    npu_maskwrite32,
-    runtime_sequence,
-    shim_dma_single_bd_task,
-)
-from aie.extras.context import (  # pyright: ignore[reportMissingImports]
-    mlir_mod_ctx,
-)
+from aie.dialects.aiex import npu_maskwrite32
 from aie.helpers.dialects.func import func
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron import (
+    Acquire,
+    Bd,
+    Buffer,
     CompileTime,
+    DmaChannel,
     ExternalFunction,
+    Flow,
     In,
+    Lock,
     ObjectFifo,
     Out,
     Program,
+    Release,
     Runtime,
+    TileDma,
     Worker,
 )
 from aie.iron.controlflow import range_
@@ -130,151 +109,138 @@ def passthrough_line(src: line_ty, dst: line_ty, n: np.int32):
         dst[i] = src[i]  # pyright: ignore[reportCallIssue, reportArgumentType]
 
 
-def _maskwrite_compress(row, bd_base, bds, ctrl_addr):
-    for bd in bds:
+@dataclass(frozen=True)
+class CompressionRegs:
+    """The compression controls of one tile's DMA.
+
+    Compression is a bit in each BD (BD?_1 on a compute tile, BD?_4 on a mem
+    tile) plus an enable bit in the channel's control register. No IR op sets
+    either, so the runtime sequence writes them with ``npu_maskwrite32``.
+    """
+
+    row: int
+    bd_base: int
+    s2mm_ctrl: int
+    mm2s_ctrl: int
+
+    @classmethod
+    def compute(cls, row: int) -> "CompressionRegs":
+        return cls(row, CT_BD1_BASE, CT_S2MM0_CTRL, CT_MM2S0_CTRL)
+
+    @classmethod
+    def memtile(cls, row: int = MEMTILE_ROW) -> "CompressionRegs":
+        return cls(row, MT_BD4_BASE, MT_S2MM0_CTRL, MT_MM2S0_CTRL)
+
+    def compress_mm2s(self) -> None:
+        """Compress what channel MM2S 0 sends through BDs ``BD_MM2S``."""
+        self._enable(BD_MM2S, self.mm2s_ctrl)
+
+    def decompress_s2mm(self) -> None:
+        """Decompress what channel S2MM 0 receives through BDs ``BD_S2MM``."""
+        self._enable(BD_S2MM, self.s2mm_ctrl)
+
+    def _enable(self, bds, ctrl_addr) -> None:
+        for bd in bds:
+            npu_maskwrite32(
+                column=COL,
+                row=self.row,
+                address=self.bd_base + bd * BD_STRIDE,
+                value=COMPRESS_BIT,
+                mask=COMPRESS_BIT,
+            )
         npu_maskwrite32(
-            column=COL,
-            row=row,
-            address=bd_base + bd * BD_STRIDE,
-            value=COMPRESS_BIT,
-            mask=COMPRESS_BIT,
+            column=COL, row=self.row, address=ctrl_addr, value=CHAN_BIT, mask=CHAN_BIT
         )
+
+
+def enable_processor_bus(row: int) -> None:
+    """Let the core on ``row`` reach its DMA registers with st.tm / lda.tm."""
     npu_maskwrite32(
-        column=COL,
-        row=row,
-        address=ctrl_addr,
-        value=CHAN_BIT,
-        mask=CHAN_BIT,
+        column=COL, row=row, address=CORE_PROCESSOR_BUS_EN, value=0x1, mask=0x1
     )
 
 
-def _linear_tap(n_elems):
+def linear_tap(n_elems):
+    """A contiguous shim access pattern over the first ``n_elems`` elements."""
     return TensorAccessPattern((1, N), 0, [1, 1, 1, n_elems], [0, 0, 0, 1])
 
 
-def _build_multi_cmp_only():
-    """Asymmetric inter-tile compression: CT(0,2) MM2S compresses, CT(0,3)
-    S2MM does NOT decompress, so the CT(0,3) and shim S2MM BDs are
-    hand-sized to RATIOED_PER_LINE to avoid a length-mismatch stall.
-    Built from low-level aie dialect because IRON's link API doesn't
-    expose per-side BD sizing.
+class PingPongDma:
+    """A two-buffer S2MM -> MM2S passthrough on one tile, run by its DMA alone.
+
+    Receives on ``into`` and sends on ``out``, handing each buffer from one
+    channel to the other through a full/empty lock pair. The BD ids are pinned
+    to ``BD_S2MM`` / ``BD_MM2S`` so ``CompressionRegs`` finds them.
     """
 
-    raw_ty = np.ndarray[(LINE_SIZE,), np.dtype[np.int32]]
+    def __init__(self, tile: Tile, buf_ty, into: Flow, out: Flow, name: str):
+        self.tile = tile
+        assert tile.row is not None, "PingPongDma needs a placed tile"
+        self.regs = CompressionRegs.compute(tile.row)
+        self.buffers = [
+            Buffer(type=buf_ty, tile=tile, name=f"{name}_buf{i}") for i in range(2)
+        ]
+        full = Lock(tile=tile, init=0, name=f"{name}_full")
+        empty = Lock(tile=tile, init=len(self.buffers), name=f"{name}_empty")
+        self.tile_dma = TileDma(
+            tile=tile,
+            channels=[
+                self._channel(into, empty, full, BD_S2MM),
+                self._channel(out, full, empty, BD_MM2S),
+            ],
+        )
+
+    def _channel(self, flow: Flow, acq: Lock, rel: Lock, bd_ids) -> DmaChannel:
+        end = flow.endpoint(self.tile)
+        return DmaChannel(
+            direction=end.direction,
+            channel=end,
+            bds=[
+                Bd(buffer=b, bd_id=i, acquires=[Acquire(acq)], releases=[Release(rel)])
+                for b, i in zip(self.buffers, bd_ids)
+            ],
+        )
+
+
+def build_multi_cmp_only():
+    """Asymmetric inter-tile compression: CT(0,2) MM2S compresses, CT(0,3)
+    S2MM does NOT decompress, so the CT(0,3) buffers and the shim drain are
+    sized to the compressed length to avoid a length-mismatch stall. An
+    explicit `TileDma` per tile sizes each side's BDs independently, which a
+    forwarded ObjectFifo cannot.
+    """
     comp_ty = np.ndarray[(RATIOED_PER_LINE,), np.dtype[np.int32]]
-    vec_ty_in = np.ndarray[(N,), np.dtype[np.int32]]
-    # Host-facing out memref is full N so the JIT tensor-size check accepts
-    # the test's N-element out_tensor; the shim S2MM BD below still writes
-    # only RATIOED_N ints (the compressed stream length), leaving the tail
-    # at SENTINEL — which the test scores as "untouched".
-    vec_ty_out = np.ndarray[(N,), np.dtype[np.int32]]
+    vec_ty = np.ndarray[(N,), np.dtype[np.int32]]
 
-    def _emit_passthrough_mem(t, buf0, buf1, full_lock, empty_lock):
-        """2-BD ping-pong S2MM ch0 -> MM2S ch0 on tile `t` (pure DMA)."""
+    shim = Tile(COL, 0, tile_type=AIETileType.ShimNOCTile)
+    ct2 = Tile(COL, COMPUTE_ROW, tile_type=AIETileType.CoreTile)
+    ct3 = Tile(COL, COMPUTE_ROW_2, tile_type=AIETileType.CoreTile)
 
-        @mem(t)
-        def _m(block):
-            dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[3])
-            with block[1]:
-                use_lock(empty_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(buf0)
-                use_lock(full_lock, LockAction.Release, value=1)
-                next_bd(block[2])
-            with block[2]:
-                use_lock(empty_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(buf1)
-                use_lock(full_lock, LockAction.Release, value=1)
-                next_bd(block[1])
-            with block[3]:
-                dma_start(DMAChannelDir.MM2S, 0, dest=block[4], chain=block[6])
-            with block[4]:
-                use_lock(full_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(buf0)
-                use_lock(empty_lock, LockAction.Release, value=1)
-                next_bd(block[5])
-            with block[5]:
-                use_lock(full_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(buf1)
-                use_lock(empty_lock, LockAction.Release, value=1)
-                next_bd(block[4])
-            with block[6]:
-                aie_end()
+    # Channel 0 throughout: the maskwrites target the channel-0 CTRL registers.
+    into = Flow(shim, ct2, src_channel=0, dst_channel=0)
+    link = Flow(ct2, ct3, src_channel=0, dst_channel=0)
+    out = Flow(ct3, shim, src_channel=0, dst_channel=0)
 
-    current_device = iron.get_current_device()
-    assert current_device is not None
-    resolved = current_device.resolve()
-    aie_dev = (
-        AIEDevice.npu2_1col
-        if resolved in (AIEDevice.npu2, AIEDevice.npu2_1col)
-        else AIEDevice.npu1_1col
-    )
+    ct2_dma = PingPongDma(ct2, line_ty, into, link, "ct2")
+    ct3_dma = PingPongDma(ct3, comp_ty, link, out, "ct3")
 
-    with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
+    # The host out buffer is full N so the JIT size check accepts the test's
+    # tensor; the drain writes only RATIOED_N ints and leaves the tail at
+    # SENTINEL, which the test scores as "untouched".
+    def sequence(a_in, c_out):
+        ct2_dma.regs.compress_mm2s()
+        into.fill(a_in)
+        out.drain(c_out, tap=linear_tap(RATIOED_N), wait=True)
 
-        @device(aie_dev)
-        def _dev():
-            shim = tile(COL, 0)
-            ct2 = tile(COL, COMPUTE_ROW)
-            ct3 = tile(COL, COMPUTE_ROW_2)
-
-            # Ping-pong buffers + locks on each compute tile
-            ct2_buf0 = buffer(ct2, raw_ty, name="ct2_buf0")
-            ct2_buf1 = buffer(ct2, raw_ty, name="ct2_buf1")
-            ct2_full = lock(ct2, init=0, sym_name="ct2_full")
-            ct2_empty = lock(ct2, init=2, sym_name="ct2_empty")
-
-            ct3_buf0 = buffer(ct3, comp_ty, name="ct3_buf0")
-            ct3_buf1 = buffer(ct3, comp_ty, name="ct3_buf1")
-            ct3_full = lock(ct3, init=0, sym_name="ct3_full")
-            ct3_empty = lock(ct3, init=2, sym_name="ct3_empty")
-
-            # Flows
-            flow(shim, WireBundle.DMA, 0, ct2, WireBundle.DMA, 0)
-            flow(ct2, WireBundle.DMA, 0, ct3, WireBundle.DMA, 0)
-            flow(ct3, WireBundle.DMA, 0, shim, WireBundle.DMA, 0)
-
-            # Shim DMA alloc declarations for the runtime sequence symbols.
-            shim_dma_allocation("in_alloc", shim, DMAChannelDir.MM2S, 0)
-            shim_dma_allocation("out_alloc", shim, DMAChannelDir.S2MM, 0)
-
-            # Cores must exist on used compute tiles (infinite spinners; data
-            # path is DMA-only).
-            @core(ct2)
-            def _ct2_core():
-                for _ in range_(0x7FFFFFFF):
-                    pass
-
-            @core(ct3)
-            def _ct3_core():
-                for _ in range_(0x7FFFFFFF):
-                    pass
-
-            # CT(0,2): S2MM receives raw lines from shim, MM2S compresses
-            # and emits to CT(0,3). Buffers sized LINE_SIZE (raw).
-            _emit_passthrough_mem(ct2, ct2_buf0, ct2_buf1, ct2_full, ct2_empty)
-            # CT(0,3): S2MM receives RATIOED_PER_LINE ints' worth from the
-            # wire (the compressed stream from CT(0,2)); MM2S forwards to
-            # shim. Buffers sized RATIOED_PER_LINE — the key trick that
-            # avoids a BD-length stall with compress-on / decompress-off.
-            _emit_passthrough_mem(ct3, ct3_buf0, ct3_buf1, ct3_full, ct3_empty)
-
-            @runtime_sequence(vec_ty_in, vec_ty_out)
-            def _seq(a_in, c_out):
-                # Compress on CT(0,2) MM2S only — no decompress anywhere.
-                _maskwrite_compress(COMPUTE_ROW, CT_BD1_BASE, BD_MM2S, CT_MM2S0_CTRL)
-                in_task = shim_dma_single_bd_task(
-                    "in_alloc", a_in, sizes=[1, 1, 1, N], issue_token=True
-                )
-                out_task = shim_dma_single_bd_task(
-                    "out_alloc", c_out, sizes=[1, 1, 1, RATIOED_N], issue_token=True
-                )
-                dma_start_task(in_task, out_task)
-                dma_await_task(in_task, out_task)
-
-    return ctx.module
+    rt = Runtime(sequence, [vec_ty, vec_ty])
+    for f in (into, link, out):
+        rt.add_flow(f)
+    rt.add_tile_dma(ct2_dma.tile_dma)
+    rt.add_tile_dma(ct3_dma.tile_dma)
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-def _build_regdump():
+def build_regdump():
     """Core-side write_tm + read_tm self-test. Host enables the processor bus;
     kernel writes COMPRESS_BIT to each BD?_1 and reads it back. Driver
     asserts each post-write read equals COMPRESS_BIT."""
@@ -298,13 +264,7 @@ def _build_regdump():
     worker = Worker(regdump_core, [of_out.prod(), dump_fn], tile=compute_tile)
 
     def sequence(a_in, c_out, out_h):
-        npu_maskwrite32(
-            column=COL,
-            row=COMPUTE_ROW,
-            address=CORE_PROCESSOR_BUS_EN,
-            value=0x1,
-            mask=0x1,
-        )
+        enable_processor_bus(COMPUTE_ROW)
         out_h.drain(c_out, wait=True)
 
     rt = Runtime(sequence, [vec_ty, vec_ty, of_out.cons()])
@@ -323,10 +283,10 @@ def dma_compression(
         raise ValueError(f"unknown config {config!r}; pick from {CONFIGS}")
 
     if config == "multi_cmp_only":
-        return _build_multi_cmp_only()
+        return build_multi_cmp_only()
 
     if config == "regdump":
-        return _build_regdump()
+        return build_regdump()
 
     vec_ty = np.ndarray[(N,), np.dtype[np.int32]]
 
@@ -339,14 +299,10 @@ def dma_compression(
         compute_tile = Tile(COL, COMPUTE_ROW, tile_type=AIETileType.CoreTile)
         if config == "lossless_roundtrip":
             link_consumer = Tile(COL, MEMTILE_ROW, tile_type=AIETileType.MemTile)
-            consumer_row = MEMTILE_ROW
-            consumer_bd_base = MT_BD4_BASE
-            consumer_s2mm_ctrl = MT_S2MM0_CTRL
+            consumer_regs = CompressionRegs.memtile()
         else:  # multi_*
             link_consumer = Tile(COL, COMPUTE_ROW_2, tile_type=AIETileType.CoreTile)
-            consumer_row = COMPUTE_ROW_2
-            consumer_bd_base = CT_BD1_BASE
-            consumer_s2mm_ctrl = CT_S2MM0_CTRL
+            consumer_regs = CompressionRegs.compute(COMPUTE_ROW_2)
 
         engage_compress = config in (
             "multi_cmp_only",
@@ -357,9 +313,7 @@ def dma_compression(
         # Asymmetric compress-only: ratio-size shim S2MM to match the
         # compressed stream length.
         out_tap_rt = (
-            _linear_tap(RATIOED_N)
-            if engage_compress and not engage_decompress
-            else None
+            linear_tap(RATIOED_N) if engage_compress and not engage_decompress else None
         )
 
         of_a = ObjectFifo(line_ty, name="a_shim_to_ct")
@@ -383,12 +337,10 @@ def dma_compression(
         def sequence(a_in, c_out, in_h, out_h):
             if engage_compress:
                 # CT(0,2) MM2S compress (sends compressed bytes to consumer)
-                _maskwrite_compress(COMPUTE_ROW, CT_BD1_BASE, BD_MM2S, CT_MM2S0_CTRL)
+                CompressionRegs.compute(COMPUTE_ROW).compress_mm2s()
             if engage_decompress:
                 # Consumer tile S2MM decompress (receives compressed bytes)
-                _maskwrite_compress(
-                    consumer_row, consumer_bd_base, BD_S2MM, consumer_s2mm_ctrl
-                )
+                consumer_regs.decompress_s2mm()
             in_h.fill(a_in)
             out_h.drain(c_out, tap=out_tap_rt, wait=True)
 
@@ -400,16 +352,10 @@ def dma_compression(
     is_memtile = config in MEMTILE_CONFIGS
     if is_memtile:
         link_tile = Tile(COL, MEMTILE_ROW, tile_type=AIETileType.MemTile)
-        link_row = MEMTILE_ROW
-        link_bd_base = MT_BD4_BASE
-        link_s2mm_ctrl = MT_S2MM0_CTRL
-        link_mm2s_ctrl = MT_MM2S0_CTRL
+        link_regs = CompressionRegs.memtile()
     else:
         link_tile = Tile(COL, COMPUTE_ROW, tile_type=AIETileType.CoreTile)
-        link_row = COMPUTE_ROW
-        link_bd_base = CT_BD1_BASE
-        link_s2mm_ctrl = CT_S2MM0_CTRL
-        link_mm2s_ctrl = CT_MM2S0_CTRL
+        link_regs = CompressionRegs.compute(COMPUTE_ROW)
 
     of_in = ObjectFifo(line_ty, name="in")
     of_out = of_in.cons().forward(tile=link_tile, name="out")
@@ -470,8 +416,8 @@ def dma_compression(
     has_mm2s_cmp = suffix in ("cmp_only", "both")
     has_s2mm_dcmp = suffix in ("dcmp_only", "both")
     # Ratio-size each shim BD whose channel is doing (de)compression.
-    in_tap = _linear_tap(RATIOED_N) if has_s2mm_dcmp else None
-    out_tap = _linear_tap(RATIOED_N) if has_mm2s_cmp else None
+    in_tap = linear_tap(RATIOED_N) if has_s2mm_dcmp else None
+    out_tap = linear_tap(RATIOED_N) if has_mm2s_cmp else None
 
     is_host_compression = config in HOST_CONFIGS or config in MEMTILE_CONFIGS
     base_config = config in ("base", "memtile_base")
@@ -479,20 +425,14 @@ def dma_compression(
     def sequence(a_in, c_out, in_h, out_h):
         if is_host_compression and not base_config:
             if has_mm2s_cmp:
-                _maskwrite_compress(link_row, link_bd_base, BD_MM2S, link_mm2s_ctrl)
+                link_regs.compress_mm2s()
             if has_s2mm_dcmp:
-                _maskwrite_compress(link_row, link_bd_base, BD_S2MM, link_s2mm_ctrl)
+                link_regs.decompress_s2mm()
         elif config in CORE_CONFIGS:
             # Enable the processor bus on the compute tile so st.tm from
             # inside the core can reach the DMA registers (otherwise the
             # core hangs on the first write_tm).
-            npu_maskwrite32(
-                column=COL,
-                row=COMPUTE_ROW,
-                address=CORE_PROCESSOR_BUS_EN,
-                value=0x1,
-                mask=0x1,
-            )
+            enable_processor_bus(COMPUTE_ROW)
 
         in_h.fill(a_in, tap=in_tap)
         out_h.drain(c_out, tap=out_tap, wait=True)

@@ -20,7 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu2) {
+  aie.device(NPUDEVICE) {
     %logical_core = aie.logical_tile<CoreTile>(?, ?)
     %logical_shim_noc = aie.logical_tile<ShimNOCTile>(?, ?)
     %logical_shim_noc_0 = aie.logical_tile<ShimNOCTile>(?, ?)
