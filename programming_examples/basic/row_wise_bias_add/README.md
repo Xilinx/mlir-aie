@@ -7,9 +7,9 @@
 
 # Row-wise Bias Addition
 
-This design takes two inputs, `in` and `bias`. 
+This design takes two inputs, `in` and `bias`.
 `in` is a `M`&times;`N` matrix, and `bias` is a `1`&times;`N` row-vector.
-The design performs a row-wise addition of `bias` to `in`. 
+The design performs a row-wise addition of `bias` to `in`.
 Conceptually, `bias` is broadcast into a `M`&times;`N` matrix by repeating it `M` times across rows, and then this matrix is added element-wise to `in`.
 
 ## Data Movement

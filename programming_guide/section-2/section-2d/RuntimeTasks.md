@@ -188,8 +188,8 @@ To facilitate this reconfiguration step, IRON introduces `TaskGroup`s, created w
 A task is added to a group by passing `group=` to `fill`/`drain`. Transfers are submitted in sequence order and may overlap. The `finish()` method marks the end of a task group: it waits for tasks in the group annotated with `wait=True` to complete, then frees _all_ resources used by the group.
 If no group is specified for managed DMA tasks in a body, a single default task group is used and finished at the end of the sequence. By default, `Runtime` rejects mixing explicit groups with this default group; assign all managed transfers to explicit groups when using them.
 
-> **NOTE:**  A call to  `finish()` blocks the runtime sequence until all of the group's tasks annotated with `wait=True`  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those _not_ annotated with `wait=True` ("unawaited tasks") -- will be freed and reused for subsequent tasks. 
-> 
+> **NOTE:**  A call to  `finish()` blocks the runtime sequence until all of the group's tasks annotated with `wait=True`  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those _not_ annotated with `wait=True` ("unawaited tasks") -- will be freed and reused for subsequent tasks.
+>
 > To avoid race conditions, any unawaited tasks in the group should form a dependency of an awaited task.
 > It is only safe to remove a `wait=True` if you can reason that another, awaited task in the same group can only complete if the awaited task also completed.
 > For example, you may choose to set `wait=False` on an input fill if you can guarantee that a later (awaited) output drain depends on the input and completes only if the input fill completed as well.

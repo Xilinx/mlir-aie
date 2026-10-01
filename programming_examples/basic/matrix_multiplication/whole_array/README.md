@@ -11,7 +11,7 @@ The code in this directory showcases an example matrix multiplication design for
 
 At a high level, the code does the following (in order):
 
-1. [**Defining Matrix Dimensions and Data Types:**](#1-defining-matrix-dimensions-and-data-types) We first specify the dimensions `M`, `K`, `N` for the input matrices `A` (`M`&times;`K`), and `B` (`K`&times;`N`), and the output matrix `C` (`M`&times;`N`), as well as their data type. To enable efficient computation, our design will split large input matrices into smaller sub-matrix blocks on two levels; we thus also define the sizes of those sub-matrices. At the first level, the constants `m`, `k`, and `n` define the size of the submatrices processed by each AIE core. At the second level, we further subdivide using smaller sizes `r`, `s` and `t` -- these are the sizes of required by the vector computation intrinsics of the AIEs. 
+1. [**Defining Matrix Dimensions and Data Types:**](#1-defining-matrix-dimensions-and-data-types) We first specify the dimensions `M`, `K`, `N` for the input matrices `A` (`M`&times;`K`), and `B` (`K`&times;`N`), and the output matrix `C` (`M`&times;`N`), as well as their data type. To enable efficient computation, our design will split large input matrices into smaller sub-matrix blocks on two levels; we thus also define the sizes of those sub-matrices. At the first level, the constants `m`, `k`, and `n` define the size of the submatrices processed by each AIE core. At the second level, we further subdivide using smaller sizes `r`, `s` and `t` -- these are the sizes of required by the vector computation intrinsics of the AIEs.
 
 1. [**Constructing an AIE Array Configuration:**](#2-constructing-an-aie-array-configuration) The NPU hardware is comprised of components laid out in a two-dimensional grid of rows and columns. Based on the matrix sizes and tiling factors, we choose the number of rows, columns, and total number of compute cores of the AIE device that the design should utilize. We then configure the AI Engine array, memory tiles, and shim tiles.
 
@@ -77,7 +77,7 @@ The input and output matrix sizes are given by the user. We subdivide the input 
     > This tiling occurs in the `Runtime` sequence body's host-to-memtile `handle.fill()` calls.
 We describe it further below, in section *"5. Defining External Data Transfer Sequences"*.
 
-1. **Tiling to Vector Intrinsic Size:** The AIE compute cores calculate the matrix multiplication using efficient "multiply-accumulate" vector intrinsic instructions (`MAC` instructions). These hardware instructions process very small blocks of the matrix: size `r`&times;`s` blocks of `A` and size `s`&times;`t` blocks of  `B`, producing an output of size `r`&times;`t` (`C`). 
+1. **Tiling to Vector Intrinsic Size:** The AIE compute cores calculate the matrix multiplication using efficient "multiply-accumulate" vector intrinsic instructions (`MAC` instructions). These hardware instructions process very small blocks of the matrix: size `r`&times;`s` blocks of `A` and size `s`&times;`t` blocks of  `B`, producing an output of size `r`&times;`t` (`C`).
     > This tiling occurs in the inner-AIE data movements. We describe it in the section *"3. Defining Data Movement Inside the NPU"*.
 
     > The vector intrinsic size is dictated by the hardware and the compute microkernel.
@@ -102,7 +102,7 @@ workers.append(Worker(core_fn, [...], tile=Tile(tile_col, tile_row)))
 
 The 4 × `n_aie_cols` `workers` list is the design's "tile grid"; each `Worker` is implicitly pinned to one compute tile.
 
-### 3. Defining Data Movement Inside the NPU: 
+### 3. Defining Data Movement Inside the NPU:
 
 We use `ObjectFifo`s to abstractly describe the data movement and synchronization between AIE Compute, Memory and Shim tiles. An `ObjectFifo` presents a First-In-First-Out interface; under the hood it takes care of DMA configuration, lock acquisition / release, and double-buffering.
 
@@ -178,7 +178,7 @@ Let us break down each component of this pattern. We do so back-to-front for eas
 * Pair 3: `(r, k)`
     * Together with the previous dimension, this dimension represents the transfer of a single `r`&times;`s`-sized tile.
     * Wrap: `r` is the number of rows of a `r`&times;`s`-sized tile.
-    * Stride: `k` is the stride between first element of each consecutive row along the `m` dimension, i.e. adding this stride to a memory address points to the element in the matrix directly below the original address. 
+    * Stride: `k` is the stride between first element of each consecutive row along the `m` dimension, i.e. adding this stride to a memory address points to the element in the matrix directly below the original address.
 * Pair 2: `(k // s, s)`
     * Together with the previous dimensions, this dimension represents the transfer of one row of `r`&times;`s`-sized tiles, i.e. the first `k`&times;`s` elements of the input array.
     * Wrap: `k // s` is the number of `r`&times;`s`-sized tiles along the `k` (columns) dimension.

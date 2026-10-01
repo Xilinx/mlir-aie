@@ -56,7 +56,7 @@ The IRON code [example](./aie2.py) in this mini tutorial details the different p
 
 ## Complex Data Movement Patterns: Broadcast, Split, Join
 
-IRON designs can be scaled to use multiple Workers easily: 
+IRON designs can be scaled to use multiple Workers easily:
 ```python
 n_workers = 4
 
@@ -108,7 +108,7 @@ for _ in range(n_workers):
 ```
 
 The `split()` and `join()` methods are used to create multiple output and input `ObjectFifos` respectively.
-    
+
 Split - further documentation on the `split()` available in [Section 2b - Implicit Copy](../section-2/section-2b/03_Implicit_Copy/) of the programming guide.
 ```python
 n_workers = 4

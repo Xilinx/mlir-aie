@@ -105,9 +105,9 @@ top-left of `C`:
 Once an entire row of `A` and an entire column of `B` have been streamed in,
 we move onto the next column of tiles of `B`, while repeating the same row of
 tiles of `A`. This allows the cores to compute the next output tile of C. In
-our implementation above, we achieve the repeat of `A` using the 
+our implementation above, we achieve the repeat of `A` using the
 `.repeat(N // n)` step, whereas the B tensor access pattern specifies to
-tile the entire B matrix without repeats.  Note that the local buffer holding 
+tile the entire B matrix without repeats.  Note that the local buffer holding
 output C on the compute cores is zero-initialized in each such iteration.
 
 ![To produce the next output tile, the same row of tiles of A is repeated, and the next column of tiles of B is accessed.](./diagrams/matmul_l3l2_2.svg)
@@ -128,14 +128,14 @@ across columns of `B` to produce the next row of output tiles in `C`:
 ```
 tap_A_L2L1 = TensorAccessPattern.full((m, k)).tile((r, s)).group((m // r, k // s))[0]
 fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
-    to_stream=tap_A_L2L1, 
+    to_stream=tap_A_L2L1,
     name="A_L2L1"
 )
 ```
 ```
 tap_B_L2L1 = TensorAccessPattern.full((k, n)).tile((s, t)).group((k // s, n // t))[0]
 fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
-    to_stream=tap_B_L2L1, 
+    to_stream=tap_B_L2L1,
     name="B_L2L1"
 )
 ```

@@ -73,8 +73,8 @@ for(int i = 0; i < 8; i++)          // size_2
         for(int k = 0; k < 8; k++)  // size_0
             // access/store element at/to index:
             (
-                i * 16  // stride_2 
-                + j * 1 // stride_1 
+                i * 16  // stride_2
+                + j * 1 // stride_1
                 + k * 2 // stride_0
             )
 ```
@@ -123,7 +123,7 @@ for(int i = 0; i < 2; i++)      // size_1
     for(int j = 0; j < 3; j++)  // size_0
         // access/store element at/to index:
         (
-            i * 16  // stride_1 
+            i * 16  // stride_1
             + j * 2 // stride_0
         )
 ```
