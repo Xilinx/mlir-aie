@@ -597,15 +597,19 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
       if (inLoop(memcpy) || !type || !type.getElementType().isIntOrFloat())
         return std::nullopt;
       uint64_t elements = 1;
-      for (OpFoldResult size : memcpy.getMixedSizes()) {
+      SmallVector<OpFoldResult> sizes = memcpy.getMixedSizes();
+      for (OpFoldResult size : sizes) {
         std::optional<int64_t> n = getConstantIntValue(size);
         if (!n)
           return std::nullopt;
         elements *= *n;
       }
+      // The outermost dimension re-runs the BD (as iterations, or as repeats
+      // when its stride is 0), and each run sends its own header.
+      uint64_t runs = *getConstantIntValue(sizes.front());
       known = true;
-      total +=
-          elements * type.getElementTypeBitWidth() / 8 + headerBytes(packet);
+      total += elements * type.getElementTypeBitWidth() / 8 +
+               runs * headerBytes(packet);
     }
   }
   if (!known)
@@ -907,7 +911,7 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
       neverFull.insert({s.dst.tile, DMAChannelDir::S2MM, s.dst.port.channel});
   auto waitsOnLocks = [&](unsigned agent) {
     const Agent &a = agents[agent];
-    return a.isCore || !neverFull.count(a.dma);
+    return a.kind == Agent::Kind::Core || !neverFull.count(a.dma);
   };
 
   // Who acquires and who releases each lock.
@@ -1042,15 +1046,20 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
         }
         if (keys->empty())
           for (unsigned a = 0; a < numStreamAgents; a++)
-            if (!agents[a].isCore)
+            if (agents[a].kind == Agent::Kind::Channel)
               for (unsigned w : waited)
                 if (w != a)
                   addEdge(a, w, EdgeKind::Host);
       } else if (std::optional<SmallVector<TileDMAChannel>> keys =
                      awaited(op)) {
         for (const TileDMAChannel &key :
-             keys->empty() ? issuedKeys.getArrayRef() : ArrayRef(*keys))
+             keys->empty() ? issuedKeys.getArrayRef() : ArrayRef(*keys)) {
           waited.insert(agentOf(key));
+          for (unsigned a = 0; a < numStreamAgents; a++)
+            if (agents[a].kind == Agent::Kind::Controller &&
+                agents[a].dma.tile.col == key.tile.col)
+              waited.insert(a);
+        }
       }
     });
   }
@@ -1060,14 +1069,16 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
   // tile is driven by the host, which may wait on any other shim tile first.
   const AIETargetModel &targetModel = getTargetModel(device);
   for (Agent &a : agents)
-    a.onShim = !a.isCore &&
+    a.onShim = a.kind == Agent::Kind::Channel &&
                targetModel.isShimNOCorPLTile(a.dma.tile.col, a.dma.tile.row);
   for (unsigned a = 0; a < agents.size(); a++) {
-    if (modeled.contains(a) || !waitsOnLocks(a))
+    if (modeled.contains(a) || agents[a].kind == Agent::Kind::Controller ||
+        !waitsOnLocks(a))
       continue;
     for (unsigned b = 0; b < agents.size(); b++)
-      if (b != a && (agents[b].dma.tile == agents[a].dma.tile ||
-                     (agents[a].onShim && agents[b].onShim)))
+      if (b != a && agents[b].kind != Agent::Kind::Controller &&
+          (agents[b].dma.tile == agents[a].dma.tile ||
+           (agents[a].onShim && agents[b].onShim)))
         addEdge(a, b, EdgeKind::Lock);
   }
 
@@ -1089,6 +1100,8 @@ std::optional<StreamWaitGraph::Agent>
 StreamWaitGraph::Agent::at(const StreamEndpoint &endpoint, bool sending) {
   if (endpoint.port.bundle == WireBundle::Core)
     return core(endpoint.tile);
+  if (endpoint.port.bundle == WireBundle::TileControl && sending)
+    return controller(endpoint.tile);
   if (endpoint.port.bundle == WireBundle::DMA)
     return channel({endpoint.tile,
                     sending ? DMAChannelDir::MM2S : DMAChannelDir::S2MM,
@@ -1098,7 +1111,7 @@ StreamWaitGraph::Agent::at(const StreamEndpoint &endpoint, bool sending) {
 
 unsigned StreamWaitGraph::getOrCreate(const Agent &agent) {
   auto [it, inserted] =
-      agentIDs.try_emplace({agent.isCore, agent.dma}, agents.size());
+      agentIDs.try_emplace({agent.kind, agent.dma}, agents.size());
   if (inserted) {
     agents.push_back(agent);
     edges.emplace_back();
@@ -1107,7 +1120,7 @@ unsigned StreamWaitGraph::getOrCreate(const Agent &agent) {
 }
 
 std::optional<unsigned> StreamWaitGraph::lookup(const Agent &agent) const {
-  auto it = agentIDs.find({agent.isCore, agent.dma});
+  auto it = agentIDs.find({agent.kind, agent.dma});
   if (it == agentIDs.end())
     return std::nullopt;
   return it->second;
@@ -1128,7 +1141,7 @@ std::optional<unsigned> StreamWaitGraph::agentAt(const StreamEndpoint &endpoint,
 }
 
 SmallVector<unsigned> StreamWaitGraph::drainersOf(unsigned agent) const {
-  if (agents[agent].isCore)
+  if (agents[agent].kind == Agent::Kind::Core)
     return {agent};
   SmallVector<unsigned> drainers;
   for (const Edge &e : edges[agent])
@@ -1175,8 +1188,10 @@ std::string StreamWaitGraph::describe(unsigned id) const {
   std::string s;
   llvm::raw_string_ostream os(s);
   os << "(" << a.dma.tile.col << ", " << a.dma.tile.row << ") ";
-  if (a.isCore)
+  if (a.kind == Agent::Kind::Core)
     os << "core";
+  else if (a.kind == Agent::Kind::Controller)
+    os << "TileControl";
   else
     os << stringifyDMAChannelDir(a.dma.dir) << " " << a.dma.channel;
   return s;

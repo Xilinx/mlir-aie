@@ -194,27 +194,35 @@ private:
   mutable llvm::DenseSet<const DmaChannelProgram *> visiting;
 };
 
-/// Which agent waits on which. An agent is a core or one DMA channel. P waits
-/// on Q when P acquires a lock Q releases, when P sends a stream Q receives or
-/// the reverse, or when P is a runtime-issued channel the host issues only
-/// after waiting on Q. A channel with no program in the design may wait on
+/// Which agent waits on which. An agent is a core, one DMA channel, or the
+/// controller of a tile, which sends the task-complete tokens the host waits
+/// for on its TileControl port. P waits on Q when P acquires a lock Q
+/// releases, when P sends a stream Q receives or the reverse, or when P is a
+/// runtime-issued channel the host issues only after waiting on Q. Waiting on
+/// a channel waits on the controllers of its column too, whose tokens tell
+/// the host it is done. A channel with no program in the design may wait on
 /// anything on its tile. A receiving channel that takes in all it is sent
 /// before its locks run out waits on no lock. Program order within an agent
 /// is not modeled.
 class StreamWaitGraph {
 public:
-  /// A core, or a DMA channel. A core's `dma` names only its tile.
+  /// A core, a DMA channel, or a tile's controller. A core's or controller's
+  /// `dma` names only its tile.
   struct Agent {
+    enum class Kind { Channel, Core, Controller };
     TileDMAChannel dma;
-    bool isCore = false;
+    Kind kind = Kind::Channel;
     bool onShim = false;
 
     static Agent core(TileID tile) {
-      return {{tile, DMAChannelDir::S2MM, 0}, true};
+      return {{tile, DMAChannelDir::S2MM, 0}, Kind::Core};
+    }
+    static Agent controller(TileID tile) {
+      return {{tile, DMAChannelDir::S2MM, 0}, Kind::Controller};
     }
     static Agent channel(const TileDMAChannel &dma) { return {dma}; }
-    /// Each agent at a stream endpoint: the core or DMA channel pushing data
-    /// into (`sending`) or pulling data out of the fabric there.
+    /// Each agent at a stream endpoint: the core, DMA channel or controller
+    /// pushing data into (`sending`) or pulling data out of the fabric there.
     static std::optional<Agent> at(const StreamEndpoint &endpoint,
                                    bool sending);
   };
@@ -264,7 +272,7 @@ private:
 
   std::vector<Agent> agents;
   std::vector<llvm::SmallVector<Edge, 4>> edges;
-  std::map<std::pair<bool, TileDMAChannel>, unsigned> agentIDs;
+  std::map<std::pair<Agent::Kind, TileDMAChannel>, unsigned> agentIDs;
   llvm::DenseSet<unsigned> modeled;
 };
 
