@@ -404,6 +404,7 @@ private:
       llvm::ArrayRef<int> targets = {});
 
   struct RouteState;
+  struct TreeBuilder;
   // Route `flow`'s tree around those routed before it this iteration. A
   // RoutingFailure if it reaches no path to a destination.
   llvm::Error routePart(RouteState &st, int flow);
