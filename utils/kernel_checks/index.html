@@ -497,7 +497,7 @@
         const [a, b] = pts.slice(-2).map(p => p.row);
         if (!a.value) continue;
         const change = (b.value - a.value) / a.value;
-        if (worst === null || change > worst.change) worst = { change, cls: verdict(s.metric, a, b) };
+        if (worst === null || change > worst.change) worst = { change, delta: b.value - a.value, cls: verdict(s.metric, a, b) };
       }
       return worst;
     }
@@ -536,7 +536,7 @@
         const c = cases.get(s.kase);
         c.current ||= p.id === last.id;
         const move = latestMove(s, [last.mode]);
-        c.metrics.set(s.metric, { value: p.row.value, unit: s.unit, change: move ? move.change : null, cls: move ? move.cls : '',
+        c.metrics.set(s.metric, { value: p.row.value, unit: s.unit, change: move ? move.change : null, delta: move ? move.delta : null, cls: move ? move.cls : '',
                                   ...(p.row.range ? { range: p.row.range } : {}) });
       }
       return { last, cases };
@@ -693,6 +693,13 @@
     function formatChange(d) {
       const text = `${Math.abs(100 * d).toFixed(1)}%`;
       return d > 0 ? `+${text}` : d < 0 ? `−${text}` : text;
+    }
+
+    // A size change in KiB; under a tenth of one, in bytes.
+    function formatBytesDelta(d) {
+      const sign = d > 0 ? '+' : d < 0 ? '−' : '±';
+      const a = Math.abs(d);
+      return a && a < 102.4 ? `${sign}${a} B` : `${sign}${(a / 1024).toFixed(1)} KiB`;
     }
 
     function formatDate(ms) {
@@ -1143,6 +1150,12 @@
         if (spread.truncated) {
           value.append(el('span', { className: 'note warn', textContent: ' trace', title: `the trace buffer filled after ${spread.n} calls; the min is over those` }));
         }
+      }
+      // A size moves in place: its change in KiB beside it.
+      if (m.unit === 'bytes' && m.delta) {
+        const tone = c.current === false ? 'stale' : m.cls || 'flat';
+        value.append(' ', el('span', { className: `chg ${tone} delta`, title: `${formatChange(m.change)} since the previous nightly`,
+                                       textContent: formatBytesDelta(m.delta) }));
       }
       if (!withChange) return [value];
       const change = el('td', { className: 'num' });

@@ -324,10 +324,25 @@ const { last, cases } = latestCases(db, 'npu1');
 assert.equal(last.mode, 'turbo');
 const big = cases.get('softmax/1024/bfloat16');
 assert.ok(big.current);
-assert.deepEqual(big.metrics.get('cycles'), { value: 110, unit: 'cycles', change: 0.1, cls: 'worse', range: 'median 112 max 130 n=16' });
+assert.deepEqual(big.metrics.get('cycles'), { value: 110, unit: 'cycles', change: 0.1, delta: 10, cls: 'worse', range: 'median 112 max 130 n=16' });
 assert.equal(big.metrics.get('kernel_object_bytes').change, null);
 assert.ok(!cases.get('softmax/64/bfloat16').current);
 assert.equal(latestCases(db, 'npu2').cases.size, 0);
+""")
+
+
+def test_object_size_change_is_in_kib(page):
+    page("""
+assert.equal(formatBytesDelta(307.2), '+0.3 KiB');
+assert.equal(formatBytesDelta(-2048), '\u22122.0 KiB');
+assert.equal(formatBytesDelta(48), '+48 B');
+const c = { current: true, metrics: new Map([['kernel_object_bytes', { value: 4096, unit: 'bytes', change: 0.08, delta: 307.2, cls: 'worse' }]]) };
+const [td] = metricCells(c, 'kernel_object_bytes');
+const chip = td.children.find(x => x.className && x.className.includes('delta'));
+assert.equal(chip.text, '+0.3 KiB');
+assert.ok(chip.className.includes('worse'));
+const same = { current: true, metrics: new Map([['kernel_object_bytes', { value: 4096, unit: 'bytes', change: 0, delta: 0, cls: '' }]]) };
+assert.ok(!metricCells(same, 'kernel_object_bytes')[0].children.some(x => x.className && x.className.includes('delta')));
 """)
 
 
@@ -742,7 +757,7 @@ const { cases } = latestCases(db, 'npu1');
 assert.equal(cases.get('noisy/1/bf16').metrics.get('npu_us').cls, '');
 assert.equal(cases.get('steady/1/bf16').metrics.get('npu_us').cls, 'worse');
 const move = latestMove(db.series.find(s => s.kase === 'noisy/1/bf16'), ['performance']);
-assert.deepEqual(move, { change: 0.25, cls: '' });
+assert.deepEqual(move, { change: 0.25, delta: 25, cls: '' });
 """)
 
 
