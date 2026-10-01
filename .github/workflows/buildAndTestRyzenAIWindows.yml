@@ -196,26 +196,6 @@ jobs:
           :openssl_ready
           echo OpenSSL static libs ready at C:\OpenSSL-Win64
 
-          REM The build step below compiles with clang++ in its GNU-driver
-          REM mode (not clang-cl), so CMake's FindOpenSSL.cmake sees MSVC=FALSE
-          REM and never takes the lib/VC/x64/MT search branch that
-          REM OPENSSL_MSVC_STATIC_RT was meant to enable - it falls through to
-          REM a generic Windows branch instead. That branch also forces
-          REM CMAKE_FIND_LIBRARY_SUFFIXES to plain ".a" whenever
-          REM OPENSSL_USE_STATIC_LIBS is set and MSVC is false, so it will
-          REM never match a ".lib" file no matter which directory or NAMES
-          REM list is searched. The installer only ships the static libs as
-          REM lib/VC/x64/MT/*_static.lib, so give find_library an ".a"-named
-          REM copy to match against; the COFF archive contents are identical
-          REM either way; only the extension find_library keys on changes; the
-          REM windows-msvc target Clang builds for here links COFF archives by
-          REM full path regardless of their extension, so lld-link accepts the
-          REM copy exactly like the original.
-          if not exist "C:\OpenSSL-Win64\lib\libcrypto.a" copy /y "C:\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" "C:\OpenSSL-Win64\lib\libcrypto.a"
-          if errorlevel 1 exit /b 1
-          if not exist "C:\OpenSSL-Win64\lib\libssl.a" copy /y "C:\OpenSSL-Win64\lib\VC\x64\MT\libssl_static.lib" "C:\OpenSSL-Win64\lib\libssl.a"
-          if errorlevel 1 exit /b 1
-
       - name: Ensure Windows LLVM/clang toolchain
         # Host-side lit tests (e.g. test/Runtime/TxnEncoding/*_host.test) compile
         # small x86_64 host executables via %host_clang, which the lit config
@@ -229,16 +209,27 @@ jobs:
         # test. Self-heal with the standalone LLVM package instead of
         # modifying the existing VS install: same winget-based approach the
         # doc already uses for other tools, independent of VS versioning.
+        #
+        # The mlir-aie build itself is driven with clang-cl (set via
+        # CMAKE_C_COMPILER/CMAKE_CXX_COMPILER below), not clang++: CMake's
+        # WINDOWS_EXPORT_ALL_SYMBOLS target property - which upstream MLIR's
+        # Python bindings rely on to export every public symbol of the
+        # monolithic MLIRPythonCAPI/MLIRPythonSupport DSOs - only takes
+        # effect for MSVC-like toolchains (CMake's MSVC variable is only ever
+        # TRUE for clang-cl or real cl.exe, never for clang++'s GNU driver,
+        # even when it targets windows-msvc). Under clang++ it silently
+        # no-ops, leaving every Python extension module's import of
+        # PyMlirContext/PyOperation/etc. unresolved at link time.
         shell: cmd
         run: |
-          if exist "C:\Program Files\LLVM\bin\clang++.exe" goto :llvm_ready
+          if exist "C:\Program Files\LLVM\bin\clang++.exe" if exist "C:\Program Files\LLVM\bin\clang-cl.exe" goto :llvm_ready
 
           echo LLVM/clang not found on this runner - installing it
           winget install -e --id LLVM.LLVM --silent --accept-package-agreements --accept-source-agreements
           if errorlevel 1 exit /b 1
 
-          if not exist "C:\Program Files\LLVM\bin\clang++.exe" (
-            echo ##[error]C:\Program Files\LLVM\bin\clang++.exe still missing after installing LLVM.LLVM via winget
+          if not exist "C:\Program Files\LLVM\bin\clang-cl.exe" (
+            echo ##[error]C:\Program Files\LLVM\bin\clang-cl.exe still missing after installing LLVM.LLVM via winget
             exit /b 1
           )
 
@@ -340,11 +331,16 @@ jobs:
           REM paths/names when OPENSSL_MSVC_STATIC_RT is set - otherwise it
           REM defaults to MD mode and won't find the MT-only static libs this
           REM installer lays down, even with OPENSSL_USE_STATIC_LIBS=TRUE.
+          REM CMAKE_C_COMPILER/CMAKE_CXX_COMPILER select clang-cl (bare name,
+          REM resolved via the PATH entry the LLVM toolchain step above adds)
+          REM instead of CMake's default of whatever "clang"/"clang++" it
+          REM finds first - see the comment on that step for why clang-cl is
+          REM required here, not just clang++ in its GNU-driver mode.
           set "XRT_ROOT_FWD=%XRT_ROOT:\=/%"
           set "PYTHON_EXE_FWD=%PYTHON_EXE:\=/%"
           set "PEANO_INSTALL_DIR_FWD=%PEANO_INSTALL_DIR:\=/%"
           set "OPENSSL_ROOT_FWD=C:/OpenSSL-Win64"
-          set "EXTRA_CMAKE_ARGS=-DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON -DXRT_ROOT=%XRT_ROOT_FWD% -DPython3_EXECUTABLE=%PYTHON_EXE_FWD% -DOPENSSL_ROOT_DIR=%OPENSSL_ROOT_FWD% -DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_MSVC_STATIC_RT=TRUE"
+          set "EXTRA_CMAKE_ARGS=-DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON -DXRT_ROOT=%XRT_ROOT_FWD% -DPython3_EXECUTABLE=%PYTHON_EXE_FWD% -DOPENSSL_ROOT_DIR=%OPENSSL_ROOT_FWD% -DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_MSVC_STATIC_RT=TRUE"
 
           REM arg 4 = provisioned Peano, else the script derives its own.
           "C:\Program Files\Git\bin\bash.exe" utils/build-mlir-aie-from-wheels.sh my_install/mlir build install "%PEANO_INSTALL_DIR_FWD%"

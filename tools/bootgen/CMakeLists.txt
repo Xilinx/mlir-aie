@@ -193,11 +193,9 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(bootgen-lib PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
 target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC AND NOT WIN32)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC)
   # The POSITION_INDEPENDENT_CODE property above doesn't reliably force PIC
   # so pass -fPIC explicitly, last, so it wins over any inherited -fno-PIC.
-  # PIC is an ELF/Unix concept; Clang targeting windows-msvc (PE/COFF)
-  # rejects the flag outright, even when driven with the GNU-style CLI.
   target_compile_options(bootgen-lib PRIVATE -fPIC)
 endif()
 target_include_directories(bootgen-lib PRIVATE ${bootgen_include_dirs} ${OPENSSL_INCLUDE_DIR})
@@ -224,11 +222,9 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(bootgen PRIVATE /EHsc)
   target_compile_options(bootgen PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC AND NOT WIN32)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC)
   # See bootgen-lib above. -fPIE is compile-only; -pie is the link-mode
   # switch (kept separate since some toolchains don't accept -fPIE at link).
-  # PIC/PIE are ELF/Unix concepts; Clang targeting windows-msvc (PE/COFF)
-  # rejects the flags outright, even when driven with the GNU-style CLI.
   target_compile_options(bootgen PRIVATE -fPIE)
   target_link_options(bootgen PRIVATE -pie)
 endif()
