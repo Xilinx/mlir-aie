@@ -394,3 +394,23 @@ func.func @permuted_transfer_untouched(%arg0: memref<16x16xf32>, %arg1: memref<2
   }
   return
 }
+
+// -----
+
+// A masked transfer reads only the enabled lanes; the flattened access would
+// read all of them.
+// CHECK-LABEL: func.func @masked_transfer_untouched
+func.func @masked_transfer_untouched(%arg0: memref<256xf32>, %mask: vector<16xi1>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c240 = arith.constant 240 : index
+  %cst = arith.constant 0.0 : f32
+  // CHECK-NOT: memref.collapse_shape
+  // CHECK: scf.for %[[I:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
+  // CHECK: vector.transfer_read %{{.*}}[%[[I]]], %{{.*}}, %{{.*}} {in_bounds = [true]} : memref<256xf32>, vector<16xf32>
+  scf.for %i = %c0 to %c240 step %c1 {
+    %v = vector.transfer_read %arg0[%i], %cst, %mask {in_bounds = [true]} : memref<256xf32>, vector<16xf32>
+    vector.transfer_write %v, %arg0[%c0] {in_bounds = [true]} : vector<16xf32>, memref<256xf32>
+  }
+  return
+}
