@@ -186,8 +186,12 @@ if (WIN32)
   # not compiler-ID-gated.
   target_compile_definitions(bootgen-lib PRIVATE YY_NO_UNISTD_H)
 endif()
-if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-  # Enable correct unwind semantics on MSVC
+if (MSVC)
+  # CMAKE_CXX_COMPILER_ID is "Clang" for clang-cl too (never "MSVC" for any
+  # Clang flavor) - MSVC is the variable that actually tracks the
+  # MSVC-compatible frontend (real cl.exe or clang-cl), so it's what must be
+  # checked here. Needed for real: clang-cl defaults to exceptions disabled
+  # (like cl.exe), and the vendored bootgen sources use try/throw.
   target_compile_options(bootgen-lib PRIVATE /EHsc)
   # Suppress MSVC warning noise
   target_compile_options(bootgen-lib PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
@@ -218,7 +222,8 @@ set_target_properties(bootgen PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(bootgen PUBLIC ${bootgen_include_dirs} ${OPENSSL_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/include)
 target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
-if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+if (MSVC)
+  # See bootgen-lib above for why this is MSVC, not CMAKE_CXX_COMPILER_ID.
   target_compile_options(bootgen PRIVATE /EHsc)
   target_compile_options(bootgen PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
@@ -236,11 +241,12 @@ add_library(cdo_driver_mlir_aie STATIC ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c
 target_include_directories(
   cdo_driver_mlir_aie PUBLIC $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/cdo-driver>
   $<INSTALL_INTERFACE:include/cdo_driver>)
-if (NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+if (NOT MSVC)
   target_compile_options(cdo_driver_mlir_aie PRIVATE -Wno-cast-qual -Wno-sign-compare)
 endif()
 
-if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+if (MSVC)
+  # See bootgen-lib above for why this is MSVC, not CMAKE_CXX_COMPILER_ID.
   target_compile_options(cdo_driver_mlir_aie PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
 install(
