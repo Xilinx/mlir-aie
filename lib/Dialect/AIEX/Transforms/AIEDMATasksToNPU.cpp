@@ -1059,6 +1059,21 @@ struct AIEDMATasksToNPUPass
     auto channelDir = op.getDirection();
     auto packet = op.getPacket();
 
+    // One push onto the task queue runs one iteration of a BD's iteration
+    // dimension; only the task's repeat_count runs the rest. Warn once the
+    // BDs are known to lower, so an invalid one gets only its error.
+    SmallVector<std::pair<Location, int64_t>> unrepeatedIterations;
+    if (!op.getRepeatCountVal() && op.getRepeatCount() == 0) {
+      for (auto bd_op : body.getOps<AIE::DMABDOp>()) {
+        SmallVector<OpFoldResult> sizes = bd_op.getMixedSizes();
+        if (sizes.size() != 4)
+          continue;
+        std::optional<int64_t> iterations = getConstantIntValue(sizes.front());
+        if (iterations && *iterations > 1)
+          unrepeatedIterations.emplace_back(bd_op.getLoc(), *iterations);
+      }
+    }
+
     // Lower all BDs
     for (auto &block : body) {
       if (shouldSkipBlock(block)) {
@@ -1069,6 +1084,13 @@ struct AIEDMATasksToNPUPass
         return failure();
       }
     }
+
+    for (auto [loc, iterations] : unrepeatedIterations)
+      mlir::emitWarning(loc)
+          << "iteration dimension of size " << iterations
+          << " has no task repeat_count, so only its first iteration runs; "
+             "set repeat_count = "
+          << iterations - 1;
 
     op.erase();
 
