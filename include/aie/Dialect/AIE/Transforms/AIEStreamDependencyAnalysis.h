@@ -164,6 +164,7 @@ public:
     bool isCore;
     DMAChannelDir dir;
     int channel;
+    bool onShim = false;
   };
 
   StreamWaitGraph(DeviceOp device, llvm::ArrayRef<RoutedStream> streams,

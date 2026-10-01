@@ -998,7 +998,9 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
   // The host issues a channel's transfer only after every wait before it in
   // the runtime sequence completes. Each issue is modeled: a later one can
   // follow waits the first did not. A wait on a channel not known here may be
-  // on any the sequence issues.
+  // on any the sequence issues, and an issue on one, or a raw register write,
+  // may start any channel.
+  unsigned numStreamAgents = agents.size();
   for (auto sequence : device.getOps<RuntimeSequenceOp>()) {
     auto bySymbol = [&](SymbolRefAttr symbol) -> SmallVector<ChannelKey> {
       if (std::optional<ChannelKey> key =
@@ -1013,6 +1015,14 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
         return channelsOfTask(device, start.getTask());
       if (isa<AIEX::DMAStartBdChainOp, AIEX::DMAStartBdChainForOp>(op))
         return channelsOfTask(device, op->getResult(0));
+      if (auto push = dyn_cast<AIEX::NpuPushQueueOp>(op))
+        return SmallVector<ChannelKey>{
+            channelKey({static_cast<int>(push.getColumn()),
+                        static_cast<int>(push.getRow())},
+                       push.getDirection(), push.getChannel())};
+      if (isa<AIEX::NpuWrite32Op, AIEX::NpuMaskWrite32Op,
+              AIEX::NpuBlockWriteOp>(op))
+        return SmallVector<ChannelKey>{};
       return std::nullopt;
     };
     auto awaited =
@@ -1021,6 +1031,25 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
         return bySymbol(dmaWait.getSymbolAttr());
       if (auto await = dyn_cast<AIEX::DMAAwaitTaskOp>(op))
         return channelsOfTask(device, await.getTask());
+      if (auto sync = dyn_cast<AIEX::NpuSyncOp>(op)) {
+        std::optional<int64_t> col = getConstantIntValue(sync.getColumn()),
+                               row = getConstantIntValue(sync.getRow()),
+                               dir = getConstantIntValue(sync.getDirection()),
+                               channel = getConstantIntValue(sync.getChannel()),
+                               cols = getConstantIntValue(sync.getColumnNum()),
+                               rows = getConstantIntValue(sync.getRowNum());
+        if (!col || !row || !dir || !channel || !cols || !rows)
+          return SmallVector<ChannelKey>{};
+        SmallVector<ChannelKey> keys;
+        for (int64_t c = *col; c < *col + *cols; c++)
+          for (int64_t r = *row; r < *row + *rows; r++)
+            keys.push_back(channelKey(
+                {static_cast<int>(c), static_cast<int>(r)},
+                *dir ? DMAChannelDir::MM2S : DMAChannelDir::S2MM, *channel));
+        return keys;
+      }
+      if (isa<AIEX::NpuMaskPollOp>(op))
+        return SmallVector<ChannelKey>{};
       return std::nullopt;
     };
     auto agentOf = [&](const ChannelKey &key) {
@@ -1044,6 +1073,12 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
             if (w != agent)
               addEdge(agent, w, EdgeKind::Host);
         }
+        if (keys->empty())
+          for (unsigned a = 0; a < numStreamAgents; a++)
+            if (!agents[a].isCore)
+              for (unsigned w : waited)
+                if (w != a)
+                  addEdge(a, w, EdgeKind::Host);
       } else if (std::optional<SmallVector<ChannelKey>> keys = awaited(op)) {
         for (const ChannelKey &key :
              keys->empty() ? issuedKeys.getArrayRef() : ArrayRef(*keys))
@@ -1053,12 +1088,18 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
   }
 
   // A channel nothing programs here is programmed elsewhere, in ways this
-  // cannot see, so it may wait on anything else on its tile.
+  // cannot see, so it may wait on anything else on its tile. One on a shim
+  // tile is driven by the host, which may wait on any other shim tile first.
+  const AIETargetModel &targetModel = getTargetModel(device);
+  for (Agent &a : agents)
+    a.onShim =
+        !a.isCore && targetModel.isShimNOCorPLTile(a.tile.col, a.tile.row);
   for (unsigned a = 0; a < agents.size(); a++) {
     if (modeled.contains(a) || !waitsOnLocks(a))
       continue;
     for (unsigned b = 0; b < agents.size(); b++)
-      if (b != a && agents[b].tile == agents[a].tile)
+      if (b != a && (agents[b].tile == agents[a].tile ||
+                     (agents[a].onShim && agents[b].onShim)))
         addEdge(a, b, EdgeKind::Lock);
   }
 
@@ -1265,8 +1306,10 @@ SmallVector<std::string> StreamDeadlockAnalysis::assumptions(size_t f,
   for (auto [i, a] : llvm::enumerate(waiters))
     if (!graph.isModeled(a) &&
         !llvm::is_contained(ArrayRef(waiters).take_front(i), a))
-      assumed.push_back("Nothing in the design programs " + graph.describe(a) +
-                        ", so it is assumed to wait on anything on its tile.");
+      assumed.push_back(
+          "Nothing in the design programs " + graph.describe(a) +
+          ", so it is assumed to wait on anything on its tile" +
+          (graph.getAgent(a).onShim ? " or on another shim tile." : "."));
   return assumed;
 }
 

@@ -63,6 +63,13 @@ module {
     aie.packet_flow(5) { aie.packet_source<%m, DMA : 2>  aie.packet_dest<%s0, DMA : 1> }
     aie.packet_flow(6) { aie.packet_source<%m, DMA : 3>  aie.packet_dest<%s0, DMA : 0> }
     aie.packet_flow(7) { aie.packet_source<%m, DMA : 4>  aie.packet_dest<%c2, DMA : 1> }
+
+    // The host issues the other shims' channels up front. Nothing here
+    // programs shim (0,0).
+    aie.runtime_sequence() {
+      %bd = arith.constant 0 : i32
+      aiex.npu.push_queue(1, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+    }
   }
 }
 
