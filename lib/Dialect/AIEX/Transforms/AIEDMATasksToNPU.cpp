@@ -1132,9 +1132,10 @@ struct AIEDMATasksToNPUPass
     RewritePatternSet patterns(&getContext());
     patterns.insert<DMAStartTaskOpPattern>(&getContext());
     patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
-    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
-      signalPassFailure();
-    }
+    // A start or await left unlowered still uses its configure, so lowering
+    // the configures would only add errors.
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
+      return signalPassFailure();
 
     // Drop the now-dead task-index carries the awaits held, so the branch-local
     // configures they used can reach use_empty and lower below.

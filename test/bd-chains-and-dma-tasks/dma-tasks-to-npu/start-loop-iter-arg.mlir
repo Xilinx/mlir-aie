@@ -16,7 +16,6 @@
 // CHECK-DAG: %[[BD:.*]] = arith.constant 5 : i32
 // CHECK-DAG: %[[RC:.*]] = arith.constant 2 : i32
 // CHECK: aiex.npu.push_queue(2, 0, S2MM : 3) bd_id %[[BD]] repeat %[[RC]] {issue_token = true}
-// CHECK: scf.yield
 // CHECK: aiex.npu.push_queue(2, 0, S2MM : 3) bd_id %{{.*}} repeat %{{.*}} {issue_token = true}
 module {
   aie.device(npu1) {
@@ -54,7 +53,8 @@ module {
         aie.end
       } {issue_token = true}
       %last = scf.for %i = %c0 to %n step %c1 iter_args(%prev = %init) -> (index) {
-        // expected-error@+1 {{starts a task carried through control flow that does not come from exactly one aiex.dma_configure_task}}
+        // expected-error@+2 {{starts a task carried through control flow that does not come from exactly one aiex.dma_configure_task}}
+        // expected-error@+1 {{failed to legalize operation 'aiex.dma_start_task'}}
         aiex.dma_start_task(%prev)
         aiex.dma_await_task(%prev)
         %t = aiex.dma_configure_task(%tile_2_0, S2MM, 3) {
