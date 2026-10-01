@@ -50,7 +50,8 @@ def test_baseline_cache_key_is_unique_per_attempt_and_restorable():
 def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path):
     steps = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
     run = next(step["run"] for step in steps if step.get("id") == "perf")
-    command = run[run.index("python -m pytest") :].split("2>&1", 1)[0]
+    launcher = "MLIR_AIE_NPU_TEST=1 python utils/run_pytest.py"
+    command = run[run.index(launcher) :].split("2>&1", 1)[0]
     result = subprocess.run(
         ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
         cwd=tmp_path,
