@@ -67,18 +67,18 @@ module {
       %n_i32 = arith.trunci %n : i64 to i32
       %len = arith.muli %n_i32, %c256_i32 : i32
       %out_task = aiex.dma_configure_task_for @of_out {
-        aie.dma_bd(%out : memref<4096xi32> offset = 0 len = %len sizes = [1, 1, %n, 256] strides = [0, 0, 256, 1])
+        aie.dma_bd(%out : memref<4096xi32> offset = 0 len = %len sizes = [1, %n, 256] strides = [0, 256, 1])
         aie.end
       } {issue_token = true}
       %init = aiex.dma_configure_task_for @of_in {
-        aie.dma_bd(%in : memref<256xi32> offset = 0 len = 256 sizes = [1, 1, 1, 256] strides = [0, 0, 0, 1])
+        aie.dma_bd(%in : memref<256xi32> offset = 0 len = 256 sizes = [1, 1, 256] strides = [0, 0, 1])
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%out_task)
       aiex.dma_start_task(%init)
       %last = scf.for %i = %c1 to %n_idx step %c1 iter_args(%prev = %init) -> (index) {
         %t = aiex.dma_configure_task_for @of_in {
-          aie.dma_bd(%in : memref<256xi32> offset = 0 len = 256 sizes = [1, 1, 1, 256] strides = [0, 0, 0, 1])
+          aie.dma_bd(%in : memref<256xi32> offset = 0 len = 256 sizes = [1, 1, 256] strides = [0, 0, 1])
           aie.end
         } {issue_token = true}
         aiex.dma_start_task(%t)

@@ -33,7 +33,7 @@ module {
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.runtime_sequence @factor_task_bd(%in: memref<7684xi32>) {
       %tk = aiex.dma_configure_task_for @a {
-        aie.dma_bd(%in : memref<7684xi32> offset = 0 len = 7680 sizes = [1, 1, 4, 1920] strides = [0, 0, 1921, 1])
+        aie.dma_bd(%in : memref<7684xi32> offset = 0 len = 7680 sizes = [1, 4, 1920] strides = [0, 1921, 1])
           {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
@@ -53,15 +53,15 @@ module {
 
 // UNCHANGED-LABEL: @small_unchanged_task
 // UNCHANGED:         aie.dma_bd
-// UNCHANGED-SAME:        sizes = [1, 1, 1, 8]
-// UNCHANGED-SAME:        strides = [0, 0, 0, 1]
+// UNCHANGED-SAME:        sizes = [1, 1, 8]
+// UNCHANGED-SAME:        strides = [0, 0, 1]
 module {
   aie.device(npu2_1col) {
     %t = aie.tile(0, 0)
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.runtime_sequence @small_unchanged_task(%in: memref<8xi32>) {
       %tk = aiex.dma_configure_task_for @a {
-        aie.dma_bd(%in : memref<8xi32> offset = 0 len = 8 sizes = [1, 1, 1, 8] strides = [0, 0, 0, 1])
+        aie.dma_bd(%in : memref<8xi32> offset = 0 len = 8 sizes = [1, 1, 8] strides = [0, 0, 1])
           {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
@@ -88,7 +88,7 @@ module {
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.runtime_sequence @lower_task_bd(%in: memref<7684xi32>) {
       %tk = aiex.dma_configure_task_for @a {
-        aie.dma_bd(%in : memref<7684xi32> offset = 0 len = 7680 sizes = [1, 1, 4, 1920] strides = [0, 0, 1921, 1])
+        aie.dma_bd(%in : memref<7684xi32> offset = 0 len = 7680 sizes = [1, 4, 1920] strides = [0, 1921, 1])
           {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
@@ -121,7 +121,7 @@ module {
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.runtime_sequence @slice_task_bd(%in: memref<4096xi32>) {
       %tk = aiex.dma_configure_task_for @a {
-        aie.dma_bd(%in : memref<4096xi32> offset = 0 len = 2062 sizes = [1, 1, 1031, 2] strides = [0, 0, 3, 1])
+        aie.dma_bd(%in : memref<4096xi32> offset = 0 len = 2062 sizes = [1, 1031, 2] strides = [0, 3, 1])
           {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
@@ -158,7 +158,7 @@ module {
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.runtime_sequence @axcache_slice_task_bd(%in: memref<4096xi32>) {
       %tk = aiex.dma_configure_task_for @a {
-        aie.dma_bd(%in : memref<4096xi32> offset = 0 len = 2062 sizes = [1, 1, 1031, 2] strides = [0, 0, 3, 1])
+        aie.dma_bd(%in : memref<4096xi32> offset = 0 len = 2062 sizes = [1, 1031, 2] strides = [0, 3, 1])
           {burst_length = 0 : i32, axcache = 15 : i32}
         aie.end
       } {issue_token = true}
@@ -190,7 +190,7 @@ module {
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.runtime_sequence @factor_ooo_task(%in: memref<8192xi32>) {
       %tk = aiex.dma_configure_task_for @a {
-        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 4092 sizes = [1, 1, 2046, 2] strides = [0, 0, 3, 1])
+        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 4092 sizes = [1, 2046, 2] strides = [0, 3, 1])
           {burst_length = 0 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>, out_of_order_id = 5 : i32}
         aie.end
       } {issue_token = true}

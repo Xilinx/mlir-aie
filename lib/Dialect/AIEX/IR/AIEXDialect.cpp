@@ -1197,42 +1197,84 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 }
 
 // Enforce the per-BD ND access-pattern limit for BDs nested inside a
-// runtime-sequence DMA task. The AIE::DMABDOp verifier skips these BDs (their
-// parent is a DMA task op, not a *DMAOp), so this is the only check of the BD
-// dimension count on the runtime-sequence path.
+// runtime-sequence DMA task. DMABDOp's verifier skips task-nested BDs, so this
+// is the only dimension check on the runtime-sequence path.
 //
-// Every AIE2/AIE2P DMA BD register file carries getBDMaxDims ND address
-// dimensions (D0..) plus one separate iteration/repeat dimension: a core/shim
-// BD has D0..D2 + iteration, a MemTile BD has D0..D3 + iteration. On this path
-// aiex.shim_dma_single_bd_task hoists the leading tap dimension into that
-// iteration register, so a shim/core BD may carry one dimension beyond its ND
-// access limit (3 + 1). A MemTile is not given the +1: AIEDMATasksToNPU maps
-// the 4th task dimension onto the iteration register for every tile type and
-// caps the total at 4, which the MemTile's 4 ND dimensions already reach. Both
-// branches therefore land on the same uniform 4-dimension cap enforced later by
-// AIEDMATasksToNPU.
+// See aie.dma_bd's ## BD iteration doc in AIEOps.td for the two encodings.
 static LogicalResult
 verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
                        Region &body) {
-  size_t maxNDims = targetModel.getBDMaxDims(col, row);
-  if (!targetModel.isMemTile(col, row))
-    ++maxNDims; // leading dim is hoisted into the iteration/repeat register
   LogicalResult result = success();
   body.walk([&](AIE::DMABDOp bd) {
-    // The BD's own verifier skips it here, so nothing has yet established that
-    // its mixed sizes/strides lists are safe to read.
     if (failed(bd.verifyMixedSizesAndStrides())) {
       result = failure();
       return;
     }
-    if (bd.getIteration()) {
-      // See aie.dma_bd's ## BD iteration doc in AIEOps.td.
-      bd.emitOpError() << "the iteration attribute is not supported on the "
-                          "runtime-sequence path; express iteration via the "
-                          "outermost sizes/strides dimension instead";
-      result = failure();
+    if (auto iter = bd.getIteration()) {
+      if (!targetModel.hasProperty(AIE::AIETargetModel::UsesBDIteration)) {
+        bd.emitOpError("BD iteration is not supported on this target");
+        result = failure();
+        return;
+      }
+      uint32_t size = iter->getSize(), current = iter->getCurrent();
+      if (size < 1 || size > 64) {
+        bd.emitOpError("BD iteration size must be in [1, 64]");
+        result = failure();
+        return;
+      }
+      if (size > 1) {
+        int64_t strideInBytes = static_cast<int64_t>(iter->getStride()) *
+                                bd.getBufferElementTypeWidthInBytes();
+        if (strideInBytes % 4) {
+          bd.emitOpError("BD iteration stride must be aligned to 32-bit words");
+          result = failure();
+          return;
+        }
+        int64_t stepInWords = strideInBytes / 4;
+        AIE::AIETileType tileType = targetModel.getTileType(col, row);
+        int64_t maxStep = 1LL << targetModel.getDmaBdStepBits(tileType);
+        if (stepInWords < 1 || stepInWords > maxStep) {
+          bd.emitOpError() << "BD iteration stride must be in [1, " << maxStep
+                           << "] 32-bit words";
+          result = failure();
+          return;
+        }
+      }
+      if (current >= size) {
+        bd.emitOpError("BD iteration current must be in [0, size)");
+        result = failure();
+        return;
+      }
+      size_t maxNDims = targetModel.getBDMaxDims(col, row);
+      size_t numDims = bd.getMixedSizes().size();
+      if (numDims > maxNDims) {
+        bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)
+                         << " dimensions for step sizes and wraps on this tile "
+                            "when the iteration attribute is set (got "
+                         << std::to_string(numDims) << " dimensions).";
+        result = failure();
+      }
       return;
     }
+    // Runtime iteration SSA operands: hardware range checks cannot be applied
+    // statically, but the BD must have at most getBDMaxDims inner access dims
+    // (the iteration dimension is carried separately).
+    if (bd.getIterationSizeVal()) {
+      size_t maxNDims = targetModel.getBDMaxDims(col, row);
+      size_t numDims = bd.getMixedSizes().size();
+      if (numDims > maxNDims) {
+        bd.emitOpError()
+            << "Cannot give more than " << std::to_string(maxNDims)
+            << " inner dimensions for step sizes and wraps on this tile "
+               "when iteration_size_val is set (got "
+            << std::to_string(numDims) << " dimensions).";
+        result = failure();
+      }
+      return;
+    }
+    size_t maxNDims = targetModel.getBDMaxDims(col, row);
+    if (!targetModel.isMemTile(col, row))
+      ++maxNDims; // leading dim is hoisted into the iteration/repeat register
     size_t numDims = bd.getMixedSizes().size();
     if (numDims > maxNDims) {
       bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)
