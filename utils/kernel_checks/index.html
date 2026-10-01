@@ -9,7 +9,8 @@
 
     runs.json              one summary per run: the Actions run, commit, power
                            mode, provenance, sanity result, failures
-    latest.json            the newest run that published rows, with its rows
+    latest.json            the newest nightly that published rows (the newest
+                           run, until a nightly has), with its rows
     runs/<id>.json         any one run's record; the overview reads the one
                            before latest.json in the same power mode
     history/<metric>.json  every published run's value of one metric per
@@ -159,7 +160,7 @@
     .s-bad { background: var(--bad); color: #fff; }
     .s-warn { background: var(--warn-soft); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
     .s-none { background: repeating-linear-gradient(135deg, var(--none-soft) 0 4px, transparent 4px 7px); color: var(--faint); box-shadow: inset 0 0 0 1px var(--none); }
-    .s-absent { background: transparent; color: var(--faint); box-shadow: inset 0 0 0 1px dashed var(--none); border: 1px dashed var(--none); }
+    .s-absent { background: transparent; color: var(--faint); border: 1px dashed var(--none); }
 
     /* Tables: numbers right-aligned in tabular figures, so they scan. */
     .table-wrap { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow-x: auto; }
@@ -354,7 +355,7 @@
       </section>
       <section class="block">
         <div class="block-head"><h2>Full charts</h2><span id="kernel-metric" class="seg" role="group" aria-label="metric"></span></div>
-        <p class="note"><span class="key"><i class="n-npu1"></i>npu1</span><span class="key"><i class="n-npu2"></i>npu2</span>Dashed lines mark a change of Peano, host, runtime or driver; hover for which.</p>
+        <p class="note"><span class="key"><i class="n-npu1"></i>npu1</span><span class="key"><i class="n-npu2"></i>npu2</span>Hollow diamonds are runs started by hand. Dashed lines mark a change of Peano, host, runtime or driver; hover for which.</p>
         <div id="kernel-charts" class="charts"></div>
         <div id="kernel-charts-empty" class="empty" hidden>No history for this kernel yet.</div>
       </section>
@@ -512,13 +513,13 @@
       return nightlyViews.get(db);
     }
 
-    // The published run before `latest` in the same power mode, from the
-    // run index, or null.
+    // The published nightly before `latest` in the same power mode, from
+    // the run index, or null: a run started by hand is never the baseline.
     function previousPublished(index, latest) {
       const runs = (index && index.runs) || [];
       const at = runs.findIndex(r => r.id === latest.id);
       for (let i = (at < 0 ? runs.length : at) - 1; i >= 0; i--) {
-        if (runs[i].published && runs[i].pmode === latest.pmode) return runs[i];
+        if (runs[i].published && runs[i].pmode === latest.pmode && !isManual(runs[i])) return runs[i];
       }
       return null;
     }
@@ -974,7 +975,8 @@
       }
       const timed = counts.known ? counts.timed : (night.latest.cases.size || 0);
       const compared = moved && night.since ? ' Nothing got slower or bigger.' : ' No earlier nightly to compare with yet.';
-      return { level, headline: `All ${timed} timed cases ran.${compared}`, quiet };
+      if (!timed) return { level, headline: `Nothing was timed.${compared}`, quiet };
+      return { level, headline: `All ${plural(timed, 'timed case')} ran.${compared}`, quiet };
     }
 
     function verdictBand(night, now) {
@@ -1194,7 +1196,7 @@
         el('td', { className: 'num cyc' }, formatNumber(x.after, s.unit)),
         el('td', { className: 'num' }, el('span', { className: `chg ${x.cls}` }, formatChange(x.change))),
         el('td', { className: 'wide' }, link(chartsLink(s.kase, s.metric),
-          sparkline(recentValues(hist, night.npu, s.kase, s.metric, night.latest.last && night.latest.last.mode), x.cls),
+          sparkline(recentValues(nightlies(hist), night.npu, s.kase, s.metric, night.latest.last && night.latest.last.mode), x.cls),
           { title: 'open the chart' })));
     }
 
@@ -1395,8 +1397,9 @@
       const k = catalogues.map(c => c.kernels.find(x => x.factory === factory)).find(Boolean);
       if (!k) {
         head.append(el('h2', {}, factory), el('p', { className: 'dim' }, 'No kernel of that name is in the catalogue. ', link('#view=kernels', 'See all kernels.')));
-        $('kernel-cases-head').replaceChildren();
+        $('kernel-cases-about').replaceChildren();
         $('kernel-cases').replaceChildren();
+        kernelCards = [];
         return false;
       }
       const commit = catalogues.find(c => c.commit)?.commit || 'main';
@@ -1526,7 +1529,7 @@
           const lines = npus.map(npu => [npu, valuesOf(index.get(`${npu}|${card.kase}|${metric}`))]);
           holder.innerHTML = sparkSvg(lines, metric);
           const n = Math.max(...lines.map(([, v]) => v.length));
-          holder.title = n > 1 ? `the last ${n} nightlies` : 'one nightly so far: nothing to draw a line through';
+          holder.title = n > 1 ? `the last ${n} nightlies` : n === 1 ? 'one nightly so far: nothing to draw a line through' : 'no nightly has timed this yet';
         }
       }
     }
@@ -1880,7 +1883,7 @@
     // A row of buttons, one per metric, `current` pressed.
     function segment(target, values, current, onPick) {
       target.replaceChildren(...values.map(v => {
-        const b = el('button', { type: 'button', textContent: label(v), title: METRICS[v] || '', className: v === current ? 'on' : '' });
+        const b = el('button', { type: 'button', textContent: label(v), title: METRICS[v] || '', className: v === current ? 'on' : '', ariaPressed: String(v === current) });
         b.value = v;
         b.addEventListener('click', () => onPick(v));
         return b;
@@ -1979,7 +1982,11 @@
       $('charts-view').hidden = view !== 'charts';
       $('status').hidden = view !== 'charts';
       $('tab-kernel').hidden = view !== 'kernel';
-      for (const v of VIEWS) $(`tab-${v}`).className = v === view ? 'current' : '';
+      for (const v of VIEWS) {
+        const tab = $(`tab-${v}`);
+        tab.className = v === view ? 'current' : '';
+        if (v === view) tab.ariaCurrent = 'page'; else tab.ariaCurrent = null;
+      }
       return view;
     }
 

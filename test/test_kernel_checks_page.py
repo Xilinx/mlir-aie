@@ -41,7 +41,8 @@ class El {
 }
 const byId = new Map();
 global.document = {
-  getElementById: id => byId.get(id) || byId.set(id, new El()).get(id),
+  // Only ids the page has, so a typo is null here as in a browser.
+  getElementById: id => !PAGE_IDS.has(id) ? null : byId.get(id) || byId.set(id, new El()).get(id),
   createElement: tag => new El(tag),
   querySelector: () => new El(), querySelectorAll: () => [],
 };
@@ -88,7 +89,9 @@ const el0 = {};
 """
 
     def run(checks):
-        subprocess.run([node, "-e", setup + script + data + checks], check=True)
+        ids = sorted(set(re.findall(r'\bid="([^"]+)"', PAGE.read_text())))
+        known = f"const PAGE_IDS = new Set({json.dumps(ids)});\n"
+        subprocess.run([node, "-e", known + setup + script + data + checks], check=True)
 
     return run
 
@@ -374,6 +377,20 @@ assert.ok(block.text.includes('kernel-checks-npu2-7'));
 """)
 
 
+def test_a_run_started_by_hand_is_never_the_baseline(page):
+    page("""
+const index = { runs: [
+  { id: 'n1', published: true, pmode: 'turbo', event: 'schedule' },
+  { id: 'm', published: true, pmode: 'turbo', event: 'workflow_dispatch' },
+  { id: 'n2', published: true, pmode: 'turbo', event: 'schedule' },
+] };
+assert.equal(previousPublished(index, { id: 'n2', pmode: 'turbo' }).id, 'n1');
+assert.equal(previousPublished(index, { id: 'n1', pmode: 'turbo' }), null);
+// Records older than the field count as nightlies.
+assert.equal(previousPublished({ runs: [{ id: 'a', published: true, pmode: 'turbo' }, { id: 'b' }] }, { id: 'b', pmode: 'turbo' }).id, 'a');
+""")
+
+
 def test_cycle_spread_and_truncation_are_read_from_the_range(page):
     page("""
 assert.deepEqual(cyclesSpread('median 2939 max 2990 n=84; truncated'),
@@ -604,10 +621,8 @@ def test_pending_chart_render_does_not_overwrite_another_view(page, view):
 global.history = { replaceState: (_state, _title, hash) => { location.hash = hash; } };
 location.hash = '#view=charts';
 $('npus').querySelectorAll = () => [{ value: 'npu1' }];
-$('modes').querySelectorAll = () => [{ value: 'performance' }];
 $('metric').value = 'cycles';
 $('kernel-filter').value = '';
-$('sort').value = 'name';
 let finish;
 global.fetch = () => new Promise(resolve => { finish = resolve; });
 const original = db;

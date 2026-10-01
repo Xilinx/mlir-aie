@@ -86,7 +86,8 @@ def bad_night(site: Path, npu: str = "npu1", seed: int = 7) -> None:
             cell["value"] = round(cell["value"] * 1.12)
     truncated = slower[0]
     cyc = run["rows"][truncated]["cycles"]
-    cyc["range"] = (cyc.get("range") or f"median {cyc['value']} max {cyc['value']} n=16") + "; truncated"
+    spread = cyc.get("range") or f"median {cyc['value']} max {cyc['value']} n=16"
+    cyc["range"] = spread + "; truncated"
     run["truncated"] = [truncated]
     for case in (failing, timing):
         run["rows"].pop(case, None)
@@ -139,13 +140,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
     parser.add_argument("--ref", default="origin/gh-pages")
-    parser.add_argument("--fetch", action="store_true", help="git fetch origin gh-pages first")
+    parser.add_argument(
+        "--fetch", action="store_true", help="git fetch origin gh-pages first"
+    )
     parser.add_argument("--scenario", choices=["real", "bad-night"], default="real")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
 
     if args.fetch:
-        subprocess.run(["git", "-C", str(ROOT), "fetch", "origin", "gh-pages"], check=True)
+        subprocess.run(
+            ["git", "-C", str(ROOT), "fetch", "origin", "gh-pages"], check=True
+        )
     scratch = Path(tempfile.mkdtemp(prefix="kernel-checks-"))
     site = extract(args.ref, scratch)
     if args.scenario == "bad-night":
