@@ -3263,8 +3263,8 @@ ParseResult xilinx::AIE::parseTypedDynamicIndexList(
   return success();
 }
 
-void xilinx::AIE::printTypedDynamicIndexList(OpAsmPrinter &printer,
-                                             Operation *, OperandRange values,
+void xilinx::AIE::printTypedDynamicIndexList(OpAsmPrinter &printer, Operation *,
+                                             OperandRange values,
                                              ArrayRef<int64_t> integers,
                                              TypeRange) {
   printer << '[';

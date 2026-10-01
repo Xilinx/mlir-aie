@@ -224,35 +224,35 @@ mlir::Value getAsValue(mlir::OpBuilder &builder, mlir::Location loc,
 
 // An integer or index OpFoldResult as an i64 Value, zero-extended (a negative
 // value reads as a huge one the guards reject). An operand wider than 64 bits
-// gets a host-side check that it fits.
-mlir::FailureOr<mlir::Value> getAsI64(mlir::OpBuilder &builder,
-                                      mlir::Location loc,
-                                      mlir::OpFoldResult ofr);
+// gets a host-side check that it fits; null if that check folds to false.
+mlir::Value getAsI64(mlir::OpBuilder &builder, mlir::Location loc,
+                     mlir::OpFoldResult ofr);
 
 // Build the address-patch `arg_plus` (buffer BYTE offset):
 // sum(elementOffsets[i] * strides[i]) * elemWidthBytes + baseByteOffset, where
 // any entry may be runtime. A fully-constant set folds to one i32 constant (i64
 // when it does not fit), byte-identical to the static path; a runtime one is
-// i64 arith with a host-side check that it is `granuleBytes`-aligned.
-mlir::FailureOr<mlir::Value>
-buildArgPlusValue(mlir::OpBuilder &builder, mlir::Location loc,
-                  llvm::ArrayRef<mlir::OpFoldResult> elementOffsets,
-                  llvm::ArrayRef<mlir::OpFoldResult> strides,
-                  int64_t elemWidthBytes, int64_t baseByteOffset,
-                  uint32_t granuleBytes);
+// i64 arith with a host-side check that it is `granuleBytes`-aligned. Null if
+// a check folds to false.
+mlir::Value buildArgPlusValue(mlir::OpBuilder &builder, mlir::Location loc,
+                              llvm::ArrayRef<mlir::OpFoldResult> elementOffsets,
+                              llvm::ArrayRef<mlir::OpFoldResult> strides,
+                              int64_t elemWidthBytes, int64_t baseByteOffset,
+                              uint32_t granuleBytes);
 
 // Require a runtime BD walk to stay inside its host buffer: the furthest
 // element it touches, sum(offsets[k] * offsetStrides[k]) +
 // sum((sizes[i] - 1) * strides[i]), must lie within `hostBufferType` past
 // `baseByteOffset`. An unknown (dynamic) shape bounds the walk at 2^32
 // elements, which still rejects a negative offset.
-mlir::LogicalResult guardWithinHostBuffer(
-    mlir::OpBuilder &builder, mlir::Location loc,
-    mlir::BaseMemRefType hostBufferType, int64_t baseByteOffset,
-    int64_t elemWidthBytes, llvm::ArrayRef<mlir::OpFoldResult> offsets,
-    llvm::ArrayRef<mlir::OpFoldResult> offsetStrides,
-    llvm::ArrayRef<mlir::OpFoldResult> sizes,
-    llvm::ArrayRef<mlir::OpFoldResult> strides);
+mlir::LogicalResult
+guardWithinHostBuffer(mlir::OpBuilder &builder, mlir::Location loc,
+                      mlir::BaseMemRefType hostBufferType,
+                      int64_t baseByteOffset, int64_t elemWidthBytes,
+                      llvm::ArrayRef<mlir::OpFoldResult> offsets,
+                      llvm::ArrayRef<mlir::OpFoldResult> offsetStrides,
+                      llvm::ArrayRef<mlir::OpFoldResult> sizes,
+                      llvm::ArrayRef<mlir::OpFoldResult> strides);
 
 // Pack a set of (value, mask, shift) fields into a single i32 BD word via
 // arith and/shl/or. mask == 0xFFFFFFFF skips the AND; shift == 0 skips the SHL.

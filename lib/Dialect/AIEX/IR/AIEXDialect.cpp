@@ -216,10 +216,10 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
   // A zero d3 stride is a pure repeat: the lowerings leave the iteration fields
   // 0 and carry the count on the queue push, so the repeat limit applies.
   bool pureRepeat = inputStrides[3] == 0;
-  int64_t maxCount =
-      pureRepeat ? targetModel.getMaxRepeatCount() + 1
-                 : targetModel.getMaxBdIterationCount(
-                       targetModel.getTileType(tileCol, tileRow));
+  int64_t maxCount = pureRepeat
+                         ? targetModel.getMaxRepeatCount() + 1
+                         : targetModel.getMaxBdIterationCount(
+                               targetModel.getTileType(tileCol, tileRow));
   if (inputSizes[3] > maxCount)
     return forOp->emitOpError()
            << (pureRepeat ? "repeat count " : "iteration count ")

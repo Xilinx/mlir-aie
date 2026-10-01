@@ -600,7 +600,7 @@ def trace(words: Sequence[int] | np.ndarray) -> list[Event]:
         return (addr >> _COL_SHIFT) & 0x7F, row, header.tile_kind(row), addr & _REG_MASK
 
     def queue(kind: str, reg: int) -> tuple[str, int] | None:
-        """The (direction, channel) whose queue register reg is, if any."""
+        """Return the (direction, channel) whose queue register `reg` is, if any."""
         layout = _LAYOUT[kind]
         for direction, delta in (("S2MM", 0), ("MM2S", layout.mm2s_delta)):
             for ch in range(layout.channels):

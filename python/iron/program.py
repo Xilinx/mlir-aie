@@ -320,7 +320,9 @@ class Program:
         taken = {of.name for of in fifos} | {b._name for b in rtps}
 
         def fresh(prefix):
-            name = next(n for i in itertools.count() if (n := f"{prefix}{i}") not in taken)
+            name = next(
+                n for i in itertools.count() if (n := f"{prefix}{i}") not in taken
+            )
             taken.add(name)
             return name
 

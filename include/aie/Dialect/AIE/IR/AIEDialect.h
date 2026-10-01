@@ -162,7 +162,8 @@ verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
 mlir::ParseResult parseTypedDynamicIndexList(
     mlir::OpAsmParser &parser,
     llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &values,
-    mlir::DenseI64ArrayAttr &integers, llvm::SmallVectorImpl<mlir::Type> &types);
+    mlir::DenseI64ArrayAttr &integers,
+    llvm::SmallVectorImpl<mlir::Type> &types);
 void printTypedDynamicIndexList(mlir::OpAsmPrinter &printer,
                                 mlir::Operation *op, mlir::OperandRange values,
                                 llvm::ArrayRef<int64_t> integers,

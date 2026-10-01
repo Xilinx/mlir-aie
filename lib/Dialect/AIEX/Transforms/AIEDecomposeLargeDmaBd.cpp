@@ -464,7 +464,8 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
                  << oldOuter << " to " << newOuter;
         // Widen before multiplying: the accessor returns int32_t, so the
         // addition alone would overflow in int and wrap past any later check.
-        runs = (static_cast<int64_t>(getTaskRepeatCount(taskOp)) + 1) * newOuter;
+        runs =
+            (static_cast<int64_t>(getTaskRepeatCount(taskOp)) + 1) * newOuter;
         if (runs % oldOuter != 0)
           return failure();
         runs /= oldOuter;

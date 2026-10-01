@@ -1235,7 +1235,8 @@ def AIE_DMAConfigureTaskOp
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
       DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-      Optional<AnySignlessIntegerOrIndex>:$repeat_count_val, OptionalAttr<PacketInfoAttr>:$packet,
+      Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
+      OptionalAttr<PacketInfoAttr>:$packet,
       // Put the channel into out-of-order mode (S2MM only).
       UnitAttr:$out_of_order);
 

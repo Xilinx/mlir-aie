@@ -6,7 +6,6 @@ from contextvars import ContextVar
 from typing import Any, Iterator
 
 from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
-from aie.ir import InsertionPoint  # pyright: ignore[reportMissingImports]
 from aie.helpers.dialects.scf import (
     _for,
 )
@@ -19,6 +18,7 @@ from aie.helpers.dialects.scf import (
 from aie.helpers.dialects.scf import (
     yield_ as _yield_,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from aie.ir import InsertionPoint  # pyright: ignore[reportMissingImports]
 from aie.iron.runtime.dmataskhandle import Task
 from aie.iron.runtime.taskgroup import TaskGroup
 

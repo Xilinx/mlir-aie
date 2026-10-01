@@ -132,7 +132,7 @@ def _installed_dirs() -> tuple[Path, ...]:
 
 @cache
 def _design_source(package: str, file: str | None) -> Path | None:
-    """The source a module's identity is read from, or None for one the key does not follow.
+    """Return the source a module's identity is read from, or None if the key does not follow it.
 
     That is any Python source but the interpreter's and installed packages',
     whose versions do not move under a design, except mlir-aie's own, which

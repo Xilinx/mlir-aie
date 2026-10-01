@@ -69,7 +69,6 @@ def vector_reduce_max(
     dtype = str_to_dtype(dtype_str)
     in_tensor_size = in1_size // dtype(0).nbytes
     out_tensor_size = out_size // dtype(0).nbytes
-    N_per_channel = in_tensor_size // n_channels
     num_iter = in_tensor_size // (elems_per_core * n_channels)
 
     enable_trace = 1 if trace_size > 0 else 0
@@ -108,8 +107,7 @@ def vector_reduce_max(
             )
         )
 
-    # One TAP per channel — each reads a contiguous ``N_per_channel``
-    # slice of the input tensor.
+    # One TAP per channel — each reads a contiguous slice of the input tensor.
     taps = TensorAccessPattern.full((1, in_tensor_size)).partition(n_channels)
 
     def core_body(*args):

@@ -222,9 +222,7 @@ def _transpose_combined(
     tap_in_L2L1 = TensorAccessPattern.full((n, m)).tile((s, s)).permute((1, 2, 0, 3))
     # The transposed (n, m) tiles land in C column-major over the tile grid,
     # so tile (i, j) of A becomes tile (j, i) of C.
-    tap_out_L1L3 = (
-        TensorAccessPattern.full((K, M)).tile((n, m)).permute((1, 0, 2, 3))
-    )
+    tap_out_L1L3 = TensorAccessPattern.full((K, M)).tile((n, m)).permute((1, 0, 2, 3))
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")
     in_L2L1_fifo = in_L3L2_fifo.cons(from_stream=tap_in_L2L1).forward(

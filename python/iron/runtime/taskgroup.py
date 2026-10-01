@@ -241,7 +241,7 @@ class TaskGroup:
 
 
 def _block_of(task) -> Block:
-    """The block a transfer was issued in (its configure op, or a carried Value)."""
+    """Return the block a transfer was issued in (its configure op, or a carried Value)."""
     owner = task.owner if isinstance(task, Value) else task
     if isinstance(owner, Block):
         return owner

@@ -892,7 +892,9 @@ class ObjectFifoHandle(Resolvable):
             tile (Tile, optional): The tile where the Join operation occurs. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The type of the buffers corresponding to each new ObjectFifo. Defaults to None.
-            names (list[str] | None, optional): The name of each new ObjectFifo. If not given, each is named after this one, or by the Program if this one is unnamed. Defaults to None.
+            names (list[str] | None, optional): The name of each new ObjectFifo. If not given,
+                each is named after this one, or by the Program if this one is unnamed.
+                Defaults to None.
             to_stream (list[TensorAccessPattern | None] | None, optional): Each new ObjectFifo's
                 ``to_stream``. Defaults to None.
             from_stream (list[TensorAccessPattern | None] | None, optional): Each new
@@ -985,7 +987,9 @@ class ObjectFifoHandle(Resolvable):
             tile (Tile, optional): The tile where the Split operation takes place. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The buffer type of each new ObjectFifo. Defaults to None.
-            names (list[str] | None, optional): The name of each new ObjectFifo. If not given, each is named after this one, or by the Program if this one is unnamed. Defaults to None.
+            names (list[str] | None, optional): The name of each new ObjectFifo. If not given,
+                each is named after this one, or by the Program if this one is unnamed.
+                Defaults to None.
             to_stream (list[TensorAccessPattern | None] | None, optional): Each new ObjectFifo's
                 ``to_stream``; a padded one pads that output. Defaults to None.
             from_stream (list[TensorAccessPattern | None] | None, optional): Each new
@@ -1100,7 +1104,8 @@ class ObjectFifoHandle(Resolvable):
             tile (Tile, optional): The tile for the Forward operation. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             obj_type (type[np.ndarray] | None, optional): The object type of the new ObjectFifo. Defaults to None.
             depth (int | None, optional): The depth of the new ObjectFifo. Defaults to None.
-            name (str | None, optional): The name of the new ObjectFifo. If None is given, it is named after this one, or by the Program if this one is unnamed. Defaults to None.
+            name (str | None, optional): The name of the new ObjectFifo. If None is given, it
+                is named after this one, or by the Program if this one is unnamed. Defaults to None.
             to_stream (TensorAccessPattern | None, optional): The new ObjectFifo's ``to_stream``;
                 a padded one pads the forwarded stream. Defaults to None.
             from_stream (TensorAccessPattern | None, optional): The new ObjectFifo's
@@ -1218,7 +1223,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         ObjectFifoEndpoint.__init__(self, tile)
 
     def _transfer_sizes(self, of: ObjectFifo) -> list[int]:
-        """The elements each transfer of `of`'s end of the link moves, per segment it walks.
+        """Return the elements each transfer of `of`'s end of the link moves, per segment it walks.
 
         The link holds one shared object. A join or distribute splits it at its
         offsets and each participant moves its own segment, while the single

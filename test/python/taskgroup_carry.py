@@ -214,9 +214,7 @@ def empty_group(n, issue):
         carried.finish()
         yield_([TaskGroup()])
     last.finish()
-    for _iv, (carried, acc), (last, _total) in range_(
-        0, n, iter_args=[TaskGroup(), n]
-    ):
+    for _iv, (carried, acc), (last, _total) in range_(0, n, iter_args=[TaskGroup(), n]):
         carried.finish()
         yield_([TaskGroup(), acc])
     last.finish()

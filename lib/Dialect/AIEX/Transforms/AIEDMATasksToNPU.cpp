@@ -396,16 +396,16 @@ struct AIEDMATasksToNPUPass
                             : OpFoldResult(builder.getI32IntegerAttr(
                                   bd_op.getConstantOffset().value_or(0)));
       OpFoldResult oneStride = builder.getI32IntegerAttr(1);
-      FailureOr<Value> argPlus = buildArgPlusValue(
-          builder, bd_op.getLoc(), {offsetOfr}, {oneStride},
-          bd_op.getBufferElementTypeWidthInBytes(), offset,
-          target_model.getAddressGenGranularity() / 8);
-      if (failed(argPlus))
+      Value argPlus =
+          buildArgPlusValue(builder, bd_op.getLoc(), {offsetOfr}, {oneStride},
+                            bd_op.getBufferElementTypeWidthInBytes(), offset,
+                            target_model.getAddressGenGranularity() / 8);
+      if (!argPlus)
         return failure();
       NpuAddressPatchOp::create(builder, bd_op.getLoc(),
                                 /*addr*/ register_addr,
                                 /*addr_val*/ runtimeRegisterAddr,
-                                /*arg_idx*/ arg_idx, *argPlus);
+                                /*arg_idx*/ arg_idx, argPlus);
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -643,11 +643,10 @@ struct AIEDMATasksToNPUPass
            "dynamic BD lowering is shim-NOC only (enforced by caller)");
     SmallVector<Value> bdWords;
     Value bdRepeatCount;
-    if (failed(buildShimBdWords(builder, loc, target_model, f, sizes4, strides4,
-                                elemWidth, bd_op.getBurstLength(),
-                                bd_op.getAxcacheOrDefault(),
-                                sizes.empty() ? OpFoldResult() : lenOfr,
-                                bdRepeatCount, bdWords)))
+    if (failed(buildShimBdWords(
+            builder, loc, target_model, f, sizes4, strides4, elemWidth,
+            bd_op.getBurstLength(), bd_op.getAxcacheOrDefault(),
+            sizes.empty() ? OpFoldResult() : lenOfr, bdRepeatCount, bdWords)))
       return failure();
 
     // The walk must stay inside the host buffer it reads or writes.

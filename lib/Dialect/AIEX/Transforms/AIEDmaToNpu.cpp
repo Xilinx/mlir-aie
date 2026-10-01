@@ -240,13 +240,13 @@ public:
       if (repeat_cnt) {
         repeat = createConstantI32(rewriter, loc, *repeat_cnt);
       } else {
-        FailureOr<Value> repeat64 =
+        Value repeat64 =
             getAsI64(rewriter, loc, OpFoldResult(op.getRepeatCount()));
-        if (failed(repeat64))
+        if (!repeat64)
           return failure();
         uint32_t maxRepeat = tm.getMaxRepeatCount();
         Value inRange = arith::CmpIOp::create(
-            rewriter, loc, arith::CmpIPredicate::ule, *repeat64,
+            rewriter, loc, arith::CmpIPredicate::ule, repeat64,
             arith::ConstantOp::create(rewriter, loc,
                                       rewriter.getI64IntegerAttr(maxRepeat)));
         if (failed(emitRuntimeCheck(
@@ -255,8 +255,7 @@ public:
                     Twine(maxRepeat) + "] range (at most " +
                     Twine(maxRepeat + 1) + " executions)")))
           return failure();
-        repeat =
-            rewriter.createOrFold<arith::TruncIOp>(loc, i32ty, *repeat64);
+        repeat = rewriter.createOrFold<arith::TruncIOp>(loc, i32ty, repeat64);
       }
       Value cmd = createConstantI32(rewriter, loc, issueBit);
       Value bdField = rewriter.createOrFold<arith::AndIOp>(
@@ -590,24 +589,22 @@ public:
     SmallVector<OpFoldResult> strides = op.getMixedStrides();
     int64_t elemBytes = op.getElementTypeBitwidth() / 8;
     SmallVector<OpFoldResult> sizes = op.getMixedSizes();
-    bool isRuntime = llvm::any_of(
-        llvm::concat<OpFoldResult>(offsets, sizes, strides),
-        [](OpFoldResult v) { return !getConstantIntValue(v); });
-    if (isRuntime &&
-        failed(guardWithinHostBuffer(
-            rewriter, op->getLoc(),
-            cast<BaseMemRefType>(traceResult->rootArg.getType()),
-            traceResult->offsetInBytes, elemBytes, offsets, strides, sizes,
-            strides)))
+    bool isRuntime =
+        llvm::any_of(llvm::concat<OpFoldResult>(offsets, sizes, strides),
+                     [](OpFoldResult v) { return !getConstantIntValue(v); });
+    if (isRuntime && failed(guardWithinHostBuffer(
+                         rewriter, op->getLoc(),
+                         cast<BaseMemRefType>(traceResult->rootArg.getType()),
+                         traceResult->offsetInBytes, elemBytes, offsets,
+                         strides, sizes, strides)))
       return failure();
-    FailureOr<Value> argPlus = buildArgPlusValue(
+    Value argPlus = buildArgPlusValue(
         rewriter, op->getLoc(), offsets, strides, elemBytes,
-        traceResult->offsetInBytes,
-        targetModel.getAddressGenGranularity() / 8);
-    if (failed(argPlus))
+        traceResult->offsetInBytes, targetModel.getAddressGenGranularity() / 8);
+    if (!argPlus)
       return failure();
     NpuAddressPatchOp::create(rewriter, op->getLoc(), patchAddr,
-                              /*addr_val=*/Value(), argIdx, *argPlus);
+                              /*addr_val=*/Value(), argIdx, argPlus);
 
     // If this DMA op has an offset_state_table_idx, emit an
     // update_from_scratchpad to add the runtime offset to the BD address

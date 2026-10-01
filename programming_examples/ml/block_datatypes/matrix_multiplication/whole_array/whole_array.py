@@ -151,7 +151,9 @@ def whole_array_matmul(
 
     tb_max_n_rows = 4
 
-    A_tiles = TensorAccessPattern.full((M, K // 8)).tile((m * n_A_tiles_per_shim, k // 8))
+    A_tiles = TensorAccessPattern.full((M, K // 8)).tile(
+        (m * n_A_tiles_per_shim, k // 8)
+    )
     B_tiles = TensorAccessPattern.full((N, K // 8)).tile((n, k // 8))
     C_tiles = TensorAccessPattern.full((M, N // 8)).tile((m * n_aie_rows, n // 8))
 

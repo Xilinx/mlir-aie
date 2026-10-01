@@ -294,9 +294,7 @@ def cascade(
     # B fill TAPs: one per col, walked tile column by tile column and reused
     # across all (tb, tile_row) for that col.
     B_tiles = (
-        TensorAccessPattern.full((K, N))
-        .tile((k * n_aie_rows, n))
-        .permute((1, 0, 2, 3))
+        TensorAccessPattern.full((K, N)).tile((k * n_aie_rows, n)).permute((1, 0, 2, 3))
     )
 
     # A fill TAPs: one per (col, m-block), every n_aie_rows-th k-tile of a tile

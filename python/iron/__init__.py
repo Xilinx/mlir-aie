@@ -37,6 +37,7 @@ Provides the primary abstractions for describing NPU designs:
     surface at MLIR verification time.
 """
 
+from aie.helpers.taplib._symbolic import require
 from aie.utils import (
     arange,
     ceildiv,
@@ -64,7 +65,6 @@ from aie.utils.compile.jit import (
     compileconfig,
     get_compile_arg,
 )
-from aie.helpers.taplib._symbolic import require
 from aie.utils.jit import jit
 
 from . import algorithms, kernels
