@@ -203,12 +203,20 @@ private:
 /// is not modeled.
 class StreamWaitGraph {
 public:
+  /// A core, or a DMA channel. A core's `dma` names only its tile.
   struct Agent {
-    TileID tile;
-    bool isCore;
-    DMAChannelDir dir;
-    int channel;
+    TileDMAChannel dma;
+    bool isCore = false;
     bool onShim = false;
+
+    static Agent core(TileID tile) {
+      return {{tile, DMAChannelDir::S2MM, 0}, true};
+    }
+    static Agent channel(const TileDMAChannel &dma) { return {dma}; }
+    /// Each agent at a stream endpoint: the core or DMA channel pushing data
+    /// into (`sending`) or pulling data out of the fabric there.
+    static std::optional<Agent> at(const StreamEndpoint &endpoint,
+                                   bool sending);
   };
 
   StreamWaitGraph(DeviceOp device, llvm::ArrayRef<RoutedStream> streams,
@@ -250,15 +258,13 @@ private:
     EdgeKind kind;
   };
 
-  unsigned getOrCreate(TileID tile, bool isCore, DMAChannelDir dir,
-                       int channel);
-  std::optional<unsigned> lookup(TileID tile, bool isCore, DMAChannelDir dir,
-                                 int channel) const;
+  unsigned getOrCreate(const Agent &agent);
+  std::optional<unsigned> lookup(const Agent &agent) const;
   void addEdge(unsigned from, unsigned to, EdgeKind kind);
 
   std::vector<Agent> agents;
   std::vector<llvm::SmallVector<Edge, 4>> edges;
-  std::map<std::tuple<TileID, bool, DMAChannelDir, int>, unsigned> agentIDs;
+  std::map<std::pair<bool, TileDMAChannel>, unsigned> agentIDs;
   llvm::DenseSet<unsigned> modeled;
 };
 
