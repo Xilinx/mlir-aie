@@ -14,7 +14,7 @@
 
 // RUN: not aie-opt --aie-create-pathfinder-flows %s 2>&1 | FileCheck %s
 
-// CHECK: error: Unable to find a legal routing: at tile ({{[0-9]+}}, {{[0-9]+}}), packet flows through {{[A-Za-z]+[0-9]+}} claim rule (mask 0x1C, id 0x8) and rule (mask 0x1F, id 0x9), which both match id 0x9
+// CHECK: error: Unable to find a legal routing: at tile ({{[0-9]+}}, {{[0-9]+}}), packet flows through {{[A-Za-z]+:[0-9]+}} claim rule (mask 0x1C, id 0x8) and rule (mask 0x1F, id 0x9), which both match id 0x9
 
 module {
   aie.device(npu1_1col) {

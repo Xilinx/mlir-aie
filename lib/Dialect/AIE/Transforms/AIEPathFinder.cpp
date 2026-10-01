@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
+#include "aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h"
 #include "d_ary_heap.h"
 
 #include "llvm/ADT/MapVector.h"
@@ -524,15 +525,6 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
 
 static constexpr double INF = std::numeric_limits<double>::max();
 
-static std::string portString(Port p) {
-  return llvm::formatv("{0}:{1}", stringifyWireBundle(p.bundle), p.channel);
-}
-
-static std::string endpointString(const PathEndPoint &p) {
-  return llvm::formatv("({0}, {1}) {2}", p.coords.col, p.coords.row,
-                       portString(p.port));
-}
-
 namespace {
 enum Color : int8_t { WHITE = 0, GRAY = 1, BLACK = 2 };
 } // namespace
@@ -813,7 +805,8 @@ int Pathfinder::RouteState::splitPart(int flow, int id) {
   int part = parts.size();
   Flow f = parts[flow];
   LLVM_DEBUG(llvm::dbgs() << "\t\tRouting id " << id << " from "
-                          << endpointString(f.src) << " apart\n");
+                          << describeTilePort(f.src.coords, f.src.port)
+                          << " apart\n");
   flowIds[flow].erase(id);
   flowIds.push_back({id});
   auto carries = [&](int k, const PathEndPoint &p) {
@@ -900,7 +893,8 @@ std::string Pathfinder::explainNoRouting(const RouteState &st) const {
     prioritized = prioritized ? prioritized : &f;
     for (const auto &[_, hop] : st.treeOf[k]) {
       if (overused(*hop.second.sb)) {
-        return "packet flows from " + endpointString(f.src) +
+        return "packet flows from " +
+               describeTilePort(f.src.coords, f.src.port) +
                " are prioritized (priority_route), so they keep the route "
                "they take alone, and it holds a channel " +
                link(*hop.second.sb) + " the other flows need.";
@@ -913,7 +907,8 @@ std::string Pathfinder::explainNoRouting(const RouteState &st) const {
         return overused(entry.second);
       })) {
     std::string reason =
-        "packet flows from " + endpointString(prioritized->src) +
+        "packet flows from " +
+        describeTilePort(prioritized->src.coords, prioritized->src.port) +
         " are prioritized (priority_route), so they keep the route they take "
         "alone, and the router found no routing for the other flows around "
         "the channels it holds";
@@ -963,13 +958,13 @@ std::string Pathfinder::explainNoRouting(const RouteState &st) const {
                        s.dsts[k] == worst->dstPorts[worstJ]
                  : llvm::is_contained(worst->srcPorts, s.dsts[k]);
     if (uses)
-      users.push_back(endpointString(src));
+      users.push_back(describeTilePort(src.coords, src.port));
   }
   std::string where =
       crossbar ? llvm::formatv("the connection from {0} to {1} at tile ({2}, "
                                "{3})",
-                               portString(worst->srcPorts[worstI]),
-                               portString(worst->dstPorts[worstJ]),
+                               describePort(worst->srcPorts[worstI]),
+                               describePort(worst->dstPorts[worstJ]),
                                worst->srcCoords.col, worst->srcCoords.row)
                      .str()
                : "the links " + link(*worst);
@@ -1250,7 +1245,8 @@ llvm::Error Pathfinder::TreeBuilder::placePinned() {
           e = &out;
     if (!e)
       return llvm::make_error<RoutingFailure>(
-          "the route packet flows from " + endpointString(part.src) +
+          "the route packet flows from " +
+          describeTilePort(part.src.coords, part.src.port) +
           " take alone does not fit this design.");
     std::pair<int, std::pair<int, Edge>> hop{
         stateId(toId->second, intra ? Out : In),
@@ -1313,8 +1309,9 @@ llvm::Error Pathfinder::TreeBuilder::grow() {
     }
     if (!trace(currId))
       return llvm::make_error<RoutingFailure>(
-          "no path leads from " + endpointString(part.src) + " to " +
-          endpointString(endPoint) +
+          "no path leads from " +
+          describeTilePort(part.src.coords, part.src.port) + " to " +
+          describeTilePort(endPoint.coords, endPoint.port) +
           " through the connections the switchboxes allow and existing "
           "routing leaves free.");
   }

@@ -1080,8 +1080,8 @@ unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
           auto [v, port, rule] = link;
           os << (k == 0 ? "" : ", which")
              << (rule ? " takes one packet rule on " : " leaves by ")
-             << stringifyWireBundle(port.bundle) << ":" << port.channel
-             << " with " << describeStream(streams[here[v].stream]);
+             << describePort(port) << " with "
+             << describeStream(streams[here[v].stream]);
         }
         os << ", and a master port or packet rule takes one arbiter. "
            << conflicts.explain(a, b);
@@ -1789,15 +1789,12 @@ void PacketFlowRouting::checkRules() {
       continue;
     const PathEndPoint &second = other->first;
     planFailure = llvm::formatv(
-        "at tile ({0}, {1}), packets with id {2} from ({3}, {4}) {5}:{6} and "
-        "({7}, {8}) {9}:{10} enter on {11}:{12} and leave by different ports; "
-        "a switchbox routes on the id alone, so each source's packets would "
-        "also go where the other's do.",
-        tileId.col, tileId.row, id, first.coords.col, first.coords.row,
-        stringifyWireBundle(first.port.bundle), first.port.channel,
-        second.coords.col, second.coords.row,
-        stringifyWireBundle(second.port.bundle), second.port.channel,
-        stringifyWireBundle(slavePort.second.bundle), slavePort.second.channel);
+        "at tile ({0}, {1}), packets with id {2} from {3} and {4} enter on {5} "
+        "and leave by different ports; a switchbox routes on the id alone, so "
+        "each source's packets would also go where the other's do.",
+        tileId.col, tileId.row, id, describeTilePort(first.coords, first.port),
+        describeTilePort(second.coords, second.port),
+        describePort(slavePort.second));
   }
   for (const auto &[tileId, byFlow] : tileSlaveFlows) {
     // The packet rules the flows entering on `slave` need, without the packets
@@ -1909,13 +1906,12 @@ void PacketFlowRouting::checkRules() {
         int witness = (own.second & own.first) |
                       (other.second & other.first & ~own.first);
         planFailure = llvm::formatv(
-            "at tile ({0}, {1}), packet flows through {2}{3} claim rule (mask "
-            "0x{4:X-}, id 0x{5:X-}) and rule (mask 0x{6:X-}, id 0x{7:X-}), "
-            "which both match id 0x{8:X-}; widen one mask to carry both, or "
+            "at tile ({0}, {1}), packet flows through {2} claim rule (mask "
+            "0x{3:X-}, id 0x{4:X-}) and rule (mask 0x{5:X-}, id 0x{6:X-}), "
+            "which both match id 0x{7:X-}; widen one mask to carry both, or "
             "route them apart.",
-            tileId.col, tileId.row, stringifyWireBundle(fa.slave.bundle),
-            fa.slave.channel, own.first, own.second, other.first, other.second,
-            witness);
+            tileId.col, tileId.row, describePort(fa.slave), own.first,
+            own.second, other.first, other.second, witness);
       }
     std::set<Port> slaves;
     for (const auto &[key, f] : byFlow)
@@ -1932,10 +1928,10 @@ void PacketFlowRouting::checkRules() {
       if (planFailure)
         continue;
       planFailure = llvm::formatv(
-          "at tile ({0}, {1}), the packet flows entering on {2}:{3} need {4} "
-          "packet rules, and a slave port holds {5}.",
-          tileId.col, tileId.row, stringifyWireBundle(slave.bundle),
-          slave.channel, needed, targetModel.getNumSlaveSlots());
+          "at tile ({0}, {1}), the packet flows entering on {2} need {3} "
+          "packet rules, and a slave port holds {4}.",
+          tileId.col, tileId.row, describePort(slave), needed,
+          targetModel.getNumSlaveSlots());
     }
   }
 }
@@ -1951,11 +1947,10 @@ void PacketFlowRouting::planTiles() {
       llvm::dbgs() << "No arbiter plan at tile (" << tileId.col << ", "
                    << tileId.row << "):\n";
       for (const SlaveFlow &f : flows) {
-        llvm::dbgs() << "  " << stringifyWireBundle(f.slave.bundle) << ':'
-                     << f.slave.channel << " id " << f.id << " ->";
+        llvm::dbgs() << "  " << describePort(f.slave) << " id " << f.id
+                     << " ->";
         for (Port m : f.masters)
-          llvm::dbgs() << ' ' << stringifyWireBundle(m.bundle) << ':'
-                       << m.channel;
+          llvm::dbgs() << ' ' << describePort(m);
         llvm::dbgs() << '\n';
       }
       for (auto [a, b] : blocking)
@@ -2250,9 +2245,7 @@ LogicalResult PacketFlowRouting::emit() {
       if (tileId != port.first)
         continue;
 
-      WireBundle bundle = port.second.bundle;
-      int channel = port.second.channel;
-      auto slave = port.second;
+      Port slave = port.second;
 
       SmallVector<int, 4> matchIds =
           llvm::to_vector<4>(llvm::make_second_range(group));
@@ -2291,12 +2284,11 @@ LogicalResult PacketFlowRouting::emit() {
             int witness = (own.second & own.first) |
                           (other.second & other.first & ~own.first);
             return mlir::emitError(tileLoc)
-                   << "packet flows through " << stringifyWireBundle(bundle)
-                   << channel << " claim rule (mask 0x"
-                   << llvm::utohexstr(own.first) << ", id 0x"
-                   << llvm::utohexstr(own.second) << ") and rule (mask 0x"
-                   << llvm::utohexstr(other.first) << ", id 0x"
-                   << llvm::utohexstr(other.second)
+                   << "packet flows through " << describePort(slave)
+                   << " claim rule (mask 0x" << llvm::utohexstr(own.first)
+                   << ", id 0x" << llvm::utohexstr(own.second)
+                   << ") and rule (mask 0x" << llvm::utohexstr(other.first)
+                   << ", id 0x" << llvm::utohexstr(other.second)
                    << "), which both match id 0x" << llvm::utohexstr(witness)
                    << "; widen one mask to carry both, or route them apart";
           }
@@ -2321,8 +2313,7 @@ LogicalResult PacketFlowRouting::emit() {
         plan.rules = portRules(claims, existing, idBits,
                                device.getTargetModel().getNumSlaveSlots());
         LLVM_DEBUG({
-          llvm::dbgs() << "packet rules " << stringifyWireBundle(bundle)
-                       << channel << ":";
+          llvm::dbgs() << "packet rules " << describePort(slave) << ":";
           for (const PortRule &r : plan.rules)
             llvm::dbgs() << " rule(" << r.mask << ", " << r.value
                          << ") -> group " << plan.groups[r.group];
@@ -2357,7 +2348,8 @@ LogicalResult PacketFlowRouting::emit() {
 
       PacketRulesOp packetrules = slaveRules.lookup(slave);
       if (!packetrules) {
-        packetrules = PacketRulesOp::create(builder, tileLoc, bundle, channel);
+        packetrules = PacketRulesOp::create(builder, tileLoc, slave.bundle,
+                                            slave.channel);
         PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
                                         tileLoc);
         if (isCtrlPktGroup)
@@ -2581,11 +2573,11 @@ void AIEPathfinderPass::runOnOperation() {
     StreamConflicts aloneConflicts(alone);
     if (llvm::Error err = route(alone, aloneAnalyzer, aloneConflicts, {},
                                 /*circuitSwitchHops=*/false)) {
-      llvm::handleAllErrors(std::move(err), [&](const RoutingFailure &f) {
-        d.emitError("Unable to find a legal routing: prioritized packet flows "
-                    "(priority_route) keep the route they take alone, and "
-                    "alone they have none: ")
-            << (f.reason.empty() ? f.message() : f.reason);
+      llvm::handleAllErrors(std::move(err), [&](RoutingFailure &f) {
+        f.reason = "prioritized packet flows (priority_route) keep the route "
+                   "they take alone, and alone they have none" +
+                   (f.reason.empty() ? "." : ": " + f.reason);
+        d.emitError() << f.message();
       });
       signalPassFailure();
       return;
@@ -2630,11 +2622,7 @@ void AIEPathfinderPass::runOnOperation() {
             sources += (i == 0                        ? ""
                         : i + 1 == prioritized.size() ? " and "
                                                       : ", ") +
-                       llvm::formatv("({0}, {1}) {2}:{3}", src.coords.col,
-                                     src.coords.row,
-                                     stringifyWireBundle(src.port.bundle),
-                                     src.port.channel)
-                           .str();
+                       describeTilePort(src.coords, src.port);
           f.reason = "packet flows from " + sources +
                      " are prioritized (priority_route), so they keep the "
                      "route they take alone, and the other flows route only "
