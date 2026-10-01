@@ -19,7 +19,10 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/IRMapping.h"
+#include "mlir/Interfaces/CastInterfaces.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -248,6 +251,48 @@ struct AIEDMATasksToNPUPass
       return failure();
     }
     return success();
+  }
+
+  // A builder that derives a BD operand from runtime scalars (a width cast, a
+  // transfer-length product, an npu.require guard on the narrowing) emits that
+  // arithmetic where it is called, inside the BD block. None of it depends on
+  // the BD, so move it ahead of the task in program order; a constant it reads
+  // is cloned rather than moved, since BD-encoded ops may read it too. What
+  // stays (an op with other effects, or one reading a value only the block
+  // defines) is left for verifyNoUnsupportedOpsInBlock to reject. A cast
+  // counts as side-effect free even when its dialect does not say so
+  // (emitc.cast, the zero-extension of an unsigned dispatch scalar).
+  void hoistScalarOpsOutOfBdBlocks(DMAConfigureTaskOp op) {
+    Region &body = op.getBody();
+    OpBuilder builder(op);
+    IRMapping hoistedConstants;
+    for (Block &block : body) {
+      for (Operation &inner :
+           llvm::make_early_inc_range(block.without_terminator())) {
+        if (isa<AIE::DMABDOp, AIE::UseLockOp, arith::ConstantOp>(inner))
+          continue;
+        if (inner.getNumRegions() != 0 ||
+            !(isMemoryEffectFree(&inner) ||
+              isa<CastOpInterface, NpuRequireOp>(inner)))
+          continue;
+        auto definedInBody = [&](Value v) {
+          return body.isAncestor(v.getParentRegion());
+        };
+        if (llvm::any_of(inner.getOperands(), [&](Value v) {
+              return definedInBody(v) && !v.getDefiningOp<arith::ConstantOp>();
+            }))
+          continue;
+        for (OpOperand &operand : inner.getOpOperands()) {
+          Value v = operand.get();
+          if (!definedInBody(v))
+            continue;
+          if (!hoistedConstants.contains(v))
+            builder.clone(*v.getDefiningOp(), hoistedConstants);
+          operand.set(hoistedConstants.lookup(v));
+        }
+        inner.moveBefore(op);
+      }
+    }
   }
 
   LogicalResult verifyNoUnsupportedOpsInBlock(Block &block) {
@@ -1002,6 +1047,7 @@ struct AIEDMATasksToNPUPass
     }
 
     Region &body = op.getBody();
+    hoistScalarOpsOutOfBdBlocks(op);
 
     // Verify each BD block first; subsequent functions rely on them being
     // well-formed

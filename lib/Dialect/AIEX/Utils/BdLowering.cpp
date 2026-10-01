@@ -219,10 +219,26 @@ buildShimBdWords(OpBuilder &builder, Location loc,
   uint32_t gran = targetModel.getAddressGenGranularity();
   SmallVector<OpFoldResult, 4> sizesRev(llvm::reverse(mixedSizes));
   SmallVector<OpFoldResult, 4> stridesRev(llvm::reverse(mixedStrides));
+  // Runtime sizes/strides arrive as i64 but the encoder works in i32; refuse
+  // a value the truncation would wrap rather than encode the wrapped one.
+  auto asI32 = [&](OpFoldResult ofr) {
+    auto v = dyn_cast<Value>(ofr);
+    if (v && !getConstantIntValue(ofr) &&
+        v.getType().getIntOrFloatBitWidth() > 32) {
+      Value max = arith::ConstantOp::create(
+          builder, loc, IntegerAttr::get(v.getType(), INT32_MAX));
+      Value fits = arith::CmpIOp::create(builder, loc,
+                                         arith::CmpIPredicate::ule, v, max);
+      NpuRequireOp::create(
+          builder, loc, fits,
+          "a runtime DMA size or stride does not fit in 31 bits");
+    }
+    return getAsValue(builder, loc, ofr, i32ty);
+  };
   Value inS[4], inT[4], hwS[4], hwT[4];
   for (int i = 0; i < 4; i++) {
-    inS[i] = getAsValue(builder, loc, sizesRev[i], i32ty);
-    inT[i] = getAsValue(builder, loc, stridesRev[i], i32ty);
+    inS[i] = asI32(sizesRev[i]);
+    inT[i] = asI32(stridesRev[i]);
   }
   SsaStridePolicy policy(builder, loc);
   encodeHardwareStridesWraps(policy, elemWidth, gran, inS, inT, hwS, hwT);
@@ -262,9 +278,10 @@ buildShimBdWords(OpBuilder &builder, Location loc,
   };
   bool isLinear = knownContiguous();
 
-  // Guard a RUNTIME size against its narrow BD field (masking would silently
-  // truncate); constants are verifier-checked. d0/d1 wrap (10-bit) only in ND
-  // mode, iteration wrap (6-bit) always. Guard is on the hardware value.
+  // Guard a RUNTIME size or stride against its narrow BD field (masking would
+  // silently truncate); constants are verifier-checked. d0/d1 wrap (10-bit)
+  // and d0-d2 stride (20-bit) only in ND mode, iteration wrap (6-bit) and
+  // stride always. Guard is on the hardware value.
   auto guardField = [&](OpFoldResult inSize, Value hwVal, int64_t fieldMax) {
     if (getConstantIntValue(inSize))
       return; // constant: verifier already enforced the bound.
@@ -276,6 +293,8 @@ buildShimBdWords(OpBuilder &builder, Location loc,
     guardField(sizesRev[1], hwS[1], ShimBdFieldWidths::d1WrapMax());
   }
   guardField(sizesRev[3], hwS[3], ShimBdFieldWidths::iterWrapMax());
+  for (int i = isLinear ? 3 : 0; i < 4; i++)
+    guardField(stridesRev[i], hwT[i], ShimBdFieldWidths::strideMax());
 
   // Guard a RUNTIME size/stride whose byte extent must be a whole number of
   // granules (mirrors verifyStridesWraps). Guard is on the input element count;

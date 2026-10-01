@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Integer helpers that behave identically on Python ints and staged MLIR values.
 
-The access-pattern algebra in :mod:`.tap` and :mod:`.tas` is pure integer
+The access-pattern algebra in `tap.py` and `tas.py` is pure integer
 arithmetic plus a handful of decisions that inspect a value: a minimum, a ceiling division, a conditional
 choice, a product, and a validity check. On Python ints these helpers are the
 obvious builtins and produce exactly the numbers ``taplib`` produced before the
@@ -15,9 +15,6 @@ Only ``addi/subi/muli/divsi/remsi/cmpi/select`` are ever emitted: upstream
 ``ArithToEmitC`` has no patterns for ``minsi``, ``ceildivsi`` or ``floordivsi``.
 Every operand here is a shape, tile count or offset, hence non-negative, so
 ``divsi``/``remsi`` coincide with Python's floor semantics.
-
-Nothing in this module imports the MLIR bindings unless a staged value is
-actually seen, which keeps ``taplib`` importable without a built ``aie``.
 """
 
 from __future__ import annotations
@@ -26,8 +23,20 @@ from typing import Any, Iterable
 
 import numpy as np
 
+from ...dialects import arith  # pyright: ignore[reportMissingImports]
+from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
+    NpuRequireOp,
+)
+from ...extras import types as T  # pyright: ignore[reportMissingImports]
+from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
+    ScalarValue,
+    constant,
+    index_cast,
+)
+from ...ir import IndexType, IntegerType, Value  # pyright: ignore[reportMissingImports]
+from ..dialects.integers import as_signless
+
 __all__ = [
-    "SymbolicError",
     "is_sym",
     "sym_any",
     "sint",
@@ -38,10 +47,6 @@ __all__ = [
     "sprod",
     "require",
 ]
-
-
-class SymbolicError(TypeError):
-    """A generation-time decision was attempted on a staged (runtime) value."""
 
 
 def is_sym(value: Any) -> bool:
@@ -58,10 +63,6 @@ def is_sym(value: Any) -> bool:
         return False
     if getattr(type(value), "__aie_symbolic__", False):
         return True
-    try:
-        from aie.ir import Value  # pyright: ignore[reportMissingImports]
-    except ImportError:
-        return False
     return isinstance(value, Value)
 
 
@@ -88,13 +89,16 @@ def sint(value: Any) -> Any:
 
     An ``index``-typed staged value (a ``range_`` induction variable) is cast
     to ``i32``, the width dispatch-time scalars carry, so a loop counter can
-    index a tiler directly.
+    index a tiler directly. An unsigned one (a ``DispatchTime[np.uint*]``
+    scalar) becomes signless, since arith takes nothing else: zero-extended to
+    ``i32`` when narrower, reinterpreted at its own width otherwise, where a
+    value past the signed range fails the algebra's non-negativity guards.
 
     Raises:
         TypeError: If ``value`` is neither an integer nor a staged value.
     """
     if is_sym(value):
-        return _from_index(value)
+        return _signless(value)
     if isinstance(value, bool):
         raise TypeError("expected an integer, got a bool")
     if isinstance(value, (int, np.integer)):
@@ -104,24 +108,15 @@ def sint(value: Any) -> Any:
     )
 
 
-def _from_index(value: Any) -> Any:
-    """Cast an ``index``-typed MLIR value to ``i32``; anything else passes through."""
-    if getattr(value, "type", None) is None or str(value.type) != "index":
+def _signless(value: Any) -> Any:
+    """Cast an ``index`` or unsigned MLIR value to a signless integer; anything else passes through."""
+    if not isinstance(value, Value):
         return value
-    from aie.extras import types as T  # pyright: ignore[reportMissingImports]
-    from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
-        index_cast,
-    )
-
-    return index_cast(value, to=T.i32())
-
-
-def _arith():
-    from aie.dialects import (  # pyright: ignore[reportMissingImports]
-        arith,  # pyright: ignore[reportAttributeAccessIssue]
-    )
-
-    return arith
+    if isinstance(value.type, IndexType):
+        return index_cast(value, to=T.i32())
+    if isinstance(value.type, IntegerType) and value.type.is_unsigned:
+        return as_signless(value, 64 if value.type.width >= 32 else 32)
+    return value
 
 
 def _cmp_lt(a: Any, b: Any) -> Any:
@@ -137,10 +132,6 @@ def _as_staged(value: Any, like: Any) -> Any:
     """Return ``value`` as an MLIR value of ``like``'s type (ints become constants)."""
     if is_sym(value):
         return value
-    from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
-        constant,
-    )
-
     return constant(int(value), like.type)
 
 
@@ -150,10 +141,6 @@ def sselect(cond: Any, if_true: Any, if_false: Any) -> Any:
         hook = getattr(cond, "_select", None)
         if hook is not None:
             return hook(if_true, if_false)
-        from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
-            ScalarValue,
-        )
-
         if not is_sym(if_true) and not is_sym(if_false):
             if if_true == if_false:
                 return if_true
@@ -161,16 +148,10 @@ def sselect(cond: Any, if_true: Any, if_false: Any) -> Any:
             try:
                 ref = cond.owner.operands[0]
             except (AttributeError, IndexError):
-                from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
-                    constant,
-                )
-
                 ref = constant(0, index=False)
         else:
             ref = if_true if is_sym(if_true) else if_false
-        result = _arith().select(
-            cond, _as_staged(if_true, ref), _as_staged(if_false, ref)
-        )
+        result = arith.select(cond, _as_staged(if_true, ref), _as_staged(if_false, ref))
         return ScalarValue(result, dtype=ref.type)
     return if_true if cond else if_false
 
@@ -223,8 +204,6 @@ def require(cond: Any, message: str) -> None:
 
     Raises:
         ValueError: If a concrete condition is false.
-        SymbolicError: If ``cond`` is staged and the runtime guard op is not
-            available in this build.
     """
     if not is_sym(cond):
         if not cond:
@@ -234,13 +213,4 @@ def require(cond: Any, message: str) -> None:
     if hook is not None:
         hook(message)
         return
-    try:
-        from aie.dialects import aiex  # pyright: ignore[reportMissingImports]
-
-        emit = aiex.npu_require
-    except (ImportError, AttributeError):
-        raise SymbolicError(
-            f"a shape constraint depends on a runtime value ({message!r}) but "
-            "this build has no aiex.npu.require op to guard it at dispatch."
-        ) from None
-    emit(cond, message)
+    NpuRequireOp(cond, message)

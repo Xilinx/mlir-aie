@@ -16,15 +16,11 @@ from ._aiex_ops_gen import (
     npu_sync as _npu_sync,
     npu_address_patch as _npu_address_patch,
     npu_rtp_write as _npu_rtp_write,
-    npu_require as _npu_require,
     npu_push_queue as _npu_push_queue,
 )
 from ._aie_ops_gen import ObjectFifoCreateOp, EndOp, RuntimeSequenceOp
 from . import aie
 from .aie import (
-    _outside_bd_block,
-    _widen_i64,
-    _narrow_i32,
     DMAChannelDir,
     LockAction,
     Neighbors,
@@ -36,6 +32,7 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
+from ..helpers.dialects.integers import as_signless
 from ..helpers.npdtypes import v8bfp16ebs8, v16bfp16ebs16
 from ..ir import (
     DictAttr,
@@ -99,17 +96,6 @@ def npu_address_patch(addr, arg_idx, arg_plus, **kwargs):
 
 def npu_rtp_write(buffer, index, value, **kwargs):
     return _npu_rtp_write(buffer, index, _as_i32(value), **kwargs)
-
-
-def npu_require(cond, message: str, **kwargs):
-    """Guard a shape constraint at dispatch: ``cond`` (an ``i1`` Value or a Python bool) must hold.
-
-    See ``aie.helpers.taplib.symbolic.require`` for the helper that raises on a
-    concrete condition and emits this op on a staged one.
-    """
-    if isinstance(cond, (bool, np.bool_)):
-        cond = constant(bool(cond), T.i1())
-    return _npu_require(cond, message, **kwargs)
 
 
 def npu_push_queue(
@@ -204,6 +190,9 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
                 sizes = [0] * 4
             if strides is None:
                 strides = [0] * 3 + [1]
+        offsets = [as_signless(v, 64) for v in offsets]
+        sizes = [as_signless(v, 64) for v in sizes]
+        strides = [as_signless(v, 64) for v in strides]
         dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
             offsets
         )
@@ -319,12 +308,9 @@ def shim_dma_bd(
     if strides is None:
         strides = [0] * 3 + [1]
 
+    sizes = [as_signless(v, 64) for v in sizes]
     if transfer_len is None:
-        if not all(isinstance(v, (int, np.integer)) for v in sizes[-3:]):
-            with _outside_bd_block():
-                transfer_len = functools.reduce(operator.mul, sizes[-3:])
-        else:
-            transfer_len = np.prod(sizes[-3:])
+        transfer_len = functools.reduce(operator.mul, sizes[-3:])
 
     dma_bd(
         mem,
@@ -410,13 +396,6 @@ def shim_dma_single_bd_task(
             if strides is not None:
                 strides = [0] + list(strides)
 
-    # Everything derived from runtime sizes/strides must be emitted *before*
-    # the task region opens below: a BD block may hold only dma_bd / aie.end,
-    # so the transfer length product, the repeat count and the i64 widening of
-    # the dimension operands all happen here.
-    if sizes is not None and transfer_len is None:
-        transfer_len = functools.reduce(operator.mul, sizes[-3:])
-
     # The outer (sizes[0]) dimension becomes the queue-push repeat_count. A
     # constant folds to the repeat_count attribute (static path, unchanged); a
     # runtime Value flows into the repeat_count_val operand so a dynamic tile
@@ -429,19 +408,14 @@ def shim_dma_single_bd_task(
             if s0 > 1:
                 repeat_count = int(s0) - 1
         else:
-            # Runtime: repeat = s0 - 1 as arith, in i32 (the queue field width).
-            # A wider s0 is guarded to fit i32 before it is truncated; the
-            # queue-push lowering then guards the repeat against the target's
-            # maximum before masking it to its 8-bit field.
-            s0_i32 = _narrow_i32(s0, "repeat count")
-            if isinstance(s0_i32, Value):
-                repeat_count_val = s0_i32 - _as_i32(1)
-            elif s0_i32 > 1:
-                repeat_count = s0_i32 - 1
-    if sizes is not None:
-        sizes = [_widen_i64(v) for v in sizes]
-    if strides is not None:
-        strides = [_widen_i64(v) for v in strides]
+            # Runtime: repeat = s0 - 1, subtracted in i64 so no s0 wraps, then
+            # guarded to fit the i32 operand; the queue-push lowering guards it
+            # against the target's maximum before masking it to its field.
+            repeat = as_signless(as_signless(s0, 64) - 1, 32, "DMA repeat count")
+            if isinstance(repeat, Value):
+                repeat_count_val = repeat
+            elif repeat > 0:
+                repeat_count = repeat
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,

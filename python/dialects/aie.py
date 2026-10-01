@@ -15,13 +15,8 @@ from ._ods_common import _cext
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
 from ..helpers.dialects.func import call
-from ..extras.dialects.arith import ScalarValue, constant, index_cast as _index_cast
-from .arith import (
-    extsi as _arith_extsi,
-    trunci as _arith_trunci,
-    cmpi as _arith_cmpi,
-    CmpIPredicate as _CmpIPredicate,
-)
+from ..helpers.dialects.integers import as_signless
+from ..extras.dialects.arith import ScalarValue, constant
 from ..extras.dialects._shaped_value import ShapedValue
 from ..extras.dialects.memref import (
     MemRefValue,
@@ -74,7 +69,6 @@ from ..ir import (
     IntegerAttr,
     IntegerType,
     MemRefType,
-    OpView,
     StringAttr,
     TypeAttr,
     UnitAttr,
@@ -145,109 +139,6 @@ def _split_i32_scalar(v):
     return v, None
 
 
-def _unsigned_to_signless(v, to):
-    """Zero-extend an unsigned integer Value to signless ``to``, or return None.
-
-    arith takes only signless integers, so an unsigned operand (a
-    ``DispatchTime[np.uint*]`` scalar) is converted with ``emitc.cast``, which
-    the dispatch C++ emits as a C cast and so zero-extends. A constant folds
-    to its Python int instead. Callers pick a ``to`` at least as wide as the
-    value; a ``uint64`` above INT64_MAX keeps its bit pattern in i64, which the
-    32-bit guard in ``_narrow_i32`` rejects.
-    """
-    try:
-        int_ty = IntegerType(v.type)
-    except ValueError:
-        return None
-    if not int_ty.is_unsigned:
-        return None
-    if isinstance(v.owner, OpView) and v.owner.operation.name == "emitc.constant":
-        attr = v.owner.attributes["value"]
-        if isinstance(attr, IntegerAttr):
-            return attr.value & ((1 << int_ty.width) - 1)
-    from .emitc import CastOp as _EmitCCastOp
-
-    return _EmitCCastOp(to, v).result
-
-
-def _widen_i64(v):
-    """Widen a runtime size/stride to the i64 the op takes; ints pass through.
-
-    Staged taps compute their sizes and strides in the scalar's own width
-    (i32 for a DispatchTime[np.int32]), so a narrower signed integer Value is
-    sign-extended, an unsigned one zero-extended, and an index Value cast.
-    """
-    if not isinstance(v, Value):
-        return v
-    if str(v.type) == "index":
-        return _index_cast(v, to=T.i64())
-    unsigned = _unsigned_to_signless(v, T.i64())
-    if unsigned is not None:
-        return unsigned
-    try:
-        width = IntegerType(v.type).width
-    except ValueError:
-        return v
-    return _arith_extsi(T.i64(), v) if width < 64 else v
-
-
-def _narrow_i32(v, what):
-    """Bring a runtime offset/length to the i32 the op takes; ints pass through.
-
-    An index is cast to i64 first; an unsigned integer is zero-extended (a
-    uint64 to i64). A narrower signed integer is sign-extended; a wider one is
-    guarded at dispatch (``aiex.npu.require``) to fit the 32-bit field before
-    it is truncated, so an out-of-range value refuses the dispatch instead of
-    silently wrapping.
-    """
-    if not isinstance(v, Value):
-        return v
-    if str(v.type) == "index":
-        v = _index_cast(v, to=T.i64())
-    elif isinstance(v.type, IntegerType) and v.type.is_unsigned:
-        # Up to 32 bits always fits the field; a uint64 is guarded below.
-        wide = v.type.width > 32
-        v = _unsigned_to_signless(v, T.i64() if wide else T.i32())
-        if not isinstance(v, Value):
-            if v > 0xFFFFFFFF:
-                raise ValueError(f"DMA {what} {v} does not fit its 32-bit field")
-            return v
-    try:
-        width = IntegerType(v.type).width
-    except ValueError:
-        return v
-    if width < 32:
-        return _arith_extsi(T.i32(), v)
-    if width == 32:
-        return v
-    from ._aiex_ops_gen import NpuRequireOp
-
-    fits = _arith_cmpi(_CmpIPredicate.ule, v, constant(0xFFFFFFFF, IntegerType(v.type)))
-    NpuRequireOp(fits, f"a runtime DMA {what} does not fit its 32-bit field")
-    return _arith_trunci(T.i32(), v)
-
-
-# Ops whose region blocks are BD blocks that the DMA-task lowering requires to
-# hold nothing but dma_bd / aie.end.
-_BD_TASK_OPS = ("aiex.dma_configure_task", "aiex.dma_configure_task_for")
-
-
-def _outside_bd_block():
-    """Insertion point ahead of the enclosing DMA task when building inside one.
-
-    Arithmetic a BD builder derives from runtime operands (the i64 widening,
-    a default transfer length) must not land in the BD block; every such
-    operand is defined outside the task, so it is emitted just before it.
-    """
-    try:
-        owner = InsertionPoint.current.block.owner
-    except ValueError:
-        return contextlib.nullcontext()
-    if owner is None or owner.operation.name not in _BD_TASK_OPS:
-        return contextlib.nullcontext()
-    return InsertionPoint(owner)
-
-
 def dma_bd(
     buffer,
     sizes: MixedValues | None = None,
@@ -272,11 +163,10 @@ def dma_bd(
         aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
                    offset=0 len=%len)
     """
-    with _outside_bd_block():
-        sizes = [_widen_i64(v) for v in (sizes or [])]
-        strides = [_widen_i64(v) for v in (strides or [])]
-        offset = _narrow_i32(offset, "offset")
-        transfer_len = _narrow_i32(transfer_len, "transfer length")
+    sizes = [as_signless(v, 64) for v in (sizes or [])]
+    strides = [as_signless(v, 64) for v in (strides or [])]
+    offset = as_signless(offset, 32, "DMA offset")
+    transfer_len = as_signless(transfer_len, 32, "DMA transfer length")
     dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes)
     dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides)
 

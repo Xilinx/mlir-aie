@@ -2,116 +2,83 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
-# RUN: %python %s | aie-opt --aie-substitute-shim-dma-allocations --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu | FileCheck %s --check-prefix=NPU
+# RUN: %python %s | aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform --aie-substitute-shim-dma-allocations --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu | FileCheck %s --check-prefix=NPU
 
-# dma_bd() and shim_dma_bd() called directly inside a BD block with i32
-# runtime dimensions: the i64 widening and the default transfer length are
-# emitted ahead of the task, since the BD block may hold only dma_bd/aie.end.
-# An i64 runtime offset/length is range-guarded and truncated to the op's i32
-# operand, also ahead of the task. Unsigned runtime values are zero-extended.
+# Runtime scalars of several widths and signedness as tap sizes and offsets:
+# each reaches the BD as a signless i64 size or i32 offset. A narrower signed
+# value is sign-extended, an unsigned one zero-extended, and a wider one
+# guarded with aiex.npu.require before it is truncated.
 
-from aie.extras.context import mlir_mod_ctx
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
+import numpy as np
+
 from aie.helpers.taplib import TensorAccessPattern
+from aie.iron import ObjectFifo, Program, Runtime
+from aie.iron.device import NPU1Col1
 
-with mlir_mod_ctx() as ctx:
+N = 4096
+vec_ty = np.ndarray[(N,), np.dtype[np.int32]]
+tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
 
-    @device(AIEDevice.npu1_1col)
-    def device_body():
-        shim = tile(0, 0)
-        shim_dma_allocation("of_in", shim, DMAChannelDir.MM2S, 0)
+of_in = ObjectFifo(tile_ty, name="of_in")
+of_out = of_in.cons().forward(name="of_out")
 
-        @runtime_sequence(
-            T.memref(4096, T.i32()),
-            T.i32(),
-            T.i64(),
-            IntegerType.get_unsigned(8),
-            IntegerType.get_unsigned(32),
-        )
-        def seq(a, n, m, u8, u32):
-            t = dma_configure_task_for("of_in")
-            with bds(t) as bd:
-                with bd[0]:
-                    dma_bd(
-                        a,
-                        sizes=[1, 1, n, 16],
-                        strides=[0, 0, 16, 1],
-                        offset=0,
-                        transfer_len=16,
-                    )
-                    EndOp()
-            dma_start_task(t)
-            dma_free_task(t)
 
-            tap = TensorAccessPattern((4096,), 0, [1, 1, n, 16], [0, 0, 16, 1])
-            t2 = dma_configure_task_for("of_in")
-            with bds(t2) as bd:
-                with bd[0]:
-                    shim_dma_bd(a, tap=tap)
-                    EndOp()
-            dma_start_task(t2)
-            dma_free_task(t2)
+def seq(a, b, n, m, u8, u32, in_prod, out_cons):
+    in_prod.fill(a, tap=TensorAccessPattern((N,), 0, [1, 1, n, 16], [0, 0, 16, 1]))
+    in_prod.fill(a, tap=TensorAccessPattern((N,), m, [1, 1, 4, 16], [0, 0, 16, 1]))
+    in_prod.fill(a, tap=TensorAccessPattern((N,), u32, [1, 1, u8, 16], [0, 0, 32, 1]))
+    out_cons.drain(b, wait=True)
 
-            t3 = dma_configure_task_for("of_in")
-            with bds(t3) as bd:
-                with bd[0]:
-                    dma_bd(a, offset=m, transfer_len=m)
-                    EndOp()
-            dma_start_task(t3)
-            dma_free_task(t3)
 
-            t4 = dma_configure_task_for("of_in")
-            with bds(t4) as bd:
-                with bd[0]:
-                    dma_bd(
-                        a,
-                        sizes=[1, 1, u8, 16],
-                        strides=[0, 0, 16, 1],
-                        offset=u32,
-                        transfer_len=u8,
-                    )
-                    EndOp()
-            dma_start_task(t4)
-            dma_free_task(t4)
+rt = Runtime(
+    seq,
+    [
+        vec_ty,
+        vec_ty,
+        np.int32,
+        np.int64,
+        np.uint8,
+        np.uint32,
+        of_in.prod(),
+        of_out.cons(),
+    ],
+)
+print(Program(NPU1Col1(), rt).resolve_program())
 
-    print(ctx.module)
+# A signed i32 size is sign-extended; the i64 transfer length it feeds is
+# guarded and truncated to dma_bd's i32 operand.
+# CHECK-LABEL: aie.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>, %arg2: i32, %arg3: i64, %arg4: ui8, %arg5: ui32)
+# CHECK:       aiex.dma_configure_task_for @of_in {
+# CHECK-NEXT:    %[[N:.*]] = arith.extsi %arg2 : i32 to i64
+# CHECK:         aiex.npu.require(%{{.*}}) {message = "a runtime DMA transfer length does not fit in 32 bits"}
+# CHECK-NEXT:    %[[LEN:.*]] = arith.trunci %{{.*}} : i64 to i32
+# CHECK-NEXT:    aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = %[[LEN]] sizes = [1, 1, %[[N]], 16] strides = [0, 0, 16, 1])
 
-# CHECK-LABEL: aie.runtime_sequence
-# CHECK: %[[W0:.*]] = arith.extsi %arg1 : i32 to i64
-# CHECK-NEXT: aiex.dma_configure_task_for @of_in {
-# CHECK-NEXT: aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 16 sizes = [1, 1, %[[W0]], 16] strides = [0, 0, 16, 1])
-# CHECK-NEXT: aie.end
+# An i64 offset is guarded and truncated to i32.
+# CHECK:       aiex.dma_configure_task_for @of_in {
+# CHECK:         aiex.npu.require(%{{.*}}) {message = "a runtime DMA offset does not fit in 32 bits"}
+# CHECK-NEXT:    %[[OFF:.*]] = arith.trunci %arg3 : i64 to i32
+# CHECK-NEXT:    aie.dma_bd(%arg0 : memref<4096xi32> offset = %[[OFF]] len = 64
 
-# CHECK: arith.muli
-# CHECK: %[[W1:.*]] = arith.extsi %arg1 : i32 to i64
-# CHECK-NEXT: aiex.dma_configure_task_for @of_in {
-# CHECK-NEXT: aie.dma_bd(%arg0 : memref<4096xi32> offset = {{.*}} len = %{{[0-9]+}} sizes = [1, 1, %[[W1]], 16] strides = [0, 0, 16, 1])
-# CHECK-NEXT: aie.end
+# Unsigned scalars are zero-extended with emitc.cast before taplib's bounds
+# checks see them, so a large ui32 cannot pass as a negative i32.
+# CHECK:       %[[U32:.*]] = emitc.cast %arg5 : ui32 to i64
+# CHECK-NEXT:  %[[U8:.*]] = emitc.cast %arg4 : ui8 to i32
+# CHECK:       aiex.dma_configure_task_for @of_in {
+# CHECK-NEXT:    %[[U8W:.*]] = arith.extsi %[[U8]] : i32 to i64
+# CHECK:         arith.trunci %[[U32]] : i64 to i32
+# CHECK:         aie.dma_bd(%arg0 : memref<4096xi32> offset = %{{.*}} len = %{{.*}} sizes = [1, 1, %[[U8W]], 16] strides = [0, 0, 32, 1])
 
-# CHECK: %[[OK0:.*]] = arith.cmpi ule, %arg2, %{{.*}} : i64
-# CHECK-NEXT: aiex.npu.require(%[[OK0]]) {message = "a runtime DMA offset does not fit its 32-bit field"}
-# CHECK-NEXT: %[[OFF:.*]] = arith.trunci %arg2 : i64 to i32
-# CHECK: %[[OK1:.*]] = arith.cmpi ule, %arg2, %{{.*}} : i64
-# CHECK-NEXT: aiex.npu.require(%[[OK1]]) {message = "a runtime DMA transfer length does not fit its 32-bit field"}
-# CHECK-NEXT: %[[LEN:.*]] = arith.trunci %arg2 : i64 to i32
-# CHECK-NEXT: aiex.dma_configure_task_for @of_in {
-# CHECK-NEXT: aie.dma_bd(%arg0 : memref<4096xi32> offset = %[[OFF]] len = %[[LEN]])
-# CHECK-NEXT: aie.end
-
-# CHECK: %[[U0:.*]] = emitc.cast %arg3 : ui8 to i64
-# CHECK-NEXT: %[[UOFF:.*]] = emitc.cast %arg4 : ui32 to i32
-# CHECK-NEXT: %[[ULEN:.*]] = emitc.cast %arg3 : ui8 to i32
-# CHECK-NEXT: aiex.dma_configure_task_for @of_in {
-# CHECK-NEXT: aie.dma_bd(%arg0 : memref<4096xi32> offset = %[[UOFF]] len = %[[ULEN]] sizes = [1, 1, %[[U0]], 16] strides = [0, 0, 16, 1])
-# CHECK-NEXT: aie.end
-
+# The lowering hoists every cast and guard out of the BD blocks and encodes
+# each BD into words; a runtime size in ND mode gets its 10-bit field guard.
 # NPU-LABEL: aie.runtime_sequence
-# NPU-NOT: aiex.dma_configure_task_for
-# NPU: aiex.npu.blockwrite_values
-# NPU: aiex.npu.blockwrite_values
-# NPU: aiex.npu.require
-# NPU: aiex.npu.require
-# NPU: aiex.npu.blockwrite_values
-# NPU: emitc.cast %arg3 : ui8 to i64
-# NPU: aiex.npu.blockwrite_values
+# NPU-NOT:   aiex.dma_configure_task_for
+# NPU:       arith.extsi %arg2 : i32 to i64
+# NPU:       aiex.npu.require(%{{.*}}) {message = "a runtime DMA size or stride does not fit in 31 bits"}
+# NPU:       aiex.npu.blockwrite_values
+# NPU:       arith.trunci %arg3 : i64 to i32
+# NPU:       aiex.npu.blockwrite_values
+# NPU:       emitc.cast %arg5 : ui32 to i64
+# NPU:       aiex.npu.assert_bd_field(%{{.*}}) {max = 1023 : i32} : i32
+# NPU:       aiex.npu.blockwrite_values
+# NPU-NOT:   aiex.dma_configure_task_for
