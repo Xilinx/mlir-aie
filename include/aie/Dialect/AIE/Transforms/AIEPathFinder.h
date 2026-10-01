@@ -344,7 +344,8 @@ public:
   llvm::Expected<Routing> findPaths(int maxIterations);
   void setPacketConstraints(PacketConstraints c) { constraints = std::move(c); }
   /// Loosens the packet constraints by a step after findPaths found no
-  /// routing. Returns false once no step is left.
+  /// routing. Returns false once no step is left, or when no packet stream
+  /// took part in the failure, so that no step can help.
   ///
   /// Packet flows first share channels only with flows they share a
   /// destination with, directly or through others. The steps, each skipped
@@ -453,6 +454,9 @@ private:
   PacketConstraints constraints;
   // Why the routing check rejected the last routing it rejected.
   std::string checkReason;
+  // Whether packet streams took part in the last failure: the routing check
+  // rejected a routing, or packet streams cross a link left overused.
+  bool packetsFailed = true;
   bool shareChannels = false, idsApart = false;
   int relaxStep = 0;
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;

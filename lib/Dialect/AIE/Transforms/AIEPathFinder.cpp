@@ -344,6 +344,10 @@ bool Pathfinder::routeIdsApart() {
 }
 
 bool Pathfinder::relax() {
+  if (!packetsFailed) {
+    LLVM_DEBUG(llvm::dbgs() << "No packet stream crosses an overused link\n");
+    return false;
+  }
   for (;;) {
     switch (relaxStep++) {
     case 0:
@@ -1592,6 +1596,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
 llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin Pathfinder::findPaths---\n");
   checkReason.clear();
+  packetsFailed = true;
   // Build the dense routing graph once; topology is invariant across
   // iterations.
   if (!graphBuilt)
@@ -1625,6 +1630,17 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                  << "\t\tPathfinder: maxIterations has been exceeded ("
                  << maxIterations
                  << " iterations)...unable to find routing for flows.\n");
+      packetsFailed =
+          !checkReason.empty() || llvm::any_of(graph, [](const auto &entry) {
+            ArrayRef<SwitchboxConnect::Cell> cells = entry.second.cells;
+            return llvm::any_of(cells,
+                                [](const SwitchboxConnect::Cell &c) {
+                                  return c.packetGroupId >= 0;
+                                }) &&
+                   llvm::any_of(cells, [](const SwitchboxConnect::Cell &c) {
+                     return c.usedCapacity > maxCircuitStreamCapacity;
+                   });
+          });
       return llvm::make_error<RoutingFailure>(explainNoRouting(st));
     }
 
