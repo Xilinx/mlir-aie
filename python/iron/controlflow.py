@@ -9,7 +9,9 @@ from aie.helpers.dialects.scf import (
 from aie.helpers.dialects.scf import (
     yield_ as _yield_,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from aie.ir import InsertionPoint  # pyright: ignore[reportMissingImports]
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    InsertionPoint,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.iron.runtime.dmataskhandle import Task
 
 
@@ -51,9 +53,9 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs):
     ``iter_args`` entry is carried across iterations by its SSA handle: the loop
     body and the loop results receive it re-wrapped as a copy of the ``Task``
     passed in (so ``.start()``/``.free()``/``.await_()`` work; a loop result
-    takes the type and state, e.g. freed or endpoint, of the ``Task`` the
-    loop body's own ``yield_`` passed; a raw handle yielded there keeps the
-    copy of the ``Task`` passed in), and
+    takes the lifetime and endpoint of the ``Task`` the loop body's own
+    ``yield_`` passed; a raw handle yielded there keeps the copy of the
+    ``Task`` passed in), and
     [`yield_`][iron.controlflow.yield_] accepts ``Task`` entries too. This is
     what a hand-rolled software-pipelined DMA loop needs.
     """
@@ -87,14 +89,11 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs):
             finally:
                 _yield_frames.set(outer)
             # A loop result is the Task the body yielded, so it takes that
-            # Task's type and state (lifetime, endpoint), not the initial one's.
+            # Task's lifetime and endpoint, not the initial one's.
             result_tasks = results if isinstance(results, tuple) else (results,)
             for i, task in enumerate(frame.values or ()):
                 if i in wrapped and isinstance(task, Task):
-                    res = result_tasks[i]
-                    handle = res.handle
-                    res.__class__ = type(task)
-                    res.__dict__ = {**vars(task), "_handle": handle}
+                    result_tasks[i]._carry(task)
         else:
             # iv-only (no iter_args) never has wrapped positions.
             yield vals

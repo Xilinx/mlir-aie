@@ -426,43 +426,36 @@ struct AIELowerDynamicBDPoolPass
                                       StringRef msg) {
     DMAConfigureTaskOp originA = originConfigure.lookup(a);
     DMAConfigureTaskOp originB = originConfigure.lookup(b);
-    if (originA && originB && syncSig(originA) != syncSig(originB)) {
+    if (originA && originB && channelKey(originA) != channelKey(originB)) {
       op->emitOpError(msg);
       return failure();
     }
     return success();
   }
 
-  // The physical channel a configure targets: (col, row, direction, channel).
-  static std::tuple<int, int, int, int> syncSig(DMAConfigureTaskOp cfg) {
-    AIE::TileOp t = cfg.getTileOp();
-    return {t.getCol(), t.getRow(), (int)cfg.getDirection(), cfg.getChannel()};
+  static DmaQueueModel::ChannelKey channelKey(DMAConfigureTaskOp cfg) {
+    return DmaQueueModel::keyOf(cfg.getTileOp(), cfg.getDirection(),
+                                cfg.getChannel());
   }
 
-  // Every value that may carry `task`'s BD id after it: the iter_args and
-  // results it is passed into, including the next iteration of a loop that
-  // yields it.
+  // Every value that may carry `task`'s BD id after it: the region arguments
+  // and results it is forwarded to, including the next iteration of a loop
+  // that yields it. The forward counterpart of getReachableConfigures.
   static llvm::SetVector<Value> aliasesAfter(Value task) {
     llvm::SetVector<Value> aliases;
     aliases.insert(task);
     for (unsigned i = 0; i < aliases.size(); ++i) {
       for (OpOperand &use : aliases[i].getUses()) {
         Operation *user = use.getOwner();
-        unsigned k = use.getOperandNumber();
-        if (auto f = dyn_cast<scf::ForOp>(user)) {
-          if (k >= f.getNumControlOperands()) {
-            aliases.insert(f.getRegionIterArg(k - f.getNumControlOperands()));
-            aliases.insert(f.getResult(k - f.getNumControlOperands()));
-          }
-        } else if (isa<scf::YieldOp>(user)) {
-          Operation *parent = user->getParentOp();
-          if (auto f = dyn_cast<scf::ForOp>(parent)) {
-            aliases.insert(f.getRegionIterArg(k));
-            aliases.insert(f.getResult(k));
-          } else if (auto i = dyn_cast<scf::IfOp>(parent)) {
-            aliases.insert(i.getResult(k));
-          }
-        }
+        auto branch = dyn_cast<RegionBranchOpInterface>(user);
+        if (!branch && user->hasTrait<OpTrait::IsTerminator>())
+          branch =
+              dyn_cast_or_null<RegionBranchOpInterface>(user->getParentOp());
+        if (!branch)
+          continue;
+        RegionBranchSuccessorMapping mapping;
+        branch.getSuccessorOperandInputMapping(mapping);
+        aliases.insert_range(mapping.lookup(&use));
       }
     }
     return aliases;
@@ -562,9 +555,8 @@ struct AIELowerDynamicBDPoolPass
       AIE::TileOp tile = cfg.tryGetTileOp();
       if (!tile)
         return {};
-      DmaQueueModel::ChannelKey key{tile.getCol(), tile.getRow(),
-                                    static_cast<int>(cfg.getDirection()),
-                                    static_cast<int>(cfg.getChannel())};
+      DmaQueueModel::ChannelKey key =
+          DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel());
       return isPush ? QueueEffect::push(key, issuesToken)
                     : QueueEffect::await(key);
     };

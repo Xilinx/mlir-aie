@@ -3,16 +3,16 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --verify-diagnostics \
-// RUN:   --split-input-file %s
-// RUN: not aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=false' \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true' \
+// RUN:   --verify-diagnostics --split-input-file %s
+// RUN: not aie-opt --aie-assign-runtime-sequence-bd-ids \
 // RUN:   --split-input-file %s 2>&1 | FileCheck %s --check-prefix=OFF
 
 // Reclaim only takes ids from a task that is not started again later: its BDs
 // must still hold their descriptors when the restart pushes them. Here every
 // task holding an id is restarted, so the pool is genuinely exhausted.
 // OFF: 'aiex.dma_configure_task' op Too many simultaneously active buffer descriptors
-// OFF-SAME: DMATasks.md).{{ ?$}}
+// OFF-SAME: DMATasks.md). Or let the compiler poll for finished tasks and take their ids (reclaim-bds, aiecc --reclaim-runtime-bds), provided no task depends on a push issued after it.{{ ?$}}
 
 aie.device(npu2) {
   %shim = aie.tile(0, 0)
@@ -89,9 +89,11 @@ aie.device(npu2) {
 // -----
 
 // The same pool with no restarts: reclaim takes t0 behind an idle poll (see
-// reclaim.mlir), and with it turned off the allocation fails as it always has.
+// reclaim.mlir). It is off by default, since that poll hangs if t0 can only
+// finish after a later push, so by default the allocation fails as it always
+// has and the error names the option.
 // OFF: 'aiex.dma_configure_task' op Too many simultaneously active buffer descriptors
-// OFF-SAME: DMATasks.md).{{ ?$}}
+// OFF-SAME: DMATasks.md). Or let the compiler poll for finished tasks and take their ids (reclaim-bds, aiecc --reclaim-runtime-bds), provided no task depends on a push issued after it.{{ ?$}}
 
 aie.device(npu2) {
   %shim = aie.tile(0, 0)

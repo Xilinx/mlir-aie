@@ -52,10 +52,10 @@ from .tile_dma import _SHIM_TILE_TYPES, DmaEndpoint
 
 
 class _Route(Resolvable):
-    """What Flow and PacketFlow share: named ends and shim transfers.
+    """What Flow and PacketFlow share: named ends, endpoints and shim transfers.
 
-    Subclasses set ``_src``, ``_dsts``, ``_name``, ``_shim_symbol`` and the
-    per-end ``_channels``.
+    Subclasses set ``_src``, ``_dsts``, ``_name``, ``_shim_symbol``,
+    ``_endpoints`` and the per-end ``_channels``.
     """
 
     _broadcast = False
@@ -66,6 +66,7 @@ class _Route(Resolvable):
     _shim_symbol: str | None
     _shim_used: bool
     _channels: list[int | None]
+    _endpoints: "dict[int, FlowEndpoint]"
 
     def all_tiles(self):
         """Return the tiles this route touches — Program uses this to resolve them."""
@@ -81,6 +82,30 @@ class _Route(Resolvable):
         if self._op is None:
             raise NotResolvedError()
         return self._op
+
+    @property
+    def _routed(self) -> bool:
+        """Whether this route lowers to route endpoints rather than one op."""
+        return False
+
+    def endpoint(self, tile: Tile) -> "FlowEndpoint":
+        """Return this route's end on ``tile``.
+
+        Pass it as a [`DmaChannel`][iron.DmaChannel]'s ``channel``, or build a
+        runtime-sequence task on it with
+        [`task`][iron.dataflow.tile_dma.DmaEndpoint.task]. Its channel is the
+        one given to the route, or else the one the compiler assigns.
+        """
+        ends = [i for i, t in enumerate(self.all_tiles()) if t == tile]
+        if len(ends) != 1:
+            raise ValueError(
+                f"{tile} is {'not an end' if not ends else 'more than one end'} "
+                f"of this {type(self).__name__}."
+            )
+        end = ends[0]
+        if end not in self._endpoints:
+            self._endpoints[end] = FlowEndpoint(self, end)
+        return self._endpoints[end]
 
     def _shim_end(self) -> int | None:
         """Return the end ``fill``/``drain`` reach: a shim source, else a lone shim dst."""
@@ -160,11 +185,12 @@ class _Route(Resolvable):
 
 
 class FlowEndpoint(DmaEndpoint):
-    """One end of a [`Flow`][iron.Flow], seen from the DMA on that end's tile.
+    """One end of a Flow or PacketFlow, seen from the DMA on that end's tile.
 
-    Obtained from [`Flow.endpoint`][iron.dataflow.flow.Flow.endpoint]. The end
+    Obtained from [`Flow.endpoint`][iron.dataflow.flow.Flow.endpoint] or
+    [`PacketFlow.endpoint`][iron.dataflow.flow.PacketFlow.endpoint]. The end
     knows its tile, its direction (MM2S at the source, S2MM at a destination)
-    and its channel: the one the Flow gives, or else the one the compiler
+    and its channel: the one the route gives, or else the one the compiler
     assigns. Like any [`DmaEndpoint`][iron.DmaEndpoint] it stands in for a
     [`DmaChannel`][iron.DmaChannel]'s ``channel`` and builds runtime-sequence
     tasks with [`task`][iron.dataflow.tile_dma.DmaEndpoint.task].
@@ -174,7 +200,7 @@ class FlowEndpoint(DmaEndpoint):
     DMA channel of a route between tiles the design already has.
     """
 
-    def __init__(self, flow: "Flow", end: int):
+    def __init__(self, flow: _Route, end: int):
         super().__init__(
             flow.all_tiles()[end],
             DMAChannelDir.MM2S if end == 0 else DMAChannelDir.S2MM,
@@ -285,25 +311,6 @@ class Flow(_Route):
         """Whether this Flow lowers to route endpoints rather than `aie.flow`."""
         return self._broadcast or None in self._channels
 
-    def endpoint(self, tile: Tile) -> FlowEndpoint:
-        """Return this Flow's end on ``tile``.
-
-        Pass it as a [`DmaChannel`][iron.DmaChannel]'s ``channel``, or build a
-        runtime-sequence task on it with
-        [`task`][iron.dataflow.tile_dma.DmaEndpoint.task]. Its channel is the
-        one given to the Flow, or else the one the compiler assigns.
-        """
-        ends = [i for i, t in enumerate(self.all_tiles()) if t == tile]
-        if len(ends) != 1:
-            raise ValueError(
-                f"{tile} is {'not an end' if not ends else 'more than one end'} "
-                "of this Flow."
-            )
-        end = ends[0]
-        if end not in self._endpoints:
-            self._endpoints[end] = FlowEndpoint(self, end)
-        return self._endpoints[end]
-
     def fill(self, source, **kwargs):
         """Send data from the ``source`` runtime buffer into this route.
 
@@ -382,7 +389,9 @@ class PacketFlow(_Route):
     `aie.packetflow` op holding one `aie.packet_source` and one
     `aie.packet_dest` per destination. The user is responsible for
     arranging matching [`TileDma`][iron.TileDma] channels on the producer and
-    consumer ends.
+    consumer ends, which [`endpoint`][iron.dataflow.flow.PacketFlow.endpoint]
+    names. Its channels are always given: the compiler assigns channels only
+    to a [`Flow`][iron.Flow].
     """
 
     _flow_index = itertools.count()
@@ -432,6 +441,7 @@ class PacketFlow(_Route):
         self._dst_port = dst_port
         self._channels = [src_channel, dst_channel, *(d.channel for d in extra_dsts)]
         self._extra_dsts: list[PacketDest] = list(extra_dsts)
+        self._endpoints: dict[int, FlowEndpoint] = {}
         self._keep_pkt_header = keep_pkt_header
         self._shim_symbol = shim_symbol
         self._shim_used = False

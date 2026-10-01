@@ -12,7 +12,7 @@ is one queue push. Built ahead of a loop, it leaves the loop body only pushes.
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.iron import Bd, Buffer, Flow, Program, Runtime
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import range_, yield_
 from aie.iron.device import NPU2Col1, Tile
 
 N = 256
@@ -96,6 +96,33 @@ def hoisted(load_end, store_end, resident, into, out, a, c):
 print(design(hoisted, fixed=True))
 
 
+def pipelined(load_end, store_end, resident, into, out, a, c):
+    # The loop result is the task the body yielded, so it is not freed by the
+    # body's free of the task carried in.
+    first = load_end.task(resident, wait=True)
+    first.start()
+    for _, prev, last in range_(3, iter_args=[first], insert_yield=False):
+        nxt = load_end.task(resident, wait=True)
+        nxt.start()
+        prev.await_()
+        prev.free()
+        yield_([nxt])
+    last.await_()
+    last.free()
+
+
+# CHECK-LABEL: aie.runtime_sequence
+# CHECK: %[[FIRST:.*]] = aiex.dma_configure_task(%{{.*}}, S2MM, 1)
+# CHECK: aiex.dma_start_task(%[[FIRST]])
+# CHECK: %[[LAST:.*]] = scf.for {{.*}} iter_args(%[[PREV:.*]] = %[[FIRST]])
+# CHECK: %[[NXT:.*]] = aiex.dma_configure_task(%{{.*}}, S2MM, 1)
+# CHECK: aiex.dma_free_task(%[[PREV]])
+# CHECK: scf.yield %[[NXT]]
+# CHECK: aiex.dma_await_task(%[[LAST]])
+# CHECK: aiex.dma_free_task(%[[LAST]])
+print(design(pipelined, fixed=True))
+
+
 def expect_error(label, fn):
     try:
         fn()
@@ -118,7 +145,22 @@ def free_twice(load_end, store_end, resident, into, out, a, c):
     load.free()
 
 
+def free_carried_twice(load_end, store_end, resident, into, out, a, c):
+    # The loop's first iteration frees the task passed in.
+    first = load_end.task(resident)
+    first.start()
+    for _, prev, last in range_(3, iter_args=[first], insert_yield=False):
+        prev.free()
+        nxt = load_end.task(resident)
+        nxt.start()
+        yield_([nxt])
+    last.free()
+    first.free()
+
+
 expect_error("free", lambda: design(start_after_free))
 expect_error("twice", lambda: design(free_twice))
+expect_error("carried", lambda: design(free_carried_twice, fixed=True))
 # CHECK: // free: Task.start() after Task.free()
 # CHECK: // twice: Task.free() called twice on the same task.
+# CHECK: // carried: Task.free() called twice on the same task.

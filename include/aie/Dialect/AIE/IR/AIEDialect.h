@@ -373,6 +373,11 @@ mlir::LogicalResult verifyBdLockPair(mlir::Block &block, bool outOfOrder,
 // aie.memtile_dma, aie.shim_dma).
 llvm::SmallVector<uint32_t> getAssignedBdIds(DmaBody program);
 
+// Fails, with an error on each, if a dma_start in `device` still names a route
+// endpoint in place of a channel index. For passes and translations that need
+// the index, which aie-objectfifo-allocate assigns.
+mlir::LogicalResult verifyDMAChannelsResolved(DeviceOp device);
+
 } // namespace xilinx::AIE
 
 namespace llvm {

@@ -35,6 +35,7 @@ struct AIESplitLongRepeatsPass
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
     uint32_t maxRepeat = device.getTargetModel().getMaxRepeatCount();
+    int64_t queueDepth = device.getTargetModel().getDmaTaskQueueDepth();
     // A target without a repeat field has nothing to split into; its push
     // verifier reports the count instead.
     if (maxRepeat == 0)
@@ -65,6 +66,13 @@ struct AIESplitLongRepeatsPass
             << ")";
         return signalPassFailure();
       }
+      if (queueDepth > 0 && pushes > queueDepth)
+        start.emitWarning("repeat count ")
+            << *rc << " needs " << pushes << " queue pushes, more than the "
+            << queueDepth
+            << " the channel's queue holds, so the sequence waits for this "
+               "channel to drain before going on. A transfer this one waits "
+               "on must be started before it, or the wait never ends.";
       // Leading starts withhold the token, so an await on the task still
       // returns only after the last pass.
       OpBuilder b(start);

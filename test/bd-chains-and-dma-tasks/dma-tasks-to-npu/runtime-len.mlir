@@ -13,7 +13,7 @@
 
 // CHECK-LABEL: aie.runtime_sequence
 // buffer_length derived from the runtime %len operand:
-// CHECK: aiex.npu.assert_bd_field(%arg1) {max = 2147483647 : i32}
+// CHECK: aiex.npu.assert_bd_field(%arg1) {max = 2147483647 : i32, min = 1 : i32}
 // CHECK: %[[DIV:.*]] = arith.divui %arg1, %{{.*}}
 // CHECK: %[[LEN:.*]] = arith.muli %[[DIV]], %{{.*}}
 // CHECK: aiex.npu.blockwrite_values(%{{.*}} : i32) values %[[LEN]]

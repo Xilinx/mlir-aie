@@ -2704,9 +2704,18 @@ def AIE_ObjectFifoDmaEndpointOp
     /// Segments this endpoint is responsible for.
     std::vector<ObjectFifoSegmentOp> getSelectedSegments();
 
+    /// Descriptors in one pass over the pool: one per object and selected
+    /// segment.
+    int64_t getNumDescriptors();
+    /// Times the chain runs per pass: the pool's repeat count at the draining
+    /// end, once at the filling end.
+    int64_t getRepeat();
+    /// Whether the channel's own repeat count replays the chain, which it can
+    /// only for a single descriptor, rather than copies of it.
+    bool repeatsInHardware();
     /// Buffer descriptors `--aie-objectfifo-lower-dmas` emits for this
-    /// endpoint: one per object and selected segment, copied per repeat
-    /// unless the channel's own repeat count can replay a single one.
+    /// endpoint: the pass's descriptors, copied per repeat unless the
+    /// repeat runs in hardware.
     int64_t getNumBDs();
   }];
 }

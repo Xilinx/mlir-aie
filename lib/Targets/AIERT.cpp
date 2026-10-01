@@ -861,6 +861,9 @@ LogicalResult
 xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
                                          bool skipCtrlPktOverlay) {
 
+  if (failed(verifyDMAChannelsResolved(targetOp)))
+    return failure();
+
   if (failed(initLocks(targetOp))) {
     return failure();
   }

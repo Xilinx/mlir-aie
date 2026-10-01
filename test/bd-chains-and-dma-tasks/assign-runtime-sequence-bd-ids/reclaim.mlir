@@ -3,14 +3,14 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --verify-diagnostics %s \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true' --verify-diagnostics %s \
 // RUN:   | FileCheck %s
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true' --aie-dma-tasks-to-npu \
 // RUN:   --aie-dma-to-npu %s | FileCheck %s --check-prefix=LOWERED
 
-// When a tile runs out of BD ids, the pass takes them back from a task that
-// was started and never freed. It first looks for a task that a poll already in
-// the stream proves finished. Failing that, it inserts a poll of the channel's
+// With reclaim-bds, when a tile runs out of BD ids, the pass takes them back
+// from a task that was started and never freed. It first looks for a task that
+// a poll already in the stream proves finished. Failing that, it inserts a poll of the channel's
 // status register proving one finished: a task with j pushes queued behind it
 // on its channel is finished once Task_Queue_Size (bits 22:20, not counting the
 // running task) is at most j-1, and a task last on its channel once the channel

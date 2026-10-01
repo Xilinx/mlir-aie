@@ -927,15 +927,25 @@ ObjectFifoDmaEndpointOp::getSelectedSegments() {
   return selectSegments(getPoolOp(), getSegments());
 }
 
-int64_t ObjectFifoDmaEndpointOp::getNumBDs() {
+int64_t ObjectFifoDmaEndpointOp::getNumDescriptors() {
   ObjectFifoPoolOp pool = getPoolOp();
   if (!pool)
     return 0;
-  int64_t descriptors = pool.getDepth() * getSelectedSegments().size();
-  // Only the draining end replays; see --aie-objectfifo-lower-dmas.
-  int repeat = drains() ? pool.getRepeatCount().value_or(1) : 1;
-  bool repeatInHardware = repeat > 1 && descriptors == 1 && !getIterCount();
-  return descriptors * (repeatInHardware ? 1 : repeat);
+  return pool.getDepth() * getSelectedSegments().size();
+}
+
+int64_t ObjectFifoDmaEndpointOp::getRepeat() {
+  ObjectFifoPoolOp pool = getPoolOp();
+  // The filling end covers the batch in one acquire instead.
+  return pool && drains() ? pool.getRepeatCount().value_or(1) : 1;
+}
+
+bool ObjectFifoDmaEndpointOp::repeatsInHardware() {
+  return getRepeat() > 1 && getNumDescriptors() == 1 && !getIterCount();
+}
+
+int64_t ObjectFifoDmaEndpointOp::getNumBDs() {
+  return getNumDescriptors() * (repeatsInHardware() ? 1 : getRepeat());
 }
 
 DMAChannelDir ObjectFifoDmaEndpointOp::getRouteDirection() {
@@ -1167,6 +1177,19 @@ ParseResult xilinx::AIE::parseDMAStartChannel(OpAsmParser &parser,
     return failure();
   channel = parser.getBuilder().getI32IntegerAttr(index);
   return success();
+}
+
+LogicalResult xilinx::AIE::verifyDMAChannelsResolved(DeviceOp device) {
+  bool resolved = true;
+  device.walk([&](DMAStartOp start) {
+    if (FlatSymbolRefAttr endpoint = start.getEndpoint()) {
+      start.emitOpError() << "names route endpoint " << endpoint
+                          << " in place of a channel index; run "
+                             "--aie-objectfifo-allocate to assign one";
+      resolved = false;
+    }
+  });
+  return success(resolved);
 }
 
 void xilinx::AIE::printDMAStartChannel(OpAsmPrinter &printer, Operation *op,

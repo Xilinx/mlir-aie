@@ -40,24 +40,12 @@ def AIEDecomposeLargeDmaBd
     On the task path, sub-patterns are linked with `aie.next_bd` blocks inside
     the configure region; `bd_id` / `next_bd_id` are left for later passes to
     assign. Past the channel's task-queue depth, or when they need repeat
-    counts of their own, each becomes a single-BD task instead, so that
-    `aie-assign-runtime-sequence-bd-ids` can take back the BDs of finished
-    ones. Only the last of those issues the token: an await of the original
-    task awaits it, and a free frees them all. Every start must run whole
-    passes over the original's iteration dimensions.
-
-    The starts of those tasks are interleaved with the starts issued alongside
-    them, ordered by how far through its transfer each is, so that the waits
-    inserted for a transfer's later pieces cannot block a counterpart issued
-    after it. They move past configures, RTP writes and lock sets. Anything
-    else with an effect, such as an await, poll, write32 or blockwrite, stays
-    ordered against them.
-
-    A task-path descriptor may give more dimensions than a buffer descriptor
-    holds if they are all constant. Every one past the innermost three is an
-    iteration dimension. Unit ones drop, contiguous ones merge, and outermost
-    ones of stride 0 become restarts. Any left past the fourth are split off
-    into a task per index. Where that is not possible, the pass says why.
+    counts of their own, each becomes a single-BD task instead; only the last
+    issues the token, and their starts are interleaved with the starts issued
+    alongside them. A task-path descriptor may give more than 4 dimensions if
+    all are constant; ones that do not fold are split into a task per index.
+    See "Running Out of Buffer Descriptors" in
+    programming_guide/section-2/section-2d/DMATasks.md.
 
     Two techniques are used: dimension factoring (split an oversized dimension
     of size N=a*b across a free dimension slot) is preferred, falling back to
@@ -356,12 +344,13 @@ def AIEAssignRuntimeSequenceBDIDs
            "compiler does not have. Useful when chasing a suspected BD "
            "aliasing hang.">,
        Option<"reclaimBds", "reclaim-bds", "bool",
-              /*default=*/"true",
+              /*default=*/"false",
               "When a tile runs out of BD ids, take them back from a started "
               "task that was never released instead of failing, inserting an "
               "aiex.npu.maskpoll that proves it finished if no existing poll "
-              "does. Emits a remark for each inserted poll. A sequence that "
-              "fits is unaffected.">];
+              "does. Emits a remark for each inserted poll. Off by default: "
+              "the poll hangs if the task's completion depends, through a "
+              "core or another tile, on a push issued after it.">];
 
   let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
@@ -382,8 +371,9 @@ def AIESplitLongRepeats : Pass<"aie-split-long-repeats", "AIE::DeviceOp"> {
     the task can come from.
 
     Runs before `aie-assign-runtime-sequence-bd-ids`, which then counts one
-    queue slot per start. A start that would need more than `max-pushes`
-    pushes is an error.
+    queue slot per start. A start that needs more pushes than the queue holds
+    is a warning, since the sequence then waits for the channel to drain. One
+    that needs more than `max-pushes` is an error.
   }];
 
   let options = [Option<"maxPushes", "max-pushes", "unsigned",

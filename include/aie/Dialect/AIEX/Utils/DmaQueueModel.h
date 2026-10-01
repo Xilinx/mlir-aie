@@ -42,6 +42,12 @@ public:
   /// columns is two independent queues.
   using ChannelKey = std::array<int, 4>;
 
+  static ChannelKey keyOf(AIE::TileOp tile, AIE::DMAChannelDir direction,
+                          int64_t channel) {
+    return {tile.getCol(), tile.getRow(), static_cast<int>(direction),
+            static_cast<int>(channel)};
+  }
+
   /// True when a push on `key` would land on a full queue. `depth` of 0 means
   /// the target has no queued-task model and nothing can overflow.
   bool wouldOverflow(const ChannelKey &key, uint32_t depth) const {

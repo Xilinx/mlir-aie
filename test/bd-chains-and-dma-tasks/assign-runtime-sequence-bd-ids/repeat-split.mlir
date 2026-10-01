@@ -9,6 +9,7 @@
 // RUN: aie-opt --aie-split-long-repeats \
 // RUN:   --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=true' \
 // RUN:   --aie-dma-tasks-to-npu %s | FileCheck %s --check-prefix=PUSH
+// RUN: aie-opt --aie-split-long-repeats --verify-diagnostics %s -o /dev/null
 
 // A queue push carries at most 255 repeats (256 runs of the chain).
 // aie-split-long-repeats issues a start asking for more as several starts of
@@ -111,6 +112,7 @@ aie.device(npu2) {
       aie.dma_bd(%arg0 : memref<256xi32> offset = 0 len = 256)
       aie.end
     } {repeat_count = 1279 : i32}
+    // expected-warning@+1 {{repeat count 1279 needs 5 queue pushes, more than the 4 the channel's queue holds, so the sequence waits for this channel to drain before going on}}
     aiex.dma_start_task(%t)
   }
 }

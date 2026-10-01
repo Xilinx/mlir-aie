@@ -15,6 +15,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/Dialect/AIEX/Utils/DmaDecomposition.h"
+#include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -27,8 +28,8 @@
 
 #include <limits>
 #include <numeric>
+#include <set>
 #include <string>
-#include <tuple>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEDECOMPOSELARGEDMABD
@@ -179,28 +180,6 @@ static AIE::DMABDOp createTaskBd(RewriterBase &rewriter, Location loc,
   return bd;
 }
 
-// Each BD execution advances the fourth (iteration) dimension once. If
-// decomposition grows it, scale the task's execution count to match.
-static int32_t getTaskRepeatCount(Operation *taskOp) {
-  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp))
-    return cfg.getRepeatCount();
-  return cast<DMAConfigureTaskForOp>(taskOp).getRepeatCount();
-}
-
-static Value getTaskRepeatCountVal(Operation *taskOp) {
-  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp))
-    return cfg.getRepeatCountVal();
-  return cast<DMAConfigureTaskForOp>(taskOp).getRepeatCountVal();
-}
-
-static void setTaskRepeatCount(Operation *taskOp, int32_t value) {
-  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp)) {
-    cfg.setRepeatCount(value);
-    return;
-  }
-  cast<DMAConfigureTaskForOp>(taskOp).setRepeatCount(value);
-}
-
 // How many executions one pass over a task BD's pattern takes: one per index
 // of its iteration dimensions, all of them past d2.
 static int64_t iterationCount(const NdDmaPattern &pattern) {
@@ -236,18 +215,10 @@ static IterationScale iterationScale(int64_t iterations,
   return {after.sizes[3] / common, iterations / common};
 }
 
-static unsigned countTaskBds(Operation *taskOp) {
+static unsigned countTaskBds(DMAConfigureTaskLike taskOp) {
   unsigned n = 0;
   taskOp->walk([&](AIE::DMABDOp) { ++n; });
   return n;
-}
-
-static Region *getTaskBody(Operation *taskOp) {
-  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp))
-    return &cfg.getBody();
-  if (auto cfgFor = dyn_cast<DMAConfigureTaskForOp>(taskOp))
-    return &cfgFor.getBody();
-  return nullptr;
 }
 
 static bool isUnderRuntimeControlFlow(AIE::DMABDOp op) {
@@ -262,7 +233,7 @@ static bool isUnderRuntimeControlFlow(AIE::DMABDOp op) {
   return false;
 }
 
-static std::optional<std::pair<AIE::TileOp, Operation *>>
+static std::optional<std::pair<AIE::TileOp, DMAConfigureTaskLike>>
 resolveTaskAndTile(AIE::DMABDOp op) {
   if (auto cfg = op->getParentOfType<DMAConfigureTaskOp>()) {
     // Decomposition is a shape rewrite, so an unplaced tile is not an error
@@ -270,7 +241,7 @@ resolveTaskAndTile(AIE::DMABDOp op) {
     AIE::TileOp tile = cfg.tryGetTileOp();
     if (!tile)
       return std::nullopt;
-    return std::make_pair(tile, cfg.getOperation());
+    return std::make_pair(tile, cast<DMAConfigureTaskLike>(*cfg));
   }
   if (auto cfgFor = op->getParentOfType<DMAConfigureTaskForOp>()) {
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
@@ -283,7 +254,7 @@ resolveTaskAndTile(AIE::DMABDOp op) {
     AIE::TileOp tile = allocOp.getTileOp();
     if (!tile)
       return std::nullopt;
-    return std::make_pair(tile, cfgFor.getOperation());
+    return std::make_pair(tile, cast<DMAConfigureTaskLike>(*cfgFor));
   }
   return std::nullopt;
 }
@@ -322,20 +293,6 @@ static int64_t allocateNextId(NpuDmaMemcpyNdOp op, int64_t startId,
   return id;
 }
 
-static bool getTaskIssueToken(Operation *taskOp) {
-  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp))
-    return cfg.getIssueToken();
-  return cast<DMAConfigureTaskForOp>(taskOp).getIssueToken();
-}
-
-static void setTaskIssueToken(Operation *taskOp, bool token) {
-  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp)) {
-    cfg.setIssueToken(token);
-    return;
-  }
-  cast<DMAConfigureTaskForOp>(taskOp).setIssueToken(token);
-}
-
 // The starts splitIntoTasks emits, until orderSlices has placed them.
 struct Slices {
   struct Start {
@@ -355,14 +312,15 @@ struct Slices {
 // per index of the `iterations`-long iteration dimension: the slices of a pass
 // are issued in turn, so a partial pass has no slice boundary to stop at.
 static std::optional<std::string>
-whyNotSeparateTasks(AIE::DMABDOp bd, Operation *taskOp, int64_t iterations) {
+whyNotSeparateTasks(AIE::DMABDOp bd, DMAConfigureTaskLike taskOp,
+                    int64_t iterations) {
   std::string why;
   llvm::raw_string_ostream os(why);
   if (bd.getBdIdVal()) {
     os << "the descriptor's bd_id is a runtime value";
     return why;
   }
-  if (getTaskRepeatCountVal(taskOp)) {
+  if (taskOp.getRepeatCountVal()) {
     os << "the task's repeat count is a runtime value";
     return why;
   }
@@ -379,7 +337,7 @@ whyNotSeparateTasks(AIE::DMABDOp bd, Operation *taskOp, int64_t iterations) {
     if (!start)
       continue;
     std::optional<uint32_t> rc = start.getRepeatCount();
-    int64_t runs = static_cast<int64_t>(rc ? *rc : getTaskRepeatCount(taskOp));
+    int64_t runs = static_cast<int64_t>(rc ? *rc : taskOp.getRepeatCount());
     ++runs;
     if (runs % iterations != 0) {
       os << "a start runs it " << runs
@@ -399,23 +357,25 @@ whyNotSeparateTasks(AIE::DMABDOp bd, Operation *taskOp, int64_t iterations) {
 // group of consecutive starts, every slice once per pass, which orderSlices
 // then interleaves with the starts around it.
 static void splitIntoTasks(RewriterBase &rewriter, AIE::DMABDOp bd,
-                           Operation *taskOp, ArrayRef<NdDmaPattern> slices,
+                           DMAConfigureTaskLike taskOp,
+                           ArrayRef<NdDmaPattern> slices,
                            int64_t baseFlatOffset, int64_t iterations,
                            Slices &state) {
-  bool token = getTaskIssueToken(taskOp);
-  int64_t taskRuns = static_cast<int64_t>(getTaskRepeatCount(taskOp)) + 1;
+  bool token = taskOp.getIssueToken();
+  int64_t taskRuns = static_cast<int64_t>(taskOp.getRepeatCount()) + 1;
   SmallVector<Operation *> users(taskOp->getResult(0).getUsers());
 
-  SmallVector<Operation *> tasks{taskOp};
+  SmallVector<DMAConfigureTaskLike> tasks{taskOp};
   rewriter.setInsertionPointAfter(taskOp);
-  for (size_t i = 1; i < slices.size(); ++i)
-    tasks.push_back(rewriter.clone(*taskOp));
-  state.lateTasks.insert(std::next(tasks.begin()), tasks.end());
+  for (size_t i = 1; i < slices.size(); ++i) {
+    tasks.push_back(cast<DMAConfigureTaskLike>(rewriter.clone(*taskOp)));
+    state.lateTasks.insert(tasks.back());
+  }
 
   for (auto it : llvm::enumerate(slices)) {
     size_t i = it.index();
     const NdDmaPattern &sub = it.value();
-    Operation *task = tasks[i];
+    DMAConfigureTaskLike task = tasks[i];
     AIE::DMABDOp sliceBd = bd;
     if (i > 0)
       task->walk([&](AIE::DMABDOp b) { sliceBd = b; });
@@ -431,8 +391,8 @@ static void splitIntoTasks(RewriterBase &rewriter, AIE::DMABDOp bd,
     rewriter.modifyOpInPlace(task, [&]() {
       // One pass over the slice is one execution per index of its own
       // iteration dimension.
-      setTaskRepeatCount(task, static_cast<int32_t>(sub.sizes[3] - 1));
-      setTaskIssueToken(task, token && i + 1 == slices.size());
+      task.setRepeatCount(static_cast<uint32_t>(sub.sizes[3] - 1));
+      task.setIssueToken(token && i + 1 == slices.size());
     });
   }
 
@@ -445,7 +405,7 @@ static void splitIntoTasks(RewriterBase &rewriter, AIE::DMABDOp bd,
     }
     if (auto free = dyn_cast<DMAFreeTaskOp>(user)) {
       rewriter.setInsertionPointAfter(free);
-      for (Operation *task : llvm::drop_begin(tasks))
+      for (DMAConfigureTaskLike task : llvm::drop_begin(tasks))
         DMAFreeTaskOp::create(rewriter, free.getLoc(), task->getResult(0));
       continue;
     }
@@ -477,16 +437,17 @@ static void splitIntoTasks(RewriterBase &rewriter, AIE::DMABDOp bd,
   }
 }
 
-using ChannelKey = std::tuple<const void *, unsigned, int64_t>;
+using ChannelKey = DmaQueueModel::ChannelKey;
 
 // The channel a start pushes onto, or nullopt when its task is not a configure
-// this pass can read.
+// on a placed tile this pass can read.
 static std::optional<ChannelKey> channelOf(DMAStartTaskOp start) {
   Operation *def = start.getTask().getDefiningOp();
-  if (auto cfg = dyn_cast_or_null<DMAConfigureTaskOp>(def))
-    return ChannelKey{cfg.getTile().getAsOpaquePointer(),
-                      static_cast<unsigned>(cfg.getDirection()),
-                      cfg.getChannel()};
+  if (auto cfg = dyn_cast_or_null<DMAConfigureTaskOp>(def)) {
+    if (AIE::TileOp tile = cfg.tryGetTileOp())
+      return DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel());
+    return std::nullopt;
+  }
   auto cfgFor = dyn_cast_or_null<DMAConfigureTaskForOp>(def);
   if (!cfgFor)
     return std::nullopt;
@@ -494,11 +455,11 @@ static std::optional<ChannelKey> channelOf(DMAStartTaskOp start) {
   auto alloc = dev ? AIE::ShimDMAAllocationOp::getForSymbol(
                          dev, cfgFor.getAlloc().getRootReference())
                    : AIE::ShimDMAAllocationOp();
-  if (!alloc)
+  AIE::TileOp tile = alloc ? alloc.getTileOp() : AIE::TileOp();
+  if (!tile)
     return std::nullopt;
-  return ChannelKey{alloc.getTile().getAsOpaquePointer(),
-                    static_cast<unsigned>(alloc.getChannelDir()),
-                    alloc.getChannelIndex()};
+  return DmaQueueModel::keyOf(tile, alloc.getChannelDir(),
+                              alloc.getChannelIndex());
 }
 
 // Interleave the slices splitIntoTasks emitted with the starts around them.
@@ -519,7 +480,7 @@ static void orderSlices(Block &block, Slices &state) {
   };
   SmallVector<Pending> pending;
   llvm::DenseSet<Value> pendingTasks;
-  llvm::DenseSet<ChannelKey> round;
+  std::set<ChannelKey> round;
   llvm::DenseMap<int64_t, int64_t> headOfGroup;
   Operation *anchor = nullptr;
   int64_t heads = 0;
@@ -563,7 +524,7 @@ static void orderSlices(Block &block, Slices &state) {
           continue;
         }
       }
-      if (!channel || round.contains(*channel))
+      if (!channel || round.count(*channel))
         flush();
       if (!channel)
         continue;
@@ -678,7 +639,7 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
     return success();
 
   AIE::TileOp tile = taskAndTile->first;
-  Operation *taskOp = taskAndTile->second;
+  DMAConfigureTaskLike taskOp = taskAndTile->second;
 
   // A descriptor with more dimensions than a BD has cannot be lowered as it
   // is, so where this pass cannot reduce it, it says why.
@@ -755,8 +716,8 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
     if (tooManyDims)
       return op.emitOpError()
              << "has " << op.getMixedSizes().size()
-             << " dimensions, and no split into descriptors of " << kNdDmaDims
-             << " fits this tile";
+             << " dimensions, and no split into at most " << kMaxNdDmaPieces
+             << " descriptors of " << kNdDmaDims << " fits this tile";
     return success();
   }
   // Bind a plain reference now that decomposed is known non-failed and
@@ -792,7 +753,7 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
     IterationScale scale = iterationScale(iterations, sub);
     int64_t runs = 0;
     if (!scale.isOne()) {
-      if (getTaskRepeatCountVal(taskOp))
+      if (taskOp.getRepeatCountVal())
         return op.emitOpError()
                << "cannot decompose a buffer descriptor whose repeat count "
                   "is a runtime value: decomposition needs to scale it by "
@@ -817,7 +778,7 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
                  << " to " << (after - 1) << ", beyond a 32-bit repeat_count";
         return success();
       };
-      runs = getTaskRepeatCount(taskOp) + int64_t{1};
+      runs = taskOp.getRepeatCount() + int64_t{1};
       if (failed(check(op, runs - 1, "the task", "the repeat count")))
         return failure();
       // A start that overrides the task's count repeats the same BD, so it
@@ -837,7 +798,7 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
     });
     if (!scale.isOne()) {
       rewriter.modifyOpInPlace(taskOp, [&]() {
-        setTaskRepeatCount(taskOp, static_cast<int32_t>(runs - 1));
+        taskOp.setRepeatCount(static_cast<uint32_t>(runs - 1));
       });
       for (Operation *user : taskOp->getResult(0).getUsers())
         if (auto start = dyn_cast<DMAStartTaskOp>(user))
@@ -893,8 +854,8 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
              << *why;
   }
 
-  Region *body = getTaskBody(taskOp);
-  if (!body || body->empty())
+  Region *body = &taskOp.getBody();
+  if (body->empty())
     return success();
 
   SmallVector<Block *> blocks;

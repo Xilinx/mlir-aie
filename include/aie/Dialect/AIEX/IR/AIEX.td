@@ -11,6 +11,7 @@
 
 include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "aie/Dialect/AIE/IR/AIEInterfaces.td"
+include "aie/Dialect/AIEX/IR/AIEXInterfaces.td"
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
@@ -129,7 +130,7 @@ and launch them onto a tile's DMA task queue.
 | `aiex.npu.writebd` | Write a complete buffer descriptor (all fields explicit: buffer length/offset, the `d0..d2` sizes/strides, iteration, lock acquire/release, packet header, next-BD) to a BD slot on a tile. The low-level form behind `dma_memcpy_nd`. | any tile with a DMA engine (shim, mem, core) | `aiex.npu.writebd {column = 0 : i32, row = 0 : i32, bd_id = 0 : i32, buffer_length = 1024 : i32, /* ... */}` |
 | `aiex.npu.push_queue` | Push a BD id onto a tile channel's task queue to launch it, with an outer-dimension `repeat_count` and optional completion token. | any tile channel; `MM2S` / `S2MM` | `aiex.npu.push_queue(0, 0, MM2S : 0) bd_id %bd repeat %rep {issue_token = false} : i32, i32` |
 | `aiex.npu.address_patch` | Patch a runtime buffer address into the instruction stream: takes runtime argument `arg_idx` plus `arg_plus` offset and writes it into a BD address field. Used to bind host buffers whose address is only known at launch. | shim BD addresses | `aiex.npu.address_patch(%off : i32) {addr = 0 : ui32, arg_idx = 0 : i32}` |
-| `aiex.npu.assert_bd_field` *(compiler-emitted)* | Guard a runtime BD-field value against its hardware field width (`0 <= value <= max`); emitted by the dynamic DMA lowering when a runtime scalar lands in a narrow BD field (e.g. a 10-bit wrap). On the host-C++ path it aborts stream generation for an out-of-range value; on the binary path `value` is a verified constant and it is a no-op. | dynamic-BD lowering path | `aiex.npu.assert_bd_field(%v) {max = 1023 : i32} : i32` |
+| `aiex.npu.assert_bd_field` *(compiler-emitted)* | Guard a runtime BD-field value against its hardware field width (`min <= value <= max`, `min` defaulting to 0); emitted by the dynamic DMA lowering when a runtime scalar lands in a narrow BD field (e.g. a 10-bit wrap). On the host-C++ path it aborts stream generation for an out-of-range value; on the binary path `value` is a verified constant and it is a no-op. | dynamic-BD lowering path | `aiex.npu.assert_bd_field(%v) {max = 1023 : i32} : i32` |
 | `aiex.npu.assert_bd_divisible` *(compiler-emitted)* | Guard a runtime BD size/stride against the address-gen granule (`value % divisor == 0`, or `value == 1` when `allow_unit`); emitted by the dynamic DMA lowering. Same host-C++ / binary behavior as `assert_bd_field`. | dynamic-BD lowering path | `aiex.npu.assert_bd_divisible(%v) {divisor = 4 : i32} : i32` |
 
 See [Section 2d](programming_guide/section-2/section-2d/DMATasks.md) for a full
@@ -795,31 +796,33 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
 def AIE_NpuAssertBdFieldOp : AIEX_Op<"npu.assert_bd_field", []> {
   let summary =
       "Guard a runtime BD-field value against its hardware field width";
-  let arguments = (ins AnyInteger:$value, I32Attr:$max);
+  let arguments = (ins AnyTypeOf<[I32, I64]>:$value, I32Attr:$max,
+                       DefaultValuedAttr<I32Attr, "0">:$min);
   let results = (outs);
   let assemblyFormat = [{
     `(` $value `)` attr-dict `:` type($value)
   }];
   let description = [{
     Asserts, at TXN-build time, that a runtime value assigned to a buffer-
-    descriptor field fits its hardware field: `0 <= value <= max`. Emitted by the
-    dynamic DMA lowering for a runtime scalar landing in a narrow field (e.g. the
-    10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would silently
-    truncate an out-of-range value. The queue push's 8-bit repeat_count is
-    guarded the same way.
+    descriptor field fits its hardware field: `min <= value <= max`. Emitted by
+    the dynamic DMA lowering for a runtime scalar landing in a narrow field
+    (e.g. the 10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would
+    silently truncate an out-of-range value. The queue push's 8-bit
+    repeat_count is guarded the same way, and a runtime transfer length gets a
+    `min` of one address-gen granule.
 
     This op only ever appears on the dynamic (runtime-value) DMA lowering path;
     a fully static sequence never produces it. When `value` is a constant, the
-    verifier hard-errors if it is negative or exceeds `max`, so it is caught at
+    verifier hard-errors if it is outside `[min, max]`, so it is caught at
     compile time.
 
     The TXN instruction stream has no on-device trap, so a runtime guard runs
     host-side in the generated C++ TXN builder: --aie-npu-to-cpp lowers this op
-    to an early `if (value < 0 || value > max) return std::nullopt;` so the builder
-    yields no stream for an illegal value instead of a corrupt one. On the binary
-    (--aie-npu-to-binary) path `value` is always a verified constant, so the op
-    carries no runtime check and is emitted as a no-op (skipped, contributing no
-    TXN words).
+    to an early `if (value < min || value > max) return std::nullopt;` so the
+    builder yields no stream for an illegal value instead of a corrupt one. On
+    the binary (--aie-npu-to-binary) path `value` is always a verified
+    constant, so the op carries no runtime check and is emitted as a no-op
+    (skipped, contributing no TXN words).
   }];
   let hasVerifier = 1;
 }
@@ -1282,7 +1285,7 @@ def AIE_NpuLoadPdiOp : AIEX_Op<"npu.load_pdi", []> {
 
 def AIE_DMAConfigureTaskOp
     : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">,
-                                     TileElement]>,
+                                     TileElement, DMAConfigureTaskLike]>,
       Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task "
                 "on a Channel and Direction on a Tile";
@@ -1293,7 +1296,7 @@ def AIE_DMAConfigureTaskOp
 
     Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
 
-    A buffer descriptor holds the tile's data layout dimensions plus, on a shim tile, the iteration dimension: 4 in all. An `aie.dma_bd` in a task may give more when its sizes and strides are all constant. Every dimension past the innermost three is then iterated, one execution of the descriptor per index, and `aie-decompose-large-dma-bd` splits the ones a descriptor cannot hold into separate tasks. With a runtime size or stride among them, more than 4 is an error.
+    An `aie.dma_bd` in a task may give more than 4 dimensions when all are constant; `aie-decompose-large-dma-bd` iterates every one past the innermost three.
   }];
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
@@ -1355,7 +1358,8 @@ def AIE_DMAConfigureTaskForOp
     : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">,
                                          DeclareOpInterfaceMethods<
                                              SymbolUserOpInterface>,
-                                         SkipAccessibilityCheckTrait]>,
+                                         SkipAccessibilityCheckTrait,
+                                         DMAConfigureTaskLike]>,
       Results<(outs Index:$result)> {
   let summary = "As dma_configure_task, but specify tile, direction and "
                 "channel by reference to a Shim DMA allocation op or a route "
@@ -1411,7 +1415,7 @@ def AIE_DMAFreeTaskOp
   let description = [{
     This operation informs the static buffer descriptor allocator pass in the compiler that the buffer descriptor IDs it has allocated to the BDs inside the referenced task can be reused thereafter.
 
-    Freeing is optional for a started task. When a tile runs out of BD ids, `aie-assign-runtime-sequence-bd-ids` takes them back from a started task that was never freed, once a poll of its channel's status proves it finished. The pass uses a poll already in the sequence or inserts one (see its `reclaim-bds` option). A later `dma_free_task` of such a task is a no-op. The pass does not take ids from a task that is started again later. It cannot see dependencies through cores or other tiles, so a task it may have to wait on must not depend on a push issued after it.
+    With the `reclaim-bds` option of `aie-assign-runtime-sequence-bd-ids`, freeing is optional for a started task: when a tile runs out of BD ids, the pass takes them back from a started task that was never freed, once a poll of its channel's status proves it finished. A later `dma_free_task` of such a task is a no-op. The pass cannot see dependencies through cores or other tiles, so a task it may have to wait on must not depend on a push issued after it.
 
     Potential future implementations of dynamic buffer descriptor allocators may lower this to a `free` instruction.
   }];
@@ -1437,21 +1441,10 @@ def AIE_DMAStartTaskOp
     Submits the referenced task for execution on the tile, channel and direction it has been configured to run on.
     Once submitted, if the task is configured to issue a token, you can await completion of the task using `aiex.await_task`.
 
-    A task may be started more than once. Each start is one push onto the
-    channel's task queue and runs the whole chain `repeat_count + 1` times.
-
-    - `repeat_count`, when present, replaces the task's own compile-time
-      repeat count for this start only, so one configured chain can be
-      re-issued with a different number of passes.
-    - `no_token` withholds, for this start only, the completion token the task
-      would issue. It cannot add a token to a task that issues none.
-
-    A constant repeat count beyond the target's maximum (255 on AIE2) is legal.
-    `aie-split-long-repeats` issues such a start as several starts of the same
-    task: full-size ones first, then the remainder. Only the last one keeps the
-    token, so an await still completes after every pass. Each of those starts
-    takes its own queue slot. A runtime-valued repeat count cannot be split and
-    must fit the hardware field.
+    A task may be started more than once; each start is one queue push. For
+    this start only, `repeat_count` replaces the task's repeat count and
+    `no_token` withholds its token. A constant repeat count past the target's
+    maximum is split into several pushes by `aie-split-long-repeats`.
   }];
 
   let arguments = (ins Index:$task, OptionalAttr<I32Attr>:$repeat_count,

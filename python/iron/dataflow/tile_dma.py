@@ -153,6 +153,61 @@ class Bd:
     # receiving out-of-order S2MM channel places this BD's data into.
     out_of_order_id: int | None = None
 
+    def _with_runtime_fields(self) -> Bd:
+        """Return this Bd with its runtime values cast to the BD's field widths.
+
+        A runtime descriptor's block lowers only constants, so the casts, and
+        the length a runtime access pattern needs, are emitted here, ahead of
+        the task.
+        """
+        sizes: list[Any] = [_as_bd_i64(v) for v in self.sizes]
+        strides = [_as_bd_i64(v) for v in self.strides]
+        length = self.length
+        runtime = any(_is_value(v) for v in (*self.sizes, *self.strides, self.offset))
+        if length is None and runtime:
+            # The outermost of four sizes is the iteration count, which repeats
+            # the transfer rather than lengthening it (as in shim_dma_bd).
+            if sizes:
+                length = np.prod(sizes[-3:])
+            else:
+                length = int(np.prod(self.buffer.shape))
+        return replace(
+            self,
+            sizes=sizes,
+            strides=strides,
+            offset=_as_bd_i32(self.offset),
+            length=_as_bd_i32(length),
+        )
+
+    def _emit(self, bd_id: int | None) -> None:
+        """Emit the acquires, ``aie.dma_bd`` and releases at the insertion point.
+
+        The caller supplies the block, the ``next_bd``/``aie.end`` that closes
+        it, and the ``bd_id`` to stamp, which on an out-of-order channel is not
+        ``self.bd_id``.
+        """
+        for acq in self.acquires:
+            acq.emit()
+        bd_kwargs: dict[str, Any] = dict(sizes=self.sizes, strides=self.strides)
+        if _is_value(self.offset) or self.offset:
+            bd_kwargs["offset"] = self.offset
+        if self.length is not None:
+            bd_kwargs["transfer_len"] = self.length
+        if self.pad_dimensions is not None:
+            bd_kwargs["pad_dimensions"] = self.pad_dimensions
+        if self.iteration is not None:
+            it = self.iteration
+            bd_kwargs["iteration"] = (it.size, it.stride, it.current)
+        if bd_id is not None:
+            bd_kwargs["bd_id"] = bd_id
+        if self.out_of_order_id is not None:
+            bd_kwargs["out_of_order_id"] = self.out_of_order_id
+        if self.packet is not None:
+            bd_kwargs["packet"] = self.packet
+        dma_bd(self.buffer.op, **bd_kwargs)
+        for rel in self.releases:
+            rel.emit()
+
 
 class DmaEndpoint:
     """One DMA channel of a tile: its tile, direction and channel.
@@ -272,9 +327,7 @@ class DmaEndpoint:
                     f"Bd {i} of a task on {self} sets next={bd.next!r}; a task "
                     "runs its Bds in order and ends after the last."
                 )
-            if bd.buffer.tile is None:
-                bd.buffer._tile = self.tile
-            elif bd.buffer.tile != self.tile:
+            if bd.buffer.place(self.tile) != self.tile:
                 raise ValueError(
                     f"A task on {self} was given a buffer on {bd.buffer.tile}; a "
                     "tile's DMA can only address buffers on that tile."
@@ -288,7 +341,7 @@ class DmaEndpoint:
                 f"compiler-assigned {self}."
             )
 
-        bds = tuple(_with_runtime_bd_fields(bd) for bd in bds)
+        bds = tuple(bd._with_runtime_fields() for bd in bds)
         if isinstance(runs, (int, np.integer)):
             repeat = dict(repeat_count=int(runs) - 1)
         else:
@@ -308,7 +361,7 @@ class DmaEndpoint:
         with bd_blocks(op) as block:
             for i, bd in enumerate(bds):
                 with block[i]:
-                    _emit_bd(bd, i if out_of_order and bd.bd_id is None else bd.bd_id)
+                    bd._emit(i if out_of_order and bd.bd_id is None else bd.bd_id)
                     if i + 1 < len(bds):
                         next_bd(block[i + 1])
                     else:
@@ -339,6 +392,11 @@ class TileDmaTask(Task):
     def endpoint(self) -> DmaEndpoint:
         """The channel this task runs on."""
         return self._endpoint
+
+    def _carry(self, task: Task) -> None:
+        super()._carry(task)
+        if isinstance(task, TileDmaTask):
+            self._endpoint = task._endpoint
 
 
 @dataclass
@@ -391,123 +449,74 @@ class DmaChannel:
     # positional caller's argument.
     loop: bool = True
 
+    @property
+    def _key(self):
+        """The channel's direction and index, or its end before assignment."""
+        channel = self.channel
+        if isinstance(channel, DmaEndpoint) and channel.channel is not None:
+            channel = channel.channel
+        return self.direction, channel
 
-def _with_runtime_bd_fields(bd: Bd) -> Bd:
-    """``bd`` with its runtime values cast to the BD's field widths.
+    def _pad_word(self) -> int | None:
+        """Resolve the per-element pad_value into the raw 32-bit stream word.
 
-    A runtime descriptor's block lowers only constants, so the casts, and the
-    length a runtime access pattern needs, are emitted here, ahead of the task.
-    """
-    sizes: list[Any] = [_as_bd_i64(v) for v in bd.sizes]
-    strides = [_as_bd_i64(v) for v in bd.strides]
-    length = bd.length
-    runtime = any(_is_value(v) for v in (*bd.sizes, *bd.strides, bd.offset))
-    if length is None and runtime:
-        # The outermost of four sizes is the iteration count, which repeats
-        # the transfer rather than lengthening it (as in shim_dma_bd).
-        if sizes:
-            length = np.prod(sizes[-3:])
-        else:
-            length = int(np.prod(bd.buffer.shape))
-    return replace(
-        bd,
-        sizes=sizes,
-        strides=strides,
-        offset=_as_bd_i32(bd.offset),
-        length=_as_bd_i32(length),
-    )
+        Returns None for the default 0 (elides the attribute). The element width
+        is taken from the padded BD(s); a nonzero pad_value requires at least one
+        BD with pad_dimensions (else it would silently no-op), and all padded
+        BDs on the channel must share an element size (one register serves them
+        all).
+        """
+        if not self.pad_value:
+            return None
+        elem_sizes = {
+            np.dtype(bd.buffer.dtype).itemsize
+            for bd in self.bds
+            if bd.pad_dimensions is not None
+        }
+        if not elem_sizes:
+            raise ValueError(
+                "DmaChannel.pad_value is set but no BD on the channel has "
+                "pad_dimensions; a pad value needs a padded region."
+            )
+        if len(elem_sizes) > 1:
+            raise ValueError(
+                "DmaChannel.pad_value is shared by all padded BDs on the channel, "
+                f"but they have differing element sizes {sorted(elem_sizes)}."
+            )
+        return pack_pad_value(self.pad_value, elem_sizes.pop())
+
+    def _start_repeat_count(self) -> int:
+        """Lowered ``repeat_count`` for the channel's ``dma_start``.
+
+        Out-of-order mode's hardware repeat_count is the 0-based number of
+        packets to receive, so a merge of ``repeat_count + 1`` rounds lowers to
+        ``packets_per_round * (repeat_count + 1) - 1``. In-order mode passes
+        ``repeat_count`` through unchanged.
+        """
+        if self.out_of_order:
+            return (
+                sum(bd.iteration.size if bd.iteration else 1 for bd in self.bds)
+                * (self.repeat_count + 1)
+                - 1
+            )
+        return self.repeat_count
+
+    def _emit_start(self, dest, chain) -> None:
+        """Emit the ``aie.dma_start`` that runs this channel's chain at ``dest``."""
+        channel = self.channel
+        dma_start(
+            self.direction,
+            channel._operand() if isinstance(channel, DmaEndpoint) else channel,
+            dest=dest,
+            chain=chain,
+            pad_value=self._pad_word() or 0,
+            repeat_count=self._start_repeat_count(),
+            out_of_order=self.out_of_order,
+        )
 
 
 def _is_value(v) -> bool:
     return v is not None and not isinstance(v, (int, np.integer))
-
-
-def _emit_bd(bd: Bd, bd_id: int | None) -> None:
-    """Emit one BD's acquires, ``aie.dma_bd`` and releases at the insertion point.
-
-    The caller supplies the block, the ``next_bd``/``aie.end`` that closes it,
-    and the ``bd_id`` to stamp, which on an out-of-order channel is not
-    ``bd.bd_id``.
-    """
-    for acq in bd.acquires:
-        acq.emit()
-    bd_kwargs: dict[str, Any] = dict(sizes=bd.sizes, strides=bd.strides)
-    if _is_value(bd.offset) or bd.offset:
-        bd_kwargs["offset"] = bd.offset
-    if bd.length is not None:
-        bd_kwargs["transfer_len"] = bd.length
-    if bd.pad_dimensions is not None:
-        bd_kwargs["pad_dimensions"] = bd.pad_dimensions
-    if bd.iteration is not None:
-        it = bd.iteration
-        bd_kwargs["iteration"] = (it.size, it.stride, it.current)
-    if bd_id is not None:
-        bd_kwargs["bd_id"] = bd_id
-    if bd.out_of_order_id is not None:
-        bd_kwargs["out_of_order_id"] = bd.out_of_order_id
-    if bd.packet is not None:
-        bd_kwargs["packet"] = bd.packet
-    dma_bd(bd.buffer.op, **bd_kwargs)
-    for rel in bd.releases:
-        rel.emit()
-
-
-def _channel_key(channel: "int | DmaEndpoint"):
-    """Identify a channel before the compiler assigns it: an index, or the end."""
-    if isinstance(channel, DmaEndpoint):
-        return channel if channel.channel is None else channel.channel
-    return channel
-
-
-def _channel_operand(channel: "int | DmaEndpoint") -> int | str:
-    if isinstance(channel, DmaEndpoint):
-        return channel._operand()
-    return channel
-
-
-def _channel_pad_word(ch: "DmaChannel") -> int | None:
-    """Resolve a channel's per-element pad_value into the raw 32-bit stream word.
-
-    Returns None for the default 0 (elides the attribute). The element width is
-    taken from the channel's padded BD(s); a nonzero pad_value requires at least
-    one BD with pad_dimensions (else it would silently no-op), and all padded BDs
-    on the channel must share an element size (one register serves them all).
-    """
-    if not ch.pad_value:
-        return None
-    elem_sizes = {
-        np.dtype(bd.buffer.dtype).itemsize
-        for bd in ch.bds
-        if bd.pad_dimensions is not None
-    }
-    if not elem_sizes:
-        raise ValueError(
-            "DmaChannel.pad_value is set but no BD on the channel has "
-            "pad_dimensions; a pad value needs a padded region."
-        )
-    if len(elem_sizes) > 1:
-        raise ValueError(
-            "DmaChannel.pad_value is shared by all padded BDs on the channel, "
-            f"but they have differing element sizes {sorted(elem_sizes)}."
-        )
-    return pack_pad_value(ch.pad_value, elem_sizes.pop())
-
-
-def _dma_start_repeat_count(ch: "DmaChannel") -> int:
-    """Lowered ``repeat_count`` for a channel's ``dma_start``.
-
-    Out-of-order mode's hardware repeat_count is the 0-based number of packets
-    to receive, so a merge of ``ch.repeat_count + 1`` rounds lowers to
-    ``packets_per_round * (ch.repeat_count + 1) - 1``. In-order mode passes
-    ``ch.repeat_count`` through unchanged.
-    """
-    if ch.out_of_order:
-        return (
-            sum(bd.iteration.size if bd.iteration else 1 for bd in ch.bds)
-            * (ch.repeat_count + 1)
-            - 1
-        )
-    return ch.repeat_count
 
 
 class TileDma(Resolvable):
@@ -547,14 +556,11 @@ class TileDma(Resolvable):
     def add_channels(self, channels: Iterable[DmaChannel]) -> None:
         """Add channels after checking all hardware channel keys."""
         channels = list(channels)
-        keys = {
-            (channel.direction, _channel_key(channel.channel))
-            for channel in self._channels
-        }
+        keys = {channel._key for channel in self._channels}
         for channel in channels:
             if isinstance(channel.channel, DmaEndpoint):
                 channel.channel._check_on(self._tile, channel.direction)
-            key = (channel.direction, _channel_key(channel.channel))
+            key = channel._key
             if key in keys:
                 raise ValueError(
                     f"TileDma for {self._tile} already has "
@@ -694,28 +700,12 @@ class TileDma(Resolvable):
         def _body(block):
             # Wire up dma_start chain in the entry / chain blocks.
             # Entry block: dma_start for channel 0
-            ch = channels[0]
-            dma_start(
-                ch.direction,
-                _channel_operand(ch.channel),
-                dest=block[chan_head_idx[0]],
-                chain=block[chan_chain_idx[0]],
-                pad_value=_channel_pad_word(ch) or 0,
-                repeat_count=_dma_start_repeat_count(ch),
-                out_of_order=ch.out_of_order,
-            )
+            channels[0]._emit_start(block[chan_head_idx[0]], block[chan_chain_idx[0]])
             # Chain blocks: dma_start for channels 1..N-1
             for i in range(1, len(channels)):
-                ch_i = channels[i]
                 with block[chan_chain_idx[i - 1]]:
-                    dma_start(
-                        ch_i.direction,
-                        _channel_operand(ch_i.channel),
-                        dest=block[chan_head_idx[i]],
-                        chain=block[chan_chain_idx[i]],
-                        pad_value=_channel_pad_word(ch_i) or 0,
-                        repeat_count=_dma_start_repeat_count(ch_i),
-                        out_of_order=ch_i.out_of_order,
+                    channels[i]._emit_start(
+                        block[chan_head_idx[i]], block[chan_chain_idx[i]]
                     )
 
             # Per-channel BD bodies.
@@ -723,9 +713,8 @@ class TileDma(Resolvable):
                 bd_block_idx = [chan_head_idx[i], *chan_extra_idx[i]]
                 for bd_pos, bd in enumerate(ch.bds):
                     with block[bd_block_idx[bd_pos]]:
-                        _emit_bd(
-                            bd,
-                            (_ooo_slot_id(bd, bd_pos) if ch.out_of_order else bd.bd_id),
+                        bd._emit(
+                            _ooo_slot_id(bd, bd_pos) if ch.out_of_order else bd.bd_id
                         )
                         # next_bd target
                         if ch.out_of_order:

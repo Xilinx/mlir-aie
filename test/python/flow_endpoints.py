@@ -161,7 +161,7 @@ print(build())
 def expect_error(label, fn):
     try:
         fn()
-    except (ValueError, RuntimeError) as e:
+    except (ValueError, RuntimeError, TypeError) as e:
         print(f"// {label}: {e}")
 
 
@@ -209,6 +209,14 @@ def not_an_end():
     Flow(mem, core).endpoint(Tile(tile_type=AIETileType.CoreTile))
 
 
+def bad_channel():
+    mem = Tile(tile_type=AIETileType.MemTile)
+    buf = Buffer(tile=mem, type=vec_ty, name="landing")
+    rt = Runtime(lambda a: None, [vec_ty])
+    rt.add_tile_dma(TileDma(mem, [DmaChannel(DMAChannelDir.S2MM, 1.5, [Bd(buf)])]))
+    Program(NPU2Col1(), rt).resolve_program()
+
+
 def core_port():
     Flow(Tile(0, 2), Tile(0, 3), src_port=WireBundle.Core)
 
@@ -218,10 +226,12 @@ expect_error("shim_task", shim_task)
 expect_error("wrong_tile", wrong_tile)
 expect_error("wrong_direction", wrong_direction)
 expect_error("not_an_end", not_an_end)
+expect_error("bad_channel", bad_channel)
 expect_error("core_port", core_port)
 # CHECK: // outside_sequence: No active runtime sequence: {{.*}}DmaEndpoint.task(){{.*}}
 # CHECK: // shim_task: @feed_src is a shim channel, which moves host memory; use the Flow's fill()/drain() for it.
 # CHECK: // wrong_tile: DMA endpoint @misplaced_src is on {{.*}}, not {{.*}}; a DMA program can only run its own tile's channels.
 # CHECK: // wrong_direction: DMA endpoint @backwards_dst is S2MM, not MM2S.
 # CHECK: // not_an_end: Tile{{.*}} is not an end of this Flow.
+# CHECK: // bad_channel: A DMA channel is an index or an aie.route_endpoint (op or symbol name), not float.
 # CHECK: // core_port: Flow src_port=Core needs an explicit src_channel; the compiler only assigns DMA channels.

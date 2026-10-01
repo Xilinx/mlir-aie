@@ -23,7 +23,7 @@
 //
 // RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
 // RUN:   --split-input-file %s | FileCheck %s
-// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' \
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids{reclaim-bds=true}))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=LOWERED
 
 // A transfer of 5 slices issued after a whole one. Only the later task
@@ -785,6 +785,40 @@ module {
       } {issue_token = true}
       aiex.dma_start_task(%c)
       aiex.dma_await_task(%c)
+    }
+  }
+}
+
+// -----
+
+// Five dimensions: the outer two make a 4-long iteration dimension, which the
+// split cuts into 2 slices of 2 iterations each. The task's 8 runs are 2
+// passes, so each start becomes 2 starts of every slice.
+// CHECK-LABEL: @nd_whole_passes
+// CHECK:         %[[S0:.*]] = aiex.dma_configure_task_for @a {
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 0 len = 256 sizes = [2, 2, 8, 16] strides = [3500, 256, 32, 1])
+// CHECK-NEXT:      aie.end
+// CHECK-NEXT:    } {repeat_count = 1 : i32}
+// CHECK-NEXT:    aiex.dma_start_task(%[[S0]])
+// CHECK-NEXT:    %[[S1:.*]] = aiex.dma_configure_task_for @a {
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 9000 len = 256 sizes = [2, 2, 8, 16] strides = [3500, 256, 32, 1])
+// CHECK-NEXT:      aie.end
+// CHECK-NEXT:    } {issue_token = true, repeat_count = 1 : i32}
+// CHECK-NEXT:    aiex.dma_start_task(%[[S1]]) {no_token}
+// CHECK-NEXT:    aiex.dma_start_task(%[[S0]])
+// CHECK-NEXT:    aiex.dma_start_task(%[[S1]])
+// CHECK-NEXT:    aiex.dma_await_task(%[[S1]])
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @nd_whole_passes(%in: memref<65536xi32>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 256 sizes = [2, 2, 2, 8, 16] strides = [9000, 3500, 256, 32, 1])
+        aie.end
+      } {issue_token = true, repeat_count = 7 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
     }
   }
 }

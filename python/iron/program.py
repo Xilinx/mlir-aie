@@ -209,8 +209,7 @@ class Program:
                     for lk in locks:
                         lk.resolve()
                     for b in bufs:
-                        if b.tile is None:
-                            b._tile = td.tile
+                        b.place(td.tile)
                         b.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok

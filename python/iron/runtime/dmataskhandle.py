@@ -20,12 +20,20 @@ these verbs -- exactly what a hand-rolled ping-pong needs.
 from __future__ import annotations
 
 import copy
+from dataclasses import dataclass
 
 from ...dialects.aiex import (  # pyright: ignore[reportMissingImports]
     dma_await_task,
     dma_free_task,
     dma_start_task,
 )
+
+
+@dataclass
+class _Lifetime:
+    """Whether a task was freed, shared by every copy of it a loop carries."""
+
+    freed: bool = False
 
 
 class Task:
@@ -39,7 +47,7 @@ class Task:
 
     def __init__(self, handle):
         self._handle = handle
-        self._freed = False
+        self._lifetime = _Lifetime()
 
     @property
     def handle(self):
@@ -47,10 +55,17 @@ class Task:
         return self._handle
 
     def _with_handle(self, handle) -> "Task":
-        """Return this task carried to another SSA value, e.g. a loop's iter_arg."""
+        """Return this task carried to another SSA value, e.g. a loop's iter_arg.
+
+        The copy shares this task's lifetime, so freeing either frees both.
+        """
         task = copy.copy(self)
         task._handle = handle
         return task
+
+    def _carry(self, task: "Task") -> None:
+        """Make this loop result stand for ``task``, which the loop body yielded."""
+        self._lifetime = task._lifetime
 
     def start(self, repeat_count: int | None = None) -> "Task":
         """Push this task onto its channel's queue (``dma_start_task``).
@@ -72,7 +87,7 @@ class Task:
             RuntimeError: If this task was already freed, since its buffer
                 descriptors may since describe another transfer.
         """
-        if self._freed:
+        if self._lifetime.freed:
             raise RuntimeError(
                 "Task.start() after Task.free(): the freed buffer descriptors "
                 "may already describe another transfer. Free a task after its "
@@ -87,10 +102,10 @@ class Task:
         Raises:
             RuntimeError: If this task was already freed.
         """
-        if self._freed:
+        if self._lifetime.freed:
             raise RuntimeError("Task.free() called twice on the same task.")
         dma_free_task(self._handle)
-        self._freed = True
+        self._lifetime.freed = True
 
     def await_(self) -> None:
         """Block until this transfer completes (``dma_await_task``).

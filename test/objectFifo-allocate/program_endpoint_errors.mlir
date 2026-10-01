@@ -148,3 +148,41 @@ module @adjacent_exhausted {
     }
   }
 }
+
+// -----
+
+// A core's 16 BDs serve all its channels. The pool's 14 descriptors and the
+// program's 3 do not fit at once, which allocation warns of rather than refuses:
+// a design whose tasks free their BDs in turn could still fit.
+module @bds_overcommitted {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo.pool @p(%core) {depth = 14 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.dma_endpoint @fill(%core) fills @p
+    aie.objectfifo.core_endpoint @reader(%core) drains @p
+    aie.route_endpoint @src(%shim) DMA {fifoName = "p"}
+    aie.route from @src to [@fill]
+    %b = aie.buffer(%core) {sym_name = "b"} : memref<48xi32>
+    // expected-warning @+1 {{channel 0 can use 16 BDs, but it and the channels sharing them need 17 at once; BD id assignment fails unless tasks free their BDs before others start}}
+    aie.route_endpoint @out(%core) DMA
+    aie.route_endpoint @dst(%shim) DMA {fifoName = "b"}
+    aie.route from @out to [@dst]
+    aie.mem(%core) {
+      aie.dma_start(MM2S, @out, ^bd0, ^end)
+    ^bd0:
+      aie.dma_bd(%b : memref<48xi32> offset = 0 len = 16)
+      aie.next_bd ^bd1
+    ^bd1:
+      aie.dma_bd(%b : memref<48xi32> offset = 16 len = 16)
+      aie.next_bd ^bd2
+    ^bd2:
+      aie.dma_bd(%b : memref<48xi32> offset = 32 len = 16)
+      aie.next_bd ^bd0
+    ^end:
+      aie.end
+    }
+  }
+}

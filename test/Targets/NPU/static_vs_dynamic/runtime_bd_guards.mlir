@@ -19,9 +19,7 @@ module {
     %words = aie.buffer(%mem) {address = 8192 : i32} : memref<1024xi32>
 
     // CHECK-LABEL: @mem_bytes
-    // CHECK: aiex.npu.assert_bd_field(%arg1) {max = 524284 : i32}
-    // CHECK: arith.cmpi ult, %arg1,
-    // CHECK: aiex.npu.assert_bd_field(%{{.*}}) {max = 0 : i32}
+    // CHECK: aiex.npu.assert_bd_field(%arg1) {max = 524284 : i32, min = 4 : i32}
     // CHECK: aiex.npu.assert_bd_divisible(%arg1) {divisor = 4 : i32}
     // CHECK: aiex.npu.blockwrite_values
     // Includes the NPU2 internal memtile aperture (0x80000) and buffer base.

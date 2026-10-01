@@ -277,3 +277,24 @@ module {
     }
   }
 }
+
+// -----
+
+// Peeling the dimensions past a descriptor's 4 would take one task per index of
+// [1000 x 1000], far past the 1024 pieces a split may make.
+
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @too_many_pieces(%in: memref<4194304xi32>) {
+      %tk = aiex.dma_configure_task_for @a {
+        // expected-error@+1 {{has 6 dimensions, and no split into at most 1024 descriptors of 4 fits this tile}}
+        aie.dma_bd(%in : memref<4194304xi32> offset = 0 len = 256 sizes = [1000, 1000, 2, 1, 8, 16] strides = [7, 3000, 256, 0, 32, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}

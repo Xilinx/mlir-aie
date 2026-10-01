@@ -17,9 +17,9 @@
 # RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform \
 # RUN:   --aie-substitute-shim-dma-allocations \
 # RUN:   --aie-decompose-large-dma-bd \
-# RUN:   --aie-assign-runtime-sequence-bd-ids ./aie2.mlir \
+# RUN:   --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true' ./aie2.mlir \
 # RUN:   | FileCheck %s --check-prefix=MLIR
-# RUN: %aiecc --get-xclbin --get-npu-insts --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: %aiecc --reclaim-runtime-bds --get-xclbin --get-npu-insts --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall -Wextra %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %run_on_npu2% ./test.exe | FileCheck %s --check-prefix=DEVICE
 # DEVICE: PASS!

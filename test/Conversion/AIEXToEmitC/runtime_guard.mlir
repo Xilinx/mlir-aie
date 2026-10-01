@@ -16,6 +16,7 @@
 // CHECK:   std::vector<uint32_t> txn;
 // CHECK:   aie_runtime::txn_init(txn);
 // CHECK:   if ([[P]] < 0 || [[P]] > 1023) return std::nullopt;
+// CHECK:   if ([[P]] < 4 || [[P]] > 1023) return std::nullopt;
 // CHECK:   aie_runtime::txn_append_write32(txn, {{v[0-9]+}}, [[P]]);
 // CHECK:   return std::move(txn);
 module {
@@ -23,6 +24,7 @@ module {
     aie.runtime_sequence @seq(%arg0: memref<8xi32>, %n: i32) {
       %addr = arith.constant 119300 : i32
       aiex.npu.assert_bd_field(%n) {max = 1023 : i32} : i32
+      aiex.npu.assert_bd_field(%n) {max = 1023 : i32, min = 4 : i32} : i32
       aiex.npu.write32(%addr, %n) : i32, i32
     }
   }

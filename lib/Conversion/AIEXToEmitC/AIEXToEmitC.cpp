@@ -300,11 +300,11 @@ private:
           // Host-side bounds guard: if the runtime value overflows its narrow
           // BD field, the builder yields no stream (std::nullopt) rather than a
           // truncated one. Appends nothing, so not counted.
-          emitc::VerbatimOp::create(b, loc,
-                                    "if ({} < 0 || {} > " +
-                                        std::to_string(g.getMax()) +
-                                        ") return std::nullopt;",
-                                    ValueRange{g.getValue(), g.getValue()});
+          emitc::VerbatimOp::create(
+              b, loc,
+              "if ({} < " + std::to_string(g.getMin()) + " || {} > " +
+                  std::to_string(g.getMax()) + ") return std::nullopt;",
+              ValueRange{g.getValue(), g.getValue()});
         })
         .Case<AIEX::NpuAssertBdDivisibleOp>([&](auto g) {
           // Host-side realizability guard: a runtime size/stride whose byte

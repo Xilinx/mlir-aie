@@ -36,6 +36,8 @@ using namespace xilinx;
 
 #include "aie/Dialect/AIEX/IR/AIEXEnums.cpp.inc"
 
+#include "aie/Dialect/AIEX/IR/AIEXInterfaces.cpp.inc"
+
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
 
@@ -955,11 +957,14 @@ std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AIEX::NpuAssertBdFieldOp::verify() {
+  if (getMin() > getMax())
+    return emitOpError("min ")
+           << getMin() << " exceeds max " << getMax() << ".";
   if (auto c = getConstantIntValue(getValue()))
-    if (*c < 0 || *c > (int64_t)getMax())
+    if (*c < getMin() || *c > getMax())
       return emitOpError("constant value ")
-             << *c << " exceeds the guarded field range [0:" << getMax()
-             << "].";
+             << *c << " is outside the guarded field range [" << getMin() << ":"
+             << getMax() << "].";
   return success();
 }
 

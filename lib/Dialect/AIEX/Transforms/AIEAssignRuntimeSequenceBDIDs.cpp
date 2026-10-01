@@ -27,11 +27,12 @@
 // pushed onto a channel than its queue holds. On the straight-line IR the
 // allocator sees, both are single-pass per-channel counts.
 //
-// When a tile runs out of ids, the pass takes them back from a started task
-// that was never released (see reclaimFor) rather than failing: from one a
-// status poll already proves finished, or else by inserting a poll that does.
-// Only allocations that would fail change, so a sequence that fits compiles to
-// the same instructions either way.
+// With reclaim-bds, when a tile runs out of ids, the pass takes them back from
+// a started task that was never released (see reclaimFor) rather than failing:
+// from one a status poll already proves finished, or else by inserting a poll
+// that does. Only allocations that would fail change, so a sequence that fits
+// compiles to the same instructions either way. It is opt-in because the poll
+// never returns if the task's completion depends on a later push.
 //
 //===----------------------------------------------------------------------===//
 
@@ -90,10 +91,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           (copy.getIssueToken() ||
            allocation.getChannelDir() == AIE::DMAChannelDir::S2MM)) {
         if (AIE::TileOp tile = allocation.getTileOp())
-          return DmaQueueModel::ChannelKey{
-              tile.getCol(), tile.getRow(),
-              static_cast<int>(allocation.getChannelDir()),
-              static_cast<int>(allocation.getChannelIndex())};
+          return DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
+                                      allocation.getChannelIndex());
       }
     }
     return std::nullopt;
@@ -108,10 +107,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           op->getParentOfType<AIE::DeviceOp>(), wait.getSymbol());
       if (allocation)
         if (AIE::TileOp tile = allocation.getTileOp())
-          return DmaQueueModel::ChannelKey{
-              tile.getCol(), tile.getRow(),
-              static_cast<int>(allocation.getChannelDir()),
-              static_cast<int>(allocation.getChannelIndex())};
+          return DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
+                                      allocation.getChannelIndex());
     }
     return std::nullopt;
   }
@@ -171,12 +168,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // over straight-line IR is exact.
   LogicalResult verifyChannelUsage(AIE::RuntimeSequenceOp seq) {
     using ChannelKey = DmaQueueModel::ChannelKey;
-    auto keyOf = [](DMAConfigureTaskOp cfg) -> ChannelKey {
-      AIE::TileOp tile = cfg.getTileOp();
-      return {tile.getCol(), tile.getRow(),
-              static_cast<int>(cfg.getDirection()),
-              static_cast<int>(cfg.getChannel())};
-    };
 
     const AIETargetModel &tm =
         seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
@@ -189,7 +180,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         DMAConfigureTaskOp cfg = start.getTaskOp();
         if (!cfg)
           return WalkResult::advance();
-        ChannelKey key = keyOf(cfg);
+        ChannelKey key = channelOf(cfg);
         AIE::TileOp tile = cfg.getTileOp();
         uint32_t depth = tm.getDmaTaskQueueDepth(
             tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
@@ -205,7 +196,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         // an unresolved task is diagnosed by the recycle path. Skip both here.
         if (!cfg || !cfg.getIssueToken())
           return WalkResult::advance();
-        ChannelKey key = keyOf(cfg);
+        ChannelKey key = channelOf(cfg);
         int &tokens = avail[key];
         if (tokens < 1) {
           await.emitOpError(
@@ -313,6 +304,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                   "task holding one is not started yet, is started again "
                   "later, or runs on a channel whose status it cannot "
                   "poll.";
+        else
+          diag << " Or let the compiler poll for finished tasks and take "
+                  "their ids (reclaim-bds, aiecc --reclaim-runtime-bds), "
+                  "provided no task depends on a push issued after it.";
         return WalkResult::interrupt();
       }
       checkReallocation(tile, *next_id, bd_op);
@@ -381,9 +376,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   std::map<std::pair<int, int>, std::map<uint32_t, ReleasedTask>> freedInFlight;
 
   static DmaQueueModel::ChannelKey channelOf(DMAConfigureTaskOp cfg) {
-    AIE::TileOp tile = cfg.getTileOp();
-    return {tile.getCol(), tile.getRow(), static_cast<int>(cfg.getDirection()),
-            static_cast<int>(cfg.getChannel())};
+    return DmaQueueModel::keyOf(cfg.getTileOp(), cfg.getDirection(),
+                                cfg.getChannel());
   }
 
   // An await consumes the oldest outstanding token on the channel, regardless

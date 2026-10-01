@@ -406,6 +406,8 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
   if (!targetOp)
     return module.emitOpError("expected AIE.device operation at toplevel");
+  if (failed(verifyDMAChannelsResolved(targetOp)))
+    return failure();
   const auto &targetModel = targetOp.getTargetModel();
 
   collectTiles(targetOp, tiles);

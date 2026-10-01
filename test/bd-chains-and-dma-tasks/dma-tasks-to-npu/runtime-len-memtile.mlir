@@ -20,7 +20,7 @@
 
 // CHECK-LABEL: aie.runtime_sequence
 // buffer_length = len * elemWidth / addressGranularity, from the runtime %len:
-// CHECK: aiex.npu.assert_bd_field(%arg0) {max = 131071 : i32}
+// CHECK: aiex.npu.assert_bd_field(%arg0) {max = 131071 : i32, min = 1 : i32}
 // CHECK: %[[DIV:.*]] = arith.divui %arg0, %{{.*}}
 // CHECK: %[[BLEN:.*]] = arith.muli %[[DIV]], %{{.*}}
 // The 17-bit buffer_length guard, emitted only because the field is narrow:

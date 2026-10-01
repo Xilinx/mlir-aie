@@ -60,6 +60,8 @@ struct AIEObjectFifoAllocatePass
   /// the chains DMA programs start on it by index, plus the largest task the
   /// runtime sequence configures on it by index.
   DenseMap<std::tuple<int, int, int>, int64_t> fixedBDs;
+  /// The same, with every channel the last assignment handed out added.
+  DenseMap<std::tuple<int, int, int>, int64_t> channelDemand;
   RouteEndpoint channelFailure;
   ObjectFifoPoolOp bufferFailure;
   Value lockFailure;
@@ -663,6 +665,30 @@ struct AIEObjectFifoAllocatePass
       fixedBDs[at] += bds;
   }
 
+  /// BDs `channel` of the tile at (`col`, `row`) can use that `demand` leaves
+  /// over, counting every channel whose BD ids overlap its own. Negative when
+  /// overcommitted.
+  int64_t bdRoom(TileLike tile, int col, int row, int channel,
+                 const DenseMap<std::tuple<int, int, int>, int64_t> &demand) {
+    const AIETargetModel &target = device.getTargetModel();
+    uint32_t numBDs = target.getNumBDs(col, row);
+    int numChannels = std::max(tile.getNumSourceConnections(WireBundle::DMA),
+                               tile.getNumDestConnections(WireBundle::DMA));
+    auto sharesBDs = [&](int other) {
+      for (uint32_t bd = 0; bd < numBDs; ++bd)
+        if (target.isBdChannelAccessible(col, row, bd, channel) &&
+            target.isBdChannelAccessible(col, row, bd, other))
+          return true;
+      return false;
+    };
+    int64_t room = target.getNumBDsForChannel(col, row, channel);
+    for (int other = 0; other < numChannels; ++other)
+      if (sharesBDs(other))
+        if (auto it = demand.find({col, row, other}); it != demand.end())
+          room -= it->second;
+    return room;
+  }
+
   /// On a tile whose BD ids are split between channels, the free channel whose
   /// BDs have the most room left once every channel sharing them has its
   /// demand; ties, and tiles without such a split, go to the lowest index.
@@ -672,32 +698,17 @@ struct AIEObjectFifoAllocatePass
                     bool adjacent) {
     TileLike tile = tileOf(endpoint);
     DMAChannelDir dir = endpoint.getRouteDirection();
-    auto col = tile.tryGetCol(), row = tile.tryGetRow();
+    std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
     if (!col || !row)
       return channels.getDMAChannelIndex(tile, dir, adjacent,
                                          endpoint.getOperation());
-    const AIETargetModel &target = device.getTargetModel();
-    uint32_t numBDs = target.getNumBDs(*col, *row);
-    int numChannels = std::max(tile.getNumSourceConnections(WireBundle::DMA),
-                               tile.getNumDestConnections(WireBundle::DMA));
-    auto sharesBDs = [&](int a, int b) {
-      for (uint32_t bd = 0; bd < numBDs; ++bd)
-        if (target.isBdChannelAccessible(*col, *row, bd, a) &&
-            target.isBdChannelAccessible(*col, *row, bd, b))
-          return true;
-      return false;
-    };
     int best = -1;
     int64_t bestRoom = 0;
     int limit = DMAChannelAnalysis::getDMAChannelLimit(tile, dir, adjacent);
     for (int channel = 0; channel < limit; ++channel) {
       if (!channels.isChannelFree(tile, dir, channel))
         continue;
-      int64_t room = target.getNumBDsForChannel(*col, *row, channel);
-      for (int other = 0; other < numChannels; ++other)
-        if (sharesBDs(channel, other))
-          if (auto it = demand.find({*col, *row, other}); it != demand.end())
-            room -= it->second;
+      int64_t room = bdRoom(tile, *col, *row, channel, demand);
       if (best < 0 || room > bestRoom) {
         best = channel;
         bestRoom = room;
@@ -847,7 +858,33 @@ struct AIEObjectFifoAllocatePass
       channelAssignments[endpoint.getOperation()] = channel;
       noteDemand(endpoint, channel);
     }
+    channelDemand = std::move(demand);
     return success();
+  }
+
+  /// Channels are chosen by BD room but never refused for lack of it: a task
+  /// that frees its BDs before the next starts lets demand exceed the BDs.
+  /// Otherwise BD id assignment fails, so say where.
+  void warnOvercommittedBDs() {
+    const AIETargetModel &target = device.getTargetModel();
+    for (auto endpoint : device.getOps<RouteEndpoint>()) {
+      auto it = channelAssignments.find(endpoint.getOperation());
+      TileLike tile = tileOf(endpoint);
+      std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (it == channelAssignments.end() || !isProgramOwned(endpoint) || !col ||
+          !row)
+        continue;
+      int channel = it->second;
+      int64_t room = bdRoom(tile, *col, *row, channel, channelDemand);
+      if (room >= 0)
+        continue;
+      int64_t numBDs = target.getNumBDsForChannel(*col, *row, channel);
+      endpoint->emitWarning("channel ")
+          << channel << " can use " << numBDs
+          << " BDs, but it and the channels sharing them need " << numBDs - room
+          << " at once; BD id assignment fails unless tasks free their BDs "
+             "before others start";
+    }
   }
 
   /// Keep a successful largest-first allocation unchanged. On channel
@@ -1359,6 +1396,7 @@ struct AIEObjectFifoAllocatePass
       if (auto it = channelAssignments.find(endpoint.getOperation());
           it != channelAssignments.end())
         endpoint.setRouteChannel(it->second);
+    warnOvercommittedBDs();
 
     if (failed(bindRearmTargets())) {
       return signalPassFailure();

@@ -30,6 +30,11 @@ namespace xilinx::AIEX {
 /// (d0..d2 wrap/stride + d3 iteration/repeat).
 static constexpr unsigned kNdDmaDims = 4;
 
+/// The most patterns decomposeNdDmaPattern splits one into. Each piece costs a
+/// descriptor, or a task and a queue push of its own, so a split past this is
+/// refused rather than unrolled into the instruction stream.
+static constexpr int64_t kMaxNdDmaPieces = 1024;
+
 /// Innermost-first ND access pattern (d0..d3 / repeat), matching the
 /// convention used by verifyStridesWraps and NpuDmaMemcpyNdOp verification.
 ///
@@ -68,7 +73,7 @@ bool isDecomposableNdDmaPattern(mlir::Operation *forOp,
 /// Decompose an illegal pattern into one or more legal sub-patterns that move
 /// the same data. Prefers dimension factoring (single-op result when possible);
 /// falls back to slicing (multiple ops). Returns failure when no legal
-/// decomposition exists.
+/// decomposition into at most kMaxNdDmaPieces patterns exists.
 ///
 /// A contiguous pattern is illegal only if its iteration dimension (d3) is
 /// longer than a BD's, and is sliced along it.

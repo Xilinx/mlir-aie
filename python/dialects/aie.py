@@ -972,7 +972,12 @@ def _dma_channel_attr(channel):
         return IntegerAttr.get(T.i32(), int(channel))
     if isinstance(channel, str):
         return FlatSymbolRefAttr.get(channel)
-    return FlatSymbolRefAttr.get(channel.sym_name.value)
+    if isinstance(channel, RouteEndpointOp):
+        return FlatSymbolRefAttr.get(channel.sym_name.value)
+    raise TypeError(
+        "A DMA channel is an index or an aie.route_endpoint (op or symbol "
+        f"name), not {type(channel).__name__}."
+    )
 
 
 @_cext.register_operation(_Dialect, replace=True)

@@ -900,37 +900,23 @@ public:
     // MemTile BDs support 4 ND dimensions; core and shim BDs support 3.
     return tileType == AIETileType::MemTile ? 4 : 3;
   }
+  // The field limits read off the BD layout the lowerings pack through, the
+  // shim's for tiles without one.
+  const DmaBdLayout &getDmaBdLimits(AIETileType tileType) const {
+    const DmaBdLayout *layout = getDmaBdLayout(tileType);
+    return layout ? *layout : *getDmaBdLayout(AIETileType::ShimNOCTile);
+  }
   uint64_t getDmaBdMaxLen(AIETileType tileType) const override {
-    // Buffer_Length field width is tile-type specific on AIE2:
-    //   shim NOC/PL: 32 bits, mem tile: 17 bits, core tile: 14 bits.
-    switch (tileType) {
-    case AIETileType::MemTile:
-      return (1ull << 17) - 1;
-    case AIETileType::CoreTile:
-      return (1ull << 14) - 1;
-    default:
-      return 0xFFFFFFFFull;
-    }
+    return getDmaBdLimits(tileType).bufferLength.mask();
   }
   uint32_t getDmaBdWrapBits(AIETileType tileType) const override {
-    // Core tiles have 8-bit wrap; mem and shim tiles have 10-bit.
-    return tileType == AIETileType::CoreTile ? 8 : 10;
+    return getDmaBdLimits(tileType).d0Size.width;
   }
   uint32_t getDmaBdStepBits(AIETileType tileType) const override {
-    // Shim NOC/PL: 20-bit, mem tile: 17-bit, core tile: 13-bit.
-    switch (tileType) {
-    case AIETileType::ShimNOCTile:
-    case AIETileType::ShimPLTile:
-      return 20;
-    case AIETileType::MemTile:
-      return 17;
-    default:
-      return 13;
-    }
+    return getDmaBdLimits(tileType).d0Stride.width;
   }
   uint32_t getDmaBdIterBits(AIETileType tileType) const override {
-    // Core, mem, and shim tiles all have a 6-bit Iteration_Wrap field.
-    return 6;
+    return getDmaBdLimits(tileType).iterationSize.width;
   }
 
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,

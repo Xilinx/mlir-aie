@@ -614,14 +614,9 @@ struct AIEDMATasksToNPUPass
       uint64_t maxLen = std::min<uint64_t>(
           std::numeric_limits<int32_t>::max(),
           target_model.getDmaBdMaxLen(col, row) * gran / elemWidth);
-      NpuAssertBdFieldOp::create(builder, loc, lenVal,
-                                 builder.getI32IntegerAttr(maxLen));
-      Value tooSmall = arith::CmpIOp::create(
-          builder, loc, arith::CmpIPredicate::ult, lenVal,
-          createConstantI32(builder, loc, (gran + elemWidth - 1) / elemWidth));
       NpuAssertBdFieldOp::create(
-          builder, loc, arith::ExtUIOp::create(builder, loc, i32ty, tooSmall),
-          builder.getI32IntegerAttr(0));
+          builder, loc, lenVal, builder.getI32IntegerAttr(maxLen),
+          builder.getI32IntegerAttr((gran + elemWidth - 1) / elemWidth));
       uint32_t divisor = bdGranuleDivisor(elemWidth, gran);
       if (divisor > 1)
         NpuAssertBdDivisibleOp::create(builder, loc, lenVal, divisor,

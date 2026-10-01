@@ -191,6 +191,8 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
       chunkSize = 1;
     if (chunkSize > 0 && chunkSize < n) {
       int64_t numChunks = (n + chunkSize - 1) / chunkSize;
+      if (numChunks > kMaxNdDmaPieces)
+        return failure();
       SmallVector<NdDmaPattern> combined;
       for (int64_t i = 0; i < numChunks; ++i) {
         NdDmaPattern slice = pattern;
@@ -212,6 +214,8 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
         SmallVector<NdDmaPattern> &subPatterns =
             *sub; // NOLINT(bugprone-unchecked-optional-access)
         combined.append(subPatterns.begin(), subPatterns.end());
+        if (static_cast<int64_t>(combined.size()) > kMaxNdDmaPieces)
+          return failure();
       }
       return combined;
     }
@@ -223,7 +227,8 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
 // The kNdDmaDims-dimension patterns a longer pattern reduces to, in order (see
 // decomposeNdDmaPattern). Every dimension past d2 is an iteration dimension:
 // one execution per index of them all, outermost slowest.
-SmallVector<NdDmaPattern> reduceIterationDims(const NdDmaPattern &pattern) {
+FailureOr<SmallVector<NdDmaPattern>>
+reduceIterationDims(const NdDmaPattern &pattern) {
   NdDmaPattern piece;
   piece.baseOffset = pattern.baseOffset;
   for (unsigned d = 0; d < 3; ++d) {
@@ -249,6 +254,13 @@ SmallVector<NdDmaPattern> reduceIterationDims(const NdDmaPattern &pattern) {
   piece.offsets.push_back(0);
   piece.sizes.push_back(sizes.empty() ? 1 : sizes.front());
   piece.strides.push_back(strides.empty() ? 0 : strides.front());
+
+  int64_t count = 1;
+  for (int64_t size : ArrayRef(sizes).drop_front()) {
+    if (size > kMaxNdDmaPieces / count)
+      return failure();
+    count *= size;
+  }
 
   // Peel the rest, one piece per index, working outward so that each outer
   // dimension repeats all the pieces inside it.
@@ -276,8 +288,10 @@ bool contiguousAndFits(const AIE::AIETargetModel &tm, int col, int row,
 
 // A contiguous pattern whose iteration dimension is too long, as consecutive
 // runs of it, each at most `chunk` long.
-SmallVector<NdDmaPattern> sliceIterations(const NdDmaPattern &pattern,
-                                          int64_t chunk) {
+FailureOr<SmallVector<NdDmaPattern>>
+sliceIterations(const NdDmaPattern &pattern, int64_t chunk) {
+  if ((pattern.sizes[3] + chunk - 1) / chunk > kMaxNdDmaPieces)
+    return failure();
   SmallVector<NdDmaPattern> slices;
   for (int64_t first = 0; first < pattern.sizes[3]; first += chunk) {
     NdDmaPattern slice = pattern;
@@ -389,12 +403,15 @@ AIEX::decomposeNdDmaPattern(Operation *forOp, BaseMemRefType referencedBufType,
   if (pattern.sizes.size() > kNdDmaDims) {
     NdDmaPattern squeezed = pattern;
     squeezeUnitDims(squeezed);
-    SmallVector<NdDmaPattern> pieces =
+    FailureOr<SmallVector<NdDmaPattern>> pieces =
         squeezed.sizes.size() > kNdDmaDims
             ? reduceIterationDims(squeezed)
             : SmallVector<NdDmaPattern>{squeezed};
+    if (failed(pieces))
+      return failure();
     SmallVector<NdDmaPattern> result;
-    for (const NdDmaPattern &piece : pieces) {
+    for (const NdDmaPattern &piece :
+         *pieces) { // NOLINT(bugprone-unchecked-optional-access)
       // A piece already legal, or contiguous and so left to the lowering as a
       // plain length, is kept as it is.
       if (contiguousAndFits(targetModel, tileCol, tileRow, piece) ||
@@ -410,6 +427,8 @@ AIEX::decomposeNdDmaPattern(Operation *forOp, BaseMemRefType referencedBufType,
       SmallVector<NdDmaPattern> &subPatterns =
           *sub; // NOLINT(bugprone-unchecked-optional-access)
       result.append(subPatterns.begin(), subPatterns.end());
+      if (static_cast<int64_t>(result.size()) > kMaxNdDmaPieces)
+        return failure();
     }
     return result;
   }
