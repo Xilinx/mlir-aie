@@ -1782,6 +1782,7 @@ std::optional<ArbiterPlan> PacketFlowRouting::planTile(
         return std::nullopt;
       int amsel = std::get<2>(*rule);
       if (excluded(f, amsel % numArbiters) ||
+          reservedAmsels[tileId].count(amsel) ||
           kept.amselMasters.try_emplace(amsel, flows[f].masters)
                   .first->second != flows[f].masters)
         return std::nullopt;
@@ -2904,13 +2905,23 @@ void AIEPathfinderPass::runOnOperation() {
       (!d.getOps<FlowOp>().empty() ||
        !llvm::all_of(d.getOps<PacketFlowOp>(), isPrioritized))) {
     OwningOpRef<ModuleOp> scratch;
+    // A control-packet reload installs @ctrl_pkt_overlay, which holds the
+    // overlay's flows and the tiles alone, without the design's own
+    // switchboxes. Otherwise the prioritized flows route around those.
+    auto reload = d->getAttrOfType<BoolAttr>("has_ctrl_pkt_overlay");
+    bool standalone = reload && reload.getValue();
     DeviceOp alone = cloneInScratch(d, scratch);
-    for (FlowOp flow : llvm::make_early_inc_range(alone.getOps<FlowOp>()))
-      flow.erase();
-    for (PacketFlowOp flow :
-         llvm::make_early_inc_range(alone.getOps<PacketFlowOp>()))
-      if (!isPrioritized(flow))
-        flow.erase();
+    SmallVector<Operation *> others;
+    for (Operation &op : alone.getBody()->without_terminator()) {
+      auto flow = dyn_cast<PacketFlowOp>(op);
+      if (flow ? !isPrioritized(flow)
+               : isa<FlowOp>(op) || (standalone && !isa<TileOp>(op)))
+        others.push_back(&op);
+    }
+    for (Operation *op : others)
+      op->dropAllReferences();
+    for (Operation *op : others)
+      op->erase();
     DynamicTileAnalysis aloneAnalyzer;
     StreamConflicts aloneConflicts(alone);
     if (llvm::Error err = route(alone, aloneAnalyzer, aloneConflicts, {},
