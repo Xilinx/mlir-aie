@@ -63,7 +63,13 @@ struct AIEObjectFifoAllocatePass
   /// The same, with every channel the last assignment handed out added.
   DenseMap<std::tuple<int, int, int>, int64_t> channelDemand;
   RouteEndpoint channelFailure;
+  /// The pool the buffer search could not place with the fewest left
+  /// unplaced, i.e. where it got furthest.
   ObjectFifoPoolOp bufferFailure;
+  size_t unplacedAtFailure = 0;
+  /// Neighbors spillTargets created to weigh a spill. The ones no buffer or
+  /// lock ends up on are erased once allocation is done.
+  SmallVector<TileOp> spillTiles;
   Value lockFailure;
   Operation *lockAccessFailure = nullptr;
 
@@ -240,8 +246,11 @@ struct AIEObjectFifoAllocatePass
       candidates.push_back(homeTile);
     else
       candidates = spillTargets(pool, size);
-    if (candidates.empty() && !bufferFailure)
+    if (candidates.empty() &&
+        (!bufferFailure || buffers.size() < unplacedAtFailure)) {
       bufferFailure = pool;
+      unplacedAtFailure = buffers.size();
+    }
     auto tryTile = [&](Value tile) {
       plannedMemory[tile].push_back(size);
       bufferPlacements[pool].push_back(tile);
@@ -295,8 +304,14 @@ struct AIEObjectFifoAllocatePass
       if (col < 0 || col >= target.columns()) {
         continue;
       }
-      TileOp neighbor = TileOp::getOrCreate(builder, device, col,
-                                            homeOp.getRow(), pool.getLoc());
+      int row = homeOp.getRow();
+      bool declared = llvm::any_of(device.getOps<TileOp>(), [&](TileOp t) {
+        return t.getCol() == col && t.getRow() == row;
+      });
+      TileOp neighbor =
+          TileOp::getOrCreate(builder, device, col, row, pool.getLoc());
+      if (!declared)
+        spillTiles.push_back(neighbor);
       using SharedMemory = AIETargetModel::SharedMemory;
       SharedMemory shared = sharedMemory(homeOp, neighbor);
       if (shared == SharedMemory::Second || shared == SharedMemory::Either) {
@@ -1457,6 +1472,9 @@ struct AIEObjectFifoAllocatePass
       allocateBuffers(pool);
       allocateLocks(pool);
     }
+    for (TileOp tile : spillTiles)
+      if (tile->use_empty())
+        tile->erase();
     for (auto endpoint : device.getOps<RouteEndpoint>())
       if (auto it = channelAssignments.find(endpoint.getOperation());
           it != channelAssignments.end())

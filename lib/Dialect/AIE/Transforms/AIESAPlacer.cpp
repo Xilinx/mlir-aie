@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "llvm/Support/Debug.h"
 
@@ -40,18 +41,14 @@ getMemAffinityNeighbors(const AIETargetModel &targetModel, TileID tilePos) {
   return neighbors;
 }
 
-/// Bytes a buffer takes on a tile once assign-buffer-addresses aligns it: to
-/// the bus width, or on a core tile to the widest vector access once the buffer
-/// can hold one.
+/// Bytes a buffer takes on a tile once assign-buffer-addresses aligns it.
 static int64_t alignedBufferBytes(const AIETargetModel &targetModel,
                                   AIETileType tileType, int64_t bytes) {
-  if (tileType == AIETileType::MemTile)
-    return llvm::alignTo(bytes, targetModel.getMemTileLoadStoreBusWidth() / 8);
-  uint32_t alignBits = targetModel.getComputeTileLoadStoreBusWidth();
-  uint32_t vecAlignBits = targetModel.getComputeTileMaxVectorAlignBits();
-  if (bytes * 8 >= vecAlignBits)
-    alignBits = std::max(alignBits, vecAlignBits);
-  return llvm::alignTo(bytes, alignBits / 8);
+  TileMemoryLimits limits = tileMemoryLimits(targetModel, tileType);
+  return llvm::alignTo(bytes,
+                       requiredBufferAlignBits(limits.tileAlignBitWidth,
+                                               limits.maxVecAlignBits, bytes) /
+                           8);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1886,19 +1883,26 @@ LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
 
   // SA optimizes for legality but is not guaranteed to reach it (e.g. a very
   // low --sa-effort can starve the greedy stage that normally drives hard
-  // violations to zero). Falling back to bestOverallPlacement in that case
-  // would silently emit a placement that overflows resources or violates
-  // cascade adjacency, so surface it as a pass failure instead.
-  int finalHardPenalty = getResourcePenalty();
+  // violations to zero). Cascade adjacency and delegate reach are exact, and a
+  // placement breaking them would only fail later and less clearly, so they
+  // fail here. Memory, DMA channel and BD use are this pass's estimates of what
+  // later passes allocate, and those passes check them exactly, so an overrun
+  // here is a warning.
   int finalCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
                                              config.cascadeWeightPerDist);
-  if (finalHardPenalty != 0 || finalCascade != 0) {
-    device.emitError("SA placer failed to find a legal placement (resource "
+  int finalDelegate = computeDelegatePenalty();
+  if (finalCascade != 0 || finalDelegate != 0) {
+    device.emitError("SA placer failed to find a legal placement (cascade "
                      "penalty=")
-        << finalHardPenalty << ", cascade penalty=" << finalCascade
+        << finalCascade << ", delegate penalty=" << finalDelegate
         << "); try increasing --sa-effort";
     return failure();
   }
+  if (int estimated = getResourcePenalty() - finalDelegate; estimated != 0)
+    device.emitWarning("SA placer's resource estimate is over capacity "
+                       "(penalty=")
+        << estimated
+        << "); later passes check exactly, and increasing --sa-effort may help";
 
   result = currentPlacement;
   return success();

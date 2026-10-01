@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/IR/AIECoreMemory.h"
 #include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
@@ -41,25 +42,6 @@ static std::optional<int64_t> getMeasuredStackSize(TileOp tile) {
     return static_cast<int64_t>(*measured);
   }
   return std::nullopt;
-}
-
-// A memtile is reached by DMA rather than by core vector load and store, so its
-// bus width also covers the vector-alignment requirement.
-struct TileMemoryLimits {
-  int64_t maxDataMemorySize;
-  uint32_t tileAlignBitWidth;
-  uint32_t maxVecAlignBits;
-};
-static TileMemoryLimits tileMemoryLimits(TileOp tile,
-                                         const AIETargetModel &targetModel) {
-  if (tile.isMemTile()) {
-    return {targetModel.getMemTileSize(),
-            targetModel.getMemTileLoadStoreBusWidth(),
-            targetModel.getMemTileLoadStoreBusWidth()};
-  }
-  return {targetModel.getLocalMemorySize(),
-          targetModel.getComputeTileLoadStoreBusWidth(),
-          targetModel.getComputeTileMaxVectorAlignBits()};
 }
 
 // Every buffer must already have an address.
@@ -321,23 +303,6 @@ static int64_t getMeasuredDataAlignBytes(BufferOp buffer) {
   return 1;
 }
 
-// Return the alignment (in bits) `buffer` must satisfy.
-//
-// Bus width alone is insufficient: from AIE2P on, a full-width vector access
-// needs 512-bit alignment while the bus is 256 bits wide. An externally
-// compiled kernel may perform such an access, so a buffer large enough to hold
-// a full-width vector gets the stricter alignment. A smaller buffer keeps the
-// bus width and costs no padding.
-static uint32_t getRequiredAlignBits(BufferOp buffer, uint32_t busAlignBits,
-                                     uint32_t maxVecAlignBits) {
-  if (maxVecAlignBits <= busAlignBits) {
-    return busAlignBits;
-  }
-  int64_t sizeBits = static_cast<int64_t>(buffer.getAllocationSize()) * 8;
-  return sizeBits >= static_cast<int64_t>(maxVecAlignBits) ? maxVecAlignBits
-                                                           : busAlignBits;
-}
-
 // Check alignment (when `aligned` is set) and that no two buffers overlap. The
 // input vector must be sorted by ascending address. Returns false and emits an
 // error on the first offending buffer; true otherwise.
@@ -355,7 +320,8 @@ static bool checkAndPrintBufferOverlap(ArrayRef<BufferOp> sortedBuffers,
     uint32_t reqAlignBits =
         isBufferPreAllocated(cur)
             ? tileAlignBitWidth
-            : getRequiredAlignBits(cur, tileAlignBitWidth, maxVecAlignBits);
+            : requiredBufferAlignBits(tileAlignBitWidth, maxVecAlignBits,
+                                      cur.getAllocationSize());
     uint32_t alignByteWidth = reqAlignBits / 8;
     if (cur.getAligned() && alignByteWidth != 0 &&
         curAddr % alignByteWidth != 0) {
@@ -633,9 +599,11 @@ static int64_t getBufferAlignBytes(BufferOp buffer, uint32_t tileAlignBitWidth,
   if (!buffer.getAligned()) {
     return measuredAlign;
   }
-  return std::max<int64_t>(
-      getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBits) / 8,
-      measuredAlign);
+  return std::max<int64_t>(requiredBufferAlignBits(tileAlignBitWidth,
+                                                   maxVecAlignBits,
+                                                   buffer.getAllocationSize()) /
+                               8,
+                           measuredAlign);
 }
 
 // Index of the bank owning `addr`, or -1 when it falls outside every bank.
@@ -1267,7 +1235,7 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
 
   const auto &targetModel = getTargetModel(tile);
   auto [maxDataMemorySize, tileAlignBitWidth, maxVecAlignBits] =
-      tileMemoryLimits(tile, targetModel);
+      tileMemoryLimits(targetModel, tile.getTileType());
 
   int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
   int64_t bankSize = maxDataMemorySize / numBanks;
@@ -1344,6 +1312,11 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
   // one is loaded only once and keeps the bad word, so keep initialized buffers
   // off that word. Other buffers may still take it, and a buffer the user
   // pinned there keeps its address.
+  //
+  // TODO: Investigate. This is a low-confidence workaround for a cause nobody
+  // has found: the word may be reserved by the firmware or driver, or clobbered
+  // by something else. The value predates initialized buffers dropping their
+  // locks (#3608 saw it first), so that change is not the cause.
   if (tile.isMemTile() && tile.getCol() == 0 &&
       targetModel.hasProperty(AIETargetModel::IsNPU) &&
       targetModel.getTargetArch() == AIEArch::AIE2p) {
