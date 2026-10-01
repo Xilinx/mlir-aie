@@ -712,14 +712,16 @@ planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
     if (!llvm::is_contained(unit.masterSets, f.masters))
       unit.masterSets.push_back(f.masters);
   }
-  for (Unit &unit : units)
-    std::stable_partition(unit.masterSets.begin(), unit.masterSets.end(),
-                          [&](const SmallVector<Port, 4> &masters) {
-                            return llvm::any_of(unit.flows, [&](size_t f) {
-                              return flows[f].isCtrlPkt &&
-                                     flows[f].masters == masters;
-                            });
-                          });
+  for (Unit &unit : units) {
+    auto ctrlEnd = std::stable_partition(
+        unit.masterSets.begin(), unit.masterSets.end(),
+        [&](const SmallVector<Port, 4> &masters) {
+          return llvm::any_of(unit.flows, [&](size_t f) {
+            return flows[f].isCtrlPkt && flows[f].masters == masters;
+          });
+        });
+    std::sort(unit.masterSets.begin(), ctrlEnd);
+  }
 
   auto clash = [&](size_t a, size_t b) {
     return flows[a].slave != flows[b].slave && conflict(a, b);
@@ -809,11 +811,21 @@ planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
     return std::nullopt;
   }
 
-  // Control packets take the highest msels, as they do elsewhere.
+  // Control packets take the highest msels, as they do elsewhere, in master
+  // port order so the overlay's msels don't depend on the design's flows: a
+  // control-packet reload keeps the standalone overlay's switch settings.
+  SmallVector<size_t, 8> mselOrder(units.size());
+  std::iota(mselOrder.begin(), mselOrder.end(), 0);
+  llvm::stable_sort(mselOrder, [&](size_t a, size_t b) {
+    if (!units[a].isCtrlPkt || !units[b].isCtrlPkt)
+      return units[a].isCtrlPkt > units[b].isCtrlPkt;
+    return units[a].masterSets.front() < units[b].masterSets.front();
+  });
   ArbiterPlan plan;
   SmallVector<size_t, 6> low(numArbiters, 0), high(numArbiters, 0);
-  for (const Unit &unit : units) {
-    int a = arbiterOf[&unit - units.data()];
+  for (size_t u : mselOrder) {
+    const Unit &unit = units[u];
+    int a = arbiterOf[u];
     std::map<SmallVector<Port, 4>, int> setAmsel;
     for (const SmallVector<Port, 4> &masters : unit.masterSets) {
       int msel = unit.isCtrlPkt
