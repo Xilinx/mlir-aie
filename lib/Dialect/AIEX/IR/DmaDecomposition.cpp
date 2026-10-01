@@ -40,7 +40,8 @@ int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
     return maxInput;
   }
   if (dim == 3)
-    return maxHardwareSize3(tm, tm.getTileType(col, row), stride == 0) + 1;
+    return stride == 0 ? tm.getMaxRepeatCount() + 1
+                       : tm.getMaxBdIterationCount(tm.getTileType(col, row));
   return (1LL << wrapBits) - 1;
 }
 

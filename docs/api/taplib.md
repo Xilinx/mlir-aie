@@ -106,7 +106,7 @@ Every operation also accepts staged values: an `aie.ir.Value` (a
 `DispatchTime[T]` scalar a runtime sequence receives, or any arithmetic on
 one) can stand in for a size, stride, offset, grid index, repeat count or
 group size. The arithmetic is emitted as `arith` ops where it is used, and
-each check that would have raised `ValueError` becomes an `aiex.npu.require`
+each check that would have raised `ValueError` becomes a `cf.assert`
 guard. A fully static specialization folds the guard away, or fails at
 generation time if it is false. The dispatch-time builder instead returns
 no stream, and the host refuses the call with the guard's message.

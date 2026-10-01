@@ -55,6 +55,9 @@ void AIEXDialect::initialize() {
 
 } // namespace xilinx::AIEX
 
+using xilinx::AIE::parseTypedDynamicIndexList;
+using xilinx::AIE::printTypedDynamicIndexList;
+
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
 
@@ -128,12 +131,6 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
     sizes[i] = outS[i];
     strides[i] = outT[i];
   }
-}
-
-int64_t AIEX::maxHardwareSize3(const AIE::AIETargetModel &targetModel,
-                               AIE::AIETileType tileType, bool pureRepeat) {
-  return pureRepeat ? targetModel.getMaxRepeatCount()
-                    : (1LL << targetModel.getDmaBdIterBits(tileType)) - 1;
 }
 
 mlir::LogicalResult
@@ -216,12 +213,17 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
     return forOp->emitOpError(
         "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
-  int64_t maxSize3 =
-      maxHardwareSize3(targetModel, targetModel.getTileType(tileCol, tileRow),
-                       inputStrides[3] == 0);
-  if (hardwareSizes[3] > maxSize3)
-    return forOp->emitOpError(
-        "Size 3 exceeds the [1:" + std::to_string(maxSize3 + 1) + "] range.");
+  // A zero d3 stride is a pure repeat: the lowerings leave the iteration fields
+  // 0 and carry the count on the queue push, so the repeat limit applies.
+  bool pureRepeat = inputStrides[3] == 0;
+  int64_t maxCount =
+      pureRepeat ? targetModel.getMaxRepeatCount() + 1
+                 : targetModel.getMaxBdIterationCount(
+                       targetModel.getTileType(tileCol, tileRow));
+  if (inputSizes[3] > maxCount)
+    return forOp->emitOpError()
+           << (pureRepeat ? "repeat count " : "iteration count ")
+           << inputSizes[3] << " exceeds the [1:" << maxCount << "] range.";
   if (hardwareStrides[0] > (1 << step_bits) - 1)
     return forOp->emitOpError("Stride 0 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
@@ -536,8 +538,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
 
   // The innermost stride may be runtime like any other dimension: the encoder
   // resolves its collapse-to-zero case with a select, and its realizability
-  // (unit stride, or granule-aligned) is enforced below for constants and by an
-  // assert_bd_divisible guard for runtime values.
+  // (unit stride, or granule-aligned) is enforced below for constants and by a
+  // host-side check (buildShimBdWords) for runtime values.
 
   // (The memref must also trace to a runtime-sequence block argument through
   // static subview/cast offsets; that structural check, with the same clean
@@ -575,28 +577,27 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   AIE::AIETileType tileType =
       targetModel.getTileType(tile.getCol(), tile.getRow());
   int64_t wrapMax = (1LL << targetModel.getDmaBdWrapBits(tileType)) - 1;
+  int64_t maxCount = pureRepeat ? targetModel.getMaxRepeatCount() + 1
+                                : targetModel.getMaxBdIterationCount(tileType);
   if (failed(checkSize(sizesRev[0], d0Hw, wrapMax, "d0 size")) ||
       failed(checkSize(sizesRev[1], d1Hw, wrapMax, "d1 size")) ||
-      failed(checkSize(sizesRev[3], iterHw,
-                       maxHardwareSize3(targetModel, tileType, pureRepeat),
+      failed(checkSize(sizesRev[3], iterHw, maxCount - 1,
                        pureRepeat ? "repeat count" : "iteration size")))
     return failure();
 
   // Realizability of the CONSTANT size/stride operands (divisibility +
-  // positivity, innermost-first). Runtime operands get an assert_bd_divisible
-  // guard at lowering time. Shared with the dma_task path.
+  // positivity, innermost-first). Runtime operands get a host-side check at
+  // lowering time. Shared with the dma_task path.
   llvm::SmallVector<mlir::OpFoldResult, 4> stridesRev(llvm::reverse(strides));
   if (failed(verifyConstBdRealizability(getOperation(), sizesRev, stridesRev,
                                         elemWidth, gran)))
     return failure();
 
-  // A runtime size landing in a narrow BD field (d0/d1 wrap 10-bit, iteration
-  // 6-bit) could exceed the field and silently truncate on hardware. The TXN
-  // stream has no on-device trap, so the dynamic lowering emits a host-side
-  // bounds guard (npu.assert_bd_field -> generated-C++ early return of nullopt)
-  // for exactly those fields. Nothing to reject here: wide fields
-  // (buffer_length via linear mode, repeat_count) need no guard, and narrow
-  // fields are guarded at lowering time.
+  // A runtime size or stride could exceed its BD field and silently truncate
+  // on hardware. The TXN stream has no on-device trap, so the dynamic lowering
+  // (buildShimBdWords) emits a host-side cf.assert for every runtime field,
+  // which the TXN builder turns into a refused dispatch. Nothing to reject
+  // here.
 
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
   if (errorMessage.has_value())
@@ -745,15 +746,14 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   // bd_id and repeat_count are SSA operands; range-check them only when they
-  // are compile-time constants. A runtime (non-constant) value is left
-  // unchecked here: bounds checking of runtime operands is not yet implemented
-  // (it belongs to the dynamic lowering path added in a later patch).
+  // are compile-time constants. A runtime repeat_count is checked on the host
+  // when lowered (AIEDmaToNpu); a runtime bd_id comes from the tile's BD pool.
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
-      bdId && *bdId > numBds)
+      bdId && *bdId >= numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   uint32_t maxRepeat = targetModel.getMaxRepeatCount();
-  if (std::optional<uint32_t> repeatCount =
-          getConstantIntOperand(getRepeatCount());
+  if (std::optional<uint64_t> repeatCount =
+          getConstantInt64Operand(getRepeatCount());
       repeatCount && *repeatCount > maxRepeat)
     return emitOpError("Repeat count exceeds the [0:")
            << maxRepeat << "] range.";
@@ -769,7 +769,7 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   bool isLinearTransfer =
       (getD0Size() >= 1) && (getD1Size() == 1) && (getIterationSize() == 0);
-  if (getBdId() > numBds)
+  if (getBdId() >= numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   if (getPacketId() > 31)
     return emitOpError("Packet ID exceeds the maximum supported by 5 bits.");
@@ -953,79 +953,6 @@ std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
   if (!addressOffset)
     return std::nullopt;
   return ::getAbsoluteAddress(this, *addressOffset);
-}
-
-//===----------------------------------------------------------------------===//
-// NpuAssertBdFieldOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult AIEX::NpuAssertBdFieldOp::verify() {
-  if (auto c = getConstantIntValue(getValue()))
-    if (*c < 0 || *c > (int64_t)getMax())
-      return emitOpError("constant value ")
-             << *c << " exceeds the guarded field range [0:" << getMax()
-             << "].";
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// NpuRequireOp
-//===----------------------------------------------------------------------===//
-
-namespace {
-// A constraint proven at compile time carries no runtime check.
-struct EraseSatisfiedRequire : OpRewritePattern<AIEX::NpuRequireOp> {
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(AIEX::NpuRequireOp op,
-                                PatternRewriter &rewriter) const override {
-    auto c = getConstantIntValue(op.getCond());
-    if (!c || *c == 0)
-      return failure();
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
-// A constraint already required on the same condition earlier in the block
-// adds nothing: after CSE every tap's re-derived check is the same value.
-struct EraseRepeatedRequire : OpRewritePattern<AIEX::NpuRequireOp> {
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(AIEX::NpuRequireOp op,
-                                PatternRewriter &rewriter) const override {
-    for (Operation *prev = op->getPrevNode(); prev;
-         prev = prev->getPrevNode()) {
-      auto earlier = dyn_cast<AIEX::NpuRequireOp>(prev);
-      if (earlier && earlier.getCond() == op.getCond()) {
-        rewriter.eraseOp(op);
-        return success();
-      }
-    }
-    return failure();
-  }
-};
-} // namespace
-
-void AIEX::NpuRequireOp::getCanonicalizationPatterns(
-    mlir::RewritePatternSet &results, mlir::MLIRContext *context) {
-  results.add<EraseSatisfiedRequire, EraseRepeatedRequire>(context);
-}
-
-//===----------------------------------------------------------------------===//
-// NpuAssertBdDivisibleOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult AIEX::NpuAssertBdDivisibleOp::verify() {
-  if (getDivisor() == 0)
-    return emitOpError("divisor must be non-zero.");
-  if (auto c = getConstantIntValue(getValue())) {
-    if (getAllowUnit() && *c == 1)
-      return success();
-    if (*c % (int64_t)getDivisor() != 0)
-      return emitOpError("constant value ")
-             << *c << " is not divisible by " << getDivisor()
-             << " (transfer is not a whole number of address-gen granules).";
-  }
-  return success();
 }
 
 //===----------------------------------------------------------------------===//

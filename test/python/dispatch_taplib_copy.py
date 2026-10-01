@@ -11,7 +11,7 @@ grid index into a TensorAccessPattern partition). The design compiles once;
 `instructions()` then drives its host-side C++ transaction builder at several
 (start, n) pairs, and the DMA events it produces are compared with a fully
 static specialization of the same generator. A dispatch that steps outside
-the buffer is refused by the `npu.require` guards taplib emitted. No NPU is
+the buffer is refused by the `cf.assert` guards taplib emitted. No NPU is
 needed.
 """
 
@@ -83,7 +83,7 @@ def tiled_copy(
 
 
 dyn = tiled_copy.specialize()  # both scalars stay dispatch-time
-print("guards emitted:", "aiex.npu.require" in dyn.as_mlir())
+print("guards emitted:", "cf.assert" in dyn.as_mlir())
 # CHECK: guards emitted: True
 
 for start, n in ((0, 3), (1, 6), (2, 2), (0, MAX_TILES), (5, 3)):

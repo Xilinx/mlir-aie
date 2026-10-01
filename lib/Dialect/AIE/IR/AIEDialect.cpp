@@ -3185,14 +3185,32 @@ BufferOp DMABDOp::getBufferOp() {
   return cast<BufferOp>(getBuffer().getDefiningOp());
 }
 
-// Parse/print hooks for the custom<DynamicScalar>($operand, $static_attr)
-// directive: a single scalar that is either an SSA value (runtime, %v) or a
-// compile-time integer constant (folded into the attribute), so a constant
-// never materializes an operand. The scalar analog of custom<DynamicIndexList>.
+// The optional `: type` after an SSA operand, defaulting to `defaultType`, so
+// the common width keeps its untyped spelling.
+static ParseResult parseOptionalOperandType(OpAsmParser &parser, Type &type,
+                                            Type defaultType) {
+  type = defaultType;
+  if (succeeded(parser.parseOptionalColon()))
+    return parser.parseType(type);
+  return success();
+}
+
+static void printOptionallyTypedOperand(OpAsmPrinter &printer, Value operand,
+                                        Type defaultType) {
+  printer << operand;
+  if (operand.getType() != defaultType)
+    printer << " : " << operand.getType();
+}
+
+// Parse/print hooks for the custom<DynamicScalar>($operand, $static_attr,
+// type($operand)) directive: a single scalar that is either an SSA value
+// (runtime, `%v` for i32 or `%v : type`) or a compile-time integer constant
+// (folded into the attribute), so a constant never materializes an operand.
+// The scalar analog of custom<TypedDynamicIndexList>.
 static ParseResult
 parseDynamicScalar(OpAsmParser &parser,
                    std::optional<OpAsmParser::UnresolvedOperand> &operand,
-                   IntegerAttr &staticAttr) {
+                   IntegerAttr &staticAttr, Type &type) {
   int64_t intValue;
   OptionalParseResult intResult = parser.parseOptionalInteger(intValue);
   if (intResult.has_value()) {
@@ -3202,20 +3220,65 @@ parseDynamicScalar(OpAsmParser &parser,
         parser.getBuilder().getI32IntegerAttr(static_cast<int32_t>(intValue));
     return success();
   }
-  // Not a plain integer: parse an SSA operand (resolved to i32 by the caller).
   OpAsmParser::UnresolvedOperand op;
-  if (parser.parseOperand(op))
+  if (parser.parseOperand(op) ||
+      parseOptionalOperandType(parser, type, parser.getBuilder().getI32Type()))
     return failure();
   operand = op;
   return success();
 }
 
 static void printDynamicScalar(OpAsmPrinter &printer, Operation *,
-                               Value operand, IntegerAttr staticAttr) {
+                               Value operand, IntegerAttr staticAttr, Type) {
   if (operand)
-    printer << operand;
+    printOptionallyTypedOperand(printer, operand,
+                                IntegerType::get(operand.getContext(), 32));
   else
     printer << staticAttr.getInt();
+}
+
+ParseResult xilinx::AIE::parseTypedDynamicIndexList(
+    OpAsmParser &parser,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &values,
+    DenseI64ArrayAttr &integers, SmallVectorImpl<Type> &types) {
+  SmallVector<int64_t> ints;
+  auto parseEntry = [&]() -> ParseResult {
+    OpAsmParser::UnresolvedOperand operand;
+    OptionalParseResult isOperand = parser.parseOptionalOperand(operand);
+    if (!isOperand.has_value())
+      return parser.parseInteger(ints.emplace_back());
+    Type type;
+    if (failed(*isOperand) ||
+        parseOptionalOperandType(parser, type,
+                                 parser.getBuilder().getI64Type()))
+      return failure();
+    values.push_back(operand);
+    types.push_back(type);
+    ints.push_back(ShapedType::kDynamic);
+    return success();
+  };
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseEntry))
+    return failure();
+  integers = parser.getBuilder().getDenseI64ArrayAttr(ints);
+  return success();
+}
+
+void xilinx::AIE::printTypedDynamicIndexList(OpAsmPrinter &printer,
+                                             Operation *, OperandRange values,
+                                             ArrayRef<int64_t> integers,
+                                             TypeRange) {
+  printer << '[';
+  auto value = values.begin();
+  llvm::interleaveComma(integers, printer, [&](int64_t i) {
+    if (!ShapedType::isDynamic(i)) {
+      printer << i;
+      return;
+    }
+    Value v = *value++;
+    printOptionallyTypedOperand(printer, v,
+                                IntegerType::get(v.getContext(), 64));
+  });
+  printer << ']';
 }
 
 // Split a scalar OpFoldResult into an operand (runtime value) or an i32

@@ -129,12 +129,15 @@ and launch them onto a tile's DMA task queue.
 | `aiex.npu.writebd` | Write a complete buffer descriptor (all fields explicit: buffer length/offset, the `d0..d2` sizes/strides, iteration, lock acquire/release, packet header, next-BD) to a BD slot on a tile. The low-level form behind `dma_memcpy_nd`. | any tile with a DMA engine (shim, mem, core) | `aiex.npu.writebd {column = 0 : i32, row = 0 : i32, bd_id = 0 : i32, buffer_length = 1024 : i32, /* ... */}` |
 | `aiex.npu.push_queue` | Push a BD id onto a tile channel's task queue to launch it, with an outer-dimension `repeat_count` and optional completion token. | any tile channel; `MM2S` / `S2MM` | `aiex.npu.push_queue(0, 0, MM2S : 0) bd_id %bd repeat %rep {issue_token = false} : i32, i32` |
 | `aiex.npu.address_patch` | Patch a runtime buffer address into the instruction stream: takes runtime argument `arg_idx` plus `arg_plus` offset and writes it into a BD address field. Used to bind host buffers whose address is only known at launch. | shim BD addresses | `aiex.npu.address_patch(%off : i32) {addr = 0 : ui32, arg_idx = 0 : i32}` |
-| `aiex.npu.assert_bd_field` *(compiler-emitted)* | Guard a runtime BD-field value against its hardware field width (`value <= max`); emitted by the dynamic DMA lowering when a runtime scalar lands in a narrow BD field (e.g. a 10-bit wrap). On the host-C++ path it aborts stream generation for an out-of-range value; on the binary path `value` is a verified constant and it is a no-op. | dynamic-BD lowering path | `aiex.npu.assert_bd_field(%v) {max = 1023 : i32} : i32` |
-| `aiex.npu.assert_bd_divisible` *(compiler-emitted)* | Guard a runtime BD size/stride against the address-gen granule (`value % divisor == 0`, or `value == 1` when `allow_unit`); emitted by the dynamic DMA lowering. Same host-C++ / binary behavior as `assert_bd_field`. | dynamic-BD lowering path | `aiex.npu.assert_bd_divisible(%v) {divisor = 4 : i32} : i32` |
-| `aiex.npu.require` | Guard a user-level shape constraint on runtime sequence scalars (`cond` must hold). Emitted by IRON's layout algebra where a static design would raise `ValueError`. Constant `true` canonicalizes away; a live constant `false` is a static-lowering error; on the host-C++ path a runtime `cond` declines the build with `message` as the reason, like `assert_bd_field`. | runtime sequence | `aiex.npu.require(%ok) {message = "K must be a multiple of k"} : i1` |
 
 See [Section 2d](programming_guide/section-2/section-2d/DMATasks.md) for a full
 walkthrough of `dma_memcpy_nd` access patterns and buffer-descriptor reuse.
+
+A runtime sequence states conditions on its runtime scalars with the upstream
+`cf.assert` (the dynamic DMA lowering emits one for every runtime BD field, and
+IRON's `require` for user-level shape constraints). The host C++ TXN builder
+refuses the dispatch with the assert's message when one fails; the binary
+target accepts only asserts that fold to true.
 
 ### 3. DMA tasks (configure / start / await / free)
 
@@ -618,7 +621,9 @@ def AIE_NpuDmaMemcpyNdOp
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$memref,
       // NOTE: these are in reverse order: offset3, offset2, ...
-      Variadic<I64>:$offsets, Variadic<I64>:$sizes, Variadic<I64>:$strides,
+      Variadic<AnySignlessIntegerOrIndex>:$offsets,
+      Variadic<AnySignlessIntegerOrIndex>:$sizes,
+      Variadic<AnySignlessIntegerOrIndex>:$strides,
       ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
       ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
       ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
@@ -650,9 +655,9 @@ def AIE_NpuDmaMemcpyNdOp
 
   let assemblyFormat = [{
     `(` $memref ``
-    custom<DynamicIndexList>($offsets, $static_offsets) ``
-    custom<DynamicIndexList>($sizes, $static_sizes) ``
-    custom<DynamicIndexList>($strides, $static_strides) ``
+    custom<TypedDynamicIndexList>($offsets, $static_offsets, type($offsets)) ``
+    custom<TypedDynamicIndexList>($sizes, $static_sizes, type($sizes)) ``
+    custom<TypedDynamicIndexList>($strides, $static_strides, type($strides)) ``
     (`,` `packet` `=` $packet^)? `)`
     attr-dict `:` type($memref)
   }];
@@ -745,7 +750,8 @@ def AIE_NpuWriteRTPOp : AIEX_Op<"npu.rtp_write", []> {
 def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
   let summary = "bd queue push operator";
   let arguments = (ins I32Attr:$column, I32Attr:$row, DMAChannelDir:$direction,
-      I32Attr:$channel, BoolAttr:$issue_token, I32:$repeat_count, I32:$bd_id);
+      I32Attr:$channel, BoolAttr:$issue_token,
+      AnySignlessIntegerOrIndex:$repeat_count, I32:$bd_id);
   let results = (outs);
   let assemblyFormat = [{
     `(` $column `,` $row `,` $direction `:` $channel `)`
@@ -790,104 +796,6 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
     // Compile-time absolute address, or nullopt if 'address' is not constant.
     std::optional<uint32_t> getAbsoluteAddress();
   }];
-}
-
-// ASSERT_BD_FIELD
-def AIE_NpuAssertBdFieldOp : AIEX_Op<"npu.assert_bd_field", []> {
-  let summary =
-      "Guard a runtime BD-field value against its hardware field width";
-  let arguments = (ins I32:$value, I32Attr:$max);
-  let results = (outs);
-  let assemblyFormat = [{
-    `(` $value `)` attr-dict `:` type($value)
-  }];
-  let description = [{
-    Asserts, at TXN-build time, that a runtime value assigned to a buffer-
-    descriptor field fits its hardware field: `value <= max`. Emitted by the
-    dynamic DMA lowering for a runtime scalar landing in a narrow field (e.g. the
-    10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would silently
-    truncate an out-of-range value.
-
-    This op only ever appears on the dynamic (runtime-value) DMA lowering path;
-    a fully static sequence never produces it. When `value` is a constant, the
-    verifier hard-errors if it exceeds `max`, so it is caught at compile time.
-
-    The TXN instruction stream has no on-device trap, so a runtime guard runs
-    host-side in the generated C++ TXN builder: --aie-npu-to-cpp lowers this op
-    to an early `if (value > max) return std::nullopt;` so the builder yields no
-    stream for an illegal value instead of a corrupt one. On the binary
-    (--aie-npu-to-binary) path `value` is always a verified constant, so the op
-    carries no runtime check and is emitted as a no-op (skipped, contributing no
-    TXN words).
-  }];
-  let hasVerifier = 1;
-}
-
-// ASSERT_BD_DIVISIBLE
-def AIE_NpuAssertBdDivisibleOp : AIEX_Op<"npu.assert_bd_divisible", []> {
-  let summary =
-      "Guard a runtime BD size/stride against the address-gen granule";
-  let arguments = (ins I32:$value, I32Attr:$divisor, UnitAttr:$allow_unit);
-  let results = (outs);
-  let assemblyFormat = [{
-    `(` $value `)` attr-dict `:` type($value)
-  }];
-  let description = [{
-    Asserts, at TXN-build time, that a runtime size/stride is realizable in
-    hardware: its byte extent is a whole number of address-gen granules, i.e.
-    `value % divisor == 0`. The hardware transfers whole granules only, so a
-    size or stride whose `value * elemWidth` is not a granule multiple (e.g. an
-    int8 innermost size of 2 = 16 bits against a 32-bit granule) cannot be
-    encoded. `divisor` is the compile-time granule/element ratio.
-
-    `allow_unit` exempts a value of 1 from the divisibility rule: the innermost
-    stride is allowed to be sub-granule when it is exactly 1 (the contiguous
-    scan the encoder collapses to hardware stride 0), but a non-unit sub-granule
-    stride (e.g. int8 stride 2) is still unrealizable. So with `allow_unit` the
-    predicate is `value == 1 || value % divisor == 0`.
-
-    Like `assert_bd_field`, this op only appears on the dynamic DMA lowering
-    path, and a constant `value` is hard-errored by the verifier at compile
-    time. The TXN stream has no on-device trap, so a runtime guard runs
-    host-side: --aie-npu-to-cpp lowers it to an early
-    `if (value % divisor != 0) return std::nullopt;` (or, with `allow_unit`,
-    `if (value != 1 && value % divisor != 0) ...`). On the binary
-    (--aie-npu-to-binary) path `value` is always a verified constant, so the op
-    carries no runtime check and is emitted as a no-op (skipped, contributing no
-    TXN words).
-  }];
-  let hasVerifier = 1;
-}
-
-// REQUIRE
-def AIE_NpuRequireOp : AIEX_Op<"npu.require", []> {
-  let summary = "Guard a runtime shape constraint at TXN-build time";
-  let arguments = (ins I1:$cond, StrAttr:$message);
-  let results = (outs);
-  let assemblyFormat = [{
-    `(` $cond `)` attr-dict `:` type($cond)
-  }];
-  let description = [{
-    Asserts, at TXN-build time, that a user-level constraint on runtime
-    sequence scalars holds: `cond` must be true. IRON's layout algebra emits it
-    where a tiler would have raised `ValueError` on a concrete shape (a tensor
-    dimension not divisible by its tile, an offset past the end of a buffer,
-    ...), so a dispatch-time-parameterized design gets the same checks as a
-    static one. `message` is the text the static path would have raised with.
-
-    Canonicalization erases a constant-`true` op (and a repeat of a condition
-    already required earlier in the block), so a fully specialized sequence
-    carries no trace of it. A constant-`false` op is not a verifier error,
-    since a specialized sequence may hold one in a branch that folds away;
-    one that reaches the binary path (--aie-npu-to-binary) is the error the
-    static Python path would have raised, and that path accepts nothing but
-    constant-true ops, which contribute no TXN words. On the host-C++ path
-    (--aie-npu-to-cpp) a runtime `cond` lowers to
-    `if (!cond) return aie_runtime::txn_refused("message");`, the same
-    contract as `npu.assert_bd_field`: the builder yields no stream rather
-    than a wrong one, and the host reports `message` as the reason.
-  }];
-  let hasCanonicalizer = 1;
 }
 
 // MASKWRITE
@@ -1327,7 +1235,7 @@ def AIE_DMAConfigureTaskOp
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
       DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-      Optional<I32>:$repeat_count_val, OptionalAttr<PacketInfoAttr>:$packet,
+      Optional<AnySignlessIntegerOrIndex>:$repeat_count_val, OptionalAttr<PacketInfoAttr>:$packet,
       // Put the channel into out-of-order mode (S2MM only).
       UnitAttr:$out_of_order);
 
@@ -1388,7 +1296,7 @@ def AIE_DMAConfigureTaskForOp
   let arguments = (ins SymbolRefAttr:$alloc,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
       DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-      Optional<I32>:$repeat_count_val);
+      Optional<AnySignlessIntegerOrIndex>:$repeat_count_val);
 
   let regions = (region AnyRegion:$body);
 

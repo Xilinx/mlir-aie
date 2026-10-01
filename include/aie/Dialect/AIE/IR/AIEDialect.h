@@ -156,6 +156,18 @@ std::string generateUniqueSymbolName(mlir::Operation *symbolTableOp,
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
 
+// custom<TypedDynamicIndexList>($values, $integers, type($values)): the
+// upstream custom<DynamicIndexList> with an optional type on each SSA entry,
+// `%v` for i64 and `%v : type` otherwise.
+mlir::ParseResult parseTypedDynamicIndexList(
+    mlir::OpAsmParser &parser,
+    llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &values,
+    mlir::DenseI64ArrayAttr &integers, llvm::SmallVectorImpl<mlir::Type> &types);
+void printTypedDynamicIndexList(mlir::OpAsmPrinter &printer,
+                                mlir::Operation *op, mlir::OperandRange values,
+                                llvm::ArrayRef<int64_t> integers,
+                                mlir::TypeRange types);
+
 } // namespace xilinx::AIE
 
 namespace xilinx::AIE {

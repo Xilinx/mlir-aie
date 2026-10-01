@@ -45,13 +45,17 @@ module {
 
 // -----
 
-// The assert_bd_field guard op rejects a constant value over its field max.
+// A guard whose condition folds to false is a compile-time error rather than
+// a cf.assert that could never pass: the constant d0 extent alone runs past
+// the 64-element host buffer, whatever the runtime d1 size is.
 module {
   aie.device(npu1) {
-    aie.runtime_sequence @s(%arg0: memref<4xi32>) {
-      %c = arith.constant 5000 : i32
-      // expected-error@+1 {{constant value 5000 exceeds the guarded field range [0:1023]}}
-      aiex.npu.assert_bd_field(%c) {max = 1023 : i32} : i32
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a(%t, MM2S, 0)
+    aie.runtime_sequence @s(%arg0: memref<64xi32>, %n: i64) {
+      // expected-error@+2 {{a runtime DMA access runs past the end of its 64-element host buffer}}
+      // expected-error@+1 {{failed to legalize operation 'aiex.npu.dma_memcpy_nd'}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, %n, 128][0, 0, 128, 1]) {id = 0 : i64, metadata = @a} : memref<64xi32>
     }
   }
 }
@@ -89,14 +93,16 @@ module {
 
 // -----
 
-// The assert_bd_divisible guard op rejects a constant value not divisible by
-// its divisor.
+// A constant offset past the end of the host buffer is likewise rejected at
+// compile time when the walk has a runtime size.
 module {
   aie.device(npu1) {
-    aie.runtime_sequence @s(%arg0: memref<4xi32>) {
-      %c = arith.constant 3 : i32
-      // expected-error@+1 {{constant value 3 is not divisible by 4}}
-      aiex.npu.assert_bd_divisible(%c) {divisor = 4 : i32} : i32
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a(%t, MM2S, 0)
+    aie.runtime_sequence @s(%arg0: memref<64xi32>, %n: i64) {
+      // expected-error@+2 {{a runtime DMA access runs past the end of its 64-element host buffer}}
+      // expected-error@+1 {{failed to legalize operation 'aiex.npu.dma_memcpy_nd'}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 64][1, 1, 1, %n][0, 0, 0, 1]) {id = 0 : i64, metadata = @a} : memref<64xi32>
     }
   }
 }

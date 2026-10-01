@@ -15,18 +15,18 @@
 #include "aie/Dialect/AIEX/Utils/BdLowering.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
-#include "mlir/IR/IRMapping.h"
-#include "mlir/Interfaces/CastInterfaces.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -84,8 +84,9 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
     // push_queue takes bd_id + repeat_count as SSA operands. repeat_count is a
     // runtime operand when present (dynamic tile count), else the compile-time
     // attribute materialized as a constant.
-    Value repeatCount = getAsValue(rewriter, loc, task_op.getRepeatCountValue(),
-                                   rewriter.getI32Type());
+    Value repeatCount = task_op.getRepeatCountVal();
+    if (!repeatCount)
+      repeatCount = createConstantI32(rewriter, loc, task_op.getRepeatCount());
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
         task_op.getChannel(), task_op.getIssueToken(), repeatCount, bdIdVal);
@@ -254,45 +255,22 @@ struct AIEDMATasksToNPUPass
   }
 
   // A builder that derives a BD operand from runtime scalars (a width cast, a
-  // transfer-length product, an npu.require guard on the narrowing) emits that
-  // arithmetic where it is called, inside the BD block. None of it depends on
-  // the BD, so move it ahead of the task in program order; a constant it reads
-  // is cloned rather than moved, since BD-encoded ops may read it too. What
-  // stays (an op with other effects, or one reading a value only the block
-  // defines) is left for verifyNoUnsupportedOpsInBlock to reject. A cast
-  // counts as side-effect free even when its dialect does not say so
-  // (emitc.cast, the zero-extension of an unsigned dispatch scalar).
+  // transfer-length product, a cf.assert guard) emits that arithmetic where it
+  // is called, inside the BD block. None of it depends on the BD, so hoist it
+  // ahead of the task. What stays (an op with other effects, or one reading a
+  // value only the block defines) is left for verifyNoUnsupportedOpsInBlock to
+  // reject.
   void hoistScalarOpsOutOfBdBlocks(DMAConfigureTaskOp op) {
-    Region &body = op.getBody();
-    OpBuilder builder(op);
-    IRMapping hoistedConstants;
-    for (Block &block : body) {
-      for (Operation &inner :
-           llvm::make_early_inc_range(block.without_terminator())) {
-        if (isa<AIE::DMABDOp, AIE::UseLockOp, arith::ConstantOp>(inner))
-          continue;
-        if (inner.getNumRegions() != 0 ||
-            !(isMemoryEffectFree(&inner) ||
-              isa<CastOpInterface, NpuRequireOp>(inner)))
-          continue;
-        auto definedInBody = [&](Value v) {
-          return body.isAncestor(v.getParentRegion());
-        };
-        if (llvm::any_of(inner.getOperands(), [&](Value v) {
-              return definedInBody(v) && !v.getDefiningOp<arith::ConstantOp>();
-            }))
-          continue;
-        for (OpOperand &operand : inner.getOpOperands()) {
-          Value v = operand.get();
-          if (!definedInBody(v))
-            continue;
-          if (!hoistedConstants.contains(v))
-            builder.clone(*v.getDefiningOp(), hoistedConstants);
-          operand.set(hoistedConstants.lookup(v));
-        }
-        inner.moveBefore(op);
-      }
-    }
+    moveLoopInvariantCode(
+        {&op.getBody()},
+        [](Value v, Region *body) {
+          return !body->isAncestor(v.getParentRegion());
+        },
+        [](Operation *inner, Region *) {
+          return inner->getNumRegions() == 0 &&
+                 (isPure(inner) || isa<cf::AssertOp>(inner));
+        },
+        [&](Operation *inner, Region *) { inner->moveBefore(op); });
   }
 
   LogicalResult verifyNoUnsupportedOpsInBlock(Block &block) {
@@ -418,13 +396,16 @@ struct AIEDMATasksToNPUPass
                             : OpFoldResult(builder.getI32IntegerAttr(
                                   bd_op.getConstantOffset().value_or(0)));
       OpFoldResult oneStride = builder.getI32IntegerAttr(1);
-      Value argPlus =
-          buildArgPlusValue(builder, bd_op.getLoc(), {offsetOfr}, {oneStride},
-                            bd_op.getBufferElementTypeWidthInBytes(), offset);
+      FailureOr<Value> argPlus = buildArgPlusValue(
+          builder, bd_op.getLoc(), {offsetOfr}, {oneStride},
+          bd_op.getBufferElementTypeWidthInBytes(), offset,
+          target_model.getAddressGenGranularity() / 8);
+      if (failed(argPlus))
+        return failure();
       NpuAddressPatchOp::create(builder, bd_op.getLoc(),
                                 /*addr*/ register_addr,
                                 /*addr_val*/ runtimeRegisterAddr,
-                                /*arg_idx*/ arg_idx, argPlus);
+                                /*arg_idx*/ arg_idx, *argPlus);
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -587,7 +568,6 @@ struct AIEDMATasksToNPUPass
                          Value runtimeBdId = nullptr, bool outOfOrder = false) {
     const auto &target_model = AIE::getTargetModel(bd_op);
     Location loc = bd_op.getLoc();
-    auto i32ty = builder.getIntegerType(32);
     int col = tile.getCol();
     int row = tile.getRow();
 
@@ -629,44 +609,32 @@ struct AIEDMATasksToNPUPass
       sizes4[4 - sizes.size() + i] = sizes[i];
       strides4[4 - strides.size() + i] = strides[i];
     }
+    // len as OpFoldResult: the runtime operand if present, else the static_len
+    // attr (a constant BD with runtime sizes/strides still reaches here). With
+    // dims and no len, the transfer is their d0*d1*d2 extent. Without dims the
+    // dynamic encoder needs an explicit length; unlike the static path it
+    // cannot infer one from the buffer's shape.
+    OpFoldResult lenOfr;
+    if (Value lenOperand = bd_op.getLen())
+      lenOfr = lenOperand;
+    else if (std::optional<int32_t> constLen = bd_op.getConstantLen())
+      lenOfr = builder.getI32IntegerAttr(*constLen);
+    else if (sizes.empty())
+      return bd_op->emitOpError(
+          "runtime-valued BD requires an explicit transfer length; provide a "
+          "`len` for this buffer descriptor.");
+
     // A BD without addressing dims is a plain linear transfer of `len`
     // elements (canonicalization strips a contiguous [1, 1, 1, N] to this
-    // form, and the static path encodes it linear). Give it the canonical
-    // [1, 1, 1, 1] / [0, 0, 0, 1] shape so the shared encoder picks linear
-    // mode rather than an ND encoding with unit wraps and zero strides,
-    // which moves the same bytes but does not match the static stream.
-    if (sizes.empty())
-      strides4[3] = builder.getI64IntegerAttr(1);
+    // form, and the static path encodes it linear), so give it exactly that
+    // shape. With dims, `len` must agree with their d0*d1*d2 extent.
+    if (sizes.empty()) {
+      sizes4[3] = lenOfr;
+      strides4[3] = one;
+    }
 
-    // buffer_length override = len (elements) * elemWidth / addressGranularity,
-    // as an SSA value. dma_task carries the transfer length explicitly (unlike
-    // memcpy_nd's size-product), and it may be runtime.
     uint64_t elemWidth =
         static_cast<uint64_t>(bd_op.getBufferElementTypeWidthInBytes()) * 8;
-    uint32_t gran = target_model.getAddressGenGranularity();
-    // len as OpFoldResult: the runtime operand if present, else the static_len
-    // attr (a constant BD with runtime sizes/strides still reaches here). The
-    // dynamic shim encoder needs an explicit transfer length; unlike the static
-    // path it cannot infer one from the buffer's shape, so a BD that carries
-    // neither a len operand nor a static_len attribute is unsupported here
-    // rather than a crash.
-    OpFoldResult lenOfr;
-    if (Value lenOperand = bd_op.getLen()) {
-      lenOfr = lenOperand;
-    } else {
-      std::optional<int32_t> constLen = bd_op.getConstantLen();
-      if (!constLen)
-        return bd_op->emitOpError(
-            "runtime-valued BD requires an explicit transfer length; provide a "
-            "`len` for this buffer descriptor.");
-      lenOfr = builder.getI32IntegerAttr(*constLen);
-    }
-    Value lenVal = getAsValue(builder, loc, lenOfr, i32ty);
-    Value bufLen = arith::DivUIOp::create(
-        builder, loc,
-        arith::MulIOp::create(builder, loc, lenVal,
-                              createConstantI32(builder, loc, elemWidth)),
-        createConstantI32(builder, loc, gran));
 
     // The BD-level repeat_count (encoder output) is unused here: the dma_task
     // queue push is emitted separately by DMAStartTaskOpPattern from the task
@@ -677,9 +645,23 @@ struct AIEDMATasksToNPUPass
     Value bdRepeatCount;
     if (failed(buildShimBdWords(builder, loc, target_model, f, sizes4, strides4,
                                 elemWidth, bd_op.getBurstLength(),
-                                bd_op.getAxcacheOrDefault(), bufLen,
+                                bd_op.getAxcacheOrDefault(),
+                                sizes.empty() ? OpFoldResult() : lenOfr,
                                 bdRepeatCount, bdWords)))
       return failure();
+
+    // The walk must stay inside the host buffer it reads or writes.
+    if (auto trace = traceSubviewToBlockArgument(bd_op.getBuffer())) {
+      OpFoldResult offsetOfr =
+          bd_op.getOffset() ? OpFoldResult(bd_op.getOffset())
+                            : OpFoldResult(builder.getI32IntegerAttr(
+                                  bd_op.getConstantOffset().value_or(0)));
+      if (failed(guardWithinHostBuffer(
+              builder, loc, cast<BaseMemRefType>(trace->rootArg.getType()),
+              trace->offsetInBytes, elemWidth / 8, {offsetOfr}, {one}, sizes4,
+              strides4)))
+        return failure();
+    }
 
     // One blockwrite carries the whole register block for BD configuration.
     Value bdBase =
@@ -1158,6 +1140,7 @@ struct AIEDMATasksToNPUPass
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
     target.addLegalDialect<arith::ArithDialect>();
+    target.addLegalOp<cf::AssertOp>();
     target.addIllegalOp<DMAStartTaskOp>();
     target.addIllegalOp<DMAAwaitTaskOp>();
     RewritePatternSet patterns(&getContext());
@@ -1176,6 +1159,8 @@ struct AIEDMATasksToNPUPass
     if (failed(rewriteDMAConfigureTaskOp(device))) {
       signalPassFailure();
     }
+
+    eraseDeadArith(device);
   }
 };
 

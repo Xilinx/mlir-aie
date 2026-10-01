@@ -15,7 +15,6 @@ from ._ods_common import _cext
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
 from ..helpers.dialects.func import call
-from ..helpers.dialects.integers import as_signless
 from ..extras.dialects.arith import ScalarValue, constant
 from ..extras.dialects._shaped_value import ShapedValue
 from ..extras.dialects.memref import (
@@ -163,12 +162,8 @@ def dma_bd(
         aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
                    offset=0 len=%len)
     """
-    sizes = [as_signless(v, 64) for v in (sizes or [])]
-    strides = [as_signless(v, 64) for v in (strides or [])]
-    offset = as_signless(offset, 32, "DMA offset")
-    transfer_len = as_signless(transfer_len, 32, "DMA transfer length")
-    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes)
-    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides)
+    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
+    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
 
     offset_operand, static_offset = _split_i32_scalar(offset)
     len_operand, static_len = _split_i32_scalar(transfer_len)

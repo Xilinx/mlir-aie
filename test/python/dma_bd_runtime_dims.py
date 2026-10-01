@@ -5,9 +5,9 @@
 # RUN: %python %s | aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform --aie-substitute-shim-dma-allocations --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu | FileCheck %s --check-prefix=NPU
 
 # Runtime scalars of several widths and signedness as tap sizes and offsets:
-# each reaches the BD as a signless i64 size or i32 offset. A narrower signed
-# value is sign-extended, an unsigned one zero-extended, and a wider one
-# guarded with aiex.npu.require before it is truncated.
+# each reaches the BD at its own width, and the lowering widens it to i64
+# for its field and bounds guards. Unsigned scalars are zero-extended with
+# emitc.cast first so taplib's signed checks see their true value.
 
 import numpy as np
 
@@ -45,42 +45,32 @@ rt = Runtime(
 )
 print(Program(NPU1Col1(), rt).resolve_program())
 
-# A signed i32 size is sign-extended; the i64 transfer length it feeds is
-# guarded and truncated to dma_bd's i32 operand.
 # CHECK-LABEL: aie.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>, %arg2: i32, %arg3: i64, %arg4: ui8, %arg5: ui32)
-# CHECK:       aiex.dma_configure_task_for @of_in {
-# CHECK-NEXT:    %[[N:.*]] = arith.extsi %arg2 : i32 to i64
-# CHECK:         aiex.npu.require(%{{.*}}) {message = "a runtime DMA transfer length does not fit in 32 bits"}
-# CHECK-NEXT:    %[[LEN:.*]] = arith.trunci %{{.*}} : i64 to i32
-# CHECK-NEXT:    aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = %[[LEN]] sizes = [1, 1, %[[N]], 16] strides = [0, 0, 16, 1])
+# CHECK:         cf.assert %{{.*}}, "All sizes must be >= 1, but got [1, 1, <runtime>, 16]"
+# CHECK:         aiex.dma_configure_task_for @of_in {
+# CHECK-NEXT:      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 sizes = [1, 1, %arg2 : i32, 16] strides = [0, 0, 16, 1])
+# CHECK:         aiex.dma_configure_task_for @of_in {
+# CHECK-NEXT:      aie.dma_bd(%arg0 : memref<4096xi32> offset = %arg3 : i64 len = 64
 
-# An i64 offset is guarded and truncated to i32.
-# CHECK:       aiex.dma_configure_task_for @of_in {
-# CHECK:         aiex.npu.require(%{{.*}}) {message = "a runtime DMA offset does not fit in 32 bits"}
-# CHECK-NEXT:    %[[OFF:.*]] = arith.trunci %arg3 : i64 to i32
-# CHECK-NEXT:    aie.dma_bd(%arg0 : memref<4096xi32> offset = %[[OFF]] len = 64
+# CHECK:         %[[U32:.*]] = emitc.cast %arg5 : ui32 to i64
+# CHECK-NEXT:    %[[U8:.*]] = emitc.cast %arg4 : ui8 to i32
+# CHECK:         aiex.dma_configure_task_for @of_in {
+# CHECK-NEXT:      aie.dma_bd(%arg0 : memref<4096xi32> offset = %[[U32]] : i64 sizes = [1, 1, %[[U8]] : i32, 16] strides = [0, 0, 32, 1])
 
-# Unsigned scalars are zero-extended with emitc.cast before taplib's bounds
-# checks see them, so a large ui32 cannot pass as a negative i32.
-# CHECK:       %[[U32:.*]] = emitc.cast %arg5 : ui32 to i64
-# CHECK-NEXT:  %[[U8:.*]] = emitc.cast %arg4 : ui8 to i32
-# CHECK:       aiex.dma_configure_task_for @of_in {
-# CHECK-NEXT:    %[[U8W:.*]] = arith.extsi %[[U8]] : i32 to i64
-# CHECK:         arith.trunci %[[U32]] : i64 to i32
-# CHECK:         aie.dma_bd(%arg0 : memref<4096xi32> offset = %{{.*}} len = %{{.*}} sizes = [1, 1, %[[U8W]], 16] strides = [0, 0, 32, 1])
-
-# The lowering hoists every cast and guard out of the BD blocks and encodes
-# each BD into words.
+# A contiguous runtime walk is encoded linear, so only its transfer length is
+# guarded; a strided one is encoded ND and its size gets the 10-bit field
+# guard.
 # NPU-LABEL: aie.runtime_sequence
 # NPU-NOT:   aiex.dma_configure_task_for
-# NPU:       arith.extsi %arg2 : i32 to i64
-# NPU:       aiex.npu.require(%{{.*}}) {message = "a runtime DMA size or stride does not fit in 31 bits"}
+# NPU:       arith.extui %arg2 : i32 to i64
+# NPU:       cf.assert %{{.*}}, "a runtime DMA transfer exceeds the 4294967295-granule BD buffer_length"
+# NPU:       cf.assert %{{.*}}, "a runtime DMA access runs past the end of its 4096-element host buffer"
 # NPU:       aiex.npu.blockwrite_values
-# NPU:       arith.trunci %arg3 : i64 to i32
-# NPU:       aiex.npu.blockwrite_values
+# NPU:       arith.muli %arg3, %{{.*}} : i64
+# NPU:       aiex.npu.address_patch
 
-# A runtime size in ND mode gets its 10-bit field guard.
-# NPU:       emitc.cast %arg5 : ui32 to i64
-# NPU:       aiex.npu.assert_bd_field(%{{.*}}) {max = 1023 : i32} : i32
+# NPU:       %[[U8:.*]] = emitc.cast %arg4 : ui8 to i32
+# NPU:       arith.extui %[[U8]] : i32 to i64
+# NPU:       cf.assert %{{.*}}, "a runtime DMA d1 size must be in [1:1023]"
 # NPU:       aiex.npu.blockwrite_values
 # NPU-NOT:   aiex.dma_configure_task_for

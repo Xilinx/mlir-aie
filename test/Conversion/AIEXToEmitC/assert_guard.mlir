@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A user-level shape constraint on a runtime scalar (aiex.npu.require) lowers
+// A user-level shape constraint on a runtime scalar (cf.assert) lowers
 // to an early `return std::nullopt` in the C++ TXN builder, so a dispatch with
 // a violating value yields no stream instead of a wrong one.
 
@@ -25,7 +25,7 @@ module {
       %c0 = arith.constant 0 : i32
       %rem = arith.remsi %k, %c64 : i32
       %ok = arith.cmpi eq, %rem, %c0 : i32
-      aiex.npu.require(%ok) {message = "K must be a multiple of 64"} : i1
+      cf.assert %ok, "K must be a multiple of 64"
       aiex.npu.write32(%addr, %k) : i32, i32
     }
   }

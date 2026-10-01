@@ -25,6 +25,7 @@
 #include "mlir/Conversion/SCFToEmitC/SCFToEmitC.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -315,45 +316,13 @@ private:
           convertBlockWriteValues(b, loc, bw);
           countOp(b, loc, count);
         })
-        .Case<AIEX::NpuAssertBdFieldOp>([&](auto g) {
-          // Host-side bounds guard: if the runtime value overflows its narrow
-          // BD field, the builder yields no stream (std::nullopt) rather than a
-          // truncated one. Appends nothing, so not counted.
+        .Case<cf::AssertOp>([&](auto a) {
+          // Host-side guard: a violated condition yields no stream
+          // (std::nullopt), and its message is what the host reports. Appends
+          // nothing, so not counted.
           emitc::VerbatimOp::create(
-              b, loc,
-              "if ({} > " + std::to_string(g.getMax()) + ") " +
-                  refuse("a runtime size or stride overflows its buffer "
-                         "descriptor field (at most " +
-                             std::to_string(g.getMax()) + ")",
-                         /*inFormat=*/true),
-              ValueRange{g.getValue()});
-        })
-        .Case<AIEX::NpuAssertBdDivisibleOp>([&](auto g) {
-          // Host-side realizability guard: a runtime size/stride whose byte
-          // extent isn't a whole number of granules can't be encoded, so the
-          // builder yields no stream. allow_unit exempts a unit stride (the
-          // contiguous sub-granule case). Appends nothing, so not counted.
-          std::string d = std::to_string(g.getDivisor());
-          std::string why =
-              refuse("a runtime size or stride is not a whole number of "
-                     "address granules (must be a multiple of " +
-                         d + " elements)",
-                     /*inFormat=*/true);
-          if (g.getAllowUnit())
-            emitc::VerbatimOp::create(
-                b, loc, "if ({} != 1 && {} % " + d + " != 0) " + why,
-                ValueRange{g.getValue(), g.getValue()});
-          else
-            emitc::VerbatimOp::create(b, loc, "if ({} % " + d + " != 0) " + why,
-                                      ValueRange{g.getValue()});
-        })
-        .Case<AIEX::NpuRequireOp>([&](auto g) {
-          // Host-side shape guard: a violated user constraint yields no
-          // stream (std::nullopt), the same contract as the BD-field guards,
-          // and its message is what the host reports. Appends nothing.
-          emitc::VerbatimOp::create(
-              b, loc, "if (!({})) " + refuse(g.getMessage(), /*inFormat=*/true),
-              ValueRange{g.getCond()});
+              b, loc, "if (!({})) " + refuse(a.getMsg(), /*inFormat=*/true),
+              ValueRange{a.getArg()});
         })
         .Case<AIEX::DMABdPoolPopOp>([&](AIEX::DMABdPoolPopOp pop) {
           // Draw a BD id from the tile's runtime pool (declared in the

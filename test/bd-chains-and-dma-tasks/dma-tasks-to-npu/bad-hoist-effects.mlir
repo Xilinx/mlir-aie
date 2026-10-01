@@ -5,7 +5,7 @@
 
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s
 
-// Only side-effect-free scalar ops (and npu.require guards) are moved out of a
+// Only side-effect-free scalar ops (and cf.assert guards) are moved out of a
 // BD block; a register write stays and is rejected.
 
 module {

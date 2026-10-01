@@ -22,9 +22,8 @@ import numpy as np
 
 from ...dialects import (  # pyright: ignore[reportMissingImports]
     arith,  # pyright: ignore[reportAttributeAccessIssue]
-)
-from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
-    NpuRequireOp,
+    cf,  # pyright: ignore[reportAttributeAccessIssue]
+    emitc,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...extras import types as T  # pyright: ignore[reportMissingImports]
 from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
@@ -32,8 +31,13 @@ from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
     constant,
     index_cast,
 )
-from ...ir import IndexType, IntegerType, Value  # pyright: ignore[reportMissingImports]
-from ..dialects.integers import as_signless
+from ...ir import (  # pyright: ignore[reportMissingImports]
+    IndexType,
+    IntegerAttr,
+    IntegerType,
+    OpView,
+    Value,
+)
 
 __all__ = [
     "is_sym",
@@ -93,7 +97,7 @@ def sint(value: Any) -> Any:
     scalar) becomes signless, since arith takes nothing else: zero-extended to
     `i32` when narrower and to `i64` at 32 bits, reinterpreted at 64 bits,
     where a value past the signed range fails the algebra's non-negativity
-    guards.
+    guards. A constant one folds to its `int`.
 
     Raises:
         TypeError: If `value` is neither an integer nor a staged value.
@@ -102,7 +106,12 @@ def sint(value: Any) -> Any:
         if isinstance(value.type, IndexType):
             return index_cast(value, to=T.i32())
         if isinstance(value.type, IntegerType) and value.type.is_unsigned:
-            return as_signless(value, 64 if value.type.width >= 32 else 32)
+            bits = value.type.width
+            owner = value.owner
+            if isinstance(owner, OpView) and owner.operation.name == "emitc.constant":
+                return IntegerAttr(owner.attributes["value"]).value & ((1 << bits) - 1)
+            width = 64 if bits >= 32 else 32
+            return emitc.CastOp(IntegerType.get_signless(width), value).result
         return value
     if is_sym(value):
         return value
@@ -192,7 +201,7 @@ def require(cond: Any, message: str) -> None:
     """Assert a shape constraint at generation time or at dispatch time.
 
     On a Python bool this is `raise ValueError(message)`. On a staged `i1`
-    it emits an `aiex.npu.require`: the generated C++ transaction builder
+    it emits a `cf.assert`: the generated C++ transaction builder
     refuses a dispatch that fails it, and the host raises a
     `HostRuntimeError` carrying `message`.
 
@@ -207,4 +216,4 @@ def require(cond: Any, message: str) -> None:
     if hook is not None:
         hook(message)
         return
-    NpuRequireOp(cond, message)
+    cf.assert_(cond, message)

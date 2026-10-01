@@ -17,6 +17,7 @@ add_mlir_conversion_library(MLIRAIEXToEmitC
   AIEX
   MLIRArithToEmitC
   MLIRArithTransforms
+  MLIRControlFlowDialect
   MLIRSCFToEmitC
   MLIREmitCDialect
   MLIREmitCTransforms

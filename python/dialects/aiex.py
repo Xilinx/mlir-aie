@@ -32,7 +32,6 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..helpers.dialects.integers import as_signless
 from ..helpers.npdtypes import v8bfp16ebs8, v16bfp16ebs16
 from ..ir import (
     DictAttr,
@@ -190,9 +189,6 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
                 sizes = [0] * 4
             if strides is None:
                 strides = [0] * 3 + [1]
-        offsets = [as_signless(v, 64) for v in offsets]
-        sizes = [as_signless(v, 64) for v in sizes]
-        strides = [as_signless(v, 64) for v in strides]
         dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
             offsets
         )
@@ -308,8 +304,9 @@ def shim_dma_bd(
     if strides is None:
         strides = [0] * 3 + [1]
 
-    sizes = [as_signless(v, 64) for v in sizes]
-    if transfer_len is None:
+    if transfer_len is None and all(
+        isinstance(s, (int, np.integer)) for s in sizes[-3:]
+    ):
         transfer_len = functools.reduce(operator.mul, sizes[-3:])
 
     dma_bd(
@@ -408,14 +405,10 @@ def shim_dma_single_bd_task(
             if s0 > 1:
                 repeat_count = int(s0) - 1
         else:
-            # Runtime: repeat = s0 - 1, subtracted in i64 so no s0 wraps, then
-            # guarded to fit the i32 operand; the queue-push lowering guards it
-            # against the target's maximum before masking it to its field.
-            repeat = as_signless(as_signless(s0, 64) - 1, 32, "DMA repeat count")
-            if isinstance(repeat, Value):
-                repeat_count_val = repeat
-            elif repeat > 0:
-                repeat_count = repeat
+            # Runtime: a zero s0 wraps to a huge count, which the queue-push
+            # lowering refuses along with any other one past the target's
+            # maximum.
+            repeat_count_val = s0 - 1
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,

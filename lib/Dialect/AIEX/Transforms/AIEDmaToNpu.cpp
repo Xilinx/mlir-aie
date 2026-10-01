@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
@@ -219,8 +220,8 @@ public:
     uint32_t bdIdMask =
         tm.isMemTile(op.getColumn(), op.getRow()) ? 0x3Fu : 0xFu;
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
-    std::optional<uint32_t> repeat_cnt =
-        getConstantIntOperand(op.getRepeatCount());
+    std::optional<uint64_t> repeat_cnt =
+        getConstantInt64Operand(op.getRepeatCount());
     uint32_t issueBit = op.getIssueToken() ? 0x80000000 : 0;
 
     Value cmdVal;
@@ -235,29 +236,38 @@ public:
       // out-of-range value would silently wrap to a different number of
       // executions. Refuse the dispatch instead (host-side guard); the
       // unsigned compare also rejects a negative count (zero executions).
-      if (!repeat_cnt) {
+      Value repeat;
+      if (repeat_cnt) {
+        repeat = createConstantI32(rewriter, loc, *repeat_cnt);
+      } else {
+        FailureOr<Value> repeat64 =
+            getAsI64(rewriter, loc, OpFoldResult(op.getRepeatCount()));
+        if (failed(repeat64))
+          return failure();
         uint32_t maxRepeat = tm.getMaxRepeatCount();
         Value inRange = arith::CmpIOp::create(
-            rewriter, loc, arith::CmpIPredicate::ule, op.getRepeatCount(),
-            createConstantI32(rewriter, loc, maxRepeat));
-        NpuRequireOp::create(
-            rewriter, loc, inRange,
-            rewriter.getStringAttr(
+            rewriter, loc, arith::CmpIPredicate::ule, *repeat64,
+            arith::ConstantOp::create(rewriter, loc,
+                                      rewriter.getI64IntegerAttr(maxRepeat)));
+        if (failed(emitRuntimeCheck(
+                rewriter, loc, inRange,
                 "a runtime DMA repeat count exceeds the task queue's [0:" +
-                std::to_string(maxRepeat) + "] range (at most " +
-                std::to_string(maxRepeat + 1) + " executions)"));
+                    Twine(maxRepeat) + "] range (at most " +
+                    Twine(maxRepeat + 1) + " executions)")))
+          return failure();
+        repeat =
+            rewriter.createOrFold<arith::TruncIOp>(loc, i32ty, *repeat64);
       }
       Value cmd = createConstantI32(rewriter, loc, issueBit);
-      Value bdField = arith::AndIOp::create(
-          rewriter, loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
+      Value bdField = rewriter.createOrFold<arith::AndIOp>(
+          loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
           createConstantI32(rewriter, loc, bdIdMask));
-      cmd = arith::OrIOp::create(rewriter, loc, cmd, bdField);
-      Value masked =
-          arith::AndIOp::create(rewriter, loc, op.getRepeatCount(),
-                                createConstantI32(rewriter, loc, 0xFF));
-      Value shifted = arith::ShLIOp::create(
-          rewriter, loc, masked, createConstantI32(rewriter, loc, 16));
-      cmdVal = arith::OrIOp::create(rewriter, loc, cmd, shifted);
+      cmd = rewriter.createOrFold<arith::OrIOp>(loc, cmd, bdField);
+      Value masked = rewriter.createOrFold<arith::AndIOp>(
+          loc, repeat, createConstantI32(rewriter, loc, 0xFF));
+      Value shifted = rewriter.createOrFold<arith::ShLIOp>(
+          loc, masked, createConstantI32(rewriter, loc, 16));
+      cmdVal = rewriter.createOrFold<arith::OrIOp>(loc, cmd, shifted);
     }
 
     NpuWrite32Op::create(
@@ -544,7 +554,9 @@ public:
   // back to, and emit the address-patch (plus an offset-state update, if the op
   // carries one) that binds the runtime buffer pointer into the BD. Shared by
   // the static and dynamic lowering paths, which are otherwise identical here.
-  // On success `argIdx` receives the resolved index.
+  // A walk with any runtime offset, size or stride also gets a host-side check
+  // that it stays inside the host buffer. On success `argIdx` receives the
+  // resolved index.
   LogicalResult emitBufferAddressPatch(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                                        ConversionPatternRewriter &rewriter,
                                        int tileCol, int tileRow,
@@ -574,13 +586,28 @@ public:
     // (byte-identical to the static path); a runtime offset operand is built
     // with arith so it flows into the patch instead of being rejected. The
     // subview trace contributes a constant base byte offset.
-    Value argPlus = buildArgPlusValue(
-        rewriter, op->getLoc(),
-        llvm::to_vector(llvm::reverse(op.getMixedOffsets())),
-        llvm::to_vector(llvm::reverse(op.getMixedStrides())),
-        op.getElementTypeBitwidth() / 8, traceResult->offsetInBytes);
+    SmallVector<OpFoldResult> offsets = op.getMixedOffsets();
+    SmallVector<OpFoldResult> strides = op.getMixedStrides();
+    int64_t elemBytes = op.getElementTypeBitwidth() / 8;
+    SmallVector<OpFoldResult> sizes = op.getMixedSizes();
+    bool isRuntime = llvm::any_of(
+        llvm::concat<OpFoldResult>(offsets, sizes, strides),
+        [](OpFoldResult v) { return !getConstantIntValue(v); });
+    if (isRuntime &&
+        failed(guardWithinHostBuffer(
+            rewriter, op->getLoc(),
+            cast<BaseMemRefType>(traceResult->rootArg.getType()),
+            traceResult->offsetInBytes, elemBytes, offsets, strides, sizes,
+            strides)))
+      return failure();
+    FailureOr<Value> argPlus = buildArgPlusValue(
+        rewriter, op->getLoc(), offsets, strides, elemBytes,
+        traceResult->offsetInBytes,
+        targetModel.getAddressGenGranularity() / 8);
+    if (failed(argPlus))
+      return failure();
     NpuAddressPatchOp::create(rewriter, op->getLoc(), patchAddr,
-                              /*addr_val=*/Value(), argIdx, argPlus);
+                              /*addr_val=*/Value(), argIdx, *argPlus);
 
     // If this DMA op has an offset_state_table_idx, emit an
     // update_from_scratchpad to add the runtime offset to the BD address
@@ -634,15 +661,15 @@ public:
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    // buffer_length is the size-product here, hence no override; the encoder
-    // returns the hw repeat_count for the queue push.
+    // buffer_length is the size-product here, hence no explicit length; the
+    // encoder returns the hw repeat_count for the queue push.
     SmallVector<Value> words;
     Value repeatCount;
     if (failed(buildShimBdWords(
             rewriter, loc, targetModel, fields, op.getMixedSizes(),
             op.getMixedStrides(), op.getElementTypeBitwidth(),
             op.getBurstLength(), op.getAxcacheOrDefault(),
-            /*bufLenOverride=*/Value(), repeatCount, words)))
+            /*lenElems=*/OpFoldResult(), repeatCount, words)))
       return failure();
     Value bdBase =
         getBdRegisterBase(rewriter, loc, targetModel, tileCol, tileRow,
@@ -957,6 +984,7 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addLegalDialect<AIEXDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<arith::ArithDialect>();
+    target.addLegalOp<cf::AssertOp>();
     target.addLegalOp<AIE::BufferOp>();
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
     target.addLegalOp<AIE::TileOp>();
@@ -1016,6 +1044,8 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     pushPatterns.insert<PushQueuetoWrite32Pattern>(&getContext());
     if (failed(applyPartialConversion(device, target, std::move(pushPatterns))))
       signalPassFailure();
+
+    eraseDeadArith(device);
   }
 };
 

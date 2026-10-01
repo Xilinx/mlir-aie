@@ -30,12 +30,11 @@ module {
 
 // A runtime (SSA) bd_id is no longer rejected: the command word is assembled
 // with arith (bd_id & 0xF, or'd with the issue-token bit and the shifted
-// repeat_count) instead of folded to a constant.
+// repeat_count) instead of folded to a constant; a zero repeat_count folds away.
 // CHECK-LABEL: @rt_bd_id
 // CHECK: %[[BD:.*]] = arith.andi %arg0, %{{.*}} : i32
-// CHECK: %[[CMD:.*]] = arith.ori %{{.*}}, %[[BD]] : i32
-// CHECK: %[[CMD2:.*]] = arith.ori %[[CMD]], %{{.*}} : i32
-// CHECK: aiex.npu.write32(%{{.*}}, %[[CMD2]])
+// CHECK: %[[CMD:.*]] = arith.ori %[[BD]], %c-2147483648_i32 : i32
+// CHECK: aiex.npu.write32(%{{.*}}, %[[CMD]])
 module {
   aie.device(npu1) {
     aie.runtime_sequence @rt_bd_id(%arg0: i32) {
@@ -49,10 +48,8 @@ module {
 
 // A mem tile has a 6-bit START_BD_ID field (48 BDs), so a head bd_id >= 16 must
 // survive the push: the command word keeps bd_id 20 (0x14); a flat 4-bit mask
-// would give 20 & 0xF = 4. (The bd_id operand and the command word are both the
-// constant 20; match the second, which feeds the write32.)
+// would give 20 & 0xF = 4.
 // CHECK-LABEL: @mem_tile_bd_id
-// CHECK: arith.constant 20 : i32
 // CHECK: %[[CMD:.*]] = arith.constant 20 : i32
 // CHECK: aiex.npu.write32(%{{.*}}, %[[CMD]])
 module {
@@ -72,9 +69,9 @@ module {
 // wrapping to a different number of executions. A constant count carries no
 // guard (the verifier range-checks it).
 // CHECK-LABEL: @rt_repeat
-// CHECK: %[[MAX:.*]] = arith.constant 255 : i32
-// CHECK: %[[OK:.*]] = arith.cmpi ule, %arg0, %[[MAX]] : i32
-// CHECK: aiex.npu.require(%[[OK]]) {message = "a runtime DMA repeat count exceeds the task queue's [0:255] range (at most 256 executions)"} : i1
+// CHECK: %[[R:.*]] = arith.extui %arg0 : i32 to i64
+// CHECK: %[[OK:.*]] = arith.cmpi ule, %[[R]], %c255_i64 : i64
+// CHECK: cf.assert %[[OK]], "a runtime DMA repeat count exceeds the task queue's [0:255] range (at most 256 executions)"
 // CHECK: arith.andi %arg0, %{{.*}} : i32
 // CHECK: aiex.npu.write32
 module {

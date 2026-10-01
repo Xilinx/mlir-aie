@@ -454,6 +454,13 @@ public:
     return getDmaBdIterBits(getTileType(col, row));
   }
 
+  /// Return the largest iteration count a BD on `tileType` can encode. A
+  /// re-read of the same data (zero iteration stride) is a task-queue repeat
+  /// instead, bounded by getMaxRepeatCount() + 1.
+  uint64_t getMaxBdIterationCount(AIETileType tileType) const {
+    return 1ULL << getDmaBdIterBits(tileType);
+  }
+
   /// Return the number of buffer descriptors accessible on channel `channel`
   /// for the tile at (`col`, `row`). For tiles with no per-channel BD
   /// partitioning this equals getNumBDs(col, row).

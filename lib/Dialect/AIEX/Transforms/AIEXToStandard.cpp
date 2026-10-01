@@ -59,7 +59,6 @@ struct AIEXToStandardPass
     removepatterns.add<AIEXOpRemoval<NpuWriteBdOp>>(m.getContext(), m);
     removepatterns.add<AIEXOpRemoval<NpuAddressPatchOp>>(m.getContext(), m);
     removepatterns.add<AIEXOpRemoval<NpuPreemptOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<NpuRequireOp>>(m.getContext(), m);
     removepatterns.add<AIEXOpRemoval<NpuCreateScratchpadOp>>(m.getContext(), m);
     removepatterns.add<AIEXOpRemoval<NpuUpdateFromScratchpadOp>>(m.getContext(),
                                                                  m);

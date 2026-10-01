@@ -13,10 +13,12 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Runtime/TxnEncoding.h"
 
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "llvm/ADT/DenseMap.h"
@@ -395,21 +397,20 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   for (Block &block : seq.getBody()) {
     for (Operation &o : block) {
       llvm::TypeSwitch<Operation *>(&o)
-          .Case<NpuRequireOp>([&](auto op) {
+          .Case<cf::AssertOp>([&](auto op) {
             // A static sequence only ever carries a constant-true guard
-            // (canonicalization erases it); a live constant-false one is the
-            // ValueError the static Python path raises, and anything
-            // unresolved means a runtime value reached the binary path.
-            auto c = getConstantIntValue(op.getCond());
+            // (canonicalization erases it); a constant-false one failed at
+            // compile time, and anything unresolved means a runtime value
+            // reached the binary path.
+            auto c = getConstantIntValue(op.getArg());
             if (c && *c == 0) {
-              op.emitOpError("shape constraint is violated at compile time: ")
-                  << op.getMessage();
+              op.emitOpError("is violated at compile time: ") << op.getMsg();
               result = failure();
             } else if (!c) {
-              op.emitOpError("runtime shape constraint cannot be encoded in "
-                             "a static TXN binary; use the C++ builder "
-                             "(--aie-npu-to-cpp) or specialize the value: ")
-                  << op.getMessage();
+              op.emitOpError("runtime check cannot be encoded in a static TXN "
+                             "binary; use the C++ builder (--aie-npu-to-cpp) "
+                             "or specialize the value: ")
+                  << op.getMsg();
               result = failure();
             }
           })
@@ -503,6 +504,17 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
               result = failure();
             pushLocEntry(locmap, before, byteOffset(), "UPDATE_FROM_SCRATCHPAD",
                          op->getName().getStringRef(), std::nullopt, op, tm);
+          })
+          .Default([&](Operation *op) {
+            // Pure values (constants, the operands above) need no encoding;
+            // control packets have their own translation. Anything else would
+            // be dropped from the binary without a trace.
+            if (isMemoryEffectFree(op) ||
+                op->hasTrait<OpTrait::IsTerminator>() ||
+                isa<NpuControlPacketOp>(op))
+              return;
+            op->emitOpError("has no static TXN encoding");
+            result = failure();
           });
     }
   }

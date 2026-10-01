@@ -18,7 +18,7 @@ module {
     aie.runtime_sequence @seq(%arg0: memref<8xi32>, %n: i32) {
       %c1 = arith.constant 1 : i32
       %ok = arith.cmpi sge, %n, %c1 : i32
-      aiex.npu.require(%ok) {message = "sizes must be >= 1, got [{v = 3 : i32}, 1]\0Aon one line"} : i1
+      cf.assert %ok, "sizes must be >= 1, got [{v = 3 : i32}, 1]\0Aon one line"
       %addr = arith.constant 100 : i32
       aiex.npu.write32(%addr, %n) : i32, i32
     }

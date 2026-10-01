@@ -11,7 +11,11 @@
 // dma_memcpy_nd path.
 
 // CHECK-LABEL: aie.runtime_sequence
-// CHECK: aiex.npu.assert_bd_divisible(%{{.*}}) {allow_unit, divisor = 4 : i32}
+// CHECK: %[[UNIT:.*]] = arith.cmpi eq, %arg2, %{{.*}} : i64
+// CHECK: %[[REM:.*]] = arith.remui %arg2, %{{.*}} : i64
+// CHECK: %[[ALIGNED:.*]] = arith.cmpi eq, %[[REM]], %{{.*}} : i64
+// CHECK: %[[OK:.*]] = arith.ori %[[UNIT]], %[[ALIGNED]] : i1
+// CHECK: cf.assert %[[OK]], "a runtime DMA d0 stride must be a multiple of 4 elements (whole 4-byte granules)"
 // CHECK: aiex.npu.blockwrite_values
 
 module {
