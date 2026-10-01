@@ -18,7 +18,7 @@ PAGE = ROOT / "utils/kernel_checks/index.html"
 
 
 @pytest.fixture
-def page():
+def page(tmp_path):
     node = shutil.which("node")
     if not node:
         pytest.skip("node is required to test the kernel checks page")
@@ -86,7 +86,12 @@ const el0 = {};
 """
 
     def run(checks):
-        subprocess.run([node, "-e", setup + script + data + checks], check=True)
+        # Run from a file, not `node -e <script>`: the page's <script> body is
+        # large enough that inlining it blows Windows' ~32767-char command
+        # line limit (FileNotFoundError: [WinError 206] ... too long).
+        script_file = tmp_path / "page_test.js"
+        script_file.write_text(setup + script + data + checks)
+        subprocess.run([node, str(script_file)], check=True)
 
     return run
 

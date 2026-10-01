@@ -7,6 +7,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -19,6 +20,12 @@ WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 def workflow(name):
     # Avoid YAML 1.1 interpreting GitHub's "on" key as a boolean.
     return yaml.load((WORKFLOWS / name).read_text(), Loader=yaml.BaseLoader)
+
+
+# Resolve bash in PATH order: a bare "bash" argv[0] goes through CreateProcess's
+# search, which checks System32 before PATH and so finds Windows' WSL launcher
+# stub instead of Git for Windows' bash.
+BASH = shutil.which("bash") or "bash"
 
 
 def test_baseline_cache_key_is_unique_per_attempt_and_restorable():
@@ -52,7 +59,7 @@ def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path
     run = next(step["run"] for step in steps if step.get("id") == "perf")
     command = run[run.index("python -m pytest") :].split("2>&1", 1)[0]
     result = subprocess.run(
-        ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
+        [BASH, "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
         cwd=tmp_path,
         env={**os.environ, "ONLY": only, "REQUIRED_PMODE": "any"},
         capture_output=True,
@@ -94,7 +101,7 @@ def run_peano_step(peano, tmp_path):
         'else printf "%s\\n" "$@" > pip-args; fi; }\n'
     )
     result = subprocess.run(
-        ["bash", "-eo", "pipefail", "-c", stubs + step["run"]],
+        [BASH, "-eo", "pipefail", "-c", stubs + step["run"]],
         cwd=tmp_path,
         env={
             **os.environ,
@@ -141,7 +148,7 @@ def run_step(run, cwd):
     output = cwd / "github_output"
     output.write_text("")
     subprocess.run(
-        ["bash", "-eo", "pipefail", "-c", run],
+        [BASH, "-eo", "pipefail", "-c", run],
         cwd=cwd,
         env={**os.environ, "GITHUB_OUTPUT": str(output)},
         check=True,
