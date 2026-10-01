@@ -626,9 +626,6 @@ class TileGrid(TensorAccessSequence):
         for step in range(len(self)):
             yield self._tile_at(step)
 
-    def __contains__(self, tap: object) -> bool:
-        return tap in self._taps
-
     def _immutable(self) -> TypeError:
         return TypeError(
             "a TileGrid cannot be edited; build a TensorAccessSequence.from_taps(list(grid)) to edit"
@@ -765,11 +762,7 @@ class TileGrid(TensorAccessSequence):
             require(s >= 1, f"steps[{i}] must be >= 1")
             require(r >= 1, f"repeats[{i}] must be >= 1")
             # A step wider than the axis degenerates to 1.
-            s = (
-                sselect(s > g, 1, s)
-                if (is_sym(s) or is_sym(g))
-                else (1 if s > g else s)
-            )
+            s = sselect(s > g, 1, s)
             if partial:
                 r = smin(r, sceildiv(g, s))
                 blocks = g // (s * r)

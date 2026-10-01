@@ -35,6 +35,7 @@ from .utils import (
     validate_offset,
     validate_permutation,
     validate_tensor_dims,
+    zero_leading_unit_strides,
 )
 
 if TYPE_CHECKING:
@@ -54,16 +55,6 @@ def _accesses(
     np.maximum.at(order, idx, np.arange(idx.size, dtype=order.dtype))
     count = np.bincount(idx, minlength=numel).astype(TensorAccessPattern._DTYPE)
     return order.reshape(tensor_dims), count.reshape(tensor_dims)
-
-
-def _clean_leading_units(sizes: list, strides: list) -> list:
-    """Zero the stride of every leading unit dimension (they never step)."""
-    strides = list(strides)
-    for i in range(len(sizes) - 1):
-        if is_sym(sizes[i]) or sizes[i] != 1:
-            break
-        strides[i] = 0
-    return strides
 
 
 class TensorAccessPattern:
@@ -134,7 +125,7 @@ class TensorAccessPattern:
         out._tensor_dims = list(tensor_dims)
         out._offset = offset
         out._sizes = list(sizes)
-        out._strides = _clean_leading_units(list(sizes), list(strides))
+        out._strides = zero_leading_unit_strides(sizes, strides)
         out._padding = padding
         return out
 
@@ -593,13 +584,7 @@ class TensorAccessPattern:
         else:
             sizes = [1] * pad + out._sizes
             strides = [0] * pad + out._strides
-        # A unit dimension ahead of the first real one never steps, so its
-        # stride is 0; the repeat slot is transparent to that scan, and a
-        # staged size ends it.
-        for i in range(1 if is_repeat else 0, len(sizes)):
-            if is_sym(sizes[i]) or sizes[i] != 1:
-                break
-            strides[i] = 0
+        strides = zero_leading_unit_strides(sizes, strides, start=int(is_repeat))
         return out._with(sizes=sizes, strides=strides)
 
     # ------------------------------------------------------------ simulation

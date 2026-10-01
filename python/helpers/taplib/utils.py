@@ -3,9 +3,7 @@
 
 from typing import Sequence
 
-import numpy as np
-
-from .symbolic import is_sym, require, show, sprod, sym_any
+from .symbolic import is_sym, require, show, sprod
 
 
 def validate_and_clean_sizes_strides(
@@ -63,11 +61,6 @@ def validate_and_clean_sizes_strides(
             raise ValueError(
                 f"len(sizes) ({len(sizes)}) != len(strides) ({len(strides)})"
             )
-    if strides:
-        num_dims = len(strides)
-    else:
-        assert sizes is not None
-        num_dims = len(sizes)
 
     # Validate sizes/strides values. A staged (runtime) value becomes a
     # dispatch-time guard instead of a generation-time check.
@@ -80,16 +73,26 @@ def validate_and_clean_sizes_strides(
         for s in strides:
             require(s >= 0, f"All strides must be >= 0, but got {show(strides)}")
 
-    # Clean (set size=1, stride=0 for as many dims as possible). Rank and
-    # unit-ness are structural, so a staged size stops the scan.
     if sizes and strides:
-        strides = list(strides)
-        # Leave last dimension strides as whatever it happens to be
-        for i in range(num_dims - 1):
-            if is_sym(sizes[i]) or sizes[i] != 1:
-                break
-            strides[i] = 0
+        strides = zero_leading_unit_strides(sizes, strides)
     return sizes, strides
+
+
+def zero_leading_unit_strides(
+    sizes: Sequence, strides: Sequence, start: int = 0
+) -> list:
+    """Zero the stride of each unit dimension from `start` up to the first that steps.
+
+    A unit dimension never steps, so this makes equal walks compare equal.
+    The innermost stride is left as is. Rank and unit-ness are structural,
+    so a staged size ends the scan.
+    """
+    strides = list(strides)
+    for i in range(start, len(sizes) - 1):
+        if is_sym(sizes[i]) or sizes[i] != 1:
+            break
+        strides[i] = 0
+    return strides
 
 
 def validate_tensor_dims(
@@ -152,9 +155,7 @@ def validate_offset(offset: int, tensor_dims: Sequence[int] | None) -> int:
     """
     require(offset >= 0, f"Offset must be >= 0 (offset={show(offset)})")
     if tensor_dims:
-        numel = (
-            sprod(tensor_dims) if sym_any(tensor_dims) else int(np.prod(tensor_dims))
-        )
+        numel = sprod(tensor_dims)
         require(
             offset < numel,
             f"Offset too large: {show(offset)}. Max value allowed for tensor: {numel}",

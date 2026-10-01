@@ -3,18 +3,15 @@
 """Integer helpers that behave identically on Python ints and staged MLIR values.
 
 The access-pattern algebra in `tap.py` and `tas.py` is pure integer
-arithmetic plus a handful of decisions that inspect a value: a minimum, a ceiling division, a conditional
-choice, a product, and a validity check. On Python ints these helpers are the
-obvious builtins and produce exactly the numbers `taplib` produced before the
-algebra existed. On a staged value (an `aie.ir.Value` carrying a runtime
-scalar inside a runtime-sequence body) they emit the equivalent `arith` ops
-instead, so the same pattern code serves the static instruction path and the
-dynamic C++ transaction builder.
+arithmetic plus a handful of decisions that inspect a value: a minimum, a
+ceiling division, a conditional choice, a product, and a validity check. On
+Python ints these helpers are the obvious builtins. On a staged value (an
+`aie.ir.Value` carrying a runtime scalar inside a runtime-sequence body) they
+emit the equivalent `arith` ops instead, so the same pattern code serves the
+static instruction path and the dynamic C++ transaction builder.
 
-Only `addi/subi/muli/divsi/remsi/cmpi/select` are ever emitted: upstream
-`ArithToEmitC` has no patterns for `minsi`, `ceildivsi` or `floordivsi`.
-Every operand here is a shape, tile count or offset, hence non-negative, so
-`divsi`/`remsi` coincide with Python's floor semantics.
+Each decision is built from integer operators, comparisons and `sselect`,
+so a test stand-in that overloads those drives every staged branch too.
 """
 
 from __future__ import annotations
@@ -40,6 +37,7 @@ from ..dialects.integers import as_signless
 
 __all__ = [
     "is_sym",
+    "show",
     "sym_any",
     "sint",
     "smin",
@@ -93,14 +91,21 @@ def sint(value: Any) -> Any:
     to `i32`, the width dispatch-time scalars carry, so a loop counter can
     index a tiler directly. An unsigned one (a `DispatchTime[np.uint*]`
     scalar) becomes signless, since arith takes nothing else: zero-extended to
-    `i32` when narrower, reinterpreted at its own width otherwise, where a
-    value past the signed range fails the algebra's non-negativity guards.
+    `i32` when narrower and to `i64` at 32 bits, reinterpreted at 64 bits,
+    where a value past the signed range fails the algebra's non-negativity
+    guards.
 
     Raises:
         TypeError: If `value` is neither an integer nor a staged value.
     """
+    if isinstance(value, Value):
+        if isinstance(value.type, IndexType):
+            return index_cast(value, to=T.i32())
+        if isinstance(value.type, IntegerType) and value.type.is_unsigned:
+            return as_signless(value, 64 if value.type.width >= 32 else 32)
+        return value
     if is_sym(value):
-        return _signless(value)
+        return value
     if isinstance(value, bool):
         raise TypeError("expected an integer, got a bool")
     if isinstance(value, (int, np.integer)):
@@ -108,17 +113,6 @@ def sint(value: Any) -> Any:
     raise TypeError(
         f"expected an integer or a staged value, got {type(value).__name__}"
     )
-
-
-def _signless(value: Any) -> Any:
-    """Cast an `index` or unsigned MLIR value to a signless integer; anything else passes through."""
-    if not isinstance(value, Value):
-        return value
-    if isinstance(value.type, IndexType):
-        return index_cast(value, to=T.i32())
-    if isinstance(value.type, IntegerType) and value.type.is_unsigned:
-        return as_signless(value, 64 if value.type.width >= 32 else 32)
-    return value
 
 
 def _cmp_lt(a: Any, b: Any) -> Any:
@@ -175,10 +169,8 @@ def smax(a: Any, b: Any) -> Any:
 def sceildiv(a: Any, b: Any) -> Any:
     """Ceiling division for non-negative operands.
 
-    Staged as `a // b + (a % b > 0)` rather than `-(a // -b)`, because the
-    staged `//` lowers to `divsi`, which truncates toward zero, and rather
-    than `(a + b - 1) // b`, whose addition can overflow a runtime `i32`
-    even when the quotient fits.
+    Staged as `a // b + (a % b > 0)` rather than `(a + b - 1) // b`, whose
+    addition can overflow a runtime `i32` even when the quotient fits.
     """
     if not (is_sym(a) or is_sym(b)):
         return -(-a // b)
@@ -200,9 +192,9 @@ def require(cond: Any, message: str) -> None:
     """Assert a shape constraint at generation time or at dispatch time.
 
     On a Python bool this is `raise ValueError(message)`. On a staged `i1`
-    it records a runtime guard: the generated C++ transaction builder returns
-    `std::nullopt` (surfaced as a `HostRuntimeError`) when the condition
-    fails at dispatch, mirroring the existing BD-field overflow guards.
+    it emits an `aiex.npu.require`: the generated C++ transaction builder
+    refuses a dispatch that fails it, and the host raises a
+    `HostRuntimeError` carrying `message`.
 
     Raises:
         ValueError: If a concrete condition is false.
