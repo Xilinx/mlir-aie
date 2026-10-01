@@ -70,7 +70,7 @@ print(Program(NPU1Col1(), rt).resolve_program())
 # CHECK:         aie.dma_bd(%arg0 : memref<4096xi32> offset = %{{.*}} len = %{{.*}} sizes = [1, 1, %[[U8W]], 16] strides = [0, 0, 32, 1])
 
 # The lowering hoists every cast and guard out of the BD blocks and encodes
-# each BD into words; a runtime size in ND mode gets its 10-bit field guard.
+# each BD into words.
 # NPU-LABEL: aie.runtime_sequence
 # NPU-NOT:   aiex.dma_configure_task_for
 # NPU:       arith.extsi %arg2 : i32 to i64
@@ -78,6 +78,8 @@ print(Program(NPU1Col1(), rt).resolve_program())
 # NPU:       aiex.npu.blockwrite_values
 # NPU:       arith.trunci %arg3 : i64 to i32
 # NPU:       aiex.npu.blockwrite_values
+
+# A runtime size in ND mode gets its 10-bit field guard.
 # NPU:       emitc.cast %arg5 : ui32 to i64
 # NPU:       aiex.npu.assert_bd_field(%{{.*}}) {max = 1023 : i32} : i32
 # NPU:       aiex.npu.blockwrite_values
