@@ -267,7 +267,11 @@ jobs:
 
           mkdir my_install
           pushd my_install
-          python -m pip -q download mlir==%MLIR_VERSION% -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          REM Fetch the ~1GB wheel with curl, not pip download: pip has no stall
+          REM detection, and a throttled release-assets connection was observed
+          REM trickling for 27+ min after a read timeout. --speed-limit/--speed-time
+          REM abort a stalled transfer and --retry -C - resumes it.
+          curl.exe --fail --location --connect-timeout 15 --speed-limit 1048576 --speed-time 60 --retry 5 --retry-all-errors --retry-delay 5 -C - -o "mlir-%MLIR_VERSION%-py3-none-win_amd64.whl" "https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-%MLIR_VERSION%-py3-none-win_amd64.whl"
           if errorlevel 1 exit /b 1
           dir mlir-*.whl
           python -c "import zipfile,glob; zipfile.ZipFile(glob.glob('mlir-*.whl')[0]).extractall('.')"
