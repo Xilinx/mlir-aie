@@ -968,7 +968,7 @@
         return { level, headline: `${text[0].toUpperCase()}${text.slice(1)}.`, quiet };
       }
       const timed = counts.known ? counts.timed : (night.latest.cases.size || 0);
-      const compared = moved ? ' Nothing got slower or bigger.' : ' No earlier night to compare with.';
+      const compared = moved && night.since ? ' Nothing got slower or bigger.' : ' No earlier nightly to compare with yet.';
       return { level, headline: `All ${timed} timed cases ran.${compared}`, quiet };
     }
 
