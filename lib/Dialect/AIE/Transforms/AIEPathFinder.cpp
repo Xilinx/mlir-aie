@@ -1421,7 +1421,7 @@ void Pathfinder::TreeBuilder::claim() {
     SwitchboxConnect::Cell &cell = sb.at(i, j);
     if (packetId)
       st.treeOf[flow].try_emplace(currId, predId, e);
-    cell.isPriority = part.isPriorityFlow;
+    cell.isPriority |= part.isPriorityFlow;
     // Packet flows in the same group may share a channel, but only if
     // their ids differ, so two same-id flows never merge onto a channel
     // and then fan back out to separate destinations. The flow's own
