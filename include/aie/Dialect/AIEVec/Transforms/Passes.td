@@ -27,13 +27,11 @@ def SplitVectorLoadUpsChains : Pass<"aievec-split-load-ups-chains"> {
     the full-width value with shuffles.
   }];
   let constructor = "xilinx::aievec::createSplitVectorLoadUpsChainsPass()";
-  let dependentDialects = [
-    "mlir::vector::VectorDialect",
-    "mlir::arith::ArithDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::affine::AffineDialect",
-    "xilinx::aievec::AIEVecDialect"
-  ];
+  let dependentDialects = ["mlir::vector::VectorDialect",
+                           "mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
+                           "mlir::affine::AffineDialect",
+                           "xilinx::aievec::AIEVecDialect"];
 }
 
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES
