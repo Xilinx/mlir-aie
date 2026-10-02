@@ -1224,7 +1224,8 @@ def test_bf16_matvec_matches_the_iron_gemv_signature():
 def test_col_maj_matvec_is_an_mv_layout():
     # (flags, A, b, acc, c): A is dim_k stored rows of dim_m, acc carries
     # vec_size * dim_m float sums from call to call.
-    fn = kernels.mv_col_maj(dim_m=64, dim_k=128, vec_size=64)
+    bf16 = dict(input_dtype=bfloat16, output_dtype=bfloat16, a_col_maj=True)
+    fn = kernels.mv(dim_m=64, dim_k=128, vec_size=64, **bf16)
     types = fn.arg_types()
     assert types[0] is np.int32
     assert [kd.shape_dtype(t) for t in types[1:]] == [
@@ -1237,32 +1238,18 @@ def test_col_maj_matvec_is_an_mv_layout():
     assert {"-DA_COL_MAJ", "-DDIM_M=64", "-DDIM_K=128", "-DVEC_SIZE=64"} <= set(
         fn.compile_flags
     )
-    via_mv = kernels.mv(
-        dim_m=64,
-        dim_k=128,
-        input_dtype=bfloat16,
-        output_dtype=bfloat16,
-        vec_size=64,
-        a_col_maj=True,
-    )
-    assert via_mv.name == fn.name
+    assert fn.name.split("_", 1)[-1] == "matvec_vectorized_col_maj_bf16_bf16"
+    assert fn.contract.roles == (Param, In, In, Param, Out)
     assert kernels.MV_COL_MAJ_FIRST & kernels.MV_COL_MAJ_LAST == 0
     for kwargs, match in (
-        (dict(dim_k=96), "multiple of vec_size"),
-        (dict(dim_m=48), "dim_m"),
-        (dict(vec_size=8), "vec_size"),
+        (dict(dim_m=64, dim_k=96), "multiple of vec_size"),
+        (dict(dim_m=48, dim_k=128), "dim_m"),
+        (dict(dim_m=64, dim_k=128, vec_size=8), "vec_size"),
+        (dict(dim_m=64, dim_k=128, output_rows=128), "output_rows"),
+        (dict(dim_m=64, dim_k=128, vectorized=False), "vectorized"),
     ):
         with pytest.raises(ValueError, match=match):
-            kernels.mv_col_maj(**kwargs)
-    with pytest.raises(ValueError, match="output_rows"):
-        kernels.mv(
-            dim_m=64,
-            dim_k=128,
-            input_dtype=bfloat16,
-            output_dtype=bfloat16,
-            output_rows=128,
-            a_col_maj=True,
-        )
+            kernels.mv(**kwargs, **bf16)
     with pytest.raises(ValueError, match="bf16"):
         kernels.mv(dim_m=32, dim_k=32, a_col_maj=True)
 

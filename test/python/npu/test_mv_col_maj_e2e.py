@@ -40,7 +40,14 @@ def _col_maj_design(
     chunk: CompileTime[int],
     vec_size: CompileTime[int],
 ):
-    kernel = kernels.mv_col_maj(dim_m, chunk, vec_size=vec_size)
+    kernel = kernels.mv(
+        dim_m,
+        chunk,
+        input_dtype=bfloat16,
+        output_dtype=bfloat16,
+        vec_size=vec_size,
+        a_col_maj=True,
+    )
     _, a_ty, b_ty, acc_ty, c_ty = kernel.arg_types()
     of_a = ObjectFifo(a_ty, name="a")
     of_b = ObjectFifo(b_ty, name="b")

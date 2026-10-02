@@ -328,11 +328,11 @@ mv/4x128x4/bfloat16/vec_size=64/edge-two-chunks
 mv/4x2048x16/bfloat16/vec_size=64
 mv/4x64x16/bfloat16/vec_size=32
 mv/4x64x4/bfloat16/vec_size=64/edge-one-chunk
+mv/512x4/bfloat16/a_col_maj=True/vec_size=16/edge-narrowest
 mv/6x128x4/bfloat16/vec_size=64/edge-rows-not-multiple-of-4
 mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down
-mv_col_maj/512x4/bfloat16/vec_size=16/edge-narrowest
-mv_col_maj/8192x4/bfloat16/vec_size=32/edge-eight-vectors
-mv_col_maj/8192x4/bfloat16/vec_size=64
+mv/8192x4/bfloat16/a_col_maj=True/vec_size=32/edge-eight-vectors
+mv/8192x4/bfloat16/a_col_maj=True/vec_size=64
 passthrough/1024x16/int16
 passthrough/128x4/int16/edge-tiny
 passthrough/16x4/int32/edge-one-vector

@@ -645,23 +645,28 @@ CASES: list[Case] = [
     # attention context shape (64 head dims, 128 cached positions per call),
     # and the narrowest output block at the narrowest VEC_SIZE. Calls that
     # carry sums across K are test_mv_col_maj_e2e.py's.
-    Case("mv_col_maj", dict(dim_m=64, dim_k=128, vec_size=64), calls=4, smoke=True),
-    Case(
-        "mv_col_maj",
-        dict(dim_m=32, dim_k=256, vec_size=32),
-        calls=4,
-        tag="edge-eight-vectors",
-        smoke=True,
-        perf=False,
-    ),
-    Case(
-        "mv_col_maj",
-        dict(dim_m=16, dim_k=32, vec_size=16),
-        calls=4,
-        tag="edge-narrowest",
-        smoke=True,
-        perf=False,
-    ),
+    *[
+        Case(
+            "mv",
+            dict(
+                dim_m=dim_m,
+                dim_k=dim_k,
+                input_dtype=bfloat16,
+                output_dtype=bfloat16,
+                vec_size=vec_size,
+                a_col_maj=True,
+            ),
+            calls=4,
+            tag=tag,
+            smoke=True,
+            perf=not tag,
+        )
+        for dim_m, dim_k, vec_size, tag in (
+            (64, 128, 64, ""),
+            (32, 256, 32, "edge-eight-vectors"),
+            (16, 32, 16, "edge-narrowest"),
+        )
+    ],
     # reduce companion, gated activation
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),
