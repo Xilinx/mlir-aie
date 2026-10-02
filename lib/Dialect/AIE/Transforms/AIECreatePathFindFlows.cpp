@@ -1438,6 +1438,7 @@ struct PacketFlowRouting {
   // nothing else does. The next routing may reach the tile by another slave
   // port, so the split holds for the tile.
   std::set<TreeSplit> hazardSplits;
+  std::set<std::pair<PathEndPoint, PathEndPoint>> hazardApart;
   std::set<TileID> crowdedTiles;
   std::optional<std::string> planFailure;
   // The first flow whose source the routing leaves unconnected. The routing
@@ -1847,60 +1848,93 @@ std::optional<ArbiterPlan> PacketFlowRouting::planTile(
 
   // A flow that leaves by the overlay's master ports alone takes the amsel
   // that selects them (checkRules lets no other flow reach them).
-  auto arbiterOf = [&](size_t f) {
-    return plan->slaveAmsels.at(key(f)) % numArbiters;
-  };
-  SmallVector<size_t, 8> placed(overlay), rest;
-  for (size_t f : others) {
-    auto same = llvm::find_if(plan->amselMasters, [&](const auto &entry) {
-      return entry.second == flows[f].masters;
-    });
-    if (same == plan->amselMasters.end()) {
-      rest.push_back(f);
-      continue;
-    }
-    for (size_t g : placed)
-      if (arbiterOf(g) == same->first % numArbiters &&
-          flows[g].slave != flows[f].slave && conflict(f, g))
-        blocking.push_back({g, f});
-    if (excluded(f, same->first % numArbiters))
-      blocking.push_back({overlay.front(), f});
-    plan->slaveAmsels[key(f)] = same->first;
-    placed.push_back(f);
-  }
-  if (!blocking.empty() || rest.empty())
-    return blocking.empty() ? plan : std::nullopt;
-
-  std::set<int> reserved = reservedAmsels[tileId];
-  for (int amsel : llvm::make_first_range(plan->amselMasters))
-    reserved.insert(amsel);
-  stuck.clear();
-  std::optional<ArbiterPlan> around = planArbiters(
-      targetModel, subset(rest),
-      [&](size_t a, size_t b) { return conflict(rest[a], rest[b]); },
-      [&](size_t f, int arbiter) {
-        return excluded(rest[f], arbiter) ||
-               llvm::any_of(placed, [&](size_t g) {
-                 return arbiterOf(g) == arbiter &&
-                        flows[g].slave != flows[rest[f]].slave &&
-                        conflict(rest[f], g);
-               });
-      },
-      reserved, stuck);
-  if (!around) {
-    for (auto [a, b] : stuck)
-      blocking.push_back({rest[a], rest[b]});
-    for (size_t f : rest)
+  auto around = [&](ArbiterPlan plan, ArrayRef<size_t> planned,
+                    ArrayRef<size_t> pending,
+                    SmallVectorImpl<std::pair<size_t, size_t>> &blocking)
+      -> std::optional<ArbiterPlan> {
+    auto arbiterOf = [&](size_t f) {
+      return plan.slaveAmsels.at(key(f)) % numArbiters;
+    };
+    SmallVector<size_t, 8> placed(planned), rest;
+    for (size_t f : pending) {
+      auto same = llvm::find_if(plan.amselMasters, [&](const auto &entry) {
+        return entry.second == flows[f].masters;
+      });
+      if (same == plan.amselMasters.end()) {
+        rest.push_back(f);
+        continue;
+      }
       for (size_t g : placed)
-        if (flows[g].slave != flows[f].slave && conflict(f, g))
+        if (arbiterOf(g) == same->first % numArbiters &&
+            flows[g].slave != flows[f].slave && conflict(f, g))
           blocking.push_back({g, f});
+      if (excluded(f, same->first % numArbiters))
+        blocking.push_back({planned.front(), f});
+      plan.slaveAmsels[key(f)] = same->first;
+      placed.push_back(f);
+    }
+    if (!blocking.empty())
+      return std::nullopt;
+    if (rest.empty())
+      return plan;
+
+    std::set<int> reserved = reservedAmsels[tileId];
+    for (int amsel : llvm::make_first_range(plan.amselMasters))
+      reserved.insert(amsel);
+    SmallVector<std::pair<size_t, size_t>, 4> stuck;
+    std::optional<ArbiterPlan> rested = planArbiters(
+        targetModel, subset(rest),
+        [&](size_t a, size_t b) { return conflict(rest[a], rest[b]); },
+        [&](size_t f, int arbiter) {
+          return excluded(rest[f], arbiter) ||
+                 llvm::any_of(placed, [&](size_t g) {
+                   return arbiterOf(g) == arbiter &&
+                          flows[g].slave != flows[rest[f]].slave &&
+                          conflict(rest[f], g);
+                 });
+        },
+        reserved, stuck);
+    if (!rested) {
+      for (auto [a, b] : stuck)
+        blocking.push_back({rest[a], rest[b]});
+      for (size_t f : rest)
+        for (size_t g : placed)
+          if (flows[g].slave != flows[f].slave && conflict(f, g))
+            blocking.push_back({g, f});
+      return std::nullopt;
+    }
+    plan.slaveAmsels.insert(rested->slaveAmsels.begin(),
+                            rested->slaveAmsels.end());
+    plan.amselMasters.insert(rested->amselMasters.begin(),
+                             rested->amselMasters.end());
+    return plan;
+  };
+  SmallVector<std::pair<size_t, size_t>, 4> first;
+  if (std::optional<ArbiterPlan> placed = around(*plan, overlay, others, first))
+    return placed;
+
+  // The flows that take the overlay's amsels may conflict where the overlay's
+  // flows do not, so they are planned with them.
+  SmallVector<size_t, 8> joint(overlay), rest;
+  for (size_t f : others) {
+    bool sameMasters = llvm::any_of(overlay, [&](size_t g) {
+      return flows[g].masters == flows[f].masters;
+    });
+    (sameMasters ? joint : rest).push_back(f);
+  }
+  stuck.clear();
+  std::optional<ArbiterPlan> together;
+  if (joint.size() > overlay.size())
+    together = planArbiters(
+        targetModel, subset(joint),
+        [&](size_t a, size_t b) { return conflict(joint[a], joint[b]); },
+        [&](size_t f, int arbiter) { return excluded(joint[f], arbiter); },
+        reservedAmsels[tileId], stuck);
+  if (!together) {
+    blocking.append(first.begin(), first.end());
     return std::nullopt;
   }
-  plan->slaveAmsels.insert(around->slaveAmsels.begin(),
-                           around->slaveAmsels.end());
-  plan->amselMasters.insert(around->amselMasters.begin(),
-                            around->amselMasters.end());
-  return plan;
+  return around(*together, joint, rest, blocking);
 }
 
 void PacketFlowRouting::moveFlow(TileID tileId, FlowKey key, bool overlay) {
@@ -2037,8 +2071,10 @@ RoutingFaults PacketFlowRouting::faults() const {
   faults.connections.assign(hazardConnections.begin(), hazardConnections.end());
   faults.splits.assign(hazardSplits.begin(), hazardSplits.end());
   faults.crowded.assign(crowdedTiles.begin(), crowdedTiles.end());
+  faults.apart.assign(hazardApart.begin(), hazardApart.end());
   faults.onlyOverlayMasters = !overlayConnections.empty() &&
                               hazardSplits.empty() && crowdedTiles.empty() &&
+                              hazardApart.empty() &&
                               hazardConnections == overlayConnections;
   return faults;
 }
@@ -2304,6 +2340,17 @@ void PacketFlowRouting::planTiles() {
     std::string reason;
     llvm::raw_string_ostream os(reason);
     if (blocking.empty()) {
+      // Ids a source sends out by master sets that overlap tie those sets to
+      // one arbiter, so its tree branches them apart to free msels.
+      for (const SlaveFlow &f : flows)
+        for (const SlaveFlow &g : flows)
+          if (f.slave == g.slave && f.id < g.id && f.masters != g.masters &&
+              llvm::any_of(
+                  f.masters,
+                  [&](Port m) { return llvm::is_contained(g.masters, m); })) {
+            FlowKey keys[] = {{f.slave, f.id}, {g.slave, g.id}};
+            splitFlow(tileId, keys[0], keys);
+          }
       for (const SlaveFlow &f : flows)
         moveFlow(tileId, {f.slave, f.id});
       crowdedTiles.insert(tileId);
@@ -2429,6 +2476,14 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
             moveUnit(step.tile, key);
             splitFlow(step.tile, key, keys);
           }
+          if (step.sharer >= numRequested || step.holding >= numRequested ||
+              !streams[step.sharer].packetID || !streams[step.holding].packetID)
+            continue;
+          PathEndPoint a{streams[step.sharer].src.tile,
+                         streams[step.sharer].src.port},
+              b{streams[step.holding].src.tile, streams[step.holding].src.port};
+          if (!(a == b))
+            hazardApart.insert(std::minmax(a, b));
         }
   };
   if (!search(search)) {
@@ -2891,9 +2946,11 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
                               clRouteCircuit, circuitSwitchHops);
       if (llvm::Error err = check.plan())
         return err;
-      RoutingFaults faults;
-      faults.connections = check.faults().connections;
-      if (!check.sharedReceiverCycle || faults.connections.empty())
+      RoutingFaults all = check.faults(), faults;
+      faults.connections = std::move(all.connections);
+      faults.apart = std::move(all.apart);
+      if (!check.sharedReceiverCycle ||
+          (faults.connections.empty() && faults.apart.empty()))
         return llvm::Error::success();
       return llvm::make_error<RoutingFailure>(
           conflicts.explain(*check.sharedReceiverCycle), std::move(faults),
