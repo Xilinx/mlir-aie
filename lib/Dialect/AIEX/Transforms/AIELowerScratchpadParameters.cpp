@@ -84,10 +84,9 @@ struct TransferExtent {
 
 /// The extent of a transfer with a static offset `offset` and per-iteration
 /// length `lenElems`, both in elements, and the pattern `sizes`/`strides`
-/// (innermost-first; empty for a linear BD). A runtime length continues a
-/// contiguous scan, or else the third dimension as placed by
-/// placeRuntimeLengthDimension, and every dimension past the third repeats the
-/// whole length. Nullopt if the buffer has no static size.
+/// (innermost-first; empty for a linear BD), with its runtime length placed as
+/// placeRuntimeLengthDimension describes. Nullopt if the buffer has no static
+/// size.
 static std::optional<TransferExtent>
 getTransferExtent(Type bufType, int64_t offset, int64_t lenElems,
                   SmallVector<int64_t> sizes, SmallVector<int64_t> strides,

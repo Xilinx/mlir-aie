@@ -3622,8 +3622,7 @@ LogicalResult DMABDOp::verify() {
         });
     if (!dims)
       return failure();
-    // A runtime length extends the pattern's third dimension, so
-    // aie-decompose-large-dma-bd leaves the BD whole, and it must fit one BD.
+    // aie-decompose-large-dma-bd leaves a runtime-length BD whole.
     if (dims->size() > 4)
       return emitOpError("length_parameter requires at most 4 dimensions, got ")
              << dims->size();

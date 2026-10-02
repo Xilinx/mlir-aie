@@ -263,6 +263,7 @@ LogicalResult AIEX::emitUpdateBdLengthFromParameter(
   int64_t bytesPerStateUnit = bdOp->hasAttr("length_core_encoded") ? 16 : 4;
   AIEX::NpuUpdateFromScratchpadOp::create(
       builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
+      // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
       /*func_arg=*/static_cast<uint32_t>(*unitBytes / bytesPerStateUnit),
       /*address=*/static_cast<uint32_t>(registerAddr),
       /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
@@ -291,9 +292,11 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
         *kind == AIEX::ScratchpadParameterKind::Addr ? "addr" : "core";
     os << p.getSymName() << " " << static_cast<unsigned>(*stateTableIdx) << " "
        << typeStr << " " << kindStr;
-    if (p.getMinValue() && p.getMaxValue())
-      os << " " << static_cast<int32_t>(*p.getMinValue()) << " "
-         << static_cast<int32_t>(*p.getMaxValue());
+    auto minValue = p.getMinValue();
+    auto maxValue = p.getMaxValue();
+    if (minValue && maxValue)
+      os << " " << static_cast<int32_t>(*minValue) << " "
+         << static_cast<int32_t>(*maxValue);
     else
       os << " - -";
     os << "\n";

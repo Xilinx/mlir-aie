@@ -1,19 +1,9 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Test for a DMA transfer length set at runtime via length_parameter.
-//
-// Setup:
-//   - Input buffer: 16 rows of 16 i32 values [0, 1, ..., 255]
-//   - The DMAs move the first 8 values of each of `rows` rows into `out`, and
-//     the last 8 into `out2`
-//   - A third pair writes the first 8 * `rows` values twice into `out3`, as
-//     rows of 8 at a stride of 16, the second pass 256 values in
-//   - Output buffers: 256 i32 values each (512 for `out3`), prefilled with -1
-//
-// We run with several row counts and check both the values moved and that
-// nothing past them was written.
-//
+// Host side of the length_parameter test; aie.mlir describes the transfers.
+// Each row count is checked value by value, including that nothing past the
+// moved values was written, and out-of-range counts must be rejected.
 
 #include <cstdint>
 #include <iostream>
