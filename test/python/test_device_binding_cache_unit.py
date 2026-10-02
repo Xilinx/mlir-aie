@@ -8,24 +8,17 @@
 """Target-device-sensitive generation and cache identity, without an NPU.
 
 Nothing here may start the NPU runtime; test/python/npu/test_device_binding.py
-covers binding the device the runtime reports.
+covers binding the device the runtime reports, and
+test_device_binding_cache_compile.py the cases that compile.
 """
 
-import shutil
-
-import numpy as np
 import pytest
 
 import aie.utils as utils
-from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.device import NPU1Col1, NPU2Col1, NPU2Col2
 from aie.utils import get_current_device, set_current_device
 from aie.utils.compile.jit import CompileTime, In, Out
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
-
-needs_xclbinutil = pytest.mark.skipif(
-    shutil.which("xclbinutil") is None, reason="xclbinutil"
-)
 
 
 @pytest.fixture(autouse=True)
@@ -56,22 +49,6 @@ def _gemm_gen():
     return gemm
 
 
-def copy():
-    """A copy through a memtile, 16 words long on NPU1 and 32 elsewhere."""
-    device = get_current_device(probe_runtime=False)
-    n = 16 if isinstance(device, NPU1Col1) else 32
-    ty = np.ndarray[(n,), np.dtype[np.int32]]
-    of_in = ObjectFifo(ty)
-    of_out = of_in.cons().forward()
-
-    def sequence(a, b, a_in, b_out):
-        a_in.fill(a)
-        b_out.drain(b, wait=True)
-
-    rt = Runtime(sequence, [ty, ty, of_in.prod(), of_out.cons()])
-    return Program(device, rt).resolve_program()
-
-
 def test_generated_cache_tracks_active_device():
     """MLIR generation cache entries are keyed by the active IRON device."""
     generated_for = []
@@ -99,19 +76,6 @@ def test_generated_cache_tracks_active_device():
     assert keyed_devices == {"NPU1Col1", "NPU2Col1"}
 
 
-@needs_xclbinutil
-def test_cache_hit_refreshes_tensor_metadata_for_the_selected_artifact():
-    """Returning to a cached target restores that artifact's validation metadata."""
-    cd = CompilableDesign(copy)
-    sizes = {}
-    for device in (NPU1Col1(), NPU2Col1(), NPU1Col1()):
-        set_current_device(device)
-        cd.compile()
-        sizes.setdefault(type(device), cd._expected_tensor_sizes)
-        assert cd._expected_tensor_sizes == sizes[type(device)]
-    assert sizes == {NPU1Col1: [16 * 32] * 2, NPU2Col1: [32 * 32] * 2}
-
-
 def test_compute_hash_changes_when_active_device_width_changes():
     """The filesystem cache key includes the active device identity, not just arch."""
     cd = CompilableDesign(_gemm_gen(), compile_kwargs={"M": 64, "K": 64, "N": 64})
@@ -123,24 +87,6 @@ def test_compute_hash_changes_when_active_device_width_changes():
     h_two_col = cd._compute_cache_hash()
 
     assert h_one_col != h_two_col
-
-
-@needs_xclbinutil
-def test_static_mlir_compile_does_not_bind_a_device(tmp_path):
-    """Compiling a written MLIR file takes its target from the file, not the runtime."""
-    set_current_device(NPU2Col1())
-    mlir_path = tmp_path / "design.mlir"
-    mlir_path.write_text(CompilableDesign(copy)._generated[0])
-    set_current_device(None)
-
-    cd = CompilableDesign(mlir_path, use_cache=False)
-    xclbin_path = tmp_path / "out.xclbin"
-    inst_path = tmp_path / "out.insts"
-    assert cd.compile(xclbin_path=xclbin_path, inst_path=inst_path) == (
-        xclbin_path.resolve(),
-        inst_path.resolve(),
-    )
-    assert get_current_device(probe_runtime=False) is None
 
 
 def test_cache_hash_does_not_bind_a_device():
