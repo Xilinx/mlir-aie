@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "36cc79f810671bce4491531b893fcb90b4d997cb",
- "date": "2026-10-01T06:37:11.368855+00:00",
+ "commit": "18ca6c1cbf4cbb1b5d6748e09909bce30a5b5c15",
+ "date": "2026-10-02T06:42:29.625080+00:00",
  "swept": true,
  "kernels": [
   {
@@ -86,13 +86,15 @@
     "scale",
     "scale/dtype=int16"
    ],
-   "passed": 6,
+   "passed": 8,
    "failed": [],
    "timed": 3,
    "timing_failed": [],
    "untimed": [
     "scale/1024x16/int32/edge-negfactor",
+    "scale/16x4/int32/edge-one-vector",
     "scale/32x4/int16/edge-one-vector",
+    "scale/48x4/int32/edge-tail",
     "scale/64x4/int32/edge-tiny"
    ]
   },
@@ -264,11 +266,14 @@
    "builds": [
     "layer_norm"
    ],
-   "passed": 1,
+   "passed": 3,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [
+    "layer_norm/1008x16/bfloat16/cols=1008/row-tail",
+    "layer_norm/208x16/bfloat16/cols=208/row-tail"
+   ]
   },
   {
    "factory": "layer_norm_f32",
@@ -359,41 +364,711 @@
    ]
   },
   {
+   "factory": "flm_gemma4_attn_prefill",
+   "family": "flm_gemma4",
+   "summary": "Causal flash-attention prefill at a head dim of 512, from flm_gemma4/prefill.cc.",
+   "sources": [
+    "flm_gemma4/prefill.cc"
+   ],
+   "builds": [
+    "flm_gemma4_attn_prefill"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_swa_prefill",
+   "family": "flm_gemma4",
+   "summary": "Sliding-window causal flash-attention prefill at a head dim of 256, from flm_gemma4/prefill.cc.",
+   "sources": [
+    "flm_gemma4/prefill.cc"
+   ],
+   "builds": [
+    "flm_gemma4_swa_prefill"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_prefill_block_begin",
+   "family": "flm_gemma4",
+   "summary": "attn_block_begin of the prefill kernels: row j of m is prev_m[j].",
+   "sources": [
+    "flm_gemma4/prefill.cc"
+   ],
+   "builds": [
+    "flm_gemma4_prefill_block_begin",
+    "flm_gemma4_prefill_block_begin/head_dim=256"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "flm_gemma4_prefill_block_begin/16x4/bfloat16/head_dim=256",
+    "flm_gemma4_prefill_block_begin/8x4/bfloat16"
+   ]
+  },
+  {
+   "factory": "flm_gemma4_prefill_block_end",
+   "family": "flm_gemma4",
+   "summary": "attn_block_end of the prefill kernels: prev_m = new_m.",
+   "sources": [
+    "flm_gemma4/prefill.cc"
+   ],
+   "builds": [
+    "flm_gemma4_prefill_block_end",
+    "flm_gemma4_prefill_block_end/head_dim=256"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "flm_gemma4_prefill_block_end/16x4/bfloat16/head_dim=256",
+    "flm_gemma4_prefill_block_end/8x4/bfloat16"
+   ]
+  },
+  {
+   "factory": "flm_gemma4_prefill_rounds",
+   "family": "flm_gemma4",
+   "summary": "attn_rounds of the prefill kernels: the rounds between L_begin and L_end.",
+   "sources": [
+    "flm_gemma4/prefill.cc"
+   ],
+   "builds": [
+    "flm_gemma4_prefill_rounds",
+    "flm_gemma4_prefill_rounds/head_dim=256"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "flm_gemma4_prefill_rounds/8x4/int32",
+    "flm_gemma4_prefill_rounds/8x4/int32/head_dim=256"
+   ]
+  },
+  {
+   "factory": "flm_gemma4_prefill_blocks",
+   "family": "flm_gemma4",
+   "summary": "attn_blocks of the prefill kernels: the key blocks round i folds in.",
+   "sources": [
+    "flm_gemma4/prefill.cc"
+   ],
+   "builds": [
+    "flm_gemma4_prefill_blocks",
+    "flm_gemma4_prefill_blocks/head_dim=256"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "flm_gemma4_prefill_blocks/8x4/int32",
+    "flm_gemma4_prefill_blocks/8x4/int32/head_dim=256",
+    "flm_gemma4_prefill_blocks/8x4/int32/head_dim=256/i3",
+    "flm_gemma4_prefill_blocks/8x4/int32/i5"
+   ]
+  },
+  {
+   "factory": "flm_gemma4_prefill_finalize",
+   "family": "flm_gemma4",
+   "summary": "attn_finalize of the prefill kernels: inv_l = bf16(1 / l) per query row.",
+   "sources": [
+    "flm_gemma4/prefill.cc"
+   ],
+   "builds": [
+    "flm_gemma4_prefill_finalize",
+    "flm_gemma4_prefill_finalize/head_dim=256"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "flm_gemma4_prefill_finalize/16x4/float32_bfloat16/head_dim=256",
+    "flm_gemma4_prefill_finalize/8x4/float32_bfloat16"
+   ]
+  },
+  {
+   "factory": "flm_gemma4_prefill_round_begin",
+   "family": "flm_gemma4",
+   "summary": "attn_round_begin of the prefill kernels, its five outputs packed as bytes.",
+   "sources": [
+    "flm_gemma4/prefill_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_prefill_round_begin",
+    "flm_gemma4_prefill_round_begin/head_dim=256"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "flm_gemma4_prefill_round_begin/16480x4/uint8",
+    "flm_gemma4_prefill_round_begin/16576x4/uint8/head_dim=256"
+   ]
+  },
+  {
+   "factory": "flm_gemma4_prefill_qk_core",
+   "family": "flm_gemma4",
+   "summary": "attn_qk_step's arithmetic for one key chunk, without its k lock.",
+   "sources": [
+    "flm_gemma4/prefill_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_prefill_qk_core",
+    "flm_gemma4_prefill_qk_core/head_dim=256"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_prefill_fv_core",
+   "family": "flm_gemma4",
+   "summary": "attn_fv_step's arithmetic for one key chunk, without its v lock.",
+   "sources": [
+    "flm_gemma4/prefill_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_prefill_fv_core",
+    "flm_gemma4_prefill_fv_core/head_dim=256"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_prefill_block_mid_core",
+   "family": "flm_gemma4",
+   "summary": "attn_block_mid of the prefill kernels, its state passed in and out.",
+   "sources": [
+    "flm_gemma4/prefill_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_prefill_block_mid_core",
+    "flm_gemma4_prefill_block_mid_core/head_dim=256"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_q4nx_lm_head",
+   "family": "flm_gemma4",
+   "summary": "AIE2P logits from a q4nx vocabulary, from flm_gemma4/q4nx_lm_head.cc.",
+   "sources": [
+    "flm_gemma4/q4nx_lm_head.cc"
+   ],
+   "builds": [
+    "flm_gemma4_q4nx_lm_head"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_q4nx_lm_head_epilogue",
+   "family": "flm_gemma4",
+   "summary": "q4nx_lm_head_epilogue of the LM head: y = c * tanh(y_acc / c).",
+   "sources": [
+    "flm_gemma4/q4nx_lm_head.cc"
+   ],
+   "builds": [
+    "flm_gemma4_q4nx_lm_head_epilogue"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_q4nx_lm_head_rms",
+   "family": "flm_gemma4",
+   "summary": "q4nx_lm_head_rms of [`flm_gemma4_q4nx_lm_head`][iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head]: the token's RMS norm and per-32 column sums.",
+   "sources": [
+    "flm_gemma4/q4nx_lm_head.cc"
+   ],
+   "builds": [
+    "flm_gemma4_q4nx_lm_head_rms"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_decode_glu",
+   "family": "flm_gemma4",
+   "summary": "Build the decode layer's gated linear unit, from flm_gemma4/decode_glu.cc.",
+   "sources": [
+    "flm_gemma4/decode_glu.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_glu",
+    "flm_gemma4_decode_glu/geometry=gemma4_e4b"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_glu_core",
+   "family": "flm_gemma4",
+   "summary": "pseduo_glu of [`flm_gemma4_decode_glu`][iron.kernels.flm_gemma4.flm_gemma4_decode_glu]: gelu(gate) * up for one slice.",
+   "sources": [
+    "flm_gemma4/decode_glu_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_glu_core",
+    "flm_gemma4_glu_core/geometry=gemma4_e4b"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_decode_attn_kv",
+   "family": "flm_gemma4",
+   "summary": "Build the global-attention score-times-value core for one KV head, from flm_gemma4/decode_attn_kv.cc.",
+   "sources": [
+    "flm_gemma4/decode_attn_kv.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_attn_kv"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_decode_attn_kv_kvh2",
+   "family": "flm_gemma4",
+   "summary": "Build the global-attention score-times-value core for two KV heads, from flm_gemma4/decode_attn_kv_kvh2.cc.",
+   "sources": [
+    "flm_gemma4/decode_attn_kv_kvh2.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_attn_kv_kvh2"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_decode_attn_qk",
+   "family": "flm_gemma4",
+   "summary": "Build an attention query-times-key core, from flm_gemma4/decode_attn_qk.cc.",
+   "sources": [
+    "flm_gemma4/decode_attn_qk.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_attn_qk",
+    "flm_gemma4_decode_attn_qk/sliding_window=True",
+    "flm_gemma4_decode_attn_qk/geometry=gemma4_e4b/sliding_window=True"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_decode_attn_qk_kvh2",
+   "family": "flm_gemma4",
+   "summary": "Build the global-attention query-times-key core for two KV heads, from flm_gemma4/decode_attn_qk_kvh2.cc.",
+   "sources": [
+    "flm_gemma4/decode_attn_qk_kvh2.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_attn_qk_kvh2"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_attn_qk_core",
+   "family": "flm_gemma4",
+   "summary": "One attn_qk_round of [`flm_gemma4_decode_attn_qk`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk], without its k lock.",
+   "sources": [
+    "flm_gemma4/decode_attn_qk_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_attn_qk_core",
+    "flm_gemma4_attn_qk_core/sliding_window=True",
+    "flm_gemma4_attn_qk_core/geometry=gemma4_e4b/sliding_window=True"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 3,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_attn_qk_kvh2_core",
+   "family": "flm_gemma4",
+   "summary": "One round of [`flm_gemma4_decode_attn_qk_kvh2`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk_kvh2], without its k lock.",
+   "sources": [
+    "flm_gemma4/decode_attn_qk_kvh2_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_attn_qk_kvh2_core"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_decode_swa_attn_kv",
+   "family": "flm_gemma4",
+   "summary": "Build the sliding-window-attention score-times-value core, from flm_gemma4/decode_swa_attn_kv.cc.",
+   "sources": [
+    "flm_gemma4/decode_swa_attn_kv.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_swa_attn_kv",
+    "flm_gemma4_decode_swa_attn_kv/geometry=gemma4_e4b"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_attn_kv_core",
+   "family": "flm_gemma4",
+   "summary": "One attn_kv_round of [`flm_gemma4_decode_attn_kv`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv] without its v lock.",
+   "sources": [
+    "flm_gemma4/decode_attn_kv_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_attn_kv_core"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_attn_kv_kvh2_core",
+   "family": "flm_gemma4",
+   "summary": "attn_kv_s_begin, then one KV head's attn_kv_v_half, without the v lock.",
+   "sources": [
+    "flm_gemma4/decode_attn_kv_kvh2_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_attn_kv_kvh2_core"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "flm_gemma4_attn_kv_kvh2_core/8352x4/bfloat16_float32/kv_head1"
+   ]
+  },
+  {
+   "factory": "flm_gemma4_swa_attn_kv_core",
+   "family": "flm_gemma4",
+   "summary": "One swa_attn_kv_round of [`flm_gemma4_decode_swa_attn_kv`][iron.kernels.flm_gemma4.flm_gemma4_decode_swa_attn_kv] without its v lock.",
+   "sources": [
+    "flm_gemma4/decode_swa_attn_kv_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_swa_attn_kv_core",
+    "flm_gemma4_swa_attn_kv_core/geometry=gemma4_e4b"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "flm_gemma4_swa_attn_kv_core/8352x4/bfloat16_float32/geometry=gemma4_e4b"
+   ]
+  },
+  {
+   "factory": "flm_gemma4_decode_rope",
+   "family": "flm_gemma4",
+   "summary": "Build a layer's q/k norm and rotary embedding, from flm_gemma4/decode_rope.cc.",
+   "sources": [
+    "flm_gemma4/decode_rope.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_rope",
+    "flm_gemma4_decode_rope/geometry=gemma4_e4b",
+    "flm_gemma4_decode_rope/sliding_window=True",
+    "flm_gemma4_decode_rope/geometry=gemma4_e4b/sliding_window=True"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_rope_core",
+   "family": "flm_gemma4",
+   "summary": "_rotate_t of [`flm_gemma4_decode_rope`][iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one q and one k head.",
+   "sources": [
+    "flm_gemma4/decode_rope_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_rope_core",
+    "flm_gemma4_rope_core/geometry=gemma4_e4b",
+    "flm_gemma4_rope_core/sliding_window=True",
+    "flm_gemma4_rope_core/geometry=gemma4_e4b/sliding_window=True"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_v_norm_core",
+   "family": "flm_gemma4",
+   "summary": "rms_norm_unweighted of [`flm_gemma4_decode_rope`][iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one v head.",
+   "sources": [
+    "flm_gemma4/decode_rope_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_v_norm_core",
+    "flm_gemma4_v_norm_core/geometry=gemma4_e4b",
+    "flm_gemma4_v_norm_core/sliding_window=True",
+    "flm_gemma4_v_norm_core/geometry=gemma4_e4b/sliding_window=True"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "flm_gemma4_v_norm_core/512x4/bfloat16"
+   ]
+  },
+  {
+   "factory": "flm_gemma4_decode_rms_residual",
+   "family": "flm_gemma4",
+   "summary": "Build the decode layer's four RMS norms and two residual adds, from flm_gemma4/decode_rms_residual.cc.",
+   "sources": [
+    "flm_gemma4/decode_rms_residual.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_rms_residual",
+    "flm_gemma4_decode_rms_residual/geometry=gemma4_e4b"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_rms_residual_core",
+   "family": "flm_gemma4",
+   "summary": "rms_norm then residual_add of [`flm_gemma4_decode_rms_residual`][iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual].",
+   "sources": [
+    "flm_gemma4/decode_rms_residual_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_rms_residual_core",
+    "flm_gemma4_rms_residual_core/geometry=gemma4_e4b"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "flm_gemma4_rms_residual_core/2560x4/bfloat16/geometry=gemma4_e4b"
+   ]
+  },
+  {
+   "factory": "flm_gemma4_decode_proj_main",
+   "family": "flm_gemma4",
+   "summary": "One of the decode layer's 16 q4nx projection cores, from flm_gemma4/decode_proj_main.cc.",
+   "sources": [
+    "flm_gemma4/decode_proj_main.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_proj_main",
+    "flm_gemma4_decode_proj_main/geometry=gemma4_e4b"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_decode_per_layer_up",
+   "family": "flm_gemma4",
+   "summary": "Build the per-layer-input up projection, from flm_gemma4/decode_per_layer_up.cc.",
+   "sources": [
+    "flm_gemma4/decode_per_layer_up.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_per_layer_up",
+    "flm_gemma4_decode_per_layer_up/geometry=gemma4_e4b"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_bf16_proj_core",
+   "family": "flm_gemma4",
+   "summary": "_mvm_bf16_bf16 of the per-layer-input projections, one block.",
+   "sources": [
+    "flm_gemma4/decode_per_layer_up_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_bf16_proj_core",
+    "flm_gemma4_bf16_proj_core/geometry=gemma4_e4b"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
+   "factory": "flm_gemma4_decode_proj_layer_embedding",
+   "family": "flm_gemma4",
+   "summary": "Build the per-layer-input embedding projection, from flm_gemma4/decode_proj_layer_embedding.cc.",
+   "sources": [
+    "flm_gemma4/decode_proj_layer_embedding.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_proj_layer_embedding",
+    "flm_gemma4_decode_proj_layer_embedding/geometry=gemma4_e4b"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_decode_gate_layer_embedding",
+   "family": "flm_gemma4",
+   "summary": "Build the per-layer-input gate, from flm_gemma4/decode_gate_layer_embedding.cc.",
+   "sources": [
+    "flm_gemma4/decode_gate_layer_embedding.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_gate_layer_embedding",
+    "flm_gemma4_decode_gate_layer_embedding/geometry=gemma4_e4b"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+  },
+  {
+   "factory": "flm_gemma4_pli_gelu_core",
+   "family": "flm_gemma4",
+   "summary": "_activate of [`flm_gemma4_decode_gate_layer_embedding`][iron.kernels.flm_gemma4.flm_gemma4_decode_gate_layer_embedding]: GELU over pli_d values.",
+   "sources": [
+    "flm_gemma4/decode_gate_layer_embedding_core.cc"
+   ],
+   "builds": [
+    "flm_gemma4_pli_gelu_core",
+    "flm_gemma4_pli_gelu_core/geometry=gemma4_e4b"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": []
+  },
+  {
    "factory": "reduce_add",
    "family": "reduce",
-   "summary": "Reduction kernel: sums all elements of a tile to a scalar.",
+   "summary": "Reduction kernel: sums all elements of a tile to a scalar (int32 or bfloat16).",
    "sources": [
     "reduce/reduce_add.cc"
    ],
    "builds": [
-    "reduce_add"
+    "reduce_add",
+    "reduce_add/dtype=bfloat16"
    ],
-   "passed": 5,
+   "passed": 8,
    "failed": [],
-   "timed": 2,
+   "timed": 4,
    "timing_failed": [],
    "untimed": [
     "reduce_add/1024x1/int32/edge-single",
     "reduce_add/16x4/int32/edge-one-vector",
+    "reduce_add/32x4/bfloat16/edge-one-vector",
     "reduce_add/64x4/int32/edge-tiny"
    ]
   },
   {
    "factory": "reduce_min",
    "family": "reduce",
-   "summary": "Reduction kernel: finds the minimum element of a tile.",
+   "summary": "Reduction kernel: finds the minimum element of a tile (int32 or bfloat16).",
    "sources": [
     "reduce/reduce_min.cc"
    ],
    "builds": [
-    "reduce_min"
+    "reduce_min",
+    "reduce_min/dtype=bfloat16"
    ],
-   "passed": 3,
+   "passed": 6,
    "failed": [],
-   "timed": 2,
+   "timed": 4,
    "timing_failed": [],
    "untimed": [
-    "reduce_min/16x4/int32/edge-one-vector"
+    "reduce_min/16x4/int32/edge-one-vector",
+    "reduce_min/32x4/bfloat16/edge-one-vector"
    ]
   },
   {
@@ -477,11 +1152,13 @@
    "builds": [
     "rgba2hue"
    ],
-   "passed": 2,
+   "passed": 4,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
    "untimed": [
+    "rgba2hue/1152x4/uint8/line_width=288/tail",
+    "rgba2hue/128x4/uint8/line_width=32/one-vector",
     "rgba2hue/384x4/uint8/line_width=96/short-row"
    ]
   },
@@ -562,13 +1239,14 @@
    "builds": [
     "gray2rgba"
    ],
-   "passed": 3,
+   "passed": 4,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
    "untimed": [
     "gray2rgba/112x4/uint8/line_width=112/short-row",
-    "gray2rgba/144x4/uint8/line_width=144/tail"
+    "gray2rgba/144x4/uint8/line_width=144/tail",
+    "gray2rgba/48x4/uint8/line_width=48/tail-only"
    ]
   },
   {
@@ -581,11 +1259,13 @@
    "builds": [
     "rgba2gray"
    ],
-   "passed": 2,
+   "passed": 4,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
    "untimed": [
+    "rgba2gray/1152x4/uint8/line_width=288/tail",
+    "rgba2gray/128x4/uint8/line_width=32/one-vector",
     "rgba2gray/640x4/uint8/line_width=160/short-row"
    ]
   },
@@ -599,12 +1279,15 @@
    "builds": [
     "filter2d"
    ],
-   "passed": 2,
+   "passed": 5,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
    "untimed": [
-    "filter2d/160x4/uint8/line_width=160/short-row"
+    "filter2d/128x4/uint8/line_width=128/two-blocks",
+    "filter2d/160x4/uint8/line_width=160/short-row",
+    "filter2d/352x4/uint8/line_width=352/odd-pipelined",
+    "filter2d/96x4/uint8/line_width=96/one-block"
    ]
   },
   {
@@ -756,7 +1439,7 @@
   {
    "factory": "exp2f_vec",
    "family": "activation",
-   "summary": "Software f32 2**x kernel: a degree-5 minimax poly, not a LUT.",
+   "summary": "Software f32 2**x kernel: a minimax poly, not a LUT.",
    "sources": [
     "activation/exp2f_vec.cc"
    ],
@@ -934,12 +1617,18 @@
     "mm/input_dtype=bfloat16/output_dtype=bfloat16",
     "mm/input_dtype=bfloat16/output_dtype=float32"
    ],
-   "passed": 16,
+   "passed": 22,
    "failed": [],
    "timed": 7,
    "timing_failed": [],
    "untimed": [
+    "mm/16x1008x16x4/int8_int32",
+    "mm/16x512x32x4/int8_int32",
+    "mm/16x512x32x4/int8_int32/b_col_maj=True",
+    "mm/16x512x32x4/int8_int32/c_col_maj=True",
     "mm/32x32x32x16/bfloat16_float32/edge-small-tile",
+    "mm/32x512x16x4/int8_int32/b_col_maj=True",
+    "mm/48x416x16x4/int8_int32/c_col_maj=True",
     "mm/64x32x64x1/bfloat16_float32/edge-single-tile",
     "mm/64x32x64x3/int16_int32/b_col_maj=True/c_col_maj=True",
     "mm/64x32x64x4/bfloat16_float32",
@@ -960,7 +1649,7 @@
    "builds": [
     "fused_mm"
    ],
-   "passed": 10,
+   "passed": 13,
    "failed": [],
    "timed": 4,
    "timing_failed": [],
@@ -968,8 +1657,11 @@
     "fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)",
     "fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)/epilogue=silu",
     "fused_mm/32x48x16x4/bfloat16/epilogue=gelu",
+    "fused_mm/32x48x16x4/bfloat16/epilogue=gelu/gelu=bf16_steps/rounding=floor",
     "fused_mm/32x48x16x4/bfloat16/epilogue=sigmoid",
     "fused_mm/32x48x16x4/bfloat16/epilogue=silu",
+    "fused_mm/32x48x16x4/bfloat16/rounding=floor",
+    "fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=gelu/epilogue_modes=('none', 'gelu', 'silu', 'sigmoid')/gelu=bf16_steps/out_chunk=512/rounding=floor",
     "fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=silu/out_chunk=512"
    ]
   },
@@ -1214,12 +1906,16 @@
    "builds": [
     "dwconv1d_channels_last"
    ],
-   "passed": 2,
+   "passed": 6,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
    "untimed": [
-    "dwconv1d_channels_last/256x16/bfloat16/channels=256/clamp=False/unclamped"
+    "dwconv1d_channels_last/256x16/bfloat16/channels=256/clamp=False/unclamped",
+    "dwconv1d_channels_last/320x16/bfloat16/channels=320/chunk-tail",
+    "dwconv1d_channels_last/480x16/bfloat16/channels=480/odd-chunk-tail",
+    "dwconv1d_channels_last/512x16/bfloat16/channels=512/two-chunks",
+    "dwconv1d_channels_last/96x16/bfloat16/channels=96/odd-group"
    ]
   },
   {
@@ -1267,12 +1963,13 @@
    "builds": [
     "conv2dk14"
    ],
-   "passed": 3,
+   "passed": 4,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
    "untimed": [
     "conv2dk14/12544x4/uint8_int8/output_channels=24/three-groups",
+    "conv2dk14/16384x4/uint8_int8/input_width=256/kernel_width=16/kernel-width-16",
     "conv2dk14/25088x4/uint8_int8/input_width=448/output_channels=8/two-tile-groups"
    ]
   },
@@ -1305,11 +2002,14 @@
    "builds": [
     "bn_conv2dk1_relu"
    ],
-   "passed": 4,
+   "passed": 10,
    "failed": [],
-   "timed": 4,
+   "timed": 8,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [
+    "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=120/arg1@16",
+    "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=80/input_width=14/output_channels=184/arg1@16"
+   ]
   },
   {
    "factory": "bn_conv2dk3",
@@ -1321,16 +2021,21 @@
    "builds": [
     "bn_conv2dk3"
    ],
-   "passed": 8,
+   "passed": 13,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
    "untimed": [
     "bn_conv2dk3/1024x8/int8_uint8/input_channels=16/input_width=64/output_channels=8/weight_output_channels=16/channel-offset",
+    "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16/arg3@32",
     "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16/top-row",
+    "bn_conv2dk3/192x8/int8_uint8/input_channels=8/input_width=24/output_channels=16",
     "bn_conv2dk3/256x8/int8_uint8/input_channels=8/input_width=32/output_channels=8/weight_output_channels=16/channel-offset",
     "bn_conv2dk3/3584x8/int8_uint8/input_channels=32/input_width=112/output_channels=16",
+    "bn_conv2dk3/3584x8/int8_uint8/input_channels=32/input_width=112/output_channels=16/arg3@32",
     "bn_conv2dk3/448x8/int8_uint8/input_channels=8/input_width=56/output_channels=24/bottom-row",
+    "bn_conv2dk3/64x8/int8_uint8/input_channels=8/input_width=8/output_channels=16",
+    "bn_conv2dk3/704x8/int8_uint8/input_channels=8/input_width=88/output_channels=16",
     "bn_conv2dk3/896x8/int8_uint8/input_channels=16/input_width=56/output_channels=24/bottom-row",
     "bn_conv2dk3/960x8/int8_uint8/input_channels=24/input_width=40/output_channels=8/top-row"
    ]
@@ -1345,11 +2050,14 @@
    "builds": [
     "bn_conv2dk1_i8"
    ],
-   "passed": 4,
+   "passed": 7,
    "failed": [],
-   "timed": 4,
+   "timed": 5,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [
+    "bn_conv2dk1_i8/2352x8/uint8_int8/input_channels=336/input_width=7/output_channels=80/arg1@16",
+    "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/arg1@16"
+   ]
   },
   {
    "factory": "bn_conv2dk1_skip",
@@ -1362,11 +2070,14 @@
     "bn_conv2dk1_skip",
     "bn_conv2dk1_skip/skip_dtype=int8"
    ],
-   "passed": 5,
+   "passed": 10,
    "failed": [],
-   "timed": 5,
+   "timed": 8,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [
+    "bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40/arg1@16",
+    "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/arg1@16"
+   ]
   },
   {
    "factory": "bn_conv2dk3_dw",
@@ -1378,13 +2089,42 @@
    "builds": [
     "bn_conv2dk3_dw"
    ],
-   "passed": 6,
+   "passed": 39,
    "failed": [],
-   "timed": 4,
+   "timed": 8,
    "timing_failed": [],
    "untimed": [
+    "bn_conv2dk3_dw/1024x8/uint8/input_channels=32/input_width=32/output_channels=32/top-row",
+    "bn_conv2dk3_dw/1344x8/uint8/input_channels=32/input_width=42/output_channels=32/middle-row",
+    "bn_conv2dk3_dw/1440x8/uint8/input_channels=48/input_width=30/output_channels=48/stride=2/middle-row",
+    "bn_conv2dk3_dw/144x8/uint8/input_channels=16/input_width=9/output_channels=16/middle-row",
+    "bn_conv2dk3_dw/144x8/uint8/input_channels=16/input_width=9/output_channels=16/top-row",
+    "bn_conv2dk3_dw/168x8/uint8/input_channels=24/input_width=7/output_channels=24/middle-row",
+    "bn_conv2dk3_dw/168x8/uint8/input_channels=24/input_width=7/output_channels=24/top-row",
+    "bn_conv2dk3_dw/1792x8/uint8/input_channels=16/input_width=112/output_channels=16/top-row",
+    "bn_conv2dk3_dw/200x8/uint8/input_channels=40/input_width=5/output_channels=40/top-row",
+    "bn_conv2dk3_dw/224x8/uint8/input_channels=8/input_width=28/output_channels=8/stride=2/middle-row",
+    "bn_conv2dk3_dw/240x8/uint8/input_channels=40/input_width=6/output_channels=40/bottom-row",
+    "bn_conv2dk3_dw/256x8/uint8/input_channels=32/input_width=8/output_channels=32/middle-row",
+    "bn_conv2dk3_dw/288x8/uint8/input_channels=16/input_width=18/output_channels=16/stride=2/top-row",
+    "bn_conv2dk3_dw/288x8/uint8/input_channels=24/input_width=12/output_channels=24/middle-row",
+    "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120/arg3@32",
     "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120/bottom-row",
-    "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2/top-row"
+    "bn_conv2dk3_dw/384x8/uint8/input_channels=8/input_width=48/output_channels=8/bottom-row",
+    "bn_conv2dk3_dw/392x8/uint8/input_channels=56/input_width=7/output_channels=56/middle-row",
+    "bn_conv2dk3_dw/400x8/uint8/input_channels=40/input_width=10/output_channels=40/stride=2/middle-row",
+    "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/bottom-row",
+    "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2/arg3@32",
+    "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2/top-row",
+    "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/top-row",
+    "bn_conv2dk3_dw/480x8/uint8/input_channels=24/input_width=20/output_channels=24/stride=2/bottom-row",
+    "bn_conv2dk3_dw/512x8/uint8/input_channels=64/input_width=8/output_channels=64/top-row",
+    "bn_conv2dk3_dw/6720x8/uint8/input_channels=240/input_width=28/output_channels=240/stride=2/bottom-row",
+    "bn_conv2dk3_dw/6720x8/uint8/input_channels=240/input_width=28/output_channels=240/stride=2/top-row",
+    "bn_conv2dk3_dw/7168x8/uint8/input_channels=64/input_width=112/output_channels=64/stride=2/bottom-row",
+    "bn_conv2dk3_dw/960x8/uint8/input_channels=24/input_width=40/output_channels=24/middle-row",
+    "bn_conv2dk3_dw/960x8/uint8/input_channels=32/input_width=30/output_channels=32/middle-row",
+    "bn_conv2dk3_dw/960x8/uint8/input_channels=48/input_width=20/output_channels=48/bottom-row"
    ]
   },
   {
@@ -1397,13 +2137,13 @@
    "builds": [
     "bn_conv2dk1_relu_xy_pool_padded"
    ],
-   "passed": 4,
+   "passed": 7,
    "failed": [],
-   "timed": 1,
+   "timed": 4,
    "timing_failed": [],
    "untimed": [
+    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/arg1@16",
     "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/first-row",
-    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/mid-row",
     "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=128/weight_chunk_count=5120/split"
    ]
   },
@@ -1417,12 +2157,13 @@
    "builds": [
     "bn_fc_relu_ui16_pad"
    ],
-   "passed": 5,
+   "passed": 6,
    "failed": [],
    "timed": 2,
    "timing_failed": [],
    "untimed": [
     "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=16/two-blocks",
+    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/arg1@16",
     "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/ic-tail",
     "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/short"
    ]
@@ -1471,11 +2212,15 @@
    "builds": [
     "bn_conv2dk3_dw_out_split"
    ],
-   "passed": 1,
+   "passed": 4,
    "failed": [],
    "timed": 1,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [
+    "bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240/arg3@32",
+    "bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240/top-row",
+    "bn_conv2dk3_dw_out_split/480x8/uint8_uint8+uint8/input_channels=80/input_width=6/output_split_channels=40/bottom-row"
+   ]
   },
   {
    "factory": "bn_conv2dk1_input_split_partial_put_ui8",

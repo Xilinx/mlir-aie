@@ -281,6 +281,50 @@
     "offered": 79,
     "checked": 70
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "36972972486",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36972972486",
+   "date": "2026-10-02T06:44:52+00:00",
+   "commit": {
+    "id": "18ca6c1cbf4cbb1b5d6748e09909bce30a5b5c15",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/18ca6c1cbf4cbb1b5d6748e09909bce30a5b5c15",
+    "message": "AIE2P Kernel Coverage and MobileNet on Tuned Kernels (#3807)",
+    "timestamp": "2026-10-02T02:08:45Z"
+   },
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "18ca6c1cbf",
+    "peano": "22.0.0+0006955e",
+    "kernels": "063bec076382",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 755,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 428,
+    "failed": 0,
+    "timed": 191,
+    "timing_failed": 0,
+    "untimed": 237
+   },
+   "kernels": {
+    "offered": 116,
+    "checked": 95
+   }
   }
  ]
 }
