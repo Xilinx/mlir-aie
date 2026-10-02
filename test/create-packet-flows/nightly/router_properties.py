@@ -1265,10 +1265,12 @@ def block_at(p, step):
 
 def requested_streams(d):
     streams = [Stream(s, t) for s, t in d.flows]
+    keeps = last_keep(d)
     for f in d.packet_flows:
         for s in f["srcs"]:
             for t in f["dsts"]:
-                streams.append(Stream(s, t, f["id"], bool(f["keep"]), mask=f["mask"]))
+                keep = keeps_header(t[:2], t[2:], keeps[t])
+                streams.append(Stream(s, t, f["id"], keep, mask=f["mask"]))
     return streams
 
 
@@ -1348,7 +1350,7 @@ def trace_routed_streams(d):
                 arbiter = amsels.get(rule[2])
                 for ms in ops:
                     if ms[0] == "masterset" and rule[2] in ms[2]:
-                        nxt(ms[1], rule_id, arbiter, bool(ms[3]))
+                        nxt(ms[1], rule_id, arbiter, keeps_header(tile, ms[1], ms[3]))
 
             ids = range(PARAMS["max_id"] + 1) if pid is None else (pid,)
             for packet_id in ids:
