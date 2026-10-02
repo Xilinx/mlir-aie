@@ -3823,6 +3823,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 <li><a href="#5-run-a-complete-npu-program">Run a complete NPU program</a></li>
 <li><a href="#addendum-a-powershell">Addendum A: PowerShell</a></li>
 <li><a href="#addendum-b-build-mlir-aie-wheels-locally">Addendum B: Build <code>mlir-aie</code> wheels locally</a></li>
+<li><a href="#addendum-c-build-from-source-and-run-the-tests">Addendum C: Build from source and run the tests</a></li>
 </ol>
 <h2 id="1-install-the-windows-development-environment">1. Install the Windows development environment<a class="headerlink" href="#1-install-the-windows-development-environment" title="Permanent link">&para;</a></h2>
 <p>A fully usable native Windows checkout requires the following:</p>
@@ -3971,9 +3972,11 @@ Local wheel builds compile components that link against OpenSSL. Install the ful
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>https://slproweb.com/products/Win32OpenSSL.html
 </code></pre></div>
 
+Install it to `C:\OpenSSL-Win64`, not the default under `C:\Program Files`. The build splits `CMAKE_ARGS` on spaces, so the path must not contain one. For an unattended install, run the installer with `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="C:\OpenSSL-Win64"`.
+
 From an x64 Native Tools prompt in a configured checkout, set the OpenSSL location and CMake arguments:
 
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">set</span> <span class="s2">&quot;OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">set</span> <span class="s2">&quot;OPENSSL_ROOT_DIR=C:\OpenSSL-Win64&quot;</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="k">set</span> <span class="s2">&quot;PATH=</span><span class="nv">%OPENSSL_ROOT_DIR%</span><span class="s2">\bin;</span><span class="nv">%PATH%</span><span class="s2">&quot;</span>
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="k">set</span> <span class="s2">&quot;CMAKE_ARGS=-DOPENSSL_ROOT_DIR=</span><span class="nv">%OPENSSL_ROOT_DIR%</span><span class="s2"> -DOPENSSL_USE_STATIC_LIBS=TRUE&quot;</span>
 </code></pre></div>
@@ -4008,6 +4011,61 @@ Use `--cp312` or `--cp314` only when the selected XRT distribution supplies matc
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>utils\mlir_aie_wheels\wheelhouse
 <a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>C:\tmp\aiewhls
 </code></pre></div>
+
+</details>
+
+<p><a id="addendum-c-build-from-source-and-run-the-tests"></a></p>
+<details>
+<summary><strong>Addendum C: Build from source and run the tests</strong></summary>
+
+These steps match the Windows CI job in `.github/workflows/buildAndTestRyzenAIWindows.yml`. Use them to build `mlir-aie` against a prebuilt MLIR wheel and run the lit suites on the NPU.
+
+### C.1 Prerequisites
+
+In addition to sections 1–3:
+
+- OpenSSL installed at `C:\OpenSSL-Win64`, per [B.1](#addendum-b-build-mlir-aie-wheels-locally).
+- A host `clang++` for the host-side lit tests. Install it with the Visual Studio **C++ Clang Compiler for Windows** component, or with `winget install -e --id LLVM.LLVM` (which is what CI uses). Without a host compiler, `clang++` resolves to Peano's AIE cross-compiler and the host tests fail.
+- Git for Windows at `C:\Program Files\Git`. Its `bash.exe` runs the build script and the tests that shell out to `bash`.
+
+### C.2 Build
+
+From an x64 Native Tools prompt at the checkout root:
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>python utils\iron_setup.py --dev --extras
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="k">call</span> .\iron_env.cmd
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="c1">REM Download and unpack the MLIR wheel pinned by utils/clone-llvm.sh</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="k">for</span> <span class="k">/f</span> <span class="s2">&quot;usebackq delims=&quot;</span> <span class="nv">%v in (`&quot;C:\Program Files\Git\bin\bash.exe&quot; utils/clone-llvm.sh --get-wheel-version`) do set MLIR_VERSION=%</span>v
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>mkdir my_install
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>pushd my_install
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>curl.exe -fL -o <span class="s2">&quot;mlir-</span><span class="nv">%MLIR_VERSION%</span><span class="s2">-py3-none-win_amd64.whl&quot;</span> <span class="s2">&quot;https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-</span><span class="nv">%MLIR_VERSION%</span><span class="s2">-py3-none-win_amd64.whl&quot;</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>python -c <span class="s2">&quot;import zipfile,glob; zipfile.ZipFile(glob.glob(&#39;mlir-*.whl&#39;)[0]).extractall(&#39;.&#39;)&quot;</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>REM Point the wheel&#39;s LLVMExports.cmake at this machine&#39;s DIA SDK
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>python -c <span class="s2">&quot;import sys; sys.path.insert(0, r&#39;..\utils\mlir_aie_wheels\scripts&#39;); from pathlib import Path; import download_mlir; download_mlir._fixup_llvm_diaguids(Path(&#39;mlir&#39;))&quot;</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>REM Future-dated wheel timestamps make ninja loop; stamp them to the past
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>python -c <span class="s2">&quot;import os; [os.utime(os.path.join(r,f),(315600000,315600000)) for r,_,fs in os.walk(&#39;mlir&#39;) for f in fs]&quot;</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>popd
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>for /f <span class="s2">&quot;usebackq delims=&quot;</span> <span class="nv">%p in (`python -c &quot;import sys; print(sys.executable)&quot;`) do set PYTHON_EXE=%</span>p
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a>set <span class="s2">&quot;EXTRA_CMAKE_ARGS=-DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON -DXRT_ROOT=</span><span class="nv">%XRT_ROOT:\=/%</span><span class="s2"> -DPython3_EXECUTABLE=</span><span class="nv">%PYTHON_EXE:\=/%</span><span class="s2"> -DOPENSSL_ROOT_DIR=C:/OpenSSL-Win64 -DOPENSSL_USE_STATIC_LIBS=TRUE&quot;</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a><span class="s2">&quot;C:\Program Files\Git\bin\bash.exe&quot;</span> utils/build-mlir-aie-from-wheels.sh my_install/mlir build install <span class="s2">&quot;</span><span class="nv">%PEANO_INSTALL_DIR:\=/%</span><span class="s2">&quot;</span>
+</code></pre></div>
+
+The compiler is pinned to `cl` so that CMake doesn't pick up a `clang++` on `PATH`. Inside a `.cmd` script, write `%%v` and `%%p` instead of `%v` and `%p`.
+
+### C.3 Run the tests
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="k">call</span> .\iron_env.cmd
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="k">set</span> <span class="s2">&quot;PATH=C:\Program Files\Git\bin;</span><span class="nv">%PATH%</span><span class="s2">;C:\Program Files\LLVM\bin&quot;</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>ninja -C build check-aie
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>ninja -C build check-aie-concurrency
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>ninja -C build check-reference-designs
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>ninja -C build check-programming-guide
+</code></pre></div>
+
+Git's `bin` goes first so that `bash` resolves to Git's bash rather than the WSL stub in `System32`. LLVM goes last so that its tools don't shadow the MLIR wheel's tools. Tests that need `make` are reported as unsupported, as they are in CI.
 
 </details>
 
