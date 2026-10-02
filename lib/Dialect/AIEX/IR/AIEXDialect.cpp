@@ -594,11 +594,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
                                         elemWidth, gran)))
     return failure();
 
-  // A runtime size or stride could exceed its BD field and silently truncate
-  // on hardware. The TXN stream has no on-device trap, so the dynamic lowering
-  // (buildBdWords) emits a host-side cf.assert for every runtime field,
-  // which the TXN builder turns into a refused dispatch. Nothing to reject
-  // here.
+  // Runtime fields are checked at dispatch instead; see buildBdWords.
 
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
   if (errorMessage.has_value())

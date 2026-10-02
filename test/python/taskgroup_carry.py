@@ -84,16 +84,16 @@ def pipelined(n, issue):
 
 
 print(sequence_of(pipelined))
-# With a dispatch-time count, step 0 runs under an n > 0 guard; the loop
-# carries its two transfers, issues the next step, then awaits and frees the
-# carried one; the loop's results are finished after it.
-
+# With a dispatch-time count, step 0 runs under an n > 0 guard.
 # CHECK-LABEL: aie.runtime_sequence
 # CHECK: %[[N:.*]] = arith.index_cast
 # CHECK: %[[MORE:.*]] = arith.cmpi sgt, %[[N]], %{{.*}} : index
 # CHECK: scf.if %[[MORE]] {
 # CHECK: %[[T0:.*]] = aiex.dma_configure_task_for @of_out
 # CHECK: %[[T1:.*]] = aiex.dma_configure_task_for @of_in
+
+# The loop carries its two transfers, issues the next step, then awaits and
+# frees the carried one.
 # CHECK: %[[RES:.*]]:2 = scf.for %{{.*}} = %{{.*}} to %[[N]] step %{{.*}} iter_args(%[[P0:.*]] = %[[T0]], %[[P1:.*]] = %[[T1]])
 # CHECK: %[[C0:.*]] = aiex.dma_configure_task_for @of_out
 # CHECK: %[[C1:.*]] = aiex.dma_configure_task_for @of_in
@@ -101,6 +101,8 @@ print(sequence_of(pipelined))
 # CHECK-NEXT: aiex.dma_free_task(%[[P0]])
 # CHECK-NEXT: aiex.dma_free_task(%[[P1]])
 # CHECK-NEXT: scf.yield %[[C0]], %[[C1]]
+
+# The loop's results are finished after it.
 # CHECK: aiex.dma_await_task(%[[RES]]#0)
 # CHECK-NEXT: aiex.dma_free_task(%[[RES]]#0)
 # CHECK-NEXT: aiex.dma_free_task(%[[RES]]#1)

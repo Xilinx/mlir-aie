@@ -125,9 +125,8 @@ class Bd:
     """
 
     buffer: Buffer
-    # The walk over buffer; its offset, sizes and strides may be runtime
-    # values. A padded walk sets the BD's pad geometry (MemTile only).
-    # Default: the whole buffer.
+    # Default: the whole buffer. A padded tap sets the BD's pad geometry
+    # (MemTile only).
     tap: TensorAccessPattern | None = None
     acquires: list[Acquire] = field(default_factory=list)
     releases: list[Release] = field(default_factory=list)
