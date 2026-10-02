@@ -24,12 +24,14 @@ from .aie import (
     TileOp,
     bds,
     dma_bd,
+    _as_bd_i32,
+    _as_bd_i64,
     _as_i32,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..helpers.util import v8bfp16ebs8, v16bfp16ebs16
+from ..helpers.npdtypes import v8bfp16ebs8, v16bfp16ebs16
 from ..ir import (
     DictAttr,
     IntegerAttr,
@@ -42,7 +44,6 @@ from ..ir import (
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
-from ..extras.dialects import arith
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..helpers.taplib import TensorAccessPattern
 
@@ -186,11 +187,13 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             if strides is None:
                 strides = [0] * 3 + [1]
         dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
-            offsets
+            [_as_bd_i64(v) for v in offsets]
         )
-        dynamic_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes)
+        dynamic_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(
+            [_as_bd_i64(v) for v in sizes]
+        )
         dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(
-            strides
+            [_as_bd_i64(v) for v in strides]
         )
         if isinstance(metadata, ObjectFifoCreateOp):
             metadata = metadata.sym_name.value
@@ -298,7 +301,7 @@ def shim_dma_bd(
     if sizes is None:
         sizes = [0] * 4
     if strides is None:
-        strides = [0] * 3 + [1]
+        strides = [0] * (len(sizes) - 1) + [1]
 
     if transfer_len is None:
         transfer_len = np.prod(sizes[-3:])
@@ -338,8 +341,8 @@ def shim_dma_single_bd_task(
         alloc: The alloc argument associates the DMA task with an ObjectFIFO. This argument is called alloc because the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
         mem: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
         tap (optional): A TensorAccessPattern is an alternative method of specifying offset/sizes/strides for determining an access pattern over the mem buffer.
-        offset (optional): Starting point for the data transfer. Default values is 0.
-        sizes: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
+        offset (optional): Starting point for the data transfer. Default values is 0. A runtime value wider than i32 is narrowed, as is ``transfer_len``, with a check that it fits.
+        sizes: The extent of data to be transferred across each dimension. The dimensions before the last three are iteration dimensions, one execution of the BD per index; past four in all, which must then be constant, the compiler splits the transfer into several BDs.
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         issue_token (optional): If a token is issued, one may call dma_await_task on the returned task. Default is False.
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
@@ -375,36 +378,43 @@ def shim_dma_single_bd_task(
     # re-issues the whole transfer sizes[0] times, waits on the objectfifo for that
     # many objects, and dma_await_task never returns. Normalize to the canonical
     # 4-dim form (left-pad with unit dims) so sizes[0] is only ever the iteration
-    # dimension, and reject taps with more than 4 dims instead of silently emitting
-    # a wrong BD.
+    # dimension. Past 4 dims, every dim before the last three iterates, and
+    # aie-decompose-large-dma-bd splits the ones a BD cannot hold into separate
+    # tasks, which it can only do for constant sizes and strides.
     if sizes is not None:
-        if len(sizes) > 4:
-            raise ValueError(
-                f"shim DMA BD supports at most 4 dimensions, got {len(sizes)}"
-            )
+        sizes = [_as_bd_i64(v) for v in sizes]
+        if strides is not None:
+            strides = [_as_bd_i64(v) for v in strides]
         while len(sizes) < 4:
             sizes = [1] + list(sizes)
             if strides is not None:
                 strides = [0] + list(strides)
+        if len(sizes) > 4 and not all(
+            isinstance(v, (int, np.integer)) for v in list(sizes) + list(strides or [])
+        ):
+            raise ValueError(
+                f"a DMA BD with more than 4 dimensions (got {len(sizes)}) needs "
+                "constant sizes and strides, which the compiler splits into BDs of 4"
+            )
 
-    # The outer (sizes[0]) dimension becomes the queue-push repeat_count. A
-    # constant folds to the repeat_count attribute (static path, unchanged); a
-    # runtime Value flows into the repeat_count_val operand so a dynamic tile
-    # count is supported.
+    # The outer dimensions become the queue-push repeat_count. Constants fold to
+    # the repeat_count attribute; a runtime sizes[0] (4 dims at most) flows into
+    # the repeat_count_val operand so a dynamic tile count is supported.
     repeat_count = 0
     repeat_count_val = None
     if sizes:
-        s0 = sizes[0]
-        if isinstance(s0, (int, np.integer)):
-            if s0 > 1:
-                repeat_count = int(s0) - 1
+        outer = sizes[:-3]
+        if all(isinstance(v, (int, np.integer)) for v in outer):
+            runs = int(np.prod([int(v) for v in outer]))
+            if runs > 1:
+                repeat_count = runs - 1
         else:
-            # Runtime: repeat = s0 - 1 as arith, in i32 (the queue field width).
-            # sizes may be i64 (DynamicIndexList); truncate before subtracting.
-            s0_i32 = s0
-            if s0.type != T.i32():
-                s0_i32 = arith.trunci(T.i32(), s0)
-            repeat_count_val = s0_i32 - _as_i32(1)
+            repeat_count_val = _as_bd_i32(sizes[0]) - _as_i32(1)
+    # The BD block lowers only constants, so any arithmetic on runtime values
+    # happens here, ahead of the task.
+    if transfer_len is None and sizes is not None:
+        transfer_len = np.prod(sizes[-3:])
+    offset, transfer_len = _as_bd_i32(offset), _as_bd_i32(transfer_len)
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,
@@ -455,13 +465,24 @@ def dma_free_task(*args: DMAConfigureTaskForOp):
 _orig_dma_start_task = dma_start_task
 
 
-def dma_start_task(*args: DMAConfigureTaskForOp):
+def dma_start_task(
+    *args: DMAConfigureTaskForOp,
+    repeat_count: int | None = None,
+    no_token: bool = False,
+):
+    """Push each task onto its channel's queue.
+
+    ``repeat_count`` replaces the task's own count for these starts only, and
+    ``no_token`` withholds the completion token the task would otherwise issue.
+    """
     if len(args) == 0:
         raise ValueError(
-            "dma_start_task must receive at least one DMAConfigureTaskForOp to free"
+            "dma_start_task must receive at least one DMAConfigureTaskForOp to start"
         )
     for dma_task in args:
-        _orig_dma_start_task(dma_task)
+        _orig_dma_start_task(
+            dma_task, repeat_count=repeat_count, no_token=no_token or None
+        )
 
 
 def set_lock_value(lock: aie.LockOp, value: int):
@@ -485,8 +506,10 @@ def read_scratchpad_parameter(
     Returns:
         An SSA value of the given type.
 
-    Example::
+    For example:
 
-        val = aiex.read_scratchpad_parameter("foo", T.bf16())
+    ```python
+    val = aiex.read_scratchpad_parameter("foo", T.bf16())
+    ```
     """
     return _orig_read_scratchpad_parameter(result_type, name)

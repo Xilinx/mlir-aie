@@ -9,17 +9,19 @@ Writes named parameters to AIE cores via the scratchpad mechanism.
 Thin Python wrapper around the C++ ``test_utils::ParameterScratchpad``
 class (exposed via pybind11).
 
-Usage::
+Usage:
 
-    import pyxrt
-    from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import ParameterScratchpad
+```python
+import pyxrt
+from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import ParameterScratchpad
 
-    # ... get kernel from ELF, etc., then:
-    run = pyxrt.run(kernel)
-    params = ParameterScratchpad(run, "params.txt")
-    params.write("seq_len", 42)
-    params.sync()
-    run.start()
+# ... get kernel from ELF, etc., then:
+run = pyxrt.run(kernel)
+params = ParameterScratchpad(run, "params.txt")
+params.write("seq_len", 42)
+params.sync()
+run.start()
+```
 """
 
 import struct

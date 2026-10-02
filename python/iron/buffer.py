@@ -12,7 +12,7 @@ import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import buffer
-from ..helpers.util import (
+from ..helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
@@ -63,10 +63,9 @@ class Buffer(Resolvable):
                 for host-written RTP buffers the runtime pokes at a hardcoded address.
                 Defaults to None (compiler-assigned).
             mem_bank (int | None, optional): Pin the buffer to a specific L1 memory bank.
-                Bank-aware allocation treats the pin as a hard constraint and reports an
-                error when the bank cannot hold the buffer. The basic-sequential scheme
-                has no notion of banks and ignores the pin. Defaults to None
-                (compiler-assigned).
+                The pin is a hard constraint: if the bank cannot hold the buffer, the
+                compiler reports an error rather than placing it elsewhere. Defaults to
+                None (compiler-assigned).
 
         Raises:
             ValueError: If neither ``type`` nor ``initial_value`` is provided, or if
@@ -116,6 +115,20 @@ class Buffer(Resolvable):
         """The tile this buffer is on."""
         return self._tile
 
+    def place(self, tile: Tile) -> Tile:
+        """Put this buffer on ``tile`` unless it already has one.
+
+        Args:
+            tile: The tile to place an unplaced buffer on.
+
+        Returns:
+            The tile the buffer is on, which differs from ``tile`` if it was
+            already placed elsewhere.
+        """
+        if self._tile is None:
+            self._tile = tile
+        return self._tile
+
     def tiles(self) -> list:
         """Tile dependency for Program.resolve tile discovery.
 
@@ -135,7 +148,7 @@ class Buffer(Resolvable):
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property
-    def dtype(self) -> NpuDType:
+    def dtype(self) -> type[NpuDType]:
         """The per-element datatype of the buffer."""
         return np_ndarray_type_get_dtype(self._arr_type)
 

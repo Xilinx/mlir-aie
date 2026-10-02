@@ -24,6 +24,12 @@ using namespace xilinx::AIEX;
 
 namespace {
 
+/// The longest iteration dimension (d3) a BD holds: its wrap field is biased
+/// by one.
+int64_t maxIterations(const AIE::AIETargetModel &tm, int col, int row) {
+  return 1LL << tm.getDmaBdIterBits(col, row);
+}
+
 int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
                                 unsigned dim, uint64_t elemWidth,
                                 uint32_t gran) {
@@ -40,8 +46,23 @@ int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
     return maxInput;
   }
   if (dim == 3)
-    return 1LL << 6; // iteration wrap is 6 bits
+    return maxIterations(tm, col, row);
   return (1LL << wrapBits) - 1;
+}
+
+/// Whether dimension `d`'s stride fits the BD's step field. The hardware
+/// stride is in address granules, biased by one as the field encodes it
+/// (getHardwareStridesWraps); the iteration slot (d == 3) shares the field
+/// width and additionally admits a zero stride, a re-read.
+bool strideFitsStepField(const AIE::AIETargetModel &tm, Operation *forOp,
+                         BaseMemRefType bufType, int col, int row,
+                         const NdDmaPattern &pattern, unsigned d) {
+  SmallVector<int64_t, kNdDmaDims> hwSizes(kNdDmaDims);
+  SmallVector<int64_t, kNdDmaDims> hwStrides(kNdDmaDims);
+  getHardwareStridesWraps(tm, forOp, bufType, pattern.sizes, pattern.strides,
+                          hwSizes, hwStrides);
+  uint32_t stepBits = tm.getDmaBdStepBits(col, row);
+  return hwStrides[d] <= (1LL << stepBits) - 1;
 }
 
 /// Enumerate divisors b of n in descending order (largest inner factor first).
@@ -60,6 +81,67 @@ void divisorsDescending(int64_t n, SmallVectorImpl<int64_t> &out) {
   llvm::sort(out);
   std::reverse(out.begin(), out.end());
   out.append(small.rbegin(), small.rend());
+}
+
+/// Split dim d (size N = a*b, stride s) into an inner dim (b, s) kept at
+/// position d and an outer dim (a, b*s) inserted at position d+1, shifting the
+/// higher dims outward. The factored pair stays adjacent so the sub-traversal
+/// of dim d is contiguous and its place in the overall nesting is unchanged
+/// => element order is preserved. The outermost slot must be free and carry no
+/// base offset. Returns every such factoring, largest inner factor first.
+SmallVector<NdDmaPattern> factorings(const NdDmaPattern &pattern,
+                                     uint64_t elemWidth, uint32_t gran) {
+  SmallVector<NdDmaPattern> out;
+  bool outerSlotHasOffset = pattern.offsets[3] != 0 && pattern.strides[3] != 0;
+  if (pattern.sizes[3] != 1 || outerSlotHasOffset)
+    return out;
+  for (unsigned d = 0; d < 3; ++d) {
+    int64_t n = pattern.sizes[d];
+    if (n <= 1)
+      continue;
+    int64_t s = pattern.strides[d];
+
+    SmallVector<int64_t, 32> divisors;
+    divisorsDescending(n, divisors);
+    for (int64_t b : divisors) {
+      int64_t a = n / b;
+      if (a <= 1 || b <= 1)
+        continue;
+
+      // Both factors must remain granule-realizable on the innermost dim.
+      if (d == 0 && (!isConstMultipleOfGranule(b, elemWidth, gran)))
+        continue;
+
+      NdDmaPattern factored = pattern;
+      // Shift dims (d+1 .. 2) outward to (d+2 .. 3).
+      for (unsigned i = 3; i > d + 1; --i) {
+        factored.sizes[i] = pattern.sizes[i - 1];
+        factored.strides[i] = pattern.strides[i - 1];
+        factored.offsets[i] = pattern.offsets[i - 1];
+      }
+      factored.sizes[d] = b;           // inner factor
+      factored.strides[d] = s;         // inner keeps original stride/offset
+      factored.sizes[d + 1] = a;       // outer factor
+      factored.strides[d + 1] = b * s; // outer stride
+      factored.offsets[d + 1] = 0;
+      out.push_back(std::move(factored));
+    }
+  }
+  return out;
+}
+
+/// The first legal pattern factoring alone reaches, without slicing.
+std::optional<NdDmaPattern>
+factorToLegal(Operation *forOp, BaseMemRefType bufType,
+              const AIE::AIETargetModel &tm, int col, int row,
+              const NdDmaPattern &pattern, uint64_t elemWidth, uint32_t gran) {
+  if (patternPassesVerification(forOp, bufType, tm, col, row, pattern))
+    return pattern;
+  for (const NdDmaPattern &factored : factorings(pattern, elemWidth, gran))
+    if (std::optional<NdDmaPattern> legal = factorToLegal(
+            forOp, bufType, tm, col, row, factored, elemWidth, gran))
+      return legal;
+  return std::nullopt;
 }
 
 FailureOr<SmallVector<NdDmaPattern>>
@@ -90,66 +172,67 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   if (outermost < 0)
     return failure();
 
-  // (1) Order-preserving dimension factoring: split dim d (size N = a*b,
-  // stride s) into an inner dim (b, s) kept at position d and an outer dim
-  // (a, b*s) inserted at position d+1, shifting the higher dims outward. The
-  // factored pair stays adjacent so the sub-traversal of dim d is contiguous
-  // and its place in the overall nesting is unchanged => element order is
-  // preserved. Requires the outermost slot to be free so no dim is dropped.
-  if (pattern.sizes[3] == 1) {
-    for (unsigned d = 0; d < 3; ++d) {
-      int64_t n = pattern.sizes[d];
-      if (n <= 1)
-        continue;
-      int64_t s = pattern.strides[d];
-
-      SmallVector<int64_t, 32> divisors;
-      divisorsDescending(n, divisors);
-      for (int64_t b : divisors) {
-        int64_t a = n / b;
-        if (a <= 1 || b <= 1)
-          continue;
-
-        // Both factors must remain granule-realizable on the innermost dim.
-        if (d == 0 && (!isConstMultipleOfGranule(b, elemWidth, gran)))
-          continue;
-
-        NdDmaPattern factored = pattern;
-        // Shift dims (d+1 .. 2) outward to (d+2 .. 3).
-        for (unsigned i = 3; i > d + 1; --i) {
-          factored.sizes[i] = pattern.sizes[i - 1];
-          factored.strides[i] = pattern.strides[i - 1];
-          factored.offsets[i] = pattern.offsets[i - 1];
-        }
-        factored.sizes[d] = b;           // inner factor
-        factored.strides[d] = s;         // inner keeps original stride/offset
-        factored.sizes[d + 1] = a;       // outer factor
-        factored.strides[d + 1] = b * s; // outer stride
-        factored.offsets[d + 1] = 0;
-
-        auto sub = decomposeRecursive(forOp, bufType, tm, col, row, factored);
-        if (succeeded(sub))
-          return sub;
-      }
-    }
+  // (1) Order-preserving dimension factoring. A single legal pattern is
+  // preferred over the first factoring that only succeeds by slicing.
+  bool outerSlotHasOffset = pattern.offsets[3] != 0 && pattern.strides[3] != 0;
+  if (std::optional<NdDmaPattern> legal =
+          factorToLegal(forOp, bufType, tm, col, row, pattern, elemWidth, gran))
+    return SmallVector<NdDmaPattern>{*legal};
+  for (const NdDmaPattern &factored : factorings(pattern, elemWidth, gran)) {
+    auto sub = decomposeRecursive(forOp, bufType, tm, col, row, factored);
+    if (succeeded(sub))
+      return sub;
   }
 
   // (2) Order-preserving slicing: only the OUTERMOST active dimension may be
   // split into contiguous index ranges emitted in order. Slicing an inner
   // dimension would interleave the outer iterations and reorder the emitted
   // element stream, so it is not allowed.
+  //
+  // The chunk is the largest wrap the slot holds, or a single index when the
+  // dimension's stride is past the step field: a stride the BD cannot
+  // encode is carried in each slice's offset instead, which has no such
+  // limit (a column-major weight whose column-block stride is the whole
+  // matrix's height, for one). Same bytes, same order, one descriptor per
+  // index of that dimension.
   {
     unsigned d = static_cast<unsigned>(outermost);
     int64_t n = pattern.sizes[d];
     int64_t chunkSize =
         maxLegalInputSizeForDim(tm, col, row, d, elemWidth, gran);
+    // An offset-bearing singleton cannot be reused by factoring; slice instead.
+    if (pattern.sizes[3] == 1 && outerSlotHasOffset && n <= chunkSize)
+      chunkSize = 1;
+    bool oversizedStride =
+        !strideFitsStepField(tm, forOp, bufType, col, row, pattern, d);
+    // Peel outer dimensions until an oversized inner stride can be folded.
+    for (unsigned i = 0; i <= d; ++i)
+      if (pattern.sizes[i] > 1 && pattern.strides[i] > 0 &&
+          !strideFitsStepField(tm, forOp, bufType, col, row, pattern, i)) {
+        chunkSize = 1;
+        break;
+      }
+    // It fits, so what is illegal is inside it and could not be factored
+    // away: slice it into single indices, each slice's outermost dimension
+    // then being the next one in.
+    if (chunkSize >= n)
+      chunkSize = 1;
     if (chunkSize > 0 && chunkSize < n) {
       int64_t numChunks = (n + chunkSize - 1) / chunkSize;
+      if (numChunks > kMaxNdDmaPieces)
+        return failure();
       SmallVector<NdDmaPattern> combined;
       for (int64_t i = 0; i < numChunks; ++i) {
         NdDmaPattern slice = pattern;
         slice.sizes[d] = std::min(chunkSize, n - i * chunkSize);
         slice.offsets[d] = pattern.offsets[d] + i * chunkSize;
+        if (slice.sizes[d] == 1 && oversizedStride) {
+          int64_t stride = bdGranuleDivisor(elemWidth, gran);
+          if (pattern.strides[d] % stride != 0)
+            return failure();
+          slice.offsets[d] *= pattern.strides[d] / stride;
+          slice.strides[d] = stride; // keep the singleton granule-aligned
+        }
 
         auto sub = decomposeRecursive(forOp, bufType, tm, col, row, slice);
         // failed() above already guards this deref; the checker just doesn't
@@ -159,6 +242,8 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
         SmallVector<NdDmaPattern> &subPatterns =
             *sub; // NOLINT(bugprone-unchecked-optional-access)
         combined.append(subPatterns.begin(), subPatterns.end());
+        if (static_cast<int64_t>(combined.size()) > kMaxNdDmaPieces)
+          return failure();
       }
       return combined;
     }
@@ -167,12 +252,122 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   return failure();
 }
 
+// The kNdDmaDims-dimension patterns a longer pattern reduces to, in order (see
+// decomposeNdDmaPattern). Every dimension past d2 is an iteration dimension:
+// one execution per index of them all, outermost slowest.
+FailureOr<SmallVector<NdDmaPattern>>
+reduceIterationDims(const NdDmaPattern &pattern) {
+  NdDmaPattern piece;
+  piece.baseOffset = pattern.baseOffset;
+  for (unsigned d = 0; d < 3; ++d) {
+    piece.offsets.push_back(pattern.offsets[d]);
+    piece.sizes.push_back(pattern.sizes[d]);
+    piece.strides.push_back(pattern.strides[d]);
+  }
+  // The iteration dimensions, innermost first, with a dimension that continues
+  // the one inside it merged into it and unit ones dropped. Their offsets move
+  // into the base, since merging and peeling both move the dimensions.
+  SmallVector<int64_t> sizes, strides;
+  for (unsigned d = 3; d < pattern.sizes.size(); ++d) {
+    piece.baseOffset += pattern.offsets[d] * pattern.strides[d];
+    if (pattern.sizes[d] == 1)
+      continue;
+    if (!sizes.empty() && pattern.strides[d] == sizes.back() * strides.back()) {
+      sizes.back() *= pattern.sizes[d];
+      continue;
+    }
+    sizes.push_back(pattern.sizes[d]);
+    strides.push_back(pattern.strides[d]);
+  }
+  piece.offsets.push_back(0);
+  piece.sizes.push_back(sizes.empty() ? 1 : sizes.front());
+  piece.strides.push_back(strides.empty() ? 0 : strides.front());
+
+  int64_t count = 1;
+  for (int64_t size : ArrayRef(sizes).drop_front()) {
+    if (size > kMaxNdDmaPieces / count)
+      return failure();
+    count *= size;
+  }
+
+  // Peel the rest, one piece per index, working outward so that each outer
+  // dimension repeats all the pieces inside it.
+  SmallVector<NdDmaPattern> pieces{piece};
+  for (unsigned i = 1; i < sizes.size(); ++i) {
+    SmallVector<NdDmaPattern> outer;
+    outer.reserve(pieces.size() * sizes[i]);
+    for (int64_t index = 0; index < sizes[i]; ++index)
+      for (NdDmaPattern inner : pieces) {
+        inner.baseOffset += index * strides[i];
+        outer.push_back(std::move(inner));
+      }
+    pieces = std::move(outer);
+  }
+  return pieces;
+}
+
+// A contiguous pattern is lowered as a plain length, so only its iteration
+// dimension has a limit left to exceed.
+bool contiguousAndFits(const AIE::AIETargetModel &tm, int col, int row,
+                       const NdDmaPattern &pattern) {
+  return isContiguousTransfer(pattern.sizes, pattern.strides) &&
+         pattern.sizes[3] <= maxIterations(tm, col, row);
+}
+
+// A contiguous pattern whose iteration dimension is too long, as consecutive
+// runs of it, each at most `chunk` long.
+FailureOr<SmallVector<NdDmaPattern>>
+sliceIterations(const NdDmaPattern &pattern, int64_t chunk) {
+  if ((pattern.sizes[3] + chunk - 1) / chunk > kMaxNdDmaPieces)
+    return failure();
+  SmallVector<NdDmaPattern> slices;
+  for (int64_t first = 0; first < pattern.sizes[3]; first += chunk) {
+    NdDmaPattern slice = pattern;
+    slice.sizes[3] = std::min(chunk, pattern.sizes[3] - first);
+    slice.offsets[3] = pattern.offsets[3] + first;
+    slices.push_back(std::move(slice));
+  }
+  return slices;
+}
+
+// The 4-dimensional patterns a 4-dimensional one that is neither legal nor
+// contiguous and short enough lowers to.
+FailureOr<SmallVector<NdDmaPattern>> decompose4d(Operation *forOp,
+                                                 BaseMemRefType bufType,
+                                                 const AIE::AIETargetModel &tm,
+                                                 int col, int row,
+                                                 const NdDmaPattern &pattern) {
+  if (isContiguousTransfer(pattern.sizes, pattern.strides))
+    return sliceIterations(pattern, maxIterations(tm, col, row));
+  return decomposeRecursive(forOp, bufType, tm, col, row, pattern);
+}
+
+// Drops the dimensions of size one past d0 while there are more than a BD
+// holds, innermost first. Such a dimension moves nothing, but where it sits
+// between d0 and d2 it keeps an iteration dimension out of the BD, which then
+// has to be peeled.
+void squeezeUnitDims(NdDmaPattern &pattern) {
+  for (unsigned d = 1;
+       d < pattern.sizes.size() && pattern.sizes.size() > kNdDmaDims;) {
+    if (pattern.sizes[d] != 1) {
+      ++d;
+      continue;
+    }
+    pattern.baseOffset += pattern.offsets[d] * pattern.strides[d];
+    pattern.offsets.erase(pattern.offsets.begin() + d);
+    pattern.sizes.erase(pattern.sizes.begin() + d);
+    pattern.strides.erase(pattern.strides.begin() + d);
+  }
+}
+
 } // namespace
 
 bool AIEX::patternPassesVerification(Operation *forOp,
                                      BaseMemRefType referencedBufType,
                                      const AIE::AIETargetModel &tm, int tileCol,
                                      int tileRow, const NdDmaPattern &pattern) {
+  if (pattern.sizes.size() != kNdDmaDims)
+    return false;
   SmallVector<int64_t, kNdDmaDims> hwSizes(kNdDmaDims);
   SmallVector<int64_t, kNdDmaDims> hwStrides(kNdDmaDims);
   getHardwareStridesWraps(tm, forOp, referencedBufType, pattern.sizes,
@@ -228,18 +423,51 @@ AIEX::decomposeNdDmaPattern(Operation *forOp, BaseMemRefType referencedBufType,
                             const NdDmaPattern &pattern,
                             const AIE::AIETargetModel &targetModel, int tileCol,
                             int tileRow) {
-  if (pattern.offsets.size() != kNdDmaDims ||
-      pattern.sizes.size() != kNdDmaDims ||
-      pattern.strides.size() != kNdDmaDims)
+  if (pattern.offsets.size() != pattern.sizes.size() ||
+      pattern.strides.size() != pattern.sizes.size() ||
+      pattern.sizes.size() < kNdDmaDims)
     return failure();
 
-  if (isContiguousTransfer(pattern.sizes, pattern.strides))
+  if (pattern.sizes.size() > kNdDmaDims) {
+    NdDmaPattern squeezed = pattern;
+    squeezeUnitDims(squeezed);
+    FailureOr<SmallVector<NdDmaPattern>> pieces =
+        squeezed.sizes.size() > kNdDmaDims
+            ? reduceIterationDims(squeezed)
+            : SmallVector<NdDmaPattern>{squeezed};
+    if (failed(pieces))
+      return failure();
+    SmallVector<NdDmaPattern> result;
+    for (const NdDmaPattern &piece :
+         *pieces) { // NOLINT(bugprone-unchecked-optional-access)
+      // A piece already legal, or contiguous and so left to the lowering as a
+      // plain length, is kept as it is.
+      if (contiguousAndFits(targetModel, tileCol, tileRow, piece) ||
+          patternPassesVerification(forOp, referencedBufType, targetModel,
+                                    tileCol, tileRow, piece)) {
+        result.push_back(piece);
+        continue;
+      }
+      auto sub = decompose4d(forOp, referencedBufType, targetModel, tileCol,
+                             tileRow, piece);
+      if (failed(sub))
+        return failure();
+      SmallVector<NdDmaPattern> &subPatterns =
+          *sub; // NOLINT(bugprone-unchecked-optional-access)
+      result.append(subPatterns.begin(), subPatterns.end());
+      if (static_cast<int64_t>(result.size()) > kMaxNdDmaPieces)
+        return failure();
+    }
+    return result;
+  }
+
+  if (contiguousAndFits(targetModel, tileCol, tileRow, pattern))
     return failure();
 
   if (patternPassesVerification(forOp, referencedBufType, targetModel, tileCol,
                                 tileRow, pattern))
     return failure();
 
-  return decomposeRecursive(forOp, referencedBufType, targetModel, tileCol,
-                            tileRow, pattern);
+  return decompose4d(forOp, referencedBufType, targetModel, tileCol, tileRow,
+                     pattern);
 }

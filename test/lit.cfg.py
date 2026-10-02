@@ -52,6 +52,9 @@ llvm_config.with_system_environment(
         "HRX_LIBHRX",
         "LIBHRX_DIR",
         "LD_LIBRARY_PATH",
+        "ROCM_PATH",
+        "IRON_HSA_DEVICE",
+        "IRON_HSA_TIMEOUT",
     ]
 )
 
@@ -60,6 +63,7 @@ llvm_config.with_system_environment(
 # NPU cache namespace so cache state cannot leak between unrelated tests while
 # still allowing multiple RUN lines from one test to share that test-local cache.
 _python_with_test_cache = LitConfigHelper._run_with_test_cache_wrap(config.aie_src_root)
+_pytest_wrapper = os.path.join(config.aie_src_root, "utils", "run_pytest.py")
 config.substitutions.append(
     (
         "%PYTHON",
@@ -73,7 +77,14 @@ config.substitutions.append(
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # Show only failures
-config.substitutions.append(("%pytest", f"{_python_with_test_cache} pytest -rA"))
+config.substitutions.append(
+    (
+        "%pytest",
+        f"{_python_with_test_cache} "
+        f"{LitConfigHelper._quote_lit_arg(config.python_executable)} "
+        f"{LitConfigHelper._quote_lit_arg(_pytest_wrapper)} -rA",
+    )
+)
 
 # Setup test library substitutions
 LitConfigHelper.setup_test_lib_substitutions(
@@ -271,6 +282,20 @@ if hrx_npu:
     if hrx_npu == "npu2":
         llvm_config.with_environment("NPU2", "1")
 
+# HSA hardware is explicitly provisioned, independently of the XRT probe.
+# Finding ROCm alone is insufficient: GPU-only hosts also have libhsa.
+hsa_npu = os.environ.get("AIE_HSA_NPU")
+if hsa_npu:
+    if hsa_npu not in {"npu1", "npu2"}:
+        lit_config.fatal(f"AIE_HSA_NPU must be 'npu1' or 'npu2', got {hsa_npu!r}")
+    if not LitConfigHelper.python_expr_is_true(
+        config, config.python_executable, "__import__('aie.utils').utils.has_hsa"
+    ):
+        lit_config.fatal("AIE_HSA_NPU requires an AIE-capable HSA/ROCR installation")
+    config.available_features.add("hsa_npu")
+    if hsa_npu == "npu2":
+        llvm_config.with_environment("NPU2", "1")
+
 if config.xrt_python_bindings and LitConfigHelper.can_import_python_module(
     config, config.python_executable, "pyxrt"
 ):
@@ -314,6 +339,9 @@ config.substitutions.append(("%run_on_npu1_xrt%", _run_on_npu1 if _xrt_ok else "
 config.substitutions.append(("%run_on_npu2_xrt%", _run_on_npu2 if _xrt_ok else "echo"))
 config.substitutions.append(
     ("%run_on_npu2_hrx%", "env NPU_RUNTIME=hrx" if _hrx_ok else "echo")
+)
+config.substitutions.append(
+    ("%run_on_npu_hsa%", "env NPU_RUNTIME=hsa" if hsa_npu else "echo")
 )
 
 if "LIT_AVAILABLE_FEATURES" in os.environ:

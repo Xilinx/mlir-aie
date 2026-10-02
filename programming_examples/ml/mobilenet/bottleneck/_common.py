@@ -43,6 +43,34 @@ def wts_buffer(data_dir, filename, sz):
     return Buffer(i8((sz,)), initial_value=load_wts(data_dir, filename, sz))
 
 
+def wts_segments(data_dir, filename, sizes):
+    """The weights of `filename` split into segments of `sizes` bytes."""
+    data = load_wts(data_dir, filename, sum(sizes))
+    return np.split(data, np.cumsum(sizes)[:-1])
+
+
+def pack_wts(segments, align=64):
+    """Static Buffer holding the int8 `segments`, each starting at a multiple
+    of `align` bytes so the kernels' vector loads can read them.
+
+    Returns the buffer and the byte offset of each segment.
+    """
+    offsets, end = [], 0
+    for seg in segments:
+        start = -(-end // align) * align
+        offsets.append(start)
+        end = start + seg.size
+    packed = np.zeros(end, np.int8)
+    for off, seg in zip(offsets, segments):
+        packed[off : off + seg.size] = seg
+    return Buffer(i8((end,)), initial_value=packed), offsets
+
+
+def packed_wts_buffer(data_dir, filename, sizes, align=64):
+    """`pack_wts` of the weight segments of `filename`."""
+    return pack_wts(wts_segments(data_dir, filename, sizes), align)
+
+
 def sf_key(blk_name):
     """JSON key for a block — 'bn3' -> 'BN3', 'init' -> 'INIT', 'post_l1' -> 'POST'."""
     if blk_name.startswith("bn"):
@@ -60,3 +88,12 @@ def layer_sf(blk, sf, idx):
 def skip_sf(blk, sf):
     """Scale factor for the skip-add (only valid when blk.skip is True)."""
     return sf[sf_key(blk.name)][blk.skip_sf_key]
+
+
+def sa_placer_flags(seed=3, effort=1.0):
+    """aiecc flags that place the design with the SA placer. The default
+    sequential placer can't seat the cascade pairs next to each other.
+
+    effort scales the SA search budget (1.0 = full default schedule); CI
+    passes a lower value to keep compile time down."""
+    return ["--placer=sa_placer", f"--sa-seed={seed}", f"--sa-effort={effort}"]

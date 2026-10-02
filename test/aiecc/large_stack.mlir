@@ -9,7 +9,7 @@
 // reservation, and both linker formats must preserve its full size.
 // large_stack_peano.test and large_stack_chess.test compile this same design.
 
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s -o %t.mlir
+// RUN: aie-opt --aie-assign-buffer-addresses %s -o %t.mlir
 // RUN: FileCheck %s --check-prefix=ADDR < %t.mlir
 // RUN: aie-translate --aie-generate-ldscript --tilecol=0 --tilerow=2 %t.mlir | FileCheck %s --check-prefix=LD
 // RUN: aie-translate --aie-generate-bcf --tilecol=0 --tilerow=2 %t.mlir | FileCheck %s --check-prefix=BCF

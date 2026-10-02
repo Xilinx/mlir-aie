@@ -167,6 +167,20 @@ jobs:
             pip install -r python/requirements_ml.txt
             python -m pip install --require-hashes -r python/requirements_dev.lock
 
+            # This container's XRT does not ship aiebu's library, so build it for
+            # aiecc to link (in-process ELF assembly, no aiebu-asm needed). Pinned
+            # to the aiebu submodule of XRT 2.25.0 so the ELFs match its aiebu-asm.
+            apt-get update
+            apt-get install -y --no-install-recommends libboost-dev pkg-config
+            AIEBU_COMMIT=c108cc4bc7d68021b53bac08235258512d24188c
+            git clone --filter=blob:none https://github.com/Xilinx/aiebu.git /tmp/aiebu-src
+            git -C /tmp/aiebu-src checkout -q $AIEBU_COMMIT
+            git -C /tmp/aiebu-src submodule update --init --recursive --depth 1
+            cmake -S /tmp/aiebu-src -B /tmp/aiebu-build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/aiebu
+            cmake --build /tmp/aiebu-build --target install
+            export CMAKE_ARGS="-Daiebu_DIR=/opt/aiebu/share/cmake/AIEBU"
+
             export ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}
 
             NO_RTTI=""  # Set a default value
@@ -641,9 +655,10 @@ jobs:
     # build-windows wheel via iron_setup.py (runtime mode, so the installed
     # wheel is exercised, not a from-source build) and run a few @iron.jit
     # designs on the self-hosted Windows NPU. Only npu2 Windows runners exist.
-    # 3.13 matches the runner's pre-provisioned interpreter (docs/buildHostWinNative.md).
+    # 3.13 matches the XRT SDK's pyxrt.pyd (built for CPython 3.13);
+    # setup-python provides it since the runner's system Python is 3.12.
     needs: build-windows
-    runs-on: [self-hosted, windows, ryzenai, npu2]
+    runs-on: [self-hosted, windows, devlab-dispatch, strix-halo]
     # Normal exec is 3-6 min; observed hang 192.6 min on this job (2026-08-04).
     timeout-minutes: 20
     env:
@@ -660,6 +675,12 @@ jobs:
         with:
           name: mlir_aie_windows_rtti_ON-3.13
           path: wheelhouse
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - uses: ./.github/actions/setup_windows_xrt
 
       - name: Install wheel and run an example on the NPU
         shell: cmd

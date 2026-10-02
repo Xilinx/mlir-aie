@@ -179,7 +179,6 @@ def manual_switchbox(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
                         buffer=in_buf,
                         acquires=[Acquire(in_prod, value=1)],
                         releases=[Release(in_cons, value=1)],
-                        next="self",
                     )
                 ],
             ),
@@ -191,7 +190,6 @@ def manual_switchbox(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
                         buffer=out_buf,
                         acquires=[Acquire(out_cons, value=1)],
                         releases=[Release(out_prod, value=1)],
-                        next="self",
                     )
                 ],
             ),
@@ -324,8 +322,6 @@ def manual_switchbox(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
         npu_sync(column=col, row=0, direction=1, channel=0, column_num=1, row_num=1)
 
     rt = Runtime(sequence, [vec_ty, vec_ty])
-    for lk in (in_prod, in_cons, out_prod, out_cons):
-        rt.add_lock(lk)
     rt.add_tile_dma(comp_dma)
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()

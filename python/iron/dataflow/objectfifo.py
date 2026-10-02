@@ -19,15 +19,15 @@ from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
     ObjectFifoCreateOp,
 )
 from ...dialects.aie import object_fifo, object_fifo_link
-from ...helpers.util import (
+from ...helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
-    np_ndarray_type_to_memref_type,
     pack_pad_value,
     single_elem_or_list_to_list,
 )
-from ..device import AnyMemTile, Tile
+from ...helpers.util import np_ndarray_type_to_memref_type
+from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, Resolvable
 from .endpoint import ObjectFifoEndpoint
 
@@ -220,7 +220,7 @@ class ObjectFifo(Resolvable):
         return np_ndarray_type_get_shape(self._obj_type)
 
     @property
-    def dtype(self) -> NpuDType:
+    def dtype(self) -> type[NpuDType]:
         """The per-element data type of each element in each buffer belonging to the ObjectFifo."""
         return np_ndarray_type_get_dtype(self._obj_type)
 
@@ -652,7 +652,7 @@ class ObjectFifoHandle(Resolvable):
         return self._object_fifo.shape
 
     @property
-    def dtype(self) -> NpuDType:
+    def dtype(self) -> type[NpuDType]:
         """The per-element datatype of the ObjectFifo."""
         return self._object_fifo.dtype
 
@@ -713,93 +713,39 @@ class ObjectFifoHandle(Resolvable):
         """Shared body for fill()/drain().
 
         Bind the shim endpoint, register the fifo with the active runtime
-        sequence, and emit the shim DMA transfer. Returns a
-        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer
-        (carry it as a ``range_`` iter_arg; ``.free()``/``.await_()`` it).
-
-        The access pattern is given either as a static ``tap`` or as explicit
-        ``sizes``/``strides``/``offset``/``transfer_len`` whose entries may be
-        runtime SSA values (the dynamic path). The two forms are mutually
-        exclusive; when neither is given, a linear transfer of the whole buffer
-        is used.
-
-        When ``managed`` is True (default), the transfer is enrolled in a
-        TaskGroup (explicit ``group`` or the sequence's implicit one), which
-        awaits/frees it at group close. When False, the caller owns the
-        transfer's lifetime via the returned Task's ``.free()``/``.await_()`` --
-        used for hand-rolled software pipelines that carry the task across
-        ``scf.for`` iterations.
+        sequence, then emit the transfer on the shim allocation this fifo's name
+        declares. Returns a [`Task`][iron.runtime.dmataskhandle.Task] handle to
+        the transfer (carry it as a ``range_`` iter_arg;
+        ``.free()``/``.await_()`` it). See ``emit_shim_transfer`` for the
+        arguments.
 
         Lazy imports break the runtime<->dataflow import cycle.
         """
         from ..runtime._context import active_sequence
-        from ..runtime.data import RuntimeData
-        from ..runtime.dmatask import DMATask
-        from ..runtime.dmataskhandle import Task
+        from ..runtime.dmatask import emit_shim_transfer
         from ..runtime.endpoint import RuntimeEndpoint
-        from ..scratchpad_parameter import ScratchpadParameter
-
-        active = active_sequence()
-        rt = active._runtime
-
-        if not isinstance(rt_data, RuntimeData):
-            raise ValueError(f"Expected a RuntimeData source/dest, got {rt_data}")
-        if rt_data not in rt._rt_data:
-            raise ValueError(
-                f"{rt_data} is not a RuntimeData object declared by sequence()"
-            )
-
-        explicit = any(v is not None for v in (sizes, strides, offset, transfer_len))
-        if tap is not None and explicit:
-            raise ValueError(
-                "Pass either tap or sizes/strides/offset/transfer_len, not both."
-            )
-        if tap is None and not explicit:
-            tap = rt_data.default_tap()
-
-        if not managed and group is not None:
-            raise ValueError(
-                "An unmanaged transfer (managed=False) is not part of a TaskGroup; "
-                "do not also pass group=."
-            )
 
         # The endpoint is normally bound eagerly when this handle is registered in
         # Runtime fn_args (using its prod()/cons() tile); bind it here too so a
         # handle used only via fill/drain still gets a shim endpoint.
         if self._endpoint is None:
             self.endpoint = RuntimeEndpoint(self._shim_tile)
-        active.note_fifo(self)
+        active_sequence().note_fifo(self)
 
-        offset_param_name = None
-        if offset_parameter is not None:
-            if isinstance(offset_parameter, ScratchpadParameter):
-                offset_param_name = offset_parameter.name
-                if offset_parameter not in rt._scratchpad_parameters:
-                    rt._scratchpad_parameters.append(offset_parameter)
-            else:
-                offset_param_name = offset_parameter
-
-        task = DMATask(
-            self,
+        return emit_shim_transfer(
+            self.name,
             rt_data,
             tap=tap,
-            task_group=group,
             wait=wait,
-            offset_parameter=offset_param_name,
             packet=packet,
+            offset_parameter=offset_parameter,
+            group=group,
             sizes=sizes,
             strides=strides,
             offset=offset,
             transfer_len=transfer_len,
+            managed=managed,
         )
-        if managed:
-            active.emit_transfer(task, group)
-        else:
-            # Emit the BD only; the caller owns await/free via the Task.
-            task.resolve()
-        # Wrap the transfer's !index result: it is both the scf iter_arg payload
-        # and the operand dma_await_task/dma_free_task accept.
-        return Task(task.task.result)
 
     def fill(
         self,
@@ -987,6 +933,7 @@ class ObjectFifoHandle(Resolvable):
         repeat_counts: list[int | None] | None = None,
         pad_dimensions: list[PadDims | None] | None = None,
         pad_value: list[int] | None = None,
+        channels: list[int | None] | None = None,
     ) -> list[ObjectFifo]:
         """Split the data from an ObjectFifoConsumer handle by sending it to producers in N newly constructed ObjectFifos.
 
@@ -1004,6 +951,11 @@ class ObjectFifoHandle(Resolvable):
             repeat_counts (list[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
             pad_dimensions (list[PadDims | None] | None, optional): Per-sub-fifo (before, after) pad counts (see ObjectFifo.pad_dimensions). Defaults to None.
             pad_value (list[int] | None, optional): Per-sub-fifo per-element pad fill value (see ObjectFifo.pad_value). Defaults to None.
+
+            channels (list[int | None] | None, optional): Pin the hardware DMA
+                channel each output ObjectFifo produces on, one per output.
+                split() builds those producer handles itself, so this is the
+                only place to say it. Defaults to None (all compiler-assigned).
 
         Raises:
             ValueError: Arguments are validated.
@@ -1078,7 +1030,17 @@ class ObjectFifoHandle(Resolvable):
             )
 
         # Create link and set it as endpoints
-        subfifo_prods = [s.prod() for s in subfifos]
+        pinned: list[int | None] = (
+            [None] * len(subfifos) if channels is None else list(channels)
+        )
+        if len(pinned) != len(subfifos):
+            raise ValueError(
+                f"split() got {len(pinned)} channels for {len(subfifos)} "
+                "outputs; give one per output or none at all."
+            )
+        # A subfifo's producer handle is built here, so a caller wanting its
+        # channel pinned has nowhere else to say it -- prod() refuses to re-pin.
+        subfifo_prods = [s.prod(channel=c) for s, c in zip(subfifos, pinned)]
         _ = ObjectFifoLink(self, subfifo_prods, tile, [], offsets)
         return subfifos
 
@@ -1094,6 +1056,7 @@ class ObjectFifoHandle(Resolvable):
         repeat_count: int | None = None,
         pad_dimensions: PadDims | None = None,
         pad_value: int = 0,
+        channel: int | None = None,
     ) -> ObjectFifo:
         """Forward an ObjectFifoHandle of type consumer to a newly-constructed ObjectFifo.
 
@@ -1113,6 +1076,10 @@ class ObjectFifoHandle(Resolvable):
                 counts for the forwarded (memtile) ObjectFifo. Defaults to None.
             pad_value (int, optional): Per-element constant fill value for pad_dimensions (see
                 ObjectFifo.pad_value). Defaults to 0.
+            channel (int | None, optional): Pin the hardware DMA channel the
+                forwarded ObjectFifo produces on. forward() builds that
+                producer handle itself, so this is the only place to say it.
+                Defaults to None (assigned by the compiler).
 
         Raises:
             ValueError: Arguments are Validated
@@ -1140,6 +1107,7 @@ class ObjectFifoHandle(Resolvable):
             repeat_counts=[repeat_count] if repeat_count is not None else None,
             pad_dimensions=[pad_dimensions] if pad_dimensions is not None else None,
             pad_value=[pad_value] if pad_value else None,
+            channels=[channel] if channel is not None else None,
         )
         return forward_fifo[0]
 
@@ -1205,13 +1173,17 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             d.endpoint = self
         if tile is None:
             tile = AnyMemTile
-        # A link normally lives on a mem tile, but forward() documents
-        # forwarding through a compute tile as a valid override, so preserve
-        # an explicitly-set tile_type and only default when unset.
-        default_type = (
-            tile.tile_type if tile.tile_type is not None else AIETileType.MemTile
-        )
-        ObjectFifoEndpoint.__init__(self, tile.with_type(default_type))
+        # Isolate singleton defaults, but retain user tiles shared with Workers
+        # or other links so they resolve to the same logical tile.
+        if any(
+            tile is default for default in (AnyMemTile, AnyComputeTile, AnyShimTile)
+        ):
+            tile = tile.copy()
+        # Respect explicit types and let the device infer fully placed tiles.
+        placed = tile.col is not None and tile.row is not None
+        if tile.tile_type is None and not placed:
+            tile.tile_type = AIETileType.MemTile
+        ObjectFifoEndpoint.__init__(self, tile)
 
     def resolve(
         self,

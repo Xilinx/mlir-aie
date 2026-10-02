@@ -24,6 +24,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <map>
 #include <optional>
@@ -147,12 +148,44 @@ uint32_t xilinx::AIE::getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
   return getShimBurstLength(tm, burstLength).first;
 }
 
+Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
+                                        StringAttr name) {
+  if (!symbolTableOp->hasTrait<mlir::OpTrait::SymbolTable>() ||
+      symbolTableOp->getRegion(0).empty()) {
+    return nullptr;
+  }
+  // One walk finds both kinds: a symbol op's name is its `sym_name`, and
+  // `getAttr` reads it whether it is inherent or discardable.
+  for (Operation &op : symbolTableOp->getRegion(0).front()) {
+    if (op.getAttrOfType<StringAttr>(mlir::SymbolTable::getSymbolAttrName()) ==
+        name) {
+      return &op;
+    }
+  }
+  return nullptr;
+}
+
+Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
+                                        StringRef name) {
+  return lookupNamedOpIn(symbolTableOp,
+                         StringAttr::get(symbolTableOp->getContext(), name));
+}
+
+Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringAttr name) {
+  Operation *symbolTableOp = mlir::SymbolTable::getNearestSymbolTable(from);
+  return symbolTableOp ? lookupNamedOpIn(symbolTableOp, name) : nullptr;
+}
+
+Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringRef name) {
+  return lookupNamedOp(from, StringAttr::get(from->getContext(), name));
+}
+
 std::string xilinx::AIE::generateUniqueSymbolName(
     mlir::Operation *symbolTableOp, llvm::StringRef prefix, unsigned &counter) {
   std::string name;
   do {
     name = (prefix + llvm::Twine(counter++)).str();
-  } while (mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name));
+  } while (lookupNamedOpIn(symbolTableOp, llvm::StringRef(name)));
   return name;
 }
 
@@ -428,6 +461,7 @@ template <typename ConcreteType>
 LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   DenseSet<DMAChannel> inputChannels;
   DenseSet<DMAChannel> outputChannels;
+  DenseSet<std::pair<DMAChannelDir, StringAttr>> namedChannels;
   auto element = cast<ConcreteType>(op);
   Region &body = element.getBody();
   if (body.empty())
@@ -435,6 +469,10 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   for (auto &bodyOp : body.getOps()) {
     // check for duplicate DMA channels within the same ShimDMAOp
     if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
+      if (FlatSymbolRefAttr endpoint = dmaStart.getEndpoint()) {
+        namedChannels.insert({dmaStart.getChannelDir(), endpoint.getAttr()});
+        continue;
+      }
       DMAChannel dmaChan = {dmaStart.getChannelDir(),
                             dmaStart.getChannelIndex()};
       // check if number of input and output channels is more than available
@@ -450,11 +488,17 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   if (!tile)
     return op->emitOpError("tile must implement TileLike interface");
 
-  if (inputChannels.size() > tile.getNumSourceConnections(WireBundle::DMA))
+  auto named = [&](DMAChannelDir dir) -> size_t {
+    return llvm::count_if(namedChannels,
+                          [&](auto channel) { return channel.first == dir; });
+  };
+  if (inputChannels.size() + named(DMAChannelDir::S2MM) >
+      tile.getNumSourceConnections(WireBundle::DMA))
     return op->emitOpError(
         "uses more input channels than available on this tile");
 
-  if (outputChannels.size() > tile.getNumDestConnections(WireBundle::DMA))
+  if (outputChannels.size() + named(DMAChannelDir::MM2S) >
+      tile.getNumDestConnections(WireBundle::DMA))
     return op->emitOpError(
         "uses more output channels than available on this tile");
   return success();
@@ -624,8 +668,8 @@ SmallVector<OpTy> lookupAll(Operation *from, std::optional<ArrayAttr> names) {
   SmallVector<OpTy> ops;
   if (names) {
     for (auto name : names->getAsRange<FlatSymbolRefAttr>()) {
-      if (auto op = dyn_cast_or_null<OpTy>(
-              SymbolTable::lookupNearestSymbolFrom(from, name.getAttr()))) {
+      if (auto op =
+              dyn_cast_or_null<OpTy>(lookupNamedOp(from, name.getAttr()))) {
         ops.push_back(op);
       }
     }
@@ -662,6 +706,12 @@ LogicalResult ObjectFifoPoolOp::verify() {
   if (auto buffers = getBuffers()) {
     if (static_cast<int64_t>(buffers->size()) != getDepth()) {
       return emitOpError("expects 'depth' buffers");
+    }
+  }
+
+  if (auto initValues = getInitValues()) {
+    if (static_cast<int64_t>(initValues->size()) > getDepth()) {
+      return emitOpError("has more 'init_values' than 'depth' objects");
     }
   }
 
@@ -706,7 +756,7 @@ int64_t ObjectFifoPoolOp::getObjectSizeInBytes() {
   MemRefType elemType = getElemType();
   DataLayout layout = DataLayout::closest(*this);
   return elemType.getNumElements() *
-         layout.getTypeSizeInBits(elemType.getElementType()) / 8;
+         layout.getTypeSize(elemType.getElementType());
 }
 
 std::vector<ObjectFifoSegmentOp> ObjectFifoPoolOp::getSegmentOps() {
@@ -730,8 +780,7 @@ SmallVector<LockOp> ObjectFifoPoolOp::getLockOps() {
     for (std::optional<FlatSymbolRefAttr> name :
          {segment.getProduceLockAttr(), segment.getConsumeLockAttr()}) {
       if (name && *name) {
-        if (auto lock = mlir::SymbolTable::lookupNearestSymbolFrom<LockOp>(
-                device, *name)) {
+        if (auto lock = lookupNamedOp<LockOp>(device, name->getAttr())) {
           locks.push_back(lock);
         }
       }
@@ -882,6 +931,27 @@ ObjectFifoDmaEndpointOp::getSelectedSegments() {
   return selectSegments(getPoolOp(), getSegments());
 }
 
+int64_t ObjectFifoDmaEndpointOp::getNumDescriptors() {
+  ObjectFifoPoolOp pool = getPoolOp();
+  if (!pool)
+    return 0;
+  return pool.getDepth() * getSelectedSegments().size();
+}
+
+int64_t ObjectFifoDmaEndpointOp::getRepeat() {
+  ObjectFifoPoolOp pool = getPoolOp();
+  // The filling end covers the batch in one acquire instead.
+  return pool && drains() ? pool.getRepeatCount().value_or(1) : 1;
+}
+
+bool ObjectFifoDmaEndpointOp::repeatsInHardware() {
+  return getRepeat() > 1 && getNumDescriptors() == 1 && !getIterCount();
+}
+
+int64_t ObjectFifoDmaEndpointOp::getNumBDs() {
+  return getNumDescriptors() * (repeatsInHardware() ? 1 : getRepeat());
+}
+
 DMAChannelDir ObjectFifoDmaEndpointOp::getRouteDirection() {
   return drains() ? DMAChannelDir::MM2S : DMAChannelDir::S2MM;
 }
@@ -1012,9 +1082,12 @@ LogicalResult RouteEndpointOp::verify() {
   }
   switch (getBundle()) {
   case WireBundle::DMA:
+    // The runtime drives a shim's DMA, and a DMA program or the runtime
+    // sequence any other tile's; either names this op for the channel.
+    return success();
   case WireBundle::PLIO:
     if (!tile.isShimTile()) {
-      return emitOpError("a DMA or PLIO end the runtime drives is on a shim");
+      return emitOpError("a PLIO end is on a shim");
     }
     return success();
   case WireBundle::Core:
@@ -1094,6 +1167,41 @@ void xilinx::AIE::printObjectFifoProducerTile(OpAsmPrinter &printer,
     printer << " dimensionsToStream ";
     printer.printStrippedAttrOrType(dimensions);
   }
+}
+
+ParseResult xilinx::AIE::parseDMAStartChannel(OpAsmParser &parser,
+                                              Attribute &channel) {
+  StringAttr name;
+  if (succeeded(parser.parseOptionalSymbolName(name))) {
+    channel = FlatSymbolRefAttr::get(name);
+    return success();
+  }
+  int32_t index;
+  if (parser.parseInteger(index))
+    return failure();
+  channel = parser.getBuilder().getI32IntegerAttr(index);
+  return success();
+}
+
+LogicalResult xilinx::AIE::verifyDMAChannelsResolved(DeviceOp device) {
+  bool resolved = true;
+  device.walk([&](DMAStartOp start) {
+    if (FlatSymbolRefAttr endpoint = start.getEndpoint()) {
+      start.emitOpError() << "names route endpoint " << endpoint
+                          << " in place of a channel index; run "
+                             "--aie-objectfifo-allocate to assign one";
+      resolved = false;
+    }
+  });
+  return success(resolved);
+}
+
+void xilinx::AIE::printDMAStartChannel(OpAsmPrinter &printer, Operation *op,
+                                       Attribute channel) {
+  if (auto index = dyn_cast<IntegerAttr>(channel))
+    printer << index.getInt();
+  else
+    printer.printAttributeWithoutType(channel);
 }
 
 ParseResult
@@ -1328,6 +1436,11 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   if (objFifo.getAieStream().has_value())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "using stream port");
+  for (Operation *op = (*this)->getPrevNode(); op; op = op->getPrevNode())
+    if (auto other = dyn_cast<ObjectFifoAllocateOp>(op);
+        other && other.getObjFifoName() == getObjFifoName())
+      return emitOpError("objectfifo ")
+             << getObjFifoNameAttr() << " already has an allocate operation";
   return success();
 }
 
@@ -2032,6 +2145,104 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
   return failure(result.wasInterrupted());
 }
 
+// Rejects two aie.flows into one port and a packet flow sharing an endpoint
+// with an aie.flow: a circuit sends every word from its source, packets
+// included, and its destination takes words from nothing else.
+LogicalResult verifyNoSharedCircuitPorts(DeviceOp device) {
+  std::map<PortKey, FlowOp> circuitSources, circuitDests;
+  WalkResult result =
+      device.walk([&](FlowOp flow) {
+        std::optional<PortKey> src = tryGetPortKey(
+            flow.getSource(), flow.getSourceBundle(), flow.getSourceChannel());
+        std::optional<PortKey> dst = tryGetPortKey(
+            flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
+        if (src)
+          circuitSources.try_emplace(*src, flow);
+        if (!dst)
+          return WalkResult::advance();
+        auto [it, inserted] = circuitDests.try_emplace(*dst, flow);
+        if (inserted)
+          return WalkResult::advance();
+        InFlightDiagnostic diag =
+            flow.emitOpError()
+            << "ends at " << to_string(*dst)
+            << ", where another circuit flow ends; a port takes one circuit";
+        diag.attachNote(it->second.getLoc())
+            << "the other circuit flow is here";
+        return WalkResult::interrupt();
+      });
+  if (result.wasInterrupted())
+    return failure();
+  result = device.walk([&](PacketFlowOp packetFlow) {
+    Region &body = packetFlow.getPorts();
+    if (body.empty())
+      return WalkResult::advance();
+    for (Operation &op : body.front()) {
+      std::optional<PortKey> port;
+      std::map<PortKey, FlowOp> *circuits = nullptr;
+      StringRef role;
+      if (auto source = dyn_cast<PacketSourceOp>(op)) {
+        port = tryGetPortKey(source.getTile(), source.getBundle(),
+                             source.getChannel());
+        circuits = &circuitSources;
+        role = "starts";
+      } else if (auto dest = dyn_cast<PacketDestOp>(op)) {
+        port =
+            tryGetPortKey(dest.getTile(), dest.getBundle(), dest.getChannel());
+        circuits = &circuitDests;
+        role = "ends";
+      }
+      if (!port)
+        continue;
+      auto it = circuits->find(*port);
+      if (it == circuits->end())
+        continue;
+      InFlightDiagnostic diag =
+          packetFlow.emitOpError()
+          << role << " at " << to_string(*port) << ", where a circuit flow "
+          << role << "; a port carries either one circuit or packets";
+      diag.attachNote(it->second.getLoc()) << "the circuit flow is here";
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
+}
+
+// `mlir::detail::verifySymbolTable` compares names carried by `Symbol` ops.
+// `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` name themselves
+// with `sym_name` but define an SSA value, so they are not `Symbol` ops and
+// their names escape that check. `lookupNamedOpIn` resolves them by name, so a
+// repeated name would bind every reference to whichever op comes first.
+LogicalResult verifyNoDuplicateNames(Operation *symbolTableOp) {
+  if (symbolTableOp->getNumRegions() == 0 ||
+      symbolTableOp->getRegion(0).empty()) {
+    return success();
+  }
+  DenseMap<StringAttr, Operation *> nameSeen;
+  for (Operation &op : symbolTableOp->getRegion(0).front()) {
+    auto name = op.getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+    if (!name) {
+      continue;
+    }
+    auto [it, inserted] = nameSeen.try_emplace(name, &op);
+    if (inserted) {
+      continue;
+    }
+    // Leave a pair of `Symbol` ops to `verifySymbolTable`, which runs after the
+    // body and so lets the body ops report about themselves first.
+    if (isa<SymbolOpInterface>(op) && isa<SymbolOpInterface>(it->second)) {
+      continue;
+    }
+    InFlightDiagnostic diag = op.emitError() << "redefinition of symbol named '"
+                                             << name.getValue() << "'";
+    diag.attachNote(it->second->getLoc())
+        << "see existing symbol definition here";
+    return failure();
+  }
+  return success();
+}
+
 } // namespace
 
 LogicalResult DeviceOp::verify() {
@@ -2071,6 +2282,12 @@ LogicalResult DeviceOp::verify() {
     return failure();
   if (failed(verifyNoDuplicatePacketFlows(*this)))
     return failure();
+  if (failed(verifyNoSharedCircuitPorts(*this)))
+    return failure();
+
+  if (failed(verifyNoDuplicateNames(*this))) {
+    return failure();
+  }
 
   return success();
 }
@@ -2173,9 +2390,6 @@ LogicalResult LogicalTileOp::verify() {
       }
     }
   }
-
-  if (isShimNOCorPLTile() && getAllocationScheme())
-    return emitOpError("Shim tiles cannot have an allocation scheme");
 
   return success();
 }
@@ -2363,9 +2577,6 @@ LogicalResult TileOp::verify() {
     }
   }
 
-  if (isShimNOCorPLTile() && getAllocationScheme())
-    return emitOpError("Shim tiles cannot have an allocation scheme");
-
   return success();
 }
 
@@ -2430,7 +2641,7 @@ static bool isLegalTileConnection(TileOp tile,
 }
 
 TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
-                           int row) {
+                           int row, std::optional<mlir::Location> loc) {
   TileOp tile = nullptr;
   // Find matching predefined tile at device top level, ...
   for (auto t : device.getOps<AIE::TileOp>()) {
@@ -2444,8 +2655,8 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
     OpBuilder::InsertionGuard guard(builder);
     mlir::Block &device_start_block = *device.getBodyRegion().begin();
     builder.setInsertionPointToStart(&device_start_block);
-    tile = TileOp::create(builder, device.getLoc(), builder.getIndexType(), col,
-                          row);
+    tile = TileOp::create(builder, loc.value_or(device.getLoc()),
+                          builder.getIndexType(), col, row);
   }
   return tile;
 }
@@ -2606,20 +2817,79 @@ LogicalResult CoreOp::verify() {
                     "artifact must be either merged or linked, not both";
     }
   // The core's own sections live in a `core_data` aie.buffer, so the buffer
-  // verifier covers their placement. Only the size belongs here.
+  // verifier covers their placement. Size and measured alignment belong here.
   if (auto measured = getMeasuredDataSize())
     if (auto declared = getDataSize(); declared && *declared < *measured)
       return emitOpError("data_size ")
              << *declared << " is smaller than the " << *measured
              << " bytes this core's linked sections occupy";
-  // Checked last so it does not pre-empt the diagnostics above on an op with
-  // more than one defect.
-  if (uint32_t stackSize = getEffectiveStackSize(),
-      localMem = getTargetModel(*this).getLocalMemorySize();
-      stackSize >= localMem)
+  // Where the stack sits. A pin the allocator could never honor is a user
+  // constraint, so it is rejected here rather than at placement.
+  const auto &targetModel = getTargetModel(*this);
+  int64_t localMem = targetModel.getLocalMemorySize();
+  auto validAlignment = [localMem](int64_t alignment) {
+    return alignment > 0 && alignment <= localMem &&
+           llvm::isPowerOf2_64(alignment);
+  };
+  if (auto alignment = getMeasuredDataAlignment();
+      alignment && !validAlignment(*alignment))
+    return emitOpError("measured_data_alignment must be a power of two between "
+                       "1 and ")
+           << localMem << " bytes";
+  if (auto alignments = getMeasuredBankAlignments())
+    if (!llvm::all_of(*alignments, validAlignment))
+      return emitOpError("measured_bank_alignments must contain only powers of "
+                         "two between 1 and ")
+             << localMem << " bytes";
+  MemoryRun stackRun = getStackRun();
+  auto tile = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
+  int64_t numBanks =
+      tile ? targetModel.getNumBanks(tile.getCol(), tile.getRow()) : 0;
+  int64_t bankSize =
+      numBanks > 0 ? targetModel.getLocalMemorySize() / numBanks : 0;
+  if (auto bank = getStackBank()) {
+    if (tile && *bank >= numBanks)
+      return emitOpError("stack_bank ")
+             << *bank << " does not exist; this tile has " << numBanks
+             << " banks";
+    // Bank-specific stack accesses must stay inside the selected bank.
+    if (bankSize > 0 && stackRun.size > bankSize)
+      return emitOpError("stack_bank pins a ")
+             << stackRun.size << "-byte stack to bank " << *bank
+             << ", which holds " << bankSize
+             << " bytes; omit stack_bank and stack_address for legacy "
+                "placement";
+    if (getStackAddress() && bankSize > 0 && stackRun.start / bankSize != *bank)
+      return emitOpError("stack_address 0x")
+             << llvm::utohexstr(stackRun.start) << " lies in bank "
+             << stackRun.start / bankSize << ", but stack_bank requests bank "
+             << *bank;
+    if (getStackAddress() && bankSize > 0 &&
+        stackRun.end() > (*bank + 1) * bankSize)
+      return emitOpError("a ")
+             << stackRun.size << "-byte stack at 0x"
+             << llvm::utohexstr(stackRun.start) << " runs past stack_bank "
+             << *bank << " (ending at 0x"
+             << llvm::utohexstr((*bank + 1) * bankSize) << ")";
+  }
+  // Checked last so they do not pre-empt the diagnostics above on an op with
+  // more than one defect. Size and placement are separate faults: a stack can
+  // fit the tile yet be placed so it runs off the end.
+  if (stackRun.size >= localMem)
     return emitOpError("stack_size ")
-           << stackSize << " leaves no local memory for this tile's buffers ("
-           << localMem << " bytes total)";
+           << stackRun.size
+           << " leaves no local memory for this tile's buffers (" << localMem
+           << " bytes total)";
+  if (stackRun.end() > localMem)
+    return emitOpError("a ") << stackRun.size << "-byte stack at 0x"
+                             << llvm::utohexstr(stackRun.start)
+                             << " runs past this tile's local memory ("
+                             << localMem << " bytes total)";
+  if (getStackAddress() &&
+      stackRun.start % targetModel.getCoreStackAlignment() != 0)
+    return emitOpError("stack_address must be aligned to ")
+           << targetModel.getCoreStackAlignment()
+           << " bytes for this target's stack ABI";
   return success();
 }
 
@@ -2637,6 +2907,10 @@ TileOp CoreOp::getTileOp() {
 uint32_t CoreOp::getEffectiveStackSize() {
   return getStackSize().value_or(
       getTargetModel(*this).getDefaultCoreStackSize());
+}
+
+MemoryRun CoreOp::getStackRun() {
+  return {getStackAddress().value_or(0), getEffectiveStackSize()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -2800,7 +3074,9 @@ LogicalResult MemTileDMAOp::verify() {
                << "allocOp in MemTileDMAOp region should have an id attribute";
     }
     if (auto startOp = dyn_cast<DMAStartOp>(bodyOp)) {
-      if (startOp.getChannelIndex() > 3) {
+      // An endpoint's channel is not known yet; allocation keeps one whose
+      // BDs reach another tile's memory off the local-only channels.
+      if (!startOp.getEndpoint() && startOp.getChannelIndex() > 3) {
         // Channels 4 and 5 in a memtile are restricted to only access local
         // buffers and locks.
 
@@ -2945,6 +3221,33 @@ xilinx::AIE::verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
                 "can deadlock");
         }
   return success();
+}
+
+LogicalResult xilinx::AIE::verifyBdLockPair(Block &block, bool outOfOrder,
+                                            UseLockOp &acquire,
+                                            UseLockOp &release) {
+  acquire = nullptr;
+  release = nullptr;
+  auto reject = [&](UseLockOp at) {
+    auto diag = at.emitOpError(
+        "does not fit its buffer descriptor, which has one lock-acquire field "
+        "and one lock-release field; a buffer descriptor block uses either no "
+        "lock or one use_lock(acquire) and one use_lock(release)");
+    if (outOfOrder)
+      diag << ", or a use_lock(release) alone when out-of-order";
+    return diag;
+  };
+  for (UseLockOp op : block.getOps<UseLockOp>()) {
+    UseLockOp &slot = op.release() ? release : acquire;
+    if (slot)
+      return reject(op);
+    slot = op;
+  }
+  if (!acquire && !release)
+    return success();
+  if (release && (acquire || outOfOrder))
+    return success();
+  return reject(acquire ? acquire : release);
 }
 
 LogicalResult DMAOp::verify() {
@@ -3627,7 +3930,7 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
     if (!areEquivalentBDs(*patternIt, uniquePattern[idx]))
       return failure();
     patternIt++;
-    idx = (++idx) % uniquePattern.size();
+    idx = (idx + 1) % uniquePattern.size();
   }
 
   // Repeating BD chains detected. Erasing repetitions.
@@ -3783,6 +4086,41 @@ void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add(FoldDMAStartOp);
 }
 
+RouteEndpointOp DMAStartOp::getEndpointOp() {
+  FlatSymbolRefAttr name = getEndpoint();
+  if (!name)
+    return nullptr;
+  return SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(*this, name);
+}
+
+LogicalResult DMAStartOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  FlatSymbolRefAttr name = getEndpoint();
+  if (!name)
+    return success();
+  auto program = dyn_cast<DmaBody>((*this)->getParentOp());
+  auto device = (*this)->getParentOfType<DeviceOp>();
+  if (!program || !device)
+    return emitOpError("only a tile's DMA program may name its channel by a "
+                       "route endpoint");
+  auto endpoint = symbolTable.lookupSymbolIn<RouteEndpointOp>(device, name);
+  if (!endpoint)
+    return emitOpError() << name << " is not an aie.route_endpoint";
+  if (endpoint.getBundle() != WireBundle::DMA)
+    return emitOpError() << name << " names a "
+                         << stringifyWireBundle(endpoint.getBundle())
+                         << " port, not a DMA channel";
+  auto here = cast<TileLike>(program.getTile().getDefiningOp());
+  TileLike there = endpoint.getTileLike();
+  bool sameTile = endpoint.getTile() == program.getTile() ||
+                  (here.tryGetCol() && here.tryGetRow() &&
+                   here.tryGetCol() == there.tryGetCol() &&
+                   here.tryGetRow() == there.tryGetRow());
+  if (!sameTile)
+    return emitOpError() << name
+                         << " is on a different tile than this DMA program";
+  return success();
+}
+
 LogicalResult DMAStartOp::verify() {
   if (getPadValue() != 0) {
     if (!isa<MemTileDMAOp>(getOperation()->getParentOp()))
@@ -3826,6 +4164,9 @@ LogicalResult SwitchboxOp::verify() {
   const auto &targetModel = getTargetModel(tile);
   if (body.empty())
     return emitOpError("should have non-empty body");
+  // A circuit connection claims its source port wherever it appears.
+  for (auto connectOp : body.front().getOps<ConnectOp>())
+    sourceset.insert({connectOp.getSourceBundle(), connectOp.sourceIndex()});
   for (auto &ops : body.front()) {
     // Would be simpler if this could be templatized.
     auto checkBound = [&ops](StringRef dir, WireBundle bundle, int index,
@@ -3845,7 +4186,6 @@ LogicalResult SwitchboxOp::verify() {
 
     if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
       Port source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};
-      sourceset.insert(source);
 
       Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
       if (destset.count(dest)) {
@@ -4077,12 +4417,15 @@ LogicalResult UseLockOp::verify() {
   if (HasSomeParent<CoreOp, func::FuncOp>::verifyTrait(*this).succeeded()) {
     return success();
   }
-  // Or it can be in a DMAConfigureTaskOp (for runtime DMA configuration)
-  // Check by operation name to avoid circular dependency with AIEX dialect
+  // Or it can be in a DMAConfigureTaskOp or DMAConfigureTaskForOp (for runtime
+  // DMA configuration). Check by operation name to avoid circular dependency
+  // with AIEX dialect
   {
     Operation *operation = (*this)->getParentOp();
     while (operation) {
-      if (operation->getName().getStringRef() == "aiex.dma_configure_task")
+      StringRef name = operation->getName().getStringRef();
+      if (name == "aiex.dma_configure_task" ||
+          name == "aiex.dma_configure_task_for")
         return success();
       operation = operation->getParentOp();
     }
@@ -4487,6 +4830,11 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
       auto walkResult = attr.walk([&](SymbolRefAttr symbolRef) {
         Operation *symbolDefOp =
             SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
+        if (!symbolDefOp) {
+          if (auto flat = dyn_cast<FlatSymbolRefAttr>(symbolRef)) {
+            symbolDefOp = lookupNamedOp(*this, flat.getAttr());
+          }
+        }
         if (symbolDefOp) {
           if (!llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
               !llvm::isa<DeviceOp>(symbolDefOp) &&

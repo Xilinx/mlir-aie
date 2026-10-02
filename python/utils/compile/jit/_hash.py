@@ -7,8 +7,9 @@
 
 Two halves so callers can distinguish "recipe changed" from "rebuild needed":
 
-* `_compute_recipe_hash`   — generator identity + compile_kwargs +
-  aiecc/compile flags. Target-independent design identity.
+* `_compute_recipe_hash`   — generator identity (with the helpers it
+  reaches in its own package) + compile_kwargs + aiecc/compile flags.
+  Target-independent design identity.
 * `_compute_artifact_hash` — source / object content + tool mtimes +
   target device.  Captures things that change the *output* of compilation
   without changing the *recipe*.
@@ -33,9 +34,13 @@ import hashlib
 import json
 import logging
 import marshal
+import os
+from functools import partial
 from pathlib import Path
-from types import CodeType
+from types import CodeType, FunctionType, ModuleType
 from typing import Any, Callable, Mapping
+
+from ._introspect import _introspect_generator
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +88,8 @@ def _without_location(const):
     """
     if isinstance(const, tuple):
         return tuple(_without_location(c) for c in const)
+    if isinstance(const, slice):
+        return (Ellipsis, "slice", const.start, const.stop, const.step)
     if not isinstance(const, CodeType):
         return const
     return const.replace(
@@ -103,10 +110,101 @@ def _code_identity(code: CodeType) -> bytes:
     and ``matmul_i8(a, b, c)`` compile to identical bytecode.
 
     Location is stripped first: it is not part of the design, and keying on it
-    would split the cache per checkout. Version 4 is pinned because
-    ``marshal.version`` is 4 through 3.13 and 5 from 3.14.
+    would split the cache per checkout. Format 3 and up write an object a
+    second time as a back-reference only when its refcount is above one, so
+    before 3.12 made interned names immortal the bytes moved with whatever
+    else held a name. Format 2 has no references; it cannot write the
+    constant slices 3.14 folds into ``co_consts``, so those go in as tuples.
     """
-    return marshal.dumps(_without_location(code), 4)
+    return marshal.dumps(_without_location(code), 2)
+
+
+_PLAIN = (int, float, complex, str, bytes, bool, type(None))
+
+
+def _plain(value) -> bool:
+    if isinstance(value, tuple):
+        return all(_plain(v) for v in value)
+    return isinstance(value, _PLAIN)
+
+
+def _names(code: CodeType) -> set[str]:
+    """Return the global and attribute names ``code`` and its nested code use."""
+    names, todo = set(), [code]
+    while todo:
+        c = todo.pop()
+        names.update(c.co_names)
+        todo.extend(k for k in c.co_consts if isinstance(k, CodeType))
+    return names
+
+
+def _callees_identity(generator: Callable) -> bytes:
+    """Code and plain constants of what ``generator`` reaches in its own package.
+
+    The generator's bytecode names a helper but does not contain it, so a
+    design built by ``_build_stream`` would otherwise keep its key when the
+    helper changes. The walk follows globals, and attributes of modules, to
+    the functions, classes and plain constants of the generator's package
+    (``aie.iron.algorithms`` for ``kernel_design``; only the module itself
+    for a top-level one) and stops outside it: the IRON core and third-party
+    code are versioned with the install, not edited per design.
+    """
+    home = generator.__module__ or ""
+    package = home.rpartition(".")[0]
+
+    def in_package(module: str) -> bool:
+        return module == home or bool(package) and module.startswith(f"{package}.")
+
+    records: set[bytes] = set()
+    seen = {id(generator)}
+    todo: list = [generator]
+
+    def visit(value, where: str):
+        if isinstance(value, (staticmethod, classmethod)):
+            value = value.__func__
+        if isinstance(value, property):
+            for f in (value.fget, value.fset, value.fdel):
+                visit(f, where)
+        elif isinstance(value, (FunctionType, type)):
+            if in_package(value.__module__ or "") and id(value) not in seen:
+                seen.add(id(value))
+                todo.append(value)
+        elif _plain(value):
+            records.add(f"{where}={value!r}".encode())
+
+    while todo:
+        obj = todo.pop()
+        name = f"{obj.__module__}.{obj.__qualname__}"
+        if isinstance(obj, type):
+            for attr, value in vars(obj).items():
+                if not attr.startswith("__") or isinstance(value, FunctionType):
+                    visit(value, f"{name}.{attr}")
+            continue
+        if obj is not generator:
+            records.add(name.encode() + _code_identity(obj.__code__))
+            visit(obj.__defaults__, f"{name}.__defaults__")
+            visit(tuple(sorted((obj.__kwdefaults__ or {}).items())), f"{name}.kw")
+        names = _names(obj.__code__)
+        scope = dict(obj.__globals__)
+        where = {n: f"{obj.__module__}.{n}" for n in scope}
+        # A closure reaches its helpers and constants through cells rather
+        # than globals; those shadow a global of the same name.
+        for n, cell in zip(obj.__code__.co_freevars, obj.__closure__ or ()):
+            try:
+                scope[n] = cell.cell_contents
+            except ValueError:  # an empty cell
+                continue
+            where[n] = f"{name}.<closure>.{n}"
+            names.add(n)
+        for n in names & scope.keys():
+            value = scope[n]
+            if not isinstance(value, ModuleType):
+                visit(value, where[n])
+            elif in_package(value.__name__):
+                members = vars(value)
+                for m in names & members.keys():
+                    visit(members[m], f"{value.__name__}.{m}")
+    return b"\0".join(sorted(records))
 
 
 def _compute_recipe_hash(
@@ -116,8 +214,12 @@ def _compute_recipe_hash(
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
     include_paths: list[Path] | tuple[Path, ...] = (),
+    insts_only: bool = False,
 ) -> str:
     """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
+
+    The bytecode includes the helpers the generator reaches in its own
+    package (``_callees_identity``).
 
     Captures the target-independent generator and compile configuration. It
     omits device identity, so equal recipe hashes can produce different
@@ -142,10 +244,25 @@ def _compute_recipe_hash(
         h.update(_code_identity(generator.__code__))
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(getattr(generator, "__module__", "").encode())
-        # A CompileTime[T] left to its Python default never reaches
-        # compile_kwargs, and the default lives outside the code object.
-        h.update(repr(getattr(generator, "__defaults__", None)).encode())
-        h.update(repr(getattr(generator, "__kwdefaults__", None)).encode())
+        h.update(_callees_identity(generator))
+        hints, sig, (_, _, dispatch_params, _) = _introspect_generator(generator)
+        # Dispatch defaults are call-time values; explicitly bound defaults are
+        # unused. Neither changes the compiled program.
+        h.update(
+            repr(
+                [
+                    param.replace(
+                        annotation=hints.get(name, param.annotation),
+                        default=(
+                            param.empty
+                            if name in dispatch_params or name in compile_kwargs
+                            else param.default
+                        ),
+                    )
+                    for name, param in sig.parameters.items()
+                ]
+            ).encode()
+        )
 
     def _kwarg_repr(v):
         if callable(v) and hasattr(v, "__code__"):
@@ -162,6 +279,7 @@ def _compute_recipe_hash(
                 repr(getattr(v, "__defaults__", None)),
                 repr(getattr(v, "__kwdefaults__", None)),
                 closure_repr,
+                _callees_identity(v).hex(),
             )
         return str(v)
 
@@ -177,8 +295,42 @@ def _compute_recipe_hash(
     h.update(repr(sorted(compile_flags)).encode())
     h.update(f"full_elf={full_elf}".encode())
     h.update(repr([str(p) for p in include_paths]).encode())
+    if insts_only:
+        # An instruction stream alone is a different artifact from the
+        # xclbin + insts pair the same generator would otherwise produce.
+        h.update(b"insts_only=True")
 
     return h.hexdigest()
+
+
+def _tool_identity(
+    name: str, resolve: Callable[[], str | Path], *, expected: bool = True
+) -> str:
+    """Identify a resolved compiler component without probing an executable.
+
+    A tool that is not ``expected`` may legitimately be missing, so its absence
+    is hashed without a warning.
+    """
+    try:
+        path = Path(resolve()).resolve()
+        stat = path.stat()
+        return f"{path}:{stat.st_mtime_ns}:{stat.st_size}"
+    except (ImportError, AttributeError, OSError, RuntimeError) as exc:
+        if expected:
+            logger.warning("_compute_artifact_hash: %s absent (%s)", name, exc)
+        return "absent"
+
+
+def _aiecc_option(flags: list[str] | tuple[str, ...], name: str) -> str | None:
+    """Return the value of a string-valued aiecc option."""
+    options = (f"--{name}", f"-{name}")
+    for index, flag in enumerate(flags):
+        for option in options:
+            if flag.startswith(f"{option}="):
+                return flag.split("=", 1)[1]
+            if flag == option and index + 1 < len(flags):
+                return flags[index + 1]
+    return None
 
 
 def _compute_artifact_hash(
@@ -186,6 +338,12 @@ def _compute_artifact_hash(
     source_files: list[Path] | tuple[Path, ...],
     object_files: list[Path] | tuple[Path, ...],
     fold_ddr_addr_offset: bool,
+    has_dispatch_params: bool = False,
+    full_elf: bool = False,
+    insts_only: bool = False,
+    aiecc_flags: list[str] | tuple[str, ...] = (),
+    emit_elf: bool = False,
+    work_dir: Path | None = None,
 ) -> str:
     """Hash of the "artifacts": source/object content + tool mtimes + device.
 
@@ -197,8 +355,26 @@ def _compute_artifact_hash(
     a folded ``insts.bin`` and HRX an unfolded one, so the two must never share a
     cache entry. It is resolved once by the caller and passed in explicitly (no
     silent default) so the cache key and the compilation can never disagree.
+
+    ``has_dispatch_params`` additionally hashes the host C++ compiler used to
+    build the dispatch library. Its generated source is covered by aiecc's
+    identity above; Python does not run a separate translation pipeline.
+
+    Every tool that packages a requested image is hashed too: ``aiebu-asm`` for
+    an ELF, ``xclbinutil`` for an xclbin, and nothing for an instruction stream
+    alone. Both images embed a PDI, so they also hash the ``bootgen`` aiecc
+    would run. aiecc may link bootgen and aiebu in instead, which Python cannot
+    tell, so a missing ``bootgen`` or ``aiebu-asm`` is not an error.
     """
+    from aie.utils import config as _config
+
     h = hashlib.sha256()
+    tools = {
+        "peano": _config.peano_cxx_path,
+        "aiecc": _config.aiecc_path,
+        "nm": _config.nm_path,
+        "objcopy": _config.objcopy_path,
+    }
 
     for sf in sorted(source_files, key=str):
         h.update(str(sf).encode())
@@ -209,7 +385,6 @@ def _compute_artifact_hash(
         h.update(_content_digest(of).encode())
 
     h.update(f"fold_ddr_addr_offset={fold_ddr_addr_offset}".encode())
-
     # Static .mlir is target-agnostic; compiled kernels need a device identifier.
     # Missing components collapse to a constant + WARNING log so cross-target
     # cache collisions surface instead of silently aliasing.
@@ -229,52 +404,48 @@ def _compute_artifact_hash(
             target_arch = "unknown"
             target_device = ("unknown", "", "", "")
 
-        try:
-            from aie.utils import config as _config
+        h.update(f"target_arch={target_arch}|target_device={target_device!r}".encode())
+        if has_dispatch_params:
+            tools["host_cxx"] = _config.host_cxx_path
+        # Library factories pick their sources from this tree when the
+        # generator runs, after the key is taken, so the key names the tree
+        # and its contents, which a candidate edited in place changes.
+        if kernel_tree := os.environ.get("MLIR_AIE_KERNEL_SOURCES"):
+            from aie.utils.benchmark import kernel_tree_digest
 
-            peano_cxx = _config.peano_cxx_path()
-            peano_mtime = str(Path(peano_cxx).stat().st_mtime)
-        except (
-            ImportError,
-            AttributeError,
-            FileNotFoundError,
-            OSError,
-            RuntimeError,
-        ) as exc:
-            try:
-                from aie.utils import config as _config
-
-                peano_mtime = f"path:{_config.peano_install_dir()}"
-                logger.warning(
-                    "_compute_artifact_hash: peano cxx unavailable (%s); "
-                    "keying on install dir path only",
-                    exc,
-                )
-            except (ImportError, AttributeError, RuntimeError) as exc2:
-                logger.warning("_compute_artifact_hash: peano absent (%s)", exc2)
-                peano_mtime = "absent"
-
-        try:
-            from aie.utils import config as _config
-
-            # Resolve aiecc the way the compile does.  Probing PATH instead
-            # misses the bundled bin/aiecc that _run_aiecc actually invokes,
-            # and then every aiecc aliases onto the constant below.
-            aiecc_mtime = str(Path(_config.aiecc_path()).stat().st_mtime)
-        except (
-            ImportError,
-            AttributeError,
-            FileNotFoundError,
-            OSError,
-            RuntimeError,
-        ) as exc:
-            logger.warning("_compute_artifact_hash: aiecc absent (%s)", exc)
-            aiecc_mtime = "absent"
-
-        h.update(
-            f"target_arch={target_arch}|target_device={target_device!r}|"
-            f"peano_mtime={peano_mtime}|aiecc_mtime={aiecc_mtime}".encode()
+            h.update(f"kernel_sources={kernel_tree}|{kernel_tree_digest()}".encode())
+    optional = {"aiebu-asm"}
+    if full_elf or not insts_only:
+        tools["bootgen"] = partial(_config.aiecc_tool_path, "bootgen")
+        optional.add("bootgen")
+    if full_elf:
+        tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
+    elif not insts_only:
+        xclbinutil_override = _aiecc_option(aiecc_flags, "xclbinutil-path")
+        if not xclbinutil_override:
+            xclbinutil_override = os.environ.get("AIE_XCLBINUTIL")
+        if (
+            xclbinutil_override
+            and not Path(xclbinutil_override).is_absolute()
+            and any(sep and sep in xclbinutil_override for sep in (os.sep, os.altsep))
+            and work_dir is None
+        ):
+            raise ValueError(
+                "A relative xclbinutil path requires an explicit output path so "
+                "it can be resolved from aie's work directory; use an absolute "
+                "path with the JIT cache."
+            )
+        tools["xclbinutil"] = partial(
+            _config.aiecc_tool_path,
+            "xclbinutil",
+            override=xclbinutil_override,
+            cwd=work_dir,
         )
+        if emit_elf:
+            tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
+    for name, resolve in tools.items():
+        identity = _tool_identity(name, resolve, expected=name not in optional)
+        h.update(f"{name}={identity}".encode())
 
     return h.hexdigest()
 
@@ -288,13 +459,32 @@ def _compute_hash(
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
     fold_ddr_addr_offset: bool = True,
+    has_dispatch_params: bool = False,
     include_paths: list[Path] | tuple[Path, ...] = (),
+    insts_only: bool = False,
+    emit_elf: bool = False,
+    work_dir: Path | None = None,
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(
-        generator, compile_kwargs, aiecc_flags, compile_flags, full_elf, include_paths
+        generator,
+        compile_kwargs,
+        aiecc_flags,
+        compile_flags,
+        full_elf,
+        include_paths,
+        insts_only,
     )
     artifact = _compute_artifact_hash(
-        generator, source_files, object_files, fold_ddr_addr_offset
+        generator,
+        source_files,
+        object_files,
+        fold_ddr_addr_offset,
+        has_dispatch_params,
+        full_elf,
+        insts_only,
+        aiecc_flags,
+        emit_elf,
+        work_dir,
     )
     return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]

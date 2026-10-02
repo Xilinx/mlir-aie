@@ -10,15 +10,16 @@ Provides the primary abstractions for describing NPU designs:
 - [`Worker`][iron.Worker] — a task running on an AIE compute core
 - [`Runtime`][iron.Runtime] — host-side orchestration of data movement and worker execution
 - [`Program`][iron.Program] — top-level container that compiles a design to MLIR
-- [`Kernel`][iron.Kernel] / [`ExternalFunction`][iron.ExternalFunction] /
-  [`ObjectFile`][iron.ObjectFile] — pre-compiled or C++ kernel functions and
-  shared object-file bindings
+- [`Kernel`][iron.Kernel] / [`ExternalFunction`][iron.ExternalFunction] — pre-compiled or C++ kernel functions
+- [`KernelObject`][iron.KernelObject] — shared link artifact and compilation ownership
+- [`ObjectFile`][iron.ObjectFile] — prebuilt object-file bindings with a symbol namespace
 - [`WorkerRuntimeBarrier`][iron.WorkerRuntimeBarrier] — synchronization primitive between workers and runtime
 - Tensor utilities ([`arange`][iron.arange], [`zeros`][iron.zeros], [`ones`][iron.ones], etc.) for NPU-accessible buffers
 - dtype helpers ([`str_to_dtype`][iron.str_to_dtype], [`dtype_to_str`][iron.dtype_to_str])
 - [`CompilableDesign`][iron.CompilableDesign] / [`compileconfig`][iron.compileconfig] — bundle a generator with compile-time config
 - [`CallableDesign`][iron.CallableDesign] / [`jit`][iron.jit] — JIT-compile and run on the NPU (Triton-style)
 - [`CompileTime`][iron.CompileTime] / [`In`][iron.In] / [`Out`][iron.Out] / [`InOut`][iron.InOut] — type-annotation markers
+- [`DispatchTime`][iron.DispatchTime] — runtime-scalar type-annotation marker
 - [`get_compile_arg`][iron.get_compile_arg] — dynamic compile-time injection (advanced)
 
 !!! note "Implicit MLIR context"
@@ -55,6 +56,7 @@ from aie.utils.callabledesign import CallableDesign
 from aie.utils.compile.jit import (
     CompilableDesign,
     CompileTime,
+    DispatchTime,
     In,
     InOut,
     Out,
@@ -72,7 +74,9 @@ from .dataflow import (
     BdIteration,
     CascadeFlow,
     DmaChannel,
+    DmaEndpoint,
     Flow,
+    FlowEndpoint,
     ObjectFifo,
     PacketDest,
     PacketFlow,
@@ -80,9 +84,11 @@ from .dataflow import (
     Release,
     StreamDims,
     TileDma,
+    TileDmaTask,
 )
+from .device import Device
 from .dtype import dtype_to_str, str_to_dtype
-from .kernel import ExternalFunction, Kernel, ObjectFile
+from .kernel import ExternalFunction, Kernel, KernelObject, ObjectFile
 from .lock import Lock
 from .program import Program
 from .runtime import Runtime, RuntimeData, Task, TaskGroup, sync_parameters
@@ -94,8 +100,10 @@ __all__ = [
     "Buffer",
     "ExternalFunction",
     "Kernel",
+    "KernelObject",
     "ObjectFile",
     "Program",
+    "Device",
     "Worker",
     "WorkerRuntimeBarrier",
     "Runtime",
@@ -112,15 +120,19 @@ __all__ = [
     "BdIteration",
     "CascadeFlow",
     "DmaChannel",
+    "DmaEndpoint",
     "Flow",
+    "FlowEndpoint",
     "Lock",
     "ScratchpadParameter",
     "PacketDest",
     "PacketFlow",
     "Release",
     "TileDma",
+    "TileDmaTask",
     # Compile-time / JIT API
     "CompileTime",
+    "DispatchTime",
     "In",
     "Out",
     "InOut",

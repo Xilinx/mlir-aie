@@ -20,6 +20,13 @@
 #include <cstdint>
 #include <vector>
 
+// Applied to the emitted entry points; see emitDispatchShimFuncs.
+#ifdef _WIN32
+#define AIE_DISPATCH_EXPORT __declspec(dllexport)
+#else
+#define AIE_DISPATCH_EXPORT
+#endif
+
 namespace aie_runtime {
 
 // Transaction opcodes for the firmware TXN format the compiler currently
@@ -65,7 +72,7 @@ enum TxnOpcode : uint32_t {
 // Upper bound on a tile's buffer-descriptor count across all tile types, sizing
 // the pool's fixed storage. This is a standalone header (no MLIR / target model
 // here), so the ACTUAL per-tile count is supplied at runtime by the compiler
-// via bd_pool_init(getNumBDs(col,row)) -- this constant only bounds the array.
+// via bd_pool_init_range -- this constant only bounds the array.
 // AIE2 memtiles have the most BDs (48); shim/core have 16. Keep this >= the
 // largest getNumBDs any target model returns.
 constexpr uint32_t kMaxBDsPerTile = 48;
@@ -80,24 +87,30 @@ struct BdPool {
   int head;
 };
 
-// Initialize a pool with `n` free IDs. `n` is the tile's BD count, which the
-// compiler reads from the target model (getNumBDs) and passes in. IDs are
-// stacked so that pop() hands out the LOWEST free id first (id 0, then 1, ...),
-// matching the static allocator's lowest-free-first order -- so a first pop
-// from a fresh pool equals a pinned bd_id = 0.
-inline BdPool bd_pool_init(uint32_t n) {
+// Initialize a pool over the half-open id range [lo, hi), the ids one BD
+// partition of a tile can submit (the compiler reads it from the target model).
+// A mem tile splits its BD table by channel parity, so each half gets its own
+// pool; one flat list would hand a channel ids it cannot submit. IDs are
+// stacked so that pop() hands out the LOWEST free id first, matching the static
+// allocator's lowest-free-first order -- so a first pop from a fresh pool
+// equals a pinned bd_id = lo.
+inline BdPool bd_pool_init_range(uint32_t lo, uint32_t hi) {
   BdPool p;
   p.head = 0;
-  uint32_t count = n < kMaxBDsPerTile ? n : kMaxBDsPerTile;
-  for (uint32_t i = 0; i < count; ++i)
-    p.free_ids[p.head++] = count - 1 - i; // top of stack is id 0
+  if (hi > kMaxBDsPerTile)
+    hi = kMaxBDsPerTile;
+  for (uint32_t i = hi; i > lo; --i)
+    p.free_ids[p.head++] = i - 1; // top of stack is `lo`
   return p;
 }
 
+// Initialize a pool with the `n` free IDs [0, n).
+inline BdPool bd_pool_init(uint32_t n) { return bd_pool_init_range(0, n); }
+
 // Withhold `id` from the pool -- a static BD already owns that slot in the
 // tile's shared BD table, and popping it here would silently overwrite it.
-// `free_ids[0..head)` is kept sorted highest-to-lowest (see bd_pool_init) so
-// pop keeps handing out the lowest remaining id first; shift the tail down
+// `free_ids[0..head)` is kept sorted highest-to-lowest (see bd_pool_init_range)
+// so pop keeps handing out the lowest remaining id first; shift the tail down
 // instead of swapping in the top, which would scramble that order.
 inline void bd_pool_reserve(BdPool &p, uint32_t id) {
   for (int i = 0; i < p.head; ++i)
@@ -136,6 +149,20 @@ struct TxnDeviceInfo {
   uint8_t numMemTileRows = 1;
 };
 
+// Build a TxnDeviceInfo from target-model values. Assigns by field name, so a
+// caller that can only emit an expression (the generated C++ builder) states
+// the field order in exactly one place: here.
+inline TxnDeviceInfo txn_device_info(uint8_t dev_gen, uint8_t num_rows,
+                                     uint8_t num_cols,
+                                     uint8_t num_memtile_rows) {
+  TxnDeviceInfo info;
+  info.devGen = dev_gen;
+  info.numRows = num_rows;
+  info.numCols = num_cols;
+  info.numMemTileRows = num_memtile_rows;
+  return info;
+}
+
 // Append a 6-word write32 instruction.
 inline void txn_append_write32(std::vector<uint32_t> &txn, uint32_t addr,
                                uint32_t val) {
@@ -155,6 +182,23 @@ inline void txn_append_maskwrite32(std::vector<uint32_t> &txn, uint32_t addr,
   size_t pos = txn.size();
   txn.resize(pos + 7, 0);
   txn[pos + 0] = TXN_OPC_MASKWRITE;
+  // txn[pos + 1] is reserved (0)
+  txn[pos + 2] = addr;
+  txn[pos + 3] = 0;
+  txn[pos + 4] = val;
+  txn[pos + 5] = mask;
+  txn[pos + 6] = 7 * sizeof(uint32_t); // operation size
+}
+
+// Append a 7-word maskpoll instruction: block until (reg & mask) == val.
+// Same word layout as maskwrite32 -- aie-rt's XAie_MaskPoll32Hdr and
+// XAie_MaskWrite32Hdr agree field for field, and the poll timeout is not
+// serialized (the firmware forces its own default; see xaie_txn.c).
+inline void txn_append_maskpoll32(std::vector<uint32_t> &txn, uint32_t addr,
+                                  uint32_t val, uint32_t mask) {
+  size_t pos = txn.size();
+  txn.resize(pos + 7, 0);
+  txn[pos + 0] = TXN_OPC_MASKPOLL;
   // txn[pos + 1] is reserved (0)
   txn[pos + 2] = addr;
   txn[pos + 3] = 0;
@@ -199,6 +243,14 @@ inline void txn_append_blockwrite(std::vector<uint32_t> &txn, uint32_t addr,
     txn[pos + headerSize + i] = data[i];
 }
 
+// Under the xclbin + insts.bin runtime, NPU firmware adds kDDRAIEAddrOffset to
+// host buffer addresses for only the first kNumFirmwareTranslatedArgs args; a
+// DDR patch for a later arg must fold the offset into arg_plus itself. Full-ELF
+// and HRX translate every arg, so folding there would double-translate the 6th+
+// buffer: those pass fold = false.
+constexpr uint32_t kDDRAIEAddrOffset = 0x80000000;
+constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
+
 // Append a 12-word address_patch (DDR_PATCH) instruction.
 //
 // The consumer casts this byte range to aie-rt's `XAie_CustomOpHdr` followed by
@@ -220,6 +272,18 @@ inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
   // pos+9 is reserved (zero)
   txn[pos + 10] = static_cast<uint32_t>(arg_plus & 0xFFFFFFFFull);
   txn[pos + 11] = static_cast<uint32_t>(arg_plus >> 32);
+}
+
+// Append a DDR_PATCH for a host buffer argument, folding the aperture offset
+// when the target runtime needs it. Both the static binary emitter and the
+// generated C++ builder route through here, so the fold rule has one body.
+inline void txn_append_arg_patch(std::vector<uint32_t> &txn, uint32_t addr,
+                                 int32_t arg_idx, uint64_t arg_plus,
+                                 bool fold_ddr_addr_offset) {
+  if (fold_ddr_addr_offset &&
+      static_cast<uint32_t>(arg_idx) >= kNumFirmwareTranslatedArgs)
+    arg_plus += kDDRAIEAddrOffset;
+  txn_append_address_patch(txn, addr, arg_idx, arg_plus);
 }
 
 // Append a 4-word loadpdi instruction.

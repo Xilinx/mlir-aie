@@ -21,7 +21,7 @@
 // it, and b5 fits. b2 and b4, both pinned by `address`, shape the tile's free
 // space into that configuration.
 
-// RUN: aie-opt --aie-assign-buffer-addresses='alloc-scheme=bank-aware' %s | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
 // CHECK: %b2 = aie.buffer(%mem_tile_0_1) {address = 17144 : i32, mem_bank = 0 : i32, sym_name = "b2"} : memref<7808xi8>
 // CHECK: %b4 = aie.buffer(%mem_tile_0_1) {address = 194948 : i32, mem_bank = 2 : i32, sym_name = "b4"} : memref<13536xi8>

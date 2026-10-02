@@ -7,7 +7,7 @@
 // but compile and link entirely with Chess, without requiring Peano.
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: xchesscc_wrapper aie2 +w %t.d/work -c %S/large_stack_kernel.cc -o %t.d/large_stack_kernel.o
-// RUN: cd %t.d && aiecc --xchesscc --xbridge --alloc-scheme=bank-aware --get-core-elfs --output-dir=%t.out --tmpdir=%t.prj -v %S/large_stack.mlir 2>&1 | FileCheck %s --implicit-check-not="{{[^ ]*llc }}"
+// RUN: cd %t.d && aiecc --xchesscc --xbridge --get-core-elfs --output-dir=%t.out --tmpdir=%t.prj -v %S/large_stack.mlir 2>&1 | FileCheck %s --implicit-check-not="{{[^ ]*llc }}"
 
 // CHECK: xchesscc_wrapper aie2 {{.*}} -c {{.*}}-o {{.*}}objects_
 // CHECK: xchesscc_wrapper aie2 {{.*}}+l {{.*}}.bcf {{.*}}-o {{.*}}elfs_

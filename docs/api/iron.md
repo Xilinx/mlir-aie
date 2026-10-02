@@ -72,6 +72,20 @@ Unlike an ObjectFifo, a Buffer does not provide producer/consumer synchronizatio
 
 ### Kernels
 
+`Kernel` binds a function symbol; `KernelObject` owns the shared link artifact.
+Both are exported from `aie.iron`. Pass a `KernelObject("shared.o")` to several
+`Kernel` constructors to bind symbols from one precompiled object;
+`ObjectFile("shared.o", symbol_prefix=...)` is the same for a prebuilt object
+whose symbols were renamed under a prefix. For C++ source,
+`ExternalFunction` creates the owner, exposed as `fn.object_file`;
+`fn.object_file.bind(symbol, arg_types)` binds another entry point to that owner,
+applying its symbol prefix. External functions with the same
+explicit output filename and identical source recipes also share ownership.
+Conflicting recipes for one output filename are rejected.
+Resolving a source-backed binding registers its artifact for compilation without
+requiring the original `ExternalFunction` to remain alive. Independent operations
+such as `kernels.zero(...)` own their own objects.
+
 ::: iron.kernel
     options:
       show_root_heading: false
@@ -97,13 +111,18 @@ constants. These are re-exported into `iron` from `aie.utils`.
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| `iron.jit` | decorator | JIT-compile a design and run it on the attached NPU (Triton-style). The first call compiles to an `xclbin` + instruction stream; later calls hit a cache. |
+| `iron.jit` | decorator | Compile a design on a cache miss, then run it on the attached NPU. |
 | `iron.CompilableDesign` | class | Bundle a design generator with its compile-time configuration. |
 | `iron.CallableDesign` | class | A compiled, callable design produced from a `CompilableDesign`. |
 | `iron.compileconfig` | decorator | Attach compile-time configuration to a design generator. |
 | `iron.get_compile_arg` | function | Dynamically inject a compile-time argument (advanced). |
 | `iron.In` / `iron.Out` / `iron.InOut` | markers | Type-annotation markers for design inputs/outputs. |
 | `iron.CompileTime` | marker | Type-annotation marker for a compile-time constant argument. |
+| `iron.DispatchTime` | marker | Integer scalar that can vary per call without recompiling the device program. |
+
+For dispatch scalar defaults, specialization, and runtime binding, see
+[Dispatch-time scalars](../programming_guide/section-2/section-2d/RuntimeTasks.md#dispatch-time-scalars)
+in the runtime data-movement guide.
 
 See the [Programming Guide](../programming_guide/README.md) for worked
 examples of `@iron.jit`.
@@ -131,6 +150,15 @@ into `iron` from `aie.utils`.
 | `iron.set_current_device` | Select the NPU device for subsequent allocations. |
 | `iron.ensure_current_device` | Raise if no device is currently selected. |
 
+The [`Device`][iron.Device] a `Program` targets also reports the hardware
+limits a design is sized against, such as `max_lock_value`,
+`max_repeat_count`, `dma_task_queue_depth` and `get_num_bds(tile_type)`, so a
+design can read them instead of hardcoding them.
+
+::: iron.Device
+    options:
+      show_root_heading: true
+
 ---
 
 ## Data type helpers
@@ -152,11 +180,17 @@ descriptors, and locks.
 
 Circuit-switched ([`Flow`][iron.Flow]) and packet-switched
 ([`PacketFlow`][iron.PacketFlow]) stream connections, plus the
-[`PacketDest`][iron.PacketDest] endpoint descriptor.
+[`PacketDest`][iron.PacketDest] endpoint descriptor.  A `Flow` given no DMA
+channels lets the compiler assign them.  `endpoint(tile)` on either returns the
+[`FlowEndpoint`][iron.FlowEndpoint] on `tile`, which a `DmaChannel` takes in
+place of a channel index and which can run a runtime-sequence task.  A `Flow`
+or `PacketFlow` with one shim end has `fill` / `drain`; `PacketFlow.fill`
+stamps the packet header on the input.
 
 ::: iron.dataflow.flow
     options:
       show_root_heading: false
+      inherited_members: true
 
 ### CascadeFlow
 
@@ -166,11 +200,15 @@ Directed cascade-stream connection between two adjacent Workers.
     options:
       show_root_heading: false
 
-### TileDma / DmaChannel / Bd
+### TileDma / DmaChannel / Bd / DmaEndpoint
 
 Explicit tile DMA programs: [`TileDma`][iron.TileDma],
 [`DmaChannel`][iron.DmaChannel], buffer descriptors ([`Bd`][iron.Bd]), and the
-[`Acquire`][iron.Acquire] / [`Release`][iron.Release] lock actions.
+[`Acquire`][iron.Acquire] / [`Release`][iron.Release] lock actions.  A
+[`DmaEndpoint`][iron.DmaEndpoint] names one channel of one tile;
+`endpoint.task(*bds)` configures a [`TileDmaTask`][iron.TileDmaTask] on a mem
+or core tile from the runtime sequence, so its descriptors can change per
+dispatch.
 
 ::: iron.dataflow.tile_dma
     options:

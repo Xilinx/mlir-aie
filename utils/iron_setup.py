@@ -354,7 +354,7 @@ def install_mlir_aie(
 # --------------------------------------------------------------------------------------
 
 
-def fixup_llvm_aie_windows(peano_root: Path) -> None:
+def fixup_llvm_aie_windows(peano_root: Path, mlir_prefix: Path) -> None:
     """Repair required files in published Windows llvm-aie wheels."""
     if not IS_WINDOWS:
         return
@@ -366,8 +366,16 @@ def fixup_llvm_aie_windows(peano_root: Path) -> None:
     if not toolchains:
         raise RuntimeError(f"llvm-aie toolchains not found under: {toolchain_root}")
 
-    objcopy = peano_root / "bin" / "llvm-objcopy.exe"
-    objcopy_exe = str(objcopy) if objcopy.exists() else shutil.which("llvm-objcopy.exe")
+    # llvm-objcopy is bundled with the mlir_aie wheel, not the llvm-aie
+    # (Peano) wheel -- see python/utils/config.py's _llvm_tool_dirs().
+    objcopy_candidates = (
+        mlir_prefix / "bin" / "llvm-objcopy.exe",
+        peano_root / "bin" / "llvm-objcopy.exe",
+    )
+    objcopy_exe = next(
+        (str(path) for path in objcopy_candidates if path.exists()),
+        None,
+    ) or shutil.which("llvm-objcopy.exe")
     if not objcopy_exe:
         raise RuntimeError("llvm-objcopy.exe is required to prepare the llvm-aie wheel")
 
@@ -887,7 +895,7 @@ def install_plan(args: argparse.Namespace, repo_root: Path) -> None:
         raise RuntimeError("llvm-aie installation did not produce an install prefix")
     if IS_WINDOWS:
         print("\nPreparing the Windows llvm-aie toolchains...")
-    fixup_llvm_aie_windows(peano_prefix)
+    fixup_llvm_aie_windows(peano_prefix, mlir_prefix)
 
     if args.dev:
         print("\nInstalling contributor tools and Git hooks...")

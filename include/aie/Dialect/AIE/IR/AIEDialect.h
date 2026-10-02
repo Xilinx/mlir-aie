@@ -10,6 +10,7 @@
 #define MLIR_AIE_DIALECT_H
 
 #include "AIEEnums.h"
+#include "aie/Dialect/AIE/IR/AIECoreMemory.h"
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
@@ -19,9 +20,13 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
 
 namespace xilinx::AIE {
 
@@ -44,6 +49,65 @@ template <typename ConcreteType>
 struct SkipAccessibilityCheckTrait
     : mlir::OpTrait::TraitBase<ConcreteType, SkipAccessibilityCheckTrait> {};
 
+// Supplies `Symbol`'s visibility accessors for ops that keep visibility in a
+// plain `sym_visibility` attribute rather than in a tablegen-declared argument
+// (which is what upstream's `SymbolVisibility` trait requires).
+template <typename ConcreteType>
+struct AttrBasedSymbolVisibility
+    : mlir::OpTrait::TraitBase<ConcreteType, AttrBasedSymbolVisibility> {
+  static constexpr llvm::StringRef getVisibilityAttrName() {
+    return "sym_visibility";
+  }
+
+  // `mlir::detail::verifySymbol` only checks the inherent attribute, so it
+  // never sees ours.
+  static mlir::LogicalResult verifyTrait(mlir::Operation *op) {
+    mlir::Attribute vis = op->getAttr(getVisibilityAttrName());
+    if (!vis)
+      return mlir::success();
+    auto visStrAttr = llvm::dyn_cast<mlir::StringAttr>(vis);
+    if (!visStrAttr)
+      return op->emitOpError()
+             << "requires visibility attribute '" << getVisibilityAttrName()
+             << "' to be a string attribute, but got " << vis;
+    if (!llvm::is_contained(
+            llvm::ArrayRef<llvm::StringRef>{"public", "private", "nested"},
+            visStrAttr.getValue()))
+      return op->emitOpError()
+             << "visibility expected to be one of [\"public\", \"private\", "
+                "\"nested\"], but got "
+             << visStrAttr;
+    return mlir::success();
+  }
+
+  mlir::SymbolTable::Visibility getVisibility() {
+    mlir::StringAttr vis =
+        this->getOperation()->template getAttrOfType<mlir::StringAttr>(
+            getVisibilityAttrName());
+    if (!vis)
+      return mlir::SymbolTable::Visibility::Public;
+    return llvm::StringSwitch<mlir::SymbolTable::Visibility>(vis.getValue())
+        .Case("private", mlir::SymbolTable::Visibility::Private)
+        .Case("nested", mlir::SymbolTable::Visibility::Nested)
+        .Default(mlir::SymbolTable::Visibility::Public);
+  }
+
+  void setVisibility(mlir::SymbolTable::Visibility vis) {
+    mlir::Operation *op = this->getOperation();
+    if (vis == mlir::SymbolTable::Visibility::Public) {
+      op->removeAttr(getVisibilityAttrName());
+      return;
+    }
+    assert((vis == mlir::SymbolTable::Visibility::Private ||
+            vis == mlir::SymbolTable::Visibility::Nested) &&
+           "unknown symbol visibility kind");
+    llvm::StringRef visName =
+        vis == mlir::SymbolTable::Visibility::Private ? "private" : "nested";
+    op->setAttr(getVisibilityAttrName(),
+                mlir::StringAttr::get(op->getContext(), visName));
+  }
+};
+
 // Marker trait for operations that can be flow endpoints (e.g., TileOp, CoreOp,
 // MemOp)
 template <typename ConcreteType>
@@ -51,11 +115,34 @@ struct IsFlowEndPoint : mlir::OpTrait::TraitBase<ConcreteType, IsFlowEndPoint> {
 };
 
 class TileOp;
+class RouteEndpointOp;
 
 uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
                                  uint32_t burstLength);
 uint32_t getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
                                     uint32_t burstLength);
+
+// Looks up a name, falling back to a scan for the `sym_name` attribute.
+// `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` are referred to
+// by name but define an SSA value, so they cannot be `Symbol` ops and
+// `mlir::SymbolTable` does not find them.
+mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,
+                                 mlir::StringAttr name);
+mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,
+                                 llvm::StringRef name);
+// Looks in the symbol table nearest to (or at) `from`.
+mlir::Operation *lookupNamedOp(mlir::Operation *from, mlir::StringAttr name);
+mlir::Operation *lookupNamedOp(mlir::Operation *from, llvm::StringRef name);
+
+template <typename OpTy, typename NameT>
+OpTy lookupNamedOpIn(mlir::Operation *symbolTableOp, NameT name) {
+  return llvm::dyn_cast_if_present<OpTy>(lookupNamedOpIn(symbolTableOp, name));
+}
+
+template <typename OpTy, typename NameT>
+OpTy lookupNamedOp(mlir::Operation *from, NameT name) {
+  return llvm::dyn_cast_if_present<OpTy>(lookupNamedOp(from, name));
+}
 
 // Generate a symbol name guaranteed to be unique within the symbol table of
 // `symbolTableOp`. Names are formed as "<prefix><n>" for increasing n; the
@@ -201,6 +288,12 @@ void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
 
+mlir::ParseResult parseDMAStartChannel(mlir::OpAsmParser &parser,
+                                       mlir::Attribute &channel);
+
+void printDMAStartChannel(mlir::OpAsmPrinter &printer, mlir::Operation *op,
+                          mlir::Attribute channel);
+
 mlir::ParseResult
 parseObjectFifoAcquireObjects(mlir::OpAsmParser &parser,
                               ObjectFifoPortAttr &port,
@@ -267,10 +360,22 @@ verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,
                         llvm::ArrayRef<DMABDOp> bds,
                         bool packetEnabledByContext = false);
 
+// Validate the use_locks of one BD block and return them. A BD has one acquire
+// field and one release field; by convention the block uses either no lock or
+// both, except that an out-of-order BD may release alone. Either result is
+// null when the block has no such lock.
+mlir::LogicalResult verifyBdLockPair(mlir::Block &block, bool outOfOrder,
+                                     UseLockOp &acquire, UseLockOp &release);
+
 // BD ids already assigned within a tile's static DMA program (the
 // aie.dma_bd chain(s) inside one DmaBody-implementing op: aie.mem,
 // aie.memtile_dma, aie.shim_dma).
 llvm::SmallVector<uint32_t> getAssignedBdIds(DmaBody program);
+
+// Fails, with an error on each, if a dma_start in `device` still names a route
+// endpoint in place of a channel index. For passes and translations that need
+// the index, which aie-objectfifo-allocate assigns.
+mlir::LogicalResult verifyDMAChannelsResolved(DeviceOp device);
 
 } // namespace xilinx::AIE
 

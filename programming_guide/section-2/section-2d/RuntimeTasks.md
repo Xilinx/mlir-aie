@@ -114,6 +114,8 @@ The `fill()`/`drain()` methods return a `Task` handle. Prefer the default manage
 
 For software-pipelined data movement with manual lifetime control, issue the transfer with `managed=False` and do not pass `group=`. Use `range_` and `yield_` from `aie.iron.controlflow` to carry a `Task` through `iter_args` across loop iterations. Call `.await_()` only on transfers issued with `wait=True` (which requests a completion token), then call `.free()` when it is safe to reuse the descriptor. Awaiting alone does not free it. An unwaited transfer may be freed only after a dependent waited transfer proves it has completed. Do not manually free managed tasks: their task group already owns that responsibility. See [dmataskhandle.py](../../../python/iron/runtime/dmataskhandle.py).
 
+Compiled with `aiecc --reclaim-runtime-bds` (for a JIT design, `aiecc_flags=["--reclaim-runtime-bds"]`), a sequence whose loops all have compile-time trip counts can skip freeing: when a tile runs out of BDs, the compiler takes them back from started tasks it can prove finished (see [Running Out of Buffer Descriptors](./DMATasks.md#running-out-of-buffer-descriptors)). A pipelined sequence can then issue every transfer with `managed=False`, set `wait=True` only on the transfers the host must wait for, and `.await_()` just those. Issue a task after the transfers it depends on, e.g. a block's fills before its drain, since the compiler may have to wait for it to finish before issuing anything else.
+
 #### **Setting Runtime Parameters in the Body**
 
 Because the sequence body runs inside a live MLIR context, you can write operations directly in it — there is no separate escape hatch. A common example is setting runtime parameters, which are loaded into the local memory modules of the Workers at runtime.
@@ -172,13 +174,13 @@ def sequence(a, b, c):
 
 rt = Runtime(sequence, [data_ty, data_ty, data_ty])
 ```
-Currently, a `WorkerRuntimeBarrier` may take any value between 0 and 63. This is due to the fact that these barriers leverage the lock mechansim of the architecture under-the-hood.
+A `WorkerRuntimeBarrier` may take any value between 0 and the device's `max_lock_value` (63 on current devices). This is due to the fact that these barriers leverage the lock mechanism of the architecture under-the-hood.
 
 > **NOTE:**  Similar to the `Buffer` it is possible to create a single barrier and pass it as input to multiple workers. At lower stages of compiler abstraction this will result in a different lock being employed for each worker.
 
 #### **Runtime Task Groups**
 
-It may be desirable to reconfigure a `Runtime`'s `sequence` and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited.
+It may be desirable to reconfigure a `Runtime`'s `sequence` and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited. The compiler already reuses the BDs of tasks it can prove finished, so a task group is not needed just to stay within the BD pool; use one to say when the sequence should wait.
 
 To facilitate this reconfiguration step, IRON introduces `TaskGroup`s, created with the `TaskGroup()` constructor as defined in [taskgroup.py](../../../python/iron/runtime/taskgroup.py).
 
@@ -207,6 +209,92 @@ rt = Runtime(
     [data_ty, data_ty, data_ty, of_in.prod(), of_out.cons()],
 )
 ```
+
+## Dispatch-time scalars
+
+`DispatchTime[T]` rebuilds the instruction stream for each call using a compiled
+host builder. `T` must be a supported NumPy integer scalar type, such as
+`np.int32` or `np.int64`; built-in `int`/`bool` and floating-point types are
+rejected.
+
+- **Call-time value:** overrides the signature default without recompiling.
+  If omitted, the default is used; without a default, the value is required.
+- **Explicit specialization:** `iron.jit(generator, count=3)` or
+  `design.specialize(count=3)` fixes the value and includes it in the cache key.
+  Calls cannot override it; use another specialization to change it.
+
+Defaults do not specialize parameters. Tensor capacities and worker tiling
+remain compile-time properties; callers must keep dispatch values within the
+design's valid ranges and buffer capacities.
+
+`DispatchTime` parameters must be keyword-only, even when defaulted or
+explicitly specialized. Prefer tensors first, then dispatch scalars, then
+compile-time configuration; group ordering is a convention, not a restriction:
+
+```python
+import numpy as np
+import aie.iron as iron
+
+@iron.jit
+def copy(a: iron.In, b: iron.Out, *,
+         count: iron.DispatchTime[np.int32] = 3,
+         tile_size: iron.CompileTime[int] = 256):
+    ...  # Build the design.
+
+copy(a, b)                        # Dispatch with the default count=3.
+copy(a, b, count=6)               # Same compiled design; a different dispatch.
+copy.specialize(count=3)(a, b)    # Compile with count fixed to 3.
+```
+
+### Generator-side binding and scope
+
+The generator receives an identity-bearing symbolic parameter for each unbound
+`DispatchTime[T]`, or a typed NumPy constant for a specialized one. Forward each
+symbolic parameter exactly once as a direct `Runtime` argument, **in any order**.
+The callback receives the corresponding SSA values:
+
+```python
+@iron.jit
+def design(*, bar: iron.DispatchTime[np.int32],
+           baz: iron.DispatchTime[np.int32]):
+    def seq(baz_value, bar_value):
+        ...  # baz_value corresponds to baz, bar_value to bar.
+
+    rt = iron.Runtime(seq, fn_args=[baz, bar])
+    ...  # Build and resolve the Program with rt.
+```
+
+Aliases preserve identity. Missing or duplicate bindings, bare scalar-type
+substitutes, and bindings to multiple sequences are rejected.
+
+Use the **callback argument**, not the captured symbolic parameter, for runtime
+arithmetic and MLIR control flow. Generation-time arithmetic, comparisons,
+`if bar`, `range(bar)`, NumPy value/dtype conversion, and `Worker.fn_args` reject
+symbolic parameters with `TypeError`. Shapes and worker configuration require
+`CompileTime[T]` or explicit specialization; storing or forwarding a symbolic
+parameter is valid.
+
+### Compilation scope
+
+The JIT requests device artifacts and a C++ transaction builder from the same
+`aiecc` invocation and lowering pipeline. Python validates the scalar ABI and
+compiles the host library. This requires a
+[host C++17 compiler](../../iron_configuration.md#dispatch-time-scalar-compilation),
+including with wheel installations; subsequent dispatches call the library
+without compiling.
+
+By default, artifacts live in the JIT cache. For explicit outputs, use
+`compile(xclbin_path=..., pdi_path=...)` (`pdi_path` is optional). Retain the
+builder library in the adjacent `<xclbin stem>.prj` directory with the device
+artifacts; `design.compilable.get_dispatch_lib_path()` returns its path.
+
+The Python bridge supports one runtime sequence and rejects remaining
+`load_pdi` operations because its runtimes cannot supply those resources.
+While any parameters remain dynamic, `inst_path`, `elf_path`, and
+`full_elf=True` are unsupported: full ELF embeds static instructions, with no
+per-call replacement API. Fully specialized designs retain normal full-ELF
+support. Native hosts can request C++ builders, including reconfiguration
+builders, directly from [`aiecc`](../../../tools/aiecc/README.md#parameterized-c-transaction-builders).
 
 -----
 [Up](./README.md)

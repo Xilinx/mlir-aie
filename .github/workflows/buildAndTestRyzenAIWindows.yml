@@ -49,8 +49,8 @@ jobs:
     # automatically skipped by lit (see the "makefile_examples" feature gate
     # in python/aie_lit_utils/lit_config_helpers.py); JIT-style Python
     # examples (@iron.jit) still run and cover the NPU end to end.
-    runs-on: [self-hosted, windows, ryzenai, npu2]
-    # Normal exec is 19-21 min; observed hang on this job 71.4 min (2026-08-04).
+    runs-on: [self-hosted, windows, devlab-dispatch, strix-halo]
+    # Normal exec is ~31 min; observed hang on this job 71.4 min (2026-08-04).
     timeout-minutes: 90
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
@@ -66,18 +66,65 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1
 
-      - name: Verify Python
-        # actions/setup-python isn't used here: its installer invokes a
-        # setup.ps1 under Windows PowerShell, which is blocked by this
-        # runner's default script execution policy. Python 3.13 is already
-        # provisioned on the runner as a host prerequisite (see
-        # Windows_runner_setup_mlir-aie.md), matching how the Linux
-        # self-hosted job also relies on a pre-provisioned interpreter
-        # instead of actions/setup-python.
+      # pyxrt.pyd in the XRT SDK is built for CPython 3.13 only.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - uses: ./.github/actions/setup_windows_xrt
+
+      - name: Ensure Windows OpenSSL
+        # Full (non-Light) package per docs/buildHostWinNative.md Addendum B.1,
+        # in a space-free dir: build-mlir-aie-from-wheels.sh splits
+        # EXTRA_CMAKE_ARGS on spaces. Checks the static lib FindOpenSSL needs.
         shell: cmd
         run: |
-          python --version
+          if exist "C:\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" goto :openssl_ready
+
+          echo OpenSSL not found on this runner - downloading it
+          set "OPENSSL_EXE=Win64OpenSSL-4_0_3.exe"
+          set "OPENSSL_SHA256=0f5436092d1303db9052d3c114fbc6326abe0276861619e26da5156ddf7ca087"
+          if exist "%OPENSSL_EXE%" del /f /q "%OPENSSL_EXE%"
+          curl.exe --fail --location --connect-timeout 15 --speed-limit 102400 --speed-time 60 --retry 5 --retry-all-errors --retry-delay 5 -C - -o "%OPENSSL_EXE%" "https://slproweb.com/download/%OPENSSL_EXE%"
           if errorlevel 1 exit /b 1
+
+          python -c "import hashlib,sys; h = hashlib.sha256(open(r'%OPENSSL_EXE%', 'rb').read()).hexdigest(); sys.exit(0 if h == '%OPENSSL_SHA256%' else 1)"
+          if errorlevel 1 (
+            echo ##[error]%OPENSSL_EXE% sha256 mismatch - refusing to run an unverified installer
+            exit /b 1
+          )
+
+          "%OPENSSL_EXE%" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="C:\OpenSSL-Win64"
+          if errorlevel 1 exit /b 1
+          del /f /q "%OPENSSL_EXE%"
+
+          if not exist "C:\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib" (
+            echo ##[error]C:\OpenSSL-Win64\lib\VC\x64\MT\libcrypto_static.lib still missing after running %OPENSSL_EXE% - installer may require elevation on this runner, or may not be the full non-Light package
+            exit /b 1
+          )
+
+          :openssl_ready
+          echo OpenSSL static libs ready at C:\OpenSSL-Win64
+
+      - name: Ensure Windows LLVM/clang toolchain
+        # Host-side lit tests need a host clang++, else %host_clang falls back
+        # to Peano's AIE cross-compiler. Not added to GITHUB_PATH, which would
+        # make CMake pick clang++ over cl; only the test step appends it.
+        shell: cmd
+        run: |
+          if exist "C:\Program Files\LLVM\bin\clang++.exe" goto :llvm_ready
+
+          echo LLVM/clang not found on this runner - installing it
+          winget install -e --id LLVM.LLVM --version 23.1.2 --silent --accept-package-agreements --accept-source-agreements
+          if errorlevel 1 exit /b 1
+
+          if not exist "C:\Program Files\LLVM\bin\clang++.exe" (
+            echo ##[error]C:\Program Files\LLVM\bin\clang++.exe still missing after installing LLVM.LLVM via winget
+            exit /b 1
+          )
+
+          :llvm_ready
+          echo LLVM/clang ready at C:\Program Files\LLVM\bin
 
       - name: Setup IRON environment
         shell: cmd
@@ -87,7 +134,8 @@ jobs:
           git config --global --add safe.directory "%CD%"
           if errorlevel 1 exit /b 1
 
-          python utils\iron_setup.py --dev
+          REM --extras installs CPU-only torch for the ML examples, as on Linux.
+          python utils\iron_setup.py --dev --extras
           if errorlevel 1 exit /b 1
 
       - name: Download MLIR wheel and build mlir-aie
@@ -97,12 +145,11 @@ jobs:
           if errorlevel 1 exit /b 1
 
           REM utils\clone-llvm.sh is a bash script; Git for Windows ships its
-          REM own bash.exe (installed as part of "Git for Windows" in the
-          REM runner setup guide) that can run it directly. Its bin directory
+          REM own bash.exe that can run it directly. Its bin directory
           REM isn't on PATH by default (only Git\cmd, for git.exe itself is),
           REM so call it by its default winget install path.
           if not exist "C:\Program Files\Git\bin\bash.exe" (
-            echo ##[error]C:\Program Files\Git\bin\bash.exe not found - install Git for Windows per the runner setup guide
+            echo ##[error]C:\Program Files\Git\bin\bash.exe not found - install Git for Windows per docs/buildHostWinNative.md
             exit /b 1
           )
           for /f "usebackq delims=" %%v in (`"C:\Program Files\Git\bin\bash.exe" utils/clone-llvm.sh --get-wheel-version`) do set MLIR_VERSION=%%v
@@ -110,7 +157,10 @@ jobs:
 
           mkdir my_install
           pushd my_install
-          python -m pip -q download mlir==%MLIR_VERSION% -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          REM Fetch the ~1GB wheel with curl, not pip download: pip has no stall
+          REM detection. --speed-limit/--speed-time abort a stalled transfer and
+          REM --retry -C - resumes it.
+          curl.exe --fail --location --connect-timeout 15 --speed-limit 1048576 --speed-time 60 --retry 5 --retry-all-errors --retry-delay 5 -C - -o "mlir-%MLIR_VERSION%-py3-none-win_amd64.whl" "https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-%MLIR_VERSION%-py3-none-win_amd64.whl"
           if errorlevel 1 exit /b 1
           dir mlir-*.whl
           python -c "import zipfile,glob; zipfile.ZipFile(glob.glob('mlir-*.whl')[0]).extractall('.')"
@@ -136,7 +186,7 @@ jobs:
           popd
 
           if not defined PEANO_INSTALL_DIR (
-            echo ##[error]PEANO_INSTALL_DIR is not set - ensure the runner is provisioned per the runner setup guide
+            echo ##[error]PEANO_INSTALL_DIR is not set - check that iron_env.cmd from utils\iron_setup.py was called
             exit /b 1
           )
           if not exist "%PEANO_INSTALL_DIR%" (
@@ -144,21 +194,11 @@ jobs:
             exit /b 1
           )
           if not defined XRT_ROOT (
-            echo ##[error]XRT_ROOT is not set - ensure XRT is installed and XRT_ROOT is set per the runner setup guide
+            echo ##[error]XRT_ROOT is not set - install the XRT SDK per docs/buildHostWinNative.md Section 3
             exit /b 1
           )
           if not exist "%XRT_ROOT%" (
             echo ##[error]XRT_ROOT="%XRT_ROOT%" does not exist - check XRT installation on the runner
-            exit /b 1
-          )
-
-          REM tools/bootgen unconditionally requires OpenSSL (used by aiecc
-          REM for in-process PDI generation). Per docs/buildHostWinNative.md
-          REM Addendum B.1, this must be the full Win64 OpenSSL package from
-          REM Shining Light Productions (NOT the "Light" variant, which lacks
-          REM dev headers), installed at its default location on the runner.
-          if not exist "C:\Program Files\OpenSSL-Win64" (
-            echo ##[error]C:\Program Files\OpenSSL-Win64 not found - install the full Win64 OpenSSL package per docs/buildHostWinNative.md Addendum B.1
             exit /b 1
           )
 
@@ -167,14 +207,14 @@ jobs:
           REM Build with the same script as the Linux job (one source of truth).
           REM Wheel is already prepped above, so pass it as arg 1 to skip the
           REM script's own download. EXTRA_CMAKE_ARGS carries the Windows-only
-          REM -D flags; paths are forward-slashed and space-free (OpenSSL via 8.3
-          REM short name) since the script expands args unquoted.
+          REM -D flags; paths are forward-slashed and space-free since the
+          REM script expands args unquoted. cl is pinned as in the wheel build
+          REM (utils/mlir_aie_wheels/setup.py) so CMake can't pick clang++.
           set "XRT_ROOT_FWD=%XRT_ROOT:\=/%"
           set "PYTHON_EXE_FWD=%PYTHON_EXE:\=/%"
           set "PEANO_INSTALL_DIR_FWD=%PEANO_INSTALL_DIR:\=/%"
-          for %%I in ("C:\Program Files\OpenSSL-Win64") do set "OPENSSL_ROOT=%%~sI"
-          set "OPENSSL_ROOT_FWD=%OPENSSL_ROOT:\=/%"
-          set "EXTRA_CMAKE_ARGS=-DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON -DXRT_ROOT=%XRT_ROOT_FWD% -DPython3_EXECUTABLE=%PYTHON_EXE_FWD% -DOPENSSL_ROOT_DIR=%OPENSSL_ROOT_FWD% -DOPENSSL_USE_STATIC_LIBS=TRUE"
+          set "OPENSSL_ROOT_FWD=C:/OpenSSL-Win64"
+          set "EXTRA_CMAKE_ARGS=-DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON -DXRT_ROOT=%XRT_ROOT_FWD% -DPython3_EXECUTABLE=%PYTHON_EXE_FWD% -DOPENSSL_ROOT_DIR=%OPENSSL_ROOT_FWD% -DOPENSSL_USE_STATIC_LIBS=TRUE"
 
           REM arg 4 = provisioned Peano, else the script derives its own.
           "C:\Program Files\Git\bin\bash.exe" utils/build-mlir-aie-from-wheels.sh my_install/mlir build install "%PEANO_INSTALL_DIR_FWD%"
@@ -186,27 +226,45 @@ jobs:
           call .\iron_env.cmd
           if errorlevel 1 exit /b 1
 
+          REM Append LLVM so host tests find clang++ without shadowing the MLIR
+          REM wheel's tools; prepend Git's bash ahead of the System32 WSL stub.
+          set "PATH=C:\Program Files\Git\bin;%PATH%;C:\Program Files\LLVM\bin"
+
           if exist "%NPU_CACHE_HOME%" rmdir /s /q "%NPU_CACHE_HOME%"
           mkdir "%NPU_CACHE_HOME%"
           set XRT_CONTEXT_CACHE_SIZE=2
 
           pushd build
 
+          REM Run every suite even if an earlier one fails, then fail the step if
+          REM any did. Fail-fast here meant a red check-aie -- which main has been
+          REM carrying -- aborted the step before check-reference-designs ran, so
+          REM the example and guide suites produced no Windows signal at all and
+          REM a PR touching only examples could not be evaluated. Nothing is
+          REM masked: FAILED collects the targets and the step still exits 1.
+          set FAILED=
+
           echo ===== Running tests =====
           ninja check-aie
-          if errorlevel 1 exit /b 1
+          if errorlevel 1 set FAILED=%FAILED% check-aie
 
           echo ===== Running concurrency tests =====
           ninja check-aie-concurrency
-          if errorlevel 1 exit /b 1
+          if errorlevel 1 set FAILED=%FAILED% check-aie-concurrency
 
           echo ===== Running examples =====
           ninja check-reference-designs
-          if errorlevel 1 exit /b 1
+          if errorlevel 1 set FAILED=%FAILED% check-reference-designs
           ninja check-programming-guide
-          if errorlevel 1 exit /b 1
+          if errorlevel 1 set FAILED=%FAILED% check-programming-guide
 
           popd
+
+          if not "%FAILED%"=="" (
+            echo ##[error]Failing targets:%FAILED%
+            exit /b 1
+          )
+          echo ===== All suites passed =====
 
       - name: Cleanup workspace
         if: always()
@@ -220,3 +278,5 @@ jobs:
           if exist "build" rmdir /s /q "build"
           if exist "install" rmdir /s /q "install"
           if exist "my_install" rmdir /s /q "my_install"
+          if exist "xrt_sdk_download" rmdir /s /q "xrt_sdk_download"
+          if exist "Win64OpenSSL-4_0_3.exe" del /f /q "Win64OpenSSL-4_0_3.exe"

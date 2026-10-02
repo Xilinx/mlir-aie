@@ -7,7 +7,8 @@
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import aiex
-from ..helpers.util import NpuDType, np_dtype_to_mlir_type
+from ..helpers.npdtypes import NpuDType
+from ..helpers.util import np_dtype_to_mlir_type
 from .resolvable import Resolvable
 
 

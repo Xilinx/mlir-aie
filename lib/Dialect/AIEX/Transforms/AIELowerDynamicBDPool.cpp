@@ -7,9 +7,10 @@
 //
 // The dynamic counterpart to AIEAssignRuntimeSequenceBDIDs: where that pass
 // rejects a runtime-bound scf.for, this keeps the loop rolled and draws bd_ids
-// from a per-tile runtime free-list pool. Each configure gets a dma_bd_pool_pop
-// (its SSA id feeding bd_id_val); each free gets a dma_bd_pool_push. An await
-// is only a completion sync (npu_sync), never a push.
+// from a runtime free-list pool per tile and BD partition. Each configure gets
+// a dma_bd_pool_pop (its SSA id feeding bd_id_val); each free gets a
+// dma_bd_pool_push. An await is only a completion sync (npu_sync), never a
+// push.
 //
 // A popped id must be reachable at its push. Since a task value can cross a
 // loop back edge and exit as a result, the id is carried in lockstep: every
@@ -23,12 +24,14 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetVector.h"
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIELOWERDYNAMICBDPOOL
@@ -43,6 +46,11 @@ namespace {
 
 struct AIELowerDynamicBDPoolPass
     : xilinx::AIEX::impl::AIELowerDynamicBDPoolBase<AIELowerDynamicBDPoolPass> {
+  using Base =
+      xilinx::AIEX::impl::AIELowerDynamicBDPoolBase<AIELowerDynamicBDPoolPass>;
+  AIELowerDynamicBDPoolPass() = default;
+  AIELowerDynamicBDPoolPass(const AIELowerDynamicBDPoolOptions &options)
+      : Base(options) {}
 
   // Maps a task value (the Index result of a configure, or any Index the carry
   // propagates it into) to the i32 pool id available at that same program
@@ -72,6 +80,14 @@ struct AIELowerDynamicBDPoolPass
     SmallVector<Operation *> placeholders; // dead consts to erase (scf.if only)
   };
   SmallVector<Fixup> fixups;
+
+  // The BD ids a configure's channel can submit. Pools are keyed by this range,
+  // so channels that share a partition share a pool.
+  static std::pair<uint32_t, uint32_t> bdPartition(DMAConfigureTaskOp cfg) {
+    AIE::TileOp tile = cfg.getTileOp();
+    return AIE::getTargetModel(cfg).getBdIdRangeForChannel(
+        tile.getCol(), tile.getRow(), cfg.getChannel());
+  }
 
   // Count the BD ops in a configure's body (across all its blocks).
   static unsigned countBds(DMAConfigureTaskOp cfg) {
@@ -146,10 +162,12 @@ struct AIELowerDynamicBDPoolPass
       return failure();
 
     AIE::TileOp tile = cfg.getTileOp();
+    auto [begin, end] = bdPartition(cfg);
     OpBuilder b(cfg);
-    Value bdId = DMABdPoolPopOp::create(b, cfg.getLoc(), b.getI32Type(),
-                                        tile.getCol(), tile.getRow())
-                     .getBdId();
+    Value bdId =
+        DMABdPoolPopOp::create(b, cfg.getLoc(), b.getI32Type(), tile.getCol(),
+                               tile.getRow(), begin, end)
+            .getBdId();
     theBd.getBdIdValMutable().assign(bdId);
     pairedId[cfg.getResult()] = bdId;
     return success();
@@ -408,17 +426,87 @@ struct AIELowerDynamicBDPoolPass
                                       StringRef msg) {
     DMAConfigureTaskOp originA = originConfigure.lookup(a);
     DMAConfigureTaskOp originB = originConfigure.lookup(b);
-    if (originA && originB && syncSig(originA) != syncSig(originB)) {
+    if (originA && originB && channelKey(originA) != channelKey(originB)) {
       op->emitOpError(msg);
       return failure();
     }
     return success();
   }
 
-  // The physical channel a configure targets: (col, row, direction, channel).
-  static std::tuple<int, int, int, int> syncSig(DMAConfigureTaskOp cfg) {
-    AIE::TileOp t = cfg.getTileOp();
-    return {t.getCol(), t.getRow(), (int)cfg.getDirection(), cfg.getChannel()};
+  static DmaQueueModel::ChannelKey channelKey(DMAConfigureTaskOp cfg) {
+    return DmaQueueModel::keyOf(cfg.getTileOp(), cfg.getDirection(),
+                                cfg.getChannel());
+  }
+
+  // Every value that may carry `task`'s BD id after it: the region arguments
+  // and results it is forwarded to, including the next iteration of a loop
+  // that yields it. The forward counterpart of getReachableConfigures.
+  static llvm::SetVector<Value> aliasesAfter(Value task) {
+    llvm::SetVector<Value> aliases;
+    aliases.insert(task);
+    for (unsigned i = 0; i < aliases.size(); ++i) {
+      for (OpOperand &use : aliases[i].getUses()) {
+        Operation *user = use.getOwner();
+        auto branch = dyn_cast<RegionBranchOpInterface>(user);
+        if (!branch && user->hasTrait<OpTrait::IsTerminator>())
+          branch =
+              dyn_cast_or_null<RegionBranchOpInterface>(user->getParentOp());
+        if (!branch)
+          continue;
+        RegionBranchSuccessorMapping mapping;
+        branch.getSuccessorOperandInputMapping(mapping);
+        aliases.insert_range(mapping.lookup(&use));
+      }
+    }
+    return aliases;
+  }
+
+  // A start that can run after `freeOp` pushes an id the pool may already
+  // have handed to another task: one later in the block the two share, or one
+  // in a loop around both whose next iteration still names the freed id.
+  static LogicalResult verifyNoStartAfterFree(Value task, Operation *freeOp) {
+    llvm::SetVector<Value> aliases = aliasesAfter(task);
+    auto startsAfterFree = [&](DMAStartTaskOp start) {
+      for (Block *block = freeOp->getBlock(); block;
+           block = block->getParentOp()->getBlock()) {
+        Operation *startAt = block->findAncestorOpInBlock(*start);
+        if (!startAt)
+          continue;
+        Operation *freeAt = block->findAncestorOpInBlock(*freeOp);
+        if (freeAt != startAt && freeAt->isBeforeInBlock(startAt))
+          return true;
+        break;
+      }
+      Value started = start.getTask();
+      for (auto loop = freeOp->getParentOfType<scf::ForOp>(); loop;
+           loop = loop->getParentOfType<scf::ForOp>()) {
+        if (!loop->isAncestor(start))
+          continue;
+        if (!loop.getBody()->getParent()->isAncestor(started.getParentRegion()))
+          return true;
+        auto arg = dyn_cast<BlockArgument>(started);
+        if (arg && arg.getOwner() == loop.getBody() &&
+            arg.getArgNumber() >= loop.getNumInductionVars()) {
+          unsigned k = arg.getArgNumber() - loop.getNumInductionVars();
+          if (aliases.contains(loop.getYieldedValues()[k]))
+            return true;
+        }
+      }
+      return false;
+    };
+    for (Value alias : aliases)
+      for (Operation *user : alias.getUsers()) {
+        auto start = dyn_cast<DMAStartTaskOp>(user);
+        if (!start || !startsAfterFree(start))
+          continue;
+        auto diag = start.emitOpError(
+            "starts a task whose buffer descriptor ID was already returned "
+            "to the runtime pool; the pool may have handed it to another "
+            "task. Free the task after its last start instead.");
+        diag.attachNote(freeOp->getLoc()) << "returned here";
+        return diag;
+      }
+    return success();
   }
 
   LogicalResult lowerRelease(Value task, Operation *op) {
@@ -427,10 +515,55 @@ struct AIELowerDynamicBDPoolPass
       return op->emitOpError(
           "does not resolve to a task allocated from the runtime pool; cannot "
           "return its buffer descriptor ID");
+    if (failed(verifyNoStartAfterFree(task, op)))
+      return failure();
     auto tile = tileForTask.lookup(task);
+    auto [begin, end] = bdPartition(originConfigure.lookup(task));
     OpBuilder b(op);
-    DMABdPoolPushOp::create(b, op->getLoc(), tile.first, tile.second, id);
+    DMABdPoolPushOp::create(b, op->getLoc(), tile.first, tile.second, begin,
+                            end, id);
     return success();
+  }
+
+  // Guard pushes that can land on a full task queue.
+  //
+  // A sequence lowered here keeps its scf.for rolled, so the static allocator
+  // skips it. Guard while task metadata is available; aie-dma-to-npu later
+  // checks the combined pushes from tasks, memcpy and channel rearm operations.
+  void guardQueueDepth(AIE::RuntimeSequenceOp seq) {
+    const AIE::AIETargetModel &tm =
+        seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
+
+    auto effectOf = [&](Operation *op) -> QueueEffect {
+      DMAConfigureTaskOp cfg;
+      bool isPush = false;
+      bool issuesToken = false;
+      if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
+        cfg = originConfigure.lookup(start.getTask());
+        isPush = true;
+        issuesToken = cfg && start.getPushIssueToken(cfg);
+      } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
+        cfg = originConfigure.lookup(await.getTask());
+        // Only a token-issuing await retires anything.
+        if (cfg && !cfg.getIssueToken())
+          return {};
+      } else {
+        return {};
+      }
+      if (!cfg)
+        return {};
+      AIE::TileOp tile = cfg.tryGetTileOp();
+      if (!tile)
+        return {};
+      DmaQueueModel::ChannelKey key =
+          DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel());
+      return isPush ? QueueEffect::push(key, issuesToken)
+                    : QueueEffect::await(key);
+    };
+
+    DmaQueueModel queue;
+    guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
+                            effectOf);
   }
 
   void runOnOperation() override {
@@ -540,6 +673,9 @@ struct AIELowerDynamicBDPoolPass
         return WalkResult::interrupt();
       for (Operation *op : toErase)
         op->erase();
+      // Only once this sequence has lowered cleanly: guarding or reporting a
+      // queue on a design that is already being rejected just buries the error.
+      guardQueueDepth(seq);
       return WalkResult::advance();
     });
     if (wr.wasInterrupted())
@@ -552,4 +688,10 @@ struct AIELowerDynamicBDPoolPass
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 AIEX::createAIELowerDynamicBDPoolPass() {
   return std::make_unique<AIELowerDynamicBDPoolPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+AIEX::createAIELowerDynamicBDPoolPass(
+    const AIELowerDynamicBDPoolOptions &options) {
+  return std::make_unique<AIELowerDynamicBDPoolPass>(options);
 }
