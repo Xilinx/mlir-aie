@@ -26,10 +26,11 @@ class ObjectFifo(Resolvable):
     def __init__(
         self,
         obj_type: type[np.ndarray],
+        *,
         depth: int | None = 2,
         name: str | None = None,
-        to_stream: list[Sequence[int]] | None = None,
-        from_stream_per_cons: list[Sequence[int]] | None = None,
+        to_stream: TensorAccessPattern | None = None,
+        from_stream_per_cons: TensorAccessPattern | None = None,
         plio: bool = False,
     )
 ```
