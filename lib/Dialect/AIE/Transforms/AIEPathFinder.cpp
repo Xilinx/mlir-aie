@@ -434,12 +434,36 @@ bool Pathfinder::routeIdsApart() {
   return llvm::any_of(ids, [](const auto &s) { return s.second.size() > 1; });
 }
 
+bool Pathfinder::splitSharedIds() {
+  if (splitShared)
+    return false;
+  splitShared = true;
+  shareChannels = false;
+  cappedTiles.clear();
+  std::map<PathEndPoint, std::set<int>> ids;
+  for (const auto &[ends, sent] : packetIdsTo)
+    ids[ends.first].insert(sent.begin(), sent.end());
+  for (const auto &[src, srcIds] : ids)
+    for (const auto &[other, otherIds] : ids)
+      if (!(src == other) &&
+          llvm::any_of(srcIds, [&](int id) { return otherIds.count(id); }) &&
+          llvm::any_of(srcIds, [&](int id) { return !otherIds.count(id); }))
+        return true;
+  return false;
+}
+
 namespace {
-enum class RelaxStep { ShareChannels, CapCrowdedTiles, RouteIdsApart };
+enum class RelaxStep {
+  ShareChannels,
+  CapCrowdedTiles,
+  RouteIdsApart,
+  SplitSharedIds
+};
 constexpr RelaxStep relaxLadder[] = {
-    RelaxStep::ShareChannels, RelaxStep::CapCrowdedTiles,
-    RelaxStep::RouteIdsApart, RelaxStep::ShareChannels,
-    RelaxStep::CapCrowdedTiles};
+    RelaxStep::ShareChannels,   RelaxStep::CapCrowdedTiles,
+    RelaxStep::RouteIdsApart,   RelaxStep::ShareChannels,
+    RelaxStep::CapCrowdedTiles, RelaxStep::SplitSharedIds,
+    RelaxStep::ShareChannels,   RelaxStep::CapCrowdedTiles};
 } // namespace
 
 bool Pathfinder::relax() {
@@ -467,6 +491,13 @@ bool Pathfinder::relax() {
         return true;
       }
       // With one id per source, the steps after it would only repeat.
+      relaxStep = std::size(relaxLadder);
+      return false;
+    case RelaxStep::SplitSharedIds:
+      if (splitSharedIds()) {
+        LLVM_DEBUG(llvm::dbgs() << "Relax: split shared ids\n");
+        return true;
+      }
       relaxStep = std::size(relaxLadder);
       return false;
     }
@@ -2132,16 +2163,39 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
   }
   crowdedTiles.insert(faults.crowded.begin(), faults.crowded.end());
   bool apart = false;
-  for (const auto &pair : faults.apart)
-    if (st.apartSources.insert(pair).second) {
-      apart = true;
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Route apart: "
-                 << describeTilePort(pair.first.coords, pair.first.port)
-                 << " and "
-                 << describeTilePort(pair.second.coords, pair.second.port)
-                 << "\n");
+  for (const auto &pair : faults.apart) {
+    if (!st.apartSources.insert(pair).second)
+      continue;
+    apart = true;
+    LLVM_DEBUG(llvm::dbgs()
+               << "Route apart: "
+               << describeTilePort(pair.first.coords, pair.first.port)
+               << " and "
+               << describeTilePort(pair.second.coords, pair.second.port)
+               << "\n");
+    // Trees with an id in common join where they meet, so the ids a source
+    // sends that the other does not route apart as a part of their own.
+    if (!splitShared)
+      continue;
+    for (auto [src, other] : {pair, std::pair{pair.second, pair.first}}) {
+      auto srcParts = st.partsOf.find(src);
+      auto otherParts = st.partsOf.find(other);
+      if (srcParts == st.partsOf.end() || otherParts == st.partsOf.end())
+        continue;
+      std::set<int> otherIds;
+      for (int k : otherParts->second)
+        otherIds.insert(st.flowIds[k].begin(), st.flowIds[k].end());
+      for (int k : SmallVector<int, 2>(srcParts->second)) {
+        std::set<int> own;
+        for (int id : st.flowIds[k])
+          if (!otherIds.count(id))
+            own.insert(id);
+        if (!st.parts[k].isPriorityFlow && !own.empty() &&
+            own.size() < st.flowIds[k].size())
+          st.splitPart(k, own);
+      }
     }
+  }
   if (apart) {
     illegalEdges++;
     st.relateParts();
