@@ -89,6 +89,30 @@ class SubmoduleRegressionTests(unittest.TestCase):
         self.point_at(self.a)
         self.assertFails("rolls the submodule back")
 
+    def test_suggested_fix_clears_a_staged_rollback(self):
+        self.point_at(self.b)
+        self.commit("bump")
+        self.point_at(self.a)
+        self.assertFails("git restore --staged -- sub")
+        git(self.root, "restore", "--staged", "--", "sub")
+        self.assertPasses()
+
+    def test_path_needing_quotes_is_checked(self):
+        path = os.path.join(self.root, "sub\tü")
+        os.mkdir(path)
+        git(path, "init", "-q")
+        git(path, "commit", "-q", "--allow-empty", "-m", "x")
+        x = git(path, "rev-parse", "HEAD")
+        git(path, "commit", "-q", "--allow-empty", "-m", "y")
+        y = git(path, "rev-parse", "HEAD")
+        self.point_at(x, "sub\tü")
+        self.commit("add")
+        self.point_at(y, "sub\tü")
+        self.assertPasses()
+        self.commit("bump")
+        self.point_at(x, "sub\tü")
+        self.assertFails("rolls the submodule back")
+
     def test_move_to_unrelated_commit_fails(self):
         self.point_at(self.b)
         self.commit("bump")
@@ -133,6 +157,19 @@ class SubmoduleRegressionTests(unittest.TestCase):
         self.commit("unrelated work")
         self.assertPasses(
             env={"PRE_COMMIT_FROM_REF": "main", "PRE_COMMIT_TO_REF": "HEAD"}
+        )
+
+    def test_push_rewinding_a_branch_fails(self):
+        self.point_at(self.b)
+        self.commit("bump")
+        tip = git(self.root, "rev-parse", "HEAD")
+        self.assertFails(
+            "rolls the submodule back",
+            env={
+                "PRE_COMMIT_FROM_REF": tip,
+                "PRE_COMMIT_TO_REF": f"{tip}~1",
+                "PRE_COMMIT_REMOTE_BRANCH": "refs/heads/main",
+            },
         )
 
 
