@@ -346,7 +346,9 @@ public:
   /// channels with any packet flow; cap the fan-out of tiles the routing check
   /// found out of packet rules or msels to packetFanoutCap channels per
   /// direction; route the second id of an unbranchable split apart, which
-  /// restarts sharing and caps; then share and cap again.
+  /// restarts sharing and caps; then share and cap again; route the ids a
+  /// source sends that a source it must keep apart from does not as a part of
+  /// their own, which restarts sharing and caps; then share and cap again.
   bool relax();
 
 private:
@@ -418,6 +420,7 @@ private:
   bool shareAllChannels();
   bool capCrowdedFanOut();
   bool routeIdsApart();
+  bool splitSharedIds();
 
   // Flows to be routed
   std::vector<Flow> flows;
@@ -456,7 +459,7 @@ private:
   // Whether packet streams took part in the last failure: the routing check
   // rejected a routing, or packet streams cross a link left overused.
   bool packetsFailed = true;
-  bool shareChannels = false, idsApart = false;
+  bool shareChannels = false, idsApart = false, splitShared = false;
   size_t relaxStep = 0;
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
 };

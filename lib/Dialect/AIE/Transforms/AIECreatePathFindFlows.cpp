@@ -840,6 +840,13 @@ planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
       if (excluded(f, a) && !llvm::is_contained(excludedUnits[a], flowUnit[f]))
         excludedUnits[a].push_back(flowUnit[f]);
   }
+  size_t mostFree = 0;
+  for (const SmallVector<int, 4> &free : freeMsels)
+    mostFree = std::max(mostFree, free.size());
+  if (llvm::any_of(units, [&](const Unit &unit) {
+        return unit.masterSets.size() > mostFree;
+      }))
+    return std::nullopt;
 
   // Most constrained first.
   SmallVector<size_t, 8> order(units.size());
