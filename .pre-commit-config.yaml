@@ -296,3 +296,11 @@ repos:
       pass_filenames: false
       require_serial: true
       types_or: [c, c++, python]
+
+    # Catches a stale submodule checkout swept in by `git commit -a`/`git add .`.
+    - id: check-submodule-regression
+      name: Check submodule pointers only move forward
+      language: python
+      entry: python utils/check_submodule_regression.py
+      pass_filenames: false
+      always_run: true
