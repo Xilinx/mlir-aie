@@ -72,10 +72,12 @@ PARAMS = dict(
     header_bytes=4,
     max_bd_steps=1024,
     # stepBudget in planArbiters and unroutableArbiters, budget in
-    # runOnPacketFlow's hold-cycle search: AIECreatePathFindFlows.cpp
+    # runOnPacketFlow's hold-cycle search: AIECreatePathFindFlows.cpp;
+    # maxWalkSearches in StreamConflicts::holdCycle
     plan_budget=100000,
     clique_budget=100000,
     hold_budget=256,
+    walk_searches=1024,
     # Designs per tier and per aie-opt run.
     routable=170,
     unroutable=40,
@@ -2122,10 +2124,10 @@ class Analysis:
             g = self.tree_of[x]
         return " ".join(reversed(steps))
 
-    def hold_cycle(self, routes):
+    def hold_cycle(self, routes, forced_waits=False):
         """StreamConflicts::holdCycle. routes[i] is [(tile, input, arbiter)]
         for streams[i]. Steps are (wait, waiting, sharer, holding, tile,
-        sharer input, holder input, arbiter)."""
+        sharer input, holder input, arbiter, forced)."""
         streams, nreq = self.streams, self.num_requested
         trees, tree_ids = [], {}
         for i, s in enumerate(streams):
@@ -2149,8 +2151,46 @@ class Analysis:
                     tree["arbiter"].append(arb)
                 prev = h
 
+        # One source sends one tree's packet at a time. Trees into one receiver
+        # are both in flight at once, and wait on each other at its master port
+        # however they are routed, where both enter its switchbox for it; and
+        # trees with one id wait on each other where they meet and below, going
+        # on as one. Those waits count only with `forced_waits`.
         def related(a, b):
-            return self.related(trees[a]["members"][0], trees[b]["members"][0])
+            return (
+                streams[trees[a]["members"][0]].src
+                == streams[trees[b]["members"][0]].src
+            )
+
+        def forced(a, ha, b, hb, tile):
+            ina, inb = trees[a]["hops"][ha][1], trees[b]["hops"][hb][1]
+
+            def into(m, inp):
+                return (
+                    streams[m].dst[:2] == tile
+                    and bool(routes[m])
+                    and routes[m][-1][:2] == (tile, inp)
+                )
+
+            if any(
+                streams[m].dst == streams[n].dst and into(m, ina) and into(n, inb)
+                for m in trees[a]["members"]
+                for n in trees[b]["members"]
+            ):
+                return True
+            if (
+                streams[trees[a]["members"][0]].pid
+                != streams[trees[b]["members"][0]].pid
+            ):
+                return False
+            return any(
+                parent == ha
+                and any(
+                    pb == hb and trees[b]["hops"][k] == trees[a]["hops"][h]
+                    for k, pb in enumerate(trees[b]["parent"])
+                )
+                for h, parent in enumerate(trees[a]["parent"])
+            )
 
         nodes = []
         for t, tree in enumerate(trees):
@@ -2175,6 +2215,24 @@ class Analysis:
                 entering[hop].append((t, h))
                 passing[hop[0]].append((t, h))
 
+        # The arbiter both trees took to leave the switchbox above a hop they
+        # share where they came into it apart.
+        def merged_at(a, ha, b, hb):
+            while True:
+                pa, pb = trees[a]["parent"][ha], trees[b]["parent"][hb]
+                if pa < 0 or pb < 0:
+                    return None
+                if trees[a]["hops"][pa] != trees[b]["hops"][pb]:
+                    arbiter = trees[a]["arbiter"][pa]
+                    if (
+                        trees[a]["hops"][pa][0] != trees[b]["hops"][pb][0]
+                        or arbiter is None
+                        or arbiter != trees[b]["arbiter"][pb]
+                    ):
+                        return None
+                    return (trees[a]["hops"][pa][0], arbiter)
+                ha, hb = pa, pb
+
         cache = {}
 
         def successors(n):
@@ -2190,25 +2248,42 @@ class Analysis:
                     if t != t0 and related(t0, t):
                         continue
                     sharer = trees[t]["members"][0]
-                    if t != t0:
+                    same_id = streams[waiting].pid == streams[sharer].pid
+                    if t != t0 and (not same_id or forced_waits):
                         out.append(
                             (
                                 past_node(t, ht),
-                                ("link", waiting, sharer, sharer, tile, inp, inp, -1),
+                                (
+                                    "link",
+                                    waiting,
+                                    sharer,
+                                    sharer,
+                                    tile,
+                                    inp,
+                                    inp,
+                                    -1,
+                                    same_id,
+                                ),
+                                merged_at(t0, index, t, ht),
                             )
                         )
                     arbiter = trees[t]["arbiter"][ht]
                     if arbiter is None:
                         continue
+                    # A tree's branches move as one, so where two come into a
+                    # switchbox apart onto one arbiter, the one holding it
+                    # waits on the other.
                     for v, hv in passing[tile]:
                         holder_input = trees[v]["hops"][hv][1]
+                        own = v == t0 and t == t0
                         if (
-                            v == t0
-                            or v == t
+                            (not own and (v == t0 or v == t or related(t, v)))
                             or holder_input == inp
                             or trees[v]["arbiter"][hv] != arbiter
-                            or related(t, v)
                         ):
+                            continue
+                        is_forced = not own and forced(t, ht, v, hv, tile)
+                        if is_forced and not forced_waits:
                             continue
                         out.append(
                             (
@@ -2222,20 +2297,25 @@ class Analysis:
                                     inp,
                                     holder_input,
                                     arbiter,
+                                    is_forced,
                                 ),
+                                None,
                             )
                         )
             elif kind == "recv":
                 s = u["members"][index]
                 for g in range(len(trees)):
-                    if g == t0:
+                    if g == t0 or any(
+                        streams[m].dst == streams[s].dst for m in trees[g]["members"]
+                    ):
                         continue
                     for m in trees[g]["members"]:
                         if self.blocks(s, m):
                             out.append(
                                 (
                                     anywhere_node(g),
-                                    ("drain", s, s, m, None, None, None, -1),
+                                    ("drain", s, s, m, None, None, None, -1, False),
+                                    None,
                                 )
                             )
                             break
@@ -2248,9 +2328,9 @@ class Analysis:
                         h = u["parent"][h]
                 for h in range(len(u["hops"])):
                     if h not in behind:
-                        out.append((u["base"] + h, None))
+                        out.append((u["base"] + h, None, None))
                 for m in range(len(u["members"])):
-                    out.append((receiver_node(t0, m), None))
+                    out.append((receiver_node(t0, m), None, None))
             cache[n] = out
             return out
 
@@ -2317,26 +2397,39 @@ class Analysis:
                 return fixed[grant] == st[3]
             return st[3] not in excluded.get(grant, ())
 
+        # A packet holds its arbiter until its tail passes, so no state has two
+        # trees holding one arbiter. Nor is a walk where each packet is behind
+        # the next on links below one arbiter they merged at, which granted
+        # them those links in one order, a deadlock, so a walk from a link wait
+        # below one must also wait otherwise.
         def close_walk(x, e, fixed, excluded):
             if not allowed(e, fixed, excluded):
                 return None
-            via = {e[0]: (e[0], None)}
-            work = deque([e[0]])
-            while x not in via:
+
+            # A state is a node and whether the walk there has waited other
+            # than on a link below e's merge.
+            def ordered(edge):
+                return edge[1] is None or edge[2] == e[2]
+
+            start, end = (e[0], e[2] is None), (x, True)
+            via = {start: (start, None)}
+            work = deque([start])
+            while end not in via:
                 if not work:
                     return None
                 n = work.popleft()
-                for nxt in successors(n):
+                for nxt in successors(n[0]):
+                    to = (nxt[0], n[1] or not ordered(nxt))
                     if (
                         comp[nxt[0]] == comp[x]
                         and allowed(nxt, fixed, excluded)
-                        and nxt[0] not in via
+                        and to not in via
                     ):
-                        via[nxt[0]] = (n, nxt)
-                        work.append(nxt[0])
+                        via[to] = (n, nxt)
+                        work.append(to)
             path = []
-            n = x
-            while n != e[0]:
+            n = end
+            while n != start:
                 path.append(via[n][1])
                 n = via[n][0]
             path.append(e)
@@ -2349,12 +2442,16 @@ class Analysis:
             for e in successors(x):
                 if not counts(e) or comp[e[0]] != comp[x]:
                     continue
-                pending = [({}, {})]
+                pending, first, search = [({}, {})], None, 0
                 while pending:
+                    if search == PARAMS["walk_searches"]:
+                        return steps_of(first)
+                    search += 1
                     fixed, excluded = pending.pop()
                     path = close_walk(x, e, fixed, excluded)
                     if path is None:
                         continue
+                    first = first or path
                     held, clash = {}, None
                     for st in steps_of(path):
                         if st[0] != "arbiter":
@@ -2375,9 +2472,13 @@ class Analysis:
                     pending.append(({**fixed, grant: holder}, excluded))
         return None
 
+    def assumed(self, steps):
+        """StreamConflicts::assumed."""
+        return any(st[0] == "drain" and self.assumptions(st[1], st[3]) for st in steps)
+
     def explain_cycle(self, steps):
         out = []
-        for wait, waiting, sharer, holding, tile, sin, hin, arb in steps:
+        for wait, waiting, sharer, holding, tile, sin, hin, arb, _ in steps:
             if wait == "link":
                 out.append(
                     f"{describe_stream(self.streams[waiting])} can queue behind "
@@ -2675,7 +2776,14 @@ def plan_routing(d, an, solution, hops_on):
     switchboxes = defaultdict(list)
     slave_streams = defaultdict(list)
     ctrl_flows = {}
-    out = dict(reason=None, blame=[], plans={}, circuit_hops={}, routes=routes)
+    out = dict(
+        reason=None,
+        blame=[],
+        plans={},
+        circuit_hops={},
+        routes=routes,
+        shared_receiver_cycle=None,
+    )
 
     def fail(reason, blame):
         out["reason"], out["blame"] = reason, sorted(set(blame))
@@ -2873,15 +2981,15 @@ def plan_routing(d, an, solution, hops_on):
     first = []
     budget = [PARAMS["hold_budget"]]
 
-    def search():
+    def search(forced_waits):
         arbitrate()
-        cycle = an.hold_cycle(routes)
+        cycle = an.hold_cycle(routes, forced_waits)
         if cycle is None:
             return True
         if not first:
             first.append(cycle)
-        for wait, waiting, sharer, holding, tile, sin, hin, arb in cycle:
-            if wait != "arbiter":
+        for wait, waiting, sharer, holding, tile, sin, hin, arb, forced in cycle:
+            if wait != "arbiter" or forced:
                 continue
             sk = (sin, an.streams[sharer].pid)
             hk = (hin, an.streams[holding].pid)
@@ -2906,7 +3014,7 @@ def plan_routing(d, an, solution, hops_on):
             plan, _ = plan_tile(tile)
             if plan is not None:
                 plans[tile] = plan
-                if search():
+                if search(forced_waits):
                     return True
                 plans[tile] = saved
             if pair:
@@ -2915,7 +3023,7 @@ def plan_routing(d, an, solution, hops_on):
                 off.discard(o)
         return False
 
-    if not search():
+    if not search(False):
         arbitrate()
         cycle = first[0]
         blame = [
@@ -2930,6 +3038,15 @@ def plan_routing(d, an, solution, hops_on):
             "arbiter assignment found avoids it. " + an.explain_cycle(cycle),
             blame,
         )
+    # Trees into a receiver they share wait on each other at its master port
+    # whatever the plan; where no plan breaks a cycle through such waits, the
+    # plan stands, with a warning unless the cycle rests on assumptions.
+    first.clear()
+    budget[0] = PARAMS["hold_budget"]
+    if not search(True):
+        arbitrate()
+        if not an.assumed(first[0]):
+            out["shared_receiver_cycle"] = first[0]
     return out
 
 
@@ -3573,6 +3690,11 @@ def verify(d, an, text, hops_on):
     cycle = an.hold_cycle(routes)
     if cycle is not None:
         problems.append("hold cycle: " + an.explain_cycle(cycle))
+    # A cycle through waits at receivers trees share is the router's to warn
+    # of, unless it rests on assumptions.
+    shared = an.hold_cycle(routes, forced_waits=True) if cycle is None else None
+    if shared is not None and an.assumed(shared):
+        shared = None
 
     keeps = last_keep(d)
     mixed_ctrl, low_priority, ctrl_used = set(), set(), set()
@@ -3662,6 +3784,7 @@ def verify(d, an, text, hops_on):
         promoted=sum(len(v) for v in promoted.values()),
         mixed_ctrl=len(mixed_ctrl),
         low_priority=len(low_priority),
+        shared_receiver_cycle=shared and an.explain_cycle(shared),
     )
     return problems, stats
 
@@ -4624,7 +4747,10 @@ OUTCOMES = (
     ("msels", r"need more arbiter msels than the switchbox"),
     ("keep apart", r"no routing found keeps them apart"),
     ("hold cycle", r"deadlock holding arbiters across switchboxes"),
-    ("overlay masters", r"a control-packet reload keeps their master sets"),
+    (
+        "overlay masters",
+        r"not by one of their master sets, which a control-packet reload keeps",
+    ),
     ("overlay rule", r"a control-packet reload keeps their rules"),
     ("no path", r"no path leads from"),
     ("source unrouted", r"could not be routed to destination"),
@@ -5198,6 +5324,10 @@ def unavoidable_warning(an):
 
 
 OVERLAY_WARNING = "a control-packet reload would not keep them"
+SHARED_RECEIVER_WARNING = (
+    "Packet flows into receivers they share can deadlock holding arbiters across "
+    "switchboxes, and no arbiter assignment found avoids it: "
+)
 
 
 def router_warning(stderr):
@@ -5206,6 +5336,17 @@ def router_warning(stderr):
             l.split(" warning: ", 1)[1].strip()
             for l in stderr.splitlines()
             if "however they are routed" in l
+        ),
+        None,
+    )
+
+
+def shared_receiver_warning(stderr):
+    return next(
+        (
+            l.split(SHARED_RECEIVER_WARNING, 1)[1].strip()
+            for l in stderr.splitlines()
+            if SHARED_RECEIVER_WARNING in l
         ),
         None,
     )
@@ -5555,6 +5696,7 @@ def main(argv=None):
 
     failed, illegal, nondet = [], [], 0
     inherent, inherent_wrong = Counter(), []
+    shared, shared_wrong = Counter(), []
 
     def check_inherent(tag, c, stderr, what="warning"):
         want, got = unavoidable_warning(c["analysis"]), router_warning(stderr)
@@ -5598,6 +5740,15 @@ def main(argv=None):
                     f"seed {seed}{mode}", c, again[2][seed], "warning" + mode.strip()
                 )
             problems, stats = verify(d, c["analysis"], outs[seed], hops_on)
+            want = stats.pop("shared_receiver_cycle")
+            if seed in again[2] and not problems:
+                got = shared_receiver_warning(again[2][seed])
+                shared[want is not None] += 1
+                if want != got:
+                    shared_wrong.append(
+                        f"seed {seed}{mode}: router {got!r}, model {want!r}"
+                    )
+                    save(c, "shared-warning" + mode.strip(), d.emit(), again[2][seed])
             overlay_todo.append(
                 (c, mode, outs[seed], OVERLAY_WARNING in again[2].get(seed, ""))
             )
@@ -5790,6 +5941,15 @@ def main(argv=None):
         not inherent_wrong,
         f"{sum(inherent.values()) - len(inherent_wrong)}/{sum(inherent.values())} "
         f"warn as the model predicts ({inherent[True]} warn)",
+    )
+    for line in shared_wrong[:10]:
+        print("WRONG SHARED-RECEIVER WARNING:", line)
+    report(
+        "shared-receiver",
+        not shared_wrong,
+        f"{sum(shared.values()) - len(shared_wrong)}/{sum(shared.values())} "
+        f"warn of shared-receiver hold cycles as the model predicts "
+        f"({shared[True]} warn)",
     )
 
     for label, count in sorted(known.items()):
