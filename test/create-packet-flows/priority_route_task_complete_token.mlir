@@ -6,7 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
+// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN --allow-empty
+// RUN: sed 's/^  }$/  } {has_ctrl_pkt_overlay = true}/' %s | aie-opt --aie-create-pathfinder-flows 2>&1 | FileCheck %s --check-prefix=RELOAD
 
 // The id 15 flows are the routes the column control overlay adds for each
 // shim's task-complete tokens; the host learns a dma_wait is done from them.
@@ -16,9 +17,20 @@
 // host issues only after the token for @in1 arrives through (0, 0). So the
 // token takes another arbiter there. At (1, 0) the host waits only for @out,
 // last, so sharing is safe. Alone, id 0 and the token share an arbiter at
-// (0, 0), as in @ctrl_pkt_overlay, so a reload would not keep this routing.
+// (0, 0); without a control-packet reload, nothing keeps that.
 
-// WARN: warning: the prioritized flows (the control overlay) take other packet rules at (0, 0) North:2 than they take alone
+// WARN-NOT: {{warning|error}}
+
+// A control-packet reload installs @ctrl_pkt_overlay, which holds the token
+// flows alone, and configures id 0 with the rest of the design. The token
+// keeps the amsel it takes alone at (0, 0), and id 0 takes another arbiter.
+
+// RELOAD-NOT: {{warning|error}}
+// RELOAD-LABEL: aie.switchbox(%shim_noc_tile_0_0)
+// RELOAD-DAG:     %[[TOKEN:.*]] = aie.amsel<5> (3)
+// RELOAD-DAG:     %[[ID0:.*]] = aie.amsel<0> (0)
+// RELOAD-DAG:     aie.masterset(South : 0, %[[TOKEN]]) {is_ctrl_pkt_overlay
+// RELOAD-DAG:     aie.masterset(East : 0, %[[ID0]])
 
 // CHECK-LABEL: aie.switchbox(%shim_noc_tile_0_0)
 // CHECK-DAG:     %[[TCT:.*]] = aie.amsel<4> (3)

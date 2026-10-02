@@ -375,6 +375,8 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                          Port dstPort, std::optional<int> packetId,
                          bool isPriorityFlow,
                          std::optional<mlir::Location> loc) {
+  isPriorityFlow &= constraints.prioritize ||
+                    constraints.pinned.count({srcCoords, srcPort}) > 0;
   if (loc)
     flowLocs.try_emplace({{srcCoords, srcPort}, {dstCoords, dstPort}}, *loc);
   if (packetId) {
@@ -888,7 +890,7 @@ struct Pathfinder::RouteState {
   // A control-packet reload keeps the master sets the prioritized flows' trees
   // leave each switchbox by, so another flow leaving by one of those master
   // ports leaves by all of one such set and no others.
-  llvm::DenseSet<int> overlayMasters, alone;
+  llvm::DenseSet<int> overlayMasters;
   std::vector<SmallVector<int, 4>> overlaySets;
   bool mayLeave(ArrayRef<int> masters, int next) const;
   bool reorder(int later, int earlier, bool again = false);
@@ -941,9 +943,6 @@ Pathfinder::RouteState::RouteState(const Pathfinder &pf)
       overlaySets.push_back(std::move(set));
     }
   }
-  for (const PathEndPoint &port : pf.constraints.alone)
-    if (auto it = pf.nodeIds.find(port); it != pf.nodeIds.end())
-      alone.insert(stateId(it->second, Out));
 }
 
 // Route `later` before `earlier` from the next iteration on, unless the two
@@ -961,14 +960,9 @@ bool Pathfinder::RouteState::reorder(int later, int earlier, bool again) {
 }
 
 // Whether a tree whose packets leave a switchbox by `masters` from one slave
-// port may leave it by `next` too: unless one of them is to be left alone, or
-// that takes a master port of the prioritized flows, after which the tree
-// keeps within one of their sets.
+// port may leave it by `next` too: unless that takes a master port of the
+// prioritized flows, after which the tree keeps within one of their sets.
 bool Pathfinder::RouteState::mayLeave(ArrayRef<int> masters, int next) const {
-  if (!masters.empty() &&
-      (alone.count(next) ||
-       llvm::any_of(masters, [&](int m) { return alone.count(m); })))
-    return false;
   if (!overlayMasters.count(next) &&
       llvm::none_of(masters, [&](int m) { return overlayMasters.count(m); }))
     return true;
@@ -1117,7 +1111,7 @@ std::string Pathfinder::explainNoRouting(const RouteState &st) const {
   const Flow *prioritized = nullptr;
   llvm::SetVector<const SwitchboxConnect *> held;
   for (auto [k, f] : llvm::enumerate(st.parts)) {
-    if (!f.isPriorityFlow)
+    if (!st.isPinned(f))
       continue;
     prioritized = prioritized ? prioritized : &f;
     for (const auto &[_, hop] : st.treeOf[k]) {
@@ -1300,7 +1294,6 @@ Pathfinder::TreeBuilder::TreeBuilder(Pathfinder &pf, RouteState &st, int flow)
     // tree keeps to their master sets.
     int self = stateId(srcId, Out);
     if (endPoint == part.src && !st.overlayMasters.count(self) &&
-        !st.alone.count(self) &&
         llvm::any_of(pf.adjacency[srcId],
                      [&](const Edge &e) { return e.dst == srcId; })) {
       toSelf = true;
@@ -1634,7 +1627,7 @@ void Pathfinder::TreeBuilder::search(const llvm::DenseSet<int> &drop,
     blocked.insert(off.begin(), off.end());
   }
   llvm::DenseMap<int, SmallVector<int, 4>> masters;
-  bool limited = !st.overlayMasters.empty() || !st.alone.empty();
+  bool limited = !st.overlayMasters.empty();
   if (limited)
     for (const auto &[state, hop] : planned)
       if ((hop.first & 1) == In && !drop.count(state))
@@ -1753,7 +1746,10 @@ llvm::Error Pathfinder::TreeBuilder::placePinned() {
       return llvm::make_error<RoutingFailure>(
           "the route packet flows from " +
               describeTilePort(part.src.coords, part.src.port) +
-              " take alone does not fit this design.",
+              " take alone does not fit this design: it goes from " +
+              describeTilePort(from.coords, from.port) + " to " +
+              describeTilePort(to.coords, to.port) +
+              ", which the design's own switchboxes leave no connection for.",
           RoutingFaults{}, pf.flowLoc(part.src, nullptr));
     std::pair<int, std::pair<int, Edge>> hop{
         stateId(toId->second, intra ? Out : In),
@@ -2052,7 +2048,7 @@ llvm::Error Pathfinder::routePart(RouteState &st, int flow) {
   llvm::Error err = tree->pinned ? tree->placePinned() : tree->grow();
   // Kept to the prioritized flows' master sets, the branch a tree takes first
   // can leave it no way to another destination; each is then tried first.
-  if (err && !tree->pinned && (!st.overlayMasters.empty() || !st.alone.empty()))
+  if (err && !tree->pinned && !st.overlayMasters.empty())
     for (const PathEndPoint &dst : st.parts[flow].dsts) {
       for (auto *pairs : {&st.unmet, &st.met})
         pairs->erase(pairs->lower_bound({flow, 0}),

@@ -37,6 +37,7 @@ std::string AIE::joinNames(llvm::ArrayRef<std::string> names, size_t shown) {
 
 std::string AIE::describePrioritized(llvm::ArrayRef<std::string> sources) {
   return "packet flows from " + joinNames(sources) +
-         " are prioritized (priority_route), so they keep the route they take "
-         "alone";
+         " are prioritized (priority_route) in a design a control-packet "
+         "reload configures (has_ctrl_pkt_overlay), so they keep the route "
+         "they take alone, as in @ctrl_pkt_overlay";
 }
