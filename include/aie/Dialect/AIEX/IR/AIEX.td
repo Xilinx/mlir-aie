@@ -218,6 +218,9 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
   }];
 
   let useDefaultTypePrinterParser = 1;
+  // The op assembly formats still print inherent attributes in `attr-dict`;
+  // opt out of upstream's strict-properties default until they migrate.
+  let useStrictPropertiesInAssemblyFormat = 0;
 }
 
 //===----------------------------------------------------------------------===//
