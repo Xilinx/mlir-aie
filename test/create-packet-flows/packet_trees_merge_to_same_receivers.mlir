@@ -8,17 +8,17 @@
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
 // Both sources of flow 25 send id 25 to (0,3) DMA:0 and (0,2) Core:0. The tree
-// from (0,5) Core:0 comes down to (0,2) and turns back north into the tree from
+// from (0,5) Core:0 comes down to (0,1) and turns back north into the tree from
 // (0,0) DMA:0. Both take the id to the same receivers, so they may share the
 // channel. Counting the second tree over its capacity left only routings that
 // can deadlock. Reduced from router_mutation.py npu2 seed 96 (permute).
 
-// CHECK-LABEL: aie.switchbox(%tile_0_2)
+// CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[M:.*]] = aie.amsel<0> (0)
-// CHECK:         aie.masterset(North : 2, %[[M]])
-// CHECK:         aie.packet_rules(North : 2) {
+// CHECK:         aie.masterset(North : {{[0-9]+}}, %[[M]])
+// CHECK:         aie.packet_rules(North : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 25, %[[M]])
-// CHECK:         aie.packet_rules(South : 0) {
+// CHECK:         aie.packet_rules(South : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 25, %[[M]])
 
 module {

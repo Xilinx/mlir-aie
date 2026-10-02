@@ -1456,18 +1456,30 @@ void Pathfinder::TreeBuilder::findJoins() {
 // flow meets each tree it shares destinations with at one switchbox, those
 // it shares the most with first, on that tree's way from its source to where
 // it branches for them, by a slave port that takes each master port the tree
-// takes there toward them.
+// takes there toward them. Only a packet going to two of them can hold the
+// arbiter where the trees meet for one and wait where they meet for the other,
+// so two trees meet only when each sends some id to two shared destinations.
 void Pathfinder::TreeBuilder::meet() {
+  auto spans = [&](int k, ArrayRef<int> dsts) {
+    return llvm::any_of(st.flowIds[k], [&](int id) {
+      return llvm::count_if(dsts, [&](int dst) {
+               return llvm::is_contained(st.idsTo(k, dst), id);
+             }) > 1;
+    });
+  };
+  auto mustMeet = [&](int other) {
+    return spans(flow, sharedDsts[other]) && spans(other, sharedDsts[other]);
+  };
   SmallVector<int, 4> owners;
-  for (const auto &[other, dsts] : sharedDsts)
-    if (dsts.size() > 1 && !disagree.count(other))
+  for (int other : llvm::make_first_range(sharedDsts))
+    if (!disagree.count(other) && mustMeet(other))
       owners.push_back(other);
   llvm::stable_sort(owners, [&](int a, int b) {
     return sharedDsts[a].size() > sharedDsts[b].size();
   });
   for (int owner : owners) {
     llvm::erase_if(sharedDsts[owner], [&](int dst) { return !isPending(dst); });
-    if (sharedDsts[owner].size() > 1)
+    if (mustMeet(owner))
       meet(owner);
   }
 }

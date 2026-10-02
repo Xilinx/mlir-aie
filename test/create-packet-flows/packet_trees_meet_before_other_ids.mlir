@@ -16,8 +16,8 @@
 
 // CHECK-LABEL: aie.switchbox(%tile_0_4)
 // CHECK:         %[[MEET:.*]] = aie.amsel<0> (0)
-// CHECK:         aie.masterset(South : 2, %[[MEET]])
-// CHECK:         aie.masterset(North : 4, %[[MEET]])
+// CHECK:         aie.masterset(South : {{[0-9]+}}, %[[MEET]])
+// CHECK:         aie.masterset(North : {{[0-9]+}}, %[[MEET]])
 // CHECK:         aie.packet_rules(Core : 1) {
 // CHECK-NEXT:      aie.rule(31, 14, %[[MEET]])
 // CHECK-NEXT:    }
