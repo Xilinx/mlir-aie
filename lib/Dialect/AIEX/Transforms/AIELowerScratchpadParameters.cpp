@@ -224,8 +224,9 @@ struct AIELowerScratchpadParametersPass
   }
 
   // For each runtime sequence in `device` with shouldEmitParameterSyncPreamble
-  // ()==true, insert a marker SyncScratchpadParametersFromHostOp at the start
-  // of the sequence body.
+  // ()==true, insert a marker SyncScratchpadParametersFromHostOp after the
+  // last top-level load_pdi of the sequence body, or at its start if there is
+  // none.
   void emitSequencePreambles(DeviceOp device, OpBuilder &builder) {
     device.walk([&](RuntimeSequenceOp seqOp) {
       if (!shouldEmitParameterSyncPreamble(seqOp)) {
@@ -237,6 +238,9 @@ struct AIELowerScratchpadParametersPass
         region.emplaceBlock();
       Block &body = region.front();
       builder.setInsertionPointToStart(&body);
+      // Loading a PDI resets the core buffers and locks the sync writes.
+      for (NpuLoadPdiOp loadPdi : body.getOps<NpuLoadPdiOp>())
+        builder.setInsertionPointAfter(loadPdi);
       SyncScratchpadParametersFromHostOp::create(builder, seqOp.getLoc());
 
       // Mark as done so the pass is idempotent.

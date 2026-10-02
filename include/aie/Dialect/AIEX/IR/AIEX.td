@@ -1932,9 +1932,10 @@ def AIEX_SyncScratchpadParametersFromHostOp
     3. `aiex.set_lock(lock, 1)` for each parameter-sync lock in the device
        (releasing the cores that read parameters)
 
-    Placement: users who manually emit `aiex.npu.load_pdi` should manually
-    place this op *after* the load_pdi, since PDI loading resets core state
-    (including lock values).
+    Placement: PDI loading resets core state (including lock values), so the
+    compiler-inserted preamble goes after the last top-level
+    `aiex.npu.load_pdi` of the sequence. A sequence that loads a PDI anywhere
+    else should place this op by hand after that load.
 
     Example:
     ```mlir

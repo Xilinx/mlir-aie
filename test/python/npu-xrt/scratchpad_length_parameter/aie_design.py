@@ -15,7 +15,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker, sync_parameters
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2Col1
 from aie.iron.scratchpad_parameter import ScratchpadParameter
@@ -60,8 +60,6 @@ def design():
     def sequence(in_tensor, out_tensor, in_h, out_h):
         npu_load_pdi(device_ref="empty")
         npu_load_pdi(device_ref=device_name)
-        # After the PDI loads, which would reset the core's copy of @tiles.
-        sync_parameters()
 
         # Both transfers move STATIC_TILES tiles plus @tiles more.
         tap = TensorAccessPattern(
