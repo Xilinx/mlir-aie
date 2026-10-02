@@ -203,6 +203,22 @@ aie.device(npu2) {
 
 // -----
 
+// Without the length, aie-decompose-large-dma-bd would refold this pattern into
+// [2, 2, 512, 2]; with it the transfer stays as written, so its sizes must
+// already fit.
+
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  aie.runtime_sequence(%arg0 : memref<8192xi32>) {
+    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op Size 1 exceeds the [0:1023] range.}}
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 2048, 2][0, 0, 4, 1]) {id = 0 : i64, metadata = @dma, length_parameter = @n, length_unit = 4 : i64} : memref<8192xi32>
+  }
+  %tile = aie.tile(0, 0)
+  aie.shim_dma_allocation @dma(%tile, MM2S, 0)
+}
+
+// -----
+
 aiex.scratchpad_parameter @n : i32
 aie.device(xcvc1902) {
   aie.runtime_sequence(%arg0 : memref<4096xi32>) {
