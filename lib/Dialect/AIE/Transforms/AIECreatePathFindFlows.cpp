@@ -2523,6 +2523,10 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
     arbitrate();
     std::optional<HoldCycle> cycle =
         conflicts.holdCycle(routes, forcedWaits, definite);
+    // Waits `definite` drops still count where no receiver is shared, so a
+    // replan must not close a cycle the first search broke.
+    if (!cycle && definite)
+      cycle = conflicts.holdCycle(routes);
     if (!cycle)
       return true;
     cycles.push_back(*cycle);
