@@ -2420,26 +2420,34 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
 
     // A routing that fits the fabric can still be one the caller cannot use;
     // steer away from the connections it names as if they were overused. One
-    // it rejects naming nothing to move is as far as steering gets.
+    // it rejects naming nothing to move is as far as steering gets, leaving
+    // the usable routing found, if any, or the rejection.
     bool stuck = false;
-    if (illegalEdges == 0 && constraints.check)
-      llvm::handleAllErrors(
-          constraints.check(st.routing), [&](RoutingFailure &rejected) {
-            LLVM_DEBUG(llvm::dbgs()
-                       << "Routing rejected: " << rejected.reason << '\n');
-            illegalEdges += applyRoutingFaults(st, rejected.faults);
-            overlayFaults =
-                rejected.faults.onlyOverlayMasters ? overlayFaults + 1 : 0;
-            if (!rejected.isA(DeadlockProneRouting::classID())) {
-              checkReason = std::move(rejected.reason);
-              return;
-            }
-            if (!usable) {
-              usable = st.routing;
-              usableAt = iterationCount;
-            }
-            stuck = illegalEdges == 0;
-          });
+    llvm::Error unmoved =
+        illegalEdges != 0 || !constraints.check
+            ? llvm::Error::success()
+            : llvm::handleErrors(
+                  constraints.check(st.routing),
+                  [&](std::unique_ptr<RoutingFailure> rejected) -> llvm::Error {
+                    LLVM_DEBUG(llvm::dbgs() << "Routing rejected: "
+                                            << rejected->reason << '\n');
+                    illegalEdges += applyRoutingFaults(st, rejected->faults);
+                    overlayFaults = rejected->faults.onlyOverlayMasters
+                                        ? overlayFaults + 1
+                                        : 0;
+                    stuck = illegalEdges == 0;
+                    if (rejected->isA(DeadlockProneRouting::classID())) {
+                      if (!usable) {
+                        usable = st.routing;
+                        usableAt = iterationCount;
+                      }
+                      return llvm::Error::success();
+                    }
+                    if (stuck)
+                      return llvm::Error(std::move(rejected));
+                    checkReason = std::move(rejected->reason);
+                    return llvm::Error::success();
+                  });
 
     LLVM_DEBUG({
       for (const auto &[src, settings] : st.routing.settings)
@@ -2455,8 +2463,12 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                    << " , illegal edges count = " << illegalEdges
                    << ", total path length = " << totalPathLength << "---\n";
     });
-    if (stuck)
+    if (stuck && usable) {
+      llvm::consumeError(std::move(unmoved));
       return std::move(*usable);
+    }
+    if (unmoved)
+      return std::move(unmoved);
     if (overlayFaults >= maxOverlayFaults) {
       LLVM_DEBUG(llvm::dbgs() << "\t\tPathfinder: the routing check rejects "
                                  "only master sets of the prioritized flows ("
