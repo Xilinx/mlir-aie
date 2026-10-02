@@ -40,6 +40,7 @@ def _stub_func(name, source_file):
         _use_chess=False,
         _compiled=False,
         object_file_name=f"{name}.o",
+        check_target_arch=lambda target_arch: None,
     )
 
 

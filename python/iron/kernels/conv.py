@@ -48,6 +48,23 @@ def _conv_dimensions(input_width, input_channels, output_channels):
     ]
 
 
+def _vector_loads(*indices):
+    """``alignments`` for arguments the tuned build loads as whole vectors."""
+    align = {"aie2": 32, "aie2p": 64}.get(_tuned_arch())
+    return tuple((i, align) for i in indices) if align else ()
+
+
+def _vector_32b(*indices):
+    """``alignments`` for arguments the tuned build accesses 32 bytes at a time."""
+    return tuple((i, 32) for i in indices) if _tuned_arch() != "portable" else ()
+
+
+def _vector_args(*indices):
+    """``alignments`` for arguments every build, portable too, loads as whole vectors."""
+    align = {"aie2": 32, "aie2p": 64}.get(_detect_arch())
+    return tuple((i, align) for i in indices) if align else ()
+
+
 def _requant(acc, scale: int, lo: int = 0, hi: int = 255, dtype: type = np.uint8):
     """``(acc + 2**(scale-1)) >> scale`` saturated to ``[lo, hi]``, as the kernels do."""
     scale = int(scale)
@@ -348,9 +365,9 @@ def dwconv1d_channels_first(
             ),
             ops_per_call=2 * kernel_size * seq_len,
             stack_bytes=(
-                # aiecc measured_stack_size at 17 taps
+                # At 17 taps
                 1888
-                if _detect_arch() == "aie2" and _tuned_arch() is None
+                if _detect_arch() == "aie2" and _tuned_arch() == "portable"
                 else None
             ),
         ),
@@ -435,8 +452,17 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
             f"-DDWCONV1D_CL_CLAMP={int(clamp)}",
         ],
         contract=KernelContract(
+            alignments=_vector_args(*range(2 * _TAPS + 1)),
             trace=Trace.whole_call(),
-            stack_bytes=1280,  # aiecc measured_stack_size
+            # Over 32 to 1280 channels: tuned for aie2p, 1280 B on the
+            # 64-lane path and 1024 B on the generic one; portable, 1280 B on
+            # aie2p and 416 B on aie2. The tuned aie2 build unrolls every
+            # channel: 672 B up to 384 channels, then up to 9 B per channel
+            # (8608 B at 960).
+            stack_bytes={
+                "aie2": None if channels <= 384 else 9 * channels - 32,
+                "aie2p": 1280 if channels % 64 == 0 else None,
+            }.get(_tuned_arch(), 1280),
             setup=conv_even,
             # lo/hi are buffers the design writes, so they are Param like
             # mha's idx gate: bound here rather than sampled, which also keeps
@@ -525,10 +551,12 @@ def conv2dk1(
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            alignments=_vector_args(0, 1, 2),
             trace=Trace.whole_call(),
-            # aiecc measured_stack_size of the untuned code on aie2p
-            # (1504 B on aie2); 288 B tuned for aie2
-            stack_bytes=None if _tuned_arch() == "aie2" else 2752,
+            # 1088 B tuned for aie2p, which keeps the oc-invariant input block
+            # on the stack; 2752 B untuned on aie2p (1504 B on aie2); 288 B
+            # tuned for aie2
+            stack_bytes={"aie2": None, "aie2p": 1088}.get(_tuned_arch(), 2752),
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_ref,
             acc_dtype=np.int32,
@@ -566,9 +594,16 @@ def conv2dk3(
         ExternalFunction configured for the conv2dk3 kernel.
 
     Raises:
-        ValueError: When ``act_dtype`` is not ``np.int8`` or ``np.uint8``.
+        ValueError: When ``act_dtype`` is not ``np.int8`` or ``np.uint8``, or
+            when ``input_width`` is not 32.
 
     """
+    if input_width != 32:
+        # Every compiled variant of the vector kernel (aie2, aie2p, and the
+        # portable branch) hard-codes a 32-pixel row inside conv2dk3.cc and
+        # ignores the runtime_input_width arg; a different width would
+        # silently compute over the wrong pixels instead of raising.
+        raise ValueError(f"conv2dk3: input_width must be 32, got {input_width}")
     func_name, flags = _conv_act_dtype_info(
         "conv2dk3", act_dtype, factory_name="conv2dk3"
     )
@@ -588,9 +623,10 @@ def conv2dk3(
         + _conv_dimensions(input_width, input_channels, output_channels)
         + ["-DCONV_KERNEL_WIDTH=3", "-DCONV_KERNEL_HEIGHT=3"],
         contract=KernelContract(
+            alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
-            # 0 B tuned for aie2; see conv2dk1 for the other figure's source
-            stack_bytes=None if _tuned_arch() == "aie2" else 4736,
+            # 384 B tuned for aie2p, 4736 B untuned; 0 B tuned for aie2
+            stack_bytes={"aie2": None, "aie2p": 384}.get(_tuned_arch(), 4736),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
             reference=conv2dk3_ref,
             acc_dtype=np.int32,
@@ -646,9 +682,11 @@ def conv2dk1_skip(
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
-            # With an int8 skip; 32 B tuned for aie2. Measured as conv2dk1's
-            stack_bytes=None if _tuned_arch() == "aie2" else 2816,
+            # With an int8 skip: 512 B tuned for aie2p, 2816 B untuned; 32 B
+            # tuned for aie2
+            stack_bytes={"aie2": None, "aie2p": 512}.get(_tuned_arch(), 2816),
             roles=(In, In, Param, Out, In, *((Param,) * 5)),
             reference=conv2dk1_skip_ref,
             acc_dtype=np.int32,
@@ -688,7 +726,9 @@ def conv2dk1_i8(
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
-            stack_bytes=1504,  # aiecc measured_stack_size
+            # At most 480 B tuned for aie2, 128 B tuned for aie2p and 256 B
+            # portable, all under the 1024 B default
+            stack_bytes=None,
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_i8_ref,
             acc_dtype=np.int32,
@@ -716,15 +756,20 @@ def conv2dk14(
     well, where the vector path has its own AIE2 variant.
 
     Args:
-        input_width: Spatial width of the input.
+        input_width: Spatial width of the input, a multiple of 16 patches.
         input_channels: Number of input channels.
         output_channels: Number of output channels.
-        kernel_width: Width (and height) of the convolution kernel.
+        kernel_width: Width (and height) of the convolution kernel, even.
 
     Returns:
         ExternalFunction configured for the conv2dk14 kernel.
     """
     tiles = input_width // kernel_width
+    if kernel_width % 2 or tiles * kernel_width != input_width or tiles % 16:
+        raise ValueError(
+            "conv2dk14: kernel_width must be even and input_width a multiple "
+            f"of 16 * kernel_width, got {input_width} and {kernel_width}"
+        )
     pixels = kernel_width * kernel_width
     _RGBA = 4
     in_ty = np.ndarray[(tiles * pixels * _RGBA,), np.dtype[np.uint8]]
@@ -739,6 +784,7 @@ def conv2dk14(
         compile_flags=_conv_dimensions(input_width, input_channels, output_channels)
         + [f"-DCONV_KERNEL_WIDTH={kernel_width}"],
         contract=KernelContract(
+            alignments=_vector_args(0, 1, 2),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, *((Param,) * 5)),
             reference=conv2dk14_ref,
@@ -819,12 +865,16 @@ def conv2dk1_skip_init(
         func_name,
         _kernel_source("conv/conv2dk1_skip_init.cc"),
         [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(7)],
-        compile_flags=flags,
+        compile_flags=flags
+        + _conv_dimensions(input_width, input_channels, output_channels)
+        + [f"-DCONV_SKIP_INPUT_CHANNELS={skip_input_channels}"],
         contract=KernelContract(
+            alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
-            # aie2p: >=2144 measured; __modsi3 has no .stack_sizes. 288 B tuned
-            # for aie2
-            stack_bytes=None if _tuned_arch() == "aie2" else 0x2000,
+            # 1728 B tuned for aie2p, the largest over input_channels 16..256;
+            # untuned >=2144 plus __modsi3, which has no .stack_sizes; 288 B
+            # tuned for aie2
+            stack_bytes={"aie2": None, "aie2p": 1728}.get(_tuned_arch(), 0x2000),
             roles=(In, In, Param, Out, In, *((Param,) * 7)),
             reference=conv2dk1_skip_init_ref,
             acc_dtype=np.int32,
@@ -848,9 +898,11 @@ def _requant_even(acc, scale: int, lo: int = 0, hi: int = 255, dtype: type = np.
     """``acc >> scale`` rounded half to even and saturated to ``[lo, hi]``.
 
     The bottleneck kernels' ``(sum + 2**(scale-1) - 1 + ((sum >> scale) & 1))
-    >> scale``; defined for ``scale >= 1`` only, as in the kernels.
+    >> scale``; ``scale`` 0 saturates without a shift, as the skip kernels do.
     """
     scale = int(scale)
+    if scale == 0:
+        return np.clip(acc, lo, hi).astype(dtype)
     out = (acc + (1 << (scale - 1)) - 1 + ((acc >> scale) & 1)) >> scale
     return np.clip(out, lo, hi).astype(dtype)
 
@@ -923,7 +975,7 @@ def bn_conv2dk1_skip_ref(
     out  = sat_i8(round_even(conv + skip, skip_scale))
     ```
 
-    Both shifts must be at least 1.
+    ``scale`` must be at least 1; ``skip_scale`` 0 is a saturating add.
     """
     W, IC, OC = int(input_width), int(input_channels), int(output_channels)
     acc, lead = _conv1x1_acc(x, weights, W, IC, OC)
@@ -1055,8 +1107,8 @@ def bn_conv2dk1_relu_xy_pool_padded_ref(
     pixels. On the last row (``y_index == input_width - 1``) the sum is
     averaged over 49 pixels in ``float32`` as the kernel does: an average
     whose first decimal is 5 rounds to even, any other rounds half up.
-    Channels outside the slice stay 0; ``output_channels_padd`` must not
-    exceed ``output_channels``.
+    Channels outside the slice stay 0, as do the pad channels from
+    ``output_channels`` up to ``output_channels_padd``.
     """
     W, IC, OC = int(input_width), int(input_channels), int(output_channels)
     tile = OC // int(output_split)
@@ -1069,10 +1121,9 @@ def bn_conv2dk1_relu_xy_pool_padded_ref(
         tie = (avg * np.float32(10)).astype(np.int32) % 10 == 5
         even = np.where(whole % 2 == 0, whole, whole + 1)
         total = np.where(tie, even, (avg + np.float32(0.5)).astype(np.int32))
-    out = np.zeros((*lead, OC), dtype=np.uint16)
+    out = np.zeros((*lead, max(OC, int(output_channels_padd))), dtype=np.uint16)
     start = tile * int(weight_index)
     out[..., start : start + tile] = total.astype(np.uint16)
-    del output_channels_padd
     return out
 
 
@@ -1124,8 +1175,10 @@ def bn_conv2dk1_relu(
         "conv2dk1_relu_i8_ui8",
         _kernel_source("conv/bn_conv2dk1_relu.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
-        compile_flags=["-DREGULAR", "-DINT8_ACT"],
+        compile_flags=["-DREGULAR", "-DINT8_ACT"]
+        + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=bn_conv2dk1_relu_ref,
@@ -1169,9 +1222,11 @@ def bn_conv2dk3(
         "conv2dk3_stride2_i8",
         _kernel_source("conv/bn_conv2dk3.cc"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
+        compile_flags=_conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
+            alignments=_vector_loads(0, 1, 2, 3) + _vector_32b(4),
             reference=bn_conv2dk3_ref,
             acc_dtype=np.int32,
             reduction=9 * input_channels,
@@ -1203,8 +1258,10 @@ def bn_conv2dk1_i8(
         "conv2dk1_ui8_i8",
         _kernel_source("conv/bn_conv2dk1_i8.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
-        compile_flags=["-DREGULAR", "-DSCALAR"],
+        compile_flags=["-DREGULAR", "-DSCALAR"]
+        + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=bn_conv2dk1_i8_ref,
@@ -1257,8 +1314,10 @@ def bn_conv2dk1_skip(
         func_name,
         _kernel_source("conv/bn_conv2dk1_skip.cc"),
         [in_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
-        compile_flags=flags,
+        compile_flags=flags
+        + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, In, *((Param,) * 5)),
             reference=bn_conv2dk1_skip_ref,
@@ -1306,10 +1365,15 @@ def bn_conv2dk3_dw(
         func_name,
         _kernel_source("conv/bn_conv2dk3_dw.cc"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
-        compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"],
+        compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"]
+        + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
+            # The weights are read unaligned.
+            alignments=(
+                _vector_32b(0, 1, 2, 4) if stride == 1 else _vector_loads(0, 1, 2, 4)
+            ),
             reference=partial(bn_conv2dk3_dw_ref, stride=stride),
             acc_dtype=np.int32,
             reduction=9,
@@ -1361,6 +1425,7 @@ def bn_conv2dk1_relu_xy_pool_padded(
         [in_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DSCALAR", "-DCONV_XYPOOL_FUSED_LARGE_PADDED", "-DINT8_ACT"],
         contract=KernelContract(
+            alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, InOut, *((Param,) * 8)),
             reference=bn_conv2dk1_relu_xy_pool_padded_ref,
@@ -1381,12 +1446,19 @@ def _validate_bn_block_index(block_index: int, factory_name: str) -> None:
         )
 
 
+def _cas_oc_blocks_flags(oc_blocks: int) -> list[str]:
+    if oc_blocks < 1:
+        raise ValueError(f"oc_blocks must be >= 1, got {oc_blocks}.")
+    return [] if oc_blocks == 1 else [f"-DK1_CAS_OC_BLOCKS={oc_blocks}"]
+
+
 def bn_conv2dk1_partial_put_i8(
     input_width: int = 7,
     input_channels: int = 80,
     weight_count: int = 4800,
     *,
     block_index: int = 13,
+    oc_blocks: int = 1,
 ) -> ExternalFunction:
     """Cascade-PUT half of a width-split 1x1 conv on int8 activations.
 
@@ -1408,12 +1480,15 @@ def bn_conv2dk1_partial_put_i8(
             streams weights in chunks; full weight tensor is shared
             across multiple kernel invocations).
         block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+        oc_blocks: Consecutive 8-channel output blocks one call covers;
+            the ``oc`` argument then indexes groups of ``oc_blocks``.
 
     Returns:
         ExternalFunction configured for the PUT tile.
 
     Raises:
-        ValueError: When ``block_index`` is not 13 or 14.
+        ValueError: When ``block_index`` is not 13 or 14, or
+            ``oc_blocks`` < 1.
     """
     _validate_bn_block_index(block_index, "bn_conv2dk1_partial_put_i8")
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
@@ -1422,7 +1497,8 @@ def bn_conv2dk1_partial_put_i8(
         f"bn{block_index}_1_conv2dk1_i8_ui8_partial_width_put_new",
         _kernel_source("conv/bn_conv2dk1_i8.cc"),
         [in_ty, wt_ty, *_i32s(7)],
-        compile_flags=[f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"],
+        compile_flags=[f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"]
+        + _cas_oc_blocks_flags(oc_blocks),
     )
 
 
@@ -1433,6 +1509,7 @@ def bn_conv2dk1_partial_get_relu_i8(
     weight_count: int = 4800,
     *,
     block_index: int = 13,
+    oc_blocks: int = 1,
 ) -> ExternalFunction:
     """Cascade-GET half of a width-split 1x1 conv + ReLU on int8 activations.
 
@@ -1450,12 +1527,15 @@ def bn_conv2dk1_partial_get_relu_i8(
         output_channels: Number of output channels (full L1 output width).
         weight_count: Per-call weight chunk size in elements.
         block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+        oc_blocks: Consecutive 8-channel output blocks one call covers;
+            the ``oc`` argument then indexes groups of ``oc_blocks``.
 
     Returns:
         ExternalFunction configured for the GET tile.
 
     Raises:
-        ValueError: When ``block_index`` is not 13 or 14.
+        ValueError: When ``block_index`` is not 13 or 14, or
+            ``oc_blocks`` < 1.
     """
     _validate_bn_block_index(block_index, "bn_conv2dk1_partial_get_relu_i8")
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
@@ -1465,7 +1545,8 @@ def bn_conv2dk1_partial_get_relu_i8(
         f"bn{block_index}_1_conv2dk1_i8_ui8_partial_width_get_new",
         _kernel_source("conv/bn_conv2dk1_relu.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(9)],
-        compile_flags=[f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"],
+        compile_flags=[f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"]
+        + _cas_oc_blocks_flags(oc_blocks),
     )
 
 
@@ -1521,10 +1602,12 @@ def bn_conv2dk3_dw_out_split(
         f"bn{block_index}_conv2dk3_ui8_out_split",
         _kernel_source("conv/bn_conv2dk3_dw.cc"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, out_ty, *_i32s(8)],
-        compile_flags=["-DSCALAR", f"-DBN{block_index}", "-DSTRIDE1_OUT_SPLIT"],
+        compile_flags=["-DSCALAR", f"-DBN{block_index}", "-DSTRIDE1_OUT_SPLIT"]
+        + _conv_dimensions(input_width, input_channels, input_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, Out, *((Param,) * 8)),
+            alignments=_vector_32b(0, 1, 2, 4, 5),
             reference=bn_conv2dk3_dw_out_split_ref,
             acc_dtype=np.int32,
             reduction=9,
@@ -1540,6 +1623,7 @@ def bn_conv2dk1_input_split_partial_put_ui8(
     weight_count: int = 9600,
     *,
     block_index: int = 13,
+    oc_blocks: int = 1,
 ) -> ExternalFunction:
     """Input-split cascade-PUT half of a 1x1 conv on uint8 activations.
 
@@ -1553,12 +1637,15 @@ def bn_conv2dk1_input_split_partial_put_ui8(
             full input after split).
         weight_count: Per-call weight chunk size in elements.
         block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+        oc_blocks: Consecutive 8-channel output blocks one call covers;
+            the ``oc`` argument then indexes groups of ``oc_blocks``.
 
     Returns:
         ExternalFunction configured for the input-split PUT tile.
 
     Raises:
-        ValueError: When ``block_index`` is not 13 or 14.
+        ValueError: When ``block_index`` is not 13 or 14, or
+            ``oc_blocks`` < 1.
     """
     _validate_bn_block_index(block_index, "bn_conv2dk1_input_split_partial_put_ui8")
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.uint8]]
@@ -1569,7 +1656,8 @@ def bn_conv2dk1_input_split_partial_put_ui8(
         [in_ty, wt_ty, *_i32s(7)],
         compile_flags=[
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW"
-        ],
+        ]
+        + _cas_oc_blocks_flags(oc_blocks),
     )
 
 
@@ -1580,6 +1668,7 @@ def bn_conv2dk1_input_split_partial_skip_get(
     weight_count: int = 9600,
     *,
     block_index: int = 13,
+    oc_blocks: int = 1,
 ) -> ExternalFunction:
     """Input-split cascade-GET half of a 1x1 conv + skip-add (uint8 in, int8 out).
 
@@ -1594,12 +1683,15 @@ def bn_conv2dk1_input_split_partial_skip_get(
         output_channels: Final output channels.
         weight_count: Per-call weight chunk size in elements.
         block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+        oc_blocks: Consecutive 8-channel output blocks one call covers;
+            the ``oc`` argument then indexes groups of ``oc_blocks``.
 
     Returns:
         ExternalFunction configured for the input-split skip-GET tile.
 
     Raises:
-        ValueError: When ``block_index`` is not 13 or 14.
+        ValueError: When ``block_index`` is not 13 or 14, or
+            ``oc_blocks`` < 1.
     """
     _validate_bn_block_index(block_index, "bn_conv2dk1_input_split_partial_skip_get")
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.uint8]]
@@ -1612,7 +1704,8 @@ def bn_conv2dk1_input_split_partial_skip_get(
         [in_ty, wt_ty, out_ty, skip_ty, *_i32s(10)],
         compile_flags=[
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW"
-        ],
+        ]
+        + _cas_oc_blocks_flags(oc_blocks),
     )
 
 
@@ -1654,6 +1747,7 @@ def bn_fc_relu_ui16_pad(
         [in_ty, wt_ty, out_ty, *_i32s(5)],
         compile_flags=["-DSCALAR", "-DPOSTL2_PAD", "-DUINT16_ACT"],
         contract=KernelContract(
+            alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, *((Param,) * 5)),
             reference=bn_fc_relu_ui16_pad_ref,

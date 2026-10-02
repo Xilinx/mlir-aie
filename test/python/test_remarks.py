@@ -16,6 +16,7 @@ skipped when no Peano is installed.
 
 from __future__ import annotations
 
+import collections
 import json
 import os
 import shutil
@@ -217,6 +218,8 @@ def test_rows_carry_ii_with_context(report):
     assert ii_rows[0]["value"] == 18
     assert "via=postpipeliner" in ii_rows[0]["range"]
     assert ii_rows[0]["range"].endswith("at k.cc:21")
+    assert "trips=None" in ii_rows[0]["range"]
+    assert not [x for x in out if x["name"].endswith("/II_x_trips")]
     # The aggregate rows always come first, in a fixed order.
     assert [x["name"].rsplit("/", 1)[1] for x in out[:6]] == [
         "unpipelined_loops",
@@ -226,6 +229,37 @@ def test_rows_carry_ii_with_context(report):
         "pm_bytes",
         "libcalls",
     ]
+
+
+def test_a_loop_with_known_trips_gets_ii_times_trips(report):
+    report.loops["foo", "for.body"].trips = 32
+    out = {x["name"]: x for x in report_rows(report, "k/case", "extra")}
+    assert out["k/case/loop/foo/for.body/II_x_trips"]["value"] == 18 * 32
+    assert "trips=32 " in out["k/case/loop/foo/for.body/II"]["range"]
+
+
+# What Peano's opt -passes=print<scalar-evolution> prints, abridged.
+SCEV = textwrap.dedent("""\
+    Classifying expressions for: @transpose_8x8
+      %i = phi i32 [ 0, %entry ], [ %inc, %for.body.i ]
+    Determining loop execution counts for: @transpose_8x8
+    Loop %for.body.i: backedge-taken count is i32 31
+    Loop %for.body.i: constant max backedge-taken count is i32 31
+    Loop %for.body.i: symbolic max backedge-taken count is i32 31
+    Loop %for.body.i: Trip multiple is 32
+    Determining loop execution counts for: @"eltwise_add_bf16_vector"
+    Loop %for.body: backedge-taken count is (-1 + (%vector_size /u 32))<nsw>
+    Loop %for.body: constant max backedge-taken count is i32 134217726
+    Loop %"for.body20.i": backedge-taken count is i32 3
+    Loop %while.body: Unpredictable backedge-taken count.
+    """)
+
+
+def test_trip_counts_are_the_constant_backedge_counts_plus_one():
+    assert remarks.parse_trip_counts(SCEV) == {
+        ("transpose_8x8", "for.body.i"): 32,
+        ("eltwise_add_bf16_vector", "for.body20.i"): 4,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -317,10 +351,23 @@ def test_recursion_leaves_the_stack_unbounded():
     assert remarks.parse_readobj(doc, "k").stack is None
 
 
+def test_the_stack_row_names_the_kernel_frame_not_the_core(report):
+    # dwconv1d_channels_last on AIE2P: 64 bytes here, 256 for its core,
+    # whose main holds a frame of its own.
+    report.kernel_stack_bytes = 64
+    rows = {r["name"]: r for r in report_rows(report, "k", "")}
+    assert "k/stack_bytes" not in rows
+    row = rows["k/kernel_stack_bytes"]
+    assert row["value"] == 64 and "main's" in row["range"]
+    assert "runtime" not in row["range"]
+
+
 def test_a_stack_row_notes_the_runtime_calls_it_leaves_out(report):
-    report.stack_bytes = 96
+    report.kernel_stack_bytes = 96
     report.libcalls = ["__divsf3"]
-    (row,) = [r for r in report_rows(report, "k", "") if r["name"] == "k/stack_bytes"]
+    (row,) = [
+        r for r in report_rows(report, "k", "") if r["name"] == "k/kernel_stack_bytes"
+    ]
     assert row["value"] == 96 and "runtime" in row["range"]
 
 
@@ -363,6 +410,15 @@ def test_compile_failure_becomes_one_error_annotation():
         "::error title=k%3A kernel failed to compile::"
         "k.cc:4:5: error: unknown type name 'v16acc'"
     )
+
+
+def test_a_compile_failure_keeps_its_first_error_above_the_tail():
+    notes = "".join(f"x.h:{i}:1: note: candidate {i}\n" for i in range(200))
+    stderr = f"k.cc:4:5: error: no matching function\n{notes}1 error generated.\n"
+    detail = remarks.compile_failure(stderr, tail=500)
+    assert detail.startswith("k.cc:4:5: error: no matching function\n...\n")
+    assert detail.endswith("1 error generated.")
+    assert remarks.compile_failure("k.cc:1:1: error: short") == "k.cc:1:1: error: short"
 
 
 # --------------------------------------------------------------------------
@@ -456,6 +512,133 @@ def test_kernel_builds_cover_every_factory_once():
     assert all(not ef.use_chess for ef in builds.values())
 
 
+KERNEL_CASES = Path(__file__).parent / "npu" / "kernel_cases.py"
+
+
+def test_case_builds_name_the_build_each_case_runs(tmp_path):
+    cases = tmp_path / "some_cases.py"
+    cases.write_text(textwrap.dedent("""\
+        from dataclasses import dataclass, field
+        from aie.iron import kernels
+
+        @dataclass
+        class Case:
+            name: str
+            kwargs: dict = field(default_factory=dict)
+            devices: tuple = ()
+
+            def fn(self):
+                return kernels.tanh(**self.kwargs)
+
+        CASES = [
+            Case("tanh/a"),
+            Case("tanh/b"),
+            Case("tanh/lut", dict(use_lut=True), devices=("npu2",)),
+            Case("tanh/lut-npu1", dict(use_lut=True), devices=("npu1",)),
+        ]
+        """))
+    coverage = collections.Counter()
+    builds = dict(remarks.case_builds(str(cases), "npu2", coverage=coverage))
+    # a and b build one object; the npu1-only case is not this device's.
+    assert list(builds) == ["tanh/a", "tanh/lut"]
+    assert builds["tanh/lut"].object_file_name != builds["tanh/a"].object_file_name
+    assert remarks.case_coverage(coverage) == (
+        "cases: 2 builds for 3 cases (1 share an earlier case's build); "
+        "skipped 1 by devices, 0 other-architecture only"
+    )
+    coverage.clear()
+    assert list(dict(remarks.case_builds(str(cases), "npu2", "b$", coverage))) == [
+        "tanh/b"
+    ]
+    assert remarks.case_coverage(coverage).endswith(", 3 not matching --only")
+
+
+def test_case_builds_reach_the_library_cases_the_default_sweep_misses():
+    defaults = {ef.object_file_name for _, ef in kernel_builds()}
+    builds = dict(remarks.case_builds(str(KERNEL_CASES), "npu2", "^tanh/"))
+    lut = builds["tanh/1024x16/bfloat16/use_lut=True/lut"]
+    assert lut.object_file_name not in defaults
+
+
+def test_a_build_spec_parses_each_value_as_its_parameters_type():
+    assert remarks.parse_build(
+        "cascade_mm:dim_m=12,input_dtype=int32,output_dtype=bfloat16,use_chess=False"
+    ) == (
+        "cascade_mm",
+        dict(
+            dim_m=12,
+            input_dtype=np.int32,
+            output_dtype=np.dtype("bfloat16").type,
+            use_chess=False,
+        ),
+    )
+    factory, kwargs = remarks.parse_build("set_rounding:mode=conv_even")
+    [(name, _)] = remarks.spec_builds([(factory, kwargs)])
+    assert name == "set_rounding/mode=conv_even"
+    assert remarks.parse_build("exp2f_vec:min_x=-3.5")[1] == {"min_x": -3.5}
+    assert remarks.parse_build("rms_norm:cols=64")[1] == {"cols": 64}
+
+
+@pytest.mark.parametrize(
+    "spec,error",
+    [
+        ("nope:x=1", "not a kernel factory"),
+        ("cascade_mm:dim_q=1", "dim_m, dim_k, dim_n"),
+        ("cascade_mm:dim_m", "not KEY=VALUE"),
+        ("cascade_mm:dim_m=x", "invalid literal"),
+        ("cascade_mm:use_chess=yes", "True or False"),
+        ("cascade_mm:input_dtype=int77", "not understood"),
+        ("fused_mm:clamp=1", "not settable"),
+    ],
+)
+def test_a_bad_build_spec_names_what_is_wrong(spec, error):
+    with pytest.raises(ValueError, match=error):
+        remarks.parse_build(spec)
+
+
+def test_a_build_its_factory_refuses_exits_with_the_factorys_reason(tmp_path, capsys):
+    code = remarks.main(
+        [f"--out={tmp_path / 'rows.json'}", "--build=scale:dtype=bfloat16"]
+    )
+    assert code == 2
+    assert "--build scale/dtype=bfloat16: scale() dtype" in capsys.readouterr().err
+
+
+def test_build_and_cases_are_exclusive(tmp_path):
+    with pytest.raises(SystemExit):
+        remarks.main(
+            [
+                f"--out={tmp_path / 'rows.json'}",
+                "--build=cascade_mm",
+                f"--cases={KERNEL_CASES}",
+            ]
+        )
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_build_on_the_command_line_reaches_a_shapes_own_code_path(tmp_path):
+    # M not a multiple of 8 takes cascade_mm's scalar fallback, which no
+    # default build compiles.
+    meta = tmp_path / "meta.json"
+    code = remarks.main(
+        [
+            "--target=aie2p",
+            f"--out={tmp_path / 'rows.json'}",
+            f"--meta={meta}",
+            "--build=cascade_mm",
+            "--build=cascade_mm:dim_m=12,dim_k=16,dim_n=16",
+        ]
+    )
+    assert code == 0
+    written = json.loads(meta.read_text())["kernels"]
+    default, fallback = (
+        written["cascade_mm"],
+        written["cascade_mm/dim_k=16/dim_m=12/dim_n=16"],
+    )
+    assert len(fallback["loops"]) < len(default["loops"])
+    assert fallback["pm_bytes"] != default["pm_bytes"]
+
+
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_compile_command_uses_the_kernels_own_directory(tmp_path):
     ef = kernels.scale()
@@ -525,6 +708,20 @@ def test_a_real_build_produces_the_documented_record_shapes(tmp_path):
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_real_build_knows_its_trip_counts(tmp_path):
+    # The llama-decode transpose bakes DIM_m=256, DIM_n=32; the AIE2P 8x8
+    # kernel does a 32-column block per iteration, (32 / 8) * (256 / 32).
+    name = "transpose/8192x16/bfloat16/subtile=8/llama-decode"
+    ef = dict(remarks.case_builds(str(KERNEL_CASES), "npu2", f"^{name}$"))[name]
+    rep, detail = remarks.analyze(ef, "aie2p", tmp_path)
+    assert rep is not None, detail
+    loop = rep.loops["transpose_8x8", "for.body.i"]
+    assert loop.trips == 32 and loop.ii
+    rows = {x["name"]: x["value"] for x in report_rows(rep, "t", "")}
+    assert rows["t/loop/transpose_8x8/for.body.i/II_x_trips"] == loop.ii * 32
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_a_real_object_names_its_runtime_calls_and_drops_what_it_never_calls(
     tmp_path,
 ):
@@ -546,6 +743,26 @@ def test_a_real_object_names_its_runtime_calls_and_drops_what_it_never_calls(
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_real_template_error_is_reported_by_its_error_line(tmp_path):
+    # Its candidate notes run past the 2000 characters of tail kept.
+    ef = ExternalFunction(
+        "k",
+        source_string=textwrap.dedent("""\
+            #include <aie_api/aie.hpp>
+            extern "C" void k(int *a) {
+              aie::vector<bfloat16, 32> v;
+              auto r = aie::mul(v, aie::vector<int32, 7>());
+            }
+            """),
+        arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
+        include_dirs=[config.cxx_header_path()],
+    )
+    rep, detail = remarks.analyze(ef, "aie2p", tmp_path)
+    assert rep is None
+    assert "k.cc:4:12: error: no matching function for call to 'mul'" in detail
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_a_real_object_reports_the_stack_its_entry_needs(tmp_path):
     # The volatile buffer must live in helper's frame, below k's.
     ef = ExternalFunction(
@@ -563,7 +780,7 @@ def test_a_real_object_reports_the_stack_its_entry_needs(tmp_path):
     )
     rep, detail = remarks.analyze(ef, "aie2p", tmp_path)
     assert rep is not None, detail
-    assert rep.stack_bytes >= 64 * 4
+    assert rep.kernel_stack_bytes >= 64 * 4
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
@@ -594,3 +811,200 @@ def test_a_baseline_tree_prints_the_rows_that_differ(tmp_path, capsys):
     before, after = changed["relu/libcalls"]
     assert before > 0 and after == 0
     assert "relu/libcalls:" in capsys.readouterr().out
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_failed_build_keeps_the_rows_of_the_others(tmp_path, monkeypatch, capsys):
+    trees = {}
+    for tree in ("base", "broken"):
+        trees[tree] = tmp_path / tree
+        shutil.copytree(config.aie_kernels_dir(), trees[tree] / "aie_kernels")
+        shutil.copytree(config.aie_runtime_lib_dir(), trees[tree] / "aie_runtime_lib")
+    for tree, source in (("broken", "relu_aie2p.h"), ("base", "scale.cc")):
+        path = trees[tree] / "aie_kernels" / "eltwise" / source
+        path.write_text("#error broken\n" + path.read_text())
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(trees["broken"]))
+    out, meta = tmp_path / "rows.json", tmp_path / "meta.json"
+    code = remarks.main(
+        [
+            "--target=aie2p",
+            "--only=^(relu|scale)$",
+            f"--out={out}",
+            f"--meta={meta}",
+            f"--baseline-sources={trees['base']}",
+        ]
+    )
+    # Neither failure is a change: this tree's relu is not compiled again,
+    # and the baseline's scale leaves this tree's rows out of the diff.
+    assert code == 3
+    printed = capsys.readouterr()
+    assert "RESULTS INVALID: relu: compile failed" in printed.err
+    assert "baseline fails to compile scale, not compared" in printed.out
+    names = {r["name"].split("/")[0] for r in json.loads(out.read_text())}
+    assert names == {"scale"}
+    written = json.loads(meta.read_text())
+    assert list(written["failed"]) == ["relu"]
+    assert list(written["baseline"]["failed"]) == ["scale"]
+    assert written["baseline"]["changed"] == {}
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_sources_names_the_tree_compiled(tmp_path, monkeypatch):
+    tree = tmp_path / "tree"
+    shutil.copytree(config.aie_kernels_dir(), tree / "aie_kernels")
+    shutil.copytree(config.aie_runtime_lib_dir(), tree / "aie_runtime_lib")
+    monkeypatch.delenv("MLIR_AIE_KERNEL_SOURCES", raising=False)
+    meta = tmp_path / "meta.json"
+    code = remarks.main(
+        [
+            "--target=aie2p",
+            "--only=^relu$",
+            f"--out={tmp_path / 'rows.json'}",
+            f"--meta={meta}",
+            f"--sources={tree}",
+        ]
+    )
+    assert code == 0
+    source = json.loads(meta.read_text())["kernels"]["relu"]["source"]
+    assert Path(source).is_relative_to(tree / "aie_kernels")
+    assert "MLIR_AIE_KERNEL_SOURCES" not in os.environ
+
+
+def test_an_unset_kernel_tree_warns_that_it_is_the_installed_copy(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("MLIR_AIE_KERNEL_SOURCES", raising=False)
+    current, warning = remarks.current_kernel_sources(str(tmp_path))
+    assert current == config.aie_kernels_dir()
+    assert "MLIR_AIE_KERNEL_SOURCES is unset" in warning and current in warning
+
+
+def test_a_kernel_tree_that_is_the_baseline_warns(tmp_path, monkeypatch):
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(tmp_path))
+    current, warning = remarks.current_kernel_sources(f"{tmp_path}/")
+    assert current == str(tmp_path / "aie_kernels")
+    assert "both" in warning
+    other = tmp_path / "other"
+    assert remarks.current_kernel_sources(str(other)) == (current, None)
+
+
+def test_a_renamed_loop_with_the_same_rows_is_not_a_change():
+    loop = "mm/loop/matmul_bf16"
+    base = {
+        "mm/pm_bytes": 900,
+        f"{loop}/for.body20.i/II": 8,
+        f"{loop}/for.body20.i/not_zol": 0,
+        f"{loop}/for.body31.i/II": 4,
+        f"{loop}/for.body40.i/II": 2,
+        f"{loop}/for.body50.i/II": 6,
+        "mv/loop/matvec/for.body.i/II": 3,
+    }
+    current = {
+        "mm/pm_bytes": 912,
+        # Renamed, rows the same: dropped.
+        f"{loop}/for.body23.i/II": 8,
+        f"{loop}/for.body23.i/not_zol": 0,
+        # body40 took body31's name as body31 moved to body34: both match.
+        f"{loop}/for.body31.i/II": 2,
+        f"{loop}/for.body34.i/II": 4,
+        # Renamed and changed: kept, under both names.
+        f"{loop}/for.body52.i/II": 5,
+        # Another function's loop with the same II is no match.
+        "mv/loop/matvec/for.body.i/II": 3,
+        "mv/loop/other/for.body.i/II": 6,
+    }
+    diff = remarks.diff_rows(base, current)
+    assert diff["rows"] == {
+        "mm/pm_bytes": [900, 912],
+        f"{loop}/for.body50.i/II": [6, None],
+        f"{loop}/for.body52.i/II": [None, 5],
+        "mv/loop/other/for.body.i/II": [None, 6],
+    }
+    assert sorted(diff["renamed"]) == [
+        [f"{loop}/for.body20.i", f"{loop}/for.body23.i"],
+        [f"{loop}/for.body31.i", f"{loop}/for.body34.i"],
+        [f"{loop}/for.body40.i", f"{loop}/for.body31.i"],
+    ]
+
+
+def test_diff_rows_needs_matching_locations_to_call_it_a_rename():
+    """Two different loops sharing a metric tuple by coincidence, not a rename.
+
+    Loop A regresses (II 4 -> 6); loop B, an unrelated loop elsewhere in the
+    same function, is truly just renamed (II 6 -> 6, same source line). Once
+    A's new II happens to equal B's own II, the metric tuple alone cannot
+    tell them apart: without locations, A's regression is hidden by folding
+    B's old identity onto A's new one. With locations, only B's true rename
+    (same file:line on both sides) pairs; A's rows are left disappeared and
+    appeared under their real values.
+    """
+    loop = "mm/loop/matmul_bf16"
+    base = {
+        f"{loop}/for.body10.i/II": 4,  # loop A, about to regress
+        f"{loop}/for.body20.i/II": 6,  # loop B, elsewhere, coincidentally II=6
+    }
+    current = {
+        f"{loop}/for.body12.i/II": 6,  # loop A, renamed and regressed to II=6
+        f"{loop}/for.body25.i/II": 6,  # loop B, renamed, still II=6
+    }
+    base_locations = {
+        (f"{loop}", "for.body10.i"): ("mm.cc", 50),
+        (f"{loop}", "for.body20.i"): ("mm.cc", 80),
+    }
+    current_locations = {
+        (f"{loop}", "for.body12.i"): ("mm.cc", 50),
+        (f"{loop}", "for.body25.i"): ("mm.cc", 80),
+    }
+
+    # Without locations, the old metric-only heuristic folds unrelated loop B
+    # into loop A's new slot, hiding A's regression.
+    blind = remarks.diff_rows(base, current)
+    assert blind["renamed"] == [[f"{loop}/for.body20.i", f"{loop}/for.body12.i"]]
+
+    # With locations, only the true rename (B, same file:line) pairs; A's
+    # regression surfaces as its own disappeared/appeared rows.
+    diff = remarks.diff_rows(base, current, base_locations, current_locations)
+    assert diff["renamed"] == [[f"{loop}/for.body20.i", f"{loop}/for.body25.i"]]
+    assert diff["rows"] == {
+        f"{loop}/for.body10.i/II": [4, None],
+        f"{loop}/for.body12.i/II": [None, 6],
+    }
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path, capsys):
+    if not (Path(config.aie_runtime_lib_dir()) / "AIE2P").is_dir():
+        pytest.skip("this build has no aie_runtime_lib/AIE2P")
+    # Only the LUT build compiles the extra loop.
+    base = tmp_path / "base"
+    shutil.copytree(config.aie_kernels_dir(), base / "aie_kernels")
+    shutil.copytree(config.aie_runtime_lib_dir(), base / "aie_runtime_lib")
+    tanh = base / "aie_kernels" / "activation" / "tanh.cc"
+    marker = "  event0();\n"
+    assert tanh.read_text().count(marker) == 1
+    tanh.write_text(
+        tanh.read_text().replace(
+            marker,
+            f"{marker}#if !ACTIVATIONS_NATIVE_TANH\n"
+            "  for (volatile int k = 0; k < 3; ++k)\n    ;\n#endif\n",
+        )
+    )
+    meta = tmp_path / "meta.json"
+    code = remarks.main(
+        [
+            "--target=aie2p",
+            "--only=^tanh/1024x16/",
+            f"--cases={KERNEL_CASES}",
+            f"--out={tmp_path / 'rows.json'}",
+            f"--meta={meta}",
+            f"--baseline-sources={base}",
+        ]
+    )
+    assert code == 0
+    assert "\ncases: 2 builds for " in capsys.readouterr().out
+    written = json.loads(meta.read_text())
+    lut = "tanh/1024x16/bfloat16/use_lut=True/lut"
+    assert set(written["kernels"]) == {"tanh/1024x16/bfloat16", lut}
+    changed = written["baseline"]["changed"]
+    assert changed and all(name.startswith(f"{lut}/") for name in changed)
+    assert changed[f"{lut}/pm_bytes"][0] > changed[f"{lut}/pm_bytes"][1]

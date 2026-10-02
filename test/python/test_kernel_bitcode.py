@@ -120,7 +120,11 @@ $helper:
     def test_direct_module_compile_retains_bitcode_when_requested(self):
         from aie.iron.kernel import ExternalFunction
 
-        func = SimpleNamespace(_source_file=str(self.source))
+        registry = patch.object(ExternalFunction, "_instances", set())
+        registry.start()
+        self.addCleanup(registry.stop)
+        func = ExternalFunction("kernel", source_file=str(self.source))
+        ExternalFunction("inline_kernel", source_string='extern "C" void k() {}')
         for options, enabled in (
             (None, False),
             ([], False),
@@ -130,8 +134,6 @@ $helper:
             (["--check-lut-banks", "--check-lut-banks=0"], False),
         ):
             with self.subTest(options=options), patch.object(
-                ExternalFunction, "_instances", [func, SimpleNamespace()]
-            ), patch.object(
                 compile_utils.config, "peano_install_dir", return_value="peano"
             ), patch.object(
                 compile_utils, "resolve_target_arch", return_value="aie2p"
@@ -141,7 +143,7 @@ $helper:
                 compile_utils, "_run_aiecc"
             ) as run:
                 compile_utils.compile_mlir_module(
-                    "module {}",
+                    "module { func.func private @kernel() }",
                     options=options,
                     device="npu2",
                     work_dir=self.work,
@@ -258,6 +260,7 @@ $helper:
             _compile_flags=[],
             _compiled=False,
             object_file_name="kernel.o",
+            check_target_arch=lambda target_arch: None,
         )
 
         def fake_compile(**kwargs):

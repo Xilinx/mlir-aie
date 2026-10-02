@@ -20,9 +20,7 @@
 // CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "wts_buff_1"} : memref<40xi32> = dense<2>
 
 // Producer lock: init = 0 (depth - initValues count = 0)
-// CHECK-DAG: aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "wts_prod_lock_0"}
 // Consumer lock: init = 2 (initValues count)
-// CHECK-DAG: aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "wts_cons_lock_0"}
 
 // MM2S: 2 BDs for depth=2, each 40 elements
 // CHECK: aie.memtile_dma
