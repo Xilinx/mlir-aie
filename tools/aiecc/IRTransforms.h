@@ -1748,6 +1748,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   // Decompose oversized non-contiguous ND transfers (wrap/stride exceeding the
   // hardware BD field limits) into legal sub-transfers before BD lowering.
   dpm.addPass(X::createAIEDecomposeLargeDmaBdPass());
+  dpm.addPass(X::createAIESplitLongRepeatsPass());
   // A runtime-bound scf.for that survived unroll takes the dynamic BD pool path
   // (rewritten to pool pop/push, ids drawn at runtime); the static allocator
   // below skips it. Straight-line sequences fall through unchanged.
@@ -1757,6 +1758,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(mlir::createCanonicalizerPass());
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
@@ -1814,8 +1816,10 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
+  dpm.addPass(X::createAIESplitLongRepeatsPass());
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(mlir::createCanonicalizerPass());
   dpm.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());

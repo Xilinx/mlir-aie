@@ -64,6 +64,7 @@ from ..ir import (
     DenseElementsAttr,
     DenseI32ArrayAttr,
     DictAttr,
+    FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
     IntegerAttr,
@@ -157,11 +158,13 @@ def dma_bd(
     (``transfer_len`` maps to the op's ``len`` operand; the Python name avoids
     shadowing the builtin and matches ``shim_dma_bd``.)
 
-    Example::
+    For example:
 
-        %len = ...
-        aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
-                   offset=0 len=%len)
+    ```mlir
+    %len = ...
+    aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
+               offset=0 len=%len)
+    ```
     """
     dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
     dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
@@ -964,12 +967,29 @@ def another_bd(dma_op):
     raise Exception("couldn't find empty region to add to.")
 
 
+def _dma_channel_attr(channel):
+    """A DMA program's channel: an index, or the `aie.route_endpoint` (op or
+    symbol name) whose channel allocation picks."""
+    if isinstance(channel, (IntegerAttr, FlatSymbolRefAttr)):
+        return channel
+    if isinstance(channel, (int, np.integer)):
+        return IntegerAttr.get(T.i32(), int(channel))
+    if isinstance(channel, str):
+        return FlatSymbolRefAttr.get(channel)
+    if isinstance(channel, RouteEndpointOp):
+        return FlatSymbolRefAttr.get(channel.sym_name.value)
+    raise TypeError(
+        "A DMA channel is an index or an aie.route_endpoint (op or symbol "
+        f"name), not {type(channel).__name__}."
+    )
+
+
 @_cext.register_operation(_Dialect, replace=True)
 class DMAStartOp(DMAStartOp):
     def __init__(
         self,
         channel_dir,
-        channel_index,
+        channel,
         *,
         dest: Successor | Block | None = None,
         chain: Successor | Block | None = None,
@@ -989,7 +1009,7 @@ class DMAStartOp(DMAStartOp):
             chain = InsertionPoint.current.block
         super().__init__(
             channel_dir,
-            channel_index,
+            _dma_channel_attr(channel),
             dest,
             chain,
             repeat_count=repeat_count,
@@ -1010,7 +1030,7 @@ class DMAStartOp(DMAStartOp):
 
 def dma_start(
     channel_dir,
-    channel_index,
+    channel,
     *,
     dest: Successor | Block | ContextManagedBlock | None = None,
     chain: Successor | Block | ContextManagedBlock | None = None,
@@ -1024,7 +1044,7 @@ def dma_start(
     dest_block = dest.block if isinstance(dest, ContextManagedBlock) else dest
     op = DMAStartOp(
         channel_dir,
-        channel_index,
+        channel,
         dest=dest_block,
         chain=chain_block,
         loc=loc,

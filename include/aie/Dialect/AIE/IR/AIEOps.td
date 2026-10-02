@@ -1322,7 +1322,8 @@ def AIE_DMAStartOp
     : AIE_Op<"dma_start", [ParentOneOf<["MemOp", "MemTileDMAOp",
                                         "mlir::func::FuncOp", "ShimDMAOp"]>,
                            Terminator,
-                           DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+                           DeclareOpInterfaceMethods<InferTypeOpInterface>,
+                           DeclareOpInterfaceMethods<SymbolUserOpInterface>]>,
       Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
@@ -1344,6 +1345,16 @@ def AIE_DMAStartOp
         aie.end
     ```
 
+    In place of the index, the channel may be named by an `aie.route_endpoint`
+    with a `DMA` bundle on the same tile. `--aie-objectfifo-allocate` picks the
+    index along with the route's other channels and writes it here:
+    ```
+      aie.route_endpoint @in(%tile) DMA
+      aie.route from @src to [@in]
+      ...
+        aie.dma_start(S2MM, @in, ^bd0, ^end)
+    ```
+
     Conceptually, the aie.dma_start operation is a terminator that either passes
     control to a basic block containing DMA operations (through its first successor)
     or to a basic block for another dma_start, to an aie.end operation.
@@ -1359,7 +1370,8 @@ def AIE_DMAStartOp
   }];
 
   let arguments = (ins DMAChannelDir:$channel_dir,
-      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
+      AnyAttrOf<[ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>,
+                 FlatSymbolRefAttr]>:$channel,
       // repeat_count==0 means "do it once" and don't repeat
       DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
@@ -1367,12 +1379,35 @@ def AIE_DMAStartOp
       UnitAttr:$out_of_order);
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
+    `(` $channel_dir `,` custom<DMAStartChannel>($channel) `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
   }];
+
+  let builders = [OpBuilder<(ins "DMAChannelDir":$channel_dir,
+                                "int":$channel_index, "int":$repeat_count,
+                                "int":$pad_value, "bool":$out_of_order,
+                                "mlir::Block *":$dest, "mlir::Block *":$chain),
+                            [{
+      build($_builder, $_state, channel_dir,
+            $_builder.getI32IntegerAttr(channel_index), repeat_count,
+            pad_value, out_of_order, dest, chain);
+    }]>];
 
   let extraClassDeclaration = [{
     bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
     bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
+    /// The hardware channel index. A start naming a route endpoint has none
+    /// until `--aie-objectfifo-allocate` resolves it.
+    int getChannelIndex() {
+      auto index = llvm::dyn_cast<mlir::IntegerAttr>(getChannel());
+      assert(index && "dma_start still names a route endpoint; run "
+                      "--aie-objectfifo-allocate");
+      return index.getInt();
+    }
+    /// The route endpoint naming the channel in place of an index, if any.
+    mlir::FlatSymbolRefAttr getEndpoint() {
+      return llvm::dyn_cast<mlir::FlatSymbolRefAttr>(getChannel());
+    }
+    RouteEndpointOp getEndpointOp();
   }];
 
   let hasCanonicalizer = 1;
@@ -1975,17 +2010,30 @@ def AIE_RouteEndpointOp
     `--aie-objectfifo-allocate` is free to pick the index, and the route can be
     written before that decision is made.
 
-    `bundle` says what kind of port it is. A `DMA` bundle on a shim tile names a
-    DMA the host runtime programs itself; the chosen channel is recorded as an
-    `aie.shim_dma_allocation` under `fifoName` for the runtime sequence to
-    address. A `Core` bundle names a core's stream port, which the core reads
-    and writes directly and which needs no DMA. Setting `channelIndex` pins the
-    channel instead of leaving it to allocation.
+    `bundle` says what kind of port it is. A `DMA` bundle names a DMA channel
+    the design programs itself, so allocation only picks its index:
+    - On a shim tile the host runtime programs it. With `fifoName` set, the
+      chosen channel is recorded as an `aie.shim_dma_allocation` named
+      `{fifoName}_shim_alloc`, and every use of this symbol is renamed to it.
+    - On any tile, an `aie.dma_start` in the tile's DMA program, or an
+      `aiex.dma_configure_task_for` in the runtime sequence, may name this
+      symbol in place of a channel index. Allocation rewrites both to the
+      index it picked.
+
+    A `Core` bundle names a core's stream port, which the core reads and writes
+    directly and which needs no DMA. Setting `channelIndex` pins the channel
+    instead of leaving it to allocation.
+
+    Allocation assigns these after the channels objectFIFOs use. On a tile
+    whose BD ids are split between channels (a MemTile's by channel parity), it
+    picks the free channel whose BDs have the most room left after the other
+    channels' programs and runtime tasks.
 
     Example:
     ```
       aie.route_endpoint @in(%shim) DMA {fifoName = "in"}
       aie.route_endpoint @out(%tile) Core {channelIndex = 0}
+      aie.route_endpoint @b_in(%memtile) DMA
     ```
   }];
 
@@ -2657,6 +2705,20 @@ def AIE_ObjectFifoDmaEndpointOp
 
     /// Segments this endpoint is responsible for.
     std::vector<ObjectFifoSegmentOp> getSelectedSegments();
+
+    /// Descriptors in one pass over the pool: one per object and selected
+    /// segment.
+    int64_t getNumDescriptors();
+    /// Times the chain runs per pass: the pool's repeat count at the draining
+    /// end, once at the filling end.
+    int64_t getRepeat();
+    /// Whether the channel's own repeat count replays the chain, which it can
+    /// only for a single descriptor, rather than copies of it.
+    bool repeatsInHardware();
+    /// Buffer descriptors `--aie-objectfifo-lower-dmas` emits for this
+    /// endpoint: the pass's descriptors, copied per repeat unless the
+    /// repeat runs in hardware.
+    int64_t getNumBDs();
   }];
 }
 

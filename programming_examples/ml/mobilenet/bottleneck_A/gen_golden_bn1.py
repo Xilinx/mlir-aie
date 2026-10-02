@@ -6,7 +6,7 @@
 
 The full recipe (3-conv bottleneck, per-variant scale extraction, fixture
 filenames) lives in
-:func:`bottleneck_A._gen_golden_template.generate_bottleneck_fixtures`;
+``bottleneck_A._gen_golden_template.generate_bottleneck_fixtures``;
 this script just supplies the per-block shape constants and structural
 flags.  See ``_gen_golden_template.py`` for the rationale.
 """

@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
@@ -69,6 +70,19 @@ LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder,
                                                      Operation *bdOp,
                                                      BaseMemRefType bufType,
                                                      uint64_t registerAddr);
+
+// The configures a DMA task value can come from. A task carried through
+// runtime control flow is an scf.for iter_arg or an scf.for/scf.if result
+// rather than a configure result; this walks such a value back through every
+// region-branch operand that can feed it (a loop's init and back-edge, each
+// branch's yield), at any nesting depth. Each configure is listed once.
+// Returns false if some path ends at a value that is not a configure result.
+bool getReachableConfigures(Value task,
+                            SmallVectorImpl<DMAConfigureTaskOp> &configures);
+
+// The one configure a task value can come from, through runtime control flow
+// as above, or null if there is none or more than one.
+DMAConfigureTaskOp getUniqueReachableConfigure(Value task);
 
 // Emit the params.txt description of every `aiex.scratchpad_parameter` in
 // `moduleOp` (with their assigned `state_table_idx`/`kind`) to `os`.

@@ -30,12 +30,25 @@ namespace xilinx::AIEX {
 /// (d0..d2 wrap/stride + d3 iteration/repeat).
 static constexpr unsigned kNdDmaDims = 4;
 
+/// The most patterns decomposeNdDmaPattern splits one into. Each piece costs a
+/// descriptor, or a task and a queue push of its own, so a split past this is
+/// refused rather than unrolled into the instruction stream.
+static constexpr int64_t kMaxNdDmaPieces = 1024;
+
 /// Innermost-first ND access pattern (d0..d3 / repeat), matching the
 /// convention used by verifyStridesWraps and NpuDmaMemcpyNdOp verification.
+///
+/// A runtime-sequence task BD may give more than kNdDmaDims dimensions, all of
+/// the ones past d2 iteration dimensions; decomposeNdDmaPattern reduces it to
+/// kNdDmaDims-dimension patterns.
 struct NdDmaPattern {
   llvm::SmallVector<int64_t, kNdDmaDims> offsets;
   llvm::SmallVector<int64_t, kNdDmaDims> sizes;
   llvm::SmallVector<int64_t, kNdDmaDims> strides;
+  /// Elements added to the address the offsets give. Carries the position of
+  /// a pattern peeled off the dimensions past kNdDmaDims, which no dimension
+  /// of the peeled pattern can express.
+  int64_t baseOffset = 0;
 };
 
 /// Returns true when the pattern passes verifyStridesWraps for the given tile
@@ -60,7 +73,18 @@ bool isDecomposableNdDmaPattern(mlir::Operation *forOp,
 /// Decompose an illegal pattern into one or more legal sub-patterns that move
 /// the same data. Prefers merging contiguous dimensions, then dimension
 /// factoring (single-op results); falls back to slicing (multiple ops). Returns
-/// failure when no legal decomposition exists.
+/// failure when no legal decomposition into at most kMaxNdDmaPieces patterns
+/// exists.
+///
+/// A contiguous pattern is illegal only if its iteration dimension (d3) is
+/// longer than a BD's, and is sliced along it.
+///
+/// A pattern with more than kNdDmaDims dimensions drops size-one dimensions
+/// past d0, innermost first, merges the iteration dimensions past d2 where one
+/// continues the next, and peels any left past d3 into one pattern per index,
+/// outermost slowest. Element order is kept; the size of an execution is not,
+/// since a dropped dimension can move an iteration dimension inside and a
+/// peeled pattern executes a share of the original's.
 mlir::FailureOr<llvm::SmallVector<NdDmaPattern>> decomposeNdDmaPattern(
     mlir::Operation *forOp, mlir::BaseMemRefType referencedBufType,
     const NdDmaPattern &pattern, const xilinx::AIE::AIETargetModel &targetModel,

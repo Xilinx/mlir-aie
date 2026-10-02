@@ -43,10 +43,9 @@ from ..ir import (
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
-from ..extras.dialects import arith
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..helpers.taplib import TensorAccessPattern
-from ..helpers.taplib._symbolic import is_sym, show, sprod
+from ..helpers.taplib._symbolic import is_sym, sprod
 from ..helpers.taplib.utils import zero_leading_unit_strides
 
 # Comes from _aie
@@ -56,23 +55,22 @@ register_dialect(get_dialect_registry())
 def _shim_dims(tap: TensorAccessPattern, ndims: int = 4):
     """Return `tap`'s offset, sizes and strides as a shim buffer descriptor takes them.
 
-    A walk deeper than `ndims` is coalesced and a shallower one is padded
-    with unit dimensions. Slot 0 is the queue repeat: a leading stride-0
-    dimension whose size is not the constant 1, staged or not, stays there
-    and the padding goes after it, so `[R, th, tw]` becomes `[R, 1, th, tw]`.
+    A walk deeper than `ndims` is coalesced, and one that still does not fit
+    passes through for the compiler to split into BDs of `ndims` dimensions.
+    A shallower one is padded with unit dimensions. Slot 0 is the queue
+    repeat: a leading stride-0 dimension whose size is not the constant 1,
+    staged or not, stays there and the padding goes after it, so
+    `[R, th, tw]` becomes `[R, 1, th, tw]`.
 
     Raises:
-        ValueError: If `tap` is padded, or does not fit in `ndims` dimensions.
+        ValueError: If `tap` is padded.
     """
     if tap.padding is not None:
         raise ValueError("a shim DMA cannot pad; padding is a memtile feature")
     if tap.rank > ndims:
         tap = tap.coalesce()
     if tap.rank > ndims:
-        raise ValueError(
-            f"pattern of rank {tap.rank} (sizes {show(tap.sizes)}) does not fit "
-            f"in {ndims} DMA dimensions; re-tile it"
-        )
+        return tap.offset, list(tap.sizes), list(tap.strides)
     sizes, strides = list(tap.sizes), list(tap.strides)
     is_repeat = (
         tap.rank > 1
@@ -327,7 +325,7 @@ def shim_dma_bd(
     if sizes is None:
         sizes = [0] * 4
     if strides is None:
-        strides = [0] * 3 + [1]
+        strides = [0] * (len(sizes) - 1) + [1]
 
     if transfer_len is None and not any(is_sym(s) for s in sizes[-3:]):
         transfer_len = sprod(sizes[-3:])
@@ -368,7 +366,7 @@ def shim_dma_single_bd_task(
         mem: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
         tap (optional): A TensorAccessPattern is an alternative method of specifying offset/sizes/strides for determining an access pattern over the mem buffer.
         offset (optional): Starting point for the data transfer. Default values is 0.
-        sizes: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
+        sizes: The extent of data to be transferred across each dimension. The dimensions before the last three are iteration dimensions, one execution of the BD per index; past four in all, which must then be constant, the compiler splits the transfer into several BDs.
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         issue_token (optional): If a token is issued, one may call dma_await_task on the returned task. Default is False.
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
@@ -400,34 +398,38 @@ def shim_dma_single_bd_task(
     # re-issues the whole transfer sizes[0] times, waits on the objectfifo for that
     # many objects, and dma_await_task never returns. Normalize to the canonical
     # 4-dim form (left-pad with unit dims) so sizes[0] is only ever the iteration
-    # dimension, and reject taps with more than 4 dims instead of silently emitting
-    # a wrong BD.
+    # dimension. Past 4 dims, every dim before the last three iterates, and
+    # aie-decompose-large-dma-bd splits the ones a BD cannot hold into separate
+    # tasks, which it can only do for constant sizes and strides.
     if sizes is not None:
-        if len(sizes) > 4:
-            raise ValueError(
-                f"shim DMA BD supports at most 4 dimensions, got {len(sizes)}"
-            )
         while len(sizes) < 4:
             sizes = [1] + list(sizes)
             if strides is not None:
                 strides = [0] + list(strides)
+        if len(sizes) > 4 and not all(
+            isinstance(v, (int, np.integer)) for v in list(sizes) + list(strides or [])
+        ):
+            raise ValueError(
+                f"a DMA BD with more than 4 dimensions (got {len(sizes)}) needs "
+                "constant sizes and strides, which the compiler splits into BDs of 4"
+            )
 
-    # The outer (sizes[0]) dimension becomes the queue-push repeat_count. A
-    # constant folds to the repeat_count attribute (static path, unchanged); a
-    # runtime Value flows into the repeat_count_val operand so a dynamic tile
-    # count is supported.
+    # The outer dimensions become the queue-push repeat_count. Constants fold to
+    # the repeat_count attribute; a runtime sizes[0] (4 dims at most) flows into
+    # the repeat_count_val operand so a dynamic tile count is supported.
     repeat_count = 0
     repeat_count_val = None
     if sizes:
-        s0 = sizes[0]
-        if isinstance(s0, (int, np.integer)):
-            if s0 > 1:
-                repeat_count = int(s0) - 1
+        outer = sizes[:-3]
+        if all(isinstance(v, (int, np.integer)) for v in outer):
+            runs = int(np.prod([int(v) for v in outer]))
+            if runs > 1:
+                repeat_count = runs - 1
         else:
-            # Runtime: a zero s0 wraps to a huge count, which the queue-push
-            # lowering refuses along with any other one past the target's
-            # maximum.
-            repeat_count_val = s0 - 1
+            # Runtime: a zero sizes[0] wraps to a huge count, which the
+            # queue-push lowering refuses along with any other one past the
+            # target's maximum.
+            repeat_count_val = sizes[0] - 1
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,
@@ -478,13 +480,24 @@ def dma_free_task(*args: DMAConfigureTaskForOp):
 _orig_dma_start_task = dma_start_task
 
 
-def dma_start_task(*args: DMAConfigureTaskForOp):
+def dma_start_task(
+    *args: DMAConfigureTaskForOp,
+    repeat_count: int | None = None,
+    no_token: bool = False,
+):
+    """Push each task onto its channel's queue.
+
+    ``repeat_count`` replaces the task's own count for these starts only, and
+    ``no_token`` withholds the completion token the task would otherwise issue.
+    """
     if len(args) == 0:
         raise ValueError(
-            "dma_start_task must receive at least one DMAConfigureTaskForOp to free"
+            "dma_start_task must receive at least one DMAConfigureTaskForOp to start"
         )
     for dma_task in args:
-        _orig_dma_start_task(dma_task)
+        _orig_dma_start_task(
+            dma_task, repeat_count=repeat_count, no_token=no_token or None
+        )
 
 
 def set_lock_value(lock: aie.LockOp, value: int):
@@ -508,8 +521,10 @@ def read_scratchpad_parameter(
     Returns:
         An SSA value of the given type.
 
-    Example::
+    For example:
 
-        val = aiex.read_scratchpad_parameter("foo", T.bf16())
+    ```python
+    val = aiex.read_scratchpad_parameter("foo", T.bf16())
+    ```
     """
     return _orig_read_scratchpad_parameter(result_type, name)

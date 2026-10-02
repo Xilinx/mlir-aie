@@ -38,7 +38,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/RegionUtils.h"
 
-#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
 
@@ -83,10 +83,14 @@ emitc::OpaqueType getU32Type(MLIRContext *ctx) {
   return emitc::OpaqueType::get(ctx, "uint32_t");
 }
 
-// The C++ variable name of the runtime BD pool for a tile. One pool per tile
-// that draws BD ids at runtime, declared in the generated function's prologue.
-std::string bdPoolName(uint32_t col, uint32_t row) {
-  return "bd_pool_" + std::to_string(col) + "_" + std::to_string(row);
+// The C++ variable name of a runtime BD pool, declared in the generated
+// function's prologue. One pool per tile and BD partition: channels sharing a
+// partition must share one pool, or they would hand out the same id twice.
+template <typename PoolOp>
+std::string bdPoolName(PoolOp op) {
+  return "bd_pool_" + std::to_string(op.getColumn()) + "_" +
+         std::to_string(op.getRow()) + "_" + std::to_string(op.getBdBegin()) +
+         "_" + std::to_string(op.getBdEnd());
 }
 
 // BD ids the static allocator has already placed on (col, row), read off the
@@ -333,8 +337,7 @@ private:
           emitc::VerbatimOp::create(
               b, loc,
               "uint32_t " + var + "; if (!aie_runtime::bd_pool_pop(" +
-                  bdPoolName(pop.getColumn(), pop.getRow()) + ", " + var +
-                  ")) " +
+                  bdPoolName(pop) + ", " + var + ")) " +
                   refuse("no free buffer descriptor on tile (" +
                              std::to_string(pop.getColumn()) + ", " +
                              std::to_string(pop.getRow()) +
@@ -349,8 +352,7 @@ private:
           // Return a BD id to the tile's runtime pool.
           emitc::CallOpaqueOp::create(
               b, loc, TypeRange{}, "aie_runtime::bd_pool_push",
-              ValueRange{poolRef(b, loc, push.getColumn(), push.getRow()),
-                         push.getBdId()});
+              ValueRange{poolRef(b, loc, bdPoolName(push)), push.getBdId()});
         })
         // memref.get_global feeding a blockwrite is consumed by
         // convertBlockWrite (data inlined); the now-dead op is erased later.
@@ -396,12 +398,12 @@ private:
     ok = false;
   }
 
-  // An emitc.literal referencing a tile's pool variable (for pass-by-reference
-  // into bd_pool_push).
-  Value poolRef(OpBuilder &b, Location loc, uint32_t col, uint32_t row) {
+  // An emitc.literal referencing a pool variable (for pass-by-reference into
+  // bd_pool_push).
+  Value poolRef(OpBuilder &b, Location loc, StringRef name) {
     return emitc::LiteralOp::create(
         b, loc, emitc::OpaqueType::get(b.getContext(), "aie_runtime::BdPool"),
-        bdPoolName(col, row));
+        name);
   }
 
   void convertBlockWrite(OpBuilder &b, Location loc, AIEX::NpuBlockWriteOp bw) {
@@ -780,36 +782,32 @@ private:
     Value txnVec = emitc::LiteralOp::create(fb, loc, txnVecType, "txn");
     emitTxnCall(fb, loc, "txn_init", txnVec, {});
 
-    // Declare a runtime BD free-list pool for each tile that draws ids at
-    // runtime (dynamic free-list path). The pool size is the tile's BD count
-    // from the target model -- never hardcoded here. One decl per distinct
-    // tile.
-    const AIE::AIETargetModel &targetModel = deviceOp.getTargetModel();
-    llvm::SmallSet<std::pair<uint32_t, uint32_t>, 4> pooledTiles;
-    seqOp.walk([&](Operation *op) {
-      uint32_t col, row;
-      if (auto pop = dyn_cast<AIEX::DMABdPoolPopOp>(op)) {
-        col = pop.getColumn();
-        row = pop.getRow();
-      } else if (auto push = dyn_cast<AIEX::DMABdPoolPushOp>(op)) {
-        col = push.getColumn();
-        row = push.getRow();
-      } else {
+    // Declare each runtime BD free-list pool the sequence draws ids from,
+    // with the bounds its ops name.
+    llvm::StringSet<> declaredPools;
+    auto declarePool = [&](auto poolOp) {
+      std::string name = bdPoolName(poolOp);
+      if (!declaredPools.insert(name).second)
         return;
-      }
-      if (!pooledTiles.insert({col, row}).second)
-        return;
-      uint32_t numBDs = targetModel.getNumBDs(col, row);
+      uint32_t lo = poolOp.getBdBegin(), hi = poolOp.getBdEnd();
       emitc::VerbatimOp::create(fb, loc,
-                                "aie_runtime::BdPool " + bdPoolName(col, row) +
-                                    " = aie_runtime::bd_pool_init(" +
-                                    std::to_string(numBDs) + ");");
+                                "aie_runtime::BdPool " + name +
+                                    " = aie_runtime::bd_pool_init_range(" +
+                                    std::to_string(lo) + ", " +
+                                    std::to_string(hi) + ");");
       // Hand back the ids the static allocator already placed on this tile.
-      for (uint32_t id : staticBdIdsOnTile(deviceOp, col, row))
-        emitc::VerbatimOp::create(fb, loc,
-                                  "aie_runtime::bd_pool_reserve(" +
-                                      bdPoolName(col, row) + ", " +
-                                      std::to_string(id) + ");");
+      for (uint32_t id :
+           staticBdIdsOnTile(deviceOp, poolOp.getColumn(), poolOp.getRow()))
+        if (id >= lo && id < hi)
+          emitc::VerbatimOp::create(fb, loc,
+                                    "aie_runtime::bd_pool_reserve(" + name +
+                                        ", " + std::to_string(id) + ");");
+    };
+    seqOp.walk([&](Operation *op) {
+      if (auto pop = dyn_cast<AIEX::DMABdPoolPopOp>(op))
+        declarePool(pop);
+      else if (auto push = dyn_cast<AIEX::DMABdPoolPushOp>(op))
+        declarePool(push);
     });
 
     // A rolled loop makes the op count a runtime quantity: declare a __opcount

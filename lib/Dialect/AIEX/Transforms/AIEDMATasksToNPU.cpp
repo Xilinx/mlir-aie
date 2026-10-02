@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <limits>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/AIEUtils.h"
@@ -59,6 +60,18 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
   matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
+    if (!task_op && !op.getTask().getDefiningOp<DMAConfigureTaskForOp>()) {
+      // A task carried through runtime control flow. The push names one head
+      // BD, so it lowers only if every value the task can carry comes from
+      // the same configure.
+      task_op = getUniqueReachableConfigure(op.getTask());
+      if (!task_op)
+        return op.emitOpError(
+            "starts a task carried through control flow that does not come "
+            "from exactly one aiex.dma_configure_task, so its queue push has "
+            "no single buffer descriptor ID. Start the task where it is "
+            "configured.");
+    }
     if (!task_op) {
       // Cannot rewrite this; probably points to a DMAStartTaskForOp,
       // which we will lower once it has been rewritten into a DMAStartTaskOp.
@@ -81,15 +94,17 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
       return failure();
     }
     Value bdIdVal = getAsValue(rewriter, loc, idOfr, rewriter.getI32Type());
-    // push_queue takes bd_id + repeat_count as SSA operands. repeat_count is a
-    // runtime operand when present (dynamic tile count), else the compile-time
-    // attribute materialized as a constant.
-    Value repeatCount = task_op.getRepeatCountVal();
+    // A runtime repeat count keeps its width so the push lowering can
+    // range-check it before narrowing.
+    OpFoldResult repeatOfr = op.getPushRepeatCount(task_op);
+    Value repeatCount = dyn_cast<Value>(repeatOfr);
     if (!repeatCount)
-      repeatCount = createConstantI32(rewriter, loc, task_op.getRepeatCount());
+      repeatCount =
+          getAsValue(rewriter, loc, repeatOfr, rewriter.getI32Type());
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
-        task_op.getChannel(), task_op.getIssueToken(), repeatCount, bdIdVal);
+        task_op.getChannel(), op.getPushIssueToken(task_op), repeatCount,
+        bdIdVal);
     return success();
   }
 };
@@ -106,39 +121,12 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
 // init and per-iteration reconfiguration agree -- so the first one found
 // gives the right channel.
 //
-// Walk such a value back to a configure via RegionBranchOpInterface, which
-// generically maps a successor input (a region's block argument, or a result
-// of the region-branch op) back to every operand that can feed it -- the
-// entry from the parent op (a loop's init) and any back-edge from a region
-// terminator (a loop body's yield, or an scf.if branch's yield) -- rather than
-// hand-matching scf::ForOp/scf::IfOp. This generalizes to arbitrary nesting
-// depth for free: an edge can itself be another region-branch successor
-// input, resolved on a later worklist pop.
+// getReachableConfigures walks such a value back to its configures through
+// RegionBranchOpInterface, at any nesting depth.
 static DMAConfigureTaskOp resolveConfigureThroughCF(Value task) {
-  llvm::SmallPtrSet<Value, 8> seen;
-  SmallVector<Value> worklist{task};
-  while (!worklist.empty()) {
-    Value v = worklist.pop_back_val();
-    if (!v || !seen.insert(v).second)
-      continue;
-    if (auto cfg = v.getDefiningOp<DMAConfigureTaskOp>())
-      return cfg;
-
-    Operation *regionBranchOp;
-    if (auto res = dyn_cast<OpResult>(v))
-      regionBranchOp = res.getOwner();
-    else
-      regionBranchOp = cast<BlockArgument>(v).getOwner()->getParentOp();
-    auto rbi = dyn_cast<RegionBranchOpInterface>(regionBranchOp);
-    if (!rbi)
-      continue;
-
-    RegionBranchInverseSuccessorMapping mapping;
-    rbi.getSuccessorInputOperandMapping(mapping);
-    for (OpOperand *operand : mapping.lookup(v))
-      worklist.push_back(operand->get());
-  }
-  return nullptr;
+  SmallVector<DMAConfigureTaskOp> configures;
+  (void)getReachableConfigures(task, configures);
+  return configures.empty() ? nullptr : configures.front();
 }
 
 struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
@@ -228,32 +216,6 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
-  LogicalResult verifyOptionalLocksInBlock(Block &block, bool outOfOrder) {
-    auto lock_ops = block.getOps<AIE::UseLockOp>();
-    int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
-    // Out-of-order receive BDs may be release-only (lock-driven completion);
-    // matches AIERT.cpp configureLocksInBdBlock.
-    if (outOfOrder && n_lock_ops == 1) {
-      AIE::UseLockOp only = *lock_ops.begin();
-      if (!only.release()) {
-        only.emitOpError(
-            "out-of-order BD with a single lock must use_lock(release)");
-        return failure();
-      }
-      return success();
-    }
-    // Allow exactly 0 or 2 lock ops (acquire and release)
-    if (n_lock_ops != 0 && n_lock_ops != 2) {
-      AIE::UseLockOp lock_op = *lock_ops.begin();
-      lock_op.emitOpError(
-          "BD blocks must have either 0 or 2 lock operations (acquire and "
-          "release). Found ")
-          << n_lock_ops << " lock operations.";
-      return failure();
-    }
-    return success();
-  }
-
   // A builder that derives a BD operand from runtime scalars (a width cast, a
   // transfer-length product, a cf.assert guard) emits that arithmetic where it
   // is called, inside the BD block. None of it depends on the BD, so hoist it
@@ -308,32 +270,6 @@ struct AIEDMATasksToNPUPass
     return bd_op;
   }
 
-  // Returns pair of (acquire_lock_op, release_lock_op) if present. Under
-  // out-of-order, a release-only block is valid (null acquire).
-  std::optional<std::pair<AIE::UseLockOp, AIE::UseLockOp>>
-  getOptionalLockOpsForBlock(Block &block, bool outOfOrder) {
-    auto lock_ops = block.getOps<AIE::UseLockOp>();
-    int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
-
-    AIE::UseLockOp acquire_op = nullptr;
-    AIE::UseLockOp release_op = nullptr;
-    for (auto lock_op : lock_ops) {
-      if (lock_op.acquire() || lock_op.acquireGE())
-        acquire_op = lock_op;
-      else if (lock_op.release())
-        release_op = lock_op;
-    }
-
-    if (outOfOrder && n_lock_ops == 1 && release_op)
-      return std::make_pair(AIE::UseLockOp(nullptr), release_op);
-
-    if (n_lock_ops != 2)
-      return std::nullopt;
-    if (acquire_op && release_op)
-      return std::make_pair(acquire_op, release_op);
-    return std::nullopt;
-  }
-
   LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op,
                                       AIE::TileOp &tile,
                                       OpFoldResult bdId = {}) {
@@ -341,10 +277,9 @@ struct AIEDMATasksToNPUPass
     auto buf = bd_op.getBuffer();
     auto col = tile.getCol();
     auto row = tile.getRow();
-    // The static register address uses the pinned bd_id attribute; on the
-    // runtime pool path the attribute is absent and runtimeRegisterAddr (below)
-    // supplies the address instead, so fall back to bd 0 for the constant.
-    uint32_t bd_id = bd_op.getBdId().value_or(0);
+    // A foldable SSA bd_id must name the same register as the block write.
+    auto constBdId = bdId ? getConstantIntValue(bdId) : std::nullopt;
+    uint32_t bd_id = constBdId ? *constBdId : bd_op.getBdId().value_or(0);
     uint64_t register_addr = target_model.getDmaBdAddress(col, row, bd_id) +
                              target_model.getDmaBdAddressOffset(col, row);
     // On the runtime-bd_id path the patched register (BD buffer-address word)
@@ -360,6 +295,15 @@ struct AIEDMATasksToNPUPass
           createConstantI32(builder, bd_op.getLoc(),
                             target_model.getDmaBdAddressOffset(col, row)));
     }
+
+    // emitUpdateBdAddressFromOffsetParameter bakes a compile-time register
+    // address into npu.update_from_scratchpad, so pairing it with a BD drawn
+    // from the runtime pool would patch whichever BD that literal names rather
+    // than the one just configured.
+    if (bd_op.getOffsetStateTableIdxAttr() && runtimeRegisterAddr)
+      return bd_op->emitOpError(
+          "offset_state_table_idx is not supported with a runtime bd_id; the "
+          "scratchpad update targets a compile-time BD register address.");
 
     // A buffer descriptor can refer to a statically allocated aie.buffer, or to
     // a DDR buffer which will be passed as a runtime argument (block
@@ -408,7 +352,6 @@ struct AIEDMATasksToNPUPass
                                 /*arg_idx*/ arg_idx, argPlus);
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
-      uint64_t buf_addr;
       std::optional<uint32_t> bufferAddr = buffer.getAddress();
       if (!bufferAddr.has_value()) {
         return bd_op->emitOpError(
@@ -416,47 +359,90 @@ struct AIEDMATasksToNPUPass
             "--aie-assign-buffer-addresses first or manually assign an "
             "address.");
       }
-      buf_addr = *bufferAddr;
-      buf_addr += bd_op.getOffsetInBytes();
-      if (target_model.isCoreTile(col, row)) {
-        NpuMaskWrite32Op::create(
-            builder, bd_op.getLoc(),
-            createConstantI32(builder, bd_op.getLoc(),
-                              static_cast<uint32_t>(register_addr)),
-            createConstantI32(builder, bd_op.getLoc(),
-                              static_cast<uint32_t>((buf_addr / 4) << 14)),
-            createConstantI32(builder, bd_op.getLoc(), 0x0fffc000), nullptr,
-            nullptr, nullptr);
-      } else if (target_model.isMemTile(col, row)) {
-        // On AIE2p (NPU2), memtile DMAs use an offset-based address
-        // space where the base depends on the relative position of the
-        // buffer's tile (west=0, internal=getMemTileSize, east=2x).
-        // On AIE2 (NPU1), memtile DMAs address local memory directly
-        // starting at 0. Only add the offset for AIE2p.
-        if (target_model.getTargetArch() == AIE::AIEArch::AIE2p) {
-          auto addrOffset = target_model.getMemLocalBaseAddress(
-              col, row, buffer.getTileOp().getCol(),
-              buffer.getTileOp().getRow());
-          if (addrOffset)
-            buf_addr += addrOffset.value();
-        }
-        NpuMaskWrite32Op::create(
-            builder, bd_op.getLoc(),
-            createConstantI32(builder, bd_op.getLoc(),
-                              static_cast<uint32_t>(register_addr)),
-            createConstantI32(builder, bd_op.getLoc(),
-                              static_cast<uint32_t>(buf_addr / 4)),
-            createConstantI32(builder, bd_op.getLoc(), 0x0007FFFF), nullptr,
-            nullptr, nullptr);
-      } else {
-        NpuWrite32Op::create(
-            builder, bd_op.getLoc(),
-            createConstantI32(builder, bd_op.getLoc(),
-                              static_cast<uint32_t>(register_addr)),
-            createConstantI32(builder, bd_op.getLoc(),
-                              static_cast<uint32_t>(buf_addr)),
-            nullptr, nullptr, nullptr);
+      uint64_t buf_addr = *bufferAddr;
+      // On AIE2p (NPU2), memtile DMAs use an offset-based address
+      // space where the base depends on the relative position of the
+      // buffer's tile (west=0, internal=getMemTileSize, east=2x).
+      // On AIE2 (NPU1), memtile DMAs address local memory directly
+      // starting at 0. Only add the offset for AIE2p.
+      if (target_model.isMemTile(col, row) &&
+          target_model.getTargetArch() == AIE::AIEArch::AIE2p) {
+        auto addrOffset = target_model.getMemLocalBaseAddress(
+            col, row, buffer.getTileOp().getCol(), buffer.getTileOp().getRow());
+        if (addrOffset)
+          buf_addr += addrOffset.value();
       }
+
+      // The BD's address field, from the target model's layout. Shim NOC BDs
+      // address bytes; mem and core tile BDs address 32-bit words.
+      const AIE::DmaBdLayout *layout = target_model.getDmaBdLayout(col, row);
+      if (!layout)
+        return bd_op->emitOpError(
+            "has no buffer descriptor layout on this tile");
+      const AIE::DmaBdField &addrBits = layout->bufferOffset;
+      uint64_t divisor = target_model.isShimNOCTile(col, row) ? 1 : 4;
+      uint64_t maxByteAddr = (uint64_t(addrBits.mask()) + 1) * divisor - 1;
+      if (buf_addr > maxByteAddr)
+        return bd_op->emitOpError("buffer address exceeds the tile's DMA "
+                                  "address field.");
+
+      // getOffsetInBytes() folds a runtime offset to 0, so it may only be read
+      // on the constant path; a runtime offset is added with arith instead.
+      bool constOffset = !bd_op.getOffset() || bd_op.getConstantOffset();
+      Location loc = bd_op.getLoc();
+      Value addrField;
+      if (constOffset) {
+        buf_addr += bd_op.getOffsetInBytes();
+        if (buf_addr > maxByteAddr)
+          return bd_op->emitOpError("buffer address exceeds the tile's DMA "
+                                    "address field.");
+        addrField =
+            createConstantI32(builder, loc, addrBits.place(buf_addr / divisor));
+      } else {
+        Value byteAddr = buildArgPlusValue(
+            builder, loc, {OpFoldResult(bd_op.getOffset())},
+            {OpFoldResult(builder.getI32IntegerAttr(1))},
+            bd_op.getBufferElementTypeWidthInBytes(), (int64_t)buf_addr,
+            divisor);
+        if (!byteAddr)
+          return failure();
+        Type i64 = builder.getI64Type();
+        Value fits = builder.createOrFold<arith::CmpIOp>(
+            loc, arith::CmpIPredicate::ule, byteAddr,
+            arith::ConstantOp::create(builder, loc,
+                                      IntegerAttr::get(i64, maxByteAddr)));
+        if (failed(emitRuntimeCheck(builder, loc, fits,
+                                    "a runtime DMA offset puts the buffer "
+                                    "address past the tile's DMA address "
+                                    "field")))
+          return failure();
+        if (divisor != 1)
+          byteAddr = arith::DivUIOp::create(
+              builder, loc, byteAddr,
+              arith::ConstantOp::create(builder, loc,
+                                        IntegerAttr::get(i64, divisor)));
+        addrField = arith::TruncIOp::create(builder, loc,
+                                            builder.getI32Type(), byteAddr);
+        if (addrBits.shift != 0)
+          addrField = arith::ShLIOp::create(
+              builder, loc, addrField,
+              createConstantI32(builder, loc, addrBits.shift));
+      }
+      // The register holding the address word. A runtime bd_id makes it
+      // runtime too; a pinned one folds to the literal the static path uses.
+      Value regAddrVal =
+          runtimeRegisterAddr
+              ? runtimeRegisterAddr
+              : createConstantI32(builder, loc,
+                                  static_cast<uint32_t>(register_addr));
+      uint32_t addrMask = addrBits.place(0xFFFFFFFF);
+      if (addrMask == 0xFFFFFFFF)
+        NpuWrite32Op::create(builder, loc, regAddrVal, addrField, nullptr,
+                             nullptr, nullptr);
+      else
+        NpuMaskWrite32Op::create(builder, loc, regAddrVal, addrField,
+                                 createConstantI32(builder, loc, addrMask),
+                                 nullptr, nullptr, nullptr);
     } else {
       return bd_op->emitOpError(
           "Buffer argument must be a constant aie.buffer, a runtime sequence "
@@ -505,9 +491,11 @@ struct AIEDMATasksToNPUPass
     if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
       f.out_of_order_id = *oooId;
 
-    auto lock_ops = getOptionalLockOpsForBlock(block, outOfOrder);
-    if (lock_ops) {
-      auto [acquire_op, release_op] = *lock_ops;
+    AIE::UseLockOp acquire_op, release_op;
+    if (failed(
+            AIE::verifyBdLockPair(block, outOfOrder, acquire_op, release_op)))
+      return failure();
+    if (release_op) {
       AIE::LockOp rel_lock = release_op.getLockOp();
 
       // Acquire is optional under out-of-order (release-only completion).
@@ -555,12 +543,13 @@ struct AIEDMATasksToNPUPass
     return f;
   }
 
-  // Dynamic (runtime SSA size/stride/len/bd_id) shim-NOC BD lowering, the
-  // dma_task sibling of DmaToNpuPattern::lowerDynamic. Reaching this function
-  // at all means the design targets the EmitC (C++ TXN) builder, never the
-  // static binary target: a design meant for the binary target is unrolled to
-  // all-constant before this pass runs. Scope (shim NOC, no padding,
-  // realizability) is enforced by the caller.
+  // Dynamic (runtime SSA size/stride/len/bd_id) BD lowering, the dma_task
+  // sibling of DmaToNpuPattern::lowerDynamic. Reaching this function at all
+  // means the design targets the EmitC (C++ TXN) builder, never the static
+  // binary target: a design meant for the binary target is unrolled to
+  // all-constant before this pass runs. Scope (a tile type with a BD register
+  // layout, no padding, realizability) is enforced by the caller;
+  // buildBdWords picks the layout from the tile.
   LogicalResult
   rewriteSingleBDDynamic(OpBuilder &builder, Block &block, AIE::DMABDOp bd_op,
                          AIE::TileOp &tile,
@@ -596,39 +585,53 @@ struct AIEDMATasksToNPUPass
     // Normalize sizes/strides to a 4-element outermost-first mixed list (the
     // shared emitter's contract, matching memcpy_nd's always-4D operands),
     // padding absent leading dims with size 1 / stride 0. dma_bd's mixed lists
-    // are outermost-first and variable-length (0..4 dims).
+    // are outermost-first and variable-length (0..4 dims). A BD with no dims is
+    // a contiguous scan, so its innermost stride is 1, which keeps it linear
+    // like the static path.
     SmallVector<OpFoldResult> sizes(bd_op.getMixedSizes());
     SmallVector<OpFoldResult> strides(bd_op.getMixedStrides());
     if (sizes.size() > 4 || strides.size() > 4)
-      return bd_op->emitOpError("At most four data layout transformation "
-                                "dimensions may be provided.");
+      return bd_op->emitOpError(
+          "At most four data layout transformation dimensions may be "
+          "provided; aie-decompose-large-dma-bd splits a longer one.");
     OpFoldResult one = builder.getI64IntegerAttr(1);
     OpFoldResult zeroOfr = builder.getI64IntegerAttr(0);
     SmallVector<OpFoldResult, 4> sizes4(4, one), strides4(4, zeroOfr);
+    if (strides.empty())
+      strides4.back() = one;
     for (size_t i = 0; i < sizes.size(); i++) {
       sizes4[4 - sizes.size() + i] = sizes[i];
       strides4[4 - strides.size() + i] = strides[i];
     }
     // len as OpFoldResult: the runtime operand if present, else the static_len
     // attr (a constant BD with runtime sizes/strides still reaches here). With
-    // dims and no len, the transfer is their d0*d1*d2 extent. Without dims the
-    // dynamic encoder needs an explicit length; unlike the static path it
-    // cannot infer one from the buffer's shape.
+    // dims and no len, the transfer is their d0*d1*d2 extent; without either,
+    // it is the whole buffer, as on the static path.
     OpFoldResult lenOfr;
     if (Value lenOperand = bd_op.getLen())
       lenOfr = lenOperand;
     else if (std::optional<int32_t> constLen = bd_op.getConstantLen())
       lenOfr = builder.getI32IntegerAttr(*constLen);
-    else if (sizes.empty())
-      return bd_op->emitOpError(
-          "runtime-valued BD requires an explicit transfer length; provide a "
-          "`len` for this buffer descriptor.");
+    else if (sizes.empty()) {
+      auto bufTy = cast<BaseMemRefType>(bd_op.getBuffer().getType());
+      if (!bufTy.hasStaticShape())
+        return bd_op->emitOpError(
+            "runtime-valued BD on a dynamically shaped buffer requires an "
+            "explicit transfer length; provide a `len` for this buffer "
+            "descriptor.");
+      lenOfr = builder.getI64IntegerAttr(bufTy.getNumElements());
+    }
 
-    // A BD without addressing dims is a plain linear transfer of `len`
-    // elements (canonicalization strips a contiguous [1, 1, 1, N] to this
-    // form, and the static path encodes it linear), so give it exactly that
-    // shape. With dims, `len` must agree with their d0*d1*d2 extent.
-    if (sizes.empty()) {
+    // A BD without addressing dims, or whose dims are a unit-stride d0 alone,
+    // is a plain linear transfer of `len` elements (canonicalization strips a
+    // contiguous [1, 1, 1, N] to this form, and the static path encodes it
+    // linear from `len` alone), so give it exactly that shape. With any other
+    // dims, `len` must agree with their d0*d1*d2 extent.
+    auto isOne = [](OpFoldResult v) { return isConstantIntValue(v, 1); };
+    bool linear = sizes.empty() ||
+                  (lenOfr && isOne(strides4[3]) &&
+                   llvm::all_of(ArrayRef(sizes4).drop_back(), isOne));
+    if (linear) {
       sizes4[3] = lenOfr;
       strides4[3] = one;
     }
@@ -639,14 +642,13 @@ struct AIEDMATasksToNPUPass
     // The BD-level repeat_count (encoder output) is unused here: the dma_task
     // queue push is emitted separately by DMAStartTaskOpPattern from the task
     // op's repeat_count, not the BD's outer dim.
-    assert(target_model.isShimNOCTile(col, row) &&
-           "dynamic BD lowering is shim-NOC only (enforced by caller)");
     SmallVector<Value> bdWords;
     Value bdRepeatCount;
-    if (failed(buildShimBdWords(
-            builder, loc, target_model, f, sizes4, strides4, elemWidth,
-            bd_op.getBurstLength(), bd_op.getAxcacheOrDefault(),
-            sizes.empty() ? OpFoldResult() : lenOfr, bdRepeatCount, bdWords)))
+    if (failed(buildBdWords(builder, loc, target_model, col, row, f, sizes4,
+                            strides4, elemWidth, bd_op.getBurstLength(),
+                            bd_op.getAxcacheOrDefault(),
+                            linear ? OpFoldResult() : lenOfr,
+                            bdRepeatCount, bdWords)))
       return failure();
 
     // The walk must stay inside the host buffer it reads or writes.
@@ -684,9 +686,9 @@ struct AIEDMATasksToNPUPass
     // path; a runtime bd_id (dynamic free-list pool) also forces it, since the
     // BD register addresses are then runtime and cannot fold into a blockwrite.
     // A fully-constant descriptor with a pinned bd_id takes the static path
-    // below unchanged. Only the shim-NOC layout is encodable this way (see
-    // rewriteSingleBDDynamic), so anything the dynamic path can't represent
-    // stays a clean diagnostic.
+    // below unchanged. The encoder covers every tile type that has a BD
+    // register layout (see buildBdWords), so anything the dynamic path can't
+    // represent stays a clean diagnostic.
     bool runtimeLen = bd_op.getLen() && !bd_op.getConstantLen();
     bool runtimeOffset = bd_op.getOffset() && !bd_op.getConstantOffset();
     bool runtimeDims =
@@ -695,10 +697,14 @@ struct AIEDMATasksToNPUPass
         llvm::any_of(bd_op.getMixedStrides(),
                      [](OpFoldResult s) { return !getConstantIntValue(s); });
     if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId) {
-      if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow()))
+      int col = tile.getCol(), row = tile.getRow();
+      if (!target_model.isShimNOCTile(col, row) &&
+          !target_model.isMemTile(col, row) &&
+          !target_model.isCoreTile(col, row))
         return bd_op->emitOpError(
-            "runtime-valued BD size/stride/len/bd_id is only supported on shim "
-            "NOC tiles; use compile-time constants on other tiles.");
+            "runtime-valued BD size/stride/len/bd_id is only supported on "
+            "tiles with a DMA buffer descriptor layout (shim NOC, mem and core "
+            "tiles); use compile-time constants here.");
       if (bd_op.getPadDimensions().has_value())
         return bd_op->emitOpError(
             "zero padding is not supported with runtime sizes/strides/len.");
@@ -778,8 +784,9 @@ struct AIEDMATasksToNPUPass
       llvm::SmallVector<int64_t, 4> input_strides =
           llvm::SmallVector<int64_t, 4>(4, 0);
       if (dims->size() > 4) {
-        return bd_op->emitOpError("At most four data layout transformation "
-                                  "dimensions may be provided.");
+        return bd_op->emitOpError(
+            "At most four data layout transformation dimensions may be "
+            "provided; aie-decompose-large-dma-bd splits a longer one.");
       }
 
       for (size_t i = 0; i < dims->size(); i++) {
@@ -1042,9 +1049,10 @@ struct AIEDMATasksToNPUPass
       if (failed(verifyBdInBlock(it))) {
         return failure();
       }
-      if (failed(verifyOptionalLocksInBlock(it, op.getOutOfOrder()))) {
+      AIE::UseLockOp acquire, release;
+      if (failed(
+              AIE::verifyBdLockPair(it, op.getOutOfOrder(), acquire, release)))
         return failure();
-      }
     }
 
     if (op.getOutOfOrder()) {
@@ -1145,9 +1153,10 @@ struct AIEDMATasksToNPUPass
     RewritePatternSet patterns(&getContext());
     patterns.insert<DMAStartTaskOpPattern>(&getContext());
     patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
-    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
-      signalPassFailure();
-    }
+    // A start or await left unlowered still uses its configure, so lowering
+    // the configures would only add errors.
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
+      return signalPassFailure();
 
     // Drop the now-dead task-index carries the awaits held, so the branch-local
     // configures they used can reach use_empty and lower below.

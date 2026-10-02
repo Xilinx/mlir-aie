@@ -53,6 +53,35 @@ using TileID = struct TileID {
   int col, row;
 };
 
+/// Bits [shift, shift + width) of register `word` in a buffer descriptor's
+/// register block. A field a tile type does not have has width 0.
+struct DmaBdField {
+  uint8_t word = 0, shift = 0, width = 0;
+
+  bool exists() const { return width != 0; }
+  uint32_t mask() const {
+    return width >= 32 ? 0xFFFFFFFFu : (1u << width) - 1;
+  }
+  uint32_t place(uint64_t value) const {
+    return exists() ? (static_cast<uint32_t>(value) & mask()) << shift : 0;
+  }
+};
+
+/// The register layout of one tile type's DMA buffer descriptor. The static
+/// and runtime BD lowerings both pack through it, so the two cannot disagree.
+struct DmaBdLayout {
+  uint8_t numWords = 0;
+  DmaBdField bufferLength, bufferOffset;
+  DmaBdField enablePacket, packetType, packetId, outOfOrderId;
+  DmaBdField d0Size, d0Stride, d1Size, d1Stride, d2Stride;
+  DmaBdField iterationCurrent, iterationSize, iterationStride;
+  DmaBdField d0ZeroBefore, d1ZeroBefore, d2ZeroBefore;
+  DmaBdField d0ZeroAfter, d1ZeroAfter, d2ZeroAfter;
+  DmaBdField burstLength, axcache;
+  DmaBdField nextBd, useNextBd, validBd;
+  DmaBdField lockRelValue, lockRelId, lockAcqEnable, lockAcqValue, lockAcqId;
+};
+
 class AIETargetModel {
 
 public:
@@ -472,10 +501,34 @@ public:
     return count;
   }
 
+  /// Return the half-open range [first, last) of buffer descriptor ids that
+  /// channel `channel` of the tile at (`col`, `row`) can submit.
+  std::pair<uint32_t, uint32_t> getBdIdRangeForChannel(int col, int row,
+                                                       int channel) const {
+    uint32_t numBds = getNumBDs(col, row);
+    uint32_t first = 0;
+    while (first < numBds && !isBdChannelAccessible(col, row, first, channel))
+      ++first;
+    uint32_t last = first;
+    while (last < numBds && isBdChannelAccessible(col, row, last, channel))
+      ++last;
+    return {first, last};
+  }
+
   /// Return true iff buffer descriptor `bd_id` on tile (`col`, `row`) can be
   /// submitted on channel `channel`.
   virtual bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                                      int channel) const = 0;
+
+  /// Return the register layout of a buffer descriptor on the given tile
+  /// type, or null if the target has none modeled for it.
+  virtual const DmaBdLayout *getDmaBdLayout(AIETileType tileType) const {
+    return nullptr;
+  }
+
+  const DmaBdLayout *getDmaBdLayout(int col, int row) const {
+    return getDmaBdLayout(getTileType(col, row));
+  }
 
   /// Return the array address of the dma buffer descriptor for the given
   /// col, row, buffer descriptor id, channel and direction. Not all
@@ -506,8 +559,14 @@ public:
   }
 
   /// Return the mask selecting the live task-queue occupancy field within the
-  /// getDmaStatusAddress() register (0 when unsupported).
+  /// getDmaStatusAddress() register (0 when unsupported). The field does not
+  /// count the task the channel is running.
   virtual uint32_t getDmaTaskQueueSizeMask() const { return 0; }
+
+  /// Return the bits of the getDmaStatusAddress() register that are all clear
+  /// exactly when the channel has finished every task pushed to it: nothing
+  /// queued, nothing running, nothing stalled (0 when unsupported).
+  virtual uint32_t getDmaChannelIdleMask() const { return 0; }
 
   /// Return the DMA task-queue register address relative to its tile.
   uint32_t getLocalDmaControlAddress(int col, int row, int channel,
@@ -848,37 +907,23 @@ public:
     // MemTile BDs support 4 ND dimensions; core and shim BDs support 3.
     return tileType == AIETileType::MemTile ? 4 : 3;
   }
+  // The field limits read off the BD layout the lowerings pack through, the
+  // shim's for tiles without one.
+  const DmaBdLayout &getDmaBdLimits(AIETileType tileType) const {
+    const DmaBdLayout *layout = getDmaBdLayout(tileType);
+    return layout ? *layout : *getDmaBdLayout(AIETileType::ShimNOCTile);
+  }
   uint64_t getDmaBdMaxLen(AIETileType tileType) const override {
-    // Buffer_Length field width is tile-type specific on AIE2:
-    //   shim NOC/PL: 32 bits, mem tile: 17 bits, core tile: 14 bits.
-    switch (tileType) {
-    case AIETileType::MemTile:
-      return (1ull << 17) - 1;
-    case AIETileType::CoreTile:
-      return (1ull << 14) - 1;
-    default:
-      return 0xFFFFFFFFull;
-    }
+    return getDmaBdLimits(tileType).bufferLength.mask();
   }
   uint32_t getDmaBdWrapBits(AIETileType tileType) const override {
-    // Core tiles have 8-bit wrap; mem and shim tiles have 10-bit.
-    return tileType == AIETileType::CoreTile ? 8 : 10;
+    return getDmaBdLimits(tileType).d0Size.width;
   }
   uint32_t getDmaBdStepBits(AIETileType tileType) const override {
-    // Shim NOC/PL: 20-bit, mem tile: 17-bit, core tile: 13-bit.
-    switch (tileType) {
-    case AIETileType::ShimNOCTile:
-    case AIETileType::ShimPLTile:
-      return 20;
-    case AIETileType::MemTile:
-      return 17;
-    default:
-      return 13;
-    }
+    return getDmaBdLimits(tileType).d0Stride.width;
   }
   uint32_t getDmaBdIterBits(AIETileType tileType) const override {
-    // Core, mem, and shim tiles all have a 6-bit Iteration_Wrap field.
-    return 6;
+    return getDmaBdLimits(tileType).iterationSize.width;
   }
 
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
@@ -894,6 +939,9 @@ public:
     }
   }
 
+  using AIETargetModel::getDmaBdLayout;
+  const DmaBdLayout *getDmaBdLayout(AIETileType tileType) const override;
+
   uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel,
                            AIE::DMAChannelDir direction) const override;
 
@@ -906,6 +954,13 @@ public:
                       AIE::DMAChannelDir direction) const override;
   // Task_Queue_Size, bits 22:20 of the DMA_{MM2S,S2MM}_Status_N register.
   uint32_t getDmaTaskQueueSizeMask() const override { return 0x7u << 20; }
+  // Task_Queue_Size, Channel_Running (bit 19) and the four Stalled_* bits
+  // (5:2): what aie-rt's _XAieMl_DmaWaitForDone polls clear. aie-rt's pending
+  // count adds one to Task_Queue_Size for Channel_Running or a stall, which is
+  // why the field alone does not cover the running task.
+  uint32_t getDmaChannelIdleMask() const override {
+    return getDmaTaskQueueSizeMask() | (1u << 19) | 0x3Cu;
+  }
 
   uint32_t getMemTileSize() const override { return 0x00080000; }
 

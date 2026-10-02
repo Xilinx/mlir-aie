@@ -334,19 +334,19 @@ def isolated_specs(n, issue):
 
     seen = {}
     for _iv, (carried,), (last,) in range_(1, n, iter_args=[issue(0)]):
-        # Another thread generating a design must not see this loop's specs.
+        # Another thread generating a design must not see this loop.
         t = threading.Thread(
-            target=lambda: seen.update(other=controlflow._carried_specs.get())
+            target=lambda: seen.update(other=controlflow._loop_frames.get())
         )
         t.start()
         t.join()
-        seen["here"] = len(controlflow._carried_specs.get())
+        seen["here"] = len(controlflow._loop_frames.get())
         nxt = issue(1)
         carried.finish()
         yield_([nxt])
     last.finish()
-    print("carried specs: here", seen["here"], "other thread", seen["other"])
+    print("loop frames: here", seen["here"], "other thread", seen["other"])
 
 
 sequence_of(isolated_specs)
-# CHECK: carried specs: here 1 other thread ()
+# CHECK: loop frames: here 1 other thread ()

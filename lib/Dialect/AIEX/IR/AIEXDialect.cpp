@@ -36,6 +36,8 @@ using namespace xilinx;
 
 #include "aie/Dialect/AIEX/IR/AIEXEnums.cpp.inc"
 
+#include "aie/Dialect/AIEX/IR/AIEXInterfaces.cpp.inc"
+
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
 
@@ -539,7 +541,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   // The innermost stride may be runtime like any other dimension: the encoder
   // resolves its collapse-to-zero case with a select, and its realizability
   // (unit stride, or granule-aligned) is enforced below for constants and by a
-  // host-side check (buildShimBdWords) for runtime values.
+  // host-side check (buildBdWords) for runtime values.
 
   // (The memref must also trace to a runtime-sequence block argument through
   // static subview/cast offsets; that structural check, with the same clean
@@ -595,7 +597,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
 
   // A runtime size or stride could exceed its BD field and silently truncate
   // on hardware. The TXN stream has no on-device trap, so the dynamic lowering
-  // (buildShimBdWords) emits a host-side cf.assert for every runtime field,
+  // (buildBdWords) emits a host-side cf.assert for every runtime field,
   // which the TXN builder turns into a refused dispatch. Nothing to reject
   // here.
 
@@ -812,6 +814,12 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
                          << "] range.";
   if (static_cast<uint32_t>(getIterationStride()) > maxStep)
     return emitOpError() << "Iteration Stride exceeds the [0:" << maxStep
+                         << "] range.";
+  // buffer_length is the full 32-bit word on a shim NOC tile but only 17 bits
+  // on a mem tile and 14 on a core tile, where the packer masks it.
+  uint64_t maxLen = targetModel.getDmaBdMaxLen(tileType);
+  if (getBufferLength() > maxLen)
+    return emitOpError() << "Buffer length exceeds the [0:" << maxLen
                          << "] range.";
   if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
     return emitOpError("ShimTile only supports 3 dimensions of sizes.");
@@ -1192,6 +1200,11 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 // caps the total at 4, which the MemTile's 4 ND dimensions already reach. Both
 // branches therefore land on the same uniform 4-dimension cap enforced later by
 // AIEDMATasksToNPU.
+//
+// A BD whose sizes and strides are all constant may give more: every dimension
+// past the third is an iteration dimension, and aie-decompose-large-dma-bd
+// splits them off into descriptors of 4. With a runtime value among them it
+// cannot, so the cap applies here.
 static LogicalResult
 verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
                        Region &body) {
@@ -1215,6 +1228,12 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
       return;
     }
     size_t numDims = bd.getMixedSizes().size();
+    auto isConstant = [](OpFoldResult v) {
+      return getConstantIntValue(v).has_value();
+    };
+    if (numDims > maxNDims && llvm::all_of(bd.getMixedSizes(), isConstant) &&
+        llvm::all_of(bd.getMixedStrides(), isConstant))
+      return;
     if (numDims > maxNDims) {
       bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)
                        << " dimensions for step sizes and wraps on this tile "
@@ -1288,26 +1307,55 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   return result;
 }
 
+LogicalResult AIEX::DMAStartTaskOp::verify() {
+  if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
+    return emitOpError("repeat_count must be non-negative, got ")
+           << rc.getInt();
+  return success();
+}
+
 // Resolving the allocation symbol through the collection keeps the lookup off
 // the device's linear symbol scan, which a per-op verifier repeats after every
 // pass.
 LogicalResult AIEX::DMAConfigureTaskForOp::verifySymbolUses(
     SymbolTableCollection &symbolTable) {
-  // Recover the shim tile through the referenced shim DMA allocation symbol so
-  // the per-BD dimension limit can be enforced on the runtime-sequence path
-  // before the allocation is substituted into a concrete DMAConfigureTaskOp.
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
-  auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
-      dev, getAlloc().getRootReference());
-  if (!allocOp)
-    return success(); // symbol resolved during a later pass; defer the check
-  // Do not call allocOp.getTileOp(): it hard-asserts when the allocation is
-  // still bound to an unplaced (logical) tile. Resolve the concrete tile
-  // defensively and defer the check until placement substitutes a real tile.
-  auto tile =
-      llvm::dyn_cast_or_null<AIE::TileOp>(allocOp.getTile().getDefiningOp());
+  Operation *target =
+      symbolTable.lookupSymbolIn(dev, getAlloc().getRootReference());
+  if (!target)
+    return emitOpError() << getAlloc() << " does not name a symbol";
+  // The tile is known once the name is a shim DMA allocation or a route
+  // endpoint, so the per-BD dimension limit can be enforced before the task
+  // becomes a concrete dma_configure_task. Before the objectFIFO lowering
+  // the name is the fifo's own, and the check waits.
+  Value tileValue;
+  LogicalResult named =
+      TypeSwitch<Operation *, LogicalResult>(target)
+          .Case([&](AIE::ShimDMAAllocationOp alloc) {
+            tileValue = alloc.getTile();
+            return success();
+          })
+          .Case([&](AIE::RouteEndpointOp endpoint) -> LogicalResult {
+            tileValue = endpoint.getTile();
+            if (endpoint.getBundle() == AIE::WireBundle::DMA)
+              return success();
+            return emitOpError() << getAlloc() << " names a "
+                                 << stringifyWireBundle(endpoint.getBundle())
+                                 << " port, not a DMA channel";
+          })
+          .Case([](AIE::ObjectFifoCreateOp) { return success(); })
+          .Default([&](Operation *) -> LogicalResult {
+            return emitOpError() << getAlloc()
+                                 << " must name an aie.shim_dma_allocation, an "
+                                    "aie.route_endpoint or an aie.objectfifo";
+          });
+  if (failed(named))
+    return failure();
+  // An allocation or endpoint on an unplaced (logical) tile waits for
+  // placement to substitute a real one.
+  auto tile = tileValue ? tileValue.getDefiningOp<AIE::TileOp>() : nullptr;
   if (!tile)
     return success();
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
@@ -1374,6 +1422,9 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return emitOpError("SetLockOp is not supported on AIE1.");
 
+  if (getValueAttr().getValue().isNegative())
+    return emitOpError("Lock value must be non-negative");
+
   if (getValue() > targetModel.getMaxLockValue())
     return emitOpError("Lock value exceeds the maximum value of " +
                        std::to_string(targetModel.getMaxLockValue()));
@@ -1401,6 +1452,31 @@ LogicalResult AIEX::SetLockOp::verify() {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DMABdPoolPopOp / DMABdPoolPushOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verifyBdPoolPartition(Operation *op, int col, int row,
+                                           uint32_t begin, uint32_t end) {
+  uint32_t numBds = AIE::getTargetModel(op).getNumBDs(col, row);
+  if (begin >= end || end > numBds)
+    return op->emitOpError()
+           << "partition [" << begin << ", " << end
+           << ") is not a nonempty range of the " << numBds
+           << " buffer descriptors on tile (" << col << ", " << row << ")";
+  return success();
+}
+
+LogicalResult AIEX::DMABdPoolPopOp::verify() {
+  return verifyBdPoolPartition(*this, getColumn(), getRow(), getBdBegin(),
+                               getBdEnd());
+}
+
+LogicalResult AIEX::DMABdPoolPushOp::verify() {
+  return verifyBdPoolPartition(*this, getColumn(), getRow(), getBdBegin(),
+                               getBdEnd());
 }
 
 //===----------------------------------------------------------------------===//

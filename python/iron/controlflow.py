@@ -22,22 +22,40 @@ from aie.ir import InsertionPoint  # pyright: ignore[reportMissingImports]
 from aie.iron.runtime.dmataskhandle import Task
 from aie.iron.runtime.taskgroup import TaskGroup
 
-# Specs of the TaskGroups carried by the loops currently being emitted,
-# innermost last, so yield_ can check a yielded group against them. A
-# ContextVar (like the active runtime sequence) so concurrent threads or async
-# tasks generating designs each see only their own loops.
-_Specs = list[tuple[bool, ...] | None] | None
-_carried_specs: ContextVar[tuple[_Specs, ...]] = ContextVar(
-    "iron_carried_specs", default=()
+
+class _LoopFrame:
+    """One active ``range_`` loop.
+
+    Holds the loop body block, the waited flags of each TaskGroup it carries
+    (``None`` for other entries, and for a loop without iter_args), and the
+    values its terminating ``yield_`` passed, if any.
+    """
+
+    def __init__(self, body, specs):
+        self.body = body
+        self.specs = specs
+        self.values: list | None = None
+
+
+# The loops currently being emitted, innermost last. yield_ checks a yielded
+# group against the innermost one's specs, and records its values only when it
+# terminates that loop's body itself, not a nested scf.if or loop. A ContextVar
+# (like the active runtime sequence) so concurrent threads or async tasks
+# generating designs each see only their own loops.
+_loop_frames: ContextVar[tuple[_LoopFrame, ...]] = ContextVar(
+    "iron_loop_frames", default=()
 )
 
 
-def _push_specs(specs: _Specs) -> None:
-    _carried_specs.set(_carried_specs.get() + (specs,))
-
-
-def _pop_specs() -> None:
-    _carried_specs.set(_carried_specs.get()[:-1])
+@contextmanager
+def _loop_frame(body, specs):
+    frame = _LoopFrame(body, specs)
+    outer = _loop_frames.get()
+    _loop_frames.set(outer + (frame,))
+    try:
+        yield frame
+    finally:
+        _loop_frames.set(outer)
 
 
 def _unwrap(x):
@@ -61,16 +79,18 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
     [`yield_`][iron.controlflow.yield_] of the next iteration's values.
 
     A ``Task`` entry is carried across iterations by its SSA handle and comes
-    back re-wrapped as a ``Task`` (so ``.free()``/``.await_()`` work). A
-    ``TaskGroup`` entry is carried as the handles of its transfers and comes
-    back as a group ``finish()`` closes. Every group yielded back must have the
-    same shape (transfer count and waited flags) as the one carried in.
+    back as a copy of the ``Task`` passed in (so ``.start()``/``.free()``/
+    ``.await_()`` work); a loop result takes the lifetime of the ``Task`` the
+    body's own ``yield_`` passed. A ``TaskGroup`` entry is carried as the
+    handles of its transfers and comes back as a group ``finish()`` closes.
+    Every group yielded back must have the same shape (transfer count and
+    waited flags) as the one carried in.
     [`TaskGroup.pipelined`][iron.runtime.taskgroup.TaskGroup.pipelined] builds
     the usual software pipeline out of this.
     """
     # Each user-level iter_arg becomes one or more raw SSA iter_args. packers
-    # records, per user entry, how to rebuild it: ("value", 1), ("task", 1) or
-    # ("group", n, waited-flags).
+    # records, per user entry, how to rebuild it: ("value", 1, None),
+    # ("task", 1, the Task passed in) or ("group", n, waited-flags).
     packers = []
     raw = []
     if iter_args is not None:
@@ -80,7 +100,7 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
                 packers.append(("group", len(handles), waited))
                 raw.extend(handles)
             elif isinstance(a, Task):
-                packers.append(("task", 1, None))
+                packers.append(("task", 1, a))
                 raw.append(a.handle)
             else:
                 packers.append(("value", 1, None))
@@ -90,41 +110,49 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
         # values: the raw block args / results, as a tuple of Values.
         out = []
         pos = 0
-        for kind, n, waited in packers:
+        for kind, n, extra in packers:
             chunk = values[pos : pos + n]
             pos += n
             if kind == "group":
-                out.append(TaskGroup._carry_in(list(chunk), waited))
+                out.append(TaskGroup._carry_in(list(chunk), extra))
             elif kind == "task":
-                out.append(Task(chunk[0]))
+                out.append(extra._with_handle(chunk[0]))
             else:
                 out.append(chunk[0])
         return tuple(out)
 
     # A loop without iter_args still shadows any enclosing loop's specs, so a
     # yield_ in its body is not checked against them.
-    _push_specs([waited for _, _, waited in packers] if packers else None)
-    try:
-        for vals in _for(*args, iter_args=raw, insert_yield=not packers, **kwargs):
-            if not packers:
+    specs = (
+        [extra if kind == "group" else None for kind, _, extra in packers]
+        if packers
+        else None
+    )
+    for vals in _for(*args, iter_args=raw, insert_yield=not packers, **kwargs):
+        if not packers:
+            with _loop_frame(vals.owner, specs):
                 yield vals
-                continue
-            if not raw:
-                iv, a, results = vals, (), ()
-            else:
-                iv, a, results = vals
-                if len(raw) == 1:
-                    a, results = (a,), (results,)
-            yield iv, rewrap(tuple(a)), rewrap(tuple(results))
-            body = iv.owner
-            ops = body.operations
-            if not len(ops) or ops[len(ops) - 1].name != "scf.yield":
-                raise ValueError(
-                    "a range_ body with iter_args must end with yield_([...]), "
-                    f"one entry per iter_arg ({len(packers)} here)"
-                )
-    finally:
-        _pop_specs()
+            continue
+        if not raw:
+            iv, a, results = vals, (), ()
+        else:
+            iv, a, results = vals
+            if len(raw) == 1:
+                a, results = (a,), (results,)
+        results = rewrap(tuple(results))
+        with _loop_frame(iv.owner, specs) as frame:
+            yield iv, rewrap(tuple(a)), results
+        ops = iv.owner.operations
+        if not len(ops) or ops[len(ops) - 1].name != "scf.yield":
+            raise ValueError(
+                "a range_ body with iter_args must end with yield_([...]), "
+                f"one entry per iter_arg ({len(packers)} here)"
+            )
+        # A loop result is the Task the body yielded, so it takes that Task's
+        # lifetime, not the initial one's.
+        for i, (kind, _, _) in enumerate(packers):
+            if kind == "task" and frame.values and isinstance(frame.values[i], Task):
+                results[i]._carry(frame.values[i])
 
 
 def yield_(values):
@@ -134,8 +162,11 @@ def yield_(values):
     transfers (and is spent), checked against the shape of the group the
     enclosing ``range_`` carried in. See [`Task`][iron.runtime.dmataskhandle.Task].
     """
-    stack = _carried_specs.get()
-    specs = stack[-1] if stack else None
+    values = list(values)
+    frames = _loop_frames.get()
+    specs = frames[-1].specs if frames else None
+    if frames and InsertionPoint.current.block == frames[-1].body:
+        frames[-1].values = values
     if specs is not None and len(values) != len(specs):
         raise ValueError(
             f"yield_ got {len(values)} values but the loop carries {len(specs)}"

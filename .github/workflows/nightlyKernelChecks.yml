@@ -171,7 +171,8 @@ jobs:
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
           # Every case in test/python/npu/kernel_cases.py, under every edge-data
           # case its contract admits, for three random seeds.
-          python -m pytest test/python/npu/test_kernels_e2e.py -m extensive -v \
+          MLIR_AIE_NPU_TEST=1 python utils/run_pytest.py \
+            test/python/npu/test_kernels_e2e.py -m extensive -v \
             --junitxml=correctness.xml --seeds 3 2>&1 | tee correctness.log
 
       - name: Run kernel performance checks
@@ -193,7 +194,8 @@ jobs:
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
           export XRT_CONTEXT_CACHE_SIZE=2
-          python -m pytest test/python/npu/test_kernels_perf.py -m perf -v \
+          MLIR_AIE_NPU_TEST=1 python utils/run_pytest.py \
+            test/python/npu/test_kernels_perf.py -m perf -v \
             --perf-out perf.json --perf-meta meta.json --pmode "$REQUIRED_PMODE" \
             --correctness-results correctness.xml \
             --warmup 10 --iters 50 \
