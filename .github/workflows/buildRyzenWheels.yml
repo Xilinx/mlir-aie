@@ -655,9 +655,10 @@ jobs:
     # build-windows wheel via iron_setup.py (runtime mode, so the installed
     # wheel is exercised, not a from-source build) and run a few @iron.jit
     # designs on the self-hosted Windows NPU. Only npu2 Windows runners exist.
-    # 3.13 matches the runner's pre-provisioned interpreter (docs/buildHostWinNative.md).
+    # 3.13 matches the XRT SDK's pyxrt.pyd (built for CPython 3.13);
+    # setup-python provides it since the runner's system Python is 3.12.
     needs: build-windows
-    runs-on: [self-hosted, windows, ryzenai, npu2]
+    runs-on: [self-hosted, windows, devlab-dispatch, strix-halo]
     # Normal exec is 3-6 min; observed hang 192.6 min on this job (2026-08-04).
     timeout-minutes: 20
     env:
@@ -674,6 +675,12 @@ jobs:
         with:
           name: mlir_aie_windows_rtti_ON-3.13
           path: wheelhouse
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - uses: ./.github/actions/setup_windows_xrt
 
       - name: Install wheel and run an example on the NPU
         shell: cmd
