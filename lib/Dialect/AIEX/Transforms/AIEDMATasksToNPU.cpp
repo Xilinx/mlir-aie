@@ -806,6 +806,8 @@ struct AIEDMATasksToNPUPass
           isLinearTransfer(input_sizes, input_strides) ||
           (target_model.isShimNOCTile(tile.getCol(), tile.getRow()) &&
            isContiguousTransfer(input_sizes, input_strides));
+      if (!treatAsLinear && bd_op.getLengthStateTableIdxAttr())
+        AIE::placeRuntimeLengthDimension(input_sizes, input_strides);
 
       if (padDims.has_value()) {
         if (!target_model.isMemTile(tile.getCol(), tile.getRow()))

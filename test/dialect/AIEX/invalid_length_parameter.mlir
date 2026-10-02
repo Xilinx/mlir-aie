@@ -87,16 +87,16 @@ aie.device(npu2) {
 
 // -----
 
-// The added length continues the third dimension, which a size of one leaves
-// without an encoded stride.
+// The added length continues the third dimension, or the second one moved
+// there, and a size of one leaves either without an encoded stride.
 
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
   %t = aie.tile(0, 0)
   aie.runtime_sequence(%arg0 : memref<4096xi32>) {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
-      // expected-error @+1 {{'aie.dma_bd' op length_parameter on a non-contiguous pattern requires the third dimension to have a size above one}}
-      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 32 sizes = [4, 8] strides = [16, 1]) {length_parameter = @n, length_unit = 32 : i32}
+      // expected-error @+1 {{'aie.dma_bd' op length_parameter on a non-contiguous pattern requires its second or third dimension to have a size above one}}
+      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 16 sizes = [16] strides = [2]) {length_parameter = @n, length_unit = 16 : i32}
       aie.end
     }
   }
@@ -109,7 +109,21 @@ aie.device(npu2) {
   %t = aie.tile(0, 0)
   aie.runtime_sequence(%arg0 : memref<4096xi32>) {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
-      // expected-error @+1 {{'aie.dma_bd' op length_unit (16 elements) must be a multiple of the two innermost sizes' product (32 elements)}}
+      // expected-error @+1 {{'aie.dma_bd' op length_unit (12 elements) must be a multiple of the 8 elements moved per step of the dimension the added length continues}}
+      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 32 sizes = [4, 8] strides = [16, 1]) {length_parameter = @n, length_unit = 12 : i32}
+      aie.end
+    }
+  }
+}
+
+// -----
+
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence(%arg0 : memref<4096xi32>) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      // expected-error @+1 {{'aie.dma_bd' op length_unit (16 elements) must be a multiple of the 32 elements moved per step of the dimension the added length continues}}
       aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 64 sizes = [2, 4, 8] strides = [64, 16, 1]) {length_parameter = @n, length_unit = 16 : i32}
       aie.end
     }
@@ -153,7 +167,7 @@ aie.device(npu2) {
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
   aie.runtime_sequence(%arg0 : memref<4096xi32>) {
-    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op length_unit (16 elements) must be a multiple of the two innermost sizes' product (32 elements)}}
+    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op length_unit (16 elements) must be a multiple of the 32 elements moved per step of the dimension the added length continues}}
     aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 2, 4, 8][0, 64, 16, 1]) {id = 0 : i64, metadata = @dma, length_parameter = @n, length_unit = 16 : i64} : memref<4096xi32>
   }
   %tile = aie.tile(0, 0)

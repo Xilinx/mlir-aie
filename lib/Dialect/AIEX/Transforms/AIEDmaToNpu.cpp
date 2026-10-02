@@ -357,6 +357,15 @@ public:
     llvm::SmallVector<int64_t, 4> inputStrides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    // A contiguous row-major ND access on a shim NOC tile is lowered to linear
+    // mode (d0_size=d1_size=0) just like an already-canonical linear transfer.
+    // This allows naturally-expressed multidimensional transfers (e.g., a 2D
+    // image as [height, width]) without hitting the 10-bit ND wrap-size limit.
+    bool isLinear = op.isLinearTransferWithoutTransformation() ||
+                    (targetModel.isShimNOCTile(tileCol, tileRow) &&
+                     isContiguousTransfer(inputSizes, inputStrides));
+    if (!isLinear && op.getLengthStateTableIdxAttr())
+      AIE::placeRuntimeLengthDimension(inputSizes, inputStrides);
     llvm::SmallVector<int64_t, 4> sizes(4);
     llvm::SmallVector<int64_t, 4> strides(4);
     getHardwareStridesWraps(targetModel, op, bufferType, inputSizes,
@@ -368,13 +377,6 @@ public:
     // row
     row = IntegerAttr::get(i32ty, tileRow);
 
-    // A contiguous row-major ND access on a shim NOC tile is lowered to linear
-    // mode (d0_size=d1_size=0) just like an already-canonical linear transfer.
-    // This allows naturally-expressed multidimensional transfers (e.g., a 2D
-    // image as [height, width]) without hitting the 10-bit ND wrap-size limit.
-    bool isLinear = op.isLinearTransferWithoutTransformation() ||
-                    (targetModel.isShimNOCTile(tileCol, tileRow) &&
-                     isContiguousTransfer(inputSizes, inputStrides));
     if (failed(verifyStridesWraps(op, bufferType, tileCol, tileRow, inputSizes,
                                   inputStrides, sizes, strides, isLinear))) {
       return failure();

@@ -5,8 +5,9 @@
 //
 // Setup:
 //   - Input buffer: 16 rows of 16 i32 values [0, 1, ..., 255]
-//   - The DMAs move the first 8 values of each of `rows` rows into the output
-//   - Output buffer: 256 i32 values, prefilled with -1
+//   - The DMAs move the first 8 values of each of `rows` rows into `out`, and
+//     the last 8 into `out2`
+//   - Output buffers: 256 i32 values each, prefilled with -1
 //
 // We run with several row counts and check both the values moved and that
 // nothing past them was written.
@@ -46,18 +47,24 @@ int main(int argc, const char *argv[]) {
 
   xrt::bo bo_out = xrt::ext::bo{device, N * sizeof(int32_t)};
   auto *buf_out = bo_out.map<int32_t *>();
+  xrt::bo bo_out2 = xrt::ext::bo{device, N * sizeof(int32_t)};
+  auto *buf_out2 = bo_out2.map<int32_t *>();
 
   auto run = xrt::run(kernel);
   run.set_arg(0, bo_in);
   run.set_arg(1, bo_out);
+  run.set_arg(2, bo_out2);
 
   auto params = test_utils::ParameterScratchpad(run, "params.txt");
 
   bool all_pass = true;
   for (int32_t rows : {0, 1, 5, 0, 16}) {
-    for (int i = 0; i < N; ++i)
+    for (int i = 0; i < N; ++i) {
       buf_out[i] = -1;
+      buf_out2[i] = -1;
+    }
     bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    bo_out2.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
     params.write("rows", rows);
     params.sync();
@@ -66,6 +73,7 @@ int main(int argc, const char *argv[]) {
     run.wait2();
 
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    bo_out2.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
     int moved = rows * ROW_READ;
     int errors = 0;
@@ -76,6 +84,13 @@ int main(int argc, const char *argv[]) {
         if (errors < 8)
           std::cout << "  out[" << i << "] = " << buf_out[i] << ", expected "
                     << expected << std::endl;
+        ++errors;
+      }
+      int32_t expected2 = i < moved ? expected + ROW_READ : int32_t(-1);
+      if (buf_out2[i] != expected2) {
+        if (errors < 8)
+          std::cout << "  out2[" << i << "] = " << buf_out2[i] << ", expected "
+                    << expected2 << std::endl;
         ++errors;
       }
     }

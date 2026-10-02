@@ -359,15 +359,23 @@ mlir::FailureOr<int64_t> getLengthUnitBytes(mlir::Operation *op,
 // its static pattern, shared by aie.dma_bd and aiex.npu.dma_memcpy_nd.
 // `lenElems` is the static length of one iteration, in elements. `contiguous`
 // says the BD is lowered in linear mode; otherwise the added length continues
-// the third dimension, so `innerSizes` (the three innermost sizes,
-// innermost-first) must give it a size above one and a row that divides the
-// length unit.
+// the third dimension as placed by placeRuntimeLengthDimension, so
+// `innerSizes` (the three innermost sizes, innermost-first) must give it a
+// size above one and a row that divides the length unit.
 mlir::LogicalResult verifyLengthParameter(mlir::Operation *op,
                                           std::optional<int64_t> lengthUnit,
                                           mlir::BaseMemRefType buffer,
                                           std::optional<int64_t> lenElems,
                                           bool contiguous,
                                           llvm::ArrayRef<int64_t> innerSizes);
+
+// The added length of a runtime-length BD steps the third dimension. When that
+// dimension has size one, its stride is not encoded, so a pattern stepping
+// rows in its second dimension is lowered with them in the third instead and
+// the second left at size one. `sizes` and `strides` are innermost-first and
+// hold at least three dimensions.
+void placeRuntimeLengthDimension(llvm::MutableArrayRef<int64_t> sizes,
+                                 llvm::MutableArrayRef<int64_t> strides);
 
 // Validate the tile a runtime-length BD is lowered on: an AIE2/AIE2P shim NOC
 // tile whose BD buffer length is a whole 32-bit register, which the firmware

@@ -1130,10 +1130,13 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     - Shim NOC tiles on AIE2 and AIE2P only.
     - `len` and `length_unit` must both be multiples of 16 bytes.
     - With a data layout transformation that is not a contiguous scan, the
-      added length continues the third dimension. That dimension needs a size
-      above one (a size-1 dimension's stride is not encoded), and
-      `length_unit` must be a multiple of the product of the two innermost
-      sizes.
+      added length continues the third dimension. A pattern whose third
+      dimension has size one but whose second does not (such as
+      `sizes = [2, 8]`) is lowered with its second dimension in the third, so
+      the added length continues that one instead. The dimension continued
+      needs a size above one (a size-1 dimension's stride is not encoded), and
+      `length_unit` must be a multiple of the elements moved per step of it
+      (the product of the sizes inside it).
     - An `aiex.dma_configure_task` whose BD has an iteration dimension runs
       only once unless it is pushed with a `repeat_count`, set on the task or
       on its `aiex.dma_start_task`; this is not specific to the runtime

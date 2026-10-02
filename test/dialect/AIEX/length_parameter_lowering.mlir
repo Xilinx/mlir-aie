@@ -12,6 +12,7 @@
 
 // RUN: aie-opt --split-input-file --aie-lower-scratchpad-parameters --aie-assign-buffer-addresses --aie-dma-tasks-to-npu --aie-dma-to-npu %s | FileCheck %s
 // RUN: aie-opt --split-input-file --aie-lower-scratchpad-parameters %s | FileCheck %s --check-prefix=MARK
+// RUN: aie-opt --split-input-file --aie-lower-scratchpad-parameters --aie-dma-tasks-to-npu %s | FileCheck %s --check-prefix=WRITEBD
 
 // The scratchpad pass marks a core-kind length for the device-level lowering.
 
@@ -177,5 +178,40 @@ aie.device(npu2) {
     }
     aiex.dma_start_task(%task)
   }
+}
+
+// -----
+
+// A two-dimensional pattern steps its rows in the second dimension, so the
+// lowering moves them to the third, whose stride (16 i32, encoded 15) the
+// added rows follow, and leaves the second at size one. The memcpy encodes
+// the same pattern word for word, apart from its static length of 4 rows.
+
+// CHECK-LABEL: module
+// CHECK: dense<[0, [[WORDS:.*]]]>
+// CHECK: aie.runtime_sequence @two_d
+// CHECK: aiex.npu.update_from_scratchpad<mul> {address = 118880 : ui32, func_arg = 8 : ui32, state_table_idx = 0 : ui8}
+// CHECK: dense<[32, [[WORDS]]]>
+// CHECK: aie.runtime_sequence @two_d_memcpy
+// CHECK: aiex.npu.update_from_scratchpad<mul> {address = 118816 : ui32, func_arg = 8 : ui32, state_table_idx = 0 : ui8}
+// WRITEBD-LABEL: aie.runtime_sequence @two_d
+// WRITEBD: aiex.npu.writebd
+// WRITEBD-SAME: d0_size = 8 : i32, d0_stride = 0 : i32
+// WRITEBD-SAME: d1_size = 1 : i32, d1_stride = 0 : i32
+// WRITEBD-SAME: d2_size = 0 : i32, d2_stride = 15 : i32
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence @two_d(%arg0 : memref<4096xi32>) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 0 sizes = [2, 8] strides = [16, 1]) {bd_id = 3 : i32, length_parameter = @n, length_unit = 8 : i32}
+      aie.end
+    }
+    aiex.dma_start_task(%task)
+  }
+  aie.runtime_sequence @two_d_memcpy(%arg0 : memref<4096xi32>) {
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 4, 8][0, 0, 16, 1]) {id = 1 : i64, metadata = @dma, length_parameter = @n, length_unit = 8 : i64} : memref<4096xi32>
+  }
+  aie.shim_dma_allocation @dma(%t, MM2S, 0)
 }
 

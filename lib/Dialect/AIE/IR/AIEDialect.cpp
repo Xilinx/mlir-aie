@@ -3544,21 +3544,31 @@ LogicalResult xilinx::AIE::verifyLengthParameter(
            << *lenElems * elemBytes << " bytes";
   if (contiguous)
     return success();
-  // A size-1 dimension's stride is not encoded in the BD, so the third
-  // dimension needs a size above one for the added length to follow it.
-  if (innerSizes[2] <= 1)
+  llvm::SmallVector<int64_t, 3> sizes(innerSizes);
+  llvm::SmallVector<int64_t, 3> strides(3, 0);
+  placeRuntimeLengthDimension(sizes, strides);
+  if (sizes[2] <= 1)
     return op->emitOpError("length_parameter on a non-contiguous pattern "
-                           "requires the third dimension to have a size above "
-                           "one: the added length continues it");
-  int64_t rowElems = innerSizes[0] * innerSizes[1];
+                           "requires its second or third dimension to have a "
+                           "size above one: the added length continues it");
+  int64_t rowElems = sizes[0] * sizes[1];
   if (*lengthUnit % rowElems != 0)
     return op->emitOpError("length_unit (")
-           << *lengthUnit
-           << " elements) must be a multiple of the two innermost sizes' "
-              "product ("
-           << rowElems
-           << " elements): the added length continues the third dimension";
+           << *lengthUnit << " elements) must be a multiple of the " << rowElems
+           << " elements moved per step of the dimension the added length "
+              "continues";
   return success();
+}
+
+void xilinx::AIE::placeRuntimeLengthDimension(
+    llvm::MutableArrayRef<int64_t> sizes,
+    llvm::MutableArrayRef<int64_t> strides) {
+  if (sizes[2] > 1 || sizes[1] <= 1)
+    return;
+  sizes[2] = sizes[1];
+  strides[2] = strides[1];
+  sizes[1] = 1;
+  strides[1] = 0;
 }
 
 LogicalResult xilinx::AIE::verifyLengthParameterTile(
