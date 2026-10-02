@@ -51,7 +51,12 @@ static LogicalResult emitUnplacedTileError(Operation *op,
 }
 
 struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
-  using OpConversionPattern::OpConversionPattern;
+  DMAStartTaskOpPattern(MLIRContext *context,
+                        llvm::SmallPtrSetImpl<Operation *> &pushedOnce)
+      : OpConversionPattern(context), pushedOnce(pushedOnce) {}
+
+  // Configures some start pushes with a constant repeat count of 0.
+  llvm::SmallPtrSetImpl<Operation *> &pushedOnce;
 
   LogicalResult
   matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor,
@@ -94,8 +99,11 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
     // push_queue takes bd_id + repeat_count as SSA operands. repeat_count is
     // the start's override, else a runtime operand when present (dynamic tile
     // count), else the compile-time attribute materialized as a constant.
-    Value repeatCount = getAsValue(
-        rewriter, loc, op.getPushRepeatCount(task_op), rewriter.getI32Type());
+    OpFoldResult pushRepeatCount = op.getPushRepeatCount(task_op);
+    if (isConstantIntValue(pushRepeatCount, 0))
+      pushedOnce.insert(task_op);
+    Value repeatCount =
+        getAsValue(rewriter, loc, pushRepeatCount, rewriter.getI32Type());
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
         task_op.getChannel(), op.getPushIssueToken(task_op), repeatCount,
@@ -1014,7 +1022,9 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
-  LogicalResult rewriteSingleDMAConfigureTaskOp(DMAConfigureTaskOp op) {
+  LogicalResult rewriteSingleDMAConfigureTaskOp(
+      DMAConfigureTaskOp op,
+      const llvm::SmallPtrSetImpl<Operation *> &pushedOnce) {
     OpBuilder builder(op);
     AIE::TileOp tile = op.tryGetTileOp();
     if (!tile)
@@ -1063,10 +1073,10 @@ struct AIEDMATasksToNPUPass
     auto packet = op.getPacket();
 
     // One push onto the task queue runs one iteration of a BD's iteration
-    // dimension; only the task's repeat_count runs the rest. Warn once the
+    // dimension; only a push's repeat_count runs the rest. Warn once the
     // BDs are known to lower, so an invalid one gets only its error.
     SmallVector<std::pair<Location, int64_t>> unrepeatedIterations;
-    if (!op.getRepeatCountVal() && op.getRepeatCount() == 0) {
+    if (pushedOnce.contains(op)) {
       for (auto bd_op : body.getOps<AIE::DMABDOp>()) {
         SmallVector<OpFoldResult> sizes = bd_op.getMixedSizes();
         if (sizes.size() != 4)
@@ -1091,8 +1101,8 @@ struct AIEDMATasksToNPUPass
     for (auto [loc, iterations] : unrepeatedIterations)
       mlir::emitWarning(loc)
           << "iteration dimension of size " << iterations
-          << " has no task repeat_count, so only its first iteration runs; "
-             "set repeat_count = "
+          << " is pushed with repeat_count 0, so only its first iteration "
+             "runs; set repeat_count = "
           << iterations - 1;
 
     op.erase();
@@ -1100,9 +1110,11 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
-  LogicalResult rewriteDMAConfigureTaskOp(AIE::DeviceOp device) {
+  LogicalResult rewriteDMAConfigureTaskOp(
+      AIE::DeviceOp device,
+      const llvm::SmallPtrSetImpl<Operation *> &pushedOnce) {
     WalkResult result = device.walk([&](DMAConfigureTaskOp op) {
-      if (failed(rewriteSingleDMAConfigureTaskOp(op))) {
+      if (failed(rewriteSingleDMAConfigureTaskOp(op, pushedOnce))) {
         return WalkResult::interrupt();
       }
       return WalkResult::advance();
@@ -1166,7 +1178,8 @@ struct AIEDMATasksToNPUPass
     target.addIllegalOp<DMAStartTaskOp>();
     target.addIllegalOp<DMAAwaitTaskOp>();
     RewritePatternSet patterns(&getContext());
-    patterns.insert<DMAStartTaskOpPattern>(&getContext());
+    llvm::SmallPtrSet<Operation *, 8> pushedOnce;
+    patterns.insert<DMAStartTaskOpPattern>(&getContext(), pushedOnce);
     patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
     // A start or await left unlowered still uses its configure, so lowering
     // the configures would only add errors.
@@ -1179,7 +1192,7 @@ struct AIEDMATasksToNPUPass
       signalPassFailure();
 
     // Lower the configuration for the BDs
-    if (failed(rewriteDMAConfigureTaskOp(device))) {
+    if (failed(rewriteDMAConfigureTaskOp(device, pushedOnce))) {
       signalPassFailure();
     }
   }

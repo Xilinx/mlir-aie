@@ -1135,8 +1135,9 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       `length_unit` must be a multiple of the product of the two innermost
       sizes.
     - An `aiex.dma_configure_task` whose BD has an iteration dimension runs
-      only once unless the task sets `repeat_count`; this is not specific to
-      the runtime length, but a runtime length makes it easy to miss.
+      only once unless it is pushed with a `repeat_count`, set on the task or
+      on its `aiex.dma_start_task`; this is not specific to the runtime
+      length, but a runtime length makes it easy to miss.
   }];
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$buffer,
