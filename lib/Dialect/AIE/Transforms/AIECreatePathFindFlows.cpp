@@ -3074,9 +3074,8 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
           (faults.connections.empty() && faults.apart.empty() &&
            faults.together.empty()))
         return llvm::Error::success();
-      return llvm::make_error<RoutingFailure>(
-          conflicts.explain(*check.sharedReceiverCycle), std::move(faults),
-          std::nullopt, /*usable=*/true);
+      return llvm::make_error<DeadlockProneRouting>(
+          conflicts.explain(*check.sharedReceiverCycle), std::move(faults));
     };
   }
   analyzer.pathfinder.setPacketConstraints(std::move(constraints));
@@ -3097,7 +3096,7 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
   }
   if (!check.sharedReceiverCycle)
     return llvm::Error::success();
-  return llvm::make_error<RoutingFailure>(
+  return llvm::make_error<DeadlockProneRouting>(
       (llvm::Twine(sharedReceiverCycleReason) +
        conflicts.explain(*check.sharedReceiverCycle) + allowDeadlockProneHint)
           .str());
@@ -3251,7 +3250,9 @@ void AIEPathfinderPass::runOnOperation() {
     }
   }
   // If routing fails, the router relaxes how it routes packet flows (see
-  // Pathfinder::relax) and tries again. The error is the first attempt's.
+  // Pathfinder::relax) and tries again. The error is the first attempt's, or
+  // the first to find a routing allow-deadlock-prone would take, as that is
+  // all that keeps the design from routing.
   auto routeRelaxing = [&](DeviceOp dev, DynamicTileAnalysis &an,
                            const StreamConflicts &c, const PinnedOverlay &pin,
                            bool prioritize = true) -> llvm::Error {
@@ -3262,13 +3263,16 @@ void AIEPathfinderPass::runOnOperation() {
         llvm::consumeError(std::move(first));
         return llvm::Error::success();
       }
+      if (err.isA<DeadlockProneRouting>() && !first.isA<DeadlockProneRouting>())
+        std::swap(first, err);
       llvm::consumeError(std::move(err));
     }
     return first;
   };
   llvm::Error err = routeRelaxing(d, analyzer, conflicts, overlay);
   // If routing fails with the prioritized flows first, they route like the
-  // others, but for the overlay a reload keeps.
+  // others, but for the overlay a reload keeps. Without a reload the error is
+  // that routing's, unless only the first found one allow-deadlock-prone takes.
   bool prioritize = true;
   if (err && !prioritized.empty()) {
     if (!reload)
@@ -3280,7 +3284,8 @@ void AIEPathfinderPass::runOnOperation() {
       llvm::consumeError(std::move(err));
       analyzer = std::move(freeAnalyzer);
       prioritize = false;
-    } else if (!reload) {
+    } else if (!reload && (freeErr.isA<DeadlockProneRouting>() ||
+                           !err.isA<DeadlockProneRouting>())) {
       llvm::consumeError(std::move(err));
       err = std::move(freeErr);
     } else {
