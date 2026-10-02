@@ -63,7 +63,9 @@ module @no_allocate_within_capacity {
 // -----
 
 // The same overflowing intratile fifos, already allocated to coreB by the
-// user: SA charges them to coreB and adds no allocate of its own.
+// user: SA charges them to coreB and adds no allocate of its own for them.
+// (@data may still get a shared-memory allocate depending on where SA puts
+// coreC; std random distributions differ across standard libraries.)
 // CHECK-LABEL: @user_allocate_kept
 // CHECK: %[[B:.*]] = aie.tile(2, 4)
 // CHECK-NOT: aie.objectfifo.allocate @intra

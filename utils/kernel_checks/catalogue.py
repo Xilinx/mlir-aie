@@ -44,7 +44,8 @@ NO_CASE = "no case in test/python/npu/kernel_cases.py"
 
 
 def _library_path(path: str) -> str:
-    return path.rsplit("/aie_kernels/", 1)[-1]
+    # source_file is backslash-separated on Windows.
+    return Path(path).as_posix().rsplit("/aie_kernels/", 1)[-1]
 
 
 def _sources(ef) -> list[str]:
