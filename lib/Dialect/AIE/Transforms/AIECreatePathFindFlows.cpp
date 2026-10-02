@@ -1238,27 +1238,27 @@ std::optional<std::string> sharedArbiterAt(TileID tileId,
   return std::nullopt;
 }
 
-/// Says why no routing can work, if the arbiters packet streams take
-/// whatever the routing do not fit: too few free ones at a tile, or two
-/// streams that must be kept apart put on one by the trees in `pinnedTrees`,
-/// which prioritized sources keep.
-std::optional<std::string>
-unroutableArbiters(DeviceOp device, const StreamConflicts &conflicts,
-                   llvm::function_ref<bool(TileID)> pinsHops,
-                   const PacketTrees &pinnedTrees) {
+/// A RoutingFailure if no routing can work because the arbiters packet streams
+/// take whatever the routing do not fit: too few free ones at a tile, or, as a
+/// PinnedRoutingFailure, two streams that must be kept apart put on one by the
+/// trees in `pinnedTrees`, which prioritized sources keep.
+llvm::Error unroutableArbiters(DeviceOp device,
+                               const StreamConflicts &conflicts,
+                               llvm::function_ref<bool(TileID)> pinsHops,
+                               const PacketTrees &pinnedTrees) {
   PrioritizedPackets prioritized = prioritizedPackets(device);
   if (std::optional<std::string> reason =
           tooFewArbiters(device, conflicts, pinsHops, prioritized))
-    return reason;
+    return llvm::make_error<RoutingFailure>(std::move(*reason));
   if (pinnedTrees.empty())
-    return std::nullopt;
+    return llvm::Error::success();
   auto [leaving, onTrees] =
       leavingPinnedTrees(conflicts, pinnedTrees, prioritized);
   for (TileID tileId : onTrees)
     if (std::optional<std::string> reason =
             sharedArbiterAt(tileId, leaving[tileId], conflicts))
-      return reason;
-  return std::nullopt;
+      return llvm::make_error<PinnedRoutingFailure>(std::move(*reason));
+  return llvm::Error::success();
 }
 } // namespace
 
@@ -3036,14 +3036,14 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
   constraints.prioritize = prioritize;
   if (clRoutePacket && !d.getOps<PacketFlowOp>().empty()) {
     const AIETargetModel &targetModel = d.getTargetModel();
-    if (std::optional<std::string> reason = unroutableArbiters(
+    if (llvm::Error err = unroutableArbiters(
             d, conflicts,
             [&](TileID tile) {
               return !circuitSwitchHops ||
                      targetModel.isShimNOCorPLTile(tile.col, tile.row);
             },
             pinned.trees))
-      return llvm::make_error<RoutingFailure>(std::move(*reason));
+      return err;
     for (auto [i, s] : llvm::enumerate(conflicts.getRequestedStreams()))
       if (s.packetID)
         streamsFrom[{s.src.tile, s.src.port}].push_back(i);
@@ -3186,10 +3186,13 @@ void AIEPathfinderPass::runOnOperation() {
   }
   // The prioritized flows routed without the rest of the design. A
   // control-packet reload installs them as @ctrl_pkt_overlay first, so they
-  // keep that route; otherwise they keep it where the other flows route around
-  // it. Null if their switch settings fail to lower, which emits why.
-  bool lowered = true;
-  auto routeOverlay = [&]() -> llvm::Expected<PinnedOverlay> {
+  // keep that route; otherwise they keep it, if they have one, where the other
+  // flows route around it.
+  bool pinned = false;
+  PinnedOverlay overlay;
+  if (clRoutePacket && !prioritized.empty() &&
+      (!d.getOps<FlowOp>().empty() ||
+       !llvm::all_of(d.getOps<PacketFlowOp>(), isPrioritized))) {
     OwningOpRef<ModuleOp> scratch;
     // @ctrl_pkt_overlay holds the overlay's flows and the tiles alone, without
     // the design's own switchboxes. Otherwise the prioritized flows route
@@ -3209,44 +3212,30 @@ void AIEPathfinderPass::runOnOperation() {
     DynamicTileAnalysis aloneAnalyzer;
     StreamConflicts aloneConflicts(alone);
     if (llvm::Error err = route(alone, aloneAnalyzer, aloneConflicts, {},
-                                /*circuitSwitchHops=*/false))
-      return std::move(err);
-    // The design's own routing keeps these trees, so it warns of any hold
-    // cycle they leave.
-    OpBuilder aloneBuilder = OpBuilder::atBlockTerminator(alone.getBody());
-    if (failed(runOnPacketFlow(alone, aloneBuilder, aloneAnalyzer,
-                               aloneConflicts, {},
-                               /*circuitSwitchHops=*/false, /*warn=*/false))) {
-      lowered = false;
-      return llvm::make_error<RoutingFailure>("");
-    }
-    return PinnedOverlay{aloneAnalyzer.routing.packetTrees,
-                         overlayRules(alone)};
-  };
-  bool pinned = false;
-  PinnedOverlay overlay;
-  if (clRoutePacket && !prioritized.empty() &&
-      (!d.getOps<FlowOp>().empty() ||
-       !llvm::all_of(d.getOps<PacketFlowOp>(), isPrioritized))) {
-    llvm::Expected<PinnedOverlay> alone = routeOverlay();
-    if (alone) {
-      overlay = std::move(*alone);
-      pinned = true;
-    } else if (!lowered || reload) {
-      llvm::handleAllErrors(alone.takeError(), [&](RoutingFailure &f) {
-        if (!lowered)
-          return;
-        f.reason = "prioritized packet flows (priority_route) in a design a "
-                   "control-packet reload configures (has_ctrl_pkt_overlay) "
-                   "keep the route they take alone, as in @ctrl_pkt_overlay, "
-                   "and alone they have none" +
-                   (f.reason.empty() ? "." : ": " + f.reason);
-        emitError(f.loc.value_or(d.getLoc())) << f.message();
-      });
-      signalPassFailure();
-      return;
+                                /*circuitSwitchHops=*/false)) {
+      if (reload) {
+        llvm::handleAllErrors(std::move(err), [&](RoutingFailure &f) {
+          f.reason = "prioritized packet flows (priority_route) in a design a "
+                     "control-packet reload configures (has_ctrl_pkt_overlay) "
+                     "keep the route they take alone, as in @ctrl_pkt_overlay, "
+                     "and alone they have none" +
+                     (f.reason.empty() ? "." : ": " + f.reason);
+          emitError(f.loc.value_or(d.getLoc())) << f.message();
+        });
+        return signalPassFailure();
+      }
+      llvm::consumeError(std::move(err));
     } else {
-      llvm::consumeError(alone.takeError());
+      // The design's own routing keeps these trees, so it warns of any hold
+      // cycle they leave.
+      OpBuilder aloneBuilder = OpBuilder::atBlockTerminator(alone.getBody());
+      if (failed(runOnPacketFlow(alone, aloneBuilder, aloneAnalyzer,
+                                 aloneConflicts, {},
+                                 /*circuitSwitchHops=*/false, /*warn=*/false)))
+        return signalPassFailure();
+      overlay =
+          PinnedOverlay{aloneAnalyzer.routing.packetTrees, overlayRules(alone)};
+      pinned = true;
     }
   }
   // If routing fails, the router relaxes how it routes packet flows (see
@@ -3298,7 +3287,7 @@ void AIEPathfinderPass::runOnOperation() {
       // Say whether the pinned trees are what stands in the way: the design
       // routes if they may move.
       if (pinned && !f.reason.empty() &&
-          !StringRef(f.reason).contains("(priority_route)")) {
+          !f.isA(PinnedRoutingFailure::classID())) {
         OwningOpRef<ModuleOp> scratch;
         DeviceOp free = cloneInScratch(d, scratch);
         DynamicTileAnalysis freeAnalyzer;
