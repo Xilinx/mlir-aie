@@ -10,17 +10,19 @@
 
 // Id 23 from (0,1) DMA:3 loops back to (0,1) DMA:3 and must not share an
 // arbiter with id 9, which (0,0) DMA:0 sends up the column alongside id 23.
-// Id 23 for (0,1) DMA:3 reaches (0,1) by a slave port of its own, so id 9
-// stays off the DMA:3 arbiter while ids 9 and 23 still share the rest of
-// the tree. Reduced from router_mutation.py npu2 seed 1128.
+// The two id 23 trees meet at (0,1) on one arbiter and go on as one tree into
+// both receivers, so neither holds an arbiter the other needs, and id 9 routes
+// as a part of its own on an arbiter of its own there.
+// Reduced from router_mutation.py npu2 seed 1128.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
-// CHECK:         aie.masterset(DMA : 3, %[[LOOP:[0-9]+]], %[[SHIM:[0-9]+]])
+// CHECK-NOT:     aie.amsel<{{[0-9]+}}> (1)
+// CHECK:         aie.masterset(DMA : 3, %[[T:[0-9]+]]){{$}}
 // CHECK:         aie.packet_rules(DMA : 3) {
-// CHECK-NEXT:      aie.rule(31, 23, %[[LOOP]])
+// CHECK-NEXT:      aie.rule(31, 23, %[[T]])
 // CHECK-NEXT:    }
 // CHECK:         aie.packet_rules(South : {{[0-9]+}}) {
-// CHECK-NEXT:      aie.rule(31, 23, %[[SHIM]])
+// CHECK-NEXT:      aie.rule(31, 23, %[[T]])
 // CHECK-NEXT:    }
 
 module {

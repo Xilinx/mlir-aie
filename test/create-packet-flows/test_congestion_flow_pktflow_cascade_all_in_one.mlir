@@ -5,7 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="allow-deadlock-prone=true" %s | FileCheck %s
+// RUN: not aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=STRICT
+
+// The multicast trees of the four memtiles cross on arbiters in a hold
+// cycle through receivers they share, which no routing found avoids.
+// STRICT: error: Unable to find a legal routing: Packet flows into receivers they share can deadlock
 
 // CHECK-LABEL: aie.device(npu1) @attention_seg
 // CHECK-DAG:   %[[tile_0_0:.*]] = aie.tile(0, 0)

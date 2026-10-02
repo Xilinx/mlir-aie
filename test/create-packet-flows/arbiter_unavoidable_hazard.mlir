@@ -5,14 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s
+// RUN: not aie-opt --split-input-file --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefixes=CHECK,ERR
+// RUN: aie-opt --split-input-file --aie-create-pathfinder-flows="allow-deadlock-prone=true" %s 2>&1 >/dev/null | FileCheck %s --check-prefixes=CHECK,WARN
 
-// Flows from one source that can deadlock there are reported, as no routing
-// can keep them apart, when the design shows they do.
+// Flows from one source that can deadlock there fail to route, as no routing
+// can keep them apart, when the design shows they do. With
+// allow-deadlock-prone, they route with a warning.
 
 // Nothing programs either end, so a deadlock is only assumed.
 
-// CHECK-NOT: warning
+// CHECK-NOT: {{warning|error}}
 
 module {
   aie.device(npu1_1col) {
@@ -28,7 +30,8 @@ module {
 // Core (0, 3) takes 8 of the 16 words of id 1 only once id 2 has arrived,
 // which (0, 2) sends after id 1.
 
-// CHECK: warning: Flows can deadlock however they are routed: packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (0, 3) S2MM 1, which receives packet flow (0, 2) DMA:0 -> (0, 3) DMA:1 (id 2).{{$}}
+// ERR: error: Flows can deadlock however they are routed: packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (0, 3) S2MM 1, which receives packet flow (0, 2) DMA:0 -> (0, 3) DMA:1 (id 2). Set allow-deadlock-prone (aiecc --allow-deadlock-prone-routing) to route them anyway.{{$}}
+// WARN: warning: Flows can deadlock however they are routed: packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (0, 3) S2MM 1, which receives packet flow (0, 2) DMA:0 -> (0, 3) DMA:1 (id 2).{{$}}
 
 module {
   aie.device(npu1_1col) {
@@ -80,7 +83,8 @@ module {
 // of id 1, then waits for the core to set the lock back to 0, which it does
 // only once id 2 has arrived.
 
-// CHECK: warning: Flows can deadlock however they are routed: packet flow (1, 2) DMA:0 -> (1, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (1, 3) core, then (1, 3) S2MM 1, which receives packet flow (1, 2) DMA:0 -> (1, 3) DMA:1 (id 2).{{$}}
+// ERR: error: Flows can deadlock however they are routed: packet flow (1, 2) DMA:0 -> (1, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (1, 3) core, then (1, 3) S2MM 1, which receives packet flow (1, 2) DMA:0 -> (1, 3) DMA:1 (id 2). Set allow-deadlock-prone (aiecc --allow-deadlock-prone-routing) to route them anyway.{{$}}
+// WARN: warning: Flows can deadlock however they are routed: packet flow (1, 2) DMA:0 -> (1, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (1, 3) core, then (1, 3) S2MM 1, which receives packet flow (1, 2) DMA:0 -> (1, 3) DMA:1 (id 2).{{$}}
 
 module {
   aie.device(xcvc1902) {
@@ -138,7 +142,7 @@ module {
 // (0, 2) sends all of id 2 before any of id 1, so id 1 filling its receiver
 // holds up nothing still to come.
 
-// CHECK-NOT: warning
+// CHECK-NOT: {{warning|error}}
 module {
   aie.device(npu1_1col) {
     %t02 = aie.tile(0, 2)
@@ -188,7 +192,7 @@ module {
 // The looping chain stops at its second acquire, as the core releases the
 // lock once, so it too sends id 2 before id 1.
 
-// CHECK-NOT: warning
+// CHECK-NOT: {{warning|error}}
 module {
   aie.device(npu1_1col) {
     %t02 = aie.tile(0, 2)
@@ -246,7 +250,7 @@ module {
 // A core that releases the lock in a loop can restart the chain, sending id 2
 // after id 1, but in what order is not modeled, so that is only assumed.
 
-// CHECK-NOT: warning
+// CHECK-NOT: {{warning|error}}
 module {
   aie.device(npu1_1col) {
     %t02 = aie.tile(0, 2)
@@ -309,7 +313,7 @@ module {
 // Once S2MM 0 takes all of id 1 without waiting on id 2, nothing can
 // deadlock.
 
-// CHECK-NOT: warning
+// CHECK-NOT: {{warning|error}}
 module {
   aie.device(npu1_1col) {
     %t02 = aie.tile(0, 2)
@@ -359,7 +363,7 @@ module {
 // A circuit takes no arbiter, so a wait between two branches of a broadcast is
 // the design's own, whatever the routing.
 
-// CHECK-NOT: warning
+// CHECK-NOT: {{warning|error}}
 module {
   aie.device(npu1_1col) {
     %t02 = aie.tile(0, 2)

@@ -68,6 +68,12 @@ inline cl::opt<bool> noEnforceDmaQueueDepth(
     cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
              "slot"));
 
+inline cl::opt<bool> allowDeadlockProneRouting(
+    "allow-deadlock-prone-routing",
+    cl::desc("Warn of, rather than fail on, flows the router finds can "
+             "deadlock however they are routed or through receivers packet "
+             "flows share"));
+
 inline cl::opt<bool> verifyEach(
     "verify-each",
     cl::desc("Verify the IR after every pass, not once per pass pipeline "

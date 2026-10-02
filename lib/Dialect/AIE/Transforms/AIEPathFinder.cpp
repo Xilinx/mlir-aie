@@ -195,6 +195,9 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   routing = std::move(*found);
 
   // fill in coords to TileOps, SwitchboxOps, and ShimMuxOps
+  coordToTile.clear();
+  coordToSwitchbox.clear();
+  coordToShimMux.clear();
   for (auto tileOp : device.getOps<TileOp>()) {
     [[maybe_unused]] bool fresh =
         coordToTile.try_emplace(tileOp.getTileID(), tileOp).second;
@@ -875,6 +878,7 @@ struct Pathfinder::RouteState {
   // routing check found in a hold cycle together.
   std::vector<llvm::BitVector> conflicting;
   std::set<std::pair<PathEndPoint, PathEndPoint>> apartSources;
+  std::set<std::pair<PathEndPoint, PathEndPoint>> togetherSources;
   // The packet ids each flow carries, in all and to each destination.
   std::vector<std::set<int>> flowIds;
   std::vector<SmallVector<int, 4>> sameId;
@@ -2162,21 +2166,9 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     }
   }
   crowdedTiles.insert(faults.crowded.begin(), faults.crowded.end());
-  bool apart = false;
-  for (const auto &pair : faults.apart) {
-    if (!st.apartSources.insert(pair).second)
-      continue;
-    apart = true;
-    LLVM_DEBUG(llvm::dbgs()
-               << "Route apart: "
-               << describeTilePort(pair.first.coords, pair.first.port)
-               << " and "
-               << describeTilePort(pair.second.coords, pair.second.port)
-               << "\n");
-    // Trees with an id in common join where they meet, so the ids a source
-    // sends that the other does not route apart as a part of their own.
-    if (!splitShared)
-      continue;
+  // Trees with an id in common join where they meet, so the ids a source
+  // sends that the other does not route apart as a part of their own.
+  auto splitOwnIds = [&](const std::pair<PathEndPoint, PathEndPoint> &pair) {
     for (auto [src, other] : {pair, std::pair{pair.second, pair.first}}) {
       auto srcParts = st.partsOf.find(src);
       auto otherParts = st.partsOf.find(other);
@@ -2195,8 +2187,34 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
           st.splitPart(k, own);
       }
     }
+  };
+  bool related = false;
+  for (const auto &pair : faults.apart) {
+    if (!st.apartSources.insert(pair).second)
+      continue;
+    related = true;
+    LLVM_DEBUG(llvm::dbgs()
+               << "Route apart: "
+               << describeTilePort(pair.first.coords, pair.first.port)
+               << " and "
+               << describeTilePort(pair.second.coords, pair.second.port)
+               << "\n");
+    if (splitShared)
+      splitOwnIds(pair);
   }
-  if (apart) {
+  for (const auto &pair : faults.together) {
+    if (!st.togetherSources.insert(pair).second)
+      continue;
+    related = true;
+    LLVM_DEBUG(llvm::dbgs()
+               << "Route together: "
+               << describeTilePort(pair.first.coords, pair.first.port)
+               << " and "
+               << describeTilePort(pair.second.coords, pair.second.port)
+               << "\n");
+    splitOwnIds(pair);
+  }
+  if (related) {
     illegalEdges++;
     st.relateParts();
   }
@@ -2383,7 +2401,9 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
     }
 
     // A routing that fits the fabric can still be one the caller cannot use;
-    // steer away from the connections it names as if they were overused.
+    // steer away from the connections it names as if they were overused. One
+    // it rejects naming nothing to move is as far as steering gets.
+    bool stuck = false;
     if (illegalEdges == 0 && constraints.check)
       llvm::handleAllErrors(
           constraints.check(st.routing), [&](RoutingFailure &rejected) {
@@ -2400,6 +2420,7 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
               usable = st.routing;
               usableAt = iterationCount;
             }
+            stuck = illegalEdges == 0;
           });
 
     LLVM_DEBUG({
@@ -2416,6 +2437,8 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                    << " , illegal edges count = " << illegalEdges
                    << ", total path length = " << totalPathLength << "---\n";
     });
+    if (stuck)
+      return std::move(*usable);
     if (overlayFaults >= maxOverlayFaults) {
       LLVM_DEBUG(llvm::dbgs() << "\t\tPathfinder: the routing check rejects "
                                  "only master sets of the prioritized flows ("

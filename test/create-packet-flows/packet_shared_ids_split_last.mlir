@@ -9,21 +9,23 @@
 // RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>/dev/null | FileCheck %s
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN --allow-empty
 
-// (0,4) DMA:0 sends ids 0, 24 and 25, and must route apart from (0,0) DMA:0,
-// (0,3) DMA:0 and (0,4) DMA:1. Routing each id it sends that those do not as a
-// part of its own needs more channels down from (0,4) than it has, so the
-// router does that only once routing the source as one tree fails. As one
-// tree, its ids leave (0,4) on one arbiter through three msels.
+// (0,4) DMA:0 sends ids 0, 24 and 25, and must route apart from (0,0) DMA:0
+// and (0,4) DMA:1. Routing each id it sends that those do not as a part of its
+// own needs more channels down from (0,4) than it has, so the router does that
+// only once routing the source as one tree fails. As one tree, its id 24
+// packets and those from (0,3) DMA:0 wait on each other at the receivers they
+// share, so id 24 alone routes as a part of its own and meets the tree from
+// (0,3) at (0,4), while ids 0 and 25 leave (0,4) together on another arbiter.
 // Reduced from router_properties.py npu2 seed 2256.
 
 // CHECK-LABEL: aie.switchbox(%tile_0_4)
-// CHECK-DAG:     %[[M0:.*]] = aie.amsel<0> (0)
-// CHECK-DAG:     %[[M1:.*]] = aie.amsel<0> (1)
-// CHECK-DAG:     %[[M2:.*]] = aie.amsel<0> (2)
+// CHECK:         aie.packet_rules(South : 0) {
+// CHECK-NEXT:      aie.rule(31, 24, %[[T:[0-9]+]])
+// CHECK-NEXT:    }
 // CHECK:         aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:      aie.rule(31, 25, %[[M2]])
-// CHECK-NEXT:      aie.rule(31, 0, %[[M0]])
-// CHECK-NEXT:      aie.rule(31, 24, %[[M1]])
+// CHECK-NEXT:      aie.rule(31, 25, %[[M:[0-9]+]])
+// CHECK-NEXT:      aie.rule(31, 0, %[[M]])
+// CHECK-NEXT:      aie.rule(31, 24, %[[T]])
 // CHECK-NEXT:    }
 
 // WARN-NOT: {{warning|error}}
