@@ -6,14 +6,14 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
+// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN --allow-empty
 
 // Routed alone, prioritized flows 7 and 19 share arbiter 5 at (3,2). Flow 30
 // follows flow 7 onto its arbiter there, and flow 19 can hold that arbiter
 // while draining its receiver waits on the circuit into (3,3), which waits on
-// flow 30. No plan keeps the overlay's own arbiters, so the router plans the
-// overlay jointly with the other flows and warns that a control-packet reload
-// of the overlay alone would not keep the plan.
+// flow 30. No plan keeps the overlay's own arbiters, so without a
+// control-packet reload, which would keep them, the router plans the overlay
+// jointly with the other flows.
 // Reduced from router_properties.py npu2 seed 198.
 
 // CHECK-LABEL: aie.switchbox(%tile_3_2)
@@ -25,7 +25,7 @@
 // CHECK-NEXT:      aie.rule(31, 7, %[[A4]]) {is_ctrl_pkt_overlay}
 // CHECK-NEXT:      aie.rule(31, 30, %[[A4]])
 
-// WARN: warning: the prioritized flows (the control overlay) take other packet rules at (3, 2) Core:0 than they take alone
+// WARN-NOT: {{warning|error}}
 
 module {
   aie.device(npu2_4col) {

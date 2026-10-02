@@ -46,11 +46,36 @@ module {
 
 // -----
 
-// Id 27 goes elsewhere, and the rule (28, 24) would send it where ids 24-26
-// go.
+// Id 27 goes elsewhere, and in a design a control-packet reload configures,
+// the overlay's rule (28, 24) would send it where ids 24-26 go.
 
 module {
-  // expected-error@+1 {{Unable to find a legal routing: at tile (0, 0), the packet rule (mask 0x1C, id 0x18) of the prioritized flows (the control overlay) on DMA:0 also matches packet id 0x1B, and a control-packet reload keeps their rules; use an id the rule does not match, or route the flow apart.}}
+  // expected-error@+1 {{Unable to find a legal routing: packet flows from (0, 0) DMA:0 are prioritized (priority_route) in a design a control-packet reload configures (has_ctrl_pkt_overlay), so they keep the route they take alone, as in @ctrl_pkt_overlay, and the other flows route only if it moves. Around it, at tile (0, 0), the packet rule (mask 0x1C, id 0x18) of the prioritized flows (the control overlay) on DMA:0 also matches packet id 0x1B, and a control-packet reload keeps their rules; use an id the rule does not match, or route the flow apart.}}
+  aie.device(npu2_1col) {
+    %t_0_0 = aie.tile(0, 0)
+    %t_0_1 = aie.tile(0, 1)
+    %t_0_2 = aie.tile(0, 2)
+    aie.packet_flow(24) { aie.packet_source<%t_0_0, DMA : 0> aie.packet_dest<%t_0_0, TileControl : 0> aie.packet_dest<%t_0_1, TileControl : 0> aie.packet_dest<%t_0_2, TileControl : 0> } {priority_route = true}
+    aie.packet_flow(25) { aie.packet_source<%t_0_0, DMA : 0> aie.packet_dest<%t_0_0, TileControl : 0> aie.packet_dest<%t_0_1, TileControl : 0> aie.packet_dest<%t_0_2, TileControl : 0> } {priority_route = true}
+    aie.packet_flow(26) { aie.packet_source<%t_0_0, DMA : 0> aie.packet_dest<%t_0_0, TileControl : 0> aie.packet_dest<%t_0_1, TileControl : 0> aie.packet_dest<%t_0_2, TileControl : 0> } {priority_route = true}
+    aie.packet_flow(27) { aie.packet_source<%t_0_0, DMA : 0> aie.packet_dest<%t_0_2, DMA : 1> }
+  } {has_ctrl_pkt_overlay = true}
+}
+
+// -----
+
+// Without a reload, ids 24-26 route like the others, and id 27 takes a rule
+// of its own.
+
+// CHECK-LABEL: aie.switchbox(%tile_0_2)
+// CHECK-DAG:     aie.masterset(DMA : 0, %[[TO0:[0-9]+]])
+// CHECK-DAG:     aie.masterset(DMA : 1, %[[TO1:[0-9]+]])
+// CHECK:         aie.packet_rules(South : 1) {
+// CHECK-NEXT:      aie.rule(31, 27, %[[TO1]])
+// CHECK-NEXT:      aie.rule(30, 24, %[[TO0]])
+// CHECK-NEXT:      aie.rule(31, 26, %[[TO0]])
+
+module {
   aie.device(npu2_1col) {
     %t_0_0 = aie.tile(0, 0)
     %t_0_2 = aie.tile(0, 2)
@@ -63,22 +88,21 @@ module {
 
 // -----
 
-// Id 28 reaches memtile (0,1) DMA:2 and DMA:4, but DMA:2 is a master port of
-// prioritized id 1, which a control-packet reload keeps selected by id 1's
-// amsel alone. Id 28 routes only if id 1 reaches DMA:2 by a master set of its
-// own, which it does not alone, so a reload would not keep it. Id 28 reaches
-// the two by slave ports of their own, and takes id 1's amsel to DMA:2.
+// Id 28 reaches memtile (0,1) DMA:2 and DMA:4, and DMA:2 is a master port of
+// prioritized id 1. Id 28 routes only if id 1 reaches DMA:2 by a master set
+// of its own, which it does not alone. Without a reload, id 1 then routes like
+// the others.
 
 // CHECK-LABEL: aie.device(npu2_4col)
 // CHECK:       aie.switchbox(%mem_tile_0_1)
-// CHECK:         aie.masterset(DMA : 2, %[[KEPT:[0-9]+]]) {is_ctrl_pkt_overlay}
-// CHECK:         aie.masterset(DMA : 4, %[[OWN:[0-9]+]])
-// CHECK-DAG:     aie.rule(31, 28, %[[OWN]])
-// CHECK-DAG:     aie.rule(31, 28, %[[KEPT]])
+// CHECK-NOT:     is_ctrl_pkt_overlay
+// CHECK:         aie.masterset(DMA : 2, %[[TWO:[0-9]+]],
+// CHECK:         aie.masterset(DMA : 4, %[[FOUR:[0-9]+]])
+// CHECK-DAG:     aie.rule(31, 28, %[[FOUR]])
+// CHECK-DAG:     aie.rule(31, 1, %[[TWO]])
 // CHECK:       aie.switchbox(
 
 module {
-  // expected-warning@+1 {{the prioritized flows (the control overlay) take another route than they take alone, as in @ctrl_pkt_overlay, for the other flows to route, so a control-packet reload would not keep them.}}
   aie.device(npu2_4col) {
     %t_0_0 = aie.tile(0, 0)
     %t_0_1 = aie.tile(0, 1)

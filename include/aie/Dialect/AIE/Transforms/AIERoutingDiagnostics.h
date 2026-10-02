@@ -31,7 +31,7 @@ std::string describeTilePort(TileID tile, Port port);
 std::string joinNames(llvm::ArrayRef<std::string> names, size_t shown = 4);
 
 /// Says that the packet flows from `sources` keep the route they take alone,
-/// as priority_route asks.
+/// as a control-packet reload of a design they are prioritized in asks.
 std::string describePrioritized(llvm::ArrayRef<std::string> sources);
 
 } // namespace xilinx::AIE

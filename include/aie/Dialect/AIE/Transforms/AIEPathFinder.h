@@ -314,9 +314,9 @@ struct PacketConstraints {
   /// The prioritized packet flows from these sources take these trees
   /// instead of being routed.
   PacketTrees pinned;
-  /// Master ports packets leave a switchbox by on their own: those that leave
-  /// by one of these from a slave port leave by no other master port.
-  std::set<PathEndPoint> alone;
+  /// Whether prioritized packet flows not pinned route first, keeping
+  /// other flows off their channels; otherwise they route like the others.
+  bool prioritize = true;
 };
 
 /// Congestion-negotiated routing: each iteration routes every flow by
