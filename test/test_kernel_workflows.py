@@ -21,6 +21,49 @@ def workflow(name):
     return yaml.load((WORKFLOWS / name).read_text(), Loader=yaml.BaseLoader)
 
 
+def matrix_pairs(job):
+    return {
+        (entry["python_version"], entry["ENABLE_RTTI"])
+        for entry in job["strategy"]["matrix"]["include"]
+    }
+
+
+def test_ryzen_wheel_publish_workflow_gates_on_both_os_builds():
+    publish = workflow("buildRyzenWheels.yml")
+    assert "pull_request" not in publish["on"]
+
+    jobs = publish["jobs"]
+    assert jobs["linux-wheels"]["uses"] == "./.github/workflows/buildRyzenWheelsLinux.yml"
+    assert (
+        jobs["windows-wheels"]["uses"]
+        == "./.github/workflows/buildRyzenWheelsWindows.yml"
+    )
+    assert set(jobs["publish"]["needs"]) == {"linux-wheels", "windows-wheels"}
+
+
+def test_ryzen_linux_npu_smoke_depends_only_on_its_wheel():
+    jobs = workflow("buildRyzenWheelsLinux.yml")["jobs"]
+
+    assert jobs["build-linux-npu-wheel"]["env"] == {
+        "BUILD_PYTHON_VERSION": "3.12",
+        "ENABLE_RTTI": "ON",
+    }
+    assert ("3.12", "ON") not in matrix_pairs(jobs["build-linux-wheels"])
+    assert jobs["smoke-test-npu"]["needs"] == "build-linux-npu-wheel"
+
+
+def test_ryzen_windows_smoke_tests_are_per_wheel():
+    jobs = workflow("buildRyzenWheelsWindows.yml")["jobs"]
+
+    assert jobs["build-windows-npu-wheel"]["env"] == {
+        "BUILD_PYTHON_VERSION": "3.13",
+        "ENABLE_RTTI": "ON",
+    }
+    assert ("3.13", "ON") not in matrix_pairs(jobs["build-windows"])
+    assert "smoke-test-wheels-windows" not in jobs
+    assert jobs["smoke-test-wheels-npu-windows"]["needs"] == "build-windows-npu-wheel"
+
+
 def test_baseline_cache_key_is_unique_per_attempt_and_restorable():
     publish = workflow("publishKernelResults.yml")["jobs"]["publish"]["steps"]
     report = workflow("nightlyKernelChecks.yml")["jobs"]["report"]["steps"]
