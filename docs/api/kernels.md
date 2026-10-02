@@ -207,3 +207,9 @@ this module.
         - Verdict
         - compare
         - bf16_ulp_distance
+
+## FastFlowLM Gemma 4
+
+::: iron.kernels.flm_gemma4
+    options:
+      show_root_heading: false
