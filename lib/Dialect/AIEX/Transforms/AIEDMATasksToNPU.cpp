@@ -99,8 +99,7 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
     OpFoldResult repeatOfr = op.getPushRepeatCount(task_op);
     Value repeatCount = dyn_cast<Value>(repeatOfr);
     if (!repeatCount)
-      repeatCount =
-          getAsValue(rewriter, loc, repeatOfr, rewriter.getI32Type());
+      repeatCount = getAsValue(rewriter, loc, repeatOfr, rewriter.getI32Type());
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
         task_op.getChannel(), op.getPushIssueToken(task_op), repeatCount,
@@ -399,11 +398,11 @@ struct AIEDMATasksToNPUPass
         addrField =
             createConstantI32(builder, loc, addrBits.place(buf_addr / divisor));
       } else {
-        Value byteAddr = buildArgPlusValue(
-            builder, loc, {OpFoldResult(bd_op.getOffset())},
-            {OpFoldResult(builder.getI32IntegerAttr(1))},
-            bd_op.getBufferElementTypeWidthInBytes(), (int64_t)buf_addr,
-            divisor);
+        Value byteAddr =
+            buildArgPlusValue(builder, loc, {OpFoldResult(bd_op.getOffset())},
+                              {OpFoldResult(builder.getI32IntegerAttr(1))},
+                              bd_op.getBufferElementTypeWidthInBytes(),
+                              (int64_t)buf_addr, divisor);
         if (!byteAddr)
           return failure();
         Type i64 = builder.getI64Type();
@@ -421,8 +420,8 @@ struct AIEDMATasksToNPUPass
               builder, loc, byteAddr,
               arith::ConstantOp::create(builder, loc,
                                         IntegerAttr::get(i64, divisor)));
-        addrField = arith::TruncIOp::create(builder, loc,
-                                            builder.getI32Type(), byteAddr);
+        addrField = arith::TruncIOp::create(builder, loc, builder.getI32Type(),
+                                            byteAddr);
         if (addrBits.shift != 0)
           addrField = arith::ShLIOp::create(
               builder, loc, addrField,
@@ -628,9 +627,9 @@ struct AIEDMATasksToNPUPass
     // linear from `len` alone), so give it exactly that shape. With any other
     // dims, `len` must agree with their d0*d1*d2 extent.
     auto isOne = [](OpFoldResult v) { return isConstantIntValue(v, 1); };
-    bool linear = sizes.empty() ||
-                  (lenOfr && isOne(strides4[3]) &&
-                   llvm::all_of(ArrayRef(sizes4).drop_back(), isOne));
+    bool linear =
+        sizes.empty() || (lenOfr && isOne(strides4[3]) &&
+                          llvm::all_of(ArrayRef(sizes4).drop_back(), isOne));
     if (linear) {
       sizes4[3] = lenOfr;
       strides4[3] = one;
@@ -644,11 +643,10 @@ struct AIEDMATasksToNPUPass
     // op's repeat_count, not the BD's outer dim.
     SmallVector<Value> bdWords;
     Value bdRepeatCount;
-    if (failed(buildBdWords(builder, loc, target_model, col, row, f, sizes4,
-                            strides4, elemWidth, bd_op.getBurstLength(),
-                            bd_op.getAxcacheOrDefault(),
-                            linear ? OpFoldResult() : lenOfr,
-                            bdRepeatCount, bdWords)))
+    if (failed(buildBdWords(
+            builder, loc, target_model, col, row, f, sizes4, strides4,
+            elemWidth, bd_op.getBurstLength(), bd_op.getAxcacheOrDefault(),
+            linear ? OpFoldResult() : lenOfr, bdRepeatCount, bdWords)))
       return failure();
 
     // The walk must stay inside the host buffer it reads or writes.

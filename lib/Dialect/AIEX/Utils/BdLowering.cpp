@@ -528,7 +528,6 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
       return failure();
   }
 
-
   auto asI32 = [&](Value v) {
     return builder.createOrFold<arith::TruncIOp>(loc, i32ty, v);
   };
