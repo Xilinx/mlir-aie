@@ -6,9 +6,10 @@ name: Nightly Component Checks
 # Checks on individual compiler components, as opposed to kernels end to end.
 # Currently just the SA tile placer: a CPU-only seed sweep (does every seed
 # still place, how much CPU time and memory it takes, how good a placement)
-# over a small fixture and mobilenet, plus a fixed-seed hardware check on
-# mobilenet (does the placed design still compile, verify, and run at its
-# expected latency, and how long the compile takes). Never gates PRs.
+# over a small fixture and mobilenet, plus a hardware check on mobilenet at
+# three seeds and batch 1, 4, 16 and 64 (does the placed design still
+# compile and verify, how long one image takes, what each image costs once
+# they stream, and how long the compile takes). Never gates PRs.
 #
 # Runs nightly from main, and on pull requests that touch the placer or
 # these checks (the CPU sweep only). The nightly and an unfiltered dispatch
@@ -16,7 +17,8 @@ name: Nightly Component Checks
 # checks' format (utils/kernel_checks/publish.py); the kernel checks page
 # shows them under Components. The hardware check refuses to time a
 # publishing run unless the NPU is in $PERF_PMODE. A check that fails still
-# publishes what it measured, and its record lists the failed seeds.
+# publishes what it measured, and its record lists the failed seeds and
+# runs.
 
 permissions:
   contents: read
@@ -125,8 +127,9 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: [self-hosted, bench, aie2p-8col]
     timeout-minutes: 90
-    # Shares the kernel checks' own npu2 lock, so the two nightlies queue
-    # rather than risk landing on the same physical NPU at once.
+    # Twelve compile-and-run pairs, about 20 minutes in all. Shares the kernel
+    # checks' own npu2 lock, so the two nightlies queue rather than risk
+    # landing on the same physical NPU at once.
     concurrency:
       group: kernel-checks-aie2p-8col
       cancel-in-progress: false
@@ -177,7 +180,7 @@ jobs:
           fi
           printf '%s\n' "$PLATFORM"
 
-      - name: Run the mobilenet seed check
+      - name: Run mobilenet at each seed and batch
         if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
         env:
           # A run that publishes must find the device in $PERF_PMODE; the
@@ -192,6 +195,17 @@ jobs:
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
           python utils/component_checks/sa_placer_hw.py --pmode "$REQUIRED_PMODE" \
             --out perf.json --meta meta.json | tee hw.log
+
+      # The table only: a failed run's log follows its row in hw.log.
+      - name: Summarize
+        if: ${{ !cancelled() && hashFiles('hw.log') != '' }}
+        run: |
+          {
+            echo "### SA placer on hardware"
+            echo '```'
+            grep -E '^ *seed +batch|^ *[0-9]+ +[0-9]+ +(yes|NO) |^seed [0-9]+: |^aie-opt placed|^batches ' hw.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload raw results
         if: always()

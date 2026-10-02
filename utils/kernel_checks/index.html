@@ -97,7 +97,8 @@
     .block-head p { margin: 0; color: var(--muted); font-size: 13px; }
 
     /* Verdicts: one band per NPU. The colored rule is the night's verdict. */
-    #verdicts, #component-verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(520px, 100%), 1fr)); gap: 16px; margin-top: 20px; }
+    #verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(520px, 100%), 1fr)); gap: 16px; margin-top: 20px; }
+    #component-verdicts { display: grid; gap: 16px; margin-top: 20px; }
     .verdict { background: var(--surface); border: 1px solid var(--rule); border-left: 6px solid var(--none); border-radius: 4px 10px 10px 4px; padding: 16px 20px 14px; }
     .verdict.ok { border-left-color: var(--ok); }
     .verdict.warn { border-left-color: var(--warn); }
@@ -141,7 +142,9 @@
     details.repro summary { cursor: pointer; color: var(--muted); }
     details.repro p { margin: 6px 0 4px; }
     .verdict details.repro { margin-bottom: 12px; }
-    .verdict .table-wrap { margin-bottom: 12px; }
+    .verdict .table-wrap, .verdict .glance, .verdict .charts { margin-bottom: 12px; }
+    .moves { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; margin: 0 0 12px; }
+    .moves .move { white-space: nowrap; }
     details.repro pre { margin: 0; padding: 8px 10px; background: var(--none-soft); border-radius: 6px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
 
     /* The kernel map: every kernel as a tile, its two halves npu1 and npu2. */
@@ -246,10 +249,16 @@
     a.glance-metric:first-child { border-left: 0; padding-left: 0; }
     a.glance-metric:hover { background: var(--paper); text-decoration: none; }
     .glance-label { font-size: 12px; font-weight: 600; color: var(--muted); }
-    .glance-row { display: grid; grid-template-columns: 34px 1fr; align-items: baseline; gap: 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .glance-row { display: grid; grid-template-columns: minmax(34px, max-content) 1fr; align-items: baseline; gap: 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
     .glance-row .npu { font-size: 11.5px; font-weight: 600; }
     .glance-row .npu.n-npu1 { color: var(--npu1); }
     .glance-row .npu.n-npu2 { color: var(--npu2); }
+    .glance-row .npu.n-series-1 { color: var(--series-1); }
+    .glance-row .npu.n-series-2 { color: var(--series-2); }
+    .glance-row .npu.n-series-3 { color: var(--series-3); }
+    .glance-row .npu.n-series-4 { color: var(--series-4); }
+    .glance-row .npu.n-series-5 { color: var(--series-5); }
+    .glance-row .npu.n-series-6 { color: var(--series-6); }
     .glance-row .vals { overflow-wrap: anywhere; }
     .glance-row .before { color: var(--faint); }
     .glance-row .after { font-weight: 650; }
@@ -437,37 +446,49 @@
       cpu_ms_mean: 'CPU time of one aie-opt placement, mean over the seeds',
       cpu_ms_max: 'CPU time of the slowest seed',
       peak_rss_mb_max: 'peak memory of the hungriest seed',
-      latency_us: 'NPU time of one mobilenet inference, the fastest of 20 calls',
+      us_per_image: 'NPU time of one call, the fastest of 20, over the images in its batch',
+      streaming_us: 'the time each image past the first adds, (T(N) − T(1)) ÷ (N − 1) from the fastest batch-1 and batch-N calls: the dispatch left out',
+      e2e_us_per_image: 'host time of one call, from Python, the fastest of 20, over the images in its batch',
       compile_s: 'wall time of the whole compile, from Python to xclbin',
       placement_cost: 'the SA cost of the placement aiecc chose, replayed with aie-opt; the tooltip names the placement',
     };
     const LABELS = {
       cycles: 'Cycles', cycles_per_kop: 'Cycles / 1k ops', kernel_object_bytes: 'Object size', npu_us: 'Host time',
       failed_seeds: 'Failed seeds', final_cost_mean: 'Cost (mean)', final_cost_max: 'Cost (worst)', cpu_ms_mean: 'CPU time (mean)',
-      cpu_ms_max: 'CPU time (max)', peak_rss_mb_max: 'Peak memory', latency_us: 'NPU latency', compile_s: 'Compile time', placement_cost: 'Placement cost',
+      cpu_ms_max: 'CPU time (max)', peak_rss_mb_max: 'Peak memory', us_per_image: 'Per image', streaming_us: 'Streaming',
+      e2e_us_per_image: 'End-to-end / image', compile_s: 'Compile time', placement_cost: 'Placement cost',
     };
     const COMPONENTS_DIR = '../component-checks';
     const COMPONENT_DOCS_URL = 'https://xilinx.github.io/mlir-aie/dev/programming_guide/section-1/#nightly-sa-placer-checks';
     const SA_FIXTURES = { test_sa_effort: 'test/place-tiles/sa_placer/test_sa_effort.mlir', mobilenet: 'utils/component_checks/fixtures/mobilenet.mlir' };
-    // The nightly component checks; `repro` runs one seed again, as named by
-    // a failed id "<fixture>/seed<N>".
+    // The nightly component checks. A failed id ("<fixture>/seed<N>" in the
+    // sweep, "mobilenet/seed=<S>/batch=<N>" on hardware) matches `failedId`,
+    // whose groups `repro` runs again (with none, any one) and `say` words;
+    // `passed` is the headline when nothing failed;
+    // `cards`, `charts` and `summary` show the latest record.
     const COMPONENTS = [
-      { id: 'sa-placer', title: 'SA placer seed sweep',
+      { id: 'sa-placer', title: 'SA placer seed sweep', failure: 'seed', passed: 'Every seed placed.',
         about: 'aie-opt places each fixture with seeds 1 to 20 at full effort, on a hosted runner, with no hardware.',
         script: 'utils/component_checks/sa_placer.py',
         whole: 'python utils/component_checks/sa_placer.py --aie-opt "$(which aie-opt)" --out perf.json --meta meta.json',
-        repro: (fixture, seed) => `aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=${seed} sa-effort=1.0' --mlir-pass-statistics ${SA_FIXTURES[fixture] || '<fixture>'}` },
-      { id: 'sa-placer-hw', title: 'SA placer on hardware',
-        about: 'mobilenet placed with a few seeds, then compiled, run and verified on an NPU2.',
+        failedId: /^(.*)\/seed(\d+)$/,
+        repro: (fixture, seed = 'N') => `aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=${seed} sa-effort=1.0' --mlir-pass-statistics ${SA_FIXTURES[fixture] || '<fixture>'}`,
+        say: (fixture, seed) => `${fixture}/seed${seed}`,
+        cards: fixtureCards, charts: seedCharts, summary: sweepSummary },
+      { id: 'sa-placer-hw', title: 'SA placer on hardware', failure: 'run', passed: 'Every run passed.',
+        about: 'mobilenet placed with seeds 3, 2 and 7, then compiled, run and verified on an NPU2 at batch 1, 4, 16 and 64.',
         script: 'utils/component_checks/sa_placer_hw.py',
         whole: 'python utils/component_checks/sa_placer_hw.py --out perf.json --meta meta.json',
-        repro: (_fixture, seed) => `cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed ${seed} --sa-effort 1.0` },
+        failedId: /^mobilenet\/seed=(\d+)\/batch=(\d+)$/,
+        repro: (seed = 'N', batch = 'B') => `cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed ${seed} --sa-effort 1.0 --batch ${batch}`,
+        say: (seed, batch) => `seed ${seed} at batch ${batch}`,
+        cards: seedCards, charts: batchCharts, summary: hardwareSummary },
     ];
     const label = m => LABELS[m] || m;
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us'];
     // Per-metric change thresholds, in percent of the previous value; kept
     // equal to thresholds.json (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => pct(metric) / 100;
@@ -597,10 +618,11 @@
       return worst;
     }
 
-    // The \u00b1 that starts a row's range (npu_us): its median absolute deviation.
+    // A row's median absolute deviation: the \u00b1 that starts an npu_us
+    // range, or the "MAD d" of a "median M, MAD d, p95 P" one.
     function madOf(row) {
-      const m = /^\u00b1 ([\d.]+)/.exec((row && row.range) || '');
-      return m ? Number(m[1]) : null;
+      const m = /^\u00b1 ([\d.]+)|\bMAD ([\d.]+)/.exec((row && row.range) || '');
+      return m ? Number(m[1] || m[2]) : null;
     }
 
     // 'worse', 'better' or '' for a move from row a to row b: past the
@@ -784,6 +806,7 @@
     function formatNumber(value, unit) {
       if (unit === 'bytes') return `${(value / 1024).toFixed(1)} KiB`;
       if (unit === 'us') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} µs`;
+      if (['s', 'ms', 'MB'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`;
       return value.toLocaleString('en-US', { maximumFractionDigits: unit === 'cycles' ? 0 : 1 });
     }
 
@@ -1524,20 +1547,35 @@
         header.append(el('span', { className: 'ratio', title: `${nights[1].npu} cycles over ${nights[0].npu} cycles` },
           `${nights[1].npu} ÷ ${nights[0].npu} cycles ${(cyc[1] / cyc[0]).toFixed(2)}×`));
       }
+      const card = glanceGrid(header, ALL_METRICS.map(metric => ({
+        metric, text: label(metric), href: chartsLink(kase, metric), title: `${METRICS[metric]}\nClick for the full chart.`,
+        lanes: nights.map(n => {
+          const c = n.latest.cases.get(kase);
+          return { name: n.npu, color: n.npu, key: `${n.npu}|${kase}|${metric}`, metric, m: c && c.metrics.get(metric), current: c && c.current };
+        }),
+      })));
+      card.kase = kase;
+      return card;
+    }
+
+    // A card of metrics side by side, each a cell of lanes: per lane its
+    // before → after and change, and a trend line per lane under them. A
+    // lane is an NPU on a kernel's card, a batch or a statistic on a
+    // component check's: {name, color (a --color), key (its series), metric,
+    // m (latestCases' metric), current, missing (shown without an m), bad}.
+    function glanceGrid(header, cells) {
       const grid = el('div', { className: 'glance-metrics' });
       const card = el('article', { className: 'glance-card' }, header, grid);
-      card.kase = kase;
       card.sparks = new Map();
-      for (const metric of ALL_METRICS) {
-        const cell = el('a', { className: 'glance-metric', href: chartsLink(kase, metric), title: `${METRICS[metric]}\nClick for the full chart.` },
-          el('span', { className: 'glance-label' }, label(metric)));
-        for (const n of nights) {
-          const c = n.latest.cases.get(kase);
-          const m = c && c.metrics.get(metric);
-          cell.append(el('span', { className: 'glance-row' }, el('span', { className: `npu n-${n.npu}` }, n.npu),
-            m ? glanceValues(m, metric, c.current) : el('span', { className: 'faint' }, '—')));
+      for (const { metric, text, href, title, lanes } of cells) {
+        const cell = el('a', { className: 'glance-metric', href, title }, el('span', { className: 'glance-label' }, text));
+        for (const lane of lanes) {
+          const values = lane.m ? glanceValues(lane.m, lane.metric, lane.current) : lane.missing || el('span', { className: 'faint' }, '—');
+          if (lane.bad) values.className += ' worse';
+          cell.append(el('span', { className: 'glance-row' }, el('span', { className: `npu n-${lane.color}` }, lane.name), values));
         }
         const spark = el('span', { className: 'spark' });
+        spark.lines = lanes.map(l => [l.color, l.key]);
         card.sparks.set(metric, spark);
         cell.append(spark);
         grid.append(cell);
@@ -1558,14 +1596,15 @@
       return el('span', { className: 'vals' }, el('span', { className: 'before' }, `${formatNumber(m.value - m.delta, m.unit)} → `), after, ' ', change);
     }
 
-    // A trend line per NPU, each relative to its own latest value, so npu1
-    // and npu2 share an axis whatever their scale: up is worse. The band is
-    // ± the metric's threshold; the axis spans at least 2.5 times that.
-    // lines: [[npu, [values, oldest first]]]. An SVG string.
+    // A trend line per lane, each relative to its own latest value, so npu1
+    // and npu2 (or batch 1 and 64) share an axis whatever their scale: up is
+    // worse. The band is ± the metric's threshold; the axis spans at least
+    // 2.5 times that. lines: [[color, [values, oldest first]]], the color a
+    // --variable. An SVG string.
     function sparkSvg(lines, metric) {
       const W = 160, H = 34, pad = 3;
       const rel = lines.filter(([, vs]) => vs.length && vs[vs.length - 1])
-        .map(([npu, vs]) => [npu, vs.map(v => v / vs[vs.length - 1] - 1)]);
+        .map(([color, vs]) => [color, vs.map(v => v / vs[vs.length - 1] - 1)]);
       if (!rel.length) return '';
       const t = threshold(metric);
       const span = Math.max(2.5 * t, ...rel.flatMap(([, r]) => r.map(Math.abs)));
@@ -1574,12 +1613,12 @@
       const y = r => (H / 2 - r / span * (H / 2 - pad)).toFixed(1);
       const parts = [`<rect x="0" y="${y(t)}" width="${W}" height="${(y(-t) - y(t)).toFixed(1)}" style="fill:var(--grid)"/>`,
                      `<line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" style="stroke:var(--rule)"/>`];
-      for (const [npu, r] of rel) {
+      for (const [color, r] of rel) {
         const off = n - r.length;
         const pts = r.map((v, i) => `${x(off + i).toFixed(1)},${y(v)}`);
-        if (pts.length > 1) parts.push(`<polyline points="${pts.join(' ')}" fill="none" style="stroke:var(--${npu})" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`);
+        if (pts.length > 1) parts.push(`<polyline points="${pts.join(' ')}" fill="none" style="stroke:var(--${color})" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`);
         const [lx, ly] = pts[pts.length - 1].split(',');
-        parts.push(`<circle cx="${lx}" cy="${ly}" r="2.2" style="fill:var(--${npu})"/>`);
+        parts.push(`<circle cx="${lx}" cy="${ly}" r="2.2" style="fill:var(--${color})"/>`);
       }
       return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${label(metric)} trend">${parts.join('')}</svg>`;
     }
@@ -1588,7 +1627,7 @@
 
     // Draws each card's trend lines from loaded histories, nightlies only
     // (all runs for a series with no nightly), turbo when there is any.
-    function fillSparks(cards, data, npus) {
+    function fillSparks(cards, data) {
       const nightly = nightlies(data);
       const index = new Map();
       for (const src of [data, nightly]) for (const s of src.series) index.set(`${s.npu}|${s.kase}|${s.metric}`, s);
@@ -1599,7 +1638,7 @@
       };
       for (const card of cards) {
         for (const [metric, holder] of card.sparks) {
-          const lines = npus.map(npu => [npu, valuesOf(index.get(`${npu}|${card.kase}|${metric}`))]);
+          const lines = holder.lines.map(([color, key]) => [color, valuesOf(index.get(key))]);
           holder.innerHTML = sparkSvg(lines, metric);
           const n = Math.max(...lines.map(([, v]) => v.length));
           holder.title = n > 1 ? `the last ${n} nightlies` : n === 1 ? 'one nightly so far: nothing to draw a line through' : 'no nightly has timed this yet';
@@ -1655,14 +1694,17 @@
     }
 
     // The [low, high] shaded behind a row's point: value ± d for a range
-    // starting "± d" (npu_us), and min to median call for a cycles range.
-    // The max is left to the tooltip: one stalled call would dwarf the band.
+    // starting "± d" (npu_us), and min to median call for a cycles range or
+    // a component's "median M, MAD d, p95 P". The max is left to the
+    // tooltip: one stalled call would dwarf the band.
     function spreadOf(value, row) {
       const range = (row && row.range) || '';
       const dev = /^± ([\d.]+)/.exec(range);
       if (dev) return [value - Number(dev[1]), value + Number(dev[1])];
       const cycles = cyclesSpread(range);
-      return cycles ? [value, cycles.median] : null;
+      if (cycles) return [value, cycles.median];
+      const median = /^median ([\d.]+), MAD/.exec(range);
+      return median ? [value, Number(median[1])] : null;
     }
 
     // The lower edge, then the upper filled down to it.
@@ -2044,16 +2086,25 @@
     // Components
     // ------------------------------------------------------------------
 
-    let componentsLoad = null, componentMetric = 'failed_seeds', componentToken = 0;
+    let componentsLoad = null, componentMetric = 'failed_seeds', componentToken = 0, componentCharts = [];
 
-    // Each check's runs.json and latest.json, fetched once.
+    // Each check's runs.json, latest.json and the published nightly before
+    // that, fetched once.
     function loadComponents() {
       componentsLoad ||= Promise.all(COMPONENTS.map(async check => {
         const dir = `${COMPONENTS_DIR}/${check.id}`;
-        const [index, latest] = await Promise.all([fetchJson(`${dir}/runs.json`), fetchJson(`${dir}/latest.json`)]);
-        return { check, index, latest: readable(latest) };
+        const [index, latest] = await Promise.all([fetchJson(`${dir}/runs.json`), fetchJson(`${dir}/latest.json`).then(readable)]);
+        const p = latest && previousPublished(readable(index), latest);
+        const previous = p ? readable(await fetchJson(`${dir}/runs/${p.id}.json`)) : null;
+        return { check, index, latest, previous };
       }));
       return componentsLoad;
+    }
+
+    function componentHistory(check, metric) {
+      const url = `${COMPONENTS_DIR}/${check.id}/history/${metric}.json`;
+      if (!historyCache.has(url)) historyCache.set(url, fetchJson(url));
+      return historyCache.get(url);
     }
 
     // `metric`'s history in every check that records it, each case under
@@ -2062,33 +2113,257 @@
       const files = await Promise.all(loaded.map(({ check, index }) => {
         const listed = readable(index) && index.metrics;
         if (listed && !listed.includes(metric)) return null;
-        const url = `${COMPONENTS_DIR}/${check.id}/history/${metric}.json`;
-        if (!historyCache.has(url)) historyCache.set(url, fetchJson(url));
-        return historyCache.get(url).then(h => readable(h) && { ...h, target: check.id,
+        return componentHistory(check, metric).then(h => readable(h) && { ...h, target: check.id,
           series: Object.fromEntries(Object.entries(h.series).map(([kase, s]) => [`${check.id}/${kase}`, s])) });
       }));
       return collect(files.filter(Boolean));
     }
 
-    // A run record's rows, a line per case and a column per metric.
-    function componentTable(rows) {
-      const cases = Object.keys(rows);
-      const found = new Set(cases.flatMap(c => Object.keys(rows[c])));
-      const cols = Object.keys(COMPONENT_METRICS).filter(m => found.has(m))
-        .concat([...found].filter(m => !COMPONENT_METRICS[m]).sort());
-      const head = el('tr', {}, el('th', {}, 'Case'),
-        ...cols.map(m => el('th', { className: 'num', title: COMPONENT_METRICS[m] || '' }, label(m))));
-      const body = cases.map(c => el('tr', {}, el('td', {}, el('code', {}, c)), ...cols.map(m => {
-        const cell = rows[c][m];
-        return el('td', { className: `num${m === 'failed_seeds' && cell && cell.value ? ' worse' : ''}`, title: (cell && cell.range) || '' },
-          cell ? formatValue(cell.value, cell.unit) : '');
-      })));
-      return el('div', { className: 'table-wrap' }, el('table', {}, el('thead', {}, head), el('tbody', {}, ...body)));
+    // Every metric's history of one check, its cases as the check names
+    // them, for the cards' trend lines.
+    async function checkHistories({ check, index }) {
+      const metrics = (readable(index) && index.metrics) || [];
+      const files = await Promise.all(metrics.map(metric => componentHistory(check, metric)));
+      return collect(files.map(readable).filter(Boolean).map(h => ({ ...h, target: check.id })));
     }
 
-    // One check's latest run: whether every seed passed, its numbers, and
-    // the command that runs a failed seed again.
-    function componentBand(check, index, latest, now) {
+    // A component metric's cell on a card: its trends one click away.
+    const componentCell = (metric, text, lanes) => ({ metric, text, lanes, href: hashFor({ view: 'components', metric }),
+      title: `${COMPONENT_METRICS[metric] || ''}\nClick for its trends.` });
+
+    // The hardware check's cards, one per seed: its batches are the lanes of
+    // per image, streaming, end-to-end and compile time. The header names the
+    // placement, and any batch whose compile placed differently.
+    function seedCards(record, cases, target) {
+      const detail = record.detail || [];
+      const failed = new Set([...(record.failed || []), ...detail.filter(d => !d.passed).map(d => `mobilenet/seed=${d.seed}/batch=${d.batch}`)]);
+      const seeds = new Map();
+      const ids = [...detail.map(d => `mobilenet/seed=${d.seed}/batch=${d.batch}`), ...Object.keys(record.rows), ...failed];
+      for (const m of ids.map(id => /^mobilenet\/seed=(\d+)(?:\/batch=(\d+))?$/.exec(id)).filter(Boolean)) {
+        if (!seeds.has(m[1])) seeds.set(m[1], new Set());
+        if (m[2]) seeds.get(m[1]).add(Number(m[2]));
+      }
+      const every = [...new Set([...seeds.values()].flatMap(s => [...s]))].sort((a, b) => a - b);
+      return [...seeds].map(([seed, set]) => {
+        const batches = [...set].sort((a, b) => a - b);
+        const kase = b => `mobilenet/seed=${seed}/batch=${b}`;
+        const caseOf = b => !failed.has(kase(b)) && cases.get(kase(b));
+        const lanes = metric => batches.filter(b => metric !== 'streaming_us' || b > 1).map(b => {
+          const c = caseOf(b);
+          return { name: `b${b}`, color: `series-${every.indexOf(b) % 6 + 1}`, key: `${target}|${kase(b)}|${metric}`, metric,
+                   m: c && c.metrics.get(metric), current: c && c.current,
+                   missing: failed.has(kase(b)) ? el('span', { className: 'worse' }, 'failed') : null };
+        });
+        const header = el('header', {}, el('span', { className: 'case-title', title: `mobilenet/seed=${seed}` },
+          el('span', { className: 'shape' }, `seed ${seed}`), seed === '3' ? el('span', { className: 'params' }, 'the design\'s default') : ''));
+        const placed = cases.get(`mobilenet/seed=${seed}`);
+        const cost = placed && placed.metrics.get('placement_cost');
+        if (cost) {
+          const digest = /placement (\w+)/.exec(cost.range || '');
+          header.append(el('span', { className: 'params', title: COMPONENT_METRICS.placement_cost },
+            `${digest ? `placement ${digest[1]} · ` : ''}cost ${formatNumber(cost.value, cost.unit)}`,
+            cost.change === null ? '' : ' ', cost.change === null ? '' : changeSpan(cost.change, cost.cls, placed.current, 'placement_cost')));
+        }
+        const mine = detail.filter(d => String(d.seed) === seed && d.placement);
+        const apart = mine.filter(d => d.placement !== mine[0].placement).map(d => d.batch);
+        if (apart.length) {
+          header.append(el('span', { className: 'why note warn', title: `placed as ${mine[0].placement} at batch ${mine[0].batch}` },
+            `placed differently at batch ${apart.join(', ')}`));
+        }
+        const [one, many] = [batches[0], batches[batches.length - 1]].map(b => caseOf(b) && caseOf(b).metrics.get('us_per_image'));
+        if (batches.length > 1 && one && many) {
+          header.append(el('span', { className: 'ratio', title: `time per image at batch ${batches[batches.length - 1]} over batch ${batches[0]}` },
+            `b${batches[batches.length - 1]} ÷ b${batches[0]} per image ${(many.value / one.value).toFixed(2)}×`));
+        }
+        const card = glanceGrid(header, [
+          componentCell('us_per_image', label('us_per_image'), lanes('us_per_image')),
+          componentCell('streaming_us', label('streaming_us'), lanes('streaming_us')),
+          componentCell('e2e_us_per_image', label('e2e_us_per_image'), lanes('e2e_us_per_image')),
+          componentCell('compile_s', label('compile_s'), lanes('compile_s')),
+        ]);
+        card.kase = `mobilenet/seed=${seed}`;
+        return card;
+      });
+    }
+
+    // The sweep's cards, one per fixture: failed seeds, the cost's mean and
+    // worst, CPU time and peak memory.
+    function fixtureCards(record, cases, target) {
+      const detail = record.detail || [];
+      return Object.keys(record.rows).map(fixture => {
+        const c = cases.get(fixture);
+        const lane = (name, metric, color) => ({ name, color, key: `${target}|${fixture}|${metric}`, metric,
+                                                  m: c && c.metrics.get(metric), current: c && c.current });
+        const seeds = detail.filter(d => d.fixture === fixture).length;
+        const header = el('header', {}, el('span', { className: 'case-title', title: fixture }, el('span', { className: 'shape' }, fixture),
+          SA_FIXTURES[fixture] ? el('span', { className: 'params' }, link(`${REPO}/blob/main/${SA_FIXTURES[fixture]}`, SA_FIXTURES[fixture])) : '',
+          seeds ? el('span', { className: 'params' }, plural(seeds, 'seed')) : ''));
+        const [mean, worst] = ['final_cost_mean', 'final_cost_max'].map(m => c && c.metrics.get(m));
+        if (mean && worst && mean.value) {
+          header.append(el('span', { className: 'ratio', title: 'the worst seed\'s final cost over the mean' },
+            `worst ÷ mean cost ${(worst.value / mean.value).toFixed(2)}×`));
+        }
+        const failed = c && c.metrics.get('failed_seeds');
+        const card = glanceGrid(header, [
+          componentCell('failed_seeds', label('failed_seeds'), [{ ...lane('', 'failed_seeds', 'series-5'), bad: Boolean(failed && failed.value) }]),
+          componentCell('final_cost_mean', 'Placement cost', [lane('mean', 'final_cost_mean', 'series-1'), lane('worst', 'final_cost_max', 'series-2')]),
+          componentCell('cpu_ms_mean', 'CPU time', [lane('mean', 'cpu_ms_mean', 'series-1'), lane('max', 'cpu_ms_max', 'series-2')]),
+          componentCell('peak_rss_mb_max', label('peak_rss_mb_max'), [lane('max', 'peak_rss_mb_max', 'series-2')]),
+        ]);
+        card.kase = fixture;
+        return card;
+      });
+    }
+
+    // The hardware check in a sentence: the default seed's best streaming
+    // time and one image's time.
+    function hardwareSummary(rows) {
+      const runs = Object.keys(rows).map(k => /^mobilenet\/seed=(\d+)\/batch=(\d+)$/.exec(k)).filter(Boolean);
+      const seeds = [...new Set(runs.map(m => m[1]))];
+      const seed = seeds.includes('3') ? '3' : seeds[0];
+      const streaming = runs.filter(m => m[1] === seed).map(m => rows[m[0]].streaming_us).filter(Boolean)
+        .sort((a, b) => a.value - b.value)[0];
+      const one = rows[`mobilenet/seed=${seed}/batch=1`] && rows[`mobilenet/seed=${seed}/batch=1`].us_per_image;
+      const parts = [streaming ? `seed ${seed} streams at ${formatNumber(streaming.value, 'us')} per image` : '',
+                     one ? `${streaming ? 'one' : `seed ${seed}: one`} image takes ${formatNumber(one.value, 'us')}` : ''].filter(Boolean);
+      const text = parts.join('; ');
+      return text ? ` ${text[0].toUpperCase()}${text.slice(1)}.` : '';
+    }
+
+    // The sweep in a sentence: the costliest fixture's cost and CPU time.
+    function sweepSummary(rows) {
+      const fixtures = Object.keys(rows).filter(f => rows[f].cpu_ms_mean);
+      if (!fixtures.length) return '';
+      const f = fixtures.reduce((a, b) => rows[b].cpu_ms_mean.value > rows[a].cpu_ms_mean.value ? b : a);
+      const { final_cost_mean: mean, final_cost_max: worst, cpu_ms_mean: cpu } = rows[f];
+      const cost = mean && worst ? `cost ${formatNumber(mean.value, 'cost')} mean, ${formatNumber(worst.value, 'cost')} worst; ` : '';
+      return ` ${f}: ${cost}${formatNumber(cpu.value / 1000, 's')} CPU per placement.`;
+    }
+
+    // A chart box in a band, drawn once it scrolls into view.
+    function bandChart(title, about, drawOn) {
+      const canvas = el('canvas', { ariaLabel: `${title}: ${about}` });
+      const box = el('div', { className: 'chart' }, el('h3', {}, title, el('span', { className: 'note' }, about)),
+        el('div', { className: 'canvas' }, canvas));
+      const seen = new IntersectionObserver(entries => {
+        if (!entries.some(e => e.isIntersecting)) return;
+        seen.disconnect();
+        componentCharts.push(drawOn(canvas));
+      }, { rootMargin: '400px' });
+      seen.observe(box);
+      return box;
+    }
+
+    // The hardware check's Batch scaling chart: per seed, the time per
+    // image against the batch, on a log axis; the nightly before dashed.
+    function batchCharts(record, previous) {
+      const curves = rec => {
+        const out = new Map();
+        for (const [kase, cells] of Object.entries((rec && rec.rows) || {})) {
+          const m = /^mobilenet\/seed=(\d+)\/batch=(\d+)$/.exec(kase);
+          if (!m || !cells.us_per_image) continue;
+          if (!out.has(m[1])) out.set(m[1], []);
+          out.get(m[1]).push({ x: Number(m[2]), y: cells.us_per_image.value });
+        }
+        for (const pts of out.values()) pts.sort((a, b) => a.x - b.x);
+        return out;
+      };
+      const now = curves(record), before = curves(previous);
+      if (!now.size) return [];
+      const batches = [...new Set([...now.values(), ...before.values()].flat().map(p => p.x))].sort((a, b) => a - b);
+      return [bandChart('Batch scaling', 'µs per image against the batch; the nightly before dashed', canvas => {
+        const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
+        const datasets = [];
+        [...now].forEach(([seed, pts], i) => {
+          const color = cssVar(`--series-${i % 6 + 1}`, '#5b6475');
+          datasets.push({ label: `seed ${seed}`, data: pts, borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 3, tension: 0 });
+          if (before.has(seed)) {
+            datasets.push({ label: `seed ${seed}, the nightly before`, data: before.get(seed), previous: true, borderColor: color, backgroundColor: color,
+                            borderWidth: 1.5, borderDash: [5, 4], pointRadius: 0, tension: 0 });
+          }
+        });
+        return new Chart(canvas, {
+          type: 'line',
+          data: { datasets },
+          options: {
+            animation: false, responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'nearest', intersect: false },
+            scales: {
+              x: { type: 'logarithmic', afterBuildTicks: axis => { axis.ticks = batches.map(value => ({ value })); },
+                   ticks: { color: fg, font: { size: 11 }, callback: v => `b${v}` }, grid: { display: false } },
+              y: { ...yRange(datasets), grid: { color: grid },
+                   ticks: { color: fg, maxTicksLimit: 5, font: { size: 11 }, callback: v => formatNumber(v, 'us') } },
+            },
+            plugins: {
+              legend: { display: true, align: 'end',
+                        labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 }, filter: item => !datasets[item.datasetIndex].previous } },
+              tooltip: { callbacks: {
+                title: items => items.length ? `batch ${items[0].parsed.x}` : '',
+                label: item => `${item.dataset.label}: ${formatNumber(item.parsed.y, 'us')} per image, ` +
+                  `${Math.round(1e6 / item.parsed.y).toLocaleString('en-US')} images/s`,
+              } },
+            },
+          },
+        });
+      })];
+    }
+
+    // The sweep's Seeds charts, one per fixture: each seed's final cost, a
+    // failed seed a red ✕ on the axis, the nightly before as faint ticks.
+    function seedCharts(record, previous) {
+      const detail = record.detail || [];
+      return [...new Set(detail.map(d => d.fixture))].map(fixture => {
+        const mine = detail.filter(d => d.fixture === fixture).sort((a, b) => a.seed - b.seed);
+        const before = new Map(((previous && previous.detail) || []).filter(d => d.fixture === fixture && d.passed).map(d => [d.seed, d.final_cost]));
+        return bandChart(`Seeds: ${fixture}`, 'final cost per seed; ticks the nightly before', canvas => {
+          const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
+          const costs = mine.map(d => d.passed && d.final_cost !== null ? d.final_cost : null);
+          const old = mine.map(d => before.has(d.seed) ? before.get(d.seed) : null);
+          const range = yRange([{ data: costs }, { data: old }]);
+          const floor = range.min === undefined ? 0 : range.min;
+          const datasets = [
+            { type: 'bar', label: 'final cost', data: costs, backgroundColor: cssVar('--series-1', '#1f6fb8'), order: 2 },
+            { type: 'line', label: 'the nightly before', data: old, showLine: false, pointStyle: 'line', pointRadius: 8,
+              borderColor: cssVar('--faint', '#8a93a3'), borderWidth: 2, order: 1 },
+            { type: 'line', label: 'failed', data: mine.map(d => d.passed ? null : floor), showLine: false, pointStyle: 'crossRot',
+              pointRadius: 6, borderColor: cssVar('--bad', '#c62f3c'), borderWidth: 2, order: 0 },
+          ];
+          return new Chart(canvas, {
+            type: 'bar',
+            data: { labels: mine.map(d => String(d.seed)), datasets },
+            options: {
+              animation: false, responsive: true, maintainAspectRatio: false,
+              interaction: { mode: 'index', intersect: false },
+              scales: {
+                x: { ticks: { color: fg, font: { size: 11 } }, grid: { display: false } },
+                y: { min: floor, ...(range.max === undefined ? {} : { max: range.max }), grid: { color: grid },
+                     ticks: { color: fg, maxTicksLimit: 5, includeBounds: false, font: { size: 11 }, callback: v => formatNumber(v, 'cost') } },
+              },
+              plugins: {
+                legend: { display: true, align: 'end',
+                          labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 }, sort: (a, b) => a.datasetIndex - b.datasetIndex } },
+                tooltip: {
+                  filter: item => item.raw !== null,
+                  callbacks: {
+                    title: items => items.length ? `seed ${mine[items[0].dataIndex].seed}` : '',
+                    label: item => item.dataset.label === 'failed' ? 'did not place' : `${item.dataset.label}: ${formatNumber(item.raw, 'cost')}`,
+                    afterBody: items => {
+                      const d = items.length && mine[items[0].dataIndex];
+                      return d ? `CPU ${formatNumber(d.cpu_ms, 'ms')}, peak ${formatNumber(d.peak_rss_mb, 'MB')}` : '';
+                    },
+                  },
+                },
+              },
+            },
+          });
+        });
+      });
+    }
+
+    // One check's latest run: whether every seed (or run) passed, what
+    // moved since the nightly before, a card per case, the check's chart,
+    // and the command that runs a failure again.
+    function componentBand(check, index, latest, now, previous) {
       const run = latestRun(check.id, index, null, null);
       const failed = run.failed || [];
       const warnings = warningsFor(check.title, { ...run, failed: [] }, now);
@@ -2096,36 +2371,59 @@
       const level = run.date === null ? 'none' : hard || failed.length ? 'bad'
         : warnings.some(w => w.level === 'warn' && !/changed since the previous run/.test(w.text)) ? 'warn' : 'ok';
       const shown = failed.length ? null : hard;
+      const ids = failed.map(id => check.failedId.exec(id));
+      const names = failed.map((id, i) => ids[i] ? check.say(...ids[i].slice(1)) : id);
       const headline = run.date === null ? 'No results published yet.'
-        : failed.length ? `${plural(failed.length, 'seed')} failed: ${failed.slice(0, 4).join(', ')}${failed.length > 4 ? ` and ${failed.length - 4} more` : ''}.`
+        : failed.length ? `${plural(failed.length, check.failure)} failed: ${names.slice(0, 4).join(', ')}${failed.length > 4 ? ` and ${failed.length - 4} more` : ''}.`
         : hard ? `${hard.text[0].toUpperCase()}${hard.text.slice(1)}.`
-        : 'Every seed passed.';
+        : check.passed;
+      const quiet = run.date !== null && !failed.length && !hard && latest && latest.rows ? check.summary(latest.rows) : '';
       const runs = (readable(index) && index.runs) || [];
       const band = el('article', { className: `verdict ${level}` });
+      band.cards = [];
       band.append(el('div', { className: 'verdict-top' },
         el('div', { className: 'npu-name' }, el('strong', {}, check.title), link(`${REPO}/blob/main/${check.script}`, check.script)),
         nightStrip({ runs, run })));
-      band.append(el('p', { className: 'headline' }, headline));
+      band.append(el('p', { className: 'headline' }, headline, quiet ? el('span', { className: 'quiet' }, quiet) : ''));
       band.append(el('p', { className: 'note' }, check.about));
       if (run.date === null) return band;
       for (const w of warnings.filter(w => w !== shown && w.level !== 'info')) {
         band.append(el('p', { className: `note ${w.level}` }, `${w.text[0].toUpperCase()}${w.text.slice(1)}.`));
       }
       if (latest && latest.rows) {
-        band.append(componentTable(latest.rows));
+        const recent = collect(historiesOf(check.id, [previous, latest].filter(Boolean)));
+        const own = recent.order.filter(o => o.npu === check.id);
+        if (own.length > 1) {
+          const { regressed, improved } = movedSeries(recent, check.id);
+          const moved = [...regressed, ...improved];
+          const list = el('p', { className: 'moves' }, el('span', { className: 'dim' }, `Since ${shortDate(own[own.length - 2].date)}:`));
+          if (!moved.length) list.append(el('span', { className: 'dim' }, 'nothing moved past its threshold.'));
+          for (const x of moved.slice(0, 8)) {
+            const c = caseParts(x.series.kase);
+            list.append(el('span', { className: 'move', title: x.series.kase },
+              `${c.params.length ? c.params.join(', ') : c.factory} ${label(x.series.metric).toLowerCase()} `,
+              changeSpan(x.change, x.cls, true, x.series.metric)));
+          }
+          if (moved.length > 8) list.append(el('span', { className: 'dim' }, `and ${moved.length - 8} more`));
+          band.append(list);
+        }
+        band.cards = check.cards(latest, latestCases(recent, check.id).cases, check.id);
+        band.append(el('div', { className: 'glance' }, ...band.cards));
+        const charts = check.charts(latest, previous);
+        if (charts.length) band.append(el('div', { className: 'charts' }, ...charts));
         if (String(latest.id) !== String(run.id)) {
           band.append(el('p', { className: 'note' }, `Numbers from the run of ${formatWhen(Date.parse(latest.date))}, the latest that published any.`));
         }
       }
-      const seeds = failed.map(id => /^(.*)\/seed(\d+)$/.exec(id)).filter(Boolean);
       const lines = run.commit ? [`git checkout ${run.commit.slice(0, 12)}`] : [];
-      lines.push(...(seeds.length ? seeds.slice(0, 6).map(m => check.repro(m[1], m[2])) : [check.repro(null, 'N')]));
-      lines.push(`# every seed, as the nightly runs them:`, check.whole);
+      const found = ids.filter(Boolean);
+      lines.push(...(found.length ? found.slice(0, 6).map(m => check.repro(...m.slice(1))) : [check.repro()]));
+      lines.push(`# every ${check.failure}, as the nightly runs them:`, check.whole);
       const intro = [];
       if (run.url) intro.push('Logs: ', link(run.url, `run ${run.id}`), `, artifact component-checks-${check.id}-${run.id}. `);
       intro.push('From a checkout with the environment set up (', link(COMPONENT_DOCS_URL, 'see the docs'), '):');
-      band.append(el('details', { className: 'repro', open: seeds.length > 0 },
-        el('summary', {}, seeds.length ? 'Logs and how to reproduce' : 'How to run it'),
+      band.append(el('details', { className: 'repro', open: found.length > 0 },
+        el('summary', {}, found.length ? 'Logs and how to reproduce' : 'How to run it'),
         el('p', {}, ...intro), el('pre', {}, lines.join('\n'))));
       band.append(runMeta(run));
       return band;
@@ -2136,7 +2434,13 @@
       const loaded = await loadComponents();
       if (token !== componentToken || currentView() !== 'components') return null;
       const now = Date.now();
-      $('component-verdicts').replaceChildren(...loaded.map(l => componentBand(l.check, l.index, l.latest, now)));
+      componentCharts.forEach(c => c.destroy());
+      componentCharts = [];
+      const bands = loaded.map(l => componentBand(l.check, l.index, l.latest, now, l.previous));
+      $('component-verdicts').replaceChildren(...bands);
+      loaded.forEach((l, i) => checkHistories(l).then(data => {
+        if (token === componentToken) fillSparks(bands[i].cards, data);
+      }));
       const listed = new Set(loaded.flatMap(l => (readable(l.index) && l.index.metrics) || []));
       const metrics = Object.keys(COMPONENT_METRICS).filter(m => !listed.size || listed.has(m))
         .concat([...listed].filter(m => !COMPONENT_METRICS[m]).sort());
@@ -2146,10 +2450,11 @@
         componentMetric = metric;
         history.replaceState(null, '', hashFor({ view: 'components', metric }));
         segment($('component-metric'), metrics, metric, pick);
-        $('component-metric-about').textContent = COMPONENT_METRICS[metric] ? `${label(metric)}: ${COMPONENT_METRICS[metric]}.` : '';
+        $('component-metric-about').textContent = COMPONENT_METRICS[metric] ? `${label(metric)}: ${COMPONENT_METRICS[metric]}. A change ${thresholdText(metric)}.` : '';
         const data = await componentHistories(loaded, metric);
         if (token !== componentToken || componentMetric !== metric || currentView() !== 'components') return null;
-        const groups = chartGroups(data.series).sort((a, b) => a.key.localeCompare(b.key));
+        // Seed and batch in numeric order: batch 4 before batch 16.
+        const groups = chartGroups(data.series).sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true }));
         $('component-charts-empty').hidden = groups.length > 0;
         placeCharts($('component-charts'), groups, modesOf(data), data, false);
         return groups;
@@ -2211,9 +2516,9 @@
       $('tab-kernel').textContent = factory || 'Kernel';
       const found = renderKernel(factory, nights);
       if (!found) { $('kernel-metric').replaceChildren(); $('kernel-charts-empty').hidden = true; return; }
-      const cards = kernelCards, npus = nights.map(n => n.npu);
-      loadHistories(npus, ALL_METRICS).then(data => {
-        if (currentKernel === factory && kernelCards === cards) fillSparks(cards, data, npus);
+      const cards = kernelCards;
+      loadHistories(nights.map(n => n.npu), ALL_METRICS).then(data => {
+        if (currentKernel === factory && kernelCards === cards) fillSparks(cards, data);
       });
       const pick = metric => {
         kernelMetric = metric;

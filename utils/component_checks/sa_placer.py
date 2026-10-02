@@ -12,10 +12,11 @@ seed moves the cost. Seed 0 is left out: the placer reads it as "seed from the
 clock", so its row could not be reproduced.
 
 Writes ``<fixture>/<metric>`` rows and a meta file in the kernel checks'
-format (utils/kernel_checks/publish.py), and exits 1 when any seed failed,
-after writing both. nightlyComponentChecks.yml runs this nightly and
-publishes the results; a regression is debuggable from the per-seed table
-this prints to stdout, and one seed is reproduced with
+format (utils/kernel_checks/publish.py), the meta with each seed's results
+as ``detail``, and exits 1 when any seed failed, after writing both.
+nightlyComponentChecks.yml runs this nightly and publishes the results; a
+regression is debuggable from the per-seed table this prints to stdout, and
+one seed is reproduced with
 
     aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=N sa-effort=1.0' \
         --mlir-pass-statistics <fixture>
@@ -135,6 +136,17 @@ def meta(rows: list[dict], fixtures: list[str], seeds: int, effort: float) -> di
         "measurement_sane": True,
         "seeds": seeds,
         "effort": effort,
+        "detail": [
+            {
+                "fixture": r["fixture"],
+                "seed": r["seed"],
+                "passed": r["passed"],
+                "final_cost": r["final_cost"],
+                "cpu_ms": round(r["cpu_ms"], 1),
+                "peak_rss_mb": round(r["peak_rss_mb"], 1),
+            }
+            for r in rows
+        ],
         "failed": failed,
         "exitstatus": 1 if failed else 0,
     }

@@ -490,10 +490,14 @@ def render(legs: list[Leg], run_url: str = "") -> str:
     if rows := _changes(legs, "improved"):
         out += [""] + _details(f"Improved ({len(rows)})", _table(header, rows))
     if rows := _changes(legs, "other"):
+        # Only the metrics listed: thresholds.json names the component
+        # checks' too.
+        listed = {row[2] for row in rows}
         thresholds = ", ".join(
             f"`{m}` {100 * t:g}%"
             + (f" and {MAD[m]:g}\u00d7 its MAD" if m in MAD else "")
             for m, t in OTHER.items()
+            if m in listed
         )
         note = (
             f"Listed past {thresholds}. `npu_us` is timed on the host and "

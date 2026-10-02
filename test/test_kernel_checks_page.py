@@ -95,7 +95,9 @@ const el0 = {};
     def run(checks):
         ids = sorted(set(re.findall(r'\bid="([^"]+)"', PAGE.read_text())))
         known = f"const PAGE_IDS = new Set({json.dumps(ids)});\n"
-        subprocess.run([node, "-e", known + setup + script + data + checks], check=True)
+        # On stdin: the page outgrew the 128 KiB a single argument may hold.
+        source = known + setup + script + data + checks
+        subprocess.run([node, "-"], input=source, text=True, check=True)
 
     return run
 
@@ -113,8 +115,10 @@ assert.equal(changeClass(0.02, 'cycles'), 'worse');
 assert.equal(changeClass(-0.02, 'kernel_object_bytes'), 'better');
 assert.equal(changeClass(0.09, 'npu_us'), '');
 assert.equal(changeClass(0.1, 'npu_us'), 'worse');
-assert.equal(changeClass(0.05, 'compile_s'), '');
-assert.equal(changeClass(0.1, 'compile_s'), 'worse');
+assert.equal(changeClass(0.14, 'compile_s'), '');
+assert.equal(changeClass(0.15, 'compile_s'), 'worse');
+assert.equal(changeClass(0.009, 'final_cost_mean'), '');
+assert.equal(changeClass(0.01, 'final_cost_mean'), 'worse');
 assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes']);
 """)
 
@@ -794,7 +798,7 @@ assert.equal(grid.children[2].text, 'Object sizenpu14.0 KiBnpu2—');
 assert.ok(cards[1].children[0].text.includes('npu1: timing failed'));
 assert.ok(cards[2].children[0].text.includes('npu1: fails correctness'));
 // The trend lines, once the histories are in.
-fillSparks(cards, db, ['npu1', 'npu2']);
+fillSparks(cards, db);
 const spark = cards[0].sparks.get('cycles');
 assert.ok(spark.innerHTML.includes('<polyline') && spark.innerHTML.includes('var(--npu2)'));
 assert.equal(spark.title, 'the last 2 nightlies');
@@ -967,11 +971,14 @@ assert.equal(one(card, n => n.className === 'headline').text,
              '5 seeds failed: test_sa_effort/seed4, mobilenet/seed11, mobilenet/seed12, mobilenet/seed13 and 1 more.');
 // No power mode: a sweep runs on a hosted runner, with no NPU.
 assert.ok(!card.text.includes('power mode'));
-const table = one(card, n => n.tag === 'table');
-assert.deepEqual(all(table, n => n.tag === 'th').map(th => th.text), ['Case', label('failed_seeds'), label('final_cost_mean'), label('cpu_ms_max')]);
-const cells = all(table, n => n.tag === 'tr').slice(1).map(tr => tr.children.map(td => td.text));
-assert.deepEqual(cells, [['test_sa_effort', '1 seed', '12.25', ''], ['mobilenet', '4 seeds', '', '21,000 ms']]);
-assert.ok(all(table, n => n.tag === 'td' && n.className === 'num worse').length === 2);
+// A card per fixture; a nonzero failed-seeds count is red.
+assert.deepEqual(card.cards.map(c => c.kase), ['test_sa_effort', 'mobilenet']);
+const [, grid] = card.cards[1].children;
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Failed seeds', 'Placement cost', 'CPU time', label('peak_rss_mb_max')]);
+assert.equal(grid.children[0].children[1].children[1].className, 'vals worse');
+assert.equal(grid.children[2].text, 'CPU timemean—max21,000 ms');
+// A record without detail, as published before it, has no Seeds chart.
+assert.equal(all(card, n => n.className === 'charts').length, 0);
 const repro = one(card, n => n.tag === 'details');
 assert.equal(repro.open, true);
 assert.ok(repro.text.includes('artifact component-checks-sa-placer-7'));
@@ -988,16 +995,95 @@ assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n'), [
 """)
 
 
+SWEEP_NIGHTS = """
+// Two sweep nightlies of one fixture over seeds 1..4: the latest costs
+// more at seed 2 and fails seed 4.
+const seedRuns = (costs, cpu) => costs.map((final_cost, i) => ({ fixture: 'mobilenet', seed: i + 1,
+  passed: final_cost !== null, final_cost, cpu_ms: cpu, peak_rss_mb: 200 }));
+const sweepRecord = (id, date, costs, cpu) => {
+  const passed = costs.filter(c => c !== null);
+  const cell = (value, unit) => ({ value, unit });
+  return { id, date, pmode: null, commit: { ...commit }, provenance: {}, detail: seedRuns(costs, cpu), rows: { mobilenet: {
+    failed_seeds: cell(costs.length - passed.length, 'seeds'),
+    final_cost_mean: cell(passed.reduce((a, b) => a + b, 0) / passed.length, 'cost'),
+    final_cost_max: cell(Math.max(...passed), 'cost'),
+    cpu_ms_mean: cell(cpu, 'ms'), cpu_ms_max: cell(cpu, 'ms'), peak_rss_mb_max: cell(200, 'MB'),
+  } } };
+};
+const before = sweepRecord('6', '2026-10-01T06:30:00Z', [100, 100, 100, 100], 2000);
+const after = sweepRecord('7', '2026-10-02T06:30:00Z', [100, 110, 100, null], 2100);
+const sweepIndex = { target: 'sa-placer', runs: [night('6', before.date, null), night('7', after.date, null, { failed: ['mobilenet/seed4'] })] };
+"""
+
+
+def test_sweep_cards_and_seeds_chart_compare_with_the_nightly_before(page):
+    page(COMPONENT_RUNS + SWEEP_NIGHTS + """
+assert.equal(previousPublished(sweepIndex, after).id, '6');
+const card = componentBand(sweep, sweepIndex, after, NOW, before);
+assert.equal(one(card, n => n.className === 'headline').text, '1 seed failed: mobilenet/seed4.');
+// The worst cost moved 10%, past its 1%; CPU time 5%, within its 25%.
+const moves = one(card, n => n.className === 'moves');
+assert.equal(moves.text, 'Since 1 Oct:mobilenet cost (worst) +10.0%mobilenet cost (mean) +3.3%');
+const [header, grid] = card.cards[0].children;
+assert.ok(header.text.includes('utils/component_checks/fixtures/mobilenet.mlir'));
+assert.ok(header.text.includes('4 seeds'));
+assert.equal(header.children.at(-1).text, 'worst ÷ mean cost 1.06×');
+const cost = grid.children[1];
+assert.equal(cost.text, 'Placement costmean100 → 103.3 +3.3%worst100 → 110 +10.0%');
+assert.deepEqual(all(cost, n => /^chg /.test(n.className || '')).map(n => n.className), ['chg worse strong', 'chg worse strong']);
+assert.equal(all(grid.children[2], n => /^chg /.test(n.className || ''))[0].className, 'chg flat');
+assert.equal(cost.href, '#view=components&metric=final_cost_mean');
+// The Seeds chart: a bar per seed, the nightly before as ticks, seed 4 a ✕.
+const [bars, ticks, crosses] = chart.data.datasets;
+assert.deepEqual(chart.data.labels, ['1', '2', '3', '4']);
+assert.deepEqual(bars.data, [100, 110, 100, null]);
+assert.deepEqual(ticks.data, [100, 100, 100, 100]);
+assert.deepEqual(crosses.data.map(v => v !== null), [false, false, false, true]);
+assert.equal(crosses.data[3], chart.options.scales.y.min);
+assert.equal(chart.options.plugins.tooltip.callbacks.afterBody([{ dataIndex: 1 }]), 'CPU 2,100 ms, peak 200 MB');
+assert.equal(chart.options.plugins.tooltip.callbacks.label({ dataset: crosses, raw: 0 }), 'did not place');
+// The trend lines: a line each for the mean and the worst cost.
+fillSparks(card.cards, collect(historiesOf('sa-placer', [before, after])));
+const spark = card.cards[0].sparks.get('final_cost_mean');
+assert.ok(spark.innerHTML.includes('var(--series-1)') && spark.innerHTML.includes('var(--series-2)'));
+""")
+
+
+HW_NIGHTS = """
+// Two hardware nightlies, seeds 3 and 7 at batch 1 and 16: seed 3's
+// batch 16 is 7% slower in the latest, past its 5% and its MADs.
+const hwRecord = (id, date, b16, extra) => {
+  const rows = {};
+  for (const seed of [3, 7]) {
+    rows[`mobilenet/seed=${seed}`] = { placement_cost: { value: 300 + seed, unit: 'cost', range: `placement 0123456789ab` } };
+    for (const [batch, us] of [[1, 295.7], [16, seed === 3 ? b16 : 99]]) {
+      rows[`mobilenet/seed=${seed}/batch=${batch}`] = {
+        us_per_image: { value: us, unit: 'us', range: `median ${us + 1}, MAD 0.20, p95 ${us + 2}` },
+        e2e_us_per_image: { value: us + 100, unit: 'us' },
+        compile_s: { value: 40, unit: 's' },
+        ...(batch > 1 ? { streaming_us: { value: (us * 16 - 295.7) / 15, unit: 'us' } } : {}),
+      };
+    }
+  }
+  rows.mobilenet = { failed_seeds: { value: 0, unit: 'seeds' } };
+  const detail = [3, 7].flatMap(seed => [1, 16].map(batch => ({ seed, batch, passed: true, placement: '0123456789ab' })));
+  return { id, date, pmode: 'turbo', commit: { ...commit }, provenance: {}, rows, detail, ...(extra || {}) };
+};
+const hwBefore = hwRecord('6', '2026-10-01T06:30:00Z', 98);
+const hwAfter = hwRecord('7', '2026-10-02T06:30:00Z', 104.9);
+const hwIndex = { target: 'sa-placer-hw', runs: [night('6', hwBefore.date, 'turbo'), night('7', hwAfter.date, 'turbo')] };
+"""
+
+
 def test_a_passing_check_says_so_and_how_to_run_it(page):
-    page(COMPONENT_RUNS + """
-const index = { target: 'sa-placer-hw', runs: [night('7', '2026-10-02T06:30:00Z', 'turbo')] };
-const latest = { id: '7', date: '2026-10-02T06:30:00Z', rows: { 'mobilenet/seed3': { latency_us: { value: 295.7, unit: 'us' } } } };
-const card = componentBand(hw, index, latest, NOW);
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(card.className, 'verdict ok');
-assert.equal(one(card, n => n.className === 'headline').text, 'Every seed passed.');
+assert.equal(one(card, n => n.className === 'headline').text,
+             'Every run passed. Seed 3 streams at 92.2 µs per image; one image takes 295.7 µs.');
 const repro = one(card, n => n.tag === 'details');
 assert.equal(repro.open, false);
-assert.ok(one(repro, n => n.tag === 'pre').text.includes('python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 1.0'));
+assert.ok(one(repro, n => n.tag === 'pre').text.includes('python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 1.0 --batch B'));
 assert.ok(card.text.includes('turbo mode'));
 // Nothing published yet.
 const empty = componentBand(hw, null, null, NOW);
@@ -1006,21 +1092,90 @@ assert.equal(one(empty, n => n.className === 'headline').text, 'No results publi
 """)
 
 
+def test_hardware_seed_cards_show_each_batch_against_the_nightly_before(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
+assert.equal(one(card, n => n.className === 'moves').text,
+             'Since 1 Oct:seed 3, batch 16 streaming +8.7%seed 3, batch 16 per image +7.0%');
+assert.deepEqual(card.cards.map(c => c.kase), ['mobilenet/seed=3', 'mobilenet/seed=7']);
+const [header, grid] = card.cards[0].children;
+assert.equal(header.children[0].text, "seed 3the design's default");
+assert.equal(header.children[1].text, 'placement 0123456789ab · cost 303 0.0%');
+assert.equal(header.children.at(-1).text, 'b16 ÷ b1 per image 0.35×');
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Per image', 'Streaming', 'End-to-end / image', 'Compile time']);
+// A lane per batch, colored past the threshold only; streaming has no b1.
+const perImage = grid.children[0];
+assert.equal(perImage.text, 'Per imageb1295.7 µs → 295.7 µs 0.0%b1698 µs → 104.9 µs +7.0%');
+assert.deepEqual(perImage.children.slice(1, 3).map(r => r.children[0].className), ['npu n-series-1', 'npu n-series-2']);
+assert.deepEqual(all(perImage, n => /^chg /.test(n.className || '')).map(n => n.className), ['chg flat', 'chg worse']);
+assert.equal(grid.children[1].children.length, 3);
+assert.equal(grid.children[3].text, 'Compile timeb140 s → 40 s 0.0%b1640 s → 40 s 0.0%');
+assert.equal(perImage.href, '#view=components&metric=us_per_image');
+// The trend lines, a line per batch.
+fillSparks(card.cards, collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter])));
+const spark = card.cards[0].sparks.get('us_per_image');
+assert.ok(spark.innerHTML.includes('var(--series-1)') && spark.innerHTML.includes('var(--series-2)'));
+// The batch scaling chart: a line per seed, the nightly before dashed and out of the legend.
+const sets = chart.data.datasets;
+assert.deepEqual(sets.map(d => [d.label, d.borderDash ? d.borderDash.length : 0]), [
+  ['seed 3', 0], ['seed 3, the nightly before', 2], ['seed 7', 0], ['seed 7, the nightly before', 2]]);
+assert.deepEqual(sets[0].data, [{ x: 1, y: 295.7 }, { x: 16, y: 104.9 }]);
+assert.equal(chart.options.scales.x.type, 'logarithmic');
+const axis = {};
+chart.options.scales.x.afterBuildTicks(axis);
+assert.deepEqual(axis.ticks.map(t => t.value), [1, 16]);
+assert.equal(chart.options.scales.x.ticks.callback(16), 'b16');
+assert.deepEqual(sets.map((d, datasetIndex) => chart.options.plugins.legend.labels.filter({ datasetIndex })), [true, false, true, false]);
+assert.equal(chart.options.plugins.tooltip.callbacks.label({ dataset: sets[0], parsed: { x: 16, y: 104.9 } }),
+             'seed 3: 104.9 µs per image, 9,533 images/s');
+// A batch placed apart from the first is noted on its seed's card.
+const apart = hwRecord('7', hwAfter.date, 104.9);
+apart.detail[1].placement = 'fedcba987654';
+const noted = componentBand(hw, hwIndex, apart, NOW, hwBefore).cards[0].children[0];
+assert.ok(noted.text.includes('placed differently at batch 16'));
+""")
+
+
+def test_a_failed_run_is_named_by_seed_and_batch_with_its_repro(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+const failedAt = hwRecord('7', hwAfter.date, 104.9);
+delete failedAt.rows['mobilenet/seed=7/batch=16'];
+failedAt.detail[3].passed = false;
+failedAt.failed = ['mobilenet/seed=7/batch=16'];
+const index = { target: 'sa-placer-hw', runs: [night('6', hwBefore.date, 'turbo'),
+  night('7', hwAfter.date, 'turbo', { failed: ['mobilenet/seed=7/batch=16'] })] };
+const card = componentBand(hw, index, failedAt, NOW, hwBefore);
+assert.equal(card.className, 'verdict bad');
+assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: seed 7 at batch 16.');
+const lanes = card.cards[1].children[1].children[0];
+assert.equal(lanes.text, 'Per imageb1295.7 µs → 295.7 µs 0.0%b16failed');
+// No ratio from the failed batch's number of the night before.
+assert.ok(!card.cards[1].children[0].text.includes('÷'));
+assert.ok(card.cards[0].children[0].text.includes('b16 ÷ b1'));
+const repro = one(card, n => n.tag === 'details');
+assert.equal(repro.open, true);
+assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n').slice(0, 3), [
+  'git checkout abcdef123456',
+  'cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed 7 --sa-effort 1.0 --batch 16',
+  '# every run, as the nightly runs them:',
+]);
+""")
+
+
 def test_a_refused_check_says_why_and_shows_the_last_numbers(page):
-    page(COMPONENT_RUNS + """
+    page(COMPONENT_RUNS + HW_NIGHTS + """
 const refused = "power mode is default, required 'turbo'";
 const index = { target: 'sa-placer-hw', runs: [
   night('6', '2026-10-01T06:30:00Z', 'turbo'),
   night('7', '2026-10-02T06:30:00Z', 'default', { sane: null, published: false, refused }),
 ] };
-const latest = { id: '6', date: '2026-10-01T06:30:00Z', rows: { 'mobilenet/seed3': { latency_us: { value: 295.7, unit: 'us' } } } };
-const card = componentBand(hw, index, latest, NOW);
+const card = componentBand(hw, index, hwBefore, NOW);
 assert.equal(card.className, 'verdict bad');
 assert.equal(one(card, n => n.className === 'headline').text, `The run refused to measure: ${refused}.`);
 // The refusal once, as the headline; the power mode as a warning.
 assert.deepEqual(all(card, n => /^note /.test(n.className || '')).map(n => n.className), ['note warn']);
 assert.ok(card.text.includes('Numbers from the run of'));
-assert.ok(one(card, n => n.tag === 'table').text.includes('295.7 us'));
+assert.ok(card.cards[0].text.includes('295.7 µs'));
 """)
 
 
@@ -1036,11 +1191,11 @@ global.fetch = async url => {
 };
 const loaded = [
   { check: sweep, index: { schema: 1, metrics: ['failed_seeds', 'final_cost_mean'] } },
-  { check: hw, index: { schema: 1, metrics: ['failed_seeds', 'latency_us'] } },
+  { check: hw, index: { schema: 1, metrics: ['failed_seeds', 'us_per_image'] } },
 ];
 (async () => {
-  let data = await componentHistories(loaded, 'latency_us');
-  assert.deepEqual(fetched, ['../component-checks/sa-placer-hw/history/latency_us.json']);
+  let data = await componentHistories(loaded, 'us_per_image');
+  assert.deepEqual(fetched, ['../component-checks/sa-placer-hw/history/us_per_image.json']);
   data = await componentHistories(loaded, 'failed_seeds');
   // Both checks have a mobilenet case; each keeps its own chart.
   assert.deepEqual(chartGroups(data.series).map(g => g.kase).sort(),
@@ -1052,6 +1207,9 @@ const loaded = [
   assert.deepEqual(chart.data.datasets.map(d => [d.label, d.borderDash.length]), [['sa-placer-hw', 0]]);
   assert.equal(chart.options.plugins.legend.display, false);
   assert.deepEqual(chart.options.plugins.tooltip.callbacks.footer([{ dataIndex: 0 }]), ['sa-placer-hw: fixtures abc']);
+  // A check's own histories, for its cards' trend lines, keep their cases.
+  const own = await checkHistories(loaded[0]);
+  assert.deepEqual(own.series.map(s => s.key).sort(), ['sa-placer|mobilenet|failed_seeds', 'sa-placer|test_sa_effort|failed_seeds']);
 })().catch(e => { console.error(e); process.exit(1); });
 """)
 

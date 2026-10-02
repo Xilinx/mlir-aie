@@ -618,7 +618,10 @@ def test_every_file_carries_the_schema_and_a_newer_one_is_refused(publish, tmp_p
         ("sa_placer/mean_final_cost", "test_sa_effort/final_cost_mean"),
         ("sa_placer/max_final_cost", "test_sa_effort/final_cost_max"),
         ("sa_placer/hw_fail_count", "mobilenet/failed_seeds"),
-        ("sa_placer/hw_seed7_latency_us", "mobilenet/seed7/latency_us"),
+        (
+            "sa_placer/hw_seed7_latency_us",
+            "mobilenet/seed=7/batch=1/us_per_image",
+        ),
         ("sa_placer/mean_wall_time_ms", None),
         ("sa_placer/max_peak_rss_mb", None),
         ("add/1024x16/bfloat16/cycles", "add/1024x16/bfloat16/cycles"),
@@ -663,22 +666,26 @@ def test_a_component_check_migrates_and_keeps_its_redirect(publish, tmp_path):
     assert record["target"] == "sa-placer-hw" and record["pmode"] is None
     assert record["rows"] == {
         "mobilenet": {"failed_seeds": {"value": 0, "unit": "seeds"}},
-        "mobilenet/seed3": {"latency_us": {"value": 295.7, "unit": "us"}},
+        "mobilenet/seed=3/batch=1": {"us_per_image": {"value": 295.7, "unit": "us"}},
     }
     index = json.loads((out / "runs.json").read_text())
-    assert index["metrics"] == ["failed_seeds", "latency_us"]
+    assert index["metrics"] == ["failed_seeds", "us_per_image"]
 
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
         "provenance": "commit 0123456789 | peano 22.0.0+0006955e | pmode turbo",
         "measurement_sane": True,
-        "failed": ["mobilenet/seed2"],
+        "detail": [
+            {"seed": 3, "batch": 16, "passed": True, "us_per_image": 81.48},
+            {"seed": 2, "batch": 16, "passed": False, "us_per_image": None},
+        ],
+        "failed": ["mobilenet/seed=2/batch=16"],
         "exitstatus": 1,
     }
     rows = [
         {"name": "mobilenet/failed_seeds", "unit": "seeds", "value": 1},
         {
-            "name": "mobilenet/seed3/placement_cost",
+            "name": "mobilenet/seed=3/placement_cost",
             "unit": "cost",
             "value": 300,
             "range": "placement 0123456789ab",
@@ -701,15 +708,17 @@ def test_a_component_check_migrates_and_keeps_its_redirect(publish, tmp_path):
         ]
     )
     record = json.loads((out / "runs/9.json").read_text())
-    assert record["failed"] == ["mobilenet/seed2"] and record["published"]
+    assert record["failed"] == ["mobilenet/seed=2/batch=16"] and record["published"]
+    assert record["detail"] == meta["detail"]
     assert record["device"] == "Strix Halo" and record["pmode"] == "turbo"
     index = json.loads((out / "runs.json").read_text())
-    assert index["metrics"] == ["failed_seeds", "latency_us", "placement_cost"]
+    assert index["metrics"] == ["failed_seeds", "placement_cost", "us_per_image"]
+    assert all("detail" not in run for run in index["runs"])
     failed = json.loads((out / "history/failed_seeds.json").read_text())
     assert failed["target"] == "sa-placer-hw"
     assert failed["series"] == {"mobilenet": {"values": [0, 1]}}
     cost = json.loads((out / "history/placement_cost.json").read_text())
-    assert cost["series"]["mobilenet/seed3"]["ranges"] == [
+    assert cost["series"]["mobilenet/seed=3"]["ranges"] == [
         None,
         "placement 0123456789ab",
     ]

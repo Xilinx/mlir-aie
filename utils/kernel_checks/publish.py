@@ -11,9 +11,10 @@ the branch, ``kernel-checks/<npu>/``, and each component check
     runs/<id>.json         one record per run: the Actions run, what started
                            it (``event``), commit, power mode, provenance,
                            sanity result, failures, and every row as
-                           rows[case][metric] = {value, unit, range}
-    runs.json              the records without their rows, oldest first, and
-                           the metrics there is a history of
+                           rows[case][metric] = {value, unit, range}; a
+                           component check's adds its per-seed ``detail``
+    runs.json              the records without their rows or detail, oldest
+                           first, and the metrics there is a history of
     latest.json            the newest nightly record that published rows; the
                            PR report's baseline
     history/<metric>.json  one series per case for that metric, a value per
@@ -98,7 +99,7 @@ LEGACY_ROWS = (
     (r"sa_placer/fail_count", "test_sa_effort/failed_seeds"),
     (r"sa_placer/(mean|max)_final_cost", r"test_sa_effort/final_cost_\1"),
     (r"sa_placer/hw_fail_count", "mobilenet/failed_seeds"),
-    (r"sa_placer/hw_seed(\d+)_latency_us", r"mobilenet/seed\1/latency_us"),
+    (r"sa_placer/hw_seed(\d+)_latency_us", r"mobilenet/seed=\1/batch=1/us_per_image"),
 )
 # The part a runtime's device name means, first match wins. XRT names the
 # same NPU differently across drivers ("RyzenAI-npu1", "NPU Phoenix"); the
@@ -247,7 +248,7 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
         ),
         "rows": rows_by_case(rows) if meta.get("measurement_sane") is True else {},
     }
-    for key in ("correctness_error", "refused"):
+    for key in ("correctness_error", "refused", "detail"):
         if key in meta:
             record[key] = meta[key]
     if catalogue:
@@ -264,8 +265,8 @@ def is_nightly(record: dict) -> bool:
 
 
 def summary(record: dict) -> dict:
-    """Return the record without its rows, for ``runs.json``."""
-    return {k: v for k, v in record.items() if k != "rows"}
+    """Return the record without its rows or detail, for ``runs.json``."""
+    return {k: v for k, v in record.items() if k not in ("rows", "detail")}
 
 
 def _current_name(name: str) -> str | None:
