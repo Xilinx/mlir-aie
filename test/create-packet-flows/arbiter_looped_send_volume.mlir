@@ -66,7 +66,7 @@ module {
 // A one-shot receive at (0, 2) adds a token: two passes, which overrun.
 
 module {
-  // expected-warning@+1 {{Flows can deadlock however they are routed: packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) can fill its receiver}}
+  // expected-error@+1 {{Flows can deadlock however they are routed: packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) can fill its receiver}}
   aie.device(npu1_1col) {
     %t02 = aie.tile(0, 2)
     %t03 = aie.tile(0, 3)

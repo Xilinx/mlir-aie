@@ -257,6 +257,10 @@ struct RoutingFaults {
   /// Sources whose packet flows the routing put on one arbiter or link in a
   /// hold cycle, to keep apart like conflicting ones from then on.
   std::vector<std::pair<PathEndPoint, PathEndPoint>> apart;
+  /// Sources whose packet flows wait on each other at receivers they share
+  /// in a hold cycle, so their trees should meet: each routes the ids the
+  /// other does not send as a part of their own from then on.
+  std::vector<std::pair<PathEndPoint, PathEndPoint>> together;
   /// Whether the connections are all of flows leaving a switchbox by a master
   /// port of the prioritized flows, and by no master set of theirs.
   bool onlyOverlayMasters = false;

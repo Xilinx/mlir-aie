@@ -309,6 +309,10 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
     elsewhere. If flows that can deadlock pairwise must take more arbiters at
     some switchbox than it has, whatever the routing, or no routing keeps them
     apart, the pass fails and names the flows and what it assumed about them.
+    It also fails where flows can deadlock however they are routed, as one
+    source or receiver orders them, or where packet flows into receivers they
+    share hold arbiters in a cycle no routing found breaks, unless
+    allow-deadlock-prone is set, which only warns of those.
 
     This reads buffer descriptor lengths from the DMA bodies (aie.mem,
     aie.memtile_dma, aie.shim_dma), so run the pass after those exist. A
@@ -328,6 +332,11 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
               /*default=*/"true",
               "Circuit-switch exclusive packet hops at switchboxes with more "
               "packet master ports than free arbiters.">,
+       Option<"clAllowDeadlockProne", "allow-deadlock-prone", "bool",
+              /*default=*/"false",
+              "Warn of, rather than fail on, flows that can deadlock however "
+              "they are routed, and hold cycles through receivers packet "
+              "flows share that no routing found avoids.">,
   ];
 }
 

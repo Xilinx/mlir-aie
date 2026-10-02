@@ -5,9 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
-// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s | FileCheck %s
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
+// RUN: aie-opt --aie-create-pathfinder-flows="allow-deadlock-prone=true" %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false allow-deadlock-prone=true" %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="allow-deadlock-prone=true" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
+// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 | FileCheck %s --check-prefix=STRICT
 
 // Prioritized flow 16 from (9,8) Core:1 leaves (9,8) with prioritized flow 12
 // on arbiter 5 and comes back into (9,8) Core:0 with flow 2 on arbiter 4. Each
@@ -16,8 +17,9 @@
 // it. Reduced from router_properties.py xcvc1902 seed 48.
 //
 // The trees of flow 2 find no switchbox to meet at that keeps their arbiters
-// apart from flow 16's, so the pass warns once of the hold cycle through the
-// receivers they share.
+// apart from flow 16's, so with allow-deadlock-prone the pass warns once of
+// the hold cycle through the receivers they share. Without it, the flows
+// route like the others, which avoids the cycle.
 
 // CHECK-LABEL: %switchbox_9_8 = aie.switchbox(%tile_9_8) {
 // CHECK-DAG:     %[[A5_2:.*]] = aie.amsel<5> (2)
@@ -34,6 +36,8 @@
 // WARN:     warning: Packet flows into receivers they share can deadlock
 // WARN-SAME: (id 2)
 // WARN-NOT: warning
+
+// STRICT-NOT: {{warning|error|priority_route}}
 
 module {
   aie.device(xcvc1902) {

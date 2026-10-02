@@ -360,16 +360,14 @@ public:
   /// `routes`, indexed like getStreams(), that the routing of some requested
   /// stream takes part in; nullopt when there is none. Waits between trees
   /// at the master port of a receiver they share hold however they are
-  /// routed, so they count only with `forcedWaits`.
+  /// routed, so they count only with `forcedWaits`. With `definite`, drains
+  /// that need StreamDeadlockAnalysis::assumptions do not count.
   std::optional<HoldCycle>
   holdCycle(llvm::ArrayRef<llvm::SmallVector<StreamHop, 8>> routes,
-            bool forcedWaits = false) const;
+            bool forcedWaits = false, bool definite = false) const;
 
   /// The waits of `cycle`, one sentence each.
   std::string explain(const HoldCycle &cycle) const;
-
-  /// Whether a drain in `cycle` rests on StreamDeadlockAnalysis::assumptions.
-  bool assumed(const HoldCycle &cycle) const;
 
 private:
   bool blocks(size_t s, size_t t) const;

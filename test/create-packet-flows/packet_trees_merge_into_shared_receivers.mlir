@@ -7,24 +7,19 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
-// Both sources of flow 30 send id 30 to both its receivers, so their trees may
-// merge where they reach the same receivers. They meet only at the masters into
-// the receivers, (2,0) South:3 to the shim's DMA:1 and (2,1) DMA:5. Counting
-// the second tree there over the channel's capacity left no legal routing.
+// Both sources of flow 30 send id 30 to both its receivers, (2,0) DMA:1 and
+// (2,1) DMA:5. Trees that meet only at the masters into the receivers each
+// hold the arbiter at one receiver that the other needs, so the trees meet at
+// (2,2) and go on as one tree into both receivers.
 // Reduced from router_properties.py npu2 seed 1325.
 
 // CHECK-LABEL: aie.switchbox(%shim_noc_tile_2_0)
-// CHECK:         aie.masterset(South : 3, %[[S0:[0-9]+]], %[[S1:[0-9]+]])
-// CHECK:         aie.packet_rules(West : 2) {
-// CHECK:           aie.rule(31, 30, %[[S1]])
-// CHECK:         aie.packet_rules(North : 1) {
-// CHECK-NEXT:      aie.rule(31, 30, %[[S0]])
-// CHECK-LABEL: aie.switchbox(%mem_tile_2_1)
-// CHECK:         aie.masterset(DMA : 5, %[[D0:[0-9]+]], %[[D1:[0-9]+]])
-// CHECK:         aie.packet_rules(North : 1) {
-// CHECK-NEXT:      aie.rule(31, 30, %[[D1]])
-// CHECK:         aie.packet_rules(South : 1) {
-// CHECK-NEXT:      aie.rule(31, 30, %[[D0]])
+// CHECK:         aie.masterset(South : 3, %{{[0-9]+}}){{$}}
+// CHECK-LABEL: aie.switchbox(%tile_2_2)
+// CHECK:         aie.packet_rules(North : 3) {
+// CHECK-NEXT:      aie.rule(31, 30, %[[T:[0-9]+]])
+// CHECK:         aie.packet_rules(West : 1) {
+// CHECK-NEXT:      aie.rule(31, 30, %[[T]])
 
 module {
   aie.device(npu2_3col) {

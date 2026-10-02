@@ -1459,13 +1459,6 @@ SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() const {
   return pairs;
 }
 
-bool StreamConflicts::assumed(const HoldCycle &cycle) const {
-  return llvm::any_of(cycle.steps, [&](const HoldCycle::Step &step) {
-    return step.wait == HoldCycle::Wait::Drain &&
-           !getAnalysis().assumptions(step.waiting, step.holding).empty();
-  });
-}
-
 namespace {
 // A wait in the graph holdCycle searches: a head stuck at one node waits on
 // one at `to`, for the reason `step` gives, if any.
@@ -1506,7 +1499,7 @@ struct GraphTraits<const WaitGraph *> {
 
 std::optional<HoldCycle>
 StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
-                           bool forcedWaits) const {
+                           bool forcedWaits, bool definite) const {
   // The packets one source sends with one id move down every branch as one.
   struct Tree {
     SmallVector<size_t, 2> members;
@@ -1691,7 +1684,8 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
             }))
           continue;
         for (size_t m : trees[g].members)
-          if (blocks(s, m)) {
+          if (blocks(s, m) &&
+              !(definite && !getAnalysis().assumptions(s, m).empty())) {
             out.push_back({anywhereNode(g),
                            HoldCycle::Step{HoldCycle::Wait::Drain, s, s, m,
                                            TileID{}, Port{}, Port{}, -1}});

@@ -99,6 +99,13 @@ constexpr int maxSearchSteps = 100000;
 // The hold-cycle search replans a tile at most this many times.
 constexpr int maxHoldCycleReplans = 256;
 
+static constexpr llvm::StringLiteral sharedReceiverCycleReason =
+    "Packet flows into receivers they share can deadlock holding arbiters "
+    "across switchboxes, and no routing found avoids it: ";
+static constexpr llvm::StringLiteral allowDeadlockProneHint =
+    " Set allow-deadlock-prone (aiecc --allow-deadlock-prone-routing) to "
+    "route them anyway.";
+
 namespace {
 /// \brief Routes flows in a device by lowering them to stream-switch
 /// configurations.
@@ -112,6 +119,11 @@ namespace {
 /// 5. Rewrite stream-switches (within a bounding box) back to flows.
 struct AIEPathfinderPass
     : xilinx::AIE::impl::AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
+  using Base =
+      xilinx::AIE::impl::AIERoutePathfinderFlowsBase<AIEPathfinderPass>;
+  AIEPathfinderPass() = default;
+  AIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options)
+      : Base(options) {}
   void runOnOperation() override;
   LogicalResult runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer);
   /// Lowers the packet flows along the routing `analyzer` found, warning of
@@ -1459,6 +1471,7 @@ struct PacketFlowRouting {
   // port, so the split holds for the tile.
   std::set<TreeSplit> hazardSplits;
   std::set<std::pair<PathEndPoint, PathEndPoint>> hazardApart;
+  std::set<std::pair<PathEndPoint, PathEndPoint>> hazardTogether;
   std::set<TileID> crowdedTiles;
   std::optional<std::string> planFailure;
   // The first flow whose source the routing leaves unconnected. The routing
@@ -2139,6 +2152,7 @@ RoutingFaults PacketFlowRouting::faults() const {
   faults.splits.assign(hazardSplits.begin(), hazardSplits.end());
   faults.crowded.assign(crowdedTiles.begin(), crowdedTiles.end());
   faults.apart.assign(hazardApart.begin(), hazardApart.end());
+  faults.together.assign(hazardTogether.begin(), hazardTogether.end());
   faults.onlyOverlayMasters = !overlayConnections.empty() &&
                               hazardSplits.empty() && crowdedTiles.empty() &&
                               hazardApart.empty() &&
@@ -2497,10 +2511,11 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
   // first may run only through flows it cannot move.
   SmallVector<HoldCycle, 2> cycles;
   int replans = 0;
-  bool forcedWaits = false;
+  bool forcedWaits = false, definite = false;
   auto search = [&](auto &self) -> bool {
     arbitrate();
-    std::optional<HoldCycle> cycle = conflicts.holdCycle(routes, forcedWaits);
+    std::optional<HoldCycle> cycle =
+        conflicts.holdCycle(routes, forcedWaits, definite);
     if (!cycle)
       return true;
     cycles.push_back(*cycle);
@@ -2547,7 +2562,16 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
   auto move = [&] {
     arbitrate();
     for (const HoldCycle &cycle : cycles)
-      for (const HoldCycle::Step &step : cycle.steps)
+      for (const HoldCycle::Step &step : cycle.steps) {
+        if (step.wait == HoldCycle::Wait::Arbiter && step.forced &&
+            step.sharer < numRequested && step.holding < numRequested &&
+            streams[step.sharer].packetID && streams[step.holding].packetID) {
+          PathEndPoint a{streams[step.sharer].src.tile,
+                         streams[step.sharer].src.port},
+              b{streams[step.holding].src.tile, streams[step.holding].src.port};
+          if (!(a == b))
+            hazardTogether.insert(std::minmax(a, b));
+        }
         if (step.wait != HoldCycle::Wait::Drain && !step.forced) {
           SmallVector<FlowKey, 3> keys;
           for (auto [s, input] : {std::pair{step.waiting, step.sharerInput},
@@ -2569,6 +2593,7 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
           if (!(a == b))
             hazardApart.insert(std::minmax(a, b));
         }
+      }
   };
   if (!search(search)) {
     move();
@@ -2578,19 +2603,21 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
   }
   // Trees into a receiver they share wait on each other at its master port
   // whatever the plan, so a cycle through such waits can only be broken
-  // elsewhere along it. Where none of it can, the plan stands, with a warning
-  // unless the cycle rests on assumptions.
+  // elsewhere along it. Where none of it can, the routing fails, unless some
+  // plan has such cycles only by assumption.
   cycles.clear();
   replans = 0;
   forcedWaits = true;
   if (!search(search)) {
-    move();
-    const HoldCycle &cycle = cycles.front();
-    if (!conflicts.assumed(cycle))
-      sharedReceiverCycle = cycle;
-    else
-      LLVM_DEBUG(llvm::dbgs() << "Hold cycle only by assumption: "
-                              << conflicts.explain(cycle) << '\n');
+    LLVM_DEBUG(llvm::dbgs() << "Hold cycle at a shared receiver: "
+                            << conflicts.explain(cycles.front()) << '\n');
+    cycles.clear();
+    replans = 0;
+    definite = true;
+    if (!search(search)) {
+      move();
+      sharedReceiverCycle = cycles.front();
+    }
   }
   return std::nullopt;
 }
@@ -2920,10 +2947,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
     return failure();
   }
   if (warn && routing.sharedReceiverCycle)
-    emitWarning(device.getLoc(),
-                "Packet flows into receivers they share can deadlock holding "
-                "arbiters across switchboxes, and no arbiter assignment found "
-                "avoids it: ")
+    emitWarning(device.getLoc(), sharedReceiverCycleReason)
         << conflicts.explain(*routing.sharedReceiverCycle);
   if (failed(routing.emit()))
     return failure();
@@ -3032,8 +3056,10 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
       RoutingFaults all = check.faults(), faults;
       faults.connections = std::move(all.connections);
       faults.apart = std::move(all.apart);
+      faults.together = std::move(all.together);
       if (!check.sharedReceiverCycle ||
-          (faults.connections.empty() && faults.apart.empty()))
+          (faults.connections.empty() && faults.apart.empty() &&
+           faults.together.empty()))
         return llvm::Error::success();
       return llvm::make_error<RoutingFailure>(
           conflicts.explain(*check.sharedReceiverCycle), std::move(faults),
@@ -3043,7 +3069,25 @@ llvm::Error AIEPathfinderPass::route(DeviceOp d, DynamicTileAnalysis &analyzer,
   analyzer.pathfinder.setPacketConstraints(std::move(constraints));
   llvm::Error routed = analyzer.runAnalysis(d);
   analyzer.pathfinder.setPacketConstraints({});
-  return routed;
+  if (routed || clAllowDeadlockProne || !clRoutePacket ||
+      d.getOps<PacketFlowOp>().empty())
+    return routed;
+  // The routing found may still leave a hold cycle through receivers flows
+  // share, as the check lets one through where it names nothing to move.
+  PacketFlowRouting check(d, builder, analyzer, analyzer.routing, conflicts,
+                          pinned, clRouteCircuit, circuitSwitchHops,
+                          prioritize);
+  // runOnPacketFlow reports a routing it cannot plan.
+  if (llvm::Error err = check.plan()) {
+    llvm::consumeError(std::move(err));
+    return llvm::Error::success();
+  }
+  if (!check.sharedReceiverCycle)
+    return llvm::Error::success();
+  return llvm::make_error<RoutingFailure>(
+      (llvm::Twine(sharedReceiverCycleReason) +
+       conflicts.explain(*check.sharedReceiverCycle) + allowDeadlockProneHint)
+          .str());
 }
 
 void AIEPathfinderPass::runOnOperation() {
@@ -3058,12 +3102,17 @@ void AIEPathfinderPass::runOnOperation() {
 
   StreamConflicts conflicts(d);
   if (auto pairs = conflicts.unavoidable(); !pairs.empty()) {
-    InFlightDiagnostic warning =
-        emitWarning(d.getLoc(), "Flows can deadlock however they are routed: ")
+    InFlightDiagnostic diag =
+        (clAllowDeadlockProne ? emitWarning(d.getLoc()) : emitError(d.getLoc()))
+        << "Flows can deadlock however they are routed: "
         << conflicts.explain(pairs[0].first, pairs[0].second);
     if (pairs.size() > 1)
-      warning << " So can " << pairs.size() - 1 << " other pair"
-              << (pairs.size() > 2 ? "s" : "") << " of flows.";
+      diag << " So can " << pairs.size() - 1 << " other pair"
+           << (pairs.size() > 2 ? "s" : "") << " of flows.";
+    if (!clAllowDeadlockProne) {
+      diag << allowDeadlockProneHint;
+      return signalPassFailure();
+    }
   }
   DynamicTileAnalysis analyzer;
   // A prioritized flow keeps the route it takes alone, so route the
@@ -3346,4 +3395,9 @@ void AIEPathfinderPass::runOnOperation() {
 
 std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEPathfinderPass() {
   return std::make_unique<AIEPathfinderPass>();
+}
+
+std::unique_ptr<OperationPass<DeviceOp>>
+AIE::createAIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options) {
+  return std::make_unique<AIEPathfinderPass>(options);
 }
