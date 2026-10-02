@@ -43,13 +43,18 @@ aie.device(npu2) {
 
 // -----
 
-// A length is encoded like a core parameter and an offset is not, so one
-// parameter cannot be both.
+// A length takes either kind, but a core read and an offset still need
+// different kinds.
 
-// expected-error @+1 {{parameter 'n' is used both as a DMA length_parameter (core) and as a DMA offset_parameter (addr); a parameter must have a single kind}}
+// expected-error @+1 {{parameter 'n' is used both as an aiex.read_scratchpad_parameter source (core) and as a DMA offset_parameter (addr); a parameter must have a single kind}}
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
   %t = aie.tile(0, 0)
+  %t02 = aie.tile(0, 2)
+  aie.core(%t02) {
+    %v = aiex.read_scratchpad_parameter @n : i32
+    aie.end
+  }
   aie.runtime_sequence(%arg0 : memref<4096xi32>) {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 64) {bd_id = 0 : i32, length_parameter = @n, length_unit = 4 : i32, offset_parameter = @n}

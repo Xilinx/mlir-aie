@@ -337,11 +337,10 @@ struct AIELowerScratchpadParametersPass
 
     // Step 2: determine each parameter's kind from its usage, erroring on
     // mixed use.  A parameter is "core" if any aiex.read_scratchpad_parameter
-    // or DMA length_parameter references it; "addr" if any DMA op references
-    // it via offset_parameter. If both, emit an error.
-    // A length parameter shares the core encoding (value << 2) so that one
-    // parameter can drive both a core's trip count and the DMA lengths
-    // feeding it; the lowering compensates in the update's multiplier.
+    // references it; "addr" if any DMA op references it via offset_parameter.
+    // If both, emit an error. A DMA length_parameter works with either kind,
+    // so it takes the kind of the parameter's other uses, and "addr" if it is
+    // the only use; the lowering compensates in the update's multiplier.
     DenseMap<StringRef, bool> usedAsCore;
     DenseMap<StringRef, bool> usedAsLength;
     DenseMap<StringRef, bool> usedAsAddr;
@@ -367,18 +366,18 @@ struct AIELowerScratchpadParametersPass
       bool core = usedAsCore.lookup(name);
       bool length = usedAsLength.lookup(name);
       bool addr = usedAsAddr.lookup(name);
-      if ((core || length) && addr) {
+      if (core && addr) {
         p.emitError("parameter '")
-            << name << "' is used both as "
-            << (core ? "an aiex.read_scratchpad_parameter source"
-                     : "a DMA length_parameter")
-            << " (core) and as a DMA offset_parameter (addr); a parameter "
+            << name
+            << "' is used both as an aiex.read_scratchpad_parameter source "
+               "(core) and as a DMA offset_parameter (addr); a parameter "
                "must have a single kind";
         return signalPassFailure();
       }
       p.setKindAttr(ScratchpadParameterKindAttr::get(
-          &getContext(), addr ? ScratchpadParameterKind::Addr
-                              : ScratchpadParameterKind::Core));
+          &getContext(), addr || (length && !core)
+                             ? ScratchpadParameterKind::Addr
+                             : ScratchpadParameterKind::Core));
     }
 
     // Step 3: assign global state_table_idx in walk order, 0..N-1.
@@ -391,8 +390,9 @@ struct AIELowerScratchpadParametersPass
     // references to plain `offset_state_table_idx` / `length_state_table_idx`
     // integer attributes, so downstream `aie`-dialect passes do not need to
     // resolve `aiex.scratchpad_parameter` symbols.
-    auto rewriteParam = [&](Operation *op, FlatSymbolRefAttr ref,
-                            StringRef attrName, StringRef idxAttrName) {
+    auto rewriteParam =
+        [&](Operation *op, FlatSymbolRefAttr ref, StringRef attrName,
+            StringRef idxAttrName) -> FailureOr<ScratchpadParameterOp> {
       auto paramOp =
           moduleOp.lookupSymbol<ScratchpadParameterOp>(ref.getAttr());
       if (!paramOp) {
@@ -414,7 +414,7 @@ struct AIELowerScratchpadParametersPass
                   builder.getIntegerAttr(
                       builder.getIntegerType(8, /*isSigned=*/false), stateIdx));
       op->removeAttr(attrName);
-      return success();
+      return paramOp;
     };
     auto rewriteParams = [&](Operation *op, FlatSymbolRefAttr offsetRef,
                              FlatSymbolRefAttr lengthRef, Type bufType) {
@@ -424,9 +424,14 @@ struct AIELowerScratchpadParametersPass
           return failure();
         warnIfRuntimeOffsetMayRound(op, bufType);
       }
-      if (lengthRef)
-        return rewriteParam(op, lengthRef, "length_parameter",
-                            "length_state_table_idx");
+      if (!lengthRef)
+        return success();
+      FailureOr<ScratchpadParameterOp> lengthParam = rewriteParam(
+          op, lengthRef, "length_parameter", "length_state_table_idx");
+      if (failed(lengthParam))
+        return failure();
+      if (lengthParam->getKind() == ScratchpadParameterKind::Core)
+        op->setAttr("length_core_encoded", builder.getUnitAttr());
       return success();
     };
     WalkResult rewriteResult = moduleOp.walk([&](Operation *op) {

@@ -661,7 +661,10 @@ def AIE_NpuDmaMemcpyNdOp
       OptionalAttr<ConfinedAttr<I64Attr, [IntMinValue<1>]>>:$length_unit,
       // Set by --aie-lower-scratchpad-parameters from $length_parameter, which
       // it replaces, like $offset_state_table_idx.
-      OptionalAttr<UI8Attr>:$length_state_table_idx);
+      OptionalAttr<UI8Attr>:$length_state_table_idx,
+      // Set by --aie-lower-scratchpad-parameters when the length parameter is
+      // core kind, whose state-table slot holds n << 2 rather than n.
+      UnitAttr:$length_core_encoded);
 
   let assemblyFormat = [{
     `(` $memref ``
@@ -1853,13 +1856,14 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     If used as an address offset on a BD, the parameter is a multiple of the BD's element size.
 
     Parameters can also lengthen shim BDs when used as the `length_parameter`
-    attribute in `aie.dma_bd` and `aiex.npu.dma_memcpy_nd`. A length parameter
-    has the same kind as one read by a core, so a single parameter can set both a
-    core's trip count and the length of the transfers feeding that core.
+    attribute in `aie.dma_bd` and `aiex.npu.dma_memcpy_nd`. A length works with
+    either kind, so a single parameter can set both a core's trip count and the
+    length of the transfers feeding that core, or both a transfer's offset and
+    its length.
 
     Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
     The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
-    `core` if read by a core via `aiex.read_scratchpad_parameter` or used as a DMA length via the `length_parameter` attribute, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
+    `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op, or as a DMA length via the `length_parameter` attribute and nothing else).
     Indices are unique across the entire module.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).

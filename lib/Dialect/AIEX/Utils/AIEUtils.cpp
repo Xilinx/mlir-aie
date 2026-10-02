@@ -252,13 +252,13 @@ LogicalResult AIEX::emitUpdateBdLengthFromParameter(OpBuilder &builder,
   if (failed(unitBytes))
     return failure();
 
-  // A length parameter uses the core encoding, so StateTable[idx] holds
-  // n << 2. The length register counts 32-bit words, so func=mul with
-  // func_arg=unitBytes/16 adds (n << 2) * unitBytes / 16 = n * unitBytes / 4
-  // words.
+  // The length register counts 32-bit words, so func=mul adds n * unitBytes / 4
+  // words: func_arg is unitBytes / 4 for an addr parameter (StateTable[idx]
+  // holds n) and unitBytes / 16 for a core parameter (it holds n << 2).
+  int64_t bytesPerStateUnit = bdOp->hasAttr("length_core_encoded") ? 16 : 4;
   AIEX::NpuUpdateFromScratchpadOp::create(
       builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
-      /*func_arg=*/static_cast<uint32_t>(*unitBytes / 16),
+      /*func_arg=*/static_cast<uint32_t>(*unitBytes / bytesPerStateUnit),
       /*address=*/static_cast<uint32_t>(registerAddr),
       /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
   return success();

@@ -136,7 +136,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
         axcache (optional): The raw 4-bit AxCACHE value for the DMA's AXI-MM transfers. If
             omitted, the target model's default AxCACHE value is used.
-        length_parameter (optional): Name of a core-kind scratchpad parameter n; the
+        length_parameter (optional): Name of a scratchpad parameter n; the
             transfer then moves the static length plus n * length_unit elements
             (per iteration). Shim tiles only; see the length_parameter docs on
             aie.dma_bd.
@@ -365,7 +365,7 @@ def shim_dma_single_bd_task(
         axcache (optional): The raw 4-bit AxCACHE value for the DMA's AXI-MM transfers. If
             omitted, the target model's default AxCACHE value is used.
         packet (optional): The packet header information represented as a (packet_type, packet_id) tuple.
-        length_parameter (optional): Name of a core-kind scratchpad parameter n; the
+        length_parameter (optional): Name of a scratchpad parameter n; the
             transfer then moves the static length plus n * length_unit elements
             (per iteration). Shim tiles only; see the length_parameter docs on
             aie.dma_bd.

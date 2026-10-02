@@ -3394,6 +3394,7 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*length_parameter=*/nullptr,
         /*length_unit=*/nullptr,
         /*length_state_table_idx=*/nullptr,
+        /*length_core_encoded=*/nullptr,
         /*next_bd_id=*/nullptr);
 }
 

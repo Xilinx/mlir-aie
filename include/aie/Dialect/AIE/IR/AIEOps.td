@@ -1112,10 +1112,10 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     }
     ```
 
-    The parameter uses the same encoding as one read by a core with
-    `aiex.read_scratchpad_parameter`, so one parameter can set both a core's
-    trip count and the length of the transfers feeding it. It cannot also be an
-    `offset_parameter`, which uses the other encoding.
+    The length works with either parameter kind, so one parameter can set both
+    a core's trip count (`aiex.read_scratchpad_parameter`) and the length of
+    the transfers feeding it, or both a transfer's `offset_parameter` and its
+    length.
 
     Constraints, all from the firmware's register update, which adds to the
     length word and the address word after it and clears the low two bits of
@@ -1185,6 +1185,9 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // Set by --aie-lower-scratchpad-parameters from $length_parameter, which
       // it replaces, like $offset_state_table_idx.
       OptionalAttr<UI8Attr>:$length_state_table_idx,
+      // Set by --aie-lower-scratchpad-parameters when the length parameter is
+      // core kind, whose state-table slot holds n << 2 rather than n.
+      UnitAttr:$length_core_encoded,
       // should never be assigned by user...
       OptionalAttr<AIEI32Attr>:$next_bd_id);
 

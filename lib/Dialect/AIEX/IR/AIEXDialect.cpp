@@ -454,7 +454,7 @@ struct LinearizeContiguousTransfer
         op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
         op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr(),
         op.getLengthParameterAttr(), op.getLengthUnitAttr(),
-        op.getLengthStateTableIdxAttr());
+        op.getLengthStateTableIdxAttr(), op.getLengthCoreEncodedAttr());
     return mlir::success();
   }
 };

@@ -282,7 +282,8 @@ static NpuDmaMemcpyNdOp createDecomposedOp(RewriterBase &rewriter,
       op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(), op.getD2ZeroAfterAttr(),
       op.getBurstLengthAttr(), op.getAxcacheAttr(), op.getOffsetParameterAttr(),
       op.getOffsetStateTableIdxAttr(), op.getLengthParameterAttr(),
-      op.getLengthUnitAttr(), op.getLengthStateTableIdxAttr());
+      op.getLengthUnitAttr(), op.getLengthStateTableIdxAttr(),
+      op.getLengthCoreEncodedAttr());
 }
 
 static int64_t allocateNextId(NpuDmaMemcpyNdOp op, int64_t startId,
@@ -611,7 +612,7 @@ static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
         op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
         op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr(),
         op.getLengthParameterAttr(), op.getLengthUnitAttr(),
-        op.getLengthStateTableIdxAttr());
+        op.getLengthStateTableIdxAttr(), op.getLengthCoreEncodedAttr());
     return;
   }
 
