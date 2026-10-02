@@ -3927,6 +3927,11 @@ formatting or lint issue. To run them by hand:</p>
   comment blocks over 12 lines, and high comment density. CI runs it over
   everything since the merge base with the PR's target branch, so a
   history of individually clean commits can still fail there.</li>
+<li><strong>Submodule pointers</strong> — <code>utils/check_submodule_regression.py</code>, on every
+  commit and push, rejects a submodule pointer change unless the new commit
+  descends from the old one, so a stale checkout swept in by <code>git commit -a</code>
+  can't roll a submodule back. Bumps pass; for an intentional downgrade, use
+  <code>SKIP=check-submodule-regression</code>.</li>
 <li><strong>Baseline hygiene</strong> — trailing whitespace, end-of-file, merge-conflict
   markers, and <a href="https://reuse.software/">REUSE</a> license-header compliance.</li>
 </ul>
