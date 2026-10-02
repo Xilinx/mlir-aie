@@ -307,6 +307,15 @@ public:
   using ErrorInfo::ErrorInfo;
 };
 
+/// No legal routing around the routes prioritized flows keep, which the reason
+/// already blames.
+class PinnedRoutingFailure
+    : public llvm::ErrorInfo<PinnedRoutingFailure, RoutingFailure> {
+public:
+  static char ID;
+  using ErrorInfo::ErrorInfo;
+};
+
 /// Checks a routing that fits the fabric: a RoutingFailure if it is unusable,
 /// success if it is accepted.
 using RoutingCheck = std::function<llvm::Error(const Routing &)>;
@@ -424,8 +433,8 @@ private:
   // Steer the next iteration away from what the routing check faulted.
   // Returns the illegal edges the faults count as.
   int applyRoutingFaults(RouteState &st, const RoutingFaults &faults);
-  // Why the last iteration's routing does not fit.
-  std::string explainNoRouting(const RouteState &st) const;
+  // A RoutingFailure saying why the last iteration's routing does not fit.
+  llvm::Error explainNoRouting(const RouteState &st) const;
   bool hasRoom(const SwitchboxConnect &sb) const;
   // The steps of relax.
   bool shareAllChannels();

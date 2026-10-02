@@ -78,6 +78,7 @@ void SwitchboxConnect::bumpDemand(Cell &c) {
 
 char RoutingFailure::ID = 0;
 char DeadlockProneRouting::ID = 0;
+char PinnedRoutingFailure::ID = 0;
 
 void RoutingFailure::log(llvm::raw_ostream &os) const {
   os << "Unable to find a legal routing";
@@ -272,6 +273,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
   graph.clear();
   flows.clear();
   packetIdsTo.clear();
+  priorityIds.clear();
   flowLocs.clear();
   graphBuilt = false;
   nodeIds.clear();
@@ -1131,7 +1133,7 @@ bool Pathfinder::hasRoom(const SwitchboxConnect &sb) const {
   return false;
 }
 
-std::string Pathfinder::explainNoRouting(const RouteState &st) const {
+llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
   // A prioritized flow keeps the route it takes alone, so the others
   // may have had to fit around it.
   auto overused = [](const SwitchboxConnect &sb) {
@@ -1152,9 +1154,10 @@ std::string Pathfinder::explainNoRouting(const RouteState &st) const {
     prioritized = prioritized ? prioritized : &f;
     for (const auto &[_, hop] : st.treeOf[k]) {
       if (overused(*hop.second.sb)) {
-        return describePrioritized(describeTilePort(f.src.coords, f.src.port)) +
-               ", and it holds a channel " + link(*hop.second.sb) +
-               " the other flows need.";
+        return llvm::make_error<PinnedRoutingFailure>(
+            describePrioritized(describeTilePort(f.src.coords, f.src.port)) +
+            ", and it holds a channel " + link(*hop.second.sb) +
+            " the other flows need.");
       }
       if (hop.second.sb->srcCoords != hop.second.sb->dstCoords)
         held.insert(hop.second.sb);
@@ -1163,17 +1166,18 @@ std::string Pathfinder::explainNoRouting(const RouteState &st) const {
   if (prioritized && llvm::any_of(graph, [&](const auto &entry) {
         return overused(entry.second);
       })) {
-    return describePrioritized(describeTilePort(prioritized->src.coords,
-                                                prioritized->src.port)) +
-           ", and the router found no routing for the other flows around the "
-           "channels it holds " +
-           joinNames(llvm::to_vector(
-               llvm::map_range(llvm::make_pointee_range(held), link))) +
-           ".";
+    return llvm::make_error<PinnedRoutingFailure>(
+        describePrioritized(
+            describeTilePort(prioritized->src.coords, prioritized->src.port)) +
+        ", and the router found no routing for the other flows around the "
+        "channels it holds " +
+        joinNames(llvm::to_vector(
+            llvm::map_range(llvm::make_pointee_range(held), link))) +
+        ".");
   }
   // The routing check says more than the overuse it led to.
   if (!checkReason.empty())
-    return checkReason;
+    return llvm::make_error<RoutingFailure>(checkReason);
   // Name the channel the last iteration overused that was overused in the
   // most iterations, on a link with no room if there is one, and the flows
   // the last one routed through it.
@@ -1198,7 +1202,7 @@ std::string Pathfinder::explainNoRouting(const RouteState &st) const {
       }
   }
   if (!worst)
-    return {};
+    return llvm::make_error<RoutingFailure>("");
   bool crossbar = worst->srcCoords == worst->dstCoords;
   std::vector<std::string> users;
   for (const auto &[src, settings] : st.routing.settings) {
@@ -1223,11 +1227,12 @@ std::string Pathfinder::explainNoRouting(const RouteState &st) const {
                                worst->srcCoords.col, worst->srcCoords.row)
                      .str()
                : "the links " + link(*worst);
-  if (users.empty()) {
-    return "the router found no routing that fits " + where + ".";
-  }
-  return "the flows from " + joinNames(users) + " need " + where +
-         ", and the router found no routing that fits them.";
+  if (users.empty())
+    return llvm::make_error<RoutingFailure>(
+        "the router found no routing that fits " + where + ".");
+  return llvm::make_error<RoutingFailure>(
+      "the flows from " + joinNames(users) + " need " + where +
+      ", and the router found no routing that fits them.");
 }
 
 // One flow's tree, grown by routePart.
@@ -2330,7 +2335,7 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                      return c.usedCapacity > maxCircuitStreamCapacity;
                    });
           });
-      return llvm::make_error<RoutingFailure>(explainNoRouting(st));
+      return explainNoRouting(st);
     }
 
     LLVM_DEBUG(llvm::dbgs() << "\t\t---Begin findPaths iteration #"
@@ -2459,7 +2464,7 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
       if (usable)
         return std::move(*usable);
       packetsFailed = false;
-      return llvm::make_error<RoutingFailure>(explainNoRouting(st));
+      return explainNoRouting(st);
     }
     // continue iterations until a legal routing is found
   } while (illegalEdges > 0);
