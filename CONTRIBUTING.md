@@ -103,6 +103,11 @@ The hooks cover:
   comment blocks over 12 lines, and high comment density. CI runs it over
   everything since the merge base with the PR's target branch, so a
   history of individually clean commits can still fail there.
+- **Submodule pointers** — `utils/check_submodule_regression.py`, on every
+  commit and push, rejects a submodule pointer change unless the new commit
+  descends from the old one, so a stale checkout swept in by `git commit -a`
+  can't roll a submodule back. Bumps pass; for an intentional downgrade, use
+  `SKIP=check-submodule-regression`.
 - **Baseline hygiene** — trailing whitespace, end-of-file, merge-conflict
   markers, and [REUSE](https://reuse.software/) license-header compliance.
 

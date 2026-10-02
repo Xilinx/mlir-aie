@@ -457,6 +457,9 @@ jobs:
       - name: Run the lint dependency sync unit tests
         run: python utils/test_lint_dependency_sync.py -v
 
+      - name: Run the submodule regression check unit tests
+        run: python utils/test_check_submodule_regression.py -v
+
       - name: Install pre-commit
         run: python -m pip install --require-hashes -r python/requirements_dev.lock
 
