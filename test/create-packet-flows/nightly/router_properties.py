@@ -2984,6 +2984,8 @@ def plan_routing(d, an, solution, hops_on):
     def search(forced_waits, definite=False):
         arbitrate()
         cycle = an.hold_cycle(routes, forced_waits, definite)
+        if cycle is None and definite:
+            cycle = an.hold_cycle(routes)
         if cycle is None:
             return True
         if not first:
