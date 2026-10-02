@@ -160,7 +160,7 @@ class Bd:
         for acq in self.acquires:
             acq.emit()
         bd_kwargs: dict[str, Any] = dict(sizes=self.sizes, strides=self.strides)
-        if _is_value(self.offset) or self.offset:
+        if not isinstance(self.offset, (int, np.integer)) or self.offset:
             bd_kwargs["offset"] = self.offset
         if self.length is not None:
             bd_kwargs["transfer_len"] = self.length
@@ -485,10 +485,6 @@ class DmaChannel:
         )
 
 
-def _is_value(v) -> bool:
-    return v is not None and not isinstance(v, (int, np.integer))
-
-
 class TileDma(Resolvable):
     """Per-tile DMA program.
 
@@ -607,9 +603,6 @@ class TileDma(Resolvable):
         # using extra block indices for multi-BD chains).
         channels = self._channels
 
-        def _ooo_slot_id(bd: Bd, pos: int) -> int:
-            return bd.bd_id if bd.bd_id is not None else pos
-
         pinned_bd_ids: dict[int, int | DmaEndpoint] = {}  # slot id -> channel
         for ch in channels:
             if ch.out_of_order and ch.direction != DMAChannelDir.S2MM:
@@ -629,7 +622,7 @@ class TileDma(Resolvable):
                             f"out_of_order channel {ch.channel} BD at slot "
                             f"{slot} must be packet-enabled"
                         )
-                    pinned = _ooo_slot_id(bd, slot)
+                    pinned = slot if bd.bd_id is None else bd.bd_id
                     if pinned in pinned_bd_ids:
                         raise ValueError(
                             f"out_of_order bd_id {pinned} is used by more than "
@@ -684,7 +677,7 @@ class TileDma(Resolvable):
                 for bd_pos, bd in enumerate(ch.bds):
                     with block[bd_block_idx[bd_pos]]:
                         bd._emit(
-                            _ooo_slot_id(bd, bd_pos) if ch.out_of_order else bd.bd_id
+                            bd_pos if ch.out_of_order and bd.bd_id is None else bd.bd_id
                         )
                         # next_bd target
                         if ch.out_of_order:

@@ -5,6 +5,8 @@
 #
 """Tiled transform algorithms (unary/binary, single-core/parallel) built on IRON."""
 
+from typing import get_origin
+
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.controlflow import range_
@@ -438,7 +440,7 @@ def make_param_descriptor(tensor_ty):
 
 def _expand_param(param):
     """Allow callers to pass either a real tensor or a numpy ndarray type."""
-    if hasattr(param, "__args__") and len(getattr(param, "__args__", ())) == 2:
+    if get_origin(param) is np.ndarray:
         return make_param_descriptor(param)
     return param
 

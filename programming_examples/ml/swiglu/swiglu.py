@@ -128,10 +128,6 @@ def _compile_kwargs(opts):
     return dict(size=opts.length, num_columns=opts.columns)
 
 
-def _silu_ref_f32(x):
-    return x / (1.0 + np.exp(-x))
-
-
 def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     n = opts.length
@@ -154,7 +150,8 @@ def _run_and_verify(opts):
     x_f32 = in_np.astype(np.float32)
     w1_f32 = w1_np.astype(np.float32)
     w2_f32 = w2_np.astype(np.float32)
-    expected = ((x_f32 * w1_f32) * _silu_ref_f32(x_f32 * w2_f32)).astype(bfloat16)
+    gate = x_f32 * w2_f32
+    expected = ((x_f32 * w1_f32) * (gate / (1.0 + np.exp(-gate)))).astype(bfloat16)
     assert_pass(
         b_t.numpy(),
         expected,

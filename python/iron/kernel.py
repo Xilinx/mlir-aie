@@ -9,7 +9,7 @@ import hashlib
 import logging
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, get_origin
 
 import numpy as np
 
@@ -352,18 +352,6 @@ class Kernel(Resolvable):
                 stack_size_override=self._stack_size_override,
             )
 
-    def _declaration(self) -> dict:
-        return {
-            "signature": str(
-                ir.FunctionType.get(
-                    [try_convert_np_type_to_mlir_type(t) for t in self._arg_types], []
-                )
-            ),
-            "link_with": self._object_file_name,
-            "link_with_mode": self._link_with_mode,
-            "stack_size_override": self._stack_size_override,
-        }
-
     def _check_declaration(self, existing) -> None:
         op_name = existing.operation.name
         if op_name != "func.func":
@@ -384,7 +372,16 @@ class Kernel(Resolvable):
                 else None
             ),
         }
-        wanted = self._declaration()
+        wanted = {
+            "signature": str(
+                ir.FunctionType.get(
+                    [try_convert_np_type_to_mlir_type(t) for t in self._arg_types], []
+                )
+            ),
+            "link_with": self._object_file_name,
+            "link_with_mode": self._link_with_mode,
+            "stack_size_override": self._stack_size_override,
+        }
         differences = [
             f"{key}: {found[key]!r} vs {wanted[key]!r}"
             for key in wanted
@@ -1113,16 +1110,16 @@ class ExternalFunction(Kernel):
                     f"Argument {index}: expected scalar, got {type(arg).__name__}"
                 )
             return
-        if not (hasattr(expected_ty, "__args__") and hasattr(arg, "shape")):
+        if get_origin(expected_ty) is not np.ndarray or not isinstance(
+            arg, (Buffer, np.ndarray)
+        ):
             return
-        # Only host-side (numpy) arguments are compared. An MLIR value's
+        # Only Buffers and host arrays are compared. An MLIR value's
         # element type is spelled differently (`i32` vs `np.int32`) and its
         # shape may legitimately differ from the declaration until
         # `_maybe_collapse_to_match` flattens it, so MLIR verification is what
         # checks those.
-        arg_dtype = getattr(arg, "dtype", None)
-        if not isinstance(arg_dtype, (np.dtype, type)):
-            return
+        arg_dtype = arg.dtype
         expected_shape = expected_ty.__args__[0]
         expected_dtype = expected_ty.__args__[1].__args__[0]
         if arg.shape != expected_shape or arg_dtype != expected_dtype:

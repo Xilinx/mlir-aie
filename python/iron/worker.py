@@ -300,7 +300,7 @@ class Worker(ObjectFifoEndpoint):
         # and register them in the corresponding barriers.
         for barrier in self._barriers:
             barrier_lock = lock(my_tile)
-            barrier._add_worker_lock(barrier_lock)
+            barrier.worker_locks.append(barrier_lock)
 
         @core(
             my_tile,
@@ -359,10 +359,6 @@ class WorkerRuntimeBarrier:
             value (int): The value to set the barrier to.
         """
         _BarrierSetOp(self, value).resolve()
-
-    def _add_worker_lock(self, lock):
-        """Register an additional lock in the barrier."""
-        self.worker_locks.append(lock)
 
     def _set_barrier_value(self, value: int):
         """Set the value of the barrier."""

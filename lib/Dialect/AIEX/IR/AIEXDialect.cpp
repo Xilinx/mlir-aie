@@ -218,10 +218,9 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
   // A zero d3 stride is a pure repeat: the lowerings leave the iteration fields
   // 0 and carry the count on the queue push, so the repeat limit applies.
   bool pureRepeat = inputStrides[3] == 0;
-  int64_t maxCount = pureRepeat
-                         ? targetModel.getMaxRepeatCount() + 1
-                         : targetModel.getMaxBdIterationCount(
-                               targetModel.getTileType(tileCol, tileRow));
+  int64_t maxCount =
+      pureRepeat ? targetModel.getMaxRepeatCount() + 1
+                 : 1LL << targetModel.getDmaBdIterBits(tileCol, tileRow);
   if (inputSizes[3] > maxCount)
     return forOp->emitOpError()
            << (pureRepeat ? "repeat count " : "iteration count ")
@@ -580,7 +579,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
       targetModel.getTileType(tile.getCol(), tile.getRow());
   int64_t wrapMax = (1LL << targetModel.getDmaBdWrapBits(tileType)) - 1;
   int64_t maxCount = pureRepeat ? targetModel.getMaxRepeatCount() + 1
-                                : targetModel.getMaxBdIterationCount(tileType);
+                                : 1LL << targetModel.getDmaBdIterBits(tileType);
   if (failed(checkSize(sizesRev[0], d0Hw, wrapMax, "d0 size")) ||
       failed(checkSize(sizesRev[1], d1Hw, wrapMax, "d1 size")) ||
       failed(checkSize(sizesRev[3], iterHw, maxCount - 1,

@@ -58,15 +58,6 @@ def _loop_frame(body, specs):
         _loop_frames.set(outer)
 
 
-def _unwrap(x):
-    """Unwrap a Task to its SSA handle; pass everything else through unchanged.
-
-    A Task carries its SSA handle across scf boundaries; plain Values are
-    returned as-is.
-    """
-    return x.handle if isinstance(x, Task) else x
-
-
 def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
     """``scf.for`` for IRON bodies, with ``Task`` and ``TaskGroup`` support in ``iter_args``.
 
@@ -186,16 +177,16 @@ def yield_(values):
                 f"yield a TaskGroup there, not {v!r}"
             )
         if is_group:
-            if expected is not None and v._waited() != expected:
+            handles, waited = v._carry_out()
+            if expected is not None and waited != expected:
                 raise ValueError(
-                    f"yielded {v} has transfers waited {list(v._waited())} but the "
+                    f"yielded {v} has transfers waited {list(waited)} but the "
                     f"loop carries a group waited {list(expected)}; every "
                     "iteration must issue the same transfers in the same order"
                 )
-            handles, _ = v._carry_out()
             raw.extend(handles)
         else:
-            raw.append(_unwrap(v))
+            raw.append(v.handle if isinstance(v, Task) else v)
     _yield_(raw)
 
 

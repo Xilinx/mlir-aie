@@ -60,15 +60,15 @@ def to_stream(a_in: In, c_out: Out):
     return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
 
 
-def _expected_output():
-    return np.arange(24, dtype=np.int32).reshape(3, 8).T.reshape(-1)
-
-
 def _run_and_verify(opts):
     a_in = iron.arange(24, dtype=np.int32, device="npu")
     c_out = iron.zeros(24, dtype=np.int32, device="npu")
     to_stream(a_in, c_out)
-    assert_pass(c_out.numpy(), _expected_output(), fail_msg="to_stream mismatch")
+    assert_pass(
+        c_out.numpy(),
+        np.arange(24, dtype=np.int32).reshape(3, 8).T.reshape(-1),
+        fail_msg="to_stream mismatch",
+    )
 
 
 def main():

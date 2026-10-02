@@ -5,6 +5,7 @@
 #
 from __future__ import annotations
 
+import math
 from typing import Sequence
 
 import numpy as np
@@ -46,10 +47,6 @@ def _object_walk(
         )
     object_fifo.stream_dims(tap, what, can_pad)
     return tap
-
-
-def _numel(obj_type: type[np.ndarray]) -> int:
-    return int(np.prod(np_ndarray_type_get_shape(obj_type)))
 
 
 def _check_walk_size(
@@ -465,13 +462,13 @@ class ObjectFifo(Resolvable):
     def _check_walk_sizes(self) -> None:
         assert self._prod is not None
         link = self._prod.endpoint
-        sizes = [_numel(self._obj_type)]
+        sizes = [math.prod(self.shape)]
         if isinstance(link, ObjectFifoLink):
             sizes = link._transfer_sizes(self)
-        emits = _numel(self.consumer_obj_type)
+        emits = math.prod(np_ndarray_type_get_shape(self.consumer_obj_type))
         _check_walk_size(self._to_stream, sizes, emits, f"{self.name} to_stream")
         for con in self._cons:
-            sizes = [_numel(self.consumer_obj_type)]
+            sizes = [emits]
             if isinstance(con.endpoint, ObjectFifoLink):
                 sizes = con.endpoint._transfer_sizes(self)
             _check_walk_size(con.from_stream, sizes, emits, f"{self.name} from_stream")
@@ -1233,7 +1230,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         srcs = [h._object_fifo for h in self._srcs]
         dsts = [h._object_fifo for h in self._dsts]
         if len(srcs) == len(dsts) == 1:
-            in_size, out_size = _numel(srcs[0].obj_type), _numel(dsts[0].obj_type)
+            in_size, out_size = math.prod(srcs[0].shape), math.prod(dsts[0].shape)
             padded = dsts[0].to_stream is not None and dsts[0].to_stream.padding
             return [out_size if out_size > in_size and not padded else in_size]
         shared, side, offsets = (
@@ -1241,7 +1238,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             if len(srcs) > 1
             else (srcs[0], dsts, self._dst_offsets)
         )
-        ends = [*offsets[1:], _numel(shared.obj_type)]
+        ends = [*offsets[1:], math.prod(shared.shape)]
         sizes = [end - start for start, end in zip(offsets, ends)]
         for i, participant in enumerate(side):
             if participant is of:

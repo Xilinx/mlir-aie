@@ -67,13 +67,6 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_close_with_benchmark
 
 
-def _device_for(dev_str, n_aie_cols):
-    # On NPU1 pick the matching ColN variant (or NPU1 itself when
-    # n_aie_cols == max = 4).  On NPU2 use the unrestricted device
-    # regardless of n_aie_cols so the placer has the full 8-column array.
-    return from_name(dev_str, n_cols=n_aie_cols if dev_str == "npu" else None)
-
-
 class Tilings(NamedTuple):
     """The A, B and C tilings the runtime sequence fills and drains."""
 
@@ -376,20 +369,6 @@ def _make_argparser():
     return p
 
 
-def _tile_kwargs(opts):
-    return dict(
-        m=opts.m,
-        k=opts.k,
-        n=opts.n,
-        n_aie_cols=opts.n_aie_cols,
-        b_col_maj=opts.b_col_maj,
-        c_col_maj=opts.c_col_maj,
-        emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
-        use_chess=bool(opts.use_chess),
-        scalar=bool(opts.scalar),
-    )
-
-
 def _buffer_shapes(opts):
     """Return the A, B and C buffer shapes: one shape's, or the largest of ``--dynamic``."""
     if opts.dynamic:
@@ -409,7 +388,19 @@ def _compile_kwargs(opts):
         for name, shape, dtype in zip("ABC", _buffer_shapes(opts), dtypes)
     }
     shape = {} if opts.dynamic else dict(M=opts.M, K=opts.K, N=opts.N)
-    return dict(**tensor_types, **shape, **_tile_kwargs(opts))
+    return dict(
+        **tensor_types,
+        **shape,
+        m=opts.m,
+        k=opts.k,
+        n=opts.n,
+        n_aie_cols=opts.n_aie_cols,
+        b_col_maj=opts.b_col_maj,
+        c_col_maj=opts.c_col_maj,
+        emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
+        use_chess=bool(opts.use_chess),
+        scalar=bool(opts.scalar),
+    )
 
 
 def _run_and_verify(opts):
@@ -426,6 +417,7 @@ def _run_and_verify(opts):
         b_col_maj=bool(opts.b_col_maj),
     ).contract.tolerance
 
+    design = whole_array.specialize(**_compile_kwargs(opts))
     rng = np.random.default_rng(1726250518)
     if opts.dynamic:
         A_shape, B_shape, C_shape = _buffer_shapes(opts)
@@ -447,12 +439,12 @@ def _run_and_verify(opts):
             # Each matrix sits packed row-major at the front of its buffer.
             A_t.numpy_view()[: A_np.size] = A_np.reshape(-1)
             B_t.numpy_view()[: B_np.size] = B_np.reshape(-1)
-            design, shape = whole_array, dict(M=M, K=K, N=N)
+            shape = dict(M=M, K=K, N=N)
         else:
             A_t = iron.tensor(A_np, dtype=dtype_in, device="npu")
             B_t = iron.tensor(B_np, dtype=dtype_in, device="npu")
             C_t = iron.zeros((M, N), dtype=dtype_out, device="npu")
-            design, shape = whole_array.specialize(M=M, K=K, N=N), {}
+            shape = {}
 
         bench = run_iters(
             design,
@@ -460,7 +452,6 @@ def _run_and_verify(opts):
             B_t,
             C_t,
             **shape,
-            **_tile_kwargs(opts),
             warmup=opts.warmup,
             iters=opts.iters,
         )
@@ -489,7 +480,11 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: _device_for(o.dev, o.n_aie_cols),
+        # NPU1 binds the ColN variant matching n_aie_cols; NPU2 keeps the
+        # full array for the placer.
+        device=lambda o: from_name(
+            o.dev, n_cols=o.n_aie_cols if o.dev == "npu" else None
+        ),
     )
 
 

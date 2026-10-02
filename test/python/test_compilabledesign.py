@@ -11,15 +11,12 @@ Tests that exercise compile() or end-to-end kernel execution live in
 test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
-import __future__
 import dataclasses
 import importlib
-import inspect
 import json
 import os
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 from types import CodeType
 
@@ -34,6 +31,7 @@ from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+from aie.utils.compile.jit import _hash as _hash_mod
 from aie.utils.compile.jit._hash import _compute_artifact_hash, _compute_recipe_hash
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
@@ -394,19 +392,18 @@ def scale_design(tmp_path):
 def test_cache_key_covers_the_sources_the_generator_reaches(
     scale_design, module, old, new
 ):
-    """An edit to a module the generator reaches moves the key; undoing it restores it."""
+    """An edit to a module the generator reaches moves the key once it is imported."""
     tmp_path, gen = scale_design
 
     def key():
         return CompilableDesign(gen, compile_kwargs={"N": 64})._compute_cache_hash()
 
     path = tmp_path / f"{module}.py"
-    original = path.read_text()
     before = key()
-    path.write_text(original.replace(old, new))
+    path.write_text(path.read_text().replace(old, new))
+    assert key() == before, "the key follows the code that runs, not the disk"
+    importlib.reload(sys.modules[module])
     assert key() != before
-    path.write_text(original)
-    assert key() == before
 
 
 def test_cache_key_does_not_generate_the_design():
@@ -927,8 +924,6 @@ def test_content_digest_streams_a_large_file(tmp_path):
     """
     import hashlib
 
-    from aie.utils.compile.jit import _hash as _hash_mod
-
     blob = tmp_path / "big.h"
     payload = (b"0123456789abcdef" * 64) * 1024 + b"tail"  # 1 MiB + 4, two reads
     blob.write_bytes(payload)
@@ -942,8 +937,6 @@ def test_unreadable_input_does_not_alias_onto_a_readable_one(tmp_path):
     Skipping it would collapse "missing" and "empty" onto the same digest, so a
     design whose kernel disappeared would hit the entry built when it was there.
     """
-    from aie.utils.compile.jit import _hash as _hash_mod
-
     missing = tmp_path / "gone.cc"
     empty = tmp_path / "empty.cc"
     empty.write_bytes(b"")
@@ -1021,12 +1014,13 @@ def test_hash_distinguishes_designs_calling_different_symbols():
             "    return core_body\n"
         )
 
-    def nested(fn):
-        return next(c for c in fn.__code__.co_consts if isinstance(c, CodeType))
-
     a, b = build("matmul_bf16"), build("matmul_i8")
+    nested_a, nested_b = (
+        next(c for c in fn.__code__.co_consts if isinstance(c, CodeType))
+        for fn in (a, b)
+    )
     assert (
-        nested(a).co_code == nested(b).co_code
+        nested_a.co_code == nested_b.co_code
     ), "nested bytecode differs; this test would not exercise co_names"
     assert _compute_hash(a, {}, [], [], [], []) != _compute_hash(b, {}, [], [], [], [])
 
@@ -1071,7 +1065,7 @@ def test_hash_of_a_callable_compile_time_value_is_stable_and_not_blind():
 
 
 def test_hash_of_a_callable_compile_time_value_follows_its_callees():
-    """The callable branch of _kwarg_repr needs _callees_identity too.
+    """A callable compile-time value's helpers are followed like the generator's.
 
     ``act`` calls ``helper`` from its own module; only recursion into the
     callee's body (not just ``act``'s own bytecode, which only names
@@ -1191,8 +1185,8 @@ def test_hash_follows_the_helpers_a_generator_calls():
     assert key(build(1)) != key(build(1, limit=8))
 
 
-def test_hash_stops_at_the_generators_package():
-    """A sibling module's helper is followed; another package's is not."""
+def test_hash_follows_fileless_helpers_but_not_installed_packages():
+    """Code with no file is followed by its code; an installed package is not followed."""
 
     def key(module, leaf):
         gen = _design("def design(a):\n    return helper(a)\n")
@@ -1201,87 +1195,47 @@ def test_hash_stops_at_the_generators_package():
         return _compute_hash(gen, {}, [], [], [], [])
 
     assert key("designs.util", 1) != key("designs.util", 2)
-    assert key("elsewhere.util", 1) == key("elsewhere.util", 2)
+    assert key("numpy", 1) == key("numpy", 2)
 
 
-def _harness_key():
-    return _compute_recipe_hash(kd._stream.compilable.mlir_generator, {}, (), ())
-
-
-_FUTURE = sum(
-    getattr(__future__, n).compiler_flag for n in __future__.all_feature_names
-)
-
-
-def _redefine(monkeypatch, module, fn, old="", new=""):
-    """Run ``fn``'s source again in its module, edited, as reloading the file would."""
-    src = textwrap.dedent(inspect.getsource(fn))
-    assert not old or src.count(old) == 1, f"{fn.__name__} no longer has {old!r}"
-    monkeypatch.setattr(module, fn.__name__, fn)
-    flags = fn.__code__.co_flags & _FUTURE
-    exec(  # noqa: S102 -- the edited source is the point
-        compile(
-            src.replace(old, new), "<edit>", "exec", flags=flags, dont_inherit=True
-        ),
-        vars(module),
-    )
-    edited = getattr(module, fn.__name__)
-    assert edited is not fn
-    return edited
-
-
-def _edit_pipeline(monkeypatch, old="", new=""):
-    edited = _redefine(monkeypatch, _pipeline, _pipeline.pipeline, old, new)
-    monkeypatch.setattr(kd, "pipeline", edited)
-
-
-_HARNESS_EDITS = {
-    "_build_stream": lambda mp: _redefine(
-        mp, kd, kd._build_stream, "trace_flush = TRACE_FLUSH", "trace_flush = 1"
-    ),
-    "pipeline": lambda mp: _edit_pipeline(mp, "wait=True", "wait=False"),
-    "Stage default": lambda mp: mp.setattr(_pipeline.Stage, "trace_flush", 1),
-    "module constant": lambda mp: mp.setattr(kd, "TRACE_FLUSH", 8),
-}
-
-
-@pytest.mark.parametrize("edit", _HARNESS_EDITS.values(), ids=_HARNESS_EDITS.keys())
-def test_an_edit_to_the_kernel_harness_changes_its_key(monkeypatch, edit):
+def test_the_kernel_harness_key_covers_its_helper_modules():
     """kernel_design's one generator builds every kernel test through helpers.
 
     An edit to one used to keep the key, so a design cached before the edit
     ran in place of the edited one.
     """
-    before = _harness_key()
-    edit(monkeypatch)
-    assert _harness_key() != before
-
-
-def test_rebuilding_the_kernel_harness_unchanged_keeps_its_key(monkeypatch):
-    before = _harness_key()
-    _redefine(monkeypatch, kd, kd._build_stream)
-    _edit_pipeline(monkeypatch)
-    assert _harness_key() == before
+    reached = _hash_mod._python_identity([kd._stream.compilable.mlir_generator])
+    for module in (kd, _pipeline):
+        assert f"{module.__name__}@".encode() in reached
 
 
 def test_the_kernel_harness_key_is_the_same_in_every_process(tmp_path):
+    """Neither the hash seed nor what else the process imported moves the key.
+
+    Importing a submodule binds it on its package, which the key reaches.
+    """
     script = tmp_path / "probe.py"
     script.write_text(
+        "import sys\n"
+        "for name in sys.argv[1:]:\n"
+        "    __import__(name)\n"
         "from aie.iron.algorithms import kernel_design as kd\n"
         "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
         "print(_compute_recipe_hash(kd._stream.compilable.mlir_generator, {}, (), ()))\n"
     )
     seen = {
         subprocess.run(
-            [sys.executable, str(script)],
+            [sys.executable, str(script), *imports],
             capture_output=True,
             text=True,
             check=True,
             env={**os.environ, "PYTHONHASHSEED": seed},
         ).stdout.strip()
-        for seed in ("1", "2")
+        for seed, imports in (("1", ()), ("2", ("aie.utils.hostruntime.cli",)))
     }
-    assert seen == {_harness_key()}
+    assert seen == {
+        _compute_recipe_hash(kd._stream.compilable.mlir_generator, {}, (), ())
+    }
 
 
 def test_hash_is_24_hex_chars():

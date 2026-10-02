@@ -424,8 +424,7 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
   uint64_t maxLen = tm.getDmaBdMaxLen(tileCol, tileRow);
   uint64_t maxStride =
       (1ULL << tm.getDmaBdStepBits(tileCol, tileRow)) * gran / ew;
-  uint64_t maxIterations =
-      tm.getMaxBdIterationCount(tm.getTileType(tileCol, tileRow));
+  uint64_t maxIterations = 1ULL << tm.getDmaBdIterBits(tileCol, tileRow);
   uint64_t maxRepeats = tm.getMaxRepeatCount() + 1;
   GuardBuilder g{builder, loc};
   uint64_t sizeMax[4];
@@ -436,13 +435,6 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
                            : "a runtime DMA d" + Twine(i) + " size") +
                        " must be in [1:" + Twine(hi) + "]");
   };
-  auto checkStride = [&](int i, Value inRange, uint64_t hi) {
-    return g.check(g.either(g.ule(inS[i], 1), inRange),
-                   (i == 3 ? Twine("a runtime DMA iteration stride")
-                           : "a runtime DMA d" + Twine(i) + " stride") +
-                       " must be in [" + Twine(i == 3 ? 0 : 1) + ":" +
-                       Twine(hi) + "] when its size > 1");
-  };
   if (failed(checkSize(0, (isLinear ? maxLen : wrapMax) * gran / ew)) ||
       failed(checkSize(1, isLinear ? maxLen : wrapMax)) ||
       failed(checkSize(2, maxLen)) || failed(checkSize(3, maxRepeats)) ||
@@ -451,13 +443,18 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
           "a runtime DMA iteration count must be in [1:" +
               Twine(maxIterations) + "]")))
     return failure();
-  if (!isLinear)
-    for (int i = 0; i < 3; i++)
-      if (i > 0 || ew <= gran)
-        if (failed(checkStride(i, g.inRange1(inT[i], maxStride), maxStride)))
-          return failure();
-  if (failed(checkStride(3, g.ule(inT[3], maxStride), maxStride)))
-    return failure();
+  for (int i = 0; i < 4; i++) {
+    if (i < 3 && (isLinear || (i == 0 && ew > gran)))
+      continue;
+    Value inRange =
+        i == 3 ? g.ule(inT[3], maxStride) : g.inRange1(inT[i], maxStride);
+    if (failed(g.check(g.either(g.ule(inS[i], 1), inRange),
+                       (i == 3 ? Twine("a runtime DMA iteration stride")
+                               : "a runtime DMA d" + Twine(i) + " stride") +
+                           " must be in [" + Twine(i == 3 ? 0 : 1) + ":" +
+                           Twine(maxStride) + "] when its size > 1")))
+      return failure();
+  }
 
   // A size or stride whose byte extent is not a whole number of granules is
   // unrealizable (mirrors verifyStridesWraps). The innermost stride collapses

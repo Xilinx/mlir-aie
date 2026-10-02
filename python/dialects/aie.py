@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import inspect
 from typing import List, Tuple, Dict, Any, Union
 import contextlib
-from enum import IntEnum
+from enum import Enum, IntEnum
 
 import numpy as np
 
@@ -377,9 +377,11 @@ def _trace_event_attr(x, context):
         return Attribute.parse(f'#aie.trace_event<"{x}">', context=context)
     elif isinstance(x, StringAttr):
         return Attribute.parse(f'#aie.trace_event<"{x.value}">', context=context)
-    elif hasattr(x, "code"):  # GenericEvent, PortEvent, etc. - check before Enum
+    from aie.utils.trace.events import GenericEvent
+
+    if isinstance(x, GenericEvent):
         return Attribute.parse(f'#aie.trace_event<"{x.code.name}">', context=context)
-    elif hasattr(x, "name") and hasattr(x, "value"):  # Enum (CoreEvent, MemEvent, etc.)
+    elif isinstance(x, Enum):
         return Attribute.parse(f'#aie.trace_event<"{x.name}">', context=context)
     else:
         # Assume it's already an Attribute

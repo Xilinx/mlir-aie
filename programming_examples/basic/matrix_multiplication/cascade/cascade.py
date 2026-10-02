@@ -41,13 +41,6 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_close_with_benchmark
 
 
-def _device_for(dev_str, n_aie_cols):
-    # On NPU1 pick the matching ColN variant (or NPU1 itself when
-    # n_aie_cols == max = 4).  On NPU2 use the unrestricted device
-    # regardless of n_aie_cols so the placer has the full 8-column array.
-    return from_name(dev_str, n_cols=n_aie_cols if dev_str == "npu" else None)
-
-
 @iron.jit
 def cascade(
     A: In,
@@ -446,7 +439,11 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: _device_for(o.dev, o.n_aie_cols),
+        # NPU1 binds the ColN variant matching n_aie_cols; NPU2 keeps the
+        # full array for the placer.
+        device=lambda o: from_name(
+            o.dev, n_cols=o.n_aie_cols if o.dev == "npu" else None
+        ),
     )
 
 

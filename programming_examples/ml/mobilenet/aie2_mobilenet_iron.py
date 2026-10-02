@@ -138,16 +138,12 @@ def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: CompileTime[int]
     _scratch_sz_i32 = 2 * _post_l1_out_sz_i32
     scratch_ty = np.ndarray[(_scratch_sz_i32,), np.dtype[np.int32]]
 
-    def _tap(total, offset, size):
-        return TensorAccessPattern.full((total,))[offset : offset + size]
-
     # Round-trip avgpool output through L3 (shim 30/40 hop). Offsets and
     # sizes are i32 elements (4 bytes each):
     #   avgpool / FC1-input scratch:    i32 offset 0
     #   FC1-output / FC2-input scratch: i32 offset 640 (byte 2560)
     #   transfer length: 640 i32 = 2560 B = 1280 ui16
-    post_l1_tap = _tap(_scratch_sz_i32, 0, _post_l1_out_sz_i32)
-    post_fc_tap = _tap(_scratch_sz_i32, _post_l1_out_sz_i32, _post_l1_out_sz_i32)
+    post_l1_tap, post_fc_tap = TensorAccessPattern.full((_scratch_sz_i32,)).partition(2)
 
     # Use the gemm-style "one task_group at a time" pattern. Each task_group
     # holds a batch of fills + a wait=True drain, and finish_task_group()
@@ -162,17 +158,15 @@ def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: CompileTime[int]
         # run _PREFETCH images ahead so the backbone never idles while the
         # previous image's FC round-trip runs.
         groups = [TaskGroup() for _ in range(batch)]
-
-        def _fill(i):
-            act_in_prod.fill(
-                inp, _tap(batch * in_sz_i32, i * in_sz_i32, in_sz_i32), group=groups[i]
-            )
+        in_taps = TensorAccessPattern.full((batch * in_sz_i32,)).partition(batch)
+        out_taps = TensorAccessPattern.full((batch * out_sz_i32,)).partition(batch)
 
         for i in range(min(_PREFETCH, batch)):
-            _fill(i)
+            act_in_prod.fill(inp, in_taps[i], group=groups[i])
         for i in range(batch):
-            if i + _PREFETCH < batch:
-                _fill(i + _PREFETCH)
+            j = i + _PREFETCH
+            if j < batch:
+                act_in_prod.fill(inp, in_taps[j], group=groups[j])
             avgpool_cons.drain(scratch, tap=post_l1_tap, wait=True, group=groups[i])
             groups[i].finish()
 
@@ -185,12 +179,7 @@ def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: CompileTime[int]
             # FC2: reads FC1 output, drains image i's result to the host.
             tg = TaskGroup()
             fc_prod.fill(scratch, tap=post_fc_tap, group=tg)
-            fc_cons.drain(
-                out,
-                tap=_tap(batch * out_sz_i32, i * out_sz_i32, out_sz_i32),
-                wait=True,
-                group=tg,
-            )
+            fc_cons.drain(out, tap=out_taps[i], wait=True, group=tg)
             tg.finish()
 
     rt = Runtime(
@@ -249,14 +238,14 @@ def _make_argparser():
     return p
 
 
-def _loadtxt_i8(name):
-    return np.loadtxt(data_dir + name, delimiter=",", dtype=np.int32).astype(np.int8)
-
-
 def _run_and_verify(design, opts):
     ds = DataShaper()
-    chw = _loadtxt_i8("before_ifm_mem_fmt_1x1.txt").reshape(
-        tensorInC, tensorInH, tensorInW
+    chw = (
+        np.loadtxt(
+            data_dir + "before_ifm_mem_fmt_1x1.txt", delimiter=",", dtype=np.int32
+        )
+        .astype(np.int8)
+        .reshape(tensorInC, tensorInH, tensorInW)
     )
     n = opts.batch
     inp = iron.tensor(
@@ -283,7 +272,12 @@ def _run_and_verify(design, opts):
             for o in out.numpy().view(np.uint16).reshape(n, -1)
         ]
     )
-    golden = np.tile(_loadtxt_i8("golden_output.txt"), n)
+    golden = np.tile(
+        np.loadtxt(
+            data_dir + "golden_output.txt", delimiter=",", dtype=np.int32
+        ).astype(np.int8),
+        n,
+    )
     verdict = compare(
         actual.astype(np.int32),
         golden.astype(np.int32),

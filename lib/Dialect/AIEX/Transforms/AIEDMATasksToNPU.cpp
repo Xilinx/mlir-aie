@@ -626,10 +626,11 @@ struct AIEDMATasksToNPUPass
     // contiguous [1, 1, 1, N] to this form, and the static path encodes it
     // linear from `len` alone), so give it exactly that shape. With any other
     // dims, `len` must agree with their d0*d1*d2 extent.
-    auto isOne = [](OpFoldResult v) { return isConstantIntValue(v, 1); };
     bool linear =
-        sizes.empty() || (lenOfr && isOne(strides4[3]) &&
-                          llvm::all_of(ArrayRef(sizes4).drop_back(), isOne));
+        sizes.empty() ||
+        (lenOfr && isConstantIntValue(strides4[3], 1) &&
+         llvm::all_of(ArrayRef(sizes4).drop_back(),
+                      [](OpFoldResult v) { return isConstantIntValue(v, 1); }));
     if (linear) {
       sizes4[3] = lenOfr;
       strides4[3] = one;

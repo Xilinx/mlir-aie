@@ -392,25 +392,22 @@ def _arch_traits() -> ArchTraits:
     return ARCH_TRAITS[_detect_arch()]
 
 
-def _portable() -> bool:
-    """Whether ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch."""
-    return os.environ.get("AIE_KERNELS_PORTABLE") == "1"
-
-
 def _tuned_arch() -> str:
     """Return the arch whose ``AIE_TUNED_*`` code is built, or ``"portable"``.
 
     A factory choice that follows the code of one branch -- a stack size, a
     tolerance, a reference model -- keys on this rather than on
     ``_detect_arch``, so that it pairs with the branch built when
-    ``_portable()`` holds.
+    ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch.
     """
-    return "portable" if _portable() else _detect_arch()
+    if os.environ.get("AIE_KERNELS_PORTABLE") == "1":
+        return "portable"
+    return _detect_arch()
 
 
 def _portable_flags() -> tuple[str, ...]:
     """Return the compile flags that select the branch ``_tuned_arch`` names."""
-    return ("-DAIE_KERNELS_PORTABLE",) if _portable() else ()
+    return ("-DAIE_KERNELS_PORTABLE",) if _tuned_arch() == "portable" else ()
 
 
 def _kernel_source(relpath: str) -> Path:
@@ -567,11 +564,9 @@ def _min_dma_aligned_elems(dtype) -> int:
 
 def _arg_type_key(t):
     """Hashable key for one entry of ``arg_types`` (part of a kernel's identity)."""
-    if hasattr(t, "__args__"):
-        # np.ndarray[(shape,), np.dtype[T]]
-        shape = t.__args__[0]
-        inner = t.__args__[1]
-        dtype = inner.__args__[0] if hasattr(inner, "__args__") else inner
+    if get_origin(t) is np.ndarray:
+        shape, inner = get_args(t)
+        dtype = get_args(inner)[0] if get_origin(inner) is np.dtype else inner
         return ("ndarray", tuple(shape), str(dtype))
     return repr(t)
 

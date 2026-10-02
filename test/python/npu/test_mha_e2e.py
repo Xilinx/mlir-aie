@@ -72,16 +72,6 @@ _LOWEST = float(ml_dtypes.finfo(bfloat16).min)
 _RTOL_EXP2 = 0.07
 
 
-def _reblock(rows: int) -> TensorAccessPattern:
-    """Reads a row-major ``rows`` x 64 P back in the mmul's 8x8 block order."""
-    return TensorAccessPattern.full((rows, _B)).tile((8, 8))
-
-
-def _block(mat: np.ndarray) -> np.ndarray:
-    """(64, 64) -> mm.cc's 8x8-blocked operand order; its own inverse."""
-    return mat.reshape(8, 8, 8, 8).transpose(0, 2, 1, 3).reshape(-1).copy()
-
-
 def _unblock(flat: np.ndarray, rows: int = _B) -> np.ndarray:
     """The 8x8-blocked O tile back to (rows, 64)."""
     return flat.reshape(rows // 8, 8, 8, 8).transpose(0, 2, 1, 3).reshape(rows, _B)
@@ -97,15 +87,6 @@ def _keep(
         (cols[None, :] <= rows[:, None])
         & (rows[:, None] < s_q_eff)
         & (cols[None, :] < s_kv_eff)
-    )
-
-
-def _keep_round(
-    q_block: int, n_kv: int, s_q_eff: int, s_kv_eff: int, b_q: int = _B
-) -> np.ndarray:
-    """``_keep`` over every key block a round streams, side by side."""
-    return np.concatenate(
-        [_keep(q_block, kv, s_q_eff, s_kv_eff, b_q) for kv in range(n_kv)], axis=1
     )
 
 
@@ -428,7 +409,10 @@ def mha_round(
     # O is held as the accumulator for the whole round.
     of_o = ObjectFifo(tile_ty, name="o", depth=1)
     of_p = ObjectFifo(tile_ty, name="p", depth=1)
-    of_pb = of_p.cons().forward(to_stream=_reblock(b_q), depth=1)
+    # The row-major P is read back in the mmul's 8x8 block order.
+    of_pb = of_p.cons().forward(
+        to_stream=TensorAccessPattern.full((b_q, _B)).tile((8, 8)), depth=1
+    )
 
     scale_buf = Buffer(scale_ty, name="scale")
     idx_bufs = [
@@ -505,7 +489,9 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B):
     v = _dyadic(rng, (n_kv * _B, _B), 0.25, mag=2)
     # Aim each query at its diagonal key, in the last block, so the running max
     # rises late and matmul_PV must rescale what earlier blocks accumulated.
-    keep = _keep_round(q_block, n_kv, s_q_eff, s_kv_eff, b_q)
+    keep = np.concatenate(
+        [_keep(q_block, kv, s_q_eff, s_kv_eff, b_q) for kv in range(n_kv)], axis=1
+    )
     for row in range(b_q):
         if keep[row].any():
             k[q_block * b_q + row] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
@@ -524,7 +510,9 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B):
                 np.pad(scores[:, b * _B : (b + 1) * _B], ((0, _B - b_q), (0, 0)))
                 .reshape(-1)
                 .copy(),
-                _block(stale[b * _B : (b + 1) * _B]),
+                TensorAccessPattern.full((_B, _B))
+                .tile((8, 8))
+                .gather(stale[b * _B : (b + 1) * _B]),
             )
         ]
     )

@@ -377,13 +377,6 @@ class _CascadeMatrixKernel(MatrixKernel):
     put_get: Kernel
 
 
-def _blocked(
-    rows: int, cols: int, tile_rows: int, tile_cols: int
-) -> TensorAccessPattern:
-    """``to_stream`` walking a ``(rows, cols)`` tensor in tile-sized blocks."""
-    return TensorAccessPattern.full((rows, cols)).tile((tile_rows, tile_cols))
-
-
 def mm_stream_dims(
     dim_m: int,
     dim_k: int,
@@ -408,8 +401,9 @@ def mm_stream_dims(
     r, s, t = mac_dims
     m, k, n = dim_m, dim_k, dim_n
     # A and B are read row-major and emitted as (r x s) / (s x t) blocks.
-    a = _blocked(m, k, r, s)
-    b = _blocked(n, k, t, s) if b_col_maj else _blocked(k, n, s, t)
+    a = TensorAccessPattern.full((m, k)).tile((r, s))
+    b_shape, b_tile = ((n, k), (t, s)) if b_col_maj else ((k, n), (s, t))
+    b = TensorAccessPattern.full(b_shape).tile(b_tile)
     # C goes the other way: the DMA reads the core's block-ordered buffer and
     # emits it row-major, so the intra-tile row term sits outside the tile
     # index -- (r, t) before (n//t, r*t). That is the inverse of tiling.
@@ -1264,10 +1258,10 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     v_ty = np.ndarray[(lk * head_dim,), np.dtype[bfloat16]]
     streams = mm_stream_dims(lq, lk, head_dim, (r, s, t))
     # attn_fv walks V n-block-outer, k-block-inner -- the transpose of mm.cc's
-    # B block order, so this comes off _blocked rather than streams.B. At
+    # B block order, so this is built here rather than taken from streams.B. At
     # head_dim 512 LK is 8, making the k term degenerate, so only the 256
     # geometry can tell the two orders apart.
-    v_dims = _blocked(lk, head_dim, s, t).permute((1, 0, 2, 3))
+    v_dims = TensorAccessPattern.full((lk, head_dim)).tile((s, t)).permute((1, 0, 2, 3))
     return _make_extern(
         "prefill_fv_step",
         _kernel_source("linalg/flash_attn_prefill.cc"),

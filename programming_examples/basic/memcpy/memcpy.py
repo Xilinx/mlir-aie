@@ -144,16 +144,12 @@ def _validate(opts):
         )
 
 
-def _bypass_bool(s: str) -> bool:
-    return s.lower() in ("yes", "true", "t", "1")
-
-
 def _compile_kwargs(opts):
     return dict(
         size=opts.length,
         num_columns=opts.cols,
         num_channels=opts.chans,
-        bypass=_bypass_bool(opts.bypass),
+        bypass=opts.bypass.lower() in ("yes", "true", "t", "1"),
     )
 
 

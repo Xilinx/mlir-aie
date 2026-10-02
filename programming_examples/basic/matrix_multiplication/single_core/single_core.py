@@ -203,10 +203,6 @@ def _make_argparser():
     return p
 
 
-def _trace_config(opts):
-    return TraceConfig(trace_size=opts.trace_size) if opts.trace_size > 0 else None
-
-
 def _run_and_verify(opts):
     dtype_in = str_to_dtype(opts.dtype_in)
     dtype_out = str_to_dtype(opts.dtype_out)
@@ -228,22 +224,10 @@ def _run_and_verify(opts):
     C_t = iron.zeros(opts.M * opts.N, dtype=dtype_out, device="npu")
 
     bench = run_iters(
-        single_core,
+        single_core.specialize(**_compile_kwargs(opts)),
         A_t,
         B_t,
         C_t,
-        M=opts.M,
-        K=opts.K,
-        N=opts.N,
-        m=opts.m,
-        k=opts.k,
-        n=opts.n,
-        dtype_in_str=opts.dtype_in,
-        dtype_out_str=opts.dtype_out,
-        b_col_maj=opts.b_col_maj,
-        emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
-        use_chess=bool(opts.use_chess),
-        trace_config=_trace_config(opts),
         warmup=opts.warmup,
         iters=opts.iters,
     )
@@ -286,7 +270,9 @@ def _compile_kwargs(opts):
         b_col_maj=opts.b_col_maj,
         emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
         use_chess=bool(opts.use_chess),
-        trace_config=_trace_config(opts),
+        trace_config=(
+            TraceConfig(trace_size=opts.trace_size) if opts.trace_size > 0 else None
+        ),
     )
 
 

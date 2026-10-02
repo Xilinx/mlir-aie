@@ -194,7 +194,9 @@ class TaskGroup:
         transfers = self._transfers()
         # Actions hold the configure op (or a carried Value); the loop carries
         # the op's !index result.
-        handles = [getattr(task, "result", task) for task, _ in transfers]
+        handles = [
+            task if isinstance(task, Value) else task.result for task, _ in transfers
+        ]
         self._carried = True
         self._actions = []
         active = active_sequence()
@@ -213,10 +215,6 @@ class TaskGroup:
                 tg._actions.append((dma_await_task, [handle]))
             tg._actions.append((dma_free_task, [handle]))
         return tg
-
-    def _waited(self) -> tuple[bool, ...]:
-        """Which of the group's transfers (in issue order) are waited."""
-        return tuple(w for _, w in self._transfers())
 
     def _transfers(self) -> list[tuple[Any, bool]]:
         """Each transfer once, in issue order, with whether it is waited."""
