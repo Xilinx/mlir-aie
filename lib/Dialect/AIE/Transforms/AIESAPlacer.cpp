@@ -20,29 +20,27 @@ using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-sa-placer"
 
-namespace {
+// The std:: distributions and std::shuffle are implementation-defined, so the
+// same seed yields different placements under libstdc++ and MSVC. These
+// helpers consume raw std::mt19937 output, which the standard fixes.
 
-/// Draw a reproducible bounded index directly from std::mt19937 output.
+/// Draw an index in [0, upperExclusive).
 static size_t drawBoundedIndex(std::mt19937 &rng, size_t upperExclusive) {
   return static_cast<size_t>(rng()) % upperExclusive;
 }
 
-/// Draw a reproducible double in [0, 1) directly from std::mt19937 output.
+/// Draw a double in [0, 1).
 static double drawUnitReal(std::mt19937 &rng) {
   constexpr double denominator = static_cast<double>(std::mt19937::max()) + 1.0;
   return static_cast<double>(rng()) / denominator;
 }
 
-/// Fisher-Yates shuffle using drawBoundedIndex rather than std::shuffle.
-static void deterministicShuffle(llvm::SmallVectorImpl<TileID> &values,
+/// Fisher-Yates shuffle.
+static void deterministicShuffle(MutableArrayRef<TileID> values,
                                  std::mt19937 &rng) {
-  for (size_t i = values.size(); i > 1; --i) {
-    size_t j = drawBoundedIndex(rng, i);
-    std::swap(values[i - 1], values[j]);
-  }
+  for (size_t i = values.size(); i > 1; --i)
+    std::swap(values[i - 1], values[drawBoundedIndex(rng, i)]);
 }
-
-} // namespace
 
 /// Return neighboring tiles whose memory module `tilePos` can access.
 /// The direction matches the allocate op requirement: the source tile
