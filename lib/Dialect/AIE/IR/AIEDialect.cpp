@@ -3613,6 +3613,9 @@ LogicalResult DMABDOp::verify() {
             (*this)->getParentOp()))
       return emitOpError("length_parameter is only supported on a BD in a "
                          "runtime sequence");
+    // Only the C++ TXN path lowers a runtime offset, and it has no scratchpad.
+    if (getOffset() && !getConstantOffset())
+      return emitOpError("length_parameter requires a constant offset");
     std::optional<llvm::SmallVector<BDDimLayoutAttr>> dims =
         getFoldedDimensions([&]() {
           return emitOpError("length_parameter requires a static pattern: ");

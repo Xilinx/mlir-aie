@@ -442,20 +442,6 @@ struct AIEDMATasksToNPUPass
         return failure();
     }
 
-    // A length_state_table_idx adds the runtime length to the BD's
-    // Buffer_Length, which the BD write has already set to the static length.
-    // The verifier requires a length_unit with it.
-    auto lengthUnit = bd_op.getLengthUnit();
-    if (bd_op.getLengthStateTableIdxAttr() && lengthUnit) {
-      if (runtimeRegisterAddr)
-        return bd_op->emitOpError("length_parameter requires a constant bd_id");
-      auto bufType = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
-      if (failed(emitUpdateBdLengthFromParameter(builder, bd_op, bufType,
-                                                 *lengthUnit, target_model, col,
-                                                 row, bd_id)))
-        return failure();
-    }
-
     return success();
   }
 
@@ -695,6 +681,9 @@ struct AIEDMATasksToNPUPass
         llvm::any_of(bd_op.getMixedStrides(),
                      [](OpFoldResult s) { return !getConstantIntValue(s); });
     if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId) {
+      // The verifier leaves a runtime bd_id as the only way here.
+      if (bd_op.getLengthStateTableIdxAttr())
+        return bd_op->emitOpError("length_parameter requires a constant bd_id");
       int col = tile.getCol(), row = tile.getRow();
       if (!target_model.isShimNOCTile(col, row) &&
           !target_model.isMemTile(col, row) &&
@@ -945,7 +934,18 @@ struct AIEDMATasksToNPUPass
         target_model.isShimNOCTile(tile.getCol(), tile.getRow())
             ? builder.getI32IntegerAttr(bd_op.getAxcacheOrDefault())
             : IntegerAttr());
-    return setAddressForSingleBD(builder, bd_op, tile);
+    if (failed(setAddressForSingleBD(builder, bd_op, tile)))
+      return failure();
+
+    // A length_state_table_idx adds the runtime length to the BD's
+    // Buffer_Length, which the BD write has already set to the static length.
+    // The verifier requires a length_unit with it.
+    auto lengthUnit = bd_op.getLengthUnit();
+    if (bd_op.getLengthStateTableIdxAttr() && lengthUnit)
+      return emitUpdateBdLengthFromParameter(
+          builder, bd_op, buffer_type, *lengthUnit, target_model, tile.getCol(),
+          tile.getRow(), bd_id);
+    return success();
   }
 
   LogicalResult hoistNextBdOpsIntoAttrs(DMAConfigureTaskOp op) {

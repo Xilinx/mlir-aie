@@ -155,11 +155,38 @@ aie.device(npu2) {
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
   aie.runtime_sequence(%arg0 : memref<4096xi32>, %len : i64) {
-    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op length_parameter requires constant sizes and strides}}
+    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op length_parameter requires constant offsets, sizes and strides}}
     aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, %len][0, 0, 0, 1]) {id = 0 : i64, metadata = @dma, length_parameter = @n, length_unit = 4 : i64} : memref<4096xi32>
   }
   %tile = aie.tile(0, 0)
   aie.shim_dma_allocation @dma(%tile, MM2S, 0)
+}
+
+// -----
+
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  aie.runtime_sequence(%arg0 : memref<4096xi32>, %off : i64) {
+    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op length_parameter requires constant offsets, sizes and strides}}
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, %off][1, 1, 4, 8][0, 0, 16, 1]) {id = 0 : i64, metadata = @dma, length_parameter = @n, length_unit = 8 : i64} : memref<4096xi32>
+  }
+  %tile = aie.tile(0, 0)
+  aie.shim_dma_allocation @dma(%tile, MM2S, 0)
+}
+
+// -----
+
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence(%arg0 : memref<4096xi32>, %off : i32) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      // expected-error @+1 {{'aie.dma_bd' op length_parameter requires a constant offset}}
+      aie.dma_bd(%arg0 : memref<4096xi32> offset = %off len = 32 sizes = [4, 8] strides = [16, 1]) {bd_id = 0 : i32, length_parameter = @n, length_unit = 8 : i32}
+      aie.end
+    }
+    aiex.dma_start_task(%task)
+  }
 }
 
 // -----

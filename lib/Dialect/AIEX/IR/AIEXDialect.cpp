@@ -632,8 +632,11 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
 
   bool hasLengthParameter =
       getLengthParameterAttr() || getLengthStateTableIdxAttr();
-  if (hasLengthParameter && (!allStridesConstant || !allSizesConstant))
-    return emitOpError("length_parameter requires constant sizes and strides");
+  // Only the C++ TXN path lowers a runtime offset, and it has no scratchpad.
+  if (hasLengthParameter &&
+      (!allStridesConstant || !allSizesConstant || !allOffsetsConstant))
+    return emitOpError(
+        "length_parameter requires constant offsets, sizes and strides");
 
   // Dynamic path: any runtime size/stride/offset. A runtime offset flows into
   // the address-patch arg_plus as arith (see AIEDmaToNpu.cpp emitBufferAddress-

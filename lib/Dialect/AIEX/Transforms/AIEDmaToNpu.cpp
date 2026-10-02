@@ -519,6 +519,17 @@ public:
                                       arg_idx)))
       return failure();
 
+    // A length_state_table_idx adds the runtime length to the BD's
+    // Buffer_Length, after the BD write above has set the static length. The
+    // verifier requires a length_unit with it.
+    auto lengthUnit = op.getLengthUnit();
+    if (op.getLengthStateTableIdxAttr() && lengthUnit) {
+      if (failed(emitUpdateBdLengthFromParameter(rewriter, op, bufferType,
+                                                 *lengthUnit, targetModel,
+                                                 tileCol, tileRow, op.getId())))
+        return failure();
+    }
+
     // push the patched bd onto the dma task queue. bd_id and repeat_count are
     // SSA operands; materialize them as constants here (the static path).
     NpuPushQueueOp::create(
@@ -582,18 +593,6 @@ public:
       auto bufType = cast<BaseMemRefType>(op.getMemref().getType());
       if (failed(emitUpdateBdAddressFromOffsetParameter(rewriter, op, bufType,
                                                         patchAddr)))
-        return failure();
-    }
-
-    // A length_state_table_idx adds the runtime length to the BD's
-    // Buffer_Length, after the BD write above has set the static length. The
-    // verifier requires a length_unit with it.
-    auto lengthUnit = op.getLengthUnit();
-    if (op.getLengthStateTableIdxAttr() && lengthUnit) {
-      auto bufType = cast<BaseMemRefType>(op.getMemref().getType());
-      if (failed(emitUpdateBdLengthFromParameter(rewriter, op, bufType,
-                                                 *lengthUnit, targetModel,
-                                                 tileCol, tileRow, op.getId())))
         return failure();
     }
     return success();
