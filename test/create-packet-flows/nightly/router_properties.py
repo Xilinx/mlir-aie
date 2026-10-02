@@ -28,7 +28,9 @@ Designs come in three tiers:
  * routable: the generator routes every flow on exclusive links, plans its
    arbiters with the router's own rules, and emits only the flows, programs,
    runtime sequence and pre-placed switchbox configuration. The router has
-   to succeed, and its output is checked hop by hop.
+   to succeed with allow-deadlock-prone, and its output is checked hop by
+   hop; without it, it has to fail exactly where the model says the flows
+   can deadlock.
  * unroutable: more pairwise conflicting streams must take an arbiter at a
    tile than it has (the router's message is predicted exactly), more
    circuit flows must cross a port than it has channels, or conflicting
@@ -2124,7 +2126,7 @@ class Analysis:
             g = self.tree_of[x]
         return " ".join(reversed(steps))
 
-    def hold_cycle(self, routes, forced_waits=False):
+    def hold_cycle(self, routes, forced_waits=False, definite=False):
         """StreamConflicts::holdCycle. routes[i] is [(tile, input, arbiter)]
         for streams[i]. Steps are (wait, waiting, sharer, holding, tile,
         sharer input, holder input, arbiter, forced)."""
@@ -2310,7 +2312,9 @@ class Analysis:
                     ):
                         continue
                     for m in trees[g]["members"]:
-                        if self.blocks(s, m):
+                        if self.blocks(s, m) and not (
+                            definite and self.assumptions(s, m)
+                        ):
                             out.append(
                                 (
                                     anywhere_node(g),
@@ -2471,10 +2475,6 @@ class Analysis:
                     )
                     pending.append(({**fixed, grant: holder}, excluded))
         return None
-
-    def assumed(self, steps):
-        """StreamConflicts::assumed."""
-        return any(st[0] == "drain" and self.assumptions(st[1], st[3]) for st in steps)
 
     def explain_cycle(self, steps):
         out = []
@@ -2981,9 +2981,9 @@ def plan_routing(d, an, solution, hops_on):
     first = []
     budget = [PARAMS["hold_budget"]]
 
-    def search(forced_waits):
+    def search(forced_waits, definite=False):
         arbitrate()
-        cycle = an.hold_cycle(routes, forced_waits)
+        cycle = an.hold_cycle(routes, forced_waits, definite)
         if cycle is None:
             return True
         if not first:
@@ -3014,7 +3014,7 @@ def plan_routing(d, an, solution, hops_on):
             plan, _ = plan_tile(tile)
             if plan is not None:
                 plans[tile] = plan
-                if search(forced_waits):
+                if search(forced_waits, definite):
                     return True
                 plans[tile] = saved
             if pair:
@@ -3040,13 +3040,16 @@ def plan_routing(d, an, solution, hops_on):
         )
     # Trees into a receiver they share wait on each other at its master port
     # whatever the plan; where no plan breaks a cycle through such waits, the
-    # plan stands, with a warning unless the cycle rests on assumptions.
+    # plan stands, failing unless every such plan has the cycle only by
+    # assumption.
     first.clear()
     budget[0] = PARAMS["hold_budget"]
     if not search(True):
-        arbitrate()
-        if not an.assumed(first[0]):
+        first.clear()
+        budget[0] = PARAMS["hold_budget"]
+        if not search(True, definite=True):
             out["shared_receiver_cycle"] = first[0]
+        arbitrate()
     return out
 
 
@@ -3719,11 +3722,13 @@ def verify(d, an, text, hops_on):
     cycle = an.hold_cycle(routes)
     if cycle is not None:
         problems.append("hold cycle: " + an.explain_cycle(cycle))
-    # A cycle through waits at receivers trees share is the router's to warn
-    # of, unless it rests on assumptions.
-    shared = an.hold_cycle(routes, forced_waits=True) if cycle is None else None
-    if shared is not None and an.assumed(shared):
-        shared = None
+    # A cycle through waits at receivers trees share fails the router, unless
+    # it rests on assumptions.
+    shared = (
+        an.hold_cycle(routes, forced_waits=True, definite=True)
+        if cycle is None
+        else None
+    )
 
     keeps = last_keep(d)
     mixed_ctrl, low_priority, ctrl_used = set(), set(), set()
@@ -5288,11 +5293,13 @@ def aie_opt_path():
     return os.environ.get("AIE_OPT") or shutil.which("aie-opt") or str(here)
 
 
-def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None):
-    """Run the router. A timeout comes back as returncode -1000."""
-    opt = "--aie-create-pathfinder-flows"
-    if not hops_on:
-        opt += "=circuit-switch-hops=false"
+def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None, strict=False):
+    """Run the router, letting flows that can deadlock route with a warning
+    unless strict. A timeout comes back as returncode -1000."""
+    opts = [] if hops_on else ["circuit-switch-hops=false"]
+    if not strict:
+        opts.append("allow-deadlock-prone=true")
+    opt = "--aie-create-pathfinder-flows" + ("=" + " ".join(opts) if opts else "")
     cmd = (
         [aie_opt_path(), opt, *extra]
         + (["--split-input-file"] if split else [])
@@ -5316,23 +5323,27 @@ def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None):
 MODULE_TAG_RE = re.compile(r"^module @s(\d+)\b", re.M)
 
 
-def route_batch(tagged, hops_on, extra=()):
+def route_batch(tagged, hops_on, extra=(), strict=False):
     """Route many tagged designs in one run. A failure drops that design's
     output, so designs missing from it are rerun alone. Returns ({tag:
     output}, {tag: (returncode, stderr)}, {tag: debug output})."""
     p = aie_opt(
-        "\n// -----\n".join(m for _, m in tagged), hops_on, split=True, extra=extra
+        "\n// -----\n".join(m for _, m in tagged),
+        hops_on,
+        split=True,
+        extra=extra,
+        strict=strict,
     )
     out, errs, debug = {}, {}, {}
     for chunk in p.stdout.split("\n// -----\n"):
         if m := MODULE_TAG_RE.search(chunk):
-            out[int(m.group(1))] = chunk
+            out[int(m.group(1))] = chunk.removeprefix("// -----\n")
     logs = p.stderr.split(PASS_BEGIN)[1:]
     if len(logs) == len(tagged):
         debug = {tag: log for (tag, _), log in zip(tagged, logs)}
     for tag, text in tagged:
         if tag not in out:
-            q = aie_opt(text, hops_on, extra=extra)
+            q = aie_opt(text, hops_on, extra=extra, strict=strict)
             debug[tag] = q.stderr
             if q.returncode == 0:
                 out[tag] = q.stdout
@@ -5366,7 +5377,11 @@ def unavoidable_warning(an):
 
 SHARED_RECEIVER_WARNING = (
     "Packet flows into receivers they share can deadlock holding arbiters across "
-    "switchboxes, and no arbiter assignment found avoids it: "
+    "switchboxes, and no routing found avoids it: "
+)
+ALLOW_HINT = (
+    " Set allow-deadlock-prone (aiecc --allow-deadlock-prone-routing) to "
+    "route them anyway."
 )
 
 
@@ -5713,7 +5728,8 @@ def main(argv=None):
         t0 = time.monotonic()
         outs, errs, _ = route_batch(tagged, hops_on)
         spent = time.monotonic() - t0
-        return outs, errs, route_batch(tagged, hops_on, debug), spent
+        strict = route_batch(tagged, hops_on, strict=True)
+        return outs, errs, route_batch(tagged, hops_on, debug), spent, strict
 
     cases, gave_up, pending = [], 0, {}
     size = PARAMS["batch"]
@@ -5737,6 +5753,38 @@ def main(argv=None):
     failed, illegal, nondet = [], [], 0
     inherent, inherent_wrong = Counter(), []
     shared, shared_wrong = Counter(), []
+    strict, strict_wrong = Counter(), []
+
+    def check_strict(tag, c, hops_on, allowed, warned, out, err):
+        """Without allow-deadlock-prone, flows that can deadlock however they
+        are routed fail, as does a design the router leaves only a hold cycle
+        through receivers flows share for; the rest route as with it. warned
+        is None where the routing with it gave no log of its own."""
+        unavoidable = unavoidable_warning(c["analysis"])
+        if unavoidable:
+            kind = "inherent"
+            ok = out is None and f"error: {unavoidable}{ALLOW_HINT}" in err
+        elif out is None:
+            kind = "shared"
+            ok = (
+                warned is not False
+                and SHARED_RECEIVER_WARNING in err
+                and ALLOW_HINT in err
+            )
+        else:
+            kind = "same" if out == allowed else "rerouted"
+            if warned is False:
+                ok = kind == "same"
+            else:
+                problems, stats = verify(c["design"], c["analysis"], out, hops_on)
+                ok = not problems and stats["shared_receiver_cycle"] is None
+        strict[kind] += 1
+        if not ok:
+            got = "routed" if out is not None else first_error(err)[:300]
+            strict_wrong.append(f"{tag}: {kind}: {got}")
+            save(
+                c, "strict" + ("" if hops_on else " hops-off"), c["design"].emit(), err
+            )
 
     def check_inherent(tag, c, stderr, what="warning"):
         want, got = unavoidable_warning(c["analysis"]), router_warning(stderr)
@@ -5750,7 +5798,7 @@ def main(argv=None):
     route_time = 0.0
     overlay_todo = []
     for hops_on, k in sorted(pending, key=lambda b: (not b[0], b[1])):
-        outs, errs, again, spent = pending[hops_on, k].result()
+        outs, errs, again, spent, (s_outs, s_errs, _) = pending[hops_on, k].result()
         group = cases[k : k + size]
         route_time += spent
         mode = "" if hops_on else " hops-off"
@@ -5781,6 +5829,20 @@ def main(argv=None):
                 )
             problems, stats = verify(d, c["analysis"], outs[seed], hops_on)
             want = stats.pop("shared_receiver_cycle")
+            if not problems:
+                check_strict(
+                    f"seed {seed}{mode}",
+                    c,
+                    hops_on,
+                    outs[seed],
+                    (
+                        shared_receiver_warning(again[2][seed]) is not None
+                        if seed in again[2]
+                        else None
+                    ),
+                    s_outs.get(seed),
+                    s_errs.get(seed, (0, ""))[1],
+                )
             if seed in again[2] and not problems:
                 got = shared_receiver_warning(again[2][seed])
                 shared[want is not None] += 1
@@ -5972,6 +6034,17 @@ def main(argv=None):
         f"{sum(shared.values()) - len(shared_wrong)}/{sum(shared.values())} "
         f"warn of shared-receiver hold cycles as the model predicts "
         f"({shared[True]} warn)",
+    )
+    for line in strict_wrong[:10]:
+        print("WRONG STRICT:", line)
+    report(
+        "strict",
+        not strict_wrong,
+        f"{sum(strict.values()) - len(strict_wrong)}/{sum(strict.values())} route "
+        f"or fail without allow-deadlock-prone as they should ({strict['same']} "
+        f"route the same, {strict['rerouted']} reroute around a shared-receiver "
+        f"hold cycle, {strict['shared']} fail on one, {strict['inherent']} fail "
+        f"on flows that deadlock however they are routed)",
     )
 
     for label, count in sorted(known.items()):
