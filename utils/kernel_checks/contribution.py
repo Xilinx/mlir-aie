@@ -26,6 +26,7 @@ import itertools
 import re
 import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -362,16 +363,53 @@ def _count(call: ast.Call, env: dict, table: dict[str, Cases]) -> None:
         entry.devices |= {"npu1", "npu2"}
 
 
-def not_judged(tree: Tree) -> set[str]:
-    """Factories the contract test names as deliberately without a case."""
+def not_judged(tree: Tree, factories: Iterable[str] = ()) -> set[str]:
+    """Factories the contract test names as deliberately without a case.
+
+    A comprehension over the library itself (``for name in
+    kernels.factories() if name.startswith("flm_")``) is read against
+    ``factories``, when its conditions are ones the text can decide.
+    """
     table = _assigns(_parse(tree.read(CONTRACT_TEST)), "NOT_JUDGED")
     names = set()
     for key, value in zip(*(getattr(table, a, []) for a in ("keys", "values"))):
         if key is not None:  # "name": "reason"
             names.add(_value(key, {}))
+        elif isinstance(value, ast.DictComp) and _over_library(value):
+            names |= {n for n in factories if _admits(value.generators[0], n)}
         elif isinstance(value, ast.DictComp):  # **{name: ... for name in (...)}
             names |= {_value(value.key, env) for env in _bindings(value)}
     return {n for n in names if isinstance(n, str)}
+
+
+def _over_library(comp: ast.DictComp) -> bool:
+    """Whether ``comp`` loops one name over a call, such as factories()."""
+    if len(comp.generators) != 1:
+        return False
+    gen = comp.generators[0]
+    return (
+        isinstance(gen.iter, ast.Call)
+        and _callee(gen.iter) != "range"
+        and isinstance(gen.target, ast.Name)
+        and isinstance(comp.key, ast.Name)
+        and comp.key.id == gen.target.id
+    )
+
+
+def _admits(gen: ast.comprehension, name: str) -> bool:
+    """Whether every ``if`` of ``gen`` holds for ``name``; one it cannot read
+    holds for nothing, so the factory is still asked for a case."""
+    for test in gen.ifs:
+        call = test if isinstance(test, ast.Call) else None
+        method = getattr(getattr(call, "func", None), "attr", None)
+        args = [_value(a, {}) for a in getattr(call, "args", [])]
+        if method not in ("startswith", "endswith") or not all(
+            isinstance(a, str) for a in args
+        ):
+            return False
+        if not getattr(name, method)(*args):
+            return False
+    return True
 
 
 def exported(tree: Tree) -> set[str]:
@@ -520,7 +558,8 @@ def report(repo: Path, base: str, head: str) -> str | None:
     before, after = factories(old), factories(new)
     table = cases(new)
     present = set(new.ls(SOURCES))
-    ctx = Context(exported(new), not_judged(new), new.read(API_DOCS) or "", present)
+    judged = not_judged(new, after)
+    ctx = Context(exported(new), judged, new.read(API_DOCS) or "", present)
 
     # A source this change deleted or moved away is not a kernel to look for;
     # a factory that still names it is warned about below.

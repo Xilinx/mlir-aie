@@ -215,6 +215,23 @@ def k{i}() -> ExternalFunction:
     assert "Run the whole suite" in text
 
 
+def test_a_rule_over_the_whole_library_leaves_its_kernels_out(contribution, repo):
+    rule = """NOT_JUDGED = {
+    **{
+        name: "judged in its engine"
+        for name in kernels.factories()
+        if name.startswith("sc")
+    },
+    **{name: "unreadable rule" for name in kernels.factories() if len(name) > 3},
+}
+"""
+    write(repo, {"test/python/test_kernel_contracts.py": rule})
+    write(repo, {"python/iron/kernels/eltwise.py": FACTORIES + NEW})
+    text = checklist(contribution, repo, repo)
+    assert "| `scale` |" in text and "| `scale` | ✅ | partial | not judged |" in text
+    assert "| `bare` | ⚠️" in text  # a condition it cannot read judges nothing
+
+
 def test_a_header_nothing_includes_is_called_out(contribution, repo):
     write(repo, {"aie_kernels/eltwise/old.h": "// unused\n"})
     text = checklist(contribution, repo, repo)
@@ -244,7 +261,7 @@ def test_it_reads_the_real_kernel_library(contribution):
         pytest.skip("not a git checkout")
     tree = contribution.Tree(ROOT, "HEAD")
     found = contribution.factories(tree)
-    judged = contribution.not_judged(tree)
+    judged = contribution.not_judged(tree, found)
     assert len(found) > 50 and judged
     assert not [n for n, f in found.items() if f.contract == "unknown"]
     assert not [n for n, f in found.items() if f.contract == "no" and n not in judged]
