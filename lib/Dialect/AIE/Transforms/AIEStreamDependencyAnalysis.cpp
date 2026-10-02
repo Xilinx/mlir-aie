@@ -41,6 +41,15 @@ std::optional<TileID> tileOf(Value tile) {
   return std::nullopt;
 }
 
+// Whether packets leave `master` of `tile` with their header, as AIERT sets
+// it: not into a DMA, nor down the shim's South to one, unless `keep` says.
+bool keepsPktHeader(TileID tile, Port master, std::optional<bool> keep) {
+  if (keep)
+    return *keep;
+  return master.bundle != WireBundle::DMA &&
+         !(tile.row == 0 && master.bundle == WireBundle::South);
+}
+
 std::optional<DmaChannelProgram> makeProgram(Operation *op, DeviceOp device) {
   auto parentTile = [](Operation *op) -> std::optional<TileID> {
     if (auto element = op->getParentOfType<TileElement>())
@@ -393,7 +402,9 @@ private:
         for (auto masterSet : b.getOps<MasterSetOp>())
           if (llvm::is_contained(masterSet.getAmsels(), rule.getAmsel()))
             next(masterSet.destPort(), ruleID, arbiter,
-                 masterSet.getKeepPktHeader().value_or(false));
+                 keepsPktHeader(sb.getTileOp().getTileID(),
+                                masterSet.destPort(),
+                                masterSet.getKeepPktHeader()));
       };
       for (int packetID = id.value_or(0); packetID <= id.value_or(maxPacketID);
            ++packetID)
@@ -434,6 +445,13 @@ std::vector<RoutedStream> AIE::requestedStreams(DeviceOp device) {
            {*dstTile, {flow.getDestBundle(), flow.destIndex()}},
            std::nullopt});
   }
+  // The router writes one keep_pkt_header per destination port, the last
+  // packet flow's into it.
+  DenseMap<std::pair<TileID, Port>, std::optional<bool>> keepAt;
+  for (auto flow : device.getOps<PacketFlowOp>())
+    for (auto dst : flow.getPorts().front().getOps<PacketDestOp>())
+      if (std::optional<TileID> dstTile = tileOf(dst.getTile()))
+        keepAt[{*dstTile, dst.port()}] = flow.getKeepPktHeader();
   for (auto flow : device.getOps<PacketFlowOp>()) {
     Block &b = flow.getPorts().front();
     for (auto src : b.getOps<PacketSourceOp>()) {
@@ -442,12 +460,14 @@ std::vector<RoutedStream> AIE::requestedStreams(DeviceOp device) {
         continue;
       for (auto dst : b.getOps<PacketDestOp>())
         if (std::optional<TileID> dstTile = tileOf(dst.getTile()))
-          streams.push_back({{*srcTile, src.port()},
-                             {*dstTile, dst.port()},
-                             static_cast<int>(flow.IDInt()),
-                             flow.getKeepPktHeader().value_or(false),
-                             {},
-                             static_cast<int>(flow.getMask().value_or(~0))});
+          streams.push_back(
+              {{*srcTile, src.port()},
+               {*dstTile, dst.port()},
+               static_cast<int>(flow.IDInt()),
+               keepsPktHeader(*dstTile, dst.port(),
+                              keepAt.lookup({*dstTile, dst.port()})),
+               {},
+               static_cast<int>(flow.getMask().value_or(~0))});
     }
   }
   return streams;

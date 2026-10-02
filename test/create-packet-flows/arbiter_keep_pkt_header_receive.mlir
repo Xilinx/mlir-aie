@@ -7,6 +7,7 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 | FileCheck %s
 // RUN: sed 's/keep_pkt_header = false/keep_pkt_header = true/' %s | not aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" 2>&1 | FileCheck %s --check-prefix=KEPT
+// RUN: sed -e 's/keep_pkt_header = false/keep_pkt_header = true/' -e 's/^\(    aie.packet_flow(\)\([0-5]\)\().*}\) {keep_pkt_header = true}$/&\n\11\2\3 {keep_pkt_header = false}/' %s | aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" 2>&1 | FileCheck %s --check-prefix=LAST
 
 // Cores (0..5, 2) each send one 64-byte packet into their own S2MM channel of
 // memtile (0,1), whose locks take exactly 64 bytes before the join on MM2S 0
@@ -14,11 +15,19 @@
 // seven packet master ports at (0,1) may share its six arbiters. Keeping it,
 // each receiver gets 68 bytes and fills, so any two joined flows can deadlock
 // on a shared arbiter, and so can each of them with the join's own output.
+// The router writes one keep_pkt_header per destination port, the last flow's
+// into it, so a later flow into each receiver that drops the header has every
+// packet fit again (LAST).
 
 // CHECK-NOT:   warning
 // CHECK-NOT:   error
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK-COUNT-7: aie.masterset
+
+// LAST-NOT:   warning
+// LAST-NOT:   error
+// LAST-LABEL: aie.switchbox(%mem_tile_0_1)
+// LAST-COUNT-6: aie.masterset(DMA : {{[0-5]}}, %{{[0-9]+}}) {keep_pkt_header = false}
 
 // KEPT: error: Unable to find a legal routing: at tile (0, 1), no two of
 // KEPT-SAME: can share an arbiter, and each takes one there whatever the routing, but the switchbox has 6 free.
