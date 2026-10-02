@@ -336,6 +336,10 @@ whyNotSeparateTasks(AIE::DMABDOp bd, DMAConfigureTaskLike taskOp,
     auto start = dyn_cast<DMAStartTaskOp>(user);
     if (!start)
       continue;
+    if (start.getRepeatCountVal()) {
+      os << "a start's repeat count is a runtime value";
+      return why;
+    }
     std::optional<uint32_t> rc = start.getRepeatCount();
     int64_t runs = static_cast<int64_t>(rc ? *rc : taskOp.getRepeatCount());
     ++runs;
@@ -430,7 +434,7 @@ static void splitIntoTasks(RewriterBase &rewriter, AIE::DMABDOp bd,
           token && i + 1 == slices.size() && (!startToken || k + 1 != count);
       auto s = DMAStartTaskOp::create(
           rewriter, start.getLoc(), tasks[i]->getResult(0),
-          /*repeat_count=*/nullptr,
+          /*repeat_count=*/nullptr, /*repeat_count_val=*/nullptr,
           /*no_token=*/withholds ? rewriter.getUnitAttr() : nullptr);
       mark(s, k);
     }
@@ -772,12 +776,21 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
         return failure();
       // A start that overrides the task's count repeats the same BD, so it
       // scales by the same factor.
-      for (Operation *user : taskOp->getResult(0).getUsers())
-        if (auto start = dyn_cast<DMAStartTaskOp>(user))
-          if (IntegerAttr rc = start.getRepeatCountAttr())
-            if (failed(check(start, rc.getInt(), "this start",
-                             "this start's repeat count")))
-              return failure();
+      for (Operation *user : taskOp->getResult(0).getUsers()) {
+        auto start = dyn_cast<DMAStartTaskOp>(user);
+        if (!start)
+          continue;
+        if (start.getRepeatCountVal())
+          return start.emitOpError()
+                 << "cannot decompose a buffer descriptor this start repeats "
+                    "a runtime number of times: decomposition needs to scale "
+                    "the count by "
+                 << scale.str();
+        if (IntegerAttr rc = start.getRepeatCountAttr())
+          if (failed(check(start, rc.getInt(), "this start",
+                           "this start's repeat count")))
+            return failure();
+      }
       runs = scale.apply(runs);
     }
 

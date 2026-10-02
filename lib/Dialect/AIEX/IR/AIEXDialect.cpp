@@ -1331,6 +1331,9 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
 }
 
 LogicalResult AIEX::DMAStartTaskOp::verify() {
+  if (getRepeatCountAttr() && getRepeatCountVal())
+    return emitOpError(
+        "takes repeat_count or a runtime repeat count, not both");
   if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
     return emitOpError("repeat_count must be non-negative, got ")
            << rc.getInt();

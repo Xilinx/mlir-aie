@@ -80,6 +80,7 @@ struct AIESplitLongRepeatsPass
       for (; runs > maxRepeat + 1; runs -= maxRepeat + 1)
         DMAStartTaskOp::create(b, start.getLoc(), start.getTask(),
                                b.getI32IntegerAttr(maxRepeat),
+                               /*repeat_count_val=*/nullptr,
                                /*no_token=*/b.getUnitAttr());
       start.setRepeatCountAttr(b.getI32IntegerAttr(runs - 1));
     }

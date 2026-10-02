@@ -468,21 +468,27 @@ _orig_dma_start_task = dma_start_task
 
 def dma_start_task(
     *args: DMAConfigureTaskForOp,
-    repeat_count: int | None = None,
+    repeat_count: int | Value | None = None,
     no_token: bool = False,
 ):
     """Push each task onto its channel's queue.
 
     ``repeat_count`` replaces the task's own count for these starts only, and
     ``no_token`` withholds the completion token the task would otherwise issue.
+    A runtime ``repeat_count`` must fit one queue push.
     """
     if len(args) == 0:
         raise ValueError(
             "dma_start_task must receive at least one DMAConfigureTaskForOp to start"
         )
+    runtime = isinstance(repeat_count, Value)
+    repeat_count_val = _as_bd_i32(repeat_count) if runtime else None
     for dma_task in args:
         _orig_dma_start_task(
-            dma_task, repeat_count=repeat_count, no_token=no_token or None
+            dma_task,
+            repeat_count=None if runtime else repeat_count,
+            repeat_count_val=repeat_count_val,
+            no_token=no_token or None,
         )
 
 
