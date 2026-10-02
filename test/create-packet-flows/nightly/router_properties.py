@@ -3727,9 +3727,17 @@ def verify(d, an, text, hops_on):
 
     keeps = last_keep(d)
     mixed_ctrl, low_priority, ctrl_used = set(), set(), set()
+    # Without a control-packet reload, a routing that cannot keep the overlay
+    # routes the prioritized flows as the others.
+    prioritized = d.reload or any(
+        op[4] for ops in out.boxes.values() for op in box_view(ops)[2].values()
+    )
     # A source's packets with a priority flow's id route as that flow does.
     prio_sent = {
-        (src, f["id"]) for f in d.packet_flows if f["priority"] for src in f["srcs"]
+        (src, f["id"])
+        for f in d.packet_flows
+        if f["priority"] and prioritized
+        for src in f["srcs"]
     }
     for f in d.packet_flows:
         for dst in f["dsts"]:
@@ -3753,9 +3761,9 @@ def verify(d, an, text, hops_on):
                         problems.append(
                             f"id {f['id']} loses its header at {tile} {fmt_port(m)}"
                         )
-                    if f["priority"] or (src, f["id"]) in prio_sent:
+                    if (src, f["id"]) in prio_sent:
                         ctrl_used.add((tile, m))
-                    if not f["priority"]:
+                    if not (f["priority"] and prioritized):
                         if ctrl:
                             mixed_ctrl.add((tile, m))
                         continue
@@ -4253,7 +4261,8 @@ def random_design(rng, dev):
 def overlay_keep_conflicts(d):
     """The ports where the last flow in keeps headers otherwise than the
     prioritized flows into them do, each with that last flow: a control-packet
-    reload keeps their keep_pkt_header, so the router rejects the design."""
+    reload keeps their keep_pkt_header, so the router rejects the design if
+    one reloads it."""
     prio = {(s, f["id"]) for f in d.packet_flows if f["priority"] for s in f["srcs"]}
     last, last_prio = {}, {}
     for f in d.packet_flows:
@@ -5355,7 +5364,6 @@ def unavoidable_warning(an):
     return s
 
 
-OVERLAY_WARNING = "a control-packet reload would not keep them"
 SHARED_RECEIVER_WARNING = (
     "Packet flows into receivers they share can deadlock holding arbiters across "
     "switchboxes, and no arbiter assignment found avoids it: "
@@ -5781,9 +5789,7 @@ def main(argv=None):
                         f"seed {seed}{mode}: router {got!r}, model {want!r}"
                     )
                     save(c, "shared-warning" + mode.strip(), d.emit(), again[2][seed])
-            overlay_todo.append(
-                (c, mode, outs[seed], OVERLAY_WARNING in again[2].get(seed, ""))
-            )
+            overlay_todo.append((c, mode, outs[seed]))
             if problems and (label := known_bug(d, problems)):
                 known[label] += 1
                 save(c, "known" + mode.strip(), d.emit())
@@ -5816,16 +5822,14 @@ def main(argv=None):
     )
     report("determinism", nondet == 0, f"{nondet} unstable")
 
-    # A control-packet reload skips the overlay's switch settings, so the
-    # design has to set them as the overlay routed by itself does.
+    # Without a control-packet reload the router may move the overlay, but a
+    # design routes only if its overlay routes by itself.
     alone = {c["seed"]: o for c in cases if (o := overlay_design(c["design"]))}
     alone_outs, alone_errs, _ = route_batch(
         [(k, o.emit(k)) for k, o in alone.items()], False
     )
-    # The router may move them where the design's flows would deadlock with
-    # them, but has to say so.
-    overlay_wrong, overlay_checked, overlay_warned = [], 0, 0
-    for c, mode, text, warned in overlay_todo:
+    overlay_wrong, overlay_checked, overlay_moved = [], 0, 0
+    for c, mode, text in overlay_todo:
         seed = c["seed"]
         if seed not in alone:
             continue
@@ -5834,44 +5838,34 @@ def main(argv=None):
         if seed not in alone_outs:
             err = first_error(alone_errs[seed][1])[:300]
             overlay_wrong.append(f"{tag}: routed, but its overlay alone fails: {err}")
-        elif problems := overlay_problems(
-            load_design(text), load_design(alone_outs[seed])
-        ):
-            if warned:
-                overlay_warned += 1
-                continue
-            overlay_wrong.append(f"{tag}: {problems[0]}")
-        elif warned:
-            overlay_wrong.append(f"{tag}: warns of moving the overlay, but keeps it")
-        else:
-            continue
-        save(c, "overlay" + mode.strip(), c["design"].emit())
+            save(c, "overlay" + mode.strip(), c["design"].emit())
+        elif overlay_problems(load_design(text), load_design(alone_outs[seed])):
+            overlay_moved += 1
     for line in overlay_wrong[:10]:
-        print("OVERLAY MOVED:", line)
+        print("OVERLAY FAILS:", line)
     report(
         "overlay",
         not overlay_wrong,
-        f"{overlay_checked - len(overlay_wrong) - overlay_warned}/{overlay_checked} "
-        f"routings keep the overlay's switch settings, {overlay_warned} warn they "
-        f"do not",
+        f"{overlay_checked - len(overlay_wrong)}/{overlay_checked} routings have an "
+        f"overlay that routes by itself, {overlay_moved} move it",
     )
 
     # A control-packet reload installs @ctrl_pkt_overlay, routed without the
     # design's own switchboxes, so the design has to set the overlay's
-    # switches as that does.
+    # switches as that does or fail.
     reloads = {}
     for c in cases:
-        if c["design"].boxes and (s := standalone_overlay(c["design"])):
+        if s := standalone_overlay(c["design"]):
             d = c["design"].copy()
             d.reload = True
             reloads[c["seed"]] = (c, d, s)
-    r_outs, r_errs, r_debug = route_batch(
-        [(k, d.emit(k)) for k, (_, d, _) in reloads.items()], True, debug
+    r_outs, r_errs, _ = route_batch(
+        [(k, d.emit(k)) for k, (_, d, _) in reloads.items()], True
     )
     s_outs, s_errs, _ = route_batch(
         [(k, s.emit(k)) for k, (_, _, s) in reloads.items()], True
     )
-    reload_wrong, reload_warned, reload_unroutable = [], 0, 0
+    reload_wrong, reload_unroutable = [], 0
     for seed, (c, d, s) in reloads.items():
         tag = f"seed {seed} ({c['shape']})"
         if seed not in r_outs:
@@ -5883,9 +5877,6 @@ def main(argv=None):
         elif problems := overlay_problems(
             load_design(r_outs[seed]), load_design(s_outs[seed])
         ):
-            if OVERLAY_WARNING in r_debug.get(seed, ""):
-                reload_warned += 1
-                continue
             reload_wrong.append(f"{tag}: {problems[0]}")
         else:
             continue
@@ -5895,10 +5886,9 @@ def main(argv=None):
     report(
         "reload",
         not reload_wrong,
-        f"{len(reloads) - len(reload_wrong) - reload_warned - reload_unroutable}/"
-        f"{len(reloads)} designs with switchboxes keep @ctrl_pkt_overlay's switch "
-        f"settings, {reload_warned} warn they do not, {reload_unroutable} route "
-        f"only off the tiles it covers",
+        f"{len(reloads) - len(reload_wrong) - reload_unroutable}/{len(reloads)} "
+        f"reloaded designs keep @ctrl_pkt_overlay's switch settings, "
+        f"{reload_unroutable} fail",
     )
 
     wrong, exact, undecided = [], 0, 0

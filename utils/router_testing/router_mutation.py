@@ -218,7 +218,7 @@ def must_reject(d):
     for x, ss in into.items():
         if len(ss) > 1:
             return f"circuit flows from {len(ss)} sources into {rp.fmt_ep(x)}"
-    for x, _ in rp.overlay_keep_conflicts(d):
+    for x, _ in rp.overlay_keep_conflicts(d) if d.reload else ():
         return (
             f"the last flow into {rp.fmt_ep(x)} keeps headers otherwise than "
             "the prioritized flows into it"
