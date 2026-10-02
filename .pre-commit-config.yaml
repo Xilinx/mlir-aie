@@ -303,4 +303,5 @@ repos:
       language: python
       entry: python utils/check_submodule_regression.py
       pass_filenames: false
+      stages: [pre-commit, pre-push]
       always_run: true
