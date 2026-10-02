@@ -13,9 +13,10 @@
 // takes packets apart. The router then leaves (0, 1) by fewer channels, so
 // fewer sets of master ports, and splits the flows apart further up.
 
-// CHECK:     aie.switchbox(%mem_tile_0_1) {
-// CHECK-NOT: aie.masterset(North : {{[2-5]}}
-// CHECK:     aie.switchbox(%tile_0_2) {
+// CHECK:         aie.switchbox(%mem_tile_0_1) {
+// CHECK-COUNT-2: aie.masterset(North :
+// CHECK-NOT:     aie.masterset(North :
+// CHECK:         aie.switchbox(%tile_0_2) {
 
 module {
   aie.device(npu1_1col) {

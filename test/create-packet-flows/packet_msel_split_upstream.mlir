@@ -18,11 +18,10 @@
 // CHECK-LABEL: aie.switchbox(%shim_noc_tile_0_0)
 // CHECK:         %[[BOTH:.*]] = aie.amsel<0> (0)
 // CHECK:         %[[UP2:.*]] = aie.amsel<0> (1)
-// CHECK:         %[[UP1:.*]] = aie.amsel<0> (2)
-// CHECK:         aie.masterset(North : 1, %[[BOTH]], %[[UP1]])
+// CHECK:         aie.masterset(North : 1, %[[BOTH]])
 // CHECK:         aie.masterset(North : 2, %[[BOTH]], %[[UP2]])
 // CHECK:         aie.packet_rules(South : 7) {
-// CHECK-NEXT:      aie.rule(31, 5, %[[UP1]])
+// CHECK-NEXT:      aie.rule(31, 5, %[[UP2]])
 // CHECK:         aie.packet_rules(South : 3) {
 // CHECK-NEXT:      aie.rule(29, 1, %[[BOTH]])
 // CHECK-NEXT:      aie.rule(31, 4, %[[BOTH]])
@@ -37,13 +36,11 @@
 // CHECK:         aie.masterset(DMA : 1, %[[D12]], %[[D1]])
 // CHECK:         aie.masterset(DMA : 2, %[[D2]], %[[D12]])
 // CHECK:         aie.packet_rules(South : 1) {
-// CHECK-NEXT:      aie.rule(31, 5, %[[D2]])
-// CHECK-NEXT:      aie.rule(29, 1, %[[D0]])
-// CHECK-NEXT:      aie.rule(31, 4, %[[D0]])
+// CHECK-NEXT:      aie.rule(24, 0, %[[D0]])
 // CHECK:         aie.packet_rules(South : 2) {
+// CHECK-NEXT:      aie.rule(27, 1, %[[D2]])
 // CHECK-NEXT:      aie.rule(25, 0, %[[D12]])
 // CHECK-NEXT:      aie.rule(31, 3, %[[D1]])
-// CHECK-NEXT:      aie.rule(31, 1, %[[D2]])
 
 module {
   aie.device(npu1_1col) {

@@ -219,13 +219,18 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 struct TreeHop {
   PathEndPoint from, to;
   bool joined;
+
+  bool operator==(const TreeHop &rhs) const {
+    return from == rhs.from && to == rhs.to && joined == rhs.joined;
+  }
 };
 using PacketTrees = std::map<PathEndPoint, std::vector<TreeHop>>;
 
-/// Whether packet flows from the two sources can deadlock if they share an
-/// arbiter; see StreamConflicts::conflict.
+/// Whether packet flows from the two sources, with ids among the two sets, can
+/// deadlock if they share an arbiter; see StreamConflicts::conflict.
 using PacketConflict =
-    std::function<bool(const PathEndPoint &, const PathEndPoint &)>;
+    std::function<bool(const PathEndPoint &, const std::set<int> &,
+                       const PathEndPoint &, const std::set<int> &)>;
 
 /// Packets `src` sends with ids `a` and `b` share a master port they leave
 /// tile `at` by, which puts them on one arbiter. If `apart` is set, the
@@ -249,6 +254,9 @@ struct RoutingFaults {
   std::vector<std::pair<TileID, Connect>> connections;
   std::vector<TreeSplit> splits;
   std::vector<TileID> crowded;
+  /// Whether the connections are all of flows leaving a switchbox by a master
+  /// port of the prioritized flows, and by no master set of theirs.
+  bool onlyOverlayMasters = false;
 };
 
 /// A routing findPaths found.
@@ -264,14 +272,16 @@ struct Routing {
 
 /// Why no legal routing was found, reported at `loc`, or the device if unset,
 /// with `reason` if the router can say. A routing check's failure also names
-/// the faults the router has to move.
+/// the faults the router has to move, or, if `usable`, would rather it moved.
 class RoutingFailure : public llvm::ErrorInfo<RoutingFailure> {
 public:
   static char ID;
 
   explicit RoutingFailure(std::string reason, RoutingFaults faults = {},
-                          std::optional<mlir::Location> loc = std::nullopt)
-      : reason(std::move(reason)), faults(std::move(faults)), loc(loc) {}
+                          std::optional<mlir::Location> loc = std::nullopt,
+                          bool usable = false)
+      : reason(std::move(reason)), faults(std::move(faults)), loc(loc),
+        usable(usable) {}
 
   void log(llvm::raw_ostream &os) const override;
   std::error_code convertToErrorCode() const override {
@@ -281,6 +291,7 @@ public:
   std::string reason;
   RoutingFaults faults;
   std::optional<mlir::Location> loc;
+  bool usable;
 };
 
 /// Checks a routing that fits the fabric: a RoutingFailure if it is unusable,
@@ -291,7 +302,8 @@ using RoutingCheck = std::function<llvm::Error(const Routing &)>;
 struct PacketConstraints {
   /// Routings the check rejects count as illegal; the connections it names
   /// are penalized like overused channels so later iterations avoid them, and
-  /// the trees it splits branch where it says from then on.
+  /// the trees it splits branch where it says from then on. A usable routing
+  /// it rejects is kept, and found if no better one is soon.
   RoutingCheck check;
   /// Packet flows that conflict are steered off each other's master ports; see
   /// edgeWeight.
@@ -299,6 +311,9 @@ struct PacketConstraints {
   /// The prioritized packet flows from these sources take these trees
   /// instead of being routed.
   PacketTrees pinned;
+  /// Master ports packets leave a switchbox by on their own: those that leave
+  /// by one of these from a slave port leave by no other master port.
+  std::set<PathEndPoint> alone;
 };
 
 /// Congestion-negotiated routing: each iteration routes every flow by
@@ -373,15 +388,17 @@ private:
   // below. Master ports on an arbiter with flows in `avoid` cost
   // conflictSharePenalty more, and from a state in `branchAvoid`, as much again
   // for the flows it maps to. A channel a flow with the same `packetId` already
-  // shares costs as a full one. States in `stops` are reached but not left. The
-  // search ends once every state in `targets` is settled; only their `distance`
-  // and paths are final then.
+  // shares costs as a full one. States in `stops` are reached but not left, and
+  // a crossbar hop is taken only if `mayCross` allows it. The search ends once
+  // every state in `targets` is settled; only their `distance` and paths are
+  // final then.
   void dijkstraShortestPaths(
       llvm::ArrayRef<int> seeds, llvm::ArrayRef<double> seedCosts,
       std::optional<int> packetId, const llvm::BitVector *avoid = nullptr,
       const llvm::DenseMap<int, llvm::BitVector> *branchAvoid = nullptr,
       const llvm::DenseSet<int> *stops = nullptr,
-      llvm::ArrayRef<int> targets = {});
+      llvm::ArrayRef<int> targets = {},
+      llvm::function_ref<bool(int, int)> mayCross = nullptr);
 
   struct RouteState;
   struct TreeBuilder;

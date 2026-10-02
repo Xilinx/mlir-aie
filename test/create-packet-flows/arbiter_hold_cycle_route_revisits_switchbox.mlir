@@ -5,23 +5,36 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-create-pathfinder-flows %s 2>&1 | FileCheck %s
-// RUN: not aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
 
 // Flow 9 can reach (3,3) by passing it, turning at (3,1) and coming back up,
 // which passes (3,2) and (3,3) twice: seven hops in a tree of five
-// switchboxes. The router must follow every hop to see that the route then
-// holds arbiter 5 at (3,3), which prioritized flow 8 needs, while its
-// packets back into (3,5) wait on S2MM 0 there. Walks bounded by the number
-// of switchboxes stopped short of it and emitted that hold cycle. The design
-// routes if flow 8 may move. It may not, and the tree it keeps with
-// prioritized flow 23 already puts flow 8 on the arbiter flow 9 takes into
-// (3,3) DMA:0, so the design is rejected before any routing. Reduced from
-// router_mutation.py seed 430.
+// switchboxes, which hold-cycle walks have to follow to the end. Prioritized
+// flow 23 branches at (3,2) and both branches come into (3,3), one for its
+// DMA:0 and one going on North. On one arbiter there, the branch holding it
+// waits on the other, as both move as one, so they take two. Flow 9 takes the
+// short way and shares the arbiter into (3,3) DMA:0 with flow 23, which
+// deadlocks only if the copy it sends itself on (3,5) S2MM 1, which nothing
+// drains, overruns it. Flow 9 routes only if flow 23 reaches DMA:0 by a
+// master set of its own, which it does not alone, so a reload would not keep
+// it. Reduced from router_mutation.py seed 430.
 
-// CHECK: error: Unable to find a legal routing: at tile (3, 3), the routes prioritized flows (priority_route) keep put packet flow (3, 2) DMA:0 -> (3, 5) DMA:0 (id 8) and packet flow (3, 5) DMA:1 -> (3, 3) DMA:0 (id 9) on one arbiter:
-// CHECK-SAME: which takes one packet rule on South:5 with packet flow (3, 2) DMA:0 -> (3, 3) DMA:0 (id 23), which leaves by DMA:0 with packet flow (3, 5) DMA:1 -> (3, 3) DMA:0 (id 9)
-// CHECK-SAME: draining that waits on (3, 5) S2MM 0, which receives packet flow (3, 2) DMA:0 -> (3, 5) DMA:0 (id 8).
+// CHECK-LABEL: aie.switchbox(%tile_3_3)
+// CHECK-DAG:     %[[INTO:.*]] = aie.amsel<4> (3)
+// CHECK-DAG:     %[[ON:.*]] = aie.amsel<5> (3)
+// CHECK-DAG:     aie.masterset(DMA : 0, %[[INTO]])
+// CHECK-DAG:     aie.masterset(North : 5, %[[ON]])
+// CHECK:         aie.packet_rules(North : 3) {
+// CHECK-NEXT:      aie.rule(31, 9, %[[INTO]])
+// CHECK:         aie.packet_rules(South : 2) {
+// CHECK-NEXT:      aie.rule(0, 0, %[[ON]])
+// CHECK:         aie.packet_rules(South : 5) {
+// CHECK-NEXT:      aie.rule(31, 23, %[[INTO]])
+
+// WARN: warning: the prioritized flows (the control overlay) take another route than they take alone
+// WARN-NOT: {{warning|error}}
 
 module {
   aie.device(npu2_4col) {

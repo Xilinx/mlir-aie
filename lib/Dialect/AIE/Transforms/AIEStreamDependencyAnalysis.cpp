@@ -1459,12 +1459,22 @@ SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() const {
   return pairs;
 }
 
+bool StreamConflicts::assumed(const HoldCycle &cycle) const {
+  return llvm::any_of(cycle.steps, [&](const HoldCycle::Step &step) {
+    return step.wait == HoldCycle::Wait::Drain &&
+           !getAnalysis().assumptions(step.waiting, step.holding).empty();
+  });
+}
+
 namespace {
 // A wait in the graph holdCycle searches: a head stuck at one node waits on
 // one at `to`, for the reason `step` gives, if any.
 struct WaitEdge {
   size_t to;
   std::optional<HoldCycle::Step> step;
+  // Where the trees a link wait is between merged above the link: the
+  // switchbox and the arbiter that granted them the link in turn.
+  std::optional<std::pair<TileID, int>> merged = std::nullopt;
 };
 // The graph holdCycle searches, built as it is walked. Node `entry` leads to
 // every root.
@@ -1495,7 +1505,8 @@ struct GraphTraits<const WaitGraph *> {
 } // namespace llvm
 
 std::optional<HoldCycle>
-StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) const {
+StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
+                           bool forcedWaits) const {
   // The packets one source sends with one id move down every branch as one.
   struct Tree {
     SmallVector<size_t, 2> members;
@@ -1528,8 +1539,36 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) const {
     }
   }
 
+  // One source sends one tree's packet at a time. Trees into one receiver are
+  // both in flight at once, and wait on each other at its master port however
+  // they are routed, where both enter its switchbox for it; and trees with one
+  // id wait on each other where they meet and below, going on as one. Those
+  // waits count only with `forcedWaits`.
   auto related = [&](size_t a, size_t b) {
-    return this->related(trees[a].members.front(), trees[b].members.front());
+    return streams[trees[a].members.front()].src ==
+           streams[trees[b].members.front()].src;
+  };
+  auto forced = [&](size_t a, int ha, size_t b, int hb, TileID tile) {
+    Port ina = trees[a].hops[ha].second, inb = trees[b].hops[hb].second;
+    auto into = [&](size_t m, Port in) {
+      return streams[m].dst.tile == tile && !routes[m].empty() &&
+             routes[m].back().tile == tile && routes[m].back().input == in;
+    };
+    for (size_t m : trees[a].members)
+      for (size_t n : trees[b].members)
+        if (streams[m].dst == streams[n].dst && into(m, ina) && into(n, inb))
+          return true;
+    if (streams[trees[a].members.front()].packetID !=
+        streams[trees[b].members.front()].packetID)
+      return false;
+    for (auto [h, parent] : llvm::enumerate(trees[a].parent))
+      if (parent == ha &&
+          llvm::any_of(llvm::enumerate(trees[b].parent), [&](auto below) {
+            return below.value() == hb &&
+                   trees[b].hops[below.index()] == trees[a].hops[h];
+          }))
+        return true;
+    return false;
   };
 
   // Per tree, a node for a head of it stuck entering each hop or at each
@@ -1570,6 +1609,27 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) const {
       passing[trees[t].hops[h].first].push_back({t, h});
     }
 
+  // The arbiter both trees took to leave the switchbox above a hop they share
+  // where they came into it apart.
+  using Grant = std::pair<TileID, int>;
+  auto mergedAt = [&](size_t a, int ha, size_t b,
+                      int hb) -> std::optional<Grant> {
+    for (;;) {
+      int pa = trees[a].parent[ha], pb = trees[b].parent[hb];
+      if (pa < 0 || pb < 0)
+        return std::nullopt;
+      if (trees[a].hops[pa] != trees[b].hops[pb]) {
+        std::optional<int> arbiter = trees[a].arbiter[pa];
+        if (trees[a].hops[pa].first != trees[b].hops[pb].first || !arbiter ||
+            arbiter != trees[b].arbiter[pb])
+          return std::nullopt;
+        return Grant{trees[a].hops[pa].first, *arbiter};
+      }
+      ha = pa;
+      hb = pb;
+    }
+  };
+
   using Edge = WaitEdge;
   SmallVector<size_t> roots;
   std::vector<std::optional<SmallVector<Edge, 4>>> edges(nodes.size() + 1);
@@ -1592,30 +1652,43 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) const {
         if (t != node.tree && related(node.tree, t))
           continue;
         size_t sharer = trees[t].members.front();
-        if (t != node.tree)
-          out.push_back({pastNode(t, ht),
-                         HoldCycle::Step{HoldCycle::Wait::Link, waiting, sharer,
-                                         sharer, tile, input, input, -1}});
+        bool sameId = streams[waiting].packetID == streams[sharer].packetID;
+        if (t != node.tree && (!sameId || forcedWaits))
+          out.push_back(
+              {pastNode(t, ht),
+               HoldCycle::Step{HoldCycle::Wait::Link, waiting, sharer, sharer,
+                               tile, input, input, -1, sameId},
+               mergedAt(node.tree, node.index, t, ht)});
         std::optional<int> arbiter = trees[t].arbiter[ht];
         if (!arbiter)
           continue;
+        // A tree's branches move as one, so where two come into a switchbox
+        // apart onto one arbiter, the one holding it waits on the other.
         for (auto [v, hv] : passing.at(tile)) {
           Port holderInput = trees[v].hops[hv].second;
-          if (v == node.tree || v == t || holderInput == input ||
-              trees[v].arbiter[hv] != arbiter || related(t, v))
+          bool self = v == node.tree && t == node.tree;
+          if ((!self && (v == node.tree || v == t || related(t, v))) ||
+              holderInput == input || trees[v].arbiter[hv] != arbiter)
             continue;
-          out.push_back({pastNode(v, hv),
-                         HoldCycle::Step{HoldCycle::Wait::Arbiter, waiting,
-                                         sharer, trees[v].members.front(), tile,
-                                         input, holderInput, *arbiter}});
+          bool isForced = !self && forced(t, ht, v, hv, tile);
+          if (isForced && !forcedWaits)
+            continue;
+          out.push_back(
+              {pastNode(v, hv),
+               HoldCycle::Step{HoldCycle::Wait::Arbiter, waiting, sharer,
+                               trees[v].members.front(), tile, input,
+                               holderInput, *arbiter, isForced}});
         }
       }
       break;
     }
     case Kind::Receiver: {
+      // A tree into the full receiver is stuck there however it is routed.
       size_t s = u.members[node.index];
       for (size_t g = 0; g < trees.size(); g++) {
-        if (g == node.tree)
+        if (g == node.tree || llvm::any_of(trees[g].members, [&](size_t m) {
+              return streams[m].dst == streams[s].dst;
+            }))
           continue;
         for (size_t m : trees[g].members)
           if (blocks(s, m)) {
@@ -1665,11 +1738,13 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) const {
 
   // A counted wait within one component lies on a closed walk. A packet holds
   // its arbiter until its tail passes, so no state has two trees holding one
-  // arbiter, and a walk that needs that is no deadlock. The search fixes or
-  // rules out a holder per arbiter until the shortest walk left agrees. Each
-  // clash splits it in two, so past maxWalkSearches it keeps the first walk,
-  // which at worst steers the router off a routing that cannot deadlock.
-  using Grant = std::pair<TileID, int>;
+  // arbiter, and a walk that needs that is no deadlock. Nor is one where each
+  // packet is behind the next on links below one arbiter they merged at, which
+  // granted them those links in one order, so a walk from a link wait below
+  // one must also wait otherwise. The search fixes or rules out a holder per
+  // arbiter until the shortest walk left agrees. Each clash splits it in two,
+  // so past maxWalkSearches it keeps the first walk, which at worst steers the
+  // router off a routing that cannot deadlock.
   struct Holders {
     std::optional<size_t> fixed;
     SmallVector<size_t, 2> excluded;
@@ -1690,21 +1765,30 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) const {
           const Constraints &c) -> std::optional<SmallVector<const Edge *>> {
     if (!allowed(e, c))
       return std::nullopt;
+    // A state is a node and whether the walk there has waited other than on
+    // a link below e's merge.
+    auto ordered = [&](const Edge &edge) {
+      return !edge.step || edge.merged == e.merged;
+    };
+    auto state = [](size_t node, bool waited) { return 2 * node + waited; };
+    size_t start = state(e.to, !e.merged), end = state(x, true);
     DenseMap<size_t, std::pair<size_t, const Edge *>> via;
-    via[e.to] = {e.to, nullptr};
-    std::deque<size_t> worklist{e.to};
-    while (!via.contains(x)) {
+    via[start] = {start, nullptr};
+    std::deque<size_t> worklist{start};
+    while (!via.contains(end)) {
       if (worklist.empty())
         return std::nullopt;
       size_t n = worklist.front();
       worklist.pop_front();
-      for (const Edge &next : successors(n))
+      for (const Edge &next : successors(n / 2)) {
+        size_t to = state(next.to, n % 2 || !ordered(next));
         if (component[next.to] == component[x] && allowed(next, c) &&
-            via.try_emplace(next.to, n, &next).second)
-          worklist.push_back(next.to);
+            via.try_emplace(to, n, &next).second)
+          worklist.push_back(to);
+      }
     }
     SmallVector<const Edge *> path;
-    for (size_t n = x; n != e.to; n = via.at(n).first)
+    for (size_t n = end; n != start; n = via.at(n).first)
       path.push_back(via.at(n).second);
     path.push_back(&e);
     std::reverse(path.begin(), path.end());

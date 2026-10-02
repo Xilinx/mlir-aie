@@ -117,6 +117,10 @@ struct HoldCycle {
     Port sharerInput;
     Port holderInput;
     int arbiter;
+    /// The wait holds however the arbiters are planned, as `sharer` and
+    /// `holding` go into a receiver they share at `tile`, or have one id and
+    /// go on as one from there.
+    bool forced = false;
   };
   llvm::SmallVector<Step, 4> steps;
 };
@@ -354,12 +358,18 @@ public:
 
   /// A cycle of waits the packet streams can deadlock in when routed along
   /// `routes`, indexed like getStreams(), that the routing of some requested
-  /// stream takes part in; nullopt when there is none.
+  /// stream takes part in; nullopt when there is none. Waits between trees
+  /// at the master port of a receiver they share hold however they are
+  /// routed, so they count only with `forcedWaits`.
   std::optional<HoldCycle>
-  holdCycle(llvm::ArrayRef<llvm::SmallVector<StreamHop, 8>> routes) const;
+  holdCycle(llvm::ArrayRef<llvm::SmallVector<StreamHop, 8>> routes,
+            bool forcedWaits = false) const;
 
   /// The waits of `cycle`, one sentence each.
   std::string explain(const HoldCycle &cycle) const;
+
+  /// Whether a drain in `cycle` rests on StreamDeadlockAnalysis::assumptions.
+  bool assumed(const HoldCycle &cycle) const;
 
 private:
   bool blocks(size_t s, size_t t) const;
