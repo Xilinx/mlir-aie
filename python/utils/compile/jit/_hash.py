@@ -243,7 +243,11 @@ def _python_identity(roots) -> bytes:
             home = sys.modules.get(value.__module__)
             # Followed by code only where no file stands for it; an
             # installed package's is versioned with the install.
-            if home is None or home.__name__ == "__main__" or not home.__file__:
+            if (
+                home is None
+                or home.__name__ == "__main__"
+                or not vars(home).get("__file__")
+            ):
                 seen.add(id(value))
                 todo.append(value)
 

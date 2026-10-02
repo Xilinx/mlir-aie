@@ -11,6 +11,7 @@ Tests that exercise compile() or end-to-end kernel execution live in
 test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
+import builtins
 import dataclasses
 import importlib
 import json
@@ -1207,6 +1208,30 @@ def test_the_kernel_harness_key_covers_its_helper_modules():
     reached = _hash_mod._python_identity([kd._stream.compilable.mlir_generator])
     for module in (kd, _pipeline):
         assert f"{module.__name__}@".encode() in reached
+
+
+def test_the_key_reaches_the_builtins_module():
+    """`builtins` is a module with no `__file__` attribute at all."""
+
+    def generator(x):
+        if not x:
+            raise builtins.AssertionError("x")
+
+    assert _hash_mod._python_identity([generator]) == _hash_mod._python_identity(
+        [generator]
+    )
+
+
+def test_the_key_of_a_generator_with_a_rewritten_assert():
+    """pytest rewrites `assert` to reach `AssertionError` through `builtins`."""
+
+    def generator(x):
+        assert x, "x"
+        raise ValueError("y")
+
+    assert _hash_mod._python_identity([generator]) == _hash_mod._python_identity(
+        [generator]
+    )
 
 
 def test_the_kernel_harness_key_is_the_same_in_every_process(tmp_path):
