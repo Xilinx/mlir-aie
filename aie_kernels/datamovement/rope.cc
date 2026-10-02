@@ -55,7 +55,15 @@ void rope_kernel(const T *restrict input, const T *restrict lut,
   const T *restrict pi = input;
   const T *restrict pl = lut;
   T *restrict po = output;
-  if (wide > 0) {
+  // The pipelined schedule needs a promised trip count; a short row runs the
+  // same steps unpipelined.
+  if (AIE_TUNED_AIE2P && wide >= 4) {
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(4)
+    for (int k = 0; k < wide; ++k, pi += W, pl += W, po += W) {
+      rope_step<T, W>(pi, pl, po);
+    }
+  } else if (wide > 0) {
     AIE_LOOP_MIN_ITERATION_COUNT(1)
     for (int k = 0; k < wide; ++k, pi += W, pl += W, po += W) {
       rope_step<T, W>(pi, pl, po);
@@ -70,15 +78,18 @@ void rope_kernel(const T *restrict input, const T *restrict lut,
   event1();
 }
 
-// One two-halves step over N elements of each half.
-template <typename T, int N>
+// One two-halves step over N elements of each half. Aligned says the second
+// half starts on a whole vector.
+template <typename T, int N, bool Aligned = false>
 static inline void rope_halves_step(const T *restrict input,
                                     const T *restrict lut, T *restrict output,
                                     int dims_half) {
   ::aie::vector<T, N> x1 = ::aie::load_v<N>(input);
   // For dims = 96, the second half is only 32-byte aligned, not the
   // 64-byte alignment required by AIE2P's 32-lane bf16 loads/stores.
-  ::aie::vector<T, N> x2 = ::aie::load_unaligned_v<N>(input + dims_half);
+  ::aie::vector<T, N> x2 = Aligned
+                               ? ::aie::load_v<N>(input + dims_half)
+                               : ::aie::load_unaligned_v<N>(input + dims_half);
   ::aie::vector<T, 2 * N> cache = ::aie::load_v<2 * N>(lut);
 
   ::aie::vector<T, N> cos_val = ::aie::filter_even(cache, 1);
@@ -90,9 +101,12 @@ static inline void rope_halves_step(const T *restrict input,
       output,
       ::aie::msc(::aie::mul(x1, cos_val), x2, sin_val).template to_vector<T>());
   // Second half: x2*cos + x1*sin
-  ::aie::store_unaligned_v(
-      output + dims_half,
-      ::aie::mac(::aie::mul(x2, cos_val), x1, sin_val).template to_vector<T>());
+  ::aie::vector<T, N> y2 =
+      ::aie::mac(::aie::mul(x2, cos_val), x1, sin_val).template to_vector<T>();
+  if constexpr (Aligned)
+    ::aie::store_v(output + dims_half, y2);
+  else
+    ::aie::store_unaligned_v(output + dims_half, y2);
 }
 
 // Two-halves RoPE (the layout used by HuggingFace transformers): the first and
@@ -109,6 +123,25 @@ void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
   const T *restrict pi = input;
   const T *restrict pl = lut;
   T *restrict po = output;
+#if AIE_TUNED_AIE2P
+  // A half of whole vectors needs no unaligned read-modify-write; the loop
+  // pipelines with a promised trip count, as in rope_kernel.
+  if ((uint32_t)dims_half % N == 0) {
+    if (wide >= 4) {
+      AIE_PREPARE_FOR_PIPELINING
+      AIE_LOOP_MIN_ITERATION_COUNT(4)
+      for (int k = 0; k < wide; ++k, pi += N, pl += 2 * N, po += N) {
+        rope_halves_step<T, N, true>(pi, pl, po, dims_half);
+      }
+    } else {
+      for (int k = 0; k < wide; ++k, pi += N, pl += 2 * N, po += N) {
+        rope_halves_step<T, N, true>(pi, pl, po, dims_half);
+      }
+    }
+    event1();
+    return;
+  }
+#endif
   if (wide > 0) {
     AIE_LOOP_MIN_ITERATION_COUNT(1)
     for (int k = 0; k < wide; ++k, pi += N, pl += 2 * N, po += N) {

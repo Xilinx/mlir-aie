@@ -153,6 +153,8 @@ struct AIEAssignBufferDescriptorIDsPass
           AIEAssignBufferDescriptorIDsPass> {
   void runOnOperation() override {
     DeviceOp targetOp = getOperation();
+    if (failed(verifyDMAChannelsResolved(targetOp)))
+      return signalPassFailure();
     const AIETargetModel &targetModel = targetOp.getTargetModel();
 
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());

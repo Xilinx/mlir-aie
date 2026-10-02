@@ -19,6 +19,11 @@
 #include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 
+#if AIE_TUNED_AIE2P
+#define K1_DEEP_WALKER
+#include "bn_conv2dk1_aie2.h"
+#endif
+
 #define REL_WRITE 0
 #define REL_READ 1
 
@@ -29,6 +34,11 @@ const int32_t MIN = 128;
 const int32_t MAX = 127;
 const int32_t UMAX = 255;
 const int32_t MAX_VALUES = 16;
+
+// Output channel blocks a cascade call covers, from `oc` * K1_CAS_OC_BLOCKS.
+#ifndef K1_CAS_OC_BLOCKS
+#define K1_CAS_OC_BLOCKS 1
+#endif
 
 #if defined(BN13_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW) ||           \
     defined(BN14_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW)
@@ -708,17 +718,42 @@ void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 
 #endif
 
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 #include "bn_conv2dk1_aie2.h"
 
-template <bool Aligned>
+template <bool Aligned, int P, bool Fixed = false>
 static void k1_i8_rows(const uint8_t *input, const int8_t *kernels,
                        int8_t *output, const int32_t input_width,
                        const int32_t input_channels,
                        const int32_t output_channels, const int scale) {
-  k1_rows<Aligned>(
-      input, kernels, output, input_width, input_channels, output_channels,
-      [=](auto &acc) { return acc.template to_vector<int8>(scale); });
+  const auto epi = [=](auto &acc) {
+    return acc.template to_vector<int8>(scale);
+  };
+#if defined(K1_WIDTH)
+  if constexpr (Fixed) {
+    k1_rows_fixed(input, kernels, output, epi);
+    return;
+  } else if constexpr (K1_DEEP) {
+    k1_rows_deep(input, kernels, output, epi);
+    return;
+  }
+#endif
+  k1_rows<Aligned, P>(input, kernels, output, input_width, input_channels,
+                      output_channels, epi);
+}
+
+template <int P>
+static void k1_i8_chunked(const uint8_t *input, const int8_t *kernels,
+                          int8_t *output, const int32_t input_width,
+                          const int32_t input_channels,
+                          const int32_t output_channels, const int scale) {
+  if (input_width % P == 0 &&
+      (((uintptr_t)input | (uintptr_t)output) & (8 * P - 1)) == 0)
+    k1_i8_rows<true, P>(input, kernels, output, input_width, input_channels,
+                        output_channels, scale);
+  else
+    k1_i8_rows<false, P>(input, kernels, output, input_width, input_channels,
+                         output_channels, scale);
 }
 
 static void k1_i8_vector(const uint8_t *input, const int8_t *kernels,
@@ -728,16 +763,39 @@ static void k1_i8_vector(const uint8_t *input, const int8_t *kernels,
   event0();
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
-  if (input_width % 4 == 0 &&
-      (((uintptr_t)input | (uintptr_t)output) & 31) == 0)
-    k1_i8_rows<true>(input, kernels, output, input_width, input_channels,
-                     output_channels, scale);
-  else
-    k1_i8_rows<false>(input, kernels, output, input_width, input_channels,
+#if defined(K1_WIDTH)
+  k1_i8_rows<K1_ALIGNED, K1_P, K1_FIXED>(
+      input, kernels, output, K1_WIDTH, input_channels, output_channels, scale);
+#elif AIE_TUNED_AIE2P
+  k1_i8_rows<true, 4>(input, kernels, output, input_width, input_channels,
                       output_channels, scale);
+#else
+  k1_i8_chunked<4>(input, kernels, output, input_width, input_channels,
+                   output_channels, scale);
+#endif
   event1();
 }
-#endif // AIE_TUNED_AIE2
+#endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
+
+template <typename TI>
+static inline bool k1_cas_put_new(const TI *input, const int8_t *kernels,
+                                  const int32_t input_width,
+                                  const int32_t input_channels,
+                                  const int32_t input_split, const int32_t oc) {
+#if AIE_TUNED_AIE2P
+  if (!k1_cas_fits(kernels, input_split, 1))
+    return false;
+  event0();
+  const int32_t blocks = k1_per_split(input_channels, input_split) / 8;
+  const int8_t *w = kernels + oc * K1_CAS_OC_BLOCKS * blocks * 64;
+  for (int j = 0; j < K1_CAS_OC_BLOCKS; j++, w += blocks * 64)
+    k1_cas_put(input, w, input_width * 8, blocks);
+  event1();
+  return true;
+#else
+  return false;
+#endif
+}
 
 //*****************************************************************************
 // conv2d 1x1 wrappers
@@ -750,9 +808,13 @@ void bn13_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new(
     const int32_t input_channels, const int32_t output_channels,
     const int32_t input_split, const int32_t weight_index,
     const int32_t x_start, const int32_t oc) {
-  conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
-      input, kernels, input_width, input_channels, output_channels, input_split,
-      weight_index, x_start, oc);
+  if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
+                     oc))
+    return;
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
+        input, kernels, input_width, input_channels, output_channels,
+        input_split, weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 #endif
 
@@ -762,9 +824,13 @@ void bn14_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new(
     const int32_t input_channels, const int32_t output_channels,
     const int32_t input_split, const int32_t weight_index,
     const int32_t x_start, const int32_t oc) {
-  conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
-      input, kernels, input_width, input_channels, output_channels, input_split,
-      weight_index, x_start, oc);
+  if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
+                     oc))
+    return;
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
+        input, kernels, input_width, input_channels, output_channels,
+        input_split, weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 #endif
 
@@ -850,9 +916,13 @@ void bn14_1_conv2dk1_i8_ui8_partial_width_put_new(
     int8_t *input, int8_t *kernels, const int32_t input_width,
     const int32_t input_channels, const int32_t output_channels,
     int32_t input_split, int32_t weight_index, int32_t x_start, int32_t oc) {
-  conv2dk1_i8_ui8_scalar_partial_width_put_new(
-      input, kernels, input_width, input_channels, output_channels, input_split,
-      weight_index, x_start, oc);
+  if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
+                     oc))
+    return;
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_i8_ui8_scalar_partial_width_put_new(
+        input, kernels, input_width, input_channels, output_channels,
+        input_split, weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 
 #endif
@@ -862,9 +932,13 @@ void bn13_1_conv2dk1_i8_ui8_partial_width_put_new(
     int8_t *input, int8_t *kernels, const int32_t input_width,
     const int32_t input_channels, const int32_t output_channels,
     int32_t input_split, int32_t weight_index, int32_t x_start, int32_t oc) {
-  conv2dk1_i8_ui8_scalar_partial_width_put_new(
-      input, kernels, input_width, input_channels, output_channels, input_split,
-      weight_index, x_start, oc);
+  if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
+                     oc))
+    return;
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_i8_ui8_scalar_partial_width_put_new(
+        input, kernels, input_width, input_channels, output_channels,
+        input_split, weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 
 #endif
@@ -874,9 +948,13 @@ void conv2dk1_i8_ui8_partial_width_put_new(
     int8_t *input, int8_t *kernels, const int32_t input_width,
     const int32_t input_channels, const int32_t output_channels,
     int32_t input_split, int32_t weight_index, int32_t x_start, int32_t oc) {
-  conv2dk1_i8_ui8_scalar_partial_width_put_new(
-      input, kernels, input_width, input_channels, output_channels, input_split,
-      weight_index, x_start, oc);
+  if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
+                     oc))
+    return;
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_i8_ui8_scalar_partial_width_put_new(
+        input, kernels, input_width, input_channels, output_channels,
+        input_split, weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 
 #endif
@@ -938,8 +1016,8 @@ void conv2dk1_i8_ui8_get(int8_t *input0, int8_t *kernels, uint8_t *output,
 void conv2dk1_ui8_i8(uint8_t *input, int8_t *kernels, int8_t *output,
                      const int32_t input_width, const int32_t input_channels,
                      const int32_t output_channels, const int scale) {
-#if AIE_TUNED_AIE2
-  if (input_width >= 4) {
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
+  if (input_width >= 4 && k1_fits(input_width, kernels, input, output)) {
     k1_i8_vector(input, kernels, output, input_width, input_channels,
                  output_channels, scale);
     return;

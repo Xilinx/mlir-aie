@@ -54,6 +54,7 @@ def _case_id(case) -> str:
         parts.append("scalars=" + ",".join(str(v) for v in case.scalars))
     if case.tag:
         parts.append(case.tag)
+    parts += [f"arg{i}@{offset}" for i, offset in case.arg_byte_offsets]
     return "/".join(parts)
 
 
@@ -74,13 +75,19 @@ NOT_JUDGED = {
     "sample_select": "a state machine across a position's select_streams * slice / chunk calls; test_sample_e2e.py judges it",
     "sample_combine": "reads sample_select's summaries, which the generic builder cannot draw; test_sample_e2e.py judges the pair",
     **{
-        name: "one half of a MobileNet bottleneck cascade pair, not validated yet (see the guide)"
+        name: "one half of a MobileNet bottleneck cascade pair; test_bn_cascade_pairs.py builds and judges the pair"
         for name in (
             "bn_conv2dk1_partial_put_i8",
             "bn_conv2dk1_partial_get_relu_i8",
             "bn_conv2dk1_input_split_partial_put_ui8",
             "bn_conv2dk1_input_split_partial_skip_get",
         )
+    },
+    **{
+        name: "blocks on core locks its design releases; codegen-identical to "
+        "FastFlowLM's kernel, which runs in its engine"
+        for name in kernels.factories()
+        if name.startswith("flm_gemma4_decode_")
     },
 }
 
@@ -341,7 +348,16 @@ def test_guarded_design_hands_the_kernel_a_view_of_its_tile():
     )
     assert "!aie.objectfifo<memref<128xi8>>" in mlir
     assert "memref<128xi8> to memref<64xui8>" in mlir
-    assert mlir.count("memref.store") == kd.GUARD_BYTES // 4
+    # The tile and its guard are poisoned by a call: a loop in main would keep
+    # the object FIFO lowering from unrolling the calls.
+    assert "memref<128xi8> to memref<32xi32>" in mlir
+    assert "func.call @kd_poison_32(" in mlir
+    plain = str(
+        kd.design(
+            kernels.add_weighted, line_width=64, calls=2, scalars=(8192, 8192, 0)
+        ).as_mlir()
+    )
+    assert mlir.count("scf.for") == plain.count("scf.for")
 
 
 def test_guard_covers_an_initialized_output():
@@ -456,23 +472,149 @@ def test_rounding_mode_preserves_string_api(mode):
 @pytest.mark.parametrize(
     "factory,minimum",
     [
-        (kernels.conv2dk1, 2752),
-        (kernels.conv2dk1_skip, 2752),
-        (kernels.conv2dk3, 4736),
-        (kernels.layer_norm_f32, 1216),
+        (kernels.conv2dk1, 1088),
+        (kernels.conv2dk1_skip, 512),
+        (kernels.conv2dk1_skip_init, 1216),
+        (kernels.conv2dk3, 384),
     ],
 )
 def test_stack_contract_covers_measured_core(factory, minimum):
     assert factory().contract.stack_bytes >= minimum
 
 
-def test_layer_norm_f32_stack_includes_scalar_division():
-    # The measured core's 1152 bytes omit __divsf3's 64-byte frame because
-    # compiler-rt does not emit .stack_sizes. Exercise the CI case's design.
-    minimum = 1152 + 64
-    fn = kernels.layer_norm_f32(cols=1024)
-    assert fn.contract.stack_bytes >= minimum
+@pytest.mark.parametrize(
+    "device,portable,minimum",
+    [
+        (NPU2Col1, False, 896),
+        (NPU2Col1, True, 896),
+        (NPU1Col1, False, 160),
+        (NPU1Col1, True, 736),
+    ],
+)
+def test_layer_norm_f32_stack_covers_measured_core(
+    monkeypatch, device, portable, minimum
+):
+    # aiecc's measured_stack_size, plus the 64-byte frame of __mulsf3 or
+    # __divsf3 where the build calls one: compiler-rt emits no .stack_sizes.
+    if portable:
+        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
+    set_current_device(device())
     mlir = str(kd.design(kernels.layer_norm_f32, cols=1024, calls=16).as_mlir())
+    stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
+    assert stack_sizes
+    assert all(int(size) >= minimum for size in stack_sizes)
+
+
+@pytest.mark.parametrize("portable", [False, True])
+@pytest.mark.parametrize(
+    "device,dim_k,dim_n,minimum",
+    [
+        (NPU2Col1, 56, 16, 1088),
+        (NPU2Col1, 72, 32, 1024),
+        (NPU2Col1, 144, 32, 2240),
+        (NPU2Col1, 256, 16, 4160),
+        (NPU2Col1, 256, 32, 4032),
+        (NPU2Col1, 384, 16, 6208),
+        (NPU1Col1, 256, 32, 512),
+    ],
+)
+def test_mm_i8_i32_stack_covers_measured_core(
+    monkeypatch, device, dim_k, dim_n, minimum, portable
+):
+    # aiecc's measured_stack_size, worst of the b_col_maj/c_col_maj builds.
+    if portable:
+        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
+    set_current_device(device())
+    fn = kernels.mm(
+        dim_m=32,
+        dim_k=dim_k,
+        dim_n=dim_n,
+        input_dtype=np.int8,
+        output_dtype=np.int32,
+    )
+    assert kd._stack_bytes(fn) >= minimum
+
+
+@pytest.mark.parametrize(
+    "kwargs,expected",
+    [
+        # In the fitted range: 16 * dim_k + 256.
+        (dict(dim_k=56, input_dtype=np.int8, output_dtype=np.int32), 16 * 56 + 256),
+        (dict(dim_k=408, input_dtype=np.int8, output_dtype=np.int32), 16 * 408 + 256),
+        # Excluded at both ends: the device default (None) covers these.
+        (dict(dim_k=48, input_dtype=np.int8, output_dtype=np.int32), None),
+        (dict(dim_k=416, input_dtype=np.int8, output_dtype=np.int32), None),
+        # Excluded by not being the tuned aie2p/vectorized/int8->int32 case.
+        (
+            dict(
+                dim_k=200,
+                input_dtype=np.int8,
+                output_dtype=np.int32,
+                vectorized=False,
+            ),
+            None,
+        ),
+        (dict(dim_k=200, input_dtype=np.int16, output_dtype=np.int32), None),
+    ],
+)
+def test_mm_i8_i32_stack_formula_envelope(kwargs, expected):
+    # Pins the 48 < dim_k < 416 fit boundaries themselves (kernel_cases.py and
+    # test_mm_i8_i32_stack_covers_measured_core pin measured values inside
+    # them), so a change to the envelope is caught even where it still
+    # happens to satisfy every measured minimum above.
+    set_current_device(NPU2Col1())
+    fn = kernels.mm(dim_m=32, dim_n=16, **kwargs)
+    assert fn.contract.stack_bytes == expected
+
+
+def test_mm_stack_falls_back_off_aie2p_and_under_chess():
+    set_current_device(NPU1Col1())
+    assert (
+        kernels.mm(
+            dim_k=200, input_dtype=np.int8, output_dtype=np.int32
+        ).contract.stack_bytes
+        is None
+    )
+    set_current_device(NPU2Col1())
+    assert (
+        kernels.mm(
+            dim_k=200, input_dtype=np.int8, output_dtype=np.int32, use_chess=True
+        ).contract.stack_bytes
+        == 0xD00
+    )
+
+
+@pytest.mark.parametrize(
+    "input_width,kernel_width", [(112, 14), (336, 14), (230, 14), (240, 15)]
+)
+def test_conv2dk14_rejects_shapes_the_vector_paths_skip(input_width, kernel_width):
+    # The vector paths step 16 patches and 2 pixels at a time.
+    with pytest.raises(ValueError, match="conv2dk14"):
+        kernels.conv2dk14(input_width=input_width, kernel_width=kernel_width)
+
+
+@pytest.mark.parametrize(
+    "device,portable,channels,minimum",
+    [
+        (NPU2Col1, False, 448, 1280),
+        (NPU2Col1, False, 224, 1024),
+        (NPU2Col1, True, 256, 1280),
+        (NPU1Col1, True, 192, 416),
+        (NPU1Col1, False, 416, 1056),
+        (NPU1Col1, False, 1248, 9760),
+    ],
+)
+def test_dwconv1d_channels_last_stack_covers_measured_core(
+    monkeypatch, device, portable, channels, minimum
+):
+    # aiecc's measured_stack_size at the worst channel count of each build,
+    # and at the first aie2 count that needs more than the default
+    if portable:
+        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
+    set_current_device(device())
+    mlir = str(
+        kd.design(kernels.dwconv1d_channels_last, channels=channels, calls=1).as_mlir()
+    )
     stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
     assert stack_sizes
     assert all(int(size) >= minimum for size in stack_sizes)
@@ -1157,7 +1299,7 @@ def test_mha_binds_its_translation_unit_as_one_object():
         "matmul_bf16_bf16_wrapper_scalar": [tile, tile, tile],
         "matmul_bf16_bf16_rowmaj": [tile, tile, tile],
         "partial_softmax": [tile, tile, scale, idx, bfloat16, *([np.int32] * 4)],
-        "matmul_PV": [tile, tile, tile, scale, np.int32, np.int32, idx],
+        "matmul_PV": [tile, tile, tile, scale, np.int32, np.int32, idx, np.int32],
         "rescale_O": [tile, scale, np.int32, idx],
         "init_scale_buffer": [scale, np.int32],
     }

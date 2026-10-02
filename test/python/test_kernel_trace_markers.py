@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from aie.iron import kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernels import Trace
 from aie.utils import config
@@ -35,7 +36,11 @@ sys.path.insert(0, str(Path(__file__).parent / "npu"))
 from kernel_cases import CASES  # noqa: E402
 
 # The only builds whose calls cannot be timed; each contract says why.
-UNTIMED = {"set_rounding"}
+UNTIMED = {
+    "set_rounding",
+    # The decode kernels block on core locks the generic harness cannot drive.
+    *(n for n in kernels.factories() if n.startswith("flm_gemma4_decode_")),
+}
 
 
 def _builds(device, generation):

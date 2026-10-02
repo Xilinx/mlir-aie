@@ -107,6 +107,24 @@ without relying on `PATH` search order.
 AIECC_PATH=/path/to/aiecc python my_script.py
 ```
 
+## Kernel Source Override (`MLIR_AIE_KERNEL_SOURCES`)
+
+The `aie.iron.kernels` factories compile their C++ from the installed
+`include/aie_kernels/` and `aie_runtime_lib/` by default, which is the
+checkout as of its last build or install. Set `MLIR_AIE_KERNEL_SOURCES` to a
+checkout's root to compile that checkout's `aie_kernels/` and
+`aie_runtime_lib/` instead, for example to try a kernel edit against an
+installed wheel without rebuilding. `aie.utils.config.aie_kernels_dir()` and
+`aie_runtime_lib_dir()` resolve the override, the JIT cache key includes the
+tree it names, and `aie.utils.benchmark` records it with its results.
+`python -m aie.utils.compile.remarks --sources DIR` is the same override for
+that tool, and its `--baseline-sources DIR` compiles each build a second time
+from another checkout to compare the two.
+
+```bash
+MLIR_AIE_KERNEL_SOURCES=/path/to/mlir-aie python my_script.py
+```
+
 ## IRON XRT Runtime Cache Size
 
 The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of this cache can be configured using the `XRT_CONTEXT_CACHE_SIZE` environment variable. This is particularly useful in CI environments where multiple tests run in parallel and might exhaust the available NPU contexts.

@@ -28,6 +28,7 @@ from .buffer import Buffer
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
 from .device import AnyComputeTile, Tile
+from .kernel import Kernel
 from .resolvable import Resolvable
 from .scratchpad_parameter import ScratchpadParameter
 
@@ -188,8 +189,7 @@ class Worker(ObjectFifoEndpoint):
                     # tile (AIE compute tiles can read N/S/E/W neighbors' L1
                     # directly), honor that placement — Program.resolve discovers
                     # the neighbor tile via Buffer.tiles().
-                    if arg._tile is None:
-                        arg._tile = self._tile
+                    arg.place(self._tile)
             elif isinstance(arg, ScratchpadParameter):
                 pass  # ScratchpadParameters are device-level symbols; no tile placement needed
             elif isinstance(arg, ObjectFifo):
@@ -205,6 +205,21 @@ class Worker(ObjectFifoEndpoint):
             # func.call ops when invoked inside core_fn and carry link_with on their
             # func.func declaration. Other unrecognized args are assumed to be
             # metaprogramming values (Python scalars, etc.).
+
+        # A library kernel's contract may name a setup kernel, such as the
+        # rounding mode its bf16 stores assume; a fresh core boots in floor.
+        # Run each once before the loop, unless fn_args already hands it over
+        # for core_fn to call.
+        kernels = [a for a in flatten_fn_args(self.fn_args) if isinstance(a, Kernel)]
+        handed = {k.name for k in kernels}
+        self._setup_kernels = []
+        for k in kernels:
+            if k.contract is None or k.contract.setup is None:
+                continue
+            setup = k.contract.setup()
+            if setup.name not in handed:
+                handed.add(setup.name)
+                self._setup_kernels.append(setup)
 
     @staticmethod
     def grid(
@@ -249,9 +264,10 @@ class Worker(ObjectFifoEndpoint):
         """fn_args with any nested lists/tuples flattened to their leaves.
 
         Use this (not ``fn_args``) when iterating to register/resolve individual
-        arguments; ``fn_args`` keeps its structure for the core_fn call.
+        arguments; ``fn_args`` keeps its structure for the core_fn call. The
+        setup kernels the Worker runs for its kernels' contracts come last.
         """
-        return list(flatten_fn_args(self.fn_args))
+        return list(flatten_fn_args(self.fn_args)) + self._setup_kernels
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
@@ -298,6 +314,8 @@ class Worker(ObjectFifoEndpoint):
             # bound=1 for single-shot workers). Using Python range(1) here would
             # emit the body inline with no scf.for wrapper, which the dataflow
             # lowerer treats differently and can cause runtime hangs.
+            for setup in self._setup_kernels:
+                setup()
             for _ in range_(sys.maxsize if self._while_true else 1):
                 self.core_fn(*self.fn_args)
 

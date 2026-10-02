@@ -26,3 +26,36 @@ func.func @set_lock_outside_sequence() {
   aiex.set_lock(%lock22_0, 1)
   return
 }
+
+// -----
+
+aie.device(npu1) {
+  %tile = aie.tile(0, 1)
+  %lock = aie.lock(%tile) {init = 0 : i32}
+  aie.runtime_sequence() {
+    // expected-error@+1 {{Lock value must be non-negative}}
+    aiex.set_lock(%lock, -1)
+  }
+}
+
+// -----
+
+aie.device(npu2) {
+  %tile = aie.tile(0, 1)
+  %lock = aie.lock(%tile) {init = 0 : i32}
+  aie.runtime_sequence() {
+    // expected-error@+1 {{Lock value must be non-negative}}
+    aiex.set_lock(%lock, -1)
+  }
+}
+
+// -----
+
+aie.device(npu2) {
+  %tile = aie.tile(0, 1)
+  %lock = aie.lock(%tile) {init = 0 : i32}
+  aie.runtime_sequence() {
+    // expected-error@+1 {{Lock value exceeds the maximum value of 63}}
+    aiex.set_lock(%lock, 64)
+  }
+}
