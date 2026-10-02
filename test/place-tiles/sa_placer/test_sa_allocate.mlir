@@ -59,3 +59,78 @@ module @no_allocate_within_capacity {
     aie.core(%coreB) { aie.end }
   }
 }
+
+// -----
+
+// The same overflowing intratile fifos, already allocated to coreB by the
+// user: SA charges them to coreB and adds no allocate of its own.
+// CHECK-LABEL: @user_allocate_kept
+// CHECK: %[[B:.*]] = aie.tile(2, 4)
+// CHECK-NOT: aie.objectfifo.allocate
+// CHECK: aie.objectfifo @intra0
+// CHECK-NEXT: aie.objectfifo.allocate @intra0(%[[B]])
+// CHECK-NEXT: aie.objectfifo @intra1
+// CHECK-NEXT: aie.objectfifo.allocate @intra1(%[[B]])
+// CHECK-NEXT: aie.objectfifo @intra2
+// CHECK-NEXT: aie.objectfifo.allocate @intra2(%[[B]])
+// CHECK-NOT: aie.objectfifo.allocate
+module @user_allocate_kept {
+  aie.device(npu2) {
+    %coreA = aie.logical_tile<CoreTile>(2, 3)
+    %coreB = aie.logical_tile<CoreTile>(2, 4)
+    %coreC = aie.logical_tile<CoreTile>(?, ?)
+
+    aie.objectfifo @data(%coreA, {%coreC}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+
+    %wts = aie.buffer(%coreA) {sym_name = "weights"} : memref<12800xi32>
+
+    aie.objectfifo @intra0(%coreA, {%coreA}, 3 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2048xi8>>
+    aie.objectfifo.allocate @intra0(%coreB)
+    aie.objectfifo @intra1(%coreA, {%coreA}, 3 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2048xi8>>
+    aie.objectfifo.allocate @intra1(%coreB)
+    aie.objectfifo @intra2(%coreA, {%coreA}, 3 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2048xi8>>
+    aie.objectfifo.allocate @intra2(%coreB)
+
+    aie.core(%coreA) { aie.end }
+    aie.core(%coreB) { aie.end }
+    aie.core(%coreC) { aie.end }
+  }
+}
+
+// -----
+
+// An unpinned delegate is pulled toward coreC, but must stay where coreA,
+// both ends of @intra0, can reach its memory.
+// CHECK-LABEL: @unpinned_delegate_reachable
+// CHECK: aie.objectfifo.allocate @intra0(%tile_{{1_3|2_2|2_4}})
+module @unpinned_delegate_reachable {
+  aie.device(npu2) {
+    %coreA = aie.logical_tile<CoreTile>(2, 3)
+    %coreB = aie.logical_tile<CoreTile>(?, ?)
+    %coreC = aie.logical_tile<CoreTile>(7, 5)
+
+    aie.objectfifo @far(%coreB, {%coreC}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+    aie.objectfifo @intra0(%coreA, {%coreA}, 2 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2048xi8>>
+    aie.objectfifo.allocate @intra0(%coreB)
+
+    aie.core(%coreA) { aie.end }
+    aie.core(%coreB) { aie.end }
+    aie.core(%coreC) { aie.end }
+  }
+}
+
+// -----
+
+// 1024B stack + 54208B weights + 4 x 2576B fifo buffers sum to exactly 64KB,
+// but assign-buffer-addresses aligns each 2576B buffer to 64B (2624B), so the
+// fifo can't stay on coreA.
+// CHECK-LABEL: @exact_fit_needs_padding
+// CHECK: aie.objectfifo.allocate @intra0
+module @exact_fit_needs_padding {
+  aie.device(npu2) {
+    %coreA = aie.logical_tile<CoreTile>(?, ?)
+    %wts = aie.buffer(%coreA) {sym_name = "weights"} : memref<54208xi8>
+    aie.objectfifo @intra0(%coreA, {%coreA}, 4 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2576xi8>>
+    aie.core(%coreA) { aie.end }
+  }
+}

@@ -229,6 +229,7 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
         compile_flags=[f"-DTILE_SIZE={tile_size}", f"-DGROUP_SIZE={group_size}"],
         contract=KernelContract(
             trace=Trace.whole_call(),
+            setup=conv_even,
             roles=(In, Out),
             reference=lambda p: expand_ref(
                 p, tile_size=tile_size, group_size=group_size

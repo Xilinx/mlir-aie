@@ -95,6 +95,8 @@ CASES: list[Case] = [
     Case("scale", dict(dtype=np.int32), calls=16, smoke=True),
     check("scale", dict(tile_size=64), tag="edge-tiny"),
     check("scale", dict(tile_size=32, dtype=np.int16), tag="edge-one-vector"),
+    check("scale", dict(tile_size=16), tag="edge-one-vector"),
+    check("scale", dict(tile_size=48), tag="edge-tail"),
     # No int16 overflow case: scale.cc stores acc32 with to_vector(0) and no
     # set_sat, so whether a product beyond int16 wraps or saturates is a core
     # setting the source leaves open (overflow="undefined"); the judge refuses
@@ -112,9 +114,15 @@ CASES: list[Case] = [
     check("reduce_add", calls=1, tag="edge-single"),
     check("reduce_add", dict(tile_size=64), tag="edge-tiny", smoke=True),
     check("reduce_add", dict(tile_size=16), tag="edge-one-vector"),
+    Case("reduce_add", _bf16, calls=16, smoke=True),
+    Case("reduce_add", _bf16, calls=256),
+    check("reduce_add", dict(tile_size=32, dtype=bfloat16), tag="edge-one-vector"),
     Case("reduce_min", calls=16, smoke=True),
     Case("reduce_min", calls=256),
     check("reduce_min", dict(tile_size=16), tag="edge-one-vector"),
+    Case("reduce_min", _bf16, calls=16, smoke=True),
+    Case("reduce_min", _bf16, calls=256),
+    check("reduce_min", dict(tile_size=32, dtype=bfloat16), tag="edge-one-vector"),
     Case("reduce_max", calls=16, smoke=True),
     Case("reduce_max", calls=256),
     Case("reduce_max", _bf16, calls=16, smoke=True),
@@ -240,6 +248,30 @@ CASES: list[Case] = [
         dict(**_mm, input_dtype=np.int8, output_dtype=np.int32),
         calls=16,
     ),
+    # Peano miscompiles the fully unrolled int8 -> int32 K loop from K = 416,
+    # so mm_aie2p.h rolls K up there; the 16x16 tile still unrolls.
+    *[
+        check(
+            "mm",
+            dict(
+                dim_m=m,
+                dim_k=k,
+                dim_n=n,
+                **layout,
+                input_dtype=np.int8,
+                output_dtype=np.int32,
+            ),
+            devices=("npu2",),
+        )
+        for m, k, n, layout in (
+            (16, 512, 32, {}),
+            (16, 512, 32, dict(b_col_maj=True)),
+            (16, 512, 32, dict(c_col_maj=True)),
+            (32, 512, 16, dict(b_col_maj=True)),
+            (48, 416, 16, dict(c_col_maj=True)),
+            (16, 1008, 16, {}),
+        )
+    ],
     check("mm", _mm_bf16, calls=1, tag="edge-single-tile"),
     # Bounded fused composition: two A bands and multiple K/drain chunks.
     Case("fused_mm", calls=4, smoke=True),
@@ -619,9 +651,16 @@ CASES: list[Case] = [
     # time: 4 steps and a tail, and 3 steps and a tail.
     check("gray2rgba", dict(line_width=144), tag="tail"),
     check("gray2rgba", dict(line_width=112), tag="short-row"),
+    # AIE2P steps 64 pixels at a time: 144 and 112 are 2 and 1 steps and a
+    # tail, and 48 is the tail alone.
+    check("gray2rgba", dict(line_width=48), tag="tail-only"),
     Case("rgba2gray", calls=16, smoke=True),
     # Five vectors, one under the count the AIE2 pipelined loop requires.
     check("rgba2gray", dict(line_width=160), tag="short-row"),
+    # AIE2P steps 64 pixels at a time, pipelined from 4 steps, then 32: 4
+    # steps and a tail, and the tail alone.
+    check("rgba2gray", dict(line_width=288), tag="tail"),
+    check("rgba2gray", dict(line_width=32), tag="one-vector"),
     Case("threshold", calls=16, scalars=(100, 255, 0), smoke=True),
     check("threshold", calls=16, scalars=(100, 255, 2), tag="trunc"),
     check("threshold", calls=16, scalars=(100, 255, 4), tag="tozero-inv"),
@@ -659,9 +698,20 @@ CASES: list[Case] = [
     Case("filter2d", calls=16, smoke=True),
     # Three middle vectors, one under the count the AIE2 pipelined loop needs.
     check("filter2d", dict(line_width=160), tag="short-row"),
+    # AIE2P steps 64 pixels at a time, pipelined from 4 steps, then a last
+    # 32 pixels when the row has them: one block with a tail, two blocks, and
+    # a pipelined row with a tail.
+    check("filter2d", dict(line_width=96), tag="one-block"),
+    check("filter2d", dict(line_width=128), tag="two-blocks"),
+    check("filter2d", dict(line_width=352), tag="odd-pipelined"),
     Case("rgba2hue", calls=16, smoke=True),
     # Under four vectors, so AIE2 takes the loop that is not software-pipelined.
     check("rgba2hue", dict(line_width=96), tag="short-row"),
+    # AIE2P steps 64 pixels at a time, pipelined from 4 steps, then a last
+    # 32 pixels when the row has them: a pipelined row with a tail, and a row
+    # that is only the tail.
+    check("rgba2hue", dict(line_width=288), tag="tail"),
+    check("rgba2hue", dict(line_width=32), tag="one-vector"),
     # conv: full-range int8 data (the kernels saturate, so `input_limit` only
     # keeps the int32 accumulator safe); the shift puts random sums around
     # uint8's range (64 channels x 127^2 ~ 2**20 >> 12 for k1; 9x that >> 15
@@ -751,6 +801,12 @@ CASES: list[Case] = [
         scalars=(448, 4, 8, 14, 17),
         tag="two-tile-groups",
     ),
+    check(
+        "conv2dk14",
+        dict(input_width=256, kernel_width=16),
+        scalars=(256, 4, 16, 16, 17),
+        tag="kernel-width-16",
+    ),
     Case(
         "conv2dk1",
         dict(act_dtype=np.uint8),
@@ -823,6 +879,36 @@ CASES: list[Case] = [
         scalars=(7, 80, 120, 8),
     ),
     Case(
+        "bn_conv2dk1_relu",
+        dict(input_width=14, input_channels=112, output_channels=336),
+        calls=8,
+        scalars=(14, 112, 336, 8),
+    ),
+    Case(
+        "bn_conv2dk1_relu",
+        dict(input_width=28, input_channels=40, output_channels=240),
+        calls=8,
+        scalars=(28, 40, 240, 8),
+    ),
+    Case(
+        "bn_conv2dk1_relu",
+        dict(input_width=56, input_channels=24, output_channels=72),
+        calls=8,
+        scalars=(56, 24, 72, 7),
+    ),
+    Case(
+        "bn_conv2dk1_relu",
+        dict(input_width=14, input_channels=80, output_channels=200),
+        calls=8,
+        scalars=(14, 80, 200, 8),
+    ),
+    Case(
+        "bn_conv2dk1_i8",
+        dict(input_width=28, input_channels=72, output_channels=40),
+        calls=8,
+        scalars=(28, 72, 40, 10),
+    ),
+    Case(
         "bn_conv2dk1_i8",
         dict(input_width=28, input_channels=120, output_channels=40),
         calls=8,
@@ -888,6 +974,26 @@ CASES: list[Case] = [
         calls=8,
         scalars=(14, 184, 80, 11, 1),
     ),
+    # MobileNet's bn4, bn7 and bn8 add their skip unscaled.
+    *[
+        Case(
+            "bn_conv2dk1_skip",
+            dict(
+                input_width=w,
+                input_channels=ic,
+                output_channels=oc,
+                skip_dtype=np.int8,
+            ),
+            calls=8,
+            scalars=(w, ic, oc, scale, 0),
+            tag="skip-scale-0",
+        )
+        for w, ic, oc, scale in (
+            (28, 120, 40, 11),
+            (14, 200, 80, 12),
+            (14, 184, 80, 12),
+        )
+    ],
     Case(
         "bn_conv2dk3",
         dict(input_width=224, input_channels=8, output_channels=16),
@@ -929,6 +1035,15 @@ CASES: list[Case] = [
         scalars=(40, 24, 8, 3, 3, 0, 9, 0),
         tag="top-row",
     ),
+    *[
+        check(
+            "bn_conv2dk3",
+            dict(input_width=w, input_channels=8, output_channels=16),
+            calls=8,
+            scalars=(w, 8, 16, 3, 3, 1, 8, 0),
+        )
+        for w in (8, 24, 88)
+    ],
     # The second of two workers sharing the weights buffer.
     *[
         check(
@@ -971,6 +1086,54 @@ CASES: list[Case] = [
         calls=8,
         scalars=(14, 336, 336, 3, 3, 1, 7, 0),
     ),
+    # MobileNet bn2's depthwise layer, with the network's scalars.
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=56, input_channels=72, output_channels=72),
+        calls=8,
+        scalars=(56, 1, 72, 3, 3, 1, 8, 0),
+    ),
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(input_width=56, input_channels=72, output_channels=72),
+            calls=8,
+            scalars=(56, 1, 72, 3, 3, row, 8, 0),
+            tag=tag,
+        )
+        for row, tag in ((0, "top-row"), (2, "bottom-row"))
+    ],
+    # MobileNet bn6's depthwise layer, with the network's scalars.
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=28, input_channels=240, output_channels=240, stride=2),
+        calls=8,
+        scalars=(28, 1, 240, 3, 3, 1, 7, 0),
+    ),
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(input_width=28, input_channels=240, output_channels=240, stride=2),
+            calls=8,
+            scalars=(28, 1, 240, 3, 3, row, 7, 0),
+            tag=tag,
+        )
+        for row, tag in ((0, "top-row"), (2, "bottom-row"))
+    ],
+    # MobileNet bn1's depthwise layer.
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=112, input_channels=64, output_channels=64, stride=2),
+        calls=8,
+        scalars=(112, 64, 64, 3, 3, 1, 7, 0),
+    ),
+    check(
+        "bn_conv2dk3_dw",
+        dict(input_width=112, input_channels=64, output_channels=64, stride=2),
+        calls=8,
+        scalars=(112, 64, 64, 3, 3, 2, 7, 0),
+        tag="bottom-row",
+    ),
     Case(
         "bn_conv2dk3_dw",
         dict(input_width=14, input_channels=184, output_channels=184),
@@ -991,6 +1154,102 @@ CASES: list[Case] = [
         scalars=(7, 480, 480, 3, 3, 1, 7, 0),
         smoke=True,
     ),
+    check(
+        "bn_conv2dk3_dw_out_split",
+        dict(input_width=7, input_channels=480, output_split_channels=240),
+        calls=8,
+        scalars=(7, 480, 480, 3, 3, 0, 7, 0),
+        tag="top-row",
+    ),
+    # Row widths of one to four 8-pixel chunks, unaligned ones, and fewer
+    # channel blocks than AIE2P's chunked path takes. The 6 to 8 pixel rows
+    # take AIE2P's whole-granule stores.
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(input_width=w, input_channels=c, output_channels=c),
+            calls=8,
+            scalars=(w, c, c, 3, 3, row, 7, 0),
+            tag=tag,
+        )
+        for w, c, row, tag in (
+            (5, 40, 0, "top-row"),
+            (8, 32, 1, "middle-row"),
+            (20, 48, 2, "bottom-row"),
+            (30, 32, 1, "middle-row"),
+            (32, 32, 0, "top-row"),
+            (12, 24, 1, "middle-row"),
+            (6, 40, 2, "bottom-row"),
+            (7, 56, 1, "middle-row"),
+            (8, 64, 0, "top-row"),
+        )
+    ],
+    check(
+        "bn_conv2dk3_dw_out_split",
+        dict(input_width=6, input_channels=80, output_split_channels=40),
+        calls=8,
+        scalars=(6, 80, 80, 3, 3, 2, 7, 0),
+        tag="bottom-row",
+    ),
+    # AIE2P's unaligned per-row path, whose loads Peano's post-increment
+    # combine moved to the wrong address while the row width was a constant.
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(input_width=w, input_channels=c, output_channels=c),
+            calls=8,
+            scalars=(w, c, c, 3, 3, row, 7, 0),
+            tag=tag,
+            devices=("npu2",),
+        )
+        for w, c, row, tag in (
+            (7, 24, 0, "top-row"),
+            (7, 24, 1, "middle-row"),
+            (9, 16, 0, "top-row"),
+            (9, 16, 1, "middle-row"),
+            (42, 32, 1, "middle-row"),
+        )
+    ],
+    # MobileNet bn0's depthwise layer: two channel blocks of 112 pixels.
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=112, input_channels=16, output_channels=16),
+        calls=8,
+        scalars=(112, 1, 16, 3, 3, 1, 9, 0),
+    ),
+    # Wide stride-1 rows of one to three channel blocks.
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(input_width=w, input_channels=c, output_channels=c),
+            calls=8,
+            scalars=(w, c, c, 3, 3, row, 7, 0),
+            tag=tag,
+        )
+        for w, c, row, tag in (
+            (112, 16, 0, "top-row"),
+            (48, 8, 2, "bottom-row"),
+            (40, 24, 1, "middle-row"),
+        )
+    ],
+    # Stride-2 rows of 9 to 32 pixels that are not a whole number of 8-pixel
+    # chunks.
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(input_width=w, input_channels=c, output_channels=c, stride=2),
+            calls=8,
+            scalars=(w, c, c, 3, 3, row, 7, 0),
+            tag=tag,
+        )
+        for w, c, row, tag in (
+            (10, 40, 1, "middle-row"),
+            (18, 16, 0, "top-row"),
+            (20, 24, 2, "bottom-row"),
+            (28, 8, 1, "middle-row"),
+            (30, 48, 1, "middle-row"),
+        )
+    ],
     # One of MobileNet's eight 120-channel weight slices, on the last row so
     # the average is taken.
     Case(
@@ -1007,13 +1266,30 @@ CASES: list[Case] = [
         scalars=(7, 80, 120, 120, 8, 0, 1, 0),
         tag="first-row",
     ),
-    check(
+    # MobileNet's post_l1 averages on 1 row in 7.
+    Case(
         "bn_conv2dk1_relu_xy_pool_padded",
         dict(input_width=7, input_channels=80, output_channels=120),
         calls=8,
         scalars=(7, 80, 120, 120, 8, 3, 1, 0),
         tag="mid-row",
     ),
+    # As MobileNet calls it: 960 channels padded to 1280, in 8 weight slices.
+    *[
+        Case(
+            "bn_conv2dk1_relu_xy_pool_padded",
+            dict(
+                input_width=7,
+                input_channels=80,
+                output_channels=1280,
+                weight_chunk_count=80 * 120,
+            ),
+            calls=8,
+            scalars=(7, 80, 960, 1280, 8, y, 8, 0),
+            tag=tag,
+        )
+        for y, tag in ((3, "mobilenet-mid-row"), (6, "mobilenet-last-row"))
+    ],
     check(
         "bn_conv2dk1_relu_xy_pool_padded",
         dict(
@@ -1062,6 +1338,100 @@ CASES: list[Case] = [
         scalars=(1, 48, 1280, 8, 8),
         tag="short",
     ),
+    # Weights 16 bytes past a 64-byte boundary, as MobileNet's packed weight
+    # views handed them before 7c1cde46072; AIE2P's 64-byte weight loads
+    # would read the words below them.
+    *[
+        check(
+            f,
+            kw,
+            calls=8,
+            scalars=s,
+            arg_byte_offsets=((1, 16),),
+            devices=("npu2",),
+        )
+        for f, kw, s in (
+            (
+                "bn_conv2dk1_relu",
+                dict(input_width=28, input_channels=40, output_channels=120),
+                (28, 40, 120, 8),
+            ),
+            (
+                "bn_conv2dk1_relu",
+                dict(input_width=14, input_channels=80, output_channels=184),
+                (14, 80, 184, 8),
+            ),
+            (
+                "bn_conv2dk1_i8",
+                dict(input_width=28, input_channels=120, output_channels=40),
+                (28, 120, 40, 10),
+            ),
+            (
+                "bn_conv2dk1_i8",
+                dict(input_width=7, input_channels=336, output_channels=80),
+                (7, 336, 80, 11),
+            ),
+            (
+                "bn_conv2dk1_skip",
+                dict(input_width=28, input_channels=120, output_channels=40),
+                (28, 120, 40, 10, 1),
+            ),
+            (
+                "bn_conv2dk1_skip",
+                dict(input_width=7, input_channels=240, output_channels=40),
+                (7, 240, 40, 11, 1),
+            ),
+            (
+                "bn_conv2dk1_relu_xy_pool_padded",
+                dict(input_width=7, input_channels=80, output_channels=120),
+                (7, 80, 120, 120, 8, 6, 1, 0),
+            ),
+            (
+                "bn_fc_relu_ui16_pad",
+                dict(input_channels=1280, output_channels=8),
+                (1, 1280, 1280, 8, 12),
+            ),
+        )
+    ],
+    # Weights 32 bytes past a 64-byte boundary, which AIE2P's 64-byte loads
+    # would round down; the depthwise kernels load weights unaligned.
+    *[
+        check(
+            f,
+            kw,
+            calls=8,
+            scalars=s,
+            arg_byte_offsets=((3, 32),),
+            devices=("npu2",),
+        )
+        for f, kw, s in (
+            (
+                "bn_conv2dk3",
+                dict(input_width=224, input_channels=8, output_channels=16),
+                (224, 8, 16, 3, 3, 0, 8, 0),
+            ),
+            (
+                "bn_conv2dk3",
+                dict(input_width=112, input_channels=32, output_channels=16),
+                (112, 32, 16, 3, 3, 1, 10, 0),
+            ),
+            (
+                "bn_conv2dk3_dw",
+                dict(input_width=28, input_channels=120, output_channels=120),
+                (28, 120, 120, 3, 3, 1, 7, 0),
+            ),
+            (
+                "bn_conv2dk3_dw",
+                dict(input_width=56, input_channels=72, output_channels=72, stride=2),
+                (56, 72, 72, 3, 3, 1, 7, 0),
+            ),
+            (
+                "bn_conv2dk3_dw_out_split",
+                dict(input_width=7, input_channels=480, output_split_channels=240),
+                (7, 480, 480, 3, 3, 1, 7, 0),
+            ),
+        )
+    ],
     # eltwise mul/add selected per call (programming_examples/ml/scale_shift)
     Case("mul_add", calls=16, scalars=(1,), smoke=True),
     Case("mul_add", calls=16, scalars=(0,), tag="add", smoke=True),
@@ -1073,10 +1443,10 @@ CASES: list[Case] = [
     check("rms_norm", dict(cols=200), calls=16, tag="row-tail"),
     check("rms_norm", dict(cols=1000), calls=16, tag="row-tail"),
     Case("layer_norm", dict(cols=1024), calls=16, smoke=True),
-    # Rows of an odd number of 16-lane halves, which aie2 alone accepts: 208 is
-    # too short for the pipelined loops and 1008 leaves an odd chunk.
-    check("layer_norm", dict(cols=208), calls=16, tag="row-tail", devices=("npu1",)),
-    check("layer_norm", dict(cols=1008), calls=16, tag="row-tail", devices=("npu1",)),
+    # Rows of an odd number of 16-lane halves: 208 is too short for the
+    # pipelined loops and 1008 leaves an odd chunk (aie2p ends in a half vector).
+    check("layer_norm", dict(cols=208), calls=16, tag="row-tail"),
+    check("layer_norm", dict(cols=1008), calls=16, tag="row-tail"),
     Case(
         "layer_norm_f32",
         dict(cols=1024),
@@ -1210,6 +1580,33 @@ CASES: list[Case] = [
         dict(channels=256, clamp=False),
         calls=16,
         tag="unclamped",
+    ),
+    # a channel count AIE2P's 64-lane groups do not divide
+    check(
+        "dwconv1d_channels_last",
+        dict(channels=96),
+        calls=16,
+        tag="odd-group",
+    ),
+    # channel counts that walk the rolled chunk loop and then a tail
+    check(
+        "dwconv1d_channels_last",
+        dict(channels=320),
+        calls=16,
+        tag="chunk-tail",
+    ),
+    check(
+        "dwconv1d_channels_last",
+        dict(channels=480),
+        calls=16,
+        tag="odd-chunk-tail",
+    ),
+    # overflowed its declared stack on three builds when every channel unrolled
+    check(
+        "dwconv1d_channels_last",
+        dict(channels=512),
+        calls=16,
+        tag="two-chunks",
     ),
     # amd/IRON model shapes: Llama 3.2 1B. Each is one core's per-call tile as
     # IRON instantiates the model at a 2048-token context. The decode GEMVs over

@@ -43,8 +43,8 @@ void addweighted_aie_scalar(const T *in1, const T *in2, T *out,
 }
 
 template <typename T, int N, int MAX>
-void addweighted_aie(const T *AIE2_RESTRICT src1, const T *AIE2_RESTRICT src2,
-                     T *AIE2_RESTRICT dst, const int32_t width,
+void addweighted_aie(const T *__restrict src1, const T *__restrict src2,
+                     T *__restrict dst, const int32_t width,
                      const int32_t height, const int16_t alphaFixedPoint,
                      const int16_t betaFixedPoint, const T gamma) {
   event0();
@@ -55,9 +55,13 @@ void addweighted_aie(const T *AIE2_RESTRICT src1, const T *AIE2_RESTRICT src2,
   ::aie::vector<int16_t, N> coeff(alphaFixedPoint, betaFixedPoint);
   ::aie::vector<T, N> gamma_coeff;
   ::aie::accum<acc32, N> gamma_acc;
+#if AIE_TUNED_AIE2P
+  gamma_coeff = ::aie::broadcast<T, N>(gamma);
+#else
   for (int i = 0; i < N; i++) {
     gamma_coeff[i] = gamma;
   }
+#endif
   gamma_acc.template from_vector(gamma_coeff, SRS_SHIFT);
   // loop_range(14) - loop : 1 cycle
   AIE_PREPARE_FOR_PIPELINING
