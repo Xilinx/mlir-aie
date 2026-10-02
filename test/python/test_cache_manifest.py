@@ -8,6 +8,7 @@
 """Unit tests for the JIT cache's recorded dependency manifest -- no NPU required."""
 
 import json
+import os
 import time
 
 import pytest
@@ -404,6 +405,10 @@ def test_depfile_targets_are_not_inputs(tmp_path):
     assert [i["path"] for i in payload["inputs"]] == [str(tmp_path / "hdr.h")]
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="backslash is the path separator on Windows",
+)
 def test_depfile_naming_a_missing_input_records_an_incomplete_manifest(tmp_path):
     """Peano writes a backslash in a path as a slash, so a header named
     ``a\\b.h`` is reported as ``a/b.h``, which names no file. Dropping it would
@@ -419,6 +424,10 @@ def test_depfile_naming_a_missing_input_records_an_incomplete_manifest(tmp_path)
     assert _manifest.is_valid(tmp_path)
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Windows collapses '..' lexically before following symlinks",
+)
 def test_depfile_dotdot_is_taken_after_following_a_symlink(tmp_path):
     """``link/../h.h`` is the file the compiler opened only when ``..`` follows
     ``link``. Collapsing it lexically names ``h.h`` beside ``link`` instead,

@@ -8,6 +8,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -19,7 +20,15 @@ WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 def workflow(name):
     # Avoid YAML 1.1 interpreting GitHub's "on" key as a boolean.
-    return yaml.load((WORKFLOWS / name).read_text(), Loader=yaml.BaseLoader)
+    return yaml.load(
+        (WORKFLOWS / name).read_text(encoding="utf-8"), Loader=yaml.BaseLoader
+    )
+
+
+# Resolve bash in PATH order: a bare "bash" argv[0] goes through CreateProcess's
+# search, which checks System32 before PATH and so finds Windows' WSL launcher
+# stub instead of Git for Windows' bash.
+BASH = shutil.which("bash") or "bash"
 
 
 def test_baseline_cache_key_is_unique_per_attempt_and_restorable():
@@ -54,7 +63,7 @@ def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path
     launcher = "MLIR_AIE_NPU_TEST=1 python utils/run_pytest.py"
     command = run[run.index(launcher) :].split("2>&1", 1)[0]
     result = subprocess.run(
-        ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
+        [BASH, "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
         cwd=tmp_path,
         env={**os.environ, "ONLY": only, "REQUIRED_PMODE": "any"},
         capture_output=True,
@@ -78,7 +87,7 @@ def test_a_soak_does_not_retry_a_failure(soak, tmp_path):
     launcher = "MLIR_AIE_NPU_TEST=1 python utils/run_pytest.py"
     command = run[run.index(launcher) :].split("2>&1", 1)[0]
     result = subprocess.run(
-        ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
+        [BASH, "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
         cwd=tmp_path,
         env={**os.environ, "ONLY": "", "REQUIRED_PMODE": "any", **soak},
         capture_output=True,
@@ -119,7 +128,7 @@ def run_peano_step(peano, tmp_path):
         'else printf "%s\\n" "$@" > pip-args; fi; }\n'
     )
     result = subprocess.run(
-        ["bash", "-eo", "pipefail", "-c", stubs + step["run"]],
+        [BASH, "-eo", "pipefail", "-c", stubs + step["run"]],
         cwd=tmp_path,
         env={
             **os.environ,
@@ -166,7 +175,7 @@ def run_step(run, cwd):
     output = cwd / "github_output"
     output.write_text("")
     subprocess.run(
-        ["bash", "-eo", "pipefail", "-c", run],
+        [BASH, "-eo", "pipefail", "-c", run],
         cwd=cwd,
         env={**os.environ, "GITHUB_OUTPUT": str(output)},
         check=True,
@@ -228,7 +237,7 @@ def test_report_uses_restored_baseline_and_updates_summary(tmp_path):
                 (tmp_path / "baseline/latest.json").write_text(json.dumps(baseline))
         elif "run" in step and "gh api" not in step["run"]:
             subprocess.run(
-                ["bash", "-eo", "pipefail", "-c", step["run"]],
+                [BASH, "-eo", "pipefail", "-c", step["run"]],
                 cwd=tmp_path,
                 env=env,
                 check=True,
@@ -256,7 +265,7 @@ def test_the_sweep_takes_its_seed_count_from_the_environment(seeds, expected, tm
     (tmp_path / "aie-venv/bin").mkdir(parents=True)
     (tmp_path / "aie-venv/bin/activate").write_text("")
     result = subprocess.run(
-        ["bash", "-eo", "pipefail", "-c", 'python() { printf "%s\\n" "$@"; }\n' + run],
+        [BASH, "-eo", "pipefail", "-c", 'python() { printf "%s\\n" "$@"; }\n' + run],
         cwd=tmp_path,
         env={**os.environ, "SEEDS": seeds},
         capture_output=True,
@@ -402,7 +411,7 @@ def test_publishing_migrates_records_and_leaves_redirects(tmp_path):
     temp = tmp_path / "runner-temp"
     temp.mkdir()
     subprocess.run(
-        ["bash", "-eo", "pipefail", "-c", run],
+        [BASH, "-eo", "pipefail", "-c", run],
         cwd=repo,
         env={
             **os.environ,

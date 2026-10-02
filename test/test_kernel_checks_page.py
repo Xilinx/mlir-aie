@@ -26,7 +26,8 @@ def page():
         if os.environ.get("MLIR_AIE_REQUIRE_NODE"):
             pytest.fail("MLIR_AIE_REQUIRE_NODE is set but node is not on PATH")
         pytest.skip("node is required to test the kernel checks page")
-    script = PAGE.read_text().split("<script>", 1)[1].split("</script>", 1)[0]
+    html = PAGE.read_text(encoding="utf-8")
+    script = html.split("<script>", 1)[1].split("</script>", 1)[0]
     setup = """
 const assert = require('node:assert/strict');
 // Disable the automatic data fetch and capture the Chart.js configuration.
@@ -93,20 +94,23 @@ const el0 = {};
 """
 
     def run(checks):
-        ids = sorted(set(re.findall(r'\bid="([^"]+)"', PAGE.read_text())))
+        ids = sorted(set(re.findall(r'\bid="([^"]+)"', html)))
         known = f"const PAGE_IDS = new Set({json.dumps(ids)});\n"
-        # On stdin: the page outgrew the 128 KiB a single argument may hold.
+        # On stdin: the page outgrew the 128 KiB a single argument may hold,
+        # and Windows' 32767-character command line.
         source = known + setup + script + data + checks
-        subprocess.run([node, "-"], input=source, text=True, check=True)
+        subprocess.run([node, "-"], input=source, encoding="utf-8", check=True)
 
     return run
 
 
 def test_thresholds_match_the_report_and_color_only_past_them(page):
-    html = PAGE.read_text()
+    html = PAGE.read_text(encoding="utf-8")
     match = re.search(r"^\s*const THRESHOLDS = (\{.*\});$", html, re.MULTILINE)
     assert match, "the page carries no THRESHOLDS constant"
-    shared = json.loads((ROOT / "utils/kernel_checks/thresholds.json").read_text())
+    shared = json.loads(
+        (ROOT / "utils/kernel_checks/thresholds.json").read_text(encoding="utf-8")
+    )
     expected = {m: s for m, s in shared.items() if not m.startswith("_")}
     assert json.loads(match[1]) == expected
     page("""
@@ -125,7 +129,9 @@ assert.deepEqual(GATED, ['cycles', 'kernel_object_bytes']);
 
 def test_narrow_screens_hide_no_kernels_table_column():
     # Each NPU's header spans its columns; hiding one slides the headers.
-    css = PAGE.read_text().split("<style>", 1)[1].split("</style>", 1)[0]
+    css = (
+        PAGE.read_text(encoding="utf-8").split("<style>", 1)[1].split("</style>", 1)[0]
+    )
     rules = re.findall(r"#kernels[^{]*\{[^}]*display:\s*none", css)
     assert all(".summary" in r for r in rules), rules
 
