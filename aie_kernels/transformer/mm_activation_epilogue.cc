@@ -15,28 +15,34 @@ using namespace aie;
 static inline void mm_identity_row(uint32_t n, const float *__restrict acc,
                                    float *__restrict out) {
   event0();
-  auto it_in = aie::begin_restrict_vector<16>(acc);
-  auto it_out = aie::begin_restrict_vector<16>(out);
-  for (uint32_t off = 0; off < n; off += 16) {
-    *it_out++ = *it_in++;
-  }
+  // Through begin_restrict_vector iterators, this copy gets no zero-overhead
+  // loop on aie2p.
+  auto body = [&]() __attribute__((always_inline)) {
+    aie::store_v(out, aie::load_v<16>(acc));
+    acc += 16;
+    out += 16;
+  };
+  VERSIONED_LOOP(4, n / 16, body);
   event1();
 }
 
 // aie2p has no f32 multiplier: `aie::mul` on two float vectors expands to a
 // three-way bf16 split of *both* operands. Where one operand is already exact
 // in bf16, splitting the other in two keeps ~16 mantissa bits and stays on the
-// native bf16 multiplier.
+// native bf16 multiplier. hi stops at bf16's largest finite value: an x past
+// it would round to inf and leave x - hi -inf.
 struct bf16_split {
   aie::vector<bfloat16, 16> hi;
   aie::vector<bfloat16, 16> lo;
 };
 
 static inline bf16_split split_f32(const aie::vector<float, 16> &x) {
+  const bfloat16 bf16_max = 3.38953139e38f;
   aie::accum<accfloat, 16> a;
   a.from_vector(x);
   bf16_split s;
-  s.hi = a.to_vector<bfloat16>();
+  s.hi = aie::max(aie::min(a.to_vector<bfloat16>(), bf16_max),
+                  bfloat16(-bf16_max));
   aie::accum<accfloat, 16> h;
   h.from_vector(s.hi);
   aie::accum<accfloat, 16> r;
@@ -61,7 +67,7 @@ static inline void mm_silu_hiprec_row(uint32_t n, const float *__restrict acc,
   const aie::vector<bfloat16, 16> halfb = aie::broadcast<bfloat16, 16>(0.5f);
   auto it_in = aie::begin_restrict_vector<16>(acc);
   auto it_out = aie::begin_restrict_vector<16>(out);
-  for (uint32_t off = 0; off < n; off += 16) {
+  auto body = [&]() __attribute__((always_inline)) {
     aie::vector<float, 16> x = *it_in++;
     bf16_split xs = split_f32(x);
     aie::vector<float, 16> half_x = mul_split(xs, halfb);
@@ -69,7 +75,9 @@ static inline void mm_silu_hiprec_row(uint32_t n, const float *__restrict acc,
     aie::vector<bfloat16, 16> tanh_p1 = aie::add(tanh_half_x, one);
     aie::vector<bfloat16, 16> sig = aie::mul(tanh_p1, halfb);
     *it_out++ = mul_split(xs, sig);
-  }
+  };
+  // Unrolled by 2, this loop gives wrong results on npu2.
+  VERSIONED_LOOP(8, n / 16, body, AIE_LOOP_UNROLL(4));
   event1();
 }
 
@@ -91,42 +99,31 @@ static inline void mm_gelu_row(uint32_t n, const float *__restrict acc,
   c0acc.from_vector(c0);
   auto it_in = aie::begin_restrict_vector<16>(acc);
   auto it_out = aie::begin_restrict_vector<16>(out);
-  for (uint32_t off = 0; off < n; off += 16) {
+  auto body = [&]() __attribute__((always_inline)) {
     aie::accum<accfloat, 16> a;
     a.from_vector(*it_in++);
     aie::vector<bfloat16, 16> x = a.to_vector<bfloat16>();
-    aie::vector<bfloat16, 16> half_x = aie::mul(half, x);
+    // 1 + tanh is 0 from x = -8 down, so 0.5x is clamped there rather than
+    // making -inf * 0.
+    aie::vector<bfloat16, 16> half_x =
+        aie::mul(half, aie::max(x, bfloat16(-8.0f)));
     aie::vector<bfloat16, 16> x2 = aie::mul(x, x);
     aie::vector<bfloat16, 16> poly = aie::mac(c0acc, c0c1, x2);
     auto inner = aie::mul(x, poly);
     aie::vector<bfloat16, 16> t = tanh_bf16_v16(inner);
     aie::vector<bfloat16, 16> t_p1 = aie::add(t, one);
     *it_out++ = aie::mul(half_x, t_p1).to_vector<float>();
-  }
-  event1();
-}
-
-// ReLU: out = max(x, 0), the epilogue a conv2d-as-GEMM patch-embed stem
-// applies after its bias-augmented matmul (e.g. the two 1x1 convs on either
-// side of a strided depthwise block). Purely f32; no SFU transcendental.
-static inline void mm_relu_row(uint32_t n, const float *__restrict acc,
-                               float *__restrict out) {
-  event0();
-  const aie::vector<float, 16> zero = aie::zeros<float, 16>();
-  auto it_in = aie::begin_restrict_vector<16>(acc);
-  auto it_out = aie::begin_restrict_vector<16>(out);
-  for (uint32_t off = 0; off < n; off += 16) {
-    *it_out++ = aie::max(*it_in++, zero);
-  }
+  };
+  // Unrolled by 4, this loop gives wrong results on npu2.
+  VERSIONED_LOOP(4, n / 16, body, AIE_LOOP_UNROLL(2));
   event1();
 }
 
 #if AIE_TUNED_AIE2
-// aie2 reads tanh from getTanhBf16's table, and each store is ordered before
-// the next vector's table reads. A loop that loads, computes and stores one
-// vector per iteration does not pipeline. Storing each result one iteration
-// late puts the next vector's table reads ahead of the store, and with an II
-// hint that loop pipelines.
+// aie2's getTanhBf16 reads a table; see lut_map_bf16 in AIE2/lut_based_ops.h
+// for why a one-vector loop does not pipeline. Storing each result one
+// iteration late puts the next vector's table reads ahead of the store, and
+// with an II hint that loop pipelines.
 template <int II, typename F>
 static inline void mm_lut_rows(uint32_t n, const float *__restrict acc,
                                float *__restrict out, F f) {
@@ -220,11 +217,13 @@ static inline aie::vector<float, 16> mm_gelu_lut(aie::vector<float, 16> xf) {
   return aie::mul(half_x, t_p1).to_vector<float>();
 }
 
-// aie2 has no f32 max, and a bare copy loop gets no zero-overhead loop, so
-// identity and ReLU share one integer select on the bit pattern: lanes where
+#endif
+
+// ReLU, the epilogue a conv2d-as-GEMM patch-embed stem applies after its
+// bias-augmented matmul, as an integer select on the bit pattern: lanes where
 // x - 1 is below `neg` become +0. With neg = -inf's pattern those are the
-// negative floats other than -0 and -NaN, which mm_relu_row passes through
-// too; with INT32_MIN there are none.
+// negative floats other than -0 and -NaN; with INT32_MIN there are none, which
+// aie2 uses for identity. aie2 has no f32 max and aie2p's is emulated.
 static inline void mm_floor_row(uint32_t n, const float *__restrict acc,
                                 float *__restrict out, int32_t neg) {
   event0();
@@ -239,8 +238,6 @@ static inline void mm_floor_row(uint32_t n, const float *__restrict acc,
   VERSIONED_LOOP(4, n / 16, body);
   event1();
 }
-#endif
-
 extern "C" {
 
 // mode: 0 = identity, 1 = SiLU, 2 = GELU, 3 = ReLU. `n` a positive multiple
@@ -263,7 +260,7 @@ void mm_activation_epilogue_row(const float *__restrict c_in,
   } else if (mode == 2) {
     mm_gelu_row((uint32_t)n, c_in, c_out);
   } else if (mode == 3) {
-    mm_relu_row((uint32_t)n, c_in, c_out);
+    mm_floor_row((uint32_t)n, c_in, c_out, (int32_t)0xff800000);
   } else {
     mm_identity_row((uint32_t)n, c_in, c_out);
   }

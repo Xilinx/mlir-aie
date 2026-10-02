@@ -493,10 +493,11 @@ loop counts and program memory cover only the functions the entry symbol
 reaches, which are the ones the core link keeps, and `libcalls` names the
 runtime-library routines it calls (`__divsf3`, `__mulsf3`, `__floatsisf`:
 on AIE2P, scalar float divide, multiply and int-to-float are software
-routines). `stack_bytes` is the deepest call path's frames from the entry,
-without those routines' own; above the contract's `stack_bytes` (else the
-target default) it prints a warning, since an overflow corrupts the
-neighbouring memory silently. Each build prints its entry symbol and
+routines). `kernel_stack_bytes` is the deepest call path's frames from the
+entry, without those routines' own and without the core's `main`, which
+aiecc's measured stack also counts; above the contract's `stack_bytes`
+(else the target default) it prints a warning, since an overflow corrupts
+the neighbouring memory silently. Each build prints its entry symbol and
 source file, and `--meta` names its object (kept with `--keep DIR`). The record shapes and the
 regression rules are documented on the module
 ([API](../api/kernels.md#static-checks)). These checks run on demand; there
@@ -525,9 +526,10 @@ ones carry contracts with round-half-even integer references and run in the
 hardware sweeps at MobileNet V3 layer shapes; `bn_conv2dk1_relu_xy_pool_padded`
 accumulates into its output across calls, so its case zeroes that buffer
 first. The cascade halves (`bn_conv2dk1_partial_*` and
-`bn_conv2dk1_input_split_partial_*`) exist as one symbol per network block
-and are still validated only through the composed MobileNet designs; the
-contract test lists them by name as not judged.
+`bn_conv2dk1_input_split_partial_*`) exist as one symbol per network block;
+`test/python/npu/test_bn_cascade_pairs.py` builds each pair the way the
+MobileNet cascade block calls it and judges it against a numpy model of
+the whole conv, and the contract test lists them by name as not judged.
 
 `mm_bfp_shuffle` validates the forward permutation through declared plain-BFP
 input and blocked-BFP output codecs, comparing exactly the represented values.

@@ -182,14 +182,24 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=1024, vectorized=True), "reduce_add_vector"),
             (dict(tile_size=1024, vectorized=False), "reduce_add_scalar"),
             (dict(tile_size=512, dtype=np.int32), "reduce_add_vector"),
+            (dict(tile_size=1024, dtype=bfloat16), "reduce_add_vector_bfloat16"),
+            (
+                dict(tile_size=1024, dtype=bfloat16, vectorized=False),
+                "reduce_add_scalar_bfloat16",
+            ),
         ],
         invalid_kwargs=[
-            (dict(tile_size=1024, dtype=bfloat16), "dtype must be np.int32"),
+            (
+                dict(tile_size=1024, dtype=np.float32),
+                "dtype must be np.int32 or bfloat16",
+            ),
         ],
         shape_checks=[
             (dict(tile_size=2048, dtype=np.int32), 0, (2048,)),
             # int32 output: 1 element = 4 bytes → already DMA-aligned.
             (dict(tile_size=2048, dtype=np.int32), 1, (1,)),
+            # bfloat16: out is padded to 2 elements (4 bytes) for DMA alignment.
+            (dict(tile_size=1024, dtype=bfloat16), 1, (2,)),
         ],
         tile_size_checks=[(dict(tile_size=2048, dtype=np.int32), 2048)],
     ),
@@ -203,13 +213,23 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=1024, vectorized=True), "reduce_min_vector"),
             (dict(tile_size=1024, vectorized=False), "reduce_min_scalar"),
             (dict(tile_size=512, dtype=np.int32), "reduce_min_vector"),
+            (dict(tile_size=1024, dtype=bfloat16), "reduce_min_vector_bfloat16"),
+            (
+                dict(tile_size=1024, dtype=bfloat16, vectorized=False),
+                "reduce_min_scalar_bfloat16",
+            ),
         ],
         invalid_kwargs=[
-            (dict(tile_size=1024, dtype=bfloat16), "dtype must be np.int32"),
+            (
+                dict(tile_size=1024, dtype=np.float32),
+                "dtype must be np.int32 or bfloat16",
+            ),
         ],
         shape_checks=[
             (dict(tile_size=2048, dtype=np.int32), 0, (2048,)),
             (dict(tile_size=2048, dtype=np.int32), 1, (1,)),
+            # bfloat16: out is padded to 2 elements (4 bytes) for DMA alignment.
+            (dict(tile_size=1024, dtype=bfloat16), 1, (2,)),
         ],
         tile_size_checks=[(dict(tile_size=2048, dtype=np.int32), 2048)],
     ),
@@ -1082,13 +1102,10 @@ def test_norm_tail_and_vector_constraints(kernel_arch):
     np.testing.assert_array_equal(
         fn.contract.reference(x, 0.5), kernels.rms_norm_ref(x, eps=0.5)
     )
-    width = 32 if kernel_arch == "aie2p" else 16
-    assert kernels.layer_norm(cols=width).arg_shape(0) == (width,)
-    with pytest.raises(ValueError, match=f"multiple of {width}"):
-        kernels.layer_norm(cols=width + 1)
-    if kernel_arch == "aie2p":
-        with pytest.raises(ValueError, match="multiple of 32"):
-            kernels.layer_norm(cols=16)
+    for cols in (16, 208):
+        assert kernels.layer_norm(cols=cols).arg_shape(0) == (cols,)
+    with pytest.raises(ValueError, match="multiple of 16"):
+        kernels.layer_norm(cols=17)
 
 
 @pytest.mark.parametrize("two_halves", [False, True])

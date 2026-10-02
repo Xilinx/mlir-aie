@@ -42,15 +42,14 @@ _CASCADE_COMBOS = {
 
 # Mirror of the ``combos(X)`` macro in aie_kernels/linalg/cascade_mm.cc.
 # Designs use ``kernels.cascade_mm(...).mac_dims`` to look up the
-# scalar-block geometry the compiled cascade kernel expects.  cascade_mm
-# only ships an aie2 .cc today; if an aie2p variant lands the table
-# needs the new arch added.
+# scalar-block geometry the compiled cascade kernel expects.
 #
-# The cascade_mm.cc kernel is fully scalar — `a[row * colA + i]` walks A
-# element-by-element with no SIMD tiling — so the L2->L1 buffer must be
-# plain row-major.  mac_dims (1, 1, 1) yields the identity dim_to_stream
-# pattern when designs build it as [(m//r, r*k), (k//s, s), (r, k), (s, 1)].
-# Larger values would shuffle A/B into a tiled layout the scalar kernel
+# The cascade_mm.cc kernel reads its operands row-major on both targets —
+# the AIE2 kernel is scalar and the AIE2P one tiles A and B in registers —
+# so the L2->L1 buffer must be plain row-major.  mac_dims (1, 1, 1) yields
+# the identity dim_to_stream pattern when designs build it as
+# [(m//r, r*k), (k//s, s), (r, k), (s, 1)].
+# Larger values would shuffle A/B into a tiled layout the kernel
 # does not understand, producing garbage outputs (262144-element mismatch
 # observed in CI with the previous (4, 4, 4) entries).
 _CASCADE_MM_SCALAR_DIMS = {
@@ -61,8 +60,7 @@ _CASCADE_MM_SCALAR_DIMS = {
 }
 
 _CASCADE_MM_MAC_DIMS = {
-    # cascade_mm.cc is one source for both targets and scalar on both, so
-    # the required stream layout remains plain row-major.
+    # cascade_mm.cc is one source for both targets and row-major on both.
     "aie2": _CASCADE_MM_SCALAR_DIMS,
     "aie2p": _CASCADE_MM_SCALAR_DIMS,
 }
@@ -630,7 +628,29 @@ def mm(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
-            stack_bytes=0xD00,  # programming_examples/basic/matrix_multiplication
+            # Tuned or not: at most 512 B on aie2
+            # and 192 B on aie2p, except aie2p's int8 -> int32 kernel, whose
+            # fully unrolled K loop spills about 16 B per unit of K (c_col_maj:
+            # 1088 B at K = 56, 6208 B at K = 384, at most 1024 B up to K =
+            # 48). mm_aie2p.h rolls K from K = 416 (192 B), and a 16x16 tile
+            # does not spill (640 B). The fit covers only that kernel over 48 <
+            # dim_k < 416 (787 M/N/K/layout combos, see 0c60e6be3f2); the rest
+            # fit the 1024 B default. Too small a value fails the aiecc build
+            # loudly, as checkStackSizeRequirements reads the real
+            # .stack_sizes. A chess core cannot be measured, so use_chess keeps
+            # the matrix_multiplication examples' constant.
+            stack_bytes=(
+                0xD00
+                if use_chess
+                else (
+                    16 * dim_k + 256
+                    if arch == "aie2p"
+                    and vectorized
+                    and key == (np.int8, np.int32)
+                    and 48 < dim_k < 416
+                    else None
+                )
+            ),
             # mm_aie2p.h sets conv_even itself and restores it; mm_aie2.h
             # does so only under round_conv_even, and otherwise stores bf16
             # in whatever mode the core is in.
@@ -901,7 +921,6 @@ def mm_bfp(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
-            stack_bytes=0xF00,  # programming_examples/ml/block_datatypes
             setup=conv_even,
             roles=(In, In, InOut),
             reference=partial(
@@ -1089,7 +1108,6 @@ def mha(
                 _tile_layout((dim_m, dim_n), streams.C, inverse=True, block=(r, t)),
                 *(() if pv else (None,)),
             ),
-            stack_bytes=0xD00,  # mm.cc's product: programming_examples/basic/matrix_multiplication
             roles=(In, In, InOut) if pv else (In, In, InOut, Param),
             parameter_bindings=(() if pv else ((3, np.array([0, 0], np.int32)),)),
             reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
@@ -1140,10 +1158,12 @@ def mha_softmax() -> ExternalFunction:
             parameter_bindings=((4, scale), (5, b), (6, b)),
             initializers=((2, _zero_output),),
             reference=partial(mha_softmax_ref, scale=scale),
-            # aiecc measured_stack_size of the untuned loop on aie2, where a
-            # whole 64-lane row spills; the tuned one fits the default.
+            # The untuned loop on aie2, where a whole 64-lane row spills; the
+            # tuned one fits the default.
             stack_bytes=(
-                1376 if _detect_arch() == "aie2" and _tuned_arch() is None else None
+                1376
+                if _detect_arch() == "aie2" and _tuned_arch() == "portable"
+                else None
             ),
             # aie::exp2<bfloat16> interpolates 2**frac linearly, overshooting
             # by up to 6.15%, and two bf16 roundings bring it to 6.98%
@@ -1269,7 +1289,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             reference=partial(prefill_fv_ref, dim_m=lq, dim_k=lk, dim_n=head_dim),
             acc_dtype=np.float32,
             reduction=lk,
-            stack_bytes=stack_bytes,  # aiecc measured_stack_size
+            stack_bytes=stack_bytes,
             # Derived, not inherited: _linalg_tolerance(bfloat16)'s 0.05/0.5 is
             # for a kernel that narrows C back to bf16, and y here is float32.
             # bf16 mantissas are 8 bits, so every product is exact in f32
@@ -1366,9 +1386,12 @@ def cascade_mm(
     ``.zero`` initializes accumulators using independent ``kernels.zero``.
     The pair is a two-tile
     design, which the generic builder does not run; the device test builds
-    and judges it (``test/python/npu/test_kernels_e2e.py``). The partial sum
-    crosses the cascade as a 32-bit integer lane: with a floating-point
-    output type the PUT half's product is truncated toward zero.
+    and judges it (``test/python/npu/test_kernels_e2e.py``). On AIE2 each
+    output's partial sum crosses the cascade as one 32-bit lane, a float
+    chain as the float's bits. On AIE2P, when ``dim_m`` and ``dim_k`` are
+    multiples of 8 and ``dim_n`` of 16, the whole accumulator crosses the
+    cascade; other shapes run the AIE2 kernel. Either way a float chain
+    sums in float and rounds once, to nearest even, at the GET half.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -1407,7 +1430,7 @@ def cascade_mm(
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, InOut),
-            # Scalar on both targets: row-major operands, nothing streamed
+            # Row-major operands on both targets, nothing streamed
             # transformed, so the layouts carry the 1x1x1 blocking and no
             # stream (see _CASCADE_MM_SCALAR_DIMS).
             layouts=(

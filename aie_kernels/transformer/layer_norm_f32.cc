@@ -360,6 +360,201 @@ static void layer_norm_f32_aie2(const float *restrict input,
   }
   event1();
 }
+#elif AIE_TUNED_AIE2P
+// aie_api's f32 vector multiply is emulated on AIE2P as well: all nine
+// products of three bf16 limbs, added one at a time, 16 lanes per call. Here
+// the limbs are taken once per operand, only the six products of limbs
+// i + j <= 2 are summed, and each mac covers 64 lanes.
+constexpr unsigned kLanes = 64;
+constexpr unsigned kPart = 16;
+using f32_acc = ::aie::accum<accfloat, kLanes>;
+using f32xN = ::aie::vector<float, kLanes>;
+using bf16xN = ::aie::vector<bfloat16, kLanes>;
+
+struct limbs3 {
+  bf16xN l0, l1, l2;
+};
+
+static inline f32_acc to_acc(f32xN v) {
+  f32_acc a;
+  a.from_vector(v);
+  return a;
+}
+
+// Three bf16 limbs summing to x exactly.
+static inline limbs3 split3(f32_acc x) {
+  const bf16xN one = ::aie::broadcast<bfloat16, kLanes>(1.0f);
+  limbs3 r;
+  r.l0 = x.to_vector<bfloat16>();
+  x = ::aie::msc(x, r.l0, one);
+  r.l1 = x.to_vector<bfloat16>();
+  x = ::aie::msc(x, r.l1, one);
+  r.l2 = x.to_vector<bfloat16>();
+  return r;
+}
+
+// acc + x y, smallest products first.
+static inline f32_acc mac3(f32_acc acc, const limbs3 &x, const limbs3 &y) {
+  acc = ::aie::mac(acc, x.l2, y.l0);
+  acc = ::aie::mac(acc, x.l1, y.l1);
+  acc = ::aie::mac(acc, x.l0, y.l2);
+  acc = ::aie::mac(acc, x.l1, y.l0);
+  acc = ::aie::mac(acc, x.l0, y.l1);
+  return ::aie::mac(acc, x.l0, y.l0);
+}
+
+static inline f32_acc mul3(const limbs3 &x, const limbs3 &y) {
+  f32_acc acc = ::aie::mul(x.l2, y.l0);
+  acc = ::aie::mac(acc, x.l1, y.l1);
+  acc = ::aie::mac(acc, x.l0, y.l2);
+  acc = ::aie::mac(acc, x.l1, y.l0);
+  acc = ::aie::mac(acc, x.l0, y.l1);
+  return ::aie::mac(acc, x.l0, y.l0);
+}
+
+// a b in every lane.
+static inline f32_acc mul_bcast(float a, float b) {
+  return mul3(split3(to_acc(::aie::broadcast<float, kLanes>(a))),
+              split3(to_acc(::aie::broadcast<float, kLanes>(b))));
+}
+
+// (x - mean) s.
+static inline f32xN normalize(f32xN x, f32_acc mean, const limbs3 &s) {
+  return mul3(split3(::aie::sub(to_acc(x), mean)), s).to_vector<float>();
+}
+
+// (x - mean) s gamma + beta, rounded once to bf16.
+static inline bf16xN normalize_affine(f32xN x, f32xN gamma, f32xN beta,
+                                      f32_acc mean, const limbs3 &s) {
+  limbs3 n = split3(mul3(split3(::aie::sub(to_acc(x), mean)), s));
+  return mac3(to_acc(beta), n, split3(to_acc(gamma))).to_vector<bfloat16>();
+}
+
+// The last cols % 64 of a row, in 16-lane parts over a vector of pad.
+static inline f32xN load_tail(const float *p, unsigned parts, float pad) {
+  f32xN v = ::aie::broadcast<float, kLanes>(pad);
+  v.insert(0, ::aie::load_v<kPart>(p));
+  if (parts > 1)
+    v.insert(1, ::aie::load_v<kPart>(p + kPart));
+  if (parts > 2)
+    v.insert(2, ::aie::load_v<kPart>(p + 2 * kPart));
+  return v;
+}
+
+template <typename T>
+static inline void store_tail(T *p, ::aie::vector<T, kLanes> v,
+                              unsigned parts) {
+  ::aie::store_v(p, v.template extract<kPart>(0));
+  if (parts > 1)
+    ::aie::store_v(p + kPart, v.template extract<kPart>(1));
+  if (parts > 2)
+    ::aie::store_v(p + 2 * kPart, v.template extract<kPart>(2));
+}
+
+// layer_norm_f32_impl's three passes. A row's last cols % 64 elements take
+// one 64-lane step whose unused lanes are padded so that they add nothing:
+// zeros for the sum, the mean for the variance.
+template <typename TOut, bool kAffine>
+static void layer_norm_f32_aie2p(const float *restrict input,
+                                 TOut *restrict output,
+                                 const float *restrict gamma,
+                                 const float *restrict beta, int32_t cols) {
+  event0();
+  constexpr float epsilon = 1e-5f;
+  const unsigned chunks = (uint32_t)cols / kLanes;
+  const unsigned tail = chunks * kLanes;
+  const unsigned parts = ((uint32_t)cols - tail) / kPart;
+
+  // Pass 1: mean = sum(x) / cols.
+  f32_acc sum = ::aie::zeros<accfloat, kLanes>();
+  if (chunks > 0) {
+    const float *restrict p = input;
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    for (unsigned i = 0; i < chunks; i++) {
+      sum = ::aie::add(sum, ::aie::load_v<kLanes>(p));
+      p += kLanes;
+    }
+  }
+  if (parts)
+    sum = ::aie::add(sum, load_tail(input + tail, parts, 0.0f));
+  const float inv_cols = ::aie::inv(::aie::to_float<float>(cols));
+  const f32_acc mean_acc =
+      mul_bcast(::aie::reduce_add(sum.to_vector<float>()), inv_cols);
+  const float mean = mean_acc.to_vector<float>()[0];
+
+  // Pass 2: sum((x - mean)^2) as d0^2 + d1^2 + 2 (d0 d1 + d0 d2) per element.
+  f32_acc q = ::aie::zeros<accfloat, kLanes>();
+  f32_acc c = ::aie::zeros<accfloat, kLanes>();
+  if (chunks > 0) {
+    const float *restrict p = input;
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    AIE_LOOP_UNROLL(2)
+    for (unsigned i = 0; i < chunks; i++) {
+      limbs3 d = split3(::aie::sub(to_acc(::aie::load_v<kLanes>(p)), mean_acc));
+      q = ::aie::mac(::aie::mac(q, d.l1, d.l1), d.l0, d.l0);
+      c = ::aie::mac(::aie::mac(c, d.l0, d.l2), d.l0, d.l1);
+      p += kLanes;
+    }
+  }
+  if (parts) {
+    limbs3 d = split3(
+        ::aie::sub(to_acc(load_tail(input + tail, parts, mean)), mean_acc));
+    q = ::aie::mac(::aie::mac(q, d.l1, d.l1), d.l0, d.l0);
+    c = ::aie::mac(::aie::mac(c, d.l0, d.l2), d.l0, d.l1);
+  }
+  q = ::aie::add(q, ::aie::add(c, c));
+  const float variance =
+      mul_bcast(::aie::reduce_add(q.to_vector<float>()), inv_cols)
+          .to_vector<float>()[0];
+  const limbs3 s = split3(to_acc(
+      ::aie::broadcast<float, kLanes>(scalar_invsqrt(variance + epsilon))));
+
+  // Pass 3.
+  if constexpr (kAffine) {
+    if (chunks > 0) {
+      const float *restrict pi = input;
+      const float *restrict pg = gamma;
+      const float *restrict pb = beta;
+      TOut *restrict po = output;
+      AIE_LOOP_MIN_ITERATION_COUNT(1)
+      AIE_LOOP_UNROLL(2)
+      for (unsigned i = 0; i < chunks; i++) {
+        ::aie::store_v(po, normalize_affine(::aie::load_v<kLanes>(pi),
+                                            ::aie::load_v<kLanes>(pg),
+                                            ::aie::load_v<kLanes>(pb), mean_acc,
+                                            s));
+        pi += kLanes;
+        pg += kLanes;
+        pb += kLanes;
+        po += kLanes;
+      }
+    }
+    if (parts)
+      store_tail(output + tail,
+                 normalize_affine(load_tail(input + tail, parts, mean),
+                                  load_tail(gamma + tail, parts, 0.0f),
+                                  load_tail(beta + tail, parts, 0.0f), mean_acc,
+                                  s),
+                 parts);
+  } else {
+    if (chunks > 0) {
+      const float *restrict pi = input;
+      TOut *restrict po = output;
+      AIE_LOOP_MIN_ITERATION_COUNT(1)
+      AIE_LOOP_UNROLL(2)
+      for (unsigned i = 0; i < chunks; i++) {
+        ::aie::store_v(po, normalize(::aie::load_v<kLanes>(pi), mean_acc, s));
+        pi += kLanes;
+        po += kLanes;
+      }
+    }
+    if (parts)
+      store_tail(output + tail,
+                 normalize(load_tail(input + tail, parts, mean), mean_acc, s),
+                 parts);
+  }
+  event1();
+}
 #endif
 
 extern "C" {
@@ -368,6 +563,11 @@ void layer_norm_f32(float *input, float *output, int32_t cols) {
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
   layer_norm_f32_aie2<float, false>(input, output, nullptr, nullptr, cols);
+  ::aie::set_rounding(saved_rounding);
+#elif AIE_TUNED_AIE2P
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
+  layer_norm_f32_aie2p<float, false>(input, output, nullptr, nullptr, cols);
   ::aie::set_rounding(saved_rounding);
 #else
   layer_norm_f32_impl<float, float, 16, false>(input, output, nullptr, nullptr,
@@ -385,6 +585,11 @@ void layer_norm_affine_cast(float *input, float *gb, bfloat16 *output,
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
   layer_norm_f32_aie2<bfloat16, true>(input, output, gb, gb + cols, cols);
+  ::aie::set_rounding(saved_rounding);
+#elif AIE_TUNED_AIE2P
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
+  layer_norm_f32_aie2p<bfloat16, true>(input, output, gb, gb + cols, cols);
   ::aie::set_rounding(saved_rounding);
 #else
   layer_norm_f32_impl<float, bfloat16, 16, true>(input, output, gb, gb + cols,

@@ -1154,12 +1154,14 @@ inline std::string downgradeIRForChess(llvm::StringRef ir) {
 // Tile placement (`aie-place-tiles`), nested under DeviceOp.
 inline std::unique_ptr<mlir::PassManager>
 getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
-                     xilinx::AIE::PlacerType placerType, int saSeed) {
+                     xilinx::AIE::PlacerType placerType, int saSeed,
+                     double saEffort) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   xilinx::AIE::AIEPlaceTilesOptions opts;
   opts.clPlacerType = placerType;
   opts.clCoresPerCol = coresPerCol;
   opts.clSASeed = saSeed;
+  opts.clSAEffort = saEffort;
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
       xilinx::AIE::createAIEPlaceTilesPass(opts));
   return pm;
@@ -1448,11 +1450,14 @@ inline bool runtimeCodeReferencesCoreTile(xilinx::AIE::CoreOp core) {
 // Pairs with `getInputWithAddressesPipeline(..., assignAddresses=false)`.
 // Anchored on DeviceOp, so a caller can place some of a module's devices.
 inline std::unique_ptr<mlir::PassManager>
-getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx) {
+getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx,
+                                 int64_t placementBudget) {
   using namespace xilinx::AIE;
   auto pm =
       std::make_unique<mlir::PassManager>(ctx, DeviceOp::getOperationName());
-  pm->addPass(createAIEAssignBufferAddressesPass());
+  AIEAssignBufferAddressesOptions opts;
+  opts.clPlacementBudget = placementBudget;
+  pm->addPass(createAIEAssignBufferAddressesPass(opts));
   return pm;
 }
 

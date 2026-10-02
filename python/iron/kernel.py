@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
-from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
+from ..dialects import arith, memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..dialects.aie import external_func
 from ..helpers.dialects.func import call
 from ..helpers.npdtypes import is_block_float
@@ -106,6 +106,28 @@ def _maybe_collapse_to_match(arg, expected_ty):
     return memref.collapse_shape(exp_mr, arg, reassociation)
 
 
+def _view_byte_offset(arg) -> tuple[int | None, str | None]:
+    """Return the byte offset of ``arg`` into its buffer, and the buffer's name.
+
+    Follows ``memref.view`` ops down to the buffer they carve. The offset is
+    ``None`` when a shift is only known at run time; a value that is not a
+    view sits at offset 0.
+    """
+    if not isinstance(arg, ir.Value):
+        return 0, None
+    offset = 0
+    owner = arg.owner
+    while isinstance(owner, memref.ViewOp):
+        shift = owner.byte_shift.owner
+        if not isinstance(shift, arith.ConstantOp):
+            return None, None
+        offset += ir.IntegerAttr(shift.value).value
+        owner = owner.source.owner
+    if isinstance(owner, ir.OpView) and "sym_name" in owner.attributes:
+        return offset, ir.StringAttr(owner.attributes["sym_name"]).value
+    return offset, None
+
+
 def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
     """Return the symbol table a declaration or call at ``ip`` resolves against."""
     op = ip.block.owner.operation
@@ -144,6 +166,10 @@ class KernelObject:
     _source: _KernelSource | None = field(default=None, repr=False)
     _compiled_dirs: set[str] = field(default_factory=set, repr=False)
     _symbol_prefix: str | None = field(default=None, repr=False, kw_only=True)
+    # The archs kernels/ factories built this artifact's recipe for. They live
+    # on the artifact so every binding of it, discovery ones included, sees
+    # them.
+    _built_for_archs: set[str] = field(default_factory=set, repr=False, kw_only=True)
 
     def __post_init__(self):
         if not self.name:
@@ -212,6 +238,14 @@ class Kernel(Resolvable):
     the core's LLVM module before codegen.  The mode is explicit metadata --
     it is never inferred from the file suffix.
     """
+
+    # What the kernel computes (aie.iron.kernels.KernelContract); only an
+    # ExternalFunction takes one at construction. Typed Any rather than
+    # KernelContract because pyright analyzes the sources and the staged
+    # package as two module trees, so naming the class here would make the
+    # factories' own KernelContract a different type. The class-level default
+    # also covers a discovery binding, which is created without __init__.
+    contract: Any = None
 
     def __init__(
         self,
@@ -500,6 +534,18 @@ class Kernel(Resolvable):
                 f"Kernel '{self._name}' expects {len(self._arg_types)} "
                 f"argument(s), but {len(args)} were provided."
             )
+        alignments = self.contract.alignments if self.contract else ()
+        for index, align in alignments:
+            offset, buffer = _view_byte_offset(args[index])
+            if offset is not None and offset % align:
+                pad = align - offset % align
+                raise ValueError(
+                    f"Kernel '{self._name}' loads argument {index} as "
+                    f"{align}-byte aligned vectors, but it is a view at byte "
+                    f"offset {offset} of buffer '{buffer}'. Place the view at "
+                    f"a multiple of {align} bytes: {pad} bytes of padding "
+                    f"before it put it at byte {offset + pad}."
+                )
         arg_ops = [a.op if isinstance(a, Buffer) else a for a in args]
         expected_input_types = callee.function_type.value.inputs
         adapted = [
@@ -545,13 +591,42 @@ class ExternalFunction(Kernel):
         binding._cached_digest = None
         cls._instances.add(binding)
 
-    # What the kernel computes (aie.iron.kernels.KernelContract), given at
-    # construction. Typed Any rather than KernelContract because pyright
-    # analyzes the sources and the staged package as two module trees, so
-    # naming the class here would make the factories' own KernelContract a
-    # different type. The class-level default covers a discovery binding,
-    # which is created without running __init__.
-    contract: Any = None
+    @property
+    def built_for_arch(self) -> str | None:
+        """The arch a kernels/ factory built this for, or None when unknown.
+
+        Stored on the shared ``KernelObject``, so a sibling binding from
+        ``object_file.bind(...)`` carries it as well. An artifact that
+        factories built for more than one arch reads as unknown.
+        """
+        archs = self.object_file._built_for_archs
+        return next(iter(archs)) if len(archs) == 1 else None
+
+    @built_for_arch.setter
+    def built_for_arch(self, arch: str | None) -> None:
+        if arch is not None:
+            self.object_file._built_for_archs.add(arch)
+
+    def check_target_arch(self, target_arch: str) -> None:
+        """Raise unless this kernel may compile for ``target_arch``.
+
+        A kernels/ factory picks its source, flags and contract for the arch of
+        the device bound when it runs, so compiling the result for another arch
+        fails here rather than in Peano. A kernel no factory built accepts any.
+
+        Raises:
+            ValueError: When the kernel was built for another architecture,
+                which happens when its factory ran before the device was bound.
+        """
+        built = self.built_for_arch
+        if built is not None and built != target_arch:
+            raise ValueError(
+                f"kernel {self.name} was built for {built} but this design "
+                f"compiles for {target_arch}: its factory ran with an {built} "
+                "device bound (or none, which reads as aie2). Call the factory "
+                "inside the design, or bind the device first with "
+                "iron.set_current_device()"
+            )
 
     def _require_contract(self):
         if self.contract is None:
