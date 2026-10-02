@@ -63,12 +63,22 @@ module {
 
 // -----
 
-// Id 28 reaches memtile (0,1) DMA:2 and DMA:4 by one slave port, so it needs
-// an amsel that selects both, but DMA:2 is a master port of prioritized id 1,
-// which a control-packet reload keeps selected by id 1's amsel alone.
+// Id 28 reaches memtile (0,1) DMA:2 and DMA:4, but DMA:2 is a master port of
+// prioritized id 1, which a control-packet reload keeps selected by id 1's
+// amsel alone. Id 28 routes only if id 1 reaches DMA:2 by a master set of its
+// own, which it does not alone, so a reload would not keep it. Id 28 reaches
+// the two by slave ports of their own, and takes id 1's amsel to DMA:2.
+
+// CHECK-LABEL: aie.device(npu2_4col)
+// CHECK:       aie.switchbox(%mem_tile_0_1)
+// CHECK:         aie.masterset(DMA : 2, %[[KEPT:[0-9]+]]) {is_ctrl_pkt_overlay}
+// CHECK:         aie.masterset(DMA : 4, %[[OWN:[0-9]+]])
+// CHECK-DAG:     aie.rule(31, 28, %[[OWN]])
+// CHECK-DAG:     aie.rule(31, 28, %[[KEPT]])
+// CHECK:       aie.switchbox(
 
 module {
-  // expected-error@+1 {{Unable to find a legal routing: at tile (0, 1), packets with id 28 entering on South:2 leave by DMA:2, a master port of the prioritized flows (the control overlay), and by others; a control-packet reload keeps their master sets.}}
+  // expected-warning@+1 {{the prioritized flows (the control overlay) take another route than they take alone, as in @ctrl_pkt_overlay, for the other flows to route, so a control-packet reload would not keep them.}}
   aie.device(npu2_4col) {
     %t_0_0 = aie.tile(0, 0)
     %t_0_1 = aie.tile(0, 1)

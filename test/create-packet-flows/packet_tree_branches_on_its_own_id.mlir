@@ -7,19 +7,35 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
 // RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>/dev/null | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOWARN --allow-empty
 
 // (0,0) DMA:1 sends id 2 to (0,3) DMA:0 and, in a priority flow, on up the
-// column. Its tree branches at (0,3) South:2, and a flow's own id already on a
-// port counts as no second stream there. Reduced from router_mutation.py npu2
+// column. Its tree branches at (0,3), and a flow's own id already on a port
+// counts as no second stream there. Reduced from router_mutation.py npu2
 // seed 2132.
+//
+// (0,4) Core:0 sends id 2 to the priority flow's three destinations too, so
+// the two trees meet at (0,4) before either branches for them. (0,3) DMA:0,
+// which only (0,0) DMA:1 reaches, does not keep them apart.
 
 // CHECK-LABEL: aie.switchbox(%tile_0_3)
 // CHECK:         %[[BRANCH:.*]] = aie.amsel<5> (3)
 // CHECK:         aie.masterset(DMA : 0, %[[BRANCH]])
-// CHECK:         aie.masterset(North : 2, %[[BRANCH]])
-// CHECK:         aie.packet_rules(South : 2) {
+// CHECK:         aie.masterset(North : [[UP:[0-9]+]], %[[BRANCH]])
+// CHECK:         aie.packet_rules(South : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 2, %[[BRANCH]])
 // CHECK-NEXT:    }
+// CHECK-LABEL: aie.switchbox(%tile_0_4)
+// CHECK:         %[[MEET:.*]] = aie.amsel<5> (3)
+// CHECK:         aie.masterset(DMA : 0, %[[MEET]])
+// CHECK:         aie.masterset(South : {{[0-9]+}}, %[[MEET]])
+// CHECK:         aie.masterset(North : 0, %[[MEET]])
+// CHECK:         aie.packet_rules(Core : 0) {
+// CHECK-NEXT:      aie.rule(31, 2, %[[MEET]])
+// CHECK:         aie.packet_rules(South : [[UP]]) {
+// CHECK-NEXT:      aie.rule(31, 2, %[[MEET]])
+
+// NOWARN-NOT: {{warning|error}}
 
 module {
   aie.device(npu2_1col) {
