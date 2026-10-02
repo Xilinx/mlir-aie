@@ -7,8 +7,9 @@
 
 Two halves so callers can distinguish "recipe changed" from "rebuild needed":
 
-* `_compute_recipe_hash`   — generator identity + compile_kwargs +
-  aiecc/compile flags. Target-independent design identity.
+* `_compute_recipe_hash`   — generator identity (with the helpers it
+  reaches in its own package) + compile_kwargs + aiecc/compile flags.
+  Target-independent design identity.
 * `_compute_artifact_hash` — source / object content + tool mtimes +
   target device.  Captures things that change the *output* of compilation
   without changing the *recipe*.
@@ -36,7 +37,7 @@ import marshal
 import os
 from functools import partial
 from pathlib import Path
-from types import CodeType
+from types import CodeType, FunctionType, ModuleType
 from typing import Any, Callable, Mapping
 
 from ._introspect import _introspect_generator
@@ -87,6 +88,8 @@ def _without_location(const):
     """
     if isinstance(const, tuple):
         return tuple(_without_location(c) for c in const)
+    if isinstance(const, slice):
+        return (Ellipsis, "slice", const.start, const.stop, const.step)
     if not isinstance(const, CodeType):
         return const
     return const.replace(
@@ -107,10 +110,107 @@ def _code_identity(code: CodeType) -> bytes:
     and ``matmul_i8(a, b, c)`` compile to identical bytecode.
 
     Location is stripped first: it is not part of the design, and keying on it
-    would split the cache per checkout. Version 4 is pinned because
-    ``marshal.version`` is 4 through 3.13 and 5 from 3.14.
+    would split the cache per checkout. Format 3 and up write an object a
+    second time as a back-reference only when its refcount is above one, so
+    before 3.12 made interned names immortal the bytes moved with whatever
+    else held a name. Format 2 has no references; it cannot write the
+    constant slices 3.14 folds into ``co_consts``, so those go in as tuples.
     """
-    return marshal.dumps(_without_location(code), 4)
+    return marshal.dumps(_without_location(code), 2)
+
+
+_PLAIN = (int, float, complex, str, bytes, bool, type(None))
+
+
+def _plain(value) -> bool:
+    if isinstance(value, tuple):
+        return all(_plain(v) for v in value)
+    return isinstance(value, _PLAIN)
+
+
+def _names(code: CodeType) -> set[str]:
+    """Return the global and attribute names ``code`` and its nested code use."""
+    names, todo = set(), [code]
+    while todo:
+        c = todo.pop()
+        names.update(c.co_names)
+        todo.extend(k for k in c.co_consts if isinstance(k, CodeType))
+    return names
+
+
+def _callees_identity(generator: Callable) -> bytes:
+    """Code and plain constants of what ``generator`` reaches in its own package.
+
+    The generator's bytecode names a helper but does not contain it, so a
+    design built by ``_build_stream`` would otherwise keep its key when the
+    helper changes. The walk follows globals, and attributes of modules, to
+    the functions, classes and plain constants of the generator's package
+    (``aie.iron.algorithms`` for ``kernel_design``; only the module itself
+    for a top-level one) and stops outside it: the IRON core and third-party
+    code are versioned with the install, not edited per design.
+
+    An ``ExternalFunction`` it reaches is recorded by its content-based repr,
+    as a ``CompileTime`` one is: the cache manifest never sees a kernel's
+    compile flags.
+    """
+    from aie.iron.kernel import ExternalFunction
+
+    home = generator.__module__ or ""
+    package = home.rpartition(".")[0]
+
+    def in_package(module: str) -> bool:
+        return module == home or bool(package) and module.startswith(f"{package}.")
+
+    records: set[bytes] = set()
+    seen = {id(generator)}
+    todo: list = [generator]
+
+    def visit(value, where: str):
+        if isinstance(value, (staticmethod, classmethod)):
+            value = value.__func__
+        if isinstance(value, property):
+            for f in (value.fget, value.fset, value.fdel):
+                visit(f, where)
+        elif isinstance(value, (FunctionType, type)):
+            if in_package(value.__module__ or "") and id(value) not in seen:
+                seen.add(id(value))
+                todo.append(value)
+        elif _plain(value) or isinstance(value, ExternalFunction):
+            records.add(f"{where}={value!r}".encode())
+
+    while todo:
+        obj = todo.pop()
+        name = f"{obj.__module__}.{obj.__qualname__}"
+        if isinstance(obj, type):
+            for attr, value in vars(obj).items():
+                if not attr.startswith("__") or isinstance(value, FunctionType):
+                    visit(value, f"{name}.{attr}")
+            continue
+        if obj is not generator:
+            records.add(name.encode() + _code_identity(obj.__code__))
+            visit(obj.__defaults__, f"{name}.__defaults__")
+            visit(tuple(sorted((obj.__kwdefaults__ or {}).items())), f"{name}.kw")
+        names = _names(obj.__code__)
+        scope = dict(obj.__globals__)
+        where = {n: f"{obj.__module__}.{n}" for n in scope}
+        # A closure reaches its helpers and constants through cells rather
+        # than globals; those shadow a global of the same name.
+        for n, cell in zip(obj.__code__.co_freevars, obj.__closure__ or ()):
+            try:
+                scope[n] = cell.cell_contents
+            except ValueError:  # an empty cell
+                continue
+            where[n] = f"{name}.<closure>.{n}"
+            names.add(n)
+        for n in names & scope.keys():
+            value = scope[n]
+            if not isinstance(value, ModuleType):
+                visit(value, where[n])
+            elif in_package(value.__name__):
+                members = vars(value)
+                for m in names & members.keys():
+                    visit(members[m], f"{value.__name__}.{m}")
+    return b"\0".join(sorted(records))
 
 
 def _compute_recipe_hash(
@@ -123,6 +223,9 @@ def _compute_recipe_hash(
     insts_only: bool = False,
 ) -> str:
     """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
+
+    The bytecode includes the helpers the generator reaches in its own
+    package (``_callees_identity``).
 
     Captures the target-independent generator and compile configuration. It
     omits device identity, so equal recipe hashes can produce different
@@ -147,6 +250,7 @@ def _compute_recipe_hash(
         h.update(_code_identity(generator.__code__))
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(getattr(generator, "__module__", "").encode())
+        h.update(_callees_identity(generator))
         hints, sig, (_, _, dispatch_params, _) = _introspect_generator(generator)
         # Dispatch defaults are call-time values; explicitly bound defaults are
         # unused. Neither changes the compiled program.
@@ -181,6 +285,7 @@ def _compute_recipe_hash(
                 repr(getattr(v, "__defaults__", None)),
                 repr(getattr(v, "__kwdefaults__", None)),
                 closure_repr,
+                _callees_identity(v).hex(),
             )
         return str(v)
 

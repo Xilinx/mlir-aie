@@ -197,7 +197,7 @@ def softmax_blocks(
     worker = Worker(
         core,
         fn_args=[of_a.cons(), of_p.prod(), of_scale.prod(), softmax, init, *idx],
-        stack_size=mha.contract.stack_bytes,
+        stack_size=kernels.mha_softmax().contract.stack_bytes,
     )
 
     host = [
@@ -417,7 +417,8 @@ def mha_round(
     )
     init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
     pv = obj.bind(
-        "matmul_PV", [tile_ty, v_ty, tile_ty, scale_ty, np.int32, np.int32, idx_ty]
+        "matmul_PV",
+        [tile_ty, v_ty, tile_ty, scale_ty, np.int32, np.int32, idx_ty, np.int32],
     )
     rescale = obj.bind("rescale_O", [tile_ty, scale_ty, np.int32, idx_ty])
     zero = kernels.zero(b_q * _B, bfloat16)
@@ -454,7 +455,16 @@ def mha_round(
             )
             of_p.release(1)
             of_sv.release(1)
-            pv(of_pb.acquire(1), of_sv.acquire(1), o, scale, b_q, int(k > 0), idx[k])
+            pv(
+                of_pb.acquire(1),
+                of_sv.acquire(1),
+                o,
+                scale,
+                b_q,
+                int(k > 0),
+                idx[k],
+                s_kv_eff,
+            )
             of_pb.release(1)
             of_sv.release(1)
         rescale(o, scale, b_q, idx[0])
@@ -475,7 +485,7 @@ def mha_round(
             scale_buf,
             *idx_bufs,
         ],
-        stack_size=qkt.contract.stack_bytes,
+        stack_size=kernels.mha_softmax().contract.stack_bytes,
     )
 
     host = [np.ndarray[(2 * n_kv * _B * _B,), BF], tile_ty]
@@ -502,6 +512,10 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B):
             k[q_block * b_q + row] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
 
     scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(bfloat16)
+    # Keys from s_kv_eff on do not exist; the device's V rows for them hold
+    # NaN, which must not reach O.
+    stale = v.copy()
+    stale[s_kv_eff:] = np.nan
     # Each block's row-major scores, padded to a whole slot, then its blocked V.
     sv_host = np.concatenate(
         [
@@ -511,7 +525,7 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B):
                 np.pad(scores[:, b * _B : (b + 1) * _B], ((0, _B - b_q), (0, 0)))
                 .reshape(-1)
                 .copy(),
-                _block(v[b * _B : (b + 1) * _B]),
+                _block(stale[b * _B : (b + 1) * _B]),
             )
         ]
     )

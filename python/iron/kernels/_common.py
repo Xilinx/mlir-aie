@@ -140,9 +140,12 @@ class KernelContract:
             means one.
         setup: A kernel to run once on the core first (``conv_even`` sets
             the rounding mode a bf16 store needs); ``None`` when the source
-            sets its own mode or narrows nothing.
+            sets its own mode or narrows nothing. A Worker handed the kernel
+            calls it before its loop.
         stack_bytes: Core stack a Worker calling this kernel needs, when
-            more than the target's default. Say where the number came from.
+            more than the target's default. Say where the number came from;
+            a note that gives only bytes per build means aiecc's
+            measured_stack_size.
         unsupported: Why the builder cannot run this kernel, or ``None``. A
             kernel with no output argument (a cascade PUT half) says so here.
         layouts: A ``TensorLayout`` per argument; ``None`` is identity.
@@ -163,6 +166,10 @@ class KernelContract:
             pair, so a build should verify the two tables land in different
             banks. Set it on the contract, not per source file: the LUT often
             comes in through a header (``lut_based_ops.h``, ``lut_inv.h``).
+        alignments: ``(index, bytes)`` pairs for arguments the kernel loads
+            as whole vectors from their start, so they must begin at a
+            multiple of ``bytes``. A call handed a ``memref.view`` at a
+            constant offset that breaks one raises.
 
     Overflow, rounding and NaN handling are not declared twice: the
     reference is the arithmetic model and the tolerance the slack against it.
@@ -185,6 +192,7 @@ class KernelContract:
     out_offset: tuple[int, int] | None = None
     trace: Trace | None = None
     uses_lut: bool = False
+    alignments: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in _ROLES]
@@ -229,6 +237,10 @@ class KernelContract:
             raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
         if self.unsupported is not None and not self.unsupported:
             raise ValueError("unsupported must be a reason, or None")
+        if any(
+            not 0 <= i < len(self.roles) or align < 1 for i, align in self.alignments
+        ):
+            raise ValueError("alignments must name arguments with positive byte counts")
 
     @property
     def out_indices(self) -> tuple[int, ...]:
@@ -384,15 +396,15 @@ def _portable() -> bool:
     return os.environ.get("AIE_KERNELS_PORTABLE") == "1"
 
 
-def _tuned_arch() -> str | None:
-    """Return the architecture whose ``AIE_TUNED_*`` code the sources build, or None.
+def _tuned_arch() -> str:
+    """Return the arch whose ``AIE_TUNED_*`` code is built, or ``"portable"``.
 
     A factory choice that follows the code of one branch -- a stack size, a
     tolerance, a reference model -- keys on this rather than on
     ``_detect_arch``, so that it pairs with the branch built when
     ``_portable()`` holds.
     """
-    return None if _portable() else _detect_arch()
+    return "portable" if _portable() else _detect_arch()
 
 
 def _portable_flags() -> tuple[str, ...]:
@@ -729,4 +741,7 @@ def _make_extern(
     )
     if contract is not None:
         contract.validate_types(extern.arg_types())
+    # The factory picked its source, flags and contract for this arch; a
+    # design that compiles it for another one fails there, not in Peano.
+    extern.built_for_arch = _detect_arch()
     return extern

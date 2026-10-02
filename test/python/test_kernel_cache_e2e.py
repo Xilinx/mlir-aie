@@ -163,7 +163,7 @@ def _binaries(kernel_dir, flow):
         *_FLOWS[flow][1],
     ]
     found = {
-        str(path.relative_to(kernel_dir)): path.read_bytes()
+        path.relative_to(kernel_dir).as_posix(): path.read_bytes()
         for pattern in names
         for path in kernel_dir.glob(pattern)
     }
