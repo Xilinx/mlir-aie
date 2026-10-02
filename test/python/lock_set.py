@@ -29,6 +29,18 @@ def emit_rearm(value=4):
     return Program(NPU2Col1(), rt).resolve_program()
 
 
+def emit_rearm_runtime():
+    mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
+    prod = Lock(mem_tile, init=2, name="prod")
+
+    def sequence(_host, uses):
+        prod.set(uses)
+
+    rt = Runtime(sequence, [host_ty, np.int32])
+    rt.add_lock(prod)
+    return Program(NPU2Col1(), rt).resolve_program()
+
+
 def emit_in_worker():
     compute_tile = Tile(col=0, row=2, tile_type=AIETileType.CoreTile)
     prod = Lock(compute_tile, init=0, name="prod")
@@ -62,6 +74,11 @@ print(emit_rearm(0))
 # CHECK: %[[V63:.*]] = arith.constant 63 : i32
 # CHECK-NEXT: aiex.set_lock(%prod, %[[V63]])
 print(emit_rearm(63))
+
+# A dispatch-time value is range-checked when the instruction stream is built.
+# CHECK: aie.runtime_sequence
+# CHECK-NEXT: aiex.set_lock(%prod, %arg1)
+print(emit_rearm_runtime())
 
 # CHECK: error: {{.*}}Lock value must be non-negative
 expect_failure(emit_rearm, -1)

@@ -13,11 +13,14 @@ import numpy as np
 
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
 from aie.iron import (
+    Acquire,
     Bd,
     Buffer,
     DmaEndpoint,
     Flow,
+    Lock,
     Program,
+    Release,
     Runtime,
 )
 from aie.iron.device import NPU2Col1, Tile
@@ -171,3 +174,57 @@ def emit_endpoint_task():
 # CHECK: } {repeat_count = 1 : i32}
 # CHECK: aie.route_endpoint @out_src(%[[MEM]]) DMA
 print(emit_endpoint_task())
+
+
+def emit_resident_replay(uses_ty):
+    buf_ty = np.ndarray[(64,), np.dtype[np.int32]]
+    shim = Tile(col=0, row=0, tile_type=AIETileType.ShimNOCTile)
+    mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
+    buf = Buffer(tile=mem_tile, type=buf_ty, name="resident")
+    empty = Lock(mem_tile, name="empty")
+    full = Lock(mem_tile, name="full")
+    into = Flow(shim, mem_tile, src_channel=0, dst_channel=0)
+    out = Flow(mem_tile, shim, src_channel=0, dst_channel=0)
+
+    def sequence(host, uses):
+        empty.set(uses)
+        into.endpoint(mem_tile).task(
+            Bd(
+                buf,
+                acquires=[Acquire(empty, value=uses)],
+                releases=[Release(full, value=uses)],
+            )
+        ).start()
+        replay = out.endpoint(mem_tile).task(
+            Bd(buf, acquires=[Acquire(full)], releases=[Release(empty)])
+        )
+        replay.start(repeat_count=uses).free()
+
+    rt = Runtime(sequence, [buf_ty, uses_ty])
+    rt.add_lock(empty)
+    rt.add_flow(into)
+    rt.add_flow(out)
+    return Program(NPU2Col1(), rt).resolve_program()
+
+
+# A resident buffer handed out a dispatch-time number of times: the lock values
+# of its fill, the re-arm and the replay's start count all take the scalar.
+# CHECK: aie.runtime_sequence
+# CHECK: aiex.set_lock(%empty, %arg1)
+# CHECK: aiex.dma_configure_task(%{{.*}}, S2MM, 0)
+# CHECK-NEXT: aie.use_lock(%empty, AcquireGreaterEqual, %arg1)
+# CHECK: aie.use_lock(%full, Release, %arg1)
+# CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
+# CHECK: aiex.dma_start_task(%{{.*}}) repeat %arg1 : i32
+print(emit_resident_replay(np.int32))
+
+# A wider scalar is narrowed to the i32 the fields take, asserting it fits.
+# CHECK: aie.runtime_sequence
+# CHECK: aiex.npu.assert_bd_field(%arg1) {max = 2147483647 : i32} : i64
+# CHECK-NEXT: %[[SET:.*]] = arith.trunci %arg1 : i64 to i32
+# CHECK-NEXT: aiex.set_lock(%empty, %[[SET]])
+# CHECK: %[[ACQ:.*]] = arith.trunci %arg1 : i64 to i32
+# CHECK: aie.use_lock(%empty, AcquireGreaterEqual, %[[ACQ]])
+# CHECK: %[[RC:.*]] = arith.trunci %arg1 : i64 to i32
+# CHECK: aiex.dma_start_task(%{{.*}}) repeat %[[RC]] : i32
+print(emit_resident_replay(np.int64))

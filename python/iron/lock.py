@@ -89,7 +89,7 @@ class Lock(Resolvable):
     # ``aie.use_lock`` ops without reaching into ``aie.dialects.aie``.
     # ------------------------------------------------------------------
 
-    def acquire(self, value: int = 1) -> None:
+    def acquire(self, value: int | ir.Value = 1) -> None:
         """Emit `aie.use_lock(self, AcquireGreaterEqual, value=value)`.
 
         The default `AcquireGreaterEqual` mode matches what almost every
@@ -99,15 +99,15 @@ class Lock(Resolvable):
         """
         _use_lock(self.op, LockAction.AcquireGreaterEqual, value=value)
 
-    def acquire_exact(self, value: int = 1) -> None:
+    def acquire_exact(self, value: int | ir.Value = 1) -> None:
         """Emit `aie.use_lock(self, Acquire, value=value)` (exact match)."""
         _use_lock(self.op, LockAction.Acquire, value=value)
 
-    def release(self, value: int = 1) -> None:
+    def release(self, value: int | ir.Value = 1) -> None:
         """Emit `aie.use_lock(self, Release, value=value)`."""
         _use_lock(self.op, LockAction.Release, value=value)
 
-    def set(self, value: int) -> None:
+    def set(self, value: int | ir.Value) -> None:
         """Emit `aiex.set_lock(self, value)` from a runtime sequence body.
 
         Overwrites the lock's value from the host side, e.g. to re-arm a
@@ -119,6 +119,7 @@ class Lock(Resolvable):
         A core cannot assign a lock: its lock instructions only add to or
         subtract from the value, which is what `acquire`/`release` emit. The
         `aiex.set_lock` verifier rejects a call outside a runtime sequence and
-        a value outside `[0, Device.max_lock_value]`.
+        a constant outside `[0, Device.max_lock_value]`; a dispatch-time value
+        outside that range makes the instruction stream fail to build.
         """
         _set_lock_value(self.op, value)

@@ -493,7 +493,7 @@ def dma_start_task(
 
 
 def set_lock_value(lock: aie.LockOp, value: int | Value):
-    return set_lock(lock, _as_i32(value))
+    return set_lock(lock, _as_bd_i32(_as_i32(value)))
 
 
 # Parameter ops
