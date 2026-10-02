@@ -25,8 +25,8 @@ on:
         description: 'Routable designs per device and hop setting (router_mutation.py --seeds)'
         default: '400'
       first_seed:
-        description: 'First seed (router_mutation.py --first-seed)'
-        default: '0'
+        description: 'First seed (--first-seed); empty picks a new range each day'
+        default: ''
   schedule:
     - cron: '47 3 * * *'
 
@@ -38,7 +38,7 @@ env:
   DEBIAN_FRONTEND: noninteractive
   ROUTER_SEEDS: ${{ inputs.router_seeds || '2000' }}
   SEEDS: ${{ inputs.seeds || '400' }}
-  FIRST_SEED: ${{ inputs.first_seed || '0' }}
+  FIRST_SEED: ${{ inputs.first_seed }}
 
 concurrency:
   group: router-nightly-tests-${{ github.ref }}
@@ -134,6 +134,16 @@ jobs:
           echo "$PWD/bin" >> "$GITHUB_PATH"
           echo "PYTHONPATH=$PWD/python" >> "$GITHUB_ENV"
 
+      # A fixed range would test the same designs every night; each day gets
+      # its own, logged here so a failure can be rerun with --first-seed.
+      - name: Pick seeds
+        run: |
+          if [ -z "$FIRST_SEED" ]; then
+            FIRST_SEED=$(( $(date -u +%s) / 86400 * 10000 ))
+            echo "FIRST_SEED=$FIRST_SEED" >> "$GITHUB_ENV"
+          fi
+          echo "First seed: $FIRST_SEED"
+
       - name: Nightly lit tests
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 30
@@ -147,14 +157,16 @@ jobs:
         timeout-minutes: 30
         run: |
           python test/create-packet-flows/nightly/router_properties.py --device npu1 \
-            --seeds "$ROUTER_SEEDS" --out failures/router-npu1
+            --seeds "$ROUTER_SEEDS" --first-seed "$FIRST_SEED" \
+            --out failures/router-npu1
 
       - name: Router properties, npu2
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 30
         run: |
           python test/create-packet-flows/nightly/router_properties.py --device npu2 \
-            --seeds "$ROUTER_SEEDS" --out failures/router-npu2
+            --seeds "$ROUTER_SEEDS" --first-seed "$FIRST_SEED" \
+            --out failures/router-npu2
 
       # A design on xcvc1902's 50 columns takes about ten times as long to
       # route, so it runs a quarter of the seeds.
@@ -163,7 +175,8 @@ jobs:
         timeout-minutes: 30
         run: |
           python test/create-packet-flows/nightly/router_properties.py --device xcvc1902 \
-            --seeds "$((ROUTER_SEEDS / 4))" --out failures/router-xcvc1902
+            --seeds "$((ROUTER_SEEDS / 4))" --first-seed "$FIRST_SEED" \
+            --out failures/router-xcvc1902
 
       # Each run exits nonzero on a failed mutator or relation, or a corruption
       # the verifier misses. Failing designs are saved under failures/, with
