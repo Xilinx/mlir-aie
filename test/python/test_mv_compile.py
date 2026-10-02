@@ -57,7 +57,7 @@ def test_col_maj_matvec_compiles(tmp_path, arch, vec_size, dim_k, dim_m):
     assert output.stat().st_size > 0
 
 
-@pytest.mark.parametrize("dim_k, dim_m", [(96, 64), (128, 48)])
+@pytest.mark.parametrize("dim_k, dim_m", [(0, 64), (96, 64), (128, 48)])
 def test_col_maj_matvec_invalid_shapes_fail_compilation(tmp_path, dim_k, dim_m):
     with pytest.raises(RuntimeError, match="static assertion failed"):
         compile_cxx_core_function(

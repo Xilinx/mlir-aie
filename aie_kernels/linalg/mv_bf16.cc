@@ -347,7 +347,8 @@ void matvec_vectorized_col_maj(uint32_t flags, const bfloat16 *__restrict a,
                                const bfloat16 *__restrict b,
                                float *__restrict acc, bfloat16 *__restrict c) {
   constexpr uint32_t n = m < 64 ? m : 64;
-  static_assert(k % r == 0, "a call takes whole rounds of the r lanes");
+  static_assert(k > 0 && k % r == 0,
+                "a call takes one or more whole rounds of the r lanes");
   static_assert(n % 16 == 0 && m % n == 0,
                 "outputs come in vectors of 16, 32 or 64");
   ::aie::rounding_mode saved_rounding =
