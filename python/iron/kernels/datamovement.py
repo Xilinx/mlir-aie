@@ -39,8 +39,12 @@ _BF16_ROUNDTRIP = Tolerance.bf16_ulps(
 
 
 def axpy_ref(x, y, a):
-    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32."""
-    return np.float32(a) * x.astype(np.float32) + y.astype(np.float32)
+    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32.
+
+    The kernel broadcasts ``a`` as bf16, so it is rounded to bf16 here.
+    """
+    a = np.float32(bfloat16(a))
+    return a * x.astype(np.float32) + y.astype(np.float32)
 
 
 def convert_copy_ref(x):

@@ -181,6 +181,8 @@ CASES: list[Case] = [
     check(
         "leaky_relu", dict(tile_size=160), scalars=(0.5,), tag="unroll-tail", smoke=True
     ),
+    # The kernel takes alpha as bf16; 0.01 is not a bf16, so the reference rounds it.
+    check("leaky_relu", scalars=(0.01,), tag="inexact-alpha", smoke=True),
     Case("exp2f_vec", calls=16, smoke=True),
     Case("exp2f_vec", calls=256),
     # 48 is not a multiple of the 32 elements one block handles, so the
@@ -212,6 +214,8 @@ CASES: list[Case] = [
     # datamovement
     Case("axpy", calls=16, scalars=(2.5,), smoke=True),
     Case("axpy", calls=256, scalars=(2.5,), data_cases=IEEE_FLOAT),
+    # The kernel rounds a to bf16; 1.003 is not a bf16, so the reference must too.
+    check("axpy", scalars=(1.003,), tag="inexact-a", smoke=True),
     Case("convert_copy", calls=16, smoke=True),
     Case("convert_copy", calls=256),
     # 272 is a multiple of the kernel's 16-element step but not of the 128 its
