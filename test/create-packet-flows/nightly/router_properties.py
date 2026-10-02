@@ -3115,11 +3115,19 @@ def priority_trees(d, cache):
     return cache[text]
 
 
-def overlay_design(d):
+def overlay_design(d, reload=False):
     """`d` with only the flows the router routes as the control overlay: the
     prioritized ones, and the other flows from a prioritized source with
-    their id. None if that is all of `d` or none of it."""
-    prio = {(s, f["id"]) for f in d.packet_flows if f["priority"] for s in f["srcs"]}
+    their id. A control-packet reload configures the prioritized flows with
+    no TileControl end, so with `reload` they are not in it. None if that is
+    all of `d` or none of it."""
+    prio = {
+        (s, f["id"])
+        for f in d.packet_flows
+        if f["priority"]
+        and (not reload or any(e[2] == CTRL for e in f["srcs"] + f["dsts"]))
+        for s in f["srcs"]
+    }
     kept = [f for f in d.packet_flows if any((s, f["id"]) in prio for s in f["srcs"])]
     if not kept or (not d.flows and len(kept) == len(d.packet_flows)):
         return None
@@ -3132,7 +3140,7 @@ def overlay_design(d):
 def standalone_overlay(d):
     """The @ctrl_pkt_overlay a control-packet reload of `d` installs: `d`'s
     tiles and the overlay's flows, without `d`'s own switchboxes."""
-    o = overlay_design(d)
+    o = overlay_design(d, reload=True)
     if o is None:
         return None
     c = Design(d.dev)
