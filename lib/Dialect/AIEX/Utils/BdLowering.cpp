@@ -462,26 +462,32 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
       return failure();
   }
 
+  // A non-word element's innermost stride must be 1 (see verifyStridesWraps).
+  if (ew != gran) {
+    Value d0Unit = g.eq(inT[0], 1);
+    if (failed(g.check(g.either(g.ule(inS[0], 1), d0Unit),
+                       "a runtime DMA d0 stride must be 1 for " +
+                           Twine(ew / 8) +
+                           "-byte elements (the DMA moves whole " +
+                           Twine(gran / 8) + "-byte granules)")))
+      return failure();
+  }
+
   // A size or stride whose byte extent is not a whole number of granules is
-  // unrealizable (mirrors verifyStridesWraps). The innermost stride collapses
-  // to hardware 0 when it is the unit (contiguous) stride.
+  // unrealizable (mirrors verifyStridesWraps).
   int64_t divisor = bdGranuleDivisor(elemWidth, gran);
   if (divisor > 1) {
-    auto checkMultiple = [&](Value v, Value exempt, const Twine &what) {
-      Value cond = g.multipleOf(v, divisor);
-      if (exempt)
-        cond = g.either(exempt, cond);
-      return g.check(cond, "a runtime DMA " + what + " must be a multiple of " +
-                               Twine(divisor) + " elements (whole " +
-                               Twine(gran / 8) + "-byte granules)");
+    auto checkMultiple = [&](Value v, const Twine &what) {
+      return g.check(g.multipleOf(v, divisor),
+                     "a runtime DMA " + what + " must be a multiple of " +
+                         Twine(divisor) + " elements (whole " +
+                         Twine(gran / 8) + "-byte granules)");
     };
-    if (failed(checkMultiple(inS[0], Value(), "d0 size")) ||
-        failed(checkMultiple(inT[0], g.eq(inT[0], 1), "d0 stride")))
+    if (failed(checkMultiple(inS[0], "d0 size")))
       return failure();
     for (int i = 1; i < 4; i++)
-      if (failed(checkMultiple(inT[i], Value(),
-                               i == 3 ? Twine("iteration stride")
-                                      : "d" + Twine(i) + " stride")))
+      if (failed(checkMultiple(inT[i], i == 3 ? Twine("iteration stride")
+                                              : "d" + Twine(i) + " stride")))
         return failure();
   }
 

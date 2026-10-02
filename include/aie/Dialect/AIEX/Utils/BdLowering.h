@@ -78,13 +78,13 @@ verifyConstBdRealizability(mlir::Operation *op,
                            llvm::ArrayRef<mlir::OpFoldResult> sizes,
                            llvm::ArrayRef<mlir::OpFoldResult> strides,
                            uint64_t elemWidth, uint32_t gran) {
-  if (!sizes.empty())
-    if (auto d0 = mlir::getConstantIntValue(sizes[0]))
-      if (!isConstMultipleOfGranule(*d0, elemWidth, gran))
-        return op->emitOpError("d0 size ")
-               << *d0 << " elements at " << (elemWidth / 8)
-               << " bytes each is not a multiple of the " << (gran / 8)
-               << "-byte address-gen granule.";
+  std::optional<int64_t> d0Size =
+      sizes.empty() ? std::nullopt : mlir::getConstantIntValue(sizes[0]);
+  if (d0Size && !isConstMultipleOfGranule(*d0Size, elemWidth, gran))
+    return op->emitOpError("d0 size ")
+           << *d0Size << " elements at " << (elemWidth / 8)
+           << " bytes each is not a multiple of the " << (gran / 8)
+           << "-byte address-gen granule.";
   for (int i = 0; i < (int)strides.size(); i++) {
     auto s = mlir::getConstantIntValue(strides[i]);
     if (!s)
@@ -92,7 +92,8 @@ verifyConstBdRealizability(mlir::Operation *op,
     // A unit innermost stride is the contiguous case: successive elements are
     // packed with no gap, so the transfer is dense and the stride need not land
     // on a granule boundary. Every other stride addresses a strided access and
-    // must be granule-aligned.
+    // must be granule-aligned. A non-word element's innermost stride must be
+    // 1 (see verifyStridesWraps).
     if (i == 0 && *s == 1)
       continue;
     if (!isConstMultipleOfGranule(*s, elemWidth, gran))
@@ -100,6 +101,11 @@ verifyConstBdRealizability(mlir::Operation *op,
              << i << " is " << *s << " elements at " << (elemWidth / 8)
              << " bytes each, not a multiple of the " << (gran / 8)
              << "-byte address-gen granule.";
+    if (i == 0 && elemWidth != gran && !(d0Size && *d0Size <= 1))
+      return op->emitOpError("stride 0 is ")
+             << *s << " elements, but must be 1 for " << (elemWidth / 8)
+             << "-byte elements: the DMA moves whole " << (gran / 8)
+             << "-byte granules.";
   }
   // A stride must be positive where its size > 1 (it is never applied when
   // size == 1). The d3 iteration dimension is the exception: a zero stride
@@ -155,7 +161,8 @@ void encodeHardwareStridesWraps(Policy &p, uint64_t elemWidth,
   // one granule, i.e. the contiguous unit-stride case) or a wide element; else
   // it is the biased stride. The wide-element test is compile-time; the
   // sub-granule test is a policy select, so the stride may be runtime. A
-  // non-unit sub-granule stride is unrealizable and rejected/guarded elsewhere.
+  // non-unit stride over elements narrower or wider than a granule is
+  // unrealizable and rejected/guarded elsewhere.
   if (elemWidth > addressGranularity) {
     strides[0] = p.cst(0);
   } else {

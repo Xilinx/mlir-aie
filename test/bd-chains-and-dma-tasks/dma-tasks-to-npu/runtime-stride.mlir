@@ -5,17 +5,14 @@
 
 // RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
 
-// A runtime INNERMOST stride on the dma_task path (int8) is supported (no
-// compile-time constant-1 rule), guarded with the unit-stride exemption:
-// realizable iff stride == 1 (contiguous) or granule-aligned. Parity with the
-// dma_memcpy_nd path.
+// A runtime INNERMOST stride on the dma_task path (int8) is accepted at compile
+// time and guarded at dispatch: the DMA steps whole 4-byte granules, so a
+// 1-byte element walk is realizable only when contiguous (stride == 1). Parity
+// with the dma_memcpy_nd path.
 
 // CHECK-LABEL: aie.runtime_sequence
 // CHECK: %[[UNIT:.*]] = arith.cmpi eq, %arg2, %{{.*}} : i64
-// CHECK: %[[REM:.*]] = arith.remui %arg2, %{{.*}} : i64
-// CHECK: %[[ALIGNED:.*]] = arith.cmpi eq, %[[REM]], %{{.*}} : i64
-// CHECK: %[[OK:.*]] = arith.ori %[[UNIT]], %[[ALIGNED]] : i1
-// CHECK: cf.assert %[[OK]], "a runtime DMA d0 stride must be a multiple of 4 elements (whole 4-byte granules)"
+// CHECK: cf.assert %[[UNIT]], "a runtime DMA d0 stride must be 1 for 1-byte elements (the DMA moves whole 4-byte granules)"
 // CHECK: aiex.npu.blockwrite_values
 
 module {

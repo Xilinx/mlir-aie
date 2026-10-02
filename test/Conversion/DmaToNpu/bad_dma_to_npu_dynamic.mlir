@@ -15,8 +15,8 @@
 
 // A constant innermost stride whose byte extent isn't a whole granule is not
 // realizable (int8, stride 2 = 16 bits vs the 32-bit granule), even when
-// another dimension is runtime. (A unit stride, or a granule-aligned one, is
-// fine -- see dma_to_npu_dynamic.mlir.)
+// another dimension is runtime. (A unit stride is fine -- see
+// dma_to_npu_dynamic.mlir.)
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)
@@ -24,6 +24,22 @@ module {
     aie.runtime_sequence @s(%arg0: memref<64xi8>, %n: i64) {
       // expected-error@+1 {{stride 0 is 2 elements at 1 bytes each, not a multiple of the 4-byte address-gen granule}}
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 4, %n][0, 0, 4, 2]) {id = 0 : i64, metadata = @a} : memref<64xi8>
+    }
+  }
+}
+
+// -----
+
+// A granule-aligned innermost stride is still unrealizable for a sub-word
+// element: the DMA steps whole granules, so stride 2 on bf16 would move both
+// halves of each word rather than every other element.
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a(%t, MM2S, 0)
+    aie.runtime_sequence @s(%arg0: memref<64xbf16>, %n: i64) {
+      // expected-error@+1 {{stride 0 is 2 elements, but must be 1 for 2-byte elements: the DMA moves whole 4-byte granules.}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, %n, 4][0, 0, 8, 2]) {id = 0 : i64, metadata = @a} : memref<64xbf16>
     }
   }
 }

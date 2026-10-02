@@ -206,6 +206,14 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
       return forOp->emitOpError(msg.str());
     }
   }
+  // The innermost dimension steps whole granules, so for elements of another
+  // width it can only be contiguous.
+  if (elemWidth != addressGranularity && inputSizes[0] > 1 &&
+      inputStrides[0] != 1)
+    return forOp->emitOpError("Stride 0 is ")
+           << inputStrides[0] << " elements, but must be 1 for "
+           << (elemWidth / 8) << "-byte elements: the DMA moves whole "
+           << (addressGranularity / 8) << "-byte words.";
 
   if (!skipTransformationChecks && hardwareSizes[0] > (1 << wrap_bits) - 1)
     return forOp->emitOpError(

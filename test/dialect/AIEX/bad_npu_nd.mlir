@@ -163,6 +163,26 @@ module {
 
 // -----
 
+// stride of 2 bf16 is a whole word, but the DMA steps whole words, so it would
+// move both halves of each word rather than every other element
+
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence(%a : memref<16xbf16>) {
+      %c0 = arith.constant 0 : i64
+      %c1 = arith.constant 1 : i64
+      %c2 = arith.constant 2 : i64
+      %c8 = arith.constant 8 : i64
+      // expected-error@+1 {{Stride 0 is 2 elements, but must be 1 for 2-byte elements: the DMA moves whole 4-byte words.}}
+      aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c8][%c0,%c0,%c0,%c2]) { metadata = @objectfifo, id = 0 : i64 } : memref<16xbf16>
+    }
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
+  }
+}
+
+// -----
+
 // stride of 1 i16 is ok, but not with size of 3xi16
 
 module {

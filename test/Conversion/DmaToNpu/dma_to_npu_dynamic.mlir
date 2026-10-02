@@ -96,16 +96,12 @@ module {
 
 // -----
 
-// A runtime innermost stride on a sub-word type is guarded with the unit-stride
-// exemption: stride 1 (contiguous) is realizable, a non-unit sub-granule stride
-// is not, so the guard is `value == 1 || value % 4 == 0`.
+// A runtime innermost stride on a sub-word type must be 1: the DMA steps whole
+// 4-byte granules, so it can only walk 1-byte elements contiguously.
 // CHECK-LABEL: @rt_inner_i8
 // CHECK: cf.assert %{{.*}}, "a runtime DMA d0 stride must be in [1:4194304] when its size > 1"
 // CHECK: %[[UNIT:.*]] = arith.cmpi eq, %arg1, %c1{{.*}} : i64
-// CHECK: %[[REM:.*]] = arith.remui %arg1, %c4{{.*}} : i64
-// CHECK: %[[MUL:.*]] = arith.cmpi eq, %[[REM]], %c0{{.*}} : i64
-// CHECK: %[[OK:.*]] = arith.ori %[[UNIT]], %[[MUL]] : i1
-// CHECK: cf.assert %[[OK]], "a runtime DMA d0 stride must be a multiple of 4 elements (whole 4-byte granules)"
+// CHECK: cf.assert %[[UNIT]], "a runtime DMA d0 stride must be 1 for 1-byte elements (the DMA moves whole 4-byte granules)"
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)
