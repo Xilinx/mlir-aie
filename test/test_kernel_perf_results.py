@@ -212,3 +212,77 @@ def test_xdist_report_merges_worker_results(hooks):
         "softmax": {"passed": True, "outputs": []},
         "relu": {"passed": False, "outputs": []},
     }
+
+
+def test_dedicated_checks_are_recorded_before_device_skips(hooks, monkeypatch):
+    monkeypatch.setattr(hooks, "_device_generation", lambda: "npu1")
+    monkeypatch.setattr(hooks, "_running_on_hrx", lambda: False)
+    skips = []
+    item = SimpleNamespace(
+        iter_markers=lambda name: (
+            [SimpleNamespace(args=("get", "put"), kwargs={"invalidates_timing": True})]
+            if name == "kernel_check"
+            else []
+        ),
+        get_closest_marker=lambda name: SimpleNamespace(args=("npu2",)),
+        user_properties=[],
+        add_marker=skips.append,
+    )
+    config = SimpleNamespace(getoption=lambda name: None)
+    hooks.pytest_collection_modifyitems(config, [item])
+    assert item.user_properties == [
+        ("kernel_check", "get"),
+        ("kernel_check", "put"),
+        ("kernel_check_invalidates_timing", "true"),
+    ]
+    assert len(skips) == 1
+    assert skips[0].name == "skip"
+
+
+@pytest.mark.parametrize("outcome", [None, "failure", "error"])
+def test_dedicated_checks_do_not_bypass_timing_correctness_gate(
+    finish, tmp_path, outcome
+):
+    path = report(
+        tmp_path,
+        [
+            ("test_kernel_extensive[softmax/1024x16/bfloat16/random/s0]", None),
+            ("test_setup_reaches_the_core", outcome),
+        ],
+    )
+    tree = ET.parse(path)
+    test = list(tree.iter("testcase"))[-1]
+    props = ET.SubElement(test, "properties")
+    ET.SubElement(props, "property", name="kernel_check", value="set_rounding")
+    ET.SubElement(
+        props, "property", name="kernel_check_invalidates_timing", value="true"
+    )
+    tree.write(path)
+    rows, meta = finish({"preflight": {}, "measurement_sane": True}, path)
+    if outcome:
+        assert rows is None
+        assert "shared setup correctness failure" in meta["correctness_error"]
+    else:
+        assert len(rows) == 2
+
+
+@pytest.mark.parametrize("outcome", ["failure", "error"])
+def test_dedicated_failure_only_excludes_its_factories(finish, tmp_path, outcome):
+    path = report(
+        tmp_path,
+        [
+            ("test_kernel_extensive[softmax/1024x16/bfloat16/random/s0]", None),
+            ("test_kernel_extensive[relu/1024x16/bfloat16/random/s0]", None),
+            ("test_special_pair[shape]", outcome),
+        ],
+    )
+    tree = ET.parse(path)
+    props = ET.SubElement(list(tree.iter("testcase"))[-1], "properties")
+    for factory in ("softmax", "partner"):
+        ET.SubElement(props, "property", name="kernel_check", value=factory)
+    tree.write(path)
+    rows, meta = finish({"preflight": {}, "measurement_sane": True}, path)
+    assert len(rows) == 2
+    assert all(row["name"].startswith("relu/") for row in rows)
+    assert meta["failed"] == ["test_kernels_e2e::test_special_pair[shape]"]
+    assert "correctness_error" not in meta

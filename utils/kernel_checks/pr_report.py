@@ -108,12 +108,22 @@ def _reason(test) -> str:
     return line[:200] + ("\u2026" if len(line) > 200 else "")
 
 
-def sweep(xml) -> Iterator[tuple[str, str, ET.Element]]:
-    """Yield the case, variant and testcase of each input the extensive sweep ran."""
+def sweep(xml, *, include_skipped=False) -> Iterator[tuple[str, str, ET.Element]]:
+    """Yield generic cases and explicitly attributed dedicated hardware checks."""
     for test in ET.parse(xml).iter("testcase"):
+        if test.find("skipped") is not None and not include_skipped:
+            continue
         match = _EXTENSIVE.fullmatch(test.get("name", ""))
-        if match and test.find("skipped") is None:
+        if match:
             yield match[1], match[2], test
+        else:
+            factories = {
+                factory
+                for prop in test.findall("properties/property")
+                if prop.get("name") == "kernel_check" and (factory := prop.get("value"))
+            }
+            for factory in sorted(factories):
+                yield f"{factory}/{test.get('name')}", "dedicated", test
 
 
 def failed(test) -> bool:
@@ -124,6 +134,7 @@ def failures(directory: Path) -> tuple[list[Failure], set[str]]:
     """Return the failing cases, and every case the extensive sweep ran."""
     by_case: dict[str, Failure] = {}
     swept = set()
+    correctness_failures = set()
     xml = directory / "correctness.xml"
     if xml.exists():
         for case, variant, test in sweep(xml):
@@ -133,11 +144,14 @@ def failures(directory: Path) -> tuple[list[Failure], set[str]]:
             if failed(test):
                 f.failed.append(variant)
                 f.reason = f.reason or _reason(test)
+                correctness_failures.add(
+                    f"{test.get('classname', '')}::{test.get('name', '')}"
+                )
     meta = directory / "meta.json"
     if meta.exists():
         # The timing run checks each case again; its failures reach only meta.
         for nodeid in json.loads(meta.read_text()).get("failed", []):
-            if "test_kernel_extensive[" in nodeid:
+            if "test_kernel_extensive[" in nodeid or nodeid in correctness_failures:
                 continue
             match = _BRACKETED.search(nodeid)
             case = match[1] if match else nodeid

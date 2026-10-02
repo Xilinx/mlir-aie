@@ -71,6 +71,7 @@ def test_rows_aggregate_variants_and_attribute_outcomes(catalogue, tmp_path):
                 "failed": [
                     "test_kernel_perf[synthetic/2/i8]",
                     "test_kernel_extensive[synthetic/3/i8/random/s0]",
+                    "test_pairs::test_pair[shape]",
                     "test_measurement_is_sane",
                 ]
             }
@@ -96,3 +97,39 @@ def test_rows_aggregate_variants_and_attribute_outcomes(catalogue, tmp_path):
     assert "reason" not in measured
     assert by_name["uncased"]["reason"] == "needs an external input"
     assert "reason" not in by_name["unavailable"]
+
+
+@pytest.mark.parametrize("outcome", ["", "failure", "error", "skipped"])
+def test_dedicated_pair_outcome_is_attributed_to_both_factories(
+    catalogue, tmp_path, outcome
+):
+    correctness = tmp_path / "correctness.xml"
+    correctness.write_text(
+        '<testsuite><testcase name="test_pair">'
+        '<properties><property name="kernel_check" value="get" />'
+        '<property name="kernel_check" value="put" /></properties>'
+        + (f'<{outcome} message="bad" />' if outcome else "")
+        + "</testcase></testsuite>"
+    )
+    passed, failed = catalogue.swept(correctness)
+    declared = {}
+    for case, variant, _ in catalogue.pr_report.sweep(
+        correctness, include_skipped=True
+    ):
+        assert variant == "dedicated"
+        declared.setdefault(case.split("/", 1)[0], {})[case] = False
+    rows = catalogue.rows(
+        [{"factory": name, "builds": [name]} for name in ("get", "put")],
+        passed,
+        failed,
+        {},
+        {},
+        declared,
+    )
+    for row in rows:
+        case = f"{row['factory']}/test_pair"
+        assert row["passed"] == (1 if not outcome else 0)
+        assert row["failed"] == ([case] if outcome in ("failure", "error") else [])
+        assert row["timed"] == 0
+        assert row["untimed"] == ([case] if not outcome else [])
+        assert "reason" not in row

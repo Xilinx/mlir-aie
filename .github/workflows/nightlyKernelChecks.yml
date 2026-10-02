@@ -170,9 +170,11 @@ jobs:
           export XRT_CONTEXT_CACHE_SIZE=2
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
           # Every case in test/python/npu/kernel_cases.py, under every edge-data
-          # case its contract admits, for three random seeds.
+          # case its contract admits, for three random seeds, plus dedicated
+          # setup and cascade-pair tests that cannot use the generic harness.
           MLIR_AIE_NPU_TEST=1 python utils/run_pytest.py \
-            test/python/npu/test_kernels_e2e.py -m extensive -v \
+            test/python/npu/test_kernels_e2e.py \
+            test/python/npu/test_kernel_cascade_conv.py -m "extensive or kernel_check" -v \
             --junitxml=correctness.xml --seeds 3 2>&1 | tee correctness.log
 
       - name: Run kernel performance checks

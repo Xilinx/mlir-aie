@@ -127,6 +127,29 @@ def test_failures_combine_sweep_and_timing_without_counting_skips(read_leg):
     assert failures["timing/1/i8"].failed == ["timing run"]
 
 
+def test_dedicated_checks_report_failures_without_crediting_unmarked_tests(
+    report, tmp_path
+):
+    (tmp_path / "correctness.xml").write_text(
+        '<testsuite><testcase classname="test_pairs" name="test_pair[shape]">'
+        '<properties><property name="kernel_check" value="get" />'
+        '<property name="kernel_check" value="put" />'
+        '<property name="kernel_check" value="put" /></properties>'
+        '<failure message="wrong answer" /></testcase>'
+        '<testcase name="test_unrelated" /></testsuite>'
+    )
+    (tmp_path / "meta.json").write_text(
+        json.dumps({"failed": ["test_pairs::test_pair[shape]"]})
+    )
+    failures, swept = report.failures(tmp_path)
+    assert swept == {"get/test_pair[shape]", "put/test_pair[shape]"}
+    assert {f.case for f in failures} == swept
+    for failure in failures:
+        assert failure.failed == ["dedicated"]
+        assert failure.total == 1
+        assert failure.reason == "wrong answer"
+
+
 @pytest.mark.parametrize(
     "before_mad,after_mad,after,changed",
     [
