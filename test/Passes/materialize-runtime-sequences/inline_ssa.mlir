@@ -16,7 +16,7 @@ module {
     // CHECK: aie.tile(0, 2)
     // CHECK: aie.lock
     // CHECK: aie.buffer
-    
+
     // CHECK-LABEL: aie.runtime_sequence
     aie.runtime_sequence(%arg0: memref<64xi32>) {
       // CHECK: aiex.npu.load_pdi {device_ref = @other_device}
@@ -27,7 +27,7 @@ module {
       }
     }
   }
-  
+
   // CHECK: aie.device(npu2) @other_device
   aie.device(npu2) @other_device {
     // The following are the original SSA value definitions -- ensure they are still in the device.
@@ -35,8 +35,8 @@ module {
     // CHECK: aie.buffer
     // CHECK: aie.lock
     %tile_0_2 = aie.tile(0, 2)
-    
-    %rtp_0_0 = aie.buffer(%tile_0_2) {sym_name = "rtp_0_0", address = 0xDEADBEEF : i32} : memref<1xi32> 
+
+    %rtp_0_0 = aie.buffer(%tile_0_2) {sym_name = "rtp_0_0", address = 0xDEADBEEF : i32} : memref<1xi32>
     %lock_0_2 = aie.lock(%tile_0_2)
 
     aie.runtime_sequence (%arg0: memref<64xi32>) {
