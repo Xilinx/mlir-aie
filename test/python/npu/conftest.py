@@ -256,8 +256,9 @@ def _checked_cases(path):
 
 def _reason(report) -> str:
     """The first line of a failed test's error, short enough for a table."""
-    crash = getattr(getattr(report, "longrepr", None), "reprcrash", None)
-    text = getattr(crash, "message", None) or str(report.longrepr or "")
+    longrepr = getattr(report, "longrepr", None)
+    crash = getattr(longrepr, "reprcrash", None)
+    text = getattr(crash, "message", None) or str(longrepr or "")
     line = text.strip().splitlines()[0] if text.strip() else ""
     return line[:200]
 
@@ -310,9 +311,9 @@ def pytest_sessionfinish(session, exitstatus):
             for r in stats.get(k, [])
         }
         # How long each timed case ran in a row before its last check.
-        meta["runs_per_case"] = (
-            2 + config.getoption("--warmup") + config.getoption("--iters")
-        )
+        warmup, iters = config.getoption("--warmup"), config.getoption("--iters")
+        if isinstance(warmup, int) and isinstance(iters, int):
+            meta["runs_per_case"] = 2 + warmup + iters
         Path(meta_path).write_text(json.dumps(meta, indent=1))
 
     sane = meta["measurement_sane"]

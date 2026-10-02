@@ -167,7 +167,8 @@ def test_dedicated_checks_report_failures_without_crediting_unmarked_tests(
     (tmp_path / "meta.json").write_text(
         json.dumps({"failed": ["test_pairs::test_pair[shape]"]})
     )
-    failures, swept = report.failures(tmp_path)
+    failures, swept, inputs = report.failures(tmp_path)
+    assert inputs == 0  # a dedicated test is not a random or edge input
     assert swept == {"get/test_pair[shape]", "put/test_pair[shape]"}
     assert {f.case for f in failures} == swept
     for failure in failures:
