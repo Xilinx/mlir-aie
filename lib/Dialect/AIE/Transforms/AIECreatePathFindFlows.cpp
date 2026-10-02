@@ -113,12 +113,13 @@ struct PacketPlan;
 /// configurations.
 ///
 /// Overall flow:
-/// 1. Rewrite all flows in the device into switchboxes + shim-mux.
-/// 2. Run multiple passes of the rewrite pattern, rewriting stream-switch
-///    configurations to routes.
-/// 3. Rewrite flows to stream-switches using 'weights' from the analysis pass.
-/// 4. Check that a region is legal.
-/// 5. Rewrite stream-switches (within a bounding box) back to flows.
+/// 1. Report flows that can deadlock however they are routed.
+/// 2. Route the prioritized packet flows alone and pin their trees.
+/// 3. Route every flow with Pathfinder, planning the arbiters and packet rules
+///    on each routing found and steering off those that cannot be used,
+///    relaxing the packet constraints if no routing is found.
+/// 4. Lower the circuit flows to connects, and the packet flows as planned.
+/// 5. Add the wires between switchboxes and tiles.
 struct AIEPathfinderPass
     : xilinx::AIE::impl::AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
   using Base =
@@ -2645,8 +2646,9 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
   const int idMask = (1 << idBits) - 1;
 
   // A master port can only be associated with one arbiter, and each arbiter
-  // has four msels, so a tile has 6 x 4 "logical" arbiters.
-
+  // has numMselsPerArbiter msels, so a tile has numArbiters x
+  // numMselsPerArbiter "logical" arbiters.
+  //
   // A map from Tile and master selectValue to the ports targetted by that
   // master select.
   std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels;
@@ -2676,10 +2678,9 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
     }
   });
 
-  // Compute mask values
-  // Merging as many stream flows as possible
-  // The flows must originate from the same source port and have different IDs
-  // Two flows can be merged if they share the same destinations
+  // Group the flows into a slave port that leave by the same master ports,
+  // overlay flows apart from the others; the ids of a group share its packet
+  // rules.
   SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> slaveGroups;
   SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
   while (!workList.empty()) {

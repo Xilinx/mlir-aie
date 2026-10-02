@@ -38,11 +38,11 @@ namespace xilinx::AIE {
 int shimMuxChannelFrom(Port src);
 int shimMuxChannelTo(Port dst);
 
-/// The connections from the source ports to the destination ports of a
-/// switchbox, if `srcCoords == dstCoords`, or of the wires from one switchbox
-/// to its neighbour at `dstCoords`.
+// The connections from the source ports to the destination ports of a
+// switchbox, if `srcCoords == dstCoords`, or of the wires from one switchbox
+// to its neighbour at `dstCoords`.
 struct SwitchboxConnect {
-  /// A connection from a source port to a destination port.
+  // A connection from a source port to a destination port.
   struct Cell {
     bool available = false;
     // weight of Dijkstra's shortest path
@@ -170,8 +170,8 @@ struct PathEndPoint {
 
 struct Flow {
   // Packet flows of one group may share channels; -1 for a circuit flow.
-  int packetGroupId;
-  bool isPriorityFlow;
+  int packetGroupId = -1;
+  bool isPriorityFlow = false;
   PathEndPoint src;
   std::vector<PathEndPoint> dsts;
   // packet id carried by this flow (nullopt for circuit flows); a channel may
@@ -214,8 +214,8 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   return os << "\n";
 }
 
-/// A hop of a packet flow's tree, from one port to the next; `joined` when the
-/// flow takes it by joining another flow's tree.
+// A hop of a packet flow's tree, from one port to the next; `joined` when the
+// flow takes it by joining another flow's tree.
 struct TreeHop {
   PathEndPoint from, to;
   bool joined;
@@ -226,16 +226,16 @@ struct TreeHop {
 };
 using PacketTrees = std::map<PathEndPoint, std::vector<TreeHop>>;
 
-/// Whether packet flows from the two sources, with ids among the two sets, can
-/// deadlock if they share an arbiter; see StreamConflicts::conflict.
+// Whether packet flows from the two sources, with ids among the two sets, can
+// deadlock if they share an arbiter; see StreamConflicts::conflict.
 using PacketConflict =
     std::function<bool(const PathEndPoint &, const std::set<int> &,
                        const PathEndPoint &, const std::set<int> &)>;
 
-/// Packets `src` sends with ids `a` and `b` share a master port they leave
-/// tile `at` by, which puts them on one arbiter. If `apart` is set, the
-/// packets with id `b` for that destination on the tile reach it by a slave
-/// port of their own instead.
+// Packets `src` sends with ids `a` and `b` share a master port they leave
+// tile `at` by, which puts them on one arbiter. If `apart` is set, the
+// packets with id `b` for that destination on the tile reach it by a slave
+// port of their own instead.
 struct TreeSplit {
   PathEndPoint src;
   TileID at;
@@ -248,38 +248,38 @@ struct TreeSplit {
   }
 };
 
-/// What makes a routing unusable: switchbox connections to move, and where a
-/// source's tree has to branch, and crowded tiles (see Pathfinder::relax).
+// What makes a routing unusable: switchbox connections to move, and where a
+// source's tree has to branch, and crowded tiles (see Pathfinder::relax).
 struct RoutingFaults {
   std::vector<std::pair<TileID, Connect>> connections;
   std::vector<TreeSplit> splits;
   std::vector<TileID> crowded;
-  /// Sources whose packet flows the routing put on one arbiter or link in a
-  /// hold cycle, to keep apart like conflicting ones from then on.
+  // Sources whose packet flows the routing put on one arbiter or link in a
+  // hold cycle, to keep apart like conflicting ones from then on.
   std::vector<std::pair<PathEndPoint, PathEndPoint>> apart;
-  /// Sources whose packet flows wait on each other at receivers they share
-  /// in a hold cycle, so their trees should meet: each routes the ids the
-  /// other does not send as a part of their own from then on.
+  // Sources whose packet flows wait on each other at receivers they share
+  // in a hold cycle, so their trees should meet: each routes the ids the
+  // other does not send as a part of their own from then on.
   std::vector<std::pair<PathEndPoint, PathEndPoint>> together;
-  /// Whether the connections are all of flows leaving a switchbox by a master
-  /// port of the prioritized flows, and by no master set of theirs.
+  // Whether the connections are all of flows leaving a switchbox by a master
+  // port of the prioritized flows, and by no master set of theirs.
   bool onlyOverlayMasters = false;
 };
 
-/// A routing findPaths found.
+// A routing findPaths found.
 struct Routing {
-  /// The switch settings of each source's flows.
+  // The switch settings of each source's flows.
   std::map<PathEndPoint, SwitchSettings> settings;
-  /// The packet flows' trees, by source.
+  // The packet flows' trees, by source.
   PacketTrees packetTrees;
-  /// The switch settings of the packets a source sends with an id, where they
-  /// are routed apart from the others the source sends.
+  // The switch settings of the packets a source sends with an id, where they
+  // are routed apart from the others the source sends.
   std::map<std::pair<PathEndPoint, int>, SwitchSettings> idSettings;
 };
 
-/// Why no legal routing was found, reported at `loc`, or the device if unset,
-/// with `reason` if the router can say. A routing check's failure also names
-/// the faults the router has to move.
+// Why no legal routing was found, reported at `loc`, or the device if unset,
+// with `reason` if the router can say. A routing check's failure also names
+// the faults the router has to move.
 class RoutingFailure : public llvm::ErrorInfo<RoutingFailure> {
 public:
   static char ID;
@@ -298,8 +298,8 @@ public:
   std::optional<mlir::Location> loc;
 };
 
-/// A routing that can deadlock only where allow-deadlock-prone lets it: usable,
-/// though the router would rather move the faults it names.
+// A routing that can deadlock only where allow-deadlock-prone lets it: usable,
+// though the router would rather move the faults it names.
 class DeadlockProneRouting
     : public llvm::ErrorInfo<DeadlockProneRouting, RoutingFailure> {
 public:
@@ -307,8 +307,8 @@ public:
   using ErrorInfo::ErrorInfo;
 };
 
-/// No legal routing around the routes prioritized flows keep, which the reason
-/// already blames.
+// No legal routing around the routes prioritized flows keep, which the reason
+// already blames.
 class PinnedRoutingFailure
     : public llvm::ErrorInfo<PinnedRoutingFailure, RoutingFailure> {
 public:
@@ -316,59 +316,59 @@ public:
   using ErrorInfo::ErrorInfo;
 };
 
-/// Checks a routing that fits the fabric: a RoutingFailure if it is unusable,
-/// success if it is accepted.
+// Checks a routing that fits the fabric: a RoutingFailure if it is unusable,
+// success if it is accepted.
 using RoutingCheck = std::function<llvm::Error(const Routing &)>;
 
-/// What packet flows are routed under.
+// What packet flows are routed under.
 struct PacketConstraints {
-  /// Routings the check rejects count as illegal; the connections it names
-  /// are penalized like overused channels so later iterations avoid them, and
-  /// the trees it splits branch where it says from then on. A routing it
-  /// rejects as a DeadlockProneRouting is kept, and found if no better one is
-  /// soon.
+  // Routings the check rejects count as illegal; the connections it names
+  // are penalized like overused channels so later iterations avoid them, and
+  // the trees it splits branch where it says from then on. A routing it
+  // rejects as a DeadlockProneRouting is kept, and found if no better one is
+  // soon.
   RoutingCheck check;
-  /// Packet flows that conflict are steered off each other's master ports; see
-  /// edgeWeight.
+  // Packet flows that conflict are steered off each other's master ports; see
+  // edgeWeight.
   PacketConflict conflict;
-  /// The prioritized packet flows from these sources take these trees
-  /// instead of being routed.
+  // The prioritized packet flows from these sources take these trees
+  // instead of being routed.
   PacketTrees pinned;
-  /// Whether prioritized packet flows not pinned route first, keeping
-  /// other flows off their channels; otherwise they route like the others.
+  // Whether prioritized packet flows not pinned route first, keeping
+  // other flows off their channels; otherwise they route like the others.
   bool prioritize = true;
 };
 
-/// Congestion-negotiated routing: each iteration routes every flow by
-/// Dijkstra, given each connection's demand, and raises the demand of the
-/// connections used over capacity, until no connection is.
+// Congestion-negotiated routing: each iteration routes every flow by
+// Dijkstra, given each connection's demand, and raises the demand of the
+// connections used over capacity, until no connection is.
 class Pathfinder {
 public:
   void initialize(int maxCol, int maxRow, const AIETargetModel &targetModel);
-  /// Adds a flow from `src` to `dst`; failures to route it are reported at
-  /// `loc` when given.
+  // Adds a flow from `src` to `dst`; failures to route it are reported at
+  // `loc` when given.
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
                std::optional<int> packetId, bool isPriorityFlow,
                std::optional<mlir::Location> loc = std::nullopt);
   void sortFlows();
-  /// Reserves the connections `switchboxOp` already makes, so routing avoids
-  /// them. Fails if it makes one the switchbox cannot.
+  // Reserves the connections `switchboxOp` already makes, so routing avoids
+  // them. Fails if it makes one the switchbox cannot.
   mlir::LogicalResult addFixedConnection(SwitchboxOp switchboxOp);
-  /// Keeps routes out of the switchbox at `coords`.
+  // Keeps routes out of the switchbox at `coords`.
   void excludeTile(TileID coords);
-  /// A RoutingFailure if no legal routing is found in `maxIterations`.
+  // A RoutingFailure if no legal routing is found in `maxIterations`.
   llvm::Expected<Routing> findPaths(int maxIterations);
   void setPacketConstraints(PacketConstraints c) { constraints = std::move(c); }
-  /// Loosens the packet constraints by one step after findPaths found no
-  /// routing; false once no step is left or no packet stream took part in the
-  /// failure. Packet flows start sharing channels only within their
-  /// destination group. The steps, each skipped if it changes nothing: share
-  /// channels with any packet flow; cap the fan-out of tiles the routing check
-  /// found out of packet rules or msels to packetFanoutCap channels per
-  /// direction; route the second id of an unbranchable split apart, which
-  /// restarts sharing and caps; then share and cap again; route the ids a
-  /// source sends that a source it must keep apart from does not as a part of
-  /// their own, which restarts sharing and caps; then share and cap again.
+  // Loosens the packet constraints by one step after findPaths found no
+  // routing; false once no step is left or no packet stream took part in the
+  // failure. Packet flows start sharing channels only within their
+  // destination group. The steps, each skipped if it changes nothing: share
+  // channels with any packet flow; cap the fan-out of tiles the routing check
+  // found out of packet rules or msels to packetFanoutCap channels per
+  // direction; route the second id of an unbranchable split apart, which
+  // restarts sharing and caps; then share and cap again; route the ids a
+  // source sends that a source it must keep apart from does not as a part of
+  // their own, which restarts sharing and caps; then share and cap again.
   bool relax();
 
 private:
@@ -450,7 +450,7 @@ private:
   // The packet ids each source sends in prioritized flows.
   std::map<PathEndPoint, std::set<int>> priorityIds;
   // Where each source's flow to each destination was declared.
-  std::map<std::pair<PathEndPoint, PathEndPoint>, mlir::Location> flowLocs;
+  std::map<PathEndPoint, std::map<PathEndPoint, mlir::Location>> flowLocs;
   std::optional<mlir::Location> flowLoc(const PathEndPoint &src,
                                         const PathEndPoint *dst) const;
   // The routing graph, by the tiles a SwitchboxConnect connects: a tile to
@@ -484,11 +484,11 @@ private:
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
 };
 
-/// Routes the flows of a device with a Pathfinder, and finds or creates the
-/// tiles, switchboxes and shim muxes the routing is lowered onto.
+// Routes the flows of a device with a Pathfinder, and finds or creates the
+// tiles, switchboxes and shim muxes the routing is lowered onto.
 class DynamicTileAnalysis {
 public:
-  /// A RoutingFailure if the flows in `device` have no legal routing.
+  // A RoutingFailure if the flows in `device` have no legal routing.
   llvm::Error runAnalysis(DeviceOp &device);
 
   int getMaxCol() const { return maxCol; }
@@ -499,7 +499,7 @@ public:
   SwitchboxOp getSwitchbox(mlir::OpBuilder &builder, int col, int row);
   ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
 
-  /// The ops at `tile` the analysis has found or created, or null.
+  // The ops at `tile` the analysis has found or created, or null.
   TileOp lookupTile(TileID tile) const { return coordToTile.lookup(tile); }
   SwitchboxOp lookupSwitchbox(TileID tile) const {
     return coordToSwitchbox.lookup(tile);
@@ -509,9 +509,9 @@ public:
   }
 
   Pathfinder pathfinder;
-  /// The routing runAnalysis found.
+  // The routing runAnalysis found.
   Routing routing;
-  /// The sources of the circuit flows lowered so far.
+  // The sources of the circuit flows lowered so far.
   std::set<PathEndPoint> processedFlows;
 
 private:
