@@ -1120,6 +1120,43 @@ def test_hash_follows_a_generators_closure():
     assert key(a) != key(c)
 
 
+def _add_value(flag):
+    return ExternalFunction(
+        "add_value",
+        source_string="void add_value() {}",
+        arg_types=[],
+        compile_flags=[f"-DADD_VALUE={flag}"],
+    )
+
+
+def _via_global(flag):
+    ns = {"__name__": "designs.probe", "kernel": _add_value(flag)}
+    exec("def design(a, b):\n    return kernel(a, b)\n", ns)  # noqa: S102
+    return ns["design"]
+
+
+def _via_closure(flag):
+    kernel = _add_value(flag)
+
+    def design(a, b):
+        return kernel(a, b)
+
+    return design
+
+
+@pytest.mark.parametrize("build", [_via_global, _via_closure])
+def test_hash_follows_an_external_function_the_generator_reaches(build):
+    """A kernel's compile flags change neither the bytecode nor its sources."""
+
+    def key(fn):
+        return _compute_hash(fn, {}, [], [], [], [])
+
+    a, b = build(5), build(10)
+    assert a.__code__.co_code == b.__code__.co_code
+    assert key(a) == key(build(5))
+    assert key(a) != key(b)
+
+
 def test_hash_survives_a_move_of_the_design_file():
     """co_filename and line info are not part of the design."""
     src = "def design(a):\n    def core(x):\n        return x + 1\n    return core\n"

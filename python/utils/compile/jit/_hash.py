@@ -155,6 +155,22 @@ def _installed_dirs() -> tuple[Path, ...]:
     dirs.add(site.getusersitepackages())
     return tuple(Path(d).resolve() for d in dirs)
 
+    The generator's bytecode names a helper but does not contain it, so a
+    design built by ``_build_stream`` would otherwise keep its key when the
+    helper changes. The walk follows globals, and attributes of modules, to
+    the functions, classes and plain constants of the generator's package
+    (``aie.iron.algorithms`` for ``kernel_design``; only the module itself
+    for a top-level one) and stops outside it: the IRON core and third-party
+    code are versioned with the install, not edited per design.
+
+    An ``ExternalFunction`` it reaches is recorded by its content-based repr,
+    as a ``CompileTime`` one is: the cache manifest never sees a kernel's
+    compile flags.
+    """
+    from aie.iron.kernel import ExternalFunction
+
+    home = generator.__module__ or ""
+    package = home.rpartition(".")[0]
 
 @cache
 def _design_source(package: str, file: str | None) -> Path | None:
@@ -235,7 +251,11 @@ def _python_identity(roots) -> bytes:
         if isinstance(value, property):
             for f in (value.fget, value.fset, value.fdel):
                 visit(f, where)
-        elif _plain(value):
+        elif isinstance(value, (FunctionType, type)):
+            if in_package(value.__module__ or "") and id(value) not in seen:
+                seen.add(id(value))
+                todo.append(value)
+        elif _plain(value) or isinstance(value, ExternalFunction):
             records.add(f"{where}={value!r}".encode())
         elif (module := _stamped_module(value)) is not None:
             modules.append(module)
