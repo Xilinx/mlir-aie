@@ -1399,6 +1399,10 @@ struct PacketFlowRouting {
   // The prioritized slave ports and IDs a control-packet reload keeps, as the
   // control overlay's (see reloadConfigures).
   DenseSet<std::pair<PhysPort, int>> overlayFlows;
+  // The slave ports and IDs of the control overlay's flows. Their routing
+  // carries the overlay marker even when they route like the others, which
+  // is how a later pass knows the overlay is already routed.
+  DenseSet<std::pair<PhysPort, int>> markedFlows;
   // Set of master ports that belong to control packet overlay flows
   DenseSet<PhysPort> ctrlPktOverlayMasterPorts;
   // The ports priority_route flows start at. Only their own source feeds them,
@@ -1609,6 +1613,9 @@ void PacketFlowRouting::collectFlows() {
                   .insert(*mask);
             }
             if (pktFlowOp.getPriorityRoute().value_or(false) &&
+                !reloadConfigures(pktFlowOp))
+              markedFlows.insert(slaveFlow);
+            if (pktFlowOp.getPriorityRoute().value_or(false) &&
                 (prioritize || pinned.trees.count(srcPoint))) {
               prioritizedFlows.insert(slaveFlow);
               if (!reloadConfigures(pktFlowOp))
@@ -1757,12 +1764,12 @@ void PacketFlowRouting::collectSlaveFlows() {
       Port destPort = conn.dst;
       auto sourceFlow =
           std::make_pair(std::make_pair(tileId, sourcePort), flowID);
-      if (overlayFlows.contains(sourceFlow)) {
+      if (overlayFlows.contains(sourceFlow))
         ctrlPacketFlows[sourceFlow].push_back({tileId, destPort});
-        ctrlPktOverlayMasterPorts.insert({tileId, destPort});
-      } else {
+      else
         packetFlows[sourceFlow].push_back({tileId, destPort});
-      }
+      if (markedFlows.contains(sourceFlow))
+        ctrlPktOverlayMasterPorts.insert({tileId, destPort});
       slavePorts.push_back(sourceFlow);
       LLVM_DEBUG(llvm::dbgs() << "flowID " << flowID << ':'
                               << stringifyWireBundle(sourcePort.bundle) << " "
@@ -2895,7 +2902,9 @@ LogicalResult PacketFlowRouting::emit() {
         auto rule = PacketRuleOp::create(
             builder, tileLoc, r.mask, r.value,
             amselOps.at(slaveAMSels.at(ruleGroup.front())));
-        if (ctrlPacketFlows.count(ruleGroup.front()))
+        if (llvm::all_of(ruleGroup, [&](const auto &member) {
+              return markedFlows.contains(member);
+            }))
           rule->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
         if (prioritizedSourcePorts.contains(port) &&
             llvm::any_of(ruleGroup, [&](const auto &member) {
