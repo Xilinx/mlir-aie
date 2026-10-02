@@ -467,6 +467,14 @@ jobs:
           "OPENSSL_ROOT_DIR=$($vcpkgRoot.Replace('\','/'))/installed/x64-windows-static" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      # Puts ccache on PATH, which is what makes setup.py pass
+      # CMAKE_<LANG>_COMPILER_LAUNCHER=ccache.
+      - uses: ./.github/actions/setup_ccache
+        with:
+          MATRIX_OS: windows-2022
+          MATRIX_ARCH: AMD64
+          EXTRA_KEY: ryzen-wheels-rtti-${{ matrix.ENABLE_RTTI }}
+
       - name: Stage XRT SDK
         shell: pwsh
         run: |
