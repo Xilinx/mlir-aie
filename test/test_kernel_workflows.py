@@ -314,7 +314,7 @@ def test_a_run_that_publishes_requires_the_power_mode(event, ref, seeds):
     step = next(
         step
         for step in jobs["hw-check"]["steps"]
-        if step.get("name") == "Run the mobilenet seed check"
+        if step.get("name") == "Run mobilenet at each seed and batch"
     )
     if not evaluate(jobs["hw-check"]["if"], context):
         assert event == "pull_request"
