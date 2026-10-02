@@ -82,6 +82,12 @@ NOT_JUDGED = {
             "bn_conv2dk1_input_split_partial_skip_get",
         )
     },
+    **{
+        name: "blocks on core locks its design releases; codegen-identical to "
+        "FastFlowLM's kernel, which runs in its engine"
+        for name in kernels.factories()
+        if name.startswith("flm_gemma4_decode_")
+    },
 }
 
 
