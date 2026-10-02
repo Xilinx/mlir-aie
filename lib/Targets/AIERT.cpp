@@ -749,7 +749,7 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
 
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      if (skipCtrlPktOverlay && connectOp->hasAttr("is_ctrl_pkt_overlay"))
+      if (skipCtrlPktOverlay && connectOp->hasAttr(kCtrlPktOverlayAttrName))
         continue;
       TxnLocBracket bracket(*this, connectOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(
@@ -761,7 +761,7 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     }
 
     for (auto masterSetOp : b.getOps<MasterSetOp>()) {
-      if (skipCtrlPktOverlay && masterSetOp->hasAttr("is_ctrl_pkt_overlay"))
+      if (skipCtrlPktOverlay && masterSetOp->hasAttr(kCtrlPktOverlayAttrName))
         continue;
       TxnLocBracket bracket(*this, masterSetOp.getLoc());
       int mask = 0;
@@ -800,7 +800,7 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     }
 
     for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
-      if (skipCtrlPktOverlay && packetRulesOp->hasAttr("is_ctrl_pkt_overlay"))
+      if (skipCtrlPktOverlay && packetRulesOp->hasAttr(kCtrlPktOverlayAttrName))
         continue;
       TxnLocBracket bracket(*this, packetRulesOp.getLoc());
       int slot = 0;
@@ -810,10 +810,10 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
       bool overlayPort =
           skipCtrlPktOverlay &&
           llvm::any_of(block.getOps<PacketRuleOp>(), [](PacketRuleOp rule) {
-            return rule->hasAttr("is_ctrl_pkt_overlay");
+            return rule->hasAttr(kCtrlPktOverlayAttrName);
           });
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
-        if (skipCtrlPktOverlay && slotOp->hasAttr("is_ctrl_pkt_overlay")) {
+        if (skipCtrlPktOverlay && slotOp->hasAttr(kCtrlPktOverlayAttrName)) {
           slot++;
           continue;
         }

@@ -384,7 +384,7 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
   isPriorityFlow &= constraints.prioritize ||
                     constraints.pinned.count({srcCoords, srcPort}) > 0;
   if (loc)
-    flowLocs.try_emplace({{srcCoords, srcPort}, {dstCoords, dstPort}}, *loc);
+    flowLocs[{srcCoords, srcPort}].try_emplace({dstCoords, dstPort}, *loc);
   if (packetId) {
     auto &ids = packetIdsTo[{{srcCoords, srcPort}, {dstCoords, dstPort}}];
     if (!llvm::is_contained(ids, *packetId))
@@ -411,10 +411,13 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
 // was declared.
 std::optional<mlir::Location>
 Pathfinder::flowLoc(const PathEndPoint &src, const PathEndPoint *dst) const {
-  for (const auto &[ends, loc] : flowLocs)
-    if (ends.first == src && (!dst || ends.second == *dst))
-      return loc;
-  return std::nullopt;
+  auto locs = flowLocs.find(src);
+  if (locs == flowLocs.end())
+    return std::nullopt;
+  auto it = dst ? locs->second.find(*dst) : locs->second.begin();
+  if (it == locs->second.end())
+    return std::nullopt;
+  return it->second;
 }
 
 bool Pathfinder::shareAllChannels() {

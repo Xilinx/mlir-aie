@@ -84,19 +84,29 @@ static AIE::DeviceOp getOrCreateCtrlPktOverlayCopy(ModuleOp moduleOp,
   return clonedDev;
 }
 
-// A stream-switch setting: column, row, whether it is a master, bundle,
-// channel, and the packet rule slot, or -1 for the port itself.
-using SwitchPort = std::tuple<int, int, bool, int, int, int>;
+// A stream-switch setting: a port, or with `slot` >= 0 one of its packet rule
+// slots.
+struct SwitchPort {
+  AIE::TileID tile;
+  bool master;
+  AIE::Port port;
+  int slot;
 
-static std::string describe(const SwitchPort &port) {
-  auto [col, row, master, bundle, channel, slot] = port;
-  std::string s = llvm::formatv(
-      "tile ({0}, {1}) {2} {3} : {4}", col, row, master ? "master" : "slave",
-      AIE::stringifyWireBundle(AIE::WireBundle(bundle)), channel);
-  if (slot >= 0)
-    s += llvm::formatv(" slot {0}", slot).str();
-  return s;
-}
+  bool operator<(const SwitchPort &other) const {
+    return std::tie(tile, master, port, slot) <
+           std::tie(other.tile, other.master, other.port, other.slot);
+  }
+
+  std::string describe() const {
+    std::string s =
+        llvm::formatv("tile ({0}, {1}) {2} {3} : {4}", tile.col, tile.row,
+                      master ? "master" : "slave",
+                      AIE::stringifyWireBundle(port.bundle), port.channel);
+    if (slot >= 0)
+      s += llvm::formatv(" slot {0}", slot).str();
+    return s;
+  }
+};
 
 struct PortSetting {
   SwitchPort port;
@@ -111,15 +121,13 @@ struct PortSetting {
 static SmallVector<PortSetting> portSettings(Operation &op,
                                              AIE::SwitchboxOp sb) {
   auto key = [&](bool master, AIE::Port port, int slot = -1) {
-    return SwitchPort{sb.colIndex(), sb.rowIndex(),
-                      master,        static_cast<int>(port.bundle),
-                      port.channel,  slot};
+    return SwitchPort{{sb.colIndex(), sb.rowIndex()}, master, port, slot};
   };
   auto amsel = [](Value v) {
     auto a = v.getDefiningOp<AIE::AMSelOp>();
     return llvm::formatv("{0}.{1}", a.arbiterIndex(), a.getMselValue()).str();
   };
-  bool skipped = op.hasAttr("is_ctrl_pkt_overlay");
+  bool skipped = op.hasAttr(AIE::kCtrlPktOverlayAttrName);
   SmallVector<PortSetting> settings;
   if (auto connect = dyn_cast<AIE::ConnectOp>(op)) {
     AIE::Port src = connect.sourcePort();
@@ -140,7 +148,7 @@ static SmallVector<PortSetting> portSettings(Operation &op,
     bool anySkipped = skipped;
     for (auto [slot, rule] : llvm::enumerate(
              rules.getRules().front().getOps<AIE::PacketRuleOp>())) {
-      bool ruleSkipped = skipped || rule->hasAttr("is_ctrl_pkt_overlay");
+      bool ruleSkipped = skipped || rule->hasAttr(AIE::kCtrlPktOverlayAttrName);
       anySkipped |= ruleSkipped;
       settings.push_back({key(false, rules.sourcePort(), slot),
                           llvm::formatv("{0}/{1}>{2}", rule.valueInt(),
@@ -172,18 +180,18 @@ static LogicalResult verifyReloadKeepsOverlay(AIE::DeviceOp device,
         if (skipped && it == overlaySettings.end()) {
           setter->emitError()
               << "a control-packet reload skips this op, but @"
-              << kCtrlPktOverlayName << " does not set " << describe(port);
+              << kCtrlPktOverlayName << " does not set " << port.describe();
           return WalkResult::interrupt();
         }
         if (skipped && it->second != value) {
           setter->emitError() << "a control-packet reload skips this op, but @"
                               << kCtrlPktOverlayName << " sets "
-                              << describe(port) << " differently";
+                              << port.describe() << " differently";
           return WalkResult::interrupt();
         }
         if (!skipped && it != overlaySettings.end()) {
           setter->emitError()
-              << "a control-packet reload rewrites " << describe(port)
+              << "a control-packet reload rewrites " << port.describe()
               << ", which the control packets of @" << kCtrlPktOverlayName
               << " route through";
           return WalkResult::interrupt();
@@ -216,7 +224,8 @@ verifyOverlayReachesTiles(NpuLoadPdiOp loadPdiOp, AIE::DeviceOp overlay,
     auto packet = dyn_cast<NpuControlPacketOp>(op);
     if (!packet)
       continue;
-    AIE::TileID tile{packet.getColumnFromAddr(), packet.getRowFromAddr()};
+    AIE::TileID tile{static_cast<int>(packet.getColumnFromAddr()),
+                     static_cast<int>(packet.getRowFromAddr())};
     if (reached.count(tile))
       continue;
     return loadPdiOp.emitError()

@@ -361,9 +361,7 @@ private:
   // Follows the stream `src` sends with `id` on from `hop`, along every
   // branch that does not come back to an input it already took.
   void step(StreamEndpoint src, Hop hop, std::optional<int> id) {
-    std::pair<Operation *, int> input{
-        hop.interconnect,
-        static_cast<int>(hop.input.bundle) * 1024 + hop.input.channel};
+    std::pair<Operation *, Port> input{hop.interconnect, hop.input};
     if (!onPath.insert(input).second)
       return;
     llvm::scope_exit leave([&] { onPath.erase(input); });
@@ -423,7 +421,7 @@ private:
   std::vector<RoutedStream> streams;
   // The interconnect inputs the stream `step` follows has taken, and the
   // switchboxes it has passed.
-  llvm::DenseSet<std::pair<Operation *, int>> onPath;
+  llvm::DenseSet<std::pair<Operation *, Port>> onPath;
   SmallVector<StreamHop, 8> path;
   int maxPacketID;
 };
@@ -1126,6 +1124,8 @@ StreamWaitGraph::Agent::at(const StreamEndpoint &endpoint, bool sending) {
     return channel({endpoint.tile,
                     sending ? DMAChannelDir::MM2S : DMAChannelDir::S2MM,
                     endpoint.port.channel});
+  // Other ports (PLIO, NOC, a receiving TileControl) are taken to always
+  // drain, so the streams into them never block.
   return std::nullopt;
 }
 
@@ -1537,7 +1537,7 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
   // they are routed, where both enter its switchbox for it; and trees with one
   // id wait on each other where they meet and below, going on as one. Those
   // waits count only with `forcedWaits`.
-  auto related = [&](size_t a, size_t b) {
+  auto sameSource = [&](size_t a, size_t b) {
     return streams[trees[a].members.front()].src ==
            streams[trees[b].members.front()].src;
   };
@@ -1642,7 +1642,7 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
       auto [tile, input] = u.hops[node.index];
       size_t waiting = u.members.front();
       for (auto [t, ht] : entering.at({tile, input})) {
-        if (t != node.tree && related(node.tree, t))
+        if (t != node.tree && sameSource(node.tree, t))
           continue;
         size_t sharer = trees[t].members.front();
         bool sameId = streams[waiting].packetID == streams[sharer].packetID;
@@ -1660,7 +1660,7 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
         for (auto [v, hv] : passing.at(tile)) {
           Port holderInput = trees[v].hops[hv].second;
           bool self = v == node.tree && t == node.tree;
-          if ((!self && (v == node.tree || v == t || related(t, v))) ||
+          if ((!self && (v == node.tree || v == t || sameSource(t, v))) ||
               holderInput == input || trees[v].arbiter[hv] != arbiter)
             continue;
           bool isForced = !self && forced(t, ht, v, hv, tile);
@@ -1805,6 +1805,7 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
       int search = 0;
       for (; !pending.empty(); search++) {
         if (search == maxWalkSearches) {
+          assert(first && "only a walk found adds pending constraints");
           LLVM_DEBUG(llvm::dbgs() << "Hold cycle search gave up after "
                                   << search << " walks\n");
           return toCycle(*first);
