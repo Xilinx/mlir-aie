@@ -11,6 +11,8 @@ from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
 )
 from ...dialects.aiex import shim_dma_single_bd_task
 from ...helpers.taplib import TensorAccessPattern
+from ..scratchpad_parameter import ScratchpadParameter
+from ._context import active_sequence
 from .data import RuntimeData
 from .dmataskhandle import Task
 from .task import RuntimeTask
@@ -156,14 +158,14 @@ def emit_shim_transfer(
     tap=None,
     wait: bool = False,
     packet: tuple[int, int] | None = None,
-    offset_parameter=None,
+    offset_parameter: ScratchpadParameter | str | None = None,
     group=None,
     sizes=None,
     strides=None,
     offset=None,
     transfer_len=None,
     managed: bool = True,
-    length_parameter=None,
+    length_parameter: ScratchpadParameter | str | None = None,
     length_unit: int | None = None,
 ) -> Task:
     """Emit one shim DMA transfer on the ``alloc`` channel, inside the active sequence.
@@ -190,12 +192,7 @@ def emit_shim_transfer(
 
     Returns:
         Task: A handle to the transfer.
-
-    Lazy imports break the runtime<->scratchpad import cycle.
     """
-    from ..scratchpad_parameter import ScratchpadParameter
-    from ._context import active_sequence
-
     active = active_sequence()
     rt = active._runtime
 
@@ -220,22 +217,15 @@ def emit_shim_transfer(
             "do not also pass group=."
         )
 
-    def param_name(param) -> str | None:
-        if isinstance(param, ScratchpadParameter):
-            if param not in rt._scratchpad_parameters:
-                rt._scratchpad_parameters.append(param)
-            return param.name
-        return param
-
     task = DMATask(
         alloc,
         rt_data,
         tap=tap,
         task_group=group,
         wait=wait,
-        offset_parameter=param_name(offset_parameter),
+        offset_parameter=rt.register_parameter(offset_parameter),
         packet=packet,
-        length_parameter=param_name(length_parameter),
+        length_parameter=rt.register_parameter(length_parameter),
         length_unit=length_unit,
         sizes=sizes,
         strides=strides,

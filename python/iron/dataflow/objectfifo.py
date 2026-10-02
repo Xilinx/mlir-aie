@@ -29,6 +29,7 @@ from ...helpers.npdtypes import (
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, Resolvable
+from ..scratchpad_parameter import ScratchpadParameter
 from .endpoint import ObjectFifoEndpoint
 
 # Named aliases for the (size, stride) pair-lists used by DMA stream
@@ -702,14 +703,14 @@ class ObjectFifoHandle(Resolvable):
         tap,
         wait: bool,
         packet: tuple[int, int] | None,
-        offset_parameter,
+        offset_parameter: ScratchpadParameter | str | None,
         group,
         sizes=None,
         strides=None,
         offset=None,
         transfer_len=None,
         managed=True,
-        length_parameter=None,
+        length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
     ):
         """Shared body for fill()/drain().
@@ -757,14 +758,14 @@ class ObjectFifoHandle(Resolvable):
         tap=None,
         wait: bool = False,
         packet: tuple[int, int] | None = None,
-        offset_parameter=None,
+        offset_parameter: ScratchpadParameter | str | None = None,
         group=None,
         sizes=None,
         strides=None,
         offset=None,
         transfer_len=None,
         managed: bool = True,
-        length_parameter=None,
+        length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
     ):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
@@ -798,14 +799,14 @@ class ObjectFifoHandle(Resolvable):
         tap=None,
         wait: bool = False,
         packet: tuple[int, int] | None = None,
-        offset_parameter=None,
+        offset_parameter: ScratchpadParameter | str | None = None,
         group=None,
         sizes=None,
         strides=None,
         offset=None,
         transfer_len=None,
         managed: bool = True,
-        length_parameter=None,
+        length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
     ):
         """Drain this consumer ObjectFifo, writing data to the ``dest`` runtime buffer.

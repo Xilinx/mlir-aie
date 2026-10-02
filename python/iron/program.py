@@ -295,7 +295,7 @@ class Program:
             # @device region, so by now the ambient insertion point is back to
             # module scope -- the same place the fn_args-declared parameters
             # above were resolved.
-            for p in self._rt._scratchpad_parameters:
+            for p in self._rt.scratchpad_parameters:
                 p.resolve()
 
             self._print_verify(ctx)
