@@ -725,17 +725,6 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
   SmallVector<NdDmaPattern> &bds =
       *decomposed; // NOLINT(bugprone-unchecked-optional-access)
 
-  if (bds.size() > 1 && isUnderRuntimeControlFlow(op)) {
-    if (tooManyDims)
-      return cannotReduce() << "outside runtime control flow, since it "
-                               "splits into "
-                            << bds.size() << " descriptors";
-    op.emitRemark()
-        << "deferring multi-BD decomposition under runtime control flow "
-           "(dynamic BD pool supports single-BD tasks only)";
-    return success();
-  }
-
   int64_t baseFlatOffset = op.getConstantOffset().value_or(0);
 
   if (bds.size() == 1) {
@@ -831,6 +820,17 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
       sharedRepeat && bds.size() <= targetModel.getNumBDs(col, row);
   uint32_t depth = targetModel.getDmaTaskQueueDepth();
   if (!chainFits || (depth > 0 && bds.size() > depth)) {
+    // The dynamic BD pool allocates a chain under runtime control flow, but
+    // separate tasks there are left whole.
+    if (isUnderRuntimeControlFlow(op)) {
+      if (tooManyDims)
+        return cannotReduce()
+               << "outside runtime control flow, since its " << bds.size()
+               << " pieces have to be separate tasks";
+      op.emitRemark() << "deferring decomposition into " << bds.size()
+                      << " separate tasks under runtime control flow";
+      return success();
+    }
     std::optional<std::string> why =
         whyNotSeparateTasks(op, taskOp, iterations);
     if (!why) {

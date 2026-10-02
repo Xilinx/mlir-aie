@@ -162,8 +162,9 @@ module {
 
 // -----
 
-// Under runtime control flow, a descriptor has to stay one: iteration
-// dimensions that merge are accepted, ones that split into pieces are not.
+// Under runtime control flow, a descriptor may become one or a chain of
+// several: iteration dimensions that merge are accepted, and pieces that need
+// tasks of their own are not.
 
 module {
   aie.device(npu2_1col) {
@@ -181,7 +182,7 @@ module {
         aiex.dma_start_task(%merged)
         aiex.dma_await_task(%merged)
         %tk = aiex.dma_configure_task_for @a {
-          // expected-error@+1 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off outside runtime control flow, since it splits into 2 descriptors}}
+          // expected-error@+1 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off outside runtime control flow, since its 2 pieces have to be separate tasks}}
           aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 256 sizes = [2, 2, 2, 8, 16] strides = [9000, 3500, 256, 32, 1])
           aie.end
         } {issue_token = true, repeat_count = 3 : i32}
