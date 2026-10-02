@@ -1867,6 +1867,9 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
     `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op, or as a DMA length via the `length_parameter` attribute and nothing else).
     Indices are unique across the entire module.
+    For a parameter used as a DMA offset or length, the pass also sets `min_value` and `max_value`:
+    the range of values that keeps every such transfer within its buffer, judging each transfer
+    with any other parameter it uses at 0. The host library rejects a value outside the range.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
     For `kind == addr`, and for any parameter used as a `length_parameter`, the `type` must be `i32`.
@@ -1890,7 +1893,9 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
   let arguments = (ins SymbolNameAttr:$sym_name, TypeAttr:$type,
       // assigned by `--aie-lower-scratchpad-parameters` pass:
       OptionalAttr<UI8Attr>:$state_table_idx,
-      OptionalAttr<ScratchpadParameterKind>:$kind);
+      OptionalAttr<ScratchpadParameterKind>:$kind,
+      OptionalAttr<I32Attr>:$min_value,
+      OptionalAttr<I32Attr>:$max_value);
   let results = (outs);
   let assemblyFormat = [{ $sym_name `:` $type attr-dict }];
 }

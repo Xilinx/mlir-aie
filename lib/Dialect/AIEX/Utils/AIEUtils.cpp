@@ -290,7 +290,13 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
     StringRef kindStr =
         *kind == AIEX::ScratchpadParameterKind::Addr ? "addr" : "core";
     os << p.getSymName() << " " << static_cast<unsigned>(*stateTableIdx) << " "
-       << typeStr << " " << kindStr << "\n";
+       << typeStr << " " << kindStr;
+    if (p.getMinValue() && p.getMaxValue())
+      os << " " << static_cast<int32_t>(*p.getMinValue()) << " "
+         << static_cast<int32_t>(*p.getMaxValue());
+    else
+      os << " - -";
+    os << "\n";
   }
 }
 

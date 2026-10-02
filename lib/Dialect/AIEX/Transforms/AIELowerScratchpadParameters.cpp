@@ -12,6 +12,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 
@@ -69,6 +70,96 @@ static void warnIfRuntimeOffsetMayRound(Operation *op, Type bufType) {
       << (4 / std::gcd(4u, elemBytes))
       << " elements is silently rounded down to the 4-byte boundary below "
          "instead of being rejected";
+}
+
+/// The buffer elements a DMA op touches with runtime offset `o` and length `l`
+/// (each the value of its parameter, or 0 without one) are
+/// [offset + o, last + o + lengthStep * l].
+struct TransferExtent {
+  int64_t bufferElems;
+  int64_t offset;
+  int64_t last;
+  int64_t lengthStep;
+};
+
+/// The extent of a transfer with a static offset `offset` and per-iteration
+/// length `lenElems`, both in elements, and the pattern `sizes`/`strides`
+/// (innermost-first; empty for a linear BD). A runtime length continues a
+/// contiguous scan, or else the third dimension as placed by
+/// placeRuntimeLengthDimension, and every dimension past the third repeats the
+/// whole length. Nullopt if the buffer has no static size.
+static std::optional<TransferExtent>
+getTransferExtent(Type bufType, int64_t offset, int64_t lenElems,
+                  SmallVector<int64_t> sizes, SmallVector<int64_t> strides,
+                  std::optional<int64_t> lengthUnit) {
+  auto buffer = llvm::cast<BaseMemRefType>(bufType);
+  if (!buffer.hasStaticShape())
+    return std::nullopt;
+  TransferExtent extent{buffer.getNumElements(), offset, offset, 0};
+  if (!lengthUnit) {
+    if (sizes.empty())
+      extent.last += lenElems - 1;
+    for (auto [size, stride] : llvm::zip(sizes, strides))
+      extent.last += (size - 1) * stride;
+    return extent;
+  }
+  bool linear = sizes.empty();
+  sizes.resize(std::max<size_t>(sizes.size(), 3), 1);
+  strides.resize(sizes.size(), 0);
+  for (size_t i = 3; i < sizes.size(); ++i)
+    extent.last += (sizes[i] - 1) * strides[i];
+  if (linear || AIEX::isContiguousTransfer(sizes, strides)) {
+    extent.last += lenElems - 1;
+    extent.lengthStep = *lengthUnit;
+    return extent;
+  }
+  AIE::placeRuntimeLengthDimension(sizes, strides);
+  int64_t rowElems = sizes[0] * sizes[1];
+  // A static length of 0 counts -1 steps, so that the first added unit's
+  // steps start at 0.
+  extent.last += (sizes[0] - 1) * strides[0] + (sizes[1] - 1) * strides[1] +
+                 (llvm::divideCeilSigned(lenElems, rowElems) - 1) * strides[2];
+  extent.lengthStep = *lengthUnit / rowElems * strides[2];
+  return extent;
+}
+
+static std::optional<TransferExtent>
+getTransferExtent(NpuDmaMemcpyNdOp op, std::optional<int64_t> lengthUnit) {
+  std::optional<SmallVector<int64_t>> offsets =
+      getConstantIntValues(op.getMixedOffsets());
+  std::optional<SmallVector<int64_t>> sizes =
+      getConstantIntValues(op.getMixedSizes());
+  std::optional<SmallVector<int64_t>> strides =
+      getConstantIntValues(op.getMixedStrides());
+  int64_t elemBits = op.getElementTypeBitwidth();
+  if (!offsets || !sizes || !strides || elemBits % 8 != 0)
+    return std::nullopt;
+  std::reverse(sizes->begin(), sizes->end());
+  std::reverse(strides->begin(), strides->end());
+  return getTransferExtent(
+      op.getMemref().getType(), op.getOffsetInBytes() / (elemBits / 8),
+      (*sizes)[0] * (*sizes)[1] * (*sizes)[2], *sizes, *strides, lengthUnit);
+}
+
+static std::optional<TransferExtent>
+getTransferExtent(AIE::DMABDOp op, std::optional<int64_t> lengthUnit) {
+  auto buffer = llvm::cast<BaseMemRefType>(op.getBuffer().getType());
+  std::optional<int32_t> offset =
+      op.hasOffset() ? op.getConstantOffset() : std::optional<int32_t>(0);
+  std::optional<int64_t> len;
+  if (op.hasLen())
+    len = op.getConstantLen();
+  else if (buffer.hasStaticShape())
+    len = buffer.getNumElements();
+  std::optional<SmallVector<int64_t>> sizes =
+      getConstantIntValues(op.getMixedSizes());
+  std::optional<SmallVector<int64_t>> strides =
+      getConstantIntValues(op.getMixedStrides());
+  if (!offset || !len || !sizes || !strides)
+    return std::nullopt;
+  std::reverse(sizes->begin(), sizes->end());
+  std::reverse(strides->begin(), strides->end());
+  return getTransferExtent(buffer, *offset, *len, *sizes, *strides, lengthUnit);
 }
 
 /// Returns true iff the parameter-sync preamble (create_scratchpad + set_lock)
@@ -416,42 +507,92 @@ struct AIELowerScratchpadParametersPass
       op->removeAttr(attrName);
       return paramOp;
     };
-    auto rewriteParams = [&](Operation *op, FlatSymbolRefAttr offsetRef,
-                             FlatSymbolRefAttr lengthRef, Type bufType) {
+    // The values of each DMA offset or length parameter that keep every
+    // transfer using it within its buffer, judged with the transfer's other
+    // parameter at 0.
+    DenseMap<StringRef, std::pair<int64_t, int64_t>> bounds;
+    auto rewriteParams =
+        [&](Operation *op, FlatSymbolRefAttr offsetRef,
+            FlatSymbolRefAttr lengthRef, Type bufType,
+            std::optional<TransferExtent> extent) -> LogicalResult {
+      bool joint = offsetRef == lengthRef;
+      int64_t room = extent ? extent->bufferElems - 1 - extent->last : 0;
       if (offsetRef) {
         if (failed(rewriteParam(op, offsetRef, "offset_parameter",
                                 "offset_state_table_idx")))
           return failure();
         warnIfRuntimeOffsetMayRound(op, bufType);
+        auto &[lo, hi] =
+            bounds.try_emplace(offsetRef.getValue(), INT32_MIN, INT32_MAX)
+                .first->second;
+        if (extent) {
+          lo = std::max(lo, -extent->offset);
+          hi = std::min(hi, llvm::divideFloorSigned(
+                                room, 1 + (joint ? extent->lengthStep : 0)));
+        }
       }
-      if (!lengthRef)
-        return success();
-      FailureOr<ScratchpadParameterOp> lengthParam = rewriteParam(
-          op, lengthRef, "length_parameter", "length_state_table_idx");
-      if (failed(lengthParam))
-        return failure();
-      if (lengthParam->getKind() == ScratchpadParameterKind::Core)
-        op->setAttr("length_core_encoded", builder.getUnitAttr());
+      if (lengthRef) {
+        FailureOr<ScratchpadParameterOp> lengthParam = rewriteParam(
+            op, lengthRef, "length_parameter", "length_state_table_idx");
+        if (failed(lengthParam))
+          return failure();
+        auto &[lo, hi] =
+            bounds.try_emplace(lengthRef.getValue(), INT32_MIN, INT32_MAX)
+                .first->second;
+        lo = std::max<int64_t>(lo, 0);
+        if (lengthParam->getKind() == ScratchpadParameterKind::Core) {
+          op->setAttr("length_core_encoded", builder.getUnitAttr());
+          hi = std::min<int64_t>(hi, (1 << 30) - 1);
+        }
+        if (extent && !joint && extent->lengthStep > 0)
+          hi = std::min(hi, llvm::divideFloorSigned(room, extent->lengthStep));
+      }
+      for (FlatSymbolRefAttr ref : {offsetRef, lengthRef}) {
+        if (!ref)
+          continue;
+        auto [lo, hi] = bounds.lookup(ref.getValue());
+        if (lo > hi)
+          return op->emitOpError("no value of parameter '")
+                 << ref.getValue()
+                 << "' keeps every transfer using it within its buffer";
+      }
       return success();
     };
     WalkResult rewriteResult = moduleOp.walk([&](Operation *op) {
       if (auto dmaOp = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
-        if (failed(rewriteParams(op, dmaOp.getOffsetParameterAttr(),
-                                 dmaOp.getLengthParameterAttr(),
-                                 dmaOp.getMemref().getType()))) {
+        FlatSymbolRefAttr offsetRef = dmaOp.getOffsetParameterAttr();
+        FlatSymbolRefAttr lengthRef = dmaOp.getLengthParameterAttr();
+        if (!offsetRef && !lengthRef)
+          return WalkResult::advance();
+        if (failed(rewriteParams(
+                op, offsetRef, lengthRef, dmaOp.getMemref().getType(),
+                getTransferExtent(dmaOp, lengthRef ? dmaOp.getLengthUnit()
+                                                   : std::nullopt))))
           return WalkResult::interrupt();
-        }
       } else if (auto bdOp = dyn_cast<AIE::DMABDOp>(op)) {
-        if (failed(rewriteParams(op, bdOp.getOffsetParameterAttr(),
-                                 bdOp.getLengthParameterAttr(),
-                                 bdOp.getBuffer().getType()))) {
+        FlatSymbolRefAttr offsetRef = bdOp.getOffsetParameterAttr();
+        FlatSymbolRefAttr lengthRef = bdOp.getLengthParameterAttr();
+        if (!offsetRef && !lengthRef)
+          return WalkResult::advance();
+        std::optional<int64_t> lengthUnit;
+        if (lengthRef)
+          lengthUnit = bdOp.getLengthUnit();
+        if (failed(rewriteParams(op, offsetRef, lengthRef,
+                                 bdOp.getBuffer().getType(),
+                                 getTransferExtent(bdOp, lengthUnit))))
           return WalkResult::interrupt();
-        }
       }
       return WalkResult::advance();
     });
     if (rewriteResult.wasInterrupted()) {
       return signalPassFailure();
+    }
+    for (ScratchpadParameterOp p : allParams) {
+      auto it = bounds.find(p.getSymName());
+      if (it == bounds.end())
+        continue;
+      p.setMinValueAttr(builder.getI32IntegerAttr(it->second.first));
+      p.setMaxValueAttr(builder.getI32IntegerAttr(it->second.second));
     }
 
     // Step 4: per-device lowering.

@@ -26,6 +26,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #if !defined(TEST_UTILS_USE_XRT)
@@ -89,12 +90,23 @@ public:
 
   /// Write a raw 32-bit value by name.  For core-kind parameters, the bits
   /// are left-shifted by 2 (firmware requirement).  For addr-kind parameters,
-  /// the value is written directly (no shift).
+  /// the value is written directly (no shift). A DMA offset or length
+  /// parameter's value, read as an int32, must lie in the range the compiler
+  /// gave it, which keeps its transfers within their buffers.
   void writeBits(const std::string &name, uint32_t bits) {
     auto it = paramMap.find(name);
     if (it == paramMap.end()) {
       throw std::runtime_error("ParameterScratchpad: unknown parameter '" +
                                name + "'");
+    }
+    if (auto range = ranges.find(name); range != ranges.end()) {
+      int32_t value = static_cast<int32_t>(bits);
+      if (value < range->second.first || value > range->second.second)
+        throw std::invalid_argument(
+            "ParameterScratchpad: value " + std::to_string(value) + " of '" +
+            name + "' is outside [" + std::to_string(range->second.first) +
+            ", " + std::to_string(range->second.second) +
+            "], which keeps its DMA transfers within their buffers");
     }
     uint8_t idx = it->second;
     uint32_t encoded = bits;
@@ -145,6 +157,7 @@ private:
   size_t scratchpadSizeBytes = 0;
   std::unordered_map<std::string, uint8_t> paramMap;
   std::unordered_set<std::string> coreParams; // params with kind="core"
+  std::unordered_map<std::string, std::pair<int32_t, int32_t>> ranges;
 
   void clear() {
     for (size_t i = 0; i < scratchpadSizeBytes / 4; i++) {
@@ -161,17 +174,21 @@ private:
 
     // Format:
     //   <num_parameters>
-    //   <name> <state_table_idx> <type> <kind>
+    //   <name> <state_table_idx> <type> <kind> <min> <max>
     //   ...
-    // where kind is "core" or "addr".
+    // where kind is "core" or "addr", and <min> <max> is "- -" for a
+    // parameter with no range.
     unsigned numParams = 0;
     file >> numParams;
     scratchpadSizeBytes = numParams * 4;
 
     for (unsigned i = 0; i < numParams; i++) {
-      std::string name, type, kind;
+      std::string name, type, kind, min, max;
       unsigned idx;
-      file >> name >> idx >> type >> kind;
+      file >> name >> idx >> type >> kind >> min >> max;
+      if (!file)
+        throw std::runtime_error("ParameterScratchpad: malformed entry " +
+                                 std::to_string(i) + " in '" + path + "'");
       if (idx > 255)
         throw std::runtime_error("ParameterScratchpad: state_table_idx " +
                                  std::to_string(idx) + " for '" + name +
@@ -186,6 +203,8 @@ private:
       } else if (kind == "core") {
         coreParams.insert(name);
       }
+      if (min != "-")
+        ranges[name] = {std::stoi(min), std::stoi(max)};
     }
   }
 };

@@ -63,6 +63,11 @@ class ParameterScratchpad:
             name: The parameter name (must match a name in the params file).
             value: A scalar value — ``int``, or any type with a ``tobytes()``
                    method (``np.int32``, ``bfloat16``, etc.).
+
+        Raises:
+            ValueError: `name` is a DMA offset or length parameter and `value`
+                is outside the range that keeps its transfers within their
+                buffers.
         """
         self._impl.write_bytes(name, _to_bytes(value))
 

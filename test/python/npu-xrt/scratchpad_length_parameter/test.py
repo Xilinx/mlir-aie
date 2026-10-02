@@ -66,5 +66,15 @@ def test_length_parameter(kernel_setup, tiles):
     np.testing.assert_array_equal(out_tensor.numpy(), expected)
 
 
+@pytest.mark.parametrize("tiles", [N // TILE + 1, -1])
+def test_length_parameter_out_of_range(kernel_setup, tiles):
+    _, params, _, _ = kernel_setup
+    params.write("tiles", np.int32(1))
+    slot = params.read("tiles")
+    with pytest.raises(ValueError, match="outside \\[0, 32\\]"):
+        params.write("tiles", np.int32(tiles))
+    assert params.read("tiles") == slot
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

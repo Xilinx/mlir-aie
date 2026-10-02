@@ -9,10 +9,15 @@
 // BD, after the BD write has set the static length. Word 0 counts 32-bit
 // words, so func_arg is the unit in words for an addr parameter (the state
 // table holds n) and in 16-byte blocks for a core parameter (it holds n << 2).
+// Each parameter's max_value is the largest n whose transfers stay within
+// their 4096-element buffers; with a strided pattern, the last element is
+// that of the final step of the dimension the length continues.
 
 // RUN: aie-opt --split-input-file --aie-lower-scratchpad-parameters --aie-assign-buffer-addresses --aie-dma-tasks-to-npu --aie-dma-to-npu %s | FileCheck %s
 // RUN: aie-opt --split-input-file --aie-lower-scratchpad-parameters %s | FileCheck %s --check-prefix=MARK
 // RUN: aie-opt --split-input-file --aie-lower-scratchpad-parameters --aie-dma-tasks-to-npu %s | FileCheck %s --check-prefix=WRITEBD
+// RUN: aie-opt --split-input-file --aie-lower-scratchpad-parameters=output-params-file=%t.params %s > /dev/null
+// RUN: FileCheck %s --check-prefix=PARAMS < %t.params
 
 // The scratchpad pass marks a core-kind length for the device-level lowering.
 
@@ -21,7 +26,7 @@
 // of tile (0, 0) is at 0x1D060 = 118880.
 
 // CHECK-LABEL: module
-// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 1 : i32, state_table_idx = 0 : ui8}
+// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 1 : i32, max_value = 63 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
 // CHECK: dense<[32,
 // CHECK: aie.runtime_sequence @contiguous
 // CHECK: aiex.npu.create_scratchpad {size = 4 : ui32}
@@ -48,11 +53,13 @@ aie.device(npu2) {
 // A strided task with both a runtime offset and a runtime length. Each unit is
 // one more step of the third dimension (32 i32, func_arg 32). The offset is
 // scaled by the element size into word 1; the length goes into word 0. BD 5
-// of tile (1, 0) is at 0x201D0A0 = 33673376.
+// of tile (1, 0) is at 0x201D0A0 = 33673376. Each parameter is bounded with
+// the other at 0: 62 rows end at element 4087, and an offset of 3976 moves the
+// static pattern's last element, 119, to 4095.
 
 // CHECK-LABEL: module
-// CHECK: aiex.scratchpad_parameter @off : i32 {kind = 1 : i32, state_table_idx = 0 : ui8}
-// CHECK: aiex.scratchpad_parameter @rows : i32 {kind = 1 : i32, state_table_idx = 1 : ui8}
+// CHECK: aiex.scratchpad_parameter @off : i32 {kind = 1 : i32, max_value = 3976 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
+// CHECK: aiex.scratchpad_parameter @rows : i32 {kind = 1 : i32, max_value = 62 : i32, min_value = 0 : i32, state_table_idx = 1 : ui8}
 // CHECK: dense<[64,
 // CHECK: aie.runtime_sequence @strided
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 33673376 : ui32}
@@ -77,7 +84,7 @@ aie.device(npu2) {
 // at 0x1D020 = 118816.
 
 // CHECK-LABEL: module
-// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 1 : i32, state_table_idx = 0 : ui8}
+// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 1 : i32, max_value = 62 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
 // CHECK: dense<[64,
 // CHECK: aie.runtime_sequence @memcpy
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118816 : ui32}
@@ -99,7 +106,7 @@ aie.device(npu2) {
 // 16-byte blocks: 64 bf16 is 128 B, func_arg 8.
 
 // CHECK-LABEL: module
-// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 0 : i32, state_table_idx = 0 : ui8}
+// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 0 : i32, max_value = 63 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
 // CHECK: aie.runtime_sequence @core_kind
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118880 : ui32}
 // CHECK: aiex.npu.update_from_scratchpad<mul> {address = 118880 : ui32, func_arg = 8 : ui32, state_table_idx = 0 : ui8}
@@ -126,10 +133,11 @@ aie.device(npu2) {
 
 // One parameter as both the offset and the length of a transfer: n elements
 // from the start, n more elements moved. Offset func_arg 4 (i32) into word 1,
-// length func_arg 16 (16 i32 is 64 B, 16 words) into word 0.
+// length func_arg 16 (16 i32 is 64 B, 16 words) into word 0. The bound is
+// joint: n = 240 starts at 240 and moves 16 + 240 * 16 elements, to 4095.
 
 // CHECK-LABEL: module
-// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 1 : i32, state_table_idx = 0 : ui8}
+// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 1 : i32, max_value = 240 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
 // CHECK: aie.runtime_sequence @offset_and_length
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118880 : ui32}
 // CHECK: aiex.npu.update_from_scratchpad<mul> {address = 118884 : ui32, func_arg = 4 : ui32, state_table_idx = 0 : ui8}
@@ -153,6 +161,7 @@ aie.device(npu2) {
 // (one step of the third dimension, 8 i32) while word 0 starts from 0.
 
 // CHECK-LABEL: module
+// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 1 : i32, max_value = 256 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
 // CHECK: dense<[0,
 // CHECK: aie.runtime_sequence @linear_from_zero
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118880 : ui32}
@@ -188,6 +197,7 @@ aie.device(npu2) {
 // the same pattern word for word, apart from its static length of 4 rows.
 
 // CHECK-LABEL: module
+// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 1 : i32, max_value = 252 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
 // CHECK: dense<[0, [[WORDS:.*]]]>
 // CHECK: aie.runtime_sequence @two_d
 // CHECK: aiex.npu.update_from_scratchpad<mul> {address = 118880 : ui32, func_arg = 8 : ui32, state_table_idx = 0 : ui8}
@@ -215,3 +225,33 @@ aie.device(npu2) {
   aie.shim_dma_allocation @dma(%t, MM2S, 0)
 }
 
+
+// -----
+
+// An offset may also run backwards to the buffer's start, so its range starts
+// below 0, while a parameter only cores read has no range. params.txt carries
+// both ranges.
+
+// CHECK-LABEL: module
+// CHECK: aiex.scratchpad_parameter @off : i32 {kind = 1 : i32, max_value = 32 : i32, min_value = -16 : i32, state_table_idx = 0 : ui8}
+// CHECK: aiex.scratchpad_parameter @trips : i32 {kind = 0 : i32, state_table_idx = 1 : ui8}
+// PARAMS: 2
+// PARAMS-NEXT: off 0 i32 addr -16 32
+// PARAMS-NEXT: trips 1 i32 core - -
+aiex.scratchpad_parameter @off : i32
+aiex.scratchpad_parameter @trips : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  %t02 = aie.tile(0, 2)
+  aie.core(%t02) {
+    %v = aiex.read_scratchpad_parameter @trips : i32
+    aie.end
+  }
+  aie.runtime_sequence @offset_range(%arg0 : memref<64xi32>) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<64xi32> offset = 16 len = 16) {bd_id = 3 : i32, offset_parameter = @off}
+      aie.end
+    }
+    aiex.dma_start_task(%task)
+  }
+}

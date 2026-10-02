@@ -63,3 +63,20 @@ aie.device(npu2) {
     aiex.dma_start_task(%task)
   }
 }
+
+// -----
+
+// Even n = 0 moves the static 64 elements from 16, past the end of the buffer.
+
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence(%arg0 : memref<64xi32>) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      // expected-error @+1 {{'aie.dma_bd' op no value of parameter 'n' keeps every transfer using it within its buffer}}
+      aie.dma_bd(%arg0 : memref<64xi32> offset = 16 len = 64) {bd_id = 0 : i32, length_parameter = @n, length_unit = 4 : i32}
+      aie.end
+    }
+    aiex.dma_start_task(%task)
+  }
+}

@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -99,6 +100,22 @@ int main(int argc, const char *argv[]) {
       all_pass = false;
     std::cout << "rows=" << rows << "  moved " << moved << " values  "
               << (pass ? "PASS" : "FAIL") << std::endl;
+  }
+
+  // 16 rows reach the end of the input, so the compiler bounds rows to
+  // [0, 16] and the host library rejects anything else before it is written.
+  for (int32_t rows : {17, -1}) {
+    bool rejected = false;
+    try {
+      params.write("rows", rows);
+    } catch (const std::invalid_argument &e) {
+      rejected = true;
+      std::cout << "rows=" << rows << "  rejected: " << e.what() << std::endl;
+    }
+    if (!rejected || params.read("rows") != 16u) {
+      std::cout << "rows=" << rows << "  not rejected  FAIL" << std::endl;
+      all_pass = false;
+    }
   }
 
   if (all_pass) {

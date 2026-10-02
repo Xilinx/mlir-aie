@@ -101,9 +101,12 @@ DMAConfigureTaskOp getUniqueReachableConfigure(Value task);
 //
 // Format (one entry per line, easily parsed with std::ifstream >>):
 //   <num_parameters>
-//   <name> <state_table_idx> <type> <kind>
+//   <name> <state_table_idx> <type> <kind> <min> <max>
 //   ...
-// where kind is "core" (shift-2 encoded) or "addr" (raw).
+// where kind is "core" (shift-2 encoded, for read_scratchpad_parameter) or
+// "addr" (raw, for offset_parameter on DMA ops; also for a length_parameter
+// with no core use), and <min> <max> is the range a DMA offset or length
+// parameter must stay in, or "- -" for any other parameter.
 void emitScratchpadParamsFile(mlir::ModuleOp moduleOp, llvm::raw_ostream &os);
 } // namespace AIEX
 } // namespace xilinx
