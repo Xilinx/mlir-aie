@@ -279,8 +279,11 @@ class ElfFile:
         st_name, st_shndx = fields[0], fields[self._sym_shndx_index]
         return _cstr(self.blob, strtab_offset + st_name, strtab_end), st_shndx
 
-    def group_signature_indices(self):
-        """Return the symbol index signing each ``SHT_GROUP`` section, in order.
+    def comdat_groups(self):
+        """Return ``(signature_index, members)`` for each ``SHT_GROUP`` section, in order.
+
+        ``signature_index`` is the symbol index signing the group, and
+        ``members`` the ``Section`` objects the group contains.
 
         Every group must be a COMDAT group. A full ELF uses its groups as the
         kernel index, and real producers emit only COMDAT ones; a plain group
@@ -288,24 +291,27 @@ class ElfFile:
         guessed into a kernel or silently dropped along with one.
 
         Raises:
-            ValueError: If a group is too short to hold its flag word, or is
-                not flagged ``GRP_COMDAT``.
+            ValueError: If a group is too short to hold its flag word, is not
+                flagged ``GRP_COMDAT``, or names a member section that does not
+                exist.
         """
-        indices = []
+        groups = []
         for s in self.sections:
             if s.type != SHT_GROUP:
                 continue
             data = s.data
             if len(data) < 4:
                 raise ValueError(f"group section {s.index} has no flag word")
-            (flags,) = struct.unpack_from("<I", data, 0)
+            flags, *member_indices = struct.unpack_from(f"<{len(data) // 4}I", data, 0)
             if not flags & GRP_COMDAT:
                 raise ValueError(
                     f"group section {s.index} is not a COMDAT group "
                     f"(flags 0x{flags:x})"
                 )
-            indices.append(s.info)
-        return indices
+            if any(m >= len(self.sections) for m in member_indices):
+                raise ValueError(f"group section {s.index} member out of range")
+            groups.append((s.info, [self.sections[m] for m in member_indices]))
+        return groups
 
 
 def demangle_kernel_name(symbol):
@@ -332,7 +338,12 @@ def demangle_kernel_name(symbol):
 
 
 def kernel_names_from_full_elf(blob):
-    """Return the ``kernel:instance`` names of every COMDAT group in a full ELF.
+    """Return the ``kernel:instance`` names of the dispatchable kernels in a full ELF.
+
+    A kernel is a COMDAT group with a control-code member (a section named
+    ``.ctrltext*``). A group without one has nothing to dispatch, and ROCR's
+    nested-ELF reader skips it; naming it here would pack an entry that ROCR
+    then fails to find at load.
 
     Each group's ``sh_info`` names the *instance* symbol that signs it. That
     symbol's ``st_shndx`` is in turn read as an index back into the symbol
@@ -349,7 +360,8 @@ def kernel_names_from_full_elf(blob):
 
     Raises:
         ValueError: If the ELF is not ELF32, contains a group that is not
-            COMDAT, or contains no groups at all.
+            COMDAT, contains no groups at all, or has no group with control
+            code.
     """
     elf = ElfFile(blob)
     # ROCR's nested-ELF reader rejects any other class, so an ELF64 payload
@@ -358,15 +370,32 @@ def kernel_names_from_full_elf(blob):
         raise ValueError(
             "full ELF is ELF64, but ROCR's nested-ELF reader requires ELF32"
         )
+    groups = elf.comdat_groups()
+    if not groups:
+        raise ValueError("no COMDAT groups; not a full ELF")
     names = []
-    for signature_index in elf.group_signature_indices():
+    for signature_index, members in groups:
+        if not any(_is_ctrltext(m) for m in members):
+            continue
         instance_name, instance_shndx = elf.symbol_at(signature_index)
         kernel_name, _ = elf.symbol_at(instance_shndx)
         names.append(f"{demangle_kernel_name(kernel_name)}:{instance_name}")
 
     if not names:
-        raise ValueError("no COMDAT groups; not a full ELF")
+        raise ValueError("no COMDAT group has control code (.ctrltext)")
     return sorted(names)
+
+
+def _is_ctrltext(section):
+    """Return whether ``section`` is control code, by ROCR's name-prefix rule.
+
+    A member whose own name cannot be resolved is not control code, the same
+    as in ROCR, which skips a name it cannot read.
+    """
+    try:
+        return section.name.startswith(".ctrltext")
+    except ValueError:
+        return False
 
 
 def partition_size_from_full_elf(blob):

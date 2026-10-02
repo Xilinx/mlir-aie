@@ -71,12 +71,16 @@ def _strtab(names):
     return bytes(blob), offsets
 
 
-def make_full_elf(pairs, elf_class=32, num_cols=None):
+def make_full_elf(pairs, elf_class=32, num_cols=None, without_ctrltext=()):
     """Return a synthetic full ELF with one COMDAT group per (kernel, instance).
 
     The instance symbol signs the group (``sh_info``), and its ``st_shndx``
     holds the symbol index of the kernel symbol -- the encoding the real AIE
     full-ELF producer uses.
+
+    Each group's one member is a ``.ctrltext.N`` section, as in a real full
+    ELF, except for the groups whose index into ``pairs`` is in
+    ``without_ctrltext``: those have no members, so nothing to dispatch.
 
     ``elf_class`` picks ELF32 (the default) or ELF64. A real AIE full ELF is
     ELF32 -- the class ROCR's nested-ELF reader requires, so the packer
@@ -92,9 +96,11 @@ def make_full_elf(pairs, elf_class=32, num_cols=None):
     sym_size = _SYM_SIZE if is_64 else _SYM32_SIZE
     ehdr_size = _EHDR_SIZE if is_64 else _EHDR32_SIZE
 
+    ctrltext_names = [f".ctrltext.{i}" for i in range(len(pairs))]
     section_names = [".shstrtab", ".strtab", ".symtab"] + [".group"] * len(pairs)
     shstrtab, sh_off = _strtab(
         [".shstrtab", ".strtab", ".symtab", ".group", ".note.xrt.configuration"]
+        + ctrltext_names
     )
 
     symbol_names = []
@@ -119,13 +125,23 @@ def make_full_elf(pairs, elf_class=32, num_cols=None):
             struct.pack(_SYM32, name, 0, 0, 0, 0, shndx) for name, shndx in symbols
         )
 
-    # One 4-byte GRP_COMDAT flag word per group; contents are not read.
-    group = struct.pack("<I", 0x1)
-    bodies = [shstrtab, strtab, symtab] + [group] * len(pairs)
+    # The control-code sections go last, after the note, so the sections ahead
+    # of them keep the indices the tests below rely on.
+    first_ctrltext = 1 + len(section_names) + (num_cols is not None)
+    # A GRP_COMDAT flag word, then the group's member section indices.
+    groups = [
+        struct.pack("<I", 0x1)
+        + (b"" if i in without_ctrltext else struct.pack("<I", first_ctrltext + i))
+        for i in range(len(pairs))
+    ]
+    bodies = [shstrtab, strtab, symtab] + groups
     if num_cols is not None:
         # Elf_Nhdr (namesz, descsz, type), then "XRT\0", then the uint32.
         section_names.append(".note.xrt.configuration")
         bodies.append(struct.pack("<III4sI", 4, 4, 6, b"XRT\x00", num_cols))
+    # Control code is not read, so one placeholder word stands in for it.
+    section_names += ctrltext_names
+    bodies += [struct.pack("<I", 0)] * len(pairs)
 
     offset = ehdr_size
     offsets = []
@@ -152,6 +168,8 @@ def make_full_elf(pairs, elf_class=32, num_cols=None):
             )
         elif name == ".note.xrt.configuration":
             sh_type, link, info, entsize, align = 7, 0, 0, 0, 1  # SHT_NOTE
+        elif name.startswith(".ctrltext"):
+            sh_type, link, info, entsize, align = 1, 0, 0, 0, 4  # SHT_PROGBITS
         else:
             sh_type, link, info, entsize, align = 3, 0, 0, 0, 1
         headers.append(
@@ -516,6 +534,32 @@ def test_elf_without_comdat_groups_is_rejected(tmp_path):
     path = _write(tmp_path / "plain.elf", make_full_elf([]))
     with pytest.raises(ValueError, match="no COMDAT groups"):
         pack.kernels_from_full_elf(path)
+
+
+def test_group_without_control_code_is_skipped(tmp_path):
+    """ROCR skips a group with no .ctrltext member, so the packer must too.
+
+    Packing an entry for it would make ROCR refuse the whole hsaco at load,
+    with no kernel of that name in the nested ELF.
+    """
+    blob = make_full_elf([("k0", "i0"), ("k1", "i1")], without_ctrltext={0})
+    path = _write(tmp_path / "final.elf", blob)
+    kernels = pack.kernels_from_full_elf(path, num_cols=1)
+    assert [k["name"] for k in kernels] == ["k1:i1"]
+
+
+def test_elf_without_control_code_is_rejected(tmp_path):
+    blob = make_full_elf([("k0", "i0")], without_ctrltext={0})
+    path = _write(tmp_path / "final.elf", blob)
+    with pytest.raises(ValueError, match=r"no COMDAT group has control code"):
+        pack.kernels_from_full_elf(path, num_cols=1)
+
+
+def test_group_member_out_of_range_is_rejected():
+    blob = bytearray(make_full_elf([("k", "i")]))
+    struct.pack_into("<I", blob, _first_group(blob).offset + 4, 0xFFFF)
+    with pytest.raises(ValueError, match="member out of range"):
+        elf.kernel_names_from_full_elf(bytes(blob))
 
 
 @pytest.mark.parametrize("form", ["api", "colon"])
