@@ -164,6 +164,11 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
 struct AIEDMATasksToNPUPass
     : xilinx::AIEX::impl::AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
+  // A BD whose aie.next_bd successor draws its id from the dynamic pool, mapped
+  // to that runtime id; hoistNextBdOpsIntoAttrs fills it in place of the
+  // next_bd_id attribute.
+  llvm::DenseMap<AIE::DMABDOp, Value> runtimeNextBdId;
+
   bool shouldSkipBlock(Block &block) {
     // Allow blocks in the input IR that contain nothing but a next_bd operation
     // as the entry block. We will skip these blocks and not lower them to
@@ -448,6 +453,9 @@ struct AIEDMATasksToNPUPass
     if (std::optional<uint32_t> nextBdId = bd_op.getNextBdId()) {
       f.next_bd_id = *nextBdId;
       f.use_next_bd = 1;
+    } else if (Value nextBdIdVal = runtimeNextBdId.lookup(bd_op)) {
+      f.next_bd_id_val = nextBdIdVal;
+      f.use_next_bd = 1;
     }
 
     auto info = bd_op.getPacket().value_or(packet.value_or(nullptr));
@@ -660,7 +668,8 @@ struct AIEDMATasksToNPUPass
 
     // Runtime (SSA) sizes/strides/len/offset take the dynamic BD-word encoder
     // path; a runtime bd_id (dynamic free-list pool) also forces it, since the
-    // BD register addresses are then runtime and cannot fold into a blockwrite.
+    // BD register addresses are then runtime and cannot fold into a blockwrite,
+    // and so does a runtime next_bd, which is a runtime field in the words.
     // A fully-constant descriptor with a pinned bd_id takes the static path
     // below unchanged. The encoder covers every tile type that has a BD
     // register layout (see buildBdWords), so anything the dynamic path can't
@@ -672,15 +681,17 @@ struct AIEDMATasksToNPUPass
                      [](OpFoldResult s) { return !getConstantIntValue(s); }) ||
         llvm::any_of(bd_op.getMixedStrides(),
                      [](OpFoldResult s) { return !getConstantIntValue(s); });
-    if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId) {
+    bool runtimeNextBd = runtimeNextBdId.contains(bd_op);
+    if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId ||
+        runtimeNextBd) {
       int col = tile.getCol(), row = tile.getRow();
       if (!target_model.isShimNOCTile(col, row) &&
           !target_model.isMemTile(col, row) &&
           !target_model.isCoreTile(col, row))
         return bd_op->emitOpError(
-            "runtime-valued BD size/stride/len/bd_id is only supported on "
-            "tiles with a DMA buffer descriptor layout (shim NOC, mem and core "
-            "tiles); use compile-time constants here.");
+            "runtime-valued BD size/stride/len/bd_id/next_bd is only supported "
+            "on tiles with a DMA buffer descriptor layout (shim NOC, mem and "
+            "core tiles); use compile-time constants here.");
       if (bd_op.getPadDimensions().has_value())
         return bd_op->emitOpError(
             "zero padding is not supported with runtime sizes/strides/len.");
@@ -939,11 +950,11 @@ struct AIEDMATasksToNPUPass
         }
         Block &next_bd_block = *next_bd_op.getDest();
         AIE::DMABDOp next_dma_bd_op = getBdForBlock(next_bd_block);
-        assert(next_dma_bd_op.getBdId()
-                   .has_value()); // Next BD should have assigned ID, and this
-                                  // should have been checked by earlier
-                                  // verifyBdInBlock() call
-        bd_op.setNextBdId(next_dma_bd_op.getBdId());
+        // verifyBdInBlock has required a pinned or a runtime id on every BD.
+        if (Value nextBdIdVal = next_dma_bd_op.getBdIdVal())
+          runtimeNextBdId[bd_op] = nextBdIdVal;
+        else
+          bd_op.setNextBdId(next_dma_bd_op.getBdId());
         OpBuilder builder(next_bd_op);
         AIE::EndOp::create(builder, next_bd_op.getLoc());
         next_bd_op.erase();
@@ -1036,6 +1047,7 @@ struct AIEDMATasksToNPUPass
     }
 
     // Hoist next_bd operations into next_bd_id attribute of the dma_bd
+    runtimeNextBdId.clear();
     if (failed(hoistNextBdOpsIntoAttrs(op))) {
       return failure();
     }

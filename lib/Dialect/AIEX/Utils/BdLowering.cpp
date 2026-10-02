@@ -429,7 +429,10 @@ void packBdWords(OpBuilder &builder, Location loc,
   if (layout.burstLength.exists())
     set(layout.burstLength, AIE::getShimBurstLengthEncoding(tm, burstLength));
   set(layout.axcache, axcache);
-  set(layout.nextBd, f.next_bd_id);
+  if (f.next_bd_id_val)
+    add(layout.nextBd, f.next_bd_id_val);
+  else
+    set(layout.nextBd, f.next_bd_id);
   set(layout.useNextBd, f.use_next_bd);
   set(layout.validBd, 1);
   set(layout.lockRelValue, f.lock_rel_val);
