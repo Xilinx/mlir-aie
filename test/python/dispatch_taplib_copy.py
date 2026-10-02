@@ -66,9 +66,7 @@ def tiled_copy(
     def seq(a_h, b_h, start, n, in_prod, out_cons):
         # The buffer as max_tiles equal chunks; the chunk index is staged
         # arithmetic (start + loop iv), so the tap's offset is too.
-        chunks = TensorAccessPattern.full((max_tiles * tile_size,)).partition(
-            max_tiles
-        )
+        chunks = TensorAccessPattern.full((max_tiles * tile_size,)).partition(max_tiles)
         for tile in range_(n):  # an index counter; the tiler casts it
             tap = chunks[start + tile]
             tg = TaskGroup()
