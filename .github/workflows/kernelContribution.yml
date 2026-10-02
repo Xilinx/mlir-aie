@@ -1,0 +1,72 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# A reminder, not a check: on a pull request that touches kernel code, comment
+# with what each new or changed factory has (contract, trace, cases that run on
+# PRs and nightly) and what it still needs. The job never fails on what it finds.
+#
+# pull_request_target gives fork PRs a token that can comment. It is safe here
+# because the job runs only the base branch's code: the PR's commits are
+# fetched as git objects and read with `git show`, never checked out, imported
+# or run, and no PR text is interpolated into a shell line.
+
+name: Kernel contribution checklist
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "aie_kernels/**"
+      - "python/iron/kernels/**"
+      - "test/python/npu/kernel_cases.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kernel-contribution-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checklist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Write the checklist
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags origin "refs/pull/$PR/head:refs/remotes/pr/head"
+          python3 utils/kernel_checks/contribution.py \
+            --base "$BASE" --head refs/remotes/pr/head --out checklist.md
+          if [[ -f checklist.md ]]; then cat checklist.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+      # One comment per PR, edited in place on each push.
+      - name: Comment on the PR
+        if: hashFiles('checklist.md') != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Paginated, --jq runs per page; keep the first match.
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- kernel-contribution-check -->")) | .id')
+          id=${id%%$'\n'*}
+          if [[ -n "$id" ]]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" \
+              -F body=@checklist.md > /dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+              -F body=@checklist.md > /dev/null
+          fi

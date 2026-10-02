@@ -81,6 +81,7 @@ CATALOGUE = {
             "timed": 2,
             "timing_failed": [],
             "untimed": [],
+            "flaky": ["add/1024x16/bfloat16"],
         },
         {
             "builds": ["zero"],
@@ -168,6 +169,7 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
         "timed": 2,
         "timing_failed": 1,
         "untimed": 1,
+        "flaky": 1,
     }
     assert record["kernels"] == {"offered": 3, "checked": 3}
     assert record["rows"]["add/1024x16/bfloat16"]["cycles"] == {
@@ -493,6 +495,52 @@ def test_a_retired_power_mode_is_dropped_on_request(publish, tmp_path):
     assert "passthrough/2048x16/int32" not in cycles["series"]
 
 
+def test_backfill_dates_runs_by_their_start_and_keeps_one_power_mode(publish, tmp_path):
+    out = tmp_path / "npu1"
+    out.mkdir()
+    (out / "data.js").write_text(DATA_JS)
+    run_cli(["migrate", "--out", out])
+    turbo = dict(META, preflight=dict(META["preflight"], pmode="turbo"))
+    for run_id, date in (("41", "2026-09-30T09:12:00+00:00"), ("42", "")):
+        args = ["perf", "--target", "npu1", "--run-id", run_id, "--out", out]
+        args += ["--event", "", "--date", date] if date else ["--event", ""]
+        run_cli(args + ["--results", results_dir(tmp_path, run_id, meta=turbo)])
+    refused = {
+        "preflight": {"pmode": "default"},
+        "refused": "power mode is default, required 'turbo'",
+        "failed": [],
+    }
+    run_cli(
+        ["perf", "--target", "npu1", "--run-id", "43", "--out", out, "--event", ""]
+        + ["--results", results_dir(tmp_path, "43", meta=refused, rows=None)]
+    )
+    runs = tmp_path / "runs.jsonl"
+    runs.write_text(
+        '{"id":41,"event":"schedule","run_started_at":"2026-09-30T06:00:05Z"}\n'
+        '{"id":42,"event":"workflow_dispatch","run_started_at":"2026-10-01T06:00:07Z"}\n'
+        '{"id":43,"event":"schedule","run_started_at":"2026-10-02T06:00:09Z"}\n'
+        '{"id":99,"event":"schedule","run_started_at":"2026-10-03T06:00:00Z"}\n'
+    )
+    backfill = ["backfill", "--out", out, "--runs", runs, "--keep-pmode", "turbo"]
+    run_cli(backfill)
+    index = json.loads((out / "runs.json").read_text())
+    assert [(r["id"], r["date"], r["event"], r["pmode"]) for r in index["runs"]] == [
+        ("41", "2026-09-30T06:00:05+00:00", "schedule", "turbo"),
+        ("42", "2026-10-01T06:00:07+00:00", "workflow_dispatch", "turbo"),
+        ("43", "2026-10-02T06:00:09+00:00", "schedule", "default"),
+    ]
+    # The default-mode numbers migrated from data.js are gone from the charts.
+    cycles = json.loads((out / "history/cycles.json").read_text())
+    assert [r["id"] for r in cycles["runs"]] == ["41", "42"]
+    assert "passthrough/2048x16/int32" not in cycles["series"]
+    # The dispatch is charted; the nightly before it stays the baseline.
+    assert json.loads((out / "latest.json").read_text())["id"] == "41"
+    files = {p.name: p.read_text() for p in (out / "runs").iterdir()}
+    run_cli(backfill)
+    assert {p.name: p.read_text() for p in (out / "runs").iterdir()} == files
+    assert publish.backfill(out, publish.read_runs(runs)) == 0
+
+
 @pytest.mark.parametrize(
     "raw,part",
     [
@@ -561,3 +609,126 @@ def test_every_file_carries_the_schema_and_a_newer_one_is_refused(publish, tmp_p
     )
     with pytest.raises(publish.NewerSchema):
         publish.rebuild(out)
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("sa_placer/fail_count", "test_sa_effort/failed_seeds"),
+        ("sa_placer/mean_final_cost", "test_sa_effort/final_cost_mean"),
+        ("sa_placer/max_final_cost", "test_sa_effort/final_cost_max"),
+        ("sa_placer/hw_fail_count", "mobilenet/failed_seeds"),
+        (
+            "sa_placer/hw_seed7_latency_us",
+            "mobilenet/seed=7/batch=1/us_per_image",
+        ),
+        ("sa_placer/mean_wall_time_ms", None),
+        ("sa_placer/max_peak_rss_mb", None),
+        ("add/1024x16/bfloat16/cycles", "add/1024x16/bfloat16/cycles"),
+    ],
+)
+def test_component_rows_take_their_current_names(publish, old, new):
+    assert publish._current_name(old) == new
+
+
+def test_a_component_check_migrates_and_keeps_its_redirect(publish, tmp_path):
+    out = tmp_path / "sa-placer-hw"
+    out.mkdir()
+    legacy = {
+        "entries": {
+            "SA placer hardware check (mobilenet, npu2)": [
+                {
+                    "commit": {"id": "18ca6c1cbf4c", "message": "Old"},
+                    "date": 1790924974800,
+                    "benches": [
+                        {
+                            "name": "sa_placer/hw_fail_count",
+                            "value": 0,
+                            "unit": "seeds",
+                        },
+                        {
+                            "name": "sa_placer/hw_seed3_latency_us",
+                            "value": 295.7,
+                            "unit": "us",
+                        },
+                    ],
+                }
+            ]
+        }
+    }
+    (out / "data.js").write_text(f"window.BENCHMARK_DATA = {json.dumps(legacy)};")
+    run_cli(["redirect", "--out", out, "--to", "../../kernel-checks/#view=components"])
+    page = (out / "index.html").read_text()
+    assert '<meta http-equiv="refresh" content="0; url=../../kernel-checks/' in page
+    run_cli(["migrate", "--out", out])
+    assert (out / "index.html").read_text() == page
+    (record,) = [json.loads(p.read_text()) for p in (out / "runs").glob("*.json")]
+    assert record["target"] == "sa-placer-hw" and record["pmode"] is None
+    assert record["rows"] == {
+        "mobilenet": {"failed_seeds": {"value": 0, "unit": "seeds"}},
+        "mobilenet/seed=3/batch=1": {"us_per_image": {"value": 295.7, "unit": "us"}},
+    }
+    index = json.loads((out / "runs.json").read_text())
+    assert index["metrics"] == ["failed_seeds", "us_per_image"]
+
+    meta = {
+        "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
+        "provenance": "commit 0123456789 | peano 22.0.0+0006955e | pmode turbo",
+        "measurement_sane": True,
+        "detail": [
+            {"seed": 3, "batch": 16, "passed": True, "us_per_image": 81.48},
+            {"seed": 2, "batch": 16, "passed": False, "us_per_image": None},
+        ],
+        "failed": ["mobilenet/seed=2/batch=16"],
+        "exitstatus": 1,
+    }
+    rows = [
+        {"name": "mobilenet/failed_seeds", "unit": "seeds", "value": 1},
+        {
+            "name": "mobilenet/seed=3/placement_cost",
+            "unit": "cost",
+            "value": 300,
+            "range": "placement 0123456789ab",
+        },
+    ]
+    results = results_dir(tmp_path, meta=meta, rows=rows, catalogue=None)
+    run_cli(
+        [
+            "perf",
+            "--target",
+            "sa-placer-hw",
+            "--results",
+            results,
+            "--run-id",
+            "9",
+            "--out",
+            out,
+            "--date",
+            "2026-10-03T06:30:00+00:00",
+        ]
+    )
+    record = json.loads((out / "runs/9.json").read_text())
+    assert record["failed"] == ["mobilenet/seed=2/batch=16"] and record["published"]
+    assert record["detail"] == meta["detail"]
+    assert record["device"] == "Strix Halo" and record["pmode"] == "turbo"
+    index = json.loads((out / "runs.json").read_text())
+    assert index["metrics"] == ["failed_seeds", "placement_cost", "us_per_image"]
+    assert all("detail" not in run for run in index["runs"])
+    failed = json.loads((out / "history/failed_seeds.json").read_text())
+    assert failed["target"] == "sa-placer-hw"
+    assert failed["series"] == {"mobilenet": {"values": [0, 1]}}
+    cost = json.loads((out / "history/placement_cost.json").read_text())
+    assert cost["series"]["mobilenet/seed=3"]["ranges"] == [
+        None,
+        "placement 0123456789ab",
+    ]
+
+
+def test_an_unknown_target_is_refused(tmp_path):
+    result = subprocess.run(
+        [sys.executable, SCRIPT, "perf", "--target", "sa-placer-cpu"]
+        + ["--results", tmp_path, "--run-id", "1", "--out", tmp_path],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2 and "invalid choice" in result.stderr
