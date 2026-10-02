@@ -50,8 +50,8 @@ print(tiles)        # TensorAccessPattern([16, 16], offset=0, sizes=[4, 4, 4, 4]
 print(tiles[1, 2])  # TensorAccessPattern([16, 16], offset=72, sizes=[4, 4], strides=[16, 1])
 print(tiles[:2, :2])
                     # TensorAccessPattern([16, 16], offset=0, sizes=[2, 2, 4, 4], strides=[64, 4, 16, 1])
-print(TensorAccessPattern.full((1, 1024)).partition(4)[2])
-                    # TensorAccessPattern([1, 1024], offset=512, sizes=[1, 256], strides=[0, 1])
+print(TensorAccessPattern.full((1024,)).partition(4)[2])
+                    # TensorAccessPattern([1024], offset=512, sizes=[256], strides=[1])
 ```
 
 ## Using patterns
@@ -120,7 +120,7 @@ no stream, and the host refuses the call with the guard's message.
 def seq(a_h, b_h, start, n, in_prod, out_cons):
     # The buffer as max_tiles equal chunks; the chunk index is staged
     # arithmetic (start + loop iv), so the tap's offset is too.
-    chunks = TensorAccessPattern.full((1, max_tiles * tile_size)).partition(max_tiles)
+    chunks = TensorAccessPattern.full((max_tiles * tile_size,)).partition(max_tiles)
     for tile in range_(n):
         tap = chunks[start + tile]
         tg = TaskGroup()

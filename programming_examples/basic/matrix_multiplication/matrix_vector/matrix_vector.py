@@ -101,7 +101,7 @@ def matrix_vector(
         )
 
     A_taps = TensorAccessPattern.full((M, K)).tile((m, k)).split(0, M_div_m_div_n_cores)
-    C_taps = TensorAccessPattern.full((1, M)).partition(n_cores)
+    C_taps = TensorAccessPattern.full((M,)).partition(n_cores)
     b_tap = TensorAccessPattern.full((1, K)).repeat(M_div_m_div_n_cores)
 
     memA_prods = [f.prod() for f in memA_fifos]

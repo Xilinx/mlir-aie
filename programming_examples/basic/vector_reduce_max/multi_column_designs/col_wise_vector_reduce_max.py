@@ -161,7 +161,7 @@ def vector_reduce_max(
 
     # One TAP per core — each reads a contiguous ``chunk`` of the input
     # tensor.
-    taps = TensorAccessPattern.full((1, in_num_elements)).partition(num_cores)
+    taps = TensorAccessPattern.full((in_num_elements,)).partition(num_cores)
 
     in_prods = [of_in1s[i].prod() for i in range(num_cores)]
     out_cons = of_outs[num_cores - 1].cons()

@@ -32,7 +32,7 @@ def matrix_vector_tiling_sweep():
                     .split(0, M_div_m_div_n_cores)
                 )
                 B_tap = TensorAccessPattern.full((1, K)).repeat(M_div_m_div_n_cores)
-                C_iter = iter(TensorAccessPattern.full((1, C_sz)).partition(n_cores))
+                C_iter = iter(TensorAccessPattern.full((C_sz,)).partition(n_cores))
 
                 B_sizes = [M_div_m_div_n_cores, 1, 1, K]
                 B_strides = [0, 0, 0, 1]

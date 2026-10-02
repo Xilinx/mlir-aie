@@ -87,8 +87,8 @@ def swiglu(
         for i in range(num_columns)
     ]
 
-    taps = TensorAccessPattern.full((1, size)).partition(num_columns)
-    taps_wts = TensorAccessPattern.full((1, 2 * size)).partition(num_columns)
+    taps = TensorAccessPattern.full((size,)).partition(num_columns)
+    taps_wts = TensorAccessPattern.full((2 * size,)).partition(num_columns)
 
     def sequence(a, w, b, in_prods, wts_prods, out_conses):
         tg = TaskGroup()

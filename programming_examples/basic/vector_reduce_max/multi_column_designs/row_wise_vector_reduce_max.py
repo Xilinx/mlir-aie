@@ -108,7 +108,7 @@ def vector_reduce_max(
         )
 
     # One TAP per channel — each reads a contiguous slice of the input tensor.
-    taps = TensorAccessPattern.full((1, in_tensor_size)).partition(n_channels)
+    taps = TensorAccessPattern.full((in_tensor_size,)).partition(n_channels)
 
     def core_body(*args):
         compute_max = args[-1]

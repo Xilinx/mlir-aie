@@ -329,9 +329,9 @@ def conv2dk14_multi(
         # Each row of workers reads its chunk of the activations act_repeat
         # times; each column reads its chunk of the weights and writes its
         # chunk of the output.
-        act_chunks = TensorAccessPattern.full((1, tensor_in_size)).partition(n_rows)
-        wts_chunks = TensorAccessPattern.full((1, tensor_wts_size)).partition(n_cols)
-        out_chunks = TensorAccessPattern.full((1, tensor_out_size)).partition(n_cols)
+        act_chunks = TensorAccessPattern.full((tensor_in_size,)).partition(n_rows)
+        wts_chunks = TensorAccessPattern.full((tensor_wts_size,)).partition(n_cols)
+        out_chunks = TensorAccessPattern.full((tensor_out_size,)).partition(n_cols)
         for j in range(n_rows):
             act_prods[j].fill(inp, act_chunks[j].repeat(act_repeat))
         for i in range(n_cols):

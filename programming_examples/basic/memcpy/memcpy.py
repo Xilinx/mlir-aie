@@ -86,7 +86,7 @@ def memcpy(
 
     # One TAP per (column, channel) shim DMA: an equal contiguous slice of
     # the `(1, size)` tensor.
-    taps = TensorAccessPattern.full((1, size)).partition(num_columns * num_channels)
+    taps = TensorAccessPattern.full((size,)).partition(num_columns * num_channels)
 
     in_prods = [
         of_ins[i * num_channels + j].prod()

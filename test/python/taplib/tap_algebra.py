@@ -230,15 +230,20 @@ def matmul_transformation_dims():
 def partition_and_ragged_slices():
     # The per-column chunk idiom: [1, 1, 1, N // k] at offset i * N // k.
     N, k = 4096, 8
-    parts = TensorAccessPattern.full((1, N)).partition(k)
+    parts = TensorAccessPattern.full((N,)).partition(k)
     assert parts.sizes[0] == k
     for i in range(k):
         assert parts[i] == TensorAccessPattern(
-            (1, N), i * (N // k), [1, 1, 1, N // k], [0, 0, 0, 1]
+            (N,), i * (N // k), [1, 1, 1, N // k], [0, 0, 0, 1]
         )
-    # Partition along a leading axis keeps the rows contiguous.
-    rows = TensorAccessPattern.full((64, 32)).partition(4, dim=0)
+    # Like np.array_split, partition cuts the leading axis by default.
+    rows = TensorAccessPattern.full((64, 32)).partition(4)
     assert rows[1] == TensorAccessPattern((64, 32), 512, [1, 1, 16, 32], [0, 0, 32, 1])
+    base = np.arange(64 * 32).reshape(64, 32)
+    for axis in (0, -1):
+        chunks = TensorAccessPattern.full((64, 32)).partition(4, dim=axis)
+        for got, want in zip(chunks, np.array_split(base, 4, axis=axis)):
+            assert (visited(got) == want.ravel()).all()
     # Strided slices of 14 tiles, 3 apart: 5, 5, 4 tiles, as in NumPy.
     tiles = TensorAccessPattern.full((3, 28)).tile((3, 2))
     g = [tiles[0, j::3] for j in range(3)]

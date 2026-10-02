@@ -489,16 +489,18 @@ class TensorAccessPattern:
             sizes=(*grid_sizes, *tile_dims), strides=(*grid_strides, *self._strides)
         )
 
-    def partition(self, parts: IntLike, dim: int = -1) -> TensorAccessPattern:
+    def partition(self, parts: IntLike, dim: int = 0) -> TensorAccessPattern:
         """Split dimension `dim` into `parts` equal contiguous pieces.
 
-        The result has a new outermost dimension of `parts`, so
+        Like `np.array_split` on an evenly divisible axis, it splits the
+        outermost dimension unless told otherwise. The result has a new
+        outermost dimension of `parts`, so
         `TensorAccessPattern.full((N,)).partition(k)[i]` is the `i`-th of
         `k` equal chunks of a flat range. Other dimensions are kept whole.
 
         Args:
             parts (IntLike): Number of pieces; must divide the dimension.
-            dim (int, optional): The dimension to split. Defaults to the innermost.
+            dim (int, optional): The dimension to split. Defaults to 0.
 
         Returns:
             TensorAccessPattern: The pieces, one per index of the new outermost dimension.

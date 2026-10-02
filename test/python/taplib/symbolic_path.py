@@ -114,7 +114,7 @@ def loop_index_stage():
 
             @func.FuncOp.from_py_func(T.index(), name="loop")
             def _(iv):
-                chunk = TensorAccessPattern.full((1, 4096)).partition(8)[iv]
+                chunk = TensorAccessPattern.full((4096,)).partition(8)[iv]
                 return [chunk.offset]
 
         print(module)
@@ -167,7 +167,7 @@ def slices_and_partition_fold():
         return [
             *(tiles[0, j::3] for j in range(3)),
             TensorAccessPattern.full((8, N))[2:6, lo:hi],
-            TensorAccessPattern.full((1, N)).partition(4)[step],
+            TensorAccessPattern.full((N,)).partition(4)[step],
         ]
 
     with Context(), Location.unknown():

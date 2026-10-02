@@ -47,7 +47,7 @@ def build(body, n_tiles):
         out_prod.release(1)
 
     worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
-    chunks = TensorAccessPattern.full((1, MAX_TILES * TILE)).partition(MAX_TILES)
+    chunks = TensorAccessPattern.full((MAX_TILES * TILE,)).partition(MAX_TILES)
 
     def seq(a, b, n, in_prod, out_cons):
         def issue(i, tg=None):
