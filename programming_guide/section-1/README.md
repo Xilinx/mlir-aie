@@ -80,6 +80,28 @@ aiecc --placer=sa_placer --sa-seed=3 ...
 
 The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See [color_detect](../../programming_examples/vision/color_detect/) for an example that wires this up as `make use_sa_placer=1`.
 
+### Nightly SA placer checks
+
+Two nightly checks track the SA placer, and their results are in the [components view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=components) of the Nightly Kernel Checks dashboard:
+
+* **Seed sweep** ([`utils/component_checks/sa_placer.py`](../../utils/component_checks/sa_placer.py), no hardware): `aie-opt` places two fixtures, the 4-core design from `test/place-tiles/sa_placer/test_sa_effort.mlir` and MobileNet before placement, with seeds 1 to 20 at full effort. It records how many seeds failed to place, the SA placer's final cost (mean and max), and the CPU time and peak memory each placement took.
+* **Hardware** ([`utils/component_checks/sa_placer_hw.py`](../../utils/component_checks/sa_placer_hw.py), NPU2): MobileNet is placed with seeds 3, 2 and 7, then compiled, run and verified. It records whether each seed passed, the minimum NPU latency over 20 runs, the compile time, and the placement (a digest of the placed tiles and its SA cost).
+
+To reproduce one seed of the sweep:
+
+```bash
+aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=N sa-effort=1.0' \
+    --mlir-pass-statistics utils/component_checks/fixtures/mobilenet.mlir
+```
+
+and of the hardware check, from `programming_examples/ml`:
+
+```bash
+python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 1.0
+```
+
+To rerun a whole check, run its script with `--out perf.json --meta meta.json` (the sweep also needs `--aie-opt "$(which aie-opt)"`). It prints a table with one row per seed.
+
 ## Other Tile Types
 
 Besides compute tiles, an AIE-array also contains data movers for accessing L3 memory (shim DMAs) and larger L2 scratchpads (mem tiles), which have been available since the AIE-ML generation — see [the introduction of this programming guide](../README.md). Shim DMAs typically occupy row 0; mem tiles (when available) often reside on row 1. In IRON, you usually let the compiler place these, but you can also pin them explicitly. The following snippet shows pinned `Tile(col, row)` declarations covering all the tile types found in a single NPU column:
