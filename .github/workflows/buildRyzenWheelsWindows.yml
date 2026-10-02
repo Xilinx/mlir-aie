@@ -493,8 +493,9 @@ jobs:
   smoke-test-wheels-npu-windows:
     name: Smoke-Test Wheel on Ryzen AI (Windows)
     # Windows analogue of smoke-test-npu: install the same-commit 3.13/RTTI-ON
-    # build-windows wheel via iron_setup.py (runtime mode, so the installed
-    # wheel is exercised, not a from-source build) and run a few @iron.jit
+    # build-windows-npu-wheel artifact via iron_setup.py (runtime mode, so the
+    # installed wheel is exercised, not a from-source build) and run a few
+    # @iron.jit
     # designs on the self-hosted Windows NPU. Only npu2 Windows runners exist.
     # 3.13 matches the XRT SDK's pyxrt.pyd (built for CPython 3.13);
     # setup-python provides it since the runner's system Python is 3.12.

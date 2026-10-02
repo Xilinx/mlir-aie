@@ -467,9 +467,10 @@ jobs:
     # Verify the 3.12 / RTTI-ON wheel built from THIS run installs via
     # env_install.sh/env_setup.sh and can compile + run basic examples on NPU
     # hardware.
-    # The wheel itself is built on ubuntu-latest by build-repo; only this test
-    # job uses the self-hosted NPU runners. PR-only: the merge queue and
-    # nightly still get full from-source NPU coverage via buildAndTestRyzenAI.
+    # The wheel itself is built on ubuntu-latest by build-linux-npu-wheel;
+    # only this test job uses the self-hosted NPU runners. This runs whenever
+    # the reusable workflow is called, including scheduled, dispatch, and tag
+    # publish runs.
     needs: build-linux-npu-wheel
     runs-on: ${{ matrix.runner_type }}
     # Normal exec is ~1 min; cap well below the sibling smoke job's 192.6-min hang.
@@ -496,8 +497,9 @@ jobs:
         with:
           submodules: "true"
 
-      # Pull the 3.12 / RTTI-ON wheel built from this same run (build-repo) so
-      # the examples test exactly this commit's mlir_aie, not a published tag.
+      # Pull the 3.12 / RTTI-ON wheel built from this same run
+      # (build-linux-npu-wheel) so the examples test exactly this commit's
+      # mlir_aie, not a published tag.
       - name: Download same-commit mlir_aie wheel
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
