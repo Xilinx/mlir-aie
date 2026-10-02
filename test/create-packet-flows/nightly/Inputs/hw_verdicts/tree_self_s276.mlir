@@ -1,5 +1,6 @@
 // HW: PASS
-// router_properties.py npu2 seed 276 routed with tree 27's branches on arbiters of their own.
+// router_properties.py npu2 seed 276 routed with tree 27's branches on arbiters of their own. On HW, with every tile receiver
+// observed: 20 PASS.
 module {
   aie.device(npu2) {
     %t_0_0 = aie.tile(0, 0)

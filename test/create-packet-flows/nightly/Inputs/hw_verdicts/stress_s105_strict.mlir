@@ -1,7 +1,6 @@
 // HW: PASS
-// cautious: a shared-receiver hold cycle, which the router now routes around or rejects; whether a receiver's queue fills before it drains is timing
-// hwgen seed 105, 512-word payloads, 5 rounds, routed by this router before it rejected shared-receiver hold cycles; on HW: 3 PASS,
-// then 20 PASS with every tile receiver observed.
+// hwgen seed 105, 512-word payloads, 5 rounds, routed by this router; on HW, with every tile
+// receiver observed: 20 PASS.
 module {
   aie.device(npu2) {
     %t_4_0 = aie.tile(4, 0)
@@ -242,16 +241,6 @@ module {
 module {
   aie.device(npu2) {
     %shim_noc_tile_4_0 = aie.tile(4, 0)
-    %mem_tile_4_1 = aie.tile(4, 1)
-    %tile_4_3 = aie.tile(4, 3)
-    %tile_4_4 = aie.tile(4, 4)
-    %tile_4_5 = aie.tile(4, 5)
-    %shim_noc_tile_5_0 = aie.tile(5, 0)
-    %mem_tile_5_1 = aie.tile(5, 1)
-    %tile_5_2 = aie.tile(5, 2)
-    %tile_5_3 = aie.tile(5, 3)
-    %tile_4_2 = aie.tile(4, 2)
-    %shim_noc_tile_3_0 = aie.tile(3, 0)
     %shim_mux_4_0 = aie.shim_mux(%shim_noc_tile_4_0) {
       aie.connect<DMA : 0, North : 3>
     }
@@ -260,27 +249,29 @@ module {
       %1 = aie.amsel<1> (0)
       %2 = aie.amsel<0> (1)
       %3 = aie.amsel<5> (3)
-      %4 = aie.masterset(West : 0, %1)
+      %4 = aie.masterset(West : 1, %1)
       %5 = aie.masterset(North : 3, %3) {is_ctrl_pkt_overlay}
-      %6 = aie.masterset(East : 2, %0, %2)
-      %7 = aie.masterset(East : 3, %0)
+      %6 = aie.masterset(East : 0, %0, %2)
+      %7 = aie.masterset(East : 1, %0)
       aie.packet_rules(East : 3) {
         aie.rule(31, 29, %3)
       } {is_ctrl_pkt_overlay}
-      aie.packet_rules(East : 1) {
+      aie.packet_rules(East : 0) {
         aie.rule(16, 16, %1)
       }
-      aie.packet_rules(West : 0) {
+      aie.packet_rules(West : 1) {
         aie.rule(31, 21, %2)
         aie.rule(31, 26, %0)
       }
       aie.packet_rules(South : 3) {
         aie.rule(31, 26, %0)
       }
-      aie.packet_rules(North : 0) {
-        aie.rule(23, 7, %2)
-      }
     }
+    %mem_tile_4_1 = aie.tile(4, 1)
+    %tile_4_3 = aie.tile(4, 3)
+    %tile_4_4 = aie.tile(4, 4)
+    %tile_4_5 = aie.tile(4, 5)
+    %shim_noc_tile_5_0 = aie.tile(5, 0)
     %shim_mux_5_0 = aie.shim_mux(%shim_noc_tile_5_0) {
       aie.connect<North : 3, DMA : 1>
     }
@@ -290,24 +281,25 @@ module {
       %2 = aie.amsel<5> (2)
       %3 = aie.amsel<5> (3)
       %4 = aie.masterset(South : 3, %3) {is_ctrl_pkt_overlay}
-      %5 = aie.masterset(West : 1, %1)
+      %5 = aie.masterset(West : 0, %1)
       %6 = aie.masterset(West : 3, %2) {is_ctrl_pkt_overlay}
-      %7 = aie.masterset(North : 3, %0)
+      %7 = aie.masterset(North : 4, %0)
       aie.packet_rules(North : 2) {
         aie.rule(31, 16, %3)
         aie.rule(31, 29, %2)
       } {is_ctrl_pkt_overlay}
-      aie.packet_rules(North : 3) {
-        aie.rule(16, 16, %1)
+      aie.packet_rules(West : 0) {
+        aie.rule(16, 16, %0)
       }
-      aie.packet_rules(West : 3) {
+      aie.packet_rules(West : 1) {
         aie.rule(31, 26, %3)
       }
-      aie.packet_rules(West : 2) {
-        aie.rule(16, 16, %0)
+      aie.packet_rules(North : 0) {
+        aie.rule(16, 16, %1)
         aie.rule(23, 7, %3)
       }
     }
+    %mem_tile_5_1 = aie.tile(5, 1)
     %switchbox_5_1 = aie.switchbox(%mem_tile_5_1) {
       %0 = aie.amsel<0> (0)
       %1 = aie.amsel<1> (0)
@@ -316,10 +308,10 @@ module {
       %4 = aie.amsel<5> (2)
       %5 = aie.amsel<5> (3)
       %6 = aie.masterset(DMA : 4, %3)
-      %7 = aie.masterset(South : 2, %4, %5) {is_ctrl_pkt_overlay}
-      %8 = aie.masterset(South : 3, %2)
-      %9 = aie.masterset(North : 1, %1)
-      %10 = aie.masterset(North : 3, %0, %3)
+      %7 = aie.masterset(South : 0, %2)
+      %8 = aie.masterset(South : 2, %4, %5) {is_ctrl_pkt_overlay}
+      %9 = aie.masterset(North : 0, %1)
+      %10 = aie.masterset(North : 4, %0, %3)
       %11 = aie.masterset(North : 5, %4) {is_ctrl_pkt_overlay}
       aie.packet_rules(DMA : 0) {
         aie.rule(31, 16, %4) {is_ctrl_pkt_overlay, priority_route}
@@ -329,142 +321,149 @@ module {
       aie.packet_rules(DMA : 4) {
         aie.rule(16, 16, %2)
       }
-      aie.packet_rules(South : 3) {
+      aie.packet_rules(South : 4) {
         aie.rule(31, 21, %0)
         aie.rule(31, 26, %3)
       }
+      aie.packet_rules(North : 0) {
+        aie.rule(23, 7, %2)
+      }
     }
+    %tile_5_2 = aie.tile(5, 2)
     %switchbox_5_2 = aie.switchbox(%tile_5_2) {
       %0 = aie.amsel<0> (0)
       %1 = aie.amsel<1> (0)
       %2 = aie.amsel<2> (0)
-      %3 = aie.amsel<5> (3)
-      %4 = aie.masterset(DMA : 1, %1)
-      %5 = aie.masterset(North : 0, %3) {is_ctrl_pkt_overlay}
-      %6 = aie.masterset(North : 2, %2)
-      %7 = aie.masterset(North : 5, %0)
+      %3 = aie.amsel<3> (0)
+      %4 = aie.amsel<5> (3)
+      %5 = aie.masterset(DMA : 1, %1)
+      %6 = aie.masterset(South : 0, %3)
+      %7 = aie.masterset(North : 0, %4) {is_ctrl_pkt_overlay}
+      %8 = aie.masterset(North : 1, %0)
+      %9 = aie.masterset(North : 4, %2)
       aie.packet_rules(DMA : 0) {
         aie.rule(31, 30, %0)
       }
-      aie.packet_rules(South : 1) {
+      aie.packet_rules(South : 0) {
         aie.rule(31, 17, %1)
       }
       aie.packet_rules(South : 5) {
-        aie.rule(31, 16, %3)
+        aie.rule(31, 16, %4)
       } {is_ctrl_pkt_overlay}
-      aie.packet_rules(South : 3) {
+      aie.packet_rules(South : 4) {
         aie.rule(16, 16, %2)
       }
+      aie.packet_rules(West : 1) {
+        aie.rule(23, 7, %3)
+      }
     }
+    %tile_5_3 = aie.tile(5, 3)
     %switchbox_5_3 = aie.switchbox(%tile_5_3) {
       %0 = aie.amsel<0> (0)
       %1 = aie.amsel<1> (0)
       %2 = aie.amsel<5> (3)
-      %3 = aie.masterset(DMA : 1, %0)
-      %4 = aie.masterset(West : 0, %1)
-      %5 = aie.masterset(West : 1, %2) {is_ctrl_pkt_overlay}
-      aie.packet_rules(South : 5) {
-        aie.rule(31, 30, %1)
+      %3 = aie.masterset(DMA : 1, %1)
+      %4 = aie.masterset(West : 1, %2) {is_ctrl_pkt_overlay}
+      %5 = aie.masterset(West : 3, %0)
+      aie.packet_rules(South : 1) {
+        aie.rule(31, 30, %0)
       }
       aie.packet_rules(South : 0) {
         aie.rule(31, 16, %2)
       } {is_ctrl_pkt_overlay}
-      aie.packet_rules(South : 2) {
-        aie.rule(16, 16, %0)
+      aie.packet_rules(South : 4) {
+        aie.rule(16, 16, %1)
       }
     }
     %switchbox_4_1 = aie.switchbox(%mem_tile_4_1) {
-      aie.connect<DMA : 3, North : 5>
+      aie.connect<DMA : 3, North : 4>
       %0 = aie.amsel<0> (0)
-      %1 = aie.amsel<1> (0)
-      %2 = aie.amsel<5> (3)
-      %3 = aie.masterset(DMA : 0, %2) {is_ctrl_pkt_overlay}
-      %4 = aie.masterset(South : 0, %1)
-      %5 = aie.masterset(North : 1, %0)
+      %1 = aie.amsel<5> (3)
+      %2 = aie.masterset(DMA : 0, %1) {is_ctrl_pkt_overlay}
+      %3 = aie.masterset(North : 0, %0)
       aie.packet_rules(South : 3) {
-        aie.rule(31, 29, %2)
+        aie.rule(31, 29, %1)
       } {is_ctrl_pkt_overlay}
-      aie.packet_rules(North : 0) {
-        aie.rule(23, 7, %1)
-      }
       aie.packet_rules(DMA : 2) {
         aie.rule(31, 17, %0)
       }
     }
+    %tile_4_2 = aie.tile(4, 2)
     %switchbox_4_2 = aie.switchbox(%tile_4_2) {
-      aie.connect<South : 5, North : 0>
+      aie.connect<South : 4, North : 5>
       %0 = aie.amsel<0> (0)
       %1 = aie.amsel<1> (0)
-      %2 = aie.masterset(South : 0, %1)
-      %3 = aie.masterset(North : 4, %0)
-      aie.packet_rules(North : 3) {
+      %2 = aie.masterset(North : 3, %0)
+      %3 = aie.masterset(East : 1, %1)
+      aie.packet_rules(North : 2) {
         aie.rule(23, 7, %1)
       }
-      aie.packet_rules(South : 1) {
+      aie.packet_rules(South : 0) {
         aie.rule(31, 17, %0)
       }
     }
     %switchbox_4_3 = aie.switchbox(%tile_4_3) {
-      aie.connect<South : 0, North : 0>
+      aie.connect<South : 5, North : 1>
       %0 = aie.amsel<0> (0)
       %1 = aie.amsel<1> (0)
       %2 = aie.amsel<2> (0)
       %3 = aie.amsel<5> (3)
       %4 = aie.masterset(DMA : 0, %2)
-      %5 = aie.masterset(South : 3, %1)
-      %6 = aie.masterset(North : 4, %0)
+      %5 = aie.masterset(South : 2, %1)
+      %6 = aie.masterset(North : 2, %0)
       %7 = aie.masterset(North : 5, %3) {is_ctrl_pkt_overlay}
-      aie.packet_rules(East : 0) {
+      aie.packet_rules(East : 3) {
         aie.rule(31, 30, %2)
       }
       aie.packet_rules(East : 1) {
         aie.rule(31, 16, %3)
       } {is_ctrl_pkt_overlay}
-      aie.packet_rules(North : 3) {
+      aie.packet_rules(North : 0) {
         aie.rule(23, 7, %1)
       }
-      aie.packet_rules(South : 4) {
+      aie.packet_rules(South : 3) {
         aie.rule(31, 17, %0)
       }
     }
     %switchbox_4_4 = aie.switchbox(%tile_4_4) {
-      aie.connect<South : 0, North : 0>
+      aie.connect<South : 1, North : 2>
       %0 = aie.amsel<0> (0)
       %1 = aie.amsel<1> (0)
       %2 = aie.amsel<5> (3)
       %3 = aie.masterset(DMA : 0, %2) {is_ctrl_pkt_overlay}
-      %4 = aie.masterset(South : 3, %1)
-      %5 = aie.masterset(North : 5, %0)
+      %4 = aie.masterset(South : 0, %1)
+      %5 = aie.masterset(North : 3, %0)
       aie.packet_rules(South : 5) {
         aie.rule(31, 16, %2)
       } {is_ctrl_pkt_overlay}
-      aie.packet_rules(North : 0) {
+      aie.packet_rules(North : 1) {
         aie.rule(23, 7, %1)
       }
-      aie.packet_rules(South : 4) {
+      aie.packet_rules(South : 2) {
         aie.rule(31, 17, %0)
       }
     }
     %switchbox_4_5 = aie.switchbox(%tile_4_5) {
-      aie.connect<South : 0, DMA : 0>
+      aie.connect<South : 2, DMA : 0>
       %0 = aie.amsel<0> (0)
       %1 = aie.amsel<1> (0)
       %2 = aie.masterset(DMA : 1, %1)
-      %3 = aie.masterset(South : 0, %0)
+      %3 = aie.masterset(South : 1, %0)
       aie.packet_rules(DMA : 1) {
         aie.rule(31, 15, %0)
       }
       aie.packet_rules(DMA : 0) {
         aie.rule(31, 7, %0)
       }
-      aie.packet_rules(South : 5) {
+      aie.packet_rules(South : 3) {
         aie.rule(31, 17, %1)
       }
     }
+    %shim_noc_tile_3_0 = aie.tile(3, 0)
     %switchbox_3_0 = aie.switchbox(%shim_noc_tile_3_0) {
       %0 = aie.amsel<0> (0)
-      %1 = aie.masterset(East : 0, %0)
-      aie.packet_rules(East : 0) {
+      %1 = aie.masterset(East : 1, %0)
+      aie.packet_rules(East : 1) {
         aie.rule(16, 16, %0)
       }
     }

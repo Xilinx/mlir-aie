@@ -1,6 +1,7 @@
 // HW: PASS
-// cautious: the router warns of a shared-receiver hold cycle here; whether a receiver's queue fills before it drains is timing
-// hwgen seed 60, 512-word payloads, 5 rounds, routed by this router; on HW: 3 PASS.
+// cautious: a shared-receiver hold cycle, which the router now routes around or rejects; whether a receiver's queue fills before it drains is timing
+// hwgen seed 60, 512-word payloads, 5 rounds, routed by this router before it rejected shared-receiver hold cycles; on HW: 3 PASS,
+// then 20 PASS with every tile receiver observed.
 module {
   aie.device(npu2) {
     %t_2_0 = aie.tile(2, 0)
