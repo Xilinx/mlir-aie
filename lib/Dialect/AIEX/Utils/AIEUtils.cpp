@@ -247,10 +247,10 @@ LogicalResult AIEX::emitUpdateBdLengthFromParameter(OpBuilder &builder,
                     "length_state_table_idx attribute");
 
   uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
-  int64_t unitBytes = lengthUnit * (bufType.getElementTypeBitWidth() / 8);
-  if (unitBytes <= 0 || unitBytes % 16 != 0)
-    return bdOp->emitOpError("length_unit must be a multiple of 16 bytes, got ")
-           << unitBytes << " bytes";
+  FailureOr<int64_t> unitBytes =
+      AIE::getLengthUnitBytes(bdOp, lengthUnit, bufType);
+  if (failed(unitBytes))
+    return failure();
 
   // A length parameter uses the core encoding, so StateTable[idx] holds
   // n << 2. The length register counts 32-bit words, so func=mul with
@@ -258,7 +258,7 @@ LogicalResult AIEX::emitUpdateBdLengthFromParameter(OpBuilder &builder,
   // words.
   AIEX::NpuUpdateFromScratchpadOp::create(
       builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
-      /*func_arg=*/static_cast<uint32_t>(unitBytes / 16),
+      /*func_arg=*/static_cast<uint32_t>(*unitBytes / 16),
       /*address=*/static_cast<uint32_t>(registerAddr),
       /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
   return success();

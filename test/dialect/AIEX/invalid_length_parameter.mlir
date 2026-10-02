@@ -37,6 +37,30 @@ aie.device(npu2) {
 
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
+  aie.runtime_sequence(%arg0 : memref<4096xi32>) {
+    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op length_unit (4611686018427387904 elements) exceeds the 32-bit word count of a BD length}}
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @dma, length_parameter = @n, length_unit = 4611686018427387904 : i64} : memref<4096xi32>
+  }
+  %tile = aie.tile(0, 0)
+  aie.shim_dma_allocation @dma(%tile, MM2S, 0)
+}
+
+// -----
+
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  aie.runtime_sequence(%arg0 : memref<4096xi32>) {
+    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op length_unit (4294967296 elements) exceeds the 32-bit word count of a BD length}}
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @dma, length_parameter = @n, length_unit = 4294967296 : i64} : memref<4096xi32>
+  }
+  %tile = aie.tile(0, 0)
+  aie.shim_dma_allocation @dma(%tile, MM2S, 0)
+}
+
+// -----
+
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
   %t = aie.tile(0, 0)
   aie.runtime_sequence(%arg0 : memref<4096xi32>) {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {

@@ -349,6 +349,12 @@ void collectBuffers(
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 
+// The byte size of `lengthUnit` elements of `buffer`, checked to be a multiple
+// of 16 bytes whose word count fits a 32-bit BD length.
+mlir::FailureOr<int64_t> getLengthUnitBytes(mlir::Operation *op,
+                                            int64_t lengthUnit,
+                                            mlir::BaseMemRefType buffer);
+
 // Validate a BD's runtime length (`length_parameter`, see aie.dma_bd) against
 // its static pattern, shared by aie.dma_bd and aiex.npu.dma_memcpy_nd.
 // `lenElems` is the static length of one iteration, in elements. `contiguous`

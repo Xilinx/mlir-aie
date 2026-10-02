@@ -24,8 +24,10 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -3505,20 +3507,34 @@ bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
 // cleared, adds the delta, and writes the sum back with them cleared again.
 // The length word counts 32-bit words, so both the static length and every
 // added unit must be multiples of four words (16 bytes) to survive.
+FailureOr<int64_t> xilinx::AIE::getLengthUnitBytes(Operation *op,
+                                                   int64_t lengthUnit,
+                                                   BaseMemRefType buffer) {
+  uint64_t elemBitWidth = buffer.getElementTypeBitWidth();
+  if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
+    return op->emitOpError("length_parameter requires a whole-byte element "
+                           "type");
+  std::optional<int64_t> unitBytes =
+      llvm::checkedMul(lengthUnit, static_cast<int64_t>(elemBitWidth / 8));
+  if (!unitBytes || *unitBytes / 4 > std::numeric_limits<uint32_t>::max())
+    return op->emitOpError("length_unit (")
+           << lengthUnit
+           << " elements) exceeds the 32-bit word count of a BD length";
+  if (*unitBytes % 16 != 0)
+    return op->emitOpError("length_unit must be a multiple of 16 bytes, got ")
+           << *unitBytes << " bytes";
+  return *unitBytes;
+}
+
 LogicalResult xilinx::AIE::verifyLengthParameter(
     Operation *op, std::optional<int64_t> lengthUnit, BaseMemRefType buffer,
     std::optional<int64_t> lenElems, bool contiguous,
     llvm::ArrayRef<int64_t> innerSizes) {
   if (!lengthUnit)
     return op->emitOpError("length_parameter requires length_unit");
-  uint64_t elemBitWidth = buffer.getElementTypeBitWidth();
-  if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
-    return op->emitOpError("length_parameter requires a whole-byte element "
-                           "type");
-  int64_t elemBytes = elemBitWidth / 8;
-  if ((*lengthUnit * elemBytes) % 16 != 0)
-    return op->emitOpError("length_unit must be a multiple of 16 bytes, got ")
-           << *lengthUnit * elemBytes << " bytes";
+  if (failed(getLengthUnitBytes(op, *lengthUnit, buffer)))
+    return failure();
+  int64_t elemBytes = buffer.getElementTypeBitWidth() / 8;
   if (!lenElems)
     return op->emitOpError("length_parameter requires a constant length");
   if ((*lenElems * elemBytes) % 16 != 0)
