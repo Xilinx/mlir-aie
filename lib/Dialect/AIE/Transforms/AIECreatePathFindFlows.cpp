@@ -47,6 +47,21 @@ using PhysPort = std::pair<TileID, Port>;
 using OverlayRules =
     std::map<PhysPort, SmallVector<std::tuple<int, int, int>, 2>>;
 
+/// Whether `flow` stays out of the control overlay of a design a control-packet
+/// reload configures. The reload installs @ctrl_pkt_overlay, which holds the
+/// flows to and from TileControl ports alone, and configures the design's
+/// other flows, prioritized or not, with the rest of it (#3837).
+static bool reloadConfigures(PacketFlowOp flow) {
+  auto reload = flow->getParentOfType<DeviceOp>()->getAttrOfType<BoolAttr>(
+      "has_ctrl_pkt_overlay");
+  auto control = [](auto end) {
+    return end.getBundle() == WireBundle::TileControl;
+  };
+  return reload && reload.getValue() &&
+         llvm::none_of(flow.getPorts().getOps<PacketSourceOp>(), control) &&
+         llvm::none_of(flow.getPorts().getOps<PacketDestOp>(), control);
+}
+
 /// What the prioritized flows (the control overlay) take when routed alone,
 /// which a control-packet reload keeps.
 struct PinnedOverlay {
@@ -1338,9 +1353,12 @@ struct PacketFlowRouting {
   SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
   // Flag to keep packet header at packet flow destination
   DenseMap<PhysPort, BoolAttr> keepPktHeaderAttr;
-  // The slave ports and IDs that carry control packets. A switchbox routes on
-  // the ID alone, so a flow sharing both with a priority flow is one too.
-  DenseSet<std::pair<PhysPort, int>> ctrlPktFlows;
+  // The slave ports and IDs that carry prioritized packets. A switchbox routes
+  // on the ID alone, so a flow sharing both with a priority flow is one too.
+  DenseSet<std::pair<PhysPort, int>> prioritizedFlows;
+  // The prioritized slave ports and IDs a control-packet reload keeps, as the
+  // control overlay's (see reloadConfigures).
+  DenseSet<std::pair<PhysPort, int>> overlayFlows;
   // Set of master ports that belong to control packet overlay flows
   DenseSet<PhysPort> ctrlPktOverlayMasterPorts;
   // The ports priority_route flows start at. Only their own source feeds them,
@@ -1547,7 +1565,9 @@ void PacketFlowRouting::collectFlows() {
                   .insert(*mask);
             }
             if (pktFlowOp.getPriorityRoute().value_or(false)) {
-              ctrlPktFlows.insert(slaveFlow);
+              prioritizedFlows.insert(slaveFlow);
+              if (!reloadConfigures(pktFlowOp))
+                overlayFlows.insert(slaveFlow);
               if (slavePort == PhysPort{srcSB, srcPort})
                 prioritizedSourcePorts.insert(slavePort);
             }
@@ -1666,7 +1686,7 @@ void PacketFlowRouting::findCircuitHops() {
             if (!reached.count(other.dst))
               return true;
             return other.src == slave &&
-                   !ctrlPktFlows.contains({{tileId, slave}, otherID});
+                   !prioritizedFlows.contains({{tileId, slave}, otherID});
           });
       if (!exclusive)
         continue;
@@ -1692,7 +1712,7 @@ void PacketFlowRouting::collectSlaveFlows() {
       Port destPort = conn.dst;
       auto sourceFlow =
           std::make_pair(std::make_pair(tileId, sourcePort), flowID);
-      if (ctrlPktFlows.contains(sourceFlow)) {
+      if (overlayFlows.contains(sourceFlow)) {
         ctrlPacketFlows[sourceFlow].push_back({tileId, destPort});
         ctrlPktOverlayMasterPorts.insert({tileId, destPort});
       } else {
@@ -2440,8 +2460,8 @@ LogicalResult PacketFlowRouting::emit() {
       const SmallVector<PhysPort, 4> &groupDests =
           packetFlows[candidate.front()];
       return candidate.front().first.second == slave.first.second &&
-             ctrlPktFlows.contains(candidate.front()) ==
-                 ctrlPktFlows.contains(slave) &&
+             overlayFlows.contains(candidate.front()) ==
+                 overlayFlows.contains(slave) &&
              groupDests.size() == dests.size() &&
              llvm::all_of(dests, [&](const PhysPort &dest) {
                return llvm::is_contained(groupDests, dest);
@@ -2597,7 +2617,7 @@ LogicalResult PacketFlowRouting::emit() {
             continue;
           plan.groups.push_back(oi);
           claims.push_back({statedRules[oi], derivedIds[oi],
-                            ctrlPktFlows.contains(slaveGroups[oi].front())});
+                            overlayFlows.contains(slaveGroups[oi].front())});
         }
         SmallVector<std::pair<int, int>> existing;
         for (PacketRuleOp rule : existingRules.lookup(slave))
@@ -2615,26 +2635,25 @@ LogicalResult PacketFlowRouting::emit() {
 
       // Every id the group claims takes a rule to its amsel first: its own,
       // or one of the control overlay's for the same destinations.
-      assert(llvm::all_of(llvm::seq(0, idMask + 1),
-                          [&](int id) {
-                            bool own =
-                                llvm::is_contained(derivedIds[gi], id) ||
-                                llvm::any_of(statedRules[gi], [&](auto c) {
-                                  return (id & c.first) == (c.second & c.first);
-                                });
-                            const auto *first = llvm::find_if(
-                                plan.rules, [&](const PortRule &r) {
-                                  return (id & r.mask) == r.value;
-                                });
-                            return !own ||
-                                   (first != plan.rules.end() &&
-                                    slaveAMSels.at(
-                                        slaveGroups[plan.groups[first->group]]
-                                            .front()) ==
-                                        slaveAMSels.at(
-                                            slaveGroups[gi].front()));
-                          }) &&
-             "packet rules send a claimed id elsewhere");
+      assert(
+          llvm::all_of(
+              llvm::seq(0, idMask + 1),
+              [&](int id) {
+                bool own = llvm::is_contained(derivedIds[gi], id) ||
+                           llvm::any_of(statedRules[gi], [&](auto c) {
+                             return (id & c.first) == (c.second & c.first);
+                           });
+                const auto *first =
+                    llvm::find_if(plan.rules, [&](const PortRule &r) {
+                      return (id & r.mask) == r.value;
+                    });
+                return !own ||
+                       (first != plan.rules.end() &&
+                        slaveAMSels.at(
+                            slaveGroups[plan.groups[first->group]].front()) ==
+                            slaveAMSels.at(slaveGroups[gi].front()));
+              }) &&
+          "packet rules send a claimed id elsewhere");
 
       size_t last = plan.emitted;
       for (size_t r = plan.emitted; r < plan.rules.size(); ++r)
@@ -2671,7 +2690,7 @@ LogicalResult PacketFlowRouting::emit() {
           rule->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
         if (prioritizedSourcePorts.contains(port) &&
             llvm::any_of(ruleGroup, [&](const auto &member) {
-              return ctrlPktFlows.contains(member);
+              return prioritizedFlows.contains(member);
             }))
           rule->setAttr(kPriorityRouteAttrName, builder.getUnitAttr());
       }
@@ -2883,7 +2902,7 @@ void AIEPathfinderPass::runOnOperation() {
       auto &[prio, last] = lastTo[{
           cast<TileOp>(dst.getTile().getDefiningOp()).getTileID(), dst.port()}];
       last = flow;
-      if (isPrioritized(flow))
+      if (isPrioritized(flow) && !reloadConfigures(flow))
         prio = flow;
     }
   for (const auto &[dst, flows] : lastTo) {
@@ -2914,7 +2933,7 @@ void AIEPathfinderPass::runOnOperation() {
     SmallVector<Operation *> others;
     for (Operation &op : alone.getBody()->without_terminator()) {
       auto flow = dyn_cast<PacketFlowOp>(op);
-      if (flow ? !isPrioritized(flow)
+      if (flow ? !isPrioritized(flow) || reloadConfigures(flow)
                : isa<FlowOp>(op) || (standalone && !isa<TileOp>(op)))
         others.push_back(&op);
     }
