@@ -193,18 +193,13 @@ def test_a_branch_behind_main_is_not_shown_mains_changes(contribution, repo):
     assert "scale" not in text and "bare" not in text and "Removed" not in text
 
 
-def test_a_library_wide_change_folds_the_table_and_runs_everything(
-    contribution, repo
-):
-    many = "".join(
-        f'''
+def test_a_library_wide_change_folds_the_table_and_runs_everything(contribution, repo):
+    many = "".join(f'''
 
 def k{i}() -> ExternalFunction:
     """Kernel {i}."""
     return _helper("k{i}", "add.cc")
-'''
-        for i in range(contribution.SHARED + 1)
-    )
+''' for i in range(contribution.SHARED + 1))
     write(repo, {"python/iron/kernels/eltwise.py": FACTORIES + many})
     text = checklist(contribution, repo, repo)
     assert f"<summary>{contribution.SHARED + 1} factories</summary>" in text

@@ -74,7 +74,7 @@ def extract(ref: str, into: Path) -> Path:
 
 
 def _synthetic(base: dict, run_id: str, message: str) -> dict:
-    """A copy of the record ``base`` as a nightly run of now."""
+    """Copy the record ``base`` as a nightly run of now."""
     run = copy.deepcopy(base)
     run["id"] = run_id
     run["url"] = ""
@@ -223,7 +223,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
-    def log_message(self, *args):
+    def log_message(self, format, *args):
         pass
 
 

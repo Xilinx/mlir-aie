@@ -178,14 +178,17 @@ def flaky(directory: Path) -> list[tuple[str, int]]:
 
 
 def _timing_reason(text: str, case: str) -> str:
-    """A timing-run failure's message, without what the table already says."""
+    """Trim a timing-run failure's message to what the table does not say."""
     text = text.removeprefix("AssertionError: ").removeprefix(f"{case}: ").strip()
     return text or "failed in the timing run; see perf.log"
 
 
 def failures(directory: Path) -> tuple[list[Failure], set[str], int]:
-    """Return the failing cases, every case the extensive sweep ran, and the
-    number of inputs it checked."""
+    """Return the failing cases, the swept cases and the inputs checked.
+
+    The swept cases are every case the extensive sweep ran; the inputs are how
+    many it checked.
+    """
     by_case: dict[str, Failure] = {}
     swept = set()
     inputs = 0  # of the sweep; a dedicated test is not an input
@@ -308,7 +311,7 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
             f"nightly in {record.get('pmode') or 'an unknown'} mode, "
             f"this run in {pmode}: not compared"
         )
-    if result.uncompared:
+    if result.uncompared or not record:
         return result
     result.baseline_commit = record.get("commit") or None
     result.baseline_peano = record.get("provenance", {}).get("peano", "")

@@ -59,7 +59,7 @@ def _mobilenet(*args: str, env: dict | None = None) -> subprocess.CompletedProce
 
 
 def placement_of(mlir: str) -> str | None:
-    """A 12-hex digest of the placed tiles, in the order the design names them."""
+    """Digest the placed tiles, in the order the design names them."""
     tiles = _TILE_RE.findall(mlir)
     return hashlib.sha256("\n".join(tiles).encode()).hexdigest()[:12] if tiles else None
 
@@ -85,7 +85,7 @@ def replay_placement(
 
 
 def parse_run(out: str, returncode: int) -> dict:
-    """What a run of the mobilenet CLI says: passed, and its NPU latencies."""
+    """Read a run of the mobilenet CLI: whether it passed, and its NPU latencies."""
     npu = _NPU_TIME_RE.search(out)
     # Latency is what this check tracks, so a run that stops printing it (the
     # output format drifted, say) fails rather than publishing nothing.

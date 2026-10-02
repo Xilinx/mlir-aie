@@ -29,6 +29,7 @@ import sys
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 MARKER = "<!-- kernel-contribution-check -->"
 KERNELS = "python/iron/kernels/"
@@ -104,8 +105,10 @@ def _assigns(mod: ast.Module | None, name: str) -> ast.expr | None:
 
 
 def _source_pattern(arg: ast.expr, env: dict) -> tuple[re.Pattern, bool] | None:
-    """The aie_kernels/ paths a ``_kernel_source(...)`` argument can name,
-    and whether it names exactly one."""
+    """Match the aie_kernels/ paths a ``_kernel_source(...)`` argument names.
+
+    Also say whether it names exactly one.
+    """
     value = _value(arg, env)
     if isinstance(value, str):
         return re.compile(re.escape(value) + "$"), True
@@ -123,6 +126,7 @@ class Factory:
     name: str
     module: str
     text: str
+    node: ast.FunctionDef
     contract: str = "unknown"  # yes, no, unknown, or "via <factory>"
     trace: str | None = None  # whole_call, partial, none, computed; None: unset
     tolerance: str | None = None  # noted, unnoted, computed; None: dtype default
@@ -130,13 +134,10 @@ class Factory:
     takes_dtype: bool = False
     dtypes_table: bool = False
     sources: list = field(default_factory=list)
-    node: ast.FunctionDef | None = None
 
     def builds(self, path: str, exact: bool | None = None) -> bool:
         rel = path[len(SOURCES) :]
-        return any(
-            p.match(rel) for p, e in self.sources if exact is None or e == exact
-        )
+        return any(p.match(rel) for p, e in self.sources if exact is None or e == exact)
 
 
 def _kernel_classes(modules: dict[str, ast.Module]) -> set[str]:
@@ -172,7 +173,7 @@ def factories(tree: Tree) -> dict[str, Factory]:
         for fn in mod.body:
             if not isinstance(fn, ast.FunctionDef):
                 continue
-            text = ast.get_source_segment(texts[module], fn) or ""
+            text = ast.get_source_segment(texts[module] or "", fn) or ""
             every.setdefault(fn.name, _describe(fn, module, text))
             returns = ast.unparse(fn.returns) if fn.returns else ""
             if not fn.name.startswith("_") and set(re.findall(r"\w+", returns)) & kinds:
@@ -184,9 +185,11 @@ def factories(tree: Tree) -> dict[str, Factory]:
 
 
 def _sources(f: Factory, every: dict[str, Factory], env: dict, depth=0) -> list:
-    """The source patterns a factory builds, through the functions it calls,
-    with the literal arguments it passes them (``_norm_extern(..., "rms_norm.cc")``
-    builds ``norm/rms_norm.cc``)."""
+    """Collect the source patterns a factory builds.
+
+    Follow the functions it calls, with the literal arguments it passes them
+    (``_norm_extern(..., "rms_norm.cc")`` builds ``norm/rms_norm.cc``).
+    """
     found = []
     for call in ast.walk(f.node):
         if not isinstance(call, ast.Call):
@@ -209,8 +212,11 @@ def _sources(f: Factory, every: dict[str, Factory], env: dict, depth=0) -> list:
 
 
 def _inherit(f: Factory, every: dict[str, Factory], seen: set) -> None:
-    """Fill in what a factory leaves to a function it calls: ``add`` returns
-    ``_eltwise_bf16_kernel(...)``, ``gelu`` passes ``_unary_lut_contract(...)``."""
+    """Fill in what a factory leaves to a function it calls.
+
+    ``add`` returns ``_eltwise_bf16_kernel(...)``, ``gelu`` passes
+    ``_unary_lut_contract(...)``.
+    """
     if f.trace != "unknown" or f.name in seen:
         return
     seen.add(f.name)
@@ -229,7 +235,7 @@ def _inherit(f: Factory, every: dict[str, Factory], seen: set) -> None:
 
 
 def _describe(fn: ast.FunctionDef, module: str, text: str) -> Factory:
-    f = Factory(fn.name, module, text, node=fn)
+    f = Factory(fn.name, module, text, fn)
     f.docstring = bool(ast.get_docstring(fn))
     f.takes_dtype = any(a.arg == "dtype" for a in fn.args.args + fn.args.kwonlyargs)
     f.dtypes_table = any(
@@ -272,15 +278,21 @@ class Cases:
 
 
 def _bindings(comp: ast.expr) -> list[dict]:
-    """Each assignment of a literal comprehension's loop names, as far as the
-    text says; a name it cannot read is UNKNOWN."""
+    """List each assignment of a literal comprehension's loop names.
+
+    As far as the text says; a name it cannot read is UNKNOWN.
+    """
     per_loop = []
     for gen in getattr(comp, "generators", []):
         names = gen.target.elts if isinstance(gen.target, ast.Tuple) else [gen.target]
         it = gen.iter
         if isinstance(it, ast.Call) and _callee(it) == "range" and it.args:
             stop = it.args[-1]
-            n = stop.value if isinstance(stop, ast.Constant) else 1
+            n = (
+                stop.value
+                if isinstance(stop, ast.Constant) and isinstance(stop.value, int)
+                else 1
+            )
             items = [ast.Constant(i) for i in range(n)]
         else:
             items = getattr(it, "elts", None) or [None]
@@ -303,7 +315,7 @@ def _bindings(comp: ast.expr) -> list[dict]:
     ] or [{}]
 
 
-def _value(node, env: dict, default=UNKNOWN):
+def _value(node, env: dict, default=UNKNOWN) -> Any:
     if node is None:
         return default
     if isinstance(node, ast.Name) and node.id in env:
@@ -330,7 +342,7 @@ def _part(node: ast.expr, env: dict):
 
 
 def cases(tree: Tree) -> dict[str, Cases]:
-    """The case table, per factory: how many, which run on PRs and are timed."""
+    """Tally each factory's cases: how many, which run on PRs, which are timed."""
     table: dict[str, Cases] = {}
     mod = _parse(tree.read(CASES)) or ast.Module(body=[], type_ignores=[])
     comps = (ast.ListComp, ast.GeneratorExp)
@@ -397,8 +409,11 @@ def _over_library(comp: ast.DictComp) -> bool:
 
 
 def _admits(gen: ast.comprehension, name: str) -> bool:
-    """Whether every ``if`` of ``gen`` holds for ``name``; one it cannot read
-    holds for nothing, so the factory is still asked for a case."""
+    """Check whether every ``if`` of ``gen`` holds for ``name``.
+
+    One it cannot read holds for nothing, so the factory is still asked for a
+    case.
+    """
     for test in gen.ifs:
         call = test if isinstance(test, ast.Call) else None
         method = getattr(getattr(call, "func", None), "attr", None)
@@ -413,13 +428,17 @@ def _admits(gen: ast.comprehension, name: str) -> bool:
 
 
 def exported(tree: Tree) -> set[str]:
-    """The names ``aie.iron.kernels`` exports."""
+    """Return the names ``aie.iron.kernels`` exports."""
     names = getattr(_assigns(_parse(tree.read(INIT)), "__all__"), "elts", [])
-    return {e.value for e in names if isinstance(e, ast.Constant)}
+    return {
+        e.value
+        for e in names
+        if isinstance(e, ast.Constant) and isinstance(e.value, str)
+    }
 
 
 def _includers(tree: Tree, header: str, files: list[str]) -> list[str]:
-    """The .cc files that include ``header``, directly or through headers."""
+    """Find the .cc files that include ``header``, directly or through headers."""
     texts = {p: tree.read(p) or "" for p in files}
     found, todo = set(), [header]
     while todo:
@@ -442,7 +461,7 @@ class Context:
 
 
 def missing(f: Factory, files: set) -> list[str]:
-    """The sources ``f`` names exactly that the tree does not have."""
+    """List the sources ``f`` names exactly that the tree does not have."""
     gone = []
     for pattern, exact in f.sources:
         if exact and not any(pattern.fullmatch(p[len(SOURCES) :]) for p in files):
@@ -451,7 +470,7 @@ def missing(f: Factory, files: set) -> list[str]:
 
 
 def advice(f: Factory, c: Cases | None, new: bool, ctx: Context) -> list[str]:
-    """What to look at for one factory, the things that fail a test first."""
+    """Say what to look at for one factory, the things that fail a test first."""
     warn, note = [], []
     if f.contract == "no" and f.name not in ctx.judged:
         warn.append(
@@ -520,7 +539,7 @@ def _row(f: Factory, c: Cases | None, ctx: Context) -> list[str]:
     contract = contract.get(f.contract, f.contract)
     trace = {"whole_call": "whole call", None: "unset", "unknown": "?"}.get(
         f.trace, f.trace
-    )
+    ) or "unset"
     if f.contract == "no":
         trace = "—"
     if not c:
@@ -537,8 +556,10 @@ def _row(f: Factory, c: Cases | None, ctx: Context) -> list[str]:
 
 
 def _attributed(after: dict[str, Factory], path: str) -> list[str]:
-    """The factories that build ``path``: by its exact name if any factory
-    names it, else by an f-string pattern."""
+    """Name the factories that build ``path``.
+
+    By its exact name if any factory names it, else by an f-string pattern.
+    """
     exact = [n for n, f in after.items() if f.builds(path, exact=True)]
     return exact or [n for n, f in after.items() if f.builds(path, exact=False)]
 
@@ -689,7 +710,7 @@ def report(repo: Path, base: str, head: str) -> str | None:
 
 
 def _commands(k: str, sources: bool) -> list[str]:
-    """The commands to run, for the kernels ``k`` names, or for all."""
+    """Write the commands to run, for the kernels ``k`` names, or for all."""
     e2e = "test/python/npu/test_kernels_e2e.py"
     only = f' -k "{k}"' if k else ""
     lines = [

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Sweep the SA tile placer's seed at full effort, without any hardware.
+r"""Sweep the SA tile placer's seed at full effort, without any hardware.
 
 Runs ``aie-opt --aie-place-tiles`` over each fixture for seeds 1..N, and
 records whether each seed placed, the CPU time it took, its peak RSS, and the
@@ -17,7 +17,7 @@ after writing both. nightlyComponentChecks.yml runs this nightly and
 publishes the results; a regression is debuggable from the per-seed table
 this prints to stdout, and one seed is reproduced with
 
-    aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=N sa-effort=1.0' \\
+    aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=N sa-effort=1.0' \
         --mlir-pass-statistics <fixture>
 """
 
@@ -59,7 +59,7 @@ def run_seed(aie_opt: str, fixture: str, seed: int, effort: float) -> dict:
     proc = subprocess.Popen(
         args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
     )
-    stderr = proc.stderr.read()
+    stderr = proc.stderr.read() if proc.stderr else ""
     _, status, ru = os.wait4(proc.pid, 0)
     cost_match = _COST_RE.search(stderr)
     return {
@@ -78,7 +78,7 @@ def case_of(fixture: str) -> str:
 
 
 def fixtures_digest(fixtures: list[str]) -> str:
-    """A 12-hex digest of the fixtures, by name and content."""
+    """Digest the fixtures, by name and content, into 12 hex digits."""
     h = hashlib.sha256()
     for path in fixtures:
         h.update(f"{case_of(path)}\0".encode())
