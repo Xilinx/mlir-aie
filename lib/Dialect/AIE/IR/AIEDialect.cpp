@@ -3571,6 +3571,11 @@ LogicalResult xilinx::AIE::verifyLengthParameterTile(
     return op->emitOpError("length_parameter is only supported on shim NOC "
                            "tiles, got tile (")
            << col << ", " << row << ")";
+  const DmaBdLayout *layout = targetModel.getDmaBdLayout(col, row);
+  if (!layout || layout->bufferLength.shift != 0 ||
+      layout->bufferLength.width != 32)
+    return op->emitOpError("length_parameter requires a BD whose buffer "
+                           "length fills a 32-bit register");
   return success();
 }
 

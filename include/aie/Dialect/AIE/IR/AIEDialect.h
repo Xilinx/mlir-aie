@@ -369,8 +369,9 @@ mlir::LogicalResult verifyLengthParameter(mlir::Operation *op,
                                           bool contiguous,
                                           llvm::ArrayRef<int64_t> innerSizes);
 
-// Validate the tile a runtime-length BD is lowered on: the firmware update
-// targets the AIE2/AIE2P shim BD layout, whose first word is the length.
+// Validate the tile a runtime-length BD is lowered on: an AIE2/AIE2P shim NOC
+// tile whose BD buffer length is a whole 32-bit register, which the firmware
+// update adds to.
 mlir::LogicalResult verifyLengthParameterTile(mlir::Operation *op,
                                               const AIETargetModel &targetModel,
                                               int col, int row);

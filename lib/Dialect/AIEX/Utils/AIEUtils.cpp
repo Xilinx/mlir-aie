@@ -237,14 +237,19 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   return success();
 }
 
-LogicalResult AIEX::emitUpdateBdLengthFromParameter(OpBuilder &builder,
-                                                    Operation *bdOp,
-                                                    BaseMemRefType bufType,
-                                                    int64_t lengthUnit,
-                                                    uint64_t registerAddr) {
+LogicalResult AIEX::emitUpdateBdLengthFromParameter(
+    OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
+    int64_t lengthUnit, const AIE::AIETargetModel &targetModel, int col,
+    int row, int bdId) {
   auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("length_state_table_idx");
   assert(idxAttr && "emitUpdateBdLengthFromParameter called without "
                     "length_state_table_idx attribute");
+
+  if (failed(AIE::verifyLengthParameterTile(bdOp, targetModel, col, row)))
+    return failure();
+  uint64_t registerAddr =
+      targetModel.getDmaBdAddress(col, row, bdId) +
+      4 * targetModel.getDmaBdLayout(col, row)->bufferLength.word;
 
   uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
   FailureOr<int64_t> unitBytes =
