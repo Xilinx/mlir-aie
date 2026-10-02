@@ -20,6 +20,30 @@ using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-sa-placer"
 
+namespace {
+
+/// Draw a reproducible bounded index directly from std::mt19937 output.
+static size_t drawBoundedIndex(std::mt19937 &rng, size_t upperExclusive) {
+  return static_cast<size_t>(rng()) % upperExclusive;
+}
+
+/// Draw a reproducible double in [0, 1) directly from std::mt19937 output.
+static double drawUnitReal(std::mt19937 &rng) {
+  constexpr double denominator = static_cast<double>(std::mt19937::max()) + 1.0;
+  return static_cast<double>(rng()) / denominator;
+}
+
+/// Fisher-Yates shuffle using drawBoundedIndex rather than std::shuffle.
+static void deterministicShuffle(llvm::SmallVectorImpl<TileID> &values,
+                                 std::mt19937 &rng) {
+  for (size_t i = values.size(); i > 1; --i) {
+    size_t j = drawBoundedIndex(rng, i);
+    std::swap(values[i - 1], values[j]);
+  }
+}
+
+} // namespace
+
 /// Return neighboring tiles whose memory module `tilePos` can access.
 /// The direction matches the allocate op requirement: the source tile
 /// can store buffers in the neighbor's memory.
@@ -997,8 +1021,7 @@ bool SAPlacer::generateMove(
 
   for (int attempt = 0; attempt < config.maxMoveAttempts; attempt++) {
     // Pick a random movable tile.
-    std::uniform_int_distribution<size_t> tileDist(0, movableTiles.size() - 1);
-    Operation *tile = movableTiles[tileDist(rng)];
+    Operation *tile = movableTiles[drawBoundedIndex(rng, movableTiles.size())];
 
     auto typeIt = tileTypes.find(tile);
     if (typeIt == tileTypes.end())
@@ -1012,8 +1035,7 @@ bool SAPlacer::generateMove(
     if (candidates.empty())
       continue;
 
-    std::uniform_int_distribution<size_t> posDist(0, candidates.size() - 1);
-    TileID targetPos = candidates[posDist(rng)];
+    TileID targetPos = candidates[drawBoundedIndex(rng, candidates.size())];
 
     // Filter by tile type for non-compute (nonCompTiles has mixed types).
     if (type != AIETileType::CoreTile &&
@@ -1473,7 +1495,7 @@ LogicalResult SAPlacer::generateInitialPlacement() {
       return phaseA < phaseB;
     return a.col < b.col;
   });
-  std::shuffle(availShim.begin(), availShim.end(), rng);
+  deterministicShuffle(availShim, rng);
 
   size_t compIdx = 0, memIdx = 0, shimIdx = 0;
 
@@ -1744,7 +1766,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
   bool accept =
       delta <= 0 ||
       (schedule.getTemperature() > 0 &&
-       acceptDist(rng) < std::exp(-delta / schedule.getTemperature()));
+       drawUnitReal(rng) < std::exp(-delta / schedule.getTemperature()));
 
   if (accept) {
     if (delta > 0)
