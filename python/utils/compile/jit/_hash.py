@@ -148,7 +148,13 @@ def _callees_identity(generator: Callable) -> bytes:
     (``aie.iron.algorithms`` for ``kernel_design``; only the module itself
     for a top-level one) and stops outside it: the IRON core and third-party
     code are versioned with the install, not edited per design.
+
+    An ``ExternalFunction`` it reaches is recorded by its content-based repr,
+    as a ``CompileTime`` one is: the cache manifest never sees a kernel's
+    compile flags.
     """
+    from aie.iron.kernel import ExternalFunction
+
     home = generator.__module__ or ""
     package = home.rpartition(".")[0]
 
@@ -169,7 +175,7 @@ def _callees_identity(generator: Callable) -> bytes:
             if in_package(value.__module__ or "") and id(value) not in seen:
                 seen.add(id(value))
                 todo.append(value)
-        elif _plain(value):
+        elif _plain(value) or isinstance(value, ExternalFunction):
             records.add(f"{where}={value!r}".encode())
 
     while todo:
