@@ -42,8 +42,12 @@ def main():
         src, routed = text.split("\n// -----\n")
         d = rp.load_design(src)
         hops_on = head.get("hops") != "off"
-        problems, _ = rp.verify(d, rp.Analysis(d), routed, hops_on)
+        problems, stats = rp.verify(d, rp.Analysis(d), routed, hops_on)
         unsafe = [p for p in problems if p.startswith(UNSAFE)]
+        if stats["shared_receiver_cycle"]:
+            unsafe.append(
+                "hold cycle (shared receiver): " + stats["shared_receiver_cycle"]
+            )
         other = [p for p in problems if not p.startswith(UNSAFE)]
         want = head["HW"] == "HANG" or "cautious" in head
         if bool(unsafe) != want or other:
@@ -54,7 +58,7 @@ def main():
 
 
 # CHECK-NOT: WRONG
-# CHECK: hw-verdicts: 115 routings, 0 disagree with HW
+# CHECK: hw-verdicts: 131 routings, 0 disagree with HW
 
 if __name__ == "__main__":
     main()

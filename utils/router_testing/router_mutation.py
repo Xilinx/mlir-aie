@@ -218,6 +218,11 @@ def must_reject(d):
     for x, ss in into.items():
         if len(ss) > 1:
             return f"circuit flows from {len(ss)} sources into {rp.fmt_ep(x)}"
+    for x, _ in rp.overlay_keep_conflicts(d):
+        return (
+            f"the last flow into {rp.fmt_ep(x)} keeps headers otherwise than "
+            "the prioritized flows into it"
+        )
     csrc = {s for s, _ in d.flows}
     for f in d.packet_flows:
         for s in f["srcs"]:
@@ -822,7 +827,17 @@ def routing_key(text):
 def r_permute(rng, d, routed):
     e = d.copy()
     rng.shuffle(e.flows)
-    rng.shuffle(e.packet_flows)
+    # The last packet flow into a port sets its keep_pkt_header, so where
+    # those into it disagree that one stays last, in order.
+    keeps, last = defaultdict(set), {}
+    for k, f in enumerate(d.packet_flows):
+        for t in f["dsts"]:
+            keeps[t].add(rp.keeps_header(t[:2], t[2:], f["keep"]))
+            last[t] = k
+    tail = sorted({last[t] for t in last if len(keeps[t]) > 1})
+    order = [k for k in range(len(d.packet_flows)) if k not in tail]
+    rng.shuffle(order)
+    e.packet_flows = [e.packet_flows[k] for k in order + tail]
     for f in e.packet_flows:
         rng.shuffle(f["srcs"])
         rng.shuffle(f["dsts"])

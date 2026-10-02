@@ -3184,7 +3184,8 @@ class Construction:
 
 
 def drop_stream(d, stream):
-    """Remove one requested stream, or the least more that removing it takes."""
+    """Remove one requested stream, or the least more that removing it takes,
+    as where it was the last into a port the prioritized flows end at."""
     if stream.pid is None:
         d.flows.remove((stream.src, stream.dst))
         return
@@ -3200,6 +3201,7 @@ def drop_stream(d, stream):
                 f["dsts"].remove(stream.dst)
             break
     d.packet_flows = [f for f in d.packet_flows if f["srcs"] and f["dsts"]]
+    agree_overlay_keep(d)
 
 
 def pins_hops_fn(d, hops_on):
@@ -3208,18 +3210,19 @@ def pins_hops_fn(d, hops_on):
 
 def priority_trees(d, cache):
     """The trees from `d`'s prioritized sources, {source: trace_output ends},
-    as the router routes them without the rest of the design: priority_route
-    promises they keep that routing whatever else the design asks for, so a
-    witness has to route around them. None if the router cannot route them."""
-    srcs = {s for f in d.packet_flows if f["priority"] for s in f["srcs"]}
-    if not srcs:
+    as the router routes the prioritized packets without the rest of the
+    design: priority_route promises they keep that routing whatever else the
+    design asks for, so a witness has to route around them. A source's other
+    ids are no part of it. None if the router cannot route them."""
+    prio = {(s, f["id"]) for f in d.packet_flows if f["priority"] for s in f["srcs"]}
+    if not prio:
         return {}
     c = d.copy()
     c.flows = []
     c.packet_flows = [
-        dict(f, srcs=[s for s in f["srcs"] if s in srcs])
+        dict(f, srcs=srcs)
         for f in c.packet_flows
-        if srcs & set(f["srcs"])
+        if (srcs := [s for s in f["srcs"] if (s, f["id"]) in prio])
     ]
     text = c.emit()
     if text not in cache:
@@ -3228,7 +3231,7 @@ def priority_trees(d, cache):
         if p.returncode == 0:
             out, trees = load_design(p.stdout), defaultdict(dict)
             for f in c.packet_flows:
-                for s in srcs & set(f["srcs"]):
+                for s in f["srcs"]:
                     trees[s].update(trace_output(out, s, f["id"])[0])
         cache[text] = trees
     return cache[text]
@@ -3347,14 +3350,40 @@ def construct(d, seed, attempts=40):
         for src, packet in order:
             wanted = list(dict.fromkeys(groups[(src, packet)]))
             if packet and src in pinned:
-                missing += [(src, t, packet) for t in wanted if t not in pinned[src]]
+                # A pinned source's other ids follow its tree only where they
+                # go everywhere it goes; the witness has no second tree for
+                # those that do not.
+                dsts = defaultdict(set)
+                for f in d.packet_flows:
+                    if src in f["srcs"]:
+                        dsts[f["id"]] |= set(f["dsts"])
+                prio = {
+                    f["id"]
+                    for f in d.packet_flows
+                    if f["priority"] and src in f["srcs"]
+                }
+                tree = set().union(*(dsts[i] for i in prio))
+                missing += [
+                    (src, t, packet, None) for t in wanted if t not in pinned[src]
+                ]
+                missing += [
+                    (src, t, packet, i)
+                    for i, ts in dsts.items()
+                    if i not in prio and ts != tree
+                    for t in ts
+                ]
                 continue
             routed = con.route(src, wanted, packet)
-            missing += [(src, t, packet) for t in wanted if t not in routed]
+            missing += [(src, t, packet, None) for t in wanted if t not in routed]
         if missing:
-            for src, t, packet in missing:
+            for src, t, packet, pid in missing:
                 for st in requested_streams(d):
-                    if st.src == src and st.dst == t and (st.pid is not None) == packet:
+                    if (
+                        st.src == src
+                        and st.dst == t
+                        and (st.pid is not None) == packet
+                        and pid in (None, st.pid)
+                    ):
                         drop_stream(d, st)
             if not d.flows and not d.packet_flows:
                 return None
@@ -4221,28 +4250,31 @@ def random_design(rng, dev):
     return d
 
 
+def overlay_keep_conflicts(d):
+    """The ports where the last flow in keeps headers otherwise than the
+    prioritized flows into them do, each with that last flow: a control-packet
+    reload keeps their keep_pkt_header, so the router rejects the design."""
+    prio = {(s, f["id"]) for f in d.packet_flows if f["priority"] for s in f["srcs"]}
+    last, last_prio = {}, {}
+    for f in d.packet_flows:
+        for t in f["dsts"]:
+            last[t] = f
+            if any((s, f["id"]) in prio for s in f["srcs"]):
+                last_prio[t] = f
+    return [
+        (t, last[t])
+        for t, p in last_prio.items()
+        if keeps_header(t[:2], t[2:], last[t]["keep"])
+        != keeps_header(t[:2], t[2:], p["keep"])
+    ]
+
+
 def agree_overlay_keep(d):
     """Drop where the last flow into a port keeps headers there otherwise
-    than the prioritized flows into it do: a control-packet reload keeps
-    their keep_pkt_header, so the router rejects the design."""
-    prio = {(s, f["id"]) for f in d.packet_flows if f["priority"] for s in f["srcs"]}
-    while True:
-        last, last_prio = {}, {}
-        for f in d.packet_flows:
-            for t in f["dsts"]:
-                last[t] = f
-                if any((s, f["id"]) in prio for s in f["srcs"]):
-                    last_prio[t] = f
-        wrong = [
-            t
-            for t, p in last_prio.items()
-            if keeps_header(t[:2], t[2:], last[t]["keep"])
-            != keeps_header(t[:2], t[2:], p["keep"])
-        ]
-        if not wrong:
-            return
-        for t in wrong:
-            last[t]["dsts"].remove(t)
+    than the prioritized flows into it do."""
+    while wrong := overlay_keep_conflicts(d):
+        for t, f in wrong:
+            f["dsts"].remove(t)
         d.packet_flows = [f for f in d.packet_flows if f["dsts"]]
 
 
