@@ -712,10 +712,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   auto &traced =
       input
-          .map<ModRef>("placed.mlir",
-                       PassPipeline{getPlacementPipeline(
-                           &context, coresPerCol.getValue(),
-                           placerType.getValue(), saSeed.getValue())})
+          .map<ModRef>(
+              "placed.mlir",
+              PassPipeline{getPlacementPipeline(
+                  &context, coresPerCol.getValue(), placerType.getValue(),
+                  saSeed.getValue(), saEffort.getValue())})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 
   // --default-stack-size stands in for the target's built-in default on any
@@ -1036,7 +1037,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   recordPrebakedRanges(mod, [](xilinx::AIE::CoreOp core) {
                     return absolutePath(core.getElfFileAttr().getValue());
                   });
-                  auto pm = getAssignBufferAddressesPipeline(&context);
+                  auto pm = getAssignBufferAddressesPipeline(
+                      &context, placementBudget.getValue());
                   for (auto device : mod.getOps<DeviceOp>()) {
                     if ((!cache || !cache->isHit(device)) &&
                         mlir::failed(runPasses(*pm, device))) {

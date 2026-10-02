@@ -9,13 +9,15 @@ self-hosted-runner:
     - aie2-4col      # NPU1, 4 columns
     - aie2p-8col     # NPU2, 8 columns
     - bench          # runners reserved for timing
+    - devlab-dispatch
     - npu2
     - ryzenai
+    - strix-halo
     - ubuntu-vitis   # Vitis toolchain image
 
 # GitHub supports concurrency.queue, but actionlint v1.7.12 does not yet.
 # test/test_kernel_workflows.py checks these queues and their cancellation policy.
 paths:
-  .github/workflows/{generateDocs,nightlyKernelChecks,publishKernelResults}.yml:
+  .github/workflows/{generateDocs,nightlyKernelChecks,publishKernelResults,nightlyComponentChecks}.yml:
     ignore:
       - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'

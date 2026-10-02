@@ -122,3 +122,18 @@ aie.device(npu1) {
 
   aie.route from @loop to [@loop]
 }
+
+// -----
+
+// Initial contents may fill only the first objects of a pool, never more than
+// it holds.
+
+// CHECK: 'aie.objectfifo.pool' op has more 'init_values' than 'depth' objects
+
+aie.device(npu1) {
+  %tile02 = aie.tile(0, 2)
+
+  aie.objectfifo.pool @p(%tile02) {depth = 1 : i32, initValues = [dense<0> : memref<16xi32>, dense<1> : memref<16xi32>]} : memref<16xi32> {
+    aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+  }
+}

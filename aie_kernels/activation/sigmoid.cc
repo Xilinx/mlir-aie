@@ -12,6 +12,8 @@
 
 using namespace aie;
 
+#include "sigmoid_lut.h"
+
 #ifndef SIGMOID_ELEMS
 #define SIGMOID_ELEMS vector_size
 #endif
@@ -20,6 +22,7 @@ using namespace aie;
 // tanh(x/2) on the two 16-lane halves both tanh paths work in. Passing the
 // multiply's accumulator straight in keeps x/2 in f32 on AIE2P; AIE2's LUT
 // narrows it, which is the accuracy difference between the two architectures.
+// AIE2P's LUT build reads the table above instead.
 //
 // 0.5 * (1 + t) is one mac, t * 0.5 onto an accumulator holding 0.5, rather
 // than an add and a multiply. Scaling by 0.5 is exact, so the result is the
@@ -42,6 +45,13 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
                      register_0_5)
                 .to_vector<bfloat16>());
       });
+#elif AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
+  // The loop of tanh_lut_map, whose comment has why 16 is asked for.
+  auto it_in = aie::begin_vector<32>(input_vector);
+  auto it_out = aie::begin_vector<32>(output_vector);
+#pragma clang loop pipeline_initiation_interval(16)
+  for (int i = 0; i < num_elems; i += 32)
+    *it_out++ = sigmoid_lut_bf16(*it_in++);
 #else
   auto it_in = aie::begin_restrict_vector<32>((bfloat16 *)input_vector);
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);

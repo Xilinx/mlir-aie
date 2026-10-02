@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.iron.kernel import ExternalFunction
+from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils import bfp
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
@@ -26,9 +26,29 @@ from ._common import (
     _portable_flags,
 )
 from .activation import _bf16_ulp, _vtanh_error
+from .quant import _bf16_floor
 
 # Largest |d/dx| of each epilogue: x * sigmoid(kx) peaks at 1.0998.
 _SLOPE = {"none": 1.0, "sigmoid": 0.25, "silu": 1.1, "gelu": 1.1}
+_MODES = {"none": 0, "gelu": 1, "silu": 2, "sigmoid": 3}
+# (bfloat16)1.702f, the scale gelu_bf16_steps_vec multiplies by.
+_GELU_SCALE_BF16 = 1.703125
+
+
+class _FusedMMKernel(ExternalFunction):
+    """``fused_mm_tile`` with the entry points it calls, bound by C symbol."""
+
+    fused_mm_tile: ExternalFunction
+    mm_fused_acc_init: Kernel
+    mm_fused_k_step: Kernel
+    mm_fused_epilogue_chunk: Kernel
+
+
+def _bf16_round(x, rounding):
+    """Narrow to bf16 as a core does in ``rounding``, returned as float64."""
+    x = np.asarray(x, np.float32)
+    narrowed = _bf16_floor(x) if rounding == "floor" else x.astype(bfloat16)
+    return narrowed.astype(np.float64)
 
 
 def fused_mm(
@@ -42,7 +62,13 @@ def fused_mm(
     epilogue="none",
     clamp=None,
     bfp16_b=False,
-) -> ExternalFunction:
+    epilogue_modes=None,
+    rounding="conv_even",
+    gelu="fp32",
+    mmul_shape=None,
+    c_depth=2,
+    step_markers=False,
+) -> _FusedMMKernel:
     """Compute one bf16 ``A @ B`` tile, with an f32 reduction and fused epilogue.
 
     This bounded composition holds its operands and accumulator on one core;
@@ -58,9 +84,35 @@ def fused_mm(
 
     ``bfp16_b`` (aie2p only) selects the prepacked-B form amd/IRON's flm GEMM
     builds: B arrives as bfp16ebs8 blocks the host packs once, the mmul is
-    8x8x8, and the core converts A to bfp16 itself. The host rounds B to
-    nearest-even, as IRON's ``pack_b`` does, and the reference multiplies
-    both operands as the core sees them.
+    8x8x8, and the core converts A to bfp16 itself. The host rounds B in the
+    ``rounding`` mode, as IRON's ``pack_b`` does, and the reference
+    multiplies both operands as the core sees them.
+
+    ``epilogue_modes`` lists the activations compiled in, for a caller that
+    selects one at run time through ``mm_fused_epilogue_chunk``'s mode
+    argument. It defaults to ``(epilogue,)``. ``epilogue`` is the mode
+    ``fused_mm_tile`` and the reference use, and must be in the list.
+
+    ``rounding`` is the core's rounding mode for every f32 -> bf16 and
+    bf16 -> bfp16 conversion: ``conv_even`` or ``floor``, the mode a core
+    powers up in.
+
+    ``gelu`` selects how the gelu mode computes. ``fp32`` applies it to the
+    f32 accumulator and rounds once. ``bf16_steps`` rounds the accumulator to
+    bf16 and rounds again after each step of ``x * sigmoid(1.702x)``, as
+    FastFlowLM's shipped mm overlay does. With ``rounding="floor"`` it
+    reproduces that overlay bit for bit on AIE2P.
+
+    ``mmul_shape`` overrides the ``(r, s, t)`` of the mmul. ``c_depth`` is
+    the depth of the C fifo, which a caller's drain loop unrolls by.
+    ``step_markers`` brackets each init, k step and drain chunk with event
+    markers, for a caller that calls those entry points itself. Otherwise one
+    pair brackets the whole ``fused_mm_tile`` call.
+
+    The returned function carries every entry point of its object as an
+    attribute named by the C symbol: ``fn.mm_fused_acc_init``,
+    ``fn.mm_fused_k_step``, ``fn.mm_fused_epilogue_chunk`` and
+    ``fn.fused_mm_tile`` (``fn`` itself).
     """
     arch = _detect_arch()
     device = _device()
@@ -70,7 +122,11 @@ def fused_mm(
         r, s, t = 8, 8, 8
     else:
         r, s, t = (4, 8, 4) if arch == "aie2" else (4, 8, 8)
-    dims = (dim_m, dim_k, dim_n, band_m, chunk_k, out_chunk)
+    if mmul_shape is not None:
+        if bfp16_b and tuple(mmul_shape) != (8, 8, 8):
+            raise ValueError("fused_mm: bfp16_b needs mmul_shape (8, 8, 8)")
+        r, s, t = mmul_shape
+    dims = (dim_m, dim_k, dim_n, band_m, chunk_k, out_chunk, c_depth, r, s, t)
     if any(not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in dims):
         raise ValueError("fused_mm dimensions must be positive integers")
     if (
@@ -80,12 +136,23 @@ def fused_mm(
         or dim_k % chunk_k
         or chunk_k % s
         or out_chunk % 16
-        or (dim_m * dim_n) % (2 * out_chunk)
+        or (dim_m * dim_n) % (c_depth * out_chunk)
     ):
         raise ValueError("fused_mm dimensions violate band, mmul or drain divisibility")
-    modes = {"none": 0, "gelu": 1, "silu": 2, "sigmoid": 3}
+    modes = _MODES
     if epilogue not in modes:
         raise ValueError(f"unknown fused_mm epilogue: {epilogue}")
+    if epilogue_modes is None:
+        epilogue_modes = (epilogue,)
+    if any(m not in modes for m in epilogue_modes):
+        raise ValueError(f"unknown fused_mm epilogue in {epilogue_modes}")
+    if epilogue not in epilogue_modes:
+        raise ValueError(f"epilogue {epilogue} is not in epilogue_modes")
+    if rounding not in ("conv_even", "floor"):
+        raise ValueError(f"fused_mm: rounding must be conv_even or floor: {rounding}")
+    if gelu not in ("fp32", "bf16_steps"):
+        raise ValueError(f"fused_mm: gelu must be fp32 or bf16_steps: {gelu}")
+    steps = gelu == "bf16_steps" and epilogue == "gelu"
     if clamp is not None:
         if len(clamp) != 2 or not np.isfinite(clamp).all() or clamp[0] > clamp[1]:
             raise ValueError("clamp must be a finite (min, max) pair with min <= max")
@@ -129,7 +196,7 @@ def fused_mm(
             .transpose(0, 1, 4, 2, 5, 3)
             .reshape(len(b), -1)
         )
-        return bfp.encode(blocks, rounding="conv_even")
+        return bfp.encode(blocks, rounding=rounding)
 
     def unpack_b_bfp(b):
         return (
@@ -158,14 +225,23 @@ def fused_mm(
         b = b.reshape(-1, dim_k, dim_n).astype(np.float32)
         if bfp16_b:
             # The core converts A itself; B is whatever the host packed.
-            a = bfp.quantize(a, rounding="conv_even")
+            a = bfp.quantize(a, rounding=rounding)
             b = unpack_b_bfp(pack_b_bfp(b))
         return a.astype(np.float64), b.astype(np.float64)
 
     # float64 throughout: in float32, 1 + tanh cancels for large negative
     # inputs and the product's rounding depends on numpy's summation order.
+    # gelu_bf16_steps_vec with an exact tanh.
+    def gelu_steps(c):
+        x = _bf16_round(c, rounding)
+        y = _bf16_round(x * _GELU_SCALE_BF16, rounding)
+        sig = _bf16_round(np.tanh(y * 0.5) + 1, rounding) * 0.5
+        return _bf16_round(x * sig, rounding)
+
     def activate(c):
-        if epilogue != "none":
+        if steps:
+            c = gelu_steps(c)
+        elif epilogue != "none":
             x = c * 1.702 if epilogue == "gelu" else c
             sigmoid = (np.tanh(x * 0.5) + 1) * 0.5
             c = sigmoid if epilogue == "sigmoid" else c * sigmoid
@@ -178,6 +254,33 @@ def fused_mm(
         c = activate(a @ b)
         return c.reshape(len(c), -1)
 
+    # Each step of gelu_steps rounds in the core and in the reference. A
+    # rounding moves its result by under one ulp of the larger operand, so
+    # the step's input error plus that ulp bounds its output error. tanh is
+    # 1-Lipschitz and vtanh adds its own error.
+    def gelu_steps_bound(c, acc_err):
+        def ulp(v, dv):
+            return _bf16_ulp(np.abs(v) + dv)
+
+        x = _bf16_round(c, rounding)
+        dx = acc_err + ulp(x, acc_err)
+        y = _bf16_round(x * _GELU_SCALE_BF16, rounding)
+        dy = _GELU_SCALE_BF16 * dx + ulp(y, _GELU_SCALE_BF16 * dx)
+        # vtanh's error is not monotone, so take it at both ends of the
+        # argument's interval and at its centre.
+        vtanh = np.maximum.reduce(
+            [_vtanh_error(0.5 * (np.abs(y) + d)) for d in (-dy, 0, dy)]
+        )
+        dt = 0.5 * dy + vtanh
+        sig = _bf16_round(np.tanh(y * 0.5) + 1, rounding)
+        dsig = 0.5 * (dt + ulp(sig, dt))
+        out = x * sig * 0.5
+        dout = 0.5 * sig * dx + np.abs(x) * dsig + dx * dsig
+        return dout + ulp(out, dout) + 2.0**-126
+
+    # Floor rounding errs by up to one f32 ulp per accumulation, not half.
+    acc_ulps = 2.0**-23 if rounding == "floor" else 2.0**-24
+
     # The core's f32 sums are off by at most dim_k f32 ulps of sum |a*b|,
     # and the activation's slope (under 1.1) carries that through. On
     # AIE2P tanh is vtanh (see activation._vtanh_error): sigmoid scales
@@ -186,7 +289,10 @@ def fused_mm(
     def error_bound(a, b):
         a, b = operands(a, b)
         c = a @ b
-        err = dim_k * 2.0**-24 * (np.abs(a) @ np.abs(b)) * _SLOPE[epilogue]
+        if steps:
+            acc_err = dim_k * acc_ulps * (np.abs(a) @ np.abs(b))
+            return gelu_steps_bound(c, acc_err).reshape(len(c), -1)
+        err = dim_k * acc_ulps * (np.abs(a) @ np.abs(b)) * _SLOPE[epilogue]
         if epilogue == "sigmoid":
             err = err + 0.5 * _vtanh_error(0.5 * c)
         elif epilogue != "none":
@@ -205,14 +311,13 @@ def fused_mm(
         "S": s,
         "T": t,
         "OUT_CHUNK": out_chunk,
-        "C_DEPTH": 2,
+        "C_DEPTH": c_depth,
         # The kernel selects the activation at runtime; the mask only decides
-        # which bodies are compiled in. Admitting just this one keeps the
-        # program memory of a single-activation design at its old size.
-        "EPILOGUE_MODE_MASK": 1 << modes[epilogue],
+        # which bodies are compiled in, so each mode costs program memory.
+        "EPILOGUE_MODE_MASK": sum(1 << modes[m] for m in set(epilogue_modes)),
     }
     compile_flags = [
-        "-DROUND_CONV_EVEN",
+        *(["-DROUND_CONV_EVEN"] if rounding == "conv_even" else []),
         *(f"-DMM_FUSED_{name}={value}" for name, value in flags.items()),
         *_portable_flags(),
     ]
@@ -223,6 +328,10 @@ def fused_mm(
             "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
             "-DMM_FUSED_BFP16_B",
         ]
+    if gelu == "bf16_steps":
+        compile_flags.append("-DMM_FUSED_GELU_BF16_STEPS")
+    if step_markers:
+        compile_flags.append("-DMM_FUSED_STEP_MARKERS")
     # An absent clamp is (-inf, +inf), which leaves every finite value
     # untouched, so there is no unclamped path to select between.
     bounds = clamp if clamp is not None else (-np.inf, np.inf)
@@ -250,9 +359,17 @@ def fused_mm(
         # reference and tolerance, so the bounds belong in the key.
         clamp_bits,
     )
+    # With one mode compiled in, the mask names the bound mode. With several,
+    # the bound mode needs its own place in the key, for the clamp's reason.
+    if len(set(epilogue_modes)) > 1:
+        key += (modes[epilogue],)
     prefix = hashlib.sha256(repr(key).encode()).hexdigest()[:16]
     contract = KernelContract(
-        trace=Trace.whole_call(),
+        trace=(
+            Trace.partial("markers bracket each init, k step and drain chunk")
+            if step_markers
+            else Trace.whole_call()
+        ),
         roles=(In, In, Out, Param, Param, Param),
         # The operands are held on the core in this blocking; nothing is
         # streamed transformed, the host packs them (block, no stream).
@@ -288,9 +405,14 @@ def fused_mm(
             if not native_tanh
             else Tolerance.bounded(
                 error_bound,
-                note="f32 accumulation, vtanh's error measured on npu2 and "
-                "one bf16 store ulp, per output; fails a 1.5% change to "
-                "gelu's 1.702 and a 3% change to silu's or sigmoid's 1/2",
+                note=(
+                    "f32 accumulation, vtanh's error measured on npu2 and one "
+                    "bf16 ulp per rounding step, carried through each step"
+                    if steps
+                    else "f32 accumulation, vtanh's error measured on npu2 and "
+                    "one bf16 store ulp, per output; fails a 1.5% change to "
+                    "gelu's 1.702 and a 3% change to silu's or sigmoid's 1/2"
+                ),
             )
         ),
         acc_dtype=np.float32,
@@ -304,7 +426,7 @@ def fused_mm(
         stack_bytes=np.dtype(np.float32).itemsize * dim_m * dim_n
         + max(device.default_core_stack_bytes, 2048),
     )
-    return ExternalFunction(
+    fn = _FusedMMKernel(
         "fused_mm_tile",
         source_file=str(source),
         arg_types=[
@@ -326,3 +448,23 @@ def fused_mm(
         symbol_prefix=prefix,
         contract=contract,
     )
+    acc = np.ndarray[(dim_m * dim_n,), np.dtype[np.float32]]
+    b_chunk = (
+        np.ndarray[(chunk_k * dim_n // 8,), np.dtype[v8bfp16ebs8]]
+        if bfp16_b
+        else np.ndarray[(chunk_k * dim_n,), np.dtype[bfloat16]]
+    )
+    bind = fn.object_file.bind
+    fn.fused_mm_tile = fn
+    fn.mm_fused_acc_init = bind("mm_fused_acc_init", [acc])
+    # The trailing int32 is the A band.
+    fn.mm_fused_k_step = bind(
+        "mm_fused_k_step",
+        [np.ndarray[(band_m * chunk_k,), np.dtype[bfloat16]], b_chunk, acc, np.int32],
+    )
+    # outer, half, mode, clamp_min_bits, clamp_max_bits
+    fn.mm_fused_epilogue_chunk = bind(
+        "mm_fused_epilogue_chunk",
+        [np.ndarray[(out_chunk,), np.dtype[bfloat16]], acc] + [np.int32] * 5,
+    )
+    return fn
