@@ -3,12 +3,12 @@
 #
 # IRON design: a transfer length set at runtime via length_parameter.
 #
-# One parameter @tiles sizes both the DMAs and the core's loop. The input DMA
-# moves 2 + tiles tiles of 8 i32 values, the core adds one to each tile, and
-# the output DMA moves the same count back:
+# One parameter @tiles sizes both the DMAs and the core's loop. The DMAs have
+# a static length of 0, so the input DMA moves exactly tiles tiles of 8 i32
+# values, the core adds one to each tile, and the output DMA moves them back:
 #
-#   tiles = 0 -> 16 values
-#   tiles = 3 -> 40 values
+#   tiles = 0 -> nothing
+#   tiles = 3 -> 24 values
 #
 # Usage:
 #   python3 aie_design.py > aie.mlir
@@ -21,12 +21,10 @@ from aie.iron.device import NPU2Col1
 from aie.iron.scratchpad_parameter import ScratchpadParameter
 from aie.dialects.aiex import npu_load_pdi
 from aie.dialects import arith
-from aie.helpers.taplib import TensorAccessPattern
 from aie.ir import IndexType
 
 N = 256
 TILE = 8
-STATIC_TILES = 2
 
 
 def design():
@@ -41,8 +39,7 @@ def design():
     of_out = ObjectFifo(tile_ty, name="objfifo_out")
 
     def core_fn(of_in, of_out, tiles):
-        extra = arith.index_cast(IndexType.get(), tiles.read())
-        count = arith.addi(extra, arith.constant(IndexType.get(), STATIC_TILES))
+        count = arith.index_cast(IndexType.get(), tiles.read())
         for _ in range_(count):
             in_elem = of_in.acquire(1)
             out_elem = of_out.acquire(1)
@@ -61,14 +58,17 @@ def design():
         npu_load_pdi(device_ref="empty")
         npu_load_pdi(device_ref=device_name)
 
-        # Both transfers move STATIC_TILES tiles plus @tiles more.
-        tap = TensorAccessPattern(
-            (N,), offset=0, sizes=[1, 1, 1, STATIC_TILES * TILE], strides=[0, 0, 0, 1]
+        # The sizes give the shape of one tile; @tiles counts them.
+        pattern = dict(
+            offset=0,
+            sizes=[1, 1, 1, TILE],
+            strides=[0, 0, 0, 1],
+            transfer_len=0,
+            length_parameter=tiles,
+            length_unit=TILE,
         )
-        in_h.fill(in_tensor, tap=tap, length_parameter=tiles, length_unit=TILE)
-        out_h.drain(
-            out_tensor, tap=tap, length_parameter=tiles, length_unit=TILE, wait=True
-        )
+        in_h.fill(in_tensor, **pattern)
+        out_h.drain(out_tensor, wait=True, **pattern)
 
     rt = Runtime(sequence, [buf_ty, buf_ty, of_in.prod(), of_out.cons()])
 

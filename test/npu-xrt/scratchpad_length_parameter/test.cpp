@@ -5,7 +5,7 @@
 //
 // Setup:
 //   - Input buffer: 16 rows of 16 i32 values [0, 1, ..., 255]
-//   - The DMAs move the first 8 values of 2 + rows rows into the output
+//   - The DMAs move the first 8 values of each of `rows` rows into the output
 //   - Output buffer: 256 i32 values, prefilled with -1
 //
 // We run with several row counts and check both the values moved and that
@@ -30,7 +30,6 @@ int main(int argc, const char *argv[]) {
   constexpr int N = 256;
   constexpr int ROW = 16;
   constexpr int ROW_READ = 8;
-  constexpr int STATIC_ROWS = 2;
 
   auto device = xrt::device(0);
 
@@ -55,7 +54,7 @@ int main(int argc, const char *argv[]) {
   auto params = test_utils::ParameterScratchpad(run, "params.txt");
 
   bool all_pass = true;
-  for (int32_t rows : {0, 1, 5, 0, 14}) {
+  for (int32_t rows : {0, 1, 5, 0, 16}) {
     for (int i = 0; i < N; ++i)
       buf_out[i] = -1;
     bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -68,7 +67,7 @@ int main(int argc, const char *argv[]) {
 
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-    int moved = (STATIC_ROWS + rows) * ROW_READ;
+    int moved = rows * ROW_READ;
     int errors = 0;
     for (int i = 0; i < N; ++i) {
       int32_t expected =

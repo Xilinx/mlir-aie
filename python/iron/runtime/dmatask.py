@@ -55,7 +55,8 @@ class DMATask(RuntimeTask):
                 value is used as the element offset for this DMA transfer. Defaults to None.
             length_parameter (str | None, optional): Name of a ScratchpadParameter
                 n; the transfer moves its static length plus n * length_unit
-                elements (per iteration). Defaults to None.
+                elements (per iteration). With ``transfer_len=0`` it moves
+                exactly n units, each shaped by ``sizes``. Defaults to None.
             length_unit (int | None, optional): Elements added per unit of
                 length_parameter, a multiple of 16 bytes. Required with
                 length_parameter. Defaults to None.

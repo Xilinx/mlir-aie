@@ -620,7 +620,8 @@ def AIE_NpuDmaMemcpyNdOp
     its sizes describe, where `n` is the value the host writes to the `aiex.scratchpad_parameter` `@n`.
     The extra elements continue the third dimension (or the linear transfer), and every iteration of
     the outermost dimension gets them. The constraints are those of `length_parameter` on
-    [`aie.dma_bd`](AIEDialect.html#aiedma_bd-xilinxaiedmabdop).
+    [`aie.dma_bd`](AIEDialect.html#aiedma_bd-xilinxaiedmabdop). The sizes are always moved, so for a
+    transfer of exactly `n` units use an `aie.dma_bd` with `len = 0` in an `aiex.dma_configure_task`.
 
   }];
 

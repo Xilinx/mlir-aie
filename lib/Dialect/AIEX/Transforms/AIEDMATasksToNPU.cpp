@@ -735,7 +735,8 @@ struct AIEDMATasksToNPUPass
              << (addr_granularity / 8) << " byte boundary.";
     }
 
-    if (len < addr_granularity / 8) {
+    // A runtime length may start from zero: the update below adds to it.
+    if (len < addr_granularity / 8 && !bd_op.getLengthStateTableIdxAttr()) {
       return bd_op->emitOpError("Transfer size of ")
              << len << " bytes falls below minimum hardware transfer unit of "
              << (addr_granularity / 8) << " bytes.";
@@ -870,7 +871,11 @@ struct AIEDMATasksToNPUPass
       for (size_t i = 0; i < 3; i++) {
         len_dims_addr_granularity *= sizes[i];
       }
-      if (len_dims_addr_granularity != len_addr_granularity) {
+      // A runtime length from zero keeps the pattern for the units it adds.
+      bool runtimeLengthFromZero =
+          len_addr_granularity == 0 && bd_op.getLengthStateTableIdxAttr();
+      if (len_dims_addr_granularity != len_addr_granularity &&
+          !runtimeLengthFromZero) {
         auto err =
             bd_op->emitOpError(
                 "Buffer descriptor length does not match length of transfer "

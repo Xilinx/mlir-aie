@@ -1096,11 +1096,12 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     A shim DMA BD in a runtime sequence can take part of its length from an
     `aiex.scratchpad_parameter`: with `length_parameter = @n` and
     `length_unit = u`, the BD moves `len + n * u` elements, where `n` is the
-    value the host writes to the parameter. `len` stays the length for `n = 0`.
-    The lowering writes the BD with the static length, then emits an
-    `aiex.npu.update_from_scratchpad` that adds `n * u` to the BD's
-    `Buffer_Length` word. A BD with an iteration dimension gets the added
-    length on every iteration.
+    value the host writes to the parameter. `len` stays the length for `n = 0`,
+    and may itself be 0 so that the BD moves exactly `n` units; `sizes` and
+    `strides` then still give the shape of each unit. The lowering writes the
+    BD with the static length, then emits an `aiex.npu.update_from_scratchpad`
+    that adds `n * u` to the BD's `Buffer_Length` word. A BD with an iteration
+    dimension gets the added length on every iteration.
 
     ```
     aiex.scratchpad_parameter @n : i32
@@ -1110,6 +1111,12 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
           {length_parameter = @n, length_unit = 64 : i32}
       aie.end
     }
+    %rows = aiex.dma_configure_task_for @of_rows {
+      aie.dma_bd(%in : memref<4096xi32> offset = 0 len = 0
+                 sizes = [2, 2, 4] strides = [16, 4, 1])
+          {length_parameter = @n, length_unit = 8 : i32}
+      aie.end
+    }
     ```
 
     The length works with either parameter kind, so one parameter can set both
@@ -1117,9 +1124,9 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     the transfers feeding it, or both a transfer's `offset_parameter` and its
     length.
 
-    Constraints, all from the firmware's register update, which adds to the
-    length word and the address word after it and clears the low two bits of
-    both:
+    Constraints. The firmware's register update clears the low two bits of the
+    length word before adding to it, and the stride of a size-1 dimension is
+    not encoded in the BD:
     - Shim NOC tiles on AIE2 and AIE2P only.
     - `len` and `length_unit` must both be multiples of 16 bytes.
     - With a data layout transformation that is not a contiguous scan, the

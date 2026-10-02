@@ -5,14 +5,15 @@
 //
 // The input holds rows of 16 i32 values [0, 1, ..., 255]. The shim MM2S reads
 // the first 8 values of each row and streams them to a second shim, whose
-// S2MM writes them contiguously. Both BDs have a static length of two rows
-// plus @rows more, one row (8 values) per unit:
+// S2MM writes them contiguously. Both BDs have a static length of 0, so they
+// move exactly @rows rows, one row (8 values) per unit:
 //
-//   rows = 0 → 16 values: 0..7, 16..23
-//   rows = 1 → 24 values: 0..7, 16..23, 32..39
-//   rows = 5 → 56 values
+//   rows = 0 → nothing
+//   rows = 1 → 8 values: 0..7
+//   rows = 2 → 16 values: 0..7, 16..23
 //
-// The MM2S pattern is strided, so its extra rows extend the third dimension.
+// The MM2S pattern is strided: its sizes give the shape of each row and the
+// runtime length counts steps of its third dimension.
 //
 module {
     aiex.scratchpad_parameter @rows : i32
@@ -33,12 +34,12 @@ module {
             aiex.npu.load_pdi { device_ref = @test }
 
             %t_in = aiex.dma_configure_task_for @in {
-                aie.dma_bd(%in : memref<256xi32> offset = 0 len = 16 sizes = [2, 2, 4] strides = [16, 4, 1]) {length_parameter = @rows, length_unit = 8 : i32}
+                aie.dma_bd(%in : memref<256xi32> offset = 0 len = 0 sizes = [2, 2, 4] strides = [16, 4, 1]) {length_parameter = @rows, length_unit = 8 : i32}
                 aie.end
             }
 
             %t_out = aiex.dma_configure_task_for @out {
-                aie.dma_bd(%out : memref<256xi32> offset = 0 len = 16) {length_parameter = @rows, length_unit = 8 : i32}
+                aie.dma_bd(%out : memref<256xi32> offset = 0 len = 0) {length_parameter = @rows, length_unit = 8 : i32}
                 aie.end
             } {issue_token = true}
 

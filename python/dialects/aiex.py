@@ -367,8 +367,9 @@ def shim_dma_single_bd_task(
         packet (optional): The packet header information represented as a (packet_type, packet_id) tuple.
         length_parameter (optional): Name of a scratchpad parameter n; the
             transfer then moves the static length plus n * length_unit elements
-            (per iteration). Shim tiles only; see the length_parameter docs on
-            aie.dma_bd.
+            (per iteration). With `transfer_len=0` it moves exactly n units,
+            each shaped by `sizes`. Shim tiles only; see the length_parameter
+            docs on aie.dma_bd.
         length_unit (optional): Elements added per unit of length_parameter; a
             multiple of 16 bytes. Required with length_parameter.
 

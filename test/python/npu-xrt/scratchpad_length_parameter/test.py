@@ -9,7 +9,7 @@
 # RUN: %aiecc -v --get-full-elf --dynamic-objFifos --get-scratchpad-parameters aie.mlir
 # RUN: %run_on_npu2% %pytest %s
 
-# Each run checks the 2 + tiles tiles moved (see aie_design.py) and that
+# Each run checks the tiles moved (see aie_design.py) and that
 # nothing past them in the -1-filled output was written.
 
 import numpy as np
@@ -24,7 +24,6 @@ from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import (
 
 N = 256
 TILE = 8
-STATIC_TILES = 2
 
 
 @pytest.fixture(scope="module")
@@ -46,7 +45,7 @@ def kernel_setup():
     return run, params, in_tensor, out_tensor
 
 
-@pytest.mark.parametrize("tiles", [0, 3, 1, 30])
+@pytest.mark.parametrize("tiles", [0, 3, 1, 32])
 def test_length_parameter(kernel_setup, tiles):
     run, params, in_tensor, out_tensor = kernel_setup
 
@@ -61,7 +60,7 @@ def test_length_parameter(kernel_setup, tiles):
     run.wait2()
 
     out_tensor.to("cpu")
-    moved = (STATIC_TILES + tiles) * TILE
+    moved = tiles * TILE
     expected = np.full(N, -1, dtype=np.int32)
     expected[:moved] = np.arange(moved, dtype=np.int32) + 1
     np.testing.assert_array_equal(out_tensor.numpy(), expected)

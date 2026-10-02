@@ -145,3 +145,37 @@ aie.device(npu2) {
   }
 }
 
+// -----
+
+// With a length parameter the static length may be 0, so the transfer moves
+// exactly n units. A strided BD keeps its sizes as the shape of each unit
+// (one step of the third dimension, 8 i32) while word 0 starts from 0.
+
+// CHECK-LABEL: module
+// CHECK: dense<[0,
+// CHECK: aie.runtime_sequence @linear_from_zero
+// CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118880 : ui32}
+// CHECK: aiex.npu.update_from_scratchpad<mul> {address = 118880 : ui32, func_arg = 16 : ui32, state_table_idx = 0 : ui8}
+// CHECK: dense<[0,
+// CHECK: aie.runtime_sequence @strided_from_zero
+// CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118880 : ui32}
+// CHECK: aiex.npu.update_from_scratchpad<mul> {address = 118880 : ui32, func_arg = 8 : ui32, state_table_idx = 0 : ui8}
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence @linear_from_zero(%arg0 : memref<4096xi32>) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 0) {bd_id = 3 : i32, length_parameter = @n, length_unit = 16 : i32}
+      aie.end
+    }
+    aiex.dma_start_task(%task)
+  }
+  aie.runtime_sequence @strided_from_zero(%arg0 : memref<4096xi32>) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 0 sizes = [2, 2, 4] strides = [16, 4, 1]) {bd_id = 3 : i32, length_parameter = @n, length_unit = 8 : i32}
+      aie.end
+    }
+    aiex.dma_start_task(%task)
+  }
+}
+
