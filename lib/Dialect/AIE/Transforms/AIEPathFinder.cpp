@@ -838,8 +838,10 @@ struct Pathfinder::RouteState {
   // group flows based on packetGroupId; pinned trees go in first, so the
   // flows routed around them see them.
   llvm::MapVector<int, SmallVector<int, 8>> groupedFlows;
-  // Packet flows that conflict, by the ids each carries.
+  // Packet flows that conflict, by the ids each carries, or whose sources the
+  // routing check found in a hold cycle together.
   std::vector<llvm::BitVector> conflicting;
+  std::set<std::pair<PathEndPoint, PathEndPoint>> apartSources;
   // The packet ids each flow carries, in all and to each destination.
   std::vector<std::set<int>> flowIds;
   std::vector<SmallVector<int, 4>> sameId;
@@ -1002,13 +1004,17 @@ void Pathfinder::RouteState::relateParts() {
   conflicting.assign(parts.size(), llvm::BitVector(parts.size()));
   for (size_t a = 0; a < parts.size(); a++)
     for (size_t b = 0; b < parts.size(); b++) {
-      if (a != b && llvm::any_of(flowIds[a],
-                                 [&](int id) { return flowIds[b].count(id); }))
+      // Trees with an id in common join where they meet, so are never apart.
+      bool same = llvm::any_of(flowIds[a],
+                               [&](int id) { return flowIds[b].count(id); });
+      if (a != b && same)
         sameId[a].push_back(b);
       if (a < b && parts[a].packetId && parts[b].packetId &&
-          pf.constraints.conflict &&
-          pf.constraints.conflict(parts[a].src, flowIds[a], parts[b].src,
-                                  flowIds[b])) {
+          ((!same &&
+            apartSources.count(std::minmax(parts[a].src, parts[b].src))) ||
+           (pf.constraints.conflict &&
+            pf.constraints.conflict(parts[a].src, flowIds[a], parts[b].src,
+                                    flowIds[b])))) {
         conflicting[a].set(b);
         conflicting[b].set(a);
       }
@@ -1775,7 +1781,11 @@ llvm::Error Pathfinder::TreeBuilder::placePinned() {
 // than the source lets destinations share hops; see treeSeedFactor for what
 // a branch off the tree costs.
 llvm::Error Pathfinder::TreeBuilder::grow() {
-  meet();
+  // A path to another tree can leave the destination to reach first no way
+  // to it, so the tree meets the others once it reaches it.
+  bool metTrees = !first || !llvm::is_contained(pending, *first);
+  if (metTrees)
+    meet();
   while (!pending.empty()) {
     SmallVector<int, 8> targets;
     for (const PathEndPoint &p : pending)
@@ -1826,6 +1836,10 @@ llvm::Error Pathfinder::TreeBuilder::grow() {
               " through the connections the switchboxes allow and existing "
               "routing leaves free.",
           RoutingFaults{}, pf.flowLoc(part.src, &endPoint));
+    if (!metTrees) {
+      metTrees = true;
+      meet();
+    }
   }
   return llvm::Error::success();
 }
@@ -1897,20 +1911,37 @@ void Pathfinder::TreeBuilder::claim() {
     if (packetId)
       st.treeOf[flow].try_emplace(currId, predId, e);
     cell.isPriority |= part.isPriorityFlow;
-    // Packet flows in the same group may share a channel, but only if
-    // their ids differ, so two same-id flows never merge onto a channel
-    // and then fan back out to separate destinations. The flow's own
-    // tree branching at a port never merges back.
+    // Packet flows in the same group may share a channel. Two trees with
+    // the same id may merge onto one only where nothing fans out after, or
+    // where both take the id to the same destinations, so a merged id never
+    // fans back out to one tree's destinations alone. The flow's own tree
+    // branching at a port never merges back.
     // packetGroupId only becomes >= 0 when packetId has a value (see
     // Pathfinder::addFlow), so the dereferences below are safe; the
     // checker just can't correlate the two across this loop's back edge.
     // NOLINTBEGIN(bugprone-unchecked-optional-access)
     auto seen =
         packetId ? cell.packetIds.find(*packetId) : cell.packetIds.end();
+    auto mergeable = [&] {
+      if (!llvm::is_contained({WireBundle::North, WireBundle::South,
+                               WireBundle::East, WireBundle::West},
+                              sb.dstPorts[j].bundle))
+        return true;
+      auto reached = [&](const Flow &f) {
+        std::set<PathEndPoint> dsts;
+        for (const PathEndPoint &dst : f.dsts)
+          if (auto ids = pf.packetIdsTo.find({f.src, dst});
+              ids != pf.packetIdsTo.end() &&
+              llvm::is_contained(ids->second, *packetId))
+            dsts.insert(dst);
+        return dsts;
+      };
+      return reached(part) == reached(st.parts[seen->second]);
+    };
     bool sameGroupUnseen =
         packetGroupId >= 0 && packetId.has_value() &&
         (cell.packetGroupId == -1 || cell.packetGroupId == packetGroupId) &&
-        (seen == cell.packetIds.end() || seen->second == flow);
+        (seen == cell.packetIds.end() || seen->second == flow || mergeable());
     if (sameGroupUnseen) {
       int packetIdValue = *packetId;
       // NOLINTEND(bugprone-unchecked-optional-access)
@@ -2104,6 +2135,21 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     }
   }
   crowdedTiles.insert(faults.crowded.begin(), faults.crowded.end());
+  bool apart = false;
+  for (const auto &pair : faults.apart)
+    if (st.apartSources.insert(pair).second) {
+      apart = true;
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Route apart: "
+                 << describeTilePort(pair.first.coords, pair.first.port)
+                 << " and "
+                 << describeTilePort(pair.second.coords, pair.second.port)
+                 << "\n");
+    }
+  if (apart) {
+    illegalEdges++;
+    st.relateParts();
+  }
   std::set<std::pair<int, int>> faulted;
   bool unjoined = false;
   for (const auto &[tile, conn] : faults.connections) {

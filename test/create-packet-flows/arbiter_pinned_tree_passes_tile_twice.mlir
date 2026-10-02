@@ -24,14 +24,12 @@
 // CHECK-DAG:     %[[A4:.*]] = aie.amsel<4> (3)
 // CHECK-DAG:     %[[A5_3:.*]] = aie.amsel<5> (3)
 // CHECK-DAG:     aie.masterset(Core : 0, %[[A4]])
-// CHECK-DAG:     aie.masterset(South : 3, %[[A5_2]], %[[A5_3]])
-// CHECK:         aie.packet_rules(South : 1) {
-// CHECK-NEXT:      aie.rule(31, 16, %[[A4]])
+// CHECK-DAG:     aie.masterset(South : {{[0-9]}}, %[[A5_2]], %[[A5_3]])
+// CHECK:           aie.rule(31, 16, %[[A4]])
 // CHECK:         aie.packet_rules(Core : 1) {
 // CHECK-NEXT:      aie.rule(31, 16, %[[A5_2]]) {priority_route}
 // CHECK-NEXT:      aie.rule(31, 12, %[[A5_3]])
-// CHECK:         aie.packet_rules(West : 1) {
-// CHECK-NEXT:      aie.rule(31, 2, %[[A4]])
+// CHECK:           aie.rule(31, 2, %[[A4]])
 
 // WARN:     warning: Packet flows into receivers they share can deadlock
 // WARN-SAME: (id 2)

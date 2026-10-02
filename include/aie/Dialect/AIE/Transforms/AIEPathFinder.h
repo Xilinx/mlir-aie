@@ -254,6 +254,9 @@ struct RoutingFaults {
   std::vector<std::pair<TileID, Connect>> connections;
   std::vector<TreeSplit> splits;
   std::vector<TileID> crowded;
+  /// Sources whose packet flows the routing put on one arbiter or link in a
+  /// hold cycle, to keep apart like conflicting ones from then on.
+  std::vector<std::pair<PathEndPoint, PathEndPoint>> apart;
   /// Whether the connections are all of flows leaving a switchbox by a master
   /// port of the prioritized flows, and by no master set of theirs.
   bool onlyOverlayMasters = false;
