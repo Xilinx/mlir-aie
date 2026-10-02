@@ -1204,6 +1204,9 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 // past the third is an iteration dimension, and aie-decompose-large-dma-bd
 // splits them off into descriptors of 4. With a runtime value among them it
 // cannot, so the cap applies here.
+//
+// A BD's `iteration` attribute claims that iteration register itself, so its
+// sizes/strides must leave it free: one dimension fewer, with no splitting.
 static LogicalResult
 verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
                        Region &body) {
@@ -1218,15 +1221,23 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
       result = failure();
       return;
     }
-    if (bd.getIteration()) {
-      // See aie.dma_bd's ## BD iteration doc in AIEOps.td.
-      bd.emitOpError() << "the iteration attribute is not supported on the "
-                          "runtime-sequence path; express iteration via the "
-                          "outermost sizes/strides dimension instead";
+    if (failed(
+            AIE::verifyDMABDIteration(bd, targetModel.getTileType(col, row)))) {
       result = failure();
       return;
     }
     size_t numDims = bd.getMixedSizes().size();
+    if (bd.getIteration()) {
+      if (numDims + 1 > maxNDims) {
+        bd.emitOpError() << "Cannot give more than "
+                         << std::to_string(maxNDims - 1)
+                         << " dimensions for step sizes and wraps alongside "
+                            "the iteration attribute on this tile (got "
+                         << std::to_string(numDims) << " dimensions).";
+        result = failure();
+      }
+      return;
+    }
     auto isConstant = [](OpFoldResult v) {
       return getConstantIntValue(v).has_value();
     };

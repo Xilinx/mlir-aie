@@ -142,8 +142,10 @@ def sprod(values: Iterable[Any]) -> Any:
     """
     result: Any = 1
     for v in values:
+        if not is_sym(v) and v == 1:
+            continue
         if is_sym(result) or is_sym(v):
-            result = result * v
+            result = v if not is_sym(result) and result == 1 else result * v
         else:
             result = int(result) * int(v)
     return result

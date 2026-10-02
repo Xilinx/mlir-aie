@@ -745,10 +745,6 @@ class ObjectFifoHandle(Resolvable):
         packet: tuple[int, int] | None,
         offset_parameter,
         group,
-        sizes=None,
-        strides=None,
-        offset=None,
-        transfer_len=None,
         managed=True,
     ):
         """Shared body for fill()/drain().
@@ -781,10 +777,6 @@ class ObjectFifoHandle(Resolvable):
             packet=packet,
             offset_parameter=offset_parameter,
             group=group,
-            sizes=sizes,
-            strides=strides,
-            offset=offset,
-            transfer_len=transfer_len,
             managed=managed,
         )
 
@@ -796,10 +788,6 @@ class ObjectFifoHandle(Resolvable):
         packet: tuple[int, int] | None = None,
         offset_parameter=None,
         group=None,
-        sizes=None,
-        strides=None,
-        offset=None,
-        transfer_len=None,
         managed: bool = True,
     ):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
@@ -818,10 +806,6 @@ class ObjectFifoHandle(Resolvable):
             packet,
             offset_parameter,
             group,
-            sizes,
-            strides,
-            offset,
-            transfer_len,
             managed,
         )
 
@@ -833,10 +817,6 @@ class ObjectFifoHandle(Resolvable):
         packet: tuple[int, int] | None = None,
         offset_parameter=None,
         group=None,
-        sizes=None,
-        strides=None,
-        offset=None,
-        transfer_len=None,
         managed: bool = True,
     ):
         """Drain this consumer ObjectFifo, writing data to the ``dest`` runtime buffer.
@@ -855,10 +835,6 @@ class ObjectFifoHandle(Resolvable):
             packet,
             offset_parameter,
             group,
-            sizes,
-            strides,
-            offset,
-            transfer_len,
             managed,
         )
 

@@ -367,6 +367,10 @@ bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 mlir::LogicalResult
 verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext = false);
 
+// Validate a BD's iteration attribute against its tile type's iteration and
+// step fields. Callable from the AIEX dialect, like verifyDMABDOutOfOrderId.
+mlir::LogicalResult verifyDMABDIteration(DMABDOp bd, AIETileType tileType);
+
 // Validate an out-of-order S2MM channel and its receive BDs.
 mlir::LogicalResult
 verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,

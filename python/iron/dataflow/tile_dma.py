@@ -25,7 +25,7 @@ reprogram a mem or core tile's DMA from inside the sequence body.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable
 
 import numpy as np
 
@@ -48,6 +48,8 @@ from ...dialects.aie import (
 from ...dialects.aie import bds as bd_blocks
 from ...dialects.aiex import dma_configure_task, dma_configure_task_for
 from ...helpers.npdtypes import pack_pad_value
+from ...helpers.taplib import TensorAccessPattern
+from ...helpers.taplib._symbolic import is_sym, sprod, sym_any
 from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock
@@ -123,8 +125,10 @@ class Bd:
     """
 
     buffer: Buffer
-    offset: int = 0
-    length: int | None = None  # default: full buffer
+    # The walk over buffer; its offset, sizes and strides may be runtime
+    # values. A padded walk sets the BD's pad geometry (MemTile only).
+    # Default: the whole buffer.
+    tap: TensorAccessPattern | None = None
     acquires: list[Acquire] = field(default_factory=list)
     releases: list[Release] = field(default_factory=list)
     next: int | str | None = None
@@ -134,15 +138,6 @@ class Bd:
     packet: tuple[int, int] | None = None
     # Explicit id (other ids are auto-assigned around it).
     bd_id: int | None = None
-    # Strided access pattern, outermost dimension first; each entry is a
-    # constant int or a runtime Value. Empty (default) emits a contiguous
-    # transfer. sizes and strides must have equal length.
-    sizes: list = field(default_factory=list)
-    strides: list = field(default_factory=list)
-    # Per-BD constant-pad geometry (MemTile only): one (const_pad_before,
-    # const_pad_after) pair per dimension, outermost first, matching the
-    # sizes/strides layout. The fill value is per-channel (DmaChannel.pad_value).
-    pad_dimensions: list[Sequence[int]] | None = None
     # BD iteration state: one BD covers N sub-buffers over N executions instead
     # of an N-deep chain. See BdIteration. Absent = iteration disabled.
     iteration: BdIteration | None = None
@@ -159,13 +154,20 @@ class Bd:
         """
         for acq in self.acquires:
             acq.emit()
-        bd_kwargs: dict[str, Any] = dict(sizes=self.sizes, strides=self.strides)
-        if not isinstance(self.offset, (int, np.integer)) or self.offset:
-            bd_kwargs["offset"] = self.offset
-        if self.length is not None:
-            bd_kwargs["transfer_len"] = self.length
-        if self.pad_dimensions is not None:
-            bd_kwargs["pad_dimensions"] = self.pad_dimensions
+        bd_kwargs: dict[str, Any] = {}
+        if (tap := self.tap) is not None:
+            if tap.padding is None:
+                tap = tap.coalesce()
+            else:
+                bd_kwargs["pad_dimensions"] = list(tap.padding)
+            stride = tap.strides[-1]
+            if tap.padding or tap.rank > 1 or is_sym(stride) or stride != 1:
+                bd_kwargs.update(sizes=list(tap.sizes), strides=list(tap.strides))
+            if is_sym(tap.offset) or tap.offset:
+                bd_kwargs["offset"] = tap.offset
+            # A runtime walk with dims gets its length from them compiler-side.
+            if "sizes" not in bd_kwargs or not sym_any(tap.padded_sizes):
+                bd_kwargs["transfer_len"] = sprod(tap.padded_sizes)
         if self.iteration is not None:
             it = self.iteration
             bd_kwargs["iteration"] = (it.size, it.stride, it.current)
@@ -256,7 +258,9 @@ class DmaEndpoint:
         after the last start.
 
         ```python
-        load = into.endpoint(mem).task(Bd(resident, sizes=[n], strides=[1]))
+        load = into.endpoint(mem).task(
+            Bd(resident, tap=TensorAccessPattern.full((N,))[:n])
+        )
         load.start()
         ...
         load.start()
@@ -264,10 +268,10 @@ class DmaEndpoint:
         ```
 
         Each [`Bd`][iron.Bd] is spelled as in a [`TileDma`][iron.TileDma], but
-        without ``next``, and its access pattern, offset and length may be
-        dispatch-time values. A runtime descriptor needs a length, so one left
-        unset defaults to the product of ``sizes`` (or the whole buffer). A
-        buffer that has no tile yet is placed on this one.
+        without ``next``, and its ``tap`` may hold dispatch-time values. An
+        ``iteration`` takes the descriptor's outermost dimension, so its
+        ``tap`` gets one dimension fewer. A buffer that has no tile yet is
+        placed on this one.
 
         Args:
             *bds: The descriptors, walked in order as one task; a bare
@@ -432,7 +436,7 @@ class DmaChannel:
 
         Returns None for the default 0 (elides the attribute). The element width
         is taken from the padded BD(s); a nonzero pad_value requires at least one
-        BD with pad_dimensions (else it would silently no-op), and all padded
+        BD with a padded tap (else it would silently no-op), and all padded
         BDs on the channel must share an element size (one register serves them
         all).
         """
@@ -441,12 +445,12 @@ class DmaChannel:
         elem_sizes = {
             np.dtype(bd.buffer.dtype).itemsize
             for bd in self.bds
-            if bd.pad_dimensions is not None
+            if bd.tap is not None and bd.tap.padding is not None
         }
         if not elem_sizes:
             raise ValueError(
-                "DmaChannel.pad_value is set but no BD on the channel has "
-                "pad_dimensions; a pad value needs a padded region."
+                "DmaChannel.pad_value is set but no BD on the channel has a "
+                "padded tap; a pad value needs a padded region."
             )
         if len(elem_sizes) > 1:
             raise ValueError(

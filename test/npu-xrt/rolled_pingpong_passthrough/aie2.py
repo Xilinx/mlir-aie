@@ -92,20 +92,14 @@ def design(dev):
             # Prologue: first input tile.
             init_in = in_h.fill(
                 A,
-                sizes=[1, 1, 1, TILE_LEN],
-                strides=[0, 0, 0, 1],
                 wait=True,
                 managed=False,
             )
 
-            # Output task: collect N_TILES output tiles contiguously. The third
-            # dim walks the N_TILES tiles with stride TILE_LEN so tile i lands at
-            # offset i*TILE_LEN (a size-N stride-0 wrap dim would overwrite one
-            # tile).
+            # Output task: collect N_TILES output tiles contiguously, so tile i
+            # lands at offset i*TILE_LEN.
             out_task = out_h.drain(
                 B,
-                sizes=[1, 1, N_TILES, TILE_LEN],
-                strides=[0, 0, TILE_LEN, 1],
                 wait=True,
                 managed=False,
             )
@@ -116,8 +110,6 @@ def design(dev):
             for _iv, (prev,), (result,) in range_(1, N_TILES, iter_args=[init_in]):
                 tile_in = in_h.fill(
                     A,
-                    sizes=[1, 1, 1, TILE_LEN],
-                    strides=[0, 0, 0, 1],
                     wait=True,
                     managed=False,
                 )

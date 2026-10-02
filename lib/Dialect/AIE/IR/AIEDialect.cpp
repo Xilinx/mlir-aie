@@ -3166,6 +3166,41 @@ xilinx::AIE::verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext) {
   return success();
 }
 
+// BD iteration bounds. Values are true/element (aie-rt encodes value-1);
+// size <= 1 disables iteration (stride ignored). The stride is checked in
+// whole 32-bit words against the tile-specific step field. aiex.npu.writebd
+// checks the same tile-correct step limit (getDmaBdStepBits) inline in its own
+// raw-register terms.
+LogicalResult xilinx::AIE::verifyDMABDIteration(DMABDOp bd,
+                                                AIETileType tileType) {
+  std::optional<BDIterationAttr> iter = bd.getIteration();
+  if (!iter)
+    return success();
+  const AIETargetModel &targetModel = getTargetModel(bd.getOperation());
+  if (!targetModel.hasProperty(AIETargetModel::UsesBDIteration))
+    return bd.emitOpError("BD iteration is not supported on this target");
+  uint32_t size = iter->getSize(), current = iter->getCurrent();
+  uint32_t maxSize = 1u << targetModel.getDmaBdIterBits(tileType);
+  if (size < 1 || size > maxSize)
+    return bd.emitOpError("BD iteration size must be in [1, ")
+           << maxSize << "]";
+  if (size > 1) {
+    int64_t strideInBytes = static_cast<int64_t>(iter->getStride()) *
+                            bd.getBufferElementTypeWidthInBytes();
+    if (strideInBytes % 4)
+      return bd.emitOpError(
+          "BD iteration stride must be aligned to 32-bit words");
+    int64_t stepInWords = strideInBytes / 4;
+    int64_t maxStep = 1LL << targetModel.getDmaBdStepBits(tileType);
+    if (stepInWords < 1 || stepInWords > maxStep)
+      return bd.emitOpError() << "BD iteration stride must be in [1, "
+                              << maxStep << "] 32-bit words";
+  }
+  if (current >= size)
+    return bd.emitOpError("BD iteration current must be in [0, size)");
+  return success();
+}
+
 static LogicalResult verifyDMARepeatCount(Operation *op, int32_t repeatCount) {
   uint32_t maxRepeat = getTargetModel(op).getMaxRepeatCount();
   if (maxRepeat == 0) {
@@ -3724,7 +3759,7 @@ LogicalResult DMABDOp::verify() {
     uint64_t maxStride = stepBits > 0 ? (1ULL << stepBits) : 0;
 
     for (BDDimLayoutAttr dim : *dims) {
-      if (0 == dim.getStride())
+      if (0 == dim.getStride() && dim.getSize() != 1)
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
       if (dim.getStride() > buffer.getNumElements())
@@ -3883,35 +3918,7 @@ LogicalResult DMABDOp::verify() {
     }
   }
 
-  // BD iteration bounds. Values are true/element (aie-rt encodes value-1);
-  // size <= 1 disables iteration (stride ignored). The stride is checked in
-  // whole 32-bit words against the tile-specific step field; the wrap is a
-  // 6-bit field everywhere. aiex.npu.writebd checks the same tile-correct step
-  // limit (getDmaBdStepBits) inline in its own raw-register terms.
-  if (auto iter = getIteration()) {
-    if (!targetModel.hasProperty(AIETargetModel::UsesBDIteration))
-      return emitOpError("BD iteration is not supported on this target");
-    uint32_t size = iter->getSize(), current = iter->getCurrent();
-    if (size < 1 || size > 64) // 64 = aie-rt IterWrapMax + 1
-      return emitOpError("BD iteration size must be in [1, 64]");
-    if (size > 1) {
-      int64_t strideInBytes = static_cast<int64_t>(iter->getStride()) *
-                              getBufferElementTypeWidthInBytes();
-      if (strideInBytes % 4)
-        return emitOpError(
-            "BD iteration stride must be aligned to 32-bit words");
-      int64_t stepInWords = strideInBytes / 4;
-      int64_t maxStep =
-          1LL << targetModel.getDmaBdStepBits(parentTile.getTileType());
-      if (stepInWords < 1 || stepInWords > maxStep)
-        return emitOpError() << "BD iteration stride must be in [1, " << maxStep
-                             << "] 32-bit words";
-    }
-    if (current >= size)
-      return emitOpError("BD iteration current must be in [0, size)");
-  }
-
-  return success();
+  return verifyDMABDIteration(*this, parentTile.getTileType());
 }
 
 LogicalResult DMABDPACKETOp::verify() {

@@ -129,8 +129,6 @@ def chaining_channels(
                 bds=[
                     Bd(
                         buffer=memtile_buff,
-                        offset=0,
-                        length=n_elements,
                         acquires=[Acquire(memtile_lock, value=1)],
                         releases=[Release(memtile_lock, value=0)],
                     ),
@@ -150,8 +148,6 @@ def chaining_channels(
                 bds=[
                     Bd(
                         buffer=compute_buff,
-                        offset=0,
-                        length=n_elements_read,
                         acquires=[Acquire(compute_prod_lock, value=1)],
                         releases=[Release(compute_cons_lock, value=1)],
                     ),

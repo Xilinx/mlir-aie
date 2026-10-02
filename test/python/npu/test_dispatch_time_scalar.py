@@ -16,6 +16,7 @@
 import aie.iron as iron
 import numpy as np
 import pytest
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     DispatchTime,
@@ -60,27 +61,13 @@ def dyn_copy(
     worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
     def seq(a_h, b_h, start, n, in_prod, out_cons):
-        # The index counter is cast to the scalar width by the arithmetic.
+        tiles = TensorAccessPattern.full((max_tiles * tile_size,)).split(0, tile_size)
         for tile in range_(n):
-            offset = (start + tile) * tile_size
+            # The index counter is cast to the scalar width by the arithmetic.
+            tap = tiles[start + tile]
             tg = TaskGroup()
-            out_cons.drain(
-                b_h,
-                sizes=[1, 1, 1, tile_size],
-                strides=[0, 0, tile_size, 1],
-                offset=offset,
-                transfer_len=tile_size,
-                wait=True,
-                group=tg,
-            )
-            in_prod.fill(
-                a_h,
-                sizes=[1, 1, 1, tile_size],
-                strides=[0, 0, tile_size, 1],
-                offset=offset,
-                transfer_len=tile_size,
-                group=tg,
-            )
+            out_cons.drain(b_h, tap=tap, wait=True, group=tg)
+            in_prod.fill(a_h, tap=tap, group=tg)
             tg.finish()
 
     # Reverse the same-typed dispatch parameters to exercise identity binding.

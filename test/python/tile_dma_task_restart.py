@@ -11,6 +11,7 @@ is one queue push. Built ahead of a loop, it leaves the loop body only pushes.
 
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import Bd, Buffer, Flow, Program, Runtime
 from aie.iron.controlflow import range_, yield_
 from aie.iron.device import NPU2Col1, Tile
@@ -41,7 +42,10 @@ def design(sequence_body, fixed=False):
 def restart(load_end, store_end, resident, into, out, a, c):
     load = load_end.task(resident, wait=True)
     store = store_end.task(
-        Bd(resident, length=N // 2), Bd(resident, offset=N // 2, length=N // 2)
+        *(
+            Bd(resident, tap=half)
+            for half in TensorAccessPattern.full((N,)).partition(2)
+        )
     )
     into.fill(a)
     load.start().await_()

@@ -574,6 +574,7 @@ void packBdWords(OpBuilder &builder, Location loc,
   set(layout.packetType, f.packet_type);
   set(layout.packetId, f.packet_id);
   set(layout.outOfOrderId, f.out_of_order_id);
+  set(layout.iterationCurrent, f.iteration_current);
   if (layout.burstLength.exists())
     set(layout.burstLength, AIE::getShimBurstLengthEncoding(tm, burstLength));
   set(layout.axcache, axcache);

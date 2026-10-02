@@ -490,6 +490,9 @@ struct AIEDMATasksToNPUPass
     if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
       f.out_of_order_id = *oooId;
 
+    if (std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration())
+      f.iteration_current = iter->getCurrent();
+
     AIE::UseLockOp acquire_op, release_op;
     if (failed(
             AIE::verifyBdLockPair(block, outOfOrder, acquire_op, release_op)))
@@ -601,6 +604,12 @@ struct AIEDMATasksToNPUPass
     for (size_t i = 0; i < sizes.size(); i++) {
       sizes4[4 - sizes.size() + i] = sizes[i];
       strides4[4 - strides.size() + i] = strides[i];
+    }
+    // The iteration attribute takes the outermost (iteration) slot, which
+    // verifyTaskBDDimensions has kept free of sizes/strides.
+    if (std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration()) {
+      sizes4.front() = builder.getI64IntegerAttr(iter->getSize());
+      strides4.front() = builder.getI64IntegerAttr(iter->getStride());
     }
     // len as OpFoldResult: the runtime operand if present, else the static_len
     // attr (a constant BD with runtime sizes/strides still reaches here). With
@@ -752,6 +761,13 @@ struct AIEDMATasksToNPUPass
         bd_op.getConstantDimensions();
     if (!dimsStorage)
       return bd_op->emitOpError("internal error folding BD dimensions");
+    // The iteration attribute rides in the outermost (iteration) slot of the
+    // dimensioned form, so a BD without dims becomes one contiguous dimension.
+    std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration();
+    if (iter && dimsStorage->empty())
+      dimsStorage->push_back(AIE::BDDimLayoutAttr::get(
+          builder.getContext(), len / bd_op.getBufferElementTypeWidthInBytes(),
+          1));
     std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims;
     if (!dimsStorage->empty())
       dims = llvm::ArrayRef<AIE::BDDimLayoutAttr>(*dimsStorage);
@@ -795,6 +811,10 @@ struct AIEDMATasksToNPUPass
         int j = dims->size() - i - 1;
         input_sizes[i] = (*dims)[j].getSize();
         input_strides[i] = (*dims)[j].getStride();
+      }
+      if (iter) {
+        input_sizes[3] = iter->getSize();
+        input_strides[3] = iter->getStride();
       }
 
       // d3 (repeat) is excluded; a repeated linear transfer is still linear.
@@ -921,7 +941,8 @@ struct AIEDMATasksToNPUPass
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
         /*d2_size=*/d2size, /*d2_stride=*/d2stride,
-        /*iteration_current=*/0, /*iteration_size=*/iteration_size,
+        /*iteration_current=*/f.iteration_current,
+        /*iteration_size=*/iteration_size,
         /*iteration_stride=*/iteration_stride,
         /*next_bd=*/f.next_bd_id,
         /*row=*/tile.getRow(),
