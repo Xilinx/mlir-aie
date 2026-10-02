@@ -4,13 +4,16 @@
 """Publish one NPU's kernel check results on the publication branch.
 
 Each NPU the hardware checks ran on (``npu1``, ``npu2``) has a directory on
-the branch, ``kernel-checks/<npu>/``, holding:
+the branch, ``kernel-checks/<npu>/``, and each component check
+(``sa-placer``, ``sa-placer-hw``, nightlyComponentChecks.yml) one at
+``component-checks/<check>/``, holding:
 
     runs/<id>.json         one record per run: the Actions run, what started
                            it (``event``), commit, power mode, provenance,
                            sanity result, failures, and every row as
                            rows[case][metric] = {value, unit, range}
-    runs.json              the records without their rows, oldest first
+    runs.json              the records without their rows, oldest first, and
+                           the metrics there is a history of
     latest.json            the newest nightly record that published rows; the
                            PR report's baseline
     history/<metric>.json  one series per case for that metric, a value per
@@ -26,6 +29,7 @@ the page, where the package is not installed.
     publish.py rebuild --out kernel-checks/npu1 [--drop-pmode default]
     publish.py backfill --out kernel-checks/npu1 --runs runs.jsonl
         [--keep-pmode turbo]
+    publish.py redirect --out component-checks --to ../kernel-checks/#view=components
 
 ``perf`` reads the timing step's ``perf.json`` and ``meta.json`` and the
 catalogue. Every publish first migrates a directory that still holds a
@@ -37,6 +41,10 @@ also deletes the records of every run measured in ``MODE``, for retiring a
 power mode nobody should compare against; ``--keep-pmode MODE`` deletes
 those of every run that charted numbers in any other mode, keeping a run
 that refused to measure, so the page can still say it did.
+
+``redirect`` writes an ``index.html`` that sends a browser on to ``--to``:
+the component checks are a view of the kernel checks page, and their old
+pages' links still land there.
 
 A record is dated by its run's start (``--date``, from the Actions run's
 ``run_started_at``), so a run that queued for the NPU is charted when it
@@ -70,9 +78,28 @@ MAX_RUNS = 400
 # reader of the old format would get wrong.
 SCHEMA = 1
 REPO = "https://github.com/Xilinx/mlir-aie"
-TARGETS = ("npu1", "npu2")
+COMPONENTS = ("sa-placer", "sa-placer-hw")
+TARGETS = ("npu1", "npu2") + COMPONENTS
 # Provenance fields worth a column in the history (the rest stay in the record).
-HISTORY_PROVENANCE = ("peano", "host", "runtime", "xrt", "xdna", "kernels", "device")
+HISTORY_PROVENANCE = (
+    "peano",
+    "host",
+    "runtime",
+    "xrt",
+    "xdna",
+    "kernels",
+    "device",
+    "fixtures",
+)
+# The component checks' rows from before they were published here, renamed to
+# what they are called now. Their other rows (wall time and RSS over the one
+# small fixture) measured something the checks no longer do, and are dropped.
+LEGACY_ROWS = (
+    (r"sa_placer/fail_count", "test_sa_effort/failed_seeds"),
+    (r"sa_placer/(mean|max)_final_cost", r"test_sa_effort/final_cost_\1"),
+    (r"sa_placer/hw_fail_count", "mobilenet/failed_seeds"),
+    (r"sa_placer/hw_seed(\d+)_latency_us", r"mobilenet/seed\1/latency_us"),
+)
 # The part a runtime's device name means, first match wins. XRT names the
 # same NPU differently across drivers ("RyzenAI-npu1", "NPU Phoenix"); the
 # raw name stays in the record as ``device_raw``.
@@ -241,13 +268,21 @@ def summary(record: dict) -> dict:
     return {k: v for k, v in record.items() if k != "rows"}
 
 
+def _current_name(name: str) -> str | None:
+    for pattern, current in LEGACY_ROWS:
+        if re.fullmatch(pattern, name):
+            return re.sub(pattern, current, name)
+    return None if name.startswith("sa_placer/") else name
+
+
 def migrate(out: Path) -> int:
     """Turn a github-action-benchmark ``data.js`` into run records; return how many.
 
-    Each entry of each suite ("aie_kernels (<npu>, <mode>)") becomes ``runs/bench-<date>.json`` with the mode from the
-    suite name and the provenance from the rows' ``extra``. The file and
-    the action's own page are removed afterwards. Nothing happens when
-    there is no ``data.js``.
+    Each entry of each suite ("aie_kernels (<npu>, <mode>)") becomes
+    ``runs/bench-<date>.json`` with the mode from the suite name and the
+    provenance from the rows' ``extra``; a component check's rows are
+    renamed by ``LEGACY_ROWS``. The file and the action's own page are
+    removed afterwards. Nothing happens when there is no ``data.js``.
     """
     source = out / "data.js"
     if not source.exists():
@@ -260,7 +295,11 @@ def migrate(out: Path) -> int:
     for suite, entries in data.get("entries", {}).items():
         mode = re.match(r"^aie_kernels \(\w+, (.+)\)$", suite)
         for entry in entries:
-            benches = entry.get("benches", [])
+            benches = [
+                {**b, "name": name}
+                for b in entry.get("benches", [])
+                if (name := _current_name(b["name"]))
+            ]
             commit = entry.get("commit", {})
             date = datetime.datetime.fromtimestamp(
                 entry["date"] / 1000, datetime.timezone.utc
@@ -362,12 +401,6 @@ def rebuild(
         if r["id"] not in keep_ids:
             (runs_dir / f"{r['id']}.json").unlink(missing_ok=True)
     target = kept[-1]["target"] if kept else out.name
-    (out / "runs.json").write_text(
-        json.dumps(
-            {"schema": SCHEMA, "target": target, "runs": [summary(r) for r in kept]},
-            indent=1,
-        )
-    )
     published = [r for r in kept if r.get("published") and r.get("rows")]
     latest = out / "latest.json"
     # The newest nightly is the baseline; only manual runs, the newest of those.
@@ -430,6 +463,17 @@ def rebuild(
                 separators=(",", ":"),
             )
         )
+    (out / "runs.json").write_text(
+        json.dumps(
+            {
+                "schema": SCHEMA,
+                "target": target,
+                "metrics": sorted(metrics),
+                "runs": [summary(r) for r in kept],
+            },
+            indent=1,
+        )
+    )
     return {"runs": len(kept), "published": len(published), "metrics": sorted(metrics)}
 
 
@@ -464,6 +508,21 @@ def backfill(out: Path, runs: dict[str, dict]) -> int:
             path.write_text(json.dumps(record, indent=1))
             changed += 1
     return changed
+
+
+def redirect(out: Path, to: str) -> Path:
+    """Write ``out/index.html``, sending a browser on to ``to``."""
+    out.mkdir(parents=True, exist_ok=True)
+    page = out / "index.html"
+    page.write_text(
+        "<!DOCTYPE html>\n"
+        '<meta charset="utf-8">\n'
+        "<title>Nightly checks</title>\n"
+        f'<meta http-equiv="refresh" content="0; url={to}">\n'
+        f'<link rel="canonical" href="{to}">\n'
+        f'<p>This page moved to <a href="{to}">{to}</a>.</p>\n'
+    )
+    return page
 
 
 def publish(out: Path, results: Path, *, target: str, run: dict, now=None) -> dict:
@@ -520,8 +579,14 @@ def main(argv=None) -> int:
         "--keep-pmode",
         help="delete the records of runs that charted numbers in any other mode",
     )
+    p = sub.add_parser("redirect", help="write an index.html that sends on to --to")
+    p.add_argument("--out", required=True, type=Path)
+    p.add_argument("--to", required=True, help="where to send the browser")
     args = parser.parse_args(argv)
 
+    if args.command == "redirect":
+        print(f"wrote {redirect(args.out, args.to)} -> {args.to}")
+        return 0
     if args.command == "migrate":
         n = migrate(args.out)
         if n or (args.out / "runs").exists():
