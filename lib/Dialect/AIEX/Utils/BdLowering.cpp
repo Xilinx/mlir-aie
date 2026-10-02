@@ -435,10 +435,16 @@ void packBdWords(OpBuilder &builder, Location loc,
     set(layout.nextBd, f.next_bd_id);
   set(layout.useNextBd, f.use_next_bd);
   set(layout.validBd, 1);
-  set(layout.lockRelValue, f.lock_rel_val);
+  if (f.lock_rel_val_val)
+    add(layout.lockRelValue, f.lock_rel_val_val);
+  else
+    set(layout.lockRelValue, f.lock_rel_val);
   set(layout.lockRelId, f.lock_rel_id);
   set(layout.lockAcqEnable, f.lock_acq_enable);
-  set(layout.lockAcqValue, f.lock_acq_val);
+  if (f.lock_acq_val_val)
+    add(layout.lockAcqValue, f.lock_acq_val_val);
+  else
+    set(layout.lockAcqValue, f.lock_acq_val);
   set(layout.lockAcqId, f.lock_acq_id);
 
   add(layout.bufferLength, e.bufLen);

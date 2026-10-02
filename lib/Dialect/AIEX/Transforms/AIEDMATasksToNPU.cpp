@@ -442,10 +442,11 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
-  // Gather the constant lock / packet / next_bd fields for a BD block. Returns
-  // failure if a lock carries a non-constant value.
+  // The lock / packet / next_bd fields for a BD block. A runtime lock value is
+  // guarded and encoded with `builder`; only the dynamic path reaches that.
   FailureOr<BdTemplateFields>
-  gatherBdTemplateFields(Block &block, AIE::DMABDOp bd_op, AIE::TileOp &tile,
+  gatherBdTemplateFields(OpBuilder &builder, Block &block, AIE::DMABDOp bd_op,
+                         AIE::TileOp &tile,
                          const AIE::AIETargetModel &target_model,
                          std::optional<xilinx::AIE::PacketInfoAttr> packet,
                          bool outOfOrder = false) {
@@ -468,6 +469,26 @@ struct AIEDMATasksToNPUPass
     if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
       f.out_of_order_id = *oooId;
 
+    // AcquireGreaterEqual is encoded negated, so a runtime one must be >= 1:
+    // a field of 0 would mean "acquire == 0".
+    auto lockValue = [&](AIE::UseLockOp op, int32_t &constOut,
+                         Value &valueOut) {
+      if (std::optional<int64_t> c = getConstantIntValue(op.getValue())) {
+        constOut = op.acquireGE() ? -static_cast<int32_t>(*c)
+                                  : static_cast<int32_t>(*c);
+        return;
+      }
+      Location loc = op.getLoc();
+      NpuAssertBdFieldOp::create(
+          builder, loc, op.getValue(),
+          builder.getI32IntegerAttr(target_model.getMaxLockValue()),
+          builder.getI32IntegerAttr(op.acquireGE() ? 1 : 0));
+      valueOut = op.getValue();
+      if (op.acquireGE())
+        valueOut = arith::SubIOp::create(
+            builder, loc, createConstantI32(builder, loc, 0), valueOut);
+    };
+
     AIE::UseLockOp acquire_op, release_op;
     if (failed(
             AIE::verifyBdLockPair(block, outOfOrder, acquire_op, release_op)))
@@ -480,28 +501,14 @@ struct AIEDMATasksToNPUPass
         AIE::LockOp acq_lock = acquire_op.getLockOp();
         if (std::optional<int32_t> acqLockId = acq_lock.getLockID()) {
           f.lock_acq_id = *acqLockId;
-          FailureOr<int32_t> value = acquire_op.getConstantValue();
-          if (failed(value))
-            return failure();
-          // failed() above guards the deref; FailureOr hides std::optional's
-          // has_value(), so the checker cannot see the guard (suppressed
-          // below).
-          f.lock_acq_val = *value; // NOLINT
-          // For AcquireGreaterEqual, negate the value to signal the hardware
-          // to use >= comparison instead of == comparison.
-          if (acquire_op.acquireGE())
-            f.lock_acq_val = -f.lock_acq_val;
+          lockValue(acquire_op, f.lock_acq_val, f.lock_acq_val_val);
           f.lock_acq_enable = 1;
         }
       }
 
       if (std::optional<int32_t> relLockId = rel_lock.getLockID()) {
         f.lock_rel_id = *relLockId;
-        FailureOr<int32_t> value = release_op.getConstantValue();
-        if (failed(value))
-          return failure();
-        // failed() above guards the deref; see note in the acquire branch.
-        f.lock_rel_val = *value; // NOLINT
+        lockValue(release_op, f.lock_rel_val, f.lock_rel_val_val);
       }
 
       // For memtile, add lock offset using getLockLocalBaseIndex. This matches
@@ -538,8 +545,8 @@ struct AIEDMATasksToNPUPass
     int col = tile.getCol();
     int row = tile.getRow();
 
-    auto fieldsOr = gatherBdTemplateFields(block, bd_op, tile, target_model,
-                                           packet, outOfOrder);
+    auto fieldsOr = gatherBdTemplateFields(builder, block, bd_op, tile,
+                                           target_model, packet, outOfOrder);
     if (failed(fieldsOr))
       return failure();
     // failed() above guards the deref; FailureOr hides the std::optional base's
@@ -682,15 +689,20 @@ struct AIEDMATasksToNPUPass
         llvm::any_of(bd_op.getMixedStrides(),
                      [](OpFoldResult s) { return !getConstantIntValue(s); });
     bool runtimeNextBd = runtimeNextBdId.contains(bd_op);
+    bool runtimeLock =
+        llvm::any_of(block.getOps<AIE::UseLockOp>(), [](AIE::UseLockOp op) {
+          return !getConstantIntValue(op.getValue());
+        });
     if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId ||
-        runtimeNextBd) {
+        runtimeNextBd || runtimeLock) {
       int col = tile.getCol(), row = tile.getRow();
       if (!target_model.isShimNOCTile(col, row) &&
           !target_model.isMemTile(col, row) &&
           !target_model.isCoreTile(col, row))
         return bd_op->emitOpError(
-            "runtime-valued BD size/stride/len/bd_id/next_bd is only supported "
-            "on tiles with a DMA buffer descriptor layout (shim NOC, mem and "
+            "runtime-valued BD size/stride/len/bd_id/next_bd/lock value is "
+            "only supported on tiles with a DMA buffer descriptor layout (shim "
+            "NOC, mem and "
             "core tiles); use compile-time constants here.");
       if (bd_op.getPadDimensions().has_value())
         return bd_op->emitOpError(
@@ -892,8 +904,8 @@ struct AIEDMATasksToNPUPass
                << "        Padding is supported only on MemTiles.";
       }
     }
-    auto fieldsOr = gatherBdTemplateFields(block, bd_op, tile, target_model,
-                                           packet, outOfOrder);
+    auto fieldsOr = gatherBdTemplateFields(builder, block, bd_op, tile,
+                                           target_model, packet, outOfOrder);
     if (failed(fieldsOr))
       return failure();
     // failed() above guards the deref; see note in rewriteSingleBDDynamic.
