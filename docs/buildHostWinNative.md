@@ -278,7 +278,7 @@ In addition to sections 1–3:
 From an x64 Native Tools prompt at the checkout root:
 
 ```bat
-python utils\iron_setup.py --dev
+python utils\iron_setup.py --dev --extras
 call .\iron_env.cmd
 
 REM Download and unpack the MLIR wheel pinned by utils/clone-llvm.sh

@@ -134,7 +134,8 @@ jobs:
           git config --global --add safe.directory "%CD%"
           if errorlevel 1 exit /b 1
 
-          python utils\iron_setup.py --dev
+          REM --extras installs CPU-only torch for the ML examples, as on Linux.
+          python utils\iron_setup.py --dev --extras
           if errorlevel 1 exit /b 1
 
       - name: Download MLIR wheel and build mlir-aie
