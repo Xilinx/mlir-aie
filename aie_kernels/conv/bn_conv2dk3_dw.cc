@@ -582,8 +582,8 @@ static inline dw8_v dw8_out(aie::accum<acc32, 64> acc, int scale) {
 // to round it down (to 32 bytes for a 256-bit load, to 64 for a 512-bit one),
 // but tell the compiler it is aligned. The compiler may then take a load's
 // data from another load that covers it, which is wrong where the two round
-// differently. Every load here is 512 bits, so a load only covers another at
-// the same address.
+// differently (Xilinx/aie_api#16). Every load here is 512 bits, so a load only
+// covers another at the same address.
 static inline dw8_v dw8_load(const uint8_t *p) {
   return aie::load_unaligned_v<64>(p, 8);
 }
