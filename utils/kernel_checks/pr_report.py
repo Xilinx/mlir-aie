@@ -84,6 +84,10 @@ class Leg:
     peano: str = ""
     baseline_peano: str = ""
     baseline_commit: dict | None = None
+    # Why there is no comparison, when there is none.
+    uncompared: str = ""
+    # Why the timing run measured nothing, when it refused to.
+    refused: str = ""
     cases: int = 0
     # How hard this run looked: the inputs the sweep checked, and how many
     # runs in a row each timed case made before its last check.
@@ -95,6 +99,7 @@ class Leg:
     other: list[Change] = field(default_factory=list)
     unmeasured: list[str] = field(default_factory=list)
     new: list[str] = field(default_factory=list)
+    flaky: list[tuple[str, int]] = field(default_factory=list)
 
 
 def _reason(test) -> str:
@@ -112,9 +117,17 @@ def _reason(test) -> str:
     return line[:200] + ("\u2026" if len(line) > 200 else "")
 
 
+def _last_attempts(xml) -> list[ET.Element]:
+    """Every test's last attempt: JUnit repeats a retried test, once per attempt."""
+    last: dict[tuple[str, str], ET.Element] = {}
+    for test in ET.parse(xml).iter("testcase"):
+        last[(test.get("classname", ""), test.get("name", ""))] = test
+    return list(last.values())
+
+
 def sweep(xml, *, include_skipped=False) -> Iterator[tuple[str, str, ET.Element]]:
     """Yield generic cases and explicitly attributed dedicated hardware checks."""
-    for test in ET.parse(xml).iter("testcase"):
+    for test in _last_attempts(xml):
         if test.find("skipped") is not None and not include_skipped:
             continue
         match = _EXTENSIVE.fullmatch(test.get("name", ""))
@@ -132,6 +145,36 @@ def sweep(xml, *, include_skipped=False) -> Iterator[tuple[str, str, ET.Element]
 
 def failed(test) -> bool:
     return test.find("failure") is not None or test.find("error") is not None
+
+
+def reruns(test) -> int:
+    """How many times the runner retried ``test`` (its ``reruns`` property)."""
+    for prop in test.findall("properties/property"):
+        if prop.get("name") == "reruns":
+            return int(prop.get("value") or 0)
+    return 0
+
+
+def flaky(directory: Path) -> list[tuple[str, int]]:
+    """Return the tests that passed only on a retry, and how many retries each.
+
+    From the sweep's JUnit report and the timing run's meta; a retried test
+    that still failed is a failure, not flaky.
+    """
+    out = {}
+    xml = directory / "correctness.xml"
+    if xml.exists():
+        for test in _last_attempts(xml):
+            if (n := reruns(test)) and not failed(test):
+                out[f"{test.get('classname', '')}::{test.get('name', '')}"] = n
+    meta = directory / "meta.json"
+    if meta.exists():
+        record = json.loads(meta.read_text())
+        bad = set(record.get("failed", []))
+        for nodeid, n in record.get("reruns", {}).items():
+            if nodeid not in bad:
+                out[nodeid] = int(n)
+    return sorted(out.items())
 
 
 def _timing_reason(text: str, case: str) -> str:
@@ -163,9 +206,11 @@ def failures(directory: Path) -> tuple[list[Failure], set[str], int]:
     meta = directory / "meta.json"
     if meta.exists():
         # The timing run checks each case again; its failures reach only meta.
+        # A run that refused to time fails every timing test for that one
+        # reason, which the summary row gives.
         record = json.loads(meta.read_text())
         reasons = record.get("reasons", {})
-        for nodeid in record.get("failed", []):
+        for nodeid in [] if record.get("refused") else record.get("failed", []):
             if "test_kernel_extensive[" in nodeid or nodeid in correctness_failures:
                 continue
             match = _BRACKETED.search(nodeid)
@@ -240,6 +285,7 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
     rows = json.loads(perf_path.read_text()) if perf_path.exists() else []
     result = Leg(npu, measured=bool(rows))
     result.failures, swept, result.inputs = failures(directory)
+    result.flaky = flaky(directory)
     result.runs = int(meta.get("runs_per_case") or 0)
     failing = {f.case for f in result.failures}
     result.peano = _peano(rows, meta.get("provenance", ""))
@@ -247,8 +293,22 @@ def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
     result.cases = len(measured | swept)
 
     record = baseline(latest, run_id)
-    pmode = meta.get("preflight", {}).get("pmode")
-    if not record or not rows or not pmode or record.get("pmode") != pmode:
+    pmode = (meta.get("preflight") or {}).get("pmode")
+    result.refused = str(meta.get("refused") or "")
+    if result.refused:
+        result.uncompared = f"not timed: {result.refused}"
+    elif not rows:
+        result.uncompared = "nothing timed"
+    elif not record:
+        result.uncompared = "no nightly to compare with"
+    elif not pmode:
+        result.uncompared = "power mode unknown, not compared"
+    elif record.get("pmode") != pmode:
+        result.uncompared = (
+            f"nightly in {record.get('pmode') or 'an unknown'} mode, "
+            f"this run in {pmode}: not compared"
+        )
+    if result.uncompared:
         return result
     result.baseline_commit = record.get("commit") or None
     result.baseline_peano = record.get("provenance", {}).get("peano", "")
@@ -345,6 +405,10 @@ def render(legs: list[Leg], run_url: str = "") -> str:
         title = f"{failing} failing, {regressed} regressed"
     else:
         title = "all passed, no regressions"
+    if refused := [leg.npu for leg in legs if leg.refused]:
+        title += f", {' and '.join(refused)} not timed"
+    if retried := sum(len(leg.flaky) for leg in legs):
+        title += f", {retried} passed on a retry"
     gated = " or ".join(f"`{m}` {100 * t:g}%" for m, t in GATED.items())
     links = [f"[run]({run_url})"] if run_url else []
     links.append(f"[nightly history]({PAGE})")
@@ -362,7 +426,7 @@ def render(legs: list[Leg], run_url: str = "") -> str:
 
     summary = []
     for leg in legs:
-        if not leg.measured and not leg.failures:
+        if not leg.measured and not leg.failures and not leg.cases:
             summary.append(
                 [leg.npu, leg.peano or "?", "\u2014", "no results", "", "", ""]
             )
@@ -374,7 +438,7 @@ def render(legs: list[Leg], run_url: str = "") -> str:
         if commit and commit.get("id"):
             base = f"[{commit['id'][:7]}]({commit.get('url', '')})"
         else:
-            base = "none cached" if leg.measured else "\u2014"
+            base = leg.uncompared or "\u2014"
         summary.append(
             [
                 leg.npu,
@@ -404,6 +468,17 @@ def render(legs: list[Leg], run_url: str = "") -> str:
     if rows:
         out += ["", "### Failing", ""]
         out += _table(["NPU", "Case", "Inputs failed", "Reason"], rows)
+
+    if rows := [[leg.npu, f"`{t}`", str(n)] for leg in legs for t, n in leg.flaky]:
+        out += [""] + _details(
+            f"Passed only on a retry ({len(rows)})",
+            [
+                "The runner retries a failed test once; these failed first. "
+                "A kernel that fails now and then is worth a soak.",
+                "",
+                *_table(["NPU", "Test", "Retries"], rows),
+            ],
+        )
 
     header = ["NPU", "Case", "Metric", "Nightly", "This run", "Change"]
     if rows := _changes(legs, "regressed"):

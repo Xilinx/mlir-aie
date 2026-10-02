@@ -160,6 +160,7 @@
     .s-bad { background: var(--bad); color: #fff; }
     .s-warn { background: var(--warn-soft); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
     .s-none { background: repeating-linear-gradient(135deg, var(--none-soft) 0 4px, transparent 4px 7px); color: var(--faint); box-shadow: inset 0 0 0 1px var(--none); }
+    .s-untimed { background: var(--ok-soft); color: var(--faint); box-shadow: inset 0 0 0 1px var(--none); }
     .s-absent { background: transparent; color: var(--faint); border: 1px dashed var(--none); }
 
     /* Tables: numbers right-aligned in tabular figures, so they scan. */
@@ -845,6 +846,7 @@
         known: Boolean(catalogue),
         passed: sum('passed'), timed: sum('timed'),
         failing: names('failed'), timingFailed: names('timing_failed'), untimed: names('untimed').length,
+        flaky: names('flaky'), refused: (catalogue && catalogue.timing_refused) || '',
         offered: ks.filter(k => k.builds && k.builds.length).length,
         checked: ks.filter(k => k.passed || (k.failed && k.failed.length)).length,
       };
@@ -879,8 +881,9 @@
 
     // How one kernel fared on one NPU last night, worst first:
     // {level, text, title} with level one of bad (a case fails correctness,
-    // or cycles or size got worse), warn (timing failed, trace truncated),
-    // better, ok, none (offered, no case run) and absent (not offered).
+    // or cycles or size got worse), warn (timing failed, passed only on a
+    // retry, trace truncated), better, ok, untimed (passes, the night timed
+    // nothing), none (offered, no case run) and absent (not offered).
     function kernelState(night, factory) {
       const k = night && night.catalogue ? night.catalogue.kernels.find(x => x.factory === factory) : null;
       if (!k || !k.builds || !k.builds.length) return { level: 'absent', text: '', title: 'not offered on this NPU' };
@@ -889,14 +892,17 @@
       const worse = moves.filter(x => x.cls === 'worse').sort((a, b) => b.change - a.change);
       const better = moves.filter(x => x.cls === 'better').sort((a, b) => a.change - b.change);
       const truncated = (night.run.truncated || []).filter(mine);
-      const failed = k.failed || [], timing = k.timing_failed || [];
+      const failed = k.failed || [], timing = k.timing_failed || [], flaky = k.flaky || [];
       const describe = xs => xs.map(x => `${x.series.kase} ${label(x.series.metric).toLowerCase()} ${formatChange(x.change)}`).join('\n');
       if (failed.length) return { level: 'bad', text: `${failed.length} fail`, title: `fails correctness:\n${failed.join('\n')}` };
       if (worse.length) return { level: 'bad', text: formatChange(worse[0].change), title: `worse since the previous nightly:\n${describe(worse)}` };
       if (timing.length) return { level: 'warn', text: 'timing', title: `passed correctness, failed the timing run:\n${timing.join('\n')}` };
+      if (flaky.length) return { level: 'warn', text: 'flaky', title: `passed only on a retry:\n${flaky.join('\n')}` };
       if (truncated.length) return { level: 'warn', text: 'trace', title: `trace buffer filled before every call:\n${truncated.join('\n')}` };
       if (!k.passed) return { level: 'none', text: '', title: k.reason || 'not checked on hardware' };
       const pass = `${plural(k.passed, 'case')} pass, ${k.timed || 0} timed`;
+      const refused = night.catalogue.timing_refused;
+      if (refused) return { level: 'untimed', text: '', title: `${plural(k.passed, 'case')} pass; not timed: ${refused}` };
       if (better.length) return { level: 'better', text: formatChange(better[0].change), title: `${pass}\nbetter since the previous nightly:\n${describe(better)}` };
       return { level: 'ok', text: '', title: pass };
     }
@@ -905,7 +911,8 @@
       ['ok', 'Passes, nothing moved'],
       ['better', 'Faster or smaller'],
       ['bad', 'Slower, bigger or failing'],
-      ['warn', 'Timing failed or trace truncated'],
+      ['warn', 'Timing failed, passed only on a retry, or trace truncated'],
+      ['untimed', 'Passes; the night timed nothing'],
       ['none', 'Not checked on hardware'],
       ['absent', 'Not offered on this NPU'],
     ];
@@ -916,14 +923,14 @@
       if (r.pmode && r.pmode !== EXPECTED_PMODE) return 'other';
       if (!r.published) return 'bad';
       if (r.cases && r.cases.failed) return 'bad';
-      if ((r.failed || []).length || (r.truncated || []).length || (r.cases && r.cases.timing_failed)) return 'warn';
+      if ((r.failed || []).length || (r.truncated || []).length || (r.cases && (r.cases.timing_failed || r.cases.flaky))) return 'warn';
       return 'ok';
     }
 
     function nightTitle(r) {
       const what = r.pmode && r.pmode !== EXPECTED_PMODE ? `${r.pmode} mode, not compared`
         : !r.published ? (r.refused ? `refused: ${r.refused}` : 'published no numbers')
-        : r.cases ? `${r.cases.timed} timed, ${r.cases.failed} failing, ${r.cases.timing_failed} timing failed`
+        : r.cases ? `${r.cases.timed} timed, ${r.cases.failed} failing, ${r.cases.timing_failed} timing failed${r.cases.flaky ? `, ${r.cases.flaky} passed on a retry` : ''}`
         : r.n_rows ? `${r.n_rows} numbers published` : 'published';
       const commit = r.commit && r.commit.id ? ` on ${r.commit.id.slice(0, 7)}` : '';
       return `${formatDate(Date.parse(r.date))}${commit}\n${what}`;
@@ -961,6 +968,7 @@
       if (cases(worse, 'kernel_object_bytes')) problems.push(`${cases(worse, 'kernel_object_bytes')} bigger`);
       if (counts.failing.length) problems.push(`${counts.failing.length} failing correctness`);
       if (counts.timingFailed.length) problems.push(`${counts.timingFailed.length} failed timing`);
+      if (counts.flaky.length) problems.push(`${counts.flaky.length} passed on a retry`);
       const gains = [];
       if (cases(better, 'cycles')) gains.push(`${cases(better, 'cycles')} faster`);
       if (cases(better, 'kernel_object_bytes')) gains.push(`${cases(better, 'kernel_object_bytes')} smaller`);
@@ -998,6 +1006,7 @@
           fig(counts.passed, 'pass correctness'),
           counts.failing.length ? fig(counts.failing.length, 'failing', 'bad') : '',
           counts.timingFailed.length ? fig(counts.timingFailed.length, 'timing failed', 'warn') : '',
+          counts.flaky.length ? fig(counts.flaky.length, 'passed on a retry', 'warn') : '',
           fig(counts.untimed, 'correctness only'),
           fig(`${counts.checked}/${counts.offered}`, 'kernels on hardware')));
       }
@@ -1092,9 +1101,12 @@
       const worse = ((moved && moved.regressed) || []).filter(x => GATED.includes(x.series.metric));
       if (worse.length) items.push({ level: 'bad', npu, body: [`${plural(worse.length, 'series')} got worse past ${worse.length === 1 ? 'its' : 'their'} threshold. `, link('#moved-block', 'See what moved')] });
       if (counts.timingFailed.length) items.push({ level: 'warn', npu, body: [`${plural(counts.timingFailed.length, 'case')} passed correctness but failed the timing run, so ${counts.timingFailed.length === 1 ? 'its chart has' : 'their charts have'} a gap:`, cases(counts.timingFailed), repro('test_kernel_perf', counts.timingFailed)].filter(Boolean) });
+      if (counts.flaky.length) items.push({ level: 'warn', npu, body: [`${plural(counts.flaky.length, 'case')} failed, then passed when the runner retried ${counts.flaky.length === 1 ? 'it' : 'them'}; a soak would tell how often:`, cases(counts.flaky)] });
       // Failed tests the catalogue does not name: its night may be a later run.
+      // A run that refused to time fails every timing test; the refusal says so once.
       const named = new Set([...counts.failing, ...counts.timingFailed]);
-      const others = failedIds.filter(id => !named.has(caseOfTest(id)));
+      const untimed = id => run.refused && /::(test_kernel_perf|test_measurement_is_sane)\b/.test(id);
+      const others = failedIds.filter(id => !named.has(caseOfTest(id)) && !untimed(id));
       if (others.length) items.push({ level: 'warn', npu, body: [`${plural(others.length, 'test')} failed in this run:`, cases([...new Set(others.map(caseOfTest))]), reproBlock(npu, run, others)].filter(Boolean) });
       const truncated = run.truncated || [];
       if (truncated.length) items.push({ level: 'warn', npu, body: [`${plural(truncated.length, 'case')} filled the trace buffer before every call; the cycle count is over the calls it held:`, cases(truncated)] });
@@ -1249,6 +1261,8 @@
       if ((k.failed || []).includes(kase)) return { cls: 'bad', text: 'fails correctness', title: 'failed the correctness sweep, so not timed' };
       if ((k.timing_failed || []).includes(kase)) return { cls: 'warn', text: 'timing failed', title: 'passed the correctness sweep, then failed in the timing run; see the run\'s perf.log' };
       if ((k.untimed || []).includes(kase)) return { cls: '', text: 'correctness only', title: 'passed the correctness sweep; not timed by design (perf=False)' };
+      const refused = night.catalogue.timing_refused;
+      if (refused) return { cls: '', text: 'not timed', title: `the night timed nothing: ${refused}` };
       return null;
     }
 
@@ -1331,7 +1345,8 @@
             const kk = n.catalogue ? n.catalogue.kernels.find(x => x.factory === k.factory) : null;
             const td = el('td', { colSpan: 3, className: 'npu-start', title: s.title });
             const words = { ok: 'passes', better: `better ${s.text}`, bad: s.text.endsWith('fail') ? `${s.text.replace(' fail', '')} failing` : `worse ${s.text}`,
-                            warn: s.text === 'trace' ? 'trace truncated' : 'timing failed', none: 'not checked', absent: 'not offered' };
+                            warn: { trace: 'trace truncated', flaky: 'passed on a retry' }[s.text] || 'timing failed',
+                            untimed: 'passes, not timed', none: 'not checked', absent: 'not offered' };
             td.append(el('span', { className: `pill s-${s.level}` }, words[s.level]));
             if (kk && kk.builds && kk.builds.length && kk.passed) td.append(el('span', { className: 'note' }, `  ${kk.timed || 0} of ${plural(kk.passed + (kk.failed || []).length, 'case')} timed`));
             return td;

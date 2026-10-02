@@ -81,6 +81,7 @@ CATALOGUE = {
             "timed": 2,
             "timing_failed": [],
             "untimed": [],
+            "flaky": ["add/1024x16/bfloat16"],
         },
         {
             "builds": ["zero"],
@@ -168,6 +169,7 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
         "timed": 2,
         "timing_failed": 1,
         "untimed": 1,
+        "flaky": 1,
     }
     assert record["kernels"] == {"offered": 3, "checked": 3}
     assert record["rows"]["add/1024x16/bfloat16"]["cycles"] == {
@@ -491,6 +493,52 @@ def test_a_retired_power_mode_is_dropped_on_request(publish, tmp_path):
     cycles = json.loads((out / "history/cycles.json").read_text())
     assert [r["id"] for r in cycles["runs"]] == ["5"]
     assert "passthrough/2048x16/int32" not in cycles["series"]
+
+
+def test_backfill_dates_runs_by_their_start_and_keeps_one_power_mode(publish, tmp_path):
+    out = tmp_path / "npu1"
+    out.mkdir()
+    (out / "data.js").write_text(DATA_JS)
+    run_cli(["migrate", "--out", out])
+    turbo = dict(META, preflight=dict(META["preflight"], pmode="turbo"))
+    for run_id, date in (("41", "2026-09-30T09:12:00+00:00"), ("42", "")):
+        args = ["perf", "--target", "npu1", "--run-id", run_id, "--out", out]
+        args += ["--event", "", "--date", date] if date else ["--event", ""]
+        run_cli(args + ["--results", results_dir(tmp_path, run_id, meta=turbo)])
+    refused = {
+        "preflight": {"pmode": "default"},
+        "refused": "power mode is default, required 'turbo'",
+        "failed": [],
+    }
+    run_cli(
+        ["perf", "--target", "npu1", "--run-id", "43", "--out", out, "--event", ""]
+        + ["--results", results_dir(tmp_path, "43", meta=refused, rows=None)]
+    )
+    runs = tmp_path / "runs.jsonl"
+    runs.write_text(
+        '{"id":41,"event":"schedule","run_started_at":"2026-09-30T06:00:05Z"}\n'
+        '{"id":42,"event":"workflow_dispatch","run_started_at":"2026-10-01T06:00:07Z"}\n'
+        '{"id":43,"event":"schedule","run_started_at":"2026-10-02T06:00:09Z"}\n'
+        '{"id":99,"event":"schedule","run_started_at":"2026-10-03T06:00:00Z"}\n'
+    )
+    backfill = ["backfill", "--out", out, "--runs", runs, "--keep-pmode", "turbo"]
+    run_cli(backfill)
+    index = json.loads((out / "runs.json").read_text())
+    assert [(r["id"], r["date"], r["event"], r["pmode"]) for r in index["runs"]] == [
+        ("41", "2026-09-30T06:00:05+00:00", "schedule", "turbo"),
+        ("42", "2026-10-01T06:00:07+00:00", "workflow_dispatch", "turbo"),
+        ("43", "2026-10-02T06:00:09+00:00", "schedule", "default"),
+    ]
+    # The default-mode numbers migrated from data.js are gone from the charts.
+    cycles = json.loads((out / "history/cycles.json").read_text())
+    assert [r["id"] for r in cycles["runs"]] == ["41", "42"]
+    assert "passthrough/2048x16/int32" not in cycles["series"]
+    # The dispatch is charted; the nightly before it stays the baseline.
+    assert json.loads((out / "latest.json").read_text())["id"] == "41"
+    files = {p.name: p.read_text() for p in (out / "runs").iterdir()}
+    run_cli(backfill)
+    assert {p.name: p.read_text() for p in (out / "runs").iterdir()} == files
+    assert publish.backfill(out, publish.read_runs(runs)) == 0
 
 
 @pytest.mark.parametrize(

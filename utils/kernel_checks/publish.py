@@ -24,6 +24,8 @@ the page, where the package is not installed.
         [--event schedule|workflow_dispatch]
     publish.py migrate --out kernel-checks/npu1
     publish.py rebuild --out kernel-checks/npu1 [--drop-pmode default]
+    publish.py backfill --out kernel-checks/npu1 --runs runs.jsonl
+        [--keep-pmode turbo]
 
 ``perf`` reads the timing step's ``perf.json`` and ``meta.json`` and the
 catalogue. Every publish first migrates a directory that still holds a
@@ -32,7 +34,18 @@ removed), rebuilds ``runs.json``, ``latest.json`` and the history from the
 run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
 ones one per ISO week, ``MAX_RUNS`` at most. ``rebuild --drop-pmode MODE``
 also deletes the records of every run measured in ``MODE``, for retiring a
-power mode nobody should compare against.
+power mode nobody should compare against; ``--keep-pmode MODE`` deletes
+those of every run that charted numbers in any other mode, keeping a run
+that refused to measure, so the page can still say it did.
+
+A record is dated by its run's start (``--date``, from the Actions run's
+``run_started_at``), so a run that queued for the NPU is charted when it
+was started rather than when it published. ``backfill`` brings older records
+up to that: given the workflow's runs, one JSON object per line as
+``gh api .../actions/workflows/<file>/runs --paginate --jq
+'.workflow_runs[] | {id, event, run_started_at}'`` prints them, it dates each
+record of a listed run by its start and fills in a missing ``event``, then
+rebuilds. Running it again changes nothing.
 
 Both the scheduled nightly and an unfiltered dispatch on main publish. A
 record's ``event`` is the GitHub event that started its run; a run started by
@@ -171,6 +184,7 @@ def _summary_of_catalogue(catalogue: dict) -> dict:
             "timed": sum(k.get("timed", 0) for k in kernels),
             "timing_failed": sum(len(k.get("timing_failed", [])) for k in kernels),
             "untimed": sum(len(k.get("untimed", [])) for k in kernels),
+            "flaky": sum(len(k.get("flaky", [])) for k in kernels),
         },
         "kernels": {
             "offered": sum(1 for k in kernels if k.get("builds")),
@@ -315,12 +329,16 @@ def prune(records: list[dict], now: datetime.datetime) -> list[dict]:
 
 
 def rebuild(
-    out: Path, now: datetime.datetime | None = None, drop_pmode: str | None = None
+    out: Path,
+    now: datetime.datetime | None = None,
+    drop_pmode: str | None = None,
+    keep_pmode: str | None = None,
 ) -> dict:
     """Rewrite the derived files from ``runs/*.json``, pruning old runs.
 
     With ``drop_pmode``, the records of runs measured in that power mode are
-    deleted first.
+    deleted first; with ``keep_pmode``, those of runs that charted numbers in
+    any other mode.
     """
     now = now or now_utc()
     runs_dir = out / "runs"
@@ -328,11 +346,16 @@ def rebuild(
     records = [
         _check_schema(json.loads(p.read_text()), p) for p in runs_dir.glob("*.json")
     ]
-    if drop_pmode:
-        for r in records:
-            if r.get("pmode") == drop_pmode:
-                (runs_dir / f"{r['id']}.json").unlink()
-        records = [r for r in records if r.get("pmode") != drop_pmode]
+
+    def dropped(r: dict) -> bool:
+        if drop_pmode and r.get("pmode") == drop_pmode:
+            return True
+        return bool(keep_pmode and r.get("rows") and r.get("pmode") != keep_pmode)
+
+    for r in records:
+        if dropped(r):
+            (runs_dir / f"{r['id']}.json").unlink()
+    records = [r for r in records if not dropped(r)]
     kept = prune(records, now)
     keep_ids = {r["id"] for r in kept}
     for r in records:
@@ -410,6 +433,39 @@ def rebuild(
     return {"runs": len(kept), "published": len(published), "metrics": sorted(metrics)}
 
 
+def read_runs(path: Path) -> dict[str, dict]:
+    """Read the workflow's runs, one JSON object per line, by run id."""
+    runs = {}
+    for line in path.read_text().splitlines():
+        if line.strip():
+            run = json.loads(line)
+            runs[str(run["id"])] = run
+    return runs
+
+
+def backfill(out: Path, runs: dict[str, dict]) -> int:
+    """Date each record of a listed run by its start, fill in its ``event``.
+
+    Returns how many records changed; the rest, including migrated
+    ``bench-*`` records, which no run lists, are left as they are.
+    """
+    changed = 0
+    for path in sorted((out / "runs").glob("*.json")):
+        record = _check_schema(json.loads(path.read_text()), path)
+        run = runs.get(str(record.get("id")))
+        if not run:
+            continue
+        before = dict(record)
+        if run.get("run_started_at"):
+            record["date"] = iso(parse_date(run["run_started_at"]))
+        if run.get("event") and not record.get("event"):
+            record["event"] = run["event"]
+        if record != before:
+            path.write_text(json.dumps(record, indent=1))
+            changed += 1
+    return changed
+
+
 def publish(out: Path, results: Path, *, target: str, run: dict, now=None) -> dict:
     """Migrate, record one run, rebuild; return the record."""
     index = out / "runs.json"
@@ -435,7 +491,11 @@ def main(argv=None) -> int:
     p.add_argument("--commit", default=os.environ.get("GITHUB_SHA", ""))
     p.add_argument("--commit-message", default="")
     p.add_argument("--commit-date", default="")
-    p.add_argument("--date", default="", help="ISO date of the run (default: now)")
+    p.add_argument(
+        "--date",
+        default="",
+        help="when the run started, ISO 8601 (default: now)",
+    )
     p.add_argument(
         "--event",
         default=os.environ.get("GITHUB_EVENT_NAME", ""),
@@ -446,6 +506,20 @@ def main(argv=None) -> int:
     p = sub.add_parser("rebuild", help="rewrite the derived files from the records")
     p.add_argument("--out", required=True, type=Path)
     p.add_argument("--drop-pmode", help="delete the records of runs in this power mode")
+    p = sub.add_parser(
+        "backfill", help="date records by their run's start, fill in events, rebuild"
+    )
+    p.add_argument("--out", required=True, type=Path)
+    p.add_argument(
+        "--runs",
+        required=True,
+        type=Path,
+        help="the workflow's runs, one {id, event, run_started_at} per line",
+    )
+    p.add_argument(
+        "--keep-pmode",
+        help="delete the records of runs that charted numbers in any other mode",
+    )
     args = parser.parse_args(argv)
 
     if args.command == "migrate":
@@ -457,10 +531,15 @@ def main(argv=None) -> int:
     if args.command == "rebuild":
         print(json.dumps(rebuild(args.out, drop_pmode=args.drop_pmode)))
         return 0
+    if args.command == "backfill":
+        n = backfill(args.out, read_runs(args.runs))
+        built = rebuild(args.out, keep_pmode=args.keep_pmode)
+        print(f"backfilled {n} records in {args.out}: {json.dumps(built)}")
+        return 0
     run = {
         "id": args.run_id,
         "url": args.run_url,
-        "date": args.date or iso(now_utc()),
+        "date": iso(parse_date(args.date)) if args.date else iso(now_utc()),
         "commit": commit_info(args.commit, args.commit_message, args.commit_date),
         **({"event": args.event} if args.event else {}),
     }

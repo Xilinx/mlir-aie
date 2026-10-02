@@ -214,6 +214,21 @@ def test_xdist_report_merges_worker_results(hooks):
     }
 
 
+def test_a_retried_test_is_recorded_once_on_its_teardown(hooks):
+    config = SimpleNamespace(_perf_rows=[], _perf_meta={}, _error_report={}, _reruns={})
+    hooks._controller_config = config
+    nodeid = "test_kernels_perf.py::test_kernel_perf[relu/64/bf16]"
+    reports = [
+        SimpleNamespace(when=when, rerun=rerun, nodeid=nodeid, user_properties=[])
+        for rerun in (0, 1)
+        for when in ("setup", "call", "teardown")
+    ]
+    for report in reports:
+        hooks.pytest_runtest_logreport(report)
+    assert [r.user_properties for r in reports] == [[]] * 5 + [[("reruns", 1)]]
+    assert config._reruns == {nodeid: 1}
+
+
 def test_dedicated_checks_are_recorded_before_device_skips(hooks, monkeypatch):
     monkeypatch.setattr(hooks, "_device_generation", lambda: "npu1")
     monkeypatch.setattr(hooks, "_running_on_hrx", lambda: False)

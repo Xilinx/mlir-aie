@@ -62,6 +62,7 @@ def pytest_configure(config):
     config._perf_meta = {}
     config._error_report = {}
     config._reported_perf_rows = 0
+    config._reruns = {}
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -87,10 +88,18 @@ def _merge_dict(destination, source):
             destination[key] = value
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report):
     config = _controller_config
     if config is None or hasattr(config, "workerinput"):
         return
+    # pytest-rerunfailures numbers each attempt; a test that took more than
+    # one says so in the JUnit report (before junitxml reads the teardown)
+    # and in the meta, so a pass on a retry is not a silent pass.
+    retries = getattr(report, "rerun", 0)
+    if retries and report.when == "teardown":
+        report.user_properties.append(("reruns", retries))
+        config._reruns[report.nodeid] = retries
     rows = getattr(report, "npu_perf_rows", ())
     if rows:
         rows_by_name = {row["name"]: row for row in config._perf_rows}
@@ -306,10 +315,10 @@ def pytest_sessionfinish(session, exitstatus):
         meta["failed"] = failed
         # Why each timing-run test failed, for the pull request report.
         meta["reasons"] = {
-            r.nodeid: _reason(r)
-            for k in ("failed", "error")
-            for r in stats.get(k, [])
+            r.nodeid: _reason(r) for k in ("failed", "error") for r in stats.get(k, [])
         }
+        # Tests that took more than one attempt: how many retries each.
+        meta["reruns"] = dict(sorted(getattr(config, "_reruns", {}).items()))
         # How long each timed case ran in a row before its last check.
         warmup, iters = config.getoption("--warmup"), config.getoption("--iters")
         if isinstance(warmup, int) and isinstance(iters, int):

@@ -347,4 +347,5 @@ jobs:
     if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.only && !inputs.peano && !inputs.seeds && !inputs.iters }}
     permissions:
       contents: write
+      actions: read
     uses: ./.github/workflows/publishKernelResults.yml

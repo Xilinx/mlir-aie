@@ -21,7 +21,13 @@ Per factory the column records, for this NPU:
 * ``untimed``: cases that passed the sweep and are not timed by design
   (``perf=False`` in ``kernel_cases.py`` or a dedicated check), so "N cases
   pass" and "M timed" add up.
+* ``flaky``: cases that passed, but only when the runner retried a failed
+  sweep input or timing test (names).
 * ``reason``: why a factory with builds has no case at all.
+
+When the timing run measured nothing at all (it refused the device's power
+mode, or preflight did not pass), the column says why in ``timing_refused``
+and no case is ``timing_failed``: one reason, not one per case.
 
 The row assembly (:func:`rows`) needs only the standard library, so it is
 tested on any host; only :func:`catalogue` imports the ``aie`` package.
@@ -97,21 +103,56 @@ def timed(path) -> dict[str, set[str]]:
     return _by_factory(row["name"].rsplit("/", 1)[0] for row in rows_)
 
 
-def timing_failed(path) -> dict[str, set[str]]:
-    """Return the cases ``meta.json`` lists as failed in the timing run, by factory.
-
-    The sweep's own failures reach the meta too; those are the correctness
-    report's to attribute, so only the timing tests count here.
-    """
-    with open(path) as f:
-        failed = json.load(f).get("failed", [])
+def _timing_cases(nodeids) -> list[str]:
     cases = []
-    for nodeid in failed:
+    for nodeid in nodeids:
         if "test_kernel_perf[" not in nodeid:
             continue
         match = pr_report._BRACKETED.search(nodeid)
         if match:
             cases.append(match[1])
+    return cases
+
+
+def timing_refused(path) -> str | None:
+    """Return why the timing run measured nothing at all, or None if it measured."""
+    with open(path) as f:
+        meta = json.load(f)
+    if meta.get("refused"):
+        return str(meta["refused"])
+    if "preflight" not in meta:
+        return "the NPU preflight did not pass"
+    return None
+
+
+def timing_failed(path) -> dict[str, set[str]]:
+    """Return the cases ``meta.json`` lists as failed in the timing run, by factory.
+
+    The sweep's own failures reach the meta too; those are the correctness
+    report's to attribute, so only the timing tests count here. A run that
+    measured nothing failed every timing test for one reason
+    (:func:`timing_refused`), so none of them counts.
+    """
+    if timing_refused(path):
+        return {}
+    with open(path) as f:
+        failed = json.load(f).get("failed", [])
+    return _by_factory(_timing_cases(failed))
+
+
+def flaky(correctness=None, meta=None) -> dict[str, set[str]]:
+    """Return the cases that passed only on a retry, by factory."""
+    cases = set()
+    if correctness:
+        for case, _, test in pr_report.sweep(correctness):
+            if pr_report.reruns(test) and not pr_report.failed(test):
+                cases.add(case)
+    if meta:
+        with open(meta) as f:
+            record = json.load(f)
+        bad = set(record.get("failed", []))
+        retried = [n for n in record.get("reruns", {}) if n not in bad]
+        cases.update(_timing_cases(retried))
     return _by_factory(cases)
 
 
@@ -122,6 +163,7 @@ def rows(
     timed_: dict[str, set[str]],
     timing_failed_: dict[str, set[str]],
     declared: dict[str, dict[str, bool]],
+    flaky_: dict[str, set[str]] | None = None,
 ) -> list[dict]:
     """Assemble the catalogue rows from what the run produced.
 
@@ -144,6 +186,7 @@ def rows(
             "timed": len(timed_.get(name, ())),
             "timing_failed": sorted(timing_failed_.get(name, ())),
             "untimed": sorted(c for c in ok if cases.get(c) is False),
+            "flaky": sorted((flaky_ or {}).get(name, ())),
         }
         if f["builds"] and not cases:
             row["reason"] = why or NO_CASE
@@ -218,12 +261,14 @@ def catalogue(
         for factory in kernels.factories()
     ]
     passed, failed = swept(correctness) if correctness else ({}, {})
+    refused = timing_refused(meta) if meta else None
     return {
         "npu": npu,
         "arch": arch,
         "commit": os.environ.get("GITHUB_SHA", ""),
         "date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "swept": correctness is not None,
+        **({"timing_refused": refused} if refused else {}),
         "kernels": rows(
             factories,
             passed,
@@ -231,6 +276,7 @@ def catalogue(
             timed(perf) if perf else {},
             timing_failed(meta) if meta else {},
             declared,
+            flaky(correctness, meta),
         ),
     }
 

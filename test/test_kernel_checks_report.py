@@ -242,6 +242,62 @@ def test_baseline_requires_matching_known_power_modes(
         meta={"preflight": preflight},
     )
     assert bool(leg.regressed) is compared
+    assert bool(leg.uncompared) is not compared
+    if current_mode and baseline_mode and not compared:
+        assert leg.uncompared == (
+            f"nightly in {baseline_mode} mode, this run in {current_mode}: "
+            "not compared"
+        )
+
+
+def test_a_refused_run_reports_one_reason_not_a_failure_per_case(read_leg, report):
+    refusal = "power mode is default, required 'turbo'"
+    leg = read_leg(
+        {},
+        _record({"synthetic/1/i8/cycles": ("cycles", 100)}),
+        meta={
+            "preflight": {"pmode": "default"},
+            "refused": refusal,
+            "failed": [f"test_kernel_perf[synthetic/{i}/i8]" for i in range(3)],
+        },
+        cases=[("synthetic/1/i8/random/s0", "")],
+    )
+    assert leg.failures == []
+    assert leg.uncompared == f"not timed: {refusal}"
+    comment = report.render([leg])
+    assert "all passed, no regressions, npu2 not timed" in comment
+    assert f"| npu2 | ? | not timed: {refusal} | 1 | 0 | \u2014 |" in comment
+
+
+def test_a_test_that_passed_on_a_retry_is_listed(read_leg, report):
+    retried = '<properties><property name="reruns" value="1" /></properties>'
+    leg = read_leg(
+        {},
+        cases=[
+            ("synthetic/1/i8/random/s0", ""),
+            ("synthetic/1/i8/random/s0", retried),
+            ("synthetic/2/i8/random/s0", ""),
+            ("synthetic/2/i8/random/s0", retried + '<failure message="bad" />'),
+        ],
+        meta=dict(
+            META,
+            failed=["perf.py::test_kernel_perf[synthetic/4/i8]"],
+            reruns={
+                "perf.py::test_kernel_perf[synthetic/3/i8]": 1,
+                "perf.py::test_kernel_perf[synthetic/4/i8]": 1,
+            },
+        ),
+    )
+    assert leg.flaky == [
+        ("::test_kernel_extensive[synthetic/1/i8/random/s0]", 1),
+        ("perf.py::test_kernel_perf[synthetic/3/i8]", 1),
+    ]
+    assert leg.inputs == 2
+    assert [f.total for f in leg.failures if f.case == "synthetic/2/i8"] == [1]
+    comment = report.render([leg])
+    assert "2 passed on a retry" in comment
+    assert "Passed only on a retry (2)" in comment
+    assert "`perf.py::test_kernel_perf[synthetic/3/i8]` | 1 |" in comment
 
 
 def test_cli_writes_report(tmp_path):
@@ -270,4 +326,4 @@ def test_cli_writes_report(tmp_path):
     text = out.read_text()
     assert "<!-- kernel-checks-report -->" in text
     assert "all passed, no regressions" in text
-    assert "none cached" in text
+    assert "| no nightly to compare with |" in text

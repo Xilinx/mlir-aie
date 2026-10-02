@@ -68,12 +68,13 @@ def test_rows_aggregate_variants_and_attribute_outcomes(catalogue, tmp_path):
     meta.write_text(
         json.dumps(
             {
+                "preflight": {"pmode": "turbo"},
                 "failed": [
                     "test_kernel_perf[synthetic/2/i8]",
                     "test_kernel_extensive[synthetic/3/i8/random/s0]",
                     "test_pairs::test_pair[shape]",
                     "test_measurement_is_sane",
-                ]
+                ],
             }
         )
     )
@@ -133,3 +134,73 @@ def test_dedicated_pair_outcome_is_attributed_to_both_factories(
         assert row["timed"] == 0
         assert row["untimed"] == ([case] if not outcome else [])
         assert "reason" not in row
+
+
+@pytest.mark.parametrize(
+    "meta,reason",
+    [
+        ({"refused": "power mode is default, required 'turbo'"}, "power mode is"),
+        ({}, "preflight did not pass"),
+        ({"preflight": {"pmode": "turbo"}}, None),
+    ],
+)
+def test_a_run_that_timed_nothing_gives_one_reason_not_a_failure_per_case(
+    catalogue, tmp_path, meta, reason
+):
+    path = tmp_path / "meta.json"
+    failed = [f"test_kernel_perf[synthetic/{i}/i8]" for i in range(1, 4)]
+    path.write_text(json.dumps({**meta, "failed": failed}))
+    refused = catalogue.timing_refused(path)
+    if reason is None:
+        assert refused is None
+        assert catalogue.timing_failed(path) == {
+            "synthetic": {f"synthetic/{i}/i8" for i in range(1, 4)}
+        }
+    else:
+        assert reason in refused
+        assert catalogue.timing_failed(path) == {}
+
+
+def test_a_case_that_passed_on_a_retry_is_flaky_and_counted_once(catalogue, tmp_path):
+    retried = '<properties><property name="reruns" value="1" /></properties>'
+    attempts = [
+        ("synthetic/1/i8/random/s0", ""),
+        ("synthetic/1/i8/random/s0", retried),
+        ("synthetic/2/i8/random/s0", ""),
+        ("synthetic/2/i8/random/s0", retried + '<failure message="bad" />'),
+        ("synthetic/3/i8/random/s0", ""),
+    ]
+    correctness = tmp_path / "correctness.xml"
+    correctness.write_text(
+        "<testsuite>"
+        + "".join(
+            f'<testcase classname="e2e" name="test_kernel_extensive[{name}]">'
+            f"{body}</testcase>"
+            for name, body in attempts
+        )
+        + "</testsuite>"
+    )
+    meta = tmp_path / "meta.json"
+    meta.write_text(
+        json.dumps(
+            {
+                "preflight": {"pmode": "turbo"},
+                "failed": ["perf.py::test_kernel_perf[synthetic/5/i8]"],
+                "reruns": {
+                    "perf.py::test_kernel_perf[synthetic/4/i8]": 1,
+                    "perf.py::test_kernel_perf[synthetic/5/i8]": 1,
+                },
+            }
+        )
+    )
+    passed, failed = catalogue.swept(correctness)
+    assert passed == {"synthetic": {"synthetic/1/i8", "synthetic/3/i8"}}
+    assert failed == {"synthetic": {"synthetic/2/i8"}}
+    flaky = catalogue.flaky(correctness, meta)
+    assert flaky == {"synthetic": {"synthetic/1/i8", "synthetic/4/i8"}}
+    [row] = catalogue.rows(
+        FACTORIES[:1], passed, failed, {}, {}, {"synthetic": {}}, flaky
+    )
+    assert row["flaky"] == ["synthetic/1/i8", "synthetic/4/i8"]
+    swept = [case for case, _, _ in catalogue.pr_report.sweep(correctness)]
+    assert swept == ["synthetic/1/i8", "synthetic/2/i8", "synthetic/3/i8"]

@@ -365,7 +365,7 @@ assert.equal(reproByName('add/1024x16/bfloat16', 'test_kernel_perf'),
   "python -m pytest test/python/npu/test_kernels_perf.py -m perf -v -k 'add/1024x16/bfloat16'");
 assert.ok(reproByName('conv/8x8/int8/width=28', 'test_kernel_extensive').endsWith("-k 'conv'  # every conv case"));
 const run = { id: '7', url: 'https://example.invalid/runs/7', device: 'Krackan', commit: '91ee8c89c8b841f2', failed: [e2e] };
-const counts = { failing: [], timingFailed: [] };
+const counts = catalogueCounts(null);
 const items = attentionFor({ npu: 'npu2', run, counts, moved: null }, Date.parse('2026-09-30T12:00:00Z'));
 const item = items.find(i => i.body.some(b => typeof b === 'string' && b.startsWith('1 test failed')));
 assert.ok(item, 'a failed test the catalogue does not name still gets a line');
@@ -611,6 +611,57 @@ def test_dashboard_can_compare_without_a_run_index(page):
 renderDashboard(['npu1'], db, new Map(), new Map(), 3000);
 // relu worse, the divider, gelu better.
 assert.equal($('moved').children.length, 3);
+""")
+
+
+def test_a_refused_night_says_why_once_and_greys_the_passing_kernels(page):
+    page(RUNS + """
+const refusal = "power mode is performance, required 'turbo'";
+catalogue.timing_refused = refusal;
+catalogue.kernels = [
+  { factory: 'relu', family: 'activation', summary: 'ReLU', sources: [], builds: ['relu'], passed: 2, failed: [], timed: 0 },
+  { factory: 'mm', family: 'linalg', summary: 'mm', sources: [], builds: ['mm'], passed: 0, failed: ['mm/64/i8'], timed: 0 },
+];
+const refused = { target: 'npu1', runs: [summary('3', '1970-01-01T00:00:03Z', 'performance', {}, {
+  sane: null, published: false, refused: refusal,
+  failed: ['test_kernels_perf.py::test_kernel_perf[relu/64/bf16]', 'test_kernels_perf.py::test_measurement_is_sane',
+           'test_kernels_e2e.py::test_kernel_extensive[mm/64/i8/rand/s0]'],
+})] };
+const [night] = renderDashboard(['npu1'], fromRecords({}), new Map([['npu1', catalogue]]), new Map([['npu1', refused]]), 3600 * 1000);
+assert.deepEqual(kernelState(night, 'relu'), { level: 'untimed', text: '', title: `2 cases pass; not timed: ${refusal}` });
+assert.equal(kernelState(night, 'mm').level, 'bad');
+assert.deepEqual(caseVerdict(night, 'relu/64/bf16'), { cls: '', text: 'not timed', title: `the night timed nothing: ${refusal}` });
+// The refusal, then the failing case; not a line per timing test it failed.
+const items = $('attention-list').children.map(li => li.children[1].text);
+assert.equal(items.length, 3);
+assert.ok(items[0].startsWith(`The run refused to measure: ${refusal}`));
+assert.ok(items[1].startsWith('1 case failed correctness'));
+assert.ok(items[2].startsWith('Measured in power mode "performance"'));
+assert.ok(STATE_LEGEND.some(([level]) => level === 'untimed'));
+""")
+
+
+def test_a_case_that_passed_on_a_retry_is_flagged_but_not_failing(page):
+    page(RUNS + """
+catalogue.kernels = [
+  { factory: 'relu', family: 'activation', summary: 'ReLU', sources: [], builds: ['relu'], passed: 2, failed: [], timed: 2,
+    flaky: ['relu/64/bf16'] },
+];
+const runs = { target: 'npu1', runs: [summary('3', '1970-01-01T00:00:03Z', 'turbo', {}, {
+  cases: { timed: 2, failed: 0, timing_failed: 0, flaky: 1 } })] };
+const [night] = renderDashboard(['npu1'], fromRecords({}), new Map([['npu1', catalogue]]), new Map([['npu1', runs]]), 3600 * 1000);
+assert.deepEqual(kernelState(night, 'relu'), { level: 'warn', text: 'flaky', title: 'passed only on a retry:\\nrelu/64/bf16' });
+const [shown] = $('verdicts').children;
+assert.equal(shown.className, 'verdict warn');
+assert.equal(shown.children.find(c => c.className === 'headline').text, '1 passed on a retry.');
+assert.ok(shown.children.find(c => c.className === 'figures').children.some(li => li.text === '1passed on a retry'));
+const items = $('attention-list').children;
+assert.deepEqual(items.map(li => li.className), ['warn']);
+assert.ok(items[0].text.includes('passed when the runner retried it'));
+assert.equal(nightLevel(runs.runs[0]), 'warn');
+assert.ok(nightTitle(runs.runs[0]).endsWith('2 timed, 0 failing, 0 timing failed, 1 passed on a retry'));
+renderKernels([night]);
+assert.equal($('kernels-rows').children[0].children[1].children[0].text, 'passed on a retry');
 """)
 
 
