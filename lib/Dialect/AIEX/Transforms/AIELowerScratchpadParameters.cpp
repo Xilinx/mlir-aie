@@ -232,7 +232,10 @@ struct AIELowerScratchpadParametersPass
         return;
       }
 
-      Block &body = seqOp.getBody().front();
+      Region &region = seqOp.getBody();
+      if (region.empty())
+        region.emplaceBlock();
+      Block &body = region.front();
       builder.setInsertionPointToStart(&body);
       SyncScratchpadParametersFromHostOp::create(builder, seqOp.getLoc());
 
