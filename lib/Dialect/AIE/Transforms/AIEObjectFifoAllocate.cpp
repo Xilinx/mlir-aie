@@ -39,11 +39,11 @@ struct AIEObjectFifoAllocatePass
   DenseMap<Value, Operation *> lastPlaced;
   /// Pools some endpoint writes into.
   DenseSet<Operation *> filledPools;
+  /// The `aiex.dma_channel_reset_for` ops naming each fifo.
+  llvm::StringMap<SmallVector<Operation *>> rearmUsers;
   /// Flows already lowered. A route endpoint reads its direction off the
   /// flow naming it, so these outlive the walk that replaces them.
   SmallVector<Operation *> loweredFlows;
-  /// Passes the longest-running drainer of each pool makes over it.
-  DenseMap<Operation *, int> drainerIterations;
   DenseMap<Value, SmallVector<int64_t>> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
@@ -63,7 +63,13 @@ struct AIEObjectFifoAllocatePass
   /// The same, with every channel the last assignment handed out added.
   DenseMap<std::tuple<int, int, int>, int64_t> channelDemand;
   RouteEndpoint channelFailure;
+  /// The pool the buffer search could not place with the fewest left
+  /// unplaced, i.e. where it got furthest.
   ObjectFifoPoolOp bufferFailure;
+  size_t unplacedAtFailure = 0;
+  /// Neighbors spillTargets created to weigh a spill. The ones no buffer or
+  /// lock ends up on are erased once allocation is done.
+  SmallVector<TileOp> spillTiles;
   Value lockFailure;
   Operation *lockAccessFailure = nullptr;
 
@@ -193,6 +199,7 @@ struct AIEObjectFifoAllocatePass
       }
       plannedMemory[tile].append(count, size);
     }
+    SmallVector<ObjectFifoPoolOp> generated;
     for (auto pool : pools) {
       if (pool.getBuffers()) {
         for (auto buffer : pool.getBufferOps()) {
@@ -211,20 +218,65 @@ struct AIEObjectFifoAllocatePass
       }
       if (pool.getTileLike().isShimTile())
         continue;
-      for (int i = 0; i < pool.getDepth(); ++i) {
-        Value tile = localPools.contains(pool)
-                         ? localPools.lookup(pool)
-                         : placementFor(pool, pool.getObjectSizeInBytes());
-        if (!tile) {
-          bufferFailure = pool;
-          return failure();
-        }
-        bufferPlacements[pool].push_back(tile);
-        if (!localPools.contains(pool))
-          plannedMemory[tile].push_back(pool.getObjectSizeInBytes());
-      }
+      if (localPools.contains(pool))
+        bufferPlacements[pool].append(pool.getDepth(), localPools.lookup(pool));
+      else
+        generated.append(pool.getDepth(), pool);
     }
-    return success();
+    int retries = kSpillRetries;
+    return success(placeBuffers(generated, retries));
+  }
+
+  /// The first layout tried is the greedy one. When a buffer fits nowhere,
+  /// an earlier buffer may have spilled to the one neighbor it could use, or
+  /// stayed home where a later buffer that only home can hold needed the
+  /// room, so earlier choices are revisited, latest first, a bounded number of
+  /// times.
+  static constexpr int kSpillRetries = 256;
+
+  bool placeBuffers(ArrayRef<ObjectFifoPoolOp> buffers, int &retries) {
+    if (buffers.empty())
+      return true;
+    ObjectFifoPoolOp pool = buffers.front();
+    int64_t size = pool.getObjectSizeInBytes();
+    Value homeTile = pool.getTileLike()->getResult(0);
+    bool fitsHome = canPlace(pool, homeTile, size);
+    SmallVector<Value> candidates;
+    if (fitsHome)
+      candidates.push_back(homeTile);
+    else
+      candidates = spillTargets(pool, size);
+    if (candidates.empty() &&
+        (!bufferFailure || buffers.size() < unplacedAtFailure)) {
+      bufferFailure = pool;
+      unplacedAtFailure = buffers.size();
+    }
+    auto tryTile = [&](Value tile) {
+      plannedMemory[tile].push_back(size);
+      bufferPlacements[pool].push_back(tile);
+      if (placeBuffers(buffers.drop_front(), retries))
+        return true;
+      plannedMemory[tile].pop_back();
+      bufferPlacements[pool].pop_back();
+      return false;
+    };
+    for (auto [index, tile] : llvm::enumerate(candidates)) {
+      if (index > 0 && retries-- <= 0)
+        return false;
+      if (tryTile(tile))
+        return true;
+    }
+    if (!fitsHome)
+      return false;
+    // Spill targets are only looked up once home has failed, so a layout that
+    // keeps every buffer home creates no neighbor tiles.
+    for (Value tile : spillTargets(pool, size)) {
+      if (retries-- <= 0)
+        return false;
+      if (tryTile(tile))
+        return true;
+    }
+    return false;
   }
 
   /// FIXME: choosing which tile a buffer lives on is the buffer allocator's
@@ -236,13 +288,9 @@ struct AIEObjectFifoAllocatePass
   /// by its DMAs, preferring the emptier one so adjacent MemTiles
   /// keep room for their own spills. Which tiles neighbor an unplaced one is
   /// not yet known, so its buffers stay at home.
-  Value placementFor(ObjectFifoPoolOp pool, int64_t sizeBytes) {
+  SmallVector<Value> spillTargets(ObjectFifoPoolOp pool, int64_t sizeBytes) {
     TileLike home = pool.getTileLike();
     auto &target = device.getTargetModel();
-    Value homeTile = home->getResult(0);
-    if (canPlace(pool, homeTile, sizeBytes)) {
-      return homeTile;
-    }
     if (!home.isMemTile())
       return {};
 
@@ -256,8 +304,14 @@ struct AIEObjectFifoAllocatePass
       if (col < 0 || col >= target.columns()) {
         continue;
       }
-      TileOp neighbor = TileOp::getOrCreate(builder, device, col,
-                                            homeOp.getRow(), pool.getLoc());
+      int row = homeOp.getRow();
+      bool declared = llvm::any_of(device.getOps<TileOp>(), [&](TileOp t) {
+        return t.getCol() == col && t.getRow() == row;
+      });
+      TileOp neighbor =
+          TileOp::getOrCreate(builder, device, col, row, pool.getLoc());
+      if (!declared)
+        spillTiles.push_back(neighbor);
       using SharedMemory = AIETargetModel::SharedMemory;
       SharedMemory shared = sharedMemory(homeOp, neighbor);
       if (shared == SharedMemory::Second || shared == SharedMemory::Either) {
@@ -267,12 +321,13 @@ struct AIEObjectFifoAllocatePass
     llvm::stable_sort(neighbors, [&](TileOp a, TileOp b) {
       return memoryUsed(a.getResult()) < memoryUsed(b.getResult());
     });
+    SmallVector<Value> fitting;
     for (TileOp neighbor : neighbors) {
       if (canPlace(pool, neighbor.getResult(), sizeBytes)) {
-        return neighbor.getResult();
+        fitting.push_back(neighbor.getResult());
       }
     }
-    return {};
+    return fitting;
   }
 
   /// Buffers and locks sit directly below the tile whose memory holds them,
@@ -298,13 +353,18 @@ struct AIEObjectFifoAllocatePass
       return;
     }
 
-    auto initValues = pool.getInitValues();
+    ArrayRef<Attribute> initValues;
+    if (auto initAttr = pool.getInitValues()) {
+      initValues = initAttr->getValue();
+    }
+    int filled = initValues.size();
     StringRef base = pool.getBaseName();
 
     SmallVector<Attribute> names;
+    // Initial contents may fill only the first objects of a deeper pool.
     for (int i = 0; i < pool.getDepth(); i++) {
       ElementsAttr init =
-          initValues ? cast<ElementsAttr>((*initValues)[i]) : nullptr;
+          i < filled ? cast<ElementsAttr>(initValues[i]) : nullptr;
       std::string name = (base + "_buff_" + std::to_string(i)).str();
       Value placement = bufferPlacements[pool][i];
       setInsertionPointOn(placement);
@@ -336,15 +396,13 @@ struct AIEObjectFifoAllocatePass
     auto initValues = pool.getInitValues();
     int filled = initValues ? initValues->size() : 0;
 
-    // A pool that starts full, is never refilled and is read more than once
-    // holds constants: its readers have nothing to wait for.
-    //
-    // FIXME: revisit whether the pass count belongs in that test. Nothing
-    // refills this pool however often it is read, so the locks look like dead
-    // weight either way; dropping the clause also frees every `init_values`
-    // fifo of its locks, which wants looking at on its own.
+    // A pool that starts full and is never refilled holds constants: its
+    // readers have nothing to wait for. Locks would also let it be read only
+    // as many times as they count, so a second launch would hang, unless a
+    // `dma_channel_reset_for` re-arms them each launch.
+    std::optional<StringRef> fifo = pool.getFifoName();
     return filled != depth || filled <= 0 || filledPools.contains(pool) ||
-           drainerIterations.lookup(pool) <= 1;
+           (fifo && rearmUsers.contains(*fifo));
   }
 
   LogicalResult planLocks(ArrayRef<ObjectFifoPoolOp> pools) {
@@ -446,7 +504,7 @@ struct AIEObjectFifoAllocatePass
       SmallVector<Attribute> names;
       for (int i = 0; i < depth; i++) {
         std::string name = (base + "_lock_" + std::to_string(i)).str();
-        createLock(pool, lockPlacement(pool, pool), name, filled ? 1 : 0);
+        createLock(pool, lockPlacement(pool, pool), name, i < filled ? 1 : 0);
         names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
       }
       pool.setLocksAttr(builder.getArrayAttr(names));
@@ -1081,11 +1139,7 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  /// An `aiex.dma_channel_reset_for` outlives the fifo it names, so record the
-  /// channels and locks it has to re-arm and point it at that record. Shim
-  /// endpoints are left out: the host re-pushes those itself.
-  LogicalResult bindRearmTargets() {
-    llvm::StringMap<SmallVector<Operation *>> usersByFifo;
+  void collectRearmUsers() {
     device.walk([&](Operation *op) {
       if (op->getName().getStringRef() != "aiex.dma_channel_reset_for") {
         return;
@@ -1101,14 +1155,20 @@ struct AIEObjectFifoAllocatePass
           name = *fifoName;
         }
       }
-      usersByFifo[name].push_back(op);
+      rearmUsers[name].push_back(op);
     });
-    if (usersByFifo.empty()) {
+  }
+
+  /// An `aiex.dma_channel_reset_for` outlives the fifo it names, so record the
+  /// channels and locks it has to re-arm and point it at that record. Shim
+  /// endpoints are left out: the host re-pushes those itself.
+  LogicalResult bindRearmTargets() {
+    if (rearmUsers.empty()) {
       return success();
     }
 
     builder.setInsertionPoint(device.getBody()->getTerminator());
-    for (auto &[fifoName, users] : usersByFifo) {
+    for (auto &[fifoName, users] : rearmUsers) {
       SmallVector<Value> channelTiles, lockValues;
       SmallVector<int32_t> channelDirs, channelIndices, lockInits;
 
@@ -1330,8 +1390,8 @@ struct AIEObjectFifoAllocatePass
     // state means anything outside the device it was gathered from.
     lastPlaced.clear();
     filledPools.clear();
+    rearmUsers.clear();
     loweredFlows.clear();
-    drainerIterations.clear();
     localPools.clear();
     poolUsers.clear();
     lockUsers.clear();
@@ -1359,6 +1419,7 @@ struct AIEObjectFifoAllocatePass
       pools[slot] = pool;
     }
 
+    collectRearmUsers();
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       poolUsers[endpoint.getPoolOp()].push_back(endpoint.getTile());
       collectLockUsers(endpoint);
@@ -1371,10 +1432,7 @@ struct AIEObjectFifoAllocatePass
       collectLockUsers(endpoint);
       if (!endpoint.drains()) {
         filledPools.insert(endpoint.getPoolOp());
-        continue;
       }
-      int &iterations = drainerIterations[endpoint.getPoolOp()];
-      iterations = std::max(iterations, endpoint.getIterCount().value_or(1));
     }
 
     std::set<std::vector<unsigned>> tried;
@@ -1414,6 +1472,9 @@ struct AIEObjectFifoAllocatePass
       allocateBuffers(pool);
       allocateLocks(pool);
     }
+    for (TileOp tile : spillTiles)
+      if (tile->use_empty())
+        tile->erase();
     for (auto endpoint : device.getOps<RouteEndpoint>())
       if (auto it = channelAssignments.find(endpoint.getOperation());
           it != channelAssignments.end())

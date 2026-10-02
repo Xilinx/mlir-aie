@@ -111,7 +111,8 @@ AIECC_PATH=/path/to/aiecc python my_script.py
 
 `aie.utils.config` resolves the external tools below from an environment
 variable first, then the bundled bin directories (MLIR-AIE's, and for the LLVM
-tools also Peano's), then `PATH`. Set a variable to pin a specific binary.
+tools also Peano's and that of the LLVM the build was configured against), then
+`PATH`. Set a variable to pin a specific binary.
 
 | Variable | Tool | Used for |
 |----------|------|----------|
@@ -123,6 +124,24 @@ tools also Peano's), then `PATH`. Set a variable to pin a specific binary.
 
 ```bash
 AIE_XCLBINUTIL=/path/to/xclbinutil aie-hsaco ...
+```
+
+## Kernel Source Override (`MLIR_AIE_KERNEL_SOURCES`)
+
+The `aie.iron.kernels` factories compile their C++ from the installed
+`include/aie_kernels/` and `aie_runtime_lib/` by default, which is the
+checkout as of its last build or install. Set `MLIR_AIE_KERNEL_SOURCES` to a
+checkout's root to compile that checkout's `aie_kernels/` and
+`aie_runtime_lib/` instead, for example to try a kernel edit against an
+installed wheel without rebuilding. `aie.utils.config.aie_kernels_dir()` and
+`aie_runtime_lib_dir()` resolve the override, the JIT cache key includes the
+tree it names, and `aie.utils.benchmark` records it with its results.
+`python -m aie.utils.compile.remarks --sources DIR` is the same override for
+that tool, and its `--baseline-sources DIR` compiles each build a second time
+from another checkout to compare the two.
+
+```bash
+MLIR_AIE_KERNEL_SOURCES=/path/to/mlir-aie python my_script.py
 ```
 
 ## IRON XRT Runtime Cache Size

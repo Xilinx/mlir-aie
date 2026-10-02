@@ -8,6 +8,8 @@
 #ifndef AIE_DIALECT_AIE_TRANSFORMS_AIEBUFFERALLOCATION_H
 #define AIE_DIALECT_AIE_TRANSFORMS_AIEBUFFERALLOCATION_H
 
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -17,6 +19,42 @@
 #include <utility>
 
 namespace xilinx::AIE {
+
+/// A memtile is reached by DMA rather than by core vector load and store, so
+/// its bus width also covers the vector-alignment requirement.
+struct TileMemoryLimits {
+  int64_t maxDataMemorySize;
+  uint32_t tileAlignBitWidth;
+  uint32_t maxVecAlignBits;
+};
+inline TileMemoryLimits tileMemoryLimits(const AIETargetModel &targetModel,
+                                         AIETileType tileType) {
+  if (tileType == AIETileType::MemTile) {
+    return {targetModel.getMemTileSize(),
+            targetModel.getMemTileLoadStoreBusWidth(),
+            targetModel.getMemTileLoadStoreBusWidth()};
+  }
+  return {targetModel.getLocalMemorySize(),
+          targetModel.getComputeTileLoadStoreBusWidth(),
+          targetModel.getComputeTileMaxVectorAlignBits()};
+}
+
+/// Return the alignment (in bits) a buffer of `sizeBytes` must satisfy.
+///
+/// Bus width alone is insufficient: from AIE2P on, a full-width vector access
+/// needs 512-bit alignment while the bus is 256 bits wide. An externally
+/// compiled kernel may perform such an access, so a buffer large enough to hold
+/// a full-width vector gets the stricter alignment. A smaller buffer keeps the
+/// bus width and costs no padding.
+inline uint32_t requiredBufferAlignBits(uint32_t busAlignBits,
+                                        uint32_t maxVecAlignBits,
+                                        int64_t sizeBytes) {
+  if (maxVecAlignBits <= busAlignBits)
+    return busAlignBits;
+  return sizeBytes * 8 >= static_cast<int64_t>(maxVecAlignBits)
+             ? maxVecAlignBits
+             : busAlignBits;
+}
 
 struct BufferAllocation {
   int64_t size;

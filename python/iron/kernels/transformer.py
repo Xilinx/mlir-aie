@@ -53,6 +53,19 @@ _NORM_F32 = Tolerance.relative(
 _NORM_F32_AIE2 = Tolerance.relative(
     2.0**-21, 2e-6, note="aie2, measured on npu1 for cols up to 4096"
 )
+# The aie2p kernel multiplies in the same limbs. Its error measured on npu2
+# reaches 8.6e-7 at 4096 (the kernel it replaced: 6.1e-7), and its bf16
+# output stays within one ulp of the reference.
+_NORM_F32_AIE2P = Tolerance.relative(
+    2.0**-21, 2e-6, note="aie2p, measured on npu2 for cols up to 4096"
+)
+_LAYER_NORM_BF16_AIE2P = Tolerance.bf16_ulps(
+    1,
+    atol=1e-5,
+    note="aie2p, measured on npu2: one ulp; atol covers the cancellation near 0",
+)
+_NORM_F32_TOLERANCE = {"aie2": _NORM_F32_AIE2, "aie2p": _NORM_F32_AIE2P}
+_AFFINE_TOLERANCE = {"aie2": _LAYER_NORM_BF16_AIE2, "aie2p": _LAYER_NORM_BF16_AIE2P}
 
 
 _EPILOGUE_LUT_TOLERANCE = Tolerance.exact(
@@ -106,10 +119,10 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
     """Row-wise LayerNorm on float32 in and out (gamma = 1, beta = 0, eps 1e-5).
 
     A separate factory rather than a dtype of
-    [`layer_norm`][iron.kernels.norm.layer_norm]: this one is held to atol 1e-3
-    (2e-6 on aie2) instead of the bf16 tolerance, which its reference meets
-    only by computing the variance two-pass in float64. Merging them would
-    put that numerical difference behind a dtype switch.
+    [`layer_norm`][iron.kernels.norm.layer_norm]: this one is held to atol 2e-6
+    (1e-3 in the portable build) instead of the bf16 tolerance, which its
+    reference meets only by computing the variance two-pass in float64.
+    Merging them would put that numerical difference behind a dtype switch.
 
     Args:
         cols: Elements per row (multiple of 16).
@@ -122,11 +135,10 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
         np.float32,
         np.float32,
         layer_norm_f32_ref,
-        _NORM_F32_AIE2 if _tuned_arch() == "aie2" else _NORM_F32,
+        _NORM_F32_TOLERANCE.get(_tuned_arch(), _NORM_F32),
         6 * cols,
-        # Headroom: the frame measures 256 bytes on AIE2P and 64 on AIE2, and
-        # neither build calls a soft-float helper.
-        stack_bytes=2048,
+        # 896 B tuned for aie2p, 160 B tuned for aie2, 832 B untuned on aie2p
+        # (672 B on aie2); the 1024 B default covers every build.
     )
 
 
@@ -155,9 +167,7 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
             reference=layer_norm_affine_cast_ref,
             acc_dtype=np.float32,
             reduction=cols,
-            tolerance=(
-                _LAYER_NORM_BF16_AIE2 if _tuned_arch() == "aie2" else _NORM_BF16
-            ),
+            tolerance=_AFFINE_TOLERANCE.get(_tuned_arch(), _NORM_BF16),
             ops_per_call=8 * cols,
         ),
     )
@@ -266,6 +276,9 @@ def mm_activation_epilogue_ref(x, mode):
         with np.errstate(over="ignore"):
             return (x32 / (1.0 + np.exp(-x32))).astype(x.dtype)
     if mode == 2:
+        # gelu's limit at -inf is 0, which the most negative float gives
+        # rather than -inf * 0.
+        x32 = np.maximum(x32, -np.finfo(np.float32).max)
         inner = 0.7978845608 * (x32 + 0.044715 * x32**3)
         return (0.5 * x32 * (1.0 + np.tanh(inner))).astype(x.dtype)
     if mode == 3:

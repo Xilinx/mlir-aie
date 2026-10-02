@@ -38,6 +38,108 @@
 // file's own directory. Its tables need lut_based_ops.cpp linked in, which is
 // what lut_kernel.cc exists to do.
 #include "lut_based_ops.h"
+
+#if AIE_TUNED_AIE2P
+// AIE2P's getTanhBf16 written out, the accumulator kept for a caller to narrow
+// where it likes: 32 segments of 0.25 over [-4, 4), each offset + slope * x.
+// getTanhBf16 builds an aie::linear_approx on every call, and its scratchpad
+// member escapes, so each call stored the whole object to the stack and read
+// the input back through it. x is clamped to the table's range first; the end
+// segments are the constants -1 and 1, so no finite result changes and +-inf
+// no longer makes 0 * inf. The tables' centring offset goes on the index, not
+// the pointers: a table pointer offset from the array loses the reads' memory
+// operands, and every load and store around them is then kept in order.
+//
+// Any table laid out as tanh_lut_ab/cd reads the same way (sigmoid_lut.h's
+// too); shift sets the segment width 2^(4 - shift), range +-2^(8 - shift).
+template <int shift>
+__attribute__((always_inline)) inline aie::accum<accfloat, 16>
+lut_segments_acc(const float *ab, const float *cd,
+                 aie::vector<bfloat16, 16> x) {
+  constexpr int bias_bytes = 16 << 4;
+  constexpr float range = 1 << (8 - shift);
+  const aie::vector<bfloat16, 16> xc = aie::max(
+      aie::min(x, bfloat16(range - 1.0f / (1 << shift))), bfloat16(-range));
+  const aie::vector<int32, 16> index =
+      aie::add(aie::vector<int32, 16>(bfloat16_to_int(xc, shift)), bias_bytes);
+  v32bfloat16 coeff0, coeff1;
+  load_lut_2x_float(ab, cd, index, coeff0, coeff1);
+  aie::accum<accfloat, 32> offset;
+  offset.insert(1, aie::accum<accfloat, 16>(
+                       (v16accfloat)::shuffle(coeff0, coeff1, T32_16x2_hi)));
+  aie::vector<bfloat16, 32> xx = aie::zeros<bfloat16, 32>();
+  xx.insert(1, xc);
+  aie::accum<accfloat, 32> result =
+      mac_elem_32(::shuffle(coeff0, coeff1, T16_16x4_lo), xx, offset);
+  return result.extract<16>(1);
+}
+
+// The same over 32 lanes: both halves' table reads, then one mac with every
+// lane live. A loop of the 16-lane form, called twice a trip, runs wrong from
+// llvm-aie 2026092801 on (lanes 16-31 of each store come out 0).
+template <int shift>
+__attribute__((always_inline)) inline aie::accum<accfloat, 32>
+lut_segments_acc(const float *ab, const float *cd,
+                 aie::vector<bfloat16, 32> x) {
+  constexpr int bias_bytes = 16 << 4;
+  constexpr float range = 1 << (8 - shift);
+  const aie::vector<bfloat16, 32> xc = aie::max(
+      aie::min(x, bfloat16(range - 1.0f / (1 << shift))), bfloat16(-range));
+  aie::accum<accfloat, 32> offset;
+  aie::vector<bfloat16, 32> slope;
+#pragma unroll
+  for (int h = 0; h < 2; h++) {
+    const aie::vector<int32, 16> index = aie::add(
+        aie::vector<int32, 16>(bfloat16_to_int(xc.extract<16>(h), shift)),
+        bias_bytes);
+    v32bfloat16 coeff0, coeff1;
+    load_lut_2x_float(ab, cd, index, coeff0, coeff1);
+    offset.insert(h, aie::accum<accfloat, 16>(
+                         (v16accfloat)::shuffle(coeff0, coeff1, T32_16x2_hi)));
+    slope.insert(
+        h, aie::vector<bfloat16, 32>(::shuffle(coeff0, coeff1, T16_16x4_lo))
+               .extract<16>(1));
+  }
+  return mac_elem_32(slope, xc, offset);
+}
+
+__attribute__((always_inline)) inline aie::accum<accfloat, 16>
+tanh_lut_acc(aie::vector<bfloat16, 16> x) {
+  return lut_segments_acc<6>(tanh_lut_ab, tanh_lut_cd, x);
+}
+
+__attribute__((always_inline)) inline aie::vector<bfloat16, 32>
+tanh_lut_bf16(aie::vector<bfloat16, 32> x) {
+  return lut_segments_acc<6>(tanh_lut_ab, tanh_lut_cd, x).to_vector<bfloat16>();
+}
+#endif
+
+__attribute__((always_inline)) inline aie::vector<bfloat16, 16>
+tanh_lut_bf16(aie::vector<bfloat16, 16> x) {
+#if AIE_TUNED_AIE2P
+  return tanh_lut_acc(x).to_vector<bfloat16>();
+#else
+  return getTanhBf16(x);
+#endif
+}
+
+#if AIE_TUNED_AIE2P
+// tanh from in to out, which may be the same buffer, 32 lanes a trip, n a
+// multiple of 32. A loop holding only the table reads pipelines best, so
+// callers put their arithmetic in separate passes before and after this one
+// (sigmoid's multiply inside it: II 30, against 1 + 22 + 1 split). The pre-RA
+// pipeliner keeps each store ahead of the next trip's table reads (recurrence
+// 18) and settles on II 27; asked for 16, it gives up, and the post-RA
+// pipeliner reaches 22-23.
+__attribute__((always_inline)) inline void tanh_lut_map(const bfloat16 *in,
+                                                        bfloat16 *out, int n) {
+  auto it_in = aie::begin_vector<32>(in);
+  auto it_out = aie::begin_vector<32>(out);
+#pragma clang loop pipeline_initiation_interval(16)
+  for (int i = 0; i < n; i += 32)
+    *it_out++ = tanh_lut_bf16(*it_in++);
+}
+#endif
 #endif
 
 // tanh of 16 bf16 lanes, on whichever path this architecture has. This is the
@@ -55,7 +157,7 @@ tanh_bf16_v16(aie::accum<accfloat, 16> x) {
 #if ACTIVATIONS_NATIVE_TANH
   return aie::tanh<bfloat16>(x.to_vector<float>());
 #else
-  return getTanhBf16(x.to_vector<bfloat16>());
+  return tanh_lut_bf16(x.to_vector<bfloat16>());
 #endif
 }
 
@@ -70,7 +172,7 @@ tanh_bf16_v16(aie::vector<bfloat16, 16> x) {
   acc.from_vector(x, 0);
   return aie::tanh<bfloat16>(acc.to_vector<float>());
 #else
-  return getTanhBf16(x);
+  return tanh_lut_bf16(x);
 #endif
 }
 
@@ -99,7 +201,7 @@ tanh_bf16_vec(aie::vector<float, vec_size> x) {
       narrowed.template to_vector<bfloat16>();
   aie::vector<bfloat16, vec_size> out;
   for (unsigned i = 0; i < vec_size / 16; i++)
-    out.insert(i, getTanhBf16(n.template extract<16>(i)));
+    out.insert(i, tanh_lut_bf16(n.template extract<16>(i)));
   return out;
 #endif
 }

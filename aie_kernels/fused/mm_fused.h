@@ -101,6 +101,40 @@ constexpr aie::rounding_mode round_mode = aie::rounding_mode::conv_even;
 constexpr aie::rounding_mode round_mode = aie::rounding_mode::floor;
 #endif
 
+// MM_FUSED_GELU_BF16_STEPS reproduces the gelu (mode 1) of FastFlowLM's shipped
+// mm overlay bit for bit on AIE2P. The overlay rounds the accumulator to bf16
+// and then rounds the result of each step of the activation. The default gelu
+// rounds once and is more accurate, so use the flag only to match the overlay.
+// The other modes ignore it.
+#ifdef MM_FUSED_GELU_BF16_STEPS
+constexpr bool gelu_bf16_steps = true;
+#else
+constexpr bool gelu_bf16_steps = false;
+#endif
+
+// x * sigmoid(1.702x) in the step order of the overlay's getGeluBf16_nonLUT,
+// with sigmoid(y) = (tanh(y/2) + 1) / 2. Each step rounds to bf16 in the core's
+// rounding mode. The result bits depend on the step order and on the bf16 value
+// of 1.702: (bfloat16)1.702f is 1.703125, as in the overlay. The two products
+// by 0.5 are exact.
+template <int W>
+static inline aie::vector<bfloat16, W>
+gelu_bf16_steps_vec(aie::vector<bfloat16, W> x) {
+  const aie::vector<bfloat16, W> scale =
+      aie::broadcast<bfloat16, W>((bfloat16)1.702f);
+  const aie::vector<bfloat16, W> half =
+      aie::broadcast<bfloat16, W>((bfloat16)0.5f);
+  const aie::vector<bfloat16, W> one =
+      aie::broadcast<bfloat16, W>((bfloat16)1.0f);
+  const aie::vector<bfloat16, W> y =
+      aie::mul(x, scale).template to_vector<bfloat16>();
+  const aie::vector<bfloat16, W> t =
+      tanh_bf16_vec<W>(aie::mul(y, half).template to_vector<float>());
+  const aie::vector<bfloat16, W> sig =
+      aie::mul(aie::add(t, one), half).template to_vector<bfloat16>();
+  return aie::mul(x, sig).template to_vector<bfloat16>();
+}
+
 // One activation's inner loop. Templated so each mode compiles branch-free;
 // mm_fused_epilogue_chunk selects between them once per chunk.
 //
@@ -127,20 +161,27 @@ static inline void epilogue_body(bfloat16 *__restrict y_out,
   AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / V)
   AIE_LOOP_UNROLL(2)
   for (int j = 0; j < CHUNK / V; j++) {
-    // The accumulator stays f32 through the activation and is converted to
-    // bf16 exactly once. Converting first would round twice and let the
-    // activation's slope amplify the first rounding -- see activations.h.
     aie::vector<float, V> f = aie::load_v<V>(src);
     src += V;
-    if constexpr (MODE == 1)
-      f = gelu_vec<V>(f);
-    else if constexpr (MODE == 2)
-      f = silu_vec<V>(f);
-    else if constexpr (MODE == 3)
-      f = sigmoid_vec<V>(f);
-    aie::accum<accfloat, V> out;
-    out.from_vector(f);
-    aie::vector<bfloat16, V> v = out.template to_vector<bfloat16>();
+    aie::vector<bfloat16, V> v;
+    if constexpr (MODE == 1 && gelu_bf16_steps) {
+      aie::accum<accfloat, V> acc;
+      acc.from_vector(f);
+      v = gelu_bf16_steps_vec<V>(acc.template to_vector<bfloat16>());
+    } else {
+      // The accumulator stays f32 through the activation and is converted to
+      // bf16 exactly once. Converting first would round twice and let the
+      // activation's slope amplify the first rounding -- see activations.h.
+      if constexpr (MODE == 1)
+        f = gelu_vec<V>(f);
+      else if constexpr (MODE == 2)
+        f = silu_vec<V>(f);
+      else if constexpr (MODE == 3)
+        f = sigmoid_vec<V>(f);
+      aie::accum<accfloat, V> out;
+      out.from_vector(f);
+      v = out.template to_vector<bfloat16>();
+    }
     aie::store_v(y_out, aie::max(aie::min(v, hi), lo));
     y_out += V;
   }
