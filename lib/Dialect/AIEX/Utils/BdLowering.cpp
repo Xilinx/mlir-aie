@@ -96,6 +96,8 @@ namespace {
 // Folding unsigned i64 arithmetic for building guard conditions: over
 // constant operands a condition folds to a constant, which emitRuntimeCheck
 // drops (true) or reports at compile time (false).
+// Arguments that build ops go in separate statements: C++ leaves their
+// evaluation order, and so the emitted op order, to the compiler.
 struct GuardBuilder {
   OpBuilder &b;
   Location loc;
@@ -276,8 +278,10 @@ LogicalResult guardWithinHostBuffer(
   GuardBuilder g{builder, loc};
   Value ok, sum = g.cst(0);
   auto addTerm = [&](Value c, Value t) {
-    Value inRange = g.both(g.either(g.eq(c, 0), g.ule(t, cap - 1)),
-                           g.either(g.eq(t, 0), g.ule(c, cap - 1)));
+    Value cZero = g.eq(c, 0);
+    Value tFits = g.either(cZero, g.ule(t, cap - 1));
+    Value tZero = g.eq(t, 0);
+    Value inRange = g.both(tFits, g.either(tZero, g.ule(c, cap - 1)));
     ok = ok ? g.both(ok, inRange) : inRange;
     sum = g.add(sum, g.mul(c, t));
   };
@@ -437,9 +441,11 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
   };
   if (failed(checkSize(0, (isLinear ? maxLen : wrapMax) * gran / ew)) ||
       failed(checkSize(1, isLinear ? maxLen : wrapMax)) ||
-      failed(checkSize(2, maxLen)) || failed(checkSize(3, maxRepeats)) ||
-      failed(g.check(
-          g.either(g.eq(inT[3], 0), g.ule(g.sub(inS[3], 1), maxIterations - 1)),
+      failed(checkSize(2, maxLen)) || failed(checkSize(3, maxRepeats)))
+    return failure();
+  Value pureRepeat = g.eq(inT[3], 0);
+  if (failed(g.check(
+          g.either(pureRepeat, g.ule(g.sub(inS[3], 1), maxIterations - 1)),
           "a runtime DMA iteration count must be in [1:" +
               Twine(maxIterations) + "]")))
     return failure();

@@ -218,8 +218,8 @@ module {
 // With a runtime outer stride the iteration wrap is written whenever that
 // stride is positive, so the field it would land in is guarded.
 // CHECK-LABEL: @rt_outer_stride
-// CHECK: %[[IT:.*]] = arith.cmpi ule, %{{.*}}, %c63{{.*}} : i64
 // CHECK: %[[PURE:.*]] = arith.cmpi eq, %arg2, %c0{{.*}} : i64
+// CHECK: %[[IT:.*]] = arith.cmpi ule, %{{.*}}, %c63{{.*}} : i64
 // CHECK: %[[OK:.*]] = arith.ori %[[PURE]], %[[IT]] : i1
 // CHECK: cf.assert %[[OK]], "a runtime DMA iteration count must be in [1:64]"
 // CHECK: cf.assert %{{.*}}, "a runtime DMA iteration stride must be in [0:1048576] when its size > 1"
