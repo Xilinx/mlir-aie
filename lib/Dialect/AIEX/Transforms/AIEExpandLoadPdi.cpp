@@ -125,8 +125,8 @@ static SmallVector<PortSetting> portSettings(Operation &op,
     AIE::Port src = connect.sourcePort();
     settings.push_back(
         {key(true, connect.destPort()),
-         llvm::formatv("circuit {0}{1}", static_cast<int>(src.bundle),
-                       src.channel),
+         llvm::formatv("circuit {0} : {1}",
+                       AIE::stringifyWireBundle(src.bundle), src.channel),
          &op, skipped});
     settings.push_back({key(false, src), "circuit", &op, skipped});
   } else if (auto masterSet = dyn_cast<AIE::MasterSetOp>(op)) {
