@@ -52,12 +52,15 @@ def expect_failure(emit, *args):
 
 # CHECK: %prod = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "prod"}
 # CHECK: aie.runtime_sequence
-# CHECK: aiex.set_lock(%prod, 4)
+# CHECK: %[[V4:.*]] = arith.constant 4 : i32
+# CHECK-NEXT: aiex.set_lock(%prod, %[[V4]])
 print(emit_rearm())
 
-# CHECK: aiex.set_lock(%prod, 0)
+# CHECK: %[[V0:.*]] = arith.constant 0 : i32
+# CHECK-NEXT: aiex.set_lock(%prod, %[[V0]])
 print(emit_rearm(0))
-# CHECK: aiex.set_lock(%prod, 63)
+# CHECK: %[[V63:.*]] = arith.constant 63 : i32
+# CHECK-NEXT: aiex.set_lock(%prod, %[[V63]])
 print(emit_rearm(63))
 
 # CHECK: error: {{.*}}Lock value must be non-negative

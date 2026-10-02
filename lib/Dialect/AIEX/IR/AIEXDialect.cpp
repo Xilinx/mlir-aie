@@ -1445,12 +1445,13 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return emitOpError("SetLockOp is not supported on AIE1.");
 
-  if (getValueAttr().getValue().isNegative())
-    return emitOpError("Lock value must be non-negative");
-
-  if (getValue() > targetModel.getMaxLockValue())
-    return emitOpError("Lock value exceeds the maximum value of " +
-                       std::to_string(targetModel.getMaxLockValue()));
+  if (std::optional<int64_t> value = getConstantIntValue(getValue())) {
+    if (*value < 0)
+      return emitOpError("Lock value must be non-negative");
+    if (*value > targetModel.getMaxLockValue())
+      return emitOpError("Lock value exceeds the maximum value of " +
+                         std::to_string(targetModel.getMaxLockValue()));
+  }
 
   auto lockOp = getLockOp();
   auto lockIDOpt = getLockOp().getLockID();

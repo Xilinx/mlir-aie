@@ -40,6 +40,7 @@ from ..ir import (
     InsertionPoint,
     Attribute,
     AttrBuilder,
+    Value,
 )
 
 # noinspection PyUnresolvedReferences
@@ -485,8 +486,8 @@ def dma_start_task(
         )
 
 
-def set_lock_value(lock: aie.LockOp, value: int):
-    return set_lock(lock, value)
+def set_lock_value(lock: aie.LockOp, value: int | Value):
+    return set_lock(lock, _as_i32(value))
 
 
 # Parameter ops

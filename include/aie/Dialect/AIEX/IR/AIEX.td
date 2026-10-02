@@ -170,7 +170,7 @@ it was configured to issue one (`S2MM` channels do by default; `MM2S` needs
 
 | Op | What it does | Applies to | Example |
 |----|--------------|------------|---------|
-| `aiex.set_lock` | Set the value of an `aie.lock` from the sequence. Non-blocking and offers no synchronization guarantee on its own; pair it with a blocking op. | any tile that owns the referenced lock (core, mem, shim) | `aiex.set_lock(%lock, 5)` |
+| `aiex.set_lock` | Set the value of an `aie.lock` from the sequence. Non-blocking and offers no synchronization guarantee on its own; pair it with a blocking op. | any tile that owns the referenced lock (core, mem, shim) | `aiex.set_lock(%lock, %c5)` |
 
 ### 6. Runtime parameters and scratchpad (write / declare / read / sync)
 
@@ -808,8 +808,9 @@ def AIE_NpuAssertBdFieldOp : AIEX_Op<"npu.assert_bd_field", []> {
     the dynamic DMA lowering for a runtime scalar landing in a narrow field
     (e.g. the 10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would
     silently truncate an out-of-range value. The queue push's 8-bit
-    repeat_count is guarded the same way, and a runtime transfer length gets a
-    `min` of one address-gen granule.
+    repeat_count and runtime lock values (a BD's acquire/release, an
+    aiex.set_lock) are guarded the same way, and a runtime transfer length gets
+    a `min` of one address-gen granule.
 
     This op only ever appears on the dynamic (runtime-value) DMA lowering path;
     a fully static sequence never produces it. When `value` is a constant, the
@@ -1634,15 +1635,19 @@ def AIEX_SetLockOp : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
     The operation is non blocking and does not offer any synchronization guarantees.
     Should be used in combination with blocking operations.
 
+    `value` may be a runtime scalar; it is then guarded to
+    `[0, max lock value]` when the TXN stream is built.
+
     Example:
     ```
       %tile22 = aie.tile(2, 2)
       %lock22_0 = aie.lock(%tile22, 0)
       ...
-      aiex.set_lock(%lock22_0, 5)
+      %c5 = arith.constant 5 : i32
+      aiex.set_lock(%lock22_0, %c5)
     ```
   }];
-  let arguments = (ins Index:$lock, I32Attr:$value);
+  let arguments = (ins Index:$lock, I32:$value);
   let assemblyFormat = [{ `(` $lock `,` $value `)` attr-dict }];
   let hasVerifier = 1;
 

@@ -59,7 +59,8 @@ module {
     aie.runtime_sequence (%arg0: memref<64xi32>) {
       %cst_npu_0 = arith.constant -1168197103 : i32
       aiex.npu.rtp_write(@rtp_0_0, 0, %cst_npu_0) : i32
-      aiex.set_lock(%lock_0_2, 1)
+      %lock_0_2_v1 = arith.constant 1 : i32
+      aiex.set_lock(%lock_0_2, %lock_0_2_v1)
     }
   }
 
@@ -75,7 +76,8 @@ module {
     aie.runtime_sequence (%arg0: memref<64xi32>) {
       %cst_npu_1 = arith.constant -1168197103 : i32
       aiex.npu.rtp_write(@rtp_0_0, 0, %cst_npu_1) : i32
-      aiex.set_lock(%lock_0_2, 1)
+      %lock_0_2_v1 = arith.constant 1 : i32
+      aiex.set_lock(%lock_0_2, %lock_0_2_v1)
     }
   }
 }

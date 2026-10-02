@@ -27,12 +27,15 @@ module {
     
     // CHECK: aie.runtime_sequence
     aie.runtime_sequence(%arg0: memref<64xi32>, %arg1: memref<64xi32>) {
+      // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+      // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : i32
+      // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : i32
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device}
       // The set_lock operations should reference the inlined locks, not the original ones
-      // CHECK-NEXT: aiex.set_lock(%[[LOCK0]], 1)
-      // CHECK-NEXT: aiex.set_lock(%[[LOCK1]], 0)
-      // CHECK-NEXT: aiex.set_lock(%[[LOCK2]], 1)
-      // CHECK-NEXT: aiex.set_lock(%[[LOCK0]], 2)
+      // CHECK-NEXT: aiex.set_lock(%[[LOCK0]], %[[C1]])
+      // CHECK-NEXT: aiex.set_lock(%[[LOCK1]], %[[C0]])
+      // CHECK-NEXT: aiex.set_lock(%[[LOCK2]], %[[C1]])
+      // CHECK-NEXT: aiex.set_lock(%[[LOCK0]], %[[C2]])
       aiex.configure @callee_device {
         aiex.run @sequence(%arg0, %arg1) : (memref<64xi32>, memref<64xi32>)
       }
@@ -54,11 +57,15 @@ module {
 
     aie.runtime_sequence (%arg0: memref<64xi32>, %arg1: memref<64xi32>) {
       // Multiple set_lock operations with different locks and the same lock used multiple times
-      aiex.set_lock(%lock_0, 1)
-      aiex.set_lock(%lock_1, 0)
-      aiex.set_lock(%lock_2, 1)
+      %lock_0_v1 = arith.constant 1 : i32
+      aiex.set_lock(%lock_0, %lock_0_v1)
+      %lock_1_v0 = arith.constant 0 : i32
+      aiex.set_lock(%lock_1, %lock_1_v0)
+      %lock_2_v1 = arith.constant 1 : i32
+      aiex.set_lock(%lock_2, %lock_2_v1)
       // Use lock_0 again to verify the mapping is maintained
-      aiex.set_lock(%lock_0, 2)
+      %lock_0_v2 = arith.constant 2 : i32
+      aiex.set_lock(%lock_0, %lock_0_v2)
     }
   }
 }
@@ -77,9 +84,10 @@ module {
     
     // CHECK: aie.runtime_sequence
     aie.runtime_sequence(%arg0: memref<64xi32>) {
-      // CHECK: aiex.npu.load_pdi {device_ref = @multi_tile_device}
-      // CHECK-NEXT: aiex.set_lock(%[[LOCK02]], 1)
-      // CHECK-NEXT: aiex.set_lock(%[[LOCK12]], 1)
+      // CHECK: %[[ONE:.*]] = arith.constant 1 : i32
+      // CHECK-NEXT: aiex.npu.load_pdi {device_ref = @multi_tile_device}
+      // CHECK-NEXT: aiex.set_lock(%[[LOCK02]], %[[ONE]])
+      // CHECK-NEXT: aiex.set_lock(%[[LOCK12]], %[[ONE]])
       aiex.configure @multi_tile_device {
         aiex.run @sequence(%arg0) : (memref<64xi32>)
       }
@@ -95,8 +103,10 @@ module {
     %lock_1_2 = aie.lock(%tile_1_2, 0) {init = 0 : i32}
 
     aie.runtime_sequence (%arg0: memref<64xi32>) {
-      aiex.set_lock(%lock_0_2, 1)
-      aiex.set_lock(%lock_1_2, 1)
+      %lock_0_2_v1 = arith.constant 1 : i32
+      aiex.set_lock(%lock_0_2, %lock_0_2_v1)
+      %lock_1_2_v1 = arith.constant 1 : i32
+      aiex.set_lock(%lock_1_2, %lock_1_2_v1)
     }
   }
 }
