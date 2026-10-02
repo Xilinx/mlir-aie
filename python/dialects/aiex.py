@@ -406,13 +406,6 @@ def shim_dma_single_bd_task(
             sizes = [1] + list(sizes)
             if strides is not None:
                 strides = [0] + list(strides)
-        if len(sizes) > 4 and not all(
-            isinstance(v, (int, np.integer)) for v in list(sizes) + list(strides or [])
-        ):
-            raise ValueError(
-                f"a DMA BD with more than 4 dimensions (got {len(sizes)}) needs "
-                "constant sizes and strides, which the compiler splits into BDs of 4"
-            )
 
     # The outer dimensions become the queue-push repeat_count. Constants fold to
     # the repeat_count attribute; a runtime sizes[0] (4 dims at most) flows into

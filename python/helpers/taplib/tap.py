@@ -51,7 +51,7 @@ class TensorAccessPattern:
     themselves.
     """
 
-    _DTYPE = np.int32
+    _DTYPE = np.int64
 
     def __init__(
         self,

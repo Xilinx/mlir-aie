@@ -216,17 +216,17 @@ class ObjectFifo(Resolvable):
 
     @property
     def depth(self) -> int | None:
-        """The default depth of the ObjectFifo. This may be overridden by an ObjectFifoHandle upon construction."""
+        """The default depth of the ObjectFifo's endpoints; ``prod()`` and ``cons()`` may override it."""
         return self._depth
 
     @property
     def from_stream_per_cons(self) -> TensorAccessPattern | None:
-        """The default dimensions from stream per consumer value. This may be overridden by an ObjectFifoHandle of type consumer."""
+        """How each consumer's DMA writes the stream into its object, unless ``cons()`` overrides it; None for a linear walk."""
         return self._from_stream_per_cons
 
     @property
     def to_stream(self) -> TensorAccessPattern | None:
-        """The dimensions to stream value. This will be shared by the ObjectFifoHandle of type producer."""
+        """How the producer's DMA walks each object onto the stream; None for a linear walk."""
         return self._to_stream
 
     @property
@@ -711,7 +711,7 @@ class ObjectFifoHandle(Resolvable):
 
     @property
     def from_stream(self) -> TensorAccessPattern | None:
-        """The dimensions from stream of a consumer ObjectFifoHandle."""
+        """How this consumer's DMA writes the stream into its object; None for a linear walk."""
         if self._is_prod:
             raise ValueError("prod ObjectFifoHandles cannot have from_stream")
         return self._from_stream

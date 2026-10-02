@@ -21,12 +21,14 @@
 #  - coalesce a tap of rank > 4 to fit
 #  - pass constant sizes of rank > 4 that do not fit, from a tap or explicit,
 #    through for the compiler to split, with the repeat count covering every
-#    iteration dimension, and reject runtime ones
+#    iteration dimension, and leave runtime ones for the compiler to reject
 
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.taplib import TensorAccessPattern
+from aie.ir import MLIRError
+from aie.passmanager import PassManager
 
 
 def case(name, dims, sizes, strides, use_tap=True):
@@ -139,10 +141,11 @@ case("rank5_explicit", None, [2, 2, 2, 2, 2], [16, 8, 4, 2, 1], use_tap=False)
 case("rank5_no_strides", None, [2, 2, 1, 1, 16], None, use_tap=False)
 
 
-# rank 5 with a runtime size: the compiler cannot split it, so it must raise
-# rather than emit a BD it cannot lower.
+# rank 5 with a runtime size: the compiler cannot split it, so the shim tile's
+# limit rejects it once the fifo lowers.
 # CHECK-LABEL: CASE rank5_runtime
-# CHECK: RAISED ValueError: a DMA BD with more than 4 dimensions (got 5) needs constant sizes and strides
+# CHECK: RAISED MLIRError
+# CHECK-NEXT: 'aie.dma_bd' op Cannot give more than 4 dimensions for step sizes and wraps on this tile (got 5 dimensions)
 print("// CASE rank5_runtime")
 try:
     with mlir_mod_ctx() as ctx:
@@ -163,6 +166,8 @@ try:
                     issue_token=True,
                 )
 
-        print(ctx.module)
-except ValueError as e:
-    print(f"RAISED ValueError: {e}")
+        PassManager.parse(
+            "builtin.module(aie.device(aie-objectFifo-stateful-transform))"
+        ).run(ctx.module.operation)
+except MLIRError as e:
+    print(f"RAISED MLIRError: {e}")

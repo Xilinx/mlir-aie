@@ -190,23 +190,15 @@ def shim_form_stage():
         def _():
             of = object_fifo("of", tile(0, 0), tile(0, 2), 2, T.memref(32, T.i32()))
 
-            @runtime_sequence(T.memref(4096, T.i32()), T.i32(), T.i32(), T.i32())
-            def _(buf, K, step, N):
+            @runtime_sequence(T.memref(4096, T.i32()), T.i32(), T.i32())
+            def _(buf, K, step):
                 tile_tap = TensorAccessPattern.full((64, K)).tile((32, 32))[0, step]
                 shim_dma_single_bd_task(of, buf, tap=tile_tap)
                 repeated = TensorAccessPattern.full((1, K)).repeat(3)
                 shim_dma_single_bd_task(of, buf, tap=repeated)
-                too_deep = TensorAccessPattern(
-                    (N,), 0, [N, N, 1, N, N, N], [0, 0, 0, 0, 0, 1]
-                )
-                try:
-                    shim_dma_single_bd_task(of, buf, tap=too_deep)
-                    assert False
-                except ValueError as e:
-                    print(e)
 
+        assert ctx.module.operation.verify()
         print(ctx.module)
-    # CHECK: a DMA BD with more than 4 dimensions (got 5) needs constant sizes and strides
     # CHECK: runtime_sequence
     # CHECK: aie.dma_bd({{.*}} sizes = [1, 1, 32, 32] strides = [0, 0, %{{.*}}, 1])
     # CHECK: aie.dma_bd({{.*}} sizes = [3, 1, 1, %{{.*}}] strides = [0, 0, 0, 1])
