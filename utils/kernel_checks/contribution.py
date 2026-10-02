@@ -560,6 +560,7 @@ def report(repo: Path, base: str, head: str) -> str | None:
         f"required check; [Adding a kernel]({ADDING}) has the details.",
         "",
     ]
+    intro = len(lines)
     groups = (("New factories", added, True), ("Changed factories", edited, False))
     for title, names, is_new in groups:
         if not names:
@@ -639,6 +640,8 @@ def report(repo: Path, base: str, head: str) -> str | None:
         # both unreadable and most of the suite: run all of it.
         whole = len(names) > SHARED or bool(shared)
         lines += _commands("" if whole else " or ".join(names), bool(sources))
+    if len(lines) == intro:
+        return None  # e.g. only unused headers deleted: nothing to ask
     lines.append(
         f"More in [Testing, performance and static checks]({TESTING}). "
         "This comment is updated on each push."

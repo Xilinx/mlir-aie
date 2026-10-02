@@ -221,6 +221,13 @@ def test_a_header_nothing_includes_is_called_out(contribution, repo):
     assert "- `aie_kernels/eltwise/old.h`: no source includes it" in text
 
 
+def test_deleting_a_header_nothing_used_gets_no_comment(contribution, repo):
+    write(repo, {"aie_kernels/eltwise/old.h": "// unused\n"})
+    git(repo, "rm", "-q", "aie_kernels/eltwise/old.h")
+    write(repo, {})
+    assert checklist(contribution, repo, repo) is None
+
+
 def test_unreadable_code_never_fails_the_pull_request(contribution, repo):
     write(repo, {"python/iron/kernels/eltwise.py": "def broken(:\n"})
     text = checklist(contribution, repo, repo)
