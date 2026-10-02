@@ -73,6 +73,10 @@ def split_merge_coalesce():
         assert False
     except ValueError:
         pass
+    # A unit dim merges into its neighbour whatever its stride.
+    strided = TensorAccessPattern((8,), 0, [4, 1], [2, 5])
+    assert strided.merge(0) == TensorAccessPattern((8,), 0, [4], [2])
+    assert (visited(strided.merge(0)) == visited(strided)).all()
     # Unit dims disappear; a lone unit dim survives.
     u = TensorAccessPattern((4,), 0, [1, 4, 1], [0, 1, 0])
     assert u.coalesce().sizes == (4,)

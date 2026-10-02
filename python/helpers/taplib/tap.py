@@ -257,7 +257,8 @@ class TensorAccessPattern:
         """Merge dimensions `dim` and `dim + 1` into one.
 
         Only legal when they are contiguous, i.e. ``strides[dim] ==
-        sizes[dim + 1] * strides[dim + 1]``. Whether to merge is a structural
+        sizes[dim + 1] * strides[dim + 1]``, or when either has size 1.
+        Whether to merge is a structural
         decision, so the values must be concrete.
 
         Args:
@@ -279,13 +280,14 @@ class TensorAccessPattern:
             raise TypeError(
                 "merge() is a structural decision; it needs concrete sizes/strides"
             )
-        if n0 != 1 and s0 != n1 * s1:
+        if n0 != 1 and n1 != 1 and s0 != n1 * s1:
             raise ValueError(
                 f"dimensions {dim} and {dim + 1} are not contiguous "
                 f"(stride {s0} != {n1} * {s1}); cannot merge"
             )
         sizes = (*self._sizes[:dim], n0 * n1, *self._sizes[dim + 2 :])
-        strides = (*self._strides[:dim], s1, *self._strides[dim + 2 :])
+        stride = s0 if n1 == 1 else s1
+        strides = (*self._strides[:dim], stride, *self._strides[dim + 2 :])
         return self._with(sizes=sizes, strides=strides)
 
     def _drop_unit_dims(self) -> TensorAccessPattern:
