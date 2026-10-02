@@ -11,10 +11,15 @@ from typing import Any, Iterator
 
 import numpy as np
 
-from ...dialects import arith
+from ...dialects import arith  # pyright: ignore[reportAttributeAccessIssue]
 from ...dialects.aiex import dma_await_task, dma_free_task
-from ...extras.dialects.arith import constant
-from ...ir import Block, IndexType, InsertionPoint, Value
+from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
+from ...ir import (  # pyright: ignore[reportMissingImports]
+    Block,
+    IndexType,
+    InsertionPoint,
+    Value,
+)
 
 
 class TaskGroup:
@@ -163,7 +168,7 @@ class TaskGroup:
                 yield iv, tg
                 carried[0].finish()
                 yield_([*carried[1:], tg])
-            for tg in last:
+            for tg in last:  # pyright: ignore[reportPossiblyUnboundVariable]
                 tg.finish()
             return
         # Both arms of the if_ see the groups in flight, so each rebuilds them.

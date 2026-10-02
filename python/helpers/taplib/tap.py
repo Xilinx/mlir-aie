@@ -644,7 +644,7 @@ class TensorAccessPattern:
         idx = np.zeros((), dtype=np.int64) + int(self._offset)
         for size, stride in zip(self._sizes, self._strides):
             idx = idx[..., None] + np.arange(int(size), dtype=np.int64) * int(stride)
-        numel = int(np.prod(self._tensor_dims))
+        numel = int(sprod(self._tensor_dims))
         if idx.max() >= numel:
             raise ValueError(
                 f"{self} reaches element {idx.max()} of a {numel}-element tensor"
@@ -717,7 +717,7 @@ class TensorAccessPattern:
         return out
 
     def _check_numel(self, size: int, what: str) -> None:
-        numel = int(np.prod(self._tensor_dims))
+        numel = int(sprod(self._tensor_dims))
         if size != numel:
             raise ValueError(
                 f"{what} has {size} elements; the pattern walks a tensor of {numel}"
@@ -740,7 +740,7 @@ class TensorAccessPattern:
         """
         idx = self._walk().reshape(-1)
         idx = idx[idx >= 0]
-        numel = int(np.prod(self._tensor_dims))
+        numel = int(sprod(self._tensor_dims))
         order = np.full(numel, -1, dtype=self._DTYPE)
         np.maximum.at(order, idx, np.arange(idx.size, dtype=order.dtype))
         count = np.bincount(idx, minlength=numel).astype(self._DTYPE)

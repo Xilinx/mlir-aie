@@ -27,6 +27,7 @@ from ...helpers.npdtypes import (
     single_elem_or_list_to_list,
 )
 from ...helpers.taplib import TensorAccessPattern
+from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, Resolvable
@@ -55,15 +56,17 @@ def _check_walk_size(
     """Check that `tap` walks a tensor of each of `sizes` elements, padded to `emits`."""
     if tap is None:
         return
+    numel = sprod(tap.tensor_dims)
     for size in sizes:
-        if np.prod(tap.tensor_dims) != size:
+        if numel != size:
             raise ValueError(
                 f"{what} {tap!r} walks a tensor of shape {tuple(tap.tensor_dims)}, "
                 f"but each transfer moves {size} elements"
             )
-    if tap.padding is not None and np.prod(tap.padded_sizes) != emits:
+    padded = sprod(tap.padded_sizes)
+    if tap.padding is not None and padded != emits:
         raise ValueError(
-            f"{what} {tap!r} emits {np.prod(tap.padded_sizes)} elements, "
+            f"{what} {tap!r} emits {padded} elements, "
             f"but each object it fills has {emits}"
         )
 
@@ -769,6 +772,7 @@ class ObjectFifoHandle(Resolvable):
             self.endpoint = RuntimeEndpoint(self._shim_tile)
         active_sequence().note_fifo(self)
 
+        assert self.name is not None
         return emit_shim_transfer(
             self.name,
             rt_data,
@@ -850,11 +854,11 @@ class ObjectFifoHandle(Resolvable):
         tile: Tile | None = AnyMemTile,
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] | None = None,
-        names: list[str] | None = None,
-        to_stream: list[TensorAccessPattern | None] | None = None,
-        from_stream: list[TensorAccessPattern | None] | None = None,
+        names: Sequence[str | None] | None = None,
+        to_stream: Sequence[TensorAccessPattern | None] | None = None,
+        from_stream: Sequence[TensorAccessPattern | None] | None = None,
         plio: bool = False,
-        repeat_counts: list[int | None] | None = None,
+        repeat_counts: Sequence[int | None] | None = None,
     ) -> list[ObjectFifo]:
         """Construct multiple ObjectFifos which feed data into a ObjectFifoHandle.
 
@@ -865,15 +869,15 @@ class ObjectFifoHandle(Resolvable):
             tile (Tile, optional): The tile where the Join operation occurs. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The type of the buffers corresponding to each new ObjectFifo. Defaults to None.
-            names (list[str] | None, optional): The name of each new ObjectFifo. If not given,
+            names (Sequence[str | None] | None, optional): The name of each new ObjectFifo. If not given,
                 each is named after this one, or by the Program if this one is unnamed.
                 Defaults to None.
-            to_stream (list[TensorAccessPattern | None] | None, optional): Each new ObjectFifo's
+            to_stream (Sequence[TensorAccessPattern | None] | None, optional): Each new ObjectFifo's
                 ``to_stream``. Defaults to None.
-            from_stream (list[TensorAccessPattern | None] | None, optional): Each new
+            from_stream (Sequence[TensorAccessPattern | None] | None, optional): Each new
                 ObjectFifo consumer's ``from_stream``. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
-            repeat_counts (list[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
+            repeat_counts (Sequence[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
 
         Raises:
             ValueError: Arguments are validated
@@ -943,13 +947,13 @@ class ObjectFifoHandle(Resolvable):
         tile: Tile | None = AnyMemTile,
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] | None = None,
-        names: list[str] | None = None,
-        to_stream: list[TensorAccessPattern | None] | None = None,
-        from_stream: list[TensorAccessPattern | None] | None = None,
+        names: Sequence[str | None] | None = None,
+        to_stream: Sequence[TensorAccessPattern | None] | None = None,
+        from_stream: Sequence[TensorAccessPattern | None] | None = None,
         plio: bool = False,
-        repeat_counts: list[int | None] | None = None,
+        repeat_counts: Sequence[int | None] | None = None,
         pad_value: list[int] | None = None,
-        channels: list[int | None] | None = None,
+        channels: Sequence[int | None] | None = None,
     ) -> list[ObjectFifo]:
         """Split the data from an ObjectFifoConsumer handle by sending it to producers in N newly constructed ObjectFifos.
 
@@ -960,18 +964,18 @@ class ObjectFifoHandle(Resolvable):
             tile (Tile, optional): The tile where the Split operation takes place. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The buffer type of each new ObjectFifo. Defaults to None.
-            names (list[str] | None, optional): The name of each new ObjectFifo. If not given,
+            names (Sequence[str | None] | None, optional): The name of each new ObjectFifo. If not given,
                 each is named after this one, or by the Program if this one is unnamed.
                 Defaults to None.
-            to_stream (list[TensorAccessPattern | None] | None, optional): Each new ObjectFifo's
+            to_stream (Sequence[TensorAccessPattern | None] | None, optional): Each new ObjectFifo's
                 ``to_stream``; a padded one pads that output. Defaults to None.
-            from_stream (list[TensorAccessPattern | None] | None, optional): Each new
+            from_stream (Sequence[TensorAccessPattern | None] | None, optional): Each new
                 ObjectFifo's ``from_stream_per_cons``. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
-            repeat_counts (list[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
+            repeat_counts (Sequence[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
             pad_value (list[int] | None, optional): Per-sub-fifo per-element pad fill value (see ObjectFifo.pad_value). Defaults to None.
 
-            channels (list[int | None] | None, optional): Pin the hardware DMA
+            channels (Sequence[int | None] | None, optional): Pin the hardware DMA
                 channel each output ObjectFifo produces on, one per output.
                 split() builds those producer handles itself, so this is the
                 only place to say it. Defaults to None (all compiler-assigned).

@@ -32,7 +32,7 @@ from __future__ import annotations
 import inspect as _inspect
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import numpy as np
 from aie.utils.compile.cache.utils import _create_function_cache_key
@@ -199,7 +199,7 @@ class CallableDesign:
     def _build_compilable(
         self,
         call_compile_kwargs: dict[str, Any],
-        tensor_args: list = (),
+        tensor_args: Sequence = (),
     ) -> CompilableDesign:
         """Return a compilable for this call's effective compile kwargs.
 

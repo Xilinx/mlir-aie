@@ -48,7 +48,9 @@ instead.
 
 from __future__ import annotations
 
-from typing import Annotated, NoReturn, TypeVar
+from typing import TYPE_CHECKING, Annotated, NoReturn, TypeVar
+
+import numpy as np
 
 T = TypeVar("T")
 
@@ -76,16 +78,18 @@ def gemm(a: In, b: In, c: Out,
 """
 
 
-class In:
-    """Runtime input tensor annotation (host → NPU, DMA each call)."""
+if TYPE_CHECKING:
+    In = Out = InOut = type[np.ndarray]
+else:
 
+    class In:
+        """Runtime input tensor annotation (host → NPU, DMA each call)."""
 
-class Out:
-    """Runtime output tensor annotation (NPU → host, DMA each call)."""
+    class Out:
+        """Runtime output tensor annotation (NPU → host, DMA each call)."""
 
-
-class InOut:
-    """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
+    class InOut:
+        """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
 
 
 DispatchTime = Annotated[T, "aie.dispatch_time"]

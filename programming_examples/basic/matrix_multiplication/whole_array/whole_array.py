@@ -181,6 +181,7 @@ def whole_array(
     assert n % t == 0
 
     dev = iron.get_current_device()
+    assert dev is not None
     if n_aie_cols > dev.cols:
         raise ValueError(
             f"n_aie_cols={n_aie_cols} but the device has {dev.cols} columns"
@@ -419,11 +420,10 @@ def _run_and_verify(opts):
 
     design = whole_array.specialize(**_compile_kwargs(opts))
     rng = np.random.default_rng(1726250518)
-    if opts.dynamic:
-        A_shape, B_shape, C_shape = _buffer_shapes(opts)
-        A_t = iron.zeros(A_shape, dtype=dtype_in, device="npu")
-        B_t = iron.zeros(B_shape, dtype=dtype_in, device="npu")
-        C_t = iron.zeros(C_shape, dtype=dtype_out, device="npu")
+    A_t, B_t, C_t = (
+        iron.zeros(buf, dtype=dt, device="npu")
+        for buf, dt in zip(_buffer_shapes(opts), (dtype_in, dtype_in, dtype_out))
+    )
     for M, K, N in opts.dynamic or [(opts.M, opts.K, opts.N)]:
         B_shape = (N, K) if opts.b_col_maj else (K, N)
         if np.issubdtype(dtype_in, np.integer):
@@ -434,17 +434,13 @@ def _run_and_verify(opts):
         else:
             A_np = (rng.random((M, K)) * 4.0).astype(dtype_in)
             B_np = (rng.random(B_shape) * 4.0).astype(dtype_in)
+        # Each matrix sits packed row-major at the front of its buffer.
+        A_t.numpy_view().flat[: A_np.size] = A_np.flat
+        B_t.numpy_view().flat[: B_np.size] = B_np.flat
+        shape = {}
         if opts.dynamic:
             print(f"M={M} K={K} N={N}")
-            # Each matrix sits packed row-major at the front of its buffer.
-            A_t.numpy_view()[: A_np.size] = A_np.reshape(-1)
-            B_t.numpy_view()[: B_np.size] = B_np.reshape(-1)
             shape = dict(M=M, K=K, N=N)
-        else:
-            A_t = iron.tensor(A_np, dtype=dtype_in, device="npu")
-            B_t = iron.tensor(B_np, dtype=dtype_in, device="npu")
-            C_t = iron.zeros((M, N), dtype=dtype_out, device="npu")
-            shape = {}
 
         bench = run_iters(
             design,
