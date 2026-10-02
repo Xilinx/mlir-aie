@@ -33,7 +33,9 @@ def test_ryzen_wheel_publish_workflow_gates_on_both_os_builds():
     assert "pull_request" not in publish["on"]
 
     jobs = publish["jobs"]
-    assert jobs["linux-wheels"]["uses"] == "./.github/workflows/buildRyzenWheelsLinux.yml"
+    assert (
+        jobs["linux-wheels"]["uses"] == "./.github/workflows/buildRyzenWheelsLinux.yml"
+    )
     assert (
         jobs["windows-wheels"]["uses"]
         == "./.github/workflows/buildRyzenWheelsWindows.yml"
