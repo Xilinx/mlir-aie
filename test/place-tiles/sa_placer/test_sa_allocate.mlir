@@ -63,17 +63,19 @@ module @no_allocate_within_capacity {
 // -----
 
 // The same overflowing intratile fifos, already allocated to coreB by the
-// user: SA charges them to coreB and adds no allocate of its own.
+// user: SA charges them to coreB and adds no allocate of its own for them.
+// (@data may still get a shared-memory allocate depending on where SA puts
+// coreC; std random distributions differ across standard libraries.)
 // CHECK-LABEL: @user_allocate_kept
 // CHECK: %[[B:.*]] = aie.tile(2, 4)
-// CHECK-NOT: aie.objectfifo.allocate
+// CHECK-NOT: aie.objectfifo.allocate @intra
 // CHECK: aie.objectfifo @intra0
 // CHECK-NEXT: aie.objectfifo.allocate @intra0(%[[B]])
 // CHECK-NEXT: aie.objectfifo @intra1
 // CHECK-NEXT: aie.objectfifo.allocate @intra1(%[[B]])
 // CHECK-NEXT: aie.objectfifo @intra2
 // CHECK-NEXT: aie.objectfifo.allocate @intra2(%[[B]])
-// CHECK-NOT: aie.objectfifo.allocate
+// CHECK-NOT: aie.objectfifo.allocate @intra
 module @user_allocate_kept {
   aie.device(npu2) {
     %coreA = aie.logical_tile<CoreTile>(2, 3)
