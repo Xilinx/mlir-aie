@@ -596,21 +596,20 @@ struct AIEDMATasksToNPUPass
         static_cast<uint64_t>(bd_op.getBufferElementTypeWidthInBytes()) * 8;
     uint32_t gran = target_model.getAddressGenGranularity();
     // len as OpFoldResult: the runtime operand if present, else the static_len
-    // attr (a constant BD with runtime sizes/strides still reaches here). The
-    // dynamic shim encoder needs an explicit transfer length; unlike the static
-    // path it cannot infer one from the buffer's shape, so a BD that carries
-    // neither a len operand nor a static_len attribute is unsupported here
-    // rather than a crash.
+    // attr, else the whole buffer as on the static path (a BD whose only
+    // runtime fields are its lock values carries no len).
     OpFoldResult lenOfr;
     if (Value lenOperand = bd_op.getLen()) {
       lenOfr = lenOperand;
+    } else if (std::optional<int32_t> constLen = bd_op.getConstantLen()) {
+      lenOfr = builder.getI32IntegerAttr(*constLen);
     } else {
-      std::optional<int32_t> constLen = bd_op.getConstantLen();
-      if (!constLen)
+      auto memrefType = llvm::dyn_cast<MemRefType>(bd_op.getBuffer().getType());
+      if (!memrefType || !memrefType.hasStaticShape())
         return bd_op->emitOpError(
             "runtime-valued BD requires an explicit transfer length; provide a "
             "`len` for this buffer descriptor.");
-      lenOfr = builder.getI32IntegerAttr(*constLen);
+      lenOfr = builder.getI32IntegerAttr(memrefType.getNumElements());
     }
     Value bufLen;
     if (auto constLen = getConstantIntValue(lenOfr)) {
