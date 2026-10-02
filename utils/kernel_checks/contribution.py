@@ -69,8 +69,11 @@ class Tree:
 
 
 def changed_files(repo: Path, base: str, head: str) -> list[str]:
+    # A rename is listed as its old and new path, so a factory still naming
+    # the old one is found.
+    diff = ["diff", "--no-renames", "--name-only", f"{base}...{head}"]
     done = subprocess.run(
-        ["git", "-C", str(repo), "diff", "--name-only", f"{base}...{head}"],
+        ["git", "-C", str(repo), *diff],
         capture_output=True,
         text=True,
         check=True,
@@ -396,6 +399,17 @@ class Context:
     exports: set
     judged: set
     api_docs: str
+    files: set = field(default_factory=set)
+    docs_noted: set = field(default_factory=set)  # modules already told
+
+
+def missing(f: Factory, files: set) -> list[str]:
+    """The sources ``f`` names exactly that the tree does not have."""
+    gone = []
+    for pattern, exact in f.sources:
+        if exact and not any(pattern.fullmatch(p[len(SOURCES) :]) for p in files):
+            gone.append(SOURCES + pattern.pattern.removesuffix("$").replace("\\", ""))
+    return gone
 
 
 def advice(f: Factory, c: Cases | None, new: bool, ctx: Context) -> list[str]:
@@ -418,6 +432,8 @@ def advice(f: Factory, c: Cases | None, new: bool, ctx: Context) -> list[str]:
             f"it has timed cases but `trace=Trace.{f.trace}(...)`; a timed "
             "kernel needs `Trace.whole_call()`, one marker pair around each call"
         )
+    for path in missing(f, ctx.files):
+        warn.append(f"it builds `{path}`, which is not in the tree")
     if f.tolerance == "unnoted":
         warn.append("give the tolerance's evidence in `note=`")
     if new:
@@ -428,7 +444,8 @@ def advice(f: Factory, c: Cases | None, new: bool, ctx: Context) -> list[str]:
             )
         if not f.docstring:
             warn.append("add a docstring; the API docs are built from it")
-        if f"iron.kernels.{f.module}" not in ctx.api_docs:
+        if f"iron.kernels.{f.module}" not in ctx.api_docs + " ".join(ctx.docs_noted):
+            ctx.docs_noted.add(f"iron.kernels.{f.module}")
             warn.append(
                 f"add `::: iron.kernels.{f.module}` to `{API_DOCS}` so the API "
                 "docs show the new module"
@@ -449,7 +466,7 @@ def advice(f: Factory, c: Cases | None, new: bool, ctx: Context) -> list[str]:
                 'consider an edge case (`tag="edge-..."`): one vector, the '
                 "smallest tile, a tail"
             )
-    if new and f.contract == "yes" and f.tolerance is None:
+    if new and f.contract == "yes" and f.tolerance is None and c:
         note.append(
             "it uses the dtype's default tolerance; if it needs another, say why "
             "in `Tolerance(..., note=...)`"
@@ -459,15 +476,17 @@ def advice(f: Factory, c: Cases | None, new: bool, ctx: Context) -> list[str]:
     return [f"⚠️ {w}" for w in warn] + [f"ℹ️ {n}" for n in note]
 
 
-def _row(f: Factory, c: Cases | None) -> list[str]:
-    contract = {"yes": "✅", "no": "⚠️ none", "unknown": "?"}.get(
-        f.contract, f.contract
-    )
+def _row(f: Factory, c: Cases | None, ctx: Context) -> list[str]:
+    exempt = f.name in ctx.judged
+    contract = {"yes": "✅", "no": "—" if exempt else "⚠️ none", "unknown": "?"}
+    contract = contract.get(f.contract, f.contract)
     trace = {"whole_call": "whole call", None: "unset", "unknown": "?"}.get(
         f.trace, f.trace
     )
+    if f.contract == "no":
+        trace = "—"
     if not c:
-        return [contract, trace, "⚠️ none", "—", "—"]
+        return [contract, trace, "not judged" if exempt else "⚠️ none", "—", "—"]
     only = sorted(c.devices) if c.devices < {"npu1", "npu2"} else []
     devices = f" ({', '.join(only)} only)" if only else ""
     return [
@@ -490,13 +509,23 @@ def report(repo: Path, base: str, head: str) -> str | None:
     files = changed_files(repo, base, head)
     if not [p for p in files if p.startswith((KERNELS, SOURCES)) or p == CASES]:
         return None
-    old, new = Tree(repo, base), Tree(repo, head)
+    # Before is where the branch left main, as the file list is: a branch
+    # behind main must not be shown main's own changes as its own.
+    fork = subprocess.run(
+        ["git", "-C", str(repo), "merge-base", base, head],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    old, new = Tree(repo, fork or base), Tree(repo, head)
     before, after = factories(old), factories(new)
     table = cases(new)
-    ctx = Context(exported(new), not_judged(new), new.read(API_DOCS) or "")
+    present = set(new.ls(SOURCES))
+    ctx = Context(exported(new), not_judged(new), new.read(API_DOCS) or "", present)
 
-    sources = [p for p in files if p.startswith(SOURCES)]
-    every_unit = [p for p in new.ls(SOURCES) if p.endswith((".cc", ".h"))]
+    # A source this change deleted or moved away is not a kernel to look for;
+    # a factory that still names it is warned about below.
+    sources = [p for p in files if p.startswith(SOURCES) and p in present]
+    every_unit = [p for p in present if p.endswith((".cc", ".h"))]
     built: dict[str, list[str]] = {}
     unclaimed, shared = [], []
     for p in sources:
@@ -509,6 +538,10 @@ def report(repo: Path, base: str, head: str) -> str | None:
             built.setdefault(n, []).append(p)
         if not names and p.endswith((".cc", ".h")):
             unclaimed.append(p)
+    gone = [p for p in files if p.startswith(SOURCES) and p not in present]
+    for n, f in after.items():
+        if any(f.builds(p, exact=True) for p in gone):
+            built.setdefault(n, [])
     added = [n for n in after if n not in before]
     edited = [
         n
@@ -531,18 +564,34 @@ def report(repo: Path, base: str, head: str) -> str | None:
     for title, names, is_new in groups:
         if not names:
             continue
-        lines += [
-            f"#### {title}",
-            "",
+        rows = [
             "| Factory | Contract | Trace | Cases | Run on PRs | Timed nightly |",
             "| --- | --- | --- | --- | --- | --- |",
         ]
-        notes = []
+        warns, notes = [], []
         for n in names:
             f, c = after[n], table.get(n)
-            lines.append(f"| `{n}` | " + " | ".join(_row(f, c)) + " |")
-            notes += [f"- `{n}`: {a}" for a in advice(f, c, is_new, ctx)]
-        lines += [""] + (notes + [""] if notes else [])
+            rows.append(f"| `{n}` | " + " | ".join(_row(f, c, ctx)) + " |")
+            for a in advice(f, c, is_new, ctx):
+                (warns if a.startswith("⚠️") else notes).append(f"- `{n}`: {a}")
+        lines += [f"#### {title}", ""]
+        if len(names) > SHARED:
+            # A refactor touches most of the library: keep what needs doing
+            # in view and fold the rest.
+            lines += warns + ([""] if warns else [])
+            lines += [
+                "<details>",
+                f"<summary>{len(names)} factories</summary>",
+                "",
+                *rows,
+                "",
+                *notes,
+                "",
+                "</details>",
+                "",
+            ]
+        else:
+            lines += rows + [""] + warns + notes + ([""] if warns or notes else [])
     if removed:
         names = ", ".join(f"`{n}`" for n in removed)
         lines += [
@@ -565,9 +614,13 @@ def report(repo: Path, base: str, head: str) -> str | None:
         lines += [
             "#### Sources no factory names",
             "",
-            *[f"- `{p}`" for p in unclaimed],
+            *[
+                f"- `{p}`" + (": no source includes it" if p.endswith(".h") else "")
+                for p in unclaimed
+            ],
             "",
-            "A kernel is only tested and timed through a factory and its cases.",
+            "A kernel is only tested and timed through a factory and its cases; "
+            "a header nothing includes can go.",
             "",
         ]
 
@@ -582,7 +635,10 @@ def report(repo: Path, base: str, head: str) -> str | None:
 
     names = [n for n in added + edited if NAME.match(n)]
     if names:
-        lines += _commands(" or ".join(names), bool(sources))
+        # Past a dozen kernels, or with a shared header, a -k filter is
+        # both unreadable and most of the suite: run all of it.
+        whole = len(names) > SHARED or bool(shared)
+        lines += _commands("" if whole else " or ".join(names), bool(sources))
     lines.append(
         f"More in [Testing, performance and static checks]({TESTING}). "
         "This comment is updated on each push."
@@ -591,23 +647,25 @@ def report(repo: Path, base: str, head: str) -> str | None:
 
 
 def _commands(k: str, sources: bool) -> list[str]:
+    """The commands to run, for the kernels ``k`` names, or for all."""
     e2e = "test/python/npu/test_kernels_e2e.py"
+    only = f' -k "{k}"' if k else ""
     lines = [
         "#### Before you merge",
         "",
         "```bash",
         "# On any machine: contract, reference and lowering",
-        f'pytest {CONTRACT_TEST} -k "{k}"',
+        f"pytest {CONTRACT_TEST}{only}",
         "# On an NPU: the smoke cases a pull request runs, then the nightly sweep",
-        f'pytest {e2e} -k "{k}"',
-        f'pytest {e2e} -m extensive --seeds 3 -k "{k}"',
+        f"pytest {e2e}{only}",
+        f"pytest {e2e} -m extensive --seeds 3{only}",
     ]
     if sources:
         lines += [
             "# How the source change moves cycles, against main",
             "mkdir ../base && git archive origin/main aie_kernels aie_runtime_lib"
             " | tar -x -C ../base",
-            f'pytest test/python/npu/test_kernels_perf.py -m perf -k "{k}" '
+            f"pytest test/python/npu/test_kernels_perf.py -m perf{only} "
             "--baseline-sources ../base",
         ]
     return lines + ["```", ""]

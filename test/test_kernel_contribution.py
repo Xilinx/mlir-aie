@@ -160,6 +160,65 @@ def test_a_factory_left_out_on_purpose_is_not_nagged(contribution, repo):
     bare = "\n".join(line for line in text.splitlines() if "`bare`" in line)
     assert "contract=KernelContract" not in bare
     assert "no case in" not in bare
+    assert "| `bare` | — | — | not judged | — | — |" in text
+
+
+def test_a_moved_source_is_not_unclaimed_but_a_stale_name_is(contribution, repo):
+    git(repo, "mv", "aie_kernels/eltwise/add.cc", "aie_kernels/eltwise/sum.cc")
+    write(repo, {})
+    text = checklist(contribution, repo, repo)
+    assert "Sources no factory names" in text  # sum.cc: nothing names it yet
+    assert "`aie_kernels/eltwise/sum.cc`" in text
+    unclaimed = text.split("Sources no factory names")[1]
+    assert "add.cc" not in unclaimed  # it is gone, not unclaimed
+    assert "builds `aie_kernels/eltwise/add.cc`, which is not in the tree" in text
+
+
+def test_a_branch_behind_main_is_not_shown_mains_changes(contribution, repo):
+    git(repo, "branch", "fork")
+    write(repo, {"python/iron/kernels/eltwise.py": FACTORIES + NEW})  # main moves
+    git(repo, "checkout", "-q", "fork")
+    write(repo, {"aie_kernels/eltwise/add.h": "// faster\n"})
+    args = ["--repo", str(repo), "--base", "master", "--head", "fork"]
+    branches = subprocess.run(
+        ["git", "-C", str(repo), "branch", "--format=%(refname:short)"],
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    args[3] = next(b for b in branches if b in ("main", "master"))
+    out = repo / "x.md"
+    assert contribution.main(args + ["--out", str(out)]) == 0
+    text = out.read_text()
+    assert "`add`" in text
+    assert "scale" not in text and "bare" not in text and "Removed" not in text
+
+
+def test_a_library_wide_change_folds_the_table_and_runs_everything(
+    contribution, repo
+):
+    many = "".join(
+        f'''
+
+def k{i}() -> ExternalFunction:
+    """Kernel {i}."""
+    return _helper("k{i}", "add.cc")
+'''
+        for i in range(contribution.SHARED + 1)
+    )
+    write(repo, {"python/iron/kernels/eltwise.py": FACTORIES + many})
+    text = checklist(contribution, repo, repo)
+    assert f"<summary>{contribution.SHARED + 1} factories</summary>" in text
+    assert "-k " not in text
+    write(repo, {"aie_kernels/eltwise/add.cc": '#include "add.h"\n// all\n'})
+    text = checklist(contribution, repo, repo)
+    assert f"`aie_kernels/eltwise/add.cc`: {contribution.SHARED + 2} factories" in text
+    assert "Run the whole suite" in text
+
+
+def test_a_header_nothing_includes_is_called_out(contribution, repo):
+    write(repo, {"aie_kernels/eltwise/old.h": "// unused\n"})
+    text = checklist(contribution, repo, repo)
+    assert "- `aie_kernels/eltwise/old.h`: no source includes it" in text
 
 
 def test_unreadable_code_never_fails_the_pull_request(contribution, repo):
