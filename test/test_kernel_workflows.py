@@ -451,3 +451,9 @@ def test_publishing_migrates_records_and_leaves_redirects(tmp_path):
     history = json.loads(show("component-checks/sa-placer/history/failed_seeds.json"))
     assert history["series"] == {"test_sa_effort": {"values": [0, 0]}}
     assert history["runs"][1]["provenance"] == {"fixtures": "abcdef012345"}
+
+
+def test_a_hosted_job_runs_the_page_tests_instead_of_skipping_them():
+    job = workflow("buildAndTestPythons.yml")["jobs"]["build-repo"]
+    assert job["runs-on"].startswith("ubuntu-")
+    assert job["env"]["MLIR_AIE_REQUIRE_NODE"] == "1"

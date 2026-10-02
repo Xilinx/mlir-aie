@@ -58,6 +58,9 @@ llvm_config.with_system_environment(
     ]
 )
 
+# A CI job that must not skip the kernel checks page's node tests sets this.
+llvm_config.with_system_environment("MLIR_AIE_REQUIRE_NODE")
+
 # Basic substitutions
 # lit runs many Python/JIT tests in one suite; give each test file its own
 # NPU cache namespace so cache state cannot leak between unrelated tests while

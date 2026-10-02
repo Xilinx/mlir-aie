@@ -6,6 +6,7 @@
 """Exercise the page's real data, chart and table code under node, without a browser."""
 
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -21,6 +22,9 @@ PAGE = ROOT / "utils/kernel_checks/index.html"
 def page():
     node = shutil.which("node")
     if not node:
+        # Set by a CI job with node, so the page is tested somewhere.
+        if os.environ.get("MLIR_AIE_REQUIRE_NODE"):
+            pytest.fail("MLIR_AIE_REQUIRE_NODE is set but node is not on PATH")
         pytest.skip("node is required to test the kernel checks page")
     script = PAGE.read_text().split("<script>", 1)[1].split("</script>", 1)[0]
     setup = """
@@ -214,7 +218,7 @@ const cb = chart.options.plugins.tooltip.callbacks;
 assert.deepEqual(cb.title([{ dataIndex: 5 }]), ['1970-01-01 00:05 UTC']);
 assert.equal(cb.afterTitle([{ dataIndex: 5 }]), 'abcdef1 same revision');
 assert.equal(cb.label({ dataset: lines[0], dataIndex: 5, raw: 121 }), 'npu1 turbo: 121 cycles');
-assert.deepEqual(cb.footer([{ dataIndex: 0 }]), ['npu1: Peano ?, turbo', 'npu2: Peano ?, turbo']);
+assert.deepEqual(cb.footer([{ dataIndex: 0 }]), ['npu1: turbo', 'npu2: turbo']);
 chart.options.onClick(null, [{ index: 5 }]);
 assert.deepEqual(opened, [commit.url, '_blank', 'noopener']);
 assert.deepEqual(chart.options.plugins.markers.at, []);
@@ -312,7 +316,7 @@ const footer = chart.options.plugins.tooltip.callbacks.footer;
 // What changed is in the tooltip, not drawn over the chart.
 assert.equal(chart.options.plugins.tooltip.callbacks.title([{ dataIndex: 2 }])[1], 'changed: npu1: peano 22.0.0+bbbb');
 assert.deepEqual(footer([{ dataIndex: 3 }]), ['npu1: Peano 22.0.0+bbbb, performance']);
-assert.deepEqual(footer([{ dataIndex: 1 }]), ['npu1: Peano ?, performance']);
+assert.deepEqual(footer([{ dataIndex: 1 }]), ['npu1: performance']);
 assert.equal(footer([]), '');
 """)
 
@@ -934,4 +938,128 @@ const name = $('verdicts').children[0].children[0].children[0];
 assert.equal(name.className, 'npu-name');
 assert.equal(name.text, 'npu1Phoenix, aie2');
 assert.equal(name.children[1].title, 'reported as RyzenAI-npu1');
+""")
+
+
+COMPONENT_RUNS = """
+const all = (n, f) => typeof n === 'string' ? [] : [...(f(n) ? [n] : []), ...n.children.flatMap(c => all(c, f))];
+const one = (n, f) => { const found = all(n, f); assert.equal(found.length, 1); return found[0]; };
+const [sweep, hw] = COMPONENTS;
+const night = (id, date, pmode, extra) => ({
+  id, url: `https://example.com/runs/${id}`, date, commit: { ...commit }, pmode, provenance: {},
+  sane: true, published: true, failed: [], ...(extra || {}),
+});
+const NOW = Date.parse('2026-10-02T07:00:00Z');
+"""
+
+
+def test_a_failed_sweep_names_its_seeds_and_how_to_run_each_again(page):
+    page(COMPONENT_RUNS + """
+const failed = ['test_sa_effort/seed4', 'mobilenet/seed11', 'mobilenet/seed12', 'mobilenet/seed13', 'mobilenet/seed14'];
+const index = { target: 'sa-placer', metrics: ['failed_seeds'], runs: [night('7', '2026-10-02T06:30:00Z', null, { failed })] };
+const latest = { id: '7', date: '2026-10-02T06:30:00Z', rows: {
+  test_sa_effort: { failed_seeds: { value: 1, unit: 'seeds' }, final_cost_mean: { value: 12.25, unit: 'cost' } },
+  mobilenet: { failed_seeds: { value: 4, unit: 'seeds' }, cpu_ms_max: { value: 21000, unit: 'ms' } },
+} };
+const card = componentBand(sweep, index, latest, NOW);
+assert.equal(card.className, 'verdict bad');
+assert.equal(one(card, n => n.className === 'headline').text,
+             '5 seeds failed: test_sa_effort/seed4, mobilenet/seed11, mobilenet/seed12, mobilenet/seed13 and 1 more.');
+// No power mode: a sweep runs on a hosted runner, with no NPU.
+assert.ok(!card.text.includes('power mode'));
+const table = one(card, n => n.tag === 'table');
+assert.deepEqual(all(table, n => n.tag === 'th').map(th => th.text), ['Case', label('failed_seeds'), label('final_cost_mean'), label('cpu_ms_max')]);
+const cells = all(table, n => n.tag === 'tr').slice(1).map(tr => tr.children.map(td => td.text));
+assert.deepEqual(cells, [['test_sa_effort', '1 seed', '12.25', ''], ['mobilenet', '4 seeds', '', '21,000 ms']]);
+assert.ok(all(table, n => n.tag === 'td' && n.className === 'num worse').length === 2);
+const repro = one(card, n => n.tag === 'details');
+assert.equal(repro.open, true);
+assert.ok(repro.text.includes('artifact component-checks-sa-placer-7'));
+assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n'), [
+  'git checkout abcdef123456',
+  "aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=4 sa-effort=1.0' --mlir-pass-statistics test/place-tiles/sa_placer/test_sa_effort.mlir",
+  "aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=11 sa-effort=1.0' --mlir-pass-statistics utils/component_checks/fixtures/mobilenet.mlir",
+  "aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=12 sa-effort=1.0' --mlir-pass-statistics utils/component_checks/fixtures/mobilenet.mlir",
+  "aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=13 sa-effort=1.0' --mlir-pass-statistics utils/component_checks/fixtures/mobilenet.mlir",
+  "aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=14 sa-effort=1.0' --mlir-pass-statistics utils/component_checks/fixtures/mobilenet.mlir",
+  '# every seed, as the nightly runs them:',
+  sweep.whole,
+]);
+""")
+
+
+def test_a_passing_check_says_so_and_how_to_run_it(page):
+    page(COMPONENT_RUNS + """
+const index = { target: 'sa-placer-hw', runs: [night('7', '2026-10-02T06:30:00Z', 'turbo')] };
+const latest = { id: '7', date: '2026-10-02T06:30:00Z', rows: { 'mobilenet/seed3': { latency_us: { value: 295.7, unit: 'us' } } } };
+const card = componentBand(hw, index, latest, NOW);
+assert.equal(card.className, 'verdict ok');
+assert.equal(one(card, n => n.className === 'headline').text, 'Every seed passed.');
+const repro = one(card, n => n.tag === 'details');
+assert.equal(repro.open, false);
+assert.ok(one(repro, n => n.tag === 'pre').text.includes('python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 1.0'));
+assert.ok(card.text.includes('turbo mode'));
+// Nothing published yet.
+const empty = componentBand(hw, null, null, NOW);
+assert.equal(empty.className, 'verdict none');
+assert.equal(one(empty, n => n.className === 'headline').text, 'No results published yet.');
+""")
+
+
+def test_a_refused_check_says_why_and_shows_the_last_numbers(page):
+    page(COMPONENT_RUNS + """
+const refused = "power mode is default, required 'turbo'";
+const index = { target: 'sa-placer-hw', runs: [
+  night('6', '2026-10-01T06:30:00Z', 'turbo'),
+  night('7', '2026-10-02T06:30:00Z', 'default', { sane: null, published: false, refused }),
+] };
+const latest = { id: '6', date: '2026-10-01T06:30:00Z', rows: { 'mobilenet/seed3': { latency_us: { value: 295.7, unit: 'us' } } } };
+const card = componentBand(hw, index, latest, NOW);
+assert.equal(card.className, 'verdict bad');
+assert.equal(one(card, n => n.className === 'headline').text, `The run refused to measure: ${refused}.`);
+// The refusal once, as the headline; the power mode as a warning.
+assert.deepEqual(all(card, n => /^note /.test(n.className || '')).map(n => n.className), ['note warn']);
+assert.ok(card.text.includes('Numbers from the run of'));
+assert.ok(one(card, n => n.tag === 'table').text.includes('295.7 us'));
+""")
+
+
+def test_component_histories_are_charted_under_their_check(page):
+    page(COMPONENT_RUNS + """
+const fetched = [];
+const runs = [{ id: '7', date: '2026-10-02T06:30:00Z', commit, pmode: null, provenance: { fixtures: 'abc' } }];
+global.fetch = async url => {
+  fetched.push(url);
+  const check = url.split('/')[2];
+  return { ok: true, json: async () => ({ schema: 1, target: check, metric: 'failed_seeds', unit: 'seeds', runs,
+    series: check === 'sa-placer' ? { mobilenet: { values: [0] }, test_sa_effort: { values: [0] } } : { mobilenet: { values: [1] } } }) };
+};
+const loaded = [
+  { check: sweep, index: { schema: 1, metrics: ['failed_seeds', 'final_cost_mean'] } },
+  { check: hw, index: { schema: 1, metrics: ['failed_seeds', 'latency_us'] } },
+];
+(async () => {
+  let data = await componentHistories(loaded, 'latency_us');
+  assert.deepEqual(fetched, ['../component-checks/sa-placer-hw/history/latency_us.json']);
+  data = await componentHistories(loaded, 'failed_seeds');
+  // Both checks have a mobilenet case; each keeps its own chart.
+  assert.deepEqual(chartGroups(data.series).map(g => g.kase).sort(),
+                   ['sa-placer-hw/mobilenet', 'sa-placer/mobilenet', 'sa-placer/test_sa_effort']);
+  // No power mode recorded: one line, labelled by its check, drawn solid.
+  const modes = modesOf(data);
+  assert.deepEqual(modes, ['unknown']);
+  draw(el0, chartGroups(data.series).find(g => g.kase === 'sa-placer-hw/mobilenet'), modes, data);
+  assert.deepEqual(chart.data.datasets.map(d => [d.label, d.borderDash.length]), [['sa-placer-hw', 0]]);
+  assert.equal(chart.options.plugins.legend.display, false);
+  assert.deepEqual(chart.options.plugins.tooltip.callbacks.footer([{ dataIndex: 0 }]), ['sa-placer-hw: fixtures abc']);
+})().catch(e => { console.error(e); process.exit(1); });
+""")
+
+
+def test_component_values_read_as_counts_and_costs(page):
+    page("""
+assert.equal(formatValue(1, 'seeds'), '1 seed');
+assert.equal(formatValue(0, 'seeds'), '0 seeds');
+assert.equal(formatValue(12345.678, 'cost'), '12,345.68');
+assert.equal(formatValue(295.7, 'us'), '295.7 us');
 """)

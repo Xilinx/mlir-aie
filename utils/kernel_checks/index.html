@@ -97,7 +97,7 @@
     .block-head p { margin: 0; color: var(--muted); font-size: 13px; }
 
     /* Verdicts: one band per NPU. The colored rule is the night's verdict. */
-    #verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(520px, 100%), 1fr)); gap: 16px; margin-top: 20px; }
+    #verdicts, #component-verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(520px, 100%), 1fr)); gap: 16px; margin-top: 20px; }
     .verdict { background: var(--surface); border: 1px solid var(--rule); border-left: 6px solid var(--none); border-radius: 4px 10px 10px 4px; padding: 16px 20px 14px; }
     .verdict.ok { border-left-color: var(--ok); }
     .verdict.warn { border-left-color: var(--warn); }
@@ -137,10 +137,12 @@
     #attention .what { min-width: 0; }
     #attention .cases { margin: 4px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
     #attention .cases li { display: block; border: 0; padding: 1px 0; overflow-wrap: anywhere; }
-    #attention details.repro { margin-top: 6px; font-size: 12.5px; }
-    #attention details.repro summary { cursor: pointer; color: var(--muted); }
-    #attention details.repro p { margin: 6px 0 4px; }
-    #attention details.repro pre { margin: 0; padding: 8px 10px; background: var(--none-soft); border-radius: 6px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
+    details.repro { margin-top: 6px; font-size: 12.5px; }
+    details.repro summary { cursor: pointer; color: var(--muted); }
+    details.repro p { margin: 6px 0 4px; }
+    .verdict details.repro { margin-bottom: 12px; }
+    .verdict .table-wrap { margin-bottom: 12px; }
+    details.repro pre { margin: 0; padding: 8px 10px; background: var(--none-soft); border-radius: 6px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
 
     /* The kernel map: every kernel as a tile, its two halves npu1 and npu2. */
     .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); align-items: center; }
@@ -292,12 +294,15 @@
     <nav aria-label="views">
       <a id="tab-dashboard" href="#view=dashboard">Overview</a>
       <a id="tab-kernels" href="#view=kernels">Kernels</a>
+      <a id="tab-components" href="#view=components">Components</a>
       <a id="tab-charts" href="#view=charts">Trends</a>
       <a id="tab-kernel" href="#view=kernel" hidden>Kernel</a>
     </nav>
     <div class="links">
       <a href="https://xilinx.github.io/mlir-aie/dev/programming_guide/kernels_library/#testing-performance-and-static-checks">How the checks work</a>
+      <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyKernelChecks.yml">Actions runs</a>
       <a href="https://github.com/Xilinx/mlir-aie/tree/main/aie_kernels">Kernel sources</a>
+      <a href="https://xilinx.github.io/mlir-aie/">Docs</a>
       <button id="theme" type="button" aria-label="switch between light and dark theme">Dark</button>
     </div>
   </div></header>
@@ -362,6 +367,19 @@
       </section>
     </section>
 
+    <section id="components" hidden>
+      <p class="note">Nightly checks on single compiler components, from
+        <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyComponentChecks.yml">nightlyComponentChecks.yml</a>.
+        A failed seed is listed with the command that runs it again.</p>
+      <div id="component-verdicts"></div>
+      <section class="block">
+        <div class="block-head"><h2>Trends</h2><span id="component-metric" class="seg" role="group" aria-label="metric"></span></div>
+        <p id="component-metric-about" class="note"></p>
+        <div id="component-charts" class="charts"></div>
+        <div id="component-charts-empty" class="empty" hidden>No history published yet.</div>
+      </section>
+    </section>
+
     <section id="charts-view" hidden>
       <form id="controls" class="controls" onsubmit="return false">
         <span id="metric" class="seg" role="group" aria-label="metric"></span>
@@ -411,7 +429,40 @@
       kernel_object_bytes: 'size of the compiled kernel object (.o), excluding the harness',
       npu_us: 'host time to submit a run and wait for it, median of 50; moves with the machine',
     };
-    const LABELS = { cycles: 'Cycles', cycles_per_kop: 'Cycles / 1k ops', kernel_object_bytes: 'Object size', npu_us: 'Host time' };
+    // What the component checks record per case (utils/component_checks/).
+    const COMPONENT_METRICS = {
+      failed_seeds: 'seeds that did not place (the sweep), or did not compile, run and verify (hardware)',
+      final_cost_mean: 'the SA placer\'s final cost, mean over the seeds that placed; lower is a tighter placement',
+      final_cost_max: 'the worst seed\'s final cost',
+      cpu_ms_mean: 'CPU time of one aie-opt placement, mean over the seeds',
+      cpu_ms_max: 'CPU time of the slowest seed',
+      peak_rss_mb_max: 'peak memory of the hungriest seed',
+      latency_us: 'NPU time of one mobilenet inference, the fastest of 20 calls',
+      compile_s: 'wall time of the whole compile, from Python to xclbin',
+      placement_cost: 'the SA cost of the placement aiecc chose, replayed with aie-opt; the tooltip names the placement',
+    };
+    const LABELS = {
+      cycles: 'Cycles', cycles_per_kop: 'Cycles / 1k ops', kernel_object_bytes: 'Object size', npu_us: 'Host time',
+      failed_seeds: 'Failed seeds', final_cost_mean: 'Cost (mean)', final_cost_max: 'Cost (worst)', cpu_ms_mean: 'CPU time (mean)',
+      cpu_ms_max: 'CPU time (max)', peak_rss_mb_max: 'Peak memory', latency_us: 'NPU latency', compile_s: 'Compile time', placement_cost: 'Placement cost',
+    };
+    const COMPONENTS_DIR = '../component-checks';
+    const COMPONENT_DOCS_URL = 'https://xilinx.github.io/mlir-aie/dev/programming_guide/section-1/#nightly-sa-placer-checks';
+    const SA_FIXTURES = { test_sa_effort: 'test/place-tiles/sa_placer/test_sa_effort.mlir', mobilenet: 'utils/component_checks/fixtures/mobilenet.mlir' };
+    // The nightly component checks; `repro` runs one seed again, as named by
+    // a failed id "<fixture>/seed<N>".
+    const COMPONENTS = [
+      { id: 'sa-placer', title: 'SA placer seed sweep',
+        about: 'aie-opt places each fixture with seeds 1 to 20 at full effort, on a hosted runner, with no hardware.',
+        script: 'utils/component_checks/sa_placer.py',
+        whole: 'python utils/component_checks/sa_placer.py --aie-opt "$(which aie-opt)" --out perf.json --meta meta.json',
+        repro: (fixture, seed) => `aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=${seed} sa-effort=1.0' --mlir-pass-statistics ${SA_FIXTURES[fixture] || '<fixture>'}` },
+      { id: 'sa-placer-hw', title: 'SA placer on hardware',
+        about: 'mobilenet placed with a few seeds, then compiled, run and verified on an NPU2.',
+        script: 'utils/component_checks/sa_placer_hw.py',
+        whole: 'python utils/component_checks/sa_placer_hw.py --out perf.json --meta meta.json',
+        repro: (_fixture, seed) => `cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed ${seed} --sa-effort 1.0` },
+    ];
     const label = m => LABELS[m] || m;
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us'];
     // Per-metric change thresholds, in percent of the previous value; kept
@@ -424,7 +475,7 @@
       (THRESHOLDS[metric] && THRESHOLDS[metric].mad ? ` and ${THRESHOLDS[metric].mad}× its spread` : '');
     const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated);
     // Provenance fields whose change between runs is marked on the charts.
-    const MARKED = ['peano', 'host', 'runtime', 'xrt', 'xdna'];
+    const MARKED = ['peano', 'host', 'runtime', 'xrt', 'xdna', 'fixtures'];
     // Runs started by hand (publish.py records the GitHub event). They are
     // charted, but the overview and the change columns compare nightly with
     // nightly; a run without the field predates it and counts as nightly.
@@ -724,6 +775,8 @@
 
     function formatValue(value, unit) {
       if (unit === 'bytes') return `${(value / 1024).toFixed(1)} KiB`;
+      if (unit === 'cost') return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+      if (unit === 'seeds') return value === 1 ? '1 seed' : `${value} seeds`;
       return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${unit}`;
     }
 
@@ -1010,6 +1063,12 @@
           fig(counts.untimed, 'correctness only'),
           fig(`${counts.checked}/${counts.offered}`, 'kernels on hardware')));
       }
+      band.append(runMeta(run));
+      return band;
+    }
+
+    // When and on what a run measured: its date, commit and toolchain.
+    function runMeta(run) {
       const p = run.provenance || {};
       const meta = el('div', { className: 'meta' });
       meta.append(el('span', {}, run.url ? link(run.url, formatWhen(run.date)) : formatWhen(run.date)));
@@ -1022,8 +1081,7 @@
       if (p.xrt || p.xdna) meta.append(el('span', {}, `XRT ${p.xrt || '?'}, driver ${p.xdna || '?'}`));
       if (p.host) meta.append(el('span', {}, `host ${p.host}`));
       if (run.pmode) meta.append(el('span', { className: run.pmode === EXPECTED_PMODE ? '' : 'worse' }, `${run.pmode} mode`));
-      band.append(meta);
-      return band;
+      return meta;
     }
 
     // A failed test as pytest or JUnit named it, as the command that runs it
@@ -1688,9 +1746,10 @@
     }
 
     // One chart: a case's metric, a line per NPU (per NPU and power mode
-    // when more than one mode is asked for), on one axis of nights.
+    // when it has more than one of the modes asked for), on one axis of nights.
     function draw(target, g, modes, data) {
       const npus = [...g.byNpu.keys()];
+      const mixed = modes.filter(m => [...g.byNpu.values()].some(s => s.byMode.has(m))).length > 1;
       const { nights, index } = nightsOf(data, npus, modes);
       // Dates on the axis, once a day; the time is in the tooltip.
       const labels = nights.map(n => shortDate(n.date));
@@ -1707,11 +1766,11 @@
           const color = npuColor(npu);
           // Runs started by hand: hollow diamonds.
           const manual = nights.map(n => Boolean(n.byNpu.get(npu) && n.byNpu.get(npu).manual));
-          datasets.push({ label: modes.length > 1 ? `${npu} ${mode}` : npu, npu, data: values, rows, fill: false, spanGaps: true, tension: 0,
+          datasets.push({ label: mixed ? `${npu} ${mode}` : npu, npu, data: values, rows, fill: false, spanGaps: true, tension: 0,
                           borderColor: color, backgroundColor: color, borderWidth: 2,
                           pointRadius: manual.map(m => m ? 4 : 2.5), pointStyle: manual.map(m => m ? 'rectRot' : 'circle'),
                           pointBackgroundColor: manual.map(m => m ? '#fff' : color),
-                          borderDash: mode === EXPECTED_PMODE ? [] : [5, 4] },
+                          borderDash: mixed && mode !== EXPECTED_PMODE ? [5, 4] : [] },
                         ...band(values, rows, color).map(b => ({ ...b, npu })));
         }
       }
@@ -1746,7 +1805,7 @@
           plugins: {
             // The NPU colors are keyed once above the charts; a legend only
             // tells power modes apart.
-            legend: { display: modes.length > 1 && datasets.filter(d => !d.band).length > 1, align: 'end',
+            legend: { display: mixed && datasets.filter(d => !d.band).length > 1, align: 'end',
                       labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 }, filter: (item, d) => !d.datasets[item.datasetIndex].band } },
             markers: { at: markers, color: cssVar('--faint', '#8a93a3') },
             tooltip: {
@@ -1768,7 +1827,12 @@
                 footer: items => {
                   if (!items.length) return '';
                   const n = nights[items[0].dataIndex];
-                  return [...n.byNpu].map(([npu, o]) => `${npu}: Peano ${(o.provenance || {}).peano || '?'}, ${o.mode}${o.manual ? ', started by hand' : ''}`);
+                  return [...n.byNpu].map(([npu, o]) => {
+                    const p = o.provenance || {};
+                    const known = [p.peano ? `Peano ${p.peano}` : '', p.fixtures ? `fixtures ${p.fixtures}` : '',
+                      o.mode !== 'unknown' ? o.mode : '', o.manual ? 'started by hand' : ''].filter(Boolean);
+                    return `${npu}: ${known.join(', ') || 'no provenance recorded'}`;
+                  });
                 },
               },
             },
@@ -1898,7 +1962,7 @@
     // A row of buttons, one per metric, `current` pressed.
     function segment(target, values, current, onPick) {
       target.replaceChildren(...values.map(v => {
-        const b = el('button', { type: 'button', textContent: label(v), title: METRICS[v] || '', className: v === current ? 'on' : '', ariaPressed: String(v === current) });
+        const b = el('button', { type: 'button', textContent: label(v), title: METRICS[v] || COMPONENT_METRICS[v] || '', className: v === current ? 'on' : '', ariaPressed: String(v === current) });
         b.value = v;
         b.addEventListener('click', () => onPick(v));
         return b;
@@ -1977,10 +2041,127 @@
     }
 
     // ------------------------------------------------------------------
+    // Components
+    // ------------------------------------------------------------------
+
+    let componentsLoad = null, componentMetric = 'failed_seeds', componentToken = 0;
+
+    // Each check's runs.json and latest.json, fetched once.
+    function loadComponents() {
+      componentsLoad ||= Promise.all(COMPONENTS.map(async check => {
+        const dir = `${COMPONENTS_DIR}/${check.id}`;
+        const [index, latest] = await Promise.all([fetchJson(`${dir}/runs.json`), fetchJson(`${dir}/latest.json`)]);
+        return { check, index, latest: readable(latest) };
+      }));
+      return componentsLoad;
+    }
+
+    // `metric`'s history in every check that records it, each case under
+    // its check's name: both checks have a mobilenet case.
+    async function componentHistories(loaded, metric) {
+      const files = await Promise.all(loaded.map(({ check, index }) => {
+        const listed = readable(index) && index.metrics;
+        if (listed && !listed.includes(metric)) return null;
+        const url = `${COMPONENTS_DIR}/${check.id}/history/${metric}.json`;
+        if (!historyCache.has(url)) historyCache.set(url, fetchJson(url));
+        return historyCache.get(url).then(h => readable(h) && { ...h, target: check.id,
+          series: Object.fromEntries(Object.entries(h.series).map(([kase, s]) => [`${check.id}/${kase}`, s])) });
+      }));
+      return collect(files.filter(Boolean));
+    }
+
+    // A run record's rows, a line per case and a column per metric.
+    function componentTable(rows) {
+      const cases = Object.keys(rows);
+      const found = new Set(cases.flatMap(c => Object.keys(rows[c])));
+      const cols = Object.keys(COMPONENT_METRICS).filter(m => found.has(m))
+        .concat([...found].filter(m => !COMPONENT_METRICS[m]).sort());
+      const head = el('tr', {}, el('th', {}, 'Case'),
+        ...cols.map(m => el('th', { className: 'num', title: COMPONENT_METRICS[m] || '' }, label(m))));
+      const body = cases.map(c => el('tr', {}, el('td', {}, el('code', {}, c)), ...cols.map(m => {
+        const cell = rows[c][m];
+        return el('td', { className: `num${m === 'failed_seeds' && cell && cell.value ? ' worse' : ''}`, title: (cell && cell.range) || '' },
+          cell ? formatValue(cell.value, cell.unit) : '');
+      })));
+      return el('div', { className: 'table-wrap' }, el('table', {}, el('thead', {}, head), el('tbody', {}, ...body)));
+    }
+
+    // One check's latest run: whether every seed passed, its numbers, and
+    // the command that runs a failed seed again.
+    function componentBand(check, index, latest, now) {
+      const run = latestRun(check.id, index, null, null);
+      const failed = run.failed || [];
+      const warnings = warningsFor(check.title, { ...run, failed: [] }, now);
+      const hard = warnings.find(w => w.level === 'bad');
+      const level = run.date === null ? 'none' : hard || failed.length ? 'bad'
+        : warnings.some(w => w.level === 'warn' && !/changed since the previous run/.test(w.text)) ? 'warn' : 'ok';
+      const shown = failed.length ? null : hard;
+      const headline = run.date === null ? 'No results published yet.'
+        : failed.length ? `${plural(failed.length, 'seed')} failed: ${failed.slice(0, 4).join(', ')}${failed.length > 4 ? ` and ${failed.length - 4} more` : ''}.`
+        : hard ? `${hard.text[0].toUpperCase()}${hard.text.slice(1)}.`
+        : 'Every seed passed.';
+      const runs = (readable(index) && index.runs) || [];
+      const band = el('article', { className: `verdict ${level}` });
+      band.append(el('div', { className: 'verdict-top' },
+        el('div', { className: 'npu-name' }, el('strong', {}, check.title), link(`${REPO}/blob/main/${check.script}`, check.script)),
+        nightStrip({ runs, run })));
+      band.append(el('p', { className: 'headline' }, headline));
+      band.append(el('p', { className: 'note' }, check.about));
+      if (run.date === null) return band;
+      for (const w of warnings.filter(w => w !== shown && w.level !== 'info')) {
+        band.append(el('p', { className: `note ${w.level}` }, `${w.text[0].toUpperCase()}${w.text.slice(1)}.`));
+      }
+      if (latest && latest.rows) {
+        band.append(componentTable(latest.rows));
+        if (String(latest.id) !== String(run.id)) {
+          band.append(el('p', { className: 'note' }, `Numbers from the run of ${formatWhen(Date.parse(latest.date))}, the latest that published any.`));
+        }
+      }
+      const seeds = failed.map(id => /^(.*)\/seed(\d+)$/.exec(id)).filter(Boolean);
+      const lines = run.commit ? [`git checkout ${run.commit.slice(0, 12)}`] : [];
+      lines.push(...(seeds.length ? seeds.slice(0, 6).map(m => check.repro(m[1], m[2])) : [check.repro(null, 'N')]));
+      lines.push(`# every seed, as the nightly runs them:`, check.whole);
+      const intro = [];
+      if (run.url) intro.push('Logs: ', link(run.url, `run ${run.id}`), `, artifact component-checks-${check.id}-${run.id}. `);
+      intro.push('From a checkout with the environment set up (', link(COMPONENT_DOCS_URL, 'see the docs'), '):');
+      band.append(el('details', { className: 'repro', open: seeds.length > 0 },
+        el('summary', {}, seeds.length ? 'Logs and how to reproduce' : 'How to run it'),
+        el('p', {}, ...intro), el('pre', {}, lines.join('\n'))));
+      band.append(runMeta(run));
+      return band;
+    }
+
+    async function showComponents() {
+      const token = ++componentToken;
+      const loaded = await loadComponents();
+      if (token !== componentToken || currentView() !== 'components') return null;
+      const now = Date.now();
+      $('component-verdicts').replaceChildren(...loaded.map(l => componentBand(l.check, l.index, l.latest, now)));
+      const listed = new Set(loaded.flatMap(l => (readable(l.index) && l.index.metrics) || []));
+      const metrics = Object.keys(COMPONENT_METRICS).filter(m => !listed.size || listed.has(m))
+        .concat([...listed].filter(m => !COMPONENT_METRICS[m]).sort());
+      const want = readHash().metric;
+      componentMetric = metrics.includes(want) ? want : metrics.includes(componentMetric) ? componentMetric : metrics[0];
+      const pick = async metric => {
+        componentMetric = metric;
+        history.replaceState(null, '', hashFor({ view: 'components', metric }));
+        segment($('component-metric'), metrics, metric, pick);
+        $('component-metric-about').textContent = COMPONENT_METRICS[metric] ? `${label(metric)}: ${COMPONENT_METRICS[metric]}.` : '';
+        const data = await componentHistories(loaded, metric);
+        if (token !== componentToken || componentMetric !== metric || currentView() !== 'components') return null;
+        const groups = chartGroups(data.series).sort((a, b) => a.key.localeCompare(b.key));
+        $('component-charts-empty').hidden = groups.length > 0;
+        placeCharts($('component-charts'), groups, modesOf(data), data, false);
+        return groups;
+      };
+      return pick(componentMetric);
+    }
+
+    // ------------------------------------------------------------------
     // Views and theme
     // ------------------------------------------------------------------
 
-    const VIEWS = ['dashboard', 'kernels', 'kernel', 'charts'];
+    const VIEWS = ['dashboard', 'kernels', 'kernel', 'charts', 'components'];
 
     function currentView() {
       const want = readHash().view;
@@ -1995,6 +2176,7 @@
       $('kernels').hidden = view !== 'kernels';
       $('kernel').hidden = view !== 'kernel';
       $('charts-view').hidden = view !== 'charts';
+      $('components').hidden = view !== 'components';
       $('status').hidden = view !== 'charts';
       $('tab-kernel').hidden = view !== 'kernel';
       for (const v of VIEWS) {
@@ -2071,6 +2253,8 @@
 
     function showView() {
       const view = applyView();
+      // The components read their own files, not the kernels'.
+      if (view === 'components') showComponents();
       if (!started) return view;
       if (view === 'charts') { applyHash(); render(); }
       if (view === 'kernel') showKernel(readHash().kernel || '');
@@ -2082,6 +2266,7 @@
       applyTheme(readTheme());
       $('theme').addEventListener('click', () => {
         applyTheme(isDark() ? 'light' : 'dark');
+        if (currentView() === 'components') showComponents();
         if (!started) return;
         // Canvases read their colors when drawn.
         renderMoved(nights, hist);
@@ -2089,7 +2274,7 @@
         if (currentView() === 'kernel') showKernel(readHash().kernel || '');
       });
       window.addEventListener('hashchange', showView);
-      applyView();
+      showView();
       $('verdicts').replaceChildren(el('p', { className: 'dim' }, 'Loading the latest nights…'));
       for (const [m, about] of Object.entries(METRICS)) {
         $('key-metrics').append(el('dt', {}, label(m)), el('dd', {}, `${about}; ${thresholdText(m)}`));
