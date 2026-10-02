@@ -77,6 +77,7 @@ void SwitchboxConnect::bumpDemand(Cell &c) {
 }
 
 char RoutingFailure::ID = 0;
+char DeadlockProneRouting::ID = 0;
 
 void RoutingFailure::log(llvm::raw_ostream &os) const {
   os << "Unable to find a legal routing";
@@ -2424,7 +2425,7 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
             illegalEdges += applyRoutingFaults(st, rejected.faults);
             overlayFaults =
                 rejected.faults.onlyOverlayMasters ? overlayFaults + 1 : 0;
-            if (!rejected.usable) {
+            if (!rejected.isA(DeadlockProneRouting::classID())) {
               checkReason = std::move(rejected.reason);
               return;
             }

@@ -279,16 +279,14 @@ struct Routing {
 
 /// Why no legal routing was found, reported at `loc`, or the device if unset,
 /// with `reason` if the router can say. A routing check's failure also names
-/// the faults the router has to move, or, if `usable`, would rather it moved.
+/// the faults the router has to move.
 class RoutingFailure : public llvm::ErrorInfo<RoutingFailure> {
 public:
   static char ID;
 
   explicit RoutingFailure(std::string reason, RoutingFaults faults = {},
-                          std::optional<mlir::Location> loc = std::nullopt,
-                          bool usable = false)
-      : reason(std::move(reason)), faults(std::move(faults)), loc(loc),
-        usable(usable) {}
+                          std::optional<mlir::Location> loc = std::nullopt)
+      : reason(std::move(reason)), faults(std::move(faults)), loc(loc) {}
 
   void log(llvm::raw_ostream &os) const override;
   std::error_code convertToErrorCode() const override {
@@ -298,7 +296,15 @@ public:
   std::string reason;
   RoutingFaults faults;
   std::optional<mlir::Location> loc;
-  bool usable;
+};
+
+/// A routing that can deadlock only where allow-deadlock-prone lets it: usable,
+/// though the router would rather move the faults it names.
+class DeadlockProneRouting
+    : public llvm::ErrorInfo<DeadlockProneRouting, RoutingFailure> {
+public:
+  static char ID;
+  using ErrorInfo::ErrorInfo;
 };
 
 /// Checks a routing that fits the fabric: a RoutingFailure if it is unusable,
@@ -309,8 +315,9 @@ using RoutingCheck = std::function<llvm::Error(const Routing &)>;
 struct PacketConstraints {
   /// Routings the check rejects count as illegal; the connections it names
   /// are penalized like overused channels so later iterations avoid them, and
-  /// the trees it splits branch where it says from then on. A usable routing
-  /// it rejects is kept, and found if no better one is soon.
+  /// the trees it splits branch where it says from then on. A routing it
+  /// rejects as a DeadlockProneRouting is kept, and found if no better one is
+  /// soon.
   RoutingCheck check;
   /// Packet flows that conflict are steered off each other's master ports; see
   /// edgeWeight.
