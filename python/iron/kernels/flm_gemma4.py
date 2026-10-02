@@ -26,6 +26,7 @@ from typing import TypeVar, get_args
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.aie2p_emulation import bf16_floor, f32
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -44,7 +45,7 @@ from ._common import (
 )
 from .activation import _bf16_ulp, _vtanh_error
 from .linalg import _ZeroInitializedKernel
-from .quant import _bf16_floor
+from .quant import Q4NX_BLOCK_BYTES, Q4NX_GROUP, Q4NX_K_TILE, Q4NX_M_TILE, q4nx_unpack
 
 _BF16, _F32 = np.dtype[bfloat16], np.dtype[np.float32]
 # An RTP buffer: int32 words the host writes.
@@ -1169,13 +1170,14 @@ def flm_gemma4_glu_core(
     )
 
 
-# Keys the attention kernels fold in per round (FastFlowLM's lq and lk).
-_DECODE_KEYS_PER_ROUND = 16
-# One q4nx weight block: 32 rows by 256 columns at 5 bits a weight.
-_DECODE_Q4NX_ROWS, _DECODE_Q4NX_COLS = 32, 256
-_DECODE_Q4NX_BLOCK_BYTES = _DECODE_Q4NX_ROWS * _DECODE_Q4NX_COLS * 5 // 8
-# One bf16 weight block of the per-layer-input projections: 32 rows by 256.
-_DECODE_BF16_BLOCK = 32 * 256
+# The epsilon of every RMS norm, ``epsilon`` in aie_kernels/flm_gemma4/rms_norm.h.
+RMS_EPS = 1e-6
+# Keys the decode attention kernels fold in per round (FastFlowLM's lq and lk).
+DECODE_KEYS_PER_ROUND = 16
+# One bf16 weight block of the per-layer-input projections: BF16_PROJ_M
+# out-features by BF16_PROJ_K in-features. aie_kernels/flm_gemma4/
+# decode_geometry.h sets them as BF16_PROJ_M_BLOCK and BF16_PROJ_K_BLOCK.
+BF16_PROJ_M, BF16_PROJ_K = 32, 256
 _DECODE_RTP = np.ndarray[(16,), np.dtype[np.int32]]
 _DECODE_KV_LOCKS = dict(
     v_prod_lock=2, v_cons_lock=3, o_prod_lock=0, o_cons_lock=1, l_cons_lock=8
@@ -1218,9 +1220,9 @@ def _decode_attn_types(geometry, dh, kv_width):
     q_heads = _decode_q_heads_padded(geometry)
     return dict(
         q=np.ndarray[(q_heads * dh,), _BF16],
-        kv=np.ndarray[(_DECODE_KEYS_PER_ROUND, kv_width), _BF16],
+        kv=np.ndarray[(DECODE_KEYS_PER_ROUND, kv_width), _BF16],
         # A round's scores, then its eight float32 corrections.
-        s=np.ndarray[(_DECODE_KEYS_PER_ROUND * q_heads + 32,), _BF16],
+        s=np.ndarray[(DECODE_KEYS_PER_ROUND * q_heads + 32,), _BF16],
         m=np.ndarray[(16,), _BF16],
         c=np.ndarray[(8,), _F32],
         y=np.ndarray[(geometry.num_attn_heads * dh,), _F32],
@@ -1297,7 +1299,7 @@ def flm_gemma4_decode_attn_kv(
 # floats through. Their first input is s then v, because a core has two
 # input DMA channels.
 _ATTN_KV_L_SLOT = 16
-_ATTN_KV_S = _DECODE_KEYS_PER_ROUND * 8 + 32
+_ATTN_KV_S = DECODE_KEYS_PER_ROUND * 8 + 32
 _ATTN_KV_ROUND_TOLERANCE = (
     "The bf16 mmul runs as a bfp16 mac: each operand rounds to an 8-bit "
     "mantissa within 2**-6 of the maximum of its 8-key block, so s * v errs "
@@ -1376,7 +1378,7 @@ def _attn_kv_round_bound(sv, ly, kv_head=0, *, dh, impl):
 def _attn_kv_round_sample(rng, calls, *, dh, kv_width):
     # Scores are exponentials of non-positive numbers, and each correction c
     # is one too, stored as float32 in the scores' tail.
-    v = rng.standard_normal((calls, _DECODE_KEYS_PER_ROUND * kv_width))
+    v = rng.standard_normal((calls, DECODE_KEYS_PER_ROUND * kv_width))
     sv = np.concatenate([np.zeros((calls, _ATTN_KV_S)), v], axis=1).astype(bfloat16)
     sv[:, :128] = rng.uniform(0.0, 1.0, (calls, 128)).astype(bfloat16)
     c = rng.uniform(0.05, 1.0, (calls, 8)).astype(np.float32)
@@ -1390,7 +1392,7 @@ def _attn_kv_round_core(
     base, source, symbol, *, dh, kv_width, impl, rows, ref, stack_bytes=None
 ):
     ly = _attn_kv_ly(dh)
-    sv = np.ndarray[(_ATTN_KV_S + _DECODE_KEYS_PER_ROUND * kv_width,), _BF16]
+    sv = np.ndarray[(_ATTN_KV_S + DECODE_KEYS_PER_ROUND * kv_width,), _BF16]
     head = (np.int32,) if impl == "kvh2" else ()
     return _wrapper(
         base,
@@ -1407,7 +1409,7 @@ def _attn_kv_round_core(
                 note=_ATTN_KV_ROUND_TOLERANCE,
             ),
             # Two per multiply-add of the rows' s @ v, one per rescaled y.
-            ops_per_call=2 * rows * _DECODE_KEYS_PER_ROUND * dh + 8 * dh,
+            ops_per_call=2 * rows * DECODE_KEYS_PER_ROUND * dh + 8 * dh,
             stack_bytes=stack_bytes,
         ),
     )
@@ -1633,7 +1635,7 @@ def _attn_qk_parts(qm, k, iter, L0):
     qm, k = np.asarray(qm, np.float64), np.asarray(k, np.float64)
     q, m_in = qm[:, :-16], qm[:, -16:]
     calls, dh = q.shape[0], q.shape[1] // 8
-    kv = k.shape[1] // (_DECODE_KEYS_PER_ROUND * dh)
+    kv = k.shape[1] // (DECODE_KEYS_PER_ROUND * dh)
     qr = q.reshape(calls, dh // 8, 8, 8).transpose(0, 2, 1, 3).reshape(calls, 8, dh)
     kr = k.reshape(calls, kv, dh // 8, 2, 8, 8).transpose(0, 1, 3, 4, 2, 5)
     kr = np.repeat(kr.reshape(calls, kv, 16, dh), 8 // kv, axis=1)
@@ -1703,7 +1705,7 @@ def _attn_qk_core_sample(rng, calls, *, dh, kv_heads):
     # block holds them exactly, and their dot products are exact in float32.
     # Scores spread over a few units, so the exponents cover the table.
     q = rng.integers(-15, 16, (calls, 8 * dh)) * 2.0**-4
-    k = rng.integers(-15, 16, (calls, kv_heads * _DECODE_KEYS_PER_ROUND * dh))
+    k = rng.integers(-15, 16, (calls, kv_heads * DECODE_KEYS_PER_ROUND * dh))
     # A first round's running max, a max under the scores and one above them.
     m = rng.choice([_ATTN_QK_M_START, -1.0, 0.5, 8.0], (calls, 16))
     m += rng.integers(0, 8, (calls, 16)) * 2.0**-3
@@ -1723,7 +1725,7 @@ def _attn_qk_core_contract(dh, kv_heads, reference):
             "2**-8 fixed-point exponent and the exp tables' measured 2**-8 "
             "entries; the sample keeps the bfp16-emulated mmul exact",
         ),
-        ops_per_call=2 * 8 * _DECODE_KEYS_PER_ROUND * dh,
+        ops_per_call=2 * 8 * DECODE_KEYS_PER_ROUND * dh,
     )
 
 
@@ -1732,9 +1734,9 @@ def _attn_qk_core_types(geometry, dh, kv_heads):
     q_heads = _decode_q_heads_padded(geometry)
     # q, then the running max.
     qm = np.ndarray[(q_heads * dh + 16,), _BF16]
-    k = np.ndarray[(kv_heads * _DECODE_KEYS_PER_ROUND, dh), _BF16]
+    k = np.ndarray[(kv_heads * DECODE_KEYS_PER_ROUND, dh), _BF16]
     # The scores, then the running max.
-    s = np.ndarray[(_DECODE_KEYS_PER_ROUND * q_heads + 16,), _BF16]
+    s = np.ndarray[(DECODE_KEYS_PER_ROUND * q_heads + 16,), _BF16]
     return [qm, k, s, t["c"], np.int32, np.int32]
 
 
@@ -1935,7 +1937,7 @@ _BF16_TINY = 2.0**-126
 
 def _rms(x):
     """Return ``1 / sqrt(mean(x^2) + 1e-6)`` per row, in float64."""
-    return 1 / np.sqrt(np.mean(np.square(x), axis=-1, keepdims=True) + 1e-6)
+    return 1 / np.sqrt(np.mean(np.square(x), axis=-1, keepdims=True) + RMS_EPS)
 
 
 def _rope_core_terms(x, rope_w):
@@ -2132,7 +2134,7 @@ def flm_gemma4_decode_rms_residual(
 def _rms_residual_core_terms(x, w, residual):
     """Return the normalized ``x`` and its sum with ``residual`` in float64."""
     x, w = np.asarray(x, np.float64), np.asarray(w, np.float64)
-    rms = 1 / np.sqrt(np.mean(np.square(x), axis=1, keepdims=True) + 1e-6)
+    rms = 1 / np.sqrt(np.mean(np.square(x), axis=1, keepdims=True) + RMS_EPS)
     n = x * w * rms
     return n, n + np.asarray(residual, np.float64)
 
@@ -2218,10 +2220,10 @@ def flm_gemma4_decode_proj_main(
             ``y`` locks are the tile below's.
     """
     bf16 = np.dtype[bfloat16]
-    y_ty = np.ndarray[(2 * _DECODE_Q4NX_ROWS + 16,), bf16]
+    y_ty = np.ndarray[(2 * Q4NX_M_TILE + 16,), bf16]
     # One q4nx block, as the bf16 words the weight streams move.
-    w_ty = np.ndarray[(_DECODE_Q4NX_BLOCK_BYTES // 2,), bf16]
-    x_ty = np.ndarray[(_DECODE_Q4NX_COLS,), bf16]
+    w_ty = np.ndarray[(Q4NX_BLOCK_BYTES // 2,), bf16]
+    x_ty = np.ndarray[(Q4NX_K_TILE,), bf16]
     return _decode_kernel(
         "proj_main",
         "proj_main",
@@ -2278,7 +2280,7 @@ def flm_gemma4_decode_per_layer_up(
     """
     bf16 = np.dtype[bfloat16]
     d, pli = geometry.model_dim, geometry.pli_d
-    w_ty = np.ndarray[(_DECODE_BF16_BLOCK,), bf16]
+    w_ty = np.ndarray[(BF16_PROJ_M * BF16_PROJ_K,), bf16]
     return _decode_kernel(
         "per_layer_up",
         "per_layer_up",
@@ -2302,17 +2304,14 @@ def flm_gemma4_decode_per_layer_up(
     )
 
 
-_BF16_PROJ_M, _BF16_PROJ_K = 32, 256
-
-
 def flm_gemma4_bf16_proj_core_ref(w, x):
     """Numpy reference for [`flm_gemma4_bf16_proj_core`][iron.kernels.flm_gemma4.flm_gemma4_bf16_proj_core]: one weight block times ``x``.
 
     The block is stored column by column: ``w[k * 32 + m]`` multiplies
     ``x[k]`` into out-feature ``m``. Sums in float64.
     """
-    w = np.asarray(w, np.float64).reshape(-1, _BF16_PROJ_K, _BF16_PROJ_M)
-    x = np.asarray(x, np.float64).reshape(-1, _BF16_PROJ_K)
+    w = np.asarray(w, np.float64).reshape(-1, BF16_PROJ_K, BF16_PROJ_M)
+    x = np.asarray(x, np.float64).reshape(-1, BF16_PROJ_K)
     return np.einsum("ckm,ck->cm", w, x).astype(np.float32)
 
 
@@ -2320,8 +2319,8 @@ def _bf16_proj_core_sample(rng, calls):
     # Integers in [-8, 8]: every product and partial sum (below 2**14) is
     # exact in float32 in any order, and each survives a bfp16 block
     # conversion unchanged.
-    w = rng.integers(-8, 9, (calls, _DECODE_BF16_BLOCK)).astype(bfloat16)
-    x = rng.integers(-8, 9, (calls, _BF16_PROJ_K)).astype(bfloat16)
+    w = rng.integers(-8, 9, (calls, BF16_PROJ_M * BF16_PROJ_K)).astype(bfloat16)
+    x = rng.integers(-8, 9, (calls, BF16_PROJ_K)).astype(bfloat16)
     return [w, x]
 
 
@@ -2342,9 +2341,9 @@ def flm_gemma4_bf16_proj_core(
         "decode_per_layer_up_core.cc",
         "bf16_proj_block_core",
         [
-            np.ndarray[(_DECODE_BF16_BLOCK,), _BF16],
-            np.ndarray[(_BF16_PROJ_K,), _BF16],
-            np.ndarray[(_BF16_PROJ_M,), _F32],
+            np.ndarray[(BF16_PROJ_M * BF16_PROJ_K,), _BF16],
+            np.ndarray[(BF16_PROJ_K,), _BF16],
+            np.ndarray[(BF16_PROJ_M,), _F32],
         ],
         KernelContract(
             trace=Trace.whole_call(),
@@ -2354,9 +2353,9 @@ def flm_gemma4_bf16_proj_core(
             tolerance=Tolerance.exact(
                 note="the sample keeps every product and sum exact in float32"
             ),
-            ops_per_call=2 * _DECODE_BF16_BLOCK,
+            ops_per_call=2 * BF16_PROJ_M * BF16_PROJ_K,
             acc_dtype=np.float32,
-            reduction=_BF16_PROJ_K,
+            reduction=BF16_PROJ_K,
         ),
     )
 
@@ -2390,7 +2389,7 @@ def flm_gemma4_decode_proj_layer_embedding(
     d, pli = geometry.model_dim, geometry.pli_d
     pli_ty = np.ndarray[(pli,), bf16]
     y_ty = np.ndarray[(pli + d + 32,), bf16]
-    w_ty = np.ndarray[(_DECODE_BF16_BLOCK,), bf16]
+    w_ty = np.ndarray[(BF16_PROJ_M * BF16_PROJ_K,), bf16]
     return _decode_kernel(
         "proj_layer_embedding",
         "proj_layer_embedding",
@@ -2444,7 +2443,7 @@ def flm_gemma4_decode_gate_layer_embedding(
     """
     bf16 = np.dtype[bfloat16]
     d = geometry.model_dim
-    w_ty = np.ndarray[(_DECODE_BF16_BLOCK,), bf16]
+    w_ty = np.ndarray[(BF16_PROJ_M * BF16_PROJ_K,), bf16]
     return _decode_kernel(
         "gate_layer_embedding",
         "gate_layer_embedding",
@@ -2559,22 +2558,17 @@ def _lm_head_geometry(dim, m_tile, k_tile, group):
         raise ValueError("flm_gemma4_q4nx_lm_head: dim must be a multiple of k_tile")
 
 
-def _f32(x):
-    """Round float64 to float32 once, as an AIE float accumulator does."""
-    return np.asarray(x, np.float64).astype(np.float32)
-
-
-def flm_gemma4_q4nx_lm_head_ref(w, x, sums, *, m_tile=32, k_tile=256, group=32):
+def flm_gemma4_q4nx_lm_head_ref(
+    w, x, sums, *, m_tile=Q4NX_M_TILE, k_tile=Q4NX_K_TILE, group=Q4NX_GROUP
+):
     """Numpy reference for [`flm_gemma4_q4nx_lm_head`][iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head]: one ``q4nx_lm_head_block`` call.
 
-    ``w`` is one q4nx block per call, as bytes or bf16 words: bf16 scales,
-    then bf16 minima, both indexed ``[k // group, m]``, then 4-bit codes, low
-    nibble first, indexed ``[m // 16, k // 32, (k % 32) // 8, k % 8, m % 16]``.
-    ``x`` is the token then its RMS weight, and ``sums`` the token's per-32
-    column sums, both shared by every call; slice 0 of the token is the one
-    the call reads. Returns the float32
-    accumulator, zero before the call, holding ``sum_k (min + scale * code) *
-    x`` with the minima folded in through ``sums``.
+    ``w`` is one q4nx block per call, as bytes or bf16 words, in the layout
+    [`q4nx_unpack`][iron.kernels.quant.q4nx_unpack] reads. ``x`` is the token
+    then its RMS weight, and ``sums`` the token's per-32 column sums, both
+    shared by every call; slice 0 of the token is the one the call reads.
+    Returns the float32 accumulator, zero before the call, holding ``sum_k
+    (min + scale * code) * x`` with the minima folded in through ``sums``.
 
     Per 16 rows and 32 columns the kernel sums the codes times ``x`` in
     float32, narrows that dot product to bf16 with the floor rounding a fresh
@@ -2582,30 +2576,22 @@ def flm_gemma4_q4nx_lm_head_ref(w, x, sums, *, m_tile=32, k_tile=256, group=32):
     column sum, into float32. Every product is exact, so each
     multiply-accumulate rounds once.
     """
-    w = np.ascontiguousarray(w).view(np.uint8).reshape(-1, m_tile * k_tile * 5 // 8)
-    calls, n_groups = len(w), k_tile // group
-    params = np.ascontiguousarray(w[:, : 4 * m_tile * n_groups]).view("<u2")
-    params = (params.astype(np.uint32) << 16).view(np.float32)
-    scales, mins = params.reshape(calls, 2, n_groups, m_tile).transpose(1, 0, 2, 3)
-    packed = w[:, 4 * m_tile * n_groups :]
-    codes = np.empty((calls, m_tile * k_tile), np.float64)
-    codes[:, 0::2], codes[:, 1::2] = packed & 15, packed >> 4
-    codes = codes.reshape(calls, m_tile // 16, n_groups, 32, 16)
-    x = np.asarray(x, np.float32).reshape(-1)[:k_tile]
-    x = x.astype(np.float64).reshape(1, n_groups, 32)
-    sums = np.asarray(sums, np.float32).reshape(-1)[:n_groups]
-    sums = sums.astype(np.float64).reshape(1, n_groups)
-    acc = np.zeros((calls, m_tile // 16, 16), np.float32)
+    block_bytes = m_tile * k_tile // 2 + 4 * m_tile * k_tile // group
+    w = np.ascontiguousarray(w).view(np.uint8).reshape(-1, block_bytes)
+    codes, scales, mins = q4nx_unpack(w, m_tile=m_tile, k_tile=k_tile, group=group)
+    codes = codes.astype(np.float64)
+    n_groups = k_tile // group
+    x = np.asarray(x, np.float32).reshape(-1)[:k_tile].astype(np.float64)
+    sums = np.asarray(sums, np.float32).reshape(-1)[:n_groups].astype(np.float64)
+    acc = np.zeros(scales.shape[:-1], np.float32)
     for g in range(n_groups):
-        dot = np.zeros((calls, m_tile // 16, 16), np.float32)
-        for c in range(32):
-            dot = _f32(dot + codes[:, :, g, c, :] * x[:, g, c, None, None])
-        dot = _bf16_floor(dot).astype(np.float64)
-        scale = scales[:, g].reshape(calls, m_tile // 16, 16).astype(np.float64)
-        low = mins[:, g].reshape(calls, m_tile // 16, 16).astype(np.float64)
-        acc = _f32(acc + dot * scale)
-        acc = _f32(acc + low * sums[:, g, None, None])
-    return acc.reshape(calls, m_tile)
+        dot = np.zeros_like(acc)
+        for k in range(g * group, (g + 1) * group):
+            dot = f32(dot + codes[..., k] * x[k])
+        dot = bf16_floor(dot).astype(np.float64)
+        acc = f32(acc + dot * scales[..., g].astype(np.float64))
+        acc = f32(acc + mins[..., g].astype(np.float64) * sums[g])
+    return acc
 
 
 def _q4nx_lm_head_sample(rng, calls, *, dim, m_tile, k_tile, group):
@@ -2653,7 +2639,11 @@ def _lm_head_zero(fn) -> ExternalFunction:
 
 
 def flm_gemma4_q4nx_lm_head(
-    *, dim: int = 1536, m_tile: int = 32, k_tile: int = 256, group: int = 32
+    *,
+    dim: int = 1536,
+    m_tile: int = Q4NX_M_TILE,
+    k_tile: int = Q4NX_K_TILE,
+    group: int = Q4NX_GROUP,
 ) -> ExternalFunction:
     """AIE2P logits from a q4nx vocabulary, from ``flm_gemma4/q4nx_lm_head.cc``.
 
@@ -2778,7 +2768,11 @@ def _lm_head_epilogue_sample(rng, calls, *, m_tile, softcap=30.0):
 
 
 def flm_gemma4_q4nx_lm_head_epilogue(
-    *, dim: int = 1536, m_tile: int = 32, k_tile: int = 256, group: int = 32
+    *,
+    dim: int = 1536,
+    m_tile: int = Q4NX_M_TILE,
+    k_tile: int = Q4NX_K_TILE,
+    group: int = Q4NX_GROUP,
 ) -> ExternalFunction:
     """``q4nx_lm_head_epilogue`` of the LM head: ``y = c * tanh(y_acc / c)``.
 
@@ -2810,7 +2804,7 @@ def _lm_head_rms_y(x, dim):
     """Per call, ``x * w / sqrt(mean(x^2) + 1e-6)`` in float64, shape (calls, dim)."""
     x = np.asarray(x, np.float64).reshape(-1, 2, dim)
     token, w = x[:, 0], x[:, 1]
-    return token * w / np.sqrt(np.mean(token**2, axis=1, keepdims=True) + 1e-6)
+    return token * w / np.sqrt(np.mean(token**2, axis=1, keepdims=True) + RMS_EPS)
 
 
 def flm_gemma4_q4nx_lm_head_rms_ref(x, *, dim=1536):
@@ -2830,7 +2824,11 @@ def _lm_head_rms_bound(x, *, dim):
 
 
 def flm_gemma4_q4nx_lm_head_rms(
-    *, dim: int = 1536, m_tile: int = 32, k_tile: int = 256, group: int = 32
+    *,
+    dim: int = 1536,
+    m_tile: int = Q4NX_M_TILE,
+    k_tile: int = Q4NX_K_TILE,
+    group: int = Q4NX_GROUP,
 ) -> ExternalFunction:
     """``q4nx_lm_head_rms`` of [`flm_gemma4_q4nx_lm_head`][iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head]: the token's RMS norm and per-32 column sums.
 
@@ -2895,4 +2893,4 @@ def _prefill_epilogue(l_bf16, y, *, lq, dh, chunk):
     y = np.asarray(y, dtype=np.float32).reshape(len(l_bf16), lq * dh)
     y = y[:, row * dh + col : row * dh + col + 64]
     scale = np.repeat(l_bf16[:, row : row + 8], 8, axis=1)
-    return _bf16_floor(_bf16_floor(y) * scale).astype(bfloat16)
+    return bf16_floor(bf16_floor(y) * scale).astype(bfloat16)
