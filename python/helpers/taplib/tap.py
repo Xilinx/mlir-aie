@@ -197,10 +197,11 @@ class TensorAccessPattern:
     def permute(self, axes: Sequence[int]) -> TensorAccessPattern:
         """Reorder dimensions: result dimension `i` is this pattern's dimension `axes[i]`.
 
-        Whether a shim DMA can execute the result depends on the
-        address-generation granule rule (the innermost stride times the
-        element width must be a whole 32-bit word), which the DMA verifier and
-        the dynamic lowering enforce.
+        Whether a DMA can execute the result depends on its 4-byte word
+        granule: every non-unit stride must span whole words, and for elements
+        other than 32 bits the innermost stride must be 1. The DMA verifier and
+        the dynamic lowering enforce this, so `.T` of a bf16 or int8 tile is
+        rejected when the design is lowered.
 
         Args:
             axes (Sequence[int]): A permutation of `range(rank)`.

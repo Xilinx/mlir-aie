@@ -54,6 +54,45 @@ print(TensorAccessPattern.full((1024,)).partition(4)[2])
                     # TensorAccessPattern([1024], offset=512, sizes=[256], strides=[1])
 ```
 
+Tiling a tiled pattern tiles hierarchically. `tiles.tile((1, 1, 4, 4))`
+keeps the grid and cuts each tile into `4 x 4` sub-tiles, so the walk goes
+tile by tile and, inside each tile, sub-tile by sub-tile.
+`tiles[i, j].tile((4, 4))` does the same for one tile. Such a walk can need
+more dimensions than one buffer descriptor holds, even after `coalesce()`. A
+shim `fill()` or `drain()` with a static walk is then split into several
+transfers. An
+`ObjectFifo` pattern has to fit in one descriptor (four dimensions on a
+memtile, three on a core tile).
+
+### What a DMA can walk
+
+A DMA moves whole 4-byte words. taplib itself accepts any walk, and the
+compiler rejects one the hardware cannot do when it lowers the design:
+
+- Every size, and every stride other than an innermost 1, must span whole
+  words. A bf16 run is an even number of elements, and an int8 run a
+  multiple of four.
+- The innermost dimension steps a word at a time. For elements that are not
+  32 bits wide, its stride must be 1.
+
+So for bf16 or int8 data, `.T` and `permute()` of a tile are rejected, and so
+is a `::2` slice of the innermost dimension. For `tiles[0, 0].T` on a bf16
+tensor, a shim `fill()` fails with:
+
+```
+error: 'aie.dma_bd' op Stride 1 is 1 elements * 2 bytes = 2 bytes, which is not divisible by 4.
+```
+
+The same walk as a memtile's `to_stream` fails with:
+
+```
+error: 'aie.dma_bd' op For <32b width datatypes, inner-most dim stride must be 1
+```
+
+To transpose sub-word data, let the DMA move `s x s` blocks whose rows are
+whole words, and transpose each block in the kernel. The `transposes` example
+below does this.
+
 ## Using patterns
 
 A pattern goes wherever IRON takes a DMA walk:
@@ -129,22 +168,32 @@ def seq(a_h, b_h, start, n, in_prod, out_cons):
         tg.finish()
 ```
 
-`require(cond, message)` from `aie.iron` adds a guard of
-your own, such as a shape constraint the design depends on.
+`require(cond, message)` from `aie.iron` adds a guard of your own, such as a
+shape constraint the design depends on. `cond` can depend on dispatch-time
+values. `whole_array.py` (below) has
+`require(M % (m * n_aie_rows) == 0, "M must be a multiple of m * n_aie_rows")`
+with a dispatch-time `M`, and a call whose `M` breaks it is refused with that
+message. The message is a plain string fixed when the design is generated, so
+it cannot include the value the call passed.
 
 Some rules of thumb:
 
-- Keep transfer counts static where the hardware needs them static. A
-  `range_` over a staged bound stays rolled. A step's `TaskGroup` is either
-  finished in the same loop body or carried to the next iteration as a
-  `range_` iter_arg (see the runtime-tasks guide). That is why a ragged last
-  block is a peeled `with if_(rem > 0):` rather than a runtime-length inner
-  loop.
+- Sizes, strides, offsets and loop bounds can all be dispatch-time values,
+  but the number of transfers a loop step issues cannot. A `range_` over a
+  dispatch-time bound is emitted as a loop, so its body is generated once.
+  Every step issues the same transfers, waited on the same way, in the same
+  order, and the `TaskGroup`s carried from one step to the next are a fixed
+  set of values (see
+  [Runtime tasks](../programming_guide/section-2/section-2d/RuntimeTasks.md)).
+  This comes from how the sequence is generated, not from the DMA. So when the data does not divide evenly into blocks, the loop covers the
+  whole blocks, and the ragged last block is one more transfer after it,
+  under `with if_(rem > 0):`, with its size computed from `rem`.
+- The structure of a pattern stays a Python value: its rank, slice steps,
+  padding amounts, and the sizes and strides of the dimensions `merge()`
+  combines.
 - Staged values of any integer type are accepted. The compiler hoists their
   arithmetic out of the buffer-descriptor block, and a value too wide for its
   descriptor field is refused at dispatch instead of being truncated.
-- A `require()` message travels into the generated C++, so keep it constant
-  rather than quoting a staged value.
 
 `programming_examples/basic/matrix_multiplication/whole_array/whole_array.py`
 is the whole-array GEMM written this way, with dispatch-time `M`, `K` and `N`.
