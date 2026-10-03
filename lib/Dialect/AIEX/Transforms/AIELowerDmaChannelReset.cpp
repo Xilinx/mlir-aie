@@ -135,7 +135,7 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
     ArrayRef<int32_t> lockInits = binding.getLockInits();
     for (unsigned j = 0; j < locks.size(); ++j)
       SetLockOp::create(builder, loc, locks[j],
-                        builder.getI32IntegerAttr(lockInits[j]));
+                        createConstantI32(builder, loc, lockInits[j]));
 
     // 3. START_QUEUE re-push per endpoint, emitted as aiex.npu.push_queue so
     // the command-word encoding, the queue address, and the bd_id/repeat range

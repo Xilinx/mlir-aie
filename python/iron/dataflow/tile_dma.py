@@ -63,10 +63,15 @@ _SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
 
 @dataclass
 class Acquire:
-    """An ``aie.use_lock(..., AcquireGreaterEqual|Acquire)`` op at the start of a BD."""
+    """An ``aie.use_lock(..., AcquireGreaterEqual|Acquire)`` op at the start of a BD.
+
+    In a runtime-sequence task, ``value`` may be a dispatch-time value; the
+    instruction stream is rejected if it falls outside the lock's range (at
+    least 1 for ``greater_equal``).
+    """
 
     lock: Lock
-    value: int = 1
+    value: int | ir.Value = 1
     greater_equal: bool = True  # False → exact Acquire
 
     def emit(self) -> None:
@@ -78,10 +83,13 @@ class Acquire:
 
 @dataclass
 class Release:
-    """An ``aie.use_lock(..., Release)`` op at the end of a BD."""
+    """An ``aie.use_lock(..., Release)`` op at the end of a BD.
+
+    In a runtime-sequence task, ``value`` may be a dispatch-time value.
+    """
 
     lock: Lock
-    value: int = 1
+    value: int | ir.Value = 1
 
     def emit(self) -> None:
         use_lock(self.lock.op, LockAction.Release, value=self.value)
@@ -177,6 +185,8 @@ class Bd:
             strides=strides,
             offset=_as_bd_i32(self.offset),
             length=_as_bd_i32(length),
+            acquires=[replace(a, value=_as_bd_i32(a.value)) for a in self.acquires],
+            releases=[replace(r, value=_as_bd_i32(r.value)) for r in self.releases],
         )
 
     def _emit(self, bd_id: int | None) -> None:

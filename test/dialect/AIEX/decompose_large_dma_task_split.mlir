@@ -283,6 +283,7 @@ module {
 // CHECK-NEXT:      aie.end
 // CHECK-NEXT:    }{{$}}
 // CHECK-NEXT:    aiex.dma_start_task(%[[A0]])
+// CHECK-NEXT:    arith.constant
 // CHECK-NEXT:    aiex.set_lock
 // CHECK-NEXT:    %[[C:.*]] = aiex.dma_configure_task_for @c
 // CHECK-NEXT:      aie.dma_bd({{.*}} offset = 0 len
@@ -306,7 +307,8 @@ module {
         aie.end
       }
       aiex.dma_start_task(%a)
-      aiex.set_lock(%lock, 1)
+      %lock_v1 = arith.constant 1 : i32
+      aiex.set_lock(%lock, %lock_v1)
       %c = aiex.dma_configure_task_for @c {
         aie.dma_bd(%out : memref<32768xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
         aie.end

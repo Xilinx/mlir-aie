@@ -51,6 +51,26 @@ module {
 
 // -----
 
+// The same holds for a start that overrides the count with a runtime one.
+
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @runtime_start_repeat(%in: memref<16x16x4096xi8>, %r: i32) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<16x16x4096xi8> offset = 4096 len = 262144 sizes = [1, 8, 8, 4096] strides = [0, 131072, 8192, 1])
+          {burst_length = 0 : i32}
+        aie.end
+      } {issue_token = true}
+      // expected-error@+1 {{cannot decompose a buffer descriptor this start repeats a runtime number of times: decomposition needs to scale the count by 8}}
+      aiex.dma_start_task(%tk) repeat %r : i32
+    }
+  }
+}
+
+// -----
+
 // A scaled repeat count past the queue's 8-bit field is split into several
 // pushes later (aie-split-long-repeats), but it still has to fit the 32-bit
 // attribute. Saying so here names the factor that got us there.
@@ -162,8 +182,9 @@ module {
 
 // -----
 
-// Under runtime control flow, a descriptor has to stay one: iteration
-// dimensions that merge are accepted, ones that split into pieces are not.
+// Under runtime control flow, a descriptor may become one or a chain of
+// several: iteration dimensions that merge are accepted, and pieces that need
+// tasks of their own are not.
 
 module {
   aie.device(npu2_1col) {
@@ -181,7 +202,7 @@ module {
         aiex.dma_start_task(%merged)
         aiex.dma_await_task(%merged)
         %tk = aiex.dma_configure_task_for @a {
-          // expected-error@+1 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off outside runtime control flow, since it splits into 2 descriptors}}
+          // expected-error@+1 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off outside runtime control flow, since its 2 pieces have to be separate tasks}}
           aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 256 sizes = [2, 2, 2, 8, 16] strides = [9000, 3500, 256, 32, 1])
           aie.end
         } {issue_token = true, repeat_count = 3 : i32}

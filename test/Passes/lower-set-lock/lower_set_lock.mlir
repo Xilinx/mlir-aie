@@ -40,27 +40,40 @@ module @test_simple_lock_set {
         // CHECK-DAG: %[[V0:.*]] = arith.constant 0 : i32
         // CHECK-DAG: %[[A0:.*]] = arith.constant 126976 : i32
         // CHECK: aiex.npu.write32(%[[A0]], %[[V0]]) {column = 2 : i32, row = 2 : i32} : i32, i32
-        aiex.set_lock(%lock22_0, 0)
+        %lock22_0_v0 = arith.constant 0 : i32
+        aiex.set_lock(%lock22_0, %lock22_0_v0)
         // 127216 = 0X0001F0F0
         // CHECK-DAG: %[[V1:.*]] = arith.constant 1 : i32
         // CHECK-DAG: %[[A1:.*]] = arith.constant 127216 : i32
         // CHECK: aiex.npu.write32(%[[A1]], %[[V1]]) {column = 2 : i32, row = 2 : i32} : i32, i32
-        aiex.set_lock(%lock22_15, 1)
+        %lock22_15_v1 = arith.constant 1 : i32
+        aiex.set_lock(%lock22_15, %lock22_15_v1)
         // 786480 = 0x000C0030
         // CHECK-DAG: %[[V2:.*]] = arith.constant 0 : i32
         // CHECK-DAG: %[[A2:.*]] = arith.constant 786480 : i32
         // CHECK: aiex.npu.write32(%[[A2]], %[[V2]]) {column = 1 : i32, row = 1 : i32} : i32, i32
-        aiex.set_lock(%lock11_3, 0)
+        %lock11_3_v0 = arith.constant 0 : i32
+        aiex.set_lock(%lock11_3, %lock11_3_v0)
         // 787328 = 0x000C0380
         // CHECK-DAG: %[[V3:.*]] = arith.constant 0 : i32
         // CHECK-DAG: %[[A3:.*]] = arith.constant 787328 : i32
         // CHECK: aiex.npu.write32(%[[A3]], %[[V3]]) {column = 1 : i32, row = 1 : i32} : i32, i32
-        aiex.set_lock(%lock11_56, 0)
+        %lock11_56_v0 = arith.constant 0 : i32
+        aiex.set_lock(%lock11_56, %lock11_56_v0)
         // 82000 = 0x00014050
         // CHECK-DAG: %[[V4:.*]] = arith.constant 0 : i32
         // CHECK-DAG: %[[A4:.*]] = arith.constant 82000 : i32
         // CHECK: aiex.npu.write32(%[[A4]], %[[V4]]) {column = 0 : i32, row = 0 : i32} : i32, i32
-        aiex.set_lock(%lock00_5, 0)
+        %lock00_5_v0 = arith.constant 0 : i32
+        aiex.set_lock(%lock00_5, %lock00_5_v0)
+    }
+
+    // A runtime value is written as is, guarded to [0, max lock value].
+    // CHECK-LABEL: @runtime_value
+    // CHECK: aiex.npu.assert_bd_field(%arg0) {max = 63 : i32} : i32
+    // CHECK: aiex.npu.write32(%{{.*}}, %arg0) {column = 1 : i32, row = 1 : i32} : i32, i32
+    aie.runtime_sequence @runtime_value(%uses: i32) {
+        aiex.set_lock(%lock11_3, %uses)
     }
   }
 }
