@@ -125,11 +125,11 @@ def test_factories_lists_every_exported_builder():
 
     The rule is the declared return type, so this pins the rule against the
     export list: everything exported that is neither a reference nor one of
-    the two matmul query helpers must be in it.
+    the host-side helpers must be in it.
     """
     exported = {n for n in kernels.__all__ if inspect.isfunction(getattr(kernels, n))}
     not_builders = {n for n in exported if n.endswith("_ref")}
-    not_builders |= {"mm_stream_dims", "mm_acc_dtype"}
+    not_builders |= {"mm_stream_dims", "mm_acc_dtype", "q4nx_unpack"}
     assert set(kernels.factories()) == exported - not_builders
     assert {"mm", "mv", "cascade_mm", "cascade_mm_put"} <= set(kernels.factories())
     assert kernels.factories() == [

@@ -13,7 +13,8 @@ Submodules:
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm
-- `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
+- `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8), q4nx_unpack (host-side
+  q4nx parsing)
 - `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
 - `flm_gemma4` — core kernels extracted from FastFlowLM's Gemma 4
@@ -142,8 +143,12 @@ from .eltwise import (
     scale_ref,
 )
 from .flm_gemma4 import (
+    BF16_PROJ_K,
+    BF16_PROJ_M,
+    DECODE_KEYS_PER_ROUND,
     FLM_GEMMA4_E2B_DECODE,
     FLM_GEMMA4_E4B_DECODE,
+    RMS_EPS,
     FlmGemma4DecodeGeometry,
     flm_gemma4_attn_kv_core,
     flm_gemma4_attn_kv_core_ref,
@@ -237,7 +242,15 @@ from .linalg import (
     prefill_fv_ref,
 )
 from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
-from .quant import q4nx_dequant, q4nx_dequant_ref
+from .quant import (
+    Q4NX_BLOCK_BYTES,
+    Q4NX_GROUP,
+    Q4NX_K_TILE,
+    Q4NX_M_TILE,
+    q4nx_dequant,
+    q4nx_dequant_ref,
+    q4nx_unpack,
+)
 from .reduce import (
     compute_max,
     compute_max_ref,
@@ -297,8 +310,13 @@ __all__ = [
     "mul_add",
     "mul_add_ref",
     "rms_norm",
+    "Q4NX_M_TILE",
+    "Q4NX_K_TILE",
+    "Q4NX_GROUP",
+    "Q4NX_BLOCK_BYTES",
     "q4nx_dequant",
     "q4nx_dequant_ref",
+    "q4nx_unpack",
     "sample_select",
     "sample_combine",
     "sample_ref",
@@ -318,6 +336,10 @@ __all__ = [
     "FLM_GEMMA4_E2B_DECODE",
     "FLM_GEMMA4_E4B_DECODE",
     "FlmGemma4DecodeGeometry",
+    "RMS_EPS",
+    "DECODE_KEYS_PER_ROUND",
+    "BF16_PROJ_M",
+    "BF16_PROJ_K",
     "flm_gemma4_attn_prefill",
     "flm_gemma4_attn_prefill_ref",
     "flm_gemma4_swa_prefill",
