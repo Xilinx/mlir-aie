@@ -747,7 +747,7 @@ def main(argv=None) -> int:
         print(f"::warning::kernel contribution check skipped: {e}", file=sys.stderr)
         return 0
     if text and args.out:
-        args.out.write_text(text)
+        args.out.write_text(text, encoding="utf-8")
     elif not args.out:
         print(text or "No kernel changes.")
     return 0
