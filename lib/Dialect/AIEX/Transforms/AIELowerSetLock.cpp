@@ -56,11 +56,14 @@ public:
     auto localLockAddress = *localLockAddressOpt;
 
     Location loc = op.getLoc();
+    Value value = adaptor.getValue();
+    if (!getConstantIntValue(value))
+      NpuAssertBdFieldOp::create(
+          rewriter, loc, value,
+          rewriter.getI32IntegerAttr(tm.getMaxLockValue()));
     rewriter.replaceOpWithNewOp<NpuWrite32Op>(
-        op, createConstantI32(rewriter, loc, localLockAddress),
-        createConstantI32(rewriter, loc, static_cast<uint32_t>(op.getValue())),
-        nullptr, rewriter.getI32IntegerAttr(col),
-        rewriter.getI32IntegerAttr(row));
+        op, createConstantI32(rewriter, loc, localLockAddress), value, nullptr,
+        rewriter.getI32IntegerAttr(col), rewriter.getI32IntegerAttr(row));
 
     return success();
   };
@@ -73,7 +76,7 @@ struct AIELowerSetLockPass
     DeviceOp device = getOperation();
 
     ConversionTarget target(getContext());
-    target.addLegalOp<NpuWrite32Op>();
+    target.addLegalOp<NpuWrite32Op, NpuAssertBdFieldOp>();
     target.addLegalDialect<arith::ArithDialect>();
     target.addIllegalOp<SetLockOp>();
 

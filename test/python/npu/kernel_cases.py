@@ -181,6 +181,8 @@ CASES: list[Case] = [
     check(
         "leaky_relu", dict(tile_size=160), scalars=(0.5,), tag="unroll-tail", smoke=True
     ),
+    # The kernel takes alpha as bf16; 0.01 is not a bf16, so the reference rounds it.
+    check("leaky_relu", scalars=(0.01,), tag="inexact-alpha", smoke=True),
     Case("exp2f_vec", calls=16, smoke=True),
     Case("exp2f_vec", calls=256),
     # 48 is not a multiple of the 32 elements one block handles, so the
@@ -212,6 +214,8 @@ CASES: list[Case] = [
     # datamovement
     Case("axpy", calls=16, scalars=(2.5,), smoke=True),
     Case("axpy", calls=256, scalars=(2.5,), data_cases=IEEE_FLOAT),
+    # The kernel rounds a to bf16; 1.003 is not a bf16, so the reference must too.
+    check("axpy", scalars=(1.003,), tag="inexact-a", smoke=True),
     Case("convert_copy", calls=16, smoke=True),
     Case("convert_copy", calls=256),
     # 272 is a multiple of the kernel's 16-element step but not of the 128 its
@@ -637,6 +641,32 @@ CASES: list[Case] = [
         calls=256,
         tag="llama-decode-ffn-down",
     ),
+    # The column-major bf16 matvec, a whole K per call: llama 3.2 1B's
+    # attention context shape (64 head dims, 128 cached positions per call),
+    # and the narrowest output block at the narrowest VEC_SIZE. Calls that
+    # carry sums across K are test_mv_col_maj_e2e.py's.
+    *[
+        Case(
+            "mv",
+            dict(
+                dim_m=dim_m,
+                dim_k=dim_k,
+                input_dtype=bfloat16,
+                output_dtype=bfloat16,
+                vec_size=vec_size,
+                a_col_maj=True,
+            ),
+            calls=4,
+            tag=tag,
+            smoke=True,
+            perf=not tag,
+        )
+        for dim_m, dim_k, vec_size, tag in (
+            (64, 128, 64, ""),
+            (32, 256, 32, "edge-eight-vectors"),
+            (16, 32, 16, "edge-narrowest"),
+        )
+    ],
     # reduce companion, gated activation
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),

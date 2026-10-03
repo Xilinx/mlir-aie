@@ -247,14 +247,19 @@ mlir::Value getBdRegisterBase(mlir::OpBuilder &builder, mlir::Location loc,
                               int tileCol, int tileRow,
                               mlir::OpFoldResult bdId);
 
-// Always-constant BD fields (locks, packet, next_bd), gathered by the caller
-// from the DMA structure and baked into the template words.
+// Lock, packet and next_bd fields, gathered by the caller from the DMA
+// structure and baked into the template words. Only next_bd and the lock values
+// may be runtime: `next_bd_id_val`, when set, replaces `next_bd_id` (a chain
+// whose successor draws its id from the dynamic pool), and `lock_*_val_val`
+// replaces `lock_*_val` already in field encoding (an AcquireGE negated).
 struct BdTemplateFields {
   uint32_t use_next_bd = 0, next_bd_id = 0;
+  mlir::Value next_bd_id_val;
   int32_t enable_packet = 0, packet_id = 0, packet_type = 0;
   int32_t out_of_order_id = 0;
   int32_t lock_rel_val = 0, lock_rel_id = 0;
   int32_t lock_acq_enable = 0, lock_acq_val = 0, lock_acq_id = 0;
+  mlir::Value lock_rel_val_val, lock_acq_val_val;
 };
 
 // Build a BD's full register block as i32 SSA values, for the dynamic lowering

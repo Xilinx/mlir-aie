@@ -24,7 +24,7 @@ from aie.iron.device import NPU2Col1, Tile
 
 def emit(channels):
     tile = Tile(col=0, row=2, tile_type=AIETileType.CoreTile)
-    buf = Buffer(tile=tile, type=np.ndarray[(2,), np.dtype[np.int32]], name="buf")
+    buf = Buffer(tile=tile, type=np.ndarray[(16,), np.dtype[np.int32]], name="buf")
     chans = []
     for spec in channels:
         direction, channel, nbds, ooo, repeat, pkt = spec[:6]

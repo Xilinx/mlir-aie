@@ -987,9 +987,11 @@ def leaky_relu_ref(x, alpha=0.01):
     """Numpy reference for [`leaky_relu`][iron.kernels.activation.leaky_relu].
 
     ``x if x > 0 else alpha * x``.  ``alpha`` must match the slope the design
-    passes to the kernel at runtime.  Exact up to bf16 rounding; pair with a
-    small ``rtol`` when verifying.
+    passes to the kernel at runtime; the kernel takes it as bf16, so it is
+    rounded to bf16 here.  Exact up to bf16 rounding; pair with a small
+    ``rtol`` when verifying.
     """
+    alpha = np.float32(bfloat16(alpha))
     xf = x.astype(np.float32)
     return np.where(xf > 0.0, xf, alpha * xf).astype(x.dtype)
 

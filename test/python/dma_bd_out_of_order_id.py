@@ -17,7 +17,7 @@ from aie.iron import Bd, Buffer, DmaChannel, Program, Runtime, TileDma
 from aie.iron.device import NPU2Col1, Tile
 
 tile = Tile(col=0, row=2, tile_type=AIETileType.CoreTile)
-buf = Buffer(tile=tile, type=np.ndarray[(2,), np.dtype[np.int32]], name="buf")
+buf = Buffer(tile=tile, type=np.ndarray[(8,), np.dtype[np.int32]], name="buf")
 
 bds = [
     Bd(buffer=buf, offset=4 * i, length=4, packet=(0, 0), out_of_order_id=i)
