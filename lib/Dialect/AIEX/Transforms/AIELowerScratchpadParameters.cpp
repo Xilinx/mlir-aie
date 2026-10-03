@@ -318,10 +318,10 @@ struct AIELowerScratchpadParametersPass
   // ()==true, insert a marker SyncScratchpadParametersFromHostOp after the
   // last top-level load_pdi of the sequence body, or at its start if there is
   // none.
-  void emitSequencePreambles(DeviceOp device, OpBuilder &builder) {
-    device.walk([&](RuntimeSequenceOp seqOp) {
+  LogicalResult emitSequencePreambles(DeviceOp device, OpBuilder &builder) {
+    WalkResult result = device.walk([&](RuntimeSequenceOp seqOp) {
       if (!shouldEmitParameterSyncPreamble(seqOp)) {
-        return;
+        return WalkResult::advance();
       }
 
       Region &region = seqOp.getBody();
@@ -332,11 +332,34 @@ struct AIELowerScratchpadParametersPass
       // Loading a PDI resets the core buffers and locks the sync writes.
       for (NpuLoadPdiOp loadPdi : body.getOps<NpuLoadPdiOp>())
         builder.setInsertionPointAfter(loadPdi);
+      for (Operation &op :
+           llvm::make_range(body.begin(), builder.getInsertionPoint())) {
+        WalkResult early = op.walk([&](Operation *inner) {
+          auto dmaOp = dyn_cast<NpuDmaMemcpyNdOp>(inner);
+          auto bdOp = dyn_cast<AIE::DMABDOp>(inner);
+          if ((dmaOp && (dmaOp.getOffsetStateTableIdxAttr() ||
+                         dmaOp.getLengthStateTableIdxAttr())) ||
+              (bdOp && (bdOp.getOffsetStateTableIdxAttr() ||
+                        bdOp.getLengthStateTableIdxAttr()))) {
+            inner->emitOpError(
+                "reads a scratchpad parameter before the last "
+                "aiex.npu.load_pdi of its runtime sequence, which is where "
+                "the scratchpad is created. Load the PDIs first, or place "
+                "aiex.sync_scratchpad_parameters_from_host before this op.");
+            return WalkResult::interrupt();
+          }
+          return WalkResult::advance();
+        });
+        if (early.wasInterrupted())
+          return WalkResult::interrupt();
+      }
       SyncScratchpadParametersFromHostOp::create(builder, seqOp.getLoc());
 
       // Mark as done so the pass is idempotent.
       seqOp.setEmitParameterSyncPreambleAttr(builder.getBoolAttr(false));
+      return WalkResult::advance();
     });
+    return failure(result.wasInterrupted());
   }
 
   // Lower a sync_scratchpad_parameters_from_host marker op in place to its
@@ -645,7 +668,8 @@ struct AIELowerScratchpadParametersPass
       // preamble-inserted ones and any user-written ones) using this device's
       // parameter info.
       SmallVector<Value> syncLocks = emitCorePreambles(d, builder);
-      emitSequencePreambles(d, builder);
+      if (failed(emitSequencePreambles(d, builder)))
+        return signalPassFailure();
       uint32_t scratchpadSize = static_cast<uint32_t>(allParams.size() * 4);
       lowerSyncParametersOps(d, scratchpadSize, paramEntries, syncLocks);
 
