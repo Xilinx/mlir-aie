@@ -487,6 +487,29 @@ module {
 
 // -----
 
+// Scratchpad parameters are preserved through the fold.
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:         aie.runtime_sequence @fold_preserves_parameters
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        {id = 0 : i64, length_parameter = @n, length_unit = 256 : i64, metadata = @of_fromMem, offset_parameter = @off}
+module {
+  aiex.scratchpad_parameter @off : i32
+  aiex.scratchpad_parameter @n : i32
+  aie.device(npu1) {
+    aie.runtime_sequence @fold_preserves_parameters(%arg0 : memref<4096xi32>) {
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 512][0, 0, 512, 1])
+        { metadata = @of_fromMem, id = 0 : i64, offset_parameter = @off,
+          length_parameter = @n, length_unit = 256 : i64 } : memref<4096xi32>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
+  }
+}
+
+// -----
+
 // 2D fold where both d0 and d1 exceed the 10-bit ND wrap limit (>1023):
 // sizes=[1,1,1080,7680] strides=[0,0,7680,1] is contiguous and should fold
 // to sizes=[1,1,1,8294400] strides=[0,0,0,1].

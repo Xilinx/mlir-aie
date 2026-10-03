@@ -265,25 +265,12 @@ static NpuDmaMemcpyNdOp createDecomposedOp(RewriterBase &rewriter,
                                            int64_t id, bool issueToken) {
   assert(pattern.baseOffset == 0 &&
          "a memcpy pattern has no peeled dimensions");
-  auto outerOffsets = toOuter(pattern.offsets);
-  auto outerSizes = toOuter(pattern.sizes);
-  auto outerStrides = toOuter(pattern.strides);
-
-  return NpuDmaMemcpyNdOp::create(
-      rewriter, op.getLoc(), op.getMemref(),
-      /*offsets=*/ValueRange{}, /*sizes=*/ValueRange{},
-      /*strides=*/ValueRange{},
-      DenseI64ArrayAttr::get(op.getContext(), outerOffsets),
-      DenseI64ArrayAttr::get(op.getContext(), outerSizes),
-      DenseI64ArrayAttr::get(op.getContext(), outerStrides), op.getPacketAttr(),
-      op.getMetadata(), rewriter.getI64IntegerAttr(id),
-      rewriter.getBoolAttr(issueToken), op.getD0ZeroBeforeAttr(),
-      op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
-      op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(), op.getD2ZeroAfterAttr(),
-      op.getBurstLengthAttr(), op.getAxcacheAttr(), op.getOffsetParameterAttr(),
-      op.getOffsetStateTableIdxAttr(), op.getLengthParameterAttr(),
-      op.getLengthUnitAttr(), op.getLengthStateTableIdxAttr(),
-      op.getLengthCoreEncodedAttr());
+  auto newOp = NpuDmaMemcpyNdOp::create(
+      rewriter, op.getLoc(), op, toOuter(pattern.offsets),
+      toOuter(pattern.sizes), toOuter(pattern.strides));
+  newOp.setIdAttr(rewriter.getI64IntegerAttr(id));
+  newOp.setIssueTokenAttr(rewriter.getBoolAttr(issueToken));
+  return newOp;
 }
 
 static int64_t allocateNextId(NpuDmaMemcpyNdOp op, int64_t startId,
@@ -601,18 +588,8 @@ static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
   rewriter.setInsertionPoint(op);
   if (bds.size() == 1) {
     rewriter.replaceOpWithNewOp<NpuDmaMemcpyNdOp>(
-        op, op.getMemref(), ValueRange{}, ValueRange{}, ValueRange{},
-        DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().offsets)),
-        DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().sizes)),
-        DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().strides)),
-        op.getPacketAttr(), op.getMetadata(), op.getIdAttr(),
-        op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
-        op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
-        op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr(),
-        op.getLengthParameterAttr(), op.getLengthUnitAttr(),
-        op.getLengthStateTableIdxAttr(), op.getLengthCoreEncodedAttr());
+        op, op, toOuter(bds.front().offsets), toOuter(bds.front().sizes),
+        toOuter(bds.front().strides));
     return;
   }
 

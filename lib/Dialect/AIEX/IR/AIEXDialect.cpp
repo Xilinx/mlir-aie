@@ -447,21 +447,7 @@ struct LinearizeContiguousTransfer
                                                      linearOffset};
 
     rewriter.replaceOpWithNewOp<AIEX::NpuDmaMemcpyNdOp>(
-        op, op.getMemref(),
-        /*offsets=*/mlir::ValueRange{},
-        /*sizes=*/mlir::ValueRange{},
-        /*strides=*/mlir::ValueRange{},
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newOffsetsOuter),
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newSizesOuter),
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newStridesOuter),
-        op.getPacketAttr(), op.getMetadata(), op.getIdAttr(),
-        op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
-        op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
-        op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr(),
-        op.getLengthParameterAttr(), op.getLengthUnitAttr(),
-        op.getLengthStateTableIdxAttr(), op.getLengthCoreEncodedAttr());
+        op, op, newOffsetsOuter, newSizesOuter, newStridesOuter);
     return mlir::success();
   }
 };

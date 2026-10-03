@@ -696,6 +696,37 @@ def AIE_NpuDmaMemcpyNdOp
     attr-dict `:` type($memref)
   }];
 
+  let builders = [
+      // `base`'s transfer with a new static pattern.
+      OpBuilder<(ins "NpuDmaMemcpyNdOp":$base,
+                    "::llvm::ArrayRef<int64_t>":$static_offsets,
+                    "::llvm::ArrayRef<int64_t>":$static_sizes,
+                    "::llvm::ArrayRef<int64_t>":$static_strides),
+                [{
+      $_state.addOperands(base.getMemref());
+      Properties &props = $_state.getOrAddProperties<Properties>();
+      props = base.getProperties();
+      props.setStaticOffsets($_builder.getDenseI64ArrayAttr(static_offsets));
+      props.setStaticSizes($_builder.getDenseI64ArrayAttr(static_sizes));
+      props.setStaticStrides($_builder.getDenseI64ArrayAttr(static_strides));
+      props.operandSegmentSizes = {1, 0, 0, 0};
+    }]>,
+      OpBuilder<(ins "::mlir::Value":$memref,
+                    "::llvm::ArrayRef<int64_t>":$static_offsets,
+                    "::llvm::ArrayRef<int64_t>":$static_sizes,
+                    "::llvm::ArrayRef<int64_t>":$static_strides,
+                    "::mlir::SymbolRefAttr":$metadata, "uint64_t":$id,
+                    "bool":$issue_token),
+                [{
+      build($_builder, $_state, memref, ::mlir::ValueRange{},
+            ::mlir::ValueRange{}, ::mlir::ValueRange{}, static_offsets,
+            static_sizes, static_strides, /*packet=*/nullptr, metadata, id,
+            issue_token, 0, 0, 0, 0, 0, 0, /*burst_length=*/0,
+            /*axcache=*/nullptr, /*offset_parameter=*/nullptr,
+            /*offset_state_table_idx=*/nullptr, /*length_parameter=*/nullptr,
+            /*length_unit=*/nullptr, /*length_state_table_idx=*/nullptr);
+    }]>];
+
   let extraClassDeclaration = [{
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
     std::array<unsigned, 3> getArrayAttrMaxRanks();
