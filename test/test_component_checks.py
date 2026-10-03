@@ -18,6 +18,10 @@ ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / "utils/component_checks"
 SMALL = ROOT / "test/place-tiles/sa_placer/test_sa_effort.mlir"
 AIE_OPT = shutil.which("aie-opt")
+POSIX_SWEEP = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="sa_placer.py measures each seed with os.wait4, which is POSIX-only",
+)
 
 # What aie2_mobilenet_iron.py printed on an npu2, verbatim, at batch 1 and 16.
 MOBILENET_OUTPUT = """\
@@ -63,6 +67,7 @@ def sweep(tmp_path, *args):
     return result, json.loads(out.read_text()), json.loads(meta.read_text())
 
 
+@POSIX_SWEEP
 def test_the_sweep_records_every_seed_of_every_fixture(aie_opt, tmp_path):
     result, rows, meta = sweep(
         tmp_path, "--aie-opt", aie_opt, "--seeds", 2, "--fixture", SMALL
@@ -102,6 +107,7 @@ def test_the_sweep_records_every_seed_of_every_fixture(aie_opt, tmp_path):
     ]
 
 
+@POSIX_SWEEP
 def test_a_seed_that_does_not_place_fails_the_sweep(aie_opt, tmp_path):
     bad = tmp_path / "unplaceable.mlir"
     bad.write_text("module { this is not MLIR }\n")

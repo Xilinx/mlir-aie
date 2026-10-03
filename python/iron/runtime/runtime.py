@@ -87,7 +87,7 @@ class ActiveSequence:
 
     def note_fifo(self, handle: ObjectFifoHandle) -> None:
         """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
-        self._runtime._fifos.add(handle)
+        self._runtime._fifos[handle] = None
 
     def resolve_in_device(self, resolvable) -> None:
         """Resolve a Buffer or Lock the body reaches first, ahead of the sequence.
@@ -290,7 +290,7 @@ class Runtime(Resolvable):
                         "Runtime cannot mix bare scalar types with DispatchTime parameters."
                     )
                 self._block_data.append(data)
-        self._fifos: set[ObjectFifoHandle] = set()
+        self._fifos: dict[ObjectFifoHandle, None] = {}
         self._register_fn_args()
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
@@ -319,7 +319,7 @@ class Runtime(Resolvable):
             if isinstance(arg, ObjectFifoHandle):
                 if arg.endpoint is None:
                     arg.endpoint = RuntimeEndpoint(arg._shim_tile)
-                self._fifos.add(arg)
+                self._fifos[arg] = None
 
     def add_flow(self, flow) -> None:
         """Register an explicit flow so the Program resolves it alongside the ObjectFifos.
@@ -525,7 +525,7 @@ class Runtime(Resolvable):
                         runtime_cons = c
                     elif (
                         c.depth == runtime_cons.depth
-                        and c.dims_from_stream == runtime_cons.dims_from_stream
+                        and c.from_stream == runtime_cons.from_stream
                     ):
                         to_remove.append(c)
                     else:

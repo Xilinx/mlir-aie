@@ -8,23 +8,8 @@
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-dma-tasks-to-npu %s
 
 // The whole-buffer length is only a sound default when the BD's addressing is
-// constant. With runtime sizes or a runtime offset it can disagree with the
-// transfer or run past the buffer, so `len` stays required. With constant
-// dims it must match them, as on the static path.
-
-aie.device(npu2) {
-  %mt = aie.tile(0, 1)
-  %buf = aie.buffer(%mt) {address = 0 : i32} : memref<1024xi32>
-  aie.runtime_sequence @runtime_dims(%a: i64) {
-    %t = aiex.dma_configure_task(%mt, MM2S, 0) {
-      // expected-error@+1 {{runtime-valued BD requires an explicit transfer length}}
-      aie.dma_bd(%buf : memref<1024xi32> sizes = [%a, 16] strides = [16, 1]) {bd_id = 0 : i32}
-      aie.end
-    }
-  }
-}
-
-// -----
+// constant. With a runtime offset it could run past the buffer, so `len` stays
+// required. With constant dims it must match them, as on the static path.
 
 aie.device(npu2) {
   %mt = aie.tile(0, 1)

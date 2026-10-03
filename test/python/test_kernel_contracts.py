@@ -784,14 +784,14 @@ def test_param_is_kernel_only_and_host_descriptors_are_private():
     from aie.utils.compile.jit import markers
 
     assert Param is kernels.Param
-    assert not hasattr(iron, "Param")
+    assert "Param" not in vars(iron)
     assert (iron.In, iron.Out, iron.InOut) == (jit.In, jit.Out, jit.InOut)
     for name in ("Param", "Scalar", "Count", "ROLES"):
-        assert not hasattr(jit, name)
-        assert not hasattr(markers, name)
-    assert not hasattr(kernels, "ROLES")
-    assert not hasattr(kd, "HostArg")
-    assert not hasattr(iron.algorithms, "HostArg")
+        assert name not in vars(jit)
+        assert name not in vars(markers)
+    assert "ROLES" not in vars(kernels)
+    assert "HostArg" not in vars(kd)
+    assert "HostArg" not in vars(iron.algorithms)
 
 
 def test_output_only_kernel_uses_no_host_inputs():
@@ -887,16 +887,23 @@ def test_per_tile_matrix_references_keep_calls_independent():
 
 
 def test_designs_for_different_kernels_do_not_share_a_cache_key():
-    h = lambda d: d.compilable.recipe_hash  # noqa: E731
-    assert h(kd.design(kernels.add, calls=4)) != h(kd.design(kernels.mul, calls=4))
-    assert h(kd.design(kernels.reduce_max, calls=4)) != h(
-        kd.design(kernels.reduce_max, calls=4, dtype=bfloat16)
+    add, mul, rmax, rmax_bf16, add_again, p3, p5 = (
+        design.compilable.recipe_hash
+        for design in (
+            kd.design(kernels.add, calls=4),
+            kd.design(kernels.mul, calls=4),
+            kd.design(kernels.reduce_max, calls=4),
+            kd.design(kernels.reduce_max, calls=4, dtype=bfloat16),
+            kd.design(kernels.add, calls=4),
+            kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([3])]),
+            kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([5])]),
+        )
     )
-    assert h(kd.design(kernels.add, calls=4)) == h(kd.design(kernels.add, calls=4))
+    assert add != mul
+    assert rmax != rmax_bf16
+    assert add == add_again
     # A tensor Param is baked into the design, so its value is part of the key.
-    p3 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([3])])
-    p5 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([5])])
-    assert h(p3) != h(p5)
+    assert p3 != p5
     with pytest.raises(ValueError, match=r"expected 1 param value\(s\)"):
         kd.design(kernels.scale, calls=4, dtype=np.int32)
 
@@ -1688,7 +1695,8 @@ def test_matrix_kernels_declare_their_blocking_on_the_operand_layouts():
     assert scalar.mac_dims == (1, 1, 1)
     assert scalar.stream_dims == kernels.linalg.StreamDimsABC(None, None, None)
     assert not isinstance(kernels.mv(), kernels.MatrixKernel)
-    assert kernels.mv().contract.layouts[0].stream == [(32, 2), (16, 64), (2, 1)]
+    a_from_stream = kernels.mv().contract.layouts[0].stream
+    assert a_from_stream.transformation_dims == ((32, 2), (16, 64), (2, 1))
 
 
 def test_contract_is_given_at_construction():
@@ -1805,7 +1813,7 @@ def test_declared_arg_types_survive_a_design_build():
     kd.design(kernels.add, calls=2).as_mlir()
     fn = kernels.add()  # memoized: the instance the design resolved
     assert [str(t) for t in fn.arg_types()] == declared
-    assert all(hasattr(t, "__args__") for t in fn.arg_types()[:3])
+    assert all(typing.get_origin(t) is np.ndarray for t in fn.arg_types()[:3])
     assert kd.output_size(fn, calls=2) == 2 * 1024
     assert kd.sample_inputs(fn, calls=2)[0].shape == (2, 1024)
     kd.design(kernels.add, calls=4).as_mlir()  # a second design still builds
@@ -1930,13 +1938,12 @@ def _combo_id(v) -> str:
 def _factories_with_dtypes():
     for name in kernels.factories():
         f = getattr(kernels, name)
-        if hasattr(f, "dtypes"):
-            for combo in f.dtypes:
-                yield pytest.param(
-                    name,
-                    combo,
-                    id=f"{name}/{'/'.join(_combo_id(v) for v in combo.values())}",
-                )
+        for combo in vars(f).get("dtypes", ()):
+            yield pytest.param(
+                name,
+                combo,
+                id=f"{name}/{'/'.join(_combo_id(v) for v in combo.values())}",
+            )
 
 
 @pytest.mark.parametrize("name,combo", list(_factories_with_dtypes()))
@@ -1953,7 +1960,9 @@ def test_declared_dtype_combinations_build(name, combo):
     if any(bfp.is_bfp(v) for v in combo.values()):
         return  # block-floating-point operands are not numpy dtypes
     tensor_dts = {
-        kd.shape_dtype(t)[1] for t in fn.arg_types() if hasattr(t, "__args__")
+        kd.shape_dtype(t)[1]
+        for t in fn.arg_types()
+        if typing.get_origin(t) is np.ndarray
     }
     tensor_dts = {np.dtype(dt) for dt in tensor_dts if not bfp.is_bfp(dt)}
     for v in combo.values():
@@ -2237,18 +2246,43 @@ def test_scalar_bounds_are_specialized_without_vector_alignment(name):
     [((64, 64, 64), (4, 8, 8)), ((128, 64, 64), (8, 8, 8)), ((64, 32, 64), (4, 4, 8))],
 )
 def test_mm_stream_dims_match_the_blocking_the_kernel_was_compiled_for(dims, mac):
-    """A and B come from taplib; C is the one layout taplib cannot express.
+    """A, B and C all come from taplib.
 
-    The A/B transforms are a plain (r x s) blocked walk, so they ask
-    TensorTiler2D for it. This pins that the answer is still the layout
-    ``mm.cc`` expects, byte for byte, rather than whatever the tiler happens
-    to return after a change.
+    The A/B transforms are a plain (r x s) blocked walk from
+    ``TensorAccessPattern.tile`` and C is its ``inverse()``. This pins that the answer is still the layout
+    ``mm.cc`` expects, byte for byte, rather than whatever the layout algebra
+    happens to return after a change.
     """
     (m, k, n), (r, s, t) = dims, mac
     d = kernels.mm_stream_dims(m, k, n, mac)
-    assert d.A == [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-    assert d.B == [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
-    assert d.C == [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    assert list(d.A.transformation_dims) == [
+        (m // r, r * k),
+        (k // s, s),
+        (r, k),
+        (s, 1),
+    ]
+    assert list(d.B.transformation_dims) == [
+        (k // s, s * n),
+        (n // t, t),
+        (s, n),
+        (t, 1),
+    ]
+    assert list(d.C.transformation_dims) == [
+        (m // r, r * n),
+        (r, t),
+        (n // t, r * t),
+        (t, 1),
+    ]
     col = kernels.mm_stream_dims(m, k, n, mac, b_col_maj=True, c_col_maj=True)
-    assert col.B == [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
-    assert col.C == [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
+    assert list(col.B.transformation_dims) == [
+        (n // t, t * k),
+        (k // s, s),
+        (t, k),
+        (s, 1),
+    ]
+    assert list(col.C.transformation_dims) == [
+        (n // t, t * m),
+        (t, r),
+        (m // r, r * t),
+        (r, 1),
+    ]

@@ -2,9 +2,7 @@
 # Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-import random
-
-from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence, TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.utils import ceildiv
 from util import construct_test
 
@@ -22,88 +20,43 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
 
     n_A_tiles_per_shim = n_aie_rows // n_aie_cols
     tb_max_n_rows = 4
-    tb_n_rows = tb_max_n_rows // 2
 
     A_ordered_tiles = []
     B_ordered_tiles = []
     C_ordered_tiles = []
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K),  # Size of A matrix
-        (m * n_A_tiles_per_shim, k),  # Size of A (smallest) tile
-        (1, K // k),  # Size of "group" of tiles
-        pattern_repeat=N
-        // n
-        // n_aie_cols,  # Repeat data so can distribute across whole column
-    )
+    rep = N // n // n_aie_cols
+    A_tiles = TensorAccessPattern.full((M, K)).tile((m * n_A_tiles_per_shim, k))
     if b_col_maj:
         # These assertions are probably too broad.
         assert m % 32 == 0
         assert k % 32 == 0
         assert n % 32 == 0
-
-        B_tiles = TensorTiler2D.step_tiler(
-            (K, N),  # Size of B matrix
-            (k, n),  # Size of B tile
-            tile_group_repeats=(
-                K // k // n_aie_cols,
-                N // n,
-            ),  # Number of tiles per transfer in each dimension (whole col, partial row)
-            tile_group_steps=(
-                n_aie_cols,
-                1,
-            ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
-        )
+        B_tiles = TensorAccessPattern.full((N, K)).tile((n, k))
     else:
-        B_tiles = TensorTiler2D.step_tiler(
-            (K, N),  # Size of B matrix
-            (k, n),  # Size of B tile
-            tile_group_repeats=(
-                K // k,
-                N // n // n_aie_cols,
-            ),  # Number of tiles per transfer in each dimension (whole col, partial row)
-            tile_group_steps=(
-                1,
-                n_aie_cols,
-            ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
-            tile_group_col_major=True,  # Send all tiles in column before moving on to next column
-        )
-    C_tiles = TensorTiler2D.step_tiler(
-        (M, N),  # Size of C matrix
-        (m * n_aie_rows, n),  # Size of C tile
-        tile_group_repeats=(
-            tb_n_rows,
-            N // n // n_aie_cols,
-        ),  # Number of tiles per transfer in each dimension (partial col, partial row)
-        tile_group_steps=(
-            1,
-            n_aie_cols,
-        ),  # Collect every n_aie_cols row at a time (mirroring how we sent in B data)
-    )
-    c_index = 0
+        B_tiles = TensorAccessPattern.full((K, N)).tile((k, n)).permute((1, 0, 2, 3))
+    C_tiles = TensorAccessPattern.full((M, N)).tile((m * n_aie_rows, n))
 
     for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
         for pingpong in [0, 1]:
-            if c_index >= len(C_tiles):
-                # May not have pong iteration in some cases
-                break
             row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
             current_tb_n_rows = min(
                 [tb_max_n_rows // 2, M // m // n_aie_rows - row_base]
             )
+            if current_tb_n_rows <= 0:
+                # May not have pong iteration in some cases
+                break
 
             for col in range(n_aie_cols):
-                C_ordered_tiles.append(C_tiles[c_index])
-                c_index += 1
+                C_ordered_tiles.append(
+                    C_tiles[row_base : row_base + current_tb_n_rows, col::n_aie_cols]
+                )
 
                 for tile_row in range(current_tb_n_rows):
                     tile_offset = (row_base + tile_row) * n_aie_cols + col
-                    A_ordered_tiles.append(A_tiles[tile_offset])
-                    B_ordered_tiles.append(B_tiles[col])
+                    A_ordered_tiles.append(A_tiles[tile_offset].repeat(rep))
+                    B_ordered_tiles.append(B_tiles[col::n_aie_cols])
 
-    A_ordered_tiles = TensorAccessSequence.from_taps(A_ordered_tiles)
-    B_ordered_tiles = TensorAccessSequence.from_taps(B_ordered_tiles)
-    C_ordered_tiles = TensorAccessSequence.from_taps(C_ordered_tiles)
     return A_ordered_tiles, B_ordered_tiles, C_ordered_tiles
 
 
@@ -182,13 +135,13 @@ def matmul_reference(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
                         else [n * n_aie_cols * K, k, K, 1]
                     )
                     b_tile = TensorAccessPattern(
-                        (K, N), B_col_offset, sizes=B_sizes, strides=B_strides
+                        (N, K) if b_col_maj else (K, N),
+                        B_col_offset,
+                        sizes=B_sizes,
+                        strides=B_strides,
                     )
                     B_tiles.append(b_tile)
 
-    A_tiles = TensorAccessSequence.from_taps(A_tiles)
-    B_tiles = TensorAccessSequence.from_taps(B_tiles)
-    C_tiles = TensorAccessSequence.from_taps(C_tiles)
     return A_tiles, B_tiles, C_tiles
 
 
@@ -243,19 +196,8 @@ def matrix_vector_tiling_sweep():
                                     )
 
                                     assert actual_A_tiles == new_A_tiles
+                                    assert actual_B_tiles == new_B_tiles
                                     assert actual_C_tiles == new_C_tiles
-
-                                    # B sizes/strides differ and it causes the tests to run a long time to
-                                    # check functional equivalency so we only do a few checks for functional equivalency
-                                    assert len(actual_B_tiles) == len(new_B_tiles)
-                                    if M <= 1024 and N <= 1024 and K <= 1024:
-                                        # Just check one random tile
-                                        rand_idx = random.randrange(len(actual_B_tiles))
-                                        assert new_B_tiles[
-                                            rand_idx
-                                        ].compare_access_orders(
-                                            actual_B_tiles[rand_idx]
-                                        )
 
     # CHECK: Pass!
     print("Pass!")
@@ -298,12 +240,8 @@ def matrix_vector_tiling_b_col_major():
     )
 
     assert actual_A_tiles == new_A_tiles
+    assert actual_B_tiles == new_B_tiles
     assert actual_C_tiles == new_C_tiles
-
-    # B sizes/strides differ so check each tile for functional equivalence
-    assert len(actual_B_tiles) == len(new_B_tiles)
-    for actual_tile, new_tile in zip(actual_B_tiles, new_B_tiles):
-        assert actual_tile.compare_access_orders(new_tile)
 
     # CHECK: Pass!
     print("Pass!")

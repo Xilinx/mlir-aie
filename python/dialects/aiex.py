@@ -24,8 +24,6 @@ from .aie import (
     TileOp,
     bds,
     dma_bd,
-    _as_bd_i32,
-    _as_bd_i64,
     _as_i32,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
@@ -47,9 +45,43 @@ from ..ir import (
 from ..extras import types as T
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..helpers.taplib import TensorAccessPattern
+from ..helpers.taplib._symbolic import is_sym, si32, sprod
+from ..helpers.taplib.utils import zero_leading_unit_strides
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
+
+
+def _shim_dims(tap: TensorAccessPattern, ndims: int = 4):
+    """Return `tap`'s offset, sizes and strides as a shim buffer descriptor takes them.
+
+    A walk deeper than `ndims` is coalesced, and one that still does not fit
+    passes through for the compiler to split into BDs of `ndims` dimensions.
+    A shallower one is padded with unit dimensions. Slot 0 is the queue
+    repeat: a leading stride-0 dimension whose size is not the constant 1,
+    staged or not, stays there and the padding goes after it, so
+    `[R, th, tw]` becomes `[R, 1, th, tw]`.
+
+    Raises:
+        ValueError: If `tap` is padded.
+    """
+    if tap.padding is not None:
+        raise ValueError("a shim DMA cannot pad; padding is a memtile feature")
+    if tap.rank > ndims:
+        tap = tap.coalesce()
+    if tap.rank > ndims:
+        return tap.offset, list(tap.sizes), list(tap.strides)
+    sizes, strides = list(tap.sizes), list(tap.strides)
+    is_repeat = (
+        tap.rank > 1
+        and not is_sym(strides[0])
+        and strides[0] == 0
+        and (is_sym(sizes[0]) or sizes[0] != 1)
+    )
+    at = int(is_repeat)
+    sizes[at:at] = [1] * (ndims - tap.rank)
+    strides[at:at] = [0] * (ndims - tap.rank)
+    return tap.offset, sizes, zero_leading_unit_strides(sizes, strides, start=at)
 
 
 def npu_write32(address, value, buffer=None, column=None, row=None, **kwargs):
@@ -175,11 +207,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
                 "NpuDmaMemcpyNd can take either a TileAccessPattern OR (sizes and/or strides and/or offsets), but not both."
             )
         if tap:
-            sizes = tap.sizes.copy()
-            strides = tap.strides.copy()
-            # For some reason, the type checking of offsets does not mesh well with offset being a property
-            # so here we make sure it is evaluated and properly is seen as an integer.
-            offsets = [0] * 3 + [int(tap.offset)]
+            offset, sizes, strides = _shim_dims(tap)
+            offsets = [0] * 3 + [offset]
         else:
             if offsets is None:
                 offsets = [0] * 4
@@ -188,13 +217,11 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             if strides is None:
                 strides = [0] * 3 + [1]
         dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
-            [_as_bd_i64(v) for v in offsets]
+            offsets
         )
-        dynamic_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(
-            [_as_bd_i64(v) for v in sizes]
-        )
+        dynamic_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes)
         dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(
-            [_as_bd_i64(v) for v in strides]
+            strides
         )
         if isinstance(metadata, ObjectFifoCreateOp):
             metadata = metadata.sym_name.value
@@ -291,11 +318,7 @@ def shim_dma_bd(
         )
 
     if tap:
-        sizes = tap.sizes.copy()
-        strides = tap.strides.copy()
-        # For some reason, the type checking of offsets does not mesh well with offset being a property
-        # so here we make sure it is evaluated and properly is seen as an integer.
-        offset = int(tap.offset)
+        offset, sizes, strides = _shim_dims(tap)
 
     if offset is None:
         offset = 0
@@ -304,8 +327,8 @@ def shim_dma_bd(
     if strides is None:
         strides = [0] * (len(sizes) - 1) + [1]
 
-    if transfer_len is None:
-        transfer_len = np.prod(sizes[-3:])
+    if transfer_len is None and not any(is_sym(s) for s in sizes[-3:]):
+        transfer_len = sprod(sizes[-3:])
 
     dma_bd(
         mem,
@@ -342,7 +365,7 @@ def shim_dma_single_bd_task(
         alloc: The alloc argument associates the DMA task with an ObjectFIFO. This argument is called alloc because the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
         mem: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
         tap (optional): A TensorAccessPattern is an alternative method of specifying offset/sizes/strides for determining an access pattern over the mem buffer.
-        offset (optional): Starting point for the data transfer. Default values is 0. A runtime value wider than i32 is narrowed, as is ``transfer_len``, with a check that it fits.
+        offset (optional): Starting point for the data transfer. Default values is 0.
         sizes: The extent of data to be transferred across each dimension. The dimensions before the last three are iteration dimensions, one execution of the BD per index; past four in all, which must then be constant, the compiler splits the transfer into several BDs.
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         issue_token (optional): If a token is issued, one may call dma_await_task on the returned task. Default is False.
@@ -364,11 +387,7 @@ def shim_dma_single_bd_task(
         )
 
     if tap:
-        sizes = tap.sizes.copy()
-        strides = tap.strides.copy()
-        # For some reason, the type checking of offsets does not mesh well with offset being a property
-        # so here we make sure it is evaluated and properly is seen as an integer.
-        offset = int(tap.offset)
+        offset, sizes, strides = _shim_dims(tap)
 
     # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration
     # dimension. The repeat_count below hoists sizes[0] into that iteration
@@ -383,20 +402,10 @@ def shim_dma_single_bd_task(
     # aie-decompose-large-dma-bd splits the ones a BD cannot hold into separate
     # tasks, which it can only do for constant sizes and strides.
     if sizes is not None:
-        sizes = [_as_bd_i64(v) for v in sizes]
-        if strides is not None:
-            strides = [_as_bd_i64(v) for v in strides]
         while len(sizes) < 4:
             sizes = [1] + list(sizes)
             if strides is not None:
                 strides = [0] + list(strides)
-        if len(sizes) > 4 and not all(
-            isinstance(v, (int, np.integer)) for v in list(sizes) + list(strides or [])
-        ):
-            raise ValueError(
-                f"a DMA BD with more than 4 dimensions (got {len(sizes)}) needs "
-                "constant sizes and strides, which the compiler splits into BDs of 4"
-            )
 
     # The outer dimensions become the queue-push repeat_count. Constants fold to
     # the repeat_count attribute; a runtime sizes[0] (4 dims at most) flows into
@@ -410,12 +419,10 @@ def shim_dma_single_bd_task(
             if runs > 1:
                 repeat_count = runs - 1
         else:
-            repeat_count_val = _as_bd_i32(sizes[0]) - _as_i32(1)
-    # The BD block lowers only constants, so any arithmetic on runtime values
-    # happens here, ahead of the task.
-    if transfer_len is None and sizes is not None:
-        transfer_len = np.prod(sizes[-3:])
-    offset, transfer_len = _as_bd_i32(offset), _as_bd_i32(transfer_len)
+            # Runtime: a zero sizes[0] wraps to a huge count, which the
+            # queue-push lowering refuses along with any other one past the
+            # target's maximum.
+            repeat_count_val = sizes[0] - 1
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,
@@ -482,7 +489,7 @@ def dma_start_task(
             "dma_start_task must receive at least one DMAConfigureTaskForOp to start"
         )
     runtime = isinstance(repeat_count, Value)
-    repeat_count_val = _as_bd_i32(repeat_count) if runtime else None
+    repeat_count_val = repeat_count if runtime else None
     for dma_task in args:
         _orig_dma_start_task(
             dma_task,
@@ -493,7 +500,7 @@ def dma_start_task(
 
 
 def set_lock_value(lock: aie.LockOp, value: int | Value):
-    return set_lock(lock, _as_bd_i32(_as_i32(value)))
+    return set_lock(lock, _as_i32(si32(value)))
 
 
 # Parameter ops

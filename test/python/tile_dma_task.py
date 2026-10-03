@@ -23,6 +23,7 @@ from aie.iron import (
     Release,
     Runtime,
 )
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.device import NPU2Col1, Tile
 
 
@@ -37,11 +38,7 @@ def emit_dynamic_memtile_task():
         # Both the transfer length and the d1 wrap come from the dispatch-time
         # tile count, so the descriptor differs on every call.
         bd = Bd(
-            buf,
-            sizes=[1, 1, tiles, 512],
-            strides=[0, 0, 512, 1],
-            length=tiles * 512,
-            bd_id=0,
+            buf, tap=TensorAccessPattern((4096,), 0, [tiles, 512], [512, 1]), bd_id=0
         )
         DmaEndpoint(mem_tile, DMAChannelDir.MM2S, 0).task(
             bd, wait=True
@@ -54,16 +51,14 @@ def emit_dynamic_memtile_task():
 
 # The buffer is declared at device scope, ahead of the sequence that reaches it.
 # The descriptor is configured on the mem tile's own channel, not through a
-# shim DMA allocation, and carries runtime sizes and length. The i64 length is
-# range-checked before narrowing so truncation cannot turn an invalid value into
-# a different valid transfer.
+# shim DMA allocation, and carries runtime sizes; the compiler derives the
+# transfer length from them.
 
 # CHECK: aie.buffer({{.*}}) {sym_name = "resident"}
 # CHECK: aie.runtime_sequence
-# CHECK: aiex.npu.assert_bd_field(%[[LEN64:.*]]) {max = 2147483647 : i32} : i64
-# CHECK-NEXT: %[[LEN32:.*]] = arith.trunci %[[LEN64]] : i64 to i32
-# CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
-# CHECK: aie.dma_bd(%{{.*}} : memref<4096xi32> len = %[[LEN32]] sizes = [1, 1, %{{.*}}, 512] strides = [0, 0, 512, 1]) {bd_id = 0 : i32}
+# CHECK: cf.assert %{{.*}}, "All sizes must be >= 1
+# CHECK-NEXT: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
+# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> sizes = [%arg1, 512] strides = [512, 1]) {bd_id = 0 : i32}
 # CHECK: } {issue_token = true}
 # CHECK-NEXT: aiex.dma_start_task
 # CHECK-NEXT: aiex.dma_await_task
@@ -78,30 +73,26 @@ def emit_shared_length_drain():
     out = Flow(mem_tile, shim, src_channel=0, dst_channel=0)
 
     def sequence(host, tiles):
-        at = dict(sizes=[1, 1, tiles, 512], strides=[0, 0, 512, 1])
-        length = tiles * 512
-        out.endpoint(mem_tile).task(Bd(buf, length=length, **at)).start().free()
-        out.drain(host, transfer_len=length, wait=True, **at)
+        tap = TensorAccessPattern((4096,), 0, [tiles, 512], [512, 1])
+        out.endpoint(mem_tile).task(Bd(buf, tap=tap)).start().free()
+        out.drain(host, tap=tap, wait=True)
 
     rt = Runtime(sequence, [buf_ty, np.int64])
     rt.add_flow(out)
     return Program(NPU2Col1(), rt).resolve_program()
 
 
-# The same i64 length also sizes the shim drain, narrowed the same way and
-# before the task opens, since a BD block admits no arithmetic.
+# The same tap sizes the shim drain.
 # CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
-# CHECK: aie.dma_bd(%{{.*}} : memref<4096xi32> len = %{{.*}} sizes = [1, 1, %{{.*}}, 512]
+# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> sizes = [%arg1, 512] strides = [512, 1])
 # CHECK: aiex.dma_start_task
 # CHECK-NEXT: aiex.dma_free_task
-# CHECK: aiex.npu.assert_bd_field(%[[DLEN64:.*]]) {max = 2147483647 : i32} : i64
-# CHECK-NEXT: %[[DLEN32:.*]] = arith.trunci %[[DLEN64]] : i64 to i32
 # CHECK-NEXT: aiex.dma_configure_task_for
-# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 len = %[[DLEN32]] sizes = [1, 1, %{{.*}}, 512]
+# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 sizes = [1, 1, %arg1, 512] strides = [0, 0, 512, 1])
 print(emit_shared_length_drain())
 
 
-def emit_i32_dims(dims=None, chain=False):
+def emit_i32_dims(chain=False):
     buf_ty = np.ndarray[(4096,), np.dtype[np.int32]]
     shim = Tile(col=0, row=0, tile_type=AIETileType.ShimNOCTile)
     mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
@@ -109,44 +100,34 @@ def emit_i32_dims(dims=None, chain=False):
     out = Flow(mem_tile, shim, src_channel=0, dst_channel=0)
 
     def sequence(host, tiles):
-        sizes = dims(tiles) if dims else [1, 1, tiles, 512]
-        bd = Bd(buf, sizes=sizes, strides=[0, 0, 512, 1])
+        tap = TensorAccessPattern((4096,), 0, [tiles, 512], [512, 1])
+        bd = Bd(buf, tap=tap)
         out.endpoint(mem_tile).task(*([bd, bd] if chain else [bd])).start()
         if not chain:
-            out.drain(host, sizes=sizes, strides=[0, 0, 512, 1], wait=True)
+            out.drain(host, tap=tap, wait=True)
 
     rt = Runtime(sequence, [buf_ty, np.int32])
     rt.add_flow(out)
-    try:
-        return Program(NPU2Col1(), rt).resolve_program()
-    except TypeError as e:
-        return f"RAISED TypeError: {e}"
+    return Program(NPU2Col1(), rt).resolve_program()
 
 
-# An i32 dispatch-time scalar feeds the i64 sizes directly, and the omitted
-# length defaults to their product: each task widens and multiplies before
-# opening, since a BD block admits no arithmetic.
-# CHECK: %[[T1:.*]] = arith.extsi %arg1 : i32 to i64
-# CHECK: aiex.npu.assert_bd_field
-# CHECK-NEXT: %[[L1:.*]] = arith.trunci %{{.*}} : i64 to i32
-# CHECK-NEXT: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
-# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> len = %[[L1]] sizes = [1, 1, %[[T1]], 512]
-# CHECK: %[[T2:.*]] = arith.extsi %arg1 : i32 to i64
-# CHECK: %[[L2:.*]] = arith.trunci %{{.*}} : i64 to i32
-# CHECK-NEXT: aiex.dma_configure_task_for
-# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 len = %[[L2]] sizes = [1, 1, %[[T2]], 512]
+# An i32 dispatch-time scalar is widened once and feeds every descriptor.
+# CHECK: aie.runtime_sequence(%arg0: memref<4096xi32>, %arg1: i32)
+# CHECK-NEXT: %[[N:.*]] = arith.extsi %arg1 : i32 to i64
+# CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
+# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> sizes = [%[[N]], 512] strides = [512, 1])
+# CHECK: aiex.dma_configure_task_for
+# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 sizes = [1, 1, %[[N]], 512]
 print(emit_i32_dims())
 
-# A chain's Bds are cast ahead of the task too, so each block holds only the BD.
+# Each block of a chain holds only its BD.
+# CHECK: %[[M:.*]] = arith.extsi %arg1 : i32 to i64
 # CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
-# CHECK-NEXT: aie.dma_bd(%{{.*}} sizes = [1, 1, %{{[0-9]+}}, 512]
+# CHECK-NEXT: aie.dma_bd(%{{.*}} sizes = [%[[M]], 512]
 # CHECK-NEXT: aie.next_bd
-# CHECK: aie.dma_bd(%{{.*}} sizes = [1, 1, %{{[0-9]+}}, 512]
+# CHECK: aie.dma_bd(%{{.*}} sizes = [%[[M]], 512]
 # CHECK-NEXT: aie.end
 print(emit_i32_dims(chain=True))
-
-# CHECK: RAISED TypeError: A BD field must be an int or an integer SSA value, got float.
-print(emit_i32_dims(dims=lambda tiles: [1, 1, 2.0, 512]))
 
 
 def emit_endpoint_task():
@@ -218,13 +199,14 @@ def emit_resident_replay(uses_ty):
 # CHECK: aiex.dma_start_task(%{{.*}}) repeat %arg1 : i32
 print(emit_resident_replay(np.int32))
 
-# A wider scalar is narrowed to the i32 the fields take, asserting it fits.
-# CHECK: aie.runtime_sequence
-# CHECK: aiex.npu.assert_bd_field(%arg1) {max = 2147483647 : i32} : i64
+# A wider scalar is narrowed to the i32 a lock value takes, asserting it fits.
+# The start count keeps its width for the push lowering's own guard.
+# CHECK: aie.runtime_sequence(%{{.*}}, %arg1: i64)
+# CHECK: cf.assert %{{.*}}, "a runtime 32-bit field value must be >= 0"
+# CHECK: cf.assert %{{.*}}, "a runtime 32-bit field value must be < 2**31"
 # CHECK-NEXT: %[[SET:.*]] = arith.trunci %arg1 : i64 to i32
 # CHECK-NEXT: aiex.set_lock(%empty, %[[SET]])
 # CHECK: %[[ACQ:.*]] = arith.trunci %arg1 : i64 to i32
-# CHECK: aie.use_lock(%empty, AcquireGreaterEqual, %[[ACQ]])
-# CHECK: %[[RC:.*]] = arith.trunci %arg1 : i64 to i32
-# CHECK: aiex.dma_start_task(%{{.*}}) repeat %[[RC]] : i32
+# CHECK-NEXT: aie.use_lock(%empty, AcquireGreaterEqual, %[[ACQ]])
+# CHECK: aiex.dma_start_task(%{{.*}}) repeat %arg1 : i64
 print(emit_resident_replay(np.int64))

@@ -71,9 +71,10 @@ bool isDecomposableNdDmaPattern(mlir::Operation *forOp,
                                 llvm::ArrayRef<int64_t> stridesInnermostFirst);
 
 /// Decompose an illegal pattern into one or more legal sub-patterns that move
-/// the same data. Prefers dimension factoring (single-op result when possible);
-/// falls back to slicing (multiple ops). Returns failure when no legal
-/// decomposition into at most kMaxNdDmaPieces patterns exists.
+/// the same data. Prefers merging contiguous dimensions, then dimension
+/// factoring (single-op results); falls back to slicing (multiple ops). Returns
+/// failure when no legal decomposition into at most kMaxNdDmaPieces patterns
+/// exists.
 ///
 /// A contiguous pattern is illegal only if its iteration dimension (d3) is
 /// longer than a BD's, and is sliced along it.

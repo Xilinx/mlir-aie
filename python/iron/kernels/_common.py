@@ -17,6 +17,7 @@ from aie.helpers.npdtypes import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
@@ -44,7 +45,7 @@ class TensorLayout:
     ``shape`` is the logical tile. ``pack`` and ``unpack`` are the reversible
     host codec between ``(calls, *shape)`` and ``(calls, storage_elements)``;
     identity is the default. ``stream`` is the DMA transform
-    (``dims_to_stream``) a design applies on the hop that feeds this operand
+    (``to_stream``) a design applies on the hop that feeds this operand
     to the kernel or drains it, ``None`` when the operand streams as stored;
     ``block`` is the micro-tile the kernel consumes or produces, ``(r, s)``
     for an MMUL operand. The codec is built from the same two facts, so the
@@ -55,7 +56,7 @@ class TensorLayout:
     shape: tuple[int, ...]
     pack: Callable | None = None
     unpack: Callable | None = None
-    stream: list | None = None
+    stream: TensorAccessPattern | None = None
     block: tuple[int, ...] | None = None
 
     def encode(self, values):
@@ -391,25 +392,22 @@ def _arch_traits() -> ArchTraits:
     return ARCH_TRAITS[_detect_arch()]
 
 
-def _portable() -> bool:
-    """Whether ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch."""
-    return os.environ.get("AIE_KERNELS_PORTABLE") == "1"
-
-
 def _tuned_arch() -> str:
     """Return the arch whose ``AIE_TUNED_*`` code is built, or ``"portable"``.
 
     A factory choice that follows the code of one branch -- a stack size, a
     tolerance, a reference model -- keys on this rather than on
     ``_detect_arch``, so that it pairs with the branch built when
-    ``_portable()`` holds.
+    ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch.
     """
-    return "portable" if _portable() else _detect_arch()
+    if os.environ.get("AIE_KERNELS_PORTABLE") == "1":
+        return "portable"
+    return _detect_arch()
 
 
 def _portable_flags() -> tuple[str, ...]:
     """Return the compile flags that select the branch ``_tuned_arch`` names."""
-    return ("-DAIE_KERNELS_PORTABLE",) if _portable() else ()
+    return ("-DAIE_KERNELS_PORTABLE",) if _tuned_arch() == "portable" else ()
 
 
 def _kernel_source(relpath: str) -> Path:
@@ -566,11 +564,9 @@ def _min_dma_aligned_elems(dtype) -> int:
 
 def _arg_type_key(t):
     """Hashable key for one entry of ``arg_types`` (part of a kernel's identity)."""
-    if hasattr(t, "__args__"):
-        # np.ndarray[(shape,), np.dtype[T]]
-        shape = t.__args__[0]
-        inner = t.__args__[1]
-        dtype = inner.__args__[0] if hasattr(inner, "__args__") else inner
+    if get_origin(t) is np.ndarray:
+        shape, inner = get_args(t)
+        dtype = get_args(inner)[0] if get_origin(inner) is np.dtype else inner
         return ("ndarray", tuple(shape), str(dtype))
     return repr(t)
 

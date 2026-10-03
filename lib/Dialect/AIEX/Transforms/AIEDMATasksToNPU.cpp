@@ -16,15 +16,18 @@
 #include "aie/Dialect/AIEX/Utils/BdLowering.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -91,11 +94,12 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
       return failure();
     }
     Value bdIdVal = getAsValue(rewriter, loc, idOfr, rewriter.getI32Type());
-    // push_queue takes bd_id + repeat_count as SSA operands. repeat_count is
-    // the start's override, else a runtime operand when present (dynamic tile
-    // count), else the compile-time attribute materialized as a constant.
-    Value repeatCount = getAsValue(
-        rewriter, loc, op.getPushRepeatCount(task_op), rewriter.getI32Type());
+    // A runtime repeat count keeps its width so the push lowering can
+    // range-check it before narrowing.
+    OpFoldResult repeatOfr = op.getPushRepeatCount(task_op);
+    Value repeatCount = dyn_cast<Value>(repeatOfr);
+    if (!repeatCount)
+      repeatCount = getAsValue(rewriter, loc, repeatOfr, rewriter.getI32Type());
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
         task_op.getChannel(), op.getPushIssueToken(task_op), repeatCount,
@@ -216,6 +220,25 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
+  // A builder that derives a BD operand from runtime scalars (a width cast, a
+  // transfer-length product, a cf.assert guard) emits that arithmetic where it
+  // is called, inside the BD block. None of it depends on the BD, so hoist it
+  // ahead of the task. What stays (an op with other effects, or one reading a
+  // value only the block defines) is left for verifyNoUnsupportedOpsInBlock to
+  // reject.
+  void hoistScalarOpsOutOfBdBlocks(DMAConfigureTaskOp op) {
+    moveLoopInvariantCode(
+        {&op.getBody()},
+        [](Value v, Region *body) {
+          return !body->isAncestor(v.getParentRegion());
+        },
+        [](Operation *inner, Region *) {
+          return inner->getNumRegions() == 0 &&
+                 (isPure(inner) || isa<cf::AssertOp>(inner));
+        },
+        [&](Operation *inner, Region *) { inner->moveBefore(op); });
+  }
+
   LogicalResult verifyNoUnsupportedOpsInBlock(Block &block) {
     WalkResult unsupported_ops = block.walk([&](Operation *inner_op) {
       return llvm::TypeSwitch<Operation *, WalkResult>(inner_op)
@@ -323,7 +346,10 @@ struct AIEDMATasksToNPUPass
       OpFoldResult oneStride = builder.getI32IntegerAttr(1);
       Value argPlus =
           buildArgPlusValue(builder, bd_op.getLoc(), {offsetOfr}, {oneStride},
-                            bd_op.getBufferElementTypeWidthInBytes(), offset);
+                            bd_op.getBufferElementTypeWidthInBytes(), offset,
+                            target_model.getAddressGenGranularity() / 8);
+      if (!argPlus)
+        return failure();
       NpuAddressPatchOp::create(builder, bd_op.getLoc(),
                                 /*addr*/ register_addr,
                                 /*addr_val*/ runtimeRegisterAddr,
@@ -377,26 +403,30 @@ struct AIEDMATasksToNPUPass
         addrField =
             createConstantI32(builder, loc, addrBits.place(buf_addr / divisor));
       } else {
-        // Bound the element offset before i32 byte-address arithmetic can wrap.
-        NpuAssertBdFieldOp::create(
-            builder, loc, bd_op.getOffset(),
-            builder.getI32IntegerAttr(
-                (maxByteAddr - buf_addr) /
-                bd_op.getBufferElementTypeWidthInBytes()));
-        addrField = buildArgPlusValue(
-            builder, loc, {OpFoldResult(bd_op.getOffset())},
-            {OpFoldResult(builder.getI32IntegerAttr(1))},
-            bd_op.getBufferElementTypeWidthInBytes(), (int64_t)buf_addr);
-        if (divisor != 1) {
-          NpuAssertBdDivisibleOp::create(builder, loc, addrField, divisor,
-                                         /*allow_unit=*/false);
-          addrField =
-              arith::DivUIOp::create(builder, loc, addrField,
-                                     createConstantI32(builder, loc, divisor));
-          NpuAssertBdFieldOp::create(
-              builder, loc, addrField,
-              builder.getI32IntegerAttr(addrBits.mask()));
-        }
+        Value byteAddr =
+            buildArgPlusValue(builder, loc, {OpFoldResult(bd_op.getOffset())},
+                              {OpFoldResult(builder.getI32IntegerAttr(1))},
+                              bd_op.getBufferElementTypeWidthInBytes(),
+                              (int64_t)buf_addr, divisor);
+        if (!byteAddr)
+          return failure();
+        Type i64 = builder.getI64Type();
+        Value fits = builder.createOrFold<arith::CmpIOp>(
+            loc, arith::CmpIPredicate::ule, byteAddr,
+            arith::ConstantOp::create(builder, loc,
+                                      IntegerAttr::get(i64, maxByteAddr)));
+        if (failed(emitRuntimeCheck(builder, loc, fits,
+                                    "a runtime DMA offset puts the buffer "
+                                    "address past the tile's DMA address "
+                                    "field")))
+          return failure();
+        if (divisor != 1)
+          byteAddr = arith::DivUIOp::create(
+              builder, loc, byteAddr,
+              arith::ConstantOp::create(builder, loc,
+                                        IntegerAttr::get(i64, divisor)));
+        addrField = arith::TruncIOp::create(builder, loc, builder.getI32Type(),
+                                            byteAddr);
         if (addrBits.shift != 0)
           addrField = arith::ShLIOp::create(
               builder, loc, addrField,
@@ -469,24 +499,36 @@ struct AIEDMATasksToNPUPass
     if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
       f.out_of_order_id = *oooId;
 
+    if (std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration())
+      f.iteration_current = iter->getCurrent();
+
     // AcquireGreaterEqual is encoded negated, so a runtime one must be >= 1:
     // a field of 0 would mean "acquire == 0".
     auto lockValue = [&](AIE::UseLockOp op, int32_t &constOut,
-                         Value &valueOut) {
+                         Value &valueOut) -> LogicalResult {
       if (std::optional<int64_t> c = getConstantIntValue(op.getValue())) {
         constOut = op.acquireGE() ? -static_cast<int32_t>(*c)
                                   : static_cast<int32_t>(*c);
-        return;
+        return success();
       }
       Location loc = op.getLoc();
-      NpuAssertBdFieldOp::create(
-          builder, loc, op.getValue(),
-          builder.getI32IntegerAttr(target_model.getMaxLockValue()),
-          builder.getI32IntegerAttr(op.acquireGE() ? 1 : 0));
+      int32_t minValue = op.acquireGE() ? 1 : 0;
+      int32_t maxValue = target_model.getMaxLockValue();
+      Value fromMin = builder.createOrFold<arith::SubIOp>(
+          loc, op.getValue(), createConstantI32(builder, loc, minValue));
+      Value inRange = builder.createOrFold<arith::CmpIOp>(
+          loc, arith::CmpIPredicate::ule, fromMin,
+          createConstantI32(builder, loc, maxValue - minValue));
+      if (failed(emitRuntimeCheck(builder, loc, inRange,
+                                  "a runtime lock value must be in [" +
+                                      Twine(minValue) + ":" + Twine(maxValue) +
+                                      "]")))
+        return failure();
       valueOut = op.getValue();
       if (op.acquireGE())
         valueOut = arith::SubIOp::create(
             builder, loc, createConstantI32(builder, loc, 0), valueOut);
+      return success();
     };
 
     AIE::UseLockOp acquire_op, release_op;
@@ -501,14 +543,16 @@ struct AIEDMATasksToNPUPass
         AIE::LockOp acq_lock = acquire_op.getLockOp();
         if (std::optional<int32_t> acqLockId = acq_lock.getLockID()) {
           f.lock_acq_id = *acqLockId;
-          lockValue(acquire_op, f.lock_acq_val, f.lock_acq_val_val);
+          if (failed(lockValue(acquire_op, f.lock_acq_val, f.lock_acq_val_val)))
+            return failure();
           f.lock_acq_enable = 1;
         }
       }
 
       if (std::optional<int32_t> relLockId = rel_lock.getLockID()) {
         f.lock_rel_id = *relLockId;
-        lockValue(release_op, f.lock_rel_val, f.lock_rel_val_val);
+        if (failed(lockValue(release_op, f.lock_rel_val, f.lock_rel_val_val)))
+          return failure();
       }
 
       // For memtile, add lock offset using getLockLocalBaseIndex. This matches
@@ -541,7 +585,6 @@ struct AIEDMATasksToNPUPass
                          Value runtimeBdId = nullptr, bool outOfOrder = false) {
     const auto &target_model = AIE::getTargetModel(bd_op);
     Location loc = bd_op.getLoc();
-    auto i32ty = builder.getIntegerType(32);
     int col = tile.getCol();
     int row = tile.getRow();
 
@@ -588,88 +631,74 @@ struct AIEDMATasksToNPUPass
       sizes4[4 - sizes.size() + i] = sizes[i];
       strides4[4 - strides.size() + i] = strides[i];
     }
-
-    // buffer_length override = len (elements) * elemWidth / addressGranularity,
-    // as an SSA value. dma_task carries the transfer length explicitly (unlike
-    // memcpy_nd's size-product), and it may be runtime.
-    uint64_t elemWidth =
-        static_cast<uint64_t>(bd_op.getBufferElementTypeWidthInBytes()) * 8;
-    uint32_t gran = target_model.getAddressGenGranularity();
+    // The iteration attribute takes the outermost (iteration) slot, which
+    // verifyTaskBDDimensions has kept free of sizes/strides.
+    if (std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration()) {
+      sizes4.front() = builder.getI64IntegerAttr(iter->getSize());
+      strides4.front() = builder.getI64IntegerAttr(iter->getStride());
+    }
     // len as OpFoldResult: the runtime operand if present, else the static_len
-    // attr, else the whole buffer as on the static path. That default needs
-    // constant addressing: with a runtime offset or dim it could disagree with
-    // the transfer or run past the buffer.
+    // attr (a constant BD with runtime sizes/strides still reaches here). With
+    // runtime dims and no len, the transfer is their d0*d1*d2 extent; with
+    // constant dims or none, it is the whole buffer, as on the static path.
+    // That default needs a constant offset, or it could run past the buffer.
     OpFoldResult lenOfr;
-    if (Value lenOperand = bd_op.getLen()) {
+    if (Value lenOperand = bd_op.getLen())
       lenOfr = lenOperand;
-    } else if (std::optional<int32_t> constLen = bd_op.getConstantLen()) {
+    else if (std::optional<int32_t> constLen = bd_op.getConstantLen())
       lenOfr = builder.getI32IntegerAttr(*constLen);
-    } else {
-      auto memrefType = llvm::dyn_cast<MemRefType>(bd_op.getBuffer().getType());
-      bool runtimeAddressing =
-          (bd_op.hasOffset() && !bd_op.getConstantOffset()) ||
-          llvm::any_of(llvm::concat<OpFoldResult>(sizes, strides),
-                       [](OpFoldResult v) { return !getConstantIntValue(v); });
-      if (!memrefType || !memrefType.hasStaticShape() || runtimeAddressing)
+    else if (bd_op.getSizes().empty() && bd_op.getStrides().empty()) {
+      auto bufTy = cast<BaseMemRefType>(bd_op.getBuffer().getType());
+      if (!bufTy.hasStaticShape() ||
+          (bd_op.getOffset() && !bd_op.getConstantOffset()))
         return bd_op->emitOpError(
             "runtime-valued BD requires an explicit transfer length; provide a "
             "`len` for this buffer descriptor.");
-      lenOfr = builder.getI32IntegerAttr(memrefType.getNumElements());
+      lenOfr = builder.getI64IntegerAttr(bufTy.getNumElements());
     }
-    Value bufLen;
-    if (auto constLen = getConstantIntValue(lenOfr)) {
-      // Fold a constant length rather than emitting the scaling arithmetic: a
-      // BD can reach the dynamic path for its sizes alone, and leaving the
-      // length as an unfolded arith chain would also cost it a runtime
-      // narrow-field guard for a value already known to fit.
-      if (*constLen <= 0 || *constLen * elemWidth < gran ||
-          (*constLen * elemWidth) % gran != 0)
-        return bd_op->emitOpError(
-            "Transfer length must be a positive whole number of "
-            "address-generation granules.");
-      // As on the static path, the lowest three dims (d3 repeats the BD) must
-      // cover the length exactly.
-      std::optional<int64_t> dimsLen = 1;
-      for (OpFoldResult s : llvm::drop_begin(sizes4)) {
-        std::optional<int64_t> c = getConstantIntValue(s);
-        if (!c) {
-          dimsLen.reset();
-          break;
-        }
-        *dimsLen *= *c;
+
+    // As on the static path, the lowest three dims (d3 repeats the BD) must
+    // cover a constant length exactly.
+    std::optional<int64_t> constLen =
+        lenOfr ? getConstantIntValue(lenOfr) : std::nullopt;
+    std::optional<int64_t> dimsLen = 1;
+    for (OpFoldResult s : llvm::drop_begin(sizes4)) {
+      std::optional<int64_t> c = getConstantIntValue(s);
+      if (!c) {
+        dimsLen.reset();
+        break;
       }
-      if (!sizes.empty() && dimsLen && *dimsLen != *constLen) {
-        auto err = bd_op->emitOpError(
-                       "Buffer descriptor length does not match length of "
-                       "transfer expressed by lowest three dimensions of data "
-                       "layout transformation strides/wraps. ")
-                   << "BD length is " << (*constLen * elemWidth / 8)
-                   << " bytes. Lowest three dimensions of data layout "
-                      "transformation would result in transfer of "
-                   << (*dimsLen * elemWidth / 8) << " bytes. ";
-        err.attachNote() << "Do not include the highest dimension size in "
-                            "transfer length, as this is the BD repeat count.";
-        return failure();
-      }
-      bufLen = createConstantI32(builder, loc, *constLen * elemWidth / gran);
-    } else {
-      Value lenVal = getAsValue(builder, loc, lenOfr, i32ty);
-      uint64_t maxLen = std::min<uint64_t>(
-          std::numeric_limits<int32_t>::max(),
-          target_model.getDmaBdMaxLen(col, row) * gran / elemWidth);
-      NpuAssertBdFieldOp::create(
-          builder, loc, lenVal, builder.getI32IntegerAttr(maxLen),
-          builder.getI32IntegerAttr((gran + elemWidth - 1) / elemWidth));
-      uint32_t divisor = bdGranuleDivisor(elemWidth, gran);
-      if (divisor > 1)
-        NpuAssertBdDivisibleOp::create(builder, loc, lenVal, divisor,
-                                       /*allow_unit=*/false);
-      // Divide before multiplying so valid large lengths cannot wrap in i32.
-      bufLen = arith::MulIOp::create(
-          builder, loc,
-          arith::DivUIOp::create(builder, loc, lenVal,
-                                 createConstantI32(builder, loc, divisor)),
-          createConstantI32(builder, loc, elemWidth * divisor / gran));
+      *dimsLen *= *c;
+    }
+    uint64_t elemWidth =
+        static_cast<uint64_t>(bd_op.getBufferElementTypeWidthInBytes()) * 8;
+    if (!sizes.empty() && constLen && dimsLen && *dimsLen != *constLen) {
+      auto err = bd_op->emitOpError(
+                     "Buffer descriptor length does not match length of "
+                     "transfer expressed by lowest three dimensions of data "
+                     "layout transformation strides/wraps. ")
+                 << "BD length is " << (*constLen * elemWidth / 8)
+                 << " bytes. Lowest three dimensions of data layout "
+                    "transformation would result in transfer of "
+                 << (*dimsLen * elemWidth / 8) << " bytes. ";
+      err.attachNote() << "Do not include the highest dimension size in "
+                          "transfer length, as this is the BD repeat count.";
+      return failure();
+    }
+
+    // A BD without addressing dims, or whose dims are a unit-stride d0 alone,
+    // is a plain linear transfer of `len` elements (canonicalization strips a
+    // contiguous [1, 1, 1, N] to this form, and the static path encodes it
+    // linear from `len` alone), so give it exactly that shape. With any other
+    // dims, `len` must agree with their d0*d1*d2 extent.
+    bool linear =
+        sizes.empty() ||
+        (lenOfr && isConstantIntValue(strides4[3], 1) &&
+         llvm::all_of(ArrayRef(sizes4).drop_back(),
+                      [](OpFoldResult v) { return isConstantIntValue(v, 1); }));
+    if (linear) {
+      sizes4[3] = lenOfr;
+      strides4[3] = one;
     }
 
     // The BD-level repeat_count (encoder output) is unused here: the dma_task
@@ -677,11 +706,24 @@ struct AIEDMATasksToNPUPass
     // op's repeat_count, not the BD's outer dim.
     SmallVector<Value> bdWords;
     Value bdRepeatCount;
-    if (failed(buildBdWords(builder, loc, target_model, col, row, f, sizes4,
-                            strides4, elemWidth, bd_op.getBurstLength(),
-                            bd_op.getAxcacheOrDefault(), bufLen, bdRepeatCount,
-                            bdWords)))
+    if (failed(buildBdWords(
+            builder, loc, target_model, col, row, f, sizes4, strides4,
+            elemWidth, bd_op.getBurstLength(), bd_op.getAxcacheOrDefault(),
+            linear ? OpFoldResult() : lenOfr, bdRepeatCount, bdWords)))
       return failure();
+
+    // The walk must stay inside the host buffer it reads or writes.
+    if (auto trace = traceSubviewToBlockArgument(bd_op.getBuffer())) {
+      OpFoldResult offsetOfr =
+          bd_op.getOffset() ? OpFoldResult(bd_op.getOffset())
+                            : OpFoldResult(builder.getI32IntegerAttr(
+                                  bd_op.getConstantOffset().value_or(0)));
+      if (failed(guardWithinHostBuffer(
+              builder, loc, cast<BaseMemRefType>(trace->rootArg.getType()),
+              trace->offsetInBytes, elemWidth / 8, {offsetOfr}, {one}, sizes4,
+              strides4)))
+        return failure();
+    }
 
     // One blockwrite carries the whole register block for BD configuration.
     Value bdBase =
@@ -780,6 +822,13 @@ struct AIEDMATasksToNPUPass
         bd_op.getConstantDimensions();
     if (!dimsStorage)
       return bd_op->emitOpError("internal error folding BD dimensions");
+    // The iteration attribute rides in the outermost (iteration) slot of the
+    // dimensioned form, so a BD without dims becomes one contiguous dimension.
+    std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration();
+    if (iter && dimsStorage->empty())
+      dimsStorage->push_back(AIE::BDDimLayoutAttr::get(
+          builder.getContext(), len / bd_op.getBufferElementTypeWidthInBytes(),
+          1));
     std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims;
     if (!dimsStorage->empty())
       dims = llvm::ArrayRef<AIE::BDDimLayoutAttr>(*dimsStorage);
@@ -823,6 +872,10 @@ struct AIEDMATasksToNPUPass
         int j = dims->size() - i - 1;
         input_sizes[i] = (*dims)[j].getSize();
         input_strides[i] = (*dims)[j].getStride();
+      }
+      if (iter) {
+        input_sizes[3] = iter->getSize();
+        input_strides[3] = iter->getStride();
       }
 
       // d3 (repeat) is excluded; a repeated linear transfer is still linear.
@@ -949,7 +1002,8 @@ struct AIEDMATasksToNPUPass
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
         /*d2_size=*/d2size, /*d2_stride=*/d2stride,
-        /*iteration_current=*/0, /*iteration_size=*/iteration_size,
+        /*iteration_current=*/f.iteration_current,
+        /*iteration_size=*/iteration_size,
         /*iteration_stride=*/iteration_stride,
         /*next_bd=*/f.next_bd_id,
         /*row=*/tile.getRow(),
@@ -1062,6 +1116,7 @@ struct AIEDMATasksToNPUPass
     }
 
     Region &body = op.getBody();
+    hoistScalarOpsOutOfBdBlocks(op);
 
     // Verify each BD block first; subsequent functions rely on them being
     // well-formed
@@ -1174,6 +1229,7 @@ struct AIEDMATasksToNPUPass
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
     target.addLegalDialect<arith::ArithDialect>();
+    target.addLegalOp<cf::AssertOp>();
     target.addIllegalOp<DMAStartTaskOp>();
     target.addIllegalOp<DMAAwaitTaskOp>();
     RewritePatternSet patterns(&getContext());
@@ -1193,6 +1249,8 @@ struct AIEDMATasksToNPUPass
     if (failed(rewriteDMAConfigureTaskOp(device))) {
       signalPassFailure();
     }
+
+    eraseDeadArith(device);
   }
 };
 

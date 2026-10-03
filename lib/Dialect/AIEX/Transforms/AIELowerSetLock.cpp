@@ -9,8 +9,10 @@
 #include "aie/Dialect/AIEX/AIETokenAnalysis.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/Utils/BdLowering.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -57,10 +59,14 @@ public:
 
     Location loc = op.getLoc();
     Value value = adaptor.getValue();
-    if (!getConstantIntValue(value))
-      NpuAssertBdFieldOp::create(
-          rewriter, loc, value,
-          rewriter.getI32IntegerAttr(tm.getMaxLockValue()));
+    uint32_t maxValue = tm.getMaxLockValue();
+    Value inRange = rewriter.createOrFold<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::ule, value,
+        createConstantI32(rewriter, loc, maxValue));
+    if (failed(emitRuntimeCheck(
+            rewriter, loc, inRange,
+            "a runtime lock value must be in [0:" + Twine(maxValue) + "]")))
+      return failure();
     rewriter.replaceOpWithNewOp<NpuWrite32Op>(
         op, createConstantI32(rewriter, loc, localLockAddress), value, nullptr,
         rewriter.getI32IntegerAttr(col), rewriter.getI32IntegerAttr(row));
@@ -76,7 +82,7 @@ struct AIELowerSetLockPass
     DeviceOp device = getOperation();
 
     ConversionTarget target(getContext());
-    target.addLegalOp<NpuWrite32Op, NpuAssertBdFieldOp>();
+    target.addLegalOp<NpuWrite32Op, cf::AssertOp>();
     target.addLegalDialect<arith::ArithDialect>();
     target.addIllegalOp<SetLockOp>();
 

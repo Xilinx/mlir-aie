@@ -7,7 +7,7 @@
 
 One entrypoint exposes ``pad_value`` here: a hand-placed memtile ``TileDma``
 whose MM2S ``DmaChannel(pad_value=...)`` sets the per-channel fill and whose
-``Bd(pad_dimensions=...)`` sets the per-BD geometry. Stages a transfer
+padded ``Bd`` tap sets the per-BD geometry. Stages a transfer
 shim -> memtile -> shim. See harness.py for the run/verify sweep and pad cases.
 """
 
@@ -17,6 +17,7 @@ from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports
     AIETileType,
     DMAChannelDir,
 )
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Acquire,
     Bd,
@@ -58,7 +59,6 @@ def _dma_channel(elem_dtype):
                     bds=[
                         Bd(
                             buffer=buf,
-                            length=REAL,
                             acquires=[Acquire(prod)],
                             releases=[Release(cons)],
                         )
@@ -71,10 +71,9 @@ def _dma_channel(elem_dtype):
                     bds=[
                         Bd(
                             buffer=buf,
-                            length=REGION,
-                            sizes=[REAL],
-                            strides=[1],
-                            pad_dimensions=[(PAD_BEFORE, PAD_AFTER)],
+                            tap=TensorAccessPattern.full((REAL,)).pad(
+                                [(PAD_BEFORE, PAD_AFTER)]
+                            ),
                             acquires=[Acquire(cons)],
                             releases=[Release(prod)],
                         )

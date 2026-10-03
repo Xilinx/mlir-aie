@@ -1088,8 +1088,11 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
 
     Do NOT copy an iteration number between the two ops: e.g. `size = 1` disables
     iteration here, but `iteration_size = 1` means *two* executions on
-    `writebd`. The `iteration` attribute is rejected on the other path; express
-    iteration there via the outermost `sizes`/`strides` dimension instead.
+    `writebd`.
+
+    Inside a runtime-sequence DMA task (`aiex.dma_configure_task`), the
+    attribute takes the iteration register that the outermost `sizes`/`strides`
+    dimension would otherwise fill, so such a BD gives one dimension fewer.
   }];
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$buffer,
@@ -1097,14 +1100,16 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // Can be given as a static attribute or a runtime SSA value. If neither
       // are given, we assume zero for the offset and the memref's full buffer
       // length for the length.
-      Optional<I32>:$offset, Optional<I32>:$len,
+      Optional<AnySignlessIntegerOrIndex>:$offset,
+      Optional<AnySignlessIntegerOrIndex>:$len,
       OptionalAttr<AIEI32Attr>:$static_offset,
       OptionalAttr<AIEI32Attr>:$static_len,
       // n-d tensor addressing: sizes/strides as a mixed static/dynamic index
       // list (DynamicIndexList), mirroring aiex.npu.dma_memcpy_nd. A constant
       // lands in static_sizes/static_strides; a runtime value becomes an
       // operand. Outermost dimension first.
-      Variadic<I64>:$sizes, Variadic<I64>:$strides,
+      Variadic<AnySignlessIntegerOrIndex>:$sizes,
+      Variadic<AnySignlessIntegerOrIndex>:$strides,
       OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
       OptionalAttr<DenseI64ArrayAttr>:$static_strides,
       OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
@@ -1143,10 +1148,10 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
   let hasVerifier = 1;
   let assemblyFormat = [{
     `(` $buffer `:` type($buffer)
-    ( `offset` `=` custom<DynamicScalar>($offset, $static_offset)^ )?
-    ( `len` `=` custom<DynamicScalar>($len, $static_len)^ )?
-    ( `sizes` `=` custom<DynamicIndexList>($sizes, $static_sizes)^ )?
-    ( `strides` `=` custom<DynamicIndexList>($strides, $static_strides)^ )?
+    ( `offset` `=` custom<DynamicScalar>($offset, $static_offset, type($offset))^ )?
+    ( `len` `=` custom<DynamicScalar>($len, $static_len, type($len))^ )?
+    ( `sizes` `=` custom<TypedDynamicIndexList>($sizes, $static_sizes, type($sizes))^ )?
+    ( `strides` `=` custom<TypedDynamicIndexList>($strides, $static_strides, type($strides))^ )?
     ( `pad` $pad_dimensions^ )?
     `)`
     ( `bd_id_val` $bd_id_val^ `:` type($bd_id_val) )?

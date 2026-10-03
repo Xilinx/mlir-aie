@@ -93,7 +93,7 @@ my_design(a, b)              # compile + run + sync back
 
 ## JIT compile + cache
 
-`@iron.jit` caches compiled artifacts by `(MLIR bytecode + compile-time kwargs)`. The first call to a design compiles; subsequent calls with the same kwargs reuse the cache.
+`@iron.jit` caches compiled artifacts by the design's Python sources (the generator, the modules it reaches, and mlir-aie's own) and its compile-time kwargs. The first call to a design compiles; subsequent calls with the same kwargs reuse the cache.
 
 * Cache directory: `${NPU_CACHE_HOME:-~/.npu/cache}`. Set `NPU_CACHE_HOME=/tmp/iron_cache` (or anywhere) to override.
 * To force a clean build, `rm -rf "$NPU_CACHE_HOME"` (or the per-design `build/` directory the Makefile writes to).
