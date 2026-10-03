@@ -23,14 +23,16 @@ def StateTableFunc : I32EnumAttr<"StateTableFunc",
 def ScratchpadParameterKindCore : I32EnumAttrCase<"Core", 0, "core">;
 def ScratchpadParameterKindAddr : I32EnumAttrCase<"Addr", 1, "addr">;
 
-def ScratchpadParameterKind : I32EnumAttr<"ScratchpadParameterKind",
-    "Usage kind of a scratchpad runtime parameter: "
-    "`core` parameters are read by AIE cores via "
-    "`aiex.read_scratchpad_parameter` (values are shift-2 encoded); "
-    "`addr` parameters are used only by DMA ops, as BD address offsets via "
-    "`offset_parameter` or lengths via `length_parameter` (values written "
-    "raw). A length parameter a core also reads is `core`",
-    [ScratchpadParameterKindCore, ScratchpadParameterKindAddr]> {
+def ScratchpadParameterKind
+    : I32EnumAttr<
+          "ScratchpadParameterKind",
+          "Usage kind of a scratchpad runtime parameter: `core` parameters "
+          "are read by AIE cores via `aiex.read_scratchpad_parameter` "
+          "(values are shift-2 encoded); `addr` parameters are used only by "
+          "DMA ops, as BD address offsets via `offset_parameter` or lengths "
+          "via `length_parameter` (values written raw). A length parameter "
+          "a core also reads is `core`",
+          [ScratchpadParameterKindCore, ScratchpadParameterKindAddr]> {
   let cppNamespace = "::xilinx::AIEX";
 }
 

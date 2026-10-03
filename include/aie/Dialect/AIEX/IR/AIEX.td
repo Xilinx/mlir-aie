@@ -1895,8 +1895,7 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
       // assigned by `--aie-lower-scratchpad-parameters` pass:
       OptionalAttr<UI8Attr>:$state_table_idx,
       OptionalAttr<ScratchpadParameterKind>:$kind,
-      OptionalAttr<I32Attr>:$min_value,
-      OptionalAttr<I32Attr>:$max_value);
+      OptionalAttr<I32Attr>:$min_value, OptionalAttr<I32Attr>:$max_value);
   let results = (outs);
   let assemblyFormat = [{ $sym_name `:` $type attr-dict }];
 }
