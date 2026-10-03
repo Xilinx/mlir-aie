@@ -210,6 +210,8 @@ from .flm_gemma4 import (
 )
 from .fused import fused_mm
 from .linalg import (
+    MV_COL_MAJ_FIRST,
+    MV_COL_MAJ_LAST,
     MatrixKernel,
     cascade_mm,
     cascade_mm_put,
@@ -466,6 +468,8 @@ __all__ = [
     "mm_bfp_shuffle_ref",
     "mm_bfp_shuffle",
     "mv",
+    "MV_COL_MAJ_FIRST",
+    "MV_COL_MAJ_LAST",
     "cascade_mm",
     "cascade_mm_put",
     "conv2dk1",
