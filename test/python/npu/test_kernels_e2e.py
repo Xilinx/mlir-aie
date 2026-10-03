@@ -22,6 +22,9 @@ Two tiers share one table (``kernel_cases.py``):
 * ``test_kernel_extensive`` (marker ``extensive``, deselected by the lit
   shards) runs every case under every edge-data case its contract
   admits, for ``--seeds`` random seeds.
+* ``kernel_check`` marks dedicated tests for factories the generic harness
+  cannot check. They run in both tiers; their JUnit properties credit each
+  named factory in the nightly catalogue without claiming timing coverage.
 
 A pass says the kernel is within tolerance, not how close it is.
 ``--report-error PATH`` records, for every run of either tier, pass or fail,
@@ -356,6 +359,7 @@ def _bf16_from_bits(u):
     return (np.asarray(u, np.uint32) << 16).view(np.float32).astype(bfloat16)
 
 
+@pytest.mark.kernel_check("set_rounding", invalidates_timing=True)
 def test_setup_reaches_the_core():
     """A contract's ``setup`` must change the core, not just declare an intent.
 
@@ -627,6 +631,7 @@ def _cascade_cases():
         )
 
 
+@pytest.mark.kernel_check("cascade_mm", "cascade_mm_put")
 @pytest.mark.parametrize("combo,shape,tiles,full_range", list(_cascade_cases()))
 def test_cascade_mm_chain(combo, shape, tiles, full_range):
     in_dt, out_dt = _CASCADE_DTYPES[combo]
