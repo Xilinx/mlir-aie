@@ -424,9 +424,14 @@ static inline void init_state_w(bfloat16 *scale_buffer, int32_t size) {
 
 template <int W>
 static inline void invert_sums_w(bfloat16 *scale_buffer, int32_t B_q) {
+  // A row past S_q attended over nothing: its sum is 0 and its O row is 0,
+  // and 0 * (1 / 0) would make it NaN. It is scaled by 0 instead. Every other
+  // row attends at least its diagonal, so its sum is positive.
+  const auto zeros = aie::zeros<bfloat16, W>();
   for (int32_t i = 0; i < B_q; i += W) {
     aie::vector<bfloat16, W> l_vec = aie::load_v<W>(scale_buffer + 2 * B_q + i);
-    l_vec = aie::inv(l_vec);
+    aie::mask<W> empty = aie::eq(l_vec, zeros);
+    l_vec = aie::select(aie::inv(l_vec), zeros, empty);
     aie::store_v(scale_buffer + 2 * B_q + i, l_vec);
   }
 }
