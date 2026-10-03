@@ -2385,6 +2385,8 @@
       
         
       
+        
+      
     
     
     
@@ -2644,6 +2646,34 @@
     
   
     Nightly Kernel Checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=components" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nightly Component Checks
   
 
     
@@ -4146,6 +4176,10 @@
 <tr>
 <td><a href="https://xilinx.github.io/mlir-aie/kernel-checks/">Nightly Kernel Checks</a></td>
 <td>Last night's run per NPU (power mode, host, Peano, what passed, what moved past its threshold, and warnings when the numbers are less comparable), then the history: the <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels">kernels view</a> lists every kernel, its sources, which NPUs build it and passed it last night; a kernel's own page (<code>#view=kernel&amp;kernel=&lt;factory&gt;</code>) has every case's latest numbers and charts; the charts view has one chart per case and metric.</td>
+</tr>
+<tr>
+<td><a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=components">Nightly Component Checks</a></td>
+<td>The same dashboard's components view: last night's SA placer seed sweep (which seeds placed, their cost, CPU time and memory) and the SA placer hardware check (mobilenet compiled, run and verified on an NPU2 for a few seeds at batch 1 to 64: time per image, streaming time and compile time), each as cards and a chart like a kernel's, with the command that reproduces each failed seed or run. See <a href="../../section-1/#nightly-sa-placer-checks">Nightly SA placer checks</a>.</td>
 </tr>
 </tbody>
 </table>
