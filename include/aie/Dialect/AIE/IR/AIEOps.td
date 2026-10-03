@@ -1293,6 +1293,10 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     // verifier before its own, so that verifier must call this directly.
     ::mlir::LogicalResult verifyMixedSizesAndStrides();
 
+    // Rejects a constant transfer reaching past a static-shaped local buffer.
+    // Task BDs skip DMABDOp::verify, so their parent's verifier calls this too.
+    ::mlir::LogicalResult verifyTransferInBounds();
+
     // Reconstruct the historical BDDimLayoutAttr list (outermost-first) by
     // folding the mixed sizes/strides to constants. Returns:
     //   - empty vector if there are no dimensions (linear transfer);

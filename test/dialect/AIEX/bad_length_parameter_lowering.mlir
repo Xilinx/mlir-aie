@@ -33,8 +33,45 @@ aie.device(npu2) {
   aie.runtime_sequence(%arg0 : memref<4096xi32>) {
     %bd = aiex.dma_bd_pool_pop(0, 0) partition [0, 16) : i32
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
-      // expected-error @+1 {{'aie.dma_bd' op length_parameter requires a constant bd_id}}
+      // expected-error @+1 {{'aie.dma_bd' op length_parameter requires a constant bd_id, next_bd and lock value}}
       aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 64) bd_id_val %bd : i32 {length_parameter = @n, length_unit = 4 : i32}
+      aie.end
+    }
+    aiex.dma_start_task(%task)
+  }
+}
+
+// -----
+
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence(%arg0 : memref<4096xi32>) {
+    %bd1 = aiex.dma_bd_pool_pop(0, 0) partition [1, 16) : i32
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      // expected-error @+1 {{'aie.dma_bd' op length_parameter requires a constant bd_id, next_bd and lock value}}
+      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 64) {bd_id = 0 : i32, length_parameter = @n, length_unit = 4 : i32}
+      aie.next_bd ^bd1
+    ^bd1:
+      aie.dma_bd(%arg0 : memref<4096xi32> offset = 2048 len = 64) bd_id_val %bd1 : i32
+      aie.end
+    }
+    aiex.dma_start_task(%task)
+  }
+}
+
+// -----
+
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  %lock = aie.lock(%t, 0) {init = 0 : i32}
+  aie.runtime_sequence(%arg0 : memref<4096xi32>, %uses : i32) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.use_lock(%lock, AcquireGreaterEqual, %uses)
+      // expected-error @+1 {{'aie.dma_bd' op length_parameter requires a constant bd_id, next_bd and lock value}}
+      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 64) {bd_id = 0 : i32, length_parameter = @n, length_unit = 4 : i32}
+      aie.use_lock(%lock, Release, %uses)
       aie.end
     }
     aiex.dma_start_task(%task)

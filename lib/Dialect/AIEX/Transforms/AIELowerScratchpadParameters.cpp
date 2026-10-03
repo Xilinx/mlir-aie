@@ -406,7 +406,7 @@ struct AIELowerScratchpadParametersPass
     }
 
     for (Value lock : syncLocks) {
-      SetLockOp::create(builder, loc, lock, builder.getI32IntegerAttr(1));
+      SetLockOp::create(builder, loc, lock, createConstantI32(builder, loc, 1));
     }
 
     syncOp.erase();

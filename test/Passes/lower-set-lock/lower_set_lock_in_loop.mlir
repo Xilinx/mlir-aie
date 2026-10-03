@@ -27,7 +27,8 @@ module @lock_in_runtime_bound_loop {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       scf.for %i = %c0 to %n step %c1 {
-        aiex.set_lock(%lock22_0, 1)
+        %lock22_0_v1 = arith.constant 1 : i32
+        aiex.set_lock(%lock22_0, %lock22_0_v1)
       }
     }
   }
@@ -55,7 +56,8 @@ module @lock_in_select_arm {
       scf.for %i = %c0 to %n step %c1 {
         scf.index_switch %sel
         case 0 {
-          aiex.set_lock(%lock11_3, 1)
+          %lock11_3_v1 = arith.constant 1 : i32
+          aiex.set_lock(%lock11_3, %lock11_3_v1)
           scf.yield
         }
         default {
