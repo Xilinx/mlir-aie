@@ -3477,6 +3477,50 @@ DMABDOp::getConstantDimensions() {
   return getFoldedDimensions([&]() { return emitOpError(); });
 }
 
+// With dims the furthest index bounds the access (a stride-0 dim may transfer
+// more elements than the buffer holds); without them the length does. A
+// runtime-sequence argument's type does not bound the host buffer behind it.
+LogicalResult DMABDOp::verifyTransferInBounds() {
+  auto buffer = llvm::dyn_cast<MemRefType>(getBuffer().getType());
+  if (!buffer || !buffer.hasStaticShape() ||
+      llvm::isa<BlockArgument>(getBuffer()))
+    return success();
+  std::optional<int32_t> offset = hasOffset() ? getConstantOffset() : 0;
+  if (!offset || *offset < 0)
+    return success();
+  int64_t numElements = buffer.getNumElements();
+  SmallVector<OpFoldResult> sizes = getMixedSizes();
+  SmallVector<OpFoldResult> strides = getMixedStrides();
+  if (sizes.empty()) {
+    std::optional<int64_t> len =
+        hasLen() ? std::optional<int64_t>(getConstantLen()) : numElements;
+    if (!len || *len <= 0 || *offset + *len <= numElements)
+      return success();
+    InFlightDiagnostic err = emitOpError("transfer of ")
+                             << *len << " elements at offset " << *offset
+                             << " runs past the end of the " << numElements
+                             << "-element buffer";
+    if (!hasLen())
+      err.attachNote() << "an omitted `len` is the whole buffer; give the "
+                          "length to transfer from this offset";
+    return err;
+  }
+  int64_t maxIdx = *offset;
+  for (auto [size, stride] : llvm::zip(sizes, strides)) {
+    std::optional<int64_t> s = getConstantIntValue(size);
+    std::optional<int64_t> t = getConstantIntValue(stride);
+    if (!s || !t)
+      return success();
+    maxIdx += *t * (*s - 1);
+  }
+  if (maxIdx < numElements)
+    return success();
+  return emitOpError() << "Specified stride(s) and size(s) result in out of "
+                          "bounds access in buffer, for index "
+                       << maxIdx << " in memref of length " << numElements
+                       << ".";
+}
+
 // A BDDimLayoutAttr array (outermost-first) describes a contiguous row-major
 // scan when the innermost stride is 1 and each outer stride equals the product
 // of all inner sizes.  Used by both DMABDOp verification and canonicalization.
@@ -3599,7 +3643,7 @@ LogicalResult DMABDOp::verify() {
     }
   }
 
-  if (failed(verifyMixedSizesAndStrides()))
+  if (failed(verifyMixedSizesAndStrides()) || failed(verifyTransferInBounds()))
     return failure();
 
   // Fold the mixed sizes/strides to a constant BDDimLayoutAttr list for
@@ -3626,13 +3670,6 @@ LogicalResult DMABDOp::verify() {
     if (!buffer)
       return emitOpError() << "dimensions attribute cannot be used with "
                               "unranked memref buffer type.";
-    int64_t maxIdx = getDimsMaxIdx(*dims);
-    if (buffer.getNumElements() <= maxIdx)
-      return emitOpError() << "Specified stride(s) and size(s) result in out "
-                              "of bounds access in buffer, for index "
-                           << std::to_string(maxIdx) << " in memref of length "
-                           << std::to_string(buffer.getNumElements()) << ".";
-
     // A contiguous row-major access on a shim tile is lowered to linear mode
     // by aie-dma-tasks-to-npu / aie-dma-to-npu, using the wide buffer_length
     // register which is exempt from the 10-bit ND wrap-size limit.

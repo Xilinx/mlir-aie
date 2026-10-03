@@ -1308,7 +1308,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
         result = failure();
       }
       // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
-      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)))
+      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
+          failed(bd.verifyTransferInBounds()))
         result = failure();
       bds.push_back(bd);
     });
