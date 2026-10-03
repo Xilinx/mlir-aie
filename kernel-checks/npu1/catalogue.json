@@ -1,9 +1,10 @@
 {
  "npu": "npu1",
  "arch": "aie2",
- "commit": "18ca6c1cbf4cbb1b5d6748e09909bce30a5b5c15",
- "date": "2026-10-02T06:42:58.416301+00:00",
+ "commit": "be5b8091e5f5cd9f67cc8628a6c0fcf0bb9dc564",
+ "date": "2026-10-03T03:24:33.660774+00:00",
  "swept": true,
+ "timing_refused": "power mode is default, required 'turbo'",
  "kernels": [
   {
    "factory": "set_rounding",
@@ -15,12 +16,14 @@
    "builds": [
     "set_rounding"
    ],
-   "passed": 0,
+   "passed": 1,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": [],
-   "reason": "runs once before the calls; nothing to time"
+   "untimed": [
+    "set_rounding/test_setup_reaches_the_core"
+   ],
+   "flaky": []
   },
   {
    "factory": "zero",
@@ -48,7 +51,8 @@
     "zero/64x4/bfloat16",
     "zero/64x4/int32",
     "zero/68x3/uint8/vector-tail"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "passthrough",
@@ -63,19 +67,15 @@
    "passed": 10,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "passthrough/1024x16/int16",
-    "passthrough/2048x256/int32",
-    "passthrough/4096x16/int16",
-    "passthrough/4096x16/uint8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "passthrough/128x4/int16/edge-tiny",
     "passthrough/16x4/int32/edge-one-vector",
     "passthrough/256x4/uint8/edge-tiny",
     "passthrough/4096x4/int32",
     "passthrough/64x4/int32/edge-tiny"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "scale",
@@ -91,18 +91,15 @@
    "passed": 8,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "scale/1024x16/int16",
-    "scale/1024x16/int32",
-    "scale/1024x256/int16"
-   ],
+   "timing_failed": [],
    "untimed": [
     "scale/1024x16/int32/edge-negfactor",
     "scale/16x4/int32/edge-one-vector",
     "scale/32x4/int16/edge-one-vector",
     "scale/48x4/int32/edge-tail",
     "scale/64x4/int32/edge-tiny"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "add",
@@ -117,11 +114,9 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "add/1024x16/bfloat16",
-    "add/1024x256/bfloat16"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "add_sized",
@@ -136,14 +131,12 @@
    "passed": 4,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "add_sized/2048x16/bfloat16/llama-prefill",
-    "add_sized/256x16/bfloat16/llama-decode"
-   ],
+   "timing_failed": [],
    "untimed": [
     "add_sized/1024x16/bfloat16",
     "add_sized/32x4/bfloat16/edge-tiny"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "mul",
@@ -158,11 +151,9 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "mul/1024x16/bfloat16",
-    "mul/1024x256/bfloat16"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "mul_sized",
@@ -177,16 +168,12 @@
    "passed": 6,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "mul_sized/1024x16/bfloat16/llama-decode-ffn",
-    "mul_sized/2048x16/bfloat16/llama-prefill-attn-scale",
-    "mul_sized/256x16/bfloat16/llama-decode-attn-scale",
-    "mul_sized/4096x16/bfloat16/llama-prefill-ffn"
-   ],
+   "timing_failed": [],
    "untimed": [
     "mul_sized/1024x16/bfloat16",
     "mul_sized/32x4/bfloat16/edge-tiny"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "mul_add",
@@ -201,11 +188,9 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "mul_add/1024x16/bfloat16",
-    "mul_add/1024x16/bfloat16/add"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "rms_norm",
@@ -220,13 +205,12 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "rms_norm/1024x16/bfloat16/cols=1024"
-   ],
+   "timing_failed": [],
    "untimed": [
     "rms_norm/1000x16/bfloat16/cols=1000/row-tail",
     "rms_norm/200x16/bfloat16/cols=200/row-tail"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "q4nx_dequant",
@@ -238,7 +222,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "sample_select",
@@ -255,6 +240,7 @@
    "timed": 0,
    "timing_failed": [],
    "untimed": [],
+   "flaky": [],
    "reason": "no case in test/python/npu/kernel_cases.py"
   },
   {
@@ -272,6 +258,7 @@
    "timed": 0,
    "timing_failed": [],
    "untimed": [],
+   "flaky": [],
    "reason": "no case in test/python/npu/kernel_cases.py"
   },
   {
@@ -287,13 +274,12 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "layer_norm/1024x16/bfloat16/cols=1024"
-   ],
+   "timing_failed": [],
    "untimed": [
     "layer_norm/1008x16/bfloat16/cols=1008/row-tail",
     "layer_norm/208x16/bfloat16/cols=208/row-tail"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "layer_norm_f32",
@@ -308,13 +294,12 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "layer_norm_f32/1024x16/float32/cols=1024"
-   ],
+   "timing_failed": [],
    "untimed": [
     "layer_norm_f32/1008x16/float32/cols=1008/row-tail",
     "layer_norm_f32/112x16/float32/cols=112/row-tail"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "layer_norm_affine_cast",
@@ -329,13 +314,12 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024"
-   ],
+   "timing_failed": [],
    "untimed": [
     "layer_norm_affine_cast/1008x16/float32_bfloat16/cols=1008/row-tail",
     "layer_norm_affine_cast/112x16/float32_bfloat16/cols=112/row-tail"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "rope",
@@ -350,16 +334,14 @@
    "passed": 6,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "rope/1024x16/bfloat16/cols=1024",
-    "rope/64x16/bfloat16/cols=64/two_halves=True/llama"
-   ],
+   "timing_failed": [],
    "untimed": [
     "rope/1008x16/bfloat16/cols=1008/row-tail",
     "rope/1024x16/bfloat16/cols=1024/two_halves=True",
     "rope/112x16/bfloat16/cols=112/row-tail",
     "rope/96x16/bfloat16/cols=96/two_halves=True/row-tail"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "mm_activation_epilogue",
@@ -374,12 +356,7 @@
    "passed": 18,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "mm_activation_epilogue/1024x16/float32/gelu",
-    "mm_activation_epilogue/1024x16/float32/identity",
-    "mm_activation_epilogue/1024x16/float32/relu",
-    "mm_activation_epilogue/1024x16/float32/silu"
-   ],
+   "timing_failed": [],
    "untimed": [
     "mm_activation_epilogue/1024x16/float32/identity-ieee",
     "mm_activation_epilogue/1024x16/float32/relu-ieee",
@@ -395,7 +372,8 @@
     "mm_activation_epilogue/80x4/float32/identity-min-trips",
     "mm_activation_epilogue/80x4/float32/relu-min-trips",
     "mm_activation_epilogue/80x4/float32/silu-min-trips"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_attn_prefill",
@@ -407,7 +385,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_swa_prefill",
@@ -419,7 +398,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_prefill_block_begin",
@@ -431,7 +411,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_prefill_block_end",
@@ -443,7 +424,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_prefill_rounds",
@@ -455,7 +437,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_prefill_blocks",
@@ -467,7 +450,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_prefill_finalize",
@@ -479,7 +463,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_prefill_round_begin",
@@ -491,7 +476,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_prefill_qk_core",
@@ -503,7 +489,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_prefill_fv_core",
@@ -515,7 +502,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_prefill_block_mid_core",
@@ -527,7 +515,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_q4nx_lm_head",
@@ -539,7 +528,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_q4nx_lm_head_epilogue",
@@ -551,7 +541,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_q4nx_lm_head_rms",
@@ -563,7 +554,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_glu",
@@ -575,7 +567,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_glu_core",
@@ -587,7 +580,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_attn_kv",
@@ -599,7 +593,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_attn_kv_kvh2",
@@ -611,7 +606,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_attn_qk",
@@ -623,7 +619,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_attn_qk_kvh2",
@@ -635,7 +632,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_attn_qk_core",
@@ -647,7 +645,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_attn_qk_kvh2_core",
@@ -659,7 +658,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_swa_attn_kv",
@@ -671,7 +671,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_attn_kv_core",
@@ -683,7 +684,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_attn_kv_kvh2_core",
@@ -695,7 +697,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_swa_attn_kv_core",
@@ -707,7 +710,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_rope",
@@ -719,7 +723,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_rope_core",
@@ -731,7 +736,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_v_norm_core",
@@ -743,7 +749,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_rms_residual",
@@ -755,7 +762,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_rms_residual_core",
@@ -767,7 +775,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_proj_main",
@@ -779,7 +788,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_per_layer_up",
@@ -791,7 +801,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_bf16_proj_core",
@@ -803,7 +814,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_proj_layer_embedding",
@@ -815,7 +827,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_decode_gate_layer_embedding",
@@ -827,7 +840,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "flm_gemma4_pli_gelu_core",
@@ -839,7 +853,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "reduce_add",
@@ -855,18 +870,14 @@
    "passed": 8,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "reduce_add/1024x16/bfloat16",
-    "reduce_add/1024x16/int32",
-    "reduce_add/1024x256/bfloat16",
-    "reduce_add/1024x256/int32"
-   ],
+   "timing_failed": [],
    "untimed": [
     "reduce_add/1024x1/int32/edge-single",
     "reduce_add/16x4/int32/edge-one-vector",
     "reduce_add/32x4/bfloat16/edge-one-vector",
     "reduce_add/64x4/int32/edge-tiny"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "reduce_min",
@@ -882,16 +893,12 @@
    "passed": 6,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "reduce_min/1024x16/bfloat16",
-    "reduce_min/1024x16/int32",
-    "reduce_min/1024x256/bfloat16",
-    "reduce_min/1024x256/int32"
-   ],
+   "timing_failed": [],
    "untimed": [
     "reduce_min/16x4/int32/edge-one-vector",
     "reduce_min/32x4/bfloat16/edge-one-vector"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "reduce_max",
@@ -907,16 +914,12 @@
    "passed": 6,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "reduce_max/1024x16/bfloat16",
-    "reduce_max/1024x16/int32",
-    "reduce_max/1024x256/bfloat16",
-    "reduce_max/1024x256/int32"
-   ],
+   "timing_failed": [],
    "untimed": [
     "reduce_max/16x4/int32/edge-one-vector",
     "reduce_max/32x4/bfloat16/edge-one-vector"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "compute_max",
@@ -931,11 +934,9 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "compute_max/1x16/int32",
-    "compute_max/2x16/bfloat16"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "relu",
@@ -950,11 +951,9 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "relu/1024x16/bfloat16",
-    "relu/1024x256/bfloat16"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "relu_sized",
@@ -973,7 +972,8 @@
    "untimed": [
     "relu_sized/1024x16/bfloat16",
     "relu_sized/32x4/bfloat16/edge-tiny"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "rgba2hue",
@@ -988,14 +988,13 @@
    "passed": 4,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "rgba2hue/7680x16/uint8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "rgba2hue/1152x4/uint8/line_width=288/tail",
     "rgba2hue/128x4/uint8/line_width=32/one-vector",
     "rgba2hue/384x4/uint8/line_width=96/short-row"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "threshold",
@@ -1012,9 +1011,7 @@
    "passed": 9,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "threshold/1920x16/uint8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "threshold/1920x16/int16",
     "threshold/1920x16/uint8/tozero-inv",
@@ -1024,7 +1021,8 @@
     "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-2",
     "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-3",
     "threshold/64x4/uint8/line_width=64/edge-one-vector-mode-4"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "bitwise_or",
@@ -1041,12 +1039,11 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "bitwise_or/1920x16/uint8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "bitwise_or/64x4/uint8/line_width=64/edge-one-vector"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "bitwise_and",
@@ -1063,12 +1060,11 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "bitwise_and/1920x16/uint8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "bitwise_and/64x4/uint8/line_width=64/edge-one-vector"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "gray2rgba",
@@ -1083,14 +1079,13 @@
    "passed": 4,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "gray2rgba/1920x16/uint8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "gray2rgba/112x4/uint8/line_width=112/short-row",
     "gray2rgba/144x4/uint8/line_width=144/tail",
     "gray2rgba/48x4/uint8/line_width=48/tail-only"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "rgba2gray",
@@ -1105,14 +1100,13 @@
    "passed": 4,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "rgba2gray/7680x16/uint8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "rgba2gray/1152x4/uint8/line_width=288/tail",
     "rgba2gray/128x4/uint8/line_width=32/one-vector",
     "rgba2gray/640x4/uint8/line_width=160/short-row"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "filter2d",
@@ -1127,15 +1121,14 @@
    "passed": 5,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "filter2d/1920x16/uint8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "filter2d/128x4/uint8/line_width=128/two-blocks",
     "filter2d/160x4/uint8/line_width=160/short-row",
     "filter2d/352x4/uint8/line_width=352/odd-pipelined",
     "filter2d/96x4/uint8/line_width=96/one-block"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "add_weighted",
@@ -1151,14 +1144,13 @@
    "passed": 4,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "add_weighted/1920x16/uint8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "add_weighted/1920x16/int16/gamma",
     "add_weighted/1920x16/uint8/gamma",
     "add_weighted/32x4/uint8/line_width=32/edge-one-vector"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "softmax",
@@ -1173,15 +1165,12 @@
    "passed": 5,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "softmax/1024x16/bfloat16",
-    "softmax/1024x256/bfloat16",
-    "softmax/2048x16/bfloat16/llama-prefill"
-   ],
+   "timing_failed": [],
    "untimed": [
     "softmax/160x4/bfloat16/min-pipelined",
     "softmax/32x4/bfloat16/short-trip"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "gelu",
@@ -1196,11 +1185,9 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "gelu/1024x16/bfloat16",
-    "gelu/1024x256/bfloat16"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "gelu_sized",
@@ -1221,7 +1208,8 @@
     "gelu_sized/160x4/bfloat16/unroll-tail",
     "gelu_sized/32x4/bfloat16/edge-tiny",
     "gelu_sized/96x4/bfloat16/short-trip"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "silu",
@@ -1236,11 +1224,9 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "silu/1024x16/bfloat16",
-    "silu/1024x256/bfloat16"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "silu_sized",
@@ -1255,16 +1241,14 @@
    "passed": 6,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "silu_sized/1024x16/bfloat16/llama-decode",
-    "silu_sized/4096x16/bfloat16/llama-prefill"
-   ],
+   "timing_failed": [],
    "untimed": [
     "silu_sized/1024x16/bfloat16",
     "silu_sized/160x4/bfloat16/unroll-tail",
     "silu_sized/32x4/bfloat16/edge-tiny",
     "silu_sized/96x4/bfloat16/short-trip"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "swiglu",
@@ -1279,11 +1263,9 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "swiglu/1024x16/bfloat16",
-    "swiglu/1024x256/bfloat16"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "bf16_exp",
@@ -1298,11 +1280,9 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "bf16_exp/1024x16/bfloat16",
-    "bf16_exp/1024x256/bfloat16"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "exp2f_vec",
@@ -1317,13 +1297,11 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "exp2f_vec/1024x16/float32",
-    "exp2f_vec/1024x256/float32"
-   ],
+   "timing_failed": [],
    "untimed": [
     "exp2f_vec/48x4/float32/vector-tail"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "tanh",
@@ -1338,13 +1316,11 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "tanh/1024x16/bfloat16",
-    "tanh/1024x256/bfloat16"
-   ],
+   "timing_failed": [],
    "untimed": [
     "tanh/1056x4/bfloat16/tail"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "sigmoid",
@@ -1359,13 +1335,11 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "sigmoid/1024x16/bfloat16",
-    "sigmoid/1024x256/bfloat16"
-   ],
+   "timing_failed": [],
    "untimed": [
     "sigmoid/1056x4/bfloat16/tail"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "leaky_relu",
@@ -1380,13 +1354,11 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "leaky_relu/1024x16/bfloat16",
-    "leaky_relu/1024x256/bfloat16"
-   ],
+   "timing_failed": [],
    "untimed": [
     "leaky_relu/160x4/bfloat16/unroll-tail"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "axpy",
@@ -1401,13 +1373,11 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "axpy/1024x16/bfloat16",
-    "axpy/1024x256/bfloat16"
-   ],
+   "timing_failed": [],
    "untimed": [
     "axpy/64x4/bfloat16/short-row"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "convert_copy",
@@ -1422,14 +1392,12 @@
    "passed": 4,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "convert_copy/1024x16/float32_bfloat16",
-    "convert_copy/1024x256/float32_bfloat16"
-   ],
+   "timing_failed": [],
    "untimed": [
     "convert_copy/272x4/float32_bfloat16/unroll-tail",
     "convert_copy/64x4/float32_bfloat16/short-row"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "expand",
@@ -1444,14 +1412,12 @@
    "passed": 4,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "expand/576x16/uint8_bfloat16",
-    "expand/576x256/uint8_bfloat16"
-   ],
+   "timing_failed": [],
    "untimed": [
     "expand/400x16/uint8_bfloat16/group_size=96/group-96",
     "expand/544x16/uint8_bfloat16/group_size=64/group-64"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "transpose",
@@ -1469,14 +1435,9 @@
    "passed": 5,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "transpose/1024x16/bfloat16/subtile=4",
-    "transpose/1024x16/bfloat16/subtile=8",
-    "transpose/1024x16/uint32/subtile=8",
-    "transpose/1024x16/uint8/subtile=4",
-    "transpose/8192x16/bfloat16/subtile=8/llama-decode"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "rms_norm_eps",
@@ -1494,7 +1455,8 @@
    "timing_failed": [],
    "untimed": [
     "rms_norm_eps/1024x16/bfloat16/cols=1024"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "mm",
@@ -1515,13 +1477,7 @@
    "passed": 14,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "mm/64x32x64x16/bfloat16_float32",
-    "mm/64x32x64x16/int16_int32",
-    "mm/64x32x64x16/int8_int32",
-    "mm/64x32x64x256/bfloat16_float32",
-    "mm/64x64x64x16/bfloat16_float32/b_col_maj=True"
-   ],
+   "timing_failed": [],
    "untimed": [
     "mm/32x32x32x16/bfloat16_float32/edge-small-tile",
     "mm/64x32x64x1/bfloat16_float32/edge-single-tile",
@@ -1532,7 +1488,8 @@
     "mm/64x32x64x4/int16_int32",
     "mm/64x32x64x4/int16_int32/c_col_maj=True",
     "mm/64x32x64x4/int8_int32/c_col_maj=True"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "fused_mm",
@@ -1547,9 +1504,7 @@
    "passed": 8,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "fused_mm/32x32x16x4/bfloat16"
-   ],
+   "timing_failed": [],
    "untimed": [
     "fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)",
     "fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)/epilogue=silu",
@@ -1558,7 +1513,8 @@
     "fused_mm/32x48x16x4/bfloat16/epilogue=sigmoid",
     "fused_mm/32x48x16x4/bfloat16/epilogue=silu",
     "fused_mm/32x48x16x4/bfloat16/rounding=floor"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "mha",
@@ -1577,7 +1533,8 @@
    "untimed": [
     "mha/64x64x64x4/bfloat16",
     "mha/64x64x64x4/bfloat16/pv=True"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "mha_softmax",
@@ -1592,13 +1549,11 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16",
-    "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal"
-   ],
+   "timing_failed": [],
    "untimed": [
     "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal-padded"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "prefill_fv",
@@ -1613,11 +1568,9 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256",
-    "prefill_fv/8x8x512x4/bfloat16_float32/head_dim=512"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "mm_bfp",
@@ -1629,7 +1582,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "mm_bfp_shuffle",
@@ -1641,7 +1595,8 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": []
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "mv",
@@ -1658,13 +1613,7 @@
    "passed": 12,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "mv/32x256x16/bfloat16",
-    "mv/32x32x16/int16_int32",
-    "mv/4x2048x16/bfloat16/vec_size=64",
-    "mv/4x64x16/bfloat16/vec_size=32",
-    "mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down"
-   ],
+   "timing_failed": [],
    "untimed": [
     "mv/10x512x4/bfloat16/vec_size=64/edge-mac-loop",
     "mv/32x256x4/bfloat16",
@@ -1673,6 +1622,9 @@
     "mv/4x128x4/bfloat16/vec_size=64/edge-two-chunks",
     "mv/4x64x4/bfloat16/vec_size=64/edge-one-chunk",
     "mv/6x128x4/bfloat16/vec_size=64/edge-rows-not-multiple-of-4"
+   ],
+   "flaky": [
+    "mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down"
    ]
   },
   {
@@ -1685,12 +1637,31 @@
    "builds": [
     "cascade_mm"
    ],
-   "passed": 0,
+   "passed": 18,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": [],
-   "reason": "the GET half of a cascade pair: one input arrives on the cascade stream; the device test builds and judges the pair"
+   "untimed": [
+    "cascade_mm/test_cascade_mm_chain[i16_i16-16-2]",
+    "cascade_mm/test_cascade_mm_chain[i16_i16-16-3]",
+    "cascade_mm/test_cascade_mm_chain[i16_i16-16x24x16-3]",
+    "cascade_mm/test_cascade_mm_chain[i16_i16-24-3]",
+    "cascade_mm/test_cascade_mm_chain[i16_i16-32-2]",
+    "cascade_mm/test_cascade_mm_chain[i16_i16-32-3]",
+    "cascade_mm/test_cascade_mm_chain[i16_i16-64-2]",
+    "cascade_mm/test_cascade_mm_chain[i16_i16-64-3-full_range]",
+    "cascade_mm/test_cascade_mm_chain[i16_i16-64-3]",
+    "cascade_mm/test_cascade_mm_chain[i16_i32-16-2]",
+    "cascade_mm/test_cascade_mm_chain[i16_i32-16-3]",
+    "cascade_mm/test_cascade_mm_chain[i16_i32-16x24x16-3]",
+    "cascade_mm/test_cascade_mm_chain[i16_i32-24-3]",
+    "cascade_mm/test_cascade_mm_chain[i16_i32-32-2]",
+    "cascade_mm/test_cascade_mm_chain[i16_i32-32-3]",
+    "cascade_mm/test_cascade_mm_chain[i16_i32-64-2]",
+    "cascade_mm/test_cascade_mm_chain[i16_i32-64-3-full_range]",
+    "cascade_mm/test_cascade_mm_chain[i16_i32-64-3]"
+   ],
+   "flaky": []
   },
   {
    "factory": "cascade_mm_put",
@@ -1702,12 +1673,31 @@
    "builds": [
     "cascade_mm_put"
    ],
-   "passed": 0,
+   "passed": 18,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": [],
-   "reason": "the PUT half of a cascade pair: its result leaves on the cascade stream"
+   "untimed": [
+    "cascade_mm_put/test_cascade_mm_chain[i16_i16-16-2]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i16-16-3]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i16-16x24x16-3]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i16-24-3]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i16-32-2]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i16-32-3]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i16-64-2]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i16-64-3-full_range]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i16-64-3]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i32-16-2]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i32-16-3]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i32-16x24x16-3]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i32-24-3]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i32-32-2]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i32-32-3]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i32-64-2]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i32-64-3-full_range]",
+    "cascade_mm_put/test_cascade_mm_chain[i16_i32-64-3]"
+   ],
+   "flaky": []
   },
   {
    "factory": "conv2dk1",
@@ -1723,13 +1713,11 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "conv2dk1/2048x8/int8_uint8",
-    "conv2dk1/2048x8/uint8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "conv2dk1/4096x8/int8_uint8/input_width=64/two-blocks"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "conv2dk3",
@@ -1745,10 +1733,7 @@
    "passed": 8,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "conv2dk3/2048x8/int8_uint8",
-    "conv2dk3/2048x8/uint8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "conv2dk3/2048x8/int8_uint8/bottom-row",
     "conv2dk3/2048x8/int8_uint8/output_channels=32/weight_output_channels=64/channel-offset",
@@ -1756,7 +1741,8 @@
     "conv2dk3/2048x8/uint8/bottom-row",
     "conv2dk3/2048x8/uint8/output_channels=32/weight_output_channels=64/channel-offset",
     "conv2dk3/2048x8/uint8/top-row"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "dwconv1d",
@@ -1771,10 +1757,9 @@
    "passed": 1,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "dwconv1d_channels_first",
@@ -1789,14 +1774,13 @@
    "passed": 4,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024"
-   ],
+   "timing_failed": [],
    "untimed": [
     "dwconv1d_channels_first/1024x16/bfloat16/kernel_size=9/seq_len=1008/odd-block-count",
     "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=1/seq_len=1024",
     "dwconv1d_channels_first/64x16/bfloat16/kernel_size=17/seq_len=48/short-row"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "dwconv1d_channels_last",
@@ -1811,16 +1795,15 @@
    "passed": 6,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "dwconv1d_channels_last/256x16/bfloat16/channels=256"
-   ],
+   "timing_failed": [],
    "untimed": [
     "dwconv1d_channels_last/256x16/bfloat16/channels=256/clamp=False/unclamped",
     "dwconv1d_channels_last/320x16/bfloat16/channels=320/chunk-tail",
     "dwconv1d_channels_last/480x16/bfloat16/channels=480/odd-chunk-tail",
     "dwconv1d_channels_last/512x16/bfloat16/channels=512/two-chunks",
     "dwconv1d_channels_last/96x16/bfloat16/channels=96/odd-group"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "conv2dk1_skip",
@@ -1836,11 +1819,9 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64",
-    "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/int8_skip"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "conv2dk1_i8",
@@ -1855,12 +1836,11 @@
    "passed": 2,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "conv2dk1_i8/2048x8/int8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "conv2dk1_i8/4096x8/int8/input_width=64/two-blocks"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "conv2dk14",
@@ -1875,14 +1855,13 @@
    "passed": 4,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "conv2dk14/12544x4/uint8_int8"
-   ],
+   "timing_failed": [],
    "untimed": [
     "conv2dk14/12544x4/uint8_int8/output_channels=24/three-groups",
     "conv2dk14/16384x4/uint8_int8/input_width=256/kernel_width=16/kernel-width-16",
     "conv2dk14/25088x4/uint8_int8/input_width=448/output_channels=8/two-tile-groups"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "conv2dk1_skip_init",
@@ -1898,13 +1877,11 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32",
-    "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip"
-   ],
+   "timing_failed": [],
    "untimed": [
     "conv2dk1_skip_init/256x8/uint8/input_channels=16/skip_input_channels=8/one-step"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "bn_conv2dk1_relu",
@@ -1919,17 +1896,9 @@
    "passed": 8,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=120",
-    "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=240",
-    "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=80/input_width=14/output_channels=184",
-    "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=80/input_width=14/output_channels=200",
-    "bn_conv2dk1_relu/1344x8/int8_uint8/input_channels=24/input_width=56/output_channels=72",
-    "bn_conv2dk1_relu/1568x8/int8_uint8/input_channels=112/input_width=14/output_channels=336",
-    "bn_conv2dk1_relu/1792x8/int8_uint8/input_channels=16/input_width=112/output_channels=64",
-    "bn_conv2dk1_relu/560x8/int8_uint8/input_channels=80/input_width=7/output_channels=120"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "bn_conv2dk3",
@@ -1944,9 +1913,7 @@
    "passed": 11,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16"
-   ],
+   "timing_failed": [],
    "untimed": [
     "bn_conv2dk3/1024x8/int8_uint8/input_channels=16/input_width=64/output_channels=8/weight_output_channels=16/channel-offset",
     "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16/top-row",
@@ -1958,7 +1925,8 @@
     "bn_conv2dk3/704x8/int8_uint8/input_channels=8/input_width=88/output_channels=16",
     "bn_conv2dk3/896x8/int8_uint8/input_channels=16/input_width=56/output_channels=24/bottom-row",
     "bn_conv2dk3/960x8/int8_uint8/input_channels=24/input_width=40/output_channels=8/top-row"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "bn_conv2dk1_i8",
@@ -1973,14 +1941,9 @@
    "passed": 5,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "bn_conv2dk1_i8/2016x8/uint8_int8/input_channels=72/input_width=28/output_channels=40",
-    "bn_conv2dk1_i8/2352x8/uint8_int8/input_channels=336/input_width=7/output_channels=80",
-    "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40",
-    "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=240/input_width=14/output_channels=80",
-    "bn_conv2dk1_i8/3584x8/uint8_int8/input_channels=64/input_width=56/output_channels=24"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "bn_conv2dk1_skip",
@@ -1996,17 +1959,9 @@
    "passed": 8,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40",
-    "bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8",
-    "bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8/skip-scale-0",
-    "bn_conv2dk1_skip/2800x8/uint8_int8/input_channels=200/input_width=14/output_channels=80/skip_dtype=int8/skip-scale-0",
-    "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40",
-    "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8",
-    "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8/skip-scale-0",
-    "bn_conv2dk1_skip/4032x8/uint8_int8/input_channels=72/input_width=56/output_channels=24"
-   ],
-   "untimed": []
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
   },
   {
    "factory": "bn_conv2dk3_dw",
@@ -2021,16 +1976,7 @@
    "passed": 32,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "bn_conv2dk3_dw/1792x8/uint8/input_channels=16/input_width=112/output_channels=16",
-    "bn_conv2dk3_dw/2576x8/uint8/input_channels=184/input_width=14/output_channels=184",
-    "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120",
-    "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72",
-    "bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2",
-    "bn_conv2dk3_dw/4704x8/uint8/input_channels=336/input_width=14/output_channels=336/stride=2",
-    "bn_conv2dk3_dw/6720x8/uint8/input_channels=240/input_width=28/output_channels=240/stride=2",
-    "bn_conv2dk3_dw/7168x8/uint8/input_channels=64/input_width=112/output_channels=64/stride=2"
-   ],
+   "timing_failed": [],
    "untimed": [
     "bn_conv2dk3_dw/1024x8/uint8/input_channels=32/input_width=32/output_channels=32/top-row",
     "bn_conv2dk3_dw/1440x8/uint8/input_channels=48/input_width=30/output_channels=48/stride=2/middle-row",
@@ -2056,7 +2002,8 @@
     "bn_conv2dk3_dw/960x8/uint8/input_channels=24/input_width=40/output_channels=24/middle-row",
     "bn_conv2dk3_dw/960x8/uint8/input_channels=32/input_width=30/output_channels=32/middle-row",
     "bn_conv2dk3_dw/960x8/uint8/input_channels=48/input_width=20/output_channels=48/bottom-row"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "bn_conv2dk1_relu_xy_pool_padded",
@@ -2071,16 +2018,12 @@
    "passed": 6,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120",
-    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/mid-row",
-    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=1280/weight_chunk_count=9600/mobilenet-last-row",
-    "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=1280/weight_chunk_count=9600/mobilenet-mid-row"
-   ],
+   "timing_failed": [],
    "untimed": [
     "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/first-row",
     "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=128/weight_chunk_count=5120/split"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "bn_fc_relu_ui16_pad",
@@ -2095,15 +2038,13 @@
    "passed": 5,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8",
-    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/fc1"
-   ],
+   "timing_failed": [],
    "untimed": [
     "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=16/two-blocks",
     "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/ic-tail",
     "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/short"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "bn_conv2dk1_partial_put_i8",
@@ -2115,12 +2056,15 @@
    "builds": [
     "bn_conv2dk1_partial_put_i8"
    ],
-   "passed": 0,
+   "passed": 2,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": [],
-   "reason": "no case in test/python/npu/kernel_cases.py"
+   "untimed": [
+    "bn_conv2dk1_partial_put_i8/test_cascade_conv_relu_pair[13]",
+    "bn_conv2dk1_partial_put_i8/test_cascade_conv_relu_pair[14]"
+   ],
+   "flaky": []
   },
   {
    "factory": "bn_conv2dk1_partial_get_relu_i8",
@@ -2132,12 +2076,15 @@
    "builds": [
     "bn_conv2dk1_partial_get_relu_i8"
    ],
-   "passed": 0,
+   "passed": 2,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": [],
-   "reason": "no case in test/python/npu/kernel_cases.py"
+   "untimed": [
+    "bn_conv2dk1_partial_get_relu_i8/test_cascade_conv_relu_pair[13]",
+    "bn_conv2dk1_partial_get_relu_i8/test_cascade_conv_relu_pair[14]"
+   ],
+   "flaky": []
   },
   {
    "factory": "bn_conv2dk3_dw_out_split",
@@ -2152,13 +2099,12 @@
    "passed": 3,
    "failed": [],
    "timed": 0,
-   "timing_failed": [
-    "bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240"
-   ],
+   "timing_failed": [],
    "untimed": [
     "bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240/top-row",
     "bn_conv2dk3_dw_out_split/480x8/uint8_uint8+uint8/input_channels=80/input_width=6/output_split_channels=40/bottom-row"
-   ]
+   ],
+   "flaky": []
   },
   {
    "factory": "bn_conv2dk1_input_split_partial_put_ui8",
@@ -2170,12 +2116,15 @@
    "builds": [
     "bn_conv2dk1_input_split_partial_put_ui8"
    ],
-   "passed": 0,
+   "passed": 2,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": [],
-   "reason": "no case in test/python/npu/kernel_cases.py"
+   "untimed": [
+    "bn_conv2dk1_input_split_partial_put_ui8/test_cascade_conv_skip_pair[13]",
+    "bn_conv2dk1_input_split_partial_put_ui8/test_cascade_conv_skip_pair[14]"
+   ],
+   "flaky": []
   },
   {
    "factory": "bn_conv2dk1_input_split_partial_skip_get",
@@ -2187,12 +2136,15 @@
    "builds": [
     "bn_conv2dk1_input_split_partial_skip_get"
    ],
-   "passed": 0,
+   "passed": 2,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": [],
-   "reason": "no case in test/python/npu/kernel_cases.py"
+   "untimed": [
+    "bn_conv2dk1_input_split_partial_skip_get/test_cascade_conv_skip_pair[13]",
+    "bn_conv2dk1_input_split_partial_skip_get/test_cascade_conv_skip_pair[14]"
+   ],
+   "flaky": []
   }
  ]
 }

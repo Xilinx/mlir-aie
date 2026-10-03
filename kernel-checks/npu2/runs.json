@@ -1,115 +1,19 @@
 {
  "schema": 1,
  "target": "npu2",
+ "metrics": [
+  "cycles",
+  "cycles_per_kop",
+  "kernel_object_bytes",
+  "npu_us"
+ ],
  "runs": [
-  {
-   "schema": 1,
-   "target": "npu2",
-   "id": "bench-1790632661917",
-   "url": "",
-   "date": "2026-09-28T21:57:41+00:00",
-   "commit": {
-    "id": "d53582d3e0f9f8a2b77695bbf4abbd7766d5584a",
-    "url": "https://github.com/Xilinx/mlir-aie/commit/d53582d3e0f9f8a2b77695bbf4abbd7766d5584a",
-    "message": "Single-core Kernel Optimizations and Tooling (#3801)",
-    "timestamp": "2026-09-28T20:24:43Z"
-   },
-   "pmode": "default",
-   "device": "Krackan",
-   "device_raw": "NPU Krackan 1",
-   "provenance": {
-    "commit": "d53582d3e0",
-    "peano": "22.0.0+0006955e",
-    "kernels": "0857407c3322",
-    "device": "NPU Krackan 1",
-    "pmode": "default"
-   },
-   "sane": true,
-   "published": true,
-   "n_rows": 879,
-   "exitstatus": null,
-   "failed": [],
-   "truncated": [
-    "bf16_exp/1024x16/bfloat16",
-    "bf16_exp/1024x256/bfloat16",
-    "conv2dk1_i8/2048x8/int8",
-    "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64",
-    "conv2dk3/2048x8/int8_uint8",
-    "conv2dk3/2048x8/uint8",
-    "exp2f_vec/1024x16/float32",
-    "exp2f_vec/1024x256/float32",
-    "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024",
-    "layer_norm_f32/1024x16/float32/cols=1024",
-    "mm/64x32x64x16/bfloat16_float32",
-    "mm/64x32x64x256/bfloat16_float32",
-    "mm/64x64x64x16/bfloat16/b_col_maj=True/emulate_bf16_mmul_with_bfp16=True/llama-prefill-lm-head",
-    "mm/64x64x64x16/bfloat16_float32/b_col_maj=True",
-    "mm_bfp/64x64x64x16/bfloat16/mixed=True",
-    "mv/32x32x16/int16_int32",
-    "mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down",
-    "rgba2hue/7680x16/uint8",
-    "rope/64x16/bfloat16/cols=64/two_halves=True/llama",
-    "silu_sized/4096x16/bfloat16/llama-prefill",
-    "softmax/2048x16/bfloat16/llama-prefill"
-   ],
-   "migrated_from": "aie_kernels (npu2, default)"
-  },
-  {
-   "schema": 1,
-   "target": "npu2",
-   "id": "bench-1790663762090",
-   "url": "",
-   "date": "2026-09-29T06:36:02+00:00",
-   "commit": {
-    "id": "d53582d3e0f9f8a2b77695bbf4abbd7766d5584a",
-    "url": "https://github.com/Xilinx/mlir-aie/commit/d53582d3e0f9f8a2b77695bbf4abbd7766d5584a",
-    "message": "Single-core Kernel Optimizations and Tooling (#3801)",
-    "timestamp": "2026-09-28T20:24:43Z"
-   },
-   "pmode": "default",
-   "device": "Krackan",
-   "device_raw": "NPU Krackan 1",
-   "provenance": {
-    "commit": "d53582d3e0",
-    "peano": "22.0.0+0006955e",
-    "kernels": "0857407c3322",
-    "device": "NPU Krackan 1",
-    "pmode": "default"
-   },
-   "sane": true,
-   "published": true,
-   "n_rows": 879,
-   "exitstatus": null,
-   "failed": [],
-   "truncated": [
-    "bf16_exp/1024x16/bfloat16",
-    "bf16_exp/1024x256/bfloat16",
-    "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64",
-    "conv2dk3/2048x8/int8_uint8",
-    "conv2dk3/2048x8/uint8",
-    "exp2f_vec/1024x16/float32",
-    "exp2f_vec/1024x256/float32",
-    "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024",
-    "layer_norm_f32/1024x16/float32/cols=1024",
-    "mm/64x32x64x16/bfloat16_float32",
-    "mm/64x32x64x256/bfloat16_float32",
-    "mm/64x64x64x16/bfloat16/b_col_maj=True/emulate_bf16_mmul_with_bfp16=True/llama-prefill-lm-head",
-    "mm/64x64x64x16/bfloat16_float32/b_col_maj=True",
-    "mm_bfp/64x64x64x16/bfloat16/mixed=True",
-    "mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down",
-    "reduce_max/1024x256/bfloat16",
-    "rgba2hue/7680x16/uint8",
-    "silu_sized/4096x16/bfloat16/llama-prefill",
-    "softmax/1024x16/bfloat16"
-   ],
-   "migrated_from": "aie_kernels (npu2, default)"
-  },
   {
    "schema": 1,
    "target": "npu2",
    "id": "36637985636",
    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36637985636",
-   "date": "2026-09-30T00:19:53+00:00",
+   "date": "2026-09-29T22:59:26+00:00",
    "commit": {
     "id": "4952b74e86c471471ebbd4cccccb2d54d6940dc4",
     "url": "https://github.com/Xilinx/mlir-aie/commit/4952b74e86c471471ebbd4cccccb2d54d6940dc4",
@@ -146,14 +50,15 @@
    "kernels": {
     "offered": 77,
     "checked": 70
-   }
+   },
+   "event": "workflow_dispatch"
   },
   {
    "schema": 1,
    "target": "npu2",
    "id": "36677652991",
    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36677652991",
-   "date": "2026-09-30T06:38:23+00:00",
+   "date": "2026-09-30T06:19:39+00:00",
    "commit": {
     "id": "91ee8c89c8b841f2f6f9364b642a69526d595197",
     "url": "https://github.com/Xilinx/mlir-aie/commit/91ee8c89c8b841f2f6f9364b642a69526d595197",
@@ -192,14 +97,15 @@
    "kernels": {
     "offered": 77,
     "checked": 70
-   }
+   },
+   "event": "schedule"
   },
   {
    "schema": 1,
    "target": "npu2",
    "id": "36734464439",
    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36734464439",
-   "date": "2026-09-30T18:37:50+00:00",
+   "date": "2026-09-30T16:51:25+00:00",
    "commit": {
     "id": "91ee8c89c8b841f2f6f9364b642a69526d595197",
     "url": "https://github.com/Xilinx/mlir-aie/commit/91ee8c89c8b841f2f6f9364b642a69526d595197",
@@ -236,14 +142,15 @@
    "kernels": {
     "offered": 77,
     "checked": 70
-   }
+   },
+   "event": "workflow_dispatch"
   },
   {
    "schema": 1,
    "target": "npu2",
    "id": "36824236975",
    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36824236975",
-   "date": "2026-10-01T06:38:44+00:00",
+   "date": "2026-10-01T06:20:16+00:00",
    "commit": {
     "id": "36cc79f810671bce4491531b893fcb90b4d997cb",
     "url": "https://github.com/Xilinx/mlir-aie/commit/36cc79f810671bce4491531b893fcb90b4d997cb",
@@ -280,14 +187,15 @@
    "kernels": {
     "offered": 79,
     "checked": 70
-   }
+   },
+   "event": "schedule"
   },
   {
    "schema": 1,
    "target": "npu2",
    "id": "36972972486",
    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36972972486",
-   "date": "2026-10-02T06:44:52+00:00",
+   "date": "2026-10-02T06:19:09+00:00",
    "commit": {
     "id": "18ca6c1cbf4cbb1b5d6748e09909bce30a5b5c15",
     "url": "https://github.com/Xilinx/mlir-aie/commit/18ca6c1cbf4cbb1b5d6748e09909bce30a5b5c15",
@@ -324,6 +232,55 @@
    "kernels": {
     "offered": 116,
     "checked": 95
+   },
+   "event": "schedule"
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "37091628101",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37091628101",
+   "date": "2026-10-03T02:58:25+00:00",
+   "commit": {
+    "id": "be5b8091e5f5cd9f67cc8628a6c0fcf0bb9dc564",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/be5b8091e5f5cd9f67cc8628a6c0fcf0bb9dc564",
+    "message": "[AIEVec] Keep an extf feeding vector.contract unflattened on AIE2P (#3847)",
+    "timestamp": "2026-10-03T01:27:26Z"
+   },
+   "event": "workflow_dispatch",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "be5b8091e5",
+    "peano": "22.0.0+0006955e",
+    "kernels": "b23b9a52b7fc",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 755,
+   "exitstatus": 1,
+   "failed": [
+    "test/python/npu/test_kernels_perf.py::test_a_baseline_that_fails_the_contract_is_timed"
+   ],
+   "truncated": [],
+   "cases": {
+    "passed": 501,
+    "failed": 0,
+    "timed": 191,
+    "timing_failed": 0,
+    "untimed": 310,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 116,
+    "checked": 102
    }
   }
  ]

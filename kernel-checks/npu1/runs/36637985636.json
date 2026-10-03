@@ -3,7 +3,7 @@
  "target": "npu1",
  "id": "36637985636",
  "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36637985636",
- "date": "2026-09-30T00:19:53+00:00",
+ "date": "2026-09-29T22:59:26+00:00",
  "commit": {
   "id": "4952b74e86c471471ebbd4cccccb2d54d6940dc4",
   "url": "https://github.com/Xilinx/mlir-aie/commit/4952b74e86c471471ebbd4cccccb2d54d6940dc4",
@@ -165,5 +165,6 @@
  "kernels": {
   "offered": 74,
   "checked": 67
- }
+ },
+ "event": "workflow_dispatch"
 }
