@@ -162,6 +162,28 @@ getTransferExtent(AIE::DMABDOp op, std::optional<int64_t> lengthUnit) {
   return getTransferExtent(buffer, *offset, *len, *sizes, *strides, lengthUnit);
 }
 
+/// The largest length parameter value that keeps the shim BD's Buffer_Length,
+/// the static length plus that many units in 32-bit words, within its field.
+static int64_t getMaxLengthSteps(Operation *op, int64_t lenBytes,
+                                 int64_t unitBytes) {
+  int64_t maxWords =
+      getTargetModel(op).getDmaBdMaxLen(AIETileType::ShimNOCTile);
+  return (maxWords - lenBytes / 4) / (unitBytes / 4);
+}
+
+static int64_t getMaxLengthSteps(NpuDmaMemcpyNdOp op) {
+  SmallVector<int64_t> sizes = *getConstantIntValues(op.getMixedSizes());
+  int64_t elemBytes = op.getElementTypeBitwidth() / 8;
+  return getMaxLengthSteps(op, sizes[1] * sizes[2] * sizes[3] * elemBytes,
+                           *op.getLengthUnit() * elemBytes);
+}
+
+static int64_t getMaxLengthSteps(AIE::DMABDOp op) {
+  return getMaxLengthSteps(op, op.getLenInBytes(),
+                           *op.getLengthUnit() *
+                               op.getBufferElementTypeWidthInBytes());
+}
+
 /// Returns true iff the parameter-sync preamble (create_scratchpad + set_lock)
 /// should be emitted into this sequence. Reads the explicit attribute if
 /// present; otherwise defaults to true iff the parent device uses any
@@ -540,7 +562,8 @@ struct AIELowerScratchpadParametersPass
     auto rewriteParams =
         [&](Operation *op, FlatSymbolRefAttr offsetRef,
             FlatSymbolRefAttr lengthRef, Type bufType,
-            std::optional<TransferExtent> extent) -> LogicalResult {
+            std::optional<TransferExtent> extent,
+            int64_t maxLengthSteps) -> LogicalResult {
       bool joint = offsetRef == lengthRef;
       int64_t room = extent ? extent->bufferElems - 1 - extent->last : 0;
       if (offsetRef) {
@@ -566,6 +589,7 @@ struct AIELowerScratchpadParametersPass
             bounds.try_emplace(lengthRef.getValue(), INT32_MIN, INT32_MAX)
                 .first->second;
         lo = std::max<int64_t>(lo, 0);
+        hi = std::min(hi, maxLengthSteps);
         if (lengthParam->getKind() == ScratchpadParameterKind::Core) {
           op->setAttr("length_core_encoded", builder.getUnitAttr());
           hi = std::min<int64_t>(hi, (1 << 30) - 1);
@@ -599,7 +623,8 @@ struct AIELowerScratchpadParametersPass
         if (failed(rewriteParams(
                 op, offsetRef, lengthRef, dmaOp.getMemref().getType(),
                 getTransferExtent(dmaOp, lengthRef ? dmaOp.getLengthUnit()
-                                                   : std::nullopt))))
+                                                   : std::nullopt),
+                lengthRef ? getMaxLengthSteps(dmaOp) : 0)))
           return WalkResult::interrupt();
       } else if (auto bdOp = dyn_cast<AIE::DMABDOp>(op)) {
         FlatSymbolRefAttr offsetRef = bdOp.getOffsetParameterAttr();
@@ -611,7 +636,8 @@ struct AIELowerScratchpadParametersPass
           lengthUnit = bdOp.getLengthUnit();
         if (failed(rewriteParams(op, offsetRef, lengthRef,
                                  bdOp.getBuffer().getType(),
-                                 getTransferExtent(bdOp, lengthUnit))))
+                                 getTransferExtent(bdOp, lengthUnit),
+                                 lengthRef ? getMaxLengthSteps(bdOp) : 0)))
           return WalkResult::interrupt();
       }
       return WalkResult::advance();

@@ -260,6 +260,33 @@ aie.device(npu2) {
 
 // -----
 
+// A buffer of dynamic size bounds nothing, but the length word does: its
+// 32 bits hold 8 static words plus n units of 1024 words, so n <= 4194303.
+
+// CHECK-LABEL: module
+// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 1 : i32, max_value = 4194303 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
+// CHECK: aie.runtime_sequence @dynamic_memcpy
+// CHECK: aiex.npu.update_from_scratchpad<mul> {address = 118816 : ui32, func_arg = 1024 : ui32, state_table_idx = 0 : ui8}
+// CHECK: aie.runtime_sequence @dynamic_task
+// CHECK: aiex.npu.update_from_scratchpad<mul> {address = 118880 : ui32, func_arg = 1024 : ui32, state_table_idx = 0 : ui8}
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence @dynamic_memcpy(%arg0 : memref<?xi32>) {
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 8][0, 0, 0, 1]) {id = 1 : i64, metadata = @dma, length_parameter = @n, length_unit = 1024 : i64} : memref<?xi32>
+  }
+  aie.runtime_sequence @dynamic_task(%arg0 : memref<?xi32>) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<?xi32> offset = 0 len = 8) {bd_id = 3 : i32, length_parameter = @n, length_unit = 1024 : i32}
+      aie.end
+    }
+    aiex.dma_start_task(%task)
+  }
+  aie.shim_dma_allocation @dma(%t, MM2S, 0)
+}
+
+// -----
+
 // An offset may also run backwards to the buffer's start, so its range starts
 // below 0, while a parameter only cores read has no range. With a length
 // parameter too, off + 16 * n <= 32 keeps the transfer within the buffer, and
