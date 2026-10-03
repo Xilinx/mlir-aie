@@ -3,10 +3,9 @@
 #
 # IRON design: a transfer length set at runtime via length_parameter.
 #
-# One parameter @tiles sizes both the DMAs and the core's loop, and @start
-# offsets the input. The DMAs have a static length of 0, so the input DMA moves
-# exactly tiles tiles of 8 i32 values from value start on, the core adds one to
-# each tile, and the output DMA moves them back:
+# One parameter @tiles sizes both the DMAs and the core's loop; @start offsets
+# the input. With a static length of 0, the DMAs move exactly `tiles` tiles of
+# 8 i32 values from value `start` on, and the core adds one to each value:
 #
 #   start = 0, tiles = 0 -> nothing
 #   start = 5, tiles = 3 -> 24 values: 6..29
