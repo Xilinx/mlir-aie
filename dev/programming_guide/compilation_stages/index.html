@@ -4193,9 +4193,11 @@ object — that invariant is what lets the memoization in stage 3 be
 safe.</p>
 <p>Two hashes drop out of the frozen recipe:</p>
 <ul>
-<li><strong><code>recipe_hash</code></strong> — function of generator + <code>compile_kwargs</code> +
-  compile/aiecc flags. Same across machines. Used as the cache key
-  for "have I built this design before?"</li>
+<li><strong><code>recipe_hash</code></strong> — function of generator + the Python sources it
+  reaches (its module, the modules it imports from, and mlir-aie's own)</li>
+<li><code>compile_kwargs</code> + compile/aiecc flags. Computed without running the
+  generator. Used as the cache key for "have I built this design
+  before?"</li>
 <li><strong><code>artifact_hash</code></strong> — function of source-file mtimes, object-file
   mtimes, tool-binary mtimes, and target architecture. Different
   across machines / builds. Used to decide "are the cached artifacts

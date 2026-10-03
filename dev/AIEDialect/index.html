@@ -11774,10 +11774,10 @@ operation.</p>
 <p><em>Declare a dma buffer descriptor op</em></p>
 <p>Syntax:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>operation ::= `aie.dma_bd` `(` $buffer `:` type($buffer)
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>              ( `offset` `=` custom&lt;DynamicScalar&gt;($offset, $static_offset)^ )?
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>              ( `len` `=` custom&lt;DynamicScalar&gt;($len, $static_len)^ )?
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>              ( `sizes` `=` custom&lt;DynamicIndexList&gt;($sizes, $static_sizes)^ )?
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>              ( `strides` `=` custom&lt;DynamicIndexList&gt;($strides, $static_strides)^ )?
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>              ( `offset` `=` custom&lt;DynamicScalar&gt;($offset, $static_offset, type($offset))^ )?
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>              ( `len` `=` custom&lt;DynamicScalar&gt;($len, $static_len, type($len))^ )?
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>              ( `sizes` `=` custom&lt;TypedDynamicIndexList&gt;($sizes, $static_sizes, type($sizes))^ )?
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>              ( `strides` `=` custom&lt;TypedDynamicIndexList&gt;($strides, $static_strides, type($strides))^ )?
 <a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>              ( `pad` $pad_dimensions^ )?
 <a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>              `)`
 <a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>              ( `bd_id_val` $bd_id_val^ `:` type($bd_id_val) )?
@@ -11888,8 +11888,10 @@ executions), <code>iteration_stride</code> in 32-bit words, no bounds/alignment 
 bias and the element-&gt;word scaling.</p>
 <p>Do NOT copy an iteration number between the two ops: e.g. <code>size = 1</code> disables
 iteration here, but <code>iteration_size = 1</code> means <em>two</em> executions on
-<code>writebd</code>. The <code>iteration</code> attribute is rejected on the other path; express
-iteration there via the outermost <code>sizes</code>/<code>strides</code> dimension instead.</p>
+<code>writebd</code>.</p>
+<p>Inside a runtime-sequence DMA task (<code>aiex.dma_configure_task</code>), the
+attribute takes the iteration register that the outermost <code>sizes</code>/<code>strides</code>
+dimension would otherwise fill, so such a BD gives one dimension fewer.</p>
 <p>Traits: <code>AttrSizedOperandSegments</code></p>
 <h4 id="attributes_8">Attributes:<a class="headerlink" href="#attributes_8" title="Permanent link">&para;</a></h4>
 <table>
@@ -11930,19 +11932,19 @@ iteration there via the outermost <code>sizes</code>/<code>strides</code> dimens
 </tr>
 <tr>
 <td style="text-align: center;"><code>offset</code></td>
-<td>32-bit signless integer</td>
+<td>signless integer or index</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>len</code></td>
-<td>32-bit signless integer</td>
+<td>signless integer or index</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>sizes</code></td>
-<td>variadic of 64-bit signless integer</td>
+<td>variadic of signless integer or index</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>strides</code></td>
-<td>variadic of 64-bit signless integer</td>
+<td>variadic of signless integer or index</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>bd_id_val</code></td>

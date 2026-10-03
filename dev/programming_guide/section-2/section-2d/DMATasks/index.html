@@ -4164,6 +4164,7 @@
 - <strong><code>offset</code></strong> (optional): Starting point for the data transfer. Default values is <code>0</code>.
 - <strong><code>sizes</code></strong>: The extent of data to be transferred across each dimension. A buffer descriptor holds four; when <code>sizes</code> and <code>strides</code> are all constant, more may be given, and the compiler splits the extra ones off into further tasks.
 - <strong><code>strides</code></strong> (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
+- <strong><code>transfer_len</code></strong> (optional): The number of elements to transfer. Defaults to the extent of the inner three <code>sizes</code>, which one execution of the BD moves.
 - <strong><code>issue_token</code></strong> (optional): If a token is issued, one may call <code>dma_await_task</code> on the returned task. Default is <code>False</code>.
 - <strong><code>burst_length</code></strong> (optional): The configuration of the burst length for the DMA task. If <code>0</code>, defaults to the highest available value.</p>
 <p>The strides and sizes express data transformations analogously to those described in <a href="../../section-2c/">Section 2C</a>.</p>

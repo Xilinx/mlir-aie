@@ -4668,7 +4668,7 @@ When you own both ends, have the producer store <code>to_vector&lt;int8&gt;(shif
 <code>aie::shuffle_down(aie::concat(lo, hi), shift)</code> over two aligned blocks.
 -23.6% on one block (model).</p>
 <p><strong>L16 Pure rearrangement → DMA, or wide shuffles.</strong> A body that is only a
-deinterleave or transpose belongs in a memtile <code>dims_to_stream</code> transform
+deinterleave or transpose belongs in a memtile <code>to_stream</code> transform
 (element ≥ 512 B; int8 vector loads need a 32 B-aligned start). Hand off to
 <code>aie-dataflow-opt</code>. <code>programming_examples/basic/transposes/transposes.py</code>
 shows <code>--strategy dma</code> and <code>--strategy combined</code>. When it must stay in the

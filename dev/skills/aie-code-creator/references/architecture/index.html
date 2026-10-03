@@ -3927,7 +3927,7 @@ belongs in a design. (<code>kernels.cascade_mm</code> is a scalar kernel on both
 </tbody>
 </table>
 <p>This drives real design decisions: a reshape needing 4 <code>(size, stride)</code> dimensions <strong>must</strong>
-  land on a mem-tile DMA. If a compute tile's <code>dims_to_stream</code> or a shim's tap already needs
+  land on a mem-tile DMA. If a compute tile's <code>to_stream</code> or a shim's tap already needs
   3 dimensions, you have no fourth to spend — route L3→L2→L1 and put the reshape on the
   mem-tile <code>split()</code>/<code>join()</code>/<code>forward()</code> instead. For access patterns beyond the limit, chain
   multiple BDs or use runtime repeat counts.</p>

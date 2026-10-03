@@ -3865,7 +3865,7 @@
 <li><a href="./section-6/">Section 6 — Larger example designs</a> (vision, ML)</li>
 </ul>
 <h2 id="jit-compile--cache">JIT compile + cache<a class="headerlink" href="#jit-compile--cache" title="Permanent link">&para;</a></h2>
-<p><code>@iron.jit</code> caches compiled artifacts by <code>(MLIR bytecode + compile-time kwargs)</code>. The first call to a design compiles; subsequent calls with the same kwargs reuse the cache.</p>
+<p><code>@iron.jit</code> caches compiled artifacts by the design's Python sources (the generator, the modules it reaches, and mlir-aie's own) and its compile-time kwargs. The first call to a design compiles; subsequent calls with the same kwargs reuse the cache.</p>
 <ul>
 <li>Cache directory: <code>${NPU_CACHE_HOME:-~/.npu/cache}</code>. Set <code>NPU_CACHE_HOME=/tmp/iron_cache</code> (or anywhere) to override.</li>
 <li>To force a clean build, <code>rm -rf "$NPU_CACHE_HOME"</code> (or the per-design <code>build/</code> directory the Makefile writes to).</li>

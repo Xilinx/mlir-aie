@@ -4052,8 +4052,8 @@ destination tiles.</p>
 <td>same</td>
 </tr>
 <tr>
-<td><code>Bd(buffer, offset=0, length=None, sizes=[], strides=[], acquires=[...], releases=[...], next=None\|"self"\|int, packet=None, bd_id=None, pad_dimensions=None, iteration=None, out_of_order_id=None)</code></td>
-<td>One BD block: acquires + <code>aie.dma_bd</code> + releases + <code>aie.next_bd</code></td>
+<td><code>Bd(buffer, tap=None, acquires=[...], releases=[...], next=None\|"self"\|int, packet=None, bd_id=None, iteration=None, out_of_order_id=None)</code></td>
+<td>One BD block: acquires + <code>aie.dma_bd</code> + releases + <code>aie.next_bd</code>.  <code>tap</code> is a <code>TensorAccessPattern</code> over <code>buffer</code> (default: the whole buffer)</td>
 <td>same</td>
 </tr>
 <tr>
@@ -4106,10 +4106,12 @@ extra descriptors:</p>
 <li><code>iteration=BdIteration(size, stride)</code> lets one BD walk <code>size</code>
   sub-buffers, advancing its base by <code>stride</code> elements on each execution,
   where an unrolled chain would need <code>size</code> BDs.  Values are in elements;
-  the lowering applies the hardware's <code>-1</code> bias.  See
+  the lowering applies the hardware's <code>-1</code> bias.  It takes the BD's
+  outermost dimension, so in a runtime-sequence <code>task</code> its <code>tap</code> gets one
+  dimension fewer.  See
   <a href="https://github.com/Xilinx/mlir-aie/blob/main/test/npu-xrt/bd_iteration/bd_iteration.py"><code>test/npu-xrt/bd_iteration</code></a>.</li>
-<li><code>pad_dimensions=[(before, after), ...]</code> (mem tile only) pads each
-  dimension of the access pattern with <code>DmaChannel.pad_value</code>.  See
+<li>A padded <code>tap</code> (<code>tap.pad([(before, after), ...])</code>, mem tile only) pads
+  each dimension of the access pattern with <code>DmaChannel.pad_value</code>.  See
   <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/dma_padding"><code>dma_padding</code></a>.</li>
 <li><code>DmaChannel(..., out_of_order=True)</code> on an S2MM channel places each
   arriving packet in the BD whose <code>bd_id</code> matches the out-of-order id in

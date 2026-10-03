@@ -3891,7 +3891,7 @@ Drop to the explicit <code>ObjectFifo</code>/<code>Worker</code>/<code>Runtime</
 asymmetric fan-out, multi-stage pipelines, cascades, custom placement, RTP-gated cores.</p>
 <h2 id="mmul-geometry-without-guessing-mac_dims">MMUL geometry without guessing: <code>.mac_dims</code><a class="headerlink" href="#mmul-geometry-without-guessing-mac_dims" title="Permanent link">&para;</a></h2>
 <p><code>kernels.mm(...)</code> (and <code>cascade_mm</code>) expose the micro-kernel geometry the freshly-compiled
-kernel actually expects, so you can compute tile shapes and <code>dims_to_stream</code> layouts from
+kernel actually expects, so you can compute tile shapes and <code>to_stream</code> layouts from
 the kernel rather than from a table that may drift:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">mm_k</span> <span class="o">=</span> <span class="n">kernels</span><span class="o">.</span><span class="n">mm</span><span class="p">(</span><span class="n">dim_m</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">dim_k</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">dim_n</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>                  <span class="n">input_dtype</span><span class="o">=</span><span class="n">bfloat16</span><span class="p">,</span> <span class="n">output_dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
