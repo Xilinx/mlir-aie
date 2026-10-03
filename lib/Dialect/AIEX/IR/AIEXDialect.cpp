@@ -639,7 +639,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
 
   bool hasLengthParameter =
       getLengthParameterAttr() || getLengthStateTableIdxAttr();
-  // Only the C++ TXN path lowers a runtime offset, and it has no scratchpad.
+  // Runtime offsets, sizes and strides lower only through EmitC, which has no
+  // scratchpad.
   if (hasLengthParameter &&
       (!allStridesConstant || !allSizesConstant || !allOffsetsConstant))
     return emitOpError(

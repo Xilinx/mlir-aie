@@ -238,7 +238,13 @@ private:
         coreParams.insert(name);
       }
       if (min != "-") {
-        ranges[name] = {std::stoi(min), std::stoi(max)};
+        try {
+          ranges[name] = {std::stoi(min), std::stoi(max)};
+        } catch (const std::logic_error &) {
+          throw std::runtime_error("ParameterScratchpad: malformed range '" +
+                                   min + " " + max + "' for parameter '" +
+                                   name + "' in '" + path + "'");
+        }
         values[name] = 0;
       }
     }

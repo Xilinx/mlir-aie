@@ -46,18 +46,8 @@ static bool shouldEmitParameterSyncPreamble(CoreOp coreOp) {
   return found;
 }
 
-/// The firmware masks the BD address register with 0xFFFFFFFC, so the byte
-/// offset it computes from a runtime offset parameter (an element count times
-/// the element size) is rounded DOWN to a 4-byte boundary rather than rejected.
-/// This cannot bite when the element size is itself a multiple of 4. Otherwise
-/// the runtime value has to be a multiple of 4 / gcd(4, elemBytes) elements,
-/// and nothing can check that -- the value only exists at run time.
-/// The static offset path rejects the same misalignment outright
-/// (NpuDmaMemcpyNdOp::verify, "Offset must be 4-byte-aligned"), so warn rather
-/// than leave the runtime path silent.
-/// Warn here rather than where the offset is lowered to NPU instructions:
-/// materialization inlines a device's runtime sequence at every call site, so
-/// one source op would warn once per call.
+// Warned here, not at NPU lowering, which inlines a sequence at every call
+// site and so would warn once per call.
 static void warnIfRuntimeOffsetMayRound(Operation *op, Type bufType) {
   uint32_t elemBytes =
       llvm::cast<BaseMemRefType>(bufType).getElementTypeBitWidth() / 8;
@@ -73,8 +63,7 @@ static void warnIfRuntimeOffsetMayRound(Operation *op, Type bufType) {
          "instead of being rejected";
 }
 
-/// The buffer elements a DMA op touches with runtime offset `o` and length `l`
-/// (each the value of its parameter, or 0 without one) are
+/// A DMA with runtime offset `o` and length `l` touches elements
 /// [offset + o, last + o + lengthStep * l].
 struct TransferExtent {
   int64_t bufferElems;
@@ -83,11 +72,7 @@ struct TransferExtent {
   int64_t lengthStep;
 };
 
-/// The extent of a transfer with a static offset `offset` and per-iteration
-/// length `lenElems`, both in elements, and the pattern `sizes`/`strides`
-/// (innermost-first; empty for a linear BD), with its runtime length placed as
-/// placeRuntimeLengthDimension describes. Nullopt if the buffer has no static
-/// size.
+/// `sizes`/`strides` are innermost-first and empty for a linear BD.
 static std::optional<TransferExtent>
 getTransferExtent(Type bufType, int64_t offset, int64_t lenElems,
                   SmallVector<int64_t> sizes, SmallVector<int64_t> strides,
