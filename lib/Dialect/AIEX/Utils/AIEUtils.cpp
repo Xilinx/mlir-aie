@@ -237,6 +237,20 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   return success();
 }
 
+void AIEX::emitUpdateBdLengthFromLengthParameter(OpBuilder &builder,
+                                                 Operation *bdOp,
+                                                 uint64_t registerAddr) {
+  auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("length_state_table_idx");
+  assert(idxAttr && "emitUpdateBdLengthFromLengthParameter called without "
+                    "length_state_table_idx attribute");
+  // The value is already in the register's unit, so it is added as is.
+  AIEX::NpuUpdateFromScratchpadOp::create(
+      builder, bdOp->getLoc(), static_cast<uint8_t>(idxAttr.getUInt()),
+      AIEX::StateTableFunc::Incr, /*func_arg=*/0,
+      /*address=*/static_cast<uint32_t>(registerAddr),
+      /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
+}
+
 void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
   SmallVector<AIEX::ScratchpadParameterOp> allParams;
   moduleOp.walk([&](AIEX::ScratchpadParameterOp p) { allParams.push_back(p); });
@@ -255,8 +269,7 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
     assert(kind && stateTableIdx &&
            "expected --aie-lower-scratchpad-parameters to have assigned "
            "kind/state_table_idx to every parameter");
-    StringRef kindStr =
-        *kind == AIEX::ScratchpadParameterKind::Addr ? "addr" : "core";
+    StringRef kindStr = AIEX::stringifyScratchpadParameterKind(*kind);
     os << p.getSymName() << " " << static_cast<unsigned>(*stateTableIdx) << " "
        << typeStr << " " << kindStr << "\n";
   }

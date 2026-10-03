@@ -3389,6 +3389,8 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*iteration=*/nullptr,
         /*offset_parameter=*/nullptr,
         /*offset_state_table_idx=*/nullptr,
+        /*length_parameter=*/nullptr,
+        /*length_state_table_idx=*/nullptr,
         /*next_bd_id=*/nullptr);
 }
 
@@ -3514,6 +3516,12 @@ LogicalResult DMABDOp::verify() {
     if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
       return emitOpError("offset_parameter requires a whole-byte element type");
   }
+  // The firmware clears the low 2 bits of the length register it adds to.
+  if ((getLengthParameterAttr() || getLengthStateTableIdxAttr()) &&
+      getLenInBytes() % 16)
+    return emitOpError("length_parameter requires a buffer length that is a "
+                       "multiple of 4 32-bit words, got ")
+           << getLenInBytes() << " bytes";
 
   // Skip verification of the BDOp outside of mem operations.
   // BDOps may appear elsewhere and subsequent lowerings will place them in the

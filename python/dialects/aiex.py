@@ -168,6 +168,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         axcache: int | None = None,
         packet: tuple[int] | None = None,
         offset_parameter: str | None = None,
+        length_parameter: str | None = None,
     ):
         if tap and not (offsets is None and sizes is None and strides is None):
             raise ValueError(
@@ -212,6 +213,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             axcache=axcache,
             packet=packet,
             offset_parameter=offset_parameter,
+            length_parameter=length_parameter,
         )
 
 
@@ -283,6 +285,7 @@ def shim_dma_bd(
     axcache: int | None = None,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
+    length_parameter: str | None = None,
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -316,6 +319,7 @@ def shim_dma_bd(
         axcache=axcache,
         packet=packet,
         offset_parameter=offset_parameter,
+        length_parameter=length_parameter,
     )
 
 
@@ -332,6 +336,7 @@ def shim_dma_single_bd_task(
     axcache: int | None = None,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
+    length_parameter: str | None = None,
 ):
     """_summary_
     Enables data transfers between the AIE Engine array and external memory.
@@ -433,6 +438,7 @@ def shim_dma_single_bd_task(
                 axcache=axcache,
                 packet=packet,
                 offset_parameter=offset_parameter,
+                length_parameter=length_parameter,
             )
             EndOp()
     return task

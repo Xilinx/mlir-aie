@@ -70,3 +70,35 @@ aie.device(npu2) {
   %tile = aie.tile(0, 0)
   aie.shim_dma_allocation @dma(%tile, MM2S, 0)
 }
+
+// -----
+
+// Verify that a DMA BD length parameter rejects a static length that is not a
+// multiple of 4 32-bit words.
+
+aiex.scratchpad_parameter @extra : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence(%arg0 : memref<64xbf16>) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      // expected-error @+1 {{'aie.dma_bd' op length_parameter requires a buffer length that is a multiple of 4 32-bit words, got 60 bytes}}
+      aie.dma_bd(%arg0 : memref<64xbf16> offset = 0 len = 30) {length_parameter = @extra}
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Verify that an NPU DMA length parameter rejects a transfer length that is
+// not a multiple of 4 32-bit words.
+
+aiex.scratchpad_parameter @extra : i32
+aie.device(npu2) {
+  aie.runtime_sequence(%arg0 : memref<64xbf16>) {
+    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op length_parameter requires a transfer length that is a multiple of 4 32-bit words, got 60 bytes}}
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 30][0, 0, 0, 1]) {id = 0 : i64, metadata = @dma, length_parameter = @extra} : memref<64xbf16>
+  }
+  %tile = aie.tile(0, 0)
+  aie.shim_dma_allocation @dma(%tile, MM2S, 0)
+}

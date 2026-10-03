@@ -283,8 +283,12 @@ public:
     bool allStridesConstant =
         llvm::all_of(op.getMixedStrides(),
                      [](OpFoldResult s) { return getConstantIntValue(s); });
-    if (!allOffsetsConstant || !allSizesConstant || !allStridesConstant)
+    if (!allOffsetsConstant || !allSizesConstant || !allStridesConstant) {
+      if (op.getLengthStateTableIdxAttr())
+        return op->emitOpError("length_parameter requires constant offsets, "
+                               "sizes and strides");
       return lowerDynamic(op, adaptor, rewriter);
+    }
 
     const auto &targetModel = AIE::getTargetModel(op);
     BaseMemRefType bufferType = op.getMemref().getType();
@@ -582,6 +586,12 @@ public:
                                                         patchAddr)))
         return failure();
     }
+    // A length_state_table_idx adds the runtime length, in 32-bit words, to
+    // the buffer length the BD write set (the BD's first word on a shim tile).
+    if (op.getLengthStateTableIdxAttr())
+      emitUpdateBdLengthFromLengthParameter(
+          rewriter, op,
+          targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()));
     return success();
   }
 

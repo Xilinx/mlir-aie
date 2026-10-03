@@ -281,7 +281,8 @@ static NpuDmaMemcpyNdOp createDecomposedOp(RewriterBase &rewriter,
       op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
       op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(), op.getD2ZeroAfterAttr(),
       op.getBurstLengthAttr(), op.getAxcacheAttr(), op.getOffsetParameterAttr(),
-      op.getOffsetStateTableIdxAttr());
+      op.getOffsetStateTableIdxAttr(), op.getLengthParameterAttr(),
+      op.getLengthStateTableIdxAttr());
 }
 
 static int64_t allocateNextId(NpuDmaMemcpyNdOp op, int64_t startId,
@@ -549,26 +550,27 @@ static void orderSlices(Block &block, Slices &state) {
   flush();
 }
 
-static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
+static LogicalResult decomposeMemcpy(RewriterBase &rewriter,
+                                     NpuDmaMemcpyNdOp op) {
   if (!allConstant(op))
-    return;
+    return success();
 
   NdDmaPattern pattern = patternFromOp(op);
   if (isContiguousTransfer(pattern.sizes, pattern.strides))
-    return;
+    return success();
 
   AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
   if (!dev)
-    return;
+    return success();
 
   auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
       dev, op.getMetadata().getRootReference());
   if (!allocOp)
-    return;
+    return success();
 
   AIE::TileOp tile = allocOp.getTileOp();
   if (!tile)
-    return;
+    return success();
 
   int col = tile.getCol();
   int row = tile.getRow();
@@ -576,7 +578,10 @@ static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
   auto bufferType = cast<BaseMemRefType>(op.getMemref().getType());
 
   if (patternPassesVerification(op, bufferType, targetModel, col, row, pattern))
-    return;
+    return success();
+  if (op.getLengthParameterAttr() || op.getLengthStateTableIdxAttr())
+    return op.emitOpError() << "a transfer with a length_parameter must be "
+                               "lowerable as one descriptor";
 
   auto decomposed =
       decomposeNdDmaPattern(op, bufferType, pattern, targetModel, col, row);
@@ -585,13 +590,13 @@ static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
   // failed()/succeeded() idiom with the std::optional base it derives from.
   if (failed(decomposed) ||
       decomposed->empty()) // NOLINT(bugprone-unchecked-optional-access)
-    return;
+    return success();
   // Bind a plain reference now that decomposed is known non-failed and
   // non-empty, so nothing past this point looks like an optional access.
   SmallVector<NdDmaPattern> &bds =
       *decomposed; // NOLINT(bugprone-unchecked-optional-access)
   if (bds.size() > targetModel.getNumBDs(col, row))
-    return;
+    return success();
 
   rewriter.setInsertionPoint(op);
   if (bds.size() == 1) {
@@ -605,8 +610,9 @@ static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
         op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
-    return;
+        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr(),
+        op.getLengthParameterAttr(), op.getLengthStateTableIdxAttr());
+    return success();
   }
 
   llvm::DenseSet<int64_t> usedIds;
@@ -628,6 +634,7 @@ static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
                        last && op.getIssueToken());
   }
   rewriter.eraseOp(op);
+  return success();
 }
 
 // Rewrites a task's descriptor into legal ones. Fails only after reporting why
@@ -689,6 +696,11 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
   NdDmaPattern pattern = patternFromDmaBd(op);
   if (lowerable(pattern))
     return success();
+  // The runtime length is added to one BD as written; a rewrite that splits or
+  // repeats the BD would add it to each piece.
+  if (op.getLengthParameterAttr() || op.getLengthStateTableIdxAttr())
+    return op.emitOpError() << "a buffer descriptor with a length_parameter "
+                               "must be lowerable as one descriptor";
 
   // Outer iteration dimensions that re-read the same data only repeat what
   // is inside them, as the task's repeat count does. They go, and a pass
@@ -911,10 +923,10 @@ struct AIEDecomposeLargeDmaBdPass
       else if (auto bd = dyn_cast<AIE::DMABDOp>(op))
         bds.push_back(bd);
     });
-    for (NpuDmaMemcpyNdOp memcpy : memcpys)
-      decomposeMemcpy(rewriter, memcpy);
-    Slices slices;
     bool failed = false;
+    for (NpuDmaMemcpyNdOp memcpy : memcpys)
+      failed |= mlir::failed(decomposeMemcpy(rewriter, memcpy));
+    Slices slices;
     for (AIE::DMABDOp bd : bds)
       failed |= mlir::failed(decomposeTaskBd(rewriter, bd, slices));
     if (failed)

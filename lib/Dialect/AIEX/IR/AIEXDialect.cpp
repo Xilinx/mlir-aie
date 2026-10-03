@@ -452,7 +452,8 @@ struct LinearizeContiguousTransfer
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
         op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
+        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr(),
+        op.getLengthParameterAttr(), op.getLengthStateTableIdxAttr());
     return mlir::success();
   }
 };
@@ -606,6 +607,20 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     uint64_t elemBitWidth = buffer.getElementTypeBitWidth();
     if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
       return emitOpError("offset_parameter requires a whole-byte element type");
+  }
+  // The firmware clears the low 2 bits of the length register it adds to.
+  if (getLengthParameterAttr() || getLengthStateTableIdxAttr()) {
+    auto sizes = getStaticSizes();
+    if (!llvm::is_contained(sizes, ShapedType::kDynamic)) {
+      // The BD length covers the three inner dims; the outermost repeats.
+      uint64_t bits = buffer.getElementTypeBitWidth();
+      for (int64_t s : llvm::drop_begin(sizes))
+        bits *= s;
+      if (bits % 128)
+        return emitOpError("length_parameter requires a transfer length that "
+                           "is a multiple of 4 32-bit words, got ")
+               << bits / 8 << " bytes";
+    }
   }
 
   if (getElementTypeBitwidth() > addressGranularity) {

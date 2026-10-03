@@ -581,7 +581,8 @@ def AIELowerScratchpadParameters
 
     Sets a `kind` attribute on each `aiex.scratchpad_parameter` based on how
     it is used: `core` if read by `aiex.read_scratchpad_parameter`, `addr` if
-    used as a DMA `offset_parameter`. A parameter may not be used as both.
+    used as a DMA `offset_parameter`, `len` if used as a DMA
+    `length_parameter`. A parameter may have only one kind.
 
     Optionally emits a `params.txt` file describing every parameter in the
     module (name, global state_table_idx, type, and kind).

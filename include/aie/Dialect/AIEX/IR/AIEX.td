@@ -646,7 +646,12 @@ def AIE_NpuDmaMemcpyNdOp
       // scratchpad state-table index whose value is used as the BD address
       // offset. After lowering, $offset_parameter is removed in favor of this
       // attribute.
-      OptionalAttr<UI8Attr>:$offset_state_table_idx);
+      OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // if set, the aiex.scratchpad_parameter value added to the BD's buffer
+      // length register, in 32-bit words; see aie.dma_bd's length_parameter.
+      OptionalAttr<FlatSymbolRefAttr>:$length_parameter,
+      // Set by --aie-lower-scratchpad-parameters from $length_parameter.
+      OptionalAttr<UI8Attr>:$length_state_table_idx);
 
   let assemblyFormat = [{
     `(` $memref ``
@@ -1832,18 +1837,21 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     referenced from any device.
 
     Parameters can alternatively offset BD addresses when used as the
-    `offset_parameter` attribute in `aiex.dma_bd` and `aiex.dma_memcpy_nd`.
-    The two kinds of use are exclusive: parameters used as BD address offsets
-    cannot also be read from cores.
+    `offset_parameter` attribute in `aiex.dma_bd` and `aiex.dma_memcpy_nd`,
+    or lengthen shim BDs when used as their `length_parameter` attribute.
+    The kinds of use are exclusive: a parameter is read from cores, used as BD
+    address offsets, or used as BD lengths.
     If used as an address offset on a BD, the parameter is a multiple of the BD's element size.
+    If used as a BD length, the parameter counts 32-bit words and is a multiple of 4.
 
     Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
     The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
-    `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
+    `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op,
+    `len` if used as a DMA length via the `length_parameter` attribute).
     Indices are unique across the entire module.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
-    For `kind == addr`, the `type` must be `i32`.
+    For `kind == addr` and `kind == len`, the `type` must be `i32`.
     For `kind == core`, the encoding uses a 30-bit value range because the firmware masks
     the lower 2 bits of the scratchpad register (see `aiex.read_scratchpad_parameter`
     for details on how values are shifted to work around this).

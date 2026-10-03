@@ -298,3 +298,42 @@ module {
     }
   }
 }
+
+// -----
+
+// A runtime length is added to one descriptor, so a task descriptor carrying
+// one is not sliced: 4099 rows (prime) cannot fit a 1023-wrap dimension.
+
+module {
+  aiex.scratchpad_parameter @extra : i32
+  aie.device(npu2) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @len_param_task(%in: memref<32768xi32>) {
+      %a = aiex.dma_configure_task_for @a {
+        // expected-error @+1 {{a buffer descriptor with a length_parameter must be lowerable as one descriptor}}
+        aie.dma_bd(%in : memref<32768xi32> offset = 0 len = 16396 sizes = [1, 1, 4099, 4] strides = [0, 0, 5, 1]) {length_parameter = @extra}
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%a)
+      aiex.dma_await_task(%a)
+    }
+  }
+}
+
+// -----
+
+// Nor is a dma_memcpy_nd carrying one.
+
+module {
+  aiex.scratchpad_parameter @extra : i32
+  aie.device(npu2) {
+    aie.runtime_sequence @len_param_memcpy(%in: memref<32768xi32>) {
+      // expected-error @+1 {{a transfer with a length_parameter must be lowerable as one descriptor}}
+      aiex.npu.dma_memcpy_nd (%in[0, 0, 0, 0][1, 1, 4099, 4][0, 0, 5, 1])
+        { metadata = @b, id = 0 : i64, length_parameter = @extra } : memref<32768xi32>
+    }
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @b (%t, MM2S, 0)
+  }
+}

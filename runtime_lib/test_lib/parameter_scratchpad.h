@@ -80,7 +80,7 @@ public:
   /// Write raw bytes (up to 4) by name, interpreted as a little-endian
   /// uint32.  For core-kind parameters, the bits are left-shifted by 2
   /// (firmware requirement).
-  /// For addr-kind parameters, the value is written raw (no shift).
+  /// For addr- and len-kind parameters, the value is written raw (no shift).
   void writeBytes(const std::string &name, const void *data, size_t len) {
     uint32_t bits = 0;
     std::memcpy(&bits, data, std::min(len, sizeof(bits)));
@@ -88,8 +88,8 @@ public:
   }
 
   /// Write a raw 32-bit value by name.  For core-kind parameters, the bits
-  /// are left-shifted by 2 (firmware requirement).  For addr-kind parameters,
-  /// the value is written directly (no shift).
+  /// are left-shifted by 2 (firmware requirement).  For addr- and len-kind
+  /// parameters, the value is written directly (no shift).
   void writeBits(const std::string &name, uint32_t bits) {
     auto it = paramMap.find(name);
     if (it == paramMap.end()) {
@@ -163,7 +163,7 @@ private:
     //   <num_parameters>
     //   <name> <state_table_idx> <type> <kind>
     //   ...
-    // where kind is "core" or "addr".
+    // where kind is "core", "addr" or "len".
     unsigned numParams = 0;
     file >> numParams;
     scratchpadSizeBytes = numParams * 4;
@@ -180,7 +180,7 @@ private:
         throw std::runtime_error(
             "ParameterScratchpad: duplicate parameter name '" + name + "'");
       paramMap[name] = static_cast<uint8_t>(idx);
-      if (kind != "core" && kind != "addr") {
+      if (kind != "core" && kind != "addr" && kind != "len") {
         throw std::runtime_error("ParameterScratchpad: invalid kind '" + kind +
                                  "' for parameter '" + name + "'");
       } else if (kind == "core") {

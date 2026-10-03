@@ -280,6 +280,18 @@ struct AIEDMATasksToNPUPass
       return bd_op->emitOpError(
           "offset_state_table_idx is not supported with a runtime bd_id; the "
           "scratchpad update targets a compile-time BD register address.");
+    if (bd_op.getLengthStateTableIdxAttr()) {
+      if (runtimeRegisterAddr)
+        return bd_op->emitOpError(
+            "length_state_table_idx is not supported with a runtime bd_id; "
+            "the scratchpad update targets a compile-time BD register "
+            "address.");
+      // The update writes the register pair at the BD's first word; only a
+      // shim BD has its length alone in that word.
+      if (!target_model.isShimNOCTile(col, row))
+        return bd_op->emitOpError(
+            "length_parameter is only supported on shim tile BDs.");
+    }
 
     // A buffer descriptor can refer to a statically allocated aie.buffer, or to
     // a DDR buffer which will be passed as a runtime argument (block
@@ -433,6 +445,11 @@ struct AIEDMATasksToNPUPass
                                                         register_addr)))
         return failure();
     }
+    // Likewise additive: the runtime length lands on top of the static
+    // buffer length the block write above set.
+    if (bd_op.getLengthStateTableIdxAttr())
+      emitUpdateBdLengthFromLengthParameter(
+          builder, bd_op, target_model.getDmaBdAddress(col, row, bd_id));
 
     return success();
   }

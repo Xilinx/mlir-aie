@@ -1137,6 +1137,14 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // offset. After lowering, $offset_parameter is removed in favor of this
       // attribute.
       OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // if set, the aiex.scratchpad_parameter value added to the BD's buffer
+      // length register. The value counts 32-bit words, the register's unit.
+      // The firmware clears the register's low 2 bits, so the static length
+      // and every runtime value must be multiples of 4 words. Shim BDs only.
+      OptionalAttr<FlatSymbolRefAttr>:$length_parameter,
+      // Set by --aie-lower-scratchpad-parameters from $length_parameter, as
+      // $offset_state_table_idx is from $offset_parameter.
+      OptionalAttr<UI8Attr>:$length_state_table_idx,
       // should never be assigned by user...
       OptionalAttr<AIEI32Attr>:$next_bd_id);
 

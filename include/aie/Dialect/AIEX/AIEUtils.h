@@ -84,6 +84,12 @@ bool getReachableConfigures(Value task,
 // as above, or null if there is none or more than one.
 DMAConfigureTaskOp getUniqueReachableConfigure(Value task);
 
+// Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime length
+// (held in the scratchpad slot referenced by `bdOp`'s `length_state_table_idx`
+// attribute, in 32-bit words) into the BD length register at `registerAddr`.
+void emitUpdateBdLengthFromLengthParameter(OpBuilder &builder, Operation *bdOp,
+                                           uint64_t registerAddr);
+
 // Emit the params.txt description of every `aiex.scratchpad_parameter` in
 // `moduleOp` (with their assigned `state_table_idx`/`kind`) to `os`.
 //
@@ -91,8 +97,9 @@ DMAConfigureTaskOp getUniqueReachableConfigure(Value task);
 //   <num_parameters>
 //   <name> <state_table_idx> <type> <kind>
 //   ...
-// where kind is "core" (shift-2 encoded, for read_scratchpad_parameter) or
-// "addr" (raw, for offset_parameter on DMA ops).
+// where kind is "core" (shift-2 encoded, for read_scratchpad_parameter),
+// "addr" (raw, for offset_parameter on DMA ops) or "len" (raw, in 32-bit
+// words, for length_parameter on DMA ops).
 void emitScratchpadParamsFile(mlir::ModuleOp moduleOp, llvm::raw_ostream &os);
 } // namespace AIEX
 } // namespace xilinx

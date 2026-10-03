@@ -200,7 +200,9 @@ struct AIECtrlPacketToDmaPass
                                  /*burst_length=*/0,
                                  /*axcache=*/IntegerAttr(),
                                  /*offset_parameter=*/FlatSymbolRefAttr(),
-                                 /*offset_state_table_idx=*/IntegerAttr());
+                                 /*offset_state_table_idx=*/IntegerAttr(),
+                                 /*length_parameter=*/FlatSymbolRefAttr(),
+                                 /*length_state_table_idx=*/IntegerAttr());
 
         Value shimRow = AIEX::createConstantI32(builder, loc, 0);
         Value shimCol = AIEX::createConstantI32(builder, loc, col);
