@@ -37,7 +37,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          # The base branch tip this workflow file came from; base.sha is the
+          # PR's merge base and can predate contribution.py.
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
