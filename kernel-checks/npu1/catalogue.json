@@ -1,8 +1,8 @@
 {
  "npu": "npu1",
  "arch": "aie2",
- "commit": "be5b8091e5f5cd9f67cc8628a6c0fcf0bb9dc564",
- "date": "2026-10-03T03:24:33.660774+00:00",
+ "commit": "5d89fc5739b922162580f1bed4bce4fc97da66cd",
+ "date": "2026-10-03T06:44:49.596527+00:00",
  "swept": true,
  "timing_refused": "power mode is default, required 'turbo'",
  "kernels": [
@@ -1351,11 +1351,12 @@
    "builds": [
     "leaky_relu"
    ],
-   "passed": 3,
+   "passed": 4,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
    "untimed": [
+    "leaky_relu/1024x4/bfloat16/inexact-alpha",
     "leaky_relu/160x4/bfloat16/unroll-tail"
    ],
    "flaky": []
@@ -1370,11 +1371,12 @@
    "builds": [
     "axpy"
    ],
-   "passed": 3,
+   "passed": 4,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
    "untimed": [
+    "axpy/1024x4/bfloat16/inexact-a",
     "axpy/64x4/bfloat16/short-row"
    ],
    "flaky": []
@@ -1610,7 +1612,7 @@
     "mv",
     "mv/dim_k=256/input_dtype=bfloat16/output_dtype=bfloat16"
    ],
-   "passed": 12,
+   "passed": 15,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
@@ -1621,11 +1623,11 @@
     "mv/48x32x4/int16_int32/edge-rows-not-multiple-of-32",
     "mv/4x128x4/bfloat16/vec_size=64/edge-two-chunks",
     "mv/4x64x4/bfloat16/vec_size=64/edge-one-chunk",
-    "mv/6x128x4/bfloat16/vec_size=64/edge-rows-not-multiple-of-4"
+    "mv/512x4/bfloat16/a_col_maj=True/vec_size=16/edge-narrowest",
+    "mv/6x128x4/bfloat16/vec_size=64/edge-rows-not-multiple-of-4",
+    "mv/8192x4/bfloat16/a_col_maj=True/vec_size=32/edge-eight-vectors"
    ],
-   "flaky": [
-    "mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down"
-   ]
+   "flaky": []
   },
   {
    "factory": "cascade_mm",
