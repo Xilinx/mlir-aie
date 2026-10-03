@@ -684,6 +684,7 @@ def mv(
     use_chess: bool = False,
     vec_size: int = 64,
     output_rows: int | None = None,
+    a_col_maj: bool = False,
 ) -> ExternalFunction:
     """Matrix-vector multiply kernel: c += A * b.
 
@@ -696,9 +697,24 @@ def mv(
     is ``(m, row_offset, A, b, c)``: ``row_offset`` shifts the write into
     ``c`` so one core can fill several output blocks; A is row-major.
 
+    ``a_col_maj=True`` builds the same file with ``-DA_COL_MAJ``, signature
+    ``(flags, A, b, acc, c)``: ``A`` is ``dim_k`` stored rows of a ``(K, M)``
+    matrix, ``dim_m`` elements each (the transpose), and ``b`` their ``dim_k``
+    elements of the vector. ``acc`` holds ``vec_size * dim_m`` float32 partial
+    sums that carry from call to call, so a whole ``K`` is a
+    ``MV_COL_MAJ_FIRST`` call, calls with no flags, and a ``MV_COL_MAJ_LAST``
+    call, which writes the ``dim_m`` outputs to ``c`` (or one call with both
+    flags). The sums are the row-major kernel's at the same ``vec_size`` over
+    that ``K``, in its order, so over ``A.T`` it returns the same bits, on
+    rows the row-major kernel computes in whole groups of four (the source
+    spells out the order). Choose ``vec_size`` as the row-major kernel would
+    for the whole ``K``.
+
     Args:
-        dim_m: Number of rows of A (output vector length).
-        dim_k: Number of columns of A (input vector length).
+        dim_m: Number of rows of A (output vector length). With
+            ``a_col_maj``: 16, 32 or a multiple of 64.
+        dim_k: Number of columns of A (input vector length). With
+            ``a_col_maj``: the stored rows of A one call takes.
         input_dtype: Input element type: ``np.int16`` or ``bfloat16``.
         output_dtype: Output element type: ``np.int32`` for ``np.int16``
             inputs, ``bfloat16`` for ``bfloat16`` inputs.
@@ -706,12 +722,15 @@ def mv(
         use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
             instead of Peano.  See [`mm`][iron.kernels.linalg.mm] for the design-level
             constraint (all EFs in one design must agree).
-        vec_size: bf16 only: the kernel's ``VEC_SIZE`` accumulation width.
+        vec_size: bf16 only: the kernel's ``VEC_SIZE`` accumulation width;
+            16, 32 or 64 with ``a_col_maj``.
         output_rows: bf16 only: the rows of a C tile that successive calls
             fill ``dim_m`` rows at a time through ``row_offset``, with b
             held for all of them, as amd/IRON's GEMV core does (its
             ``tile_size_output``). ``None``: every call writes its own
             ``dim_m`` rows.
+        a_col_maj: bf16 and vectorized only: A is stored ``(dim_k, dim_m)``,
+            the transpose, with partial sums carried across calls (above).
 
     Returns:
         ExternalFunction configured for the matvec kernel.
@@ -720,7 +739,11 @@ def mv(
         ValueError: When the dtype combination is not supported.
     """
     if (input_dtype, output_dtype) == (bfloat16, bfloat16):
-        return _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size, output_rows)
+        return _mv_bf16(
+            dim_m, dim_k, vectorized, use_chess, vec_size, output_rows, a_col_maj
+        )
+    if a_col_maj:
+        raise ValueError("mv(): a_col_maj is a bf16 layout")
     if output_rows is not None:
         raise ValueError("mv(): output_rows needs the bf16 kernel's row_offset")
     if input_dtype != np.int16 or output_dtype != np.int32:
@@ -768,8 +791,14 @@ def mv(
     )
 
 
+# The column-major matvec's flags: FIRST starts the partial sums, LAST
+# rounds them into c. A whole K in one call takes both.
+MV_COL_MAJ_FIRST = 1
+MV_COL_MAJ_LAST = 2
+
+
 def _mv_bf16(
-    dim_m, dim_k, vectorized, use_chess, vec_size, output_rows
+    dim_m, dim_k, vectorized, use_chess, vec_size, output_rows, a_col_maj
 ) -> ExternalFunction:
     """bf16 matvec from ``aie_kernels/linalg/mv_bf16.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
     if vec_size <= 0 or dim_k <= 0 or dim_k % vec_size:
@@ -780,42 +809,90 @@ def _mv_bf16(
         raise ValueError(
             f"mv(): output_rows ({output_rows}) must be a positive multiple of dim_m ({dim_m})"
         )
-    # A C tile filled over several calls holds b for all of them, so b is a
-    # Param the core keeps rather than an input streamed with each call.
     tiled = output_rows is not None
-    prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
-    a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k,), np.dtype[bfloat16]]
     c_ty = np.ndarray[(output_rows or dim_m,), np.dtype[bfloat16]]
     flags = [f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"]
-    if not use_chess:
-        # Peano's outer-loop pointer optimizer turns three of the second row
-        # group's offset loads into post-modify loads from the unoffset base,
-        # so rows 4-6 come out wrong. Drop the flag once llvm-aie fixes the
-        # pass.
-        flags += ["-mllvm", "--aie-enable-outer-loop-pointer-opt=false"]
+    if a_col_maj:
+        if not vectorized or tiled:
+            raise ValueError(
+                "mv(): a_col_maj is vectorized only, and a call writes all "
+                "dim_m of its outputs, so it takes no output_rows"
+            )
+        if vec_size not in (16, 32, 64):
+            raise ValueError(
+                f"mv(): a_col_maj needs vec_size ({vec_size}) of 16, 32 or 64"
+            )
+        if dim_m not in (16, 32) and (dim_m <= 0 or dim_m % 64):
+            raise ValueError(
+                f"mv(): a_col_maj needs dim_m ({dim_m}) of 16, 32 or a multiple of 64"
+            )
+        symbol = "matvec_vectorized_col_maj_bf16_bf16"
+        flags = ["-DA_COL_MAJ", f"-DDIM_M={dim_m}", *flags]
+        arg_types = [
+            np.int32,
+            np.ndarray[(dim_k * dim_m,), np.dtype[bfloat16]],
+            b_ty,
+            np.ndarray[(vec_size * dim_m,), np.dtype[np.float32]],
+            c_ty,
+        ]
+        roles = (Param, In, In, Param, Out)
+        # Judged a whole K per call: the sums start and finish in one call,
+        # so acc is scratch the core keeps rather than an input.
+        bindings = (
+            (0, MV_COL_MAJ_FIRST | MV_COL_MAJ_LAST),
+            (3, np.zeros(vec_size * dim_m, np.float32)),
+        )
+        layouts = (
+            None,
+            TensorLayout((dim_k, dim_m)),
+            TensorLayout((dim_k,)),
+            None,
+            TensorLayout((dim_m,)),
+        )
+        subscripts = "ckm,ck->cm"
+    else:
+        prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
+        symbol = f"{prefix}_bf16_bf16"
+        if not use_chess:
+            # Peano's outer-loop pointer optimizer turns three of the second
+            # row group's offset loads into post-modify loads from the
+            # unoffset base, so rows 4-6 come out wrong. Drop the flag once
+            # llvm-aie fixes the pass.
+            flags += ["-mllvm", "--aie-enable-outer-loop-pointer-opt=false"]
+        arg_types = [
+            np.int32,
+            np.int32,
+            np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
+            b_ty,
+            c_ty,
+        ]
+        # A C tile filled over several calls holds b for all of them, so b is
+        # a Param the core keeps rather than an input streamed with each call.
+        roles = (Param, Param, In, Param if tiled else In, Out)
+        bindings = ((0, dim_m), (1, 0))
+        layouts = (
+            None,
+            None,
+            TensorLayout((dim_m, dim_k)),
+            TensorLayout((dim_k,)),
+            TensorLayout((dim_m,)),
+        )
+        subscripts = "cmk,k->cm" if tiled else "cmk,ck->cm"
     return _make_extern(
-        f"{prefix}_bf16_bf16",
+        symbol,
         _kernel_source("linalg/mv_bf16.cc"),
-        [np.int32, np.int32, a_ty, b_ty, c_ty],
+        arg_types,
         compile_flags=flags,
         use_chess=use_chess,
         contract=KernelContract(
             trace=Trace.whole_call(),
-            roles=(Param, Param, In, Param if tiled else In, Out),
-            parameter_bindings=((0, dim_m), (1, 0)),
+            roles=roles,
+            parameter_bindings=bindings,
             out_offset=(1, dim_m) if tiled else None,
-            layouts=(
-                None,
-                None,
-                TensorLayout((dim_m, dim_k)),
-                TensorLayout((dim_k,)),
-                TensorLayout((dim_m,)),
-            ),
+            layouts=layouts,
             reference=lambda a, b: np.einsum(
-                "cmk,k->cm" if tiled else "cmk,ck->cm",
-                a.astype(np.float32),
-                b.astype(np.float32),
+                subscripts, a.astype(np.float32), b.astype(np.float32)
             ),
             acc_dtype=np.float32,  # accfloat, reduced to bf16 on store
             reduction=dim_k,
