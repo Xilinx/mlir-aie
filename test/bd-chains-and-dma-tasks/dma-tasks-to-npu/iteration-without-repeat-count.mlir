@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --verify-diagnostics --aie-dma-tasks-to-npu %s
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-split-long-repeats --aie-dma-tasks-to-npu %s
 
 // Each push onto the task queue runs one iteration of a BD's outermost
 // dimension, so an iteration dimension without a repeat_count to push the rest
@@ -84,6 +84,24 @@ module {
         aie.end
       } {repeat_count = 3 : i32}
       aiex.dma_start_task(%t2) {repeat_count = 0 : i32}
+    }
+  }
+}
+
+// -----
+
+// A repeat_count above 255 splits into pushes of 255 and a last push of the
+// rest, here 0. The task still repeats, so there is nothing to warn about.
+
+module {
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.runtime_sequence(%arg0: memref<4096xi32>) {
+      %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 64 sizes = [4, 1, 4, 16] strides = [64, 0, 16, 1]) {bd_id = 0 : i32}
+        aie.end
+      } {repeat_count = 256 : i32}
+      aiex.dma_start_task(%t)
     }
   }
 }
