@@ -5380,17 +5380,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#attributes_52" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Attributes:
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#operands_28" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5430,7 +5419,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#attributes_53" class="md-nav__link">
+  <a href="#attributes_52" class="md-nav__link">
     <span class="md-ellipsis">
       
         Attributes:
@@ -5458,7 +5447,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#attributes_54" class="md-nav__link">
+  <a href="#attributes_53" class="md-nav__link">
     <span class="md-ellipsis">
       
         Attributes:
@@ -8972,17 +8961,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#attributes_52" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Attributes:
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#operands_28" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -9022,7 +9000,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#attributes_53" class="md-nav__link">
+  <a href="#attributes_52" class="md-nav__link">
     <span class="md-ellipsis">
       
         Attributes:
@@ -9050,7 +9028,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#attributes_54" class="md-nav__link">
+  <a href="#attributes_53" class="md-nav__link">
     <span class="md-ellipsis">
       
         Attributes:
@@ -10335,7 +10313,7 @@ it was configured to issue one (<code>S2MM</code> channels do by default; <code>
 <td><code>aiex.set_lock</code></td>
 <td>Set the value of an <code>aie.lock</code> from the sequence. Non-blocking and offers no synchronization guarantee on its own; pair it with a blocking op.</td>
 <td>any tile that owns the referenced lock (core, mem, shim)</td>
-<td><code>aiex.set_lock(%lock, 5)</code></td>
+<td><code>aiex.set_lock(%lock, %c5)</code></td>
 </tr>
 </tbody>
 </table>
@@ -10740,17 +10718,16 @@ and <a href="../programming_guide/section-3/">Section 3 - My First Program</a>.<
 </ul>
 </li>
 <li><a href="#aiexset_lock-xilinxaiexsetlockop">aiex.set_lock (::xilinx::AIEX::SetLockOp)</a><ul>
-<li><a href="#attributes_52">Attributes:</a></li>
 <li><a href="#operands_28">Operands:</a></li>
 </ul>
 </li>
 <li><a href="#aiexsync_scratchpad_parameters_from_host-xilinxaiexsyncscratchpadparametersfromhostop">aiex.sync_scratchpad_parameters_from_host (::xilinx::AIEX::SyncScratchpadParametersFromHostOp)</a></li>
 <li><a href="#aiextoken-xilinxaiextokenop">aiex.token (::xilinx::AIEX::TokenOp)</a><ul>
-<li><a href="#attributes_53">Attributes:</a></li>
+<li><a href="#attributes_52">Attributes:</a></li>
 </ul>
 </li>
 <li><a href="#aiexusetoken-xilinxaiexusetokenop">aiex.useToken (::xilinx::AIEX::UseTokenOp)</a><ul>
-<li><a href="#attributes_54">Attributes:</a></li>
+<li><a href="#attributes_53">Attributes:</a></li>
 </ul>
 </li>
 </ul>
@@ -11879,14 +11856,16 @@ instead renamed to the <code>aie.shim_dma_allocation</code> allocation records f
 <h3 id="aiexdma_start_task-xilinxaiexdmastarttaskop"><code>aiex.dma_start_task</code> (::xilinx::AIEX::DMAStartTaskOp)<a class="headerlink" href="#aiexdma_start_task-xilinxaiexdmastarttaskop" title="Permanent link">&para;</a></h3>
 <p><em>Submit a Preconfigured Task to the Task Queue</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a>operation ::= `aiex.dma_start_task` `(` $task `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a>operation ::= `aiex.dma_start_task` `(` $task `)` (`repeat` $repeat_count_val^ `:` type($repeat_count_val))?
+<a id="__codelineno-55-2" name="__codelineno-55-2" href="#__codelineno-55-2"></a>              attr-dict
 </code></pre></div>
 <p>Submits the referenced task for execution on the tile, channel and direction it has been configured to run on.
 Once submitted, if the task is configured to issue a token, you can await completion of the task using <code>aiex.await_task</code>.</p>
 <p>A task may be started more than once; each start is one queue push. For
-this start only, <code>repeat_count</code> replaces the task's repeat count and
-<code>no_token</code> withholds its token. A constant repeat count past the target's
-maximum is split into several pushes by <code>aie-split-long-repeats</code>.</p>
+this start only, <code>repeat_count</code> (or the runtime <code>repeat_count_val</code>)
+replaces the task's repeat count and <code>no_token</code> withholds its token. A
+constant repeat count past the target's maximum is split into several
+pushes by <code>aie-split-long-repeats</code>; a runtime one must fit one push.</p>
 <p>Traits: <code>HasAncestor&lt;AIE::RuntimeSequenceOp&gt;</code></p>
 <h4 id="attributes_28">Attributes:<a class="headerlink" href="#attributes_28" title="Permanent link">&para;</a></h4>
 <table>
@@ -11907,6 +11886,10 @@ maximum is split into several pushes by <code>aie-split-long-repeats</code>.</p>
 <tr>
 <td style="text-align: center;"><code>task</code></td>
 <td>index</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>repeat_count_val</code></td>
+<td>32-bit signless integer</td>
 </tr>
 </tbody>
 </table>
@@ -12159,8 +12142,9 @@ descriptor field fits its hardware field: <code>min &lt;= value &lt;= max</code>
 the dynamic DMA lowering for a runtime scalar landing in a narrow field
 (e.g. the 10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would
 silently truncate an out-of-range value. The queue push's 8-bit
-repeat_count is guarded the same way, and a runtime transfer length gets a
-<code>min</code> of one address-gen granule.</p>
+repeat_count and runtime lock values (a BD's acquire/release, an
+aiex.set_lock) are guarded the same way, and a runtime transfer length gets
+a <code>min</code> of one address-gen granule.</p>
 <p>This op only ever appears on the dynamic (runtime-value) DMA lowering path;
 a fully static sequence never produces it. When <code>value</code> is a constant, the
 verifier hard-errors if it is outside <code>[min, max]</code>, so it is caught at
@@ -12982,19 +12966,16 @@ for details on how values are shifted to work around this).</p>
 <p>This operation sets the value of <code>lock</code> inside of a RuntimeSequenceOp.
 The operation is non blocking and does not offer any synchronization guarantees.
 Should be used in combination with blocking operations.</p>
+<p><code>value</code> may be a runtime scalar; it is then guarded to
+<code>[0, max lock value]</code> when the TXN stream is built.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-89-1" name="__codelineno-89-1" href="#__codelineno-89-1"></a>  %tile22 = aie.tile(2, 2)
 <a id="__codelineno-89-2" name="__codelineno-89-2" href="#__codelineno-89-2"></a>  %lock22_0 = aie.lock(%tile22, 0)
 <a id="__codelineno-89-3" name="__codelineno-89-3" href="#__codelineno-89-3"></a>  ...
-<a id="__codelineno-89-4" name="__codelineno-89-4" href="#__codelineno-89-4"></a>  aiex.set_lock(%lock22_0, 5)
+<a id="__codelineno-89-4" name="__codelineno-89-4" href="#__codelineno-89-4"></a>  %c5 = arith.constant 5 : i32
+<a id="__codelineno-89-5" name="__codelineno-89-5" href="#__codelineno-89-5"></a>  aiex.set_lock(%lock22_0, %c5)
 </code></pre></div></p>
 <p>Traits: <code>HasAncestor&lt;AIE::RuntimeSequenceOp&gt;</code>, <code>SkipAccessibilityCheckTrait</code></p>
-<h4 id="attributes_52">Attributes:<a class="headerlink" href="#attributes_52" title="Permanent link">&para;</a></h4>
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
-
 <h4 id="operands_28">Operands:<a class="headerlink" href="#operands_28" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
@@ -13007,6 +12988,10 @@ Should be used in combination with blocking operations.</p>
 <tr>
 <td style="text-align: center;"><code>lock</code></td>
 <td>index</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>value</code></td>
+<td>32-bit signless integer</td>
 </tr>
 </tbody>
 </table>
@@ -13054,7 +13039,7 @@ core executions.</p>
 <p>AIE.useToken @token0("Release", 5) // release token0 and set its value to 5</p>
 <p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>Symbol</code></p>
-<h4 id="attributes_53">Attributes:<a class="headerlink" href="#attributes_53" title="Permanent link">&para;</a></h4>
+<h4 id="attributes_52">Attributes:<a class="headerlink" href="#attributes_52" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
@@ -13068,7 +13053,7 @@ core executions.</p>
 </code></pre></div>
 <p>This operation uses token (logical lock). A logical lock can be acquired or released with a value.
 Similar to UseLockOp, this operation can be understood as "blocking" op.</p>
-<h4 id="attributes_54">Attributes:<a class="headerlink" href="#attributes_54" title="Permanent link">&para;</a></h4>
+<h4 id="attributes_53">Attributes:<a class="headerlink" href="#attributes_53" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>tokenName</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
