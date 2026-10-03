@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  actions: read  # the workflow's runs, to date each record by its start
 
 jobs:
   publish:
@@ -45,20 +46,35 @@ jobs:
 
       # Only `turbo` (nightlyKernelChecks.yml's PERF_PMODE) is
       # published: the checks refuse to measure a publishing run in any
-      # other mode, and this refuses to record one that slipped through.
+      # other mode, and this drops the numbers of one that slipped through.
+      # The run is still recorded, unpublished, and the other NPU publishes.
       - name: Read power modes
-        id: pmode
         run: |
           for npu in npu1 npu2; do
             [[ -f "results/$npu/perf.json" ]] || continue
-            pmode=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["preflight"]["pmode"] or sys.exit("power mode is unreadable"))' \
+            pmode=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["preflight"]["pmode"] or "unreadable")' \
               "results/$npu/meta.json")
             if [[ "$pmode" != turbo ]]; then
-              echo "::error::$npu was measured in power mode '$pmode', not turbo; its series is not published"
-              exit 1
+              echo "::error::$npu was measured in power mode '$pmode', not turbo; its numbers are not published"
+              rm "results/$npu/perf.json"
             fi
-            echo "$npu=$pmode" >> "$GITHUB_OUTPUT"
           done
+
+      # Each record is dated by its run's start, not by when it published
+      # (a run can queue for its NPU for hours); `backfill` below brings the
+      # records of earlier runs up to that, and fills in what started them.
+      - name: List the workflow's runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          workflow=${GITHUB_WORKFLOW_REF%@*}
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/${workflow##*/}/runs?per_page=100" \
+            --paginate --jq '.workflow_runs[] | {id, event, run_started_at}' \
+            > "$RUNNER_TEMP/runs.jsonl" ||
+            echo "::warning::could not list the workflow's runs; records are dated when published"
+          started=$(jq -r --argjson id "$GITHUB_RUN_ID" 'select(.id == $id) | .run_started_at' \
+            "$RUNNER_TEMP/runs.jsonl" 2>/dev/null || true)
+          echo "RUN_STARTED_AT=$started" >> "$GITHUB_ENV"
 
       - name: Fetch publication branch
         run: git fetch origin gh-pages:gh-pages --depth=1
@@ -67,7 +83,10 @@ jobs:
       # since neither is on gh-pages; results/ is untracked and survives the
       # switch. An NPU directory that still holds github-action-benchmark's
       # data.js is migrated first (once), and an NPU whose leg wrote nothing
-      # keeps its previous files.
+      # keeps its previous files. `backfill` is idempotent: it dates and
+      # labels every record of a listed run, and drops the numbers of any run
+      # charted in a mode other than turbo (the default-mode history
+      # migrated from data.js), keeping the record of a run that refused.
       - name: Publish results
         run: |
           cp utils/kernel_checks/index.html "$RUNNER_TEMP/index.html"
@@ -84,7 +103,12 @@ jobs:
             fi
             if [[ -f "results/$npu/meta.json" ]]; then
               python3 "$RUNNER_TEMP/publish.py" perf --target "$npu" --results "results/$npu" \
-                --run-id "$GITHUB_RUN_ID" --run-url "$RUN_URL" --out "$dir"
+                --run-id "$GITHUB_RUN_ID" --run-url "$RUN_URL" --out "$dir" \
+                --date "$RUN_STARTED_AT"
+            fi
+            if [[ -d "$dir/runs" && -s "$RUNNER_TEMP/runs.jsonl" ]]; then
+              python3 "$RUNNER_TEMP/publish.py" backfill --out "$dir" \
+                --runs "$RUNNER_TEMP/runs.jsonl" --keep-pmode turbo
             fi
           done
           git add -A kernel-checks

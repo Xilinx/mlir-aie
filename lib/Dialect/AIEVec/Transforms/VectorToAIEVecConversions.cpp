@@ -5094,6 +5094,15 @@ struct FlattenElementwiseVectorToRank1Pattern : OpConversionPattern<OpTy> {
     if (!resultType || resultType.getRank() == 1 || resultType.isScalable())
       return failure();
 
+    // The contraction lowering folds an extf on its operand into the matmul.
+    // It looks for the extf directly, so a flattened extf hidden behind a
+    // shape_cast would leave the contraction with no lowering.
+    if (isa<arith::ExtFOp>(op.getOperation()) &&
+        llvm::any_of(op->getUsers(), [](Operation *user) {
+          return isa<vector::ContractionOp>(user);
+        }))
+      return failure();
+
     auto flatResultType = getFlattenedVectorType(resultType);
     Location loc = op.getLoc();
 

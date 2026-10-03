@@ -47,6 +47,13 @@ kernel sources these wrap, see [C++ AIE kernels](aie_kernels.md).
     options:
       show_root_heading: false
 
+`fused_mm` computes one bf16 matrix-multiply tile on a single core, with an
+f32 reduction and an optional activation and clamp fused into the drain.
+
+::: iron.kernels.fused
+    options:
+      show_root_heading: false
+
 ## Convolution
 
 ::: iron.kernels.conv
@@ -207,6 +214,17 @@ this module.
         - Verdict
         - compare
         - bf16_ulp_distance
+
+## Sampling
+
+`sample_select` and `sample_combine` draw the next token from a row of bf16
+logits on the device: each `sample_select` core reduces one slice to its top
+k, and one `sample_combine` core draws from those summaries. `sample_ref` is
+the bit-exact host reference.
+
+::: iron.kernels.sample
+    options:
+      show_root_heading: false
 
 ## FastFlowLM Gemma 4
 

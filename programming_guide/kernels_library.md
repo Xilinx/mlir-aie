@@ -369,6 +369,17 @@ symbol reaches against `trace=`. Markers in a sibling kernel of the same
 file, around an inner loop, or skipped by an early return do not count as
 `whole_call`.
 
+A pull request that touches `aie_kernels/`, `python/iron/kernels/` or the
+case table gets one comment, updated on each push, that lists each new or
+changed factory with its contract, trace and cases, and what it still
+lacks. [`utils/kernel_checks/contribution.py`](../utils/kernel_checks/contribution.py)
+writes it by reading the files, never running them; it is a reminder and
+never fails the pull request. To see it before pushing:
+
+```bash
+python3 utils/kernel_checks/contribution.py --base origin/main --head HEAD
+```
+
 ## Testing, performance and static checks
 
 Every tier below reads the contract and the case table; none restates
@@ -380,6 +391,8 @@ what a kernel computes.
 | host, Peano | trace markers vs. the contract's `trace` | `test/python/test_kernel_trace_markers.py` | every PR (lit) |
 | device, smoke | the `smoke` cases on random data | `test/python/npu/test_kernels_e2e.py` | every PR on the NPU runners |
 | device, full | every case, every edge-data case, `--seeds` seeds | the same file, `-m extensive` | nightly, before anything is timed |
+| device, dedicated | factories the generic harness cannot check, marked `@pytest.mark.kernel_check(*factories)` (e.g. `set_rounding`) | `test/python/npu/test_kernels_e2e.py`, `test_kernel_cascade_conv.py` | every PR and nightly on the NPU runners |
+| device, cascade | MobileNet cascade conv halves, each pair against a numpy model of the whole conv | `test/python/npu/test_bn_cascade_pairs.py` | every PR on the NPU2 runners |
 | host, static | Peano remarks per kernel build | `python -m aie.utils.compile.remarks` | on demand |
 
 There is no compile-only tier: a design that will not build fails the tier
@@ -480,7 +493,10 @@ times the larger MAD. Reports are informational, not PR gates.
 `runs/<id>.json`, `runs.json`, `latest.json` (the last published PR baseline),
 and `history/<metric>.json`; `catalogue.json` lists available kernels and
 case outcomes. Runs older than 90 days thin to weekly. Readers reject newer
-schema versions instead of interpreting them.
+schema versions instead of interpreting them. The
+[components view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=components)
+reads the same format from `gh-pages:component-checks/<check>/`, written
+by `nightlyComponentChecks.yml`.
 
 ### Static checks
 

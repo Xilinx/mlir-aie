@@ -125,6 +125,56 @@ def test_failures_combine_sweep_and_timing_without_counting_skips(read_leg):
     assert failures["synthetic/1/i8"].failed == ["random/s0"]
     assert failures["synthetic/1/i8"].reason == "bad"
     assert failures["timing/1/i8"].failed == ["timing run"]
+    assert failures["timing/1/i8"].reason == "failed in the timing run; see perf.log"
+    assert leg.inputs == 2
+
+
+def test_timing_failure_reason_and_coverage_reach_the_comment(read_leg, report):
+    nodeid = "test_kernel_perf[timing/1/i8]"
+    leg = read_leg(
+        {},
+        cases=[("timing/1/i8/random/s0", "")],
+        meta=dict(
+            META,
+            failed=[nodeid],
+            reasons={
+                nodeid: "AssertionError: timing/1/i8: "
+                "wrong on run 62 (right on the first)"
+            },
+            runs_per_case=62,
+        ),
+    )
+    assert leg.failures[0].reason == "wrong on run 62 (right on the first)"
+    assert leg.runs == 62
+    comment = report.render([leg])
+    assert "Checked 1 inputs per NPU (random and edge) and each timed case" in comment
+    assert "after 62 runs in a row" in comment
+    assert "`seeds` or `iters`" in comment
+    assert "Checked" not in report.render([report.Leg("npu2", measured=False)])
+
+
+def test_dedicated_checks_report_failures_without_crediting_unmarked_tests(
+    report, tmp_path
+):
+    (tmp_path / "correctness.xml").write_text(
+        '<testsuite><testcase classname="test_pairs" name="test_pair[shape]">'
+        '<properties><property name="kernel_check" value="get" />'
+        '<property name="kernel_check" value="put" />'
+        '<property name="kernel_check" value="put" /></properties>'
+        '<failure message="wrong answer" /></testcase>'
+        '<testcase name="test_unrelated" /></testsuite>'
+    )
+    (tmp_path / "meta.json").write_text(
+        json.dumps({"failed": ["test_pairs::test_pair[shape]"]})
+    )
+    failures, swept, inputs = report.failures(tmp_path)
+    assert inputs == 0  # a dedicated test is not a random or edge input
+    assert swept == {"get/test_pair[shape]", "put/test_pair[shape]"}
+    assert {f.case for f in failures} == swept
+    for failure in failures:
+        assert failure.failed == ["dedicated"]
+        assert failure.total == 1
+        assert failure.reason == "wrong answer"
 
 
 @pytest.mark.parametrize(
@@ -192,6 +242,62 @@ def test_baseline_requires_matching_known_power_modes(
         meta={"preflight": preflight},
     )
     assert bool(leg.regressed) is compared
+    assert bool(leg.uncompared) is not compared
+    if current_mode and baseline_mode and not compared:
+        assert leg.uncompared == (
+            f"nightly in {baseline_mode} mode, this run in {current_mode}: "
+            "not compared"
+        )
+
+
+def test_a_refused_run_reports_one_reason_not_a_failure_per_case(read_leg, report):
+    refusal = "power mode is default, required 'turbo'"
+    leg = read_leg(
+        {},
+        _record({"synthetic/1/i8/cycles": ("cycles", 100)}),
+        meta={
+            "preflight": {"pmode": "default"},
+            "refused": refusal,
+            "failed": [f"test_kernel_perf[synthetic/{i}/i8]" for i in range(3)],
+        },
+        cases=[("synthetic/1/i8/random/s0", "")],
+    )
+    assert leg.failures == []
+    assert leg.uncompared == f"not timed: {refusal}"
+    comment = report.render([leg])
+    assert "all passed, no regressions, npu2 not timed" in comment
+    assert f"| npu2 | ? | not timed: {refusal} | 1 | 0 | \u2014 |" in comment
+
+
+def test_a_test_that_passed_on_a_retry_is_listed(read_leg, report):
+    retried = '<properties><property name="reruns" value="1" /></properties>'
+    leg = read_leg(
+        {},
+        cases=[
+            ("synthetic/1/i8/random/s0", ""),
+            ("synthetic/1/i8/random/s0", retried),
+            ("synthetic/2/i8/random/s0", ""),
+            ("synthetic/2/i8/random/s0", retried + '<failure message="bad" />'),
+        ],
+        meta=dict(
+            META,
+            failed=["perf.py::test_kernel_perf[synthetic/4/i8]"],
+            reruns={
+                "perf.py::test_kernel_perf[synthetic/3/i8]": 1,
+                "perf.py::test_kernel_perf[synthetic/4/i8]": 1,
+            },
+        ),
+    )
+    assert leg.flaky == [
+        ("::test_kernel_extensive[synthetic/1/i8/random/s0]", 1),
+        ("perf.py::test_kernel_perf[synthetic/3/i8]", 1),
+    ]
+    assert leg.inputs == 2
+    assert [f.total for f in leg.failures if f.case == "synthetic/2/i8"] == [1]
+    comment = report.render([leg])
+    assert "2 passed on a retry" in comment
+    assert "Passed only on a retry (2)" in comment
+    assert "`perf.py::test_kernel_perf[synthetic/3/i8]` | 1 |" in comment
 
 
 def test_cli_writes_report(tmp_path):
@@ -220,4 +326,4 @@ def test_cli_writes_report(tmp_path):
     text = out.read_text()
     assert "<!-- kernel-checks-report -->" in text
     assert "all passed, no regressions" in text
-    assert "none cached" in text
+    assert "| no nightly to compare with |" in text

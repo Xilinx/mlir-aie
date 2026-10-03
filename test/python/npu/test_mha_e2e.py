@@ -531,6 +531,7 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B):
         (3, 2, 4 * 32, 2 * _B, 32),  # carried across key blocks, then mid-block
         (1, 2, 2 * 32, 2 * _B, 32),  # a key block past every row, which must drop
         (3, 1, 4 * 16, _B, 16),  # the 16-row state walk
+        (1, 1, _B, _B, _B),  # a query block wholly past s_q_eff
     ],
 )
 def test_mha_round_matches_masked_attention(q_block, n_kv, s_q_eff, s_kv_eff, b_q):
@@ -553,6 +554,8 @@ def test_mha_round_matches_masked_attention(q_block, n_kv, s_q_eff, s_kv_eff, b_
     # Outputs are convex combinations of V rows, so measure in steps of max|v|.
     ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
     np.testing.assert_allclose(got[live], ref[live], rtol=0, atol=_ATOL_ULP * ulp)
+    # A row past s_q_eff attends over nothing; it must come out 0, not 0 * (1 / 0).
+    np.testing.assert_array_equal(got[~live], 0)
 
     # The reference uses the kernel's bf16 scale; check it against the exact one.
     exact = _attention(scores, v, keep, inv_scale=np.log2(np.e) / np.sqrt(_B)).astype(
