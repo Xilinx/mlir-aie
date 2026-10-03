@@ -1,7 +1,6 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from copy import deepcopy
 from typing import Sequence
 
 import numpy as np
@@ -12,7 +11,7 @@ def validate_and_clean_sizes_strides(
     strides: Sequence[int] | None,
     allow_none: bool = False,
     expected_dims: int | None = None,
-) -> tuple[Sequence[int] | None, Sequence[int] | None]:
+) -> tuple[list[int] | None, list[int] | None]:
     """Validate sizes and strides, and remove any unused values from upper dimensions if possible.
 
     Args:
@@ -25,7 +24,7 @@ def validate_and_clean_sizes_strides(
         ValueError: Validate sizes and strides
 
     Returns:
-        tuple[Sequence[int] | None, Sequence[int] | None]: The 'cleaned' sizes and strides.
+        tuple[list[int] | None, list[int] | None]: The 'cleaned' sizes and strides, as lists whatever sequence they were given as.
     """
     if not allow_none:
         if sizes is None:
@@ -70,19 +69,18 @@ def validate_and_clean_sizes_strides(
 
     # Validate sizes/strides values
     if sizes:
-        sizes = deepcopy(sizes)
+        sizes = list(sizes)
         for s in sizes:
             if s < 1:
                 raise ValueError(f"All sizes must be >= 1, but got {sizes}")
     if strides:
-        strides = deepcopy(strides)
+        strides = list(strides)
         for s in strides:
             if s < 0:
                 raise ValueError(f"All strides must be >= 0, but got {strides}")
 
     # Clean (set size=1, stride=0 for as many dims as possible)
     if sizes and strides:
-        strides = list(strides)
         # Leave last dimension strides as whatever it happens to be
         for i in range(num_dims - 1):
             if sizes[i] == 1:
@@ -94,7 +92,7 @@ def validate_and_clean_sizes_strides(
 
 def validate_tensor_dims(
     tensor_dims: Sequence[int], expected_dims: int | None = None
-) -> Sequence[int]:
+) -> list[int]:
     """Validate dimensions of tensors by ensuring each dimension is > 0 and the dimensionality is as expected.
 
     Args:
@@ -105,12 +103,12 @@ def validate_tensor_dims(
         ValueError: Validate the tensor dimensions
 
     Returns:
-        Sequence[int]: The validated tensor dimensions.
+        list[int]: The validated tensor dimensions, as a list whatever sequence they were given as.
     """
     if expected_dims is not None:
         if expected_dims < 1:
             raise ValueError(f"Expected dimensions ({expected_dims}) should be >= 1")
-    tensor_dims = deepcopy(tensor_dims)
+    tensor_dims = list(tensor_dims)
 
     # Validate tensor dims and offset, then set
     if len(tensor_dims) == 0:

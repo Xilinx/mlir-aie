@@ -44,7 +44,7 @@ def case(name, dims, sizes, strides, use_tap=True):
                 @runtime_sequence(T.memref(total, T.bf16()))
                 def seq(out):
                     if use_tap:
-                        tap = TensorAccessPattern(dims, 0, list(sizes), list(strides))
+                        tap = TensorAccessPattern(dims, 0, sizes, strides)
                         shim_dma_single_bd_task(of, out, tap=tap, issue_token=True)
                     elif strides is None:
                         shim_dma_single_bd_task(
@@ -87,6 +87,12 @@ case("rank4_lead1", (1, 1, 64, 4096), [1, 1, 64, 4096], [0, 0, 4096, 1])
 # CHECK: aie.dma_bd(%{{.*}} : memref<32768xbf16> offset = {{.*}} len = {{.*}} sizes = [4, 1, 8, 1024] strides = [8192, 0, 1024, 1])
 # CHECK: repeat_count = 3
 case("rank4_lead4", (4, 1, 8, 1024), [4, 1, 8, 1024], [8192, 0, 1024, 1])
+
+# the same pattern built from tuples lowers to the same BD.
+# CHECK-LABEL: CASE rank4_lead4_tuples
+# CHECK: aie.dma_bd(%{{.*}} : memref<32768xbf16> offset = {{.*}} len = {{.*}} sizes = [4, 1, 8, 1024] strides = [8192, 0, 1024, 1])
+# CHECK: repeat_count = 3
+case("rank4_lead4_tuples", (4, 1, 8, 1024), (4, 1, 8, 1024), (8192, 0, 1024, 1))
 
 # rank 3 via explicit sizes=/strides= (no tap): same normalization as tap=.
 # CHECK-LABEL: CASE rank3_explicit

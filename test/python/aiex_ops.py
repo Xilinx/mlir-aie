@@ -12,6 +12,7 @@ from aie.dialects.aie import (
     shim_dma_allocation,
     tile,
 )
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_and_print_module
 
 
@@ -70,6 +71,24 @@ def NpuDmaMemcpyNdOpI32Dims():
                 mem=B,
                 sizes=[1, 1, rows, 64],
                 strides=[0, 0, 64, 1],
+            )
+
+
+# CHECK-LABEL: NpuDmaMemcpyNdOpTapOfTuples
+# CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 64][1, 1, 8, 64][0, 0, 128, 1])
+@construct_and_print_module
+def NpuDmaMemcpyNdOpTapOfTuples():
+    @device(AIEDevice.npu1)
+    def device_body():
+        shim_dma_allocation("objFifo_out0", tile(0, 0), DMAChannelDir.S2MM, 0)
+
+        @runtime_sequence(np.ndarray[(4096,), np.dtype[np.int8]])
+        def sequence(B):
+            npu_dma_memcpy_nd(
+                metadata="objFifo_out0",
+                bd_id=1,
+                mem=B,
+                tap=TensorAccessPattern((64, 64), 64, (1, 1, 8, 64), (0, 0, 128, 1)),
             )
 
 
