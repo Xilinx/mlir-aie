@@ -174,7 +174,7 @@ it was configured to issue one (`S2MM` channels do by default; `MM2S` needs
 
 | Op | What it does | Applies to | Example |
 |----|--------------|------------|---------|
-| `aiex.set_lock` | Set the value of an `aie.lock` from the sequence. Non-blocking and offers no synchronization guarantee on its own; pair it with a blocking op. | any tile that owns the referenced lock (core, mem, shim) | `aiex.set_lock(%lock, 5)` |
+| `aiex.set_lock` | Set the value of an `aie.lock` from the sequence. Non-blocking and offers no synchronization guarantee on its own; pair it with a blocking op. | any tile that owns the referenced lock (core, mem, shim) | `aiex.set_lock(%lock, %c5)` |
 
 ### 6. Runtime parameters and scratchpad (write / declare / read / sync)
 
@@ -1378,21 +1378,24 @@ def AIE_DMAStartTaskOp
     Once submitted, if the task is configured to issue a token, you can await completion of the task using `aiex.await_task`.
 
     A task may be started more than once; each start is one queue push. For
-    this start only, `repeat_count` replaces the task's repeat count and
-    `no_token` withholds its token. A constant repeat count past the target's
-    maximum is split into several pushes by `aie-split-long-repeats`.
+    this start only, `repeat_count` (or the runtime `repeat_count_val`)
+    replaces the task's repeat count and `no_token` withholds its token. A
+    constant repeat count past the target's maximum is split into several
+    pushes by `aie-split-long-repeats`; a runtime one must fit one push.
   }];
 
   let arguments = (ins Index:$task, OptionalAttr<I32Attr>:$repeat_count,
+      Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
       UnitAttr:$no_token);
 
   let assemblyFormat = [{
-    `(` $task `)` attr-dict
+    `(` $task `)` (`repeat` $repeat_count_val^ `:` type($repeat_count_val))?
+    attr-dict
   }];
 
   let builders = [OpBuilder<(ins "mlir::Value":$task), [{
     build($_builder, $_state, task, /*repeat_count=*/nullptr,
-          /*no_token=*/nullptr);
+          /*repeat_count_val=*/nullptr, /*no_token=*/nullptr);
   }]>];
 
   let extraClassDeclaration = [{
@@ -1408,6 +1411,8 @@ def AIE_DMAStartTaskOp
   let extraClassDefinition = [{
     DMAConfigureTaskOp DMAStartTaskOp::getTaskOp() { return dyn_cast_or_null<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
     mlir::OpFoldResult DMAStartTaskOp::getPushRepeatCount(DMAConfigureTaskOp task) {
+      if (mlir::Value v = getRepeatCountVal())
+        return v;
       if (std::optional<uint32_t> rc = getRepeatCount())
         return mlir::IntegerAttr::get(
             mlir::IntegerType::get(getContext(), 32), *rc);
@@ -1571,15 +1576,19 @@ def AIEX_SetLockOp : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
     The operation is non blocking and does not offer any synchronization guarantees.
     Should be used in combination with blocking operations.
 
+    `value` may be a runtime scalar; it is then guarded to
+    `[0, max lock value]` when the TXN stream is built.
+
     Example:
     ```
       %tile22 = aie.tile(2, 2)
       %lock22_0 = aie.lock(%tile22, 0)
       ...
-      aiex.set_lock(%lock22_0, 5)
+      %c5 = arith.constant 5 : i32
+      aiex.set_lock(%lock22_0, %c5)
     ```
   }];
-  let arguments = (ins Index:$lock, I32Attr:$value);
+  let arguments = (ins Index:$lock, I32:$value);
   let assemblyFormat = [{ `(` $lock `,` $value `)` attr-dict }];
   let hasVerifier = 1;
 

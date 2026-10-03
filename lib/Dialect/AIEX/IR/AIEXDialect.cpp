@@ -1299,7 +1299,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
         result = failure();
       }
       // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
-      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)))
+      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
+          failed(bd.verifyTransferInBounds()))
         result = failure();
       bds.push_back(bd);
     });
@@ -1322,6 +1323,9 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
 }
 
 LogicalResult AIEX::DMAStartTaskOp::verify() {
+  if (getRepeatCountAttr() && getRepeatCountVal())
+    return emitOpError(
+        "takes repeat_count or a runtime repeat count, not both");
   if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
     return emitOpError("repeat_count must be non-negative, got ")
            << rc.getInt();
@@ -1436,12 +1440,13 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return emitOpError("SetLockOp is not supported on AIE1.");
 
-  if (getValueAttr().getValue().isNegative())
-    return emitOpError("Lock value must be non-negative");
-
-  if (getValue() > targetModel.getMaxLockValue())
-    return emitOpError("Lock value exceeds the maximum value of " +
-                       std::to_string(targetModel.getMaxLockValue()));
+  if (std::optional<int64_t> value = getConstantIntValue(getValue())) {
+    if (*value < 0)
+      return emitOpError("Lock value must be non-negative");
+    if (*value > targetModel.getMaxLockValue())
+      return emitOpError("Lock value exceeds the maximum value of " +
+                         std::to_string(targetModel.getMaxLockValue()));
+  }
 
   auto lockOp = getLockOp();
   auto lockIDOpt = getLockOp().getLockID();

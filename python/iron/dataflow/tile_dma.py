@@ -49,7 +49,7 @@ from ...dialects.aie import bds as bd_blocks
 from ...dialects.aiex import dma_configure_task, dma_configure_task_for
 from ...helpers.npdtypes import pack_pad_value
 from ...helpers.taplib import TensorAccessPattern
-from ...helpers.taplib._symbolic import is_sym, sprod, sym_any
+from ...helpers.taplib._symbolic import is_sym, si32, sprod, sym_any
 from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock
@@ -62,28 +62,36 @@ _SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
 
 @dataclass
 class Acquire:
-    """An ``aie.use_lock(..., AcquireGreaterEqual|Acquire)`` op at the start of a BD."""
+    """An ``aie.use_lock(..., AcquireGreaterEqual|Acquire)`` op at the start of a BD.
+
+    In a runtime-sequence task, ``value`` may be a dispatch-time value; the
+    instruction stream is rejected if it falls outside the lock's range (at
+    least 1 for ``greater_equal``).
+    """
 
     lock: Lock
-    value: int = 1
+    value: int | ir.Value = 1
     greater_equal: bool = True  # False → exact Acquire
 
     def emit(self) -> None:
         action = (
             LockAction.AcquireGreaterEqual if self.greater_equal else LockAction.Acquire
         )
-        use_lock(self.lock.op, action, value=self.value)
+        use_lock(self.lock.op, action, value=si32(self.value))
 
 
 @dataclass
 class Release:
-    """An ``aie.use_lock(..., Release)`` op at the end of a BD."""
+    """An ``aie.use_lock(..., Release)`` op at the end of a BD.
+
+    In a runtime-sequence task, ``value`` may be a dispatch-time value.
+    """
 
     lock: Lock
-    value: int = 1
+    value: int | ir.Value = 1
 
     def emit(self) -> None:
-        use_lock(self.lock.op, LockAction.Release, value=self.value)
+        use_lock(self.lock.op, LockAction.Release, value=si32(self.value))
 
 
 @dataclass

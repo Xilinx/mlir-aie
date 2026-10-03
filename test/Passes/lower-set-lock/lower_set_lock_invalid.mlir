@@ -17,7 +17,8 @@ module @test_invalid_lock_value {
         // Set some runtime parameters before starting execution
 
         // CHECK: Lock value exceeds the maximum value
-        aiex.set_lock(%lock22_0, 1024)
+        %lock22_0_v1024 = arith.constant 1024 : i32
+        aiex.set_lock(%lock22_0, %lock22_0_v1024)
     }
   }
 }
@@ -34,7 +35,8 @@ module @test_invalid_lock_value {
         // Set some runtime parameters before starting execution
 
         // CHECK: SetLockOp is not supported on AIE1.
-        aiex.set_lock(%lock22_0, 1)
+        %lock22_0_v1 = arith.constant 1 : i32
+        aiex.set_lock(%lock22_0, %lock22_0_v1)
     }
   }
 }

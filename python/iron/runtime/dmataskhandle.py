@@ -27,6 +27,7 @@ from ...dialects.aiex import (  # pyright: ignore[reportMissingImports]
     dma_free_task,
     dma_start_task,
 )
+from ...ir import Value  # pyright: ignore[reportMissingImports]
 
 
 @dataclass
@@ -67,12 +68,13 @@ class Task:
         """Make this loop result stand for ``task``, which the loop body yielded."""
         self._lifetime = task._lifetime
 
-    def start(self, repeat_count: int | None = None) -> "Task":
+    def start(self, repeat_count: int | Value | None = None) -> "Task":
         """Push this task onto its channel's queue (``dma_start_task``).
 
         Its buffer descriptors are written when the task is configured, so each
         start costs one queue push. ``repeat_count`` replaces the task's
-        configured count for this start only.
+        configured count for this start only; a runtime value must fit one
+        queue push.
 
         A task carried through a ``range_`` ``iter_args`` entry can be started
         only if every value it can carry comes from the same configure (the

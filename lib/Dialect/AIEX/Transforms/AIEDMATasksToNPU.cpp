@@ -168,6 +168,11 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
 struct AIEDMATasksToNPUPass
     : xilinx::AIEX::impl::AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
+  // A BD whose aie.next_bd successor draws its id from the dynamic pool, mapped
+  // to that runtime id; hoistNextBdOpsIntoAttrs fills it in place of the
+  // next_bd_id attribute.
+  llvm::DenseMap<AIE::DMABDOp, Value> runtimeNextBdId;
+
   bool shouldSkipBlock(Block &block) {
     // Allow blocks in the input IR that contain nothing but a next_bd operation
     // as the entry block. We will skip these blocks and not lower them to
@@ -467,16 +472,20 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
-  // Gather the constant lock / packet / next_bd fields for a BD block. Returns
-  // failure if a lock carries a non-constant value.
+  // The lock / packet / next_bd fields for a BD block. A runtime lock value is
+  // guarded and encoded with `builder`; only the dynamic path reaches that.
   FailureOr<BdTemplateFields>
-  gatherBdTemplateFields(Block &block, AIE::DMABDOp bd_op, AIE::TileOp &tile,
+  gatherBdTemplateFields(OpBuilder &builder, Block &block, AIE::DMABDOp bd_op,
+                         AIE::TileOp &tile,
                          const AIE::AIETargetModel &target_model,
                          std::optional<xilinx::AIE::PacketInfoAttr> packet,
                          bool outOfOrder = false) {
     BdTemplateFields f;
     if (std::optional<uint32_t> nextBdId = bd_op.getNextBdId()) {
       f.next_bd_id = *nextBdId;
+      f.use_next_bd = 1;
+    } else if (Value nextBdIdVal = runtimeNextBdId.lookup(bd_op)) {
+      f.next_bd_id_val = nextBdIdVal;
       f.use_next_bd = 1;
     }
 
@@ -493,6 +502,35 @@ struct AIEDMATasksToNPUPass
     if (std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration())
       f.iteration_current = iter->getCurrent();
 
+    // AcquireGreaterEqual is encoded negated, so a runtime one must be >= 1:
+    // a field of 0 would mean "acquire == 0".
+    auto lockValue = [&](AIE::UseLockOp op, int32_t &constOut,
+                         Value &valueOut) -> LogicalResult {
+      if (std::optional<int64_t> c = getConstantIntValue(op.getValue())) {
+        constOut = op.acquireGE() ? -static_cast<int32_t>(*c)
+                                  : static_cast<int32_t>(*c);
+        return success();
+      }
+      Location loc = op.getLoc();
+      int32_t minValue = op.acquireGE() ? 1 : 0;
+      int32_t maxValue = target_model.getMaxLockValue();
+      Value fromMin = builder.createOrFold<arith::SubIOp>(
+          loc, op.getValue(), createConstantI32(builder, loc, minValue));
+      Value inRange = builder.createOrFold<arith::CmpIOp>(
+          loc, arith::CmpIPredicate::ule, fromMin,
+          createConstantI32(builder, loc, maxValue - minValue));
+      if (failed(emitRuntimeCheck(builder, loc, inRange,
+                                  "a runtime lock value must be in [" +
+                                      Twine(minValue) + ":" + Twine(maxValue) +
+                                      "]")))
+        return failure();
+      valueOut = op.getValue();
+      if (op.acquireGE())
+        valueOut = arith::SubIOp::create(
+            builder, loc, createConstantI32(builder, loc, 0), valueOut);
+      return success();
+    };
+
     AIE::UseLockOp acquire_op, release_op;
     if (failed(
             AIE::verifyBdLockPair(block, outOfOrder, acquire_op, release_op)))
@@ -505,28 +543,16 @@ struct AIEDMATasksToNPUPass
         AIE::LockOp acq_lock = acquire_op.getLockOp();
         if (std::optional<int32_t> acqLockId = acq_lock.getLockID()) {
           f.lock_acq_id = *acqLockId;
-          FailureOr<int32_t> value = acquire_op.getConstantValue();
-          if (failed(value))
+          if (failed(lockValue(acquire_op, f.lock_acq_val, f.lock_acq_val_val)))
             return failure();
-          // failed() above guards the deref; FailureOr hides std::optional's
-          // has_value(), so the checker cannot see the guard (suppressed
-          // below).
-          f.lock_acq_val = *value; // NOLINT
-          // For AcquireGreaterEqual, negate the value to signal the hardware
-          // to use >= comparison instead of == comparison.
-          if (acquire_op.acquireGE())
-            f.lock_acq_val = -f.lock_acq_val;
           f.lock_acq_enable = 1;
         }
       }
 
       if (std::optional<int32_t> relLockId = rel_lock.getLockID()) {
         f.lock_rel_id = *relLockId;
-        FailureOr<int32_t> value = release_op.getConstantValue();
-        if (failed(value))
+        if (failed(lockValue(release_op, f.lock_rel_val, f.lock_rel_val_val)))
           return failure();
-        // failed() above guards the deref; see note in the acquire branch.
-        f.lock_rel_val = *value; // NOLINT
       }
 
       // For memtile, add lock offset using getLockLocalBaseIndex. This matches
@@ -562,8 +588,8 @@ struct AIEDMATasksToNPUPass
     int col = tile.getCol();
     int row = tile.getRow();
 
-    auto fieldsOr = gatherBdTemplateFields(block, bd_op, tile, target_model,
-                                           packet, outOfOrder);
+    auto fieldsOr = gatherBdTemplateFields(builder, block, bd_op, tile,
+                                           target_model, packet, outOfOrder);
     if (failed(fieldsOr))
       return failure();
     // failed() above guards the deref; FailureOr hides the std::optional base's
@@ -613,21 +639,51 @@ struct AIEDMATasksToNPUPass
     }
     // len as OpFoldResult: the runtime operand if present, else the static_len
     // attr (a constant BD with runtime sizes/strides still reaches here). With
-    // dims and no len, the transfer is their d0*d1*d2 extent; without either,
-    // it is the whole buffer, as on the static path.
+    // runtime dims and no len, the transfer is their d0*d1*d2 extent; with
+    // constant dims or none, it is the whole buffer, as on the static path.
+    // That default needs a constant offset, or it could run past the buffer.
     OpFoldResult lenOfr;
     if (Value lenOperand = bd_op.getLen())
       lenOfr = lenOperand;
     else if (std::optional<int32_t> constLen = bd_op.getConstantLen())
       lenOfr = builder.getI32IntegerAttr(*constLen);
-    else if (sizes.empty()) {
+    else if (bd_op.getSizes().empty() && bd_op.getStrides().empty()) {
       auto bufTy = cast<BaseMemRefType>(bd_op.getBuffer().getType());
-      if (!bufTy.hasStaticShape())
+      if (!bufTy.hasStaticShape() ||
+          (bd_op.getOffset() && !bd_op.getConstantOffset()))
         return bd_op->emitOpError(
-            "runtime-valued BD on a dynamically shaped buffer requires an "
-            "explicit transfer length; provide a `len` for this buffer "
-            "descriptor.");
+            "runtime-valued BD requires an explicit transfer length; provide a "
+            "`len` for this buffer descriptor.");
       lenOfr = builder.getI64IntegerAttr(bufTy.getNumElements());
+    }
+
+    // As on the static path, the lowest three dims (d3 repeats the BD) must
+    // cover a constant length exactly.
+    std::optional<int64_t> constLen =
+        lenOfr ? getConstantIntValue(lenOfr) : std::nullopt;
+    std::optional<int64_t> dimsLen = 1;
+    for (OpFoldResult s : llvm::drop_begin(sizes4)) {
+      std::optional<int64_t> c = getConstantIntValue(s);
+      if (!c) {
+        dimsLen.reset();
+        break;
+      }
+      *dimsLen *= *c;
+    }
+    uint64_t elemWidth =
+        static_cast<uint64_t>(bd_op.getBufferElementTypeWidthInBytes()) * 8;
+    if (!sizes.empty() && constLen && dimsLen && *dimsLen != *constLen) {
+      auto err = bd_op->emitOpError(
+                     "Buffer descriptor length does not match length of "
+                     "transfer expressed by lowest three dimensions of data "
+                     "layout transformation strides/wraps. ")
+                 << "BD length is " << (*constLen * elemWidth / 8)
+                 << " bytes. Lowest three dimensions of data layout "
+                    "transformation would result in transfer of "
+                 << (*dimsLen * elemWidth / 8) << " bytes. ";
+      err.attachNote() << "Do not include the highest dimension size in "
+                          "transfer length, as this is the BD repeat count.";
+      return failure();
     }
 
     // A BD without addressing dims, or whose dims are a unit-stride d0 alone,
@@ -644,9 +700,6 @@ struct AIEDMATasksToNPUPass
       sizes4[3] = lenOfr;
       strides4[3] = one;
     }
-
-    uint64_t elemWidth =
-        static_cast<uint64_t>(bd_op.getBufferElementTypeWidthInBytes()) * 8;
 
     // The BD-level repeat_count (encoder output) is unused here: the dma_task
     // queue push is emitted separately by DMAStartTaskOpPattern from the task
@@ -692,7 +745,8 @@ struct AIEDMATasksToNPUPass
 
     // Runtime (SSA) sizes/strides/len/offset take the dynamic BD-word encoder
     // path; a runtime bd_id (dynamic free-list pool) also forces it, since the
-    // BD register addresses are then runtime and cannot fold into a blockwrite.
+    // BD register addresses are then runtime and cannot fold into a blockwrite,
+    // and so does a runtime next_bd, which is a runtime field in the words.
     // A fully-constant descriptor with a pinned bd_id takes the static path
     // below unchanged. The encoder covers every tile type that has a BD
     // register layout (see buildBdWords), so anything the dynamic path can't
@@ -704,15 +758,22 @@ struct AIEDMATasksToNPUPass
                      [](OpFoldResult s) { return !getConstantIntValue(s); }) ||
         llvm::any_of(bd_op.getMixedStrides(),
                      [](OpFoldResult s) { return !getConstantIntValue(s); });
-    if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId) {
+    bool runtimeNextBd = runtimeNextBdId.contains(bd_op);
+    bool runtimeLock =
+        llvm::any_of(block.getOps<AIE::UseLockOp>(), [](AIE::UseLockOp op) {
+          return !getConstantIntValue(op.getValue());
+        });
+    if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId ||
+        runtimeNextBd || runtimeLock) {
       int col = tile.getCol(), row = tile.getRow();
       if (!target_model.isShimNOCTile(col, row) &&
           !target_model.isMemTile(col, row) &&
           !target_model.isCoreTile(col, row))
         return bd_op->emitOpError(
-            "runtime-valued BD size/stride/len/bd_id is only supported on "
-            "tiles with a DMA buffer descriptor layout (shim NOC, mem and core "
-            "tiles); use compile-time constants here.");
+            "runtime-valued BD size/stride/len/bd_id/next_bd/lock value is "
+            "only supported on tiles with a DMA buffer descriptor layout (shim "
+            "NOC, mem and "
+            "core tiles); use compile-time constants here.");
       if (bd_op.getPadDimensions().has_value())
         return bd_op->emitOpError(
             "zero padding is not supported with runtime sizes/strides/len.");
@@ -924,8 +985,8 @@ struct AIEDMATasksToNPUPass
                << "        Padding is supported only on MemTiles.";
       }
     }
-    auto fieldsOr = gatherBdTemplateFields(block, bd_op, tile, target_model,
-                                           packet, outOfOrder);
+    auto fieldsOr = gatherBdTemplateFields(builder, block, bd_op, tile,
+                                           target_model, packet, outOfOrder);
     if (failed(fieldsOr))
       return failure();
     // failed() above guards the deref; see note in rewriteSingleBDDynamic.
@@ -983,11 +1044,11 @@ struct AIEDMATasksToNPUPass
         }
         Block &next_bd_block = *next_bd_op.getDest();
         AIE::DMABDOp next_dma_bd_op = getBdForBlock(next_bd_block);
-        assert(next_dma_bd_op.getBdId()
-                   .has_value()); // Next BD should have assigned ID, and this
-                                  // should have been checked by earlier
-                                  // verifyBdInBlock() call
-        bd_op.setNextBdId(next_dma_bd_op.getBdId());
+        // verifyBdInBlock has required a pinned or a runtime id on every BD.
+        if (Value nextBdIdVal = next_dma_bd_op.getBdIdVal())
+          runtimeNextBdId[bd_op] = nextBdIdVal;
+        else
+          bd_op.setNextBdId(next_dma_bd_op.getBdId());
         OpBuilder builder(next_bd_op);
         AIE::EndOp::create(builder, next_bd_op.getLoc());
         next_bd_op.erase();
@@ -1081,6 +1142,7 @@ struct AIEDMATasksToNPUPass
     }
 
     // Hoist next_bd operations into next_bd_id attribute of the dma_bd
+    runtimeNextBdId.clear();
     if (failed(hoistNextBdOpsIntoAttrs(op))) {
       return failure();
     }

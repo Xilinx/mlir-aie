@@ -48,6 +48,8 @@ struct AIESplitLongRepeatsPass
       std::optional<int64_t> rc;
       if (std::optional<uint32_t> own = start.getRepeatCount()) {
         rc = *own;
+      } else if (Value ownVal = start.getRepeatCountVal()) {
+        rc = getConstantIntValue(ownVal);
       } else {
         DMAConfigureTaskOp cfg = start.getTaskOp();
         if (!cfg)
@@ -80,8 +82,10 @@ struct AIESplitLongRepeatsPass
       for (; runs > maxRepeat + 1; runs -= maxRepeat + 1)
         DMAStartTaskOp::create(b, start.getLoc(), start.getTask(),
                                b.getI32IntegerAttr(maxRepeat),
+                               /*repeat_count_val=*/nullptr,
                                /*no_token=*/b.getUnitAttr());
       start.setRepeatCountAttr(b.getI32IntegerAttr(runs - 1));
+      start.getRepeatCountValMutable().clear();
     }
   }
 };

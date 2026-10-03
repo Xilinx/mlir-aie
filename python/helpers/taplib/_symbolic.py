@@ -39,6 +39,7 @@ __all__ = [
     "show",
     "sym_any",
     "sint",
+    "si32",
     "sprod",
     "require",
 ]
@@ -129,6 +130,29 @@ def sint(value: Any) -> Any:
     raise TypeError(
         f"expected an integer or a staged value, got {type(value).__name__}"
     )
+
+
+def si32(value: Any) -> Any:
+    """Narrow an integer-like to the `i32` of a hardware field.
+
+    A staged `i32` passes through. Any other staged value is widened by
+    `sint`, guarded to `[0, 2**31 - 1]` and truncated, so a value that does
+    not fit fails the dispatch instead of wrapping.
+
+    Args:
+        value: A Python or NumPy integer, or a staged value.
+
+    Returns:
+        IntLike: An `int`, or a staged `i32`.
+    """
+    if is_sym(value) and value.type == T.i32():
+        return value
+    value = sint(value)
+    if not is_sym(value):
+        return value
+    require(value >= 0, "a runtime 32-bit field value must be >= 0")
+    require(value < 1 << 31, "a runtime 32-bit field value must be < 2**31")
+    return arith.trunci(T.i32(), value)
 
 
 def sprod(values: Iterable[Any]) -> Any:

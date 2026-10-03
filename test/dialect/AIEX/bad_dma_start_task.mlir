@@ -37,3 +37,19 @@ module {
     }
   }
 }
+
+// -----
+
+module {
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.runtime_sequence(%arg0: memref<256xi32>, %rc: i32) {
+      %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%arg0 : memref<256xi32> offset = 0 len = 256)
+        aie.end
+      }
+      // expected-error@+1 {{takes repeat_count or a runtime repeat count, not both}}
+      aiex.dma_start_task(%t) repeat %rc : i32 {repeat_count = 2 : i32}
+    }
+  }
+}
