@@ -596,8 +596,9 @@ struct AIEDMATasksToNPUPass
         static_cast<uint64_t>(bd_op.getBufferElementTypeWidthInBytes()) * 8;
     uint32_t gran = target_model.getAddressGenGranularity();
     // len as OpFoldResult: the runtime operand if present, else the static_len
-    // attr, else the whole buffer as on the static path (a BD whose only
-    // runtime fields are its lock values carries no len).
+    // attr, else the whole buffer as on the static path. That default needs
+    // constant addressing: with a runtime offset or dim it could disagree with
+    // the transfer or run past the buffer.
     OpFoldResult lenOfr;
     if (Value lenOperand = bd_op.getLen()) {
       lenOfr = lenOperand;
@@ -605,7 +606,11 @@ struct AIEDMATasksToNPUPass
       lenOfr = builder.getI32IntegerAttr(*constLen);
     } else {
       auto memrefType = llvm::dyn_cast<MemRefType>(bd_op.getBuffer().getType());
-      if (!memrefType || !memrefType.hasStaticShape())
+      bool runtimeAddressing =
+          (bd_op.hasOffset() && !bd_op.getConstantOffset()) ||
+          llvm::any_of(llvm::concat<OpFoldResult>(sizes, strides),
+                       [](OpFoldResult v) { return !getConstantIntValue(v); });
+      if (!memrefType || !memrefType.hasStaticShape() || runtimeAddressing)
         return bd_op->emitOpError(
             "runtime-valued BD requires an explicit transfer length; provide a "
             "`len` for this buffer descriptor.");
@@ -622,6 +627,30 @@ struct AIEDMATasksToNPUPass
         return bd_op->emitOpError(
             "Transfer length must be a positive whole number of "
             "address-generation granules.");
+      // As on the static path, the lowest three dims (d3 repeats the BD) must
+      // cover the length exactly.
+      std::optional<int64_t> dimsLen = 1;
+      for (OpFoldResult s : llvm::drop_begin(sizes4)) {
+        std::optional<int64_t> c = getConstantIntValue(s);
+        if (!c) {
+          dimsLen.reset();
+          break;
+        }
+        *dimsLen *= *c;
+      }
+      if (!sizes.empty() && dimsLen && *dimsLen != *constLen) {
+        auto err = bd_op->emitOpError(
+                       "Buffer descriptor length does not match length of "
+                       "transfer expressed by lowest three dimensions of data "
+                       "layout transformation strides/wraps. ")
+                   << "BD length is " << (*constLen * elemWidth / 8)
+                   << " bytes. Lowest three dimensions of data layout "
+                      "transformation would result in transfer of "
+                   << (*dimsLen * elemWidth / 8) << " bytes. ";
+        err.attachNote() << "Do not include the highest dimension size in "
+                            "transfer length, as this is the BD repeat count.";
+        return failure();
+      }
       bufLen = createConstantI32(builder, loc, *constLen * elemWidth / gran);
     } else {
       Value lenVal = getAsValue(builder, loc, lenOfr, i32ty);

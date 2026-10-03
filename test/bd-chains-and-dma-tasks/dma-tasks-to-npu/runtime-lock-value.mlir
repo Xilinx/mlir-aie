@@ -84,3 +84,26 @@ aie.device(npu2) {
     }
   }
 }
+
+// -----
+
+// Constant dims that cover the whole buffer keep the whole-buffer default.
+// CHECK-LABEL: @no_len_dims
+// CHECK: %[[LEN:.*]] = arith.constant 128 : i32
+// CHECK: %[[W0:.*]] = arith.andi %[[LEN]], %c131071_i32 : i32
+// CHECK: %[[WORD0:.*]] = arith.ori %{{.*}}, %[[W0]] : i32
+// CHECK: aiex.npu.blockwrite_values(%{{.*}} : i32) values %[[WORD0]],
+aie.device(npu2) {
+  %tile_0_1 = aie.tile(0, 1)
+  %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<128xi32>
+  %prod = aie.lock(%tile_0_1, 0) {init = 0 : i32}
+  %cons = aie.lock(%tile_0_1, 1) {init = 0 : i32}
+  aie.runtime_sequence @no_len_dims(%uses: i32) {
+    %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+      aie.use_lock(%cons, AcquireGreaterEqual, %uses)
+      aie.dma_bd(%buf : memref<128xi32> sizes = [8, 16] strides = [16, 1]) {bd_id = 0 : i32}
+      aie.use_lock(%prod, Release, %uses)
+      aie.end
+    }
+  }
+}
