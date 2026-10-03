@@ -156,17 +156,24 @@ static int64_t getMaxLengthSteps(Operation *op, int64_t lenBytes,
   return (maxWords - lenBytes / 4) / (unitBytes / 4);
 }
 
-static int64_t getMaxLengthSteps(NpuDmaMemcpyNdOp op) {
-  SmallVector<int64_t> sizes = *getConstantIntValues(op.getMixedSizes());
+static std::optional<int64_t> getMaxLengthSteps(NpuDmaMemcpyNdOp op) {
+  std::optional<SmallVector<int64_t>> sizes =
+      getConstantIntValues(op.getMixedSizes());
+  std::optional<int64_t> lengthUnit = op.getLengthUnit();
+  if (!sizes || !lengthUnit)
+    return std::nullopt;
   int64_t elemBytes = op.getElementTypeBitwidth() / 8;
-  return getMaxLengthSteps(op, sizes[1] * sizes[2] * sizes[3] * elemBytes,
-                           *op.getLengthUnit() * elemBytes);
+  return getMaxLengthSteps(op,
+                           (*sizes)[1] * (*sizes)[2] * (*sizes)[3] * elemBytes,
+                           *lengthUnit * elemBytes);
 }
 
-static int64_t getMaxLengthSteps(AIE::DMABDOp op) {
+static std::optional<int64_t> getMaxLengthSteps(AIE::DMABDOp op) {
+  std::optional<int64_t> lengthUnit = op.getLengthUnit();
+  if (!lengthUnit)
+    return std::nullopt;
   return getMaxLengthSteps(op, op.getLenInBytes(),
-                           *op.getLengthUnit() *
-                               op.getBufferElementTypeWidthInBytes());
+                           *lengthUnit * op.getBufferElementTypeWidthInBytes());
 }
 
 /// Returns true iff the parameter-sync preamble (create_scratchpad + set_lock)
@@ -548,7 +555,7 @@ struct AIELowerScratchpadParametersPass
         [&](Operation *op, FlatSymbolRefAttr offsetRef,
             FlatSymbolRefAttr lengthRef, Type bufType,
             std::optional<TransferExtent> extent,
-            int64_t maxLengthSteps) -> LogicalResult {
+            std::optional<int64_t> maxLengthSteps) -> LogicalResult {
       bool joint = offsetRef == lengthRef;
       int64_t room = extent ? extent->bufferElems - 1 - extent->last : 0;
       if (offsetRef) {
@@ -574,7 +581,8 @@ struct AIELowerScratchpadParametersPass
             bounds.try_emplace(lengthRef.getValue(), INT32_MIN, INT32_MAX)
                 .first->second;
         lo = std::max<int64_t>(lo, 0);
-        hi = std::min(hi, maxLengthSteps);
+        if (maxLengthSteps)
+          hi = std::min(hi, *maxLengthSteps);
         if (lengthParam->getKind() == ScratchpadParameterKind::Core) {
           op->setAttr("length_core_encoded", builder.getUnitAttr());
           hi = std::min<int64_t>(hi, (1 << 30) - 1);
@@ -609,7 +617,7 @@ struct AIELowerScratchpadParametersPass
                 op, offsetRef, lengthRef, dmaOp.getMemref().getType(),
                 getTransferExtent(dmaOp, lengthRef ? dmaOp.getLengthUnit()
                                                    : std::nullopt),
-                lengthRef ? getMaxLengthSteps(dmaOp) : 0)))
+                getMaxLengthSteps(dmaOp))))
           return WalkResult::interrupt();
       } else if (auto bdOp = dyn_cast<AIE::DMABDOp>(op)) {
         FlatSymbolRefAttr offsetRef = bdOp.getOffsetParameterAttr();
@@ -619,10 +627,9 @@ struct AIELowerScratchpadParametersPass
         std::optional<int64_t> lengthUnit;
         if (lengthRef)
           lengthUnit = bdOp.getLengthUnit();
-        if (failed(rewriteParams(op, offsetRef, lengthRef,
-                                 bdOp.getBuffer().getType(),
-                                 getTransferExtent(bdOp, lengthUnit),
-                                 lengthRef ? getMaxLengthSteps(bdOp) : 0)))
+        if (failed(rewriteParams(
+                op, offsetRef, lengthRef, bdOp.getBuffer().getType(),
+                getTransferExtent(bdOp, lengthUnit), getMaxLengthSteps(bdOp))))
           return WalkResult::interrupt();
       }
       return WalkResult::advance();
@@ -645,7 +652,7 @@ struct AIELowerScratchpadParametersPass
           max));
     }
     for (ScratchpadParameterOp p : allParams) {
-      auto it = jointBoundAttrs.find(p.getSymName());
+      auto *it = jointBoundAttrs.find(p.getSymName());
       if (it != jointBoundAttrs.end())
         p.setJointBoundsAttr(builder.getArrayAttr(it->second));
     }

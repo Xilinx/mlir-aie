@@ -145,8 +145,8 @@ public:
       int64_t end = offset + bound.lengthStep * length;
       if (end > bound.max)
         throw std::invalid_argument(
-            "ParameterScratchpad: '" + bound.offset + "' = " +
-            std::to_string(offset) + " plus " +
+            "ParameterScratchpad: '" + bound.offset +
+            "' = " + std::to_string(offset) + " plus " +
             std::to_string(bound.lengthStep) + " * '" + bound.length +
             "' = " + std::to_string(length) + " is " + std::to_string(end) +
             ", above " + std::to_string(bound.max) +
