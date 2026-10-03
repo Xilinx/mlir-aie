@@ -117,9 +117,10 @@ class AIEXToEmitCConverter {
 public:
   AIEXToEmitCConverter(emitc::FuncOp funcOp, Value txnVec,
                        const DeviceResolved &resolved, Value opCountVar,
-                       bool foldDDRAddrOffset)
+                       bool foldDDRAddrOffset, Value scratchpadAddr = {})
       : funcOp(funcOp), txnVec(txnVec), resolved(resolved),
-        opCountVar(opCountVar), foldDDRAddrOffset(foldDDRAddrOffset) {}
+        opCountVar(opCountVar), scratchpadAddr(scratchpadAddr),
+        foldDDRAddrOffset(foldDDRAddrOffset) {}
 
   // Convert every npu/pool op in the body, recursing into scf regions. Returns
   // the compile-time op count for a straight-line body (the literal op_count),
@@ -294,6 +295,23 @@ private:
         })
         .Case<AIEX::NpuBlockWriteValuesOp>([&](auto bw) {
           convertBlockWriteValues(b, loc, bw);
+          countOp(b, loc, count);
+        })
+        .Case<AIEX::NpuCreateScratchpadOp>([&](auto cs) {
+          emitTxnCall(b, loc, "txn_append_create_scratchpad", txnVec,
+                      {u32Literal(b, loc, cs.getUsageType()),
+                       u32Literal(b, loc, cs.getSize()), scratchpadAddr});
+          countOp(b, loc, count);
+        })
+        .Case<AIEX::NpuUpdateFromScratchpadOp>([&](auto us) {
+          Value addrV = resolvedAddr(b, loc, us);
+          if (!addrV)
+            return fail(us, "cannot convert update_from_scratchpad with "
+                            "unresolved address to the C++ TXN target");
+          emitTxnCall(b, loc, "txn_append_update_reg", txnVec,
+                      {u32Literal(b, loc, us.getStateTableIdx()),
+                       u32Literal(b, loc, static_cast<uint32_t>(us.getFunc())),
+                       u32Literal(b, loc, us.getFuncArg()), addrV});
           countOp(b, loc, count);
         })
         .Case<AIEX::NpuAssertBdFieldOp>([&](auto g) {
@@ -483,6 +501,8 @@ private:
   // Runtime op-count variable (the C++ `__opcount`), or null when the sequence
   // is straight-line and the count is a compile-time literal.
   Value opCountVar;
+  // Scratchpad device address parameter; null without a create_scratchpad.
+  Value scratchpadAddr;
   bool ok = true;
   // Counter for unique popped-BD-id C++ variable names.
   unsigned nextPoolVar = 0;
@@ -692,6 +712,9 @@ private:
       // Already absolute: no buffer/col/row to fold in.
       if (auto a = AIEX::getConstantIntOperand(bwv.getAddress()))
         resolved.absoluteAddr[clone] = *a;
+    } else if (auto us = dyn_cast<AIEX::NpuUpdateFromScratchpadOp>(orig)) {
+      if (auto a = us.getAbsoluteAddress())
+        resolved.absoluteAddr[clone] = *a;
     }
   }
 
@@ -724,6 +747,13 @@ private:
     for (BlockArgument arg : entry.getArguments())
       if (!isa<BaseMemRefType>(arg.getType()))
         paramTypes.push_back(paramTypeFor(arg.getType()));
+
+    // See txn_append_create_scratchpad.
+    bool hasScratchpad = false;
+    seqOp.walk([&](AIEX::NpuCreateScratchpadOp) { hasScratchpad = true; });
+    if (hasScratchpad)
+      paramTypes.push_back(
+          emitc::OpaqueType::get(moduleOp.getContext(), "uint64_t"));
 
     builder.setInsertionPointToEnd(moduleOp.getBody());
     std::string funcName = "generate_txn_" + deviceOp.getSymName().str() + "_" +
@@ -796,6 +826,9 @@ private:
     for (BlockArgument arg : entry.getArguments())
       if (!isa<BaseMemRefType>(arg.getType()))
         mapping.map(arg, funcBlock->getArgument(p++));
+    // Appended last, after every sequence-derived argument.
+    Value scratchpadAddr =
+        hasScratchpad ? funcBlock->getArgument(p++) : Value();
     DeviceResolved resolved;
     for (Operation &op : entry.without_terminator()) {
       fb.clone(op, mapping);
@@ -809,7 +842,7 @@ private:
     }
 
     AIEXToEmitCConverter conv(funcOp, txnVec, resolved, opCountVar,
-                              foldDDRAddrOffset);
+                              foldDDRAddrOffset, scratchpadAddr);
     std::optional<uint32_t> count = conv.run();
     if (!count)
       return failure();

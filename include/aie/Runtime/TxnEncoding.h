@@ -207,6 +207,35 @@ inline void txn_append_maskpoll32(std::vector<uint32_t> &txn, uint32_t addr,
   txn[pos + 6] = 7 * sizeof(uint32_t); // operation size
 }
 
+// Append a 4-word create_scratchpad instruction. The static (aiebu) path
+// leaves words[2:3] zero for a relocation; a runtime-built TXN has no
+// relocation table, so the caller passes the buffer's device address
+// (xrt::run::get_ctrl_scratchpad_bo()).
+inline void txn_append_create_scratchpad(std::vector<uint32_t> &txn,
+                                         uint32_t usage_type, uint32_t size,
+                                         uint64_t ddr_addr) {
+  size_t pos = txn.size();
+  txn.resize(pos + 4, 0);
+  txn[pos + 0] = TXN_OPC_CREATE_SCRATCHPAD;
+  txn[pos + 0] |= (usage_type << 8);
+  txn[pos + 1] = size;
+  txn[pos + 2] = static_cast<uint32_t>(ddr_addr & 0xFFFFFFFFull);
+  txn[pos + 3] = static_cast<uint32_t>(ddr_addr >> 32);
+}
+
+// Append a 3-word update_reg (update_from_scratchpad) instruction.
+inline void txn_append_update_reg(std::vector<uint32_t> &txn,
+                                  uint32_t state_table_idx, uint32_t func,
+                                  uint32_t func_arg, uint32_t address) {
+  size_t pos = txn.size();
+  txn.resize(pos + 3, 0);
+  txn[pos + 0] = TXN_OPC_UPDATE_REG;
+  txn[pos + 0] |= (state_table_idx << 8);
+  txn[pos + 0] |= (func << 16);
+  txn[pos + 1] = func_arg;
+  txn[pos + 2] = address;
+}
+
 // Append a 4-word sync (TCT) instruction.
 inline void txn_append_sync(std::vector<uint32_t> &txn, uint32_t col,
                             uint32_t row, uint32_t dir, uint32_t chan,
