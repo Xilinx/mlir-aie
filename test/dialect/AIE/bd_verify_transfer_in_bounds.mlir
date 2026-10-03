@@ -118,3 +118,36 @@ aie.device(npu2) {
     }
   }
 }
+
+// -----
+
+// A runtime-patched offset cannot be bounded, so the whole-buffer default is
+// never safe for it.
+aiex.scratchpad_parameter @off : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 1)
+  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.runtime_sequence @param_no_len() {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      // expected-error@+1 {{offset_parameter requires an explicit `len` on a local buffer; the default whole-buffer length runs past the end for any nonzero runtime offset}}
+      aie.dma_bd(%buf : memref<1024xi32>) {bd_id = 0 : i32, offset_parameter = @off}
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Control: with `len` given, the runtime offset is the caller's to keep in
+// bounds.
+aiex.scratchpad_parameter @off : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 1)
+  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.runtime_sequence @param_len() {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256) {bd_id = 0 : i32, offset_parameter = @off}
+      aie.end
+    }
+  }
+}

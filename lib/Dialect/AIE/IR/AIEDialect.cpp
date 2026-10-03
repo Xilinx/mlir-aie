@@ -3485,6 +3485,10 @@ LogicalResult DMABDOp::verifyTransferInBounds() {
   if (!buffer || !buffer.hasStaticShape() ||
       llvm::isa<BlockArgument>(getBuffer()))
     return success();
+  if ((getOffsetParameterAttr() || getOffsetStateTableIdxAttr()) && !hasLen())
+    return emitOpError("offset_parameter requires an explicit `len` on a local "
+                       "buffer; the default whole-buffer length runs past the "
+                       "end for any nonzero runtime offset");
   std::optional<int32_t> offset = hasOffset() ? getConstantOffset() : 0;
   if (!offset || *offset < 0)
     return success();
