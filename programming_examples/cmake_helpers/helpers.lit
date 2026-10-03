@@ -66,6 +66,59 @@
 // JIT: design.py -d npu2 --fixture-arg 7 --xclbin-path={{.*}}final.xclbin --insts-path={{.*}}insts.bin --elf-path={{.*}}final.elf
 //
 //===----------------------------------------------------------------------===//
+// Two designs in one directory: OUTPUT_PREFIX keeps their artifacts apart, and
+// XCLBIN/INSTS pick between them.
+//===----------------------------------------------------------------------===//
+//
+// RUN: cmake -G Ninja -S %S -B %t.multi -DAIE_DEVICE=npu2 -DPython3_EXECUTABLE=%python -DCASE=multi
+// RUN: ctest --test-dir %t.multi -N -V | FileCheck %s --check-prefix=MULTI
+// RUN: ctest --test-dir %t.multi --show-only=json-v1 | FileCheck %s --check-prefix=MPROPS
+// RUN: cmake --build %t.multi -- -t commands | FileCheck %s --check-prefix=MJIT
+//
+// MULTI: Test command: {{.*}}run_on_npu.py" "npu2" "{{.*}}host_exe{{.*}}" "-x" "{{.*}}add.xclbin" "-i" "{{.*}}add_insts.bin" "-k" "MLIR_AIE"
+// MULTI: Test #1: t_add
+//
+// NO_DEFAULT_ARGS: no -x/-i/-k at all, just the positional arguments the host
+// actually reads. Anchored to end of line -- that the flags are *absent* is the
+// whole point of the keyword.
+// MULTI: Test command: {{.*}}run_on_npu.py" "npu2" "{{.*}}host_exe{{.*}}" "1" "{{.*}}mult_insts.bin" "{{.*}}mult.xclbin"{{$}}
+// MULTI: Test #2: t_mult
+// MULTI: Total Tests: 2
+//
+// The artifacts stay asserted even with the flags dropped.
+// MPROPS: "name" : "REQUIRED_FILES"
+// MPROPS: mult.xclbin
+// MPROPS: mult_insts.bin
+//
+// Each design JITs to its own prefixed names rather than both to final.xclbin.
+// MJIT: design.py -d npu2 --op add --xclbin-path={{.*}}add.xclbin --insts-path={{.*}}add_insts.bin
+// MJIT: design.py -d npu2 --op mult --xclbin-path={{.*}}mult.xclbin --insts-path={{.*}}mult_insts.bin
+//
+//===----------------------------------------------------------------------===//
+// The explicit-aiecc shape (basic/custom_dma, ml/magika): emit MLIR, compile
+// kernels, run aiecc. -DAIE_AIECC_EXECUTABLE short-circuits the aiecc lookup so
+// this case stays configure-only and needs no built toolchain -- the same
+// escape hatch the not-found error advertises.
+//===----------------------------------------------------------------------===//
+//
+// RUN: cmake -G Ninja -S %S -B %t.mlir -DAIE_DEVICE=npu2 -DPython3_EXECUTABLE=%python -DAIE_AIECC_EXECUTABLE=%python -DCASE=mlir
+// RUN: ctest --test-dir %t.mlir -N -V | FileCheck %s --check-prefix=MLIRT
+// RUN: cmake --build %t.mlir -- -t commands | FileCheck %s --check-prefix=AIECC
+//
+// MLIRT: Test command: {{.*}}run_on_npu.py" "npu2" "{{.*}}" "{{.*}}host.py" "--xclbin" "{{.*}}final.xclbin" "--instr" "{{.*}}insts.bin" "-k" "MLIR_AIE"
+// MLIRT: Total Tests: 1
+//
+// MLIR is captured by the shim, not by a shell `>`, which VERBATIM would escape.
+// AIECC: emit_design_mlir.py -o {{.*}}aie.mlir -- {{.*}}design.py -d npu2 --emit-mlir --fixture-arg 7
+//
+// The two kernel objects go through compile_aie_kernel.py, so the Peano/Chess
+// flags stay in the package instead of becoming a second copy in CMake.
+// AIECC: compile_aie_kernel.py {{.*}}kernel.cc -o kernel_a.o -d npu2 -D GROUPA
+// AIECC: compile_aie_kernel.py {{.*}}kernel.cc -o kernel_b.o -d npu2 -D GROUPB
+//
+// AIECC: --get-xclbin --xclbin-name=final.xclbin --get-npu-insts --npu-insts-name=insts.bin --get-input-with-addresses {{.*}}aie.mlir
+//
+//===----------------------------------------------------------------------===//
 // AIE_BUILD_DESIGN=OFF (what makefile-common's build_host_exe passes): no JIT
 // rule at all, but the host binary still builds.
 //===----------------------------------------------------------------------===//
@@ -139,3 +192,37 @@
 // RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_use_elf_without_elf_design 2>&1 \
 // RUN:   | FileCheck %s --check-prefix=E_RUN_USE_ELF
 // E_RUN_USE_ELF: add_aie_run_test(t): USE_ELF requires a preceding add_aie_design(
+//
+// ... and the other half of it: with two ELF designs, USE_ELF names neither.
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_ambiguous_elf 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_AMBIG_ELF
+// E_RUN_AMBIG_ELF: add_aie_run_test(t): this directory declares 2 ELF designs
+//
+// An XCLBIN no design emits. The point of the registry: this used to configure
+// cleanly and fail inside XRT.
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_bad_xclbin 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_BAD_XCLBIN
+// E_RUN_BAD_XCLBIN: add_aie_run_test(t): XCLBIN 'mult.xclbin' is not emitted by any
+// E_RUN_BAD_XCLBIN: Declared artifacts:
+// E_RUN_BAD_XCLBIN: add.xclbin
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_elf_and_insts 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_ELF_INSTS
+// E_RUN_ELF_INSTS: add_aie_run_test(t): USE_ELF and INSTS both choose the instruction stream
+//
+// Keywords that quietly do nothing are rejected rather than ignored.
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_no_default_args_with_kernel 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_NDA_KERNEL
+// E_RUN_NDA_KERNEL: add_aie_run_test(t): NO_DEFAULT_ARGS drops -k, so KERNEL has no effect
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_standalone_with_artifacts 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_SA_ARTIFACTS
+// E_RUN_SA_ARTIFACTS: add_aie_run_test(t): PY_STANDALONE takes no artifact arguments
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_kernel_bad_source 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_KERNEL_SRC
+// E_KERNEL_SRC: add_aie_kernel_object: kernel source not found:
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_mlir_missing_py 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_MLIR_PY
+// E_MLIR_PY: add_aie_mlir_design: PY is required

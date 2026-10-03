@@ -1,0 +1,18 @@
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Build+run via CMake + ctest (no make; works on Windows). Mirrors
+// run_phoenix.lit: group0, no trace.
+// add_aie_run_test's ctest already wraps run_on_npu.py, so ctest runs directly.
+//
+// Pinned to npu, matching run_phoenix.lit -- the Makefile's default devicename
+// is npu and there is no npu2 lit here to reach parity with.
+//
+// The `cp -r %S/data .` the makefile lits do is a file(COPY) in the
+// CMakeLists, so the data lands beside the ctest that reads it.
+//
+// REQUIRES: ryzen_ai_npu1, peano, torch, cmake_examples
+//
+// RUN: cmake -G Ninja -S %S -B %t.cmake -DAIE_DEVICE=npu -DGROUP=group0 -DPython3_EXECUTABLE=%python
+// RUN: cmake --build %t.cmake
+// RUN: ctest --test-dir %t.cmake --output-on-failure --no-tests=error

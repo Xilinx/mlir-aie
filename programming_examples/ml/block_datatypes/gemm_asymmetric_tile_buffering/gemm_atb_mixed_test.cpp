@@ -13,12 +13,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <bits/stdc++.h>
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "xrt/xrt_bo.h"

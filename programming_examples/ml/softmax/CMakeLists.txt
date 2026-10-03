@@ -29,3 +29,23 @@ target_link_libraries(${currentTarget} PUBLIC
 )
 
 target_link_test_utils(${currentTarget})
+
+# Build the design and register the NPU run; -DAIE_DEVICE=npu2 targets Strix.
+set(AIE_DEVICE npu CACHE STRING "NPU device family for the example (npu|npu2)")
+set(SIZE 262144 CACHE STRING "Number of elements")
+set(CHANS 2 CACHE STRING "Number of channels")
+set(N_ITERATIONS 20 CACHE STRING "Timed iterations")
+set(N_WARMUP 10 CACHE STRING "Warm-up iterations")
+# The host takes the NPU generation as a number, derived from the device
+# (makefile-common: npu_num = 2 for npu2, else 1).
+if(AIE_DEVICE STREQUAL "npu2")
+  set(NPU_NUM 2)
+else()
+  set(NPU_NUM 1)
+endif()
+add_aie_design(TARGET ${currentTarget} PY softmax.py DEVICE ${AIE_DEVICE}
+               ARGS -l ${SIZE} -ch ${CHANS})
+add_dependencies(${currentTarget} ${currentTarget}_xclbin)
+add_aie_run_test(NAME ${currentTarget} DEVICE ${AIE_DEVICE} EXE ${currentTarget}
+                 RUN_ARGS --npu ${NPU_NUM} --iters ${N_ITERATIONS}
+                          --warmup ${N_WARMUP} --size ${SIZE})

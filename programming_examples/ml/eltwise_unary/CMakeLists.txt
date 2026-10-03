@@ -29,3 +29,12 @@ target_link_libraries(${currentTarget} PUBLIC
 )
 
 target_link_test_utils(${currentTarget})
+
+# Build the design and register the NPU run; -DAIE_DEVICE=npu2 targets Strix.
+set(AIE_DEVICE npu CACHE STRING "NPU device family for the example (npu|npu2)")
+set(LENGTH 65536 CACHE STRING "Vector length")
+set(CHANS 2 CACHE STRING "Number of channels")
+set(OP relu CACHE STRING "Unary op (relu|silu|gelu)")
+add_aie_design(TARGET ${currentTarget} PY eltwise_unary.py DEVICE ${AIE_DEVICE} ELF ARGS -l ${LENGTH} -ch ${CHANS} -o ${OP})
+add_dependencies(${currentTarget} ${currentTarget}_xclbin)
+add_aie_run_test(NAME ${currentTarget} DEVICE ${AIE_DEVICE} EXE ${currentTarget} USE_ELF RUN_ARGS -l ${LENGTH} --op ${OP})
