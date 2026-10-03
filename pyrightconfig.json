@@ -34,6 +34,7 @@
   ],
   "extraPaths": [
     "utils/pyright_stubs",
+    "utils/component_checks",
     "install/python"
   ],
   "reportMissingModuleSource": false,

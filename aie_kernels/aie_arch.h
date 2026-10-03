@@ -57,4 +57,13 @@
 #define AIE2_RESTRICT
 #endif
 
+// minsize on AIE2 only: for a kernel's once-per-call code where the core's
+// 16 KB of program memory is otherwise too small, leaving its hot loops at
+// the build's -O level. Code size only; the arithmetic is the same.
+#if AIE_ARCH_AIE2
+#define AIE2_MINSIZE __attribute__((minsize))
+#else
+#define AIE2_MINSIZE
+#endif
+
 #endif
