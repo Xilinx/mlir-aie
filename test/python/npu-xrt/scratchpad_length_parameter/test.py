@@ -45,14 +45,17 @@ def kernel_setup():
     return run, params, in_tensor, out_tensor
 
 
-@pytest.mark.parametrize("tiles", [0, 3, 1, 32])
-def test_length_parameter(kernel_setup, tiles):
+@pytest.mark.parametrize(
+    "start, tiles", [(0, 0), (5, 3), (0, 1), (0, 32), (8, 31), (N, 0)]
+)
+def test_length_parameter(kernel_setup, start, tiles):
     run, params, in_tensor, out_tensor = kernel_setup
 
     out_tensor.data.fill(-1)
     out_tensor.to("npu")
     in_tensor.to("npu")
 
+    params.write("start", np.int32(start))
     params.write("tiles", np.int32(tiles))
     params.sync()
 
@@ -62,8 +65,16 @@ def test_length_parameter(kernel_setup, tiles):
     out_tensor.to("cpu")
     moved = tiles * TILE
     expected = np.full(N, -1, dtype=np.int32)
-    expected[:moved] = np.arange(moved, dtype=np.int32) + 1
+    expected[:moved] = np.arange(start, start + moved, dtype=np.int32) + 1
     np.testing.assert_array_equal(out_tensor.numpy(), expected)
+
+
+def test_start_and_tiles_past_buffer(kernel_setup):
+    _, params, _, _ = kernel_setup
+    params.write("start", np.int32(8))
+    params.write("tiles", np.int32(32))
+    with pytest.raises(ValueError, match="'start' = 8 plus 8 \\* 'tiles' = 32"):
+        params.sync()
 
 
 @pytest.mark.parametrize("tiles", [N // TILE + 1, -1])

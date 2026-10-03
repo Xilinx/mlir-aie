@@ -16,6 +16,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/MapVector.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <numeric>
@@ -510,6 +511,9 @@ struct AIELowerScratchpadParametersPass
     // transfer using it within its buffer, judged with the transfer's other
     // parameter at 0.
     DenseMap<StringRef, std::pair<int64_t, int64_t>> bounds;
+    // (length, offset, length step) -> max of offset + length step * length.
+    llvm::MapVector<std::tuple<StringRef, StringRef, int64_t>, int64_t>
+        jointBounds;
     auto rewriteParams =
         [&](Operation *op, FlatSymbolRefAttr offsetRef,
             FlatSymbolRefAttr lengthRef, Type bufType,
@@ -545,6 +549,12 @@ struct AIELowerScratchpadParametersPass
         }
         if (extent && !joint && extent->lengthStep > 0)
           hi = std::min(hi, llvm::divideFloorSigned(room, extent->lengthStep));
+        if (extent && offsetRef && !joint && extent->lengthStep > 0) {
+          auto [it, inserted] = jointBounds.try_emplace(
+              {lengthRef.getValue(), offsetRef.getValue(), extent->lengthStep},
+              room);
+          it->second = std::min(it->second, room);
+        }
       }
       for (FlatSymbolRefAttr ref : {offsetRef, lengthRef}) {
         if (!ref)
@@ -592,6 +602,18 @@ struct AIELowerScratchpadParametersPass
         continue;
       p.setMinValueAttr(builder.getI32IntegerAttr(it->second.first));
       p.setMaxValueAttr(builder.getI32IntegerAttr(it->second.second));
+    }
+    llvm::MapVector<StringRef, SmallVector<Attribute>> jointBoundAttrs;
+    for (auto [key, max] : jointBounds) {
+      auto [length, offset, step] = key;
+      jointBoundAttrs[length].push_back(JointBoundAttr::get(
+          &getContext(), FlatSymbolRefAttr::get(&getContext(), offset), step,
+          max));
+    }
+    for (ScratchpadParameterOp p : allParams) {
+      auto it = jointBoundAttrs.find(p.getSymName());
+      if (it != jointBoundAttrs.end())
+        p.setJointBoundsAttr(builder.getArrayAttr(it->second));
     }
 
     // Step 4: per-device lowering.

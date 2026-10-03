@@ -55,11 +55,12 @@ aie.device(npu2) {
 // scaled by the element size into word 1; the length goes into word 0. BD 5
 // of tile (1, 0) is at 0x201D0A0 = 33673376. Each parameter is bounded with
 // the other at 0: 62 rows end at element 4087, and an offset of 3976 moves the
-// static pattern's last element, 119, to 4095.
+// static pattern's last element, 119, to 4095. Together, each row of 64 i32
+// takes its share of those 3976 elements.
 
 // CHECK-LABEL: module
 // CHECK: aiex.scratchpad_parameter @off : i32 {kind = 1 : i32, max_value = 3976 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
-// CHECK: aiex.scratchpad_parameter @rows : i32 {kind = 1 : i32, max_value = 62 : i32, min_value = 0 : i32, state_table_idx = 1 : ui8}
+// CHECK: aiex.scratchpad_parameter @rows : i32 {joint_bounds = [#aiex.joint_bound<offset = @off, length_step = 64, max = 3976>], kind = 1 : i32, max_value = 62 : i32, min_value = 0 : i32, state_table_idx = 1 : ui8}
 // CHECK: dense<[64,
 // CHECK: aie.runtime_sequence @strided
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 33673376 : ui32}
@@ -260,16 +261,23 @@ aie.device(npu2) {
 // -----
 
 // An offset may also run backwards to the buffer's start, so its range starts
-// below 0, while a parameter only cores read has no range. params.txt carries
-// both ranges.
+// below 0, while a parameter only cores read has no range. With a length
+// parameter too, off + 16 * n <= 32 keeps the transfer within the buffer, and
+// params.txt carries that joint bound after the ranges.
 
 // CHECK-LABEL: module
 // CHECK: aiex.scratchpad_parameter @off : i32 {kind = 1 : i32, max_value = 32 : i32, min_value = -16 : i32, state_table_idx = 0 : ui8}
-// CHECK: aiex.scratchpad_parameter @trips : i32 {kind = 0 : i32, state_table_idx = 1 : ui8}
-// PARAMS: 2
+// CHECK: aiex.scratchpad_parameter @n : i32 {joint_bounds = [#aiex.joint_bound<offset = @off, length_step = 16, max = 32>], kind = 1 : i32, max_value = 2 : i32, min_value = 0 : i32, state_table_idx = 1 : ui8}
+// CHECK: aiex.scratchpad_parameter @trips : i32 {kind = 0 : i32, state_table_idx = 2 : ui8}
+// PARAMS: 3
 // PARAMS-NEXT: off 0 i32 addr -16 32
-// PARAMS-NEXT: trips 1 i32 core - -
+// PARAMS-NEXT: n 1 i32 addr 0 2
+// PARAMS-NEXT: trips 2 i32 core - -
+// PARAMS-NEXT: 1
+// PARAMS-NEXT: n off 16 32
+// PARAMS-EMPTY:
 aiex.scratchpad_parameter @off : i32
+aiex.scratchpad_parameter @n : i32
 aiex.scratchpad_parameter @trips : i32
 aie.device(npu2) {
   %t = aie.tile(0, 0)
@@ -280,7 +288,7 @@ aie.device(npu2) {
   }
   aie.runtime_sequence @offset_range(%arg0 : memref<64xi32>) {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<64xi32> offset = 16 len = 16) {bd_id = 3 : i32, offset_parameter = @off}
+      aie.dma_bd(%arg0 : memref<64xi32> offset = 16 len = 16) {bd_id = 3 : i32, offset_parameter = @off, length_parameter = @n, length_unit = 16 : i32}
       aie.end
     }
     aiex.dma_start_task(%task)

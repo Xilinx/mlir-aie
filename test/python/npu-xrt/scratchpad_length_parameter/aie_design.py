@@ -3,12 +3,13 @@
 #
 # IRON design: a transfer length set at runtime via length_parameter.
 #
-# One parameter @tiles sizes both the DMAs and the core's loop. The DMAs have
-# a static length of 0, so the input DMA moves exactly tiles tiles of 8 i32
-# values, the core adds one to each tile, and the output DMA moves them back:
+# One parameter @tiles sizes both the DMAs and the core's loop, and @start
+# offsets the input. The DMAs have a static length of 0, so the input DMA moves
+# exactly tiles tiles of 8 i32 values from value start on, the core adds one to
+# each tile, and the output DMA moves them back:
 #
-#   tiles = 0 -> nothing
-#   tiles = 3 -> 24 values
+#   start = 0, tiles = 0 -> nothing
+#   start = 5, tiles = 3 -> 24 values: 6..29
 #
 # Usage:
 #   python3 aie_design.py > aie.mlir
@@ -33,6 +34,7 @@ def design():
     buf_ty = np.ndarray[(N,), np.dtype[np.int32]]
     tile_ty = np.ndarray[(TILE,), np.dtype[np.int32]]
 
+    start = ScratchpadParameter("start", np.int32)
     tiles = ScratchpadParameter("tiles", np.int32)
 
     of_in = ObjectFifo(tile_ty, name="objfifo_in")
@@ -67,7 +69,7 @@ def design():
             length_parameter=tiles,
             length_unit=TILE,
         )
-        in_h.fill(in_tensor, **pattern)
+        in_h.fill(in_tensor, offset_parameter=start, **pattern)
         out_h.drain(out_tensor, wait=True, **pattern)
 
     rt = Runtime(sequence, [buf_ty, buf_ty, of_in.prod(), of_out.cons()])

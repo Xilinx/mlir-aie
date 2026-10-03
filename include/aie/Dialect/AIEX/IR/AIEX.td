@@ -218,6 +218,7 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
   }];
 
   let useDefaultTypePrinterParser = 1;
+  let useDefaultAttributePrinterParser = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -225,6 +226,23 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
 //===----------------------------------------------------------------------===//
 
 include "aie/Dialect/AIEX/IR/AIEXAttrs.td"
+
+def AIEX_JointBoundAttr : AttrDef<AIEX_Dialect, "JointBound"> {
+  let mnemonic = "joint_bound";
+  let summary = "Bound on an offset and a length parameter one transfer uses";
+  let description = [{
+    Held in the `joint_bounds` of a length parameter `n`: a transfer that also
+    uses the parameter `offset` as its offset stays within its buffer while
+    `offset + length_step * n <= max`.
+
+    ```mlir
+    #aiex.joint_bound<offset = @off, length_step = 64, max = 3976>
+    ```
+  }];
+  let parameters = (ins "::mlir::FlatSymbolRefAttr":$offset,
+      "int64_t":$length_step, "int64_t":$max);
+  let assemblyFormat = "`<` struct(params) `>`";
+}
 
 //===----------------------------------------------------------------------===//
 // AIEX Types
@@ -1871,6 +1889,9 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     For a parameter used as a DMA offset or length, the pass also sets `min_value` and `max_value`:
     the range of values that keeps every such transfer within its buffer, judging each transfer
     with any other parameter it uses at 0. The host library rejects a value outside the range.
+    A transfer whose offset and length are two different parameters also adds a
+    `#aiex.joint_bound` to the length parameter's `joint_bounds`, which the host library
+    checks when it syncs the scratchpad.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
     For `kind == addr`, and for any parameter used as a `length_parameter`, the `type` must be `i32`.
@@ -1895,7 +1916,9 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
       // assigned by `--aie-lower-scratchpad-parameters` pass:
       OptionalAttr<UI8Attr>:$state_table_idx,
       OptionalAttr<ScratchpadParameterKind>:$kind,
-      OptionalAttr<I32Attr>:$min_value, OptionalAttr<I32Attr>:$max_value);
+      OptionalAttr<I32Attr>:$min_value, OptionalAttr<I32Attr>:$max_value,
+      OptionalAttr<TypedArrayAttrBase<AIEX_JointBoundAttr, "joint bounds">>:
+          $joint_bounds);
   let results = (outs);
   let assemblyFormat = [{ $sym_name `:` $type attr-dict }];
 }

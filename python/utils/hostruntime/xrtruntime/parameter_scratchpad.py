@@ -72,7 +72,13 @@ class ParameterScratchpad:
         self._impl.write_bytes(name, _to_bytes(value))
 
     def sync(self) -> None:
-        """Sync the scratchpad buffer to device."""
+        """Sync the scratchpad buffer to device.
+
+        Raises:
+            ValueError: An offset and a length parameter that one DMA transfer
+                uses together take it past the end of its buffer.
+        """
+        self._impl.validate()
         self._bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     def read(self, name: str) -> int:

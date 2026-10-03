@@ -301,6 +301,16 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
       os << " - -";
     os << "\n";
   }
+
+  SmallVector<std::pair<StringRef, AIEX::JointBoundAttr>> jointBounds;
+  for (auto p : allParams)
+    if (ArrayAttr bounds = p.getJointBoundsAttr())
+      for (auto bound : bounds.getAsRange<AIEX::JointBoundAttr>())
+        jointBounds.push_back({p.getSymName(), bound});
+  os << jointBounds.size() << "\n";
+  for (auto [length, bound] : jointBounds)
+    os << length << " " << bound.getOffset().getValue() << " "
+       << bound.getLengthStep() << " " << bound.getMax() << "\n";
 }
 
 bool AIEX::getReachableConfigures(

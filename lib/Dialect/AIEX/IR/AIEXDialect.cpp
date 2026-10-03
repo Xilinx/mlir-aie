@@ -41,6 +41,9 @@ using namespace xilinx;
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
 
+#define GET_ATTRDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXAttrDefs.cpp.inc"
+
 namespace xilinx::AIEX {
 
 // FIXME: use Tablegen'd dialect class
@@ -52,6 +55,10 @@ void AIEXDialect::initialize() {
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "aie/Dialect/AIEX/IR/AIEXAttrDefs.cpp.inc"
       >();
 }
 
