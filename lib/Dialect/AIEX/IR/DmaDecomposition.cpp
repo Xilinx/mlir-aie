@@ -31,8 +31,8 @@ int64_t maxIterations(const AIE::AIETargetModel &tm, int col, int row) {
 }
 
 int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
-                                unsigned dim, uint64_t elemWidth,
-                                uint32_t gran) {
+                                unsigned dim, int64_t stride,
+                                uint64_t elemWidth, uint32_t gran) {
   uint32_t wrapBits = tm.getDmaBdWrapBits(col, row);
   if (wrapBits == 0)
     return 0;
@@ -46,7 +46,8 @@ int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
     return maxInput;
   }
   if (dim == 3)
-    return maxIterations(tm, col, row);
+    return stride == 0 ? tm.getMaxRepeatCount() + 1
+                       : maxIterations(tm, col, row);
   return (1LL << wrapBits) - 1;
 }
 
@@ -81,6 +82,39 @@ void divisorsDescending(int64_t n, SmallVectorImpl<int64_t> &out) {
   llvm::sort(out);
   std::reverse(out.begin(), out.end());
   out.append(small.rbegin(), small.rend());
+}
+
+/// Fold each dimension into the next-inner one where the pair walks memory
+/// contiguously (stride[d+1] == size[d] * stride[d]) and the merged size still
+/// fits the inner slot's wrap. The element order is unchanged; the freed
+/// outermost slot becomes a unit dimension.
+NdDmaPattern mergeContiguousDims(const AIE::AIETargetModel &tm, int col,
+                                 int row, uint64_t elemWidth, uint32_t gran,
+                                 const NdDmaPattern &pattern) {
+  NdDmaPattern merged = pattern;
+  unsigned d = 0;
+  while (d + 1 < kNdDmaDims) {
+    int64_t n = merged.sizes[d] * merged.sizes[d + 1];
+    if (merged.sizes[d] <= 1 || merged.sizes[d + 1] <= 1 ||
+        merged.strides[d] <= 0 ||
+        merged.strides[d + 1] != merged.sizes[d] * merged.strides[d] ||
+        n > maxLegalInputSizeForDim(tm, col, row, d, merged.strides[d],
+                                    elemWidth, gran)) {
+      ++d;
+      continue;
+    }
+    merged.offsets[d] += merged.offsets[d + 1] * merged.sizes[d];
+    merged.sizes[d] = n;
+    for (unsigned i = d + 1; i + 1 < kNdDmaDims; ++i) {
+      merged.sizes[i] = merged.sizes[i + 1];
+      merged.strides[i] = merged.strides[i + 1];
+      merged.offsets[i] = merged.offsets[i + 1];
+    }
+    merged.sizes[kNdDmaDims - 1] = 1;
+    merged.strides[kNdDmaDims - 1] = 0;
+    merged.offsets[kNdDmaDims - 1] = 0;
+  }
+  return merged;
 }
 
 /// Split dim d (size N = a*b, stride s) into an inner dim (b, s) kept at
@@ -198,8 +232,8 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   {
     unsigned d = static_cast<unsigned>(outermost);
     int64_t n = pattern.sizes[d];
-    int64_t chunkSize =
-        maxLegalInputSizeForDim(tm, col, row, d, elemWidth, gran);
+    int64_t chunkSize = maxLegalInputSizeForDim(
+        tm, col, row, d, pattern.strides[d], elemWidth, gran);
     // An offset-bearing singleton cannot be reused by factoring; slice instead.
     if (pattern.sizes[3] == 1 && outerSlotHasOffset && n <= chunkSize)
       chunkSize = 1;
@@ -467,6 +501,15 @@ AIEX::decomposeNdDmaPattern(Operation *forOp, BaseMemRefType referencedBufType,
   if (patternPassesVerification(forOp, referencedBufType, targetModel, tileCol,
                                 tileRow, pattern))
     return failure();
+
+  DataLayout dataLayout = DataLayout::closest(forOp);
+  NdDmaPattern merged = mergeContiguousDims(
+      targetModel, tileCol, tileRow,
+      dataLayout.getTypeSizeInBits(referencedBufType.getElementType()),
+      targetModel.getAddressGenGranularity(), pattern);
+  if (patternPassesVerification(forOp, referencedBufType, targetModel, tileCol,
+                                tileRow, merged))
+    return SmallVector<NdDmaPattern>{merged};
 
   return decompose4d(forOp, referencedBufType, targetModel, tileCol, tileRow,
                      pattern);

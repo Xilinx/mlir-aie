@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -12,7 +11,7 @@ from util import construct_test
 # CHECK-LABEL: rectangular_tiler
 @construct_test
 def rectangular_tiler():
-    tiler = TensorTiler2D.simple_tiler((16, 8), (4, 4))
+    tiler = TensorAccessPattern.full((16, 8)).tile((4, 4))
     access_order, access_count = tiler.accesses()
     reference_access = np.array(
         # fmt: off
@@ -62,13 +61,9 @@ def rectangular_tiler():
         # fmt: on
     )
 
-    tile_count = 0
-    for t in tiler:
-        if tile_count == 6:
-            tile_access_order = t.access_order()
-            assert (tile_access_order == tile1_reference_order).all()
-        tile_count += 1
-    assert tile_count == (16 // 4) * (8 // 4)
+    tile_access_order = tiler[3, 0].access_order()
+    assert (tile_access_order == tile1_reference_order).all()
+    assert sum(1 for row in tiler for _ in row) == (16 // 4) * (8 // 4)
 
     # CHECK: Pass!
     print("Pass!")

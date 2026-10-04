@@ -49,12 +49,11 @@ module {
 // -----
 
 // A runtime size on a strided (ND) transfer takes the dynamic encoder, which
-// rebuilds word[5] as an SSA or-tree seeded with the AxCACHE constant. The
-// configured value must survive that path too, not just the blockwrite
-// template.
+// builds word[5] from the AxCACHE constant and the d2 fields. The configured
+// value must survive that path too, not just the blockwrite template.
 // CHECK: aie.runtime_sequence @dynamic_custom
 // CHECK: %[[AXC:.*]] = arith.constant 83886080 : i32
-// CHECK: arith.ori %[[AXC]]
+// CHECK: aiex.npu.blockwrite_values(%{{.*}} : i32) values %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %[[AXC]],
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)

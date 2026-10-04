@@ -24,14 +24,14 @@
 # DEVICE: PASS!
 
 # 6 pieces of 4 executions at 16384 * i + 4096 * j, each restarted for pass 2.
-# MLIR:          offset = 0 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 128, 1])
+# MLIR:          offset = 0 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 64, 1])
 # MLIR-NEXT:       aie.end
 # MLIR-NEXT:     } {repeat_count = 3 : i32}
-# MLIR:          offset = 4096 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 128, 1])
-# MLIR:          offset = 8192 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 128, 1])
-# MLIR:          offset = 16384 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 128, 1])
-# MLIR:          offset = 20480 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 128, 1])
-# MLIR:          offset = 24576 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 128, 1])
+# MLIR:          offset = 4096 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 64, 1])
+# MLIR:          offset = 8192 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 64, 1])
+# MLIR:          offset = 16384 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 64, 1])
+# MLIR:          offset = 20480 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 64, 1])
+# MLIR:          offset = 24576 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 64, 1])
 # MLIR:          aiex.dma_start_task
 # MLIR-COUNT-6:  aiex.dma_start_task
 # MLIR-NEXT:     aiex.dma_await_task
@@ -43,7 +43,7 @@ from aie.iron.device import NPU2, Tile
 
 LEN = 32768
 SIZES = [2, 3, 4, 2, 8, 16]
-STRIDES = [16384, 4096, 16, 1024, 128, 1]
+STRIDES = [16384, 4096, 16, 1024, 64, 1]
 PASSES = 2
 EXECUTIONS = int(np.prod(SIZES[:-3]))
 CHUNK = int(np.prod(SIZES[-3:]))

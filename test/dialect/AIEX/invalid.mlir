@@ -22,8 +22,9 @@ aie.device(npu1) {
 func.func @set_lock_outside_sequence() {
   %tile22 = aie.tile(2, 2)
   %lock22_0 = aie.lock(%tile22, 0) {init = 0 : i32}
-  // expected-error@+1 {{'aiex.set_lock' op expects ancestor op 'aie.runtime_sequence'}}
-  aiex.set_lock(%lock22_0, 1)
+  // expected-error@+2 {{'aiex.set_lock' op expects ancestor op 'aie.runtime_sequence'}}
+  %lock22_0_v1 = arith.constant 1 : i32
+  aiex.set_lock(%lock22_0, %lock22_0_v1)
   return
 }
 
@@ -33,8 +34,9 @@ aie.device(npu1) {
   %tile = aie.tile(0, 1)
   %lock = aie.lock(%tile) {init = 0 : i32}
   aie.runtime_sequence() {
-    // expected-error@+1 {{Lock value must be non-negative}}
-    aiex.set_lock(%lock, -1)
+    // expected-error@+2 {{Lock value must be non-negative}}
+    %lock_vm1 = arith.constant -1 : i32
+    aiex.set_lock(%lock, %lock_vm1)
   }
 }
 
@@ -44,8 +46,9 @@ aie.device(npu2) {
   %tile = aie.tile(0, 1)
   %lock = aie.lock(%tile) {init = 0 : i32}
   aie.runtime_sequence() {
-    // expected-error@+1 {{Lock value must be non-negative}}
-    aiex.set_lock(%lock, -1)
+    // expected-error@+2 {{Lock value must be non-negative}}
+    %lock_vm1 = arith.constant -1 : i32
+    aiex.set_lock(%lock, %lock_vm1)
   }
 }
 
@@ -55,7 +58,8 @@ aie.device(npu2) {
   %tile = aie.tile(0, 1)
   %lock = aie.lock(%tile) {init = 0 : i32}
   aie.runtime_sequence() {
-    // expected-error@+1 {{Lock value exceeds the maximum value of 63}}
-    aiex.set_lock(%lock, 64)
+    // expected-error@+2 {{Lock value exceeds the maximum value of 63}}
+    %lock_v64 = arith.constant 64 : i32
+    aiex.set_lock(%lock, %lock_v64)
   }
 }

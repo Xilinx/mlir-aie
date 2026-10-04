@@ -26,10 +26,12 @@
 
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Twine.h"
 
 #include <cstdint>
 #include <numeric>
@@ -69,20 +71,20 @@ inline bool isConstMultipleOfGranule(int64_t value, uint64_t elemWidth,
 // for realizability: d0 size and every non-unit stride must be a whole number
 // of granules (a unit innermost stride is the exempt contiguous case), and a
 // stride must be positive where its size > 1. Runtime operands are skipped
-// (guarded at lowering by assert_bd_divisible). Shared by both dynamic paths;
+// (buildBdWords guards them on the host). Shared by both dynamic paths;
 // emits a diagnostic on `op` and fails on the first violation.
 inline mlir::LogicalResult
 verifyConstBdRealizability(mlir::Operation *op,
                            llvm::ArrayRef<mlir::OpFoldResult> sizes,
                            llvm::ArrayRef<mlir::OpFoldResult> strides,
                            uint64_t elemWidth, uint32_t gran) {
-  if (!sizes.empty())
-    if (auto d0 = mlir::getConstantIntValue(sizes[0]))
-      if (!isConstMultipleOfGranule(*d0, elemWidth, gran))
-        return op->emitOpError("d0 size ")
-               << *d0 << " elements at " << (elemWidth / 8)
-               << " bytes each is not a multiple of the " << (gran / 8)
-               << "-byte address-gen granule.";
+  std::optional<int64_t> d0Size =
+      sizes.empty() ? std::nullopt : mlir::getConstantIntValue(sizes[0]);
+  if (d0Size && !isConstMultipleOfGranule(*d0Size, elemWidth, gran))
+    return op->emitOpError("d0 size ")
+           << *d0Size << " elements at " << (elemWidth / 8)
+           << " bytes each is not a multiple of the " << (gran / 8)
+           << "-byte address-gen granule.";
   for (int i = 0; i < (int)strides.size(); i++) {
     auto s = mlir::getConstantIntValue(strides[i]);
     if (!s)
@@ -90,7 +92,8 @@ verifyConstBdRealizability(mlir::Operation *op,
     // A unit innermost stride is the contiguous case: successive elements are
     // packed with no gap, so the transfer is dense and the stride need not land
     // on a granule boundary. Every other stride addresses a strided access and
-    // must be granule-aligned.
+    // must be granule-aligned. A non-word element's innermost stride must be
+    // 1 (see verifyStridesWraps).
     if (i == 0 && *s == 1)
       continue;
     if (!isConstMultipleOfGranule(*s, elemWidth, gran))
@@ -98,20 +101,23 @@ verifyConstBdRealizability(mlir::Operation *op,
              << i << " is " << *s << " elements at " << (elemWidth / 8)
              << " bytes each, not a multiple of the " << (gran / 8)
              << "-byte address-gen granule.";
+    if (i == 0 && elemWidth != gran && !(d0Size && *d0Size <= 1))
+      return op->emitOpError("stride 0 is ")
+             << *s << " elements, but must be 1 for " << (elemWidth / 8)
+             << "-byte elements: the DMA moves whole " << (gran / 8)
+             << "-byte granules.";
   }
   // A stride must be positive where its size > 1 (it is never applied when
   // size == 1). The d3 iteration dimension is the exception: a zero stride
   // there is the pure-repeat case (the BD wraps every iteration, repeat carried
   // by the queue push), matching verifyStridesWraps' dim-3 `< 0` rule. Lists
   // are innermost-first, so d3 is index 3 (present only for a full 4D
-  // descriptor). Runtime strides are trusted (the caller controls them).
+  // descriptor).
   //
-  // A RUNTIME size does NOT excuse the stride. The encoder scales a stride as
-  // stride * elemWidth / granularity - 1, so a zero stride becomes -1 and the
-  // packer masks that into an all-ones field -- a huge bogus step, which on
-  // hardware walks the BD out of its buffer and hangs the channel. The
-  // dimension is only safe when the size is a compile-time 1, the one case
-  // where the stride is never applied.
+  // A RUNTIME size does not excuse the stride: the encoder would scale a zero
+  // stride to -1, an all-ones step field, so such a stride is only legal when
+  // the size is a compile-time 1, the one case where it is never applied. It
+  // is rejected here rather than by a host-side check at every dispatch.
   constexpr int kIterDim = 3;
   for (int i = 0; i < (int)sizes.size() && i < (int)strides.size(); i++) {
     auto sz = mlir::getConstantIntValue(sizes[i]);
@@ -155,7 +161,8 @@ void encodeHardwareStridesWraps(Policy &p, uint64_t elemWidth,
   // one granule, i.e. the contiguous unit-stride case) or a wide element; else
   // it is the biased stride. The wide-element test is compile-time; the
   // sub-granule test is a policy select, so the stride may be runtime. A
-  // non-unit sub-granule stride is unrealizable and rejected/guarded elsewhere.
+  // non-unit stride over elements narrower or wider than a granule is
+  // unrealizable and rejected/guarded elsewhere.
   if (elemWidth > addressGranularity) {
     strides[0] = p.cst(0);
   } else {
@@ -196,7 +203,7 @@ struct ConstStridePolicy {
   static V selectLt(V a, V b, V t, V e) { return a < b ? t : e; }
 };
 
-// SSA (runtime arith) policy: emits i32 arith ops mirroring ConstStridePolicy.
+// SSA (runtime arith) policy: emits i64 arith ops mirroring ConstStridePolicy.
 // Every primitive builds an arith op at the policy's insertion point, so the
 // innermost stride may be a runtime value like any other dimension.
 struct SsaStridePolicy {
@@ -215,20 +222,55 @@ struct SsaStridePolicy {
   V selectLt(V a, V b, V t, V e) const;
 };
 
+// Require `cond` to hold when the runtime sequence runs. A condition that
+// folds to true emits nothing and one that folds to false is a compile-time
+// error at `loc`; otherwise a cf.assert carries `message` to the TXN builder,
+// which refuses the dispatch when it fails.
+mlir::LogicalResult emitRuntimeCheck(mlir::OpBuilder &builder,
+                                     mlir::Location loc, mlir::Value cond,
+                                     const llvm::Twine &message);
+
+// Erase the arith ops under `root` left unused once the runtime BD words and
+// guards built with these helpers have folded.
+void eraseDeadArith(mlir::Operation *root);
+
 // Coerce an OpFoldResult (constant attr or SSA value) to an SSA Value of the
 // given integer type, materializing an arith.constant / trunc / extui as
 // needed.
 mlir::Value getAsValue(mlir::OpBuilder &builder, mlir::Location loc,
                        mlir::OpFoldResult ofr, mlir::Type intType);
 
-// Build the address-patch `arg_plus` (buffer BYTE offset) as an i32 Value, i64
-// when it does not fit:
+// An integer or index OpFoldResult as an i64 Value, zero-extended (a negative
+// value reads as a huge one the guards reject). An operand wider than 64 bits
+// gets a host-side check that it fits; null if that check folds to false.
+mlir::Value getAsI64(mlir::OpBuilder &builder, mlir::Location loc,
+                     mlir::OpFoldResult ofr);
+
+// Build the address-patch `arg_plus` (buffer BYTE offset):
 // sum(elementOffsets[i] * strides[i]) * elemWidthBytes + baseByteOffset, where
-// any entry may be runtime (a fully-constant set folds to one arith.constant).
+// any entry may be runtime. A fully-constant set folds to one i32 constant (i64
+// when it does not fit), byte-identical to the static path; a runtime one is
+// i64 arith with a host-side check that it is `granuleBytes`-aligned. Null if
+// a check folds to false.
 mlir::Value buildArgPlusValue(mlir::OpBuilder &builder, mlir::Location loc,
                               llvm::ArrayRef<mlir::OpFoldResult> elementOffsets,
                               llvm::ArrayRef<mlir::OpFoldResult> strides,
-                              int64_t elemWidthBytes, int64_t baseByteOffset);
+                              int64_t elemWidthBytes, int64_t baseByteOffset,
+                              uint32_t granuleBytes);
+
+// Require a runtime BD walk to stay inside its host buffer: the furthest
+// element it touches, sum(offsets[k] * offsetStrides[k]) +
+// sum((sizes[i] - 1) * strides[i]), must lie within `hostBufferType` past
+// `baseByteOffset`. An unknown (dynamic) shape bounds the walk at 2^32
+// elements, which still rejects a negative offset.
+mlir::LogicalResult
+guardWithinHostBuffer(mlir::OpBuilder &builder, mlir::Location loc,
+                      mlir::BaseMemRefType hostBufferType,
+                      int64_t baseByteOffset, int64_t elemWidthBytes,
+                      llvm::ArrayRef<mlir::OpFoldResult> offsets,
+                      llvm::ArrayRef<mlir::OpFoldResult> offsetStrides,
+                      llvm::ArrayRef<mlir::OpFoldResult> sizes,
+                      llvm::ArrayRef<mlir::OpFoldResult> strides);
 
 // Pack a set of (value, mask, shift) fields into a single i32 BD word via
 // arith and/shl/or. mask == 0xFFFFFFFF skips the AND; shift == 0 skips the SHL.
@@ -247,14 +289,20 @@ mlir::Value getBdRegisterBase(mlir::OpBuilder &builder, mlir::Location loc,
                               int tileCol, int tileRow,
                               mlir::OpFoldResult bdId);
 
-// Always-constant BD fields (locks, packet, next_bd), gathered by the caller
-// from the DMA structure and baked into the template words.
+// Lock, packet and next_bd fields, gathered by the caller from the DMA
+// structure and baked into the template words. Only next_bd and the lock values
+// may be runtime: `next_bd_id_val`, when set, replaces `next_bd_id` (a chain
+// whose successor draws its id from the dynamic pool), and `lock_*_val_val`
+// replaces `lock_*_val` already in field encoding (an AcquireGE negated).
 struct BdTemplateFields {
   uint32_t use_next_bd = 0, next_bd_id = 0;
+  mlir::Value next_bd_id_val;
   int32_t enable_packet = 0, packet_id = 0, packet_type = 0;
   int32_t out_of_order_id = 0;
+  int32_t iteration_current = 0;
   int32_t lock_rel_val = 0, lock_rel_id = 0;
   int32_t lock_acq_enable = 0, lock_acq_val = 0, lock_acq_id = 0;
+  mlir::Value lock_rel_val_val, lock_acq_val_val;
 };
 
 // Build a BD's full register block as i32 SSA values, for the dynamic lowering
@@ -264,14 +312,14 @@ struct BdTemplateFields {
 //
 // `mixedSizes`/`mixedStrides` are outermost-first (d3..d0), matching
 // NpuDmaMemcpyNdOp::getMixedSizes and AIE::DMABDOp::getMixedSizes.
-// `bufLenOverride`, if non-null, becomes buffer_length -- dma_task passes its
-// runtime `len`; dma_memcpy_nd passes null, so buffer_length is the d0*d1*d2
-// hardware-unit size-product. `burstLength`/`axcache` are shim-NOC-only fields
-// and are ignored on the other tile types (their verifiers already require the
-// defaults there). Emits `npu.assert_bd_field` / `npu.assert_bd_divisible`
-// guards for runtime values that a constant would have had verified at compile
-// time. `repeatCountOut` receives the outer-dim hardware repeat for the
-// caller's queue push.
+// buffer_length is the d0*d1*d2 extent in granules. `lenElems`, if set, is a
+// dma_task's explicit transfer length, which must agree with it.
+// `burstLength`/`axcache` are shim-NOC-only fields and are ignored on the
+// other tile types (their verifiers already require the defaults there). Every
+// size and stride gets a host-side check (emitRuntimeCheck) that it fits its BD
+// field and is granule-realizable, so a value the field would truncate refuses
+// the dispatch instead. `repeatCountOut` receives the outer-dim hardware repeat
+// for the caller's queue push.
 //
 // The words do not depend on the BD id -- only the register ADDRESS does, and
 // that is the caller's `getBdRegisterBase` + `npu.blockwrite_values` -- so one
@@ -287,7 +335,7 @@ buildBdWords(mlir::OpBuilder &builder, mlir::Location loc,
              llvm::ArrayRef<mlir::OpFoldResult> mixedSizes,
              llvm::ArrayRef<mlir::OpFoldResult> mixedStrides,
              uint64_t elemWidth, uint32_t burstLength, uint32_t axcache,
-             mlir::Value bufLenOverride, mlir::Value &repeatCountOut,
+             mlir::OpFoldResult lenElems, mlir::Value &repeatCountOut,
              llvm::SmallVectorImpl<mlir::Value> &wordsOut);
 
 } // namespace xilinx::AIEX

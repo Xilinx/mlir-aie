@@ -11,9 +11,10 @@ These reference designs require a target whose MemTile MM2S DMA provides the
 `CONSTANT_PAD_VALUE` register.
 
 Data is brought from external memory to a MemTile and back without a compute
-tile, and the MemTile DMA **pads** the transfer on the way out: `pad_dimensions`
-gives the `(before, after)` count per dimension and `pad_value` is the constant
-that fills the added region. A `REAL`-element input is widened to
+tile, and the MemTile DMA **pads** the transfer on the way out: a padded walk
+(`TensorAccessPattern.pad(...)` as the `to_stream`, or as a `Bd`'s `tap` on a
+TileDma) gives the `(before, after)` count per dimension and `pad_value` is
+the constant that fills the added region. A `REAL`-element input is widened to
 `PAD_BEFORE + REAL + PAD_AFTER`, with the new elements set to `pad_value`.
 
 The constant pad value is written to the MemTile MM2S channel's

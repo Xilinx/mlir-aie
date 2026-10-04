@@ -30,6 +30,7 @@ The kernel library ([`aie.iron.kernels`](../../kernels_library.md)) comes with c
 | [`test/python/npu/test_kernels_perf.py`](../../../test/python/npu/test_kernels_perf.py) | How fast is it? Checks correctness first, then records traced core `cycles` per call, wall-clock `npu_us`, compile time and binary sizes. |
 | `python -m aie.utils.compile.remarks` | What did the compiler do? Compiles each kernel exactly as the JIT does and reports every loop's II, stages, zero-overhead-loop status, program memory, dropped pragmas, runtime-library calls and stack depth. No device needed. |
 | [Nightly Kernel Checks](https://xilinx.github.io/mlir-aie/kernel-checks/) | Last night's run per NPU (power mode, host, Peano, what passed, what moved past its threshold, and warnings when the numbers are less comparable), then the history: the [kernels view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels) lists every kernel, its sources, which NPUs build it and passed it last night; a kernel's own page (`#view=kernel&kernel=<factory>`) has every case's latest numbers and charts; the charts view has one chart per case and metric. |
+| [Nightly Component Checks](https://xilinx.github.io/mlir-aie/kernel-checks/#view=components) | The same dashboard's components view: last night's SA placer seed sweep (which seeds placed, their cost, CPU time and memory) and the SA placer hardware check (mobilenet compiled, run and verified on an NPU2 for a few seeds at batch 1 to 64: time per image, streaming time and compile time), each as cards and a chart like a kernel's, with the command that reproduces each failed seed or run. See [Nightly SA placer checks](../../section-1/README.md#nightly-sa-placer-checks). |
 
 All of them honour `MLIR_AIE_KERNEL_SOURCES` (see [section 4c](../section-4c#before-you-start-make-sure-your-edits-are-compiled)): point it at a checkout and they compile that checkout's `aie_kernels/`. That is also how you build a "before" version to compare against.
 
@@ -255,7 +256,7 @@ Step 64 lanes for 8- and 16-bit data and 32 lanes for bf16 arithmetic, not 16. `
 On an int8 convolution network, three more changes measured faster:
 * doing the bias add on an int32 vector and then `acc.to_vector<int8>(shift)` with `rounding_mode::conv_even`, which is bit-exact with the scalar rounding: 20-25% per kernel;
 * having the producing kernel write the matrix-multiply A operand in the order the consumer's `mmul` loads it: -23.6% on one block;
-* moving a pure strided copy (a stride-2 deinterleave) out of the kernel into the memory tile's DMA (`dims_to_stream`): +12%. This helps only when each contiguous element is at least 512 bytes, and int8 vector loads still need a 32-byte-aligned start.
+* moving a pure strided copy (a stride-2 deinterleave) out of the kernel into the memory tile's DMA (`to_stream`): +12%. This helps only when each contiguous element is at least 512 bytes, and int8 vector loads still need a 32-byte-aligned start.
 
 ## <u>Peano and AIE2P traps</u>
 

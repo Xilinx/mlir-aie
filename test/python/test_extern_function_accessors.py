@@ -32,16 +32,19 @@ def test_name_is_the_symbol():
 def test_file_backed_recipe_is_readable(tmp_path):
     src = tmp_path / "k.cc"
     src.write_text("void k(int*){}")
+    # A host-absolute dir: on Windows a driveless "/inc/a" is drive-relative,
+    # so the constructor would (correctly) anchor it to the current drive.
+    inc = str(tmp_path / "inc")
     ef = ExternalFunction(
         "k",
         source_file=str(src),
         arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
-        include_dirs=["/inc/a"],
+        include_dirs=[inc],
         compile_flags=["-DBIT_WIDTH=32"],
     )
     assert ef.source_file == str(src)
     assert ef.source_string is None
-    assert ef.include_dirs == ["/inc/a"]
+    assert ef.include_dirs == [inc]
     assert ef.compile_flags == ["-DBIT_WIDTH=32"]
     assert ef.use_chess is False
 
@@ -53,13 +56,14 @@ def test_inline_recipe_is_readable():
     assert ef.include_dirs == [] and ef.compile_flags == []
 
 
-def test_accessors_return_copies():
+def test_accessors_return_copies(tmp_path):
+    inc = str(tmp_path / "i")
     ef = ExternalFunction(
-        "k", source_string="void k(){}", include_dirs=["/i"], compile_flags=["-O3"]
+        "k", source_string="void k(){}", include_dirs=[inc], compile_flags=["-O3"]
     )
     ef.include_dirs.append("/mutated")
     ef.compile_flags.append("-mutated")
-    assert ef.include_dirs == ["/i"]
+    assert ef.include_dirs == [inc]
     assert ef.compile_flags == ["-O3"]
 
 

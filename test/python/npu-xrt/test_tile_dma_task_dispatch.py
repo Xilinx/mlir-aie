@@ -20,8 +20,7 @@ import aie.iron as iron
 import numpy as np
 import pytest
 from aie.dialects._aie_enum_gen import AIETileType
-from aie.extras.dialects import arith
-from aie.helpers.util import np_dtype_to_mlir_type
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Acquire,
     Bd,
@@ -42,7 +41,7 @@ MAX_CHUNKS = 8
 MAX = CHUNK * MAX_CHUNKS
 
 
-def _window(start, chunks, dtype, explicit_len):
+def _window(start, chunks):
     host_ty = np.ndarray[(MAX,), np.dtype[np.int32]]
     shim = Tile(col=0, row=0, tile_type=AIETileType.ShimNOCTile)
     mem = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
@@ -53,29 +52,19 @@ def _window(start, chunks, dtype, explicit_len):
     out = Flow(mem, shim, src_channel=0, dst_channel=0)
 
     def seq(A, C, s, n):
-        chunk = arith.constant(CHUNK, np_dtype_to_mlir_type(dtype))
-        length = n * chunk if explicit_len else None
+        rows = TensorAccessPattern.full((MAX,)).split(0, CHUNK)
         into.fill(A)
         into.endpoint(mem).task(
             Bd(resident, acquires=[Acquire(empty)], releases=[Release(full)])
         ).start()
         window = Bd(
             resident,
-            sizes=[1, 1, n, CHUNK],
-            strides=[0, 0, CHUNK, 1],
-            offset=s * chunk,
-            length=length,
+            tap=rows[s : s + n],
             acquires=[Acquire(full)],
             releases=[Release(empty)],
         )
         out.endpoint(mem).task(window).start().free()
-        out.drain(
-            C,
-            sizes=[1, 1, n, CHUNK],
-            strides=[0, 0, CHUNK, 1],
-            transfer_len=length,
-            wait=True,
-        )
+        out.drain(C, tap=rows[:n], wait=True)
 
     rt = Runtime(seq, [host_ty, host_ty, start, chunks])
     rt.add_flow(into)
@@ -91,11 +80,9 @@ def window(
     start: DispatchTime[np.int64] = 0,
     chunks: DispatchTime[np.int64] = 1,
 ):
-    return _window(start, chunks, np.int64, explicit_len=True)
+    return _window(start, chunks)
 
 
-# i32 scalars are widened to the i64 sizes, and the omitted lengths default to
-# the product of the sizes.
 @iron.jit
 def window_i32(
     a: In,
@@ -104,7 +91,7 @@ def window_i32(
     start: DispatchTime[np.int32] = 0,
     chunks: DispatchTime[np.int32] = 1,
 ):
-    return _window(start, chunks, np.int32, explicit_len=False)
+    return _window(start, chunks)
 
 
 @pytest.mark.parametrize("jitted", [window, window_i32], ids=["i64", "i32"])

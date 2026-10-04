@@ -8,9 +8,11 @@
 // A shared-memory fifo between two cores must see the static buffers already
 // on each tile when the SA placer picks which of the two holds its pool.
 // Core A holds 60KB of weights; the 8KB pool only fits on core B.
+// With seed 42 core B sits directly below core A, so putting the pool on core B
+// takes an explicit allocate.
 
-// RUN: aie-opt --aie-place-tiles='placer=sa_placer sa-seed=1' %s | FileCheck %s
-// RUN: aie-opt --aie-place-tiles='placer=sa_placer sa-seed=1' --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s | FileCheck %s --check-prefix=ADDR
+// RUN: aie-opt --aie-place-tiles='placer=sa_placer sa-seed=42' %s | FileCheck %s
+// RUN: aie-opt --aie-place-tiles='placer=sa_placer sa-seed=42' --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s | FileCheck %s --check-prefix=ADDR
 
 // CHECK: aie.buffer(%[[WTS:[a-z0-9_]+]]) {sym_name = "weights"}
 // CHECK-NOT: aie.objectfifo.allocate @data(%[[WTS]])

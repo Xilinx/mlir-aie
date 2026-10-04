@@ -157,6 +157,19 @@ std::string generateUniqueSymbolName(mlir::Operation *symbolTableOp,
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
 
+// custom<TypedDynamicIndexList>($values, $integers, type($values)): the
+// upstream custom<DynamicIndexList> with an optional type on each SSA entry,
+// `%v` for i64 and `%v : type` otherwise.
+mlir::ParseResult parseTypedDynamicIndexList(
+    mlir::OpAsmParser &parser,
+    llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &values,
+    mlir::DenseI64ArrayAttr &integers,
+    llvm::SmallVectorImpl<mlir::Type> &types);
+void printTypedDynamicIndexList(mlir::OpAsmPrinter &printer,
+                                mlir::Operation *op, mlir::OperandRange values,
+                                llvm::ArrayRef<int64_t> integers,
+                                mlir::TypeRange types);
+
 } // namespace xilinx::AIE
 
 namespace xilinx::AIE {
@@ -349,10 +362,49 @@ void collectBuffers(
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 
+// The byte size of `lengthUnit` elements of `buffer`, checked to be a multiple
+// of 16 bytes whose word count fits a 32-bit BD length.
+mlir::FailureOr<int64_t> getLengthUnitBytes(mlir::Operation *op,
+                                            int64_t lengthUnit,
+                                            mlir::BaseMemRefType buffer);
+
+// Validate a BD's runtime length (`length_parameter`, see aie.dma_bd) against
+// its static pattern, shared by aie.dma_bd and aiex.npu.dma_memcpy_nd.
+// `lenElems` is the static length of one iteration, in elements. `contiguous`
+// says the BD is lowered in linear mode; otherwise the added length continues
+// the third dimension as placed by placeRuntimeLengthDimension, so
+// `innerSizes` (the three innermost sizes, innermost-first) must give it a
+// size above one and a row that divides the length unit.
+mlir::LogicalResult verifyLengthParameter(mlir::Operation *op,
+                                          std::optional<int64_t> lengthUnit,
+                                          mlir::BaseMemRefType buffer,
+                                          std::optional<int64_t> lenElems,
+                                          bool contiguous,
+                                          llvm::ArrayRef<int64_t> innerSizes);
+
+// The added length of a runtime-length BD steps the third dimension. When that
+// dimension has size one, its stride is not encoded, so a pattern stepping
+// rows in its second dimension is lowered with them in the third instead and
+// the second left at size one. `sizes` and `strides` are innermost-first and
+// hold at least three dimensions.
+void placeRuntimeLengthDimension(llvm::MutableArrayRef<int64_t> sizes,
+                                 llvm::MutableArrayRef<int64_t> strides);
+
+// Validate the tile a runtime-length BD is lowered on: an AIE2/AIE2P shim NOC
+// tile whose BD buffer length is a whole 32-bit register, which the firmware
+// update adds to.
+mlir::LogicalResult verifyLengthParameterTile(mlir::Operation *op,
+                                              const AIETargetModel &targetModel,
+                                              int col, int row);
+
 // Validate the sender-side out_of_order_id field on a single BD. Callable from
 // the AIEX dialect, whose runtime-sequence task BDs skip DMABDOp::verify.
 mlir::LogicalResult
 verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext = false);
+
+// Validate a BD's iteration attribute against its tile type's iteration and
+// step fields. Callable from the AIEX dialect, like verifyDMABDOutOfOrderId.
+mlir::LogicalResult verifyDMABDIteration(DMABDOp bd, AIETileType tileType);
 
 // Validate an out-of-order S2MM channel and its receive BDs.
 mlir::LogicalResult

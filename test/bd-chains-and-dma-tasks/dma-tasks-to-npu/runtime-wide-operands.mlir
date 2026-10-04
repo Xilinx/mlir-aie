@@ -5,23 +5,18 @@
 
 // RUN: aie-opt --aie-prepare-buffers --aie-assign-buffer-addresses --aie-dma-tasks-to-npu %s | FileCheck %s
 
-// Runtime sizes and strides are i64, but the BD encoding is i32 arithmetic.
-// Each operand is bounded at its original width before it is narrowed, so a
-// value like 2^32 + 1 cannot truncate to 1 and pass the field guard behind it.
-// A size used as is gets the i32 bound. d0's size and every stride are first
-// multiplied by the element width in bits, so they are bounded to what that
-// product can hold in i32: 2^31 - 1 over 32 bits is 67108863.
+// Runtime sizes and strides are i64, and every guard compares them unsigned in
+// i64 before they are narrowed to the i32 BD fields, so a value like 2^32 + 1
+// cannot truncate to 1 and pass the field guard behind it.
 
 // CHECK-LABEL: @memtile_wide
-// CHECK: aiex.npu.assert_bd_field(%arg2) {max = 67108863 : i32} : i64
-// CHECK: aiex.npu.assert_bd_field(%arg0) {max = 2147483647 : i32} : i64
-// CHECK: aiex.npu.assert_bd_field(%arg1) {max = 67108863 : i32} : i64
-// CHECK: arith.trunci %arg2 : i64 to i32
-// CHECK: arith.trunci %arg0 : i64 to i32
-// CHECK: arith.trunci %arg1 : i64 to i32
-// The field guards run on the narrowed values.
-// CHECK: aiex.npu.assert_bd_field(%{{.*}}) {max = 1023 : i32} : i32
-// CHECK: aiex.npu.assert_bd_field(%{{.*}}) {max = 131071 : i32} : i32
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d0 size must be in [1:1023]"
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d1 size must be in [1:1023]"
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d2 stride must be in [1:131072] when its size > 1"
+// CHECK: cf.assert %{{.*}}, "a runtime DMA transfer exceeds the 131071-granule BD buffer_length"
+// CHECK: cf.assert %{{.*}}, "a runtime DMA length must equal the d0*d1*d2 extent of its dimensions"
+// CHECK: arith.trunci %{{.*}} : i64 to i32
+// CHECK: aiex.npu.blockwrite_values
 module @memtile_wide {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)

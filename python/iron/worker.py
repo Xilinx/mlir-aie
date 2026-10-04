@@ -175,7 +175,7 @@ class Worker(ObjectFifoEndpoint):
                 if arg._owner_worker is not None and arg._owner_worker is not self:
                     if not arg._explicit_tile:
                         raise ValueError(
-                            f"Buffer '{arg._name}' has no explicit tile and is shared "
+                            f"Buffer {arg._name or arg._arr_type} has no explicit tile and is shared "
                             f"across Workers; pin it to a tile (Buffer(tile=...)) so "
                             f"placement is unambiguous."
                         )
@@ -300,7 +300,7 @@ class Worker(ObjectFifoEndpoint):
         # and register them in the corresponding barriers.
         for barrier in self._barriers:
             barrier_lock = lock(my_tile)
-            barrier._add_worker_lock(barrier_lock)
+            barrier.worker_locks.append(barrier_lock)
 
         @core(
             my_tile,
@@ -335,7 +335,10 @@ class WorkerRuntimeBarrier:
     def wait_for_value(self, value: int):
         """Wait for the barrier to be set to `value`.
 
-        Should be called from inside a core function.
+        Should be called from inside a core function. The wait leaves the
+        barrier at ``value``; a worker that loops over dispatches calls
+        ``release_with_value`` after reading its runtime parameters so the
+        next iteration waits for the next ``set``.
 
         Args:
             value (int): The value to wait for.
@@ -357,20 +360,16 @@ class WorkerRuntimeBarrier:
         """
         _BarrierSetOp(self, value).resolve()
 
-    def _add_worker_lock(self, lock):
-        """Register an additional lock in the barrier."""
-        self.worker_locks.append(lock)
-
     def _set_barrier_value(self, value: int):
         """Set the value of the barrier."""
         for worker_lock in self.worker_locks:
             set_lock_value(worker_lock, value)
 
     def release_with_value(self, value: int):
-        """Release and decrement the barrier by `value` inside the core.
+        """Release the barrier, adding ``value`` to it, inside the core.
 
         Args:
-            value (int): The value to decrement by in Release.
+            value (int): The value to add.
         """
         if len(self.worker_locks) == 0:
             raise ValueError(

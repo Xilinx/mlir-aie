@@ -119,7 +119,8 @@ module {
       aie.trace.start_config @trace_a
       %n = arith.constant 7000 : i32
       aiex.npu.rtp_write(@rtp_a, 0, %n) : i32
-      aiex.set_lock(%sync_a, 1)
+      %sync_a_v1 = arith.constant 1 : i32
+      aiex.set_lock(%sync_a, %sync_a_v1)
       %t = aiex.dma_configure_task_for @out_a {
         aie.dma_bd(%out : memref<4xi32> offset = 0 len = 4)
         aie.end
@@ -133,7 +134,8 @@ module {
       aie.trace.start_config @trace_a
       %n = arith.constant 9000 : i32
       aiex.npu.rtp_write(@rtp_a, 0, %n) : i32
-      aiex.set_lock(%sync_a, 1)
+      %sync_a_v1 = arith.constant 1 : i32
+      aiex.set_lock(%sync_a, %sync_a_v1)
       %t = aiex.dma_configure_task_for @out_a {
         aie.dma_bd(%out : memref<4xi32> offset = 0 len = 4)
         aie.end
@@ -187,7 +189,8 @@ module {
       aie.trace.start_config @trace_b
       %n = arith.constant 8000 : i32
       aiex.npu.rtp_write(@rtp_b, 0, %n) : i32
-      aiex.set_lock(%sync_b, 1)
+      %sync_b_v1 = arith.constant 1 : i32
+      aiex.set_lock(%sync_b, %sync_b_v1)
       %t = aiex.dma_configure_task_for @out_b {
         aie.dma_bd(%out : memref<4xi32> offset = 0 len = 4)
         aie.end
@@ -201,7 +204,8 @@ module {
       aie.trace.start_config @trace_b
       %n = arith.constant 10000 : i32
       aiex.npu.rtp_write(@rtp_b, 0, %n) : i32
-      aiex.set_lock(%sync_b, 1)
+      %sync_b_v1 = arith.constant 1 : i32
+      aiex.set_lock(%sync_b, %sync_b_v1)
       %t = aiex.dma_configure_task_for @out_b {
         aie.dma_bd(%out : memref<4xi32> offset = 0 len = 4)
         aie.end

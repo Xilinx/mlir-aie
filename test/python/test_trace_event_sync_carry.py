@@ -22,7 +22,11 @@ that capture's tile 0, verbatim (loc "2,0"'s core byte stream, offset 27).
 """
 
 from aie.utils.trace.events import get_events_for_device
-from aie.utils.trace.parse import EVENT_SYNC_CYCLES, convert_commands_to_json
+from aie.utils.trace.parse import (
+    EVENT_SYNC_CYCLES,
+    convert_commands_to_json,
+    make_event_lists,
+)
 from aie.utils.trace.utils import convert_to_commands
 
 EVENTS_MODULE = get_events_for_device("npu1_1col")
@@ -73,3 +77,17 @@ def test_event_sync_emits_no_trace_event():
     trace_events = []
     convert_commands_to_json(trace_events, commands, PID_EVENTS, EVENTS_MODULE)
     assert trace_events == []
+
+
+def test_make_event_lists_counts_repeated_event_sync():
+    commands = [
+        {"type": "Start", "timer_value": 100},
+        {"type": "Single0", "event": 0, "cycles": 9},
+        {"type": "Event_Sync"},
+        {"type": "Repeat0", "repeats": 2},
+        {"type": "Single0", "event": 1, "cycles": 5},
+    ]
+    assert make_event_lists(commands) == {
+        0: [109],
+        1: [109 + 3 * EVENT_SYNC_CYCLES + 5],
+    }

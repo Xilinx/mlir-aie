@@ -195,6 +195,7 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIEDmaToNpuPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
                            "mlir::func::FuncDialect",
                            "mlir::memref::MemRefDialect",
                            "xilinx::AIE::AIEDialect",
@@ -465,8 +466,9 @@ def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   let summary = "Lower configured DMA tasks to NPU instructions";
 
   let constructor = "xilinx::AIEX::createAIEDMATasksToNPUPass()";
-  let dependentDialects = ["mlir::arith::ArithDialect", "mlir::ub::UBDialect",
-                           "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
+                           "mlir::ub::UBDialect", "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
 }
@@ -507,6 +509,7 @@ def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIELowerSetLockPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -577,11 +580,14 @@ def AIELowerScratchpadParameters
     - In each qualifying core: inserts `aie.lock` + `aie.use_lock(Acquire, 1)`.
     - In each qualifying runtime sequence: inserts `aiex.npu.create_scratchpad`,
       per-parameter `aiex.npu.write32` + `aiex.npu.update_from_scratchpad`,
-      and `aiex.set_lock` for each core lock.
+      and `aiex.set_lock` for each core lock, after the last top-level
+      `aiex.npu.load_pdi` (or first, if the sequence loads no PDI).
 
     Sets a `kind` attribute on each `aiex.scratchpad_parameter` based on how
     it is used: `core` if read by `aiex.read_scratchpad_parameter`, `addr` if
-    used as a DMA `offset_parameter`. A parameter may not be used as both.
+    used as a DMA `offset_parameter`. A parameter may not be used as both. A
+    DMA `length_parameter` works with either kind and makes an otherwise
+    unused parameter `addr`; a core-kind length gets `length_core_encoded`.
 
     Optionally emits a `params.txt` file describing every parameter in the
     module (name, global state_table_idx, type, and kind).

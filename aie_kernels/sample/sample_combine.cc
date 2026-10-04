@@ -110,8 +110,8 @@ __attribute__((noinline)) bool add(uint32_t *s, uint64_t m, int32_t off) {
 }
 
 // ~q, q = floor(n53 * s / 2^53), n53 < 2^53.
-__attribute__((noinline)) void not_scaled(const uint32_t *s, uint64_t n53,
-                                          uint32_t *not_q) {
+AIE2_MINSIZE __attribute__((noinline)) void
+not_scaled(const uint32_t *s, uint64_t n53, uint32_t *not_q) {
   uint32_t product[SAMPLE_SUM_WORDS + 2] = {};
 #pragma clang loop unroll(disable)
   for (int32_t half = 0; half < 2; ++half) {
@@ -133,8 +133,8 @@ __attribute__((noinline)) void not_scaled(const uint32_t *s, uint64_t n53,
 // The row's k-th largest key: every key of the row's top k is in some
 // column's summary, so it is the k-th largest over their union (a 256-bin
 // rank walk, two bytes deep).
-__attribute__((noinline)) int32_t union_tau(const int32_t *summaries,
-                                            int32_t k) {
+AIE2_MINSIZE __attribute__((noinline)) int32_t
+union_tau(const int32_t *summaries, int32_t k) {
   int32_t hist[256];
   int32_t bin = 0;
   int32_t need = k;
@@ -163,8 +163,8 @@ __attribute__((noinline)) int32_t union_tau(const int32_t *summaries,
 
 // S, in any order: each column's entries at or above tau, and w_tau once
 // per tie.
-__attribute__((noinline)) void total(const int32_t *summaries, weights *t,
-                                     uint32_t *s) {
+AIE2_MINSIZE __attribute__((noinline)) void total(const int32_t *summaries,
+                                                  weights *t, uint32_t *s) {
   int32_t ties = 0;
   for (int32_t c = 0; c < SAMPLE_COLUMNS; ++c) {
     const int32_t *sum = summaries + c * SAMPLE_SUMMARY_WORDS;

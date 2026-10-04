@@ -5,6 +5,8 @@
 #
 from pathlib import Path
 
+import numpy as np
+
 from .compile.jit._dispatch_bridge import DispatchBridge
 from .hostruntime.hostruntime import HostRuntimeError
 from .trace import TraceConfig
@@ -177,6 +179,27 @@ class NPUKernel:
                 Path(self._dispatch_lib_path), self._dispatch_params
             )
         return self._dispatch_bridge.generate(dispatch_scalars)
+
+    def instructions(self, **dispatch_scalars) -> np.ndarray:
+        """Return the instruction words a call with ``dispatch_scalars`` runs.
+
+        A static design returns its ``insts.bin``. A ``DispatchTime[T]``
+        design builds the stream from its dispatch bridge exactly as a call
+        does, so a dispatch the guards refuse raises the same
+        ``HostRuntimeError``. No NPU is needed.
+
+        Raises:
+            ValueError: If this is a full-ELF kernel, whose instructions live
+                inside the ELF.
+        """
+        words = self._generate_dispatch_insts(dispatch_scalars)
+        if words is not None:
+            return words
+        if self._insts_path is None:
+            raise ValueError(
+                "this kernel has no separate instruction stream (full-ELF mode)"
+            )
+        return np.fromfile(self._insts_path, dtype=np.uint32)
 
     # Blocking call.
     def __call__(self, *args, **kwargs):

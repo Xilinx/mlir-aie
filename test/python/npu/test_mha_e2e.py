@@ -26,14 +26,13 @@ Not covered: a key block that is all padding inside the causal region.
 factor in ``scale_buffer``; that is existing kernel behaviour, not frozen here.
 """
 
-from collections.abc import Sequence
-
 import ml_dtypes
 import numpy as np
 import pytest
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -73,16 +72,6 @@ _LOWEST = float(ml_dtypes.finfo(bfloat16).min)
 _RTOL_EXP2 = 0.07
 
 
-def _reblock(rows: int) -> list[Sequence[int]]:
-    """Reads a row-major ``rows`` x 64 P back in the mmul's 8x8 block order."""
-    return [(rows // 8, 512), (8, 8), (8, 64), (8, 1)]
-
-
-def _block(mat: np.ndarray) -> np.ndarray:
-    """(64, 64) -> mm.cc's 8x8-blocked operand order; its own inverse."""
-    return mat.reshape(8, 8, 8, 8).transpose(0, 2, 1, 3).reshape(-1).copy()
-
-
 def _unblock(flat: np.ndarray, rows: int = _B) -> np.ndarray:
     """The 8x8-blocked O tile back to (rows, 64)."""
     return flat.reshape(rows // 8, 8, 8, 8).transpose(0, 2, 1, 3).reshape(rows, _B)
@@ -98,15 +87,6 @@ def _keep(
         (cols[None, :] <= rows[:, None])
         & (rows[:, None] < s_q_eff)
         & (cols[None, :] < s_kv_eff)
-    )
-
-
-def _keep_round(
-    q_block: int, n_kv: int, s_q_eff: int, s_kv_eff: int, b_q: int = _B
-) -> np.ndarray:
-    """``_keep`` over every key block a round streams, side by side."""
-    return np.concatenate(
-        [_keep(q_block, kv, s_q_eff, s_kv_eff, b_q) for kv in range(n_kv)], axis=1
     )
 
 
@@ -429,7 +409,10 @@ def mha_round(
     # O is held as the accumulator for the whole round.
     of_o = ObjectFifo(tile_ty, name="o", depth=1)
     of_p = ObjectFifo(tile_ty, name="p", depth=1)
-    of_pb = of_p.cons().forward(dims_to_stream=_reblock(b_q), depth=1)
+    # The row-major P is read back in the mmul's 8x8 block order.
+    of_pb = of_p.cons().forward(
+        to_stream=TensorAccessPattern.full((b_q, _B)).tile((8, 8)), depth=1
+    )
 
     scale_buf = Buffer(scale_ty, name="scale")
     idx_bufs = [
@@ -506,7 +489,9 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B):
     v = _dyadic(rng, (n_kv * _B, _B), 0.25, mag=2)
     # Aim each query at its diagonal key, in the last block, so the running max
     # rises late and matmul_PV must rescale what earlier blocks accumulated.
-    keep = _keep_round(q_block, n_kv, s_q_eff, s_kv_eff, b_q)
+    keep = np.concatenate(
+        [_keep(q_block, kv, s_q_eff, s_kv_eff, b_q) for kv in range(n_kv)], axis=1
+    )
     for row in range(b_q):
         if keep[row].any():
             k[q_block * b_q + row] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
@@ -525,7 +510,9 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B):
                 np.pad(scores[:, b * _B : (b + 1) * _B], ((0, _B - b_q), (0, 0)))
                 .reshape(-1)
                 .copy(),
-                _block(stale[b * _B : (b + 1) * _B]),
+                TensorAccessPattern.full((_B, _B))
+                .tile((8, 8))
+                .gather(stale[b * _B : (b + 1) * _B]),
             )
         ]
     )
@@ -544,6 +531,7 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B):
         (3, 2, 4 * 32, 2 * _B, 32),  # carried across key blocks, then mid-block
         (1, 2, 2 * 32, 2 * _B, 32),  # a key block past every row, which must drop
         (3, 1, 4 * 16, _B, 16),  # the 16-row state walk
+        (1, 1, _B, _B, _B),  # a query block wholly past s_q_eff
     ],
 )
 def test_mha_round_matches_masked_attention(q_block, n_kv, s_q_eff, s_kv_eff, b_q):
@@ -566,6 +554,8 @@ def test_mha_round_matches_masked_attention(q_block, n_kv, s_q_eff, s_kv_eff, b_
     # Outputs are convex combinations of V rows, so measure in steps of max|v|.
     ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
     np.testing.assert_allclose(got[live], ref[live], rtol=0, atol=_ATOL_ULP * ulp)
+    # A row past s_q_eff attends over nothing; it must come out 0, not 0 * (1 / 0).
+    np.testing.assert_array_equal(got[~live], 0)
 
     # The reference uses the kernel's bf16 scale; check it against the exact one.
     exact = _attention(scores, v, keep, inv_scale=np.log2(np.e) / np.sqrt(_B)).astype(
