@@ -18,13 +18,15 @@ disjoint.
 
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import Bd, BdIteration, Buffer, DmaChannel, Program, Runtime, TileDma
 from aie.iron.device import NPU2Col1, Tile
 
 
 def emit(channels):
     tile = Tile(col=0, row=2, tile_type=AIETileType.CoreTile)
-    buf = Buffer(tile=tile, type=np.ndarray[(16,), np.dtype[np.int32]], name="buf")
+    buf = Buffer(tile=tile, type=np.ndarray[(8,), np.dtype[np.int32]], name="buf")
+    slots = TensorAccessPattern.full((8,)).partition(2)
     chans = []
     for spec in channels:
         direction, channel, nbds, ooo, repeat, pkt = spec[:6]
@@ -35,8 +37,7 @@ def emit(channels):
         bds = [
             Bd(
                 buffer=buf,
-                offset=4 * i,
-                length=4,
+                tap=slots[i],
                 packet=(0, 0) if pkt else None,
                 bd_id=bd_ids[i],
                 iteration=BdIteration(size=its[i], stride=1) if its[i] > 1 else None,

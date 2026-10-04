@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.extras.dialects import arith
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Acquire,
     Bd,
@@ -71,7 +72,8 @@ def resident_replay(a: In, c: Out, *, uses: DispatchTime[np.int32] = 2):
         )
         replay.start()
         replay.start(repeat_count=n - first - one).free()
-        out.drain(C, sizes=[1, 1, n, CHUNK], strides=[0, 0, CHUNK, 1], wait=True)
+        rows = TensorAccessPattern.full((CHUNK * MAX_USES,)).split(0, CHUNK)
+        out.drain(C, tap=rows[:n], wait=True)
 
     rt = Runtime(seq, [in_ty, out_ty, uses])
     rt.add_lock(empty)
@@ -103,5 +105,5 @@ def test_memtile_resident_replay_rejects(uses):
     design = resident_replay.specialize()
     a = iron.zeros((CHUNK,), dtype=np.int32, device="npu")
     c = iron.zeros((CHUNK * MAX_USES,), dtype=np.int32, device="npu")
-    with pytest.raises(HostRuntimeError, match="overflowed a hardware BD field"):
+    with pytest.raises(HostRuntimeError, match="a runtime lock value must be in"):
         design(a, c, uses=uses)

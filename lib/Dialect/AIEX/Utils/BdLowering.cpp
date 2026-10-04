@@ -12,9 +12,13 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/Iterators.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <limits>
+#include <numeric>
 
 using namespace mlir;
 
@@ -23,49 +27,141 @@ namespace xilinx::AIEX {
 //===----------------------------------------------------------------------===//
 // SsaStridePolicy: arith-emitting mirror of ConstStridePolicy.
 //
-// Arithmetic is i32, matching the BD word fields. This agrees with
-// ConstStridePolicy's int64 because encodeBdCommon bounds every runtime operand
-// before it reaches the policy, so no intermediate product overflows.
+// Arithmetic is i64, like ConstStridePolicy. Operands arrive zero-extended, so
+// the comparisons are unsigned; a negative runtime value reads as a huge one,
+// which the host-side guards in encodeBdCommon reject before the encoded
+// fields are used.
 //===----------------------------------------------------------------------===//
 
 Value SsaStridePolicy::cst(int64_t c) const {
-  auto i32ty = builder.getIntegerType(32);
-  return arith::ConstantOp::create(builder, loc, IntegerAttr::get(i32ty, c));
+  return arith::ConstantOp::create(builder, loc, builder.getI64IntegerAttr(c));
 }
 
 Value SsaStridePolicy::mul(Value v, int64_t c) const {
-  return arith::MulIOp::create(builder, loc, v, cst(c));
+  return builder.createOrFold<arith::MulIOp>(loc, v, cst(c));
 }
 
 Value SsaStridePolicy::div(Value v, int64_t c) const {
-  // Hardware granularity scaling is exact (verifier enforces divisibility);
-  // unsigned division matches the constant policy on the non-negative values
-  // that reach here.
-  return arith::DivUIOp::create(builder, loc, v, cst(c));
+  // Hardware granularity scaling is exact (verifier/guards enforce
+  // divisibility).
+  return builder.createOrFold<arith::DivUIOp>(loc, v, cst(c));
 }
 
 Value SsaStridePolicy::sub(Value v, int64_t c) const {
-  return arith::SubIOp::create(builder, loc, v, cst(c));
+  return builder.createOrFold<arith::SubIOp>(loc, v, cst(c));
 }
 
 Value SsaStridePolicy::selectGT1(Value cond, Value t, Value e) const {
-  Value one = cst(1);
-  Value gt =
-      arith::CmpIOp::create(builder, loc, arith::CmpIPredicate::sgt, cond, one);
-  return arith::SelectOp::create(builder, loc, gt, t, e);
+  Value gt = builder.createOrFold<arith::CmpIOp>(loc, arith::CmpIPredicate::ugt,
+                                                 cond, cst(1));
+  return builder.createOrFold<arith::SelectOp>(loc, gt, t, e);
 }
 
 Value SsaStridePolicy::selectGT0(Value cond, Value t, Value e) const {
-  Value zero = cst(0);
-  Value gt = arith::CmpIOp::create(builder, loc, arith::CmpIPredicate::sgt,
-                                   cond, zero);
-  return arith::SelectOp::create(builder, loc, gt, t, e);
+  Value gt = builder.createOrFold<arith::CmpIOp>(loc, arith::CmpIPredicate::ugt,
+                                                 cond, cst(0));
+  return builder.createOrFold<arith::SelectOp>(loc, gt, t, e);
 }
 
 Value SsaStridePolicy::selectLt(Value a, Value b, Value t, Value e) const {
   Value lt =
-      arith::CmpIOp::create(builder, loc, arith::CmpIPredicate::slt, a, b);
-  return arith::SelectOp::create(builder, loc, lt, t, e);
+      builder.createOrFold<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, a, b);
+  return builder.createOrFold<arith::SelectOp>(loc, lt, t, e);
+}
+
+//===----------------------------------------------------------------------===//
+// Host-side guards.
+//===----------------------------------------------------------------------===//
+
+LogicalResult emitRuntimeCheck(OpBuilder &builder, Location loc, Value cond,
+                               const Twine &message) {
+  if (auto c = getConstantIntValue(cond)) {
+    if (*c)
+      return success();
+    return emitError(loc) << message;
+  }
+  cf::AssertOp::create(builder, loc, cond, builder.getStringAttr(message));
+  return success();
+}
+
+void eraseDeadArith(Operation *root) {
+  root->walk<WalkOrder::PostOrder, ReverseIterator>([](Operation *op) {
+    if (isa<arith::ArithDialect>(op->getDialect()) && isOpTriviallyDead(op))
+      op->erase();
+  });
+}
+
+namespace {
+
+// Folding unsigned i64 arithmetic for building guard conditions: over
+// constant operands a condition folds to a constant, which emitRuntimeCheck
+// drops (true) or reports at compile time (false).
+// Arguments that build ops go in separate statements: C++ leaves their
+// evaluation order, and so the emitted op order, to the compiler.
+struct GuardBuilder {
+  OpBuilder &b;
+  Location loc;
+
+  Value cst(uint64_t c) {
+    return arith::ConstantOp::create(b, loc, b.getI64IntegerAttr((int64_t)c));
+  }
+  Value add(Value x, Value y) {
+    return b.createOrFold<arith::AddIOp>(loc, x, y);
+  }
+  Value sub(Value x, uint64_t c) {
+    return b.createOrFold<arith::SubIOp>(loc, x, cst(c));
+  }
+  Value mul(Value x, Value y) {
+    return b.createOrFold<arith::MulIOp>(loc, x, y);
+  }
+  Value both(Value x, Value y) {
+    return b.createOrFold<arith::AndIOp>(loc, x, y);
+  }
+  Value either(Value x, Value y) {
+    return b.createOrFold<arith::OrIOp>(loc, x, y);
+  }
+  Value cmp(arith::CmpIPredicate pred, Value x, Value y) {
+    return b.createOrFold<arith::CmpIOp>(loc, pred, x, y);
+  }
+  Value eq(Value x, Value y) { return cmp(arith::CmpIPredicate::eq, x, y); }
+  Value eq(Value x, uint64_t c) { return eq(x, cst(c)); }
+  Value ule(Value x, uint64_t c) {
+    return cmp(arith::CmpIPredicate::ule, x, cst(c));
+  }
+  // 1 <= x <= hi as one unsigned compare: x - 1 wraps 0 to UINT64_MAX.
+  Value inRange1(Value x, uint64_t hi) { return ule(sub(x, 1), hi - 1); }
+  Value multipleOf(Value x, uint64_t d) {
+    return eq(b.createOrFold<arith::RemUIOp>(loc, x, cst(d)), 0);
+  }
+  LogicalResult check(Value cond, const Twine &message) {
+    return emitRuntimeCheck(b, loc, cond, message);
+  }
+};
+
+} // namespace
+
+Value getAsI64(OpBuilder &builder, Location loc, OpFoldResult ofr) {
+  Type i64 = builder.getI64Type();
+  if (auto c = getConstantIntValue(ofr))
+    return Value(
+        arith::ConstantOp::create(builder, loc, IntegerAttr::get(i64, *c)));
+  Value v = cast<Value>(ofr);
+  if (v.getType().isIndex())
+    return Value(arith::IndexCastUIOp::create(builder, loc, i64, v));
+  unsigned bits = v.getType().getIntOrFloatBitWidth();
+  if (bits < 64)
+    return Value(arith::ExtUIOp::create(builder, loc, i64, v));
+  if (bits > 64) {
+    GuardBuilder g{builder, loc};
+    Value max = arith::ConstantOp::create(
+        builder, loc,
+        IntegerAttr::get(v.getType(), APInt::getMaxValue(64).zext(bits)));
+    if (failed(g.check(g.cmp(arith::CmpIPredicate::ule, v, max),
+                       "a runtime DMA operand does not fit in 64 bits")))
+      return {};
+    return Value(arith::TruncIOp::create(builder, loc, i64, v));
+  }
+  return v;
 }
 
 //===----------------------------------------------------------------------===//
@@ -79,6 +175,8 @@ Value getAsValue(OpBuilder &builder, Location loc, OpFoldResult ofr,
                                      IntegerAttr::get(intType, *constVal));
   Value val = cast<Value>(ofr);
   if (val.getType() != intType) {
+    if (val.getType().isIndex())
+      return arith::IndexCastUIOp::create(builder, loc, intType, val);
     unsigned valBits = val.getType().getIntOrFloatBitWidth();
     unsigned tgtBits = intType.getIntOrFloatBitWidth();
     if (valBits > tgtBits)
@@ -92,7 +190,7 @@ Value getAsValue(OpBuilder &builder, Location loc, OpFoldResult ofr,
 Value buildArgPlusValue(OpBuilder &builder, Location loc,
                         ArrayRef<OpFoldResult> elementOffsets,
                         ArrayRef<OpFoldResult> strides, int64_t elemWidthBytes,
-                        int64_t baseByteOffset) {
+                        int64_t baseByteOffset, uint32_t granuleBytes) {
   auto i32ty = builder.getIntegerType(32);
 
   // Fast path: everything constant -> fold to one arith.constant, matching the
@@ -112,32 +210,98 @@ Value buildArgPlusValue(OpBuilder &builder, Location loc,
       assert(oc && sc && "allConst already verified these are constant");
       bytes += (*oc) * (*sc) * elemWidthBytes;
     }
-    // Reachable only for a constant offset; the runtime path below stays i32.
     if (bytes > std::numeric_limits<uint32_t>::max() || bytes < 0)
-      return arith::ConstantOp::create(
-          builder, loc, IntegerAttr::get(builder.getIntegerType(64), bytes));
-    return arith::ConstantOp::create(builder, loc,
-                                     IntegerAttr::get(i32ty, bytes));
+      return Value(arith::ConstantOp::create(
+          builder, loc, IntegerAttr::get(builder.getIntegerType(64), bytes)));
+    return Value(arith::ConstantOp::create(builder, loc,
+                                           IntegerAttr::get(i32ty, bytes)));
   }
 
-  // Runtime path: sum(offset[i] * stride[i]) * elemWidthBytes + base, as arith.
-  Value acc =
-      arith::ConstantOp::create(builder, loc, IntegerAttr::get(i32ty, 0));
+  // Runtime path, in i64: sum(offset[i] * stride[i]) * elemWidthBytes + base.
+  // The range is the bounds guard's job (guardWithinHostBuffer); the patch
+  // itself only needs the granule alignment the static verifier checks.
+  GuardBuilder g{builder, loc};
+  Value acc = g.cst(0);
+  // A byte offset every term is a multiple of; when it is a whole granule the
+  // alignment guard is statically true.
+  uint64_t knownMultiple = (uint64_t)baseByteOffset;
   for (auto [o, s] : llvm::zip(elementOffsets, strides)) {
-    Value ov = getAsValue(builder, loc, o, i32ty);
-    Value sv = getAsValue(builder, loc, s, i32ty);
-    Value prod = arith::MulIOp::create(builder, loc, ov, sv);
-    acc = arith::AddIOp::create(builder, loc, acc, prod);
+    Value ov = getAsI64(builder, loc, o);
+    Value sv = getAsI64(builder, loc, s);
+    if (!ov || !sv)
+      return {};
+    acc = g.add(acc, g.mul(ov, sv));
+    uint64_t factor = (uint64_t)elemWidthBytes;
+    for (OpFoldResult f : {o, s})
+      if (auto c = getConstantIntValue(f))
+        factor *= (uint64_t)*c;
+    knownMultiple = std::gcd(knownMultiple, factor);
   }
-  Value width = arith::ConstantOp::create(
-      builder, loc, IntegerAttr::get(i32ty, elemWidthBytes));
-  acc = arith::MulIOp::create(builder, loc, acc, width);
-  if (baseByteOffset != 0) {
-    Value base = arith::ConstantOp::create(
-        builder, loc, IntegerAttr::get(i32ty, baseByteOffset));
-    acc = arith::AddIOp::create(builder, loc, acc, base);
-  }
+  acc = g.mul(acc, g.cst(elemWidthBytes));
+  if (baseByteOffset != 0)
+    acc = g.add(acc, g.cst(baseByteOffset));
+  if (granuleBytes > 1 && knownMultiple % granuleBytes != 0 &&
+      failed(g.check(g.eq(builder.createOrFold<arith::AndIOp>(
+                              loc, acc, g.cst(granuleBytes - 1)),
+                          0),
+                     "a runtime DMA offset is not " + Twine(granuleBytes) +
+                         "-byte aligned")))
+    return {};
   return acc;
+}
+
+LogicalResult guardWithinHostBuffer(
+    OpBuilder &builder, Location loc, BaseMemRefType hostBufferType,
+    int64_t baseByteOffset, int64_t elemWidthBytes,
+    ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> offsetStrides,
+    ArrayRef<OpFoldResult> sizes, ArrayRef<OpFoldResult> strides) {
+  // Elements addressable past the base offset. Capped at 2^32 so every term
+  // below is a product of two values under 2^32 and no sum can wrap 64 bits.
+  constexpr uint64_t kMaxElems = 1ULL << 32;
+  uint64_t cap = kMaxElems;
+  if (hostBufferType.hasStaticShape()) {
+    int64_t bytes = hostBufferType.getNumElements() *
+                    (int64_t)hostBufferType.getElementTypeBitWidth() / 8;
+    cap = bytes > baseByteOffset
+              ? std::min<uint64_t>((bytes - baseByteOffset) / elemWidthBytes,
+                                   kMaxElems)
+              : 0;
+  }
+  if (cap == 0)
+    return emitError(loc) << "DMA transfer starts past the end of its host "
+                             "buffer";
+
+  // The furthest element touched is sum(offset_k * offsetStride_k) +
+  // sum((size_i - 1) * stride_i); it must be below `cap`. A term is in range
+  // only if both factors are (a zero factor makes the other irrelevant), which
+  // also keeps the product from wrapping.
+  GuardBuilder g{builder, loc};
+  Value ok, sum = g.cst(0);
+  auto addTerm = [&](Value c, Value t) {
+    Value cZero = g.eq(c, 0);
+    Value tFits = g.either(cZero, g.ule(t, cap - 1));
+    Value tZero = g.eq(t, 0);
+    Value inRange = g.both(tFits, g.either(tZero, g.ule(c, cap - 1)));
+    ok = ok ? g.both(ok, inRange) : inRange;
+    sum = g.add(sum, g.mul(c, t));
+  };
+  for (auto [o, s] : llvm::zip(offsets, offsetStrides)) {
+    Value ov = getAsI64(builder, loc, o);
+    Value sv = getAsI64(builder, loc, s);
+    if (!ov || !sv)
+      return failure();
+    addTerm(ov, sv);
+  }
+  for (auto [sz, st] : llvm::zip(sizes, strides)) {
+    Value szv = getAsI64(builder, loc, sz);
+    Value stv = getAsI64(builder, loc, st);
+    if (!szv || !stv)
+      return failure();
+    addTerm(g.sub(szv, 1), stv);
+  }
+  Value cond = ok ? g.both(ok, g.ule(sum, cap - 1)) : g.ule(sum, cap - 1);
+  return g.check(cond, "a runtime DMA access runs past the end of its " +
+                           Twine(cap) + "-element host buffer");
 }
 
 Value buildBdWord(OpBuilder &builder, Location loc,
@@ -150,14 +314,14 @@ Value buildBdWord(OpBuilder &builder, Location loc,
     if (mask != 0xFFFFFFFF) {
       auto maskConst = arith::ConstantOp::create(
           builder, loc, IntegerAttr::get(i32ty, (int64_t)(int32_t)mask));
-      masked = arith::AndIOp::create(builder, loc, masked, maskConst);
+      masked = builder.createOrFold<arith::AndIOp>(loc, masked, maskConst);
     }
     if (shift > 0) {
       auto shiftConst = arith::ConstantOp::create(
           builder, loc, IntegerAttr::get(i32ty, shift));
-      masked = arith::ShLIOp::create(builder, loc, masked, shiftConst);
+      masked = builder.createOrFold<arith::ShLIOp>(loc, masked, shiftConst);
     }
-    result = arith::OrIOp::create(builder, loc, result, masked);
+    result = builder.createOrFold<arith::OrIOp>(loc, result, masked);
   }
   return result;
 }
@@ -184,9 +348,9 @@ Value getBdRegisterBase(OpBuilder &builder, Location loc,
 
 namespace {
 
-// Arrays are innermost-first: [d0, d1, d2, iter].
+// Arrays are innermost-first: [d0, d1, d2, iter]. Every value is i32, ready to
+// pack into its BD field.
 struct EncodedBd {
-  Value inS[4], inT[4];  // element counts, as given
   Value hwS[4], hwT[4];  // granule-scaled wraps and -1-biased steps
   Value bufLen;          // buffer_length, in address-gen granules
   Value iterSizeField;   // iteration_size, zeroed for a pure repeat
@@ -198,86 +362,12 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
                              const AIE::AIETargetModel &tm, int tileCol,
                              int tileRow, ArrayRef<OpFoldResult> mixedSizes,
                              ArrayRef<OpFoldResult> mixedStrides,
-                             uint64_t elemWidth, Value bufLenOverride,
+                             uint64_t elemWidth, OpFoldResult lenElems,
                              EncodedBd &out) {
   auto i32ty = builder.getIntegerType(32);
   uint32_t gran = tm.getAddressGenGranularity();
   SmallVector<OpFoldResult, 4> sizesRev(llvm::reverse(mixedSizes));
   SmallVector<OpFoldResult, 4> stridesRev(llvm::reverse(mixedStrides));
-  // The encoding below is i32 arithmetic, and a RUNTIME operand that does not
-  // fit it wraps: an i64 is truncated (2^32 + 1 becomes 1), and d0's size and
-  // every stride are multiplied by elemWidth before they are scaled down to
-  // granules. A wrapped value can then pass the field guards further down, so
-  // bound each operand at its original width first. Only the d1..d3 sizes are
-  // used unscaled, and an i32 one needs no bound. Every BD field is far
-  // narrower than these bounds, so no valid value is rejected here.
-  int64_t scaledMax =
-      std::numeric_limits<int32_t>::max() / std::max<uint64_t>(elemWidth, 1);
-  auto guardOperand = [&](OpFoldResult in, bool scaled) {
-    if (getConstantIntValue(in))
-      return;
-    Value v = cast<Value>(in);
-    if (!scaled && v.getType().getIntOrFloatBitWidth() <= 32)
-      return;
-    NpuAssertBdFieldOp::create(
-        builder, loc, v,
-        builder.getI32IntegerAttr(
-            scaled ? scaledMax : std::numeric_limits<int32_t>::max()));
-  };
-  for (int i = 0; i < 4; i++) {
-    guardOperand(sizesRev[i], /*scaled=*/i == 0);
-    guardOperand(stridesRev[i], /*scaled=*/true);
-  }
-  for (int i = 0; i < 4; i++) {
-    out.inS[i] = getAsValue(builder, loc, sizesRev[i], i32ty);
-    out.inT[i] = getAsValue(builder, loc, stridesRev[i], i32ty);
-  }
-  SsaStridePolicy policy(builder, loc);
-  encodeHardwareStridesWraps(policy, elemWidth, gran, out.inS, out.inT, out.hwS,
-                             out.hwT);
-
-  // buffer_length: the caller's runtime len if supplied (dma_task), else the
-  // d0*d1*d2 hardware-unit size-product (dma_memcpy_nd). hwS[0] already carries
-  // the elemWidth/gran scaling; d1/d2 are element counts.
-  uint64_t lenMax = tm.getDmaBdMaxLen(tileCol, tileRow);
-  bool lenGuarded = false;
-  out.bufLen = bufLenOverride;
-  if (!out.bufLen) {
-    auto cst0 = [&](int i) { return getConstantIntValue(sizesRev[i]); };
-    bool unitOuter = [&] {
-      auto s1 = cst0(1), s2 = cst0(2);
-      return s1 && *s1 == 1 && s2 && *s2 == 1;
-    }();
-    if ((cst0(0) && cst0(1) && cst0(2)) || unitOuter) {
-      out.bufLen = arith::MulIOp::create(
-          builder, loc,
-          arith::MulIOp::create(builder, loc, out.hwS[0], out.inS[1]),
-          out.inS[2]);
-    } else {
-      // A runtime factor can make the i32 product wrap into a length that
-      // passes its guard, so multiply in i64 and bound each partial product.
-      // hwS[0] is below 2^31 once its operand guard holds, each d1/d2 size
-      // below 2^32 unsigned, and a partial product that passed its guard below
-      // 2^31, so no product wraps in i64 before the guard that rejects it.
-      auto i64ty = builder.getI64Type();
-      auto wide = [&](Value v) -> Value {
-        return arith::ExtUIOp::create(builder, loc, i64ty, v);
-      };
-      auto cap = (int64_t)std::min<uint64_t>(
-          lenMax, std::numeric_limits<int32_t>::max());
-      Value len = wide(out.hwS[0]);
-      for (int i = 1; i < 3; i++) {
-        if (auto c = cst0(i); c && *c == 1)
-          continue;
-        len = arith::MulIOp::create(builder, loc, len, wide(out.inS[i]));
-        NpuAssertBdFieldOp::create(builder, loc, len,
-                                   builder.getI32IntegerAttr(cap));
-      }
-      out.bufLen = arith::TruncIOp::create(builder, loc, i32ty, len);
-      lenGuarded = true;
-    }
-  }
-
   auto cst = [&](OpFoldResult v) { return getConstantIntValue(v); };
   auto constEq = [&](OpFoldResult v, int64_t c) {
     auto k = cst(v);
@@ -320,76 +410,146 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
   // in the same place, in AIEDMATasksToNPU.cpp's treatAsLinear.
   out.isLinear = knownLinear() ||
                  (tm.isShimNOCTile(tileCol, tileRow) && knownContiguous());
+  bool isLinear = out.isLinear;
 
-  // Guard a RUNTIME value against a BD field too narrow to hold it; the
-  // packer's mask would otherwise truncate it silently on hardware. Constants
-  // are verifier-checked instead.
-  auto guardField = [&](OpFoldResult in, Value hwVal, int64_t fieldMax) {
-    if (getConstantIntValue(in))
-      return;
-    NpuAssertBdFieldOp::create(builder, loc, hwVal,
-                               builder.getI32IntegerAttr(fieldMax));
+  Value inS[4], inT[4];
+  for (int i = 0; i < 4; i++) {
+    inS[i] = getAsI64(builder, loc, sizesRev[i]);
+    inT[i] = getAsI64(builder, loc, stridesRev[i]);
+    if (!inS[i] || !inT[i])
+      return failure();
+  }
+
+  // Host-side guards: every size and stride must land in its BD field, checked
+  // in the element domain before any scaling can wrap. Over constant operands
+  // they fold away (the verifiers already checked those) or fail here.
+  uint64_t ew = elemWidth;
+  uint64_t wrapMax = (1ULL << tm.getDmaBdWrapBits(tileCol, tileRow)) - 1;
+  uint64_t maxLen = tm.getDmaBdMaxLen(tileCol, tileRow);
+  uint64_t maxStride =
+      (1ULL << tm.getDmaBdStepBits(tileCol, tileRow)) * gran / ew;
+  uint64_t maxIterations = 1ULL << tm.getDmaBdIterBits(tileCol, tileRow);
+  uint64_t maxRepeats = tm.getMaxRepeatCount() + 1;
+  GuardBuilder g{builder, loc};
+  uint64_t sizeMax[4];
+  auto checkSize = [&](int i, uint64_t hi) {
+    sizeMax[i] = getConstantIntValue(sizesRev[i]).value_or(hi);
+    return g.check(g.inRange1(inS[i], hi),
+                   (i == 3 ? Twine("a runtime DMA repeat count")
+                           : "a runtime DMA d" + Twine(i) + " size") +
+                       " must be in [1:" + Twine(hi) + "]");
   };
-  int64_t wrapMax = (1ll << tm.getDmaBdWrapBits(tileCol, tileRow)) - 1;
-  int64_t iterMax = (1ll << tm.getDmaBdIterBits(tileCol, tileRow)) - 1;
-  int64_t stepMax = (1ll << tm.getDmaBdStepBits(tileCol, tileRow)) - 1;
-  if (!out.isLinear) {
-    guardField(sizesRev[0], out.hwS[0], wrapMax);
-    guardField(sizesRev[1], out.hwS[1], wrapMax);
-    // The step fields are narrower than the values that reach them (17 bits on
-    // a mem tile, 13 on a core tile), so a runtime stride needs the same guard
-    // a constant gets from verifyStridesWraps.
-    guardField(stridesRev[0], out.hwT[0], stepMax);
-    guardField(stridesRev[1], out.hwT[1], stepMax);
-    guardField(stridesRev[2], out.hwT[2], stepMax);
-  }
-  guardField(sizesRev[3], out.hwS[3], iterMax);
-  // hwT[3] collapses to 0 unless the iteration wrap is > 1, which is the same
-  // condition under which verifyStridesWraps exempts it -- so this guard is
-  // inert in the pure-repeat case rather than rejecting it.
-  guardField(stridesRev[3], out.hwT[3], stepMax);
-
-  // Neither check fires on a shim NOC tile, whose buffer_length owns the whole
-  // 32-bit word, nor on a size-product the i64 path above already bounded.
-  if (!lenGuarded && lenMax < std::numeric_limits<uint32_t>::max()) {
-    if (auto constLen = getConstantIntValue(out.bufLen)) {
-      if (*constLen < 0 || (uint64_t)*constLen > lenMax)
-        return emitError(loc)
-               << "buffer length of " << *constLen
-               << " address-generation granules exceeds the " << lenMax
-               << " this tile's BD buffer_length field can hold.";
-    } else {
-      NpuAssertBdFieldOp::create(builder, loc, out.bufLen,
-                                 builder.getI32IntegerAttr((int64_t)lenMax));
-    }
+  if (failed(checkSize(0, (isLinear ? maxLen : wrapMax) * gran / ew)) ||
+      failed(checkSize(1, isLinear ? maxLen : wrapMax)) ||
+      failed(checkSize(2, maxLen)) || failed(checkSize(3, maxRepeats)))
+    return failure();
+  Value pureRepeat = g.eq(inT[3], 0);
+  if (failed(g.check(
+          g.either(pureRepeat, g.ule(g.sub(inS[3], 1), maxIterations - 1)),
+          "a runtime DMA iteration count must be in [1:" +
+              Twine(maxIterations) + "]")))
+    return failure();
+  for (int i = 0; i < 4; i++) {
+    if (i < 3 && (isLinear || (i == 0 && ew > gran)))
+      continue;
+    Value inRange =
+        i == 3 ? g.ule(inT[3], maxStride) : g.inRange1(inT[i], maxStride);
+    if (failed(g.check(g.either(g.ule(inS[i], 1), inRange),
+                       (i == 3 ? Twine("a runtime DMA iteration stride")
+                               : "a runtime DMA d" + Twine(i) + " stride") +
+                           " must be in [" + Twine(i == 3 ? 0 : 1) + ":" +
+                           Twine(maxStride) + "] when its size > 1")))
+      return failure();
   }
 
-  // Guard a RUNTIME size/stride whose byte extent must be a whole number of
-  // granules (mirrors verifyStridesWraps). Guard is on the input element count;
-  // constants are verifier-checked.
+  // A non-word element's innermost stride must be 1 (see verifyStridesWraps).
+  if (ew != gran) {
+    Value d0Unit = g.eq(inT[0], 1);
+    if (failed(g.check(g.either(g.ule(inS[0], 1), d0Unit),
+                       "a runtime DMA d0 stride must be 1 for " +
+                           Twine(ew / 8) +
+                           "-byte elements (the DMA moves whole " +
+                           Twine(gran / 8) + "-byte granules)")))
+      return failure();
+  }
+
+  // A size or stride whose byte extent is not a whole number of granules is
+  // unrealizable (mirrors verifyStridesWraps).
   int64_t divisor = bdGranuleDivisor(elemWidth, gran);
-  auto guardDivisible = [&](OpFoldResult in, Value inVal, bool allowUnit) {
-    if (divisor <= 1 || getConstantIntValue(in))
-      return;
-    NpuAssertBdDivisibleOp::create(builder, loc, inVal, (uint32_t)divisor,
-                                   /*allow_unit=*/allowUnit);
-  };
-  guardDivisible(sizesRev[0], out.inS[0], /*allowUnit=*/false);
-  // The innermost stride collapses to hardware 0 when contiguous or
-  // granule-aligned; guard with the unit-stride exemption. Outer strides don't
-  // collapse.
-  guardDivisible(stridesRev[0], out.inT[0], /*allowUnit=*/true);
-  for (int i = 1; i < 4; i++)
-    guardDivisible(stridesRev[i], out.inT[i], /*allowUnit=*/false);
+  if (divisor > 1) {
+    auto checkMultiple = [&](Value v, const Twine &what) {
+      return g.check(g.multipleOf(v, divisor),
+                     "a runtime DMA " + what + " must be a multiple of " +
+                         Twine(divisor) + " elements (whole " +
+                         Twine(gran / 8) + "-byte granules)");
+    };
+    if (failed(checkMultiple(inS[0], "d0 size")))
+      return failure();
+    for (int i = 1; i < 4; i++)
+      if (failed(checkMultiple(inT[i], i == 3 ? Twine("iteration stride")
+                                              : "d" + Twine(i) + " stride")))
+        return failure();
+  }
 
-  // iteration_size. A zero outer stride is a pure repeat (carried by
+  // Compute the hardware sizes/strides via the shared encoder.
+  Value hwS[4], hwT[4];
+  SsaStridePolicy policy(builder, loc);
+  encodeHardwareStridesWraps(policy, elemWidth, gran, inS, inT, hwS, hwT);
+
+  // buffer_length (word[0]) is the d0*d1*d2 extent in granules. Every size is
+  // already bounded by 2^32, so the d0*d1 product cannot wrap, and the final
+  // product only counts once d0*d1 is in range. The guard is skipped when the
+  // size bounds alone keep it in range. A dma_task's explicit `len` must agree
+  // with it.
+  Value d0d1 = g.mul(hwS[0], inS[1]);
+  Value bufLen = g.mul(d0d1, inS[2]);
+  uint64_t lenMax = llvm::SaturatingMultiply(
+      llvm::SaturatingMultiply(sizeMax[0] * ew / gran, sizeMax[1]), sizeMax[2]);
+  if (lenMax > maxLen) {
+    Value lenFits = g.ule(bufLen, maxLen);
+    if (bufLen != d0d1)
+      lenFits = g.both(g.ule(d0d1, maxLen), lenFits);
+    if (failed(g.check(lenFits, "a runtime DMA transfer exceeds the " +
+                                    Twine(maxLen) +
+                                    "-granule BD buffer_length")))
+      return failure();
+  }
+  if (lenElems) {
+    Value lenV = getAsI64(builder, loc, lenElems);
+    if (!lenV)
+      return failure();
+    if (failed(g.check(g.inRange1(lenV, maxLen * gran / ew),
+                       "a runtime DMA length must be in [1:" +
+                           Twine(maxLen * gran / ew) + "] elements")) ||
+        (divisor > 1 &&
+         failed(g.check(g.multipleOf(lenV, divisor),
+                        "a runtime DMA length must be a multiple of " +
+                            Twine(divisor) + " elements (whole " +
+                            Twine(gran / 8) + "-byte granules)"))))
+      return failure();
+    Value lenGranules =
+        ew >= gran
+            ? g.mul(lenV, g.cst(ew / gran))
+            : builder.createOrFold<arith::DivUIOp>(loc, lenV, g.cst(gran / ew));
+    if (failed(g.check(g.eq(lenGranules, bufLen),
+                       "a runtime DMA length must equal the d0*d1*d2 extent "
+                       "of its dimensions")))
+      return failure();
+  }
+
+  auto asI32 = [&](Value v) {
+    return builder.createOrFold<arith::TruncIOp>(loc, i32ty, v);
+  };
+  for (int i = 0; i < 4; i++) {
+    out.hwS[i] = asI32(hwS[i]);
+    out.hwT[i] = asI32(hwT[i]);
+  }
+  out.bufLen = asI32(bufLen);
+
+  // iteration_size: a zero outer stride is a pure repeat (carried by
   // repeat_count), so the field must be 0 like AIEDmaToNpu; gate it on the
   // stride while leaving hwS[3] for repeatCount. hwT[3] already collapses to 0.
-  Value zeroI32 = createConstantI32(builder, loc, 0);
-  Value iterStridePos = arith::CmpIOp::create(
-      builder, loc, arith::CmpIPredicate::sgt, out.inT[3], zeroI32);
-  out.iterSizeField =
-      arith::SelectOp::create(builder, loc, iterStridePos, out.hwS[3], zeroI32);
+  out.iterSizeField = asI32(policy.selectGT0(inT[3], hwS[3], policy.cst(0)));
 
   // repeat_count for the queue push is the biased outer size (N > 1 ? N - 1 :
   // 0), matching the static path. A constant folds so the static push_queue
@@ -426,6 +586,7 @@ void packBdWords(OpBuilder &builder, Location loc,
   set(layout.packetType, f.packet_type);
   set(layout.packetId, f.packet_id);
   set(layout.outOfOrderId, f.out_of_order_id);
+  set(layout.iterationCurrent, f.iteration_current);
   if (layout.burstLength.exists())
     set(layout.burstLength, AIE::getShimBurstLengthEncoding(tm, burstLength));
   set(layout.axcache, axcache);
@@ -472,8 +633,8 @@ void packBdWords(OpBuilder &builder, Location loc,
     }
     Value word = buildBdWord(builder, loc, fields);
     if (constWord != 0)
-      word = arith::OrIOp::create(
-          builder, loc, createConstantI32(builder, loc, constWord), word);
+      word = builder.createOrFold<arith::OrIOp>(
+          loc, createConstantI32(builder, loc, constWord), word);
     wordsOut.push_back(word);
   }
 }
@@ -485,12 +646,11 @@ buildBdWords(OpBuilder &builder, Location loc,
              const AIE::AIETargetModel &targetModel, int tileCol, int tileRow,
              const BdTemplateFields &f, ArrayRef<OpFoldResult> mixedSizes,
              ArrayRef<OpFoldResult> mixedStrides, uint64_t elemWidth,
-             uint32_t burstLength, uint32_t axcache, Value bufLenOverride,
+             uint32_t burstLength, uint32_t axcache, OpFoldResult lenElems,
              Value &repeatCountOut, SmallVectorImpl<Value> &wordsOut) {
   EncodedBd e;
   if (failed(encodeBdCommon(builder, loc, targetModel, tileCol, tileRow,
-                            mixedSizes, mixedStrides, elemWidth, bufLenOverride,
-                            e)))
+                            mixedSizes, mixedStrides, elemWidth, lenElems, e)))
     return failure();
   repeatCountOut = e.repeatCount;
 

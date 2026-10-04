@@ -13,6 +13,7 @@ headers, and runs counts the packets the channel accepts."""
 import numpy as np
 
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Bd,
     Buffer,
@@ -42,13 +43,14 @@ def emit_merge(bad=None):
         bds = [
             Bd(
                 merged,
-                offset=i * SLOT,
-                length=SLOT,
+                tap=slot,
                 bd_id=3 + 2 * i,
                 packet=(0, 0),
                 releases=[Release(done, value=1)],
             )
-            for i in range(SLOTS)
+            for i, slot in enumerate(
+                TensorAccessPattern.full((SLOTS * SLOT,)).partition(SLOTS)
+            )
         ]
         if bad == "bd_id":
             bds[1].bd_id = None

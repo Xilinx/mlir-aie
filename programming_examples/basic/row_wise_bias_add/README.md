@@ -7,9 +7,9 @@
 
 # Row-wise Bias Addition
 
-This design takes two inputs, `in` and `bias`. 
+This design takes two inputs, `in` and `bias`.
 `in` is a `M`&times;`N` matrix, and `bias` is a `1`&times;`N` row-vector.
-The design performs a row-wise addition of `bias` to `in`. 
+The design performs a row-wise addition of `bias` to `in`.
 Conceptually, `bias` is broadcast into a `M`&times;`N` matrix by repeating it `M` times across rows, and then this matrix is added element-wise to `in`.
 
 ## Data Movement
@@ -17,8 +17,8 @@ Conceptually, `bias` is broadcast into a `M`&times;`N` matrix by repeating it `M
 The data movement and call into the kernel (see below) is described in `row_wise_bias_add.py`, a single `@iron.jit` design that compiles directly to NPU binaries via `--xclbin-path` / `--insts-path` and uses `ExternalFunction(source_file=…, compile_flags=[-DDIM_m=…, -DDIM_n=…])` so the `kernel.cc` build is part of the JIT flow.
 A single AIE core is configured to process chunks of `m`&times;`n` of `in` and chunks of `n` of `bias` to produce `m`&times;`n` chunks of output.
 Therefore, the output is tiled into `M/m`&times;`N/n` tiles, and the kernel function is called that number of times.
-To avoid unnecessarily reloading the `bias` vector, we iterate through these tiles in a column-major fashion by calling the `TensorTiler2D.group_tiler`
-with argument `tile_group_col_major=True`.
+To avoid unnecessarily reloading the `bias` vector, we iterate through these tiles in a column-major fashion by swapping the two grid dimensions of the tiling:
+`TensorAccessPattern.full((M, N)).tile((m, n)).permute((1, 0, 2, 3))`.
 
 ## Kernel
 

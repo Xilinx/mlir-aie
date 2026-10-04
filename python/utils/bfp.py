@@ -30,9 +30,9 @@ float input, and what a reference should multiply.
 from __future__ import annotations
 
 import numpy as np
-from aie.helpers.npdtypes import v8bfp16ebs8
+from aie.helpers.npdtypes import is_block_float, v8bfp16ebs8
 
-BLOCK = 8  # values per block
+BLOCK = v8bfp16ebs8.block_size
 _BLOCK_DTYPE = np.dtype([("exponent", np.uint8), ("mantissas", np.int8, (BLOCK,))])
 BLOCK_BYTES = _BLOCK_DTYPE.itemsize
 _MANTISSA_SHIFT = 23 - 7 + 1  # keep 7 magnitude bits of a float32 mantissa
@@ -52,23 +52,25 @@ __all__ = [
 
 
 def is_bfp(dt) -> bool:
-    """Whether an element type is the bfp16ebs8 block (8 values in 9 bytes)."""
+    """Whether an element type is the bfp16ebs8 block this module encodes and decodes."""
     return dt is v8bfp16ebs8
 
 
 def itemsize(dt) -> int:
-    """Bytes one element occupies, counting a block as its packed 9."""
-    return BLOCK_BYTES if is_bfp(dt) else np.dtype(dt).itemsize
+    """Bytes one element occupies, counting a block as its packed bytes (9 for bfp16ebs8)."""
+    return dt.block_bytes if is_block_float(dt) else np.dtype(dt).itemsize
 
 
 def values_per_elem(dt) -> int:
-    """Values one element carries: 8 for a block, 1 for an ordinary dtype."""
-    return BLOCK if is_bfp(dt) else 1
+    """Values one element carries: a block's size, or 1 for an ordinary dtype."""
+    return dt.block_size if is_block_float(dt) else 1
 
 
 def dtype_name(dt) -> str:
-    """``np.dtype(dt).name``, or ``"bfp16ebs8"`` for the block type numpy has no dtype for."""
-    return "bfp16ebs8" if is_bfp(dt) else np.dtype(dt).name
+    """``np.dtype(dt).name``, or a block type's name without its width (``"bfp16ebs8"``)."""
+    return (
+        dt.__name__.lstrip("v0123456789") if is_block_float(dt) else np.dtype(dt).name
+    )
 
 
 def encode(x, *, rounding: str = "floor") -> np.ndarray:

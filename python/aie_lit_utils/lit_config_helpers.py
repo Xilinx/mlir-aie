@@ -130,6 +130,17 @@ class LitConfigHelper:
         if os.name != "nt" and shutil.which("make"):
             config_obj.available_features.add("makefile_examples")
 
+    @staticmethod
+    def add_hrxxclbinutil_feature(config_obj) -> None:
+        """Enable tests that build an xclbin with the bundled XRT-free xclbinutil.
+
+        -DAIE_BUILD_HRXXCLBINUTIL=ON installs it into the AIE tools dir, so a
+        bare `xclbinutil` resolves to that copy. shutil.which picks up the
+        platform's executable suffix (.exe on Windows via PATHEXT).
+        """
+        if shutil.which("xclbinutil", path=config_obj.aie_tools_dir) is not None:
+            config_obj.available_features.add("hrxxclbinutil")
+
     # Matches cmake_minimum_required() in the example CMakeLists.
     CMAKE_EXAMPLES_MIN_VERSION = (3, 30)
 

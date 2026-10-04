@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import itertools
 import logging
 
 from ..dialects.aie import (
@@ -14,6 +15,7 @@ from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImport
 from ..helpers.dialects.func import FuncBase
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
+from .dataflow.objectfifo import ObjectFifoLink
 from .device import Device
 from .resolvable import Resolvable
 from .runtime import Runtime
@@ -129,6 +131,7 @@ class Program:
         Returns:
             module (Module): The module containing the MLIR context information.
         """
+        self._name_unnamed()
         with mlir_mod_ctx() as ctx:
             # Create a fresh device instance of the same type to avoid stale MLIR operations
             # This preserves the device configuration while ensuring clean state
@@ -300,6 +303,38 @@ class Program:
 
             self._print_verify(ctx)
             return ctx.module
+
+    def _name_unnamed(self) -> None:
+        """Name the ObjectFifos, and the Buffers the runtime writes, left unnamed.
+
+        Ops refer to them by symbol, so they are numbered here in the order the
+        design reaches them, independent of what else the process has built.
+        """
+        fifos = [h._object_fifo for h in self._rt.fifos]
+        fifos += [h._object_fifo for w in self._workers for h in w.fifos]
+        fifos = list(dict.fromkeys(fifos))
+        for of in fifos:
+            for handle in [of._prod, *of._cons]:
+                link = handle.endpoint if handle is not None else None
+                if isinstance(link, ObjectFifoLink):
+                    reached = [h._object_fifo for h in [*link._srcs, *link._dsts]]
+                    fifos += [f for f in reached if f not in fifos]
+        rtps = [b for w in self._workers for b in w.buffers if b._use_write_rtp]
+        taken = {of.name for of in fifos} | {b._name for b in rtps}
+
+        def fresh(prefix):
+            name = next(
+                n for i in itertools.count() if (n := f"{prefix}{i}") not in taken
+            )
+            taken.add(name)
+            return name
+
+        for of in fifos:
+            if of.name is None:
+                of.name = fresh("of")
+        for b in rtps:
+            if b._name is None:
+                b._name = fresh("rtp")
 
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()

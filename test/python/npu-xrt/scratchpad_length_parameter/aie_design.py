@@ -4,8 +4,8 @@
 # IRON design: a transfer length set at runtime via length_parameter.
 #
 # One parameter @tiles sizes both the DMAs and the core's loop; @start offsets
-# the input. With a static length of 0, the DMAs move exactly `tiles` tiles of
-# 8 i32 values from value `start` on, and the core adds one to each value:
+# the input. The DMAs move exactly `tiles` passes of an 8-value tap from value
+# `start` on, and the core adds one to each value:
 #
 #   start = 0, tiles = 0 -> nothing
 #   start = 5, tiles = 3 -> 24 values: 6..29
@@ -19,6 +19,7 @@ from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2Col1
 from aie.iron.scratchpad_parameter import ScratchpadParameter
+from aie.helpers.taplib import TensorAccessPattern
 from aie.dialects.aiex import npu_load_pdi
 from aie.dialects import arith
 from aie.ir import IndexType
@@ -59,17 +60,9 @@ def design():
         npu_load_pdi(device_ref="empty")
         npu_load_pdi(device_ref=device_name)
 
-        # The sizes give the shape of one tile; @tiles counts them.
-        pattern = dict(
-            offset=0,
-            sizes=[1, 1, 1, TILE],
-            strides=[0, 0, 0, 1],
-            transfer_len=0,
-            length_parameter=tiles,
-            length_unit=TILE,
-        )
-        in_h.fill(in_tensor, offset_parameter=start, **pattern)
-        out_h.drain(out_tensor, wait=True, **pattern)
+        tile = TensorAccessPattern((N,), 0, [1, 1, 1, TILE], [0, 0, 0, 1])
+        in_h.fill(in_tensor, tap=tile, offset_parameter=start, length_parameter=tiles)
+        out_h.drain(out_tensor, tap=tile, wait=True, length_parameter=tiles)
 
     rt = Runtime(sequence, [buf_ty, buf_ty, of_in.prod(), of_out.cons()])
 

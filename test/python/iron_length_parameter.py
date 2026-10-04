@@ -12,6 +12,7 @@ from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2Col1
 from aie.iron.scratchpad_parameter import ScratchpadParameter
+from aie.helpers.taplib import TensorAccessPattern
 
 
 # CHECK-NOT: aiex.scratchpad_parameter
@@ -42,16 +43,9 @@ def test_transfer_only_parameters():
     worker = Worker(core_fn, [of_in.cons(), of_out.prod()], while_true=False)
 
     def sequence(a, b, in_h, out_h):
-        pattern = dict(
-            offset=0,
-            sizes=[1, 1, 1, 8],
-            strides=[0, 0, 0, 1],
-            transfer_len=0,
-            length_parameter=rows,
-            length_unit=8,
-        )
-        in_h.fill(a, offset_parameter=start, **pattern)
-        out_h.drain(b, wait=True, **pattern)
+        row = TensorAccessPattern((256,), 0, [1, 1, 1, 8], [0, 0, 0, 1])
+        in_h.fill(a, tap=row, offset_parameter=start, length_parameter=rows)
+        out_h.drain(b, tap=row, wait=True, length_parameter=rows)
 
     rt = Runtime(sequence, [buf_ty, buf_ty, of_in.prod(), of_out.cons()])
     print(Program(NPU2Col1(), rt, workers=[worker]).resolve_program())

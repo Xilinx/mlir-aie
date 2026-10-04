@@ -4,18 +4,18 @@ from dataclasses import dataclass
 import inspect
 from typing import List, Tuple, Dict, Any, Union
 import contextlib
-from enum import IntEnum
+from enum import Enum, IntEnum
 
 import numpy as np
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect, DMABDOp as _DMABDOp
-from ._ods_common import _cext, get_op_result_or_value
+from ._ods_common import _cext
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
 from ..helpers.dialects.func import call
-from ..extras.dialects.arith import ScalarValue, constant, extsi, index_cast, trunci
+from ..extras.dialects.arith import ScalarValue, constant
 from ..extras.dialects._shaped_value import ShapedValue
 from ..extras.dialects.memref import (
     MemRefValue,
@@ -54,6 +54,7 @@ from ..extras.util import (
     get_user_code_loc,
     region_adder,
 )
+from ..helpers.taplib import TensorAccessPattern
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
 from ..ir import (
@@ -65,13 +66,10 @@ from ..ir import (
     DictAttr,
     FlatSymbolRefAttr,
     FunctionType,
-    IndexType,
     InsertionPoint,
     IntegerAttr,
     IntegerType,
     MemRefType,
-    OpView,
-    Operation,
     StringAttr,
     TypeAttr,
     UnitAttr,
@@ -104,7 +102,7 @@ def use_lock(
 
 
 # Included in aie instead of aiex to avoid circular imports, as buffer uses this
-from ._aiex_ops_gen import NpuAssertBdFieldOp, NpuWriteRTPOp
+from ._aiex_ops_gen import NpuWriteRTPOp
 
 
 class npu_write_rtp(NpuWriteRTPOp):
@@ -128,43 +126,6 @@ def _as_i32(v):
     if isinstance(v, (int, np.integer)):
         return constant(int(v), T.i32())
     return v
-
-
-def _bd_value(v):
-    if not isinstance(v, (Value, OpView, Operation)):
-        raise TypeError(
-            f"A BD field must be an int or an integer SSA value, got "
-            f"{type(v).__name__}."
-        )
-    return get_op_result_or_value(v)
-
-
-def _as_bd_i32(v):
-    """Narrow a runtime integer Value to the i32 of a BD's offset, length or
-    repeat count, asserting at runtime that it fits. Ints, i32 Values and None
-    pass through."""
-    if v is None or isinstance(v, (int, np.integer)):
-        return v
-    v = _bd_value(v)
-    if v.type == T.i32():
-        return v
-    if isinstance(v.type, IndexType):
-        v = index_cast(v, to=T.i64())
-    NpuAssertBdFieldOp(value=v, max=(1 << 31) - 1)
-    return trunci(T.i32(), v)
-
-
-def _as_bd_i64(v):
-    """Widen a runtime integer or index Value to the i64 of a BD size, stride or
-    offset. Ints, i64 Values and None pass through."""
-    if v is None or isinstance(v, (int, np.integer)):
-        return v
-    v = _bd_value(v)
-    if v.type == T.i64():
-        return v
-    if isinstance(v.type, IndexType):
-        return index_cast(v, to=T.i64())
-    return extsi(T.i64(), v)
 
 
 def _split_i32_scalar(v):
@@ -416,9 +377,11 @@ def _trace_event_attr(x, context):
         return Attribute.parse(f'#aie.trace_event<"{x}">', context=context)
     elif isinstance(x, StringAttr):
         return Attribute.parse(f'#aie.trace_event<"{x.value}">', context=context)
-    elif hasattr(x, "code"):  # GenericEvent, PortEvent, etc. - check before Enum
+    from aie.utils.trace.events import GenericEvent
+
+    if isinstance(x, GenericEvent):
         return Attribute.parse(f'#aie.trace_event<"{x.code.name}">', context=context)
-    elif hasattr(x, "name") and hasattr(x, "value"):  # Enum (CoreEvent, MemEvent, etc.)
+    elif isinstance(x, Enum):
         return Attribute.parse(f'#aie.trace_event<"{x.name}">', context=context)
     else:
         # Assume it's already an Attribute
@@ -657,6 +620,33 @@ class external_buffer(MemRefValue):
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
 class object_fifo(ObjectFifoCreateOp):
+    @staticmethod
+    def stream_dims(dims, what, can_pad=False):
+        """Return `dims` as the `(size, stride)` pairs a DMA walks each transfer by.
+
+        `dims` is the pair list itself or a TensorAccessPattern over what one
+        transfer moves: an object, or a segment of one when a link joins or
+        distributes it. The DMA starts each walk at the transfer's first
+        element, so a pattern must have offset 0.
+
+        Raises:
+            ValueError: If the pattern is staged, has a nonzero offset, or
+                pads where `can_pad` is False.
+        """
+        if not isinstance(dims, TensorAccessPattern):
+            return [] if dims is None else dims
+        if dims.is_symbolic:
+            raise ValueError(f"{what} {dims!r} must have compile-time values")
+        if dims.offset != 0:
+            raise ValueError(
+                f"{what} {dims!r} has offset {dims.offset}, but an objectfifo "
+                "walks each transfer from its first element; apply the offset "
+                "where the buffer is addressed instead"
+            )
+        if dims.padding is not None and not can_pad:
+            raise ValueError(f"only a producer's walk can pad, but {what} is {dims!r}")
+        return list(dims.transformation_dims)
+
     def __init__(
         self,
         name,
@@ -689,6 +679,22 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer = [[] for _ in range(len(consumerTiles))]
         if dimensionsToStream is None:
             dimensionsToStream = []
+        if isinstance(dimensionsToStream, TensorAccessPattern) and (
+            dimensionsToStream.padding is not None
+        ):
+            if padDimensions is not None:
+                raise ValueError(
+                    "dimensionsToStream is a padded TensorAccessPattern; "
+                    "do not also pass padDimensions"
+                )
+            padDimensions = list(dimensionsToStream.padding)
+        dimensionsToStream = self.stream_dims(
+            dimensionsToStream, "dimensionsToStream", can_pad=True
+        )
+        dimensionsFromStreamPerConsumer = [
+            self.stream_dims(dims, "dimensionsFromStreamPerConsumer")
+            for dims in dimensionsFromStreamPerConsumer
+        ]
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
         consumerElemType = None
         if self.consumer_datatype is not None:

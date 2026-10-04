@@ -10,7 +10,7 @@ from typing import NamedTuple, get_args
 
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.iron.dataflow import StreamDims
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.compile.utils import resolve_target_arch
@@ -236,10 +236,8 @@ def _tile_layout(shape, dims=None, *, axes=None, inverse=False, block=None):
     if axes is not None:
         logical = logical.transpose(axes)
     order = logical.ravel()
-    if dims:
-        offsets = np.zeros(1, dtype=np.int64)
-        for size, stride in dims:
-            offsets = (offsets[:, None] + np.arange(size) * stride).ravel()
+    if dims is not None:
+        offsets = dims.gather(np.arange(order.size))
         order = order[np.argsort(offsets) if inverse else offsets]
     undo = np.argsort(order)
     return TensorLayout(
@@ -332,14 +330,14 @@ def _linalg_tolerance(input_dtype) -> Tolerance:
 
 
 class StreamDimsABC(NamedTuple):
-    """The three ``dims_to_stream`` a matmul design needs, one per operand.
+    """The three ``to_stream`` a matmul design needs, one per operand.
 
     ``None`` for an operand a build streams untransformed.
     """
 
-    A: StreamDims | None
-    B: StreamDims | None
-    C: StreamDims | None
+    A: TensorAccessPattern | None
+    B: TensorAccessPattern | None
+    C: TensorAccessPattern | None
 
 
 class _ZeroInitializedKernel(ExternalFunction):
@@ -368,7 +366,7 @@ class MatrixKernel(_ZeroInitializedKernel):
 
     @property
     def stream_dims(self) -> StreamDimsABC:
-        """The ``dims_to_stream`` a design applies to A, B and C; ``None`` streams as stored."""
+        """The ``to_stream`` a design applies to A, B and C; ``None`` streams as stored."""
         a, b, c = self.contract.layouts[:3]
         return StreamDimsABC(A=a.stream, B=b.stream, C=c.stream)
 
@@ -377,16 +375,6 @@ class _CascadeMatrixKernel(MatrixKernel):
     get_only: MatrixKernel
     put_only: Kernel
     put_get: Kernel
-
-
-def _blocked(rows: int, cols: int, tile_rows: int, tile_cols: int) -> list:
-    """``dims_to_stream`` walking a ``(rows, cols)`` tensor in tile-sized blocks."""
-    from aie.helpers.taplib import TensorTiler2D
-
-    tiles = TensorTiler2D.group_tiler(
-        (rows, cols), (tile_rows, tile_cols), (rows // tile_rows, cols // tile_cols)
-    )
-    return list(tiles[0].transformation_dims)
 
 
 def mm_stream_dims(
@@ -398,7 +386,7 @@ def mm_stream_dims(
     b_col_maj: bool = False,
     c_col_maj: bool = False,
 ) -> StreamDimsABC:
-    """DMA ``dims_to_stream`` that feed ``mm.cc`` its (r, s, t) micro-tiles.
+    """DMA ``to_stream`` that feed ``mm.cc`` its (r, s, t) micro-tiles.
 
     ``mm.cc`` consumes A, B and produces C in the micro-tile blocking given by
     ``mac_dims``; a plain row-major stream yields wrong numbers, not an error.
@@ -412,21 +400,15 @@ def mm_stream_dims(
     """
     r, s, t = mac_dims
     m, k, n = dim_m, dim_k, dim_n
-    # Walking an operand as (r x s) blocks is what TensorTiler2D generates, so
-    # A and B ask for it rather than restating it.
-    a = _blocked(m, k, r, s)
-    b = _blocked(n, k, t, s) if b_col_maj else _blocked(k, n, s, t)
-    # C is not expressible that way. The DMA reads a core-blocked buffer and
-    # writes a differently ordered stream, so the intra-tile row term comes
-    # *outside* the tile index -- (r, t) before (n//t, r*t). Every
-    # TensorTiler2D classmethod iterates tiles outermost and elements within
-    # them, and no combination of tile_col_major / iter_col_major /
-    # prune_step produces this order. Closing the gap needs an un-blocking
-    # tiler in taplib, which is its own change.
-    if c_col_maj:
-        c = [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
-    else:
-        c = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    # A and B are read row-major and emitted as (r x s) / (s x t) blocks.
+    a = TensorAccessPattern.full((m, k)).tile((r, s))
+    b_shape, b_tile = ((n, k), (t, s)) if b_col_maj else ((k, n), (s, t))
+    b = TensorAccessPattern.full(b_shape).tile(b_tile)
+    # C goes the other way: the DMA reads the core's block-ordered buffer and
+    # emits it row-major, so the intra-tile row term sits outside the tile
+    # index -- (r, t) before (n//t, r*t). That is the inverse of tiling.
+    c_shape, c_tile = ((n, m), (t, r)) if c_col_maj else ((m, n), (r, t))
+    c = TensorAccessPattern.full(c_shape).tile(c_tile).inverse()
     return StreamDimsABC(A=a, B=b, C=c)
 
 
@@ -541,10 +523,10 @@ def mm(
         vectorized: If ``True`` use the vectorized variant.
         b_col_maj: If ``True`` compile with ``-DB_COL_MAJ`` so the kernel
             consumes B laid out column-major.  Must agree with the
-            design's B ``dims_to_stream``.
+            design's B ``to_stream``.
         c_col_maj: If ``True`` compile with ``-DC_COL_MAJ`` so the kernel
             writes C laid out column-major.  Must agree with the design's
-            C output ``dims_to_stream``.
+            C output ``to_stream``.
         use_chess: If ``True`` build with ``xchesscc_wrapper`` instead of
             Peano's ``clang++``.  All ExternalFunctions in a single
             ``@iron.jit`` design must share the same toolchain.
@@ -776,11 +758,13 @@ def mv(
     # The vectorized kernel reads A in a "32-bit-word transposed" layout (see
     # aie_kernels/linalg/mv_i16.cc): 2-byte elements are packed two per word, rows
     # of each 2-column word slowly, m rows then the next 2-col word. A design
-    # applies this as dims_from_stream on the hop into the core, reading it
+    # applies this as from_stream on the hop into the core, reading it
     # from the layout (programming_examples/basic/matrix_multiplication/
     # matrix_vector does).
-    a_dims_from_stream = (
-        [(dim_m, 2), (dim_k // 2, 2 * dim_m), (2, 1)] if vectorized else None
+    a_from_stream = (
+        TensorAccessPattern.full((dim_k // 2, dim_m, 2)).permute((1, 0, 2))
+        if vectorized
+        else None
     )
     return _make_extern(
         f"{prefix}_i16_i32",
@@ -793,7 +777,7 @@ def mv(
             trace=Trace.whole_call(),
             roles=(In, In, InOut),
             layouts=(
-                _tile_layout((dim_m, dim_k), a_dims_from_stream, inverse=True),
+                _tile_layout((dim_m, dim_k), a_from_stream, inverse=True),
                 TensorLayout((dim_k,)),
                 TensorLayout((dim_m,)),
             ),
@@ -1351,11 +1335,10 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     v_ty = np.ndarray[(lk * head_dim,), np.dtype[bfloat16]]
     streams = mm_stream_dims(lq, lk, head_dim, (r, s, t))
     # attn_fv walks V n-block-outer, k-block-inner -- the transpose of mm.cc's
-    # B block order, so this comes off _blocked rather than streams.B. At
+    # B block order, so this is built here rather than taken from streams.B. At
     # head_dim 512 LK is 8, making the k term degenerate, so only the 256
     # geometry can tell the two orders apart.
-    k_blocks, n_blocks, *within = _blocked(lk, head_dim, s, t)
-    v_dims = [n_blocks, k_blocks, *within]
+    v_dims = TensorAccessPattern.full((lk, head_dim)).tile((s, t)).permute((1, 0, 2, 3))
     return _make_extern(
         "prefill_fv_step",
         _kernel_source("linalg/flash_attn_prefill.cc"),

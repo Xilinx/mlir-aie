@@ -157,6 +157,19 @@ std::string generateUniqueSymbolName(mlir::Operation *symbolTableOp,
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
 
+// custom<TypedDynamicIndexList>($values, $integers, type($values)): the
+// upstream custom<DynamicIndexList> with an optional type on each SSA entry,
+// `%v` for i64 and `%v : type` otherwise.
+mlir::ParseResult parseTypedDynamicIndexList(
+    mlir::OpAsmParser &parser,
+    llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &values,
+    mlir::DenseI64ArrayAttr &integers,
+    llvm::SmallVectorImpl<mlir::Type> &types);
+void printTypedDynamicIndexList(mlir::OpAsmPrinter &printer,
+                                mlir::Operation *op, mlir::OperandRange values,
+                                llvm::ArrayRef<int64_t> integers,
+                                mlir::TypeRange types);
+
 } // namespace xilinx::AIE
 
 namespace xilinx::AIE {
@@ -388,6 +401,10 @@ mlir::LogicalResult verifyLengthParameterTile(mlir::Operation *op,
 // the AIEX dialect, whose runtime-sequence task BDs skip DMABDOp::verify.
 mlir::LogicalResult
 verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext = false);
+
+// Validate a BD's iteration attribute against its tile type's iteration and
+// step fields. Callable from the AIEX dialect, like verifyDMABDOutOfOrderId.
+mlir::LogicalResult verifyDMABDIteration(DMABDOp bd, AIETileType tileType);
 
 // Validate an out-of-order S2MM channel and its receive BDs.
 mlir::LogicalResult
