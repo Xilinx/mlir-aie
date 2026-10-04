@@ -27,6 +27,24 @@ module {
 
 // -----
 
+// The iteration attribute fills the same register as an outermost dimension.
+
+module {
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.runtime_sequence(%arg0: memref<4096xi32>) {
+      %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        // expected-warning@+1 {{iteration dimension of size 4 is pushed with repeat_count 0, so only its first iteration runs; set repeat_count = 3}}
+        aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 64 sizes = [1, 4, 16] strides = [0, 16, 1]) {bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 4, stride = 64, current = 0>}
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
 // A zero stride repeats the same data, but still only through repeat_count.
 
 module {

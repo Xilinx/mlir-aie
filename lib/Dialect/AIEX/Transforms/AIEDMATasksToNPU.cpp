@@ -1189,9 +1189,11 @@ struct AIEDMATasksToNPUPass
     if (onlyPushedOnce.lookup(op)) {
       for (auto bd_op : body.getOps<AIE::DMABDOp>()) {
         SmallVector<OpFoldResult> sizes = bd_op.getMixedSizes();
-        if (sizes.size() != 4)
-          continue;
-        std::optional<int64_t> iterations = getConstantIntValue(sizes.front());
+        std::optional<int64_t> iterations;
+        if (std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration())
+          iterations = iter->getSize();
+        else if (sizes.size() == 4)
+          iterations = getConstantIntValue(sizes.front());
         if (iterations && *iterations > 1)
           unrepeatedIterations.emplace_back(bd_op.getLoc(), *iterations);
       }
