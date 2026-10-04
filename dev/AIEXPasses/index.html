@@ -4833,10 +4833,13 @@ attribute on <code>aie.core</code> and <code>aie.runtime_sequence</code>:
 - In each qualifying core: inserts <code>aie.lock</code> + <code>aie.use_lock(Acquire, 1)</code>.
 - In each qualifying runtime sequence: inserts <code>aiex.npu.create_scratchpad</code>,
   per-parameter <code>aiex.npu.write32</code> + <code>aiex.npu.update_from_scratchpad</code>,
-  and <code>aiex.set_lock</code> for each core lock.</p>
+  and <code>aiex.set_lock</code> for each core lock, after the last top-level
+  <code>aiex.npu.load_pdi</code> (or first, if the sequence loads no PDI).</p>
 <p>Sets a <code>kind</code> attribute on each <code>aiex.scratchpad_parameter</code> based on how
 it is used: <code>core</code> if read by <code>aiex.read_scratchpad_parameter</code>, <code>addr</code> if
-used as a DMA <code>offset_parameter</code>. A parameter may not be used as both.</p>
+used as a DMA <code>offset_parameter</code>. A parameter may not be used as both. A
+DMA <code>length_parameter</code> works with either kind and makes an otherwise
+unused parameter <code>addr</code>; a core-kind length gets <code>length_core_encoded</code>.</p>
 <p>Optionally emits a <code>params.txt</code> file describing every parameter in the
 module (name, global state_table_idx, type, and kind).</p>
 <h4 id="options_4">Options<a class="headerlink" href="#options_4" title="Permanent link">&para;</a></h4>

@@ -3617,6 +3617,23 @@
   
 </li>
         
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime-length" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime length
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Runtime length">
+      <ul class="md-nav__list">
+        
           <li class="md-nav__item">
   <a href="#attributes_8" class="md-nav__link">
     <span class="md-ellipsis">
@@ -7608,6 +7625,23 @@
   
 </li>
         
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime-length" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime length
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Runtime length">
+      <ul class="md-nav__list">
+        
           <li class="md-nav__item">
   <a href="#attributes_8" class="md-nav__link">
     <span class="md-ellipsis">
@@ -10871,6 +10905,9 @@ switch is referred to as <code>switchbox</code> to avoid confusion with the
 <li><a href="#dma-constant-padding-on-aie-ml-devices">DMA constant padding on AIE-ML Devices</a></li>
 <li><a href="#bd-iteration">BD iteration</a><ul>
 <li><a href="#important-gotcha-regarding-apis-for-raw-register-writes">Important gotcha regarding APIs for raw register writes</a></li>
+</ul>
+</li>
+<li><a href="#runtime-length">Runtime length</a><ul>
 <li><a href="#attributes_8">Attributes:</a></li>
 <li><a href="#operands_5">Operands:</a></li>
 <li><a href="#aiedma_bd_packet-xilinxaiedmabdpacketop">aie.dma_bd_packet (::xilinx::AIE::DMABDPACKETOp)</a><ul>
@@ -11892,6 +11929,51 @@ iteration here, but <code>iteration_size = 1</code> means <em>two</em> execution
 <p>Inside a runtime-sequence DMA task (<code>aiex.dma_configure_task</code>), the
 attribute takes the iteration register that the outermost <code>sizes</code>/<code>strides</code>
 dimension would otherwise fill, so such a BD gives one dimension fewer.</p>
+<h2 id="runtime-length">Runtime length<a class="headerlink" href="#runtime-length" title="Permanent link">&para;</a></h2>
+<p>A shim DMA BD in a runtime sequence can take part of its length from an
+<code>aiex.scratchpad_parameter</code>: with <code>length_parameter = @n</code> and
+<code>length_unit = u</code>, the BD moves <code>len + n * u</code> elements, where <code>n</code> is the
+value the host writes to the parameter. <code>len</code> stays the length for <code>n = 0</code>,
+and may itself be 0 so that the BD moves exactly <code>n</code> units; <code>sizes</code> and
+<code>strides</code> then still give the shape of each unit. The lowering writes the
+BD with the static length, then emits an <code>aiex.npu.update_from_scratchpad</code>
+that adds <code>n * u</code> to the BD's <code>Buffer_Length</code> word. A BD with an iteration
+dimension gets the added length on every iteration.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>aiex.scratchpad_parameter @n : i32
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>...
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>%t = aiex.dma_configure_task_for @of_in {
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>  aie.dma_bd(%in : memref&lt;4096xbf16&gt; offset = 0 len = 64)
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>      {length_parameter = @n, length_unit = 64 : i32}
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>  aie.end
+<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a>}
+<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a>%rows = aiex.dma_configure_task_for @of_rows {
+<a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a>  aie.dma_bd(%in : memref&lt;4096xi32&gt; offset = 0 len = 0
+<a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a>             sizes = [2, 2, 4] strides = [16, 4, 1])
+<a id="__codelineno-24-11" name="__codelineno-24-11" href="#__codelineno-24-11"></a>      {length_parameter = @n, length_unit = 8 : i32}
+<a id="__codelineno-24-12" name="__codelineno-24-12" href="#__codelineno-24-12"></a>  aie.end
+<a id="__codelineno-24-13" name="__codelineno-24-13" href="#__codelineno-24-13"></a>}
+</code></pre></div>
+<p>The length works with either parameter kind, so one parameter can set both
+a core's trip count (<code>aiex.read_scratchpad_parameter</code>) and the length of
+the transfers feeding it, or both a transfer's <code>offset_parameter</code> and its
+length.</p>
+<p>Constraints. The firmware's register update clears the low two bits of the
+length word before adding to it, and the stride of a size-1 dimension is
+not encoded in the BD:
+- Shim NOC tiles on AIE2 and AIE2P only.
+- <code>len</code> and <code>length_unit</code> must both be multiples of 16 bytes.
+- With a data layout transformation that is not a contiguous scan, the
+  added length continues the third dimension. A pattern whose third
+  dimension has size one but whose second does not (such as
+  <code>sizes = [2, 8]</code>) is lowered with its second dimension in the third, so
+  the added length continues that one instead. The dimension continued
+  needs a size above one (a size-1 dimension's stride is not encoded), and
+  <code>length_unit</code> must be a multiple of the elements moved per step of it
+  (the product of the sizes inside it).
+- An <code>aiex.dma_configure_task</code> whose BD has an iteration dimension runs
+  only once unless it is pushed with a <code>repeat_count</code>, set on the task or
+  on its <code>aiex.dma_start_task</code>; this is not specific to the runtime
+  length, but a runtime length makes it easy to miss.</p>
 <p>Traits: <code>AttrSizedOperandSegments</code></p>
 <h4 id="attributes_8">Attributes:<a class="headerlink" href="#attributes_8" title="Permanent link">&para;</a></h4>
 <table>
@@ -11914,6 +11996,10 @@ dimension would otherwise fill, so such a BD gives one dimension fewer.</p>
   </td></tr>
 <tr><td><code>offset_parameter</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>offset_state_table_idx</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
+<tr><td><code>length_parameter</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>length_unit</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
+<tr><td><code>length_state_table_idx</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
+<tr><td><code>length_core_encoded</code></td><td>::mlir::UnitAttr</td><td>unit attribute</td></tr>
 <tr><td><code>next_bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
@@ -11955,20 +12041,20 @@ dimension would otherwise fill, so such a BD gives one dimension fewer.</p>
 <h3 id="aiedma_bd_packet-xilinxaiedmabdpacketop"><code>aie.dma_bd_packet</code> (::xilinx::AIE::DMABDPACKETOp)<a class="headerlink" href="#aiedma_bd_packet-xilinxaiedmabdpacketop" title="Permanent link">&para;</a></h3>
 <p><em>Enable packet headers for a dma block descriptor</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>operation ::= `aie.dma_bd_packet` `(` $packet_type `,` $packet_id `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>operation ::= `aie.dma_bd_packet` `(` $packet_type `,` $packet_id `)` attr-dict
 </code></pre></div>
 <p>This operation enables packet headers for a block descriptor for DMA operations. In particular, it specifies
 the packet type (3-bits) and packet ID (5-bits).</p>
 <p>This operation must be used in an MLIR block that lives inside a MemOp's region, and before aie.dma_bd.
 The block descriptor specifies what lock to use and the buffer configuration.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>  // this defines a BD that uses lock %lck0 and buffer %buf0
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>  ^bd5:
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>    aie.use_lock(%lck, &quot;Acquire&quot;, 0)
-<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>    aie.dma_bd_packet(0x4, 0xD)
-<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>    aie.dma_bd(%buf0 : memref&lt;512xi32&gt; offset = 0 len = 512)
-<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>    aie.use_lock(%lck, &quot;Release&quot;, 1)
-<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a>    br ^bd6 // point to the next Block, which is also a different Block Descriptor
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>  // this defines a BD that uses lock %lck0 and buffer %buf0
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>  ^bd5:
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>    aie.use_lock(%lck, &quot;Acquire&quot;, 0)
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>    aie.dma_bd_packet(0x4, 0xD)
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>    aie.dma_bd(%buf0 : memref&lt;512xi32&gt; offset = 0 len = 512)
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a>    aie.use_lock(%lck, &quot;Release&quot;, 1)
+<a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a>    br ^bd6 // point to the next Block, which is also a different Block Descriptor
 </code></pre></div></p>
 <h4 id="attributes_9">Attributes:<a class="headerlink" href="#attributes_9" title="Permanent link">&para;</a></h4>
 <table>
@@ -11980,29 +12066,29 @@ The block descriptor specifies what lock to use and the buffer configuration.</p
 <h3 id="aiedma_start-xilinxaiedmastartop"><code>aie.dma_start</code> (::xilinx::AIE::DMAStartOp)<a class="headerlink" href="#aiedma_start-xilinxaiedmastartop" title="Permanent link">&para;</a></h3>
 <p><em>An op to start DMA</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>operation ::= `aie.dma_start` `(` $channel_dir `,` custom&lt;DMAStartChannel&gt;($channel) `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>operation ::= `aie.dma_start` `(` $channel_dir `,` custom&lt;DMAStartChannel&gt;($channel) `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
 </code></pre></div>
 <p>This operation declares a DMA channel to be used for data transfer. It usually exists inside
 either a MemOp (representing a TileDMA), a MemTileDMAOp (representing a DMA in a MemTile),
 or in a ShimDMAOp (representing a ShimDMA).
 A channel is defined by a direction (i.e., MM2S or S2MM) and an index.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>    aie.dma_start(&quot;MM2S&quot;, 0, ^bd0, ^end)
-<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>  ^bd0:
-<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>    aie.use_lock(%lock0, &quot;Acquire&quot;, 0)
-<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>    aie.dma_bd(%buffer : memref&lt;16xf32&gt; offset = 0 len = 16)
-<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>    aie.use_lock(%lock0, &quot;Release&quot;, 1)
-<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>    br ^bd0
-<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>  ^end:
-<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>    aie.end
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>    aie.dma_start(&quot;MM2S&quot;, 0, ^bd0, ^end)
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>  ^bd0:
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>    aie.use_lock(%lock0, &quot;Acquire&quot;, 0)
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>    aie.dma_bd(%buffer : memref&lt;16xf32&gt; offset = 0 len = 16)
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>    aie.use_lock(%lock0, &quot;Release&quot;, 1)
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>    br ^bd0
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>  ^end:
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>    aie.end
 </code></pre></div></p>
 <p>In place of the index, the channel may be named by an <code>aie.route_endpoint</code>
 with a <code>DMA</code> bundle on the same tile. <code>--aie-objectfifo-allocate</code> picks the
 index along with the route's other channels and writes it here:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>  aie.route_endpoint @in(%tile) DMA
-<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>  aie.route from @src to [@in]
-<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>  ...
-<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>    aie.dma_start(S2MM, @in, ^bd0, ^end)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>  aie.route_endpoint @in(%tile) DMA
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>  aie.route from @src to [@in]
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>  ...
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>    aie.dma_start(S2MM, @in, ^bd0, ^end)
 </code></pre></div></p>
 <p>Conceptually, the aie.dma_start operation is a terminator that either passes
 control to a basic block containing DMA operations (through its first successor)
@@ -12064,14 +12150,14 @@ nonzero <code>pad_value</code> elsewhere.</p>
 <h3 id="aieend-xilinxaieendop"><code>aie.end</code> (::xilinx::AIE::EndOp)<a class="headerlink" href="#aieend-xilinxaieendop" title="Permanent link">&para;</a></h3>
 <p><em>End op</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>operation ::= `aie.end` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>operation ::= `aie.end` attr-dict
 </code></pre></div>
 <p>A generic terminator operation for AIE ops' regions.</p>
 <p>Traits: <code>Terminator</code></p>
 <h3 id="aieevent-xilinxaieeventop"><code>aie.event</code> (::xilinx::AIE::EventOp)<a class="headerlink" href="#aieevent-xilinxaieeventop" title="Permanent link">&para;</a></h3>
 <p><em>Event instruction</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>operation ::= `aie.event` `(` $val `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>operation ::= `aie.event` `(` $val `)` attr-dict
 </code></pre></div>
 <p>Event instruction.</p>
 <h4 id="attributes_11">Attributes:<a class="headerlink" href="#attributes_11" title="Permanent link">&para;</a></h4>
@@ -12083,7 +12169,7 @@ nonzero <code>pad_value</code> elsewhere.</p>
 <h3 id="aieexternal_buffer-xilinxaieexternalbufferop"><code>aie.external_buffer</code> (::xilinx::AIE::ExternalBufferOp)<a class="headerlink" href="#aieexternal_buffer-xilinxaieexternalbufferop" title="Permanent link">&para;</a></h3>
 <p><em>Declare a buffer in external memory</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>operation ::= `aie.external_buffer` attr-dict `:` type($buffer)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>operation ::= `aie.external_buffer` attr-dict `:` type($buffer)
 </code></pre></div>
 <p>This operation represents a buffer that exists in some physical
 location in a device, most likely external memory. The exact address
@@ -12093,7 +12179,7 @@ and mlir_aie_external_set_addr_myBuffer_ functions in the associated
 <p>These external buffers are used within the buffer descriptors of a
 shim_dma, i.e., within AIE_DMABdOp operations of a AIE_ShimDMAOp.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>  %buf = aie.external_buffer : memref&lt;256xi64&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>  %buf = aie.external_buffer : memref&lt;256xi64&gt;
 </code></pre></div>
 This operation represents an external buffer.</p>
 <p>Interfaces: <code>BufferLike</code>, <code>OpAsmOpInterface</code></p>
@@ -12122,17 +12208,17 @@ This operation represents an external buffer.</p>
 <h3 id="aieflow-xilinxaieflowop"><code>aie.flow</code> (::xilinx::AIE::FlowOp)<a class="headerlink" href="#aieflow-xilinxaieflowop" title="Permanent link">&para;</a></h3>
 <p><em>A logical circuit-switched connection between cores</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>operation ::= `aie.flow` `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>operation ::= `aie.flow` `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)` attr-dict
 </code></pre></div>
 <p>The <code>aie.flow</code> operation represents a circuit switched connection between two endpoints, usually
 <code>aie.tile</code> operations.  During routing, this is replaced by <code>aie.connect</code> operations which represent
 the programmed connections inside a switchbox, along with <code>aie.wire</code> operations which represent
 physical connections between switchboxes and other components.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>  %00 = aie.tile(0, 0)
-<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>  %11 = aie.tile(1, 1)
-<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>  %01 = aie.tile(0, 1)
-<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a>  aie.flow(%00, &quot;DMA&quot; : 0, %11, &quot;Core&quot; : 1)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>  %00 = aie.tile(0, 0)
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>  %11 = aie.tile(1, 1)
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>  %01 = aie.tile(0, 1)
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>  aie.flow(%00, &quot;DMA&quot; : 0, %11, &quot;Core&quot; : 1)
 </code></pre></div></p>
 <h4 id="attributes_13">Attributes:<a class="headerlink" href="#attributes_13" title="Permanent link">&para;</a></h4>
 <table>
@@ -12165,7 +12251,7 @@ physical connections between switchboxes and other components.</p>
 <h3 id="aieget_cascade-xilinxaiegetcascadeop"><code>aie.get_cascade</code> (::xilinx::AIE::GetCascadeOp)<a class="headerlink" href="#aieget_cascade-xilinxaiegetcascadeop" title="Permanent link">&para;</a></h3>
 <p><em>An op to read from a cascading stream from a neighboring core</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>operation ::= `aie.get_cascade` `(` `)` attr-dict `:` type($cascade_value)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>operation ::= `aie.get_cascade` `(` `)` attr-dict `:` type($cascade_value)
 </code></pre></div>
 <p>An op to read from a cascading stream from a neighboring core.
 The result type of this operation must have a size that matches the cascade size,
@@ -12188,7 +12274,7 @@ which is architecture-dependent. e.g. AIE1: i384 or vector&lt;8xi48&gt;  AIE2: i
 <h3 id="aieget_stream-xilinxaiegetstreamop"><code>aie.get_stream</code> (::xilinx::AIE::GetStreamOp)<a class="headerlink" href="#aieget_stream-xilinxaiegetstreamop" title="Permanent link">&para;</a></h3>
 <p><em>An op to read from a stream channel/port of a switchbox</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>operation ::= `aie.get_stream` `(` $channel `:` type($channel) `)` attr-dict `:` type($stream_value)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>operation ::= `aie.get_stream` `(` $channel `:` type($channel) `)` attr-dict `:` type($stream_value)
 </code></pre></div>
 <p>An op to read from a stream channel/port of a switchbox.</p>
 <p>Traits: <code>HasParent&lt;CoreOp&gt;</code></p>
@@ -12225,13 +12311,13 @@ which is architecture-dependent. e.g. AIE1: i384 or vector&lt;8xi48&gt;  AIE2: i
 <h3 id="aielock-xilinxaielockop"><code>aie.lock</code> (::xilinx::AIE::LockOp)<a class="headerlink" href="#aielock-xilinxaielockop" title="Permanent link">&para;</a></h3>
 <p><em>Declare a physical lock</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>operation ::= `aie.lock` `(` $tile (`,` $lockID^ )? `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>operation ::= `aie.lock` `(` $tile (`,` $lockID^ )? `)` attr-dict
 </code></pre></div>
 <p>This operation creates a physical lock. For this operation the lockID variable is optional.
 However, if that is the case then the lockID must be assigned using the AIEAssignLockIDs pass.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>  %tile33 = aie.tile(3, 3)
-<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>  %lck = aie.lock(%tile33, 7)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>  %tile33 = aie.tile(3, 3)
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>  %lck = aie.lock(%tile33, 7)
 </code></pre></div>
 This operation represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7</p>
 <p>Case when LockID is not assigned:
@@ -12292,14 +12378,14 @@ a tile type to specify the kind of tile needed.</p>
 <p>Optional <code>col</code> and <code>row</code> can be provided as placement hints or constraints.
 Use <code>?</code> for unspecified coordinates.</p>
 <p>Examples:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>// Logical core tile without placement constraints
-<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>%core_tile = aie.logical_tile&lt;CoreTile&gt;(?, ?)
-<a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a>
-<a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a>// Logical shim tile with column hint but unspecified row
-<a id="__codelineno-39-5" name="__codelineno-39-5" href="#__codelineno-39-5"></a>%shim_tile = aie.logical_tile&lt;ShimNOCTile&gt;(0, ?)
-<a id="__codelineno-39-6" name="__codelineno-39-6" href="#__codelineno-39-6"></a>
-<a id="__codelineno-39-7" name="__codelineno-39-7" href="#__codelineno-39-7"></a>// Logical tile with full placement constraint (effectively fixed)
-<a id="__codelineno-39-8" name="__codelineno-39-8" href="#__codelineno-39-8"></a>%fixed = aie.logical_tile&lt;CoreTile&gt;(2, 3)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>// Logical core tile without placement constraints
+<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>%core_tile = aie.logical_tile&lt;CoreTile&gt;(?, ?)
+<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a>
+<a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a>// Logical shim tile with column hint but unspecified row
+<a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a>%shim_tile = aie.logical_tile&lt;ShimNOCTile&gt;(0, ?)
+<a id="__codelineno-40-6" name="__codelineno-40-6" href="#__codelineno-40-6"></a>
+<a id="__codelineno-40-7" name="__codelineno-40-7" href="#__codelineno-40-7"></a>// Logical tile with full placement constraint (effectively fixed)
+<a id="__codelineno-40-8" name="__codelineno-40-8" href="#__codelineno-40-8"></a>%fixed = aie.logical_tile&lt;CoreTile&gt;(2, 3)
 </code></pre></div></p>
 <p>Traits: <code>SkipAccessibilityCheckTrait</code></p>
 <p>Interfaces: <code>InferTypeOpInterface</code>, <code>OpAsmOpInterface</code>, <code>TileLike</code></p>
@@ -12329,25 +12415,25 @@ Use <code>?</code> for unspecified coordinates.</p>
 <h3 id="aiemasterset-xilinxaiemastersetop"><code>aie.masterset</code> (::xilinx::AIE::MasterSetOp)<a class="headerlink" href="#aiemasterset-xilinxaiemastersetop" title="Permanent link">&para;</a></h3>
 <p><em>Packet switched input connection</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>operation ::= `aie.masterset` `(` $dest_bundle `:` $dest_channel `,` $amsels `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>operation ::= `aie.masterset` `(` $dest_bundle `:` $dest_channel `,` $amsels `)` attr-dict
 </code></pre></div>
 <p>A packet switched connection inside a switchbox.
 This operation specifies the configuration for a master port.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>  %a0_m2 = aie.amsel&lt;0&gt;(2)
-<a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a>  aie.masterset(&quot;Core&quot; : 0, %a0_m2)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>  %a0_m2 = aie.amsel&lt;0&gt;(2)
+<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>  aie.masterset(&quot;Core&quot; : 0, %a0_m2)
 </code></pre></div></p>
 <p>The code will configure the master port &lt;"Core" : 0&gt; to use arbiter 0 with msel 2
 (see AMSelOp for more details regarding AMSel)</p>
 <p>In the current architecture, a master port can only be associated with one arbiter. However,
 a master port can be activated by different msels from one arbiter</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>  %a1_0 = aie.amsel&lt;1&gt;(0)
-<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>  %a1_1 = aie.amsel&lt;1&gt;(1)
-<a id="__codelineno-42-3" name="__codelineno-42-3" href="#__codelineno-42-3"></a>  %a2_3 = aie.amsel&lt;2&gt;(3)
-<a id="__codelineno-42-4" name="__codelineno-42-4" href="#__codelineno-42-4"></a>
-<a id="__codelineno-42-5" name="__codelineno-42-5" href="#__codelineno-42-5"></a>  aie.masterset(&quot;West&quot; : 2, %a1_0, %a2_3) // this is illegal, please don&#39;t do this
-<a id="__codelineno-42-6" name="__codelineno-42-6" href="#__codelineno-42-6"></a>  aie.masterset(&quot;West&quot; : 3, %a1_0, %a1_1) // this is OK
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>  %a1_0 = aie.amsel&lt;1&gt;(0)
+<a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>  %a1_1 = aie.amsel&lt;1&gt;(1)
+<a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a>  %a2_3 = aie.amsel&lt;2&gt;(3)
+<a id="__codelineno-43-4" name="__codelineno-43-4" href="#__codelineno-43-4"></a>
+<a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a>  aie.masterset(&quot;West&quot; : 2, %a1_0, %a2_3) // this is illegal, please don&#39;t do this
+<a id="__codelineno-43-6" name="__codelineno-43-6" href="#__codelineno-43-6"></a>  aie.masterset(&quot;West&quot; : 3, %a1_0, %a1_1) // this is OK
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;SwitchboxOp&gt;</code></p>
 <p>Interfaces: <code>InferTypeOpInterface</code></p>
@@ -12392,22 +12478,22 @@ a master port can be activated by different msels from one arbiter</p>
 <h3 id="aiemem-xilinxaiememop"><code>aie.mem</code> (::xilinx::AIE::MemOp)<a class="headerlink" href="#aiemem-xilinxaiememop" title="Permanent link">&para;</a></h3>
 <p><em>Declare a memory op</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>operation ::= `aie.mem` `(` $tile `)` regions attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>operation ::= `aie.mem` `(` $tile `)` regions attr-dict
 </code></pre></div>
 <p>This operation creates a Memory module that belongs to a tile.
 The region of a MemOp is used to setup the DMAs and Block Descriptors.
 See DMAStartOp and DMABdOp for more concrete examples on DMAs and Block Descriptors.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>  m73 = aie.mem(%t73) {
-<a id="__codelineno-44-2" name="__codelineno-44-2" href="#__codelineno-44-2"></a>      %srcDma = aie.dma_start(&quot;S2MM&quot;, 0, ^bd0, ^end)
-<a id="__codelineno-44-3" name="__codelineno-44-3" href="#__codelineno-44-3"></a>    ^bd0:
-<a id="__codelineno-44-4" name="__codelineno-44-4" href="#__codelineno-44-4"></a>      aie.use_lock(%lock, &quot;Acquire&quot;, 0)
-<a id="__codelineno-44-5" name="__codelineno-44-5" href="#__codelineno-44-5"></a>      aie.dma_bd(%buf : memref&lt;64xi16&gt; offset = 0 len = 64)
-<a id="__codelineno-44-6" name="__codelineno-44-6" href="#__codelineno-44-6"></a>      aie.use_lock(%lock, &quot;Release&quot;, 1)
-<a id="__codelineno-44-7" name="__codelineno-44-7" href="#__codelineno-44-7"></a>      aie.next_bd ^bd0
-<a id="__codelineno-44-8" name="__codelineno-44-8" href="#__codelineno-44-8"></a>    ^end:
-<a id="__codelineno-44-9" name="__codelineno-44-9" href="#__codelineno-44-9"></a>      aie.end
-<a id="__codelineno-44-10" name="__codelineno-44-10" href="#__codelineno-44-10"></a>  }
+<div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a>  m73 = aie.mem(%t73) {
+<a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a>      %srcDma = aie.dma_start(&quot;S2MM&quot;, 0, ^bd0, ^end)
+<a id="__codelineno-45-3" name="__codelineno-45-3" href="#__codelineno-45-3"></a>    ^bd0:
+<a id="__codelineno-45-4" name="__codelineno-45-4" href="#__codelineno-45-4"></a>      aie.use_lock(%lock, &quot;Acquire&quot;, 0)
+<a id="__codelineno-45-5" name="__codelineno-45-5" href="#__codelineno-45-5"></a>      aie.dma_bd(%buf : memref&lt;64xi16&gt; offset = 0 len = 64)
+<a id="__codelineno-45-6" name="__codelineno-45-6" href="#__codelineno-45-6"></a>      aie.use_lock(%lock, &quot;Release&quot;, 1)
+<a id="__codelineno-45-7" name="__codelineno-45-7" href="#__codelineno-45-7"></a>      aie.next_bd ^bd0
+<a id="__codelineno-45-8" name="__codelineno-45-8" href="#__codelineno-45-8"></a>    ^end:
+<a id="__codelineno-45-9" name="__codelineno-45-9" href="#__codelineno-45-9"></a>      aie.end
+<a id="__codelineno-45-10" name="__codelineno-45-10" href="#__codelineno-45-10"></a>  }
 </code></pre></div>
 Create the memory module for tile %t73 and setup one DMA channel and one Buffer Descriptor.</p>
 <p>Traits: <code>HasValidBDs</code>, <code>HasValidDMAChannels</code>, <code>IsFlowEndPoint</code></p>
@@ -12445,7 +12531,7 @@ Create the memory module for tile %t73 and setup one DMA channel and one Buffer 
 <h3 id="aiememtile_dma-xilinxaiememtiledmaop"><code>aie.memtile_dma</code> (::xilinx::AIE::MemTileDMAOp)<a class="headerlink" href="#aiememtile_dma-xilinxaiememtiledmaop" title="Permanent link">&para;</a></h3>
 <p><em>Declare a memtile_dma op</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a>operation ::= `aie.memtile_dma` `(` $tile `)` regions attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>operation ::= `aie.memtile_dma` `(` $tile `)` regions attr-dict
 </code></pre></div>
 <p>This operation describes a DMA inside an AIE2 MemTile.
 The region of the op is used to setup the DMAs and Block Descriptors.
@@ -12454,16 +12540,16 @@ See DMAStartOp and DMABdOp for more concrete examples on DMAs and Block Descript
 xcve2302: row 1
 xcve2802: row 1 and 2</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>  m73 = aie.memtile_dma(%t71) {
-<a id="__codelineno-46-2" name="__codelineno-46-2" href="#__codelineno-46-2"></a>      %srcDma = aie.dma_start(&quot;S2MM&quot;, 0, ^bd0, ^end)
-<a id="__codelineno-46-3" name="__codelineno-46-3" href="#__codelineno-46-3"></a>    ^bd0:
-<a id="__codelineno-46-4" name="__codelineno-46-4" href="#__codelineno-46-4"></a>      aie.use_lock(%lock, &quot;Acquire&quot;, 0)
-<a id="__codelineno-46-5" name="__codelineno-46-5" href="#__codelineno-46-5"></a>      aie.dma_bd(%buf : memref&lt;64xi16&gt; offset = 0 len = 64)
-<a id="__codelineno-46-6" name="__codelineno-46-6" href="#__codelineno-46-6"></a>      aie.use_lock(%lock, &quot;Release&quot;, 1)
-<a id="__codelineno-46-7" name="__codelineno-46-7" href="#__codelineno-46-7"></a>      aie.next_bd ^bd0
-<a id="__codelineno-46-8" name="__codelineno-46-8" href="#__codelineno-46-8"></a>    ^end:
-<a id="__codelineno-46-9" name="__codelineno-46-9" href="#__codelineno-46-9"></a>      aie.end
-<a id="__codelineno-46-10" name="__codelineno-46-10" href="#__codelineno-46-10"></a>  }
+<div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>  m73 = aie.memtile_dma(%t71) {
+<a id="__codelineno-47-2" name="__codelineno-47-2" href="#__codelineno-47-2"></a>      %srcDma = aie.dma_start(&quot;S2MM&quot;, 0, ^bd0, ^end)
+<a id="__codelineno-47-3" name="__codelineno-47-3" href="#__codelineno-47-3"></a>    ^bd0:
+<a id="__codelineno-47-4" name="__codelineno-47-4" href="#__codelineno-47-4"></a>      aie.use_lock(%lock, &quot;Acquire&quot;, 0)
+<a id="__codelineno-47-5" name="__codelineno-47-5" href="#__codelineno-47-5"></a>      aie.dma_bd(%buf : memref&lt;64xi16&gt; offset = 0 len = 64)
+<a id="__codelineno-47-6" name="__codelineno-47-6" href="#__codelineno-47-6"></a>      aie.use_lock(%lock, &quot;Release&quot;, 1)
+<a id="__codelineno-47-7" name="__codelineno-47-7" href="#__codelineno-47-7"></a>      aie.next_bd ^bd0
+<a id="__codelineno-47-8" name="__codelineno-47-8" href="#__codelineno-47-8"></a>    ^end:
+<a id="__codelineno-47-9" name="__codelineno-47-9" href="#__codelineno-47-9"></a>      aie.end
+<a id="__codelineno-47-10" name="__codelineno-47-10" href="#__codelineno-47-10"></a>  }
 </code></pre></div>
 Create a description for tile <code>%t73</code> and setup one DMA channel and one Buffer Descriptor.</p>
 <p>Traits: <code>HasValidBDs</code>, <code>HasValidDMAChannels</code>, <code>IsFlowEndPoint</code></p>
@@ -12501,23 +12587,23 @@ Create a description for tile <code>%t73</code> and setup one DMA channel and on
 <h3 id="aienext_bd-xilinxaienextbdop"><code>aie.next_bd</code> (::xilinx::AIE::NextBDOp)<a class="headerlink" href="#aienext_bd-xilinxaienextbdop" title="Permanent link">&para;</a></h3>
 <p><em>The next buffer descriptor</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>operation ::= `aie.next_bd` $dest attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a>operation ::= `aie.next_bd` $dest attr-dict
 </code></pre></div>
 <p>This operation terminates the basic block describing a buffer descriptor inside
 a tile or shim DMA operation.  It references a single following buffer descriptor.
 Note that unlike other terminators (like cf.br), canonicalization should not remove
 the <code>next_bd</code> terminator, since it would result in invalid buffer descriptors.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a>  m73 = aie.mem(%t73) {
-<a id="__codelineno-48-2" name="__codelineno-48-2" href="#__codelineno-48-2"></a>      %srcDma = aie.dma_start(&quot;S2MM&quot;, 0, ^bd0, ^end)
-<a id="__codelineno-48-3" name="__codelineno-48-3" href="#__codelineno-48-3"></a>    ^bd0:
-<a id="__codelineno-48-4" name="__codelineno-48-4" href="#__codelineno-48-4"></a>      aie.use_lock(%lock, &quot;Acquire&quot;, 0)
-<a id="__codelineno-48-5" name="__codelineno-48-5" href="#__codelineno-48-5"></a>      aie.dma_bd(%buf : memref&lt;64xi16&gt; offset = 0 len = 64)
-<a id="__codelineno-48-6" name="__codelineno-48-6" href="#__codelineno-48-6"></a>      aie.use_lock(%lock, &quot;Release&quot;, 1)
-<a id="__codelineno-48-7" name="__codelineno-48-7" href="#__codelineno-48-7"></a>      aie.next_bd ^bd0
-<a id="__codelineno-48-8" name="__codelineno-48-8" href="#__codelineno-48-8"></a>    ^end:
-<a id="__codelineno-48-9" name="__codelineno-48-9" href="#__codelineno-48-9"></a>      aie.end
-<a id="__codelineno-48-10" name="__codelineno-48-10" href="#__codelineno-48-10"></a>  }
+<div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>  m73 = aie.mem(%t73) {
+<a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a>      %srcDma = aie.dma_start(&quot;S2MM&quot;, 0, ^bd0, ^end)
+<a id="__codelineno-49-3" name="__codelineno-49-3" href="#__codelineno-49-3"></a>    ^bd0:
+<a id="__codelineno-49-4" name="__codelineno-49-4" href="#__codelineno-49-4"></a>      aie.use_lock(%lock, &quot;Acquire&quot;, 0)
+<a id="__codelineno-49-5" name="__codelineno-49-5" href="#__codelineno-49-5"></a>      aie.dma_bd(%buf : memref&lt;64xi16&gt; offset = 0 len = 64)
+<a id="__codelineno-49-6" name="__codelineno-49-6" href="#__codelineno-49-6"></a>      aie.use_lock(%lock, &quot;Release&quot;, 1)
+<a id="__codelineno-49-7" name="__codelineno-49-7" href="#__codelineno-49-7"></a>      aie.next_bd ^bd0
+<a id="__codelineno-49-8" name="__codelineno-49-8" href="#__codelineno-49-8"></a>    ^end:
+<a id="__codelineno-49-9" name="__codelineno-49-9" href="#__codelineno-49-9"></a>      aie.end
+<a id="__codelineno-49-10" name="__codelineno-49-10" href="#__codelineno-49-10"></a>  }
 </code></pre></div></p>
 <p>Traits: <code>Terminator</code></p>
 <h4 id="successors_1">Successors:<a class="headerlink" href="#successors_1" title="Permanent link">&para;</a></h4>
@@ -12538,17 +12624,17 @@ the <code>next_bd</code> terminator, since it would result in invalid buffer des
 <h3 id="aieobjectfifo-xilinxaieobjectfifocreateop"><code>aie.objectfifo</code> (::xilinx::AIE::ObjectFifoCreateOp)<a class="headerlink" href="#aieobjectfifo-xilinxaieobjectfifocreateop" title="Permanent link">&para;</a></h3>
 <p><em>Create a circular buffer or channel between two tiles</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>operation ::= `aie.objectfifo` $sym_name
-<a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a>              `(`
-<a id="__codelineno-49-3" name="__codelineno-49-3" href="#__codelineno-49-3"></a>              custom&lt;ObjectFifoProducerTile&gt;($producerTile, $dimensionsToStream) `,`
-<a id="__codelineno-49-4" name="__codelineno-49-4" href="#__codelineno-49-4"></a>              `{`
-<a id="__codelineno-49-5" name="__codelineno-49-5" href="#__codelineno-49-5"></a>              custom&lt;ObjectFifoConsumerTiles&gt;($consumerTiles, $dimensionsFromStreamPerConsumer)
-<a id="__codelineno-49-6" name="__codelineno-49-6" href="#__codelineno-49-6"></a>              `}`
-<a id="__codelineno-49-7" name="__codelineno-49-7" href="#__codelineno-49-7"></a>              `,`
-<a id="__codelineno-49-8" name="__codelineno-49-8" href="#__codelineno-49-8"></a>              $elemNumber
-<a id="__codelineno-49-9" name="__codelineno-49-9" href="#__codelineno-49-9"></a>              `)` attr-dict `:` $elemType
-<a id="__codelineno-49-10" name="__codelineno-49-10" href="#__codelineno-49-10"></a>              custom&lt;ObjectFifoConsumerElemType&gt;($consumerElemType)
-<a id="__codelineno-49-11" name="__codelineno-49-11" href="#__codelineno-49-11"></a>              custom&lt;ObjectFifoInitValues&gt;(ref($elemNumber), ref($elemType), $initValues)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a>operation ::= `aie.objectfifo` $sym_name
+<a id="__codelineno-50-2" name="__codelineno-50-2" href="#__codelineno-50-2"></a>              `(`
+<a id="__codelineno-50-3" name="__codelineno-50-3" href="#__codelineno-50-3"></a>              custom&lt;ObjectFifoProducerTile&gt;($producerTile, $dimensionsToStream) `,`
+<a id="__codelineno-50-4" name="__codelineno-50-4" href="#__codelineno-50-4"></a>              `{`
+<a id="__codelineno-50-5" name="__codelineno-50-5" href="#__codelineno-50-5"></a>              custom&lt;ObjectFifoConsumerTiles&gt;($consumerTiles, $dimensionsFromStreamPerConsumer)
+<a id="__codelineno-50-6" name="__codelineno-50-6" href="#__codelineno-50-6"></a>              `}`
+<a id="__codelineno-50-7" name="__codelineno-50-7" href="#__codelineno-50-7"></a>              `,`
+<a id="__codelineno-50-8" name="__codelineno-50-8" href="#__codelineno-50-8"></a>              $elemNumber
+<a id="__codelineno-50-9" name="__codelineno-50-9" href="#__codelineno-50-9"></a>              `)` attr-dict `:` $elemType
+<a id="__codelineno-50-10" name="__codelineno-50-10" href="#__codelineno-50-10"></a>              custom&lt;ObjectFifoConsumerElemType&gt;($consumerElemType)
+<a id="__codelineno-50-11" name="__codelineno-50-11" href="#__codelineno-50-11"></a>              custom&lt;ObjectFifoInitValues&gt;(ref($elemNumber), ref($elemType), $initValues)
 </code></pre></div>
 <p>The <code>aie.objectFifo</code> operation creates a circular buffer established between a producer and one or
 more consumers, which are <code>aie.tile</code> operations. The <code>aie.objectFifo</code> instantiates the given number of
@@ -12563,19 +12649,19 @@ applied to both producer and consumers.</p>
 <code>aie.locks</code>. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
 not adjacent.</p>
 <p>1-to-1 tile example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a>  aie.objectfifo @of1 (%tile12, { %tile23 }, 4 : i32) : !aie.objectfifo&lt;memref&lt;16xi32&gt;&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a>  aie.objectfifo @of1 (%tile12, { %tile23 }, 4 : i32) : !aie.objectfifo&lt;memref&lt;16xi32&gt;&gt;
 </code></pre></div>
 This operation creates an <code>objectFifo</code> between <code>%tile12</code> and <code>%tile23</code> of 4 elements, each a buffer of 16 32-bit integers.
 Note: If there are no <code>ObjectFifoAcquireOps</code> corresponding to this <code>objectFifo</code> on the cores of <code>%tile12</code> and <code>%tile23</code>,
 then the depths of the object pools on each tile will be 4, as specified. Otherwise, the cores are scanned and the
 highest number of acquired elements (+1 for prefetching) will be used instead, to ensure minimal resource usage.</p>
 <p>1-to-2 tiles broadcast example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a>  aie.objectfifo @of2 (%tile12, { %tile13, %tile23 }, 4 : i32) : !aie.objectfifo&lt;memref&lt;16xi32&gt;&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a>  aie.objectfifo @of2 (%tile12, { %tile13, %tile23 }, 4 : i32) : !aie.objectfifo&lt;memref&lt;16xi32&gt;&gt;
 </code></pre></div>
 This operation creates an <code>objectFifo</code> between <code>%tile12</code> and tiles <code>%tile13</code>, <code>%tile23</code> of 4 elements, each a buffer of x16
 32-bit integers.</p>
 <p>1-to-2 tiles broadcast with explicit sizes example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a>  aie.objectfifo @of3 (%tile12, { %tile13, %tile23 }, [2, 3, 4]) : !aie.objectfifo&lt;memref&lt;16xi32&gt;&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a>  aie.objectfifo @of3 (%tile12, { %tile13, %tile23 }, [2, 3, 4]) : !aie.objectfifo&lt;memref&lt;16xi32&gt;&gt;
 </code></pre></div>
 This operation creates an <code>objectFifo</code> between <code>%tile12</code>, <code>%tile13</code> and <code>%tile23</code>. The depths of the <code>objectFifo</code> object pool
 at each tile are respectively 2, 3 and 4 for tiles <code>%tile12</code>, <code>%tile13</code> and <code>%tile23</code>. This overrides the depth analysis
@@ -12601,12 +12687,12 @@ i.e. 16 bytes.</p>
 applied on the consumer side of <code>%tile13</code> (in this case the <code>fromStream</code>
 attribute may also be left off), and a transformation on <code>%tile23</code> first gives
 all even indices from the stream, followed by all odd indices:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a>  aie.objectfifo @of4 (%tile12 dimensionsToStream [&lt;16, 1&gt;, &lt;16, 16&gt;, &lt;1,1&gt;],
-<a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a>                       {
-<a id="__codelineno-53-3" name="__codelineno-53-3" href="#__codelineno-53-3"></a>                        %tile13 dimensionsFromStream [],
-<a id="__codelineno-53-4" name="__codelineno-53-4" href="#__codelineno-53-4"></a>                        %tile23 dimensionsFromStream [&lt;2, 1&gt;, &lt;128, 2&gt;]
-<a id="__codelineno-53-5" name="__codelineno-53-5" href="#__codelineno-53-5"></a>                       }, 2 : i32
-<a id="__codelineno-53-6" name="__codelineno-53-6" href="#__codelineno-53-6"></a>                      ) : !aie.objectfifo&lt;memref&lt;256xi32&gt;&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a>  aie.objectfifo @of4 (%tile12 dimensionsToStream [&lt;16, 1&gt;, &lt;16, 16&gt;, &lt;1,1&gt;],
+<a id="__codelineno-54-2" name="__codelineno-54-2" href="#__codelineno-54-2"></a>                       {
+<a id="__codelineno-54-3" name="__codelineno-54-3" href="#__codelineno-54-3"></a>                        %tile13 dimensionsFromStream [],
+<a id="__codelineno-54-4" name="__codelineno-54-4" href="#__codelineno-54-4"></a>                        %tile23 dimensionsFromStream [&lt;2, 1&gt;, &lt;128, 2&gt;]
+<a id="__codelineno-54-5" name="__codelineno-54-5" href="#__codelineno-54-5"></a>                       }, 2 : i32
+<a id="__codelineno-54-6" name="__codelineno-54-6" href="#__codelineno-54-6"></a>                      ) : !aie.objectfifo&lt;memref&lt;256xi32&gt;&gt;
 </code></pre></div>
 <p>The behavior of the objectFifo is further controlled by optional parameters.
 Senders replicate each object <code>repeat_count</code> times before moving on to the
@@ -12664,7 +12750,7 @@ simplifies to <code>iter_count * elemNumber</code>.</p>
 <h3 id="aieobjectfifoacquire-xilinxaieobjectfifoacquireop"><code>aie.objectfifo.acquire</code> (::xilinx::AIE::ObjectFifoAcquireOp)<a class="headerlink" href="#aieobjectfifoacquire-xilinxaieobjectfifoacquireop" title="Permanent link">&para;</a></h3>
 <p><em>Acquire operation to lock and return objects of an ObjectFifo</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a>operation ::= `aie.objectfifo.acquire` attr-dict $objFifo_name `` custom&lt;ObjectFifoAcquireObjects&gt;($port, type($objects))
+<div class="highlight"><pre><span></span><code><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a>operation ::= `aie.objectfifo.acquire` attr-dict $objFifo_name `` custom&lt;ObjectFifoAcquireObjects&gt;($port, type($objects))
 </code></pre></div>
 <p>The <code>aie.objectFifo.acquire</code> operation acquires the locks of the next objects
 in the <code>objectFifo</code> and returns one memref per object. The mode it acquires
@@ -12677,12 +12763,12 @@ acquired in the past and none have yet to be released by the same process, then 
 operation on the same <code>objectFifo</code> within the same process of size two or less will not result in any new
 use_lock operations (and for size greater than two, only (size - 2) use_lock operations will be performed).</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a>  %a, %b = aie.objectfifo.acquire @of1 (Consume, 2) : memref&lt;16xi32&gt;, memref&lt;16xi32&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-56-1" name="__codelineno-56-1" href="#__codelineno-56-1"></a>  %a, %b = aie.objectfifo.acquire @of1 (Consume, 2) : memref&lt;16xi32&gt;, memref&lt;16xi32&gt;
 </code></pre></div>
 This operation acquires the locks of the next two objects in the <code>objectFifo</code> named <code>@of1</code> from its consumer
 port and returns them.</p>
 <p>The port is omitted when the target is an endpoint, whose role already fixes the direction:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-56-1" name="__codelineno-56-1" href="#__codelineno-56-1"></a>  %a = aie.objectfifo.acquire @of1_prod (1) : memref&lt;16xi32&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-57-1" name="__codelineno-57-1" href="#__codelineno-57-1"></a>  %a = aie.objectfifo.acquire @of1_prod (1) : memref&lt;16xi32&gt;
 </code></pre></div></p>
 <h4 id="attributes_18">Attributes:<a class="headerlink" href="#attributes_18" title="Permanent link">&para;</a></h4>
 <table>
@@ -12709,14 +12795,14 @@ port and returns them.</p>
 <h3 id="aieobjectfifoallocate-xilinxaieobjectfifoallocateop"><code>aie.objectfifo.allocate</code> (::xilinx::AIE::ObjectFifoAllocateOp)<a class="headerlink" href="#aieobjectfifoallocate-xilinxaieobjectfifoallocateop" title="Permanent link">&para;</a></h3>
 <p><em>Sets a tile's memory module as the target for an objectfifo's memory allocation</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-57-1" name="__codelineno-57-1" href="#__codelineno-57-1"></a>operation ::= `aie.objectfifo.allocate` $objFifo_name `(` $delegateTile `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a>operation ::= `aie.objectfifo.allocate` $objFifo_name `(` $delegateTile `)` attr-dict
 </code></pre></div>
 <p>Specify a tile's memory module to be used as the allocation target for this objectfifo.
 Only works if all the objectfifo's tiles, producer and consumers, have shared memory access to
 the specified tile's memory module.</p>
 <p>In the following example the objects of @of4 will be allocated on %tile14:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a>  aie.objectfifo @of4 (%tile13, { %tile14 }, 2 : i32) : !aie.objectfifo&lt;memref&lt;256xi32&gt;&gt;
-<a id="__codelineno-58-2" name="__codelineno-58-2" href="#__codelineno-58-2"></a>  aie.objectfifo.allocate @of4 (%tile14)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-59-1" name="__codelineno-59-1" href="#__codelineno-59-1"></a>  aie.objectfifo @of4 (%tile13, { %tile14 }, 2 : i32) : !aie.objectfifo&lt;memref&lt;256xi32&gt;&gt;
+<a id="__codelineno-59-2" name="__codelineno-59-2" href="#__codelineno-59-2"></a>  aie.objectfifo.allocate @of4 (%tile14)
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;DeviceOp&gt;</code></p>
 <h4 id="attributes_19">Attributes:<a class="headerlink" href="#attributes_19" title="Permanent link">&para;</a></h4>
@@ -12743,7 +12829,7 @@ the specified tile's memory module.</p>
 <h3 id="aieobjectfifocore_endpoint-xilinxaieobjectfifocoreendpointop"><code>aie.objectfifo.core_endpoint</code> (::xilinx::AIE::ObjectFifoCoreEndpointOp)<a class="headerlink" href="#aieobjectfifocore_endpoint-xilinxaieobjectfifocoreendpointop" title="Permanent link">&para;</a></h3>
 <p><em>What a core needs to fill or drain the next object in a pool</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-59-1" name="__codelineno-59-1" href="#__codelineno-59-1"></a>operation ::= `aie.objectfifo.core_endpoint` $sym_name `(` $tile `)` $role $pool attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-60-1" name="__codelineno-60-1" href="#__codelineno-60-1"></a>operation ::= `aie.objectfifo.core_endpoint` $sym_name `(` $tile `)` $role $pool attr-dict
 </code></pre></div>
 <p>Names the pool a core works through, whether it fills or drains it, and which
 of the pool's segments it handles. Omitting <code>segments</code> selects the pool's
@@ -12753,7 +12839,7 @@ only segment and is invalid for a multi-segment pool.</p>
 <code>memref.subview</code> of the run its segments span, so a core can take one side
 of a join or distribute.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-60-1" name="__codelineno-60-1" href="#__codelineno-60-1"></a>  aie.objectfifo.core_endpoint @reader(%tile) drains @pool
+<div class="highlight"><pre><span></span><code><a id="__codelineno-61-1" name="__codelineno-61-1" href="#__codelineno-61-1"></a>  aie.objectfifo.core_endpoint @reader(%tile) drains @pool
 </code></pre></div></p>
 <p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>HasParent&lt;DeviceOp&gt;</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>Symbol</code></p>
@@ -12784,7 +12870,7 @@ of a join or distribute.</p>
 <h3 id="aieobjectfifodma_endpoint-xilinxaieobjectfifodmaendpointop"><code>aie.objectfifo.dma_endpoint</code> (::xilinx::AIE::ObjectFifoDmaEndpointOp)<a class="headerlink" href="#aieobjectfifodma_endpoint-xilinxaieobjectfifodmaendpointop" title="Permanent link">&para;</a></h3>
 <p><em>What a DMA channel needs to fill or drain the next object in a pool</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-61-1" name="__codelineno-61-1" href="#__codelineno-61-1"></a>operation ::= `aie.objectfifo.dma_endpoint` $sym_name `(` $tile `)` $role $pool attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-62-1" name="__codelineno-62-1" href="#__codelineno-62-1"></a>operation ::= `aie.objectfifo.dma_endpoint` $sym_name `(` $tile `)` $role $pool attr-dict
 </code></pre></div>
 <p>Names the pool a DMA channel works through, whether it fills or drains it,
 which of the pool's segments it handles, and the channel itself. Omitting
@@ -12800,7 +12886,7 @@ that walks the pool's buffers, and consumes it.</p>
 follows its role. Leaving it out lets <code>--aie-objectfifo-allocate</code> pick one,
 and writing it down pins it.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-62-1" name="__codelineno-62-1" href="#__codelineno-62-1"></a>  aie.objectfifo.dma_endpoint @out(%tile) drains @pool {channelIndex = 0}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-63-1" name="__codelineno-63-1" href="#__codelineno-63-1"></a>  aie.objectfifo.dma_endpoint @out(%tile) drains @pool {channelIndex = 0}
 </code></pre></div></p>
 <p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>HasParent&lt;DeviceOp&gt;</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>RouteEndpoint</code>, <code>Symbol</code></p>
@@ -12840,16 +12926,16 @@ and writing it down pins it.</p>
 <h3 id="aieobjectfifolink-xilinxaieobjectfifolinkop"><code>aie.objectfifo.link</code> (::xilinx::AIE::ObjectFifoLinkOp)<a class="headerlink" href="#aieobjectfifolink-xilinxaieobjectfifolinkop" title="Permanent link">&para;</a></h3>
 <p><em>Links two objectFifos through an intermediary tile's DMA</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-63-1" name="__codelineno-63-1" href="#__codelineno-63-1"></a>operation ::= `aie.objectfifo.link` $fifoIns `-&gt;` $fifoOuts `(` $src_offsets $dst_offsets `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-64-1" name="__codelineno-64-1" href="#__codelineno-64-1"></a>operation ::= `aie.objectfifo.link` $fifoIns `-&gt;` $fifoOuts `(` $src_offsets $dst_offsets `)` attr-dict
 </code></pre></div>
 <p>The <code>aie.objectfifo.link</code> operation marks two or more <code>objectFifos</code> as linked. This implies that the <code>objectFifos</code> form
 one dataflow movement which is split accross multiple <code>objectFifos</code>. Specifically, during the <code>objectFifo</code> lowering there will
 be less memory elements generated at the link point (i.e., the shared tile of all <code>objectFifos</code> in the link) as the <code>objectFifos</code> can share.</p>
 <p>The <code>objectFifos</code> which are linked must have a link point (i.e., a shared AIE tile).</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-64-1" name="__codelineno-64-1" href="#__codelineno-64-1"></a>  aie.objectfifo @of1 (%t70, { %t72 }, 2) : !aie.objectfifo&lt;memref&lt;64xi16&gt;&gt;
-<a id="__codelineno-64-2" name="__codelineno-64-2" href="#__codelineno-64-2"></a>  aie.objectfifo @of2 (%t72, { %t74 }, 2) : !aie.objectfifo&lt;memref&lt;64xi16&gt;&gt;
-<a id="__codelineno-64-3" name="__codelineno-64-3" href="#__codelineno-64-3"></a>  aie.objectfifo.link [@of1] -&gt; [@of2] ([] [])
+<div class="highlight"><pre><span></span><code><a id="__codelineno-65-1" name="__codelineno-65-1" href="#__codelineno-65-1"></a>  aie.objectfifo @of1 (%t70, { %t72 }, 2) : !aie.objectfifo&lt;memref&lt;64xi16&gt;&gt;
+<a id="__codelineno-65-2" name="__codelineno-65-2" href="#__codelineno-65-2"></a>  aie.objectfifo @of2 (%t72, { %t74 }, 2) : !aie.objectfifo&lt;memref&lt;64xi16&gt;&gt;
+<a id="__codelineno-65-3" name="__codelineno-65-3" href="#__codelineno-65-3"></a>  aie.objectfifo.link [@of1] -&gt; [@of2] ([] [])
 </code></pre></div>
 This operation links two <code>objectFifos</code> which have tile <code>%t72</code> as a link point. The offset input arrays are not required as the full size of
 the objects are transferred from @of1 to @of2.</p>
@@ -12875,7 +12961,7 @@ to hold that object and the device must have counting locks to guard the slices 
 <h3 id="aieobjectfifopool-xilinxaieobjectfifopoolop"><code>aie.objectfifo.pool</code> (::xilinx::AIE::ObjectFifoPoolOp)<a class="headerlink" href="#aieobjectfifopool-xilinxaieobjectfifopoolop" title="Permanent link">&para;</a></h3>
 <p><em>A rotating set of buffers and the locks guarding them</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-65-1" name="__codelineno-65-1" href="#__codelineno-65-1"></a>operation ::= `aie.objectfifo.pool` $sym_name `(` $tile `)` attr-dict `:` $elemType $segments
+<div class="highlight"><pre><span></span><code><a id="__codelineno-66-1" name="__codelineno-66-1" href="#__codelineno-66-1"></a>operation ::= `aie.objectfifo.pool` $sym_name `(` $tile `)` attr-dict `:` $elemType $segments
 </code></pre></div>
 <p>A set of buffers and the locks that guard how they are accessed.</p>
 <p>A pool holds <code>depth</code> buffers of <code>elemType</code> on one tile. The buffers are
@@ -12891,13 +12977,13 @@ per buffer, and cannot be divided into more than one segment.</p>
 <p><code>buffers</code> and <code>locks</code> are filled in by <code>--aie-objectfifo-allocate</code>, which
 leaves alone whatever is already named.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-66-1" name="__codelineno-66-1" href="#__codelineno-66-1"></a>  aie.objectfifo.pool @pool(%tile) {
-<a id="__codelineno-66-2" name="__codelineno-66-2" href="#__codelineno-66-2"></a>    depth = 2 : i32,
-<a id="__codelineno-66-3" name="__codelineno-66-3" href="#__codelineno-66-3"></a>    buffers = [@buff_0, @buff_1]
-<a id="__codelineno-66-4" name="__codelineno-66-4" href="#__codelineno-66-4"></a>  } : memref&lt;16xi32&gt; {
-<a id="__codelineno-66-5" name="__codelineno-66-5" href="#__codelineno-66-5"></a>    aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32,
-<a id="__codelineno-66-6" name="__codelineno-66-6" href="#__codelineno-66-6"></a>                                produceLock = @prod, consumeLock = @cons}
-<a id="__codelineno-66-7" name="__codelineno-66-7" href="#__codelineno-66-7"></a>  }
+<div class="highlight"><pre><span></span><code><a id="__codelineno-67-1" name="__codelineno-67-1" href="#__codelineno-67-1"></a>  aie.objectfifo.pool @pool(%tile) {
+<a id="__codelineno-67-2" name="__codelineno-67-2" href="#__codelineno-67-2"></a>    depth = 2 : i32,
+<a id="__codelineno-67-3" name="__codelineno-67-3" href="#__codelineno-67-3"></a>    buffers = [@buff_0, @buff_1]
+<a id="__codelineno-67-4" name="__codelineno-67-4" href="#__codelineno-67-4"></a>  } : memref&lt;16xi32&gt; {
+<a id="__codelineno-67-5" name="__codelineno-67-5" href="#__codelineno-67-5"></a>    aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32,
+<a id="__codelineno-67-6" name="__codelineno-67-6" href="#__codelineno-67-6"></a>                                produceLock = @prod, consumeLock = @cons}
+<a id="__codelineno-67-7" name="__codelineno-67-7" href="#__codelineno-67-7"></a>  }
 </code></pre></div></p>
 <p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>HasParent&lt;DeviceOp&gt;</code>, <code>NoTerminator</code>, <code>SingleBlock</code>, <code>SymbolName</code>, <code>SymbolTable</code></p>
 <p>Interfaces: <code>Symbol</code></p>
@@ -12933,7 +13019,7 @@ leaves alone whatever is already named.</p>
 <h3 id="aieobjectfiforegister_external_buffers-xilinxaieobjectfiforegisterexternalbuffersop"><code>aie.objectfifo.register_external_buffers</code> (::xilinx::AIE::ObjectFifoRegisterExternalBuffersOp)<a class="headerlink" href="#aieobjectfiforegister_external_buffers-xilinxaieobjectfiforegisterexternalbuffersop" title="Permanent link">&para;</a></h3>
 <p><em>Registers external buffers to an objectFifo's shim tile(s) for use in the associated shim DMA(s)</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-67-1" name="__codelineno-67-1" href="#__codelineno-67-1"></a>operation ::= `aie.objectfifo.register_external_buffers` attr-dict $objFifo_name `(` $tile `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
+<div class="highlight"><pre><span></span><code><a id="__codelineno-68-1" name="__codelineno-68-1" href="#__codelineno-68-1"></a>operation ::= `aie.objectfifo.register_external_buffers` attr-dict $objFifo_name `(` $tile `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
 </code></pre></div>
 <p>The <code>aie.objectfifo.register_external_buffers</code> operation is used to register one or multiple external buffers
 to the shim tile(s) used in an <code>objectFifo</code> creation. During the <code>objectFifo</code> lowering pass, shim DMAs that are
@@ -12941,10 +13027,10 @@ generated for those shim tiles will use the registered external buffers. This is
 external buffers typically have a different size than the AIE buffers which are used in the AIE tiles of the
 same <code>objectFifos</code>.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-68-1" name="__codelineno-68-1" href="#__codelineno-68-1"></a>  aie.objectfifo @of1 (%t70, %t73, 2) : !aie.objectfifo&lt;memref&lt;64xi16&gt;&gt;
-<a id="__codelineno-68-2" name="__codelineno-68-2" href="#__codelineno-68-2"></a>  %buffer_in_0  = aie.external_buffer : memref&lt;512 x i16&gt;
-<a id="__codelineno-68-3" name="__codelineno-68-3" href="#__codelineno-68-3"></a>  %buffer_in_1  = aie.external_buffer : memref&lt;512 x i16&gt;
-<a id="__codelineno-68-4" name="__codelineno-68-4" href="#__codelineno-68-4"></a>  aie.objectfifo.register_external_buffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref&lt;512 x i16&gt;, memref&lt;512 x i16&gt;)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-69-1" name="__codelineno-69-1" href="#__codelineno-69-1"></a>  aie.objectfifo @of1 (%t70, %t73, 2) : !aie.objectfifo&lt;memref&lt;64xi16&gt;&gt;
+<a id="__codelineno-69-2" name="__codelineno-69-2" href="#__codelineno-69-2"></a>  %buffer_in_0  = aie.external_buffer : memref&lt;512 x i16&gt;
+<a id="__codelineno-69-3" name="__codelineno-69-3" href="#__codelineno-69-3"></a>  %buffer_in_1  = aie.external_buffer : memref&lt;512 x i16&gt;
+<a id="__codelineno-69-4" name="__codelineno-69-4" href="#__codelineno-69-4"></a>  aie.objectfifo.register_external_buffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref&lt;512 x i16&gt;, memref&lt;512 x i16&gt;)
 </code></pre></div>
 This operation registers external buffers <code>%buffer_in_0</code> and <code>%buffer_in_1</code> to use in the shim_dma of shimTile <code>%t70</code>.</p>
 <p>Traits: <code>HasParent&lt;DeviceOp&gt;</code></p>
@@ -12977,18 +13063,18 @@ This operation registers external buffers <code>%buffer_in_0</code> and <code>%b
 <h3 id="aieobjectfiforelease-xilinxaieobjectfiforeleaseop"><code>aie.objectfifo.release</code> (::xilinx::AIE::ObjectFifoReleaseOp)<a class="headerlink" href="#aieobjectfiforelease-xilinxaieobjectfiforeleaseop" title="Permanent link">&para;</a></h3>
 <p><em>Release operation for object locks in an ObjectFifo</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-69-1" name="__codelineno-69-1" href="#__codelineno-69-1"></a>operation ::= `aie.objectfifo.release` attr-dict $objFifo_name `` custom&lt;ObjectFifoReleaseCount&gt;($port, $size)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-70-1" name="__codelineno-70-1" href="#__codelineno-70-1"></a>operation ::= `aie.objectfifo.release` attr-dict $objFifo_name `` custom&lt;ObjectFifoReleaseCount&gt;($port, $size)
 </code></pre></div>
 <p>The <code>aie.objectFifo.release</code> operation releases the locks of the given number of objects
 in the <code>objectFifo</code>. The mode it releases the locks in is chosen based on the <code>port</code>
 (producer: release for read, consumer: release for write).</p>
 <p>This operation is then converted by the <code>--aie-objectfifo-lower-cores</code> into <code>aie.use_lock</code> operations.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-70-1" name="__codelineno-70-1" href="#__codelineno-70-1"></a>  aie.objectfifo.release @of1 (Produce, 1)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-71-1" name="__codelineno-71-1" href="#__codelineno-71-1"></a>  aie.objectfifo.release @of1 (Produce, 1)
 </code></pre></div>
 This operation releases the lock of the next object in the <code>objectFifo</code> named <code>@of1</code> from producer port.</p>
 <p>The port is omitted when the target is an endpoint, whose role already fixes the direction:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-71-1" name="__codelineno-71-1" href="#__codelineno-71-1"></a>  aie.objectfifo.release @of1_prod (1)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-72-1" name="__codelineno-72-1" href="#__codelineno-72-1"></a>  aie.objectfifo.release @of1_prod (1)
 </code></pre></div></p>
 <h4 id="attributes_25">Attributes:<a class="headerlink" href="#attributes_25" title="Permanent link">&para;</a></h4>
 <table>
@@ -13001,7 +13087,7 @@ This operation releases the lock of the next object in the <code>objectFifo</cod
 <h3 id="aieobjectfifosegment-xilinxaieobjectfifosegmentop"><code>aie.objectfifo.segment</code> (::xilinx::AIE::ObjectFifoSegmentOp)<a class="headerlink" href="#aieobjectfifosegment-xilinxaieobjectfifosegmentop" title="Permanent link">&para;</a></h3>
 <p><em>A slice of every buffer in an aie.objectfifo.pool, and its locks</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-72-1" name="__codelineno-72-1" href="#__codelineno-72-1"></a>operation ::= `aie.objectfifo.segment` $sym_name attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-73-1" name="__codelineno-73-1" href="#__codelineno-73-1"></a>operation ::= `aie.objectfifo.segment` $sym_name attr-dict
 </code></pre></div>
 <p>Segments partition the object an <code>aie.objectfifo.pool</code> holds. Every buffer
 in the pool carries every segment, so a segment names the same run of
@@ -13012,7 +13098,7 @@ locks.</p>
 <p><code>produceLock</code> and <code>consumeLock</code> are filled in by
 <code>--aie-objectfifo-allocate</code>, which leaves alone whatever is already named.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-73-1" name="__codelineno-73-1" href="#__codelineno-73-1"></a>  aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-74-1" name="__codelineno-74-1" href="#__codelineno-74-1"></a>  aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
 </code></pre></div></p>
 <p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>HasParent&lt;ObjectFifoPoolOp&gt;</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>Symbol</code></p>
@@ -13029,9 +13115,9 @@ locks.</p>
 <h3 id="aieobjectfifo_rearm_binding-xilinxaieobjectfiforearmbindingop"><code>aie.objectfifo_rearm_binding</code> (::xilinx::AIE::ObjectFifoRearmBindingOp)<a class="headerlink" href="#aieobjectfifo_rearm_binding-xilinxaieobjectfiforearmbindingop" title="Permanent link">&para;</a></h3>
 <p><em>Resident re-arm binding for an objectFIFO's core/mem DMA channels</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-74-1" name="__codelineno-74-1" href="#__codelineno-74-1"></a>operation ::= `aie.objectfifo_rearm_binding` $sym_name
-<a id="__codelineno-74-2" name="__codelineno-74-2" href="#__codelineno-74-2"></a>              `channels` `(` ($channel_tiles^ `:` type($channel_tiles))? `)`
-<a id="__codelineno-74-3" name="__codelineno-74-3" href="#__codelineno-74-3"></a>              `locks` `(` ($locks^ `:` type($locks))? `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-75-1" name="__codelineno-75-1" href="#__codelineno-75-1"></a>operation ::= `aie.objectfifo_rearm_binding` $sym_name
+<a id="__codelineno-75-2" name="__codelineno-75-2" href="#__codelineno-75-2"></a>              `channels` `(` ($channel_tiles^ `:` type($channel_tiles))? `)`
+<a id="__codelineno-75-3" name="__codelineno-75-3" href="#__codelineno-75-3"></a>              `locks` `(` ($locks^ `:` type($locks))? `)` attr-dict
 </code></pre></div>
 <p>Runtime re-arm information for a single objectFIFO, generalizing
 <code>aie.shim_dma_allocation</code> to the core and mem tile endpoints.</p>
@@ -13061,11 +13147,11 @@ hand-authored binding may set them directly, in which case
 <code>--aie-assign-bd-ids</code> leaves them untouched; this keeps the op usable without
 any objectFIFO code behind it.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-75-1" name="__codelineno-75-1" href="#__codelineno-75-1"></a>  aie.objectfifo_rearm_binding @of_rearm channels(%core_tile : index)
-<a id="__codelineno-75-2" name="__codelineno-75-2" href="#__codelineno-75-2"></a>    locks(%prod_lock, %cons_lock : index, index) {
-<a id="__codelineno-75-3" name="__codelineno-75-3" href="#__codelineno-75-3"></a>      channel_dirs = array&lt;i32: 0&gt;, channel_indices = array&lt;i32: 0&gt;,
-<a id="__codelineno-75-4" name="__codelineno-75-4" href="#__codelineno-75-4"></a>      lock_inits = array&lt;i32: 2, 0&gt;,
-<a id="__codelineno-75-5" name="__codelineno-75-5" href="#__codelineno-75-5"></a>      head_bd_ids = array&lt;i32: 5&gt;, repeat_counts = array&lt;i32: 0&gt; }
+<div class="highlight"><pre><span></span><code><a id="__codelineno-76-1" name="__codelineno-76-1" href="#__codelineno-76-1"></a>  aie.objectfifo_rearm_binding @of_rearm channels(%core_tile : index)
+<a id="__codelineno-76-2" name="__codelineno-76-2" href="#__codelineno-76-2"></a>    locks(%prod_lock, %cons_lock : index, index) {
+<a id="__codelineno-76-3" name="__codelineno-76-3" href="#__codelineno-76-3"></a>      channel_dirs = array&lt;i32: 0&gt;, channel_indices = array&lt;i32: 0&gt;,
+<a id="__codelineno-76-4" name="__codelineno-76-4" href="#__codelineno-76-4"></a>      lock_inits = array&lt;i32: 2, 0&gt;,
+<a id="__codelineno-76-5" name="__codelineno-76-5" href="#__codelineno-76-5"></a>      head_bd_ids = array&lt;i32: 5&gt;, repeat_counts = array&lt;i32: 0&gt; }
 </code></pre></div></p>
 <p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>AttrSizedOperandSegments</code>, <code>HasParent&lt;DeviceOp&gt;</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>Symbol</code></p>
@@ -13102,7 +13188,7 @@ any objectFIFO code behind it.</p>
 <h3 id="aiepacket_dest-xilinxaiepacketdestop"><code>aie.packet_dest</code> (::xilinx::AIE::PacketDestOp)<a class="headerlink" href="#aiepacket_dest-xilinxaiepacketdestop" title="Permanent link">&para;</a></h3>
 <p><em>A destination port</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-76-1" name="__codelineno-76-1" href="#__codelineno-76-1"></a>operation ::= `aie.packet_dest` `&lt;` $tile `,` $bundle `:` $channel `&gt;` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-77-1" name="__codelineno-77-1" href="#__codelineno-77-1"></a>operation ::= `aie.packet_dest` `&lt;` $tile `,` $bundle `:` $channel `&gt;` attr-dict
 </code></pre></div>
 <p>A object representing the destination of a packet-switched flow. This must exist
 within an <a href="#aiepacket_flow-xilinxaiepacketflowop">aie.packet_flow</a> operation. The destination
@@ -13134,7 +13220,7 @@ Must be unique within a design.</p>
 <h3 id="aiepacket_flow-xilinxaiepacketflowop"><code>aie.packet_flow</code> (::xilinx::AIE::PacketFlowOp)<a class="headerlink" href="#aiepacket_flow-xilinxaiepacketflowop" title="Permanent link">&para;</a></h3>
 <p><em>Packet switched flow</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-77-1" name="__codelineno-77-1" href="#__codelineno-77-1"></a>operation ::= `aie.packet_flow` `(` $ID (`,` `mask` `=` $mask^)? `)` regions attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-78-1" name="__codelineno-78-1" href="#__codelineno-78-1"></a>operation ::= `aie.packet_flow` `(` $ID (`,` `mask` `=` $mask^)? `)` regions attr-dict
 </code></pre></div>
 <p>A logical packet-switched flow between tiles.  During place and
 route, this is replaced by MasterSets and PacketRules inside
@@ -13153,16 +13239,16 @@ router decides the mask that matches the given ID and rejects known IDs
 from other routes. The ID must have no bit outside the mask, or no packet
 can match.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-78-1" name="__codelineno-78-1" href="#__codelineno-78-1"></a>  %01 = aie.tile(0, 1)
-<a id="__codelineno-78-2" name="__codelineno-78-2" href="#__codelineno-78-2"></a>  aie.packet_flow(0x10) {
-<a id="__codelineno-78-3" name="__codelineno-78-3" href="#__codelineno-78-3"></a>    aie.packet_source&lt;%01, &quot;Core&quot; : 0&gt;
-<a id="__codelineno-78-4" name="__codelineno-78-4" href="#__codelineno-78-4"></a>    aie.packet_dest&lt;%01, &quot;Core&quot; : 0&gt;
-<a id="__codelineno-78-5" name="__codelineno-78-5" href="#__codelineno-78-5"></a>  }
-<a id="__codelineno-78-6" name="__codelineno-78-6" href="#__codelineno-78-6"></a>  // Claims 0x10 through 0x13: the mask ignores the low two bits.
-<a id="__codelineno-78-7" name="__codelineno-78-7" href="#__codelineno-78-7"></a>  aie.packet_flow(0x10, mask = 0x1c) {
-<a id="__codelineno-78-8" name="__codelineno-78-8" href="#__codelineno-78-8"></a>    aie.packet_source&lt;%01, &quot;Core&quot; : 0&gt;
-<a id="__codelineno-78-9" name="__codelineno-78-9" href="#__codelineno-78-9"></a>    aie.packet_dest&lt;%01, &quot;Core&quot; : 0&gt;
-<a id="__codelineno-78-10" name="__codelineno-78-10" href="#__codelineno-78-10"></a>  }
+<div class="highlight"><pre><span></span><code><a id="__codelineno-79-1" name="__codelineno-79-1" href="#__codelineno-79-1"></a>  %01 = aie.tile(0, 1)
+<a id="__codelineno-79-2" name="__codelineno-79-2" href="#__codelineno-79-2"></a>  aie.packet_flow(0x10) {
+<a id="__codelineno-79-3" name="__codelineno-79-3" href="#__codelineno-79-3"></a>    aie.packet_source&lt;%01, &quot;Core&quot; : 0&gt;
+<a id="__codelineno-79-4" name="__codelineno-79-4" href="#__codelineno-79-4"></a>    aie.packet_dest&lt;%01, &quot;Core&quot; : 0&gt;
+<a id="__codelineno-79-5" name="__codelineno-79-5" href="#__codelineno-79-5"></a>  }
+<a id="__codelineno-79-6" name="__codelineno-79-6" href="#__codelineno-79-6"></a>  // Claims 0x10 through 0x13: the mask ignores the low two bits.
+<a id="__codelineno-79-7" name="__codelineno-79-7" href="#__codelineno-79-7"></a>  aie.packet_flow(0x10, mask = 0x1c) {
+<a id="__codelineno-79-8" name="__codelineno-79-8" href="#__codelineno-79-8"></a>    aie.packet_source&lt;%01, &quot;Core&quot; : 0&gt;
+<a id="__codelineno-79-9" name="__codelineno-79-9" href="#__codelineno-79-9"></a>    aie.packet_dest&lt;%01, &quot;Core&quot; : 0&gt;
+<a id="__codelineno-79-10" name="__codelineno-79-10" href="#__codelineno-79-10"></a>  }
 </code></pre></div></p>
 <p>Traits: <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code></p>
 <h4 id="attributes_29">Attributes:<a class="headerlink" href="#attributes_29" title="Permanent link">&para;</a></h4>
@@ -13177,7 +13263,7 @@ can match.</p>
 <h3 id="aiepacket_rules-xilinxaiepacketrulesop"><code>aie.packet_rules</code> (::xilinx::AIE::PacketRulesOp)<a class="headerlink" href="#aiepacket_rules-xilinxaiepacketrulesop" title="Permanent link">&para;</a></h3>
 <p><em>Packet switched routing rules</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-79-1" name="__codelineno-79-1" href="#__codelineno-79-1"></a>operation ::= `aie.packet_rules` `(` $source_bundle `:` $source_channel `)` regions attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-80-1" name="__codelineno-80-1" href="#__codelineno-80-1"></a>operation ::= `aie.packet_rules` `(` $source_bundle `:` $source_channel `)` regions attr-dict
 </code></pre></div>
 <p>This operation defines packet-switched routing configuration for packets entering a switchbox.
 It references a port of the containing switchbox, which must be unique among other packetRules
@@ -13195,7 +13281,7 @@ It contains a region of up to 4 <a href="#aierule-xilinxaiepacketruleop">aie.rul
 <h3 id="aiepacket_source-xilinxaiepacketsourceop"><code>aie.packet_source</code> (::xilinx::AIE::PacketSourceOp)<a class="headerlink" href="#aiepacket_source-xilinxaiepacketsourceop" title="Permanent link">&para;</a></h3>
 <p><em>A sourceport</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-80-1" name="__codelineno-80-1" href="#__codelineno-80-1"></a>operation ::= `aie.packet_source` `&lt;` $tile `,` $bundle `:` $channel `&gt;` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-81-1" name="__codelineno-81-1" href="#__codelineno-81-1"></a>operation ::= `aie.packet_source` `&lt;` $tile `,` $bundle `:` $channel `&gt;` attr-dict
 </code></pre></div>
 <p>An object representing the destination of a packet-switched flow. This must exist
 within an <a href="#aiepacket_flow-xilinxaiepacketflowop">aie.packet_flow</a> operation.</p>
@@ -13226,7 +13312,7 @@ within an <a href="#aiepacket_flow-xilinxaiepacketflowop">aie.packet_flow</a> op
 <h3 id="aieplio-xilinxaieplioop"><code>aie.plio</code> (::xilinx::AIE::PLIOOp)<a class="headerlink" href="#aieplio-xilinxaieplioop" title="Permanent link">&para;</a></h3>
 <p><em>Declare an interface to the PL</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-81-1" name="__codelineno-81-1" href="#__codelineno-81-1"></a>operation ::= `aie.plio` `(` $col `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-82-1" name="__codelineno-82-1" href="#__codelineno-82-1"></a>operation ::= `aie.plio` `(` $col `)` attr-dict
 </code></pre></div>
 <p>An interface to the PL.</p>
 <p>Interfaces: <code>InferTypeOpInterface</code></p>
@@ -13254,7 +13340,7 @@ within an <a href="#aiepacket_flow-xilinxaiepacketflowop">aie.packet_flow</a> op
 <h3 id="aieput_cascade-xilinxaieputcascadeop"><code>aie.put_cascade</code> (::xilinx::AIE::PutCascadeOp)<a class="headerlink" href="#aieput_cascade-xilinxaieputcascadeop" title="Permanent link">&para;</a></h3>
 <p><em>An op to write to a cascading stream from a neighboring core</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-82-1" name="__codelineno-82-1" href="#__codelineno-82-1"></a>operation ::= `aie.put_cascade` `(` $cascade_value `:` type($cascade_value) `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-83-1" name="__codelineno-83-1" href="#__codelineno-83-1"></a>operation ::= `aie.put_cascade` `(` $cascade_value `:` type($cascade_value) `)` attr-dict
 </code></pre></div>
 <p>An op to write to a cascading stream from a neighboring core.
 The argument type of this operation must have a size that matches the cascade size,
@@ -13277,7 +13363,7 @@ which is architecture-dependent. e.g. AIE1: i384 or vector&lt;8xi48&gt;  AIE2: i
 <h3 id="aieput_stream-xilinxaieputstreamop"><code>aie.put_stream</code> (::xilinx::AIE::PutStreamOp)<a class="headerlink" href="#aieput_stream-xilinxaieputstreamop" title="Permanent link">&para;</a></h3>
 <p><em>An op to write to a stream channel/port of a switchbox</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-83-1" name="__codelineno-83-1" href="#__codelineno-83-1"></a>operation ::= `aie.put_stream` `(` $channel `:` type($channel) `,` $stream_value `:` type($stream_value) `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-84-1" name="__codelineno-84-1" href="#__codelineno-84-1"></a>operation ::= `aie.put_stream` `(` $channel `:` type($channel) `,` $stream_value `:` type($stream_value) `)` attr-dict
 </code></pre></div>
 <p>An op to write to a stream channel/port of a switchbox.</p>
 <p>Traits: <code>HasParent&lt;CoreOp&gt;</code></p>
@@ -13303,7 +13389,7 @@ which is architecture-dependent. e.g. AIE1: i384 or vector&lt;8xi48&gt;  AIE2: i
 <h3 id="aieroute-xilinxaierouteop"><code>aie.route</code> (::xilinx::AIE::RouteOp)<a class="headerlink" href="#aieroute-xilinxaierouteop" title="Permanent link">&para;</a></h3>
 <p><em>A stream connection between endpoints named by symbol</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-84-1" name="__codelineno-84-1" href="#__codelineno-84-1"></a>operation ::= `aie.route` `from` $source `to` $destinations attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-85-1" name="__codelineno-85-1" href="#__codelineno-85-1"></a>operation ::= `aie.route` `from` $source `to` $destinations attr-dict
 </code></pre></div>
 <p>Connects a source endpoint to the destination endpoints it feeds, naming
 each by symbol. Several destinations mean a broadcast: one source channel
@@ -13318,8 +13404,8 @@ stream with every other packet flow rather than reserving a circuit for it.
 an id no other flow is using. Circuit- and packet-switched routes coexist in
 one device.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-85-1" name="__codelineno-85-1" href="#__codelineno-85-1"></a>  aie.route from @src to [@dst0, @dst1]
-<a id="__codelineno-85-2" name="__codelineno-85-2" href="#__codelineno-85-2"></a>  aie.route from @src to [@dst] {packet, packet_id = 3 : i8}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-86-1" name="__codelineno-86-1" href="#__codelineno-86-1"></a>  aie.route from @src to [@dst0, @dst1]
+<a id="__codelineno-86-2" name="__codelineno-86-2" href="#__codelineno-86-2"></a>  aie.route from @src to [@dst] {packet, packet_id = 3 : i8}
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;DeviceOp&gt;</code></p>
 <h4 id="attributes_33">Attributes:<a class="headerlink" href="#attributes_33" title="Permanent link">&para;</a></h4>
@@ -13334,7 +13420,7 @@ one device.</p>
 <h3 id="aieroute_endpoint-xilinxaierouteendpointop"><code>aie.route_endpoint</code> (::xilinx::AIE::RouteEndpointOp)<a class="headerlink" href="#aieroute_endpoint-xilinxaierouteendpointop" title="Permanent link">&para;</a></h3>
 <p><em>A symbolic name for a channel on a tile</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-86-1" name="__codelineno-86-1" href="#__codelineno-86-1"></a>operation ::= `aie.route_endpoint` $sym_name `(` $tile `)` $bundle attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-87-1" name="__codelineno-87-1" href="#__codelineno-87-1"></a>operation ::= `aie.route_endpoint` $sym_name `(` $tile `)` $bundle attr-dict
 </code></pre></div>
 <p>Names a channel on a tile so an <code>aie.route</code> can refer to it by symbol.
 Because the route names the symbol rather than a channel index,
@@ -13357,9 +13443,9 @@ whose BD ids are split between channels (a MemTile's by channel parity), it
 picks the free channel whose BDs have the most room left after the other
 channels' programs and runtime tasks.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-87-1" name="__codelineno-87-1" href="#__codelineno-87-1"></a>  aie.route_endpoint @in(%shim) DMA {fifoName = &quot;in&quot;}
-<a id="__codelineno-87-2" name="__codelineno-87-2" href="#__codelineno-87-2"></a>  aie.route_endpoint @out(%tile) Core {channelIndex = 0}
-<a id="__codelineno-87-3" name="__codelineno-87-3" href="#__codelineno-87-3"></a>  aie.route_endpoint @b_in(%memtile) DMA
+<div class="highlight"><pre><span></span><code><a id="__codelineno-88-1" name="__codelineno-88-1" href="#__codelineno-88-1"></a>  aie.route_endpoint @in(%shim) DMA {fifoName = &quot;in&quot;}
+<a id="__codelineno-88-2" name="__codelineno-88-2" href="#__codelineno-88-2"></a>  aie.route_endpoint @out(%tile) Core {channelIndex = 0}
+<a id="__codelineno-88-3" name="__codelineno-88-3" href="#__codelineno-88-3"></a>  aie.route_endpoint @b_in(%memtile) DMA
 </code></pre></div></p>
 <p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>HasParent&lt;DeviceOp&gt;</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>RouteEndpoint</code>, <code>Symbol</code></p>
@@ -13393,7 +13479,7 @@ channels' programs and runtime tasks.</p>
 <h3 id="aierule-xilinxaiepacketruleop"><code>aie.rule</code> (::xilinx::AIE::PacketRuleOp)<a class="headerlink" href="#aierule-xilinxaiepacketruleop" title="Permanent link">&para;</a></h3>
 <p><em>Packet switched routing rule</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-88-1" name="__codelineno-88-1" href="#__codelineno-88-1"></a>operation ::= `aie.rule` `(` $mask `,` $value `,` $amsel `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-89-1" name="__codelineno-89-1" href="#__codelineno-89-1"></a>operation ::= `aie.rule` `(` $mask `,` $value `,` $amsel `)` attr-dict
 </code></pre></div>
 <p>This operation defines a matching rule and a destination for packet-switched
 connections in a switchbox.  Routing is based on the ID field of packet arriving on the
@@ -13411,13 +13497,13 @@ It is routed to arbiter and master set associated with the first matching entry.
 If a packet flow that has an ID of 1 or 5, it will be directed to the arbiter 3 with msel 2,</p>
 <p>We encapsulate the configuration table as follows:
 Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-89-1" name="__codelineno-89-1" href="#__codelineno-89-1"></a>  %a4_1 = aie.amsel&lt;4&gt;(1)
-<a id="__codelineno-89-2" name="__codelineno-89-2" href="#__codelineno-89-2"></a>  %a3_2 = aie.amsel&lt;3&gt;(2)
-<a id="__codelineno-89-3" name="__codelineno-89-3" href="#__codelineno-89-3"></a>
-<a id="__codelineno-89-4" name="__codelineno-89-4" href="#__codelineno-89-4"></a>  aie.packet_rules(&quot;Core&quot; : 0) {
-<a id="__codelineno-89-5" name="__codelineno-89-5" href="#__codelineno-89-5"></a>    aie.rule(0x1F, 0x2, %a4_1)
-<a id="__codelineno-89-6" name="__codelineno-89-6" href="#__codelineno-89-6"></a>    aie.rule(0x1B, 0x1, %a3_2)
-<a id="__codelineno-89-7" name="__codelineno-89-7" href="#__codelineno-89-7"></a>  }
+<div class="highlight"><pre><span></span><code><a id="__codelineno-90-1" name="__codelineno-90-1" href="#__codelineno-90-1"></a>  %a4_1 = aie.amsel&lt;4&gt;(1)
+<a id="__codelineno-90-2" name="__codelineno-90-2" href="#__codelineno-90-2"></a>  %a3_2 = aie.amsel&lt;3&gt;(2)
+<a id="__codelineno-90-3" name="__codelineno-90-3" href="#__codelineno-90-3"></a>
+<a id="__codelineno-90-4" name="__codelineno-90-4" href="#__codelineno-90-4"></a>  aie.packet_rules(&quot;Core&quot; : 0) {
+<a id="__codelineno-90-5" name="__codelineno-90-5" href="#__codelineno-90-5"></a>    aie.rule(0x1F, 0x2, %a4_1)
+<a id="__codelineno-90-6" name="__codelineno-90-6" href="#__codelineno-90-6"></a>    aie.rule(0x1B, 0x1, %a3_2)
+<a id="__codelineno-90-7" name="__codelineno-90-7" href="#__codelineno-90-7"></a>  }
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;PacketRulesOp&gt;</code></p>
 <h4 id="attributes_35">Attributes:<a class="headerlink" href="#attributes_35" title="Permanent link">&para;</a></h4>
@@ -13477,24 +13563,24 @@ The input arguments are arguments passed in from the host at kernel invocation t
 <h3 id="aieshim_dma-xilinxaieshimdmaop"><code>aie.shim_dma</code> (::xilinx::AIE::ShimDMAOp)<a class="headerlink" href="#aieshim_dma-xilinxaieshimdmaop" title="Permanent link">&para;</a></h3>
 <p><em>Declare a DMA in the PL shim</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-90-1" name="__codelineno-90-1" href="#__codelineno-90-1"></a>operation ::= `aie.shim_dma` `(` $tile `)` regions attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-91-1" name="__codelineno-91-1" href="#__codelineno-91-1"></a>operation ::= `aie.shim_dma` `(` $tile `)` regions attr-dict
 </code></pre></div>
 <p>This operation creates a DMA that belongs to a shim tile.
 The region of a ShimDMAOp is used to setup the DMAs and Block Descriptors.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-91-1" name="__codelineno-91-1" href="#__codelineno-91-1"></a>  %buf = aie.external_buffer : memref&lt;256xi64&gt;
-<a id="__codelineno-91-2" name="__codelineno-91-2" href="#__codelineno-91-2"></a>  %lock1 = aie.lock(%t70, 1)
-<a id="__codelineno-91-3" name="__codelineno-91-3" href="#__codelineno-91-3"></a>
-<a id="__codelineno-91-4" name="__codelineno-91-4" href="#__codelineno-91-4"></a>  %dma = aie.shim_dma(%t70) {
-<a id="__codelineno-91-5" name="__codelineno-91-5" href="#__codelineno-91-5"></a>      aie.dma_start(MM2S, 0, ^bd0, ^end)
-<a id="__codelineno-91-6" name="__codelineno-91-6" href="#__codelineno-91-6"></a>    ^bd0:
-<a id="__codelineno-91-7" name="__codelineno-91-7" href="#__codelineno-91-7"></a>      aie.use_lock(%lock1, Acquire, 1)
-<a id="__codelineno-91-8" name="__codelineno-91-8" href="#__codelineno-91-8"></a>      aie.dma_bd(%buf : memref&lt;512xi16&gt; offset = 0 len = 512)
-<a id="__codelineno-91-9" name="__codelineno-91-9" href="#__codelineno-91-9"></a>      aie.use_lock(%lock1, Release, 0)
-<a id="__codelineno-91-10" name="__codelineno-91-10" href="#__codelineno-91-10"></a>      aie.next_bd ^bd0
-<a id="__codelineno-91-11" name="__codelineno-91-11" href="#__codelineno-91-11"></a>    ^end:
-<a id="__codelineno-91-12" name="__codelineno-91-12" href="#__codelineno-91-12"></a>      aie.end
-<a id="__codelineno-91-13" name="__codelineno-91-13" href="#__codelineno-91-13"></a>  }
+<div class="highlight"><pre><span></span><code><a id="__codelineno-92-1" name="__codelineno-92-1" href="#__codelineno-92-1"></a>  %buf = aie.external_buffer : memref&lt;256xi64&gt;
+<a id="__codelineno-92-2" name="__codelineno-92-2" href="#__codelineno-92-2"></a>  %lock1 = aie.lock(%t70, 1)
+<a id="__codelineno-92-3" name="__codelineno-92-3" href="#__codelineno-92-3"></a>
+<a id="__codelineno-92-4" name="__codelineno-92-4" href="#__codelineno-92-4"></a>  %dma = aie.shim_dma(%t70) {
+<a id="__codelineno-92-5" name="__codelineno-92-5" href="#__codelineno-92-5"></a>      aie.dma_start(MM2S, 0, ^bd0, ^end)
+<a id="__codelineno-92-6" name="__codelineno-92-6" href="#__codelineno-92-6"></a>    ^bd0:
+<a id="__codelineno-92-7" name="__codelineno-92-7" href="#__codelineno-92-7"></a>      aie.use_lock(%lock1, Acquire, 1)
+<a id="__codelineno-92-8" name="__codelineno-92-8" href="#__codelineno-92-8"></a>      aie.dma_bd(%buf : memref&lt;512xi16&gt; offset = 0 len = 512)
+<a id="__codelineno-92-9" name="__codelineno-92-9" href="#__codelineno-92-9"></a>      aie.use_lock(%lock1, Release, 0)
+<a id="__codelineno-92-10" name="__codelineno-92-10" href="#__codelineno-92-10"></a>      aie.next_bd ^bd0
+<a id="__codelineno-92-11" name="__codelineno-92-11" href="#__codelineno-92-11"></a>    ^end:
+<a id="__codelineno-92-12" name="__codelineno-92-12" href="#__codelineno-92-12"></a>      aie.end
+<a id="__codelineno-92-13" name="__codelineno-92-13" href="#__codelineno-92-13"></a>  }
 </code></pre></div>
 Create the shim_dma for tile <code>%t70</code> and setup one DMA channel and one Buffer Descriptor.</p>
 <p>Traits: <code>HasValidBDs</code>, <code>HasValidDMAChannels</code>, <code>IsFlowEndPoint</code></p>
@@ -13532,7 +13618,7 @@ Create the shim_dma for tile <code>%t70</code> and setup one DMA channel and one
 <h3 id="aieshim_dma_allocation-xilinxaieshimdmaallocationop"><code>aie.shim_dma_allocation</code> (::xilinx::AIE::ShimDMAAllocationOp)<a class="headerlink" href="#aieshim_dma_allocation-xilinxaieshimdmaallocationop" title="Permanent link">&para;</a></h3>
 <p><em>Runtime allocation information for a single shim DMA</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-92-1" name="__codelineno-92-1" href="#__codelineno-92-1"></a>operation ::= `aie.shim_dma_allocation` $sym_name `(` $tile `,` $channel_dir `,` $channel_index (`,` $packet^)? `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-93-1" name="__codelineno-93-1" href="#__codelineno-93-1"></a>operation ::= `aie.shim_dma_allocation` $sym_name `(` $tile `,` $channel_dir `,` $channel_index (`,` $packet^)? `)` attr-dict
 </code></pre></div>
 <p>This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
 and hence there is no appropriate dma_start operation to indicate which channel is being
@@ -13540,12 +13626,12 @@ used and on which shim tile the shim_dma is.</p>
 <p>It contains attributes for the sym_name of an operation which generated the shim DMA,
 for the DMAChannelDir and channel index, and a reference to the shim tile.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-93-1" name="__codelineno-93-1" href="#__codelineno-93-1"></a>  %tile00 = aie.tile(0, 0)
-<a id="__codelineno-93-2" name="__codelineno-93-2" href="#__codelineno-93-2"></a>  %tile02 = aie.tile(0, 2)
-<a id="__codelineno-93-3" name="__codelineno-93-3" href="#__codelineno-93-3"></a>  aie.objectfifo @of_in_0 (%tile00, { %tile02 }, 2) : !aie.objectfifo&lt;memref&lt;64xi16&gt;&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-94-1" name="__codelineno-94-1" href="#__codelineno-94-1"></a>  %tile00 = aie.tile(0, 0)
+<a id="__codelineno-94-2" name="__codelineno-94-2" href="#__codelineno-94-2"></a>  %tile02 = aie.tile(0, 2)
+<a id="__codelineno-94-3" name="__codelineno-94-3" href="#__codelineno-94-3"></a>  aie.objectfifo @of_in_0 (%tile00, { %tile02 }, 2) : !aie.objectfifo&lt;memref&lt;64xi16&gt;&gt;
 </code></pre></div>
 could produce the following allocation info (channel direction MM2S, channel index 1, on tile %tile00):
-<div class="highlight"><pre><span></span><code><a id="__codelineno-94-1" name="__codelineno-94-1" href="#__codelineno-94-1"></a>  aie.shim_dma_allocation @of_in_0 (%tile00, MM2S, 1)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-95-1" name="__codelineno-95-1" href="#__codelineno-95-1"></a>  aie.shim_dma_allocation @of_in_0 (%tile00, MM2S, 1)
 </code></pre></div></p>
 <p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>HasParent&lt;DeviceOp&gt;</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>Symbol</code></p>
@@ -13579,16 +13665,16 @@ could produce the following allocation info (channel direction MM2S, channel ind
 <h3 id="aieshim_mux-xilinxaieshimmuxop"><code>aie.shim_mux</code> (::xilinx::AIE::ShimMuxOp)<a class="headerlink" href="#aieshim_mux-xilinxaieshimmuxop" title="Permanent link">&para;</a></h3>
 <p><em>Declare a switch in the PL shim</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-95-1" name="__codelineno-95-1" href="#__codelineno-95-1"></a>operation ::= `aie.shim_mux` `(` $tile `)` regions attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-96-1" name="__codelineno-96-1" href="#__codelineno-96-1"></a>operation ::= `aie.shim_mux` `(` $tile `)` regions attr-dict
 </code></pre></div>
 <p>This operation represents the additional interconnect that is part of a shim interface tile.
 Like the <code>aie.switchbox</code> operation, <code>aie.shim_mux</code> is configured
 by code in its region, but can only contain connect operations</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-96-1" name="__codelineno-96-1" href="#__codelineno-96-1"></a>%tile = aie.tile(1, 1)
-<a id="__codelineno-96-2" name="__codelineno-96-2" href="#__codelineno-96-2"></a>aie.shim_mux(%tile) {
-<a id="__codelineno-96-3" name="__codelineno-96-3" href="#__codelineno-96-3"></a>  aie.connect&lt;&quot;North&quot; : 0, &quot;DMA&quot; : 1&gt;
-<a id="__codelineno-96-4" name="__codelineno-96-4" href="#__codelineno-96-4"></a>}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-97-1" name="__codelineno-97-1" href="#__codelineno-97-1"></a>%tile = aie.tile(1, 1)
+<a id="__codelineno-97-2" name="__codelineno-97-2" href="#__codelineno-97-2"></a>aie.shim_mux(%tile) {
+<a id="__codelineno-97-3" name="__codelineno-97-3" href="#__codelineno-97-3"></a>  aie.connect&lt;&quot;North&quot; : 0, &quot;DMA&quot; : 1&gt;
+<a id="__codelineno-97-4" name="__codelineno-97-4" href="#__codelineno-97-4"></a>}
 </code></pre></div></p>
 <p>Traits: <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code></p>
 <p>Interfaces: <code>InferTypeOpInterface</code>, <code>Interconnect</code>, <code>OpAsmOpInterface</code>, <code>TileElement</code></p>
@@ -13625,15 +13711,15 @@ by code in its region, but can only contain connect operations</p>
 <h3 id="aieswitchbox-xilinxaieswitchboxop"><code>aie.switchbox</code> (::xilinx::AIE::SwitchboxOp)<a class="headerlink" href="#aieswitchbox-xilinxaieswitchboxop" title="Permanent link">&para;</a></h3>
 <p><em>Declare a switch</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-97-1" name="__codelineno-97-1" href="#__codelineno-97-1"></a>operation ::= `aie.switchbox` `(` $tile `)` regions attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-98-1" name="__codelineno-98-1" href="#__codelineno-98-1"></a>operation ::= `aie.switchbox` `(` $tile `)` regions attr-dict
 </code></pre></div>
 <p>This operation represents the switchbox that is part of a tile.  A switchbox is configured
 by code in its region, representing various connections</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-98-1" name="__codelineno-98-1" href="#__codelineno-98-1"></a>%tile = aie.tile(1, 1)
-<a id="__codelineno-98-2" name="__codelineno-98-2" href="#__codelineno-98-2"></a>aie.switchbox(%tile) {
-<a id="__codelineno-98-3" name="__codelineno-98-3" href="#__codelineno-98-3"></a>  aie.connect&lt;&quot;West&quot; : 0, &quot;Core&quot; : 1&gt;
-<a id="__codelineno-98-4" name="__codelineno-98-4" href="#__codelineno-98-4"></a>}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-99-1" name="__codelineno-99-1" href="#__codelineno-99-1"></a>%tile = aie.tile(1, 1)
+<a id="__codelineno-99-2" name="__codelineno-99-2" href="#__codelineno-99-2"></a>aie.switchbox(%tile) {
+<a id="__codelineno-99-3" name="__codelineno-99-3" href="#__codelineno-99-3"></a>  aie.connect&lt;&quot;West&quot; : 0, &quot;Core&quot; : 1&gt;
+<a id="__codelineno-99-4" name="__codelineno-99-4" href="#__codelineno-99-4"></a>}
 </code></pre></div></p>
 <p>Traits: <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code></p>
 <p>Interfaces: <code>InferTypeOpInterface</code>, <code>Interconnect</code>, <code>OpAsmOpInterface</code>, <code>TileElement</code></p>
@@ -13670,7 +13756,7 @@ by code in its region, representing various connections</p>
 <h3 id="aietile-xilinxaietileop"><code>aie.tile</code> (::xilinx::AIE::TileOp)<a class="headerlink" href="#aietile-xilinxaietileop" title="Permanent link">&para;</a></h3>
 <p><em>Declare an AIE tile</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-99-1" name="__codelineno-99-1" href="#__codelineno-99-1"></a>operation ::= `aie.tile` `(` $col `,` $row `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-100-1" name="__codelineno-100-1" href="#__codelineno-100-1"></a>operation ::= `aie.tile` `(` $col `,` $row `)` attr-dict
 </code></pre></div>
 <p>This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.</p>
 <p>A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
@@ -13706,7 +13792,7 @@ the AIE array proper and the PL. The South-West/Lower Right most core exists in 
 <h3 id="aietrace-xilinxaietraceop"><code>aie.trace</code> (::xilinx::AIE::TraceOp)<a class="headerlink" href="#aietrace-xilinxaietraceop" title="Permanent link">&para;</a></h3>
 <p><em>Declare a named trace configuration for a tile</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-100-1" name="__codelineno-100-1" href="#__codelineno-100-1"></a>operation ::= `aie.trace` $sym_name `(` $tile `)` $body attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-101-1" name="__codelineno-101-1" href="#__codelineno-101-1"></a>operation ::= `aie.trace` $sym_name `(` $tile `)` $body attr-dict
 </code></pre></div>
 <p>Declares a named trace configuration that can be invoked from a runtime
 sequence. The trace operation is a symbol that defines what events to
@@ -13714,16 +13800,16 @@ monitor and how to configure the trace hardware, but does not actually
 apply the configuration. Configuration is applied via <code>aie.trace.start_config</code>
 within a <code>aie.runtime_sequence</code> block.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-101-1" name="__codelineno-101-1" href="#__codelineno-101-1"></a>%tile02 = aie.tile(0, 2)
-<a id="__codelineno-101-2" name="__codelineno-101-2" href="#__codelineno-101-2"></a>
-<a id="__codelineno-101-3" name="__codelineno-101-3" href="#__codelineno-101-3"></a>aie.trace @trace_tile02(%tile02) {
-<a id="__codelineno-101-4" name="__codelineno-101-4" href="#__codelineno-101-4"></a>  aie.trace.mode &quot;Event-Time&quot;
-<a id="__codelineno-101-5" name="__codelineno-101-5" href="#__codelineno-101-5"></a>  aie.trace.packet id=1 type=core
-<a id="__codelineno-101-6" name="__codelineno-101-6" href="#__codelineno-101-6"></a>  aie.trace.event&lt;&quot;INSTR_EVENT_0&quot;&gt;
-<a id="__codelineno-101-7" name="__codelineno-101-7" href="#__codelineno-101-7"></a>  aie.trace.event&lt;&quot;INSTR_VECTOR&quot;&gt;
-<a id="__codelineno-101-8" name="__codelineno-101-8" href="#__codelineno-101-8"></a>  aie.trace.start broadcast=15
-<a id="__codelineno-101-9" name="__codelineno-101-9" href="#__codelineno-101-9"></a>  aie.trace.stop broadcast=14
-<a id="__codelineno-101-10" name="__codelineno-101-10" href="#__codelineno-101-10"></a>}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-102-1" name="__codelineno-102-1" href="#__codelineno-102-1"></a>%tile02 = aie.tile(0, 2)
+<a id="__codelineno-102-2" name="__codelineno-102-2" href="#__codelineno-102-2"></a>
+<a id="__codelineno-102-3" name="__codelineno-102-3" href="#__codelineno-102-3"></a>aie.trace @trace_tile02(%tile02) {
+<a id="__codelineno-102-4" name="__codelineno-102-4" href="#__codelineno-102-4"></a>  aie.trace.mode &quot;Event-Time&quot;
+<a id="__codelineno-102-5" name="__codelineno-102-5" href="#__codelineno-102-5"></a>  aie.trace.packet id=1 type=core
+<a id="__codelineno-102-6" name="__codelineno-102-6" href="#__codelineno-102-6"></a>  aie.trace.event&lt;&quot;INSTR_EVENT_0&quot;&gt;
+<a id="__codelineno-102-7" name="__codelineno-102-7" href="#__codelineno-102-7"></a>  aie.trace.event&lt;&quot;INSTR_VECTOR&quot;&gt;
+<a id="__codelineno-102-8" name="__codelineno-102-8" href="#__codelineno-102-8"></a>  aie.trace.start broadcast=15
+<a id="__codelineno-102-9" name="__codelineno-102-9" href="#__codelineno-102-9"></a>  aie.trace.stop broadcast=14
+<a id="__codelineno-102-10" name="__codelineno-102-10" href="#__codelineno-102-10"></a>}
 </code></pre></div></p>
 <p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>HasParent&lt;DeviceOp&gt;</code>, <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>OpAsmOpInterface</code>, <code>Symbol</code></p>
@@ -13751,7 +13837,7 @@ within a <code>aie.runtime_sequence</code> block.</p>
 <h3 id="aietracecombo_event-xilinxaietracecomboeventop"><code>aie.trace.combo_event</code> (::xilinx::AIE::TraceComboEventOp)<a class="headerlink" href="#aietracecombo_event-xilinxaietracecomboeventop" title="Permanent link">&para;</a></h3>
 <p><em>Configure a combo event for logical event combinations</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-102-1" name="__codelineno-102-1" href="#__codelineno-102-1"></a>operation ::= `aie.trace.combo_event` `&lt;` $slot `&gt;` $eventA $logic $eventB attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-103-1" name="__codelineno-103-1" href="#__codelineno-103-1"></a>operation ::= `aie.trace.combo_event` `&lt;` $slot `&gt;` $eventA $logic $eventB attr-dict
 </code></pre></div>
 <p>Configures a combo event that creates a derived event from logical
 combinations of other events. Combo events are evaluated by hardware
@@ -13767,22 +13853,22 @@ through slot 2 (combo of combo0 and combo1 results).</p>
 - Slot 2 (combo2): hierarchical, uses COMBO_EVENT_0 and COMBO_EVENT_1
 - Slot 3 (combo3): architecture-specific state machine (no configuration)</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-103-1" name="__codelineno-103-1" href="#__codelineno-103-1"></a>aie.trace @my_trace(%tile02) {
-<a id="__codelineno-103-2" name="__codelineno-103-2" href="#__codelineno-103-2"></a>  // Configure Combo 0: lock stalled AND NOT DMA active
-<a id="__codelineno-103-3" name="__codelineno-103-3" href="#__codelineno-103-3"></a>  aie.trace.combo_event&lt;0&gt; &lt;&quot;LOCK_STALL&quot;&gt; AND_NOT &lt;&quot;DMA_S2MM_0_STALLED&quot;&gt;
-<a id="__codelineno-103-4" name="__codelineno-103-4" href="#__codelineno-103-4"></a>
-<a id="__codelineno-103-5" name="__codelineno-103-5" href="#__codelineno-103-5"></a>  // Configure Combo 1: instruction event OR vector operation
-<a id="__codelineno-103-6" name="__codelineno-103-6" href="#__codelineno-103-6"></a>  aie.trace.combo_event&lt;1&gt; &lt;CoreEventAIE2::INSTR_EVENT_0&gt; OR &lt;CoreEventAIE2::INSTR_VECTOR&gt;
-<a id="__codelineno-103-7" name="__codelineno-103-7" href="#__codelineno-103-7"></a>
-<a id="__codelineno-103-8" name="__codelineno-103-8" href="#__codelineno-103-8"></a>  // Configure Combo 2: (combo0) AND (combo1)
-<a id="__codelineno-103-9" name="__codelineno-103-9" href="#__codelineno-103-9"></a>  aie.trace.combo_event&lt;2&gt; &lt;&quot;COMBO_EVENT_0&quot;&gt; AND &lt;&quot;COMBO_EVENT_1&quot;&gt;
-<a id="__codelineno-103-10" name="__codelineno-103-10" href="#__codelineno-103-10"></a>
-<a id="__codelineno-103-11" name="__codelineno-103-11" href="#__codelineno-103-11"></a>  // Trace the combo results
-<a id="__codelineno-103-12" name="__codelineno-103-12" href="#__codelineno-103-12"></a>  aie.trace.event&lt;&quot;COMBO_EVENT_0&quot;&gt;
-<a id="__codelineno-103-13" name="__codelineno-103-13" href="#__codelineno-103-13"></a>  aie.trace.event&lt;&quot;COMBO_EVENT_1&quot;&gt;
-<a id="__codelineno-103-14" name="__codelineno-103-14" href="#__codelineno-103-14"></a>  aie.trace.event&lt;&quot;COMBO_EVENT_2&quot;&gt;
-<a id="__codelineno-103-15" name="__codelineno-103-15" href="#__codelineno-103-15"></a>  ...
-<a id="__codelineno-103-16" name="__codelineno-103-16" href="#__codelineno-103-16"></a>}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-104-1" name="__codelineno-104-1" href="#__codelineno-104-1"></a>aie.trace @my_trace(%tile02) {
+<a id="__codelineno-104-2" name="__codelineno-104-2" href="#__codelineno-104-2"></a>  // Configure Combo 0: lock stalled AND NOT DMA active
+<a id="__codelineno-104-3" name="__codelineno-104-3" href="#__codelineno-104-3"></a>  aie.trace.combo_event&lt;0&gt; &lt;&quot;LOCK_STALL&quot;&gt; AND_NOT &lt;&quot;DMA_S2MM_0_STALLED&quot;&gt;
+<a id="__codelineno-104-4" name="__codelineno-104-4" href="#__codelineno-104-4"></a>
+<a id="__codelineno-104-5" name="__codelineno-104-5" href="#__codelineno-104-5"></a>  // Configure Combo 1: instruction event OR vector operation
+<a id="__codelineno-104-6" name="__codelineno-104-6" href="#__codelineno-104-6"></a>  aie.trace.combo_event&lt;1&gt; &lt;CoreEventAIE2::INSTR_EVENT_0&gt; OR &lt;CoreEventAIE2::INSTR_VECTOR&gt;
+<a id="__codelineno-104-7" name="__codelineno-104-7" href="#__codelineno-104-7"></a>
+<a id="__codelineno-104-8" name="__codelineno-104-8" href="#__codelineno-104-8"></a>  // Configure Combo 2: (combo0) AND (combo1)
+<a id="__codelineno-104-9" name="__codelineno-104-9" href="#__codelineno-104-9"></a>  aie.trace.combo_event&lt;2&gt; &lt;&quot;COMBO_EVENT_0&quot;&gt; AND &lt;&quot;COMBO_EVENT_1&quot;&gt;
+<a id="__codelineno-104-10" name="__codelineno-104-10" href="#__codelineno-104-10"></a>
+<a id="__codelineno-104-11" name="__codelineno-104-11" href="#__codelineno-104-11"></a>  // Trace the combo results
+<a id="__codelineno-104-12" name="__codelineno-104-12" href="#__codelineno-104-12"></a>  aie.trace.event&lt;&quot;COMBO_EVENT_0&quot;&gt;
+<a id="__codelineno-104-13" name="__codelineno-104-13" href="#__codelineno-104-13"></a>  aie.trace.event&lt;&quot;COMBO_EVENT_1&quot;&gt;
+<a id="__codelineno-104-14" name="__codelineno-104-14" href="#__codelineno-104-14"></a>  aie.trace.event&lt;&quot;COMBO_EVENT_2&quot;&gt;
+<a id="__codelineno-104-15" name="__codelineno-104-15" href="#__codelineno-104-15"></a>  ...
+<a id="__codelineno-104-16" name="__codelineno-104-16" href="#__codelineno-104-16"></a>}
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_40">Attributes:<a class="headerlink" href="#attributes_40" title="Permanent link">&para;</a></h4>
@@ -13827,17 +13913,17 @@ through slot 2 (combo of combo0 and combo1 results).</p>
 <h3 id="aietraceconfig-xilinxaietraceconfigop"><code>aie.trace.config</code> (::xilinx::AIE::TraceConfigOp)<a class="headerlink" href="#aietraceconfig-xilinxaietraceconfigop" title="Permanent link">&para;</a></h3>
 <p><em>Intermediate representation of lowered trace configuration</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-104-1" name="__codelineno-104-1" href="#__codelineno-104-1"></a>operation ::= `aie.trace.config` $sym_name `(` $tile `)` (`packet_type` `=` $packet_type^)? $body attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-105-1" name="__codelineno-105-1" href="#__codelineno-105-1"></a>operation ::= `aie.trace.config` $sym_name `(` $tile `)` (`packet_type` `=` $packet_type^)? $body attr-dict
 </code></pre></div>
 <p>Generated by AIETraceToConfigPass. Contains calculated register
 addresses and values needed to configure trace hardware.</p>
 <p>This is an intermediate representation that makes it easier to perform
 optimizations before final lowering to NPU register writes.</p>
 <p>Example (generated, not user-written):
-<div class="highlight"><pre><span></span><code><a id="__codelineno-105-1" name="__codelineno-105-1" href="#__codelineno-105-1"></a>aie.trace.config @trace_tile02_config(%tile02) {
-<a id="__codelineno-105-2" name="__codelineno-105-2" href="#__codelineno-105-2"></a>  aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Trace_Start_Event&quot; value=15
-<a id="__codelineno-105-3" name="__codelineno-105-3" href="#__codelineno-105-3"></a>  aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Mode&quot; value=&quot;Event-Time&quot;
-<a id="__codelineno-105-4" name="__codelineno-105-4" href="#__codelineno-105-4"></a>}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-106-1" name="__codelineno-106-1" href="#__codelineno-106-1"></a>aie.trace.config @trace_tile02_config(%tile02) {
+<a id="__codelineno-106-2" name="__codelineno-106-2" href="#__codelineno-106-2"></a>  aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Trace_Start_Event&quot; value=15
+<a id="__codelineno-106-3" name="__codelineno-106-3" href="#__codelineno-106-3"></a>  aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Mode&quot; value=&quot;Event-Time&quot;
+<a id="__codelineno-106-4" name="__codelineno-106-4" href="#__codelineno-106-4"></a>}
 </code></pre></div></p>
 <p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>HasParent&lt;DeviceOp&gt;</code>, <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>Symbol</code></p>
@@ -13880,18 +13966,18 @@ vs. the total cycles spent stalled.</p>
 <p>Each module has 2 edge detectors producing EDGE_DETECTION_EVENT_0/1
 that can be traced using aie.trace.event operations.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-106-1" name="__codelineno-106-1" href="#__codelineno-106-1"></a>aie.trace @my_trace(%tile02) {
-<a id="__codelineno-106-2" name="__codelineno-106-2" href="#__codelineno-106-2"></a>  // Configure Edge detector 0: count lock stalls (rising edges)
-<a id="__codelineno-106-3" name="__codelineno-106-3" href="#__codelineno-106-3"></a>  aie.trace.edge_event&lt;0&gt; event=&lt;&quot;LOCK_STALL&quot;&gt; trigger=RISING
-<a id="__codelineno-106-4" name="__codelineno-106-4" href="#__codelineno-106-4"></a>
-<a id="__codelineno-106-5" name="__codelineno-106-5" href="#__codelineno-106-5"></a>  // Configure Edge detector 1: count DMA transitions (both edges)
-<a id="__codelineno-106-6" name="__codelineno-106-6" href="#__codelineno-106-6"></a>  aie.trace.edge_event&lt;1&gt; event=&lt;MemEventAIE2::DMA_MM2S_0_FINISHED_BD&gt; trigger=BOTH
-<a id="__codelineno-106-7" name="__codelineno-106-7" href="#__codelineno-106-7"></a>
-<a id="__codelineno-106-8" name="__codelineno-106-8" href="#__codelineno-106-8"></a>  // Trace the edge-detected events
-<a id="__codelineno-106-9" name="__codelineno-106-9" href="#__codelineno-106-9"></a>  aie.trace.event&lt;&quot;EDGE_DETECTION_EVENT_0&quot;&gt;
-<a id="__codelineno-106-10" name="__codelineno-106-10" href="#__codelineno-106-10"></a>  aie.trace.event&lt;&quot;EDGE_DETECTION_EVENT_1&quot;&gt;
-<a id="__codelineno-106-11" name="__codelineno-106-11" href="#__codelineno-106-11"></a>  ...
-<a id="__codelineno-106-12" name="__codelineno-106-12" href="#__codelineno-106-12"></a>}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-107-1" name="__codelineno-107-1" href="#__codelineno-107-1"></a>aie.trace @my_trace(%tile02) {
+<a id="__codelineno-107-2" name="__codelineno-107-2" href="#__codelineno-107-2"></a>  // Configure Edge detector 0: count lock stalls (rising edges)
+<a id="__codelineno-107-3" name="__codelineno-107-3" href="#__codelineno-107-3"></a>  aie.trace.edge_event&lt;0&gt; event=&lt;&quot;LOCK_STALL&quot;&gt; trigger=RISING
+<a id="__codelineno-107-4" name="__codelineno-107-4" href="#__codelineno-107-4"></a>
+<a id="__codelineno-107-5" name="__codelineno-107-5" href="#__codelineno-107-5"></a>  // Configure Edge detector 1: count DMA transitions (both edges)
+<a id="__codelineno-107-6" name="__codelineno-107-6" href="#__codelineno-107-6"></a>  aie.trace.edge_event&lt;1&gt; event=&lt;MemEventAIE2::DMA_MM2S_0_FINISHED_BD&gt; trigger=BOTH
+<a id="__codelineno-107-7" name="__codelineno-107-7" href="#__codelineno-107-7"></a>
+<a id="__codelineno-107-8" name="__codelineno-107-8" href="#__codelineno-107-8"></a>  // Trace the edge-detected events
+<a id="__codelineno-107-9" name="__codelineno-107-9" href="#__codelineno-107-9"></a>  aie.trace.event&lt;&quot;EDGE_DETECTION_EVENT_0&quot;&gt;
+<a id="__codelineno-107-10" name="__codelineno-107-10" href="#__codelineno-107-10"></a>  aie.trace.event&lt;&quot;EDGE_DETECTION_EVENT_1&quot;&gt;
+<a id="__codelineno-107-11" name="__codelineno-107-11" href="#__codelineno-107-11"></a>  ...
+<a id="__codelineno-107-12" name="__codelineno-107-12" href="#__codelineno-107-12"></a>}
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_42">Attributes:<a class="headerlink" href="#attributes_42" title="Permanent link">&para;</a></h4>
@@ -13922,15 +14008,15 @@ that can be traced using aie.trace.event operations.</p>
 <h3 id="aietraceevent-xilinxaietraceeventop"><code>aie.trace.event</code> (::xilinx::AIE::TraceEventOp)<a class="headerlink" href="#aietraceevent-xilinxaietraceeventop" title="Permanent link">&para;</a></h3>
 <p><em>Monitor a specific event in this trace unit</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-107-1" name="__codelineno-107-1" href="#__codelineno-107-1"></a>operation ::= `aie.trace.event` $event (`label` `=` $label^)? attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-108-1" name="__codelineno-108-1" href="#__codelineno-108-1"></a>operation ::= `aie.trace.event` $event (`label` `=` $label^)? attr-dict
 </code></pre></div>
 <p>Adds an event to be monitored by the trace unit. Each tile type
 (core/mem/memtile/shimtile) has architecture-specific events.</p>
 <p>Events can be specified as strings or enum values.</p>
 <p>Maximum 8 events per trace unit (verified at compile time).</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-108-1" name="__codelineno-108-1" href="#__codelineno-108-1"></a>aie.trace.event&lt;&quot;INSTR_EVENT_0&quot;&gt;  // String
-<a id="__codelineno-108-2" name="__codelineno-108-2" href="#__codelineno-108-2"></a>aie.trace.event&lt;CoreEventAIE::COMBO_EVENT_0&gt;    // Enum value
+<div class="highlight"><pre><span></span><code><a id="__codelineno-109-1" name="__codelineno-109-1" href="#__codelineno-109-1"></a>aie.trace.event&lt;&quot;INSTR_EVENT_0&quot;&gt;  // String
+<a id="__codelineno-109-2" name="__codelineno-109-2" href="#__codelineno-109-2"></a>aie.trace.event&lt;CoreEventAIE::COMBO_EVENT_0&gt;    // Enum value
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_43">Attributes:<a class="headerlink" href="#attributes_43" title="Permanent link">&para;</a></h4>
@@ -13955,7 +14041,7 @@ that can be traced using aie.trace.event operations.</p>
 <h3 id="aietracehost_config-xilinxaietracehostconfigop"><code>aie.trace.host_config</code> (::xilinx::AIE::TraceHostConfigOp)<a class="headerlink" href="#aietracehost_config-xilinxaietracehostconfigop" title="Permanent link">&para;</a></h3>
 <p><em>Configure host buffer for trace data collection</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-109-1" name="__codelineno-109-1" href="#__codelineno-109-1"></a>operation ::= `aie.trace.host_config` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-110-1" name="__codelineno-110-1" href="#__codelineno-110-1"></a>operation ::= `aie.trace.host_config` attr-dict
 </code></pre></div>
 <p>Configures host-side trace buffer.</p>
 <p>Attributes:
@@ -13970,10 +14056,10 @@ that can be traced using aie.trace.event operations.</p>
 - egress_shim_col (default=0): Column index of the shim tile that receives
   the trace packet flows.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-110-1" name="__codelineno-110-1" href="#__codelineno-110-1"></a>aie.runtime_sequence(%arg0: memref&lt;16xi32&gt;) {
-<a id="__codelineno-110-2" name="__codelineno-110-2" href="#__codelineno-110-2"></a>  aie.trace.host_config {buffer_size = 65536 : i32, egress_shim_col = 4 : i32}
-<a id="__codelineno-110-3" name="__codelineno-110-3" href="#__codelineno-110-3"></a>  aie.trace.start_config @trace1
-<a id="__codelineno-110-4" name="__codelineno-110-4" href="#__codelineno-110-4"></a>}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-111-1" name="__codelineno-111-1" href="#__codelineno-111-1"></a>aie.runtime_sequence(%arg0: memref&lt;16xi32&gt;) {
+<a id="__codelineno-111-2" name="__codelineno-111-2" href="#__codelineno-111-2"></a>  aie.trace.host_config {buffer_size = 65536 : i32, egress_shim_col = 4 : i32}
+<a id="__codelineno-111-3" name="__codelineno-111-3" href="#__codelineno-111-3"></a>  aie.trace.start_config @trace1
+<a id="__codelineno-111-4" name="__codelineno-111-4" href="#__codelineno-111-4"></a>}
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;RuntimeSequenceOp&gt;</code></p>
 <h4 id="attributes_44">Attributes:<a class="headerlink" href="#attributes_44" title="Permanent link">&para;</a></h4>
@@ -13991,11 +14077,11 @@ that can be traced using aie.trace.event operations.</p>
 <h3 id="aietracemode-xilinxaietracemodeop"><code>aie.trace.mode</code> (::xilinx::AIE::TraceModeOp)<a class="headerlink" href="#aietracemode-xilinxaietracemodeop" title="Permanent link">&para;</a></h3>
 <p><em>Set trace mode (Event-Time, Event-PC, or Execution)</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-111-1" name="__codelineno-111-1" href="#__codelineno-111-1"></a>operation ::= `aie.trace.mode` $mode attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-112-1" name="__codelineno-112-1" href="#__codelineno-112-1"></a>operation ::= `aie.trace.mode` $mode attr-dict
 </code></pre></div>
 <p>Specifies the trace mode. Default: "Event-Time"</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-112-1" name="__codelineno-112-1" href="#__codelineno-112-1"></a>aie.trace.mode &quot;Event-Time&quot;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-113-1" name="__codelineno-113-1" href="#__codelineno-113-1"></a>aie.trace.mode &quot;Event-Time&quot;
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_45">Attributes:<a class="headerlink" href="#attributes_45" title="Permanent link">&para;</a></h4>
@@ -14012,7 +14098,7 @@ that can be traced using aie.trace.event operations.</p>
 <h3 id="aietracepacket-xilinxaietracepacketop"><code>aie.trace.packet</code> (::xilinx::AIE::TracePacketOp)<a class="headerlink" href="#aietracepacket-xilinxaietracepacketop" title="Permanent link">&para;</a></h3>
 <p><em>Enable packet-switched trace routing</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-113-1" name="__codelineno-113-1" href="#__codelineno-113-1"></a>operation ::= `aie.trace.packet` (`id` `=` $id^)? `type` `=` $type attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-114-1" name="__codelineno-114-1" href="#__codelineno-114-1"></a>operation ::= `aie.trace.packet` (`id` `=` $id^)? `type` `=` $type attr-dict
 </code></pre></div>
 <p>Enables packet routing for trace data. Assigns packet ID (1-31) and
 packet type to differentiate tile sources during parsing.</p>
@@ -14022,8 +14108,8 @@ the active trace tile set. Omitting id keeps the trace overlay's
 routing-rule layout independent of the order trace ops were emitted
 in the IR (e.g. by the IRON placer's worker-to-tile mapping).</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-114-1" name="__codelineno-114-1" href="#__codelineno-114-1"></a>aie.trace.packet id=1 type=core
-<a id="__codelineno-114-2" name="__codelineno-114-2" href="#__codelineno-114-2"></a>aie.trace.packet type=core         // id auto-assigned
+<div class="highlight"><pre><span></span><code><a id="__codelineno-115-1" name="__codelineno-115-1" href="#__codelineno-115-1"></a>aie.trace.packet id=1 type=core
+<a id="__codelineno-115-2" name="__codelineno-115-2" href="#__codelineno-115-2"></a>aie.trace.packet type=core         // id auto-assigned
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_46">Attributes:<a class="headerlink" href="#attributes_46" title="Permanent link">&para;</a></h4>
@@ -14042,8 +14128,8 @@ in the IR (e.g. by the IRON placer's worker-to-tile mapping).</p>
 <h3 id="aietraceport-xilinxaietraceportop"><code>aie.trace.port</code> (::xilinx::AIE::TracePortOp)<a class="headerlink" href="#aietraceport-xilinxaietraceportop" title="Permanent link">&para;</a></h3>
 <p><em>Configure stream switch port for event monitoring</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-115-1" name="__codelineno-115-1" href="#__codelineno-115-1"></a>operation ::= `aie.trace.port` `&lt;` $slot `&gt;` `port` `=` $port `channel` `=` $channel `direction` `=` $direction
-<a id="__codelineno-115-2" name="__codelineno-115-2" href="#__codelineno-115-2"></a>              attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-116-1" name="__codelineno-116-1" href="#__codelineno-116-1"></a>operation ::= `aie.trace.port` `&lt;` $slot `&gt;` `port` `=` $port `channel` `=` $channel `direction` `=` $direction
+<a id="__codelineno-116-2" name="__codelineno-116-2" href="#__codelineno-116-2"></a>              attr-dict
 </code></pre></div>
 <p>Configures a stream switch port monitoring slot (0-7) to track events
 from a specific port. The port is specified by type (NORTH, DMA, etc.),
@@ -14057,10 +14143,10 @@ channel number, and direction (S2MM=master, MM2S=slave).</p>
 - PORT_STALLED_<slot>
 - PORT_TLAST_<slot></p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-116-1" name="__codelineno-116-1" href="#__codelineno-116-1"></a>aie.trace.port&lt;0&gt; port = North channel = 1 direction = S2MM
-<a id="__codelineno-116-2" name="__codelineno-116-2" href="#__codelineno-116-2"></a>aie.trace.port&lt;1&gt; port = DMA channel = 0 direction = MM2S
-<a id="__codelineno-116-3" name="__codelineno-116-3" href="#__codelineno-116-3"></a>aie.trace.event&lt;&quot;PORT_RUNNING_0&quot;&gt;  // Monitor NORTH:1 (S2MM)
-<a id="__codelineno-116-4" name="__codelineno-116-4" href="#__codelineno-116-4"></a>aie.trace.event&lt;&quot;PORT_IDLE_1&quot;&gt;     // Monitor DMA:0 (MM2S)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-117-1" name="__codelineno-117-1" href="#__codelineno-117-1"></a>aie.trace.port&lt;0&gt; port = North channel = 1 direction = S2MM
+<a id="__codelineno-117-2" name="__codelineno-117-2" href="#__codelineno-117-2"></a>aie.trace.port&lt;1&gt; port = DMA channel = 0 direction = MM2S
+<a id="__codelineno-117-3" name="__codelineno-117-3" href="#__codelineno-117-3"></a>aie.trace.event&lt;&quot;PORT_RUNNING_0&quot;&gt;  // Monitor NORTH:1 (S2MM)
+<a id="__codelineno-117-4" name="__codelineno-117-4" href="#__codelineno-117-4"></a>aie.trace.event&lt;&quot;PORT_IDLE_1&quot;&gt;     // Monitor DMA:0 (MM2S)
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_47">Attributes:<a class="headerlink" href="#attributes_47" title="Permanent link">&para;</a></h4>
@@ -14075,12 +14161,12 @@ channel number, and direction (S2MM=master, MM2S=slave).</p>
 <h3 id="aietracereg-xilinxaietraceregop"><code>aie.trace.reg</code> (::xilinx::AIE::TraceRegOp)<a class="headerlink" href="#aietracereg-xilinxaietraceregop" title="Permanent link">&para;</a></h3>
 <p><em>Specify a trace register field write by logical name</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-117-1" name="__codelineno-117-1" href="#__codelineno-117-1"></a>operation ::= `aie.trace.reg` `register` `=` $reg_name
-<a id="__codelineno-117-2" name="__codelineno-117-2" href="#__codelineno-117-2"></a>              (`field` `=` $field^)?
-<a id="__codelineno-117-3" name="__codelineno-117-3" href="#__codelineno-117-3"></a>              `value` `=` custom&lt;TraceRegValue&gt;($value)
-<a id="__codelineno-117-4" name="__codelineno-117-4" href="#__codelineno-117-4"></a>              (`mask` `=` $mask^)?
-<a id="__codelineno-117-5" name="__codelineno-117-5" href="#__codelineno-117-5"></a>              (`comment` `=` $comment^)?
-<a id="__codelineno-117-6" name="__codelineno-117-6" href="#__codelineno-117-6"></a>              attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-118-1" name="__codelineno-118-1" href="#__codelineno-118-1"></a>operation ::= `aie.trace.reg` `register` `=` $reg_name
+<a id="__codelineno-118-2" name="__codelineno-118-2" href="#__codelineno-118-2"></a>              (`field` `=` $field^)?
+<a id="__codelineno-118-3" name="__codelineno-118-3" href="#__codelineno-118-3"></a>              `value` `=` custom&lt;TraceRegValue&gt;($value)
+<a id="__codelineno-118-4" name="__codelineno-118-4" href="#__codelineno-118-4"></a>              (`mask` `=` $mask^)?
+<a id="__codelineno-118-5" name="__codelineno-118-5" href="#__codelineno-118-5"></a>              (`comment` `=` $comment^)?
+<a id="__codelineno-118-6" name="__codelineno-118-6" href="#__codelineno-118-6"></a>              attr-dict
 </code></pre></div>
 <p>Specifies a single register field write needed to configure trace hardware.
 Uses logical register names (e.g., "Trace_Control0"), field names
@@ -14090,9 +14176,9 @@ is omitted, entire register is written.</p>
 set in the mask are written, and the value is assumed to already be shifted.
 This enables combining multiple field writes into a single register write.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-118-1" name="__codelineno-118-1" href="#__codelineno-118-1"></a>aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Trace_Start_Event&quot; value=15
-<a id="__codelineno-118-2" name="__codelineno-118-2" href="#__codelineno-118-2"></a>aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Mode&quot; value=0
-<a id="__codelineno-118-3" name="__codelineno-118-3" href="#__codelineno-118-3"></a>aie.trace.reg register=&quot;Trace_Control0&quot; value=0x12345678 mask=0xFF00
+<div class="highlight"><pre><span></span><code><a id="__codelineno-119-1" name="__codelineno-119-1" href="#__codelineno-119-1"></a>aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Trace_Start_Event&quot; value=15
+<a id="__codelineno-119-2" name="__codelineno-119-2" href="#__codelineno-119-2"></a>aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Mode&quot; value=0
+<a id="__codelineno-119-3" name="__codelineno-119-3" href="#__codelineno-119-3"></a>aie.trace.reg register=&quot;Trace_Control0&quot; value=0x12345678 mask=0xFF00
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceConfigOp&gt;</code></p>
 <h4 id="attributes_48">Attributes:<a class="headerlink" href="#attributes_48" title="Permanent link">&para;</a></h4>
@@ -14110,8 +14196,8 @@ This enables combining multiple field writes into a single register write.</p>
 <p>Specifies the event that triggers trace capture to begin.
 For multi-tile tracing, typically uses a broadcast event (default: 15).</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-119-1" name="__codelineno-119-1" href="#__codelineno-119-1"></a>aie.trace.start broadcast=15
-<a id="__codelineno-119-2" name="__codelineno-119-2" href="#__codelineno-119-2"></a>aie.trace.start event=&lt;&quot;TRUE&quot;&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-120-1" name="__codelineno-120-1" href="#__codelineno-120-1"></a>aie.trace.start broadcast=15
+<a id="__codelineno-120-2" name="__codelineno-120-2" href="#__codelineno-120-2"></a>aie.trace.start event=&lt;&quot;TRUE&quot;&gt;
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_49">Attributes:<a class="headerlink" href="#attributes_49" title="Permanent link">&para;</a></h4>
@@ -14136,15 +14222,15 @@ For multi-tile tracing, typically uses a broadcast event (default: 15).</p>
 <h3 id="aietracestart_config-xilinxaietracestartconfigop"><code>aie.trace.start_config</code> (::xilinx::AIE::TraceStartConfigOp)<a class="headerlink" href="#aietracestart_config-xilinxaietracestartconfigop" title="Permanent link">&para;</a></h3>
 <p><em>Apply a trace configuration in runtime sequence</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-120-1" name="__codelineno-120-1" href="#__codelineno-120-1"></a>operation ::= `aie.trace.start_config` $trace_config attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-121-1" name="__codelineno-121-1" href="#__codelineno-121-1"></a>operation ::= `aie.trace.start_config` $trace_config attr-dict
 </code></pre></div>
 <p>Invokes a named trace configuration within a runtime sequence.
 During lowering, this operation is replaced by the actual register
 writes (npu_write32) that implement the trace configuration.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-121-1" name="__codelineno-121-1" href="#__codelineno-121-1"></a>aie.runtime_sequence @seq {
-<a id="__codelineno-121-2" name="__codelineno-121-2" href="#__codelineno-121-2"></a>  aie.trace.start_config @my_trace
-<a id="__codelineno-121-3" name="__codelineno-121-3" href="#__codelineno-121-3"></a>}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-122-1" name="__codelineno-122-1" href="#__codelineno-122-1"></a>aie.runtime_sequence @seq {
+<a id="__codelineno-122-2" name="__codelineno-122-2" href="#__codelineno-122-2"></a>  aie.trace.start_config @my_trace
+<a id="__codelineno-122-3" name="__codelineno-122-3" href="#__codelineno-122-3"></a>}
 </code></pre></div></p>
 <h4 id="attributes_50">Attributes:<a class="headerlink" href="#attributes_50" title="Permanent link">&para;</a></h4>
 <table>
@@ -14157,8 +14243,8 @@ writes (npu_write32) that implement the trace configuration.</p>
 <p>Specifies the event that triggers trace capture to end.
 For multi-tile tracing, typically uses a broadcast event (default: 14).</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-122-1" name="__codelineno-122-1" href="#__codelineno-122-1"></a>aie.trace.stop broadcast=14
-<a id="__codelineno-122-2" name="__codelineno-122-2" href="#__codelineno-122-2"></a>aie.trace.stop event=&lt;&quot;USER_EVENT_0&quot;&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-123-1" name="__codelineno-123-1" href="#__codelineno-123-1"></a>aie.trace.stop broadcast=14
+<a id="__codelineno-123-2" name="__codelineno-123-2" href="#__codelineno-123-2"></a>aie.trace.stop event=&lt;&quot;USER_EVENT_0&quot;&gt;
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_51">Attributes:<a class="headerlink" href="#attributes_51" title="Permanent link">&para;</a></h4>
@@ -14183,7 +14269,7 @@ For multi-tile tracing, typically uses a broadcast event (default: 14).</p>
 <h3 id="aieuse_lock-xilinxaieuselockop"><code>aie.use_lock</code> (::xilinx::AIE::UseLockOp)<a class="headerlink" href="#aieuse_lock-xilinxaieuselockop" title="Permanent link">&para;</a></h3>
 <p><em>Acquire/release lock op</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-123-1" name="__codelineno-123-1" href="#__codelineno-123-1"></a>operation ::= `aie.use_lock` `(` $lock `,` $action `,` $value (`,` $blocking^)? `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-124-1" name="__codelineno-124-1" href="#__codelineno-124-1"></a>operation ::= `aie.use_lock` `(` $lock `,` $action `,` $value (`,` $blocking^)? `)` attr-dict
 </code></pre></div>
 <p>This operation uses a lock.
 AIE1 locks are binary locks while AIE2 locks are counting semaphores
@@ -14230,7 +14316,7 @@ otherwise.</p>
 <h3 id="aiewire-xilinxaiewireop"><code>aie.wire</code> (::xilinx::AIE::WireOp)<a class="headerlink" href="#aiewire-xilinxaiewireop" title="Permanent link">&para;</a></h3>
 <p><em>A bundle of physical wires between components</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-124-1" name="__codelineno-124-1" href="#__codelineno-124-1"></a>operation ::= `aie.wire` `(` $source `:` $source_bundle `,` $dest `:` $dest_bundle `)` attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-125-1" name="__codelineno-125-1" href="#__codelineno-125-1"></a>operation ::= `aie.wire` `(` $source `:` $source_bundle `,` $dest `:` $dest_bundle `)` attr-dict
 </code></pre></div>
 <p>The <code>aie.wire</code> operation represents a physical set of connections between components in a Versal device.
 Typically, these components are switches, represented by an <code>aie.switchbox</code> operation, and tiles,
@@ -14264,9 +14350,9 @@ represented by an <a href="#aietile-xilinxaietileop">aie.tile</a> operation.</p>
 <h2 id="attributes_54">Attributes<a class="headerlink" href="#attributes_54" title="Permanent link">&para;</a></h2>
 <h3 id="bddimlayoutarrayarrayattr">BDDimLayoutArrayArrayAttr<a class="headerlink" href="#bddimlayoutarrayarrayattr" title="Permanent link">&para;</a></h3>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-125-1" name="__codelineno-125-1" href="#__codelineno-125-1"></a>#aie.bd_dim_layout_array_array&lt;
-<a id="__codelineno-125-2" name="__codelineno-125-2" href="#__codelineno-125-2"></a>  ::llvm::ArrayRef&lt;BDDimLayoutArrayAttr&gt;   # value
-<a id="__codelineno-125-3" name="__codelineno-125-3" href="#__codelineno-125-3"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-126-1" name="__codelineno-126-1" href="#__codelineno-126-1"></a>#aie.bd_dim_layout_array_array&lt;
+<a id="__codelineno-126-2" name="__codelineno-126-2" href="#__codelineno-126-2"></a>  ::llvm::ArrayRef&lt;BDDimLayoutArrayAttr&gt;   # value
+<a id="__codelineno-126-3" name="__codelineno-126-3" href="#__codelineno-126-3"></a>&gt;
 </code></pre></div>
 <h4 id="parameters">Parameters:<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h4>
 <table>
@@ -14287,9 +14373,9 @@ represented by an <a href="#aietile-xilinxaietileop">aie.tile</a> operation.</p>
 </table>
 <h3 id="bddimlayoutarrayattr">BDDimLayoutArrayAttr<a class="headerlink" href="#bddimlayoutarrayattr" title="Permanent link">&para;</a></h3>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-126-1" name="__codelineno-126-1" href="#__codelineno-126-1"></a>#aie.bd_dim_layout_array&lt;
-<a id="__codelineno-126-2" name="__codelineno-126-2" href="#__codelineno-126-2"></a>  ::llvm::ArrayRef&lt;BDDimLayoutAttr&gt;   # value
-<a id="__codelineno-126-3" name="__codelineno-126-3" href="#__codelineno-126-3"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-127-1" name="__codelineno-127-1" href="#__codelineno-127-1"></a>#aie.bd_dim_layout_array&lt;
+<a id="__codelineno-127-2" name="__codelineno-127-2" href="#__codelineno-127-2"></a>  ::llvm::ArrayRef&lt;BDDimLayoutAttr&gt;   # value
+<a id="__codelineno-127-3" name="__codelineno-127-3" href="#__codelineno-127-3"></a>&gt;
 </code></pre></div>
 <h4 id="parameters_1">Parameters:<a class="headerlink" href="#parameters_1" title="Permanent link">&para;</a></h4>
 <table>
@@ -14312,10 +14398,10 @@ represented by an <a href="#aietile-xilinxaietileop">aie.tile</a> operation.</p>
 <p><em>Tuple encoding the stride and size of one dimension in an AIE2 n-dimensional
     buffer descriptor;</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-127-1" name="__codelineno-127-1" href="#__codelineno-127-1"></a>#aie.bd_dim_layout&lt;
-<a id="__codelineno-127-2" name="__codelineno-127-2" href="#__codelineno-127-2"></a>  uint32_t,   # size
-<a id="__codelineno-127-3" name="__codelineno-127-3" href="#__codelineno-127-3"></a>  uint32_t   # stride
-<a id="__codelineno-127-4" name="__codelineno-127-4" href="#__codelineno-127-4"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-128-1" name="__codelineno-128-1" href="#__codelineno-128-1"></a>#aie.bd_dim_layout&lt;
+<a id="__codelineno-128-2" name="__codelineno-128-2" href="#__codelineno-128-2"></a>  uint32_t,   # size
+<a id="__codelineno-128-3" name="__codelineno-128-3" href="#__codelineno-128-3"></a>  uint32_t   # stride
+<a id="__codelineno-128-4" name="__codelineno-128-4" href="#__codelineno-128-4"></a>&gt;
 </code></pre></div>
 <h4 id="parameters_2">Parameters:<a class="headerlink" href="#parameters_2" title="Permanent link">&para;</a></h4>
 <table>
@@ -14343,11 +14429,11 @@ represented by an <a href="#aietile-xilinxaietileop">aie.tile</a> operation.</p>
 <p><em>Tuple encoding the iteration state of a buffer descriptor in
     true (element) values;</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-128-1" name="__codelineno-128-1" href="#__codelineno-128-1"></a>#aie.bd_iteration&lt;
-<a id="__codelineno-128-2" name="__codelineno-128-2" href="#__codelineno-128-2"></a>  uint32_t,   # size
-<a id="__codelineno-128-3" name="__codelineno-128-3" href="#__codelineno-128-3"></a>  uint32_t,   # stride
-<a id="__codelineno-128-4" name="__codelineno-128-4" href="#__codelineno-128-4"></a>  uint32_t   # current
-<a id="__codelineno-128-5" name="__codelineno-128-5" href="#__codelineno-128-5"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-129-1" name="__codelineno-129-1" href="#__codelineno-129-1"></a>#aie.bd_iteration&lt;
+<a id="__codelineno-129-2" name="__codelineno-129-2" href="#__codelineno-129-2"></a>  uint32_t,   # size
+<a id="__codelineno-129-3" name="__codelineno-129-3" href="#__codelineno-129-3"></a>  uint32_t,   # stride
+<a id="__codelineno-129-4" name="__codelineno-129-4" href="#__codelineno-129-4"></a>  uint32_t   # current
+<a id="__codelineno-129-5" name="__codelineno-129-5" href="#__codelineno-129-5"></a>&gt;
 </code></pre></div>
 <h4 id="parameters_3">Parameters:<a class="headerlink" href="#parameters_3" title="Permanent link">&para;</a></h4>
 <table>
@@ -14378,9 +14464,9 @@ represented by an <a href="#aietile-xilinxaietileop">aie.tile</a> operation.</p>
 </table>
 <h3 id="bdpadlayoutarrayarrayattr">BDPadLayoutArrayArrayAttr<a class="headerlink" href="#bdpadlayoutarrayarrayattr" title="Permanent link">&para;</a></h3>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-129-1" name="__codelineno-129-1" href="#__codelineno-129-1"></a>#aie.bd_pad_layout_array_array&lt;
-<a id="__codelineno-129-2" name="__codelineno-129-2" href="#__codelineno-129-2"></a>  ::llvm::ArrayRef&lt;BDPadLayoutArrayAttr&gt;   # value
-<a id="__codelineno-129-3" name="__codelineno-129-3" href="#__codelineno-129-3"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-130-1" name="__codelineno-130-1" href="#__codelineno-130-1"></a>#aie.bd_pad_layout_array_array&lt;
+<a id="__codelineno-130-2" name="__codelineno-130-2" href="#__codelineno-130-2"></a>  ::llvm::ArrayRef&lt;BDPadLayoutArrayAttr&gt;   # value
+<a id="__codelineno-130-3" name="__codelineno-130-3" href="#__codelineno-130-3"></a>&gt;
 </code></pre></div>
 <h4 id="parameters_4">Parameters:<a class="headerlink" href="#parameters_4" title="Permanent link">&para;</a></h4>
 <table>
@@ -14401,9 +14487,9 @@ represented by an <a href="#aietile-xilinxaietileop">aie.tile</a> operation.</p>
 </table>
 <h3 id="bdpadlayoutarrayattr">BDPadLayoutArrayAttr<a class="headerlink" href="#bdpadlayoutarrayattr" title="Permanent link">&para;</a></h3>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-130-1" name="__codelineno-130-1" href="#__codelineno-130-1"></a>#aie.bd_pad_layout_array&lt;
-<a id="__codelineno-130-2" name="__codelineno-130-2" href="#__codelineno-130-2"></a>  ::llvm::ArrayRef&lt;BDPadLayoutAttr&gt;   # value
-<a id="__codelineno-130-3" name="__codelineno-130-3" href="#__codelineno-130-3"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-131-1" name="__codelineno-131-1" href="#__codelineno-131-1"></a>#aie.bd_pad_layout_array&lt;
+<a id="__codelineno-131-2" name="__codelineno-131-2" href="#__codelineno-131-2"></a>  ::llvm::ArrayRef&lt;BDPadLayoutAttr&gt;   # value
+<a id="__codelineno-131-3" name="__codelineno-131-3" href="#__codelineno-131-3"></a>&gt;
 </code></pre></div>
 <h4 id="parameters_5">Parameters:<a class="headerlink" href="#parameters_5" title="Permanent link">&para;</a></h4>
 <table>
@@ -14426,10 +14512,10 @@ represented by an <a href="#aietile-xilinxaietileop">aie.tile</a> operation.</p>
 <p><em>Tuple encoding number of zeros before and after on that dimension in an AIE2
     n-dimensional buffer descriptor;</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-131-1" name="__codelineno-131-1" href="#__codelineno-131-1"></a>#aie.bd_pad_layout&lt;
-<a id="__codelineno-131-2" name="__codelineno-131-2" href="#__codelineno-131-2"></a>  uint16_t,   # const_pad_before
-<a id="__codelineno-131-3" name="__codelineno-131-3" href="#__codelineno-131-3"></a>  uint16_t   # const_pad_after
-<a id="__codelineno-131-4" name="__codelineno-131-4" href="#__codelineno-131-4"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-132-1" name="__codelineno-132-1" href="#__codelineno-132-1"></a>#aie.bd_pad_layout&lt;
+<a id="__codelineno-132-2" name="__codelineno-132-2" href="#__codelineno-132-2"></a>  uint16_t,   # const_pad_before
+<a id="__codelineno-132-3" name="__codelineno-132-3" href="#__codelineno-132-3"></a>  uint16_t   # const_pad_after
+<a id="__codelineno-132-4" name="__codelineno-132-4" href="#__codelineno-132-4"></a>&gt;
 </code></pre></div>
 <h4 id="parameters_6">Parameters:<a class="headerlink" href="#parameters_6" title="Permanent link">&para;</a></h4>
 <table>
@@ -14456,10 +14542,10 @@ represented by an <a href="#aietile-xilinxaietileop">aie.tile</a> operation.</p>
 <h3 id="packetinfoattr">PacketInfoAttr<a class="headerlink" href="#packetinfoattr" title="Permanent link">&para;</a></h3>
 <p><em>Tuple encoding the type and header of a packet;</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-132-1" name="__codelineno-132-1" href="#__codelineno-132-1"></a>#aie.packet_info&lt;
-<a id="__codelineno-132-2" name="__codelineno-132-2" href="#__codelineno-132-2"></a>  uint16_t,   # pkt_type
-<a id="__codelineno-132-3" name="__codelineno-132-3" href="#__codelineno-132-3"></a>  uint16_t   # pkt_id
-<a id="__codelineno-132-4" name="__codelineno-132-4" href="#__codelineno-132-4"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-133-1" name="__codelineno-133-1" href="#__codelineno-133-1"></a>#aie.packet_info&lt;
+<a id="__codelineno-133-2" name="__codelineno-133-2" href="#__codelineno-133-2"></a>  uint16_t,   # pkt_type
+<a id="__codelineno-133-3" name="__codelineno-133-3" href="#__codelineno-133-3"></a>  uint16_t   # pkt_id
+<a id="__codelineno-133-4" name="__codelineno-133-4" href="#__codelineno-133-4"></a>&gt;
 </code></pre></div>
 <h4 id="parameters_7">Parameters:<a class="headerlink" href="#parameters_7" title="Permanent link">&para;</a></h4>
 <table>
@@ -14486,12 +14572,12 @@ represented by an <a href="#aietile-xilinxaietileop">aie.tile</a> operation.</p>
 <h3 id="tracebufferattr">TraceBufferAttr<a class="headerlink" href="#tracebufferattr" title="Permanent link">&para;</a></h3>
 <p><em>The runtime sequence argument that receives trace data;</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-133-1" name="__codelineno-133-1" href="#__codelineno-133-1"></a>#aie.trace_buffer&lt;
-<a id="__codelineno-133-2" name="__codelineno-133-2" href="#__codelineno-133-2"></a>  uint32_t,   # arg_index
-<a id="__codelineno-133-3" name="__codelineno-133-3" href="#__codelineno-133-3"></a>  uint32_t,   # offset
-<a id="__codelineno-133-4" name="__codelineno-133-4" href="#__codelineno-133-4"></a>  uint32_t,   # size
-<a id="__codelineno-133-5" name="__codelineno-133-5" href="#__codelineno-133-5"></a>  bool   # dedicated
-<a id="__codelineno-133-6" name="__codelineno-133-6" href="#__codelineno-133-6"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-134-1" name="__codelineno-134-1" href="#__codelineno-134-1"></a>#aie.trace_buffer&lt;
+<a id="__codelineno-134-2" name="__codelineno-134-2" href="#__codelineno-134-2"></a>  uint32_t,   # arg_index
+<a id="__codelineno-134-3" name="__codelineno-134-3" href="#__codelineno-134-3"></a>  uint32_t,   # offset
+<a id="__codelineno-134-4" name="__codelineno-134-4" href="#__codelineno-134-4"></a>  uint32_t,   # size
+<a id="__codelineno-134-5" name="__codelineno-134-5" href="#__codelineno-134-5"></a>  bool   # dedicated
+<a id="__codelineno-134-6" name="__codelineno-134-6" href="#__codelineno-134-6"></a>&gt;
 </code></pre></div>
 <p><code>-aie-insert-trace-flows</code> sets this on every traced <code>aie.runtime_sequence</code>.
 <code>-aie-fuse-trace-buffers</code> reads it to find the argument. That pass grows the
@@ -14538,9 +14624,9 @@ The passes and the Python trace parser both read it.</p>
 <h3 id="traceeventattr">TraceEventAttr<a class="headerlink" href="#traceeventattr" title="Permanent link">&para;</a></h3>
 <p><em>Reference to a trace event by name or enum</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-134-1" name="__codelineno-134-1" href="#__codelineno-134-1"></a>#aie.trace_event&lt;
-<a id="__codelineno-134-2" name="__codelineno-134-2" href="#__codelineno-134-2"></a>  Attribute   # value
-<a id="__codelineno-134-3" name="__codelineno-134-3" href="#__codelineno-134-3"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-135-1" name="__codelineno-135-1" href="#__codelineno-135-1"></a>#aie.trace_event&lt;
+<a id="__codelineno-135-2" name="__codelineno-135-2" href="#__codelineno-135-2"></a>  Attribute   # value
+<a id="__codelineno-135-3" name="__codelineno-135-3" href="#__codelineno-135-3"></a>&gt;
 </code></pre></div>
 <p>References an event by name string or typed enum. Strings are used for
 generic references that are resolved during lowering. Enums provide
@@ -14571,12 +14657,12 @@ compile-time type checking.</p>
 <h3 id="tracesliceattr">TraceSliceAttr<a class="headerlink" href="#tracesliceattr" title="Permanent link">&para;</a></h3>
 <p><em>One design's byte range inside a shared trace buffer;</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-135-1" name="__codelineno-135-1" href="#__codelineno-135-1"></a>#aie.trace_slice&lt;
-<a id="__codelineno-135-2" name="__codelineno-135-2" href="#__codelineno-135-2"></a>  ::llvm::StringRef,   # device
-<a id="__codelineno-135-3" name="__codelineno-135-3" href="#__codelineno-135-3"></a>  ::llvm::StringRef,   # sequence
-<a id="__codelineno-135-4" name="__codelineno-135-4" href="#__codelineno-135-4"></a>  uint32_t,   # offset
-<a id="__codelineno-135-5" name="__codelineno-135-5" href="#__codelineno-135-5"></a>  uint32_t   # size
-<a id="__codelineno-135-6" name="__codelineno-135-6" href="#__codelineno-135-6"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-136-1" name="__codelineno-136-1" href="#__codelineno-136-1"></a>#aie.trace_slice&lt;
+<a id="__codelineno-136-2" name="__codelineno-136-2" href="#__codelineno-136-2"></a>  ::llvm::StringRef,   # device
+<a id="__codelineno-136-3" name="__codelineno-136-3" href="#__codelineno-136-3"></a>  ::llvm::StringRef,   # sequence
+<a id="__codelineno-136-4" name="__codelineno-136-4" href="#__codelineno-136-4"></a>  uint32_t,   # offset
+<a id="__codelineno-136-5" name="__codelineno-136-5" href="#__codelineno-136-5"></a>  uint32_t   # size
+<a id="__codelineno-136-6" name="__codelineno-136-6" href="#__codelineno-136-6"></a>&gt;
 </code></pre></div>
 <p><code>-aie-fuse-trace-buffers</code> records one of these per <code>aiex.run</code> call site, in
 buffer order, on the calling <code>aie.runtime_sequence</code>. A host reads them to
@@ -14618,9 +14704,9 @@ attribute each byte range of the trace buffer to the design that wrote it.</p>
 <h2 id="types">Types<a class="headerlink" href="#types" title="Permanent link">&para;</a></h2>
 <h3 id="aieobjectfifotype">AIEObjectFifoType<a class="headerlink" href="#aieobjectfifotype" title="Permanent link">&para;</a></h3>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-136-1" name="__codelineno-136-1" href="#__codelineno-136-1"></a>!aie.objectfifo&lt;
-<a id="__codelineno-136-2" name="__codelineno-136-2" href="#__codelineno-136-2"></a>  ::mlir::MemRefType   # memref
-<a id="__codelineno-136-3" name="__codelineno-136-3" href="#__codelineno-136-3"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-137-1" name="__codelineno-137-1" href="#__codelineno-137-1"></a>!aie.objectfifo&lt;
+<a id="__codelineno-137-2" name="__codelineno-137-2" href="#__codelineno-137-2"></a>  ::mlir::MemRefType   # memref
+<a id="__codelineno-137-3" name="__codelineno-137-3" href="#__codelineno-137-3"></a>&gt;
 </code></pre></div>
 <p>An object FIFO represents the data movement connection between a source and one or multiple destinations.</p>
 <h4 id="parameters_11">Parameters:<a class="headerlink" href="#parameters_11" title="Permanent link">&para;</a></h4>

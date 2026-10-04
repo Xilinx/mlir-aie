@@ -4728,6 +4728,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#runtime-length" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime Length
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#attributes_35" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5390,6 +5401,51 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#attributes_52" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attributes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Attributes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jointboundattr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JointBoundAttr
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="JointBoundAttr">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#types" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5414,7 +5470,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#parameters" class="md-nav__link">
+  <a href="#parameters_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Parameters:
@@ -8231,6 +8287,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#runtime-length" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime Length
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#attributes_35" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -8893,6 +8960,51 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#attributes_52" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attributes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Attributes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jointboundattr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JointBoundAttr
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="JointBoundAttr">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#types" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -8917,7 +9029,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#parameters" class="md-nav__link">
+  <a href="#parameters_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Parameters:
@@ -10471,6 +10583,7 @@ and <a href="../programming_guide/section-3/">Section 3 - My First Program</a>.<
 <li><a href="#data-layout-transformations">Data Layout Transformations</a></li>
 <li><a href="#automatic-linearization-of-contiguous-accesses">Automatic Linearization of Contiguous Accesses</a></li>
 <li><a href="#packet-header-attribute">Packet Header Attribute</a></li>
+<li><a href="#runtime-length">Runtime Length</a></li>
 <li><a href="#attributes_35">Attributes:</a></li>
 <li><a href="#operands_18">Operands:</a></li>
 </ul>
@@ -10559,9 +10672,16 @@ and <a href="../programming_guide/section-3/">Section 3 - My First Program</a>.<
 </li>
 </ul>
 </li>
+<li><a href="#attributes_52">Attributes</a><ul>
+<li><a href="#jointboundattr">JointBoundAttr</a><ul>
+<li><a href="#parameters">Parameters:</a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li><a href="#types">Types</a><ul>
 <li><a href="#blockfloattype">BlockFloatType</a><ul>
-<li><a href="#parameters">Parameters:</a></li>
+<li><a href="#parameters_1">Parameters:</a></li>
 </ul>
 </li>
 </ul>
@@ -12086,6 +12206,15 @@ and avoids the 10-bit d0 wrap-size constraint that applies to ND transfers.</p>
 <p>The optional <code>packet</code> attribute defines the packet header and packet type that gets issued per DMA BD.
 If the attribute is set, then every time the DMA BD gets issued, a packet header is generated prior to the transmission of data.
 The packet header is used to guide arbitration throughout a packet-routed data flow, where each switch box arbitrates the data packet to stream to a successor based on the packet header.</p>
+<h4 id="runtime-length">Runtime Length<a class="headerlink" href="#runtime-length" title="Permanent link">&para;</a></h4>
+<p>With <code>length_parameter = @n</code> and <code>length_unit = u</code>, the transfer moves <code>u * n</code> more elements than
+its sizes describe, where <code>n</code> is the value the host writes to the <code>aiex.scratchpad_parameter</code> <code>@n</code>.
+The extra elements continue the third dimension (the second, if the third has size one; or the
+linear transfer), and every iteration of the outermost dimension gets them. The constraints are
+those of <code>length_parameter</code> on
+<a href="./AIEDialect.html#aiedma_bd-xilinxaiedmabdop"><code>aie.dma_bd</code></a>, and the offsets, sizes and strides
+must be constants. The sizes are always moved, so for a
+transfer of exactly <code>n</code> units use an <code>aie.dma_bd</code> with <code>len = 0</code> in an <code>aiex.dma_configure_task</code>.</p>
 <p>Traits: <code>AttrSizedOperandSegments</code></p>
 <p>Interfaces: <code>MyOffsetSizeAndStrideOpInterface</code></p>
 <h4 id="attributes_35">Attributes:<a class="headerlink" href="#attributes_35" title="Permanent link">&para;</a></h4>
@@ -12110,6 +12239,10 @@ The packet header is used to guide arbitration throughout a packet-routed data f
 <tr><td><code>axcache</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute whose minimum value is 0 whose maximum value is 15</td></tr>
 <tr><td><code>offset_parameter</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>offset_state_table_idx</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
+<tr><td><code>length_parameter</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>length_unit</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute whose minimum value is 1</td></tr>
+<tr><td><code>length_state_table_idx</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
+<tr><td><code>length_core_encoded</code></td><td>::mlir::UnitAttr</td><td>unit attribute</td></tr>
 </table>
 
 <h4 id="operands_18">Operands:<a class="headerlink" href="#operands_18" title="Permanent link">&para;</a></h4>
@@ -12664,12 +12797,23 @@ referenced from any device.</p>
 The two kinds of use are exclusive: parameters used as BD address offsets
 cannot also be read from cores.
 If used as an address offset on a BD, the parameter is a multiple of the BD's element size.</p>
+<p>Parameters can also lengthen shim BDs when used as the <code>length_parameter</code>
+attribute in <code>aie.dma_bd</code> and <code>aiex.npu.dma_memcpy_nd</code>. A length works with
+either kind, so a single parameter can set both a core's trip count and the
+length of the transfers feeding that core, or both a transfer's offset and
+its length.</p>
 <p>Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
 The <code>--aie-lower-scratchpad-parameters</code> pass assigns the <code>state_table_idx</code> and the <code>kind</code> attribute (derived from the parameter's usage:
-<code>core</code> if read by a core via <code>aiex.read_scratchpad_parameter</code>, <code>addr</code> if used as a DMA offset via the <code>offset_parameter</code> attribute on a DMA op).
-Indices are unique across the entire module.</p>
+<code>core</code> if read by a core via <code>aiex.read_scratchpad_parameter</code>, <code>addr</code> if used as a DMA offset via the <code>offset_parameter</code> attribute on a DMA op, or as a DMA length via the <code>length_parameter</code> attribute and nothing else).
+Indices are unique across the entire module.
+For a parameter used as a DMA offset or length, the pass also sets <code>min_value</code> and <code>max_value</code>:
+the range of values that keeps every such transfer within its buffer, judging each transfer
+with any other parameter it uses at 0. The host library rejects a value outside the range.
+A transfer whose offset and length are two different parameters also adds a
+<code>#aiex.joint_bound</code> to the length parameter's <code>joint_bounds</code>, which the host library
+checks when it syncs the scratchpad.</p>
 <p>The <code>type</code> attribute specifies the data type of the parameter (<code>bf16</code> or an integer type up to <code>i32</code>).
-For <code>kind == addr</code>, the <code>type</code> must be <code>i32</code>.
+For <code>kind == addr</code>, and for any parameter used as a <code>length_parameter</code>, the <code>type</code> must be <code>i32</code>.
 For <code>kind == core</code>, the encoding uses a 30-bit value range because the firmware masks
 the lower 2 bits of the scratchpad register (see <code>aiex.read_scratchpad_parameter</code>
 for details on how values are shifted to work around this).</p>
@@ -12689,7 +12833,10 @@ for details on how values are shifted to work around this).</p>
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>type</code></td><td>::mlir::TypeAttr</td><td>any type attribute</td></tr>
 <tr><td><code>state_table_idx</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
-<tr><td><code>kind</code></td><td>::xilinx::AIEX::ScratchpadParameterKindAttr</td><td>Usage kind of a scratchpad runtime parameter: `core` parameters are read by AIE cores via `aiex.read_scratchpad_parameter` (values are shift-2 encoded); `addr` parameters are used as BD address offsets via the `offset_parameter` attribute on DMA ops (values written raw)</td></tr>
+<tr><td><code>kind</code></td><td>::xilinx::AIEX::ScratchpadParameterKindAttr</td><td>Usage kind of a scratchpad runtime parameter: `core` parameters are read by AIE cores via `aiex.read_scratchpad_parameter` (values are shift-2 encoded); `addr` parameters are used only by DMA ops, as BD address offsets via `offset_parameter` or lengths via `length_parameter` (values written raw). A length parameter a core also reads is `core`</td></tr>
+<tr><td><code>min_value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>max_value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>joint_bounds</code></td><td>::mlir::ArrayAttr</td><td>joint bounds</td></tr>
 </table>
 
 <h3 id="aiexset_lock-xilinxaiexsetlockop"><code>aiex.set_lock</code> (::xilinx::AIEX::SetLockOp)<a class="headerlink" href="#aiexset_lock-xilinxaiexsetlockop" title="Permanent link">&para;</a></h3>
@@ -12748,9 +12895,10 @@ controlled by the parent <code>aie.runtime_sequence</code>'s
 <li><code>aiex.set_lock(lock, 1)</code> for each parameter-sync lock in the device
    (releasing the cores that read parameters)</li>
 </ol>
-<p>Placement: users who manually emit <code>aiex.npu.load_pdi</code> should manually
-place this op <em>after</em> the load_pdi, since PDI loading resets core state
-(including lock values).</p>
+<p>Placement: PDI loading resets core state (including lock values), so the
+compiler-inserted preamble goes after the last top-level
+<code>aiex.npu.load_pdi</code> of the sequence. A sequence that loads a PDI anywhere
+else should place this op by hand after that load.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-89-1" name="__codelineno-89-1" href="#__codelineno-89-1"></a>aiex.sync_scratchpad_parameters_from_host
 </code></pre></div></p>
@@ -12795,19 +12943,61 @@ Similar to UseLockOp, this operation can be understood as "blocking" op.</p>
 <tr><td><code>action</code></td><td>xilinx::AIE::LockActionAttr</td><td>lock acquire/release</td></tr>
 </table>
 
+<h2 id="attributes_52">Attributes<a class="headerlink" href="#attributes_52" title="Permanent link">&para;</a></h2>
+<h3 id="jointboundattr">JointBoundAttr<a class="headerlink" href="#jointboundattr" title="Permanent link">&para;</a></h3>
+<p><em>Bound on an offset and a length parameter one transfer uses</em></p>
+<p>Syntax:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-92-1" name="__codelineno-92-1" href="#__codelineno-92-1"></a>#aiex.joint_bound&lt;
+<a id="__codelineno-92-2" name="__codelineno-92-2" href="#__codelineno-92-2"></a>  ::mlir::FlatSymbolRefAttr,   # offset
+<a id="__codelineno-92-3" name="__codelineno-92-3" href="#__codelineno-92-3"></a>  int64_t,   # length_step
+<a id="__codelineno-92-4" name="__codelineno-92-4" href="#__codelineno-92-4"></a>  int64_t   # max
+<a id="__codelineno-92-5" name="__codelineno-92-5" href="#__codelineno-92-5"></a>&gt;
+</code></pre></div>
+<p>Held in the <code>joint_bounds</code> of a length parameter <code>n</code>: a transfer that also
+uses the parameter <code>offset</code> as its offset stays within its buffer while
+<code>offset + length_step * n &lt;= max</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-93-1" name="__codelineno-93-1" href="#__codelineno-93-1"></a>#aiex.joint_bound&lt;offset = @off, length_step = 64, max = 3976&gt;
+</code></pre></div>
+<h4 id="parameters">Parameters:<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">Parameter</th>
+<th style="text-align: center;">C++ type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">offset</td>
+<td style="text-align: center;"><code>::mlir::FlatSymbolRefAttr</code></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: center;">length_step</td>
+<td style="text-align: center;"><code>int64_t</code></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: center;">max</td>
+<td style="text-align: center;"><code>int64_t</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
 <h2 id="types">Types<a class="headerlink" href="#types" title="Permanent link">&para;</a></h2>
 <h3 id="blockfloattype">BlockFloatType<a class="headerlink" href="#blockfloattype" title="Permanent link">&para;</a></h3>
 <p><em>AIEX type representing a block floating point type.</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-92-1" name="__codelineno-92-1" href="#__codelineno-92-1"></a>!aiex.bfp&lt;
-<a id="__codelineno-92-2" name="__codelineno-92-2" href="#__codelineno-92-2"></a>  ::llvm::StringRef   # block_type
-<a id="__codelineno-92-3" name="__codelineno-92-3" href="#__codelineno-92-3"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-94-1" name="__codelineno-94-1" href="#__codelineno-94-1"></a>!aiex.bfp&lt;
+<a id="__codelineno-94-2" name="__codelineno-94-2" href="#__codelineno-94-2"></a>  ::llvm::StringRef   # block_type
+<a id="__codelineno-94-3" name="__codelineno-94-3" href="#__codelineno-94-3"></a>&gt;
 </code></pre></div>
 <p>This is a type representing a block floating point.
 It is meant to eventually be lowered into a standard type further down the pipeline.
 It the meantime, it can be used for blocked fp related dataflow adaptations.
 Available types are v8bfp16ebs8 and v16bfp16ebs16.</p>
-<h4 id="parameters">Parameters:<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h4>
+<h4 id="parameters_1">Parameters:<a class="headerlink" href="#parameters_1" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
 <tr>
@@ -18655,7 +18845,7 @@ Available types are v8bfp16ebs8 and v16bfp16ebs16.</p>
 </tbody>
 </table>
 <h3 id="scratchpadparameterkind">ScratchpadParameterKind<a class="headerlink" href="#scratchpadparameterkind" title="Permanent link">&para;</a></h3>
-<p><em>Usage kind of a scratchpad runtime parameter: <code>core</code> parameters are read by AIE cores via <code>aiex.read_scratchpad_parameter</code> (values are shift-2 encoded); <code>addr</code> parameters are used as BD address offsets via the <code>offset_parameter</code> attribute on DMA ops (values written raw)</em></p>
+<p><em>Usage kind of a scratchpad runtime parameter: <code>core</code> parameters are read by AIE cores via <code>aiex.read_scratchpad_parameter</code> (values are shift-2 encoded); <code>addr</code> parameters are used only by DMA ops, as BD address offsets via <code>offset_parameter</code> or lengths via <code>length_parameter</code> (values written raw). A length parameter a core also reads is <code>core</code></em></p>
 <h4 id="cases_21">Cases:<a class="headerlink" href="#cases_21" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
