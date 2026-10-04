@@ -1786,12 +1786,16 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 // With `ctrlPkt=false` the referenced device's configuration is emitted as
 // `write32`/`blockwrite` ops; with `ctrlPkt=true` it is emitted as
 // `aiex.npu.control_packet` ops (which a later ctrl-packet-to-dma pass streams
-// in), preceded by a `load_pdi @ctrl_pkt_overlay`.
+// in), preceded by a `load_pdi @ctrl_pkt_overlay`. With `configureOnce` a
+// runtime sequence that loads a single device keeps its load.
 inline std::unique_ptr<mlir::PassManager>
-getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
+getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false,
+                         bool configureOnce = false) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  std::string expandPipeline = std::string("aie-expand-load-pdi{ctrl-pkt=") +
-                               (ctrlPkt ? "true" : "false") + "}";
+  std::string expandPipeline =
+      std::string("aie-expand-load-pdi{ctrl-pkt=") +
+      (ctrlPkt ? "true" : "false") +
+      " configure-once=" + (configureOnce ? "true" : "false") + "}";
   if (mlir::failed(mlir::parsePassPipeline(expandPipeline, *pm))) {
     return nullptr;
   }

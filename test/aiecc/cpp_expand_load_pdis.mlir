@@ -19,6 +19,13 @@
 // RUN: cd %t && aiecc --get-full-elf --expand-load-pdis --tmpdir=%t %s 2>&1
 // RUN: ls %t | FileCheck %s
 
+// With --configure-once, the single configured device keeps its load: no empty
+// device is created.
+// RUN: rm -rf %t.once && mkdir -p %t.once
+// RUN: cd %t.once && aiecc --get-full-elf --expand-load-pdis --configure-once --tmpdir=%t.once %s 2>&1
+// RUN: ls %t.once | FileCheck %s --check-prefix=ONCE --implicit-check-not=empty_
+// ONCE: add_one.pdi
+
 // Empty reset device gets its own CDO and PDI (empties first in module order).
 // CHECK-DAG: cdo_empty_0
 // CHECK-DAG: empty_0.pdi

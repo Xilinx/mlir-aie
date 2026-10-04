@@ -1416,10 +1416,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           EdgeWithTypedOutput<ModRef> &src) -> EdgeWithTypedOutput<ModRef> & {
     return src.map<ModRef>(
         "npu_expanded.mlir",
-        PassPipeline{&context,
-                     [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
-                       return getExpandLoadPdiPipeline(ctx, ctrlPkt);
-                     }});
+        PassPipeline{
+            &context, [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
+              return getExpandLoadPdiPipeline(ctx, ctrlPkt, configureOnce);
+            }});
   };
 
   // --load-pdi-to-ctrl-pkt expands first: its tail consumes the control-packet

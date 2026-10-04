@@ -312,6 +312,23 @@ struct AIEExpandLoadPdiPass
         .insert<memref::MemRefDialect, AIE::AIEDialect, AIEX::AIEXDialect>();
   }
 
+  // Keeps the loads of each runtime sequence that loads a single device.
+  static void keepSingleDeviceLoads(ModuleOp module) {
+    module.walk([](AIE::RuntimeSequenceOp seq) {
+      SmallVector<NpuLoadPdiOp> loads;
+      seq.walk([&](NpuLoadPdiOp op) { loads.push_back(op); });
+      if (loads.empty() || !loads.front().getDeviceRefAttr() ||
+          llvm::any_of(loads, [&](NpuLoadPdiOp op) {
+            return op.getDeviceRefAttr() != loads.front().getDeviceRefAttr();
+          }))
+        return;
+      for (NpuLoadPdiOp op : loads)
+        if (!op.getExpandMode())
+          op.setExpandModeAttr(AIEX::ExpandModeAttr::get(
+              op.getContext(), AIEX::ExpandMode::none));
+    });
+  }
+
   void runOnOperation() override {
     auto module = getOperation();
 
@@ -323,6 +340,9 @@ struct AIEExpandLoadPdiPass
 
     module.walk(
         [&](NpuLoadPdiOp loadPdiOp) { loadPdiOps.push_back(loadPdiOp); });
+
+    if (clConfigureOnce)
+      keepSingleDeviceLoads(module);
 
     // Per enclosing runtime sequence: the parity of its FIRST and LAST reset,
     // plus the device type to reset. `transformLoadPdi` picks the empty device
