@@ -39,5 +39,6 @@ PYBIND11_MODULE(_parameter_scratchpad, m) {
             self.writeBytes(name, s.data(), s.size());
           },
           py::arg("name"), py::arg("data"))
+      .def("validate", &test_utils::ParameterScratchpad::validate)
       .def("read", &test_utils::ParameterScratchpad::read, py::arg("name"));
 }

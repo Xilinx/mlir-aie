@@ -12,9 +12,11 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/MapVector.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <numeric>
@@ -44,18 +46,8 @@ static bool shouldEmitParameterSyncPreamble(CoreOp coreOp) {
   return found;
 }
 
-/// The firmware masks the BD address register with 0xFFFFFFFC, so the byte
-/// offset it computes from a runtime offset parameter (an element count times
-/// the element size) is rounded DOWN to a 4-byte boundary rather than rejected.
-/// This cannot bite when the element size is itself a multiple of 4. Otherwise
-/// the runtime value has to be a multiple of 4 / gcd(4, elemBytes) elements,
-/// and nothing can check that -- the value only exists at run time.
-/// The static offset path rejects the same misalignment outright
-/// (NpuDmaMemcpyNdOp::verify, "Offset must be 4-byte-aligned"), so warn rather
-/// than leave the runtime path silent.
-/// Warn here rather than where the offset is lowered to NPU instructions:
-/// materialization inlines a device's runtime sequence at every call site, so
-/// one source op would warn once per call.
+// Warned here, not at NPU lowering, which inlines a sequence at every call
+// site and so would warn once per call.
 static void warnIfRuntimeOffsetMayRound(Operation *op, Type bufType) {
   uint32_t elemBytes =
       llvm::cast<BaseMemRefType>(bufType).getElementTypeBitWidth() / 8;
@@ -71,12 +63,124 @@ static void warnIfRuntimeOffsetMayRound(Operation *op, Type bufType) {
          "instead of being rejected";
 }
 
+/// A DMA with runtime offset `o` and length `l` touches elements
+/// [offset + o, last + o + lengthStep * l].
+struct TransferExtent {
+  int64_t bufferElems;
+  int64_t offset;
+  int64_t last;
+  int64_t lengthStep;
+};
+
+/// `sizes`/`strides` are innermost-first and empty for a linear BD.
+static std::optional<TransferExtent>
+getTransferExtent(Type bufType, int64_t offset, int64_t lenElems,
+                  SmallVector<int64_t> sizes, SmallVector<int64_t> strides,
+                  std::optional<int64_t> lengthUnit) {
+  auto buffer = llvm::cast<BaseMemRefType>(bufType);
+  if (!buffer.hasStaticShape())
+    return std::nullopt;
+  TransferExtent extent{buffer.getNumElements(), offset, offset, 0};
+  if (!lengthUnit) {
+    if (sizes.empty())
+      extent.last += lenElems - 1;
+    for (auto [size, stride] : llvm::zip(sizes, strides))
+      extent.last += (size - 1) * stride;
+    return extent;
+  }
+  bool linear = sizes.empty();
+  sizes.resize(std::max<size_t>(sizes.size(), 3), 1);
+  strides.resize(sizes.size(), 0);
+  for (size_t i = 3; i < sizes.size(); ++i)
+    extent.last += (sizes[i] - 1) * strides[i];
+  if (linear || AIEX::isContiguousTransfer(sizes, strides)) {
+    extent.last += lenElems - 1;
+    extent.lengthStep = *lengthUnit;
+    return extent;
+  }
+  AIE::placeRuntimeLengthDimension(sizes, strides);
+  int64_t rowElems = sizes[0] * sizes[1];
+  // A static length of 0 counts -1 steps, so that the first added unit's
+  // steps start at 0.
+  extent.last += (sizes[0] - 1) * strides[0] + (sizes[1] - 1) * strides[1] +
+                 (llvm::divideCeilSigned(lenElems, rowElems) - 1) * strides[2];
+  extent.lengthStep = *lengthUnit / rowElems * strides[2];
+  return extent;
+}
+
+static std::optional<TransferExtent>
+getTransferExtent(NpuDmaMemcpyNdOp op, std::optional<int64_t> lengthUnit) {
+  std::optional<SmallVector<int64_t>> offsets =
+      getConstantIntValues(op.getMixedOffsets());
+  std::optional<SmallVector<int64_t>> sizes =
+      getConstantIntValues(op.getMixedSizes());
+  std::optional<SmallVector<int64_t>> strides =
+      getConstantIntValues(op.getMixedStrides());
+  int64_t elemBits = op.getElementTypeBitwidth();
+  if (!offsets || !sizes || !strides || elemBits % 8 != 0)
+    return std::nullopt;
+  std::reverse(sizes->begin(), sizes->end());
+  std::reverse(strides->begin(), strides->end());
+  return getTransferExtent(
+      op.getMemref().getType(), op.getOffsetInBytes() / (elemBits / 8),
+      (*sizes)[0] * (*sizes)[1] * (*sizes)[2], *sizes, *strides, lengthUnit);
+}
+
+static std::optional<TransferExtent>
+getTransferExtent(AIE::DMABDOp op, std::optional<int64_t> lengthUnit) {
+  auto buffer = llvm::cast<BaseMemRefType>(op.getBuffer().getType());
+  std::optional<int32_t> offset =
+      op.hasOffset() ? op.getConstantOffset() : std::optional<int32_t>(0);
+  std::optional<int64_t> len;
+  if (op.hasLen())
+    len = op.getConstantLen();
+  else if (buffer.hasStaticShape())
+    len = buffer.getNumElements();
+  std::optional<SmallVector<int64_t>> sizes =
+      getConstantIntValues(op.getMixedSizes());
+  std::optional<SmallVector<int64_t>> strides =
+      getConstantIntValues(op.getMixedStrides());
+  if (!offset || !len || !sizes || !strides)
+    return std::nullopt;
+  std::reverse(sizes->begin(), sizes->end());
+  std::reverse(strides->begin(), strides->end());
+  return getTransferExtent(buffer, *offset, *len, *sizes, *strides, lengthUnit);
+}
+
+/// The largest length parameter value that keeps the shim BD's Buffer_Length,
+/// the static length plus that many units in 32-bit words, within its field.
+static int64_t getMaxLengthSteps(Operation *op, int64_t lenBytes,
+                                 int64_t unitBytes) {
+  int64_t maxWords =
+      getTargetModel(op).getDmaBdMaxLen(AIETileType::ShimNOCTile);
+  return (maxWords - lenBytes / 4) / (unitBytes / 4);
+}
+
+static std::optional<int64_t> getMaxLengthSteps(NpuDmaMemcpyNdOp op) {
+  std::optional<SmallVector<int64_t>> sizes =
+      getConstantIntValues(op.getMixedSizes());
+  std::optional<int64_t> lengthUnit = op.getLengthUnit();
+  if (!sizes || !lengthUnit)
+    return std::nullopt;
+  int64_t elemBytes = op.getElementTypeBitwidth() / 8;
+  return getMaxLengthSteps(op,
+                           (*sizes)[1] * (*sizes)[2] * (*sizes)[3] * elemBytes,
+                           *lengthUnit * elemBytes);
+}
+
+static std::optional<int64_t> getMaxLengthSteps(AIE::DMABDOp op) {
+  std::optional<int64_t> lengthUnit = op.getLengthUnit();
+  if (!lengthUnit)
+    return std::nullopt;
+  return getMaxLengthSteps(op, op.getLenInBytes(),
+                           *lengthUnit * op.getBufferElementTypeWidthInBytes());
+}
+
 /// Returns true iff the parameter-sync preamble (create_scratchpad + set_lock)
 /// should be emitted into this sequence. Reads the explicit attribute if
-/// present; otherwise defaults to true iff the parent device contains any
-/// ReadScratchpadParameterOp in a core, or any 'offset_parameter' attribute on
-/// a DMA BD, and the runtime sequence does not already contain a
-// `aiex.sync_scratchpad_parameters_from_host` marker.
+/// present; otherwise defaults to true iff the parent device uses any
+/// scratchpad parameter, from a core or a DMA BD, and the runtime sequence does
+/// not already contain a `aiex.sync_scratchpad_parameters_from_host` marker.
 static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
   if (auto attr = seqOp.getEmitParameterSyncPreambleAttr()) {
     return attr.getValue();
@@ -97,7 +201,9 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
     }
     if (llvm::isa<ReadScratchpadParameterOp>(op) ||
         op->hasAttr("offset_parameter") ||
-        op->hasAttr("offset_state_table_idx")) {
+        op->hasAttr("offset_state_table_idx") ||
+        op->hasAttr("length_parameter") ||
+        op->hasAttr("length_state_table_idx")) {
       found = true;
     }
   });
@@ -108,10 +214,6 @@ struct AIELowerScratchpadParametersPass
     : public xilinx::AIEX::impl::AIELowerScratchpadParametersBase<
           AIELowerScratchpadParametersPass> {
   using AIELowerScratchpadParametersBase::AIELowerScratchpadParametersBase;
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithDialect>();
-  }
 
   // For each read_scratchpad_parameter of a unique parameter, create a 2xi32
   // buffer and store a reference to it on the ReadScratchpadParameterOp as
@@ -227,21 +329,51 @@ struct AIELowerScratchpadParametersPass
   }
 
   // For each runtime sequence in `device` with shouldEmitParameterSyncPreamble
-  // ()==true, insert a marker SyncScratchpadParametersFromHostOp at the start
-  // of the sequence body.
-  void emitSequencePreambles(DeviceOp device, OpBuilder &builder) {
-    device.walk([&](RuntimeSequenceOp seqOp) {
+  // ()==true, insert a marker SyncScratchpadParametersFromHostOp after the
+  // last top-level load_pdi of the sequence body, or at its start if there is
+  // none.
+  LogicalResult emitSequencePreambles(DeviceOp device, OpBuilder &builder) {
+    WalkResult result = device.walk([&](RuntimeSequenceOp seqOp) {
       if (!shouldEmitParameterSyncPreamble(seqOp)) {
-        return;
+        return WalkResult::advance();
       }
 
-      Block &body = seqOp.getBody().front();
+      Region &region = seqOp.getBody();
+      if (region.empty())
+        region.emplaceBlock();
+      Block &body = region.front();
       builder.setInsertionPointToStart(&body);
+      // Loading a PDI resets the core buffers and locks the sync writes.
+      for (NpuLoadPdiOp loadPdi : body.getOps<NpuLoadPdiOp>())
+        builder.setInsertionPointAfter(loadPdi);
+      for (Operation &op :
+           llvm::make_range(body.begin(), builder.getInsertionPoint())) {
+        WalkResult early = op.walk([&](Operation *inner) {
+          auto dmaOp = dyn_cast<NpuDmaMemcpyNdOp>(inner);
+          auto bdOp = dyn_cast<AIE::DMABDOp>(inner);
+          if ((dmaOp && (dmaOp.getOffsetStateTableIdxAttr() ||
+                         dmaOp.getLengthStateTableIdxAttr())) ||
+              (bdOp && (bdOp.getOffsetStateTableIdxAttr() ||
+                        bdOp.getLengthStateTableIdxAttr()))) {
+            inner->emitOpError(
+                "reads a scratchpad parameter before the last "
+                "aiex.npu.load_pdi of its runtime sequence, which is where "
+                "the scratchpad is created. Load the PDIs first, or place "
+                "aiex.sync_scratchpad_parameters_from_host before this op.");
+            return WalkResult::interrupt();
+          }
+          return WalkResult::advance();
+        });
+        if (early.wasInterrupted())
+          return WalkResult::interrupt();
+      }
       SyncScratchpadParametersFromHostOp::create(builder, seqOp.getLoc());
 
       // Mark as done so the pass is idempotent.
       seqOp.setEmitParameterSyncPreambleAttr(builder.getBoolAttr(false));
+      return WalkResult::advance();
     });
+    return failure(result.wasInterrupted());
   }
 
   // Lower a sync_scratchpad_parameters_from_host marker op in place to its
@@ -334,37 +466,46 @@ struct AIELowerScratchpadParametersPass
     // Step 2: determine each parameter's kind from its usage, erroring on
     // mixed use.  A parameter is "core" if any aiex.read_scratchpad_parameter
     // references it; "addr" if any DMA op references it via offset_parameter.
-    // If both, emit an error.
+    // If both, emit an error. A DMA length_parameter works with either kind,
+    // so it takes the kind of the parameter's other uses, and "addr" if it is
+    // the only use; the lowering compensates in the update's multiplier.
     DenseMap<StringRef, bool> usedAsCore;
+    DenseMap<StringRef, bool> usedAsLength;
     DenseMap<StringRef, bool> usedAsAddr;
     moduleOp.walk([&](ReadScratchpadParameterOp op) {
       usedAsCore[op.getParameter()] = true;
     });
-    auto markAddr = [&](Operation *op, FlatSymbolRefAttr ref) {
-      if (ref)
-        usedAsAddr[ref.getValue()] = true;
+    auto markDmaUses = [&](FlatSymbolRefAttr offsetRef,
+                           FlatSymbolRefAttr lengthRef) {
+      if (offsetRef)
+        usedAsAddr[offsetRef.getValue()] = true;
+      if (lengthRef)
+        usedAsLength[lengthRef.getValue()] = true;
     };
     moduleOp.walk([&](NpuDmaMemcpyNdOp op) {
-      markAddr(op, op.getOffsetParameterAttr());
+      markDmaUses(op.getOffsetParameterAttr(), op.getLengthParameterAttr());
     });
-    moduleOp.walk(
-        [&](AIE::DMABDOp op) { markAddr(op, op.getOffsetParameterAttr()); });
+    moduleOp.walk([&](AIE::DMABDOp op) {
+      markDmaUses(op.getOffsetParameterAttr(), op.getLengthParameterAttr());
+    });
 
     for (auto p : allParams) {
       StringRef name = p.getSymName();
       bool core = usedAsCore.lookup(name);
+      bool length = usedAsLength.lookup(name);
       bool addr = usedAsAddr.lookup(name);
       if (core && addr) {
         p.emitError("parameter '")
             << name
             << "' is used both as an aiex.read_scratchpad_parameter source "
-               "(core) and as a DMA offset_parameter (addr); a parameter must "
-               "have a single kind";
+               "(core) and as a DMA offset_parameter (addr); a parameter "
+               "must have a single kind";
         return signalPassFailure();
       }
       p.setKindAttr(ScratchpadParameterKindAttr::get(
-          &getContext(), addr ? ScratchpadParameterKind::Addr
-                              : ScratchpadParameterKind::Core));
+          &getContext(), addr || (length && !core)
+                             ? ScratchpadParameterKind::Addr
+                             : ScratchpadParameterKind::Core));
     }
 
     // Step 3: assign global state_table_idx in walk order, 0..N-1.
@@ -373,55 +514,147 @@ struct AIELowerScratchpadParametersPass
           builder.getIntegerType(8, /*isSigned=*/false), i));
     }
 
-    // Step 3b: rewrite DMA `offset_parameter` symbol references to a plain
-    // `offset_state_table_idx` integer attribute, so downstream `aie`-dialect
-    // passes do not need to resolve `aiex.scratchpad_parameter` symbols.
-    auto rewriteOffsetParam = [&](Operation *op, FlatSymbolRefAttr ref,
-                                  Type bufType) {
-      if (!ref) {
-        return success();
-      }
+    // Step 3b: rewrite DMA `offset_parameter` / `length_parameter` symbol
+    // references to plain `offset_state_table_idx` / `length_state_table_idx`
+    // integer attributes, so downstream `aie`-dialect passes do not need to
+    // resolve `aiex.scratchpad_parameter` symbols.
+    auto rewriteParam =
+        [&](Operation *op, FlatSymbolRefAttr ref, StringRef attrName,
+            StringRef idxAttrName) -> FailureOr<ScratchpadParameterOp> {
       auto paramOp =
           moduleOp.lookupSymbol<ScratchpadParameterOp>(ref.getAttr());
       if (!paramOp) {
-        op->emitOpError("offset_parameter '")
-            << ref.getValue()
-            << "' not found. Declare it at module scope with "
-               "aiex.scratchpad_parameter.";
+        op->emitOpError() << attrName << " '" << ref.getValue()
+                          << "' not found. Declare it at module scope with "
+                             "aiex.scratchpad_parameter.";
         return failure();
       }
       if (!paramOp.getType().isInteger(32)) {
-        auto err = op->emitOpError("offset_parameter '")
-                   << ref.getValue() << "' must have type i32, got "
-                   << paramOp.getType() << ".";
+        auto err = op->emitOpError()
+                   << attrName << " '" << ref.getValue()
+                   << "' must have type i32, got " << paramOp.getType() << ".";
         err.attachNote(paramOp.getLoc()) << "Parameter declared here.";
         return failure();
       }
       uint8_t stateIdx =
           static_cast<uint8_t>(paramOp.getStateTableIdx().value());
-      op->setAttr("offset_state_table_idx",
+      op->setAttr(idxAttrName,
                   builder.getIntegerAttr(
                       builder.getIntegerType(8, /*isSigned=*/false), stateIdx));
-      op->removeAttr("offset_parameter");
-      warnIfRuntimeOffsetMayRound(op, bufType);
+      op->removeAttr(attrName);
+      return paramOp;
+    };
+    // The values of each DMA offset or length parameter that keep every
+    // transfer using it within its buffer, judged with the transfer's other
+    // parameter at 0.
+    DenseMap<StringRef, std::pair<int64_t, int64_t>> bounds;
+    // (length, offset, length step) -> max of offset + length step * length.
+    llvm::MapVector<std::tuple<StringRef, StringRef, int64_t>, int64_t>
+        jointBounds;
+    auto rewriteParams =
+        [&](Operation *op, FlatSymbolRefAttr offsetRef,
+            FlatSymbolRefAttr lengthRef, Type bufType,
+            std::optional<TransferExtent> extent,
+            std::optional<int64_t> maxLengthSteps) -> LogicalResult {
+      bool joint = offsetRef == lengthRef;
+      int64_t room = extent ? extent->bufferElems - 1 - extent->last : 0;
+      if (offsetRef) {
+        if (failed(rewriteParam(op, offsetRef, "offset_parameter",
+                                "offset_state_table_idx")))
+          return failure();
+        warnIfRuntimeOffsetMayRound(op, bufType);
+        auto &[lo, hi] =
+            bounds.try_emplace(offsetRef.getValue(), INT32_MIN, INT32_MAX)
+                .first->second;
+        if (extent) {
+          lo = std::max(lo, -extent->offset);
+          hi = std::min(hi, llvm::divideFloorSigned(
+                                room, 1 + (joint ? extent->lengthStep : 0)));
+        }
+      }
+      if (lengthRef) {
+        FailureOr<ScratchpadParameterOp> lengthParam = rewriteParam(
+            op, lengthRef, "length_parameter", "length_state_table_idx");
+        if (failed(lengthParam))
+          return failure();
+        auto &[lo, hi] =
+            bounds.try_emplace(lengthRef.getValue(), INT32_MIN, INT32_MAX)
+                .first->second;
+        lo = std::max<int64_t>(lo, 0);
+        if (maxLengthSteps)
+          hi = std::min(hi, *maxLengthSteps);
+        if (lengthParam->getKind() == ScratchpadParameterKind::Core) {
+          op->setAttr("length_core_encoded", builder.getUnitAttr());
+          hi = std::min<int64_t>(hi, (1 << 30) - 1);
+        }
+        if (extent && !joint && extent->lengthStep > 0)
+          hi = std::min(hi, llvm::divideFloorSigned(room, extent->lengthStep));
+        if (extent && offsetRef && !joint && extent->lengthStep > 0) {
+          auto [it, inserted] = jointBounds.try_emplace(
+              {lengthRef.getValue(), offsetRef.getValue(), extent->lengthStep},
+              room);
+          it->second = std::min(it->second, room);
+        }
+      }
+      for (FlatSymbolRefAttr ref : {offsetRef, lengthRef}) {
+        if (!ref)
+          continue;
+        auto [lo, hi] = bounds.lookup(ref.getValue());
+        if (lo > hi)
+          return op->emitOpError("no value of parameter '")
+                 << ref.getValue()
+                 << "' keeps every transfer using it within its buffer";
+      }
       return success();
     };
     WalkResult rewriteResult = moduleOp.walk([&](Operation *op) {
       if (auto dmaOp = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
-        if (failed(rewriteOffsetParam(op, dmaOp.getOffsetParameterAttr(),
-                                      dmaOp.getMemref().getType()))) {
+        FlatSymbolRefAttr offsetRef = dmaOp.getOffsetParameterAttr();
+        FlatSymbolRefAttr lengthRef = dmaOp.getLengthParameterAttr();
+        if (!offsetRef && !lengthRef)
+          return WalkResult::advance();
+        if (failed(rewriteParams(
+                op, offsetRef, lengthRef, dmaOp.getMemref().getType(),
+                getTransferExtent(dmaOp, lengthRef ? dmaOp.getLengthUnit()
+                                                   : std::nullopt),
+                getMaxLengthSteps(dmaOp))))
           return WalkResult::interrupt();
-        }
       } else if (auto bdOp = dyn_cast<AIE::DMABDOp>(op)) {
-        if (failed(rewriteOffsetParam(op, bdOp.getOffsetParameterAttr(),
-                                      bdOp.getBuffer().getType()))) {
+        FlatSymbolRefAttr offsetRef = bdOp.getOffsetParameterAttr();
+        FlatSymbolRefAttr lengthRef = bdOp.getLengthParameterAttr();
+        if (!offsetRef && !lengthRef)
+          return WalkResult::advance();
+        std::optional<int64_t> lengthUnit;
+        if (lengthRef)
+          lengthUnit = bdOp.getLengthUnit();
+        if (failed(rewriteParams(
+                op, offsetRef, lengthRef, bdOp.getBuffer().getType(),
+                getTransferExtent(bdOp, lengthUnit), getMaxLengthSteps(bdOp))))
           return WalkResult::interrupt();
-        }
       }
       return WalkResult::advance();
     });
     if (rewriteResult.wasInterrupted()) {
       return signalPassFailure();
+    }
+    for (ScratchpadParameterOp p : allParams) {
+      auto it = bounds.find(p.getSymName());
+      if (it == bounds.end())
+        continue;
+      p.setMinValueAttr(builder.getI32IntegerAttr(it->second.first));
+      p.setMaxValueAttr(builder.getI32IntegerAttr(it->second.second));
+    }
+    llvm::MapVector<StringRef, SmallVector<Attribute>> jointBoundAttrs;
+    for (auto [key, max] : jointBounds) {
+      auto [length, offset, step] = key;
+      jointBoundAttrs[length].push_back(JointBoundAttr::get(
+          &getContext(), FlatSymbolRefAttr::get(&getContext(), offset), step,
+          max));
+    }
+    for (ScratchpadParameterOp p : allParams) {
+      auto *it = jointBoundAttrs.find(p.getSymName());
+      if (it != jointBoundAttrs.end())
+        p.setJointBoundsAttr(builder.getArrayAttr(it->second));
     }
 
     // Step 4: per-device lowering.
@@ -453,7 +686,8 @@ struct AIELowerScratchpadParametersPass
       // preamble-inserted ones and any user-written ones) using this device's
       // parameter info.
       SmallVector<Value> syncLocks = emitCorePreambles(d, builder);
-      emitSequencePreambles(d, builder);
+      if (failed(emitSequencePreambles(d, builder)))
+        return signalPassFailure();
       uint32_t scratchpadSize = static_cast<uint32_t>(allParams.size() * 4);
       lowerSyncParametersOps(d, scratchpadSize, paramEntries, syncLocks);
 

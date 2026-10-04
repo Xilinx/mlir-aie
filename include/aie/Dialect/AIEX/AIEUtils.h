@@ -71,6 +71,18 @@ LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder,
                                                      BaseMemRefType bufType,
                                                      uint64_t registerAddr);
 
+// Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime length
+// (held in the scratchpad slot referenced by `bdOp`'s
+// `length_state_table_idx` attribute, times `lengthUnit` elements of
+// `bufType`) into the buffer length register of BD `bdId` on tile
+// (`col`, `row`), which the firmware counts in 32-bit words. Fails if the tile
+// does not support a runtime length.
+LogicalResult
+emitUpdateBdLengthFromParameter(OpBuilder &builder, Operation *bdOp,
+                                BaseMemRefType bufType, int64_t lengthUnit,
+                                const AIE::AIETargetModel &targetModel, int col,
+                                int row, int bdId);
+
 // The configures a DMA task value can come from. A task carried through
 // runtime control flow is an scf.for iter_arg or an scf.for/scf.if result
 // rather than a configure result; this walks such a value back through every
@@ -89,10 +101,12 @@ DMAConfigureTaskOp getUniqueReachableConfigure(Value task);
 //
 // Format (one entry per line, easily parsed with std::ifstream >>):
 //   <num_parameters>
-//   <name> <state_table_idx> <type> <kind>
+//   <name> <state_table_idx> <type> <kind> <min> <max>
 //   ...
 // where kind is "core" (shift-2 encoded, for read_scratchpad_parameter) or
-// "addr" (raw, for offset_parameter on DMA ops).
+// "addr" (raw, for offset_parameter on DMA ops; also for a length_parameter
+// with no core use), and <min> <max> is the range a DMA offset or length
+// parameter must stay in, or "- -" for any other parameter.
 void emitScratchpadParamsFile(mlir::ModuleOp moduleOp, llvm::raw_ostream &os);
 } // namespace AIEX
 } // namespace xilinx

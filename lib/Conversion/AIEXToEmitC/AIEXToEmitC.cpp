@@ -354,6 +354,15 @@ private:
               b, loc, TypeRange{}, "aie_runtime::bd_pool_push",
               ValueRange{poolRef(b, loc, bdPoolName(push)), push.getBdId()});
         })
+        // XRT allocates the scratchpad only for a full-ELF context, which has
+        // no per-call instruction buffer to carry a generated stream.
+        .Case<AIEX::NpuCreateScratchpadOp, AIEX::NpuUpdateFromScratchpadOp>(
+            [&](Operation *sp) {
+              fail(sp, "needs the scratchpad of a full-ELF context, which the "
+                       "C++ TXN target's per-call streams run without; use a "
+                       "runtime sequence argument instead of a scratchpad "
+                       "parameter");
+            })
         // memref.get_global feeding a blockwrite is consumed by
         // convertBlockWrite (data inlined); the now-dead op is erased later.
         .Case<memref::GetGlobalOp>([&](auto) {})

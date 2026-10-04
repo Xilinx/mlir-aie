@@ -11,6 +11,8 @@ from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
 )
 from ...dialects.aiex import shim_dma_single_bd_task
 from ...helpers.taplib import TensorAccessPattern
+from ..scratchpad_parameter import ScratchpadParameter
+from ._context import active_sequence
 from .data import RuntimeData
 from .dmataskhandle import Task
 from .task import RuntimeTask
@@ -27,6 +29,8 @@ class DMATask(RuntimeTask):
         wait: bool = False,
         offset_parameter: str | None = None,
         packet: tuple[int, int] | None = None,
+        length_parameter: str | None = None,
+        length_unit: int | None = None,
     ):
         """Construct a RuntimeTask that will resolve to a DMA Operation.
 
@@ -42,6 +46,12 @@ class DMATask(RuntimeTask):
             wait (bool, optional): Whether this task should conclude with a call to await or a call to free. Defaults to False.
             offset_parameter (str | None, optional): Name of a ScratchpadParameter whose
                 value is used as the element offset for this DMA transfer. Defaults to None.
+            length_parameter (str | None, optional): Name of a ScratchpadParameter
+                n; the transfer moves exactly n passes of ``tap`` (per
+                iteration). Defaults to None.
+            length_unit (int | None, optional): Elements per unit of
+                length_parameter, a multiple of 16 bytes. Defaults to the
+                elements one pass of ``tap`` moves.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
                 BD with a packet header `(pkt_type, pkt_id)`. Pairs with
                 downstream packet-switched routing (e.g. an
@@ -53,6 +63,8 @@ class DMATask(RuntimeTask):
         self._tap = tap
         self._wait = wait
         self._offset_parameter = offset_parameter
+        self._length_parameter = length_parameter
+        self._length_unit = length_unit
         self._packet = packet
         self._task = None
         RuntimeTask.__init__(self, task_group)
@@ -86,8 +98,11 @@ class DMATask(RuntimeTask):
             self._alloc,
             self._rt_data.op,
             tap=self._tap,
+            transfer_len=0 if self._length_parameter is not None else None,
             issue_token=self._wait,
             offset_parameter=self._offset_parameter,
+            length_parameter=self._length_parameter,
+            length_unit=self._length_unit,
             packet=self._packet,  # pyright: ignore[reportArgumentType]
         )
         dma_start_task(self._task)
@@ -99,9 +114,11 @@ def emit_shim_transfer(
     tap=None,
     wait: bool = False,
     packet: tuple[int, int] | None = None,
-    offset_parameter=None,
+    offset_parameter: ScratchpadParameter | str | None = None,
     group=None,
     managed: bool = True,
+    length_parameter: ScratchpadParameter | str | None = None,
+    length_unit: int | None = None,
 ) -> Task:
     """Emit one shim DMA transfer on the ``alloc`` channel, inside the active sequence.
 
@@ -119,14 +136,13 @@ def emit_shim_transfer(
     returned Task's ``.free()``/``.await_()`` -- used for hand-rolled software
     pipelines that carry the task across ``scf.for`` iterations.
 
+    ``offset_parameter`` and ``length_parameter`` take a ScratchpadParameter (or
+    its name). A ``length_parameter`` n makes the transfer move exactly n
+    passes of ``tap`` (per iteration); see DMATask.
+
     Returns:
         Task: A handle to the transfer.
-
-    Lazy imports break the runtime<->scratchpad import cycle.
     """
-    from ..scratchpad_parameter import ScratchpadParameter
-    from ._context import active_sequence
-
     active = active_sequence()
     rt = active._runtime
 
@@ -146,23 +162,16 @@ def emit_shim_transfer(
             "do not also pass group=."
         )
 
-    offset_param_name = None
-    if offset_parameter is not None:
-        if isinstance(offset_parameter, ScratchpadParameter):
-            offset_param_name = offset_parameter.name
-            if offset_parameter not in rt._scratchpad_parameters:
-                rt._scratchpad_parameters.append(offset_parameter)
-        else:
-            offset_param_name = offset_parameter
-
     task = DMATask(
         alloc,
         rt_data,
         tap=tap,
         task_group=group,
         wait=wait,
-        offset_parameter=offset_param_name,
+        offset_parameter=rt.register_parameter(offset_parameter),
         packet=packet,
+        length_parameter=rt.register_parameter(length_parameter),
+        length_unit=length_unit,
     )
     if managed:
         active.emit_transfer(task, group)

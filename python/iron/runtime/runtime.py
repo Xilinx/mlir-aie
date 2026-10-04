@@ -387,6 +387,27 @@ class Runtime(Resolvable):
         """The ObjectFifoHandles driven from the runtime by fill()/drain()."""
         return list(self._fifos)
 
+    def register_parameter(self, param: ScratchpadParameter | str | None) -> str | None:
+        """Record a ScratchpadParameter a transfer uses, for the Program to declare.
+
+        Args:
+            param: The parameter, the name of one the Program declares anyway
+                (e.g. from a Worker's `fn_args`), or None.
+
+        Returns:
+            The parameter's name, or None for None.
+        """
+        if isinstance(param, ScratchpadParameter):
+            if param not in self._scratchpad_parameters:
+                self._scratchpad_parameters.append(param)
+            return param.name
+        return param
+
+    @property
+    def scratchpad_parameters(self) -> list[ScratchpadParameter]:
+        """The ScratchpadParameters the sequence's transfers registered."""
+        return list(self._scratchpad_parameters)
+
     def resolve(
         self,
         loc: ir.Location | None = None,

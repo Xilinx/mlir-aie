@@ -222,6 +222,7 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
   }];
 
   let useDefaultTypePrinterParser = 1;
+  let useDefaultAttributePrinterParser = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -229,6 +230,23 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
 //===----------------------------------------------------------------------===//
 
 include "aie/Dialect/AIEX/IR/AIEXAttrs.td"
+
+def AIEX_JointBoundAttr : AttrDef<AIEX_Dialect, "JointBound"> {
+  let mnemonic = "joint_bound";
+  let summary = "Bound on an offset and a length parameter one transfer uses";
+  let description = [{
+    Held in the `joint_bounds` of a length parameter `n`: a transfer that also
+    uses the parameter `offset` as its offset stays within its buffer while
+    `offset + length_step * n <= max`.
+
+    ```mlir
+    #aiex.joint_bound<offset = @off, length_step = 64, max = 3976>
+    ```
+  }];
+  let parameters = (ins "::mlir::FlatSymbolRefAttr":$offset,
+      "int64_t":$length_step, "int64_t":$max);
+  let assemblyFormat = "`<` struct(params) `>`";
+}
 
 //===----------------------------------------------------------------------===//
 // AIEX Types
@@ -618,6 +636,17 @@ def AIE_NpuDmaMemcpyNdOp
     If the attribute is set, then every time the DMA BD gets issued, a packet header is generated prior to the transmission of data.
     The packet header is used to guide arbitration throughout a packet-routed data flow, where each switch box arbitrates the data packet to stream to a successor based on the packet header.
 
+    #### Runtime Length
+
+    With `length_parameter = @n` and `length_unit = u`, the transfer moves `u * n` more elements than
+    its sizes describe, where `n` is the value the host writes to the `aiex.scratchpad_parameter` `@n`.
+    The extra elements continue the third dimension (the second, if the third has size one; or the
+    linear transfer), and every iteration of the outermost dimension gets them. The constraints are
+    those of `length_parameter` on
+    [`aie.dma_bd`](AIEDialect.html#aiedma_bd-xilinxaiedmabdop), and the offsets, sizes and strides
+    must be constants. The sizes are always moved, so for a
+    transfer of exactly `n` units use an `aie.dma_bd` with `len = 0` in an `aiex.dma_configure_task`.
+
   }];
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$memref,
@@ -652,7 +681,17 @@ def AIE_NpuDmaMemcpyNdOp
       // scratchpad state-table index whose value is used as the BD address
       // offset. After lowering, $offset_parameter is removed in favor of this
       // attribute.
-      OptionalAttr<UI8Attr>:$offset_state_table_idx);
+      OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // If set, the aiex.scratchpad_parameter value n lengthens the transfer
+      // at run time by n * length_unit elements; see "Runtime Length" above.
+      OptionalAttr<FlatSymbolRefAttr>:$length_parameter,
+      OptionalAttr<ConfinedAttr<I64Attr, [IntMinValue<1>]>>:$length_unit,
+      // Set by --aie-lower-scratchpad-parameters from $length_parameter, which
+      // it replaces, like $offset_state_table_idx.
+      OptionalAttr<UI8Attr>:$length_state_table_idx,
+      // Set by --aie-lower-scratchpad-parameters when the length parameter is
+      // core kind, whose state-table slot holds n << 2 rather than n.
+      UnitAttr:$length_core_encoded);
 
   let assemblyFormat = [{
     `(` $memref ``
@@ -662,6 +701,37 @@ def AIE_NpuDmaMemcpyNdOp
     (`,` `packet` `=` $packet^)? `)`
     attr-dict `:` type($memref)
   }];
+
+  let builders = [
+      // `base`'s transfer with a new static pattern.
+      OpBuilder<(ins "NpuDmaMemcpyNdOp":$base,
+                    "::llvm::ArrayRef<int64_t>":$static_offsets,
+                    "::llvm::ArrayRef<int64_t>":$static_sizes,
+                    "::llvm::ArrayRef<int64_t>":$static_strides),
+                [{
+      $_state.addOperands(base.getMemref());
+      Properties &props = $_state.getOrAddProperties<Properties>();
+      props = base.getProperties();
+      props.setStaticOffsets($_builder.getDenseI64ArrayAttr(static_offsets));
+      props.setStaticSizes($_builder.getDenseI64ArrayAttr(static_sizes));
+      props.setStaticStrides($_builder.getDenseI64ArrayAttr(static_strides));
+      props.operandSegmentSizes = {1, 0, 0, 0};
+    }]>,
+      OpBuilder<(ins "::mlir::Value":$memref,
+                    "::llvm::ArrayRef<int64_t>":$static_offsets,
+                    "::llvm::ArrayRef<int64_t>":$static_sizes,
+                    "::llvm::ArrayRef<int64_t>":$static_strides,
+                    "::mlir::SymbolRefAttr":$metadata, "uint64_t":$id,
+                    "bool":$issue_token),
+                [{
+      build($_builder, $_state, memref, ::mlir::ValueRange{},
+            ::mlir::ValueRange{}, ::mlir::ValueRange{}, static_offsets,
+            static_sizes, static_strides, /*packet=*/nullptr, metadata, id,
+            issue_token, 0, 0, 0, 0, 0, 0, /*burst_length=*/0,
+            /*axcache=*/nullptr, /*offset_parameter=*/nullptr,
+            /*offset_state_table_idx=*/nullptr, /*length_parameter=*/nullptr,
+            /*length_unit=*/nullptr, /*length_state_table_idx=*/nullptr);
+    }]>];
 
   let extraClassDeclaration = [{
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
@@ -1783,13 +1853,25 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     cannot also be read from cores.
     If used as an address offset on a BD, the parameter is a multiple of the BD's element size.
 
+    Parameters can also lengthen shim BDs when used as the `length_parameter`
+    attribute in `aie.dma_bd` and `aiex.npu.dma_memcpy_nd`. A length works with
+    either kind, so a single parameter can set both a core's trip count and the
+    length of the transfers feeding that core, or both a transfer's offset and
+    its length.
+
     Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
     The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
-    `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
+    `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op, or as a DMA length via the `length_parameter` attribute and nothing else).
     Indices are unique across the entire module.
+    For a parameter used as a DMA offset or length, the pass also sets `min_value` and `max_value`:
+    the range of values that keeps every such transfer within its buffer, judging each transfer
+    with any other parameter it uses at 0. The host library rejects a value outside the range.
+    A transfer whose offset and length are two different parameters also adds a
+    `#aiex.joint_bound` to the length parameter's `joint_bounds`, which the host library
+    checks when it syncs the scratchpad.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
-    For `kind == addr`, the `type` must be `i32`.
+    For `kind == addr`, and for any parameter used as a `length_parameter`, the `type` must be `i32`.
     For `kind == core`, the encoding uses a 30-bit value range because the firmware masks
     the lower 2 bits of the scratchpad register (see `aiex.read_scratchpad_parameter`
     for details on how values are shifted to work around this).
@@ -1810,7 +1892,10 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
   let arguments = (ins SymbolNameAttr:$sym_name, TypeAttr:$type,
       // assigned by `--aie-lower-scratchpad-parameters` pass:
       OptionalAttr<UI8Attr>:$state_table_idx,
-      OptionalAttr<ScratchpadParameterKind>:$kind);
+      OptionalAttr<ScratchpadParameterKind>:$kind,
+      OptionalAttr<I32Attr>:$min_value, OptionalAttr<I32Attr>:$max_value,
+      OptionalAttr<TypedArrayAttrBase<AIEX_JointBoundAttr,
+                                      "joint bounds">>:$joint_bounds);
   let results = (outs);
   let assemblyFormat = [{ $sym_name `:` $type attr-dict }];
 }
@@ -1858,9 +1943,10 @@ def AIEX_SyncScratchpadParametersFromHostOp
     3. `aiex.set_lock(lock, 1)` for each parameter-sync lock in the device
        (releasing the cores that read parameters)
 
-    Placement: users who manually emit `aiex.npu.load_pdi` should manually
-    place this op *after* the load_pdi, since PDI loading resets core state
-    (including lock values).
+    Placement: PDI loading resets core state (including lock values), so the
+    compiler-inserted preamble goes after the last top-level
+    `aiex.npu.load_pdi` of the sequence. A sequence that loads a PDI anywhere
+    else should place this op by hand after that load.
 
     Example:
     ```mlir

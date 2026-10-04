@@ -41,6 +41,9 @@ using namespace xilinx;
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
 
+#define GET_ATTRDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXAttrDefs.cpp.inc"
+
 namespace xilinx::AIEX {
 
 // FIXME: use Tablegen'd dialect class
@@ -52,6 +55,10 @@ void AIEXDialect::initialize() {
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "aie/Dialect/AIEX/IR/AIEXAttrDefs.cpp.inc"
       >();
 }
 
@@ -457,19 +464,7 @@ struct LinearizeContiguousTransfer
                                                      linearOffset};
 
     rewriter.replaceOpWithNewOp<AIEX::NpuDmaMemcpyNdOp>(
-        op, op.getMemref(),
-        /*offsets=*/mlir::ValueRange{},
-        /*sizes=*/mlir::ValueRange{},
-        /*strides=*/mlir::ValueRange{},
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newOffsetsOuter),
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newSizesOuter),
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newStridesOuter),
-        op.getPacketAttr(), op.getMetadata(), op.getIdAttr(),
-        op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
-        op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
-        op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
+        op, op, newOffsetsOuter, newSizesOuter, newStridesOuter);
     return mlir::success();
   }
 };
@@ -642,6 +637,15 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return getConstantIntValue(s).has_value();
   });
 
+  bool hasLengthParameter =
+      getLengthParameterAttr() || getLengthStateTableIdxAttr();
+  // Runtime offsets, sizes and strides lower only through EmitC, which has no
+  // scratchpad.
+  if (hasLengthParameter &&
+      (!allStridesConstant || !allSizesConstant || !allOffsetsConstant))
+    return emitOpError(
+        "length_parameter requires constant offsets, sizes and strides");
+
   // Dynamic path: any runtime size/stride/offset. A runtime offset flows into
   // the address-patch arg_plus as arith (see AIEDmaToNpu.cpp emitBufferAddress-
   // Patch); runtime sizes/strides use the dynamic BD-word encoder. The shared
@@ -666,6 +670,22 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
   if (errorMessage.has_value()) {
     return emitOpError(errorMessage.value());
+  }
+
+  if (hasLengthParameter) {
+    if (failed(AIE::verifyLengthParameter(
+            *this, getLengthUnit(), buffer,
+            inputSizes[0] * inputSizes[1] * inputSizes[2],
+            AIEX::isContiguousTransfer(inputSizes, inputStrides),
+            llvm::ArrayRef<int64_t>(inputSizes).take_front(3))))
+      return failure();
+    AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+    if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+            dev, getMetadata().getRootReference()))
+      if (AIE::TileOp tile = allocOp.getTileOp())
+        if (failed(AIE::verifyLengthParameterTile(
+                *this, targetModel, tile.getCol(), tile.getRow())))
+          return failure();
   }
 
   // The experimental HSA target uses this op on AIE1, skip all the AIE2
@@ -708,7 +728,10 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     llvm::SmallVector<int64_t, 4> inputOffsets = llvm::map_to_vector(
         llvm::reverse(getMixedOffsets()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    if (AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
+    // aie-decompose-large-dma-bd leaves a transfer with a runtime length
+    // alone, so it must be legal as written.
+    if (!hasLengthParameter &&
+        AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
                                          col, row, inputOffsets, inputSizes,
                                          inputStrides)) {
       // ok: will be decomposed before lowering

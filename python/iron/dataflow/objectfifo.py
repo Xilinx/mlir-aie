@@ -31,6 +31,7 @@ from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, Resolvable
+from ..scratchpad_parameter import ScratchpadParameter
 from .endpoint import ObjectFifoEndpoint
 
 
@@ -746,9 +747,11 @@ class ObjectFifoHandle(Resolvable):
         tap,
         wait: bool,
         packet: tuple[int, int] | None,
-        offset_parameter,
+        offset_parameter: ScratchpadParameter | str | None,
         group,
         managed=True,
+        length_parameter: ScratchpadParameter | str | None = None,
+        length_unit: int | None = None,
     ):
         """Shared body for fill()/drain().
 
@@ -782,6 +785,8 @@ class ObjectFifoHandle(Resolvable):
             offset_parameter=offset_parameter,
             group=group,
             managed=managed,
+            length_parameter=length_parameter,
+            length_unit=length_unit,
         )
 
     def fill(
@@ -790,9 +795,11 @@ class ObjectFifoHandle(Resolvable):
         tap=None,
         wait: bool = False,
         packet: tuple[int, int] | None = None,
-        offset_parameter=None,
+        offset_parameter: ScratchpadParameter | str | None = None,
         group=None,
         managed: bool = True,
+        length_parameter: ScratchpadParameter | str | None = None,
+        length_unit: int | None = None,
     ):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
 
@@ -811,6 +818,8 @@ class ObjectFifoHandle(Resolvable):
             offset_parameter,
             group,
             managed,
+            length_parameter,
+            length_unit,
         )
 
     def drain(
@@ -819,9 +828,11 @@ class ObjectFifoHandle(Resolvable):
         tap=None,
         wait: bool = False,
         packet: tuple[int, int] | None = None,
-        offset_parameter=None,
+        offset_parameter: ScratchpadParameter | str | None = None,
         group=None,
         managed: bool = True,
+        length_parameter: ScratchpadParameter | str | None = None,
+        length_unit: int | None = None,
     ):
         """Drain this consumer ObjectFifo, writing data to the ``dest`` runtime buffer.
 
@@ -840,6 +851,8 @@ class ObjectFifoHandle(Resolvable):
             offset_parameter,
             group,
             managed,
+            length_parameter,
+            length_unit,
         )
 
     def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:

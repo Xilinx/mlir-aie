@@ -54,7 +54,12 @@ static LogicalResult emitUnplacedTileError(Operation *op,
 }
 
 struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
-  using OpConversionPattern::OpConversionPattern;
+  DMAStartTaskOpPattern(MLIRContext *context,
+                        llvm::DenseMap<Operation *, bool> &onlyPushedOnce)
+      : OpConversionPattern(context), onlyPushedOnce(onlyPushedOnce) {}
+
+  // Whether every start of a configure pushes a constant repeat count of 0.
+  llvm::DenseMap<Operation *, bool> &onlyPushedOnce;
 
   LogicalResult
   matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor,
@@ -97,6 +102,8 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
     // A runtime repeat count keeps its width so the push lowering can
     // range-check it before narrowing.
     OpFoldResult repeatOfr = op.getPushRepeatCount(task_op);
+    onlyPushedOnce.try_emplace(task_op, true).first->second &=
+        isConstantIntValue(repeatOfr, 0);
     Value repeatCount = dyn_cast<Value>(repeatOfr);
     if (!repeatCount)
       repeatCount = getAsValue(rewriter, loc, repeatOfr, rewriter.getI32Type());
@@ -765,6 +772,11 @@ struct AIEDMATasksToNPUPass
         });
     if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId ||
         runtimeNextBd || runtimeLock) {
+      // The verifier leaves a runtime bd_id, next_bd or lock value as the only
+      // ways here.
+      if (bd_op.getLengthStateTableIdxAttr())
+        return bd_op->emitOpError("length_parameter requires a constant bd_id, "
+                                  "next_bd and lock value");
       int col = tile.getCol(), row = tile.getRow();
       if (!target_model.isShimNOCTile(col, row) &&
           !target_model.isMemTile(col, row) &&
@@ -812,7 +824,8 @@ struct AIEDMATasksToNPUPass
              << (addr_granularity / 8) << " byte boundary.";
     }
 
-    if (len < addr_granularity / 8) {
+    // A runtime length may start from zero: the update below adds to it.
+    if (len < addr_granularity / 8 && !bd_op.getLengthStateTableIdxAttr()) {
       return bd_op->emitOpError("Transfer size of ")
              << len << " bytes falls below minimum hardware transfer unit of "
              << (addr_granularity / 8) << " bytes.";
@@ -887,6 +900,8 @@ struct AIEDMATasksToNPUPass
           isLinearTransfer(input_sizes, input_strides) ||
           (target_model.isShimNOCTile(tile.getCol(), tile.getRow()) &&
            isContiguousTransfer(input_sizes, input_strides));
+      if (!treatAsLinear && bd_op.getLengthStateTableIdxAttr())
+        AIE::placeRuntimeLengthDimension(input_sizes, input_strides);
 
       if (padDims.has_value()) {
         if (!target_model.isMemTile(tile.getCol(), tile.getRow()))
@@ -958,7 +973,11 @@ struct AIEDMATasksToNPUPass
       for (size_t i = 0; i < 3; i++) {
         len_dims_addr_granularity *= sizes[i];
       }
-      if (len_dims_addr_granularity != len_addr_granularity) {
+      // A runtime length from zero keeps the pattern for the units it adds.
+      bool runtimeLengthFromZero =
+          len_addr_granularity == 0 && bd_op.getLengthStateTableIdxAttr();
+      if (len_dims_addr_granularity != len_addr_granularity &&
+          !runtimeLengthFromZero) {
         auto err =
             bd_op->emitOpError(
                 "Buffer descriptor length does not match length of transfer "
@@ -1021,7 +1040,18 @@ struct AIEDMATasksToNPUPass
         target_model.isShimNOCTile(tile.getCol(), tile.getRow())
             ? builder.getI32IntegerAttr(bd_op.getAxcacheOrDefault())
             : IntegerAttr());
-    return setAddressForSingleBD(builder, bd_op, tile);
+    if (failed(setAddressForSingleBD(builder, bd_op, tile)))
+      return failure();
+
+    // A length_state_table_idx adds the runtime length to the BD's
+    // Buffer_Length, which the BD write has already set to the static length.
+    // The verifier requires a length_unit with it.
+    auto lengthUnit = bd_op.getLengthUnit();
+    if (bd_op.getLengthStateTableIdxAttr() && lengthUnit)
+      return emitUpdateBdLengthFromParameter(
+          builder, bd_op, buffer_type, *lengthUnit, target_model, tile.getCol(),
+          tile.getRow(), bd_id);
+    return success();
   }
 
   LogicalResult hoistNextBdOpsIntoAttrs(DMAConfigureTaskOp op) {
@@ -1100,7 +1130,9 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
-  LogicalResult rewriteSingleDMAConfigureTaskOp(DMAConfigureTaskOp op) {
+  LogicalResult rewriteSingleDMAConfigureTaskOp(
+      DMAConfigureTaskOp op,
+      const llvm::DenseMap<Operation *, bool> &onlyPushedOnce) {
     OpBuilder builder(op);
     AIE::TileOp tile = op.tryGetTileOp();
     if (!tile)
@@ -1150,6 +1182,23 @@ struct AIEDMATasksToNPUPass
     auto channelDir = op.getDirection();
     auto packet = op.getPacket();
 
+    // One push onto the task queue runs one iteration of a BD's iteration
+    // dimension; only a push's repeat_count runs the rest. Warn once the
+    // BDs are known to lower, so an invalid one gets only its error.
+    SmallVector<std::pair<Location, int64_t>> unrepeatedIterations;
+    if (onlyPushedOnce.lookup(op)) {
+      for (auto bd_op : body.getOps<AIE::DMABDOp>()) {
+        SmallVector<OpFoldResult> sizes = bd_op.getMixedSizes();
+        std::optional<int64_t> iterations;
+        if (std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration())
+          iterations = iter->getSize();
+        else if (sizes.size() == 4)
+          iterations = getConstantIntValue(sizes.front());
+        if (iterations && *iterations > 1)
+          unrepeatedIterations.emplace_back(bd_op.getLoc(), *iterations);
+      }
+    }
+
     // Lower all BDs
     for (auto &block : body) {
       if (shouldSkipBlock(block)) {
@@ -1161,14 +1210,23 @@ struct AIEDMATasksToNPUPass
       }
     }
 
+    for (auto [loc, iterations] : unrepeatedIterations)
+      mlir::emitWarning(loc)
+          << "iteration dimension of size " << iterations
+          << " is pushed with repeat_count 0, so only its first iteration "
+             "runs; set repeat_count = "
+          << iterations - 1;
+
     op.erase();
 
     return success();
   }
 
-  LogicalResult rewriteDMAConfigureTaskOp(AIE::DeviceOp device) {
+  LogicalResult rewriteDMAConfigureTaskOp(
+      AIE::DeviceOp device,
+      const llvm::DenseMap<Operation *, bool> &onlyPushedOnce) {
     WalkResult result = device.walk([&](DMAConfigureTaskOp op) {
-      if (failed(rewriteSingleDMAConfigureTaskOp(op))) {
+      if (failed(rewriteSingleDMAConfigureTaskOp(op, onlyPushedOnce))) {
         return WalkResult::interrupt();
       }
       return WalkResult::advance();
@@ -1233,7 +1291,8 @@ struct AIEDMATasksToNPUPass
     target.addIllegalOp<DMAStartTaskOp>();
     target.addIllegalOp<DMAAwaitTaskOp>();
     RewritePatternSet patterns(&getContext());
-    patterns.insert<DMAStartTaskOpPattern>(&getContext());
+    llvm::DenseMap<Operation *, bool> onlyPushedOnce;
+    patterns.insert<DMAStartTaskOpPattern>(&getContext(), onlyPushedOnce);
     patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
     // A start or await left unlowered still uses its configure, so lowering
     // the configures would only add errors.
@@ -1246,7 +1305,7 @@ struct AIEDMATasksToNPUPass
       signalPassFailure();
 
     // Lower the configuration for the BDs
-    if (failed(rewriteDMAConfigureTaskOp(device))) {
+    if (failed(rewriteDMAConfigureTaskOp(device, onlyPushedOnce))) {
       signalPassFailure();
     }
 
