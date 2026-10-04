@@ -682,7 +682,8 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
        Option<"clConfigureOnce", "configure-once", "bool", /*default=*/"false",
               "If true, keep the load_pdi ops of a runtime sequence that loads "
               "a single device, so the firmware configures it on the first "
-              "run only instead of resetting and reconfiguring on every run.">,
+              "run only instead of resetting and reconfiguring on every run. "
+              "Not supported with ctrl-pkt.">,
   ];
 }
 

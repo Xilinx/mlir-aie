@@ -314,10 +314,12 @@ struct AIEExpandLoadPdiPass
 
   // Keeps the loads of each runtime sequence that loads a single device.
   static void keepSingleDeviceLoads(ModuleOp module) {
-    module.walk([](AIE::RuntimeSequenceOp seq) {
+    module.walk([&](AIE::RuntimeSequenceOp seq) {
       SmallVector<NpuLoadPdiOp> loads;
       seq.walk([&](NpuLoadPdiOp op) { loads.push_back(op); });
       if (loads.empty() || !loads.front().getDeviceRefAttr() ||
+          !module.lookupSymbol<AIE::DeviceOp>(
+              loads.front().getDeviceRefAttr()) ||
           llvm::any_of(loads, [&](NpuLoadPdiOp op) {
             return op.getDeviceRefAttr() != loads.front().getDeviceRefAttr();
           }))
@@ -341,6 +343,10 @@ struct AIEExpandLoadPdiPass
     module.walk(
         [&](NpuLoadPdiOp loadPdiOp) { loadPdiOps.push_back(loadPdiOp); });
 
+    if (clConfigureOnce && clCtrlPkt) {
+      module.emitError("configure-once does not apply to ctrl-pkt expansion");
+      return signalPassFailure();
+    }
     if (clConfigureOnce)
       keepSingleDeviceLoads(module);
 
