@@ -226,6 +226,10 @@ CASES: list[Case] = [
         check(name, dict(tile_size=64), tag="short-row", **kw)
         for name, kw in (("axpy", dict(scalars=(2.5,))), ("convert_copy", {}))
     ],
+    Case("affine_cast", calls=16, smoke=True),
+    # One row and one 16-lane column block: each loop runs a single trip.
+    check("affine_cast", dict(rows=1, cols=16), tag="edge-tiny", smoke=True),
+    check("affine_cast", dict(rows=8, cols=256), tag="wide"),
     Case("expand", calls=16, smoke=True),
     Case("expand", calls=256),
     # AIE2 builds a group's scale once when a group spans blocks; 96 leaves one

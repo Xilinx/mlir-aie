@@ -18,6 +18,9 @@ add_weighted/1920x16/int16/gamma
 add_weighted/1920x16/uint8
 add_weighted/1920x16/uint8/gamma
 add_weighted/32x4/uint8/line_width=32/edge-one-vector
+affine_cast/16x4/float32_bfloat16/cols=16/rows=1/edge-tiny
+affine_cast/2048x4/float32_bfloat16/cols=256/rows=8/wide
+affine_cast/3072x16/float32_bfloat16
 axpy/1024x16/bfloat16
 axpy/1024x256/bfloat16
 axpy/1024x4/bfloat16/inexact-a

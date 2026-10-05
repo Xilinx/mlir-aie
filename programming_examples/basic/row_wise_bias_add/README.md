@@ -27,3 +27,19 @@ The kernel uses vector intrinsics of size `t` to perform the additions.
 The computation is designed such that the `bias` vector is not unnecessarily reloaded.
 To achieve this, we first load a chunk of `t` elements of `bias`, then produce the results for the first `t` columns of `out` (this is the inner loop).
 The outer loop iterates through chunks of `t` columns, loading the next `t` biases at the beginning of each iteration.
+
+## Row-wise Affine Cast
+
+`--op affine_cast` selects a second design in `row_wise_bias_add.py`: a per-column affine transform, `out = bfloat16(in*gamma + beta)`, narrowing the `float32` input to `bfloat16` on the way out.
+It walks the same column-major tile order, so each `gamma`/`beta` block is loaded once per column of tiles.
+The kernel is the library's [`aie.iron.kernels.affine_cast`](../../../python/iron/kernels/datamovement.py) (source [`aie_kernels/datamovement/affine_cast_f32_bf16.cc`](../../../aie_kernels/datamovement/affine_cast_f32_bf16.cc)), so the regression suite in `test/python/npu/kernel_cases.py` checks it as well.
+
+`gamma` and `beta` are the two rows of one `2`&times;`N` tensor, since an AIE2 tile has only two input DMA channels and `in` already uses one.
+Tiling that tensor with `TensorAccessPattern.full((2, N)).tile((2, n))` delivers `gamma`'s `n`-wide column block followed by `beta`'s, which is the packing the kernel reads, so the host needs no reordering.
+
+The narrowing store rounds to nearest even (`aie::rounding_mode::conv_even`), as a host `float32`-\>`bfloat16` conversion does; the AIE default truncates toward zero.
+The `float32` multiply is emulated in `bfloat16` terms and can land one `float32` ulp off, so an output that sits on a `bfloat16` rounding tie may come out one `bfloat16` ulp away; the design checks against the kernel's declared tolerance.
+
+```shell
+python3 row_wise_bias_add.py --op affine_cast --dev npu2
+```
