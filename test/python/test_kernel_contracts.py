@@ -120,6 +120,10 @@ def test_device_fixture_restores_previous_device(request):
     assert get_current_device(probe_runtime=False) is previous
 
 
+def test_bn_conv2dk1_relu_xy_pool_padded_stack_size():
+    assert kernels.bn_conv2dk1_relu_xy_pool_padded().contract.stack_bytes == 1088
+
+
 def test_factories_lists_every_exported_builder():
     """``kernels.factories()`` is what the sweeps walk; a builder it misses is never checked.
 
