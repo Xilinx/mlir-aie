@@ -2,7 +2,7 @@
  "npu": "npu1",
  "arch": "aie2",
  "commit": "b15f3508006988ea0252300a1feac447990ce6ec",
- "date": "2026-10-04T08:26:43.878234+00:00",
+ "date": "2026-10-05T06:55:16.773120+00:00",
  "swept": true,
  "timing_refused": "power mode is default, required 'turbo'",
  "kernels": [
