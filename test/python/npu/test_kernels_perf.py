@@ -174,9 +174,9 @@ def _measure(
     runs = 2 + config.getoption("--warmup") + config.getoption("--iters")
     if not verdict:
         measured["failed"] = verdict.detail
-    assert verdict or not strict, (
-        f"{case.name}: wrong on run {runs} (right on the first): {verdict.detail}"
-    )
+    assert (
+        verdict or not strict
+    ), f"{case.name}: wrong on run {runs} (right on the first): {verdict.detail}"
     if not config.getoption("--no-cycles"):
         # A separate traced run: tracing perturbs the timing above.
         intervals = kd.traced_intervals(fn, calls=case.calls)
