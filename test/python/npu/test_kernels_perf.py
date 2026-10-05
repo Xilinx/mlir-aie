@@ -527,6 +527,7 @@ def test_a_baseline_that_fails_the_contract_is_timed(request, workdir, tmp_path)
     current = _measure(case, request.config, workdir)
     entry = _compare(case, request.config, workdir, current, str(tree))
     assert "mismatches" in entry["baseline_failed"]
+    assert entry["differing_words"] == case.calls
     assert entry["npu_us_min"][0] is not None
     if not request.config.getoption("--no-cycles"):
         assert entry["cycles"][0] is not None
