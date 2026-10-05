@@ -1427,9 +1427,9 @@ def bn_conv2dk1_relu_xy_pool_padded(
         contract=KernelContract(
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
-            # aiecc measured 1088 B for the tuned aie2p kernel; aie2 fits the
-            # default core stack.
-            stack_bytes={"aie2": None, "aie2p": 1088}.get(_tuned_arch(), 1088),
+            # 1088 B tuned for aie2p; tuned for aie2 and untuned fit the
+            # default core stack
+            stack_bytes=1088 if _tuned_arch() == "aie2p" else None,
             roles=(In, Param, InOut, *((Param,) * 8)),
             reference=bn_conv2dk1_relu_xy_pool_padded_ref,
             initializers=((2, _zero_output),),
