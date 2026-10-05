@@ -5,13 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <cassert>
 #include <stdint.h>
 #include <string.h>
 #include <type_traits>
 
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
+
+#ifdef ARGMAX_ELEMS
+// The per-lane offsets are int16.
+static_assert(ARGMAX_ELEMS > 0 && ARGMAX_ELEMS <= INT16_MAX);
+#else
+#define ARGMAX_ELEMS input_size
+#endif
 
 // Index of the largest element of a tile, as the (partial, combine) pair that
 // reduce_max.cc already uses for a distributed max: every core runs
@@ -26,8 +32,7 @@
 //           index_offset, which makes combine order-independent
 //
 // Ties resolve to the lowest index, matching numpy.argmax. A NaN never compares
-// greater, so NaN inputs are skipped rather than returned -- numpy.argmax
-// returns the first NaN instead.
+// greater, so it reads as -inf -- numpy.argmax returns the first NaN instead.
 
 template <typename T>
 using argmax_value_t =
@@ -41,36 +46,41 @@ static inline void _argmax_store(int32_t *restrict out, T value,
   out[1] = index;
 }
 
+// -inf rather than lowest(), so a tile of -inf (or of lowest()) still
+// resolves to its first element.
+template <typename T>
+static inline T _argmax_seed() {
+  if constexpr (std::numeric_limits<T>::has_infinity)
+    return -std::numeric_limits<T>::infinity();
+  else
+    return std::numeric_limits<T>::lowest();
+}
+
 // One streaming pass. Lane j only ever sees positions j, j+N, j+2N, ..., and a
 // strict `>` keeps the earliest of equal values within a lane, so the global
 // first-occurrence index is min(offset[j] + j) over the lanes still holding the
 // maximum -- resolved once, after the loop, not per step.
-//
-// The per-lane offsets are int16. That bounds a call at 32767 elements, which
-// no input tile can reach: 32767 bfloat16 is 64 KB, the whole of a core's data
-// memory, and the tail loop below takes any remainder.
 template <typename T, typename V>
 void _argmax_vector(T *restrict in, int32_t *restrict out,
                     const int32_t input_size, const int32_t index_offset) {
   event0();
   constexpr int32_t N = V::size();
   using Idx = aie::vector<int16_t, N>;
-  assert(input_size <= INT16_MAX);
 
   alignas(64) int16_t lane_init[N];
   for (int32_t k = 0; k < N; k++)
     lane_init[k] = (int16_t)k;
   const Idx lane = aie::load_v<N>(lane_init);
 
-  V running_max = aie::broadcast<T, N>(std::numeric_limits<T>::lowest());
+  V running_max = aie::broadcast<T, N>(_argmax_seed<T>());
   Idx running_off = aie::zeros<int16_t, N>();
   Idx offset = aie::zeros<int16_t, N>();
   const Idx step = aie::broadcast<int16_t, N>((int16_t)N);
 
   int32_t i = 0;
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(2)
-  for (; i + N <= input_size; i += N) {
+  AIE_LOOP_UNROLL(4)
+  for (; i + N <= ARGMAX_ELEMS; i += N) {
     V next = aie::load_v<N>(in + i);
     auto improved = aie::gt(next, running_max);
     running_max = aie::select(running_max, next, improved);
@@ -84,8 +94,7 @@ void _argmax_vector(T *restrict in, int32_t *restrict out,
                   aie::add(running_off, lane), aie::eq(running_max, best));
   int32_t best_index = (int32_t)aie::reduce_min(candidates);
 
-  for (; i < input_size;
-       i++) { // remainder: input_size need not be a multiple of N
+  for (; i < ARGMAX_ELEMS; i++) { // the tile need not be a multiple of N
     if (in[i] > best) {
       best = in[i];
       best_index = i;
@@ -100,9 +109,9 @@ template <typename T>
 void _argmax_scalar(T *restrict in, int32_t *restrict out,
                     const int32_t input_size, const int32_t index_offset) {
   event0();
-  T best = std::numeric_limits<T>::lowest();
+  T best = _argmax_seed<T>();
   int32_t best_index = 0;
-  for (int32_t i = 0; i < input_size; i++) {
+  for (int32_t i = 0; i < ARGMAX_ELEMS; i++) {
     if (in[i] > best) { // strict >, so the first of equal values wins
       best = in[i];
       best_index = i;

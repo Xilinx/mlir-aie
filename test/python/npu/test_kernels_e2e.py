@@ -355,6 +355,28 @@ def test_epilogue_silu_saturates_for_huge_inputs():
     assert verdict, verdict.detail
 
 
+@pytest.mark.parametrize("vectorized", [True, False], ids=["vector", "scalar"])
+def test_argmax_of_a_tile_with_no_finite_value(vectorized):
+    """A tile of -inf, or of NaN, resolves to its first element as -inf."""
+    n = 1000
+    tiles = np.stack([np.full(n, -np.inf), np.full(n, np.nan)]).astype(bfloat16)
+    fn = kernels.argmax(tile_size=n, dtype=bfloat16, vectorized=vectorized)
+    design = kd.design(
+        kernels.argmax,
+        calls=2,
+        scalars=(7,),
+        tile_size=n,
+        dtype=bfloat16,
+        vectorized=vectorized,
+    )
+    got = _run(design, fn, [tiles], kd.output_size(fn, calls=2), np.dtype(np.int32))
+    records = got.reshape(2, 2)
+    np.testing.assert_array_equal(records[:, 0].view(np.float32), [-np.inf, -np.inf])
+    np.testing.assert_array_equal(records[:, 1], [7, 7])
+    verdict = fn.judge(got, fn.expected([tiles], scalars=(7,)), calls=2)
+    assert verdict, verdict.detail
+
+
 def _bf16_from_bits(u):
     return (np.asarray(u, np.uint32) << 16).view(np.float32).astype(bfloat16)
 

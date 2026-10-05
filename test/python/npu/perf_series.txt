@@ -26,6 +26,9 @@ argmax/1024x256/bfloat16_int32
 argmax/1024x256/int32
 argmax/1024x4/int32/offset
 argmax/1024x4/int32/vectorized=False/scalar
+argmax/16x4/int32/edge-one-vector
+argmax/32x4/bfloat16_int32/edge-one-vector
+argmax/5x4/int32/edge-under-one-vector
 argmax_combine/2x16/int32
 argmax_combine/2x16/int32/bfloat16-values
 axpy/1024x16/bfloat16

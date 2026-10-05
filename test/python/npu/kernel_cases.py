@@ -142,13 +142,21 @@ CASES: list[Case] = [
     Case("argmax", _bf16, calls=256, scalars=(0,)),
     check("argmax", scalars=(4096,), tag="offset", smoke=True),
     check("argmax", dict(vectorized=False), scalars=(0,), tag="scalar"),
+    check("argmax", dict(tile_size=16), scalars=(0,), tag="edge-one-vector"),
     check("argmax", dict(tile_size=1000), scalars=(0,), tag="edge-tail", smoke=True),
+    check("argmax", dict(tile_size=5), scalars=(0,), tag="edge-under-one-vector"),
     check(
         "argmax",
         dict(tile_size=1000, dtype=bfloat16),
         scalars=(0,),
         tag="edge-tail",
         smoke=True,
+    ),
+    check(
+        "argmax",
+        dict(tile_size=32, dtype=bfloat16),
+        scalars=(0,),
+        tag="edge-one-vector",
     ),
     Case("argmax_combine", calls=16, smoke=True),
     # The records are int32 either way, so the name needs the value dtype.
