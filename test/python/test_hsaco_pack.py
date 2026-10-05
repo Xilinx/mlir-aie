@@ -244,6 +244,11 @@ needs_objcopy = pytest.mark.skipif(
 needs_posix = pytest.mark.skipif(
     os.name == "nt", reason="stub tool script is POSIX-only"
 )
+# The colon --kernel grammar has no escaping, so it cannot express a drive-letter
+# path -- the documented reason the long form exists. tmp_path is one on Windows.
+needs_colon_free_paths = pytest.mark.skipif(
+    os.name == "nt", reason="the colon --kernel grammar cannot express C:\\ paths"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -562,7 +567,9 @@ def test_group_member_out_of_range_is_rejected():
         elf.kernel_names_from_full_elf(bytes(blob))
 
 
-@pytest.mark.parametrize("form", ["api", "colon"])
+@pytest.mark.parametrize(
+    "form", ["api", pytest.param("colon", marks=needs_colon_free_paths)]
+)
 def test_elf64_full_elf_is_rejected(tmp_path, form):
     """ROCR would refuse it at load, so the packer must refuse it first."""
     path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")], elf_class=64))
@@ -905,7 +912,9 @@ def test_missing_xclbinutil_explains_the_alternatives(tmp_path, monkeypatch):
         pack.xclbinutil_path()
 
 
-@pytest.mark.parametrize("form", ["long", "colon"])
+@pytest.mark.parametrize(
+    "form", ["long", pytest.param("colon", marks=needs_colon_free_paths)]
+)
 def test_unresolvable_xclbinutil_is_a_usage_error(tmp_path, monkeypatch, form):
     """Tool resolution raises RuntimeError; that must not escape as a traceback."""
     monkeypatch.delenv("AIE_XCLBINUTIL", raising=False)
@@ -950,6 +959,7 @@ def test_a_rejected_xclbin_keeps_xclbinutils_diagnosis(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+@needs_colon_free_paths
 def test_pdi_insts_kernel_specs(tmp_path):
     insts = _write(tmp_path / "insts.bin", b"\x01\x02")
     pdi = _write(tmp_path / "main.pdi", b"\x03\x04")
@@ -963,6 +973,7 @@ def test_pdi_insts_kernel_specs(tmp_path):
     assert (without_pdi["kernarg_size"], without_pdi["num_cols"]) == (32, 1)
 
 
+@needs_colon_free_paths
 def test_elf_kernel_spec_accepts_optional_trailing_fields(tmp_path):
     path = _write(tmp_path / "final.elf", make_full_elf([("k", "i")], num_cols=4))
 
@@ -1161,6 +1172,7 @@ def test_long_form_handles_a_path_containing_a_colon(tmp_path):
 
 
 @needs_objcopy
+@needs_colon_free_paths
 def test_mixed_grammars_keep_argv_order(tmp_path):
     """The README calls the two forms freely mixable; the kernel table is ordered."""
     a = _write(tmp_path / "a.bin", b"\xaa")
@@ -1188,6 +1200,7 @@ def test_mixed_grammars_keep_argv_order(tmp_path):
 
 
 @needs_objcopy
+@needs_colon_free_paths
 def test_main_mixes_long_form_and_colon_form(tmp_path):
     elf_path = _write(tmp_path / "final.elf", make_full_elf([("k0", "i0")], num_cols=8))
     insts = _write(tmp_path / "insts.bin", b"\x07\x08")
@@ -1267,6 +1280,7 @@ def test_out_of_range_counts_are_reachable_from_the_cli(tmp_path, capsys):
     assert "num_cols -1 out of range" in capsys.readouterr().err
 
 
+@needs_colon_free_paths
 def test_both_kernel_grammars_report_a_bad_elf_the_same_way(tmp_path, capsys):
     """The long form is what the README recommends; it must not be the worse path."""
     plain = _write(tmp_path / "plain.elf", b"\x7fELF\x02\x01\x01" + b"\x00" * 80)
@@ -1352,6 +1366,7 @@ def test_injecting_into_a_populated_elf_keeps_its_sections(tmp_path):
 
 
 @needs_objcopy
+@needs_posix
 def test_a_failed_injection_leaves_the_previous_section_intact(tmp_path, monkeypatch):
     """Objcopy runs on a scratch copy, so a mid-way failure must not strip the file."""
     path = str(tmp_path / "out.hsaco")
@@ -1382,7 +1397,10 @@ def test_a_rejected_kernel_set_leaves_no_stray_container(tmp_path, capsys):
     path = str(tmp_path / "never.hsaco")
     empty = _write(tmp_path / "empty.bin", b"")
     with pytest.raises(SystemExit) as excinfo:
-        pack.main(["--hsaco", path, "--arch", "aie2", "--kernel", f"k:{empty}:64:1"])
+        pack.main(
+            ["--hsaco", path, "--arch", "aie2"]
+            + ["--kernel-name", "k", "--kernel-insts", empty, "--kernel-cols", "1"]
+        )
     assert excinfo.value.code == 2
     assert "insts must be non-empty" in capsys.readouterr().err
     assert not os.path.exists(path)
@@ -1422,6 +1440,7 @@ def test_dump_reports_a_damaged_arch_without_hiding_the_intact_one(tmp_path, cap
 
 
 @needs_objcopy
+@needs_posix
 def test_a_failed_injection_leaves_no_stray_container(tmp_path, monkeypatch, capsys):
     """The build-failure path already promises this; the objcopy path must too."""
     path = str(tmp_path / "never.hsaco")
@@ -1512,7 +1531,10 @@ def test_main_packs_a_full_elf_end_to_end(tmp_path, capsys):
     hsaco = str(tmp_path / "out.hsaco")
 
     assert (
-        pack.main(["--hsaco", hsaco, "--arch", "aie2p", f"--kernel=elf:{source}:64"])
+        pack.main(
+            ["--hsaco", hsaco, "--arch", "aie2p"]
+            + ["--kernel-elf", source, "--kernel-kernarg", "64"]
+        )
         == 0
     )
     assert dump.main(["--hsaco", hsaco]) == 0
