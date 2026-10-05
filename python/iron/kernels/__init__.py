@@ -7,7 +7,7 @@
 
 Submodules:
 - `eltwise` — passthrough, scale, add, mul, relu
-- `datamovement` — axpy, convert_copy, expand, rope, transpose
+- `datamovement` — affine_cast, axpy, convert_copy, expand, rope, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
@@ -115,6 +115,8 @@ from .conv import (
 )
 from .core import RoundingMode, conv_even, set_rounding
 from .datamovement import (
+    affine_cast,
+    affine_cast_ref,
     axpy,
     axpy_ref,
     convert_copy,
@@ -423,6 +425,7 @@ __all__ = [
     "tanh",
     "sigmoid",
     "leaky_relu",
+    "affine_cast",
     "axpy",
     "convert_copy",
     "expand",
@@ -433,6 +436,7 @@ __all__ = [
     "reduce_add_ref",
     "reduce_min_ref",
     "reduce_max_ref",
+    "affine_cast_ref",
     "axpy_ref",
     "convert_copy_ref",
     "expand_ref",
