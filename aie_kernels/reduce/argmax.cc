@@ -25,6 +25,8 @@ static_assert(ARGMAX_ELEMS > 0 && ARGMAX_ELEMS <= INT16_MAX);
 //           and argmax_combine's merge order does not matter
 // Ties go to the lowest index, as in numpy.argmax. A NaN never compares
 // greater, so it reads as -inf; numpy.argmax returns the first NaN instead.
+// A -0 reads as +0: the bf16 compare orders -0 below +0, but its equality
+// does not, so canonicalizing is what keeps -0 and +0 a tie.
 
 template <typename T>
 using argmax_value_t =
@@ -46,6 +48,31 @@ static inline T _argmax_seed() {
     return -std::numeric_limits<T>::infinity();
   else
     return std::numeric_limits<T>::lowest();
+}
+
+template <typename T>
+static inline T _argmax_load(const T *in) {
+  T value = in[0];
+  if constexpr (std::is_same_v<T, bfloat16>) {
+    uint16_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    if (bits == 0x8000)
+      value = T(0);
+  }
+  return value;
+}
+
+template <typename T, typename V>
+static inline V _argmax_load_v(const T *in) {
+  V value = aie::load_v<V::size()>(in);
+  if constexpr (std::is_same_v<T, bfloat16>) {
+    const auto bits = value.template cast_to<int16_t>();
+    // -0 is INT16_MIN. lt, because eq against it crashes Peano's legalizer.
+    value = aie::select(bits, aie::zeros<int16_t, V::size()>(),
+                        aie::lt(bits, (int16_t)(INT16_MIN + 1)))
+                .template cast_to<bfloat16>();
+  }
+  return value;
 }
 
 // One streaming pass. Lane j only ever sees positions j, j+N, j+2N, ..., and a
@@ -73,7 +100,7 @@ void _argmax_vector(T *restrict in, int32_t *restrict out,
   AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_UNROLL(4)
   for (; i + N <= ARGMAX_ELEMS; i += N) {
-    V next = aie::load_v<N>(in + i);
+    V next = _argmax_load_v<T, V>(in + i);
     auto improved = aie::gt(next, running_max);
     running_max = aie::select(running_max, next, improved);
     running_off = aie::select(running_off, offset, improved);
@@ -87,8 +114,9 @@ void _argmax_vector(T *restrict in, int32_t *restrict out,
   int32_t best_index = (int32_t)aie::reduce_min(candidates);
 
   for (; i < ARGMAX_ELEMS; i++) { // the tile need not be a multiple of N
-    if (in[i] > best) {
-      best = in[i];
+    const T value = _argmax_load(in + i);
+    if (value > best) {
+      best = value;
       best_index = i;
     }
   }
@@ -104,8 +132,9 @@ void _argmax_scalar(T *restrict in, int32_t *restrict out,
   T best = _argmax_seed<T>();
   int32_t best_index = 0;
   for (int32_t i = 0; i < ARGMAX_ELEMS; i++) {
-    if (in[i] > best) { // strict >, so the first of equal values wins
-      best = in[i];
+    const T value = _argmax_load(in + i);
+    if (value > best) { // strict >, so the first of equal values wins
+      best = value;
       best_index = i;
     }
   }

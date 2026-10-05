@@ -295,8 +295,9 @@ def argmax_ref(x, index_offset: int = 0):
     """Numpy reference for [`argmax`][iron.kernels.reduce.argmax]: one record per tile.
 
     Returns the ``(..., 2)`` int32 records the kernel writes, so a host can
-    compare them verbatim. A NaN reads as -inf, as it does in the kernel's
-    comparisons; that is where this differs from a plain ``numpy.argmax``.
+    compare them verbatim. A NaN reads as -inf and a -0 as +0, as they do in
+    the kernel's comparisons; that is where this differs from a plain
+    ``numpy.argmax``.
     """
     x = np.asarray(x)
     if np.issubdtype(x.dtype, np.integer):
@@ -304,6 +305,7 @@ def argmax_ref(x, index_offset: int = 0):
     else:
         keys = x.astype(np.float32)
         keys = np.where(np.isnan(keys), np.float32(-np.inf), keys)
+        keys = np.where(keys == 0, np.float32(0), keys)
     index = keys.argmax(axis=-1)[..., None]
     value = np.take_along_axis(keys, index, axis=-1).view(np.int32)
     return np.concatenate([value, (index + index_offset).astype(np.int32)], axis=-1)
@@ -328,7 +330,8 @@ def argmax(
     mattering.
 
     Ties resolve to the lowest index, matching ``numpy.argmax``. A NaN never
-    compares greater, so it reads as -inf.
+    compares greater, so it reads as -inf, and a -0 reads as +0, so -0 and +0
+    tie.
 
     Args:
         tile_size: Number of elements in the input slice, 1..32767. The
