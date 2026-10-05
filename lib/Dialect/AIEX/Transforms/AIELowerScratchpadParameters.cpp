@@ -141,11 +141,13 @@ getOffsetRange(Value offset, int64_t bufferElems, DataFlowSolver *solver) {
   if (!state || state->getValue().isUninitialized())
     return std::nullopt;
   const ConstantIntRanges &range = state->getValue().getValue();
-  int64_t lo = range.smin().getSExtValue();
-  int64_t hi = range.smax().getSExtValue();
-  if (lo < 0 || hi >= bufferElems)
+  // The offset may be wider than 64 bits; an extremum that does not fit is
+  // outside the buffer anyway.
+  std::optional<int64_t> lo = range.smin().trySExtValue();
+  std::optional<int64_t> hi = range.smax().trySExtValue();
+  if (!lo || !hi || *lo < 0 || *hi >= bufferElems)
     return std::nullopt;
-  return std::make_pair(lo, hi);
+  return std::make_pair(*lo, *hi);
 }
 
 /// With a runtime offset, the extent starts at its smallest value and ends
