@@ -55,8 +55,8 @@ def NpuDmaMemcpyNdOp():
 
 # CHECK-LABEL: NpuDmaMemcpyNdOpI32Dims
 # CHECK: aie.runtime_sequence(%arg0: memref<4096xi8>, %arg1: i32)
-# CHECK: %[[ROWS:.*]] = arith.extsi %arg1 : i32 to i64
-# CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, %[[ROWS]], 64][0, 0, 64, 1])
+# CHECK-NOT: arith.extsi
+# CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, %arg1 : i32, 64][0, 0, 64, 1])
 @construct_and_print_module
 def NpuDmaMemcpyNdOpI32Dims():
     @device(AIEDevice.npu1)

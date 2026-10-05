@@ -101,7 +101,7 @@ def checklist(contribution, repo, tmp_path):
     out = tmp_path / "checklist.md"
     args = ["--repo", str(repo), "--base", "HEAD~1", "--head", "HEAD"]
     assert contribution.main(args + ["--out", str(out)]) == 0
-    return out.read_text() if out.exists() else None
+    return out.read_text(encoding="utf-8") if out.exists() else None
 
 
 def test_a_pull_request_without_kernel_code_gets_no_comment(contribution, repo):
@@ -188,7 +188,7 @@ def test_a_branch_behind_main_is_not_shown_mains_changes(contribution, repo):
     args[3] = next(b for b in branches if b in ("main", "master"))
     out = repo / "x.md"
     assert contribution.main(args + ["--out", str(out)]) == 0
-    text = out.read_text()
+    text = out.read_text(encoding="utf-8")
     assert "`add`" in text
     assert "scale" not in text and "bare" not in text and "Removed" not in text
 

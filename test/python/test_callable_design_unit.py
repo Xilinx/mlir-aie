@@ -714,3 +714,33 @@ def test_as_mlir_binds_runtime_device_before_generation(monkeypatch):
     keys = list(cd.compilable._generated_cache)
     assert len(keys) == 1
     assert "NPU2Col1" in keys[0][2]
+
+
+def test_as_mlir_generator_receives_tensor_types(npu2_device):
+    import aie.iron as iron
+    from aie.iron import ObjectFifo, Program, Runtime
+
+    seen = []
+
+    @jit
+    def copy(a: In, b: Out):
+        seen.append((a, b))
+        of_in = ObjectFifo(np.ndarray[(16,), np.dtype[np.int32]])
+        of_out = of_in.cons().forward()
+
+        def seq(src, dst, producer, consumer):
+            producer.fill(src)
+            consumer.drain(dst, wait=True)
+
+        rt = Runtime(seq, [a, b, of_in.prod(), of_out.cons()])
+        return Program(iron.get_current_device(), rt).resolve_program()
+
+    small = copy.as_mlir(np.zeros(64, np.int32), np.zeros(64, np.int32))
+    large = copy.as_mlir(np.zeros((4, 32), np.int32), np.zeros(128, np.int32))
+    assert seen[0] == (
+        np.ndarray[(64,), np.dtype[np.int32]],
+        np.ndarray[(64,), np.dtype[np.int32]],
+    )
+    assert seen[1][0] == np.ndarray[(4, 32), np.dtype[np.int32]]
+    assert "memref<64xi32>" in small
+    assert "memref<4x32xi32>" in large

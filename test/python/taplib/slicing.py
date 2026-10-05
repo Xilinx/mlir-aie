@@ -51,9 +51,9 @@ def walked(tap):
     ]
 
 
-# CHECK-LABEL: from_slice_matches_numpy
+# CHECK-LABEL: slice_matches_numpy
 @construct_test
-def from_slice_matches_numpy():
+def slice_matches_numpy():
     checked = 0
     for shape in SHAPES:
         flat = np.arange(int(np.prod(shape))).reshape(shape)
@@ -62,19 +62,19 @@ def from_slice_matches_numpy():
                 selected = flat[key]
             except IndexError:
                 try:
-                    TensorAccessPattern.from_slice(shape, key)
+                    TensorAccessPattern.full(shape)[key]
                     raise AssertionError(f"{shape} {key}: expected IndexError")
                 except IndexError:
                     pass
                 continue
             if np.size(selected) == 0:
                 try:
-                    TensorAccessPattern.from_slice(shape, key)
+                    TensorAccessPattern.full(shape)[key]
                     raise AssertionError(f"{shape} {key}: empty slice accepted")
                 except ValueError:
                     pass
                 continue
-            tap = TensorAccessPattern.from_slice(shape, key)
+            tap = TensorAccessPattern.full(shape)[key]
             assert walked(tap) == list(
                 np.asarray(selected).reshape(-1)
             ), f"{shape} {key}: {tap} walks the wrong elements"
@@ -86,9 +86,9 @@ def from_slice_matches_numpy():
 # CHECK: matched numpy on {{[0-9]+}} (shape, key) pairs
 
 
-# CHECK-LABEL: from_slice_rejects_what_it_cannot_walk
+# CHECK-LABEL: slice_rejects_what_it_cannot_walk
 @construct_test
-def from_slice_rejects_what_it_cannot_walk():
+def slice_rejects_what_it_cannot_walk():
     # Advanced indexing selects elements no strided walk reaches.
     for key in (
         np.array([0, 2]),
@@ -100,7 +100,7 @@ def from_slice_rejects_what_it_cannot_walk():
         np.bool_(False),
     ):
         try:
-            TensorAccessPattern.from_slice((16,), key)
+            TensorAccessPattern.full((16,))[key]
             raise AssertionError(f"{key!r} should be rejected")
         except TypeError:
             pass
@@ -108,7 +108,7 @@ def from_slice_rejects_what_it_cannot_walk():
     # A buffer descriptor steps forward only.
     for key in (np.s_[::-1], np.s_[::0], np.s_[3:3]):
         try:
-            TensorAccessPattern.from_slice((16,), key)
+            TensorAccessPattern.full((16,))[key]
             raise AssertionError(f"{key!r} should be rejected")
         except ValueError:
             pass
@@ -116,7 +116,7 @@ def from_slice_rejects_what_it_cannot_walk():
     # Malformed keys report the way numpy reports them.
     for shape, key in (((4, 3), np.s_[0, 0, 0]), ((4, 3), 9), ((4, 3), (..., ...))):
         try:
-            TensorAccessPattern.from_slice(shape, key)
+            TensorAccessPattern.full(shape)[key]
             raise AssertionError(f"{key!r} should be rejected")
         except IndexError:
             pass
@@ -126,15 +126,15 @@ def from_slice_rejects_what_it_cannot_walk():
 # CHECK: rejected every key a strided walk cannot express
 
 
-# CHECK-LABEL: from_slice_all_integer_key
+# CHECK-LABEL: slice_all_integer_key
 @construct_test
-def from_slice_all_integer_key():
+def slice_all_integer_key():
     # Names one element, so it is a one-element walk -- not zero dimensions,
     # and not a read through a stand-in array's backing storage.
-    tap = TensorAccessPattern.from_slice((1024, 1024, 1024), (1023, 1023, 1023))
-    assert tap.sizes == [1] and tap.strides == [1]
+    tap = TensorAccessPattern.full((1024, 1024, 1024))[1023, 1023, 1023]
+    assert tap.sizes == (1,) and tap.strides == (1,)
     assert tap.offset == 1023 * 1024 * 1024 + 1023 * 1024 + 1023
     print(f"all-integer key -> offset {tap.offset}, sizes {tap.sizes}")
 
 
-# CHECK: all-integer key -> offset 1073741823, sizes [1]
+# CHECK: all-integer key -> offset 1073741823, sizes (1,)

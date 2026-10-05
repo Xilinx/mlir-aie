@@ -28,7 +28,6 @@ current target.
 
 from __future__ import annotations
 
-import hashlib
 import inspect
 import json
 import logging
@@ -39,7 +38,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, get_origin
 
 import numpy as np
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
@@ -304,22 +303,37 @@ class CompilableDesign:
 
         # Active dispatch values never enter compile_kwargs. Explicitly bound
         # dispatch names have already become compile-time parameters above.
+        # A tensor name may hold only its type: the tensor itself is a
+        # call-time value.
         # Guard 0-A: compile_kwargs holds only compile-time names. Checked at
         # construction because __hash__ can run before any generation, so a
         # misplaced key would reach the cache key first.
         name = getattr(mlir_generator, "__name__", mlir_generator)
-        for kind, names in (
-            ("runtime tensors (In/Out/InOut)", self.tensor_params),
-            ("runtime scalars (DispatchTime[T])", self.dispatch_params),
+        tensor_values = {
+            n
+            for n in self.tensor_params
+            if n in self.compile_kwargs
+            and get_origin(self.compile_kwargs[n]) is not np.ndarray
+        }
+        for kind, misplaced, allowed in (
+            (
+                "runtime tensors (In/Out/InOut)",
+                tensor_values,
+                "only their type, np.ndarray[shape, np.dtype[T]]",
+            ),
+            (
+                "runtime scalars (DispatchTime[T])",
+                set(self.compile_kwargs) & set(self.dispatch_params),
+                "nothing",
+            ),
         ):
-            misplaced = set(self.compile_kwargs) & set(names)
             if misplaced:
                 raise TypeError(
                     f"CompilableDesign for {name!r}: compile_kwargs contains "
                     f"name(s) annotated as {kind}, not CompileTime[T] "
                     f"parameters: {misplaced}.\n"
-                    f"  They are supplied at call time, not compile time, and "
-                    f"must never enter the cache key.\n"
+                    f"  They are supplied at call time; the cache key may hold "
+                    f"{allowed}.\n"
                     f"  CompileTime[T] params are: {self.compile_params}."
                 )
 
@@ -533,7 +547,7 @@ class CompilableDesign:
             inst_exists = companion_path is not None and companion_path.exists()
 
             if explicit_paths:
-                build_key = self._explicit_build_key(
+                build_key = self._compute_cache_hash(
                     full_elf=False,
                     emit_elf=elf_path is not None,
                     work_dir=kernel_dir,
@@ -756,7 +770,7 @@ class CompilableDesign:
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
-                build_key = self._explicit_build_key(full_elf=True, work_dir=kernel_dir)
+                build_key = self._compute_cache_hash(full_elf=True, work_dir=kernel_dir)
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"full_elf": elf_path}
                 ):
@@ -886,7 +900,7 @@ class CompilableDesign:
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
-                build_key = self._explicit_build_key(
+                build_key = self._compute_cache_hash(
                     full_elf=False, work_dir=kernel_dir
                 )
                 if self._reuse_explicit_outputs(
@@ -1444,34 +1458,6 @@ class CompilableDesign:
             work_dir,
         )
 
-    def _explicit_build_key(
-        self,
-        *,
-        full_elf: bool,
-        emit_elf: bool = False,
-        work_dir: Path | None = None,
-    ) -> str:
-        """Identify an explicit-path build by everything it reads but its recorded inputs.
-
-        The cache hash names the recipe and tools but not what the generator
-        calls, so the generated MLIR is keyed too: an edit to a helper the
-        generator imports changes the design only through it. Each kernel's
-        recipe covers what the MLIR only names, such as its compile flags.
-        """
-        mlir_text, kernels = self._generated_for(full_elf=full_elf)
-        h = hashlib.sha256()
-        h.update(
-            self._compute_cache_hash(
-                full_elf=full_elf, emit_elf=emit_elf, work_dir=work_dir
-            ).encode()
-        )
-        h.update(mlir_text.encode())
-        for recipe in sorted(
-            repr((f.object_file_name, f.object_file._source)) for f in kernels
-        ):
-            h.update(recipe.encode())
-        return h.hexdigest()
-
     def _reuse_explicit_outputs(
         self,
         kernel_dir: Path,
@@ -1635,7 +1621,13 @@ class CompilableDesign:
             parameters=list(compile_only_params.values())
         )
         try:
-            compile_only_sig.bind(**self.compile_kwargs)
+            compile_only_sig.bind(
+                **{
+                    k: v
+                    for k, v in self.compile_kwargs.items()
+                    if k not in self.tensor_params
+                }
+            )
         except TypeError as exc:
             raise TypeError(
                 f"CompilableDesign for '{self.generator_name}': "

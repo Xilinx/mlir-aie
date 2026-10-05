@@ -57,8 +57,8 @@ def sizes_strides_from_tuples():
     from_tuples = TensorAccessPattern((3, 4), 0, (3, 4), (4, 1))
     from_lists = TensorAccessPattern([3, 4], 0, [3, 4], [4, 1])
     assert from_tuples == from_lists, f"{from_tuples} != {from_lists}"
-    assert from_tuples.sizes.copy() == [3, 4]
-    assert from_tuples.strides.copy() == [4, 1]
+    assert list(from_tuples.sizes) == [3, 4]
+    assert list(from_tuples.strides) == [4, 1]
 
     tas = TensorAccessSequence.from_taps([from_tuples, from_lists])
     assert len(tas) == 2 and tas[0] == tas[1]

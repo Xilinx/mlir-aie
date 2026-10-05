@@ -37,6 +37,7 @@ Provides the primary abstractions for describing NPU designs:
     surface at MLIR verification time.
 """
 
+from aie.helpers.taplib._symbolic import require
 from aie.utils import (
     arange,
     ceildiv,
@@ -80,9 +81,7 @@ from .dataflow import (
     ObjectFifo,
     PacketDest,
     PacketFlow,
-    PadDims,
     Release,
-    StreamDims,
     TileDma,
     TileDmaTask,
 )
@@ -112,8 +111,6 @@ __all__ = [
     "Task",
     "sync_parameters",
     "ObjectFifo",
-    "PadDims",
-    "StreamDims",
     # Lower-level explicit-routing primitives
     "Acquire",
     "Bd",
@@ -142,6 +139,7 @@ __all__ = [
     "jit",
     "compile_context",
     "get_compile_arg",
+    "require",
     # Tensor factories
     "tensor",
     "ones",

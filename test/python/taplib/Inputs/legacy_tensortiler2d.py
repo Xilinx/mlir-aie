@@ -1,26 +1,45 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""The retired TensorTiler2D, kept verbatim as the oracle for tiler_vs_legacy.py.
+
+This is not part of the aie package. It exists so the differential test can
+keep proving that TensorAccessPattern.tile() reproduces the old tiler's numbers
+exactly; do not use it in designs.
+"""
 
 from copy import deepcopy
 from functools import partial
 from typing import Sequence
 
 import numpy as np
+from aie.helpers.npdtypes import ceildiv
+from aie.helpers.taplib import TensorAccessPattern
+from aie.helpers.taplib.utils import validate_and_clean_sizes_strides
 
-from ..npdtypes import ceildiv
-from .tas import TensorAccessSequence
-from .utils import validate_and_clean_sizes_strides, validate_tensor_dims
+
+def validate_tensor_dims(tensor_dims: Sequence[int], expected_dims: int) -> list[int]:
+    """The retired validator: a 1-D shape reads as `[1, n]`."""
+    tensor_dims = list(tensor_dims)
+    if any(d < 1 for d in tensor_dims):
+        raise ValueError(f"Each tensor dimension must be >= 1 ({tensor_dims})")
+    if len(tensor_dims) == 1:
+        tensor_dims = [1, tensor_dims[0]]
+    if len(tensor_dims) != expected_dims:
+        raise ValueError(
+            f"Tensor dimension ({tensor_dims}) does not match expected dimension ({expected_dims})"
+        )
+    return tensor_dims
 
 
 class TensorTiler2D:
-    """A generator (similar to factory pattern) class which produces TensorAccessSequences for common 2-dimensional tiling patterns."""
+    """A generator (similar to factory pattern) class which produces lists of TensorAccessPatterns for common 2-dimensional tiling patterns."""
 
     _DTYPE = np.int32
     _NUM_DIMS = 2
 
     def __init__(self):
         raise Exception(
-            f"{self.__class__} cannot be instantiated. Use it as a factory/generator of TensorAccessSequences."
+            f"{self.__class__} cannot be instantiated. Use it as a factory/generator of lists of TensorAccessPatterns."
         )
 
     @classmethod
@@ -32,8 +51,8 @@ class TensorTiler2D:
         iter_col_major: bool = False,
         pattern_repeat: int = 1,
         prune_step: bool = True,
-    ) -> TensorAccessSequence:
-        """Produce a TensorAccessSequence with one TensorAccessPattern per tile.
+    ) -> list[TensorAccessPattern]:
+        """Produce a list with one TensorAccessPattern per tile.
 
         The simple_tiler is a special case of the group_tiler.
 
@@ -41,12 +60,12 @@ class TensorTiler2D:
             tensor_dims (Sequence[int]): The dimensions of the tensor to tile.
             tile_dims (Sequence[int] | None, optional): The dimension of the tile. If None, the tile_dims is set equal to the tensor_dims. Defaults to None.
             tile_col_major (bool, optional): Iterate column major within each tile. Defaults to False.
-            iter_col_major (bool, optional): Iterate column major over tiles within the TensorAccessSequence. Defaults to False.
+            iter_col_major (bool, optional): Iterate column major over tiles within the list. Defaults to False.
             pattern_repeat (int, optional): Access a tile n times per TensorAccessPattern. Defaults to 1.
             prune_step (bool, optional): Prune the iteration steps in the tiling process. Defaults to True.
 
         Returns:
-            TensorAccessSequence: A TensorAccessSequence with one TensorAccessPattern per tile
+            list[TensorAccessPattern]: A list with one TensorAccessPattern per tile
         """
         if tile_dims is None:
             tile_dims = deepcopy(tensor_dims)
@@ -72,8 +91,8 @@ class TensorTiler2D:
         pattern_repeat: int = 1,
         allow_partial: bool = False,
         prune_step: bool = True,
-    ) -> TensorAccessSequence:
-        """Produce a TensorAccessSequence with a group of tiles per TensorAccessPattern in the sequence.
+    ) -> list[TensorAccessPattern]:
+        """Produce a list with a group of tiles per TensorAccessPattern in the sequence.
 
         The group_tiler is a special case of the step_tiler.
 
@@ -83,15 +102,15 @@ class TensorTiler2D:
             tile_group_dims (Sequence[int] | None, optional): Dimensions of the grouping of tiles, specified by number of tiles (not elements).
                 If None, assumed to be (1, 1). Defaults to None.
             tile_col_major (bool, optional): Iterate column major within each tile. Defaults to False.
-            tile_group_col_major (bool, optional): Iterate column major between tiles in a group within a TensorAccessSequence. Defaults to False.
-            iter_col_major (bool, optional): Iterate column major over tiles within the TensorAccessSequence. Defaults to False.
+            tile_group_col_major (bool, optional): Iterate column major between tiles in a group within the list. Defaults to False.
+            iter_col_major (bool, optional): Iterate column major over tiles within the list. Defaults to False.
             pattern_repeat (int, optional): Apply a pattern n times within a single TensorAccessPattern. Defaults to 1.
             allow_partial (bool, optional): While a tensor must decompose into tiles easily, a tensor may not decompose into tile groups evenly.
                 If True, uneven groups are allowed. If false, an exception will be thrown. Defaults to False.
             prune_step (bool, optional): Prune the iteration steps in the tiling process. Defaults to True.
 
         Returns:
-            TensorAccessSequence: A TensorAccessSequence with one tile grouping per TensorAccessPattern
+            list[TensorAccessPattern]: A list with one tile grouping per TensorAccessPattern
         """
         if tile_group_dims is None:
             tile_group_dims = (1,) * cls._NUM_DIMS
@@ -121,8 +140,8 @@ class TensorTiler2D:
         allow_partial: bool = False,
         pattern_repeat: int = 1,
         prune_step: bool = True,
-    ) -> TensorAccessSequence:
-        """Build a TensorAccessSequence by tiling a tensor with explicit per-dimension steps.
+    ) -> list[TensorAccessPattern]:
+        """Build a list of TensorAccessPatterns by tiling a tensor with explicit per-dimension steps.
 
         This is the general-purpose tiler that the simpler ``simple_tiler`` /
         ``group_tiler`` factories delegate to. It produces one
@@ -135,8 +154,8 @@ class TensorTiler2D:
             tile_group_repeats (Sequence[int]): Number of times a tile appears in each dimension in each TensorAccessPattern.
             tile_group_steps (Sequence[int] | None, optional): Space between each tile repeat in each dimension, given in units of tile size. Defaults to None.
             tile_col_major (bool, optional): Iterate column major within each tile. Defaults to False.
-            tile_group_col_major (bool, optional): Iterate column major between tiles in a group within a TensorAccessSequence. Defaults to False.
-            iter_col_major (bool, optional): Iterate column major over tiles within the TensorAccessSequence. Defaults to False.
+            tile_group_col_major (bool, optional): Iterate column major between tiles in a group within the list. Defaults to False.
+            iter_col_major (bool, optional): Iterate column major over tiles within the list. Defaults to False.
             allow_partial (bool, optional): Whether to allow partial tile groups. A tensor
                 always decomposes into tiles evenly, but it may not decompose into tile
                 *groups* evenly. When False, a partial tile grouping raises a ValueError;
@@ -151,7 +170,7 @@ class TensorTiler2D:
             ValueError: If allow_partial is False, an error will be thrown if partial TensorAccessPatterns are needed to fully tile the tensor.
 
         Returns:
-            TensorAccessSequence: A TensorAccessSequence with one tile grouping per TensorAccessPattern,
+            list[TensorAccessPattern]: A list with one tile grouping per TensorAccessPattern,
                 where the tile grouping may or may not be contiguous.
         """
         # Validate dimensions
@@ -262,14 +281,15 @@ class TensorTiler2D:
         sizes_fn = partial(sizes_or_strides_fn, is_sizes=True)
         strides_fn = partial(sizes_or_strides_fn, is_sizes=False)
 
-        # Construct the sequence without defaults, fully relying on the constructor functions.
-        return TensorAccessSequence(
-            tensor_dims,
-            num_steps,
-            sizes_fn=sizes_fn,
-            strides_fn=strides_fn,
-            offset_fn=offset_fn,
-        )
+        return [
+            TensorAccessPattern(
+                tensor_dims,
+                offset_fn(step, None),
+                sizes_fn(step, None),
+                strides_fn(step, None),
+            )
+            for step in range(num_steps)
+        ]
 
     @classmethod
     def __get_num_steps(

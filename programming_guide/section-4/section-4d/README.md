@@ -256,7 +256,7 @@ Step 64 lanes for 8- and 16-bit data and 32 lanes for bf16 arithmetic, not 16. `
 On an int8 convolution network, three more changes measured faster:
 * doing the bias add on an int32 vector and then `acc.to_vector<int8>(shift)` with `rounding_mode::conv_even`, which is bit-exact with the scalar rounding: 20-25% per kernel;
 * having the producing kernel write the matrix-multiply A operand in the order the consumer's `mmul` loads it: -23.6% on one block;
-* moving a pure strided copy (a stride-2 deinterleave) out of the kernel into the memory tile's DMA (`dims_to_stream`): +12%. This helps only when each contiguous element is at least 512 bytes, and int8 vector loads still need a 32-byte-aligned start.
+* moving a pure strided copy (a stride-2 deinterleave) out of the kernel into the memory tile's DMA (`to_stream`): +12%. This helps only when each contiguous element is at least 512 bytes, and int8 vector loads still need a 32-byte-aligned start.
 
 ## <u>Peano and AIE2P traps</u>
 

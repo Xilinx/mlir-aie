@@ -66,16 +66,17 @@ DRAM into the memory tile.
 ### L3 &rightarrow; L2: Larger Tiles
 
 ```
-a_taps = TensorTiler2D.group_tiler((M, K), (m, k), (1, K // k), pattern_repeat=(N // n))
-b_tap = TensorTiler2D.group_tiler((K, N), (k, n), (K // k, N // n), tile_group_col_major=True)[0]
-c_taps = TensorTiler2D.group_tiler((M, N), (m, n), (1, N // n))
+a_tiles = TensorAccessPattern.full((M, K)).tile((m, k))
+# All of B, walked one column of k*n tiles at a time.
+b_tap = TensorAccessPattern.full((K, N)).tile((k, n)).permute((1, 0, 2, 3))
+c_tiles = TensorAccessPattern.full((M, N)).tile((m, n))
 
 def sequence(A, B, C, a_prod, b_prod, c_cons):
     for tile_row in range(M // m):
         task_group = TaskGroup()
-        a_prod.fill(A, tap=a_taps[tile_row], group=task_group)
+        a_prod.fill(A, tap=a_tiles[tile_row].repeat(N // n), group=task_group)
         b_prod.fill(B, tap=b_tap, group=task_group)
-        c_cons.drain(C, tap=c_taps[tile_row], group=task_group, wait=True)
+        c_cons.drain(C, tap=c_tiles[tile_row], group=task_group, wait=True)
         task_group.finish()
 
 rt = Runtime(
@@ -99,7 +100,7 @@ Once an entire row of `A` and an entire column of `B` have been streamed in,
 we move onto the next column of tiles of `B`, while repeating the same row of
 tiles of `A`. This allows the cores to compute the next output tile of C. In
 our implementation above, we achieve the repeat of `A` using the
-`pattern_repeat` attribute, whereas the B tensor access pattern specifies to
+`.repeat(N // n)` step, whereas the B tensor access pattern specifies to
 tile the entire B matrix without repeats.  Note that the local buffer holding
 output C on the compute cores is zero-initialized in each such iteration.
 
@@ -119,28 +120,23 @@ across columns of `B` to produce the next row of output tiles in `C`:
 ### L2 &rightarrow; L1: Intrinsic Tiles
 
 ```
-tap_A_L2L1 = TensorTiler2D.group_tiler((m, k), (r, s), (m // r, k // s))[0]
+tap_A_L2L1 = TensorAccessPattern.full((m, k)).tile((r, s))
 fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
-    dims_to_stream=tap_A_L2L1.transformation_dims,
+    to_stream=tap_A_L2L1,
     name="A_L2L1"
 )
 ```
 ```
-tap_B_L2L1 = TensorTiler2D.group_tiler((k, n), (s, t), (k // s, n // t))[0]
+tap_B_L2L1 = TensorAccessPattern.full((k, n)).tile((s, t))
 fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
-    dims_to_stream=tap_B_L2L1.transformation_dims,
+    to_stream=tap_B_L2L1,
     name="B_L2L1"
 )
 ```
 ```
-tap_C_L1L2 = TensorAccessPattern(
-    tensor_dims=(m, n),
-    offset=0,
-    sizes=[m // r, r, n // t, t],
-    strides=[r * n, t, r * t, 1]
-)
+tap_C_L1L2 = TensorAccessPattern.full((m, n)).tile((r, t)).inverse()
 fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
-    dims_to_stream=tap_C_L1L2.transformation_dims,
+    to_stream=tap_C_L1L2,
     name="C_L2L3"
 )
 ```

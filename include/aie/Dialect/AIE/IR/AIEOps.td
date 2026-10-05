@@ -1088,8 +1088,62 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
 
     Do NOT copy an iteration number between the two ops: e.g. `size = 1` disables
     iteration here, but `iteration_size = 1` means *two* executions on
-    `writebd`. The `iteration` attribute is rejected on the other path; express
-    iteration there via the outermost `sizes`/`strides` dimension instead.
+    `writebd`.
+
+    Inside a runtime-sequence DMA task (`aiex.dma_configure_task`), the
+    attribute takes the iteration register that the outermost `sizes`/`strides`
+    dimension would otherwise fill, so such a BD gives one dimension fewer.
+
+    ## Runtime length
+
+    A shim DMA BD in a runtime sequence can take part of its length from an
+    `aiex.scratchpad_parameter`: with `length_parameter = @n` and
+    `length_unit = u`, the BD moves `len + n * u` elements, where `n` is the
+    value the host writes to the parameter. `len` stays the length for `n = 0`,
+    and may itself be 0 so that the BD moves exactly `n` units; `sizes` and
+    `strides` then still give the shape of each unit. The lowering writes the
+    BD with the static length, then emits an `aiex.npu.update_from_scratchpad`
+    that adds `n * u` to the BD's `Buffer_Length` word. A BD with an iteration
+    dimension gets the added length on every iteration.
+
+    ```
+    aiex.scratchpad_parameter @n : i32
+    ...
+    %t = aiex.dma_configure_task_for @of_in {
+      aie.dma_bd(%in : memref<4096xbf16> offset = 0 len = 64)
+          {length_parameter = @n, length_unit = 64 : i32}
+      aie.end
+    }
+    %rows = aiex.dma_configure_task_for @of_rows {
+      aie.dma_bd(%in : memref<4096xi32> offset = 0 len = 0
+                 sizes = [2, 2, 4] strides = [16, 4, 1])
+          {length_parameter = @n, length_unit = 8 : i32}
+      aie.end
+    }
+    ```
+
+    The length works with either parameter kind, so one parameter can set both
+    a core's trip count (`aiex.read_scratchpad_parameter`) and the length of
+    the transfers feeding it, or both a transfer's `offset_parameter` and its
+    length.
+
+    Constraints. The firmware's register update clears the low two bits of the
+    length word before adding to it, and the stride of a size-1 dimension is
+    not encoded in the BD:
+    - Shim NOC tiles on AIE2 and AIE2P only.
+    - `len` and `length_unit` must both be multiples of 16 bytes.
+    - With a data layout transformation that is not a contiguous scan, the
+      added length continues the third dimension. A pattern whose third
+      dimension has size one but whose second does not (such as
+      `sizes = [2, 8]`) is lowered with its second dimension in the third, so
+      the added length continues that one instead. The dimension continued
+      needs a size above one (a size-1 dimension's stride is not encoded), and
+      `length_unit` must be a multiple of the elements moved per step of it
+      (the product of the sizes inside it).
+    - An `aiex.dma_configure_task` whose BD has an iteration dimension runs
+      only once unless it is pushed with a `repeat_count`, set on the task or
+      on its `aiex.dma_start_task`; this is not specific to the runtime
+      length, but a runtime length makes it easy to miss.
   }];
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$buffer,
@@ -1097,14 +1151,16 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // Can be given as a static attribute or a runtime SSA value. If neither
       // are given, we assume zero for the offset and the memref's full buffer
       // length for the length.
-      Optional<I32>:$offset, Optional<I32>:$len,
+      Optional<AnySignlessIntegerOrIndex>:$offset,
+      Optional<AnySignlessIntegerOrIndex>:$len,
       OptionalAttr<AIEI32Attr>:$static_offset,
       OptionalAttr<AIEI32Attr>:$static_len,
       // n-d tensor addressing: sizes/strides as a mixed static/dynamic index
       // list (DynamicIndexList), mirroring aiex.npu.dma_memcpy_nd. A constant
       // lands in static_sizes/static_strides; a runtime value becomes an
       // operand. Outermost dimension first.
-      Variadic<I64>:$sizes, Variadic<I64>:$strides,
+      Variadic<AnySignlessIntegerOrIndex>:$sizes,
+      Variadic<AnySignlessIntegerOrIndex>:$strides,
       OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
       OptionalAttr<DenseI64ArrayAttr>:$static_strides,
       OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
@@ -1137,16 +1193,27 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // offset. After lowering, $offset_parameter is removed in favor of this
       // attribute.
       OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // If set, the aiex.scratchpad_parameter value n lengthens the BD at run
+      // time: it moves len + n * length_unit elements. See the "## Runtime
+      // length" section above.
+      OptionalAttr<FlatSymbolRefAttr>:$length_parameter,
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$length_unit,
+      // Set by --aie-lower-scratchpad-parameters from $length_parameter, which
+      // it replaces, like $offset_state_table_idx.
+      OptionalAttr<UI8Attr>:$length_state_table_idx,
+      // Set by --aie-lower-scratchpad-parameters when the length parameter is
+      // core kind, whose state-table slot holds n << 2 rather than n.
+      UnitAttr:$length_core_encoded,
       // should never be assigned by user...
       OptionalAttr<AIEI32Attr>:$next_bd_id);
 
   let hasVerifier = 1;
   let assemblyFormat = [{
     `(` $buffer `:` type($buffer)
-    ( `offset` `=` custom<DynamicScalar>($offset, $static_offset)^ )?
-    ( `len` `=` custom<DynamicScalar>($len, $static_len)^ )?
-    ( `sizes` `=` custom<DynamicIndexList>($sizes, $static_sizes)^ )?
-    ( `strides` `=` custom<DynamicIndexList>($strides, $static_strides)^ )?
+    ( `offset` `=` custom<DynamicScalar>($offset, $static_offset, type($offset))^ )?
+    ( `len` `=` custom<DynamicScalar>($len, $static_len, type($len))^ )?
+    ( `sizes` `=` custom<TypedDynamicIndexList>($sizes, $static_sizes, type($sizes))^ )?
+    ( `strides` `=` custom<TypedDynamicIndexList>($strides, $static_strides, type($strides))^ )?
     ( `pad` $pad_dimensions^ )?
     `)`
     ( `bd_id_val` $bd_id_val^ `:` type($bd_id_val) )?
@@ -1230,6 +1297,10 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     // a mismatch (llvm #179401). A BD in a DMA task reaches its parent op's
     // verifier before its own, so that verifier must call this directly.
     ::mlir::LogicalResult verifyMixedSizesAndStrides();
+
+    // Rejects a constant transfer reaching past a static-shaped local buffer.
+    // Task BDs skip DMABDOp::verify, so their parent's verifier calls this too.
+    ::mlir::LogicalResult verifyTransferInBounds();
 
     // Reconstruct the historical BDDimLayoutAttr list (outermost-first) by
     // folding the mixed sizes/strides to constants. Returns:

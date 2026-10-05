@@ -34,21 +34,21 @@ def emit_chains():
             DmaChannel(
                 direction=DMAChannelDir.MM2S,
                 channel=0,
-                bds=[Bd(buffer=looping_buf, length=n)],
+                bds=[Bd(buffer=looping_buf)],
             ),
             DmaChannel(
                 direction=DMAChannelDir.MM2S,
                 channel=1,
                 loop=False,
                 repeat_count=3,
-                bds=[Bd(buffer=ending_buf, length=n)],
+                bds=[Bd(buffer=ending_buf)],
             ),
             # Two BDs and no explicit `next`: each should link to the one after
             # it, and the last should follow `loop` like a single-BD chain does.
             DmaChannel(
                 direction=DMAChannelDir.S2MM,
                 channel=0,
-                bds=[Bd(buffer=pair_a, length=n), Bd(buffer=pair_b, length=n)],
+                bds=[Bd(buffer=pair_a), Bd(buffer=pair_b)],
             ),
         ],
     )
