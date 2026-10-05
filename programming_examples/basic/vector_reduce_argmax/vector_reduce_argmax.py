@@ -96,10 +96,6 @@ def vector_reduce_argmax(
     tmps = [Buffer(type=record_ty, initial_value=zero_record) for _ in range(N_CORES)]
 
     def reduce_slice(of_in, argmax, argmax_combine, partial, tmp, first_index):
-        # The first iteration writes `partial` outright rather than folding into
-        # it: a core-resident buffer keeps its value from the previous run of the
-        # same design, so seeding one with an identity record would make the
-        # result depend on run order.
         elem_in = of_in.acquire(1)
         argmax(elem_in, partial, elems_per_core, first_index)
         of_in.release(1)
@@ -209,8 +205,6 @@ def _validate(opts):
             f"{opts.dtype} elements"
         )
     elems = opts.in1_size // nbytes
-    # The design reads one tile before its loop, so anything short of a full
-    # tile -- zero included -- leaves that read waiting on a fill never sent.
     if elems == 0 or elems % N_MEM_ELEMS != 0:
         sys.exit(
             f"in1_size ({opts.in1_size} bytes = {elems} {opts.dtype}) must be a "

@@ -124,9 +124,6 @@ def vector_reduce_max(
         of_out = args[1]
         neighbor_of_in1s = args[2:-4]
 
-        # The first tile writes the accumulator outright rather than folding into
-        # it: a core-resident buffer keeps its value from the previous run of the
-        # same design, so a seeded accumulator makes the result depend on run order.
         elem_in1 = of_in1.acquire(1)
         reduce_max_vector(elem_in1, c_buffer, tile_size)
         of_in1.release(1)

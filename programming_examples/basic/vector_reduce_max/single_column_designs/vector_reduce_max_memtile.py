@@ -49,7 +49,6 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
 
-# Elements per memtile tile; the CLI validator and the design share it.
 N_MEM_ELEMS = 2048
 
 
@@ -136,9 +135,6 @@ def vector_reduce_max(
         of_in, of_out, reduce_max_vector, compute_max, nextC_buffer, tmp_buffer
     ):
         elem_out = of_out.acquire(1)
-        # The first tile writes the accumulator outright rather than folding into
-        # it: a core-resident buffer keeps its value from the previous run of the
-        # same design, so a seeded accumulator makes the result depend on run order.
         elem_in = of_in.acquire(1)
         reduce_max_vector(elem_in, nextC_buffer, elems_per_core)
         of_in.release(1)
@@ -162,9 +158,6 @@ def vector_reduce_max(
         tmp_buffer,
     ):
         elem_out = elemC_out.acquire(1)
-        # The first tile writes the accumulator outright rather than folding into
-        # it: a core-resident buffer keeps its value from the previous run of the
-        # same design, so a seeded accumulator makes the result depend on run order.
         elem_in = of_in.acquire(1)
         reduce_max_vector(elem_in, nextC_buffer, elems_per_core)
         of_in.release(1)
@@ -277,8 +270,6 @@ def _run_and_verify(opts):
 def _validate(opts):
     if opts.in1_size % 64 != 0:
         sys.exit(f"in1_size ({opts.in1_size}) must be a multiple of 64")
-    # The design reads one tile before its loop, so an input shorter than a
-    # tile leaves that read waiting on a fill that never comes.
     elems = opts.in1_size // str_to_dtype(opts.dtype)(0).nbytes
     if elems < N_MEM_ELEMS:
         sys.exit(

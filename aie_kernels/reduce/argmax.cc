@@ -19,20 +19,12 @@ static_assert(ARGMAX_ELEMS > 0 && ARGMAX_ELEMS <= INT16_MAX);
 #define ARGMAX_ELEMS input_size
 #endif
 
-// Index of the largest element of a tile, as the (partial, combine) pair that
-// reduce_max.cc already uses for a distributed max: every core runs
-// _argmax_* over its own slice and a tree merges the records with
-// _argmax_combine.
-//
-// A record is 8 bytes, written through an int32 output tile so that one
-// objectFIFO carries value and index together:
-//   out[0]  the winning value -- int32 as itself, bfloat16 widened to float and
-//           bit-cast, so the combine step can compare without the input tile
-//   out[1]  its index, already global: the caller passes the slice's
-//           index_offset, which makes combine order-independent
-//
-// Ties resolve to the lowest index, matching numpy.argmax. A NaN never compares
-// greater, so it reads as -inf -- numpy.argmax returns the first NaN instead.
+// A record is two int32s, so one objectFIFO carries value and index together:
+//   out[0]  the value: int32 as is, bfloat16 widened to float and bit-cast
+//   out[1]  its index plus the caller's index_offset, so indices are global
+//           and argmax_combine's merge order does not matter
+// Ties go to the lowest index, as in numpy.argmax. A NaN never compares
+// greater, so it reads as -inf; numpy.argmax returns the first NaN instead.
 
 template <typename T>
 using argmax_value_t =
