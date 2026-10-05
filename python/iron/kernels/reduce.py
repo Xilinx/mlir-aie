@@ -392,12 +392,17 @@ def argmax_combine_ref(a, b, dtype: type = np.int32):
 def argmax_combine_sample(rng, calls: int, *, dtype: type) -> list:
     """Two tiles of records ``argmax`` can write, with frequent value ties.
 
-    The values come from a handful of integers, so equal values (and the
-    index tie-break) come up in most calls; a record never carries a NaN.
+    The values come from a handful of small integers plus the extremes a
+    record can hold (int32's limits, or ±inf and -0.0), so equal values (and
+    the index tie-break) come up in most calls; a record never carries a NaN.
     """
-    values = rng.integers(-3, 3, size=(2, calls, 1))
     if np.dtype(dtype) == np.dtype(bfloat16):
-        values = values.astype(np.float32).view(np.int32)
+        pool = np.array([-np.inf, -3, -1, -0.0, 0, 2, np.inf], np.float32)
+        pool = pool.view(np.int32)
+    else:
+        info = np.iinfo(np.int32)
+        pool = np.array([info.min, -3, -1, 0, 2, info.max], np.int32)
+    values = rng.choice(pool, size=(2, calls, 1))
     indices = rng.integers(0, 8, size=(2, calls, 1))
     records = np.concatenate([values, indices], axis=-1).astype(np.int32)
     return [records[0], records[1]]
