@@ -117,9 +117,9 @@ def my_matmul(module):
     def device_body():
         func_type = "" if vectorized else "scalar_"
         zero = external_func(
-            f"zero_{func_type}i16",
+            "zero",
             inputs=[np.ndarray[(m, n), np.dtype[np.int16]]],
-            link_with="mm.o",
+            link_with="zero.o",
         )
         matmul = external_func(
             f"matmul_{func_type}i16_i16",

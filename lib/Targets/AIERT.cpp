@@ -244,7 +244,7 @@ xilinx::AIE::TxnLocBracket::~TxnLocBracket() {
   ctl.recordTxnLocRange(startCmds, endCmds, loc);
 }
 
-xilinx::AIE::AIERTControl::~AIERTControl() = default;
+xilinx::AIE::AIERTControl::~AIERTControl() { XAie_Finish(&aiert->devInst); }
 
 xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
     : targetModel(tm), aiert(std::make_unique<AIERtImpl>()) {
@@ -257,7 +257,7 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
   size_t deviceCols = tm.columns() + partitionStartCol;
 
   // Don't put this in the target model, because it's XAIE specific.
-  unsigned char devGen;
+  unsigned char devGen = XAIE_DEV_GEN_AIE;
   switch (tm.getTargetArch()) {
   case AIEArch::AIE1: // probably unreachable.
     devGen = XAIE_DEV_GEN_AIE;
@@ -270,6 +270,12 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
   case AIEArch::AIE2p:
     devGen = XAIE_DEV_GEN_AIE2P_STRIX_B0;
     break;
+  case AIEArch::AIE2ps:
+    // AIE2PS configures the array through a CERT ELF instead of CDO or an
+    // xclbin (see AIE2PSTargetModel), so it has no aie-rt device generation.
+    // Listed here so that a new AIEArch still raises -Wswitch.
+    llvm::report_fatal_error("aie-rt configuration is not supported for the "
+                             "AIE2PS architecture");
   }
   aiert->configPtr = XAie_Config{
       /*AieGen*/ devGen,
@@ -320,6 +326,9 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
                         XAie_DmaDesc &dmaTileBd, Block &block, int col, int row,
                         bool outOfOrder) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
+  AIE::UseLockOp acquire, release;
+  if (failed(AIE::verifyBdLockPair(block, outOfOrder, acquire, release)))
+    return failure();
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn = false;
 
@@ -354,18 +363,6 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
       break;
     }
     }
-  }
-
-  // Allow release-only for out-of-order's lock-driven completion mechanism.
-  if (outOfOrder) {
-    if (!relValue || !relLockId)
-      return (*block.getOps<AIE::UseLockOp>().begin())
-          .emitOpError("out-of-order buffer descriptor with a lock must have a "
-                       "use_lock(release)");
-  } else if (!acqValue || !relValue || !acqLockId || !relLockId) {
-    return (*block.getOps<AIE::UseLockOp>().begin())
-        .emitOpError("buffer descriptor with a lock must have both "
-                     "use_lock(acquire) and use_lock(release)");
   }
 
   if (targetModel.isMemTile(col, row)) {
@@ -483,12 +480,10 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
                             basePlusOffsetInBytes, lenInBytes);
   } else {
+    llvm::SmallVector<XAie_DmaDimDesc, 4> dimDescs(dims->size());
     XAie_DmaTensor dmaTileBdTensor = {};
-    dmaTileBdTensor.NumDim = dims->size();
-    dmaTileBdTensor.Dim = static_cast<XAie_DmaDimDesc *>(
-        calloc(dmaTileBdTensor.NumDim, sizeof(XAie_DmaDimDesc)));
-    if (!dmaTileBdTensor.Dim)
-      return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
+    dmaTileBdTensor.NumDim = dimDescs.size();
+    dmaTileBdTensor.Dim = dimDescs.data();
     // libxaie requires stride in multiples of 32b
     double elementWidthIn32bWords =
         static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
@@ -537,12 +532,10 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
       bdOp.getPadDimensions();
 
   if (padDims) {
+    llvm::SmallVector<XAie_PadDesc, 4> padDescs(padDims->size());
     XAie_DmaPadTensor dmaPadTensor = {};
-    dmaPadTensor.NumDim = padDims->size();
-    dmaPadTensor.PadDesc = static_cast<XAie_PadDesc *>(
-        calloc(dmaPadTensor.NumDim, sizeof(XAie_PadDesc)));
-    if (!dmaPadTensor.PadDesc)
-      return bdOp.emitError("couldn't allocate array of XAie_PadDesc");
+    dmaPadTensor.NumDim = padDescs.size();
+    dmaPadTensor.PadDesc = padDescs.data();
     // libxaie requires stride in multiples of 32b
     double elementWidthIn32bWords =
         static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
@@ -720,42 +713,15 @@ LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
       return;
     auto tileLoc = XAie_TileLoc(bufferOp.getTileOp().colIndex(),
                                 bufferOp.getTileOp().rowIndex());
-    std::vector<char> byteVec;
-    if (denseInit.getElementType().isIntOrIndex()) {
-      for (auto intVal : denseInit.getValues<APInt>()) {
-        // Get the size in bytes
-        size_t byteSize = (intVal.getBitWidth() + 7) / 8;
-        // Create a buffer for the integer bytes and copy
-        std::vector<char> bytes(byteSize);
-        std::copy(
-            static_cast<const char *>(static_cast<const void *>(&intVal)),
-            static_cast<const char *>(static_cast<const void *>(&intVal)) +
-                byteSize,
-            bytes.begin());
-        byteVec.insert(byteVec.end(), bytes.begin(), bytes.end());
-      }
-    } else if (isa<FloatType>(denseInit.getElementType())) {
-      for (auto floatVal : denseInit.getValues<APFloat>()) {
-        APInt floatInt = floatVal.bitcastToAPInt();
-        // Get the size in bytes
-        size_t byteSize = (floatInt.getBitWidth() + 7) / 8;
-        // Create a buffer for the float bytes and copy
-        std::vector<char> bytes(byteSize);
-        std::copy(
-            static_cast<const char *>(static_cast<const void *>(&floatInt)),
-            static_cast<const char *>(static_cast<const void *>(&floatInt)) +
-                byteSize,
-            bytes.begin());
-        byteVec.insert(byteVec.end(), bytes.begin(), bytes.end());
-      }
-    } else {
+    std::optional<std::vector<char>> byteVec = denseAttrToBytes(denseInit);
+    if (!byteVec) {
       llvm::outs() << "buffer op type not supported for initialization "
                    << bufferOp << "\n";
       return;
     }
     TRY_XAIE_API_FATAL_ERROR(XAie_DataMemBlockWrite, &aiert->devInst, tileLoc,
-                             bufferOp.getAddress().value(), byteVec.data(),
-                             byteVec.size());
+                             bufferOp.getAddress().value(), byteVec->data(),
+                             byteVec->size());
   });
   return success();
 }
@@ -792,6 +758,8 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
       int mask = 0;
       int arbiter = -1;
 
+      // MasterSetOp::verify guarantees every amsel names the same arbiter, so
+      // folding them into one arbiter plus msel mask is safe here.
       for (auto val : masterSetOp.getAmsels()) {
         AMSelOp amsel = cast<AMSelOp>(val.getDefiningOp());
         arbiter = amsel.arbiterIndex();
@@ -892,6 +860,9 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
 LogicalResult
 xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
                                          bool skipCtrlPktOverlay) {
+
+  if (failed(verifyDMAChannelsResolved(targetOp)))
+    return failure();
 
   if (failed(initLocks(targetOp))) {
     return failure();
@@ -1246,6 +1217,7 @@ std::vector<uint8_t> xilinx::AIE::AIERTControl::exportSerializedTransaction() {
   uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&aiert->devInst, 0, 0);
   XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;
   std::vector<uint8_t> txn_data(txn_ptr, txn_ptr + hdr->TxnSize);
+  free(txn_ptr);
 
   // Exporting leaves the recorded commands intact, so the loc projection can
   // still walk CmdBuf here. With nothing bracketed there is no location to

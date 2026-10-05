@@ -847,6 +847,117 @@ uint64_t AIE2TargetModel::getDmaBdAddress(int col, int row, uint32_t bd_id,
          offset;
 }
 
+static DmaBdLayout makeAIE2ShimBdLayout() {
+  DmaBdLayout l;
+  l.numWords = 8;
+  l.bufferLength = {0, 0, 32};
+  l.bufferOffset = {1, 0, 32};
+  l.enablePacket = {2, 30, 1};
+  l.outOfOrderId = {2, 24, 6};
+  l.packetId = {2, 19, 5};
+  l.packetType = {2, 16, 3};
+  l.d0Size = {3, 20, 10};
+  l.d0Stride = {3, 0, 20};
+  l.burstLength = {4, 30, 2};
+  l.d1Size = {4, 20, 10};
+  l.d1Stride = {4, 0, 20};
+  l.axcache = {5, 24, 4};
+  l.d2Stride = {5, 0, 20};
+  l.iterationCurrent = {6, 26, 6};
+  l.iterationSize = {6, 20, 6};
+  l.iterationStride = {6, 0, 20};
+  l.nextBd = {7, 27, 4};
+  l.useNextBd = {7, 26, 1};
+  l.validBd = {7, 25, 1};
+  l.lockRelValue = {7, 18, 7};
+  l.lockRelId = {7, 13, 4};
+  l.lockAcqEnable = {7, 12, 1};
+  l.lockAcqValue = {7, 5, 7};
+  l.lockAcqId = {7, 0, 4};
+  return l;
+}
+
+// D2_Wrap and D3_Stepsize are left out: the lowering never programs them, and
+// the d2 extent is carried by buffer_length as on the other tiles.
+static DmaBdLayout makeAIE2MemTileBdLayout() {
+  DmaBdLayout l;
+  l.numWords = 8;
+  l.enablePacket = {0, 31, 1};
+  l.packetType = {0, 28, 3};
+  l.packetId = {0, 23, 5};
+  l.outOfOrderId = {0, 17, 6};
+  l.bufferLength = {0, 0, 17};
+  l.d0ZeroBefore = {1, 26, 6};
+  l.nextBd = {1, 20, 6};
+  l.useNextBd = {1, 19, 1};
+  l.bufferOffset = {1, 0, 19};
+  l.d0Size = {2, 17, 10};
+  l.d0Stride = {2, 0, 17};
+  l.d1ZeroBefore = {3, 27, 5};
+  l.d1Size = {3, 17, 10};
+  l.d1Stride = {3, 0, 17};
+  l.d2ZeroBefore = {4, 27, 4};
+  l.d2Stride = {4, 0, 17};
+  l.d2ZeroAfter = {5, 28, 4};
+  l.d1ZeroAfter = {5, 23, 5};
+  l.d0ZeroAfter = {5, 17, 6};
+  l.iterationCurrent = {6, 23, 6};
+  l.iterationSize = {6, 17, 6};
+  l.iterationStride = {6, 0, 17};
+  l.validBd = {7, 31, 1};
+  l.lockRelValue = {7, 24, 7};
+  l.lockRelId = {7, 16, 8};
+  l.lockAcqEnable = {7, 15, 1};
+  l.lockAcqValue = {7, 8, 7};
+  l.lockAcqId = {7, 0, 8};
+  return l;
+}
+
+// The core tile's buffer offset is its Base_Address field, in 32-bit words.
+static DmaBdLayout makeAIE2CoreTileBdLayout() {
+  DmaBdLayout l;
+  l.numWords = 6;
+  l.bufferOffset = {0, 14, 14};
+  l.bufferLength = {0, 0, 14};
+  l.enablePacket = {1, 30, 1};
+  l.outOfOrderId = {1, 24, 6};
+  l.packetId = {1, 19, 5};
+  l.packetType = {1, 16, 3};
+  l.d1Stride = {2, 13, 13};
+  l.d0Stride = {2, 0, 13};
+  l.d1Size = {3, 21, 8};
+  l.d0Size = {3, 13, 8};
+  l.d2Stride = {3, 0, 13};
+  l.iterationCurrent = {4, 19, 6};
+  l.iterationSize = {4, 13, 6};
+  l.iterationStride = {4, 0, 13};
+  l.nextBd = {5, 27, 4};
+  l.useNextBd = {5, 26, 1};
+  l.validBd = {5, 25, 1};
+  l.lockRelValue = {5, 18, 7};
+  l.lockRelId = {5, 13, 4};
+  l.lockAcqEnable = {5, 12, 1};
+  l.lockAcqValue = {5, 5, 7};
+  l.lockAcqId = {5, 0, 4};
+  return l;
+}
+
+const DmaBdLayout *AIE2TargetModel::getDmaBdLayout(AIETileType tileType) const {
+  static const DmaBdLayout shim = makeAIE2ShimBdLayout();
+  static const DmaBdLayout mem = makeAIE2MemTileBdLayout();
+  static const DmaBdLayout core = makeAIE2CoreTileBdLayout();
+  switch (tileType) {
+  case AIETileType::ShimNOCTile:
+    return &shim;
+  case AIETileType::MemTile:
+    return &mem;
+  case AIETileType::CoreTile:
+    return &core;
+  default:
+    return nullptr;
+  }
+}
+
 uint32_t AIE2TargetModel::getDmaBdAddressOffset(int col, int row) const {
   if (isCoreTile(col, row))
     return 0x0;
@@ -872,6 +983,32 @@ AIE2TargetModel::getDmaControlAddress(int col, int row, int channel,
   } else {
     llvm_unreachable(
         "AIE2TargetModel::getDmaControlAddress called for non-DMA tile");
+  }
+
+  return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
+         offset;
+}
+
+std::optional<uint32_t>
+AIE2TargetModel::getDmaStatusAddress(int col, int row, int channel,
+                                     AIE::DMAChannelDir direction) const {
+  // Status registers sit one word apart per channel, unlike the task-queue
+  // control registers above, which are two words apart.
+  uint32_t offset = 0;
+  if (isShimNOCTile(col, row)) {
+    offset = 0x0001D220 + (channel * 0x4);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x8;
+  } else if (isMemTile(col, row)) {
+    offset = 0x000A0660 + (channel * 0x4);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x20;
+  } else if (isCoreTile(col, row)) {
+    offset = 0x0001DF00 + (channel * 0x4);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x10;
+  } else {
+    return std::nullopt;
   }
 
   return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
@@ -1647,6 +1784,18 @@ AIE2PSTargetModel::getDmaControlAddress(int col, int row, int channel,
   }
   // Memtile and core tile use same addresses as AIE2.
   return AIE2TargetModel::getDmaControlAddress(col, row, channel, direction);
+}
+
+std::optional<uint32_t>
+AIE2PSTargetModel::getDmaStatusAddress(int col, int row, int channel,
+                                       AIE::DMAChannelDir direction) const {
+  // The AIE2PS shim relocates its DMA registers (control is at 0x9300, not
+  // 0x1D200), and the status block has not been confirmed against a register
+  // spec. Report "unknown" rather than guess an address a maskpoll would then
+  // read garbage from; memtile and core tiles match AIE2.
+  if (isShimNOCTile(col, row))
+    return std::nullopt;
+  return AIE2TargetModel::getDmaStatusAddress(col, row, channel, direction);
 }
 
 // AIE2PS shim tiles have uC stream switch port for routing TCT to CERT uC.

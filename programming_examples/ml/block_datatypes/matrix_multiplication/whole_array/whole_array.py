@@ -10,15 +10,14 @@ n_aie_rows x n_aie_cols compute cores tile a (M,K,N) GEMM with per-core
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
-    ExternalFunction,
     In,
     ObjectFifo,
     Out,
@@ -33,10 +32,6 @@ from aie.utils.hostruntime.argparse import (
     device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
-
-_KERNEL_SRC = (
-    Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp.cc"
-)
 
 
 @iron.jit(aiecc_flags=["--dynamic-objFifos"])
@@ -79,20 +74,8 @@ def whole_array_matmul(
     B_l1_ty = np.ndarray[(k, n // 8), np.dtype[v8bfp16ebs8]]
     C_l1_ty = np.ndarray[(m, n // 8), np.dtype[v8bfp16ebs8]]
 
-    kernel_flags = [f"-DDIM_M={m}", f"-DDIM_K={k}", f"-DDIM_N={n}"]
-
-    zero_kernel = ExternalFunction(
-        "zero_kernel",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[C_l1_ty],
-        compile_flags=kernel_flags + ["-DZERO_ONLY"],
-    )
-    matmul_kernel = ExternalFunction(
-        "matmul_vectorized_bfp16",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
-        compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-    )
+    matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n)
+    zero_kernel = kernels.zero(m * n // 8, v8bfp16ebs8)
 
     A_l3l2_fifos: list[ObjectFifo] = []
     A_l2l1_fifos: list[ObjectFifo] = []
@@ -167,60 +150,45 @@ def whole_array_matmul(
     C_ty = np.ndarray[(M * N // 8,), np.dtype[v8bfp16ebs8]]
 
     tb_max_n_rows = 4
-    tb_n_rows = tb_max_n_rows // 2
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K // 8),
-        (m * n_A_tiles_per_shim, k // 8),
-        (1, K // k),
-        pattern_repeat=N // n // n_aie_cols,
+    A_tiles = TensorAccessPattern.full((M, K // 8)).tile(
+        (m * n_A_tiles_per_shim, k // 8)
     )
-    B_tiles = TensorTiler2D.step_tiler(
-        (N, K // 8),
-        (n, k // 8),
-        tile_group_repeats=(N // n // n_aie_cols, K // k),
-        tile_group_steps=(n_aie_cols, 1),
-    )
-    C_tiles = TensorTiler2D.step_tiler(
-        (M, N // 8),
-        (m * n_aie_rows, n // 8),
-        tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
-        tile_group_steps=(1, n_aie_cols),
-    )
-    c_index = 0
+    B_tiles = TensorAccessPattern.full((N, K // 8)).tile((n, k // 8))
+    C_tiles = TensorAccessPattern.full((M, N // 8)).tile((m * n_aie_rows, n // 8))
 
     def sequence(a, b, c, A_prods, B_prods, C_conses):
-        nonlocal c_index
         tg = TaskGroup()
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
-                if c_index >= len(C_tiles):
-                    break
                 row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
                 current_tb_n_rows = min(
                     [tb_max_n_rows // 2, M // m // n_aie_rows - row_base]
                 )
+                if current_tb_n_rows <= 0:
+                    break
                 for col in range(n_aie_cols):
                     C_conses[col].drain(
                         c,
-                        tap=C_tiles[c_index],
+                        tap=C_tiles[
+                            row_base : row_base + current_tb_n_rows, col::n_aie_cols
+                        ],
                         wait=True,
                         group=tg,
                     )
-                    c_index += 1
                     for tile_row in range(current_tb_n_rows):
                         tile_offset = (
                             (row_base + tile_row) * n_shim_mem_A + col
-                        ) % len(A_tiles)
+                        ) % A_tiles.sizes[0]
                         if col < n_aie_rows:
                             A_prods[col].fill(
                                 a,
-                                tap=A_tiles[tile_offset],
+                                tap=A_tiles[tile_offset].repeat(N // n // n_aie_cols),
                                 group=tg,
                             )
                         B_prods[col].fill(
                             b,
-                            tap=B_tiles[col],
+                            tap=B_tiles[col::n_aie_cols],
                             group=tg,
                         )
                 if tb > 0 or (tb == 0 and pingpong > 0):

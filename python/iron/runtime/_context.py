@@ -38,8 +38,9 @@ def active_sequence() -> "ActiveSequence":
     seq = _active_sequence.get()
     if seq is None:
         raise RuntimeError(
-            "No active runtime sequence: fill()/drain() and TaskGroup() must be "
-            "called from within the function passed to Runtime(seq_fn, fn_args)."
+            "No active runtime sequence: fill()/drain(), DmaEndpoint.task() and "
+            "TaskGroup() must be called from within the function passed to "
+            "Runtime(seq_fn, fn_args)."
         )
     return seq
 

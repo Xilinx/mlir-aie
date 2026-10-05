@@ -20,6 +20,7 @@ add_mlir_dialect_library(
   AIECoreToStandard.cpp
   AIECanonicalizeDevice.cpp
   AIELocalizeLocks.cpp
+  AIENormalizeDmaBdDims.cpp
   AIENormalizeAddressSpaces.cpp
   AIEVectorToPointerLoops.cpp
   AIEVectorTransferLowering.cpp
@@ -56,4 +57,5 @@ add_mlir_dialect_library(
   MLIRSupport
   MLIRSCFTransforms
   MLIRTransformUtils
-  MLIRFuncDialect)
+  MLIRFuncDialect
+  MLIRMemRefUtils)

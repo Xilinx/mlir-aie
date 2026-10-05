@@ -21,9 +21,8 @@ this note states only what differs.
 - **Runtime pool `bd_id`.** Each receive BD's `bd_id` is a runtime value from
   `aiex.dma_bd_pool_pop`, which forces the shim-NOC dynamic BD path (it cannot fold
   into a static `insts.bin`).
-- **Single-BD per task.** The dynamic-pool lowering emits one BD per
-  `dma_configure_task` -- a runtime-bd_id `next_bd` chain is not yet supported -- so
-  each receive BD is its own single-BD out-of-order task on the one channel.
+- **Single-BD per task.** Each receive BD is its own single-BD out-of-order task on
+  the one channel.
 - **Companion-token completion.** With no on-chip buffer to drain, the base's MM2S
   egress is gone. An out-of-order channel cannot issue a completion token, so a
   **companion in-order** shim S2MM BD acquires the counting lock once all packets

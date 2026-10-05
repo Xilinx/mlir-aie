@@ -5,7 +5,7 @@
 #
 """Tensor factories and NPU host-backend selection.
 
-Split out from :mod:`aie.utils` so that :mod:`aie.utils.hostruntime.hostruntime`
+Split out from `aie.utils` so that `aie.utils.hostruntime.hostruntime`
 (which needs the ``tensor()`` factory) can import it without importing back
 through ``aie.utils.__init__`` -- that reverse edge is what used to force
 ``aie.utils.__init__``'s own imports of ``HostRuntime`` etc. to be deferred
@@ -17,6 +17,7 @@ import os
 
 import numpy as np
 
+from ..helpers.npdtypes import ceildiv as ceildiv
 from .hostruntime.tensor_class import NpuTensor
 
 _logger = logging.getLogger(__name__)
@@ -41,16 +42,14 @@ def _probe_xrt() -> bool:
     """
     global _has_xrt
     if _has_xrt is None:
-        try:
-            import pyxrt  # noqa: F401  # pyright: ignore[reportMissingImports]
+        from .probe import check_bindings
 
-            _has_xrt = True
-        except ImportError as e:
+        check = check_bindings()
+        _has_xrt = bool(check.ok)
+        if not _has_xrt:
             _logger.warning(
-                "Failed to import PyXRT: %s, proceeding without runtime libraries.",
-                e,
+                "Proceeding without NPU runtime libraries: %s", check.detail
             )
-            _has_xrt = False
     return _has_xrt
 
 
@@ -170,16 +169,11 @@ def npu_runtime_folds_ddr_addr_offset() -> bool:
     return DEFAULT_TENSOR_CLASS.FOLDS_DDR_ADDR_OFFSET
 
 
-def ceildiv(a, b):
-    """Ceiling division: smallest integer >= a/b."""
-    return -(a // -b)
-
-
 def tensor(*args, **kwargs):
     """Create a tensor using the default tensor class.
 
     Passing a typed ``ndarray`` together with a mismatched ``dtype=``
-    kwarg raises :class:`TypeError`.  Matching kwargs are passed through
+    kwarg raises `TypeError`.  Matching kwargs are passed through
     unchanged (the underlying tensor backend uses ``dtype`` for buffer
     allocation, so silently stripping it would surprise callers).
 

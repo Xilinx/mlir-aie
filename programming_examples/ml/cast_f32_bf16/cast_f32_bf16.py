@@ -5,8 +5,8 @@
 #
 """Element-wise f32 -> bf16 narrowing cast, IRON API + ``@iron.jit``.
 
-NPU2-only: the underlying ``cast_f32_bf16.cc`` kernel lives under
-``aie_kernels/aie2p/`` and has no aie2 counterpart.
+Runs on NPU1 (aie2) and NPU2 (aie2p): the underlying ``cast_f32_bf16.cc``
+kernel lives under ``aie_kernels/datamovement/`` and builds for both.
 
 Eight cores each cast ``n_vectors // 8`` vectors of ``vector_size`` elements.
 Rounding is round-to-nearest-even.
@@ -19,34 +19,25 @@ ObjectFifo/Worker wiring below rather than delegating to one of those.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.helpers.taplib import TensorAccessPattern
+from aie.iron import (
+    CompileTime,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.iron.controlflow import range_
-from aie.iron.kernel import ExternalFunction
-from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
-
-_KERNEL_DIR = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p"
-
-
-def _cast_extern(chunk_in_ty, chunk_out_ty):
-    return ExternalFunction(
-        "cast_f32_bf16_row",
-        source_file=str(_KERNEL_DIR / "cast_f32_bf16.cc"),
-        arg_types=[
-            chunk_in_ty,
-            chunk_out_ty,
-            np.int32,  # pyright: ignore[reportArgumentType]
-        ],
-        include_dirs=[config.cxx_header_path()],
-    )
 
 
 @iron.jit
@@ -75,7 +66,8 @@ def cast_f32_bf16(
     of_ins = [ObjectFifo(chunk_in_ty, name=f"in_{i}") for i in range(n_cores)]
     of_outs = [ObjectFifo(chunk_out_ty, name=f"out_{i}") for i in range(n_cores)]
 
-    cast_fn = _cast_extern(chunk_in_ty, chunk_out_ty)
+    # aie_kernels/datamovement/cast_f32_bf16.cc (cast_f32_bf16_row), sized per chunk.
+    cast_fn = kernels.convert_copy(tile_size=vector_size)
 
     def core_fn(of_in, of_out, kernel):
         for _ in range_(rows_per_core):
@@ -90,8 +82,8 @@ def cast_f32_bf16(
         for i in range(n_cores)
     ]
 
-    taps = TensorTiler2D.simple_tiler(
-        (n_vectors, vector_size), (rows_per_core, vector_size)
+    taps = TensorAccessPattern.full((n_vectors, vector_size)).tile(
+        (rows_per_core, vector_size)
     )
 
     def sequence(a, c, in_prods, out_conses):

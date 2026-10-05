@@ -18,6 +18,7 @@ from aie.utils.hostruntime.xrtruntime.hostruntime import (
     CachedXRTRuntime,
     XRTHostRuntime,
 )
+from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
 from aie.utils.npukernel import NPUKernel
 
 
@@ -140,6 +141,34 @@ def test_runtime_caching_multiple_kernels(runtime):
 
     # Should have 2 entries now
     assert len(runtime._context_cache) == 2
+
+
+def test_interleaved_tensor_allocations_preserve_distinct_context_results(runtime):
+    """Interleaving new tensors between distinct contexts keeps later runs correct."""
+
+    transform._kernel_cache.clear()
+    scratch_tensors = []
+    expected_input = np.arange(32, dtype=np.int32)
+
+    input_tensor = iron.arange(32, dtype=np.int32)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
+    np.testing.assert_array_equal(input_tensor.numpy(), expected_input + 1)
+
+    scratch_tensors.append(XRTTensor((32,), dtype=np.int32))
+    assert scratch_tensors[-1].xrt_device is runtime._device
+
+    input_tensor = iron.arange(32, dtype=np.int32)
+    transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
+    np.testing.assert_array_equal(input_tensor.numpy(), expected_input * 2)
+
+    scratch_tensors.append(XRTTensor((32,), dtype=np.int32))
+    assert scratch_tensors[-1].xrt_device is runtime._device
+
+    input_tensor = iron.arange(32, dtype=np.int32)
+    transform(input_tensor, input_tensor, func=lambda x: x - 3, num_elements=32)
+    np.testing.assert_array_equal(input_tensor.numpy(), expected_input - 3)
+
+    assert len(runtime._context_cache) == 3
 
 
 def test_runtime_eviction_logic(runtime):

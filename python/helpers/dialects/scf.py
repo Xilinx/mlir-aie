@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from contextlib import contextmanager
-from typing import Sequence
+from typing import Any, Iterator, Sequence
 
 import numpy as np
 
@@ -35,7 +35,7 @@ def _for(
     *,
     loc=None,
     ip=None,
-):
+) -> Iterator[Any]:
     """Emit an scf.for loop, like the convenience wrapper in scf but with an added insert_yield parameter.
 
     The insert_yield parameter defaults to True; if left as True, the user no longer needs to manually insert

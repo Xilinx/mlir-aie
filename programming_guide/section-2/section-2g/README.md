@@ -74,32 +74,68 @@ These classes live under `aie.iron`:
 |-------|-------------------|-----------|
 | `Buffer(tile, type, initial_value=None, name)` | `aie.buffer` on the given tile | [`python/iron/buffer.py`](../../../python/iron/buffer.py) |
 | `Lock(tile, lock_id=None, init=0, name)` | `aie.lock` with explicit id + init count | [`python/iron/lock.py`](../../../python/iron/lock.py) |
-| `Flow(src, dst, *, src_port=DMA, src_channel, dst_port=DMA, dst_channel)` | `aie.flow` — one circuit-switched route | [`python/iron/dataflow/flow.py`](../../../python/iron/dataflow/flow.py) |
-| `PacketFlow(src, dsts: list[PacketDest], *, pkt_id, ...)` | `aie.packetflow` with explicit packet IDs | same file |
+| `Flow(src, dst \| [dsts], *, src_port=DMA, src_channel=None, dst_port=DMA, dst_channel=None, name=None)` | `aie.flow` when both channels are given; otherwise `aie.route_endpoint`s joined by an `aie.route`, whose DMA channels the compiler assigns.  A list of `dst`s broadcasts | [`python/iron/dataflow/flow.py`](../../../python/iron/dataflow/flow.py) |
+| `PacketFlow(pkt_id, src, dst, *, src_channel=0, dst_channel=0, extra_dsts=[PacketDest(...)], keep_pkt_header=False, name=None)` | `aie.packetflow` tagged with `pkt_id`.  With a shim end it has `fill` / `drain` like a `Flow`, and `fill(a, pkt_type=0)` stamps the packet header on the input | same file |
+| `DmaEndpoint(tile, direction, channel)` | One DMA channel of one tile.  `flow.endpoint(tile)` is the end of a `Flow` on `tile`, whose channel the compiler may assign | [`python/iron/dataflow/tile_dma.py`](../../../python/iron/dataflow/tile_dma.py) |
 | `TileDma(tile, channels=[DmaChannel(...)])` | `aie.mem` (compute), `aie.memtile_dma` (memtile), or `aie.shim_dma` (shim) — picked by tile type | [`python/iron/dataflow/tile_dma.py`](../../../python/iron/dataflow/tile_dma.py) |
-| `DmaChannel(direction, channel, bds=[Bd(...)])` | One `@dma(dir, ch)` chain inside the TileDma's region | same |
-| `Bd(buffer, offset=0, length=None, acquires=[...], releases=[...], next="self"\|int\|None, packet=None)` | One BD block: acquires + `aie.dma_bd` + releases + `aie.next_bd` | same |
+| `DmaChannel(direction, channel, bds=[Bd(...)], pad_value=0, repeat_count=0, out_of_order=False, loop=True)` | One `@dma(dir, ch)` chain inside the TileDma's region.  `channel` is an index or a `DmaEndpoint` such as `flow.endpoint(tile)` | same |
+| `Bd(buffer, tap=None, acquires=[...], releases=[...], next=None\|"self"\|int, packet=None, bd_id=None, iteration=None, out_of_order_id=None)` | One BD block: acquires + `aie.dma_bd` + releases + `aie.next_bd`.  `tap` is a `TensorAccessPattern` over `buffer` (default: the whole buffer) | same |
+| `BdIteration(size, stride, current=0)` | The `iteration` state of one `aie.dma_bd`: the BD's base advances by `stride` elements per execution and wraps after `size` | same |
 | `Acquire(lock, value=1, greater_equal=True)` | `aie.use_lock(..., AcquireGreaterEqual\|Acquire)` at BD start | same |
 | `Release(lock, value=1)` | `aie.use_lock(..., Release)` at BD end | same |
 
 `Bd.next` mirrors the dialect's `aie.next_bd` chain wiring:
 
-* `"self"` (default) — loop back to this BD (the common "keep streaming"
-  pattern).
+* `None` (default) — follow the channel.  The BD points at the next entry
+  in `bds`, and the last entry either loops back to the first or leaves the
+  chain, per `DmaChannel.loop`.  This is the common case, so most BDs say
+  nothing about `next` at all.
+* `"self"` — loop back to this BD regardless of what the channel says.
 * an `int` `i` — point at the i-th BD in this `DmaChannel`'s `bds` list
   (zero-based).  Useful for explicit cycles in multi-BD chains.
-* `None` — emit no `next_bd`.  Rarely useful; the basic block ends up
-  without a terminator and the caller takes responsibility.
+
+`DmaChannel.loop` decides what the end of the chain does:
+
+* `True` (default) — the last BD chains back to the first, so the channel
+  streams forever.  A single-BD channel therefore self-chains, which is the
+  "keep streaming" pattern.
+* `False` — the last BD chains to the region's `aie.end`, which the dialect
+  reads as "the chain ends here".  Only then is the chain a task the channel
+  can finish, which is what makes a queue-push `repeat_count` mean anything:
+  an endless chain never completes, so there is nothing to repeat.
 
 `Bd.packet = (pkt_type, pkt_id)` stamps a packet header on every
 transfer this BD emits — pair it with a `PacketFlow` carrying the same
-`pkt_id` so the routing fabric dispatches correctly.
+`pkt_id` so the routing fabric dispatches correctly.  From the shim,
+`packet_flow.fill(a)` stamps the header itself, so several `PacketFlow`s
+leaving one shim channel are told apart by which one you fill (see
+[`packet_switch`](../../../programming_examples/basic/packet_switch/)).  `Bd.bd_id` pins
+the descriptor's hardware id; the others are allocated around it.
+
+A few more `Bd` fields cover hardware features that would otherwise need
+extra descriptors:
+
+* `iteration=BdIteration(size, stride)` lets one BD walk `size`
+  sub-buffers, advancing its base by `stride` elements on each execution,
+  where an unrolled chain would need `size` BDs.  Values are in elements;
+  the lowering applies the hardware's `-1` bias.  It takes the BD's
+  outermost dimension, so in a runtime-sequence `task` its `tap` gets one
+  dimension fewer.  See
+  [`test/npu-xrt/bd_iteration`](../../../test/npu-xrt/bd_iteration/bd_iteration.py).
+* A padded `tap` (`tap.pad([(before, after), ...])`, mem tile only) pads
+  each dimension of the access pattern with `DmaChannel.pad_value`.  See
+  [`dma_padding`](../../../programming_examples/basic/dma_padding/).
+* `DmaChannel(..., out_of_order=True)` on an S2MM channel places each
+  arriving packet in the BD whose `bd_id` matches the out-of-order id in
+  its header.  The sender stamps that id with `Bd.out_of_order_id`.  See
+  [`test/npu-xrt/dma_s2mm_ooo`](../../../test/npu-xrt/dma_s2mm_ooo/).
 
 ### Wiring everything into the `Runtime`
 
-Three registrations on the `Runtime` object pull the structural
-primitives into the resolved program.  All three accept one object per
-call:
+Two registrations on the `Runtime` object pull the structural
+primitives into the resolved program.  Both accept one object per
+call.  The `Buffer`s and `Lock`s a `TileDma`'s `Bd`s use are found from
+them; `rt.add_lock` is only needed for a lock nothing else reaches:
 
 ```python
 def sequence(a, b):
@@ -107,19 +143,19 @@ def sequence(a, b):
 
 rt = Runtime(sequence, [in_ty, out_ty])
 rt.add_flow(my_flow)        # one call per Flow / PacketFlow
-rt.add_lock(my_lock)        # one call per Lock
 rt.add_tile_dma(my_dma)     # one call per TileDma program
 ```
 
-Inside the sequence body, if even the BD-level abstraction is too
-high — typically because you're driving BD writes from the host
-runtime sequence rather than from the tile DMA program — drop into
-raw `npu_*` ops (`npu_writebd`, `npu_address_patch`, `npu_push_queue`,
-`npu_sync`, `npu_write32`) directly:
+The sequence body can also program mem and compute tile DMAs itself
+(see [Tasks on Mem and Compute Tiles](../section-2d/DMATasks.md#tasks-on-mem-and-compute-tiles)).
+If even that is too high a level, drop into raw `npu_*` ops
+(`npu_writebd`, `npu_address_patch`, `npu_push_queue`, `npu_sync`,
+`npu_write32`) directly.  Setting a lock doesn't need a raw register
+write: `lock.set(value)` resolves the lock's address for you.
 
 ```python
 def sequence(a, b):
-    npu_write32(column=col, row=1, address=0xC0000, value=1)
+    memtile_lock.set(1)
     npu_writebd(bd_id=0, buffer_length=..., column=col, row=0, ...)
     npu_address_patch(...)
     npu_push_queue(...)
@@ -170,7 +206,8 @@ a_to_b = Flow(
     dst_port=WireBundle.DMA, dst_channel=1,
 )
 
-# Per-tile DMA programs.  Each has one channel with one self-looping BD.
+# Per-tile DMA programs.  Each has one channel with one BD, which the
+# default loop=True chains back to itself so it keeps streaming.
 dma_a = TileDma(tile=tile_a, channels=[
     DmaChannel(
         direction=DMAChannelDir.MM2S, channel=0,
@@ -178,7 +215,6 @@ dma_a = TileDma(tile=tile_a, channels=[
             buffer=buff_a,
             acquires=[Acquire(cons_lock_a)],   # wait for "data ready"
             releases=[Release(prod_lock_a)],   # signal "buffer free"
-            next="self",
         )],
     ),
 ])
@@ -189,7 +225,6 @@ dma_b = TileDma(tile=tile_b, channels=[
             buffer=buff_b,
             acquires=[Acquire(prod_lock_b)],   # wait for "buffer free"
             releases=[Release(cons_lock_b)],   # signal "data ready"
-            next="self",
         )],
     ),
 ])
@@ -198,8 +233,6 @@ def sequence(a, b):
     pass  # data flow is driven entirely by the tile DMA programs below
 
 rt = Runtime(sequence, [vec_ty, vec_ty])
-for lk in (prod_lock_a, cons_lock_a, prod_lock_b, cons_lock_b):
-    rt.add_lock(lk)
 rt.add_flow(a_to_b)
 rt.add_tile_dma(dma_a)
 rt.add_tile_dma(dma_b)
@@ -216,7 +249,7 @@ With `prod_a = 1` and `cons_a = 0`, `tile_a`'s DMA blocks on
 ### Multi-BD chains (ping-pong)
 
 Extending the channel above to a ping-pong pair is two BDs with two
-buffers, with `next="self"` on each so the BD repeats, plus a second
+buffers, chained to each other rather than to themselves, plus a second
 producer-lock token so both buffers can be in flight at once:
 
 ```python
@@ -246,7 +279,59 @@ ping_pong = TileDma(tile=tile_a, channels=[
 points back at the first.  The pair behaves the same way as the
 ObjectFifo lowering for a double-buffered fifo.
 
+Both are spelled out here to show the wiring, but this particular chain is
+what the defaults already do: leaving `next` off each BD walks `bds` in
+order, and `loop=True` closes the cycle.  Reach for explicit indices when
+the cycle is not simply "in order, then back to the start".
+
 <img src="../../assets/DMA_BDs.png" height=300 width="400">
+
+### Letting the compiler pick channels
+
+The worked example names a channel at both ends of its `Flow` and
+repeats each index in the matching `DmaChannel`.  Leave the channels
+off the `Flow` and the compiler assigns them; each DMA program then
+names the end of the flow it runs on with `flow.endpoint(tile)` instead
+of an index:
+
+```python
+a_to_b = Flow(tile_a, tile_b)          # no channels: the compiler picks
+
+dma_a = TileDma(tile=tile_a, channels=[
+    DmaChannel(direction=DMAChannelDir.MM2S, channel=a_to_b.endpoint(tile_a),
+               bds=[...]),
+])
+dma_b = TileDma(tile=tile_b, channels=[
+    DmaChannel(direction=DMAChannelDir.S2MM, channel=a_to_b.endpoint(tile_b),
+               bds=[...]),
+])
+```
+
+The endpoints lower to `aie.route_endpoint`s, and
+`--aie-objectfifo-allocate` gives each one a channel that no ObjectFifo
+and no explicitly numbered channel on that tile uses.  The tiles need not be
+pinned either: `Tile(tile_type=AIETileType.MemTile)` and friends are
+placed alongside everything else.  A list of destinations,
+`Flow(mem, [core0, core1])`, is a circuit-switched broadcast with one
+endpoint per destination.  A flow with a shim end still supports
+`flow.fill(...)` / `flow.drain(...)` from the sequence.
+
+[`test/npu-xrt/flow_endpoints`](../../../test/npu-xrt/flow_endpoints/flow_endpoints.py)
+is a hardware-tested design built this way, with no tile or channel
+pinned anywhere.
+
+### Tile DMAs from the runtime sequence
+
+A `TileDma` is configured once, when the design loads.  To configure a
+mem or compute tile DMA from the runtime sequence instead, so that its
+descriptors can change from one call to the next, build a task on the
+endpoint: `flow.endpoint(tile).task(Bd(...), ...)`.  The `Bd`s are the
+ones above.  See
+[Tasks on Mem and Compute Tiles](../section-2d/DMATasks.md#tasks-on-mem-and-compute-tiles).
+The device limits these programs work within are available from the
+device itself — `dev.max_lock_value`, `dev.max_repeat_count`,
+`dev.dma_task_queue_depth` and `dev.get_num_bds(tile_type)` — rather
+than being hardcoded.
 
 ### Canonical end-to-end demo
 
@@ -261,7 +346,8 @@ tile S2MM with:
   acquire/release lock-protocol pairs;
 * a `Worker` running a tiny lock-flipping spinner on the compute
   tile;
-* a runtime sequence whose body opens the data flow with `npu_writebd` /
+* a runtime sequence whose body sets the MemTile lock with `lock.set`
+  and opens the data flow with `npu_writebd` /
   `npu_address_patch` / `npu_push_queue` / `npu_sync` written directly
   — the *teaching point* of the example, because the manual BD writes
   are exactly what `fill` / `drain` normally hide.

@@ -15,6 +15,7 @@ from aie.dialects.aie import (
     external_buffer,
     bd_dim_layout,
     end,
+    logical_tile,
     object_fifo,
     object_fifo_link,
     tile,
@@ -24,6 +25,7 @@ from aie.dialects.aie import (
     get_target_model,
     dma_bd,
 )
+from aie.dialects._aie_enum_gen import AIETileType
 from aie.ir import InsertionPoint, Block
 from aie.extras.context import mlir_mod_ctx
 from aie.extras import types as T
@@ -37,11 +39,25 @@ def tileOp():
     t = tile(col=0, row=0)
 
 
+# CHECK-LABEL: tileOpControlPacket
+# CHECK: aie.tile(1, 2) {controller_id = #aie.packet_info<pkt_type = 3, pkt_id = 4>}
+@construct_and_print_module
+def tileOpControlPacket():
+    t = tile(col=1, row=2, packet_type=3, packet_id=4)
+
+
+# CHECK-LABEL: logicalTileOpControlPacket
+# CHECK: aie.logical_tile<CoreTile>(1, 2) {controller_id = #aie.packet_info<pkt_type = 3, pkt_id = 4>}
+@construct_and_print_module
+def logicalTileOpControlPacket():
+    t = logical_tile(AIETileType.CoreTile, col=1, row=2, packet_type=3, packet_id=4)
+
+
 # CHECK-LABEL: tileOpAllocationScheme
-# CHECK: aie.tile(2, 2) {allocation_scheme = "basic-sequential"}
+# CHECK: aie.tile(2, 2)
 @construct_and_print_module
 def tileOpAllocationScheme():
-    t = tile(col=2, row=2, allocation_scheme="basic-sequential")
+    t = tile(col=2, row=2)
 
 
 # CHECK-LABEL: coreOp
@@ -343,3 +359,42 @@ def test_target_model():
 
 
 test_target_model()
+
+
+# CHECK-LABEL: test_target_model_dma_bd_bits
+# CHECK: npu1 (0, 0) wrap 10 step 20 iter 6
+# CHECK: npu1 (0, 1) wrap 10 step 17 iter 6
+# CHECK: npu1 (0, 2) wrap 8 step 13 iter 6
+# CHECK: npu1 granularity 32
+def test_target_model_dma_bd_bits():
+    print("test_target_model_dma_bd_bits")
+    d = AIEDevice.npu1
+    tm = get_target_model(d)
+    # (0, 0) ShimNOC, (0, 1) MemTile, (0, 2) Core: one of each tile type.
+    for col, row in [(0, 0), (0, 1), (0, 2)]:
+        wrap = tm.get_dma_bd_wrap_bits(col, row)
+        step = tm.get_dma_bd_step_bits(col, row)
+        it = tm.get_dma_bd_iter_bits(col, row)
+        print(f"{d} ({col}, {row}) wrap {wrap} step {step} iter {it}")
+    print(f"{d} granularity {tm.get_address_gen_granularity()}")
+
+
+test_target_model_dma_bd_bits()
+
+
+# CHECK-LABEL: test_target_model_dma_limits
+# CHECK: xcvc1902 lock max 1 repeat max 0 queue depth 0
+# CHECK: npu1 lock max 63 repeat max 255 queue depth 4
+# CHECK: npu2 lock max 63 repeat max 255 queue depth 4
+def test_target_model_dma_limits():
+    print("test_target_model_dma_limits")
+    for d in [AIEDevice.xcvc1902, AIEDevice.npu1, AIEDevice.npu2]:
+        tm = get_target_model(d)
+        print(
+            f"{d} lock max {tm.get_max_lock_value()} "
+            f"repeat max {tm.get_max_repeat_count()} "
+            f"queue depth {tm.get_dma_task_queue_depth()}"
+        )
+
+
+test_target_model_dma_limits()

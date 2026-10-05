@@ -4,15 +4,8 @@
 #
 """ResNet-style int8 bottleneck (3 convs + skip add) host test.
 
-KNOWN: This test fails on Strix Halo (npu2). The design needs ``conv2dk1``,
-``conv2dk3``, ``conv2dk1_skip`` kernel ports under ``aie_kernels/aie2p/``;
-those are missing, so ``_kernel_source`` falls back to the ``aie2/`` sources
-and peano builds them with the aie2p target. 99.2% of output values match
-exactly, but ~2128 elements (every-other-row x channels 0-7) saturate to
-int8 max — likely a scale/round or int8 mac semantics drift between AIE2
-and AIE2P. Fix needs an AIE2P kernel port (out of scope for the
-``run_conv_torch_test`` migration). Tracked in
-``project_aie2p_kernel_port_gaps``.
+The ``conv2dk1``, ``conv2dk3`` and ``conv2dk1_skip`` kernels under
+``aie_kernels/conv/`` build for both aie2 and aie2p.
 """
 
 import argparse

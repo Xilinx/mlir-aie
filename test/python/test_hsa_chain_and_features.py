@@ -143,6 +143,139 @@ def _run_with_fake_ctx(monkeypatch, overflows, timeout_on_wait):
     return rt, handle
 
 
+def _dynamic_runtime(monkeypatch, runtime_type="HSAHostRuntime"):
+    import ctypes
+    from types import SimpleNamespace
+
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    ctx = _make_fake_ctx_cls([])(timeout_on_wait=False)
+    buffers, freed, callbacks = {}, [], []
+    completion = {42: 1}
+
+    def alloc(size):
+        buffer = ctypes.create_string_buffer(size)
+        ptr = ctypes.addressof(buffer)
+        buffers[ptr] = buffer
+        return ptr
+
+    def free(ptr):
+        freed.append(ptr)
+        buffers.pop(ptr, None)
+
+    monkeypatch.setattr(ctx, "alloc_dev", alloc, raising=False)
+    monkeypatch.setattr(ctx, "free_dev", free)
+    monkeypatch.setattr(hrt.HSAContext, "get", classmethod(lambda cls: ctx))
+    monkeypatch.setattr(
+        hrt,
+        "lib",
+        SimpleNamespace(
+            hsa_signal_wait_scacquire=lambda signal, *args: completion[signal]
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        hrt,
+        "atexit",
+        SimpleNamespace(register=callbacks.append, unregister=callbacks.remove),
+    )
+    runtime = getattr(hrt, runtime_type)()
+    handle = hrt.HSAKernelHandle(pdi_ptr=1, insts_ptr=None, insts_size=0)
+    if isinstance(runtime, hrt.CachedHSAHostRuntime):
+        runtime._exe_cache["kernel"] = handle
+    else:
+        runtime._handles.append(handle)
+    return runtime, handle, buffers, freed, completion, callbacks
+
+
+@pytest.mark.parametrize("runtime_type", ["HSAHostRuntime", "CachedHSAHostRuntime"])
+@pytest.mark.parametrize("failure", ["before-publish", "after-publish", "wait"])
+def test_dynamic_instruction_failure_ownership(monkeypatch, runtime_type, failure):
+    import numpy as np
+
+    from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
+
+    runtime, handle, buffers, freed, completion, callbacks = _dynamic_runtime(
+        monkeypatch, runtime_type
+    )
+    words = np.array([1, 2, 3, 4], dtype=np.uint32)
+
+    def fail_dispatch(*args):
+        runtime._ctx._in_flight = failure == "after-publish"
+        raise HSAErrorForTest("dispatch failed")
+
+    with monkeypatch.context() as patch:
+        if failure == "wait":
+            patch.setattr(runtime._ctx, "_timeout_on_wait", True)
+            error = HSATimeoutError
+        else:
+            patch.setattr(runtime._ctx, "dispatch", fail_dispatch)
+            error = HSAErrorForTest
+        with pytest.raises(error):
+            runtime.run(handle, [], dispatch_insts=words)
+
+    if failure == "before-publish":
+        assert len(freed) == 1 and not buffers
+        assert runtime._ctx.discard_calls == 0
+        assert not getattr(runtime, "_pending_dispatch_insts", [])
+        assert not getattr(runtime, "_pending_cleanup_registered", False)
+    else:
+        assert freed == []
+        assert len(buffers) == 1, "failed published instructions must retain an owner"
+        (ptr,) = buffers
+        assert bytes(buffers[ptr]) == words.tobytes()
+        assert runtime._ctx.discard_calls == 1
+        assert getattr(runtime, "_pending_dispatch_insts", []) == [(ptr, 42, handle)]
+        assert runtime._reclaim_at_exit in callbacks
+        runtime.cleanup()
+        assert (
+            freed == []
+        ), "a nonzero completion signal must retain instructions and PDI"
+        if hasattr(runtime, "_exe_cache"):
+            assert runtime._exe_cache.pop("kernel") is handle
+        runtime._free_handle(handle)
+        assert freed == [], "eviction must not free an in-flight PDI"
+        completion[42] = 0
+        runtime.run_chain([])
+        assert freed == [ptr]
+        assert not buffers and not runtime._pending_dispatch_insts
+        assert runtime._reclaim_at_exit not in callbacks
+
+    runtime.cleanup()
+    assert len(freed) == 2 and freed[-1] == handle.pdi_ptr
+    runtime.cleanup()
+    assert len(freed) == 2
+
+
+@pytest.mark.parametrize("recover_by", ["cleanup", "exit"])
+def test_failed_dispatch_retains_runtime_until_reclamation(monkeypatch, recover_by):
+    import gc
+    import weakref
+
+    import numpy as np
+
+    runtime, handle, buffers, freed, completion, callbacks = _dynamic_runtime(
+        monkeypatch
+    )
+    runtime._ctx._timeout_on_wait = True
+    with pytest.raises(_bindings.HSATimeoutError):
+        runtime.run(handle, [], dispatch_insts=np.array([1], dtype=np.uint32))
+    (ptr,) = buffers
+    reference = weakref.ref(runtime)
+    del runtime
+    gc.collect()
+    assert reference() is not None and freed == []
+    completion[42] = 0
+    if recover_by == "exit":
+        callbacks.pop()()
+    else:
+        reference().cleanup()
+    gc.collect()
+    assert freed == [ptr, handle.pdi_ptr]
+    assert not callbacks and not buffers
+    assert reference() is None
+
+
 def test_pooled_run_allocates_and_frees_nothing(monkeypatch):
     """The steady-state dispatch path touches no allocator at all.
 

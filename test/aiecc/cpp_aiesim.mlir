@@ -24,7 +24,6 @@
 // CHECK-DAG: graph.xpe
 // CHECK-DAG: aieshim_solution.aiesol
 // CHECK-DAG: scsim_config.json
-// CHECK-DAG: flows_physical.json
 // CHECK-DAG: -D__AIESIM__
 // CHECK-DAG: genwrapper_for_ps.cpp
 // CHECK-DAG: {{.*}}ps.so
