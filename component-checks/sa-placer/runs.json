@@ -36,6 +36,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "37276587561",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37276587561",
+   "date": "2026-10-05T07:14:00+00:00",
+   "commit": {
+    "id": "b15f3508006988ea0252300a1feac447990ce6ec",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/b15f3508006988ea0252300a1feac447990ce6ec",
+    "message": "[AIEX] Set shim DMA transfer lengths at runtime with scratchpad parameters (#3843)",
+    "timestamp": "2026-10-04T02:17:38Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "b15f350800",
+    "fixtures": "3aa7139253a0"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
