@@ -503,8 +503,16 @@ def test_the_docs_deploy_keeps_what_the_nightlies_publish(tmp_path):
 def test_ci_health_publishes_its_files_and_the_page(tmp_path):
     """publishCiHealth.yml's Publish step, on a local repository."""
     job = workflow("publishCiHealth.yml")["jobs"]["publish"]
-    assert job["concurrency"]["group"] == "gh-pages-publish"
-    assert job["permissions"] == {"contents": "write", "actions": "read", "pull-requests": "read"}
+    assert job["concurrency"] == {
+        "group": "gh-pages-publish",
+        "cancel-in-progress": "false",
+        "queue": "max",
+    }
+    assert job["permissions"] == {
+        "contents": "write",
+        "actions": "read",
+        "pull-requests": "read",
+    }
     run = next(step["run"] for step in job["steps"] if step.get("name") == "Publish")
     repo = tmp_path / "repo"
     (repo / "utils/kernel_checks").mkdir(parents=True)
@@ -523,13 +531,38 @@ def test_ci_health_publishes_its_files_and_the_page(tmp_path):
     (temp / "ci-health").mkdir(parents=True)
     (temp / "ci-health/status.json").write_text('{"schema": 1}')
     (temp / "ci-health/history.json").write_text('{"schema": 1, "points": []}')
-    env = {**os.environ, "RUNNER_TEMP": str(temp), "GITHUB_SHA": "0123456789abcdef",
-           "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com"}
-    subprocess.run([BASH, "-eo", "pipefail", "-c", run], cwd=repo, env=env, check=True, capture_output=True)
+    env = {
+        **os.environ,
+        "RUNNER_TEMP": str(temp),
+        "GITHUB_SHA": "0123456789abcdef",
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.com",
+    }
+    subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", run],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+    )
     assert git(repo, "branch", "--show-current").strip() == "main"
     files = set(git(repo, "ls-tree", "-r", "--name-only", "gh-pages").split())
-    assert files == {"kernel-checks/index.html", "ci-health/status.json", "ci-health/history.json", "dashboard/index.html"}
-    assert git(repo, "log", "-1", "--format=%s", "gh-pages").strip() == "Publish CI health for 0123456789"
+    assert files == {
+        "kernel-checks/index.html",
+        "ci-health/status.json",
+        "ci-health/history.json",
+        "dashboard/index.html",
+    }
+    assert (
+        git(repo, "log", "-1", "--format=%s", "gh-pages").strip()
+        == "Publish CI health for 0123456789"
+    )
     # Nothing new: nothing committed.
-    subprocess.run([BASH, "-eo", "pipefail", "-c", run], cwd=repo, env=env, check=True, capture_output=True)
+    subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", run],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+    )
     assert git(repo, "rev-list", "--count", "gh-pages").strip() == "2"

@@ -87,9 +87,11 @@ def extract(ref: str, into: Path) -> Path:
 
 
 def synthetic_ci_health(out: Path, days: int = 20) -> None:
-    """Write a made-up ci-health/ in ci_health.py's format, when the branch
-    has none yet: each workflow's runs, the critical ones' figures and a
-    history, a few things wrong, so the CI health tab has something to show."""
+    """Write a made-up ci-health/ in ci_health.py's format, if there is none.
+
+    It has each workflow's runs, the critical ones' figures and a history,
+    with a few things wrong, so the CI health tab has something to show.
+    """
     if (out / "status.json").exists():
         return
     rng = random.Random(3)
@@ -102,47 +104,142 @@ def synthetic_ci_health(out: Path, days: int = 20) -> None:
     def run(i, hours, conclusion, status="completed", took=None):
         took = took if took is not None else rng.uniform(20, 70)
         waited = rng.uniform(0.2, 6)
-        return {"id": i, "url": "", "status": status, "conclusion": conclusion, "created_at": stamp(hours + waited / 60),
-                "run_started_at": stamp(hours), "updated_at": stamp(hours - took / 60), "head_sha": f"{i:040x}",
-                "title": "Preview: a synthetic run", "attempt": 1}
+        return {
+            "id": i,
+            "url": "",
+            "status": status,
+            "conclusion": conclusion,
+            "created_at": stamp(hours + waited / 60),
+            "run_started_at": stamp(hours),
+            "updated_at": stamp(hours - took / 60),
+            "head_sha": f"{i:040x}",
+            "title": "Preview: a synthetic run",
+            "attempt": 1,
+        }
 
     workflows = []
     for n, wf in enumerate(config["workflows"]):
         every = wf["every"]
         first = rng.uniform(0.5, every)
-        runs = [run(n * 100 + i, first + every * i, "failure" if rng.random() < 0.15 else "success") for i in range(ci_health.RUNS_KEPT)]
+        runs = [
+            run(
+                n * 100 + i,
+                first + every * i,
+                "failure" if rng.random() < 0.15 else "success",
+            )
+            for i in range(ci_health.RUNS_KEPT)
+        ]
         jobs = None
         if wf["file"] == "nightlyKernelChecks.yml":
             # Still going: one leg never found a runner.
             runs[0].update(status="in_progress", conclusion=None)
-            jobs = [{"name": "Kernel checks (aie2-4col)", "url": "", "status": "completed", "conclusion": "failure", "created_at": stamp(first), "started_at": stamp(first)},
-                    {"name": "Kernel checks (aie2p-8col)", "url": "", "status": "queued", "conclusion": None, "created_at": stamp(first + 7), "started_at": None}]
+            jobs = [
+                {
+                    "name": "Kernel checks (aie2-4col)",
+                    "url": "",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "created_at": stamp(first),
+                    "started_at": stamp(first),
+                },
+                {
+                    "name": "Kernel checks (aie2p-8col)",
+                    "url": "",
+                    "status": "queued",
+                    "conclusion": None,
+                    "created_at": stamp(first + 7),
+                    "started_at": None,
+                },
+            ]
         elif wf.get("legs"):
-            jobs = [{"name": "build", "url": "", "status": "completed", "conclusion": runs[0]["conclusion"], "created_at": stamp(first), "started_at": stamp(first)}]
+            jobs = [
+                {
+                    "name": "build",
+                    "url": "",
+                    "status": "completed",
+                    "conclusion": runs[0]["conclusion"],
+                    "created_at": stamp(first),
+                    "started_at": stamp(first),
+                }
+            ]
         workflows.append({**wf, "runs": runs, "jobs": jobs})
     critical = []
     for n, wf in enumerate(config["critical"]):
         minutes = rng.uniform(8, 120)
         main = rng.choice([0.95, 1.0, 0.82])
-        critical.append({**wf, "runs": rng.randint(60, 300),
-            "main": {"passed": round(40 * main), "failed": 40 - round(40 * main), "rate": main},
-            "latest_main": run(9000 + n, rng.uniform(1, 5), "failure" if n == 0 else "success"),
-            "latest_main_jobs": [{"name": "build-and-test-from-source (aie2p-8col)", "url": "", "status": "completed", "conclusion": "failure",
-                                  "created_at": stamp(3), "started_at": stamp(3)}] if n == 0 else None,
-            "pull_requests": {"passed": 120, "failed": 45, "rate": 0.727},
-            "merge_queue": {"passed": 30, "failed": 1, "rate": 0.968},
-            "flaky": {"commits": 150, "flaky": [4, 21, 2, 1, 0][n % 5], "rate": round([4, 21, 2, 1, 0][n % 5] / 150, 3)},
-            "minutes_median": round(minutes, 1), "minutes_p90": round(minutes * 1.6, 1), "queued_median": round(rng.uniform(0.2, 25), 1),
-            # Runs on main, newest first, about two a day.
-            "main_runs": [run(9100 + 50 * n + i, 1 + 11 * i, "failure" if (i == 0 and n == 0) or rng.random() < 0.08 else "success",
-                              took=minutes * rng.uniform(0.85, 1.2)) for i in range(28)]})
-    status = {"schema": 1, "generated_at": publish.iso(now - datetime.timedelta(minutes=20)), "repo": "Xilinx/mlir-aie",
-              "window_days": ci_health.WINDOW_DAYS, "critical": critical,
-              "merge_time": {"merged": 37, "hours_median": 30.2, "hours_p90": 212.0, "open": 58, "open_drafts": 14, "open_over_30_days": 17},
-              "workflows": workflows}
+        critical.append(
+            {
+                **wf,
+                "runs": rng.randint(60, 300),
+                "main": {
+                    "passed": round(40 * main),
+                    "failed": 40 - round(40 * main),
+                    "rate": main,
+                },
+                "latest_main": run(
+                    9000 + n, rng.uniform(1, 5), "failure" if n == 0 else "success"
+                ),
+                "latest_main_jobs": (
+                    [
+                        {
+                            "name": "build-and-test-from-source (aie2p-8col)",
+                            "url": "",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "created_at": stamp(3),
+                            "started_at": stamp(3),
+                        }
+                    ]
+                    if n == 0
+                    else None
+                ),
+                "pull_requests": {"passed": 120, "failed": 45, "rate": 0.727},
+                "merge_queue": {"passed": 30, "failed": 1, "rate": 0.968},
+                "flaky": {
+                    "commits": 150,
+                    "flaky": [4, 21, 2, 1, 0][n % 5],
+                    "rate": round([4, 21, 2, 1, 0][n % 5] / 150, 3),
+                },
+                "minutes_median": round(minutes, 1),
+                "minutes_p90": round(minutes * 1.6, 1),
+                "queued_median": round(rng.uniform(0.2, 25), 1),
+                # Runs on main, newest first, about two a day.
+                "main_runs": [
+                    run(
+                        9100 + 50 * n + i,
+                        1 + 11 * i,
+                        (
+                            "failure"
+                            if (i == 0 and n == 0) or rng.random() < 0.08
+                            else "success"
+                        ),
+                        took=minutes * rng.uniform(0.85, 1.2),
+                    )
+                    for i in range(28)
+                ],
+            }
+        )
+    status = {
+        "schema": 1,
+        "generated_at": publish.iso(now - datetime.timedelta(minutes=20)),
+        "repo": "Xilinx/mlir-aie",
+        "window_days": ci_health.WINDOW_DAYS,
+        "critical": critical,
+        "merge_time": {
+            "merged": 37,
+            "hours_median": 30.2,
+            "hours_p90": 212.0,
+            "open": 58,
+            "open_drafts": 14,
+            "open_over_30_days": 17,
+        },
+        "workflows": workflows,
+    }
     history = None
     for d in range(days, -1, -1):
-        point = ci_health.history_point({**status, "generated_at": publish.iso(now - datetime.timedelta(days=d))})
+        point = ci_health.history_point(
+            {**status, "generated_at": publish.iso(now - datetime.timedelta(days=d))}
+        )
         point["merge"]["hours_median"] = round(30 + 8 * rng.uniform(-1, 1), 1)
         for c in point["critical"].values():
             c["minutes_median"] = round(c["minutes_median"] * rng.uniform(0.9, 1.1), 1)

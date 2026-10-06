@@ -738,5 +738,10 @@ def test_a_redirect_keeps_the_links_own_view(publish, tmp_path):
     publish.redirect(tmp_path, "../dashboard/#view=night")
     page = (tmp_path / "index.html").read_text()
     # A link with its own #view lands on it; a bare one on the default.
-    assert '<script>location.replace("../dashboard/" + (location.hash || "#view=night"));</script>' in page
-    assert '<meta http-equiv="refresh" content="0; url=../dashboard/#view=night">' in page
+    assert (
+        '<script>location.replace("../dashboard/" + (location.hash || "#view=night"));</script>'
+        in page
+    )
+    assert (
+        '<meta http-equiv="refresh" content="0; url=../dashboard/#view=night">' in page
+    )

@@ -100,9 +100,7 @@ const el0 = {};
         # and Windows' 32767-character command line.
         source = known + setup + script + data + checks
         env = {**os.environ, "WORKFLOWS": str(ROOT / ".github/workflows")}
-        subprocess.run(
-            [node, "-"], input=source, encoding="utf-8", check=True, env=env
-        )
+        subprocess.run([node, "-"], input=source, encoding="utf-8", check=True, env=env)
 
     return run
 

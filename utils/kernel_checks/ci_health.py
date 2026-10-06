@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Record CI health for the maintainer dashboard.
+r"""Record CI health for the maintainer dashboard.
 
 Asks GitHub's API, with the workflow's own token, for three things and
 writes them to one file, ``status.json``, which publishCiHealth.yml installs
@@ -26,7 +26,7 @@ It also keeps ``history.json``: one point a day of the critical workflows'
 and merge time's figures, so the page can chart them. Pass the published
 one with ``--history``; today's point is replaced as the day goes on.
 
-    GITHUB_TOKEN=... python3 utils/kernel_checks/ci_health.py --out ci-health \\
+    GITHUB_TOKEN=... python3 utils/kernel_checks/ci_health.py --out ci-health \
         [--history published/history.json]
 
 Only what the page reads is kept. Whatever GitHub will not answer is
@@ -95,7 +95,7 @@ class ApiError(Exception):
 
 
 def github(token: str, timeout: float = 30):
-    """A function GETting one API path as JSON, with the token if any."""
+    """Return a function that GETs one API path as JSON, with the token if any."""
 
     def get(path: str):
         req = urllib.request.Request(f"{API}{path}")
@@ -115,7 +115,7 @@ def github(token: str, timeout: float = 30):
 
 
 def when(stamp):
-    """An API timestamp as an aware datetime, or None."""
+    """Parse an API timestamp as an aware datetime, or None."""
     if not stamp:
         return None
     return datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
@@ -127,7 +127,7 @@ def minutes(a, b):
 
 
 def percentile(values, q):
-    """The nearest-rank ``q`` percentile of ``values``, or None."""
+    """Return the nearest-rank ``q`` percentile of ``values``, or None."""
     xs = sorted(v for v in values if v is not None)
     if not xs:
         return None
@@ -140,7 +140,7 @@ def rounded(x, digits=1):
 
 
 def pass_rate(runs):
-    """{passed, failed, rate}: completed runs that passed, failed, and the share."""
+    """Count completed runs as {passed, failed, rate}, rate the passed share."""
     passed = sum(r["conclusion"] == "success" for r in runs)
     failed = sum(r["conclusion"] in FAILED for r in runs)
     return {
@@ -156,8 +156,10 @@ def pass_rate(runs):
 
 
 def scheduled(get, repo: str, workflows: list) -> list:
-    """Each workflow's recent scheduled runs on main, and its latest run's
-    jobs when it has legs."""
+    """Collect each workflow's recent scheduled runs on main.
+
+    A workflow with legs also gets its latest run's jobs.
+    """
     out = []
     for wf in workflows:
         entry = dict(wf)
@@ -201,10 +203,12 @@ def window_runs(get, repo: str, file: str, since: datetime.datetime) -> list:
 
 
 def flaky(runs: list) -> dict:
-    """Commits whose checks failed and then passed: a run that passed on a
-    later attempt, or a commit with both a failed and a passed run.
-    {commits, flaky, rate} over the pull-request and merge-queue commits
-    that finished."""
+    """Count commits whose checks failed and then passed.
+
+    That is a run that passed on a later attempt, or a commit with both a
+    failed and a passed run. Returns {commits, flaky, rate} over the
+    pull-request and merge-queue commits that finished.
+    """
     by_sha = {}
     for r in runs:
         if r.get("event") not in ("pull_request", "merge_group"):
@@ -215,7 +219,9 @@ def flaky(runs: list) -> dict:
     shaky = 0
     for rs in by_sha.values():
         conclusions = {r["conclusion"] for r in rs}
-        retried = any(r["conclusion"] == "success" and (r.get("run_attempt") or 1) > 1 for r in rs)
+        retried = any(
+            r["conclusion"] == "success" and (r.get("run_attempt") or 1) > 1 for r in rs
+        )
         if retried or ("success" in conclusions and conclusions & set(FAILED)):
             shaky += 1
     n = len(by_sha)
@@ -231,19 +237,38 @@ def critical(get, repo: str, workflows: list, now: datetime.datetime) -> list:
         try:
             runs = window_runs(get, repo, wf["file"], since)
             done = [r for r in runs if r.get("status") == "completed"]
-            on_main = [r for r in done if r.get("head_branch") == "main" and r.get("event") in ("push", "schedule")]
+            on_main = [
+                r
+                for r in done
+                if r.get("head_branch") == "main"
+                and r.get("event") in ("push", "schedule")
+            ]
             prs = [r for r in done if r.get("event") == "pull_request"]
             queue = [r for r in done if r.get("event") == "merge_group"]
             passed = [r for r in done if r.get("conclusion") == "success"]
-            took = [minutes(r.get("run_started_at"), r.get("updated_at")) for r in passed]
-            waited = [minutes(r.get("created_at"), r.get("run_started_at")) for r in done]
+            took = [
+                minutes(r.get("run_started_at"), r.get("updated_at")) for r in passed
+            ]
+            waited = [
+                minutes(r.get("created_at"), r.get("run_started_at")) for r in done
+            ]
             latest_main = on_main[0] if on_main else None
             # Its latest run on main may still be going: judged by the newest
             # one that is, which the page compares with `every` for lateness.
-            newest_main = next((r for r in runs if r.get("head_branch") == "main" and r.get("event") in ("push", "schedule")), None)
+            newest_main = next(
+                (
+                    r
+                    for r in runs
+                    if r.get("head_branch") == "main"
+                    and r.get("event") in ("push", "schedule")
+                ),
+                None,
+            )
             main_jobs = None
             if wf.get("legs") and latest_main:
-                got = get(f"/repos/{repo}/actions/runs/{latest_main['id']}/jobs?per_page=100").get("jobs", [])
+                got = get(
+                    f"/repos/{repo}/actions/runs/{latest_main['id']}/jobs?per_page=100"
+                ).get("jobs", [])
                 main_jobs = [pick(j, JOB_FIELDS) for j in got]
             entry.update(
                 runs=len(runs),
@@ -271,8 +296,10 @@ def critical(get, repo: str, workflows: list, now: datetime.datetime) -> list:
 
 
 def merge_time(get, repo: str, now: datetime.datetime) -> dict:
-    """Pull requests merged in the window, how long each was open, and how
-    many are open now and for how long."""
+    """Measure the pull requests merged in the window and those open now.
+
+    Merged ones by how long each was open; open ones by count and age.
+    """
     since = now - datetime.timedelta(days=WINDOW_DAYS)
     try:
         merged = []
@@ -284,14 +311,18 @@ def merge_time(get, repo: str, now: datetime.datetime) -> dict:
             for p in got:
                 m = when(p.get("merged_at"))
                 if m and m >= since:
-                    merged.append((m - when(p["created_at"])).total_seconds() / 3600)
-            if len(got) < 100 or when(got[-1]["updated_at"]) < since:
+                    merged.append(
+                        (m - (when(p["created_at"]) or m)).total_seconds() / 3600
+                    )
+            if len(got) < 100 or (when(got[-1]["updated_at"]) or since) < since:
                 break
         open_ages, drafts = [], 0
         for page in range(1, PULL_PAGES + 1):
             got = get(f"/repos/{repo}/pulls?state=open&per_page=100&page={page}")
             for p in got:
-                open_ages.append((now - when(p["created_at"])).total_seconds() / 86400)
+                open_ages.append(
+                    (now - (when(p["created_at"]) or now)).total_seconds() / 86400
+                )
                 drafts += bool(p.get("draft"))
             if len(got) < 100:
                 break
@@ -333,9 +364,13 @@ def history_point(status: dict) -> dict:
 
 
 def update_history(old, point: dict, now: datetime.datetime) -> dict:
-    """``old`` with today's point replaced or added, and points older than
-    ``HISTORY_DAYS`` dropped."""
-    points = [p for p in ((old or {}).get("points") or []) if p.get("date") != point["date"]]
+    """Return ``old`` with today's point replaced or added.
+
+    Points older than ``HISTORY_DAYS`` are dropped.
+    """
+    points = [
+        p for p in ((old or {}).get("points") or []) if p.get("date") != point["date"]
+    ]
     points.append(point)
     oldest = (now - datetime.timedelta(days=HISTORY_DAYS)).date().isoformat()
     points = sorted((p for p in points if p["date"] >= oldest), key=lambda p: p["date"])
@@ -343,10 +378,12 @@ def update_history(old, point: dict, now: datetime.datetime) -> dict:
 
 
 def collect(get, repo: str, config: dict, now: datetime.datetime) -> dict:
-    """The status file's contents."""
+    """Build the status file's contents."""
     return {
         "schema": SCHEMA,
-        "generated_at": now.astimezone(datetime.timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": now.astimezone(datetime.timezone.utc).isoformat(
+            timespec="seconds"
+        ),
         "repo": repo,
         "window_days": WINDOW_DAYS,
         "critical": critical(get, repo, config.get("critical", []), now),
@@ -357,14 +394,28 @@ def collect(get, repo: str, config: dict, now: datetime.datetime) -> dict:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
-    parser.add_argument("--out", required=True, type=Path, help="directory for status.json and history.json")
-    parser.add_argument("--history", type=Path, help="the published history.json, if any")
-    parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "Xilinx/mlir-aie"))
+    parser.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        help="directory for status.json and history.json",
+    )
+    parser.add_argument(
+        "--history", type=Path, help="the published history.json, if any"
+    )
+    parser.add_argument(
+        "--repo", default=os.environ.get("GITHUB_REPOSITORY", "Xilinx/mlir-aie")
+    )
     parser.add_argument("--workflows", type=Path, default=WORKFLOWS)
     args = parser.parse_args(argv)
 
     now = datetime.datetime.now(datetime.timezone.utc)
-    status = collect(github(os.environ.get("GITHUB_TOKEN", "")), args.repo, load_workflows(args.workflows), now)
+    status = collect(
+        github(os.environ.get("GITHUB_TOKEN", "")),
+        args.repo,
+        load_workflows(args.workflows),
+        now,
+    )
     old = None
     if args.history and args.history.is_file() and args.history.stat().st_size:
         old = json.loads(args.history.read_text(encoding="utf-8"))
@@ -375,7 +426,13 @@ def main(argv=None) -> int:
     )
     for w in status["critical"]:
         print(f"critical {w['file']}: " + (w.get("error") or f"{w['runs']} runs"))
-    print("merge time: " + (status["merge_time"].get("error") or f"{status['merge_time']['merged']} merged"))
+    print(
+        "merge time: "
+        + (
+            status["merge_time"].get("error")
+            or f"{status['merge_time']['merged']} merged"
+        )
+    )
     for w in status["workflows"]:
         print(f"scheduled {w['file']}: " + (w.get("error") or f"{len(w['runs'])} runs"))
     errors = [w for w in status["critical"] + status["workflows"] if w.get("error")]
