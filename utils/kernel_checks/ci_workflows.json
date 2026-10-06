@@ -53,6 +53,18 @@
    "why": "the Performance and Placement sections' numbers"
   },
   {
+   "file": "routerNightlyTests.yml",
+   "title": "Router model-based tests",
+   "every": 24,
+   "why": "the packet router against its model over a large corpus, plus mutation testing of both"
+  },
+  {
+   "file": "modelBasedTests.yml",
+   "title": "Allocator model-based tests",
+   "every": 24,
+   "why": "buffer placement against its model over a corpus many times check-aie's"
+  },
+  {
    "file": "buildRyzenWheels.yml",
    "title": "Ryzen AI wheels",
    "every": 24,
