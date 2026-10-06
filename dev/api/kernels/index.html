@@ -3517,6 +3517,61 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#iron.kernels.reduce.argmax_ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        argmax_ref
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iron.kernels.reduce.argmax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        argmax
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iron.kernels.reduce.argmax_combine_ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        argmax_combine_ref
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iron.kernels.reduce.argmax_combine_sample" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        argmax_combine_sample
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iron.kernels.reduce.argmax_combine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        argmax_combine
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#linear-algebra" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -7746,6 +7801,61 @@
     <span class="md-ellipsis">
       
         compute_max_ref
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iron.kernels.reduce.argmax_ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        argmax_ref
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iron.kernels.reduce.argmax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        argmax
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iron.kernels.reduce.argmax_combine_ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        argmax_combine_ref
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iron.kernels.reduce.argmax_combine_sample" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        argmax_combine_sample
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iron.kernels.reduce.argmax_combine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        argmax_combine
       
     </span>
   </a>
@@ -14753,7 +14863,7 @@ on that core until something changes it.</p>
 <a id="iron.kernels.reduce"></a>
     <div class="doc doc-contents first">
 
-        <p>Reduction kernel factories: reduce_add, reduce_min, reduce_max, compute_max.</p>
+        <p>Reduction kernel factories: reduce_add, reduce_min, reduce_max, compute_max, argmax.</p>
 
 
 
@@ -14794,21 +14904,21 @@ on that core until something changes it.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-35">35</a></span>
-<span class="normal"><a href="#__codelineno-0-36">36</a></span>
-<span class="normal"><a href="#__codelineno-0-37">37</a></span>
-<span class="normal"><a href="#__codelineno-0-38">38</a></span>
-<span class="normal"><a href="#__codelineno-0-39">39</a></span>
-<span class="normal"><a href="#__codelineno-0-40">40</a></span>
-<span class="normal"><a href="#__codelineno-0-41">41</a></span>
-<span class="normal"><a href="#__codelineno-0-42">42</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-35" name="__codelineno-0-35"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_add_ref</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-<a id="__codelineno-0-36" name="__codelineno-0-36"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Numpy reference for [`reduce_add`][iron.kernels.reduce.reduce_add]: per-tile sum.</span>
-<a id="__codelineno-0-37" name="__codelineno-0-37"></a>
-<a id="__codelineno-0-38" name="__codelineno-0-38"></a><span class="sd">    In int64 for integer tiles, in float64 for bfloat16 ones.</span>
-<a id="__codelineno-0-39" name="__codelineno-0-39"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-40" name="__codelineno-0-40"></a>    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
-<a id="__codelineno-0-41" name="__codelineno-0-41"></a>    <span class="n">wide</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int64</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">)</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span>
-<a id="__codelineno-0-42" name="__codelineno-0-42"></a>    <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">wide</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-44">44</a></span>
+<span class="normal"><a href="#__codelineno-0-45">45</a></span>
+<span class="normal"><a href="#__codelineno-0-46">46</a></span>
+<span class="normal"><a href="#__codelineno-0-47">47</a></span>
+<span class="normal"><a href="#__codelineno-0-48">48</a></span>
+<span class="normal"><a href="#__codelineno-0-49">49</a></span>
+<span class="normal"><a href="#__codelineno-0-50">50</a></span>
+<span class="normal"><a href="#__codelineno-0-51">51</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-44" name="__codelineno-0-44"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_add_ref</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<a id="__codelineno-0-45" name="__codelineno-0-45"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Numpy reference for [`reduce_add`][iron.kernels.reduce.reduce_add]: per-tile sum.</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46"></a>
+<a id="__codelineno-0-47" name="__codelineno-0-47"></a><span class="sd">    In int64 for integer tiles, in float64 for bfloat16 ones.</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-49" name="__codelineno-0-49"></a>    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<a id="__codelineno-0-50" name="__codelineno-0-50"></a>    <span class="n">wide</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int64</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">)</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span>
+<a id="__codelineno-0-51" name="__codelineno-0-51"></a>    <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">wide</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -14833,11 +14943,11 @@ on that core until something changes it.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-62">62</a></span>
-<span class="normal"><a href="#__codelineno-0-63">63</a></span>
-<span class="normal"><a href="#__codelineno-0-64">64</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_min_ref</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Numpy reference for [`reduce_min`][iron.kernels.reduce.reduce_min]: per-tile minimum.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-64" name="__codelineno-0-64"></a>    <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-71">71</a></span>
+<span class="normal"><a href="#__codelineno-0-72">72</a></span>
+<span class="normal"><a href="#__codelineno-0-73">73</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_min_ref</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Numpy reference for [`reduce_min`][iron.kernels.reduce.reduce_min]: per-tile minimum.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-73" name="__codelineno-0-73"></a>    <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -14862,11 +14972,11 @@ on that core until something changes it.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-67">67</a></span>
-<span class="normal"><a href="#__codelineno-0-68">68</a></span>
-<span class="normal"><a href="#__codelineno-0-69">69</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_max_ref</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-<a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Numpy reference for [`reduce_max`][iron.kernels.reduce.reduce_max]: per-tile maximum.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-69" name="__codelineno-0-69"></a>    <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-76">76</a></span>
+<span class="normal"><a href="#__codelineno-0-77">77</a></span>
+<span class="normal"><a href="#__codelineno-0-78">78</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_max_ref</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Numpy reference for [`reduce_max`][iron.kernels.reduce.reduce_max]: per-tile maximum.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-78" name="__codelineno-0-78"></a>    <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -15006,16 +15116,7 @@ nearest bfloat16.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-137">137</a></span>
-<span class="normal"><a href="#__codelineno-0-138">138</a></span>
-<span class="normal"><a href="#__codelineno-0-139">139</a></span>
-<span class="normal"><a href="#__codelineno-0-140">140</a></span>
-<span class="normal"><a href="#__codelineno-0-141">141</a></span>
-<span class="normal"><a href="#__codelineno-0-142">142</a></span>
-<span class="normal"><a href="#__codelineno-0-143">143</a></span>
-<span class="normal"><a href="#__codelineno-0-144">144</a></span>
-<span class="normal"><a href="#__codelineno-0-145">145</a></span>
-<span class="normal"><a href="#__codelineno-0-146">146</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-146">146</a></span>
 <span class="normal"><a href="#__codelineno-0-147">147</a></span>
 <span class="normal"><a href="#__codelineno-0-148">148</a></span>
 <span class="normal"><a href="#__codelineno-0-149">149</a></span>
@@ -15026,27 +15127,36 @@ nearest bfloat16.</p>
 <span class="normal"><a href="#__codelineno-0-154">154</a></span>
 <span class="normal"><a href="#__codelineno-0-155">155</a></span>
 <span class="normal"><a href="#__codelineno-0-156">156</a></span>
-<span class="normal"><a href="#__codelineno-0-157">157</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-137" name="__codelineno-0-137"></a><span class="nd">@dtypes</span><span class="p">(({</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">bfloat16</span><span class="p">}))</span>
-<a id="__codelineno-0-138" name="__codelineno-0-138"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_add</span><span class="p">(</span>
-<a id="__codelineno-0-139" name="__codelineno-0-139"></a>    <span class="n">tile_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">vectorized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-140" name="__codelineno-0-140"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
-<a id="__codelineno-0-141" name="__codelineno-0-141"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reduction kernel: sums all elements of a tile to a scalar (int32 or bfloat16).</span>
-<a id="__codelineno-0-142" name="__codelineno-0-142"></a>
-<a id="__codelineno-0-143" name="__codelineno-0-143"></a><span class="sd">    A bfloat16 tile is summed in fp32 and the result rounded once, to the</span>
-<a id="__codelineno-0-144" name="__codelineno-0-144"></a><span class="sd">    nearest bfloat16.</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a>
-<a id="__codelineno-0-146" name="__codelineno-0-146"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-147" name="__codelineno-0-147"></a><span class="sd">        tile_size: Number of elements in the input tile.</span>
-<a id="__codelineno-0-148" name="__codelineno-0-148"></a><span class="sd">        dtype: Element data type (``np.int32`` or ``bfloat16``).</span>
-<a id="__codelineno-0-149" name="__codelineno-0-149"></a><span class="sd">        vectorized: If ``True`` use vectorized path; ``False`` selects scalar.</span>
-<a id="__codelineno-0-150" name="__codelineno-0-150"></a>
-<a id="__codelineno-0-151" name="__codelineno-0-151"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-152" name="__codelineno-0-152"></a><span class="sd">        ExternalFunction configured for the reduce_add kernel.</span>
-<a id="__codelineno-0-153" name="__codelineno-0-153"></a>
-<a id="__codelineno-0-154" name="__codelineno-0-154"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-155" name="__codelineno-0-155"></a><span class="sd">        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.</span>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a>    <span class="k">return</span> <span class="n">_reduce_kernel</span><span class="p">(</span><span class="s2">&quot;add&quot;</span><span class="p">,</span> <span class="n">tile_size</span><span class="p">,</span> <span class="n">dtype</span><span class="p">,</span> <span class="n">vectorized</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-157">157</a></span>
+<span class="normal"><a href="#__codelineno-0-158">158</a></span>
+<span class="normal"><a href="#__codelineno-0-159">159</a></span>
+<span class="normal"><a href="#__codelineno-0-160">160</a></span>
+<span class="normal"><a href="#__codelineno-0-161">161</a></span>
+<span class="normal"><a href="#__codelineno-0-162">162</a></span>
+<span class="normal"><a href="#__codelineno-0-163">163</a></span>
+<span class="normal"><a href="#__codelineno-0-164">164</a></span>
+<span class="normal"><a href="#__codelineno-0-165">165</a></span>
+<span class="normal"><a href="#__codelineno-0-166">166</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-146" name="__codelineno-0-146"></a><span class="nd">@dtypes</span><span class="p">(({</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">bfloat16</span><span class="p">}))</span>
+<a id="__codelineno-0-147" name="__codelineno-0-147"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_add</span><span class="p">(</span>
+<a id="__codelineno-0-148" name="__codelineno-0-148"></a>    <span class="n">tile_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">vectorized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-149" name="__codelineno-0-149"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
+<a id="__codelineno-0-150" name="__codelineno-0-150"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reduction kernel: sums all elements of a tile to a scalar (int32 or bfloat16).</span>
+<a id="__codelineno-0-151" name="__codelineno-0-151"></a>
+<a id="__codelineno-0-152" name="__codelineno-0-152"></a><span class="sd">    A bfloat16 tile is summed in fp32 and the result rounded once, to the</span>
+<a id="__codelineno-0-153" name="__codelineno-0-153"></a><span class="sd">    nearest bfloat16.</span>
+<a id="__codelineno-0-154" name="__codelineno-0-154"></a>
+<a id="__codelineno-0-155" name="__codelineno-0-155"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-156" name="__codelineno-0-156"></a><span class="sd">        tile_size: Number of elements in the input tile.</span>
+<a id="__codelineno-0-157" name="__codelineno-0-157"></a><span class="sd">        dtype: Element data type (``np.int32`` or ``bfloat16``).</span>
+<a id="__codelineno-0-158" name="__codelineno-0-158"></a><span class="sd">        vectorized: If ``True`` use vectorized path; ``False`` selects scalar.</span>
+<a id="__codelineno-0-159" name="__codelineno-0-159"></a>
+<a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="sd">        ExternalFunction configured for the reduce_add kernel.</span>
+<a id="__codelineno-0-162" name="__codelineno-0-162"></a>
+<a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a>    <span class="k">return</span> <span class="n">_reduce_kernel</span><span class="p">(</span><span class="s2">&quot;add&quot;</span><span class="p">,</span> <span class="n">tile_size</span><span class="p">,</span> <span class="n">dtype</span><span class="p">,</span> <span class="n">vectorized</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -15184,16 +15294,7 @@ nearest bfloat16.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-160">160</a></span>
-<span class="normal"><a href="#__codelineno-0-161">161</a></span>
-<span class="normal"><a href="#__codelineno-0-162">162</a></span>
-<span class="normal"><a href="#__codelineno-0-163">163</a></span>
-<span class="normal"><a href="#__codelineno-0-164">164</a></span>
-<span class="normal"><a href="#__codelineno-0-165">165</a></span>
-<span class="normal"><a href="#__codelineno-0-166">166</a></span>
-<span class="normal"><a href="#__codelineno-0-167">167</a></span>
-<span class="normal"><a href="#__codelineno-0-168">168</a></span>
-<span class="normal"><a href="#__codelineno-0-169">169</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-169">169</a></span>
 <span class="normal"><a href="#__codelineno-0-170">170</a></span>
 <span class="normal"><a href="#__codelineno-0-171">171</a></span>
 <span class="normal"><a href="#__codelineno-0-172">172</a></span>
@@ -15201,24 +15302,33 @@ nearest bfloat16.</p>
 <span class="normal"><a href="#__codelineno-0-174">174</a></span>
 <span class="normal"><a href="#__codelineno-0-175">175</a></span>
 <span class="normal"><a href="#__codelineno-0-176">176</a></span>
-<span class="normal"><a href="#__codelineno-0-177">177</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="nd">@dtypes</span><span class="p">(({</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">bfloat16</span><span class="p">}))</span>
-<a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_min</span><span class="p">(</span>
-<a id="__codelineno-0-162" name="__codelineno-0-162"></a>    <span class="n">tile_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">vectorized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
-<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reduction kernel: finds the minimum element of a tile (int32 or bfloat16).</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a>
-<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">        tile_size: Number of elements in the input tile.</span>
-<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">        dtype: Element data type (``np.int32`` or ``bfloat16``).</span>
-<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">        vectorized: If ``True`` use vectorized path; ``False`` selects scalar.</span>
-<a id="__codelineno-0-170" name="__codelineno-0-170"></a>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">        ExternalFunction configured for the reduce_min kernel.</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a>
-<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="sd">        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.</span>
-<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a>    <span class="k">return</span> <span class="n">_reduce_kernel</span><span class="p">(</span><span class="s2">&quot;min&quot;</span><span class="p">,</span> <span class="n">tile_size</span><span class="p">,</span> <span class="n">dtype</span><span class="p">,</span> <span class="n">vectorized</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#__codelineno-0-186">186</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="nd">@dtypes</span><span class="p">(({</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">bfloat16</span><span class="p">}))</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_min</span><span class="p">(</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a>    <span class="n">tile_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">vectorized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reduction kernel: finds the minimum element of a tile (int32 or bfloat16).</span>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">        tile_size: Number of elements in the input tile.</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">        dtype: Element data type (``np.int32`` or ``bfloat16``).</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">        vectorized: If ``True`` use vectorized path; ``False`` selects scalar.</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">        ExternalFunction configured for the reduce_min kernel.</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a>    <span class="k">return</span> <span class="n">_reduce_kernel</span><span class="p">(</span><span class="s2">&quot;min&quot;</span><span class="p">,</span> <span class="n">tile_size</span><span class="p">,</span> <span class="n">dtype</span><span class="p">,</span> <span class="n">vectorized</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -15356,16 +15466,7 @@ nearest bfloat16.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-180">180</a></span>
-<span class="normal"><a href="#__codelineno-0-181">181</a></span>
-<span class="normal"><a href="#__codelineno-0-182">182</a></span>
-<span class="normal"><a href="#__codelineno-0-183">183</a></span>
-<span class="normal"><a href="#__codelineno-0-184">184</a></span>
-<span class="normal"><a href="#__codelineno-0-185">185</a></span>
-<span class="normal"><a href="#__codelineno-0-186">186</a></span>
-<span class="normal"><a href="#__codelineno-0-187">187</a></span>
-<span class="normal"><a href="#__codelineno-0-188">188</a></span>
-<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-189">189</a></span>
 <span class="normal"><a href="#__codelineno-0-190">190</a></span>
 <span class="normal"><a href="#__codelineno-0-191">191</a></span>
 <span class="normal"><a href="#__codelineno-0-192">192</a></span>
@@ -15401,52 +15502,61 @@ nearest bfloat16.</p>
 <span class="normal"><a href="#__codelineno-0-222">222</a></span>
 <span class="normal"><a href="#__codelineno-0-223">223</a></span>
 <span class="normal"><a href="#__codelineno-0-224">224</a></span>
-<span class="normal"><a href="#__codelineno-0-225">225</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="nd">@dtypes</span><span class="p">(({</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">bfloat16</span><span class="p">}))</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_max</span><span class="p">(</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a>    <span class="n">tile_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">vectorized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reduction kernel: finds the maximum element of a tile (int32 or bfloat16).</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">        tile_size: Number of elements in the input tile.</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">        dtype: Element data type (``np.int32`` or ``bfloat16``).</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">        vectorized: If ``True`` use vectorized path; ``False`` selects scalar.</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">        ExternalFunction configured for the reduce_max kernel.</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>    <span class="n">is_bf16</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">bfloat16</span><span class="p">)</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a>    <span class="n">is_int32</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_bf16</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_int32</span><span class="p">:</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>            <span class="sa">f</span><span class="s2">&quot;reduce_max() dtype must be np.int32 or bfloat16, got </span><span class="si">{</span><span class="n">dtype</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a>        <span class="p">)</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a>    <span class="n">actual_dtype</span> <span class="o">=</span> <span class="n">bfloat16</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a>    <span class="k">if</span> <span class="n">vectorized</span><span class="p">:</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a>        <span class="n">_require_vector_alignment</span><span class="p">(</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a>            <span class="s2">&quot;reduce_max&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>            <span class="n">tile_size</span><span class="p">,</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a>            <span class="n">_REDUCE_VEC_ELEMS_BF16</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="n">_REDUCE_VEC_ELEMS</span><span class="p">,</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>        <span class="p">)</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a>    <span class="n">in_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">tile_size</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">actual_dtype</span><span class="p">]]</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="c1"># The C++ kernel writes one scalar; the output tile must still be at least</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a>    <span class="c1"># 4 bytes for shim-DMA alignment, so bfloat16 callers get out_size=2 even</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>    <span class="c1"># though they only read the first element.</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="n">out_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">_min_dma_aligned_elems</span><span class="p">(</span><span class="n">actual_dtype</span><span class="p">),),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">actual_dtype</span><span class="p">]]</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="n">func_variant</span> <span class="o">=</span> <span class="s2">&quot;vector&quot;</span> <span class="k">if</span> <span class="n">vectorized</span> <span class="k">else</span> <span class="s2">&quot;scalar&quot;</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;_bfloat16&quot;</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a>    <span class="k">return</span> <span class="n">_make_extern</span><span class="p">(</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a>        <span class="sa">f</span><span class="s2">&quot;reduce_max_</span><span class="si">{</span><span class="n">func_variant</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a>        <span class="n">_kernel_source</span><span class="p">(</span><span class="s2">&quot;reduce/reduce_max.cc&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>        <span class="p">[</span><span class="n">in_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">],</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>        <span class="n">compile_flags</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;-DREDUCE_MAX_ELEMS=</span><span class="si">{</span><span class="n">tile_size</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>        <span class="n">contract</span><span class="o">=</span><span class="n">_reduce_contract</span><span class="p">(</span><span class="s2">&quot;max&quot;</span><span class="p">,</span> <span class="n">tile_size</span><span class="p">),</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="nd">@dtypes</span><span class="p">(({</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">bfloat16</span><span class="p">}))</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="k">def</span><span class="w"> </span><span class="nf">reduce_max</span><span class="p">(</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a>    <span class="n">tile_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">vectorized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reduction kernel: finds the maximum element of a tile (int32 or bfloat16).</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">        tile_size: Number of elements in the input tile.</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a><span class="sd">        dtype: Element data type (``np.int32`` or ``bfloat16``).</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">        vectorized: If ``True`` use vectorized path; ``False`` selects scalar.</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a><span class="sd">        ExternalFunction configured for the reduce_max kernel.</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a><span class="sd">        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>    <span class="n">is_bf16</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">bfloat16</span><span class="p">)</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="n">is_int32</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_bf16</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_int32</span><span class="p">:</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>            <span class="sa">f</span><span class="s2">&quot;reduce_max() dtype must be np.int32 or bfloat16, got </span><span class="si">{</span><span class="n">dtype</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>        <span class="p">)</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>    <span class="n">actual_dtype</span> <span class="o">=</span> <span class="n">bfloat16</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>    <span class="k">if</span> <span class="n">vectorized</span><span class="p">:</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>        <span class="n">_require_vector_alignment</span><span class="p">(</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>            <span class="s2">&quot;reduce_max&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>            <span class="n">tile_size</span><span class="p">,</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a>            <span class="n">_REDUCE_VEC_ELEMS_BF16</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="n">_REDUCE_VEC_ELEMS</span><span class="p">,</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a>        <span class="p">)</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>    <span class="n">in_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">tile_size</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">actual_dtype</span><span class="p">]]</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a>    <span class="c1"># The C++ kernel writes one scalar; the output tile must still be at least</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>    <span class="c1"># 4 bytes for shim-DMA alignment, so bfloat16 callers get out_size=2 even</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>    <span class="c1"># though they only read the first element.</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>    <span class="n">out_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">_min_dma_aligned_elems</span><span class="p">(</span><span class="n">actual_dtype</span><span class="p">),),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">actual_dtype</span><span class="p">]]</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="n">func_variant</span> <span class="o">=</span> <span class="s2">&quot;vector&quot;</span> <span class="k">if</span> <span class="n">vectorized</span> <span class="k">else</span> <span class="s2">&quot;scalar&quot;</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;_bfloat16&quot;</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>    <span class="k">return</span> <span class="n">_make_extern</span><span class="p">(</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>        <span class="sa">f</span><span class="s2">&quot;reduce_max_</span><span class="si">{</span><span class="n">func_variant</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>        <span class="n">_kernel_source</span><span class="p">(</span><span class="s2">&quot;reduce/reduce_max.cc&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="p">[</span><span class="n">in_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">],</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>        <span class="n">compile_flags</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;-DREDUCE_MAX_ELEMS=</span><span class="si">{</span><span class="n">tile_size</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>        <span class="n">contract</span><span class="o">=</span><span class="n">_reduce_contract</span><span class="p">(</span><span class="s2">&quot;max&quot;</span><span class="p">,</span> <span class="n">tile_size</span><span class="p">),</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -15572,16 +15682,7 @@ but uses an unspecialized object independent of reduction tile sizes.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-228">228</a></span>
-<span class="normal"><a href="#__codelineno-0-229">229</a></span>
-<span class="normal"><a href="#__codelineno-0-230">230</a></span>
-<span class="normal"><a href="#__codelineno-0-231">231</a></span>
-<span class="normal"><a href="#__codelineno-0-232">232</a></span>
-<span class="normal"><a href="#__codelineno-0-233">233</a></span>
-<span class="normal"><a href="#__codelineno-0-234">234</a></span>
-<span class="normal"><a href="#__codelineno-0-235">235</a></span>
-<span class="normal"><a href="#__codelineno-0-236">236</a></span>
-<span class="normal"><a href="#__codelineno-0-237">237</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-237">237</a></span>
 <span class="normal"><a href="#__codelineno-0-238">238</a></span>
 <span class="normal"><a href="#__codelineno-0-239">239</a></span>
 <span class="normal"><a href="#__codelineno-0-240">240</a></span>
@@ -15616,51 +15717,60 @@ but uses an unspecialized object independent of reduction tile sizes.</p>
 <span class="normal"><a href="#__codelineno-0-269">269</a></span>
 <span class="normal"><a href="#__codelineno-0-270">270</a></span>
 <span class="normal"><a href="#__codelineno-0-271">271</a></span>
-<span class="normal"><a href="#__codelineno-0-272">272</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="nd">@dtypes</span><span class="p">(({</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">bfloat16</span><span class="p">}))</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="k">def</span><span class="w"> </span><span class="nf">compute_max</span><span class="p">(</span><span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max].</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">    Used for multi-core reductions where each core produces a partial max and a</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">    final tree reduces them pairwise.</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a><span class="sd">    Lives in the same ``reduce_max.cc`` as [`reduce_max`][iron.kernels.reduce.reduce_max],</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a><span class="sd">    but uses an unspecialized object independent of reduction tile sizes.</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a><span class="sd">        dtype: Element data type (``np.int32`` or ``bfloat16``).</span>
+<span class="normal"><a href="#__codelineno-0-272">272</a></span>
+<span class="normal"><a href="#__codelineno-0-273">273</a></span>
+<span class="normal"><a href="#__codelineno-0-274">274</a></span>
+<span class="normal"><a href="#__codelineno-0-275">275</a></span>
+<span class="normal"><a href="#__codelineno-0-276">276</a></span>
+<span class="normal"><a href="#__codelineno-0-277">277</a></span>
+<span class="normal"><a href="#__codelineno-0-278">278</a></span>
+<span class="normal"><a href="#__codelineno-0-279">279</a></span>
+<span class="normal"><a href="#__codelineno-0-280">280</a></span>
+<span class="normal"><a href="#__codelineno-0-281">281</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-237" name="__codelineno-0-237"></a><span class="nd">@dtypes</span><span class="p">(({</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">bfloat16</span><span class="p">}))</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a><span class="k">def</span><span class="w"> </span><span class="nf">compute_max</span><span class="p">(</span><span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max].</span>
 <a id="__codelineno-0-240" name="__codelineno-0-240"></a>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="sd">        ExternalFunction configured for the ``compute_max`` kernel; signature</span>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a><span class="sd">        is ``(out_ty, out_ty, out_ty)`` where ``out_ty`` is a one-element</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">        (DMA-aligned) tile of ``dtype``.</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a>    <span class="n">is_bf16</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">bfloat16</span><span class="p">)</span>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a>    <span class="n">is_int32</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_bf16</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_int32</span><span class="p">:</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a>            <span class="sa">f</span><span class="s2">&quot;compute_max() dtype must be np.int32 or bfloat16, got </span><span class="si">{</span><span class="n">dtype</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a>        <span class="p">)</span>
-<a id="__codelineno-0-255" name="__codelineno-0-255"></a>    <span class="n">actual_dtype</span> <span class="o">=</span> <span class="n">bfloat16</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="n">out_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">_min_dma_aligned_elems</span><span class="p">(</span><span class="n">actual_dtype</span><span class="p">),),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">actual_dtype</span><span class="p">]]</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a>    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;_bfloat16&quot;</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a>    <span class="k">return</span> <span class="n">_make_extern</span><span class="p">(</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a>        <span class="sa">f</span><span class="s2">&quot;compute_max</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a>        <span class="n">_kernel_source</span><span class="p">(</span><span class="s2">&quot;reduce/reduce_max.cc&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a>        <span class="p">[</span><span class="n">out_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">],</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a>        <span class="n">object_file_name</span><span class="o">=</span><span class="n">_REDUCE_MAX_OBJ</span><span class="p">,</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a>        <span class="n">contract</span><span class="o">=</span><span class="n">KernelContract</span><span class="p">(</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a>            <span class="n">trace</span><span class="o">=</span><span class="n">Trace</span><span class="o">.</span><span class="n">whole_call</span><span class="p">(),</span>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a>            <span class="n">roles</span><span class="o">=</span><span class="p">(</span><span class="n">In</span><span class="p">,</span> <span class="n">In</span><span class="p">,</span> <span class="n">Out</span><span class="p">),</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a>            <span class="n">reference</span><span class="o">=</span><span class="n">compute_max_ref</span><span class="p">,</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a>            <span class="n">tolerance</span><span class="o">=</span><span class="n">Tolerance</span><span class="o">.</span><span class="n">exact</span><span class="p">(</span><span class="n">note</span><span class="o">=</span><span class="s2">&quot;selection&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a>            <span class="n">ops_per_call</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a>            <span class="n">out_valid</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a>        <span class="p">),</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a>    <span class="p">)</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="sd">    Used for multi-core reductions where each core produces a partial max and a</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="sd">    final tree reduces them pairwise.</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">    Lives in the same ``reduce_max.cc`` as [`reduce_max`][iron.kernels.reduce.reduce_max],</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">    but uses an unspecialized object independent of reduction tile sizes.</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="sd">        dtype: Element data type (``np.int32`` or ``bfloat16``).</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">        ExternalFunction configured for the ``compute_max`` kernel; signature</span>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">        is ``(out_ty, out_ty, out_ty)`` where ``out_ty`` is a one-element</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">        (DMA-aligned) tile of ``dtype``.</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a>    <span class="n">is_bf16</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">bfloat16</span><span class="p">)</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a>    <span class="n">is_int32</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_bf16</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_int32</span><span class="p">:</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a>            <span class="sa">f</span><span class="s2">&quot;compute_max() dtype must be np.int32 or bfloat16, got </span><span class="si">{</span><span class="n">dtype</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a>        <span class="p">)</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a>    <span class="n">actual_dtype</span> <span class="o">=</span> <span class="n">bfloat16</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a>    <span class="n">out_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">_min_dma_aligned_elems</span><span class="p">(</span><span class="n">actual_dtype</span><span class="p">),),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">actual_dtype</span><span class="p">]]</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a>    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;_bfloat16&quot;</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a>    <span class="k">return</span> <span class="n">_make_extern</span><span class="p">(</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a>        <span class="sa">f</span><span class="s2">&quot;compute_max</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a>        <span class="n">_kernel_source</span><span class="p">(</span><span class="s2">&quot;reduce/reduce_max.cc&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a>        <span class="p">[</span><span class="n">out_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">],</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a>        <span class="n">object_file_name</span><span class="o">=</span><span class="n">_REDUCE_MAX_OBJ</span><span class="p">,</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a>        <span class="n">contract</span><span class="o">=</span><span class="n">KernelContract</span><span class="p">(</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a>            <span class="n">trace</span><span class="o">=</span><span class="n">Trace</span><span class="o">.</span><span class="n">whole_call</span><span class="p">(),</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>            <span class="n">roles</span><span class="o">=</span><span class="p">(</span><span class="n">In</span><span class="p">,</span> <span class="n">In</span><span class="p">,</span> <span class="n">Out</span><span class="p">),</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a>            <span class="n">reference</span><span class="o">=</span><span class="n">compute_max_ref</span><span class="p">,</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a>            <span class="n">tolerance</span><span class="o">=</span><span class="n">Tolerance</span><span class="o">.</span><span class="n">exact</span><span class="p">(</span><span class="n">note</span><span class="o">=</span><span class="s2">&quot;selection&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a>            <span class="n">ops_per_call</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>            <span class="n">out_valid</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>        <span class="p">),</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -15688,21 +15798,698 @@ writes element 0 of the output; the reference does the same, returning
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-275">275</a></span>
-<span class="normal"><a href="#__codelineno-0-276">276</a></span>
-<span class="normal"><a href="#__codelineno-0-277">277</a></span>
-<span class="normal"><a href="#__codelineno-0-278">278</a></span>
-<span class="normal"><a href="#__codelineno-0-279">279</a></span>
-<span class="normal"><a href="#__codelineno-0-280">280</a></span>
-<span class="normal"><a href="#__codelineno-0-281">281</a></span>
-<span class="normal"><a href="#__codelineno-0-282">282</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="k">def</span><span class="w"> </span><span class="nf">compute_max_ref</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Numpy reference for [`compute_max`][iron.kernels.reduce.compute_max].</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">    The kernel compares only element 0 of each (DMA-padded) input tile and</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">    writes element 0 of the output; the reference does the same, returning</span>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">    ``max(a[..., 0], b[..., 0])`` with a trailing axis of length 1.</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a>    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">a</span><span class="p">)[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="mi">1</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">b</span><span class="p">)[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="mi">1</span><span class="p">])</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-284">284</a></span>
+<span class="normal"><a href="#__codelineno-0-285">285</a></span>
+<span class="normal"><a href="#__codelineno-0-286">286</a></span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span>
+<span class="normal"><a href="#__codelineno-0-288">288</a></span>
+<span class="normal"><a href="#__codelineno-0-289">289</a></span>
+<span class="normal"><a href="#__codelineno-0-290">290</a></span>
+<span class="normal"><a href="#__codelineno-0-291">291</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="k">def</span><span class="w"> </span><span class="nf">compute_max_ref</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Numpy reference for [`compute_max`][iron.kernels.reduce.compute_max].</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">    The kernel compares only element 0 of each (DMA-padded) input tile and</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">    writes element 0 of the output; the reference does the same, returning</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">    ``max(a[..., 0], b[..., 0])`` with a trailing axis of length 1.</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">a</span><span class="p">)[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="mi">1</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">b</span><span class="p">)[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="mi">1</span><span class="p">])</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="iron.kernels.reduce.argmax_ref" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">argmax_ref</span>
+
+
+<a href="#iron.kernels.reduce.argmax_ref" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">argmax_ref</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">index_offset</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Numpy reference for <a class="autorefs autorefs-internal" title="argmax" href="#iron.kernels.reduce.argmax"><code>argmax</code></a>: one record per tile.</p>
+<p>Returns the <code>(..., 2)</code> int32 records the kernel writes, so a host can
+compare them verbatim. A NaN reads as -inf and a -0 as +0, as they do in
+the kernel's comparisons; that is where this differs from a plain
+<code>numpy.argmax</code>.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-294">294</a></span>
+<span class="normal"><a href="#__codelineno-0-295">295</a></span>
+<span class="normal"><a href="#__codelineno-0-296">296</a></span>
+<span class="normal"><a href="#__codelineno-0-297">297</a></span>
+<span class="normal"><a href="#__codelineno-0-298">298</a></span>
+<span class="normal"><a href="#__codelineno-0-299">299</a></span>
+<span class="normal"><a href="#__codelineno-0-300">300</a></span>
+<span class="normal"><a href="#__codelineno-0-301">301</a></span>
+<span class="normal"><a href="#__codelineno-0-302">302</a></span>
+<span class="normal"><a href="#__codelineno-0-303">303</a></span>
+<span class="normal"><a href="#__codelineno-0-304">304</a></span>
+<span class="normal"><a href="#__codelineno-0-305">305</a></span>
+<span class="normal"><a href="#__codelineno-0-306">306</a></span>
+<span class="normal"><a href="#__codelineno-0-307">307</a></span>
+<span class="normal"><a href="#__codelineno-0-308">308</a></span>
+<span class="normal"><a href="#__codelineno-0-309">309</a></span>
+<span class="normal"><a href="#__codelineno-0-310">310</a></span>
+<span class="normal"><a href="#__codelineno-0-311">311</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="k">def</span><span class="w"> </span><span class="nf">argmax_ref</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">index_offset</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Numpy reference for [`argmax`][iron.kernels.reduce.argmax]: one record per tile.</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">    Returns the ``(..., 2)`` int32 records the kernel writes, so a host can</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">    compare them verbatim. A NaN reads as -inf and a -0 as +0, as they do in</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">    the kernel&#39;s comparisons; that is where this differs from a plain</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">    ``numpy.argmax``.</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">):</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a>        <span class="n">keys</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a>        <span class="n">keys</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>        <span class="n">keys</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">keys</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">),</span> <span class="n">keys</span><span class="p">)</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>        <span class="n">keys</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">keys</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">keys</span><span class="p">)</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="n">index</span> <span class="o">=</span> <span class="n">keys</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)[</span><span class="o">...</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="n">value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">take_along_axis</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="n">index</span> <span class="o">+</span> <span class="n">index_offset</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)],</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="iron.kernels.reduce.argmax" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">argmax</span>
+
+
+<a href="#iron.kernels.reduce.argmax" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">argmax</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">tile_size</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">dtype</span><span class="p">:</span> <span class="n"><span title="type">type</span></span> <span class="o">=</span> <span class="n"><span title="numpy.int32">int32</span></span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">vectorized</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="aie.iron.kernel.ExternalFunction">ExternalFunction</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Reduction kernel: the largest element of a tile and its index.</p>
+<p>The partial half of a distributed argmax, in the same shape as
+<a class="autorefs autorefs-internal" title="reduce_max" href="#iron.kernels.reduce.reduce_max"><code>reduce_max</code></a> +
+<a class="autorefs autorefs-internal" title="compute_max" href="#iron.kernels.reduce.compute_max"><code>compute_max</code></a>: each core runs this over
+its own slice and a tree merges the records with
+<a class="autorefs autorefs-internal" title="argmax_combine" href="#iron.kernels.reduce.argmax_combine"><code>argmax_combine</code></a>.</p>
+<p>The kernel writes a 2-element int32 record: <code>out[0]</code> the winning value
+(int32 as itself, bfloat16 widened to float and bit-cast) and <code>out[1]</code>
+its index plus the <code>index_offset</code> runtime argument. A caller that passes
+its slice's start gets global indices, and the combine order stops
+mattering.</p>
+<p>Ties resolve to the lowest index, matching <code>numpy.argmax</code>. A NaN never
+compares greater, so it reads as -inf, and a -0 reads as +0, so -0 and +0
+tie.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>tile_size</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Number of elements in the input slice, 1..32767. The
+vector path takes any remainder in a scalar tail.</p>
+              </div>
+            </td>
+            <td>
+                  <code>1024</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>dtype</code>
+            </td>
+            <td>
+                  <code><span title="type">type</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Element data type (<code>np.int32</code> or <code>bfloat16</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code><span title="numpy.int32">int32</span></code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>vectorized</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If <code>True</code> use vectorized path; <code>False</code> selects scalar.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="aie.iron.kernel.ExternalFunction">ExternalFunction</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ExternalFunction configured for the argmax kernel; signature is</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="aie.iron.kernel.ExternalFunction">ExternalFunction</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>(in_ty, out_ty, int32 tile_size, int32 index_offset)</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>When <code>dtype</code> is not <code>np.int32</code> or <code>bfloat16</code>, or
+<code>tile_size</code> is not in 1..32767.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-314">314</a></span>
+<span class="normal"><a href="#__codelineno-0-315">315</a></span>
+<span class="normal"><a href="#__codelineno-0-316">316</a></span>
+<span class="normal"><a href="#__codelineno-0-317">317</a></span>
+<span class="normal"><a href="#__codelineno-0-318">318</a></span>
+<span class="normal"><a href="#__codelineno-0-319">319</a></span>
+<span class="normal"><a href="#__codelineno-0-320">320</a></span>
+<span class="normal"><a href="#__codelineno-0-321">321</a></span>
+<span class="normal"><a href="#__codelineno-0-322">322</a></span>
+<span class="normal"><a href="#__codelineno-0-323">323</a></span>
+<span class="normal"><a href="#__codelineno-0-324">324</a></span>
+<span class="normal"><a href="#__codelineno-0-325">325</a></span>
+<span class="normal"><a href="#__codelineno-0-326">326</a></span>
+<span class="normal"><a href="#__codelineno-0-327">327</a></span>
+<span class="normal"><a href="#__codelineno-0-328">328</a></span>
+<span class="normal"><a href="#__codelineno-0-329">329</a></span>
+<span class="normal"><a href="#__codelineno-0-330">330</a></span>
+<span class="normal"><a href="#__codelineno-0-331">331</a></span>
+<span class="normal"><a href="#__codelineno-0-332">332</a></span>
+<span class="normal"><a href="#__codelineno-0-333">333</a></span>
+<span class="normal"><a href="#__codelineno-0-334">334</a></span>
+<span class="normal"><a href="#__codelineno-0-335">335</a></span>
+<span class="normal"><a href="#__codelineno-0-336">336</a></span>
+<span class="normal"><a href="#__codelineno-0-337">337</a></span>
+<span class="normal"><a href="#__codelineno-0-338">338</a></span>
+<span class="normal"><a href="#__codelineno-0-339">339</a></span>
+<span class="normal"><a href="#__codelineno-0-340">340</a></span>
+<span class="normal"><a href="#__codelineno-0-341">341</a></span>
+<span class="normal"><a href="#__codelineno-0-342">342</a></span>
+<span class="normal"><a href="#__codelineno-0-343">343</a></span>
+<span class="normal"><a href="#__codelineno-0-344">344</a></span>
+<span class="normal"><a href="#__codelineno-0-345">345</a></span>
+<span class="normal"><a href="#__codelineno-0-346">346</a></span>
+<span class="normal"><a href="#__codelineno-0-347">347</a></span>
+<span class="normal"><a href="#__codelineno-0-348">348</a></span>
+<span class="normal"><a href="#__codelineno-0-349">349</a></span>
+<span class="normal"><a href="#__codelineno-0-350">350</a></span>
+<span class="normal"><a href="#__codelineno-0-351">351</a></span>
+<span class="normal"><a href="#__codelineno-0-352">352</a></span>
+<span class="normal"><a href="#__codelineno-0-353">353</a></span>
+<span class="normal"><a href="#__codelineno-0-354">354</a></span>
+<span class="normal"><a href="#__codelineno-0-355">355</a></span>
+<span class="normal"><a href="#__codelineno-0-356">356</a></span>
+<span class="normal"><a href="#__codelineno-0-357">357</a></span>
+<span class="normal"><a href="#__codelineno-0-358">358</a></span>
+<span class="normal"><a href="#__codelineno-0-359">359</a></span>
+<span class="normal"><a href="#__codelineno-0-360">360</a></span>
+<span class="normal"><a href="#__codelineno-0-361">361</a></span>
+<span class="normal"><a href="#__codelineno-0-362">362</a></span>
+<span class="normal"><a href="#__codelineno-0-363">363</a></span>
+<span class="normal"><a href="#__codelineno-0-364">364</a></span>
+<span class="normal"><a href="#__codelineno-0-365">365</a></span>
+<span class="normal"><a href="#__codelineno-0-366">366</a></span>
+<span class="normal"><a href="#__codelineno-0-367">367</a></span>
+<span class="normal"><a href="#__codelineno-0-368">368</a></span>
+<span class="normal"><a href="#__codelineno-0-369">369</a></span>
+<span class="normal"><a href="#__codelineno-0-370">370</a></span>
+<span class="normal"><a href="#__codelineno-0-371">371</a></span>
+<span class="normal"><a href="#__codelineno-0-372">372</a></span>
+<span class="normal"><a href="#__codelineno-0-373">373</a></span>
+<span class="normal"><a href="#__codelineno-0-374">374</a></span>
+<span class="normal"><a href="#__codelineno-0-375">375</a></span>
+<span class="normal"><a href="#__codelineno-0-376">376</a></span>
+<span class="normal"><a href="#__codelineno-0-377">377</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="nd">@dtypes</span><span class="p">(({</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="n">bfloat16</span><span class="p">}))</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="k">def</span><span class="w"> </span><span class="nf">argmax</span><span class="p">(</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="n">tile_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">vectorized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reduction kernel: the largest element of a tile and its index.</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">    The partial half of a distributed argmax, in the same shape as</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">    [`reduce_max`][iron.kernels.reduce.reduce_max] +</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="sd">    [`compute_max`][iron.kernels.reduce.compute_max]: each core runs this over</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">    its own slice and a tree merges the records with</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    [`argmax_combine`][iron.kernels.reduce.argmax_combine].</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">    The kernel writes a 2-element int32 record: ``out[0]`` the winning value</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">    (int32 as itself, bfloat16 widened to float and bit-cast) and ``out[1]``</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">    its index plus the ``index_offset`` runtime argument. A caller that passes</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">    its slice&#39;s start gets global indices, and the combine order stops</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">    mattering.</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">    Ties resolve to the lowest index, matching ``numpy.argmax``. A NaN never</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">    compares greater, so it reads as -inf, and a -0 reads as +0, so -0 and +0</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">    tie.</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">        tile_size: Number of elements in the input slice, 1..32767. The</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">            vector path takes any remainder in a scalar tail.</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">        dtype: Element data type (``np.int32`` or ``bfloat16``).</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">        vectorized: If ``True`` use vectorized path; ``False`` selects scalar.</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="sd">        ExternalFunction configured for the argmax kernel; signature is</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">        ``(in_ty, out_ty, int32 tile_size, int32 index_offset)``.</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="sd">        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``, or</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a><span class="sd">            ``tile_size`` is not in 1..32767.</span>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a>    <span class="n">is_bf16</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">bfloat16</span><span class="p">)</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="n">is_int32</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_bf16</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_int32</span><span class="p">:</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;argmax() dtype must be np.int32 or bfloat16, got </span><span class="si">{</span><span class="n">dtype</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-354" name="__codelineno-0-354"></a>    <span class="n">actual_dtype</span> <span class="o">=</span> <span class="n">bfloat16</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="n">tile_size</span> <span class="o">&lt;=</span> <span class="n">_ARGMAX_MAX_ELEMS</span><span class="p">:</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a>            <span class="sa">f</span><span class="s2">&quot;argmax() tile_size must be in 1..</span><span class="si">{</span><span class="n">_ARGMAX_MAX_ELEMS</span><span class="si">}</span><span class="s2"> (the kernel &quot;</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a>            <span class="sa">f</span><span class="s2">&quot;indexes a tile with int16 lanes), got </span><span class="si">{</span><span class="n">tile_size</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>        <span class="p">)</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>    <span class="n">in_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">tile_size</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">actual_dtype</span><span class="p">]]</span>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a>    <span class="n">out_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">2</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]]</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a>    <span class="n">func_variant</span> <span class="o">=</span> <span class="s2">&quot;vector&quot;</span> <span class="k">if</span> <span class="n">vectorized</span> <span class="k">else</span> <span class="s2">&quot;scalar&quot;</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a>    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;_bfloat16&quot;</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>    <span class="k">return</span> <span class="n">_make_extern</span><span class="p">(</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a>        <span class="sa">f</span><span class="s2">&quot;argmax_</span><span class="si">{</span><span class="n">func_variant</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a>        <span class="n">_kernel_source</span><span class="p">(</span><span class="s2">&quot;reduce/argmax.cc&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a>        <span class="p">[</span><span class="n">in_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">],</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>        <span class="n">compile_flags</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;-DARGMAX_ELEMS=</span><span class="si">{</span><span class="n">tile_size</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a>        <span class="n">contract</span><span class="o">=</span><span class="n">KernelContract</span><span class="p">(</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>            <span class="n">trace</span><span class="o">=</span><span class="n">Trace</span><span class="o">.</span><span class="n">whole_call</span><span class="p">(),</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>            <span class="n">roles</span><span class="o">=</span><span class="p">(</span><span class="n">In</span><span class="p">,</span> <span class="n">Out</span><span class="p">,</span> <span class="n">Param</span><span class="p">,</span> <span class="n">Param</span><span class="p">),</span>
+<a id="__codelineno-0-372" name="__codelineno-0-372"></a>            <span class="n">parameter_bindings</span><span class="o">=</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span> <span class="n">tile_size</span><span class="p">),),</span>
+<a id="__codelineno-0-373" name="__codelineno-0-373"></a>            <span class="n">reference</span><span class="o">=</span><span class="n">argmax_ref</span><span class="p">,</span>
+<a id="__codelineno-0-374" name="__codelineno-0-374"></a>            <span class="n">tolerance</span><span class="o">=</span><span class="n">Tolerance</span><span class="o">.</span><span class="n">exact</span><span class="p">(</span><span class="n">note</span><span class="o">=</span><span class="s2">&quot;an exact selection&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>            <span class="n">ops_per_call</span><span class="o">=</span><span class="n">tile_size</span><span class="p">,</span>
+<a id="__codelineno-0-376" name="__codelineno-0-376"></a>        <span class="p">),</span>
+<a id="__codelineno-0-377" name="__codelineno-0-377"></a>    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="iron.kernels.reduce.argmax_combine_ref" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">argmax_combine_ref</span>
+
+
+<a href="#iron.kernels.reduce.argmax_combine_ref" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">argmax_combine_ref</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n"><span title="type">type</span></span> <span class="o">=</span> <span class="n"><span title="numpy.int32">int32</span></span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Numpy reference for <a class="autorefs autorefs-internal" title="argmax_combine" href="#iron.kernels.reduce.argmax_combine"><code>argmax_combine</code></a>.</p>
+<p>Keeps, per call, the record with the larger value, or the lower index when
+the values are equal. <code>dtype</code> is the original input's and says how
+<code>out[0]</code> reads.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-380">380</a></span>
+<span class="normal"><a href="#__codelineno-0-381">381</a></span>
+<span class="normal"><a href="#__codelineno-0-382">382</a></span>
+<span class="normal"><a href="#__codelineno-0-383">383</a></span>
+<span class="normal"><a href="#__codelineno-0-384">384</a></span>
+<span class="normal"><a href="#__codelineno-0-385">385</a></span>
+<span class="normal"><a href="#__codelineno-0-386">386</a></span>
+<span class="normal"><a href="#__codelineno-0-387">387</a></span>
+<span class="normal"><a href="#__codelineno-0-388">388</a></span>
+<span class="normal"><a href="#__codelineno-0-389">389</a></span>
+<span class="normal"><a href="#__codelineno-0-390">390</a></span>
+<span class="normal"><a href="#__codelineno-0-391">391</a></span>
+<span class="normal"><a href="#__codelineno-0-392">392</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-380" name="__codelineno-0-380"></a><span class="k">def</span><span class="w"> </span><span class="nf">argmax_combine_ref</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">):</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Numpy reference for [`argmax_combine`][iron.kernels.reduce.argmax_combine].</span>
+<a id="__codelineno-0-382" name="__codelineno-0-382"></a>
+<a id="__codelineno-0-383" name="__codelineno-0-383"></a><span class="sd">    Keeps, per call, the record with the larger value, or the lower index when</span>
+<a id="__codelineno-0-384" name="__codelineno-0-384"></a><span class="sd">    the values are equal. ``dtype`` is the original input&#39;s and says how</span>
+<a id="__codelineno-0-385" name="__codelineno-0-385"></a><span class="sd">    ``out[0]`` reads.</span>
+<a id="__codelineno-0-386" name="__codelineno-0-386"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-387" name="__codelineno-0-387"></a>    <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-0-388" name="__codelineno-0-388"></a>    <span class="n">is_bf16</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">bfloat16</span><span class="p">)</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a>    <span class="n">value_dtype</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span>
+<a id="__codelineno-0-390" name="__codelineno-0-390"></a>    <span class="n">va</span><span class="p">,</span> <span class="n">vb</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">value_dtype</span><span class="p">),</span> <span class="n">b</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">value_dtype</span><span class="p">)</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a>    <span class="n">take_b</span> <span class="o">=</span> <span class="p">(</span><span class="n">vb</span> <span class="o">&gt;</span> <span class="n">va</span><span class="p">)</span> <span class="o">|</span> <span class="p">((</span><span class="n">vb</span> <span class="o">==</span> <span class="n">va</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">b</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">1</span><span class="p">:]</span> <span class="o">&lt;</span> <span class="n">a</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">1</span><span class="p">:]))</span>
+<a id="__codelineno-0-392" name="__codelineno-0-392"></a>    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">take_b</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="iron.kernels.reduce.argmax_combine_sample" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">argmax_combine_sample</span>
+
+
+<a href="#iron.kernels.reduce.argmax_combine_sample" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">argmax_combine_sample</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">rng</span><span class="p">,</span> <span class="n">calls</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n"><span title="type">type</span></span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="list">list</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Two tiles of records <code>argmax</code> can write, with frequent value ties.</p>
+<p>The values come from a handful of small integers plus the extremes a
+record can hold (int32's limits, or ±inf and -0.0), so equal values (and
+the index tie-break) come up in most calls; a record never carries a NaN.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-395">395</a></span>
+<span class="normal"><a href="#__codelineno-0-396">396</a></span>
+<span class="normal"><a href="#__codelineno-0-397">397</a></span>
+<span class="normal"><a href="#__codelineno-0-398">398</a></span>
+<span class="normal"><a href="#__codelineno-0-399">399</a></span>
+<span class="normal"><a href="#__codelineno-0-400">400</a></span>
+<span class="normal"><a href="#__codelineno-0-401">401</a></span>
+<span class="normal"><a href="#__codelineno-0-402">402</a></span>
+<span class="normal"><a href="#__codelineno-0-403">403</a></span>
+<span class="normal"><a href="#__codelineno-0-404">404</a></span>
+<span class="normal"><a href="#__codelineno-0-405">405</a></span>
+<span class="normal"><a href="#__codelineno-0-406">406</a></span>
+<span class="normal"><a href="#__codelineno-0-407">407</a></span>
+<span class="normal"><a href="#__codelineno-0-408">408</a></span>
+<span class="normal"><a href="#__codelineno-0-409">409</a></span>
+<span class="normal"><a href="#__codelineno-0-410">410</a></span>
+<span class="normal"><a href="#__codelineno-0-411">411</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-395" name="__codelineno-0-395"></a><span class="k">def</span><span class="w"> </span><span class="nf">argmax_combine_sample</span><span class="p">(</span><span class="n">rng</span><span class="p">,</span> <span class="n">calls</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+<a id="__codelineno-0-396" name="__codelineno-0-396"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Two tiles of records ``argmax`` can write, with frequent value ties.</span>
+<a id="__codelineno-0-397" name="__codelineno-0-397"></a>
+<a id="__codelineno-0-398" name="__codelineno-0-398"></a><span class="sd">    The values come from a handful of small integers plus the extremes a</span>
+<a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="sd">    record can hold (int32&#39;s limits, or ±inf and -0.0), so equal values (and</span>
+<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">    the index tie-break) come up in most calls; a record never carries a NaN.</span>
+<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-402" name="__codelineno-0-402"></a>    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">bfloat16</span><span class="p">):</span>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a>        <span class="n">pool</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="o">-</span><span class="mi">3</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<a id="__codelineno-0-404" name="__codelineno-0-404"></a>        <span class="n">pool</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-0-405" name="__codelineno-0-405"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a>        <span class="n">info</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">iinfo</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-0-407" name="__codelineno-0-407"></a>        <span class="n">pool</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">info</span><span class="o">.</span><span class="n">min</span><span class="p">,</span> <span class="o">-</span><span class="mi">3</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">info</span><span class="o">.</span><span class="n">max</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-0-408" name="__codelineno-0-408"></a>    <span class="n">values</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">pool</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">calls</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a>    <span class="n">indices</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">integers</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">calls</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-0-410" name="__codelineno-0-410"></a>    <span class="n">records</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">values</span><span class="p">,</span> <span class="n">indices</span><span class="p">],</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">records</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">records</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="iron.kernels.reduce.argmax_combine" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">argmax_combine</span>
+
+
+<a href="#iron.kernels.reduce.argmax_combine" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">argmax_combine</span><span class="p">(</span><span class="n">dtype</span><span class="p">:</span> <span class="n"><span title="type">type</span></span> <span class="o">=</span> <span class="n"><span title="numpy.int32">int32</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="aie.iron.kernel.ExternalFunction">ExternalFunction</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Pairwise record merge — companion to <a class="autorefs autorefs-internal" title="argmax" href="#iron.kernels.reduce.argmax"><code>argmax</code></a>.</p>
+<p>Takes two of the records described in <a class="autorefs autorefs-internal" title="argmax" href="#iron.kernels.reduce.argmax"><code>argmax</code></a>
+and keeps the one with the larger value, or the lower index when the values
+are equal. When both operands carry global indices, the merge order does
+not affect the result.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>dtype</code>
+            </td>
+            <td>
+                  <code><span title="type">type</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Element data type of the original input (<code>np.int32</code> or
+<code>bfloat16</code>); it selects how <code>out[0]</code> is compared.</p>
+              </div>
+            </td>
+            <td>
+                  <code><span title="numpy.int32">int32</span></code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="aie.iron.kernel.ExternalFunction">ExternalFunction</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ExternalFunction configured for the <code>argmax_combine</code> kernel;</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="aie.iron.kernel.ExternalFunction">ExternalFunction</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>signature is <code>(rec_ty, rec_ty, rec_ty)</code> where <code>rec_ty</code> is a</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="aie.iron.kernel.ExternalFunction">ExternalFunction</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>2-element int32 record.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>When <code>dtype</code> is not <code>np.int32</code> or <code>bfloat16</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>python/iron/kernels/reduce.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-414">414</a></span>
+<span class="normal"><a href="#__codelineno-0-415">415</a></span>
+<span class="normal"><a href="#__codelineno-0-416">416</a></span>
+<span class="normal"><a href="#__codelineno-0-417">417</a></span>
+<span class="normal"><a href="#__codelineno-0-418">418</a></span>
+<span class="normal"><a href="#__codelineno-0-419">419</a></span>
+<span class="normal"><a href="#__codelineno-0-420">420</a></span>
+<span class="normal"><a href="#__codelineno-0-421">421</a></span>
+<span class="normal"><a href="#__codelineno-0-422">422</a></span>
+<span class="normal"><a href="#__codelineno-0-423">423</a></span>
+<span class="normal"><a href="#__codelineno-0-424">424</a></span>
+<span class="normal"><a href="#__codelineno-0-425">425</a></span>
+<span class="normal"><a href="#__codelineno-0-426">426</a></span>
+<span class="normal"><a href="#__codelineno-0-427">427</a></span>
+<span class="normal"><a href="#__codelineno-0-428">428</a></span>
+<span class="normal"><a href="#__codelineno-0-429">429</a></span>
+<span class="normal"><a href="#__codelineno-0-430">430</a></span>
+<span class="normal"><a href="#__codelineno-0-431">431</a></span>
+<span class="normal"><a href="#__codelineno-0-432">432</a></span>
+<span class="normal"><a href="#__codelineno-0-433">433</a></span>
+<span class="normal"><a href="#__codelineno-0-434">434</a></span>
+<span class="normal"><a href="#__codelineno-0-435">435</a></span>
+<span class="normal"><a href="#__codelineno-0-436">436</a></span>
+<span class="normal"><a href="#__codelineno-0-437">437</a></span>
+<span class="normal"><a href="#__codelineno-0-438">438</a></span>
+<span class="normal"><a href="#__codelineno-0-439">439</a></span>
+<span class="normal"><a href="#__codelineno-0-440">440</a></span>
+<span class="normal"><a href="#__codelineno-0-441">441</a></span>
+<span class="normal"><a href="#__codelineno-0-442">442</a></span>
+<span class="normal"><a href="#__codelineno-0-443">443</a></span>
+<span class="normal"><a href="#__codelineno-0-444">444</a></span>
+<span class="normal"><a href="#__codelineno-0-445">445</a></span>
+<span class="normal"><a href="#__codelineno-0-446">446</a></span>
+<span class="normal"><a href="#__codelineno-0-447">447</a></span>
+<span class="normal"><a href="#__codelineno-0-448">448</a></span>
+<span class="normal"><a href="#__codelineno-0-449">449</a></span>
+<span class="normal"><a href="#__codelineno-0-450">450</a></span>
+<span class="normal"><a href="#__codelineno-0-451">451</a></span>
+<span class="normal"><a href="#__codelineno-0-452">452</a></span>
+<span class="normal"><a href="#__codelineno-0-453">453</a></span>
+<span class="normal"><a href="#__codelineno-0-454">454</a></span>
+<span class="normal"><a href="#__codelineno-0-455">455</a></span>
+<span class="normal"><a href="#__codelineno-0-456">456</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-414" name="__codelineno-0-414"></a><span class="k">def</span><span class="w"> </span><span class="nf">argmax_combine</span><span class="p">(</span><span class="n">dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Pairwise record merge — companion to [`argmax`][iron.kernels.reduce.argmax].</span>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="sd">    Takes two of the records described in [`argmax`][iron.kernels.reduce.argmax]</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">    and keeps the one with the larger value, or the lower index when the values</span>
+<a id="__codelineno-0-419" name="__codelineno-0-419"></a><span class="sd">    are equal. When both operands carry global indices, the merge order does</span>
+<a id="__codelineno-0-420" name="__codelineno-0-420"></a><span class="sd">    not affect the result.</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="sd">        dtype: Element data type of the original input (``np.int32`` or</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a><span class="sd">            ``bfloat16``); it selects how ``out[0]`` is compared.</span>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">        ExternalFunction configured for the ``argmax_combine`` kernel;</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">        signature is ``(rec_ty, rec_ty, rec_ty)`` where ``rec_ty`` is a</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">        2-element int32 record.</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.</span>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a>    <span class="n">is_bf16</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">bfloat16</span><span class="p">)</span>
+<a id="__codelineno-0-435" name="__codelineno-0-435"></a>    <span class="n">is_int32</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_bf16</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_int32</span><span class="p">:</span>
+<a id="__codelineno-0-437" name="__codelineno-0-437"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a>            <span class="sa">f</span><span class="s2">&quot;argmax_combine() dtype must be np.int32 or bfloat16, got </span><span class="si">{</span><span class="n">dtype</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a>        <span class="p">)</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a>    <span class="n">actual_dtype</span> <span class="o">=</span> <span class="n">bfloat16</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a>    <span class="n">rec_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">2</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]]</span>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a>    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;_bfloat16&quot;</span> <span class="k">if</span> <span class="n">is_bf16</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a>    <span class="k">return</span> <span class="n">_make_extern</span><span class="p">(</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a>        <span class="sa">f</span><span class="s2">&quot;argmax_combine</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a>        <span class="n">_kernel_source</span><span class="p">(</span><span class="s2">&quot;reduce/argmax.cc&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a>        <span class="p">[</span><span class="n">rec_ty</span><span class="p">,</span> <span class="n">rec_ty</span><span class="p">,</span> <span class="n">rec_ty</span><span class="p">],</span>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a>        <span class="n">object_file_name</span><span class="o">=</span><span class="n">_ARGMAX_OBJ</span><span class="p">,</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a>        <span class="n">contract</span><span class="o">=</span><span class="n">KernelContract</span><span class="p">(</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a>            <span class="n">trace</span><span class="o">=</span><span class="n">Trace</span><span class="o">.</span><span class="n">whole_call</span><span class="p">(),</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a>            <span class="n">roles</span><span class="o">=</span><span class="p">(</span><span class="n">In</span><span class="p">,</span> <span class="n">In</span><span class="p">,</span> <span class="n">Out</span><span class="p">),</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a>            <span class="n">reference</span><span class="o">=</span><span class="n">partial</span><span class="p">(</span><span class="n">argmax_combine_ref</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">actual_dtype</span><span class="p">),</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a>            <span class="n">sample</span><span class="o">=</span><span class="n">partial</span><span class="p">(</span><span class="n">argmax_combine_sample</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">actual_dtype</span><span class="p">),</span>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a>            <span class="n">tolerance</span><span class="o">=</span><span class="n">Tolerance</span><span class="o">.</span><span class="n">exact</span><span class="p">(</span><span class="n">note</span><span class="o">=</span><span class="s2">&quot;selection&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>            <span class="n">ops_per_call</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a>        <span class="p">),</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
