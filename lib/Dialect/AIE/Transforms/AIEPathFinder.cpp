@@ -1975,9 +1975,7 @@ void Pathfinder::TreeBuilder::claim() {
     auto seen =
         packetId ? cell.packetIds.find(*packetId) : cell.packetIds.end();
     auto mergeable = [&] {
-      if (!llvm::is_contained({WireBundle::North, WireBundle::South,
-                               WireBundle::East, WireBundle::West},
-                              sb.dstPorts[j].bundle))
+      if (!isDirectional(sb.dstPorts[j].bundle))
         return true;
       auto reached = [&](const Flow &f) {
         std::set<PathEndPoint> dsts;
@@ -2295,12 +2293,9 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
   for (auto &[_, sb] : graph) {
     if (sb.srcCoords == sb.dstCoords)
       for (auto [j, port] : llvm::enumerate(sb.dstPorts))
-        sb.circuitOnlyDst[j] =
-            cappedTiles.contains(sb.srcCoords) &&
-            port.channel >= packetFanoutCap &&
-            llvm::is_contained({WireBundle::North, WireBundle::South,
-                                WireBundle::East, WireBundle::West},
-                               port.bundle);
+        sb.circuitOnlyDst[j] = cappedTiles.contains(sb.srcCoords) &&
+                               port.channel >= packetFanoutCap &&
+                               isDirectional(port.bundle);
     for (SwitchboxConnect::Cell &c : sb.cells) {
       c.usedCapacity = 0;
       c.overCapacity = 0;

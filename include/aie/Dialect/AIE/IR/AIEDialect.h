@@ -352,6 +352,12 @@ namespace xilinx::AIE {
 // nor down the shim's South to one, unless `keep` says.
 bool keepsPktHeader(TileID tile, Port master, std::optional<bool> keep);
 
+// Whether `bundle` links a switchbox to a neighbouring one.
+inline bool isDirectional(WireBundle bundle) {
+  return bundle == WireBundle::North || bundle == WireBundle::South ||
+         bundle == WireBundle::East || bundle == WireBundle::West;
+}
+
 void collectTiles(DeviceOp &device,
                   llvm::DenseMap<TileID, mlir::Operation *> &tiles);
 
