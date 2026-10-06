@@ -99,9 +99,12 @@ def synthetic_ci_health(out: Path, days: int = 20) -> None:
     def stamp(hours):
         return publish.iso(now - datetime.timedelta(hours=hours))
 
-    def run(i, hours, conclusion, status="completed"):
-        return {"id": i, "url": "", "status": status, "conclusion": conclusion, "created_at": stamp(hours),
-                "run_started_at": stamp(hours), "head_sha": f"{i:040x}", "title": "preview", "attempt": 1}
+    def run(i, hours, conclusion, status="completed", took=None):
+        took = took if took is not None else rng.uniform(20, 70)
+        waited = rng.uniform(0.2, 6)
+        return {"id": i, "url": "", "status": status, "conclusion": conclusion, "created_at": stamp(hours + waited / 60),
+                "run_started_at": stamp(hours), "updated_at": stamp(hours - took / 60), "head_sha": f"{i:040x}",
+                "title": "Preview: a synthetic run", "attempt": 1}
 
     workflows = []
     for n, wf in enumerate(config["workflows"]):
@@ -130,10 +133,9 @@ def synthetic_ci_health(out: Path, days: int = 20) -> None:
             "merge_queue": {"passed": 30, "failed": 1, "rate": 0.968},
             "flaky": {"commits": 150, "flaky": [4, 21, 2, 1, 0][n % 5], "rate": round([4, 21, 2, 1, 0][n % 5] / 150, 3)},
             "minutes_median": round(minutes, 1), "minutes_p90": round(minutes * 1.6, 1), "queued_median": round(rng.uniform(0.2, 25), 1),
-            "slowest_jobs": [{"name": f"{wf['title'].split(',')[0].lower()} job {j}", "n": 6, "minutes_median": round(minutes * (0.9 - 0.2 * j), 1),
-                              "minutes_p90": round(minutes * (1.2 - 0.2 * j), 1), "queued_median": round(rng.uniform(0, 30), 1), "failed": int(j == 0 and n == 0)}
-                             for j in range(3)],
-            "jobs_sampled": 6})
+            # Runs on main, newest first, about two a day.
+            "main_runs": [run(9100 + 50 * n + i, 1 + 11 * i, "failure" if (i == 0 and n == 0) or rng.random() < 0.08 else "success",
+                              took=minutes * rng.uniform(0.85, 1.2)) for i in range(28)]})
     status = {"schema": 1, "generated_at": publish.iso(now - datetime.timedelta(minutes=20)), "repo": "Xilinx/mlir-aie",
               "window_days": ci_health.WINDOW_DAYS, "critical": critical,
               "merge_time": {"merged": 37, "hours_median": 30.2, "hours_p90": 212.0, "open": 58, "open_drafts": 14, "open_over_30_days": 17},

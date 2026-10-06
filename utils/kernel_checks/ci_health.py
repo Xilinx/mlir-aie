@@ -13,8 +13,8 @@ no browser asks GitHub itself.
   (pushes and the nightly alike) and, when it has ``legs``, that run's
   jobs; and over the last ``WINDOW_DAYS`` days how often it passed on main,
   on pull requests and in the merge queue, how many commits needed a re-run
-  to pass (flaky), how long a run took and waited to start, and, from its
-  latest few runs, its slowest jobs.
+  to pass (flaky), how long a run took and waited to start; and its
+  finished runs on main, for a chart of how long each took and waited.
 * **Merge time**: the pull requests merged in the window, how long each was
   open, and how many are open now and for how long.
 * **The other scheduled jobs** (``workflows``): each one's recent scheduled
@@ -53,9 +53,8 @@ WINDOW_DAYS = 14
 HISTORY_DAYS = 180
 # Pages of 100 runs read per critical workflow; the window rarely needs more.
 RUN_PAGES = 10
-# Latest completed runs per critical workflow whose jobs are timed.
-JOB_SAMPLE = 6
-SLOWEST_JOBS = 6
+# Finished runs on main kept per critical workflow, for its latency chart.
+MAIN_RUNS_KEPT = 40
 # Pages of 100 pull requests read, newest updated first.
 PULL_PAGES = 5
 # A conclusion that counts against a pass rate; cancelled and skipped do not.
@@ -68,6 +67,7 @@ RUN_FIELDS = {
     "conclusion": "conclusion",
     "created_at": "created_at",
     "run_started_at": "run_started_at",
+    "updated_at": "updated_at",
     "head_sha": "head_sha",
     "title": "display_title",
     "attempt": "run_attempt",
@@ -222,34 +222,6 @@ def flaky(runs: list) -> dict:
     return {"commits": n, "flaky": shaky, "rate": rounded(shaky / n, 3) if n else None}
 
 
-def slowest_jobs(jobs_by_run: list) -> list:
-    """Per job name over the sampled runs: median and 90th percentile
-    minutes, median minutes queued, how many failed; slowest first."""
-    by_name = {}
-    for jobs in jobs_by_run:
-        for j in jobs:
-            if j.get("status") != "completed" or j.get("conclusion") == "skipped":
-                continue
-            s = by_name.setdefault(j["name"], {"took": [], "queued": [], "failed": 0, "n": 0})
-            s["n"] += 1
-            s["took"].append(minutes(j.get("started_at"), j.get("completed_at")))
-            s["queued"].append(minutes(j.get("created_at"), j.get("started_at")))
-            s["failed"] += j.get("conclusion") in FAILED
-    rows = [
-        {
-            "name": name,
-            "n": s["n"],
-            "minutes_median": rounded(percentile(s["took"], 0.5)),
-            "minutes_p90": rounded(percentile(s["took"], 0.9)),
-            "queued_median": rounded(percentile(s["queued"], 0.5)),
-            "failed": s["failed"],
-        }
-        for name, s in by_name.items()
-    ]
-    rows.sort(key=lambda r: -(r["minutes_median"] or 0))
-    return rows[:SLOWEST_JOBS]
-
-
 def critical(get, repo: str, workflows: list, now: datetime.datetime) -> list:
     """Per critical workflow, its figures over the window."""
     since = now - datetime.timedelta(days=WINDOW_DAYS)
@@ -269,11 +241,6 @@ def critical(get, repo: str, workflows: list, now: datetime.datetime) -> list:
             # Its latest run on main may still be going: judged by the newest
             # one that is, which the page compares with `every` for lateness.
             newest_main = next((r for r in runs if r.get("head_branch") == "main" and r.get("event") in ("push", "schedule")), None)
-            sample = [r for r in done if r.get("event") in ("pull_request", "merge_group", "push")][:JOB_SAMPLE]
-            jobs = []
-            for r in sample:
-                got = get(f"/repos/{repo}/actions/runs/{r['id']}/jobs?per_page=100").get("jobs", [])
-                jobs.append([{**pick(j, JOB_FIELDS), "completed_at": j.get("completed_at")} for j in got])
             main_jobs = None
             if wf.get("legs") and latest_main:
                 got = get(f"/repos/{repo}/actions/runs/{latest_main['id']}/jobs?per_page=100").get("jobs", [])
@@ -284,14 +251,13 @@ def critical(get, repo: str, workflows: list, now: datetime.datetime) -> list:
                 latest_main=pick(latest_main, RUN_FIELDS) if latest_main else None,
                 newest_main=pick(newest_main, RUN_FIELDS) if newest_main else None,
                 latest_main_jobs=main_jobs,
+                main_runs=[pick(r, RUN_FIELDS) for r in on_main[:MAIN_RUNS_KEPT]],
                 pull_requests=pass_rate(prs),
                 merge_queue=pass_rate(queue),
                 flaky=flaky(runs),
                 minutes_median=rounded(percentile(took, 0.5)),
                 minutes_p90=rounded(percentile(took, 0.9)),
                 queued_median=rounded(percentile(waited, 0.5)),
-                slowest_jobs=slowest_jobs(jobs),
-                jobs_sampled=len(sample),
             )
         except ApiError as e:
             entry["error"] = str(e)

@@ -360,13 +360,11 @@ def test_object_size_change_is_in_kib(page):
 assert.equal(formatBytesDelta(307.2), '+0.3 KiB');
 assert.equal(formatBytesDelta(-2048), '\u22122.0 KiB');
 assert.equal(formatBytesDelta(48), '+48 B');
-const c = { current: true, metrics: new Map([['kernel_object_bytes', { value: 4096, unit: 'bytes', change: 0.08, delta: 307.2, cls: 'worse' }]]) };
-const [td] = metricCells(c, 'kernel_object_bytes');
-const chip = td.children.find(x => x.className && x.className.includes('delta'));
+// On a card, a size moves in KiB, the percentage on hover.
+const vals = glanceValues({ value: 4096, unit: 'bytes', change: 0.08, delta: 307.2, cls: 'worse' }, 'kernel_object_bytes', true);
+const chip = vals.children.find(x => x.className && x.className.startsWith('chg'));
 assert.equal(chip.text, '+0.3 KiB');
 assert.ok(chip.className.includes('worse'));
-const same = { current: true, metrics: new Map([['kernel_object_bytes', { value: 4096, unit: 'bytes', change: 0, delta: 0, cls: '' }]]) };
-assert.ok(!metricCells(same, 'kernel_object_bytes')[0].children.some(x => x.className && x.className.includes('delta')));
 """)
 
 
@@ -409,7 +407,7 @@ assert.equal(previousPublished({ runs: [{ id: 'a', published: true, pmode: 'turb
 
 
 def test_cycle_spread_and_truncation_are_read_from_the_range(page):
-    page("""
+    page(KERNELS + """
 assert.deepEqual(cyclesSpread('median 2939 max 2990 n=84; truncated'),
                  { median: 2939, max: 2990, n: 84, truncated: true });
 assert.deepEqual(cyclesSpread('median 264 max 264 n=16'),
@@ -418,22 +416,20 @@ assert.deepEqual(cyclesSpread('median 5580 max 5580 n=3; init[2] min 16; truncat
                  { median: 5580, max: 5580, n: 3, truncated: true });
 assert.equal(cyclesSpread('± 1.6; min 172.8 max 202.2 n=50'), null);
 assert.equal(cyclesSpread(undefined), null);
-
-db = fromRecords({ npu1: [rec('1', 1, 'performance', {
-  'swiglu/1024x256/bfloat16/cycles': ['cycles', 2875, 'median 2939 max 2990 n=84; truncated'],
-  'add/1024x16/bfloat16/cycles': ['cycles', 78, 'median 87 max 131 n=16'],
-})]});
-const { cases } = latestCases(db, 'npu1');
-const [cell, change] = metricCells(cases.get('swiglu/1024x256/bfloat16'), 'cycles', true);
+// The case table: the spread on hover, a full trace buffer said beside the value.
+db = fromRecords({ npu1: [rec('9', 9, 'turbo', {
+  'softmax/1024/bfloat16/cycles': ['cycles', 2875, 'median 2939 max 2990 n=84; truncated'],
+  'softmax/64/bfloat16/cycles': ['cycles', 78, 'median 87 max 131 n=16'],
+})] });
+const body = kernelCaseTable('softmax', [nightOf('npu1', null, db, cat1)], db).children[0].children[1];
+const row = kase => body.children.find(r => r.children[0].children[0].title === kase);
+const cell = row('softmax/1024/bfloat16').children[1];
 assert.equal(cell.text, '2,875 trace');
-assert.equal(cell.children[0].className, 'note warn');
-assert.ok(cell.title.includes('fastest 2875, median 2939, slowest 2990 over 84 calls'));
-assert.equal(change.text, '');
-const [plain] = metricCells(cases.get('add/1024x16/bfloat16'), 'cycles', true);
+assert.equal(cell.children.find(c => c.className).className, 'note warn');
+assert.equal(cell.title, 'fastest 2875, median 2939, slowest 2990 over 84 calls');
+const plain = row('softmax/64/bfloat16').children[1];
 assert.equal(plain.text, '78');
 assert.equal(plain.title, 'fastest 78, median 87, slowest 131 over 16 calls');
-// Without the change column, one cell.
-assert.equal(metricCells(cases.get('add/1024x16/bfloat16'), 'cycles', false).length, 1);
 """)
 
 
@@ -581,32 +577,28 @@ assert.equal(v2.children.find(c => c.className === 'headline').text, 'No results
 // Attention: failures first, then warnings; each names its NPU once.
 assert.equal($('attention').hidden, false);
 const items = $('attention-list').children;
+const all = (n, f) => typeof n === 'string' ? [] : [...(f(n) ? [n] : []), ...n.children.flatMap(c => all(c, f))];
 assert.deepEqual(items.map(li => [li.className, li.children[0].text]),
   [['bad', 'npu1'], ['bad', 'npu1'], ['bad', 'npu2'], ['warn', 'npu1']]);
 assert.ok(items[0].text.includes('failed correctness'));
 assert.equal(items[0].children[1].children[1].children[0].children[0].title, 'mm/64/i8');
 assert.equal(items[2].children[1].text, 'No results have been published.');
 
-// The map: a tile per kernel, a half per NPU.
-const tiles = $('map').children.flatMap(f => f.children[1].children);
-assert.deepEqual(tiles.map(t => [t.children[0].text, t.children[1].children.map(h => [h.className, h.textContent])]), [
-  ['exp2f_vec', [['half s-absent', '\\u00a0'], ['half s-absent', '\\u00a0']]],
-  ['relu', [['half s-bad', '+3.0%'], ['half s-absent', '\\u00a0']]],
-  ['mm', [['half s-bad', '1 fail'], ['half s-absent', '\\u00a0']]],
-]);
-assert.equal(tiles[1].href, '#view=kernel&kernel=relu');
+// A regression is named in Needs a look with how far it moved; its kernel a click away.
+const worse = items[1];
+assert.ok(worse.text.startsWith('npu11 case got slower or bigger past its threshold:'));
+assert.ok(worse.text.includes('relu/1024/bf16 cycles +3.0%'));
+assert.equal(all(worse, n => n.tag === 'a')[0].href, '#view=kernel&kernel=relu');
 
-// What moved: gated metrics only, worse first; host time is only mentioned.
-const rows = $('moved').children;
-assert.deepEqual(rows.map(r => r.children.map(c => c.text)), [
-  ['relu/1024/bf16', 'npu1', 'Cycles', '1,000', '1,030', '+3.0%', ''],
-  ['Faster or smaller'],
-  ['gelu/1024/bf16', 'npu1', 'Cycles', '2,000', '1,500', '−25.0%', ''],
+// All kernels: a line each, those that need a look first; a state per NPU.
+const list = renderKernelList(shownNights, db);
+assert.deepEqual(list.map(r => [r.factory, r.className, r.children.slice(1, 3).map(c => c.text)]), [
+  ['mm', 'k-row bad', ['npu11 failing', 'npu2not offered']],
+  ['relu', 'k-row bad', ['npu1slower +3.0%1,030 cycles1 slower since 1 Jan', 'npu2not offered']],
+  ['exp2f_vec', 'k-row none', ['npu1not offered', 'npu2not offered']],
 ]);
-assert.equal(rows[0].children[5].children[0].className, 'chg worse');
-assert.equal(rows[0].children[6].children[0].href, '#view=charts&metric=cycles&show=all&kernel=relu%2F1024%2Fbf16');
-assert.ok($('moved-about').text.includes('Host time moved on 1 series'));
-assert.equal($('moved-empty').hidden, true);
+assert.equal(list[1].href, '#view=kernel&kernel=relu');
+assert.equal($('kernels-status').text, '3 kernels of 3');
 """)
 
 
@@ -621,8 +613,8 @@ assert.equal($('moved-empty').hidden, true);
 def test_dashboard_does_not_attribute_old_changes_to_the_latest_run(page, latest):
     page(MOVED + f"""
 renderDashboard(['npu1'], db, new Map(), new Map([['npu1', {{ runs: [{latest}] }}]]), 3000);
-assert.equal($('moved').children.length, 0);
-assert.equal($('moved-empty').hidden, false);
+// The latest run is not the one that moved: no regression named, none in the verdict.
+assert.ok(!$('attention-list').text.includes('got slower'));
 assert.ok(!$('verdicts').text.includes('slower'));
 """)
 
@@ -630,8 +622,8 @@ assert.ok(!$('verdicts').text.includes('slower'));
 def test_dashboard_can_compare_without_a_run_index(page):
     page(MOVED + """
 renderDashboard(['npu1'], db, new Map(), new Map(), 3000);
-// relu worse, the divider, gelu better.
-assert.equal($('moved').children.length, 3);
+// relu got worse: named in Needs a look.
+assert.ok($('attention-list').text.includes('relu/1024/bf16 cycles +3.0%'));
 """)
 
 
@@ -652,13 +644,14 @@ const [night] = renderDashboard(['npu1'], fromRecords({}), new Map([['npu1', cat
 assert.deepEqual(kernelState(night, 'relu'), { level: 'untimed', text: '', title: `2 cases pass; not timed: ${refusal}` });
 assert.equal(kernelState(night, 'mm').level, 'bad');
 assert.deepEqual(caseVerdict(night, 'relu/64/bf16'), { cls: '', text: 'not timed', title: `the night timed nothing: ${refusal}` });
-// The refusal, then the failing case; not a line per timing test it failed.
+// The refusal once, as the NPU's verdict; Needs a look has the failing
+// case, not a line per timing test it failed.
+assert.ok($('verdicts').text.includes(`The run refused to measure: ${refusal}.`));
 const items = $('attention-list').children.map(li => li.children[1].text);
-assert.equal(items.length, 3);
-assert.ok(items[0].startsWith(`The run refused to measure: ${refusal}`));
-assert.ok(items[1].startsWith('1 case failed correctness'));
-assert.ok(items[2].startsWith('Measured in power mode "performance"'));
-assert.ok(STATE_LEGEND.some(([level]) => level === 'untimed'));
+assert.equal(items.length, 2);
+assert.ok(items[0].startsWith('1 case failed correctness'));
+assert.ok(items[1].startsWith('Measured in power mode "performance"'));
+assert.equal(stateWord(kernelState(night, 'relu')), 'not timed');
 """)
 
 
@@ -681,43 +674,35 @@ assert.deepEqual(items.map(li => li.className), ['warn']);
 assert.ok(items[0].text.includes('passed when the runner retried it'));
 assert.equal(nightLevel(runs.runs[0]), 'warn');
 assert.ok(nightTitle(runs.runs[0]).endsWith('2 timed, 0 failing, 0 timing failed, 1 passed on a retry'));
-renderKernels([night]);
-assert.equal($('kernels-rows').children[0].children[1].children[0].text, 'passed on a retry');
+const [row] = renderKernelList([night], fromRecords({}));
+assert.deepEqual([row.className, row.children[1].text], ['k-row warn', 'npu1passed on a retry']);
 """)
 
 
-@pytest.mark.parametrize("view", ["kernel", "dashboard", "kernels"])
-def test_pending_chart_render_does_not_overwrite_another_view(page, view):
-    page(
-        """
-global.history = { replaceState: (_state, _title, hash) => { location.hash = hash; } };
-location.hash = '#view=charts';
-$('npus').querySelectorAll = () => [{ value: 'npu1' }];
-$('metric').value = 'cycles';
-$('kernel-filter').value = '';
-let finish;
-global.fetch = () => new Promise(resolve => { finish = resolve; });
-const original = db;
-let destroyed = false;
-charts.push({ destroy: () => { destroyed = true; } });
-const pending = render();
-"""
-        + f"""
-location.hash = '#view={view}';
-"""
-        + """
-finish({ ok: false });
-(async () => {
-  await pending;
-  assert.equal(db, original);
-  assert.equal(destroyed, false);
-  // A debounced filter callback must not navigate back to charts either.
-  const hash = location.hash;
-  await render();
-  assert.equal(location.hash, hash);
-})().catch(e => { console.error(e); process.exit(1); });
-"""
-    )
+def test_changes_over_the_window_are_then_and_now(page):
+    page(KERNELS + """
+// softmax/1024 on npu1: 1,000 on its first nightly, 1,100 on its latest.
+const moved = windowChanges(db, 'npu1', 'cycles');
+assert.deepEqual(moved.map(x => [x.kase, x.then, x.now, x.cls]), [['softmax/1024/bfloat16', 1000, 1100, 'worse']]);
+assert.equal(moved[0].change.toFixed(2), '0.10');
+// A case measured on one night only has nothing to compare.
+assert.ok(!moved.some(x => x.kase.startsWith('softmax/64') || x.kase.startsWith('softmax_mask')));
+// The Summary's table: case, NPU, measure, then and now with their dates, the change.
+const rows = renderWindowChanges(db, ['npu1', 'npu2']);
+// One row per kernel and NPU; a column per measure, "then → now (change)".
+assert.deepEqual(rows.map(r => r.children.map(c => c.text)),
+  [['softmax/1024/bfloat16', 'npu1', '1,000 → 1,100 (+10.0%)', '—']]);
+assert.equal(rows[0].children[0].children[0].children[0].href, '#view=kernel&kernel=softmax');
+assert.ok($('window-about').text.startsWith("Each case's cycles and object size on its first nightly from 1 Jan against its latest"));
+// Nothing moved: said so.
+const flat = fromRecords({ npu1: [rec('1', 1, 'turbo', { 'a/1/i8/cycles': ['cycles', 100] }), rec('2', 2, 'turbo', { 'a/1/i8/cycles': ['cycles', 100] })] });
+assert.deepEqual(renderWindowChanges(flat, ['npu1']), []);
+assert.equal($('window-changes').text, 'Nothing moved past its threshold over these nightlies.');
+// Runs started by hand are not nightlies: left out.
+const manual = fromRecords({ npu1: [rec('1', 1, 'turbo', { 'a/1/i8/cycles': ['cycles', 10] }),
+  { ...rec('2', 2, 'turbo', { 'a/1/i8/cycles': ['cycles', 20] }), event: 'workflow_dispatch' }] });
+assert.equal(nightValues(manual, 'npu1', 'cycles').length, 1);
+""")
 
 
 KERNELS = """
@@ -744,42 +729,34 @@ nights = [nightOf('npu1', null, db, cat1), nightOf('npu2', null, db, cat2)];
 """
 
 
-def test_kernels_view_groups_cases_under_their_factory(page):
+def test_all_kernels_is_a_line_each_problems_first_and_filters(page):
     page(KERNELS + """
-renderKernels(nights);
-assert.equal($('kernels-status').textContent, '3 kernels of 3');
-const rows = $('kernels-rows').children;
-assert.deepEqual(rows.map(r => [r.className, r.children[0].children[0].title || r.children[0].children[0].text]), [
-  ['kernel-row', 'cascade_mm'], ['kernel-row', 'relu'], ['kernel-row', 'softmax'],
-  ['case-row', 'softmax/1024/bfloat16'], ['case-row', 'softmax/16/bfloat16'], ['case-row', 'softmax/2048/bfloat16'],
-  ['case-row', 'softmax/32/bfloat16'], ['case-row', 'softmax/64/bfloat16'],
-]);
-assert.equal(rows[2].children[0].children[0].href, '#view=kernel&kernel=softmax');
-// A kernel row: a pill per NPU spanning its three columns.
-const pills = r => r.children.slice(1).map(c => c.children[0].text);
-assert.deepEqual(pills(rows[0]), ['not checked', 'not offered']);
-assert.equal(rows[0].children[1].title, 'no case');
-assert.deepEqual(pills(rows[1]), ['not offered', 'not offered']);
-assert.deepEqual(pills(rows[2]), ['1 failing', 'passes']);
-assert.equal(rows[2].children[1].children[0].className, 'pill s-bad');
-assert.equal(rows[2].children[1].children[1].text, '  2 of 4 cases timed');
-assert.equal(rows[2].children[1].colSpan, 3);
-// A case row: cycles first, then its change and the object size, per NPU.
-assert.deepEqual(rows[3].children.slice(1).map(c => c.text), ['1,100', '+10.0%', '4.0 KiB', '2,200', '', '']);
-assert.ok(rows[3].children[1].className.includes('cyc'));
-assert.equal(rows[3].children[1].title, 'fastest 1100, median 1150, slowest 1200 over 16 calls');
-// +10% is past three times the 2% threshold.
-assert.equal(rows[3].children[2].children[0].className, 'chg worse strong');
-assert.equal(rows[3].children[0].children[0].children[0].href,
-  '#view=charts&metric=cycles&show=all&kernel=softmax%2F1024%2Fbfloat16');
-assert.deepEqual(rows.slice(4, 7).map(r => r.children[1].text), ['timing failed', 'fails correctness', 'correctness only']);
-assert.equal(rows[4].children[2].text, '—');
-assert.ok(rows[7].children[1].className.includes('stale'));
-assert.equal(rows[7].children[1].text, '50');
+const rows = renderKernelList(nights, db);
+// softmax fails a case on npu1: first; the rest by name.
+assert.deepEqual(rows.map(r => [r.factory, r.problem]), [['softmax', true], ['cascade_mm', false], ['relu', false]]);
+// Per NPU: its state, its cases' cycles now, and how many moved over the window.
+assert.deepEqual(rows[0].children.slice(1, 3).map(c => c.text), ['npu11 failing50 and 1,100 cycles1 slower since 1 Jan', 'npu2passes2,200 cycles']);
+assert.deepEqual(rows[1].children.slice(1, 3).map(c => c.text), ['npu1not run', 'npu2not offered']);
+// Plain dots and words: not the old map's filled halves.
+assert.deepEqual(rows[0].children.slice(1, 3).map(c => c.className), ['k-npu k-bad', 'k-npu k-ok']);
+// Its cases' cycles now, and how many moved since the first nightly shown.
+assert.deepEqual(kernelWindow(db, 'npu1', 'softmax'), { cycles: [50, 1100], since: 1, worse: 1, better: 0 });
+assert.equal(kernelWindow(db, 'npu1', 'relu'), null);
+assert.equal(cyclesWords([50, 1100]), '50 and 1,100 cycles');
+assert.equal(cyclesWords([5, 50, 1100]), '5 to 1,100 cycles');
+// Filters: text, family, only problems.
+$('kernels-filter').value = 'relu';
+$('kernels-filter').on.input();
+assert.deepEqual(rows.map(r => r.hidden), [true, true, false]);
+assert.equal($('kernels-status').text, '1 kernel of 3');
+$('kernels-filter').value = '';
+$('kernels-problems').checked = true;
+$('kernels-problems').on.change();
+assert.deepEqual(rows.map(r => r.hidden), [false, true, true]);
 """)
 
 
-def test_kernel_detail_lists_every_metric_and_compares_the_npus(page):
+def test_kernel_page_names_the_kernel_and_tables_its_cases(page):
     page(KERNELS + """
 assert.equal(renderKernel('softmax', nights), true);
 const head = $('kernel-head');
@@ -791,32 +768,23 @@ assert.deepEqual(links, [
   'https://github.com/Xilinx/mlir-aie/blob/abcdef1/python/iron/kernels/activation.py',
   'https://github.com/Xilinx/mlir-aie/blob/abcdef1/test/python/npu/kernel_cases.py',
 ]);
-assert.equal(head.children[3].tag, 'ul');
 assert.deepEqual(head.children[3].children.map(li => li.text),
-  ['npu11 build, 3 cases pass, 2 timed 1 fail', 'npu21 build, 1 case pass, 1 timed']);
-// A card per case, the four metrics side by side.
-const cards = $('kernel-cases').children;
-assert.deepEqual(cards.map(c => c.kase), [
-  'softmax/1024/bfloat16', 'softmax/16/bfloat16', 'softmax/2048/bfloat16', 'softmax/32/bfloat16', 'softmax/64/bfloat16',
+  ['npu11 build, 3 cases pass, 2 timed 1 failing', 'npu21 build, 1 case pass, 1 timed']);
+// A row per case: per NPU its latest cycles and the change over the window,
+// or why it has none.
+const [thead, tbody] = kernelCaseTable('softmax', nights, db).children[0].children;
+assert.deepEqual(thead.children[0].children.map(c => c.text), ['Case', 'npu1 nowcycles, 1 Jan', 'Then1 Jan', 'npu2 nowcycles, 1 Jan', 'Then1 Jan']);
+// Then and now in cycles; a case on one nightly only says so.
+assert.deepEqual(tbody.children.map(r => r.children.map(c => c.text)), [
+  ['1024bfloat16', '1,100', '1,000 +10.0%', '2,200', 'one nightly'],
+  ['16bfloat16', 'timing failed', '—'],
+  ['2048bfloat16', 'fails correctness', '—'],
+  ['32bfloat16', 'correctness only', '—'],
+  ['64bfloat16', '50', 'one nightly', '—'],
 ]);
-const [header, grid] = cards[0].children;
-assert.equal(header.children[0].title, 'softmax/1024/bfloat16');
-assert.equal(header.children[0].text, '1024bfloat16');
-assert.equal(header.children.at(-1).text, 'npu2 ÷ npu1 cycles 2.00×');
-assert.deepEqual(grid.children.map(c => c.children[0].text), ['Cycles', 'Cycles / 1k ops', 'Object size', 'Host time']);
-// The value and its change, the value before in the tooltip; npu2 has only one nightly.
-assert.equal(grid.children[0].text, 'Cyclesnpu11,100 +10.0%npu22,200');
-assert.equal(grid.children[0].children[1].children[1].title, 'was 1,000 the nightly before');
-assert.equal(grid.children[0].href, '#view=charts&metric=cycles&show=all&kernel=softmax%2F1024%2Fbfloat16');
-assert.equal(grid.children[2].text, 'Object sizenpu14.0 KiBnpu2—');
-assert.ok(cards[1].children[0].text.includes('npu1: timing failed'));
-assert.ok(cards[2].children[0].text.includes('npu1: fails correctness'));
-// The trend lines, once the histories are in.
-fillSparks(cards, db);
-const spark = cards[0].sparks.get('cycles');
-assert.ok(spark.innerHTML.includes('<polyline') && spark.innerHTML.includes('var(--npu2)'));
-assert.equal(spark.title, 'the last 2 nightlies');
-assert.equal(cards[0].sparks.get('npu_us').innerHTML, '');
+// softmax/64 was not measured in the latest nightly: greyed, and said.
+assert.ok(tbody.children[4].children[1].className.includes('stale'));
+assert.equal(tbody.children[0].children[2].children[2].className, 'chg worse strong');
 assert.equal(renderKernel('nope', nights), false);
 """)
 
@@ -834,19 +802,21 @@ assert.equal(sparkSvg([['npu1', []]], 'cycles'), '');
 """)
 
 
-def test_kernel_charts_draw_one_metric_per_case(page):
+def test_a_kernels_chart_has_a_line_per_case_in_actual_cycles(page):
     page(KERNELS + """
-kernelCharts('softmax', db, 'cycles');
-const boxes = $('kernel-charts').children;
-assert.deepEqual(boxes.map(b => b.children[0].children[0].title), ['softmax/1024/bfloat16', 'softmax/64/bfloat16']);
-assert.equal(boxes[0].className, 'chart');
-assert.ok(boxes[0].children[0].text.includes('npu1 +10.0%'));
-// Both NPUs on one chart.
-assert.deepEqual(chart.data.datasets.filter(d => !d.band).map(d => d.label).sort(), ['npu1']);
-kernelCharts('softmax', db, 'kernel_object_bytes');
-assert.equal($('kernel-charts').children.length, 1);
-// Values in the metric's unit.
-assert.equal(chart.options.scales.y.ticks.callback(4096), formatNumber(4096, 'bytes'));
+const config = kernelTrendConfig(db, 'npu1', 'softmax', 'cycles');
+assert.deepEqual(config.data.labels, ['1 Jan', '1 Jan']);
+// Each case's actual cycles, night by night.
+assert.deepEqual(config.data.datasets.map(d => [d.label, d.data]), [['64/bfloat16', [50, null]], ['1024/bfloat16', [1000, 1100]]]);
+const tips = config.options.plugins.tooltip.callbacks;
+assert.equal(tips.label({ dataset: config.data.datasets[1], dataIndex: 1, raw: 1100 }), '1024/bfloat16: 1,100');
+assert.equal(tips.afterTitle([{ dataIndex: 1 }]), 'abcdef1 same revision');
+assert.equal(config.options.scales.y.title.text, 'Cycles per call');
+// 50 and 1,100 differ over ten times: a log axis, so both lines' moves show.
+assert.equal(config.options.scales.y.type, 'logarithmic');
+assert.equal(kernelTrendConfig(db, 'npu2', 'softmax', 'cycles').options.scales.y.type, 'linear');
+// softmax_mask is another kernel, not a case of softmax.
+assert.ok(!config.data.datasets.some(d => d.label.startsWith('mask')));
 """)
 
 
@@ -856,7 +826,7 @@ location.hash = '#view=catalogue';
 assert.equal(applyView(), 'kernels');
 assert.equal($('kernels').hidden, false);
 assert.equal($('kernels-section').hidden, false);
-assert.equal($('charts-view').hidden, true);
+assert.equal($('dashboard').hidden, true);
 assert.equal($('tab-kernels').className, 'current');
 assert.equal($('nav-kernels').className, 'current');
 assert.equal($('nav-overview').className, '');
@@ -875,10 +845,11 @@ assert.equal(applyView(), 'night');
 assert.equal($('dashboard').hidden, false);
 assert.equal($('tab-night').className, 'current');
 assert.equal($('tab-kernel').hidden, true);
-assert.equal($('status').hidden, true);
+// The kernels' old Trends: a chart per case became each kernel's page.
 location.hash = '#view=charts&metric=cycles';
-assert.equal(applyView(), 'charts');
-assert.equal($('status').hidden, false);
+assert.equal(applyView(), 'night');
+location.hash = '#view=charts&metric=cycles&show=all&kernel=softmax%2F1024%2Fbf16';
+assert.equal(applyView(), 'kernel');
 // The old components view goes to the section that charts its metric.
 location.hash = '#view=components';
 assert.equal(applyView(), 'placement');
@@ -924,36 +895,17 @@ assert.deepEqual(move, { change: 0.25, delta: 25, cls: '' });
 """)
 
 
-def test_the_charts_view_groups_charts_by_factory(page):
+def test_charts_are_placed_a_box_each(page):
     page("""
 db = fromRecords({ npu1: [
-  rec('1', 1000, 'performance', { 'relu/1/bf16/cycles': ['cycles', 100], 'relu/2/bf16/cycles': ['cycles', 100],
-                                   'gelu/1/bf16/cycles': ['cycles', 100], 'mm/1/i8/cycles': ['cycles', 100] }),
-  rec('2', 2000, 'performance', { 'relu/1/bf16/cycles': ['cycles', 100], 'relu/2/bf16/cycles': ['cycles', 100],
-                                  'gelu/1/bf16/cycles': ['cycles', 110], 'mm/1/i8/cycles': ['cycles', 90] }),
+  rec('1', 1000, 'performance', { 'relu/1/bf16/cycles': ['cycles', 100], 'gelu/1/bf16/cycles': ['cycles', 100] }),
+  rec('2', 2000, 'performance', { 'relu/1/bf16/cycles': ['cycles', 100], 'gelu/1/bf16/cycles': ['cycles', 110] }),
 ]});
 const container = document.createElement('div');
-// Sorted worst first, as the charts view would: gelu, relu, relu, mm.
-const byKase = new Map(chartGroups(db.series).map(g => [g.kase, g]));
-const shown = ['gelu/1/bf16', 'relu/1/bf16', 'relu/2/bf16', 'mm/1/i8'].map(k => byKase.get(k));
-assert.deepEqual(groupByFactory(shown).map(g => [g.factory, g.groups.length]), [['gelu', 1], ['relu', 2], ['mm', 1]]);
-placeCharts(container, shown, ['performance'], db, true);
-const sections = container.children;
-assert.deepEqual(sections.map(d => d.tag), ['details', 'details', 'details']);
-assert.deepEqual(sections.map(d => d.children[0].text),
-  ['gelu  1 chart, 1 worse  kernel page', 'relu  2 charts  kernel page', 'mm  1 chart, 1 better  kernel page']);
-// Three sections are few enough to open.
-assert.ok(sections.every(d => d.open));
-assert.equal(sections[1].children[1].children.length, 2);
-assert.equal(sections[0].children[0].children.find(c => c.tag === 'a').href, '#view=kernel&kernel=gelu');
-// More than four: only those with a flagged move open.
-const more = ['a', 'b', 'c'].map(f => ({ ...shown[1], key: `x|${f}`, factory: f, kase: `${f}/1/bf16` }));
-placeCharts(container, [...shown, ...more], ['performance'], db, true);
-assert.deepEqual(container.children.map(d => [d.children[0].children[0].text, d.open]),
-  [['gelu', true], ['relu', false], ['mm', true], ['a', false], ['b', false], ['c', false]]);
-// Ungrouped, as on a kernel page, the boxes go straight in.
-placeCharts(container, shown, ['performance'], db);
-assert.deepEqual(container.children.map(d => d.className), ['chart', 'chart', 'chart', 'chart']);
+placeCharts(container, chartGroups(db.series), ['performance'], db);
+assert.deepEqual(container.children.map(d => d.className), ['chart', 'chart']);
+// A move past its threshold is a chip on its box.
+assert.ok(container.children.some(d => d.children[0].text.includes('npu1 +10.0%')));
 """)
 
 
@@ -1429,24 +1381,21 @@ assert.equal(ciVerdict(nightly, [], [], NOW).level, 'none');
 """)
 
 
-def test_ci_rows_name_the_failing_jobs_and_strip_the_recent_runs(page):
+def test_nightly_jobs_are_a_row_each_with_their_recent_runs(page):
     page(CI_RUNS + """
 const runs = [run(3, 6, 'completed', 'failure'), run(2, 30, 'completed', 'success'), run(1, 54, 'completed', 'failure')];
-const jobs = [job('build', 6, 'completed', 'success'), job('test (npu2)', 6, 'completed', 'failure')];
-const tr = ciRow(nightly, runs, jobs, NOW);
-const [wf, state, legs] = tr.children;
-// The pill says failed; no line repeats it. The strip sits under the latest run.
-assert.deepEqual(state.children.map(c => c.className), ['pill s-bad', 'when', 'nights']);
-const strip = state.children[2];
-assert.equal(wf.children[0].href, 'https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyKernelChecks.yml?query=event%3Aschedule%20branch%3Amain');
-assert.equal(state.children[0].text, 'failing');
-assert.equal(state.children[1].children[0].href, 'https://example.com/runs/3');
-assert.equal(legs.children[0].children.map(a => [a.text, a.className, a.href]).join('|'),
-             'test (npu2),pill s-bad,https://example.com/jobs/test (npu2)');
-// Oldest first, the latest outlined.
+const row = nightlyRow({ wf: nightly, runs, jobs: [] }, NOW);
+const [dot, name, state, strip] = row.children;
+assert.equal(row.className, 'ci-row bad');
+assert.equal(name.text, 'Kernel checks');
+assert.equal(name.href, 'https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyKernelChecks.yml');
+assert.equal(state.text, 'Failed 6 h ago');
+// Oldest first, the latest outlined, each linked to its run.
 assert.deepEqual(strip.children.map(n => n.className), ['night bad', 'night ok', 'night bad latest']);
-const quiet = ciRow(nightly, [run(4, 6, 'completed', 'success')], [job('build', 6, 'completed', 'success')], NOW);
-assert.equal(quiet.children[2].text, 'all 1 job passed');
+assert.equal(strip.children[2].href, 'https://example.com/runs/3');
+// GitHub did not answer: said, no strip.
+const none = nightlyRow({ wf: nightly, runs: null, error: 'HTTP 502' }, NOW);
+assert.deepEqual([none.className, none.children.length, none.children[2].text], ['ci-row none', 3, 'GitHub did not answer']);
 """)
 
 
@@ -1471,24 +1420,10 @@ assert.equal(criticalTile(crit({ every: 24, latest_main: run(30, 40, 'completed'
 // A run still going counts as recent.
 assert.equal(criticalVerdict(crit({ every: 24, latest_main: run(30, 40, 'completed', 'success'), newest_main: run(31, 2, 'in_progress', null) }), NOW).late, false);
 assert.equal(criticalVerdict({ file: 'x.yml', error: 'HTTP 404' }).level, 'none');
-// The row: main's latest and its share, PRs, the queue, flaky, run time and wait.
-const tr = criticalRow(crit({ main: { passed: 8, failed: 2, rate: 0.8 } }));
-assert.deepEqual(tr.children.map(c => c.text.replace(/Slowest jobs.*$/, '')), [
-  'Linux hardware tests',
-  'passed80% passed', '67%', '100%', '7%', '1 h 24 min2 h 10 min', '4 min']);
-assert.equal(tr.children[1].children[1].className, 'when worse');
-assert.equal(tr.children[2].title, '20 passed, 10 failed');
-// Pull requests are shown, not colored.
-assert.equal(tr.children[2].children[0].className, '');
-// The slowest jobs, folded under the name.
-const fold = tr.children[0].children.find(c => c.className === 'jobs-fold');
-assert.equal(fold.children[0].text, 'Slowest jobs');
-assert.equal(fold.children[0].title, 'from the latest 6 runs');
-assert.equal(fold.children[1].text, 'build-and-test (aie2p-8col) 1 failed1 h 10 minwaited 12 min');
 """)
 
 
-def test_merging_reads_as_figures_and_trends_need_two_days(page):
+def test_merging_reads_as_figures_and_run_times_as_one_chart(page):
     page(CI_RUNS + """
 assert.deepEqual(mergeFigures(status().merge_time).map(li => li.text),
   ['31pull requests merged in two weeks', '26.4 hmedian to merge', '42open, 11 for over 30 days']);
@@ -1497,14 +1432,28 @@ assert.deepEqual(mergeFigures(status().merge_time).map(li => li.title), ['', 'th
 assert.equal(mergeFigures({ error: 'HTTP 403' })[0].text, 'GitHub did not answer: HTTP 403');
 assert.equal(formatMinutes(42.4), '42 min');
 assert.equal(formatMinutes(120), '2 h');
-// One day is no trend; two are.
-const day = (date, hours) => ({ date, merge: { hours_median: hours, hours_p90: 2 * hours }, critical: { 'buildAndTestRyzenAI.yml': { main: 0.9, minutes_median: 80, flaky: 0.05 } } });
-assert.deepEqual(ciTrendCharts({ points: [day('2026-10-05', 20)] }, [crit()]), []);
-const trend = ciTrendCharts({ points: [day('2026-10-05', 20), day('2026-10-06', 30)] }, [crit()]);
-assert.deepEqual(trend.map(c => c.children[0].children[0]), ['Time to merge', 'Run time', 'Passed on main', 'Flaky']);
-// The run time chart: a line per critical workflow, by its title.
-assert.deepEqual(chart.data.datasets.map(d => d.label), ['Linux hardware tests']);
-assert.deepEqual(chart.data.labels, ['5 Oct', '6 Oct']);
+// The run-time chart: a workflow's runs, oldest first, run time and wait.
+const finished = (id, h, took, waited, conclusion) => ({ ...run(id, h, 'completed', conclusion),
+  created_at: at(h + waited / 60), run_started_at: at(h), updated_at: at(h - took / 60), title: `run ${id}` });
+const runs = [finished(3, 2, 90, 5, 'failure'), finished(2, 26, 80, 1, 'success'), run(4, 1, 'in_progress', null), finished(1, 50, 84, 2, 'success')];
+const config = latencyConfig(runs, 'Run on main');
+assert.deepEqual(config.data.datasets.map(d => [d.label, d.data]), [['Run time', [84, 80, 90]], ['Wait to start', [2, 1, 5]]]);
+// A failed run's point is red and larger.
+assert.deepEqual(config.data.datasets[0].pointRadius, [2.5, 2.5, 4]);
+assert.equal(config.data.datasets[0].pointBackgroundColor[2], cssVar('--bad', '#c62f3a'));
+// Labelled axes; hover names the commit, a click opens the run.
+assert.equal(config.options.scales.y.title.text, 'Minutes');
+assert.equal(config.options.scales.x.title.text, 'Run on main');
+const tips = config.options.plugins.tooltip.callbacks;
+assert.equal(tips.title([{ dataIndex: 2 }]), '6 Oct, 10:00 UTC, failed');
+assert.equal(tips.afterTitle([{ dataIndex: 2 }]), 'abcdef1 run 3');
+assert.equal(tips.label({ dataset: config.data.datasets[0], raw: 90 }), 'Run time: 1 h 30 min');
+config.options.onClick(null, [{ index: 2 }]);
+assert.deepEqual(opened, ['https://example.com/runs/3', '_blank', 'noopener']);
+// The choices: merge-gating tests' runs on main, then the scheduled jobs'.
+const loaded = loadedOf(status({ critical: [crit({ main_runs: runs })] }));
+assert.deepEqual(latencyChoices(loaded).map(c => [c.title, c.axis, c.runs.length]),
+  [['Linux hardware tests', 'Run on main', 4], ['Kernel checks', 'Scheduled run', 1]]);
 """)
 
 
@@ -1581,13 +1530,14 @@ assert.equal(ciHealthyLine(loadedOf(status()), NOW), '');
 assert.equal(ciVerdictBand(loadedOf(null), NOW).children[0].text, 'No CI health published yet.');
 // The board: a tile a workflow, one state each.
 const groups = ciBoard(loaded, NOW);
-assert.deepEqual(groups.map(g => g.children[0].text), ['Tests that gate a merge', 'Other scheduled jobs']);
+// The board is the merge-gating tests; the scheduled jobs are rows below it.
+assert.deepEqual(groups.map(g => g.children[0].text), ['Tests that gate a merge']);
 const tiles = groups.flatMap(g => g.children[1].children);
 assert.deepEqual(tiles.map(t => [t.className, t.text]), [
   ['ci-tile bad', 'Linux hardware testsFailed on main 3 h ago'],
   ['ci-tile warn', 'Python versionsPassed 80% of its runs on main'],
-  ['ci-tile warn', 'Kernel checksWaiting for a runner: aie2p-8col'],
 ]);
+assert.equal(nightlyRow(loaded.results[0], NOW).children[2].text, 'Waiting for a runner: aie2p-8col');
 assert.equal(boardTile(criticalTile(crit(), NOW)).text, 'Linux hardware testsPassing: 90% on main, 1 h 24 min a run');
 assert.equal(scheduledTile({ wf: nightly, runs: [run(5, 6, 'completed', 'success')], jobs: [] }, NOW).text, 'Passed 6 h ago');
 assert.equal(scheduledTile({ wf: nightly, runs: [run(5, 40, 'completed', 'success')], jobs: [] }, NOW).text, 'No run for 1 day 16 h');
@@ -1671,4 +1621,50 @@ assert.ok(canvas.hidden);
 assert.equal(outer.children[0].className, 'note svg-legend');
 // Chart.js loaded: lineChart uses it.
 assert.ok(lineChart(canvas, { data: { labels: [], datasets: [] }, options: { scales: {} } }) instanceof Chart);
+""")
+
+
+def test_the_harness_own_tests_are_said_apart_from_kernels(page):
+    page(RUNS + """
+const harness = 'test/python/npu/test_kernels_perf.py::test_a_baseline_that_fails_the_contract_is_timed';
+const kernelTest = 'test_kernels_e2e.py::test_kernel_e2e[relu/64/bf16]';
+const night = runs => renderDashboard(['npu1'], fromRecords({}), new Map([['npu1', { ...catalogue, kernels: [] }]]),
+  new Map([['npu1', { target: 'npu1', runs: [summary('3', '1970-01-01T00:00:03Z', 'turbo', {}, runs)] }]]), 3600 * 1000);
+night({ failed: [harness, kernelTest] });
+const items = $('attention-list').children.map(li => li.children[1].text);
+assert.ok(items.some(t => t.startsWith('1 test of the timing harness itself failed: it tests the checks, not a kernel.test_a_baseline_that_fails_the_contract_is_timed')));
+assert.ok(items.some(t => t.startsWith('1 test failed in this run:relu/64/bf16')));
+// A run that refused to time: every test of the timing step is the refusal's, not listed.
+night({ failed: [harness], refused: "power mode is default, required 'turbo'", sane: null, published: false });
+assert.ok(!$('attention-list').text.includes('timing harness'));
+""")
+
+
+def test_a_kernels_cases_that_moved_together_are_one_row(page):
+    page(RUNS + """
+db = fromRecords({ npu2: [
+  rec('1', 1, 'turbo', { 'mm/1/f32/gelu/kernel_object_bytes': ['bytes', 2048], 'mm/1/f32/relu/kernel_object_bytes': ['bytes', 2048],
+                         'swiglu/1/bf16/kernel_object_bytes': ['bytes', 9000] }),
+  rec('2', 2, 'turbo', { 'mm/1/f32/gelu/kernel_object_bytes': ['bytes', 4403], 'mm/1/f32/relu/kernel_object_bytes': ['bytes', 4300],
+                         'swiglu/1/bf16/kernel_object_bytes': ['bytes', 16700] }),
+] });
+const rows = renderWindowChanges(db, ['npu2']);
+// Cycles, then object size; the dates in the header.
+const head = $('window-changes').children[0].children[0].children[0].children[0];
+assert.deepEqual(head.children.map(c => c.text), ['Case', 'NPU', 'Cycles1 Jan → 1 Jan (change)', 'Object size1 Jan → 1 Jan (change)']);
+assert.deepEqual(rows.map(r => r.children.map(c => c.text)), [
+  ['mm 2 cases', 'npu2', '—', '2.0 KiB → 4.3 KiB (+115.0%)2 of 2 cases moved'],
+  ['swiglu/1/bf16', 'npu2', '—', '8.8 KiB → 16.3 KiB (+85.6%)'],
+]);
+// Hover gives each case.
+assert.equal(rows[0].children[3].title, 'mm/1/f32/gelu: 2.0 KiB → 4.3 KiB (+115.0%)\\nmm/1/f32/relu: 2.0 KiB → 4.2 KiB (+110.0%)');
+// A measure that did not move is greyed: size grew, cycles flat.
+const both = fromRecords({ npu2: [
+  rec('1', 1, 'turbo', { 'k/1/i8/cycles': ['cycles', 100], 'k/1/i8/kernel_object_bytes': ['bytes', 2048] }),
+  rec('2', 2, 'turbo', { 'k/1/i8/cycles': ['cycles', 101], 'k/1/i8/kernel_object_bytes': ['bytes', 4096] }),
+] });
+const [row] = renderWindowChanges(both, ['npu2']);
+assert.deepEqual(row.children.slice(2).map(c => [c.className, c.text]),
+  [['num quiet', '100 → 101 (+1.0%)'], ['num', '2.0 KiB → 4.0 KiB (+100.0%)']]);
+assert.equal(rows[0].children[0].children[0].title, 'mm/1/f32/gelu\\nmm/1/f32/relu');
 """)

@@ -106,17 +106,6 @@ def test_a_commit_that_needed_a_rerun_is_flaky(ci):
     assert ci.flaky(runs) == {"commits": 4, "flaky": 2, "rate": 0.5}
 
 
-def test_slowest_jobs_are_timed_from_the_sampled_runs(ci):
-    sampled = [
-        [job("build", 40), job("test", 20, waited=10), job("lint", 2)],
-        [job("build", 50), job("test", 25, waited=30, conclusion="failure"), {**job("skip", 99), "conclusion": "skipped"}],
-    ]
-    rows = ci.slowest_jobs(sampled)
-    assert [r["name"] for r in rows] == ["build", "test", "lint"]
-    assert rows[0] == {"name": "build", "n": 2, "minutes_median": 40.0, "minutes_p90": 50.0, "queued_median": 1.0, "failed": 0}
-    assert rows[1]["failed"] == 1 and rows[1]["queued_median"] == 10.0
-
-
 def critical_routes():
     window = [
         run(10, 2, "push", "failure", sha="m2"),
@@ -146,11 +135,12 @@ def test_a_critical_workflow_is_measured_over_the_window(ci):
     # Passing runs only: 60, 40 and 50 minutes.
     assert (w["minutes_median"], w["minutes_p90"]) == (50.0, 60.0)
     assert w["queued_median"] == 2.0
-    assert w["jobs_sampled"] == 5
     # With legs, the latest run on main's jobs, to name the one that failed.
     assert [j["name"] for j in w["latest_main_jobs"]] == ["build", "test"]
     assert w["newest_main"]["id"] == 10
-    assert [j["name"] for j in w["slowest_jobs"]] == ["build", "test"]
+    # Its finished runs on main, newest first, each with when it ended.
+    assert [r["id"] for r in w["main_runs"]] == [10, 9]
+    assert w["main_runs"][1]["updated_at"] == at(30 - 2 / 60 - 1)
 
 
 def test_runs_are_read_page_by_page_until_a_short_one(ci):
