@@ -18,7 +18,6 @@ from ...dialects.aie import (
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
-from ...helpers.sourceloc import site_location
 from ..resolvable import Resolvable
 from .tile import Tile
 
@@ -215,15 +214,11 @@ class Device(Resolvable):
                     f"Cannot resolve {tile}: tile_type must be set or inferred from coordinates."
                 )
 
-        # The op is created here rather than on Tile itself (tiles dedup by
-        # object identity), so the declaring site has to come off the Tile.
-        loc = loc or site_location(getattr(tile, "_source_site", None))
-
         op = logical_tile(
             tile_type,
             col=tile.col,
             row=tile.row,
-            loc=loc,
+            loc=loc or tile._site.location(),
             ip=ip,
             packet_type=tile.packet_type,
             packet_id=tile.packet_id,

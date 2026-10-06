@@ -1691,9 +1691,7 @@ class CompilableDesign:
                     raise RuntimeError(
                         f"MLIR verification failed for '{self.generator_name}'"
                     )
-                # This text is reparsed into the module aiecc compiles, so it
-                # is the round trip that decides whether a diagnostic can name
-                # the user's design. str() prints no locations at all.
+                # str() drops locations, and aiecc reports against this text.
                 mlir_text = module.operation.get_asm(enable_debug_info=True)
 
         external_kernels = list(ExternalFunction._instances)

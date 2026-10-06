@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from ...dialects.aie import (
     cascade_flow as _cascade_flow_op,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from ...helpers.sourceloc import SourceSite
 from ..resolvable import Resolvable
 
 if TYPE_CHECKING:
@@ -56,6 +57,7 @@ class CascadeFlow(Resolvable):
             src: Source `Worker` whose tile drives the cascade stream.
             dst: Destination `Worker` whose tile reads the cascade stream.
         """
+        self._site = SourceSite.capture()
         self._src = src
         self._dst = dst
         # Self-register on the source Worker so Program.resolve() can find
@@ -64,4 +66,9 @@ class CascadeFlow(Resolvable):
 
     def resolve(self, loc=None, ip=None) -> None:
         """Emit ``aie.cascade_flow(src.tile, dst.tile)``."""
-        _cascade_flow_op(self._src.tile.op, self._dst.tile.op, loc=loc, ip=ip)
+        _cascade_flow_op(
+            self._src.tile.op,
+            self._dst.tile.op,
+            loc=loc or self._site.location(),
+            ip=ip,
+        )

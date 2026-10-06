@@ -3,22 +3,6 @@
 
 # RUN: %PYTHON %s
 
-"""End-to-end check that a realistic IRON design is attributed to user code.
-
-The unit-level fixture in `location_preservation.py` drives the dialect
-builders directly, so the user frame it recovers is its own -- the one case
-that cannot fail. IRON declares objects in one place and emits their ops much
-later inside `Program.resolve_program`, and that is where attribution breaks.
-
-Rejecting `loc(unknown)` only proves *a* location was attached. An op wrongly
-blamed on an IRON internal, or on a neighbouring declaration, passes that check
-happily. So each op is also matched back to the source line that should have
-produced it: this file is read back and the cited line must contain the
-construct named below. Walking the operation tree rather than the printed
-assembly keeps that honest -- a region op prints its location on its closing
-brace, which is easy to mis-associate when scraping text.
-"""
-
 import os
 import re
 
@@ -57,10 +41,7 @@ def build():
     return Program(NPU1Col1(), rt, workers=[worker]).resolve_program()
 
 
-# (op name, sym_name or None, substring that must appear on the cited line).
-# Naming the construct rather than a line number keeps this from silently
-# passing if the design above is edited, and turns a misattribution into a
-# failure rather than a shrug.
+# (op name, sym_name or None, text that must appear on the cited line)
 EXPECTED = [
     ("aie.objectfifo", "in", 'ObjectFifo(line_type, name="in")'),
     ("aie.objectfifo", "out", 'ObjectFifo(line_type, name="out")'),
@@ -87,22 +68,12 @@ def walk(op):
                 yield from walk(child.operation)
 
 
-def sym_name_of(op):
-    try:
-        return op.attributes["sym_name"].value
-    except (KeyError, AttributeError, IndexError):
-        return None
-
-
 def main():
     ops = list(walk(build().operation))
 
-    # 1. Nothing may fall back to an unknown location.
     unknown = [op.name for op in ops if "unknown" in str(op.location)]
     assert not unknown, f"ops with unknown location: {sorted(set(unknown))}"
 
-    # 2. Every op must be attributed to THIS file. An op pointing into
-    #    aie/iron/*.py is the misattribution that rejecting `unknown` misses.
     for op in ops:
         match = FILE_LOC.search(str(op.location))
         assert match, f"{op.name}: no file location in {op.location}"
@@ -111,12 +82,12 @@ def main():
             cited == THIS_FILE
         ), f"{op.name} attributed outside the design: {cited}:{match.group(2)}"
 
-    # 3. Each op must cite the line that actually declared it.
     for op_name, sym, expected_source in EXPECTED:
         matches = [
             op
             for op in ops
-            if op.name == op_name and (sym is None or sym_name_of(op) == sym)
+            if op.name == op_name
+            and (sym is None or op.attributes["sym_name"].value == sym)
         ]
         label = op_name + (f" @{sym}" if sym else "")
         assert matches, f"no op matching {label} was emitted"
@@ -130,8 +101,6 @@ def main():
             f"  expected it to contain:  {expected_source}"
         )
 
-    # 4. Distinct declarations must not collapse onto a single line. Two
-    #    ObjectFifos declared one line apart are the easy case to get wrong.
     fifo_lines = {
         int(FILE_LOC.search(str(op.location)).group(2))
         for op in ops
@@ -139,9 +108,6 @@ def main():
     }
     assert len(fifo_lines) == 2, f"ObjectFifos collapsed onto lines {fifo_lines}"
 
-    # 5. Statements inside a traced body get their own location, not the
-    #    enclosing `def`. Two acquires on consecutive lines is the case that
-    #    distinguishes statement precision from function-level attribution.
     acquire_lines = {
         int(FILE_LOC.search(str(op.location)).group(2))
         for op in ops

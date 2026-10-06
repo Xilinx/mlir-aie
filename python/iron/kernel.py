@@ -17,8 +17,8 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 from ..dialects import arith, memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..dialects.aie import external_func
 from ..helpers.dialects.func import call
-from ..helpers.sourceloc import capture_source_site, site_location
 from ..helpers.npdtypes import is_block_float
+from ..helpers.sourceloc import SourceSite
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from .buffer import Buffer
 from .resolvable import Resolvable
@@ -351,7 +351,7 @@ class Kernel(Resolvable):
                 link_with=self._object_file_name,
                 link_with_mode=self._link_with_mode,
                 stack_size_override=self._stack_size_override,
-                loc=loc,
+                loc=loc or self._site.location(self._name),
                 ip=ip,
             )
 
@@ -410,6 +410,7 @@ class Kernel(Resolvable):
         """
         if not name:
             raise ValueError("Kernel name cannot be empty.")
+        self._site = SourceSite.capture()
         self._name = name
         # The declaration as written (numpy shapes and dtypes). Resolving the
         # kernel builds MLIR types from it without disturbing it, so this stays

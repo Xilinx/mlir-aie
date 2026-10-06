@@ -26,6 +26,7 @@ from ...helpers.npdtypes import (
     pack_pad_value,
     single_elem_or_list_to_list,
 )
+from ...helpers.sourceloc import SourceSite
 from ...helpers.taplib import TensorAccessPattern
 from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
@@ -187,6 +188,7 @@ class ObjectFifo(Resolvable):
             ValueError: If ``depth`` is provided and is less than 1, or a stream
                 walk is staged, has a nonzero offset, or pads a consumer.
         """
+        self._site = SourceSite.capture()
         self._depth = depth
         if self._depth is not None and self._depth < 1:
             raise ValueError(
@@ -516,7 +518,7 @@ class ObjectFifo(Resolvable):
                 consumer_datatype=consumer_datatype,
                 packet=self._packet or None,
                 packet_id=self._packet_id,
-                loc=loc,
+                loc=loc or self._site.location(self.name),
                 ip=ip,
             )
             self._op = op
@@ -1145,7 +1147,7 @@ class ObjectFifoHandle(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        self._object_fifo.resolve(ip=ip)
+        self._object_fifo.resolve(loc=loc, ip=ip)
 
 
 class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
@@ -1173,6 +1175,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         Raises:
             ValueError: Arguments are validated.
         """
+        self._site = SourceSite.capture()
         self._srcs = single_elem_or_list_to_list(srcs)
         self._dsts = single_elem_or_list_to_list(dsts)
         self._src_offsets = src_offsets if src_offsets is not None else []
@@ -1255,9 +1258,9 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             # sources or destinations.
 
             for s in self._srcs:
-                s.resolve(ip=ip)
+                s.resolve()
             for d in self._dsts:
-                d.resolve(ip=ip)
+                d.resolve()
             src_ops = [s.op for s in self._srcs]
             dst_ops = [d.op for d in self._dsts]
             self._op = object_fifo_link(
@@ -1265,6 +1268,6 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
                 dst_ops,
                 self._src_offsets,
                 self._dst_offsets,
-                loc=loc,
+                loc=loc or self._site.location(),
                 ip=ip,
             )

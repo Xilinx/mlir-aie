@@ -8,36 +8,20 @@ import numpy as np
 from aie.dialects.aie import (
     AIEDevice,
     AIETileType,
-    DMAChannelDir,
-    LockAction,
     WireBundle,
-    buffer,
-    core,
     device,
-    dma_bd,
-    end,
+    external_func,
     flow,
-    lock,
-    mem,
-    npu_write_rtp,
+    object_fifo,
+    object_fifo_link,
     packetflow,
     tile,
-    use_lock,
 )
-from aie.dialects.aiex import (
-    npu_address_patch,
-    npu_maskwrite32,
-    npu_push_queue,
-    npu_rtp_write,
-    npu_sync,
-    npu_write32,
-    runtime_sequence,
-)
-from aie.extras import types as T
-from aie.extras.dialects.arith import constant
-from aie.ir import Context, InsertionPoint, Location, Module
+from aie.ir import Context, InsertionPoint, Location, Module, loc_tracebacks
 from aie.iron import Buffer, Flow, Lock, PacketDest, PacketFlow
 from aie.iron.device import Tile
+
+line_type = np.ndarray[(16,), np.dtype[np.int32]]
 
 
 def assert_location(op, expected):
@@ -52,7 +36,7 @@ def emitted_by(builder, names, **kwargs):
     target = InsertionPoint.current.block
     start = len(target.operations)
     if kwargs:
-        # An unrelated ambient insertion point must not capture helper constants.
+        # An unrelated ambient insertion point and location must not win.
         other = Module.create()
         with InsertionPoint(other.body), Location.file("ambient.py", 1, 1):
             builder(ip=InsertionPoint(target), **kwargs)
@@ -60,22 +44,21 @@ def emitted_by(builder, names, **kwargs):
     else:
         builder()
     emitted = list(target.operations)[start:]
-    assert [op.operation.name for op in emitted] == names
+    assert [op.operation.name for op in emitted] == names, [
+        op.operation.name for op in emitted
+    ]
     return emitted
 
 
-def check_builder(builder, name, constants=0):
-    names = ["arith.constant"] * constants + [name]
+def check_builder(builder, name):
     for loc in (Location.file("explicit.py", 42, 7), Location.unknown()):
-        for op in emitted_by(builder, names, loc=loc):
+        for op in emitted_by(builder, [name], loc=loc):
             assert_location(op.operation, loc)
-    emitted = emitted_by(builder, names)
-    loc = emitted[-1].operation.location
-    # Check the actual user filename and line, not just a non-unknown location.
+    with loc_tracebacks(max_depth=1):
+        (op,) = emitted_by(builder, [name])
+    loc = op.operation.location.child_loc
     assert loc.filename == __file__, loc
     assert loc.start_line == builder.__code__.co_firstlineno, loc
-    for op in emitted:
-        assert_location(op.operation, loc)
 
 
 def low_level_locations():
@@ -85,10 +68,9 @@ def low_level_locations():
 
             @device(AIEDevice.npu1)
             def device_body():
-                src, dst = tile(0, 0), tile(0, 2)
-                buf = buffer(dst, np.ndarray[(16,), np.dtype[np.int32]], name="rtp")
-                lk = lock(dst, lock_id=0, init=1)
-                dests = {"dest": dst, "port": WireBundle.DMA, "channel": 0}
+                src, mem, dst = tile(0, 0), tile(0, 1), tile(0, 2)
+                pkt_src = tile(3, 0)
+                dests = {"dest": tile(3, 2), "port": WireBundle.DMA, "channel": 0}
                 destinations = iter([dst, tile(1, 2), tile(2, 2)])
                 check_builder(
                     lambda **kw: flow(src, dest=next(destinations), **kw),
@@ -97,84 +79,35 @@ def low_level_locations():
                 packet_ids = iter(range(3))
                 check_builder(
                     lambda **kw: packetflow(
-                        next(packet_ids), src, WireBundle.DMA, 0, dests, **kw
+                        next(packet_ids), pkt_src, WireBundle.DMA, 0, dests, **kw
                     ),
                     "aie.packet_flow",
                 )
-
-                @core(dst)
-                def core_body():
-                    check_builder(
-                        lambda **kw: use_lock(lk, LockAction.Acquire, **kw),
-                        "aie.use_lock",
-                        1,
-                    )
-                    value = constant(1, T.i32())
-                    original_loc = value.owner.location
-                    check_builder(
-                        lambda **kw: use_lock(lk, LockAction.Release, value, **kw),
-                        "aie.use_lock",
-                    )
-                    assert value.owner.location == original_loc
-
-                @mem(dst)
-                def mem_body():
-                    loc = Location.file("dma.py", 12, 3)
-                    for op in emitted_by(
-                        lambda **kw: dma_bd(buf, offset=0, transfer_len=16, **kw),
-                        ["aie.dma_bd"],
-                        loc=loc,
-                    ):
-                        assert_location(op.operation, loc)
-                    end()
-
-                @runtime_sequence(np.ndarray[(16,), np.dtype[np.int32]])
-                def sequence(_):
-                    check_builder(
-                        lambda **kw: npu_write32(np.int32(0x100), 7, **kw),
-                        "aiex.npu.write32",
-                        2,
-                    )
-                    check_builder(
-                        lambda **kw: npu_maskwrite32(0x100, 7, 0xFF, **kw),
-                        "aiex.npu.maskwrite32",
-                        3,
-                    )
-                    check_builder(
-                        lambda **kw: npu_sync(0, 0, 0, 0, **kw),
-                        "aiex.npu.sync",
-                        6,
-                    )
-                    check_builder(
-                        lambda **kw: npu_address_patch(0x100, 0, 4, **kw),
-                        "aiex.npu.address_patch",
-                        1,
-                    )
-                    check_builder(
-                        lambda **kw: npu_rtp_write("rtp", 0, 7, **kw),
-                        "aiex.npu.rtp_write",
-                        1,
-                    )
-                    check_builder(
-                        lambda **kw: npu_write_rtp("rtp", 0, 7, **kw),
-                        "aiex.npu.rtp_write",
-                        1,
-                    )
-                    direction = DMAChannelDir.MM2S
-                    check_builder(
-                        lambda **kw: npu_push_queue(
-                            0, 0, direction, 0, False, 0, 1, **kw
-                        ),
-                        "aiex.npu.push_queue",
-                        2,
-                    )
-                    value = constant(7, T.i32())
-                    original_loc = value.owner.location
-                    check_builder(
-                        lambda **kw: npu_write32(value, value, **kw),
-                        "aiex.npu.write32",
-                    )
-                    assert value.owner.location == original_loc
+                fifo_names = iter(f"of{i}" for i in range(3))
+                check_builder(
+                    lambda **kw: object_fifo(
+                        next(fifo_names), src, [mem], 2, line_type, **kw
+                    ),
+                    "aie.objectfifo",
+                )
+                links = iter(
+                    [
+                        (
+                            object_fifo(f"in{i}", src, [mem], 2, line_type),
+                            object_fifo(f"out{i}", mem, [dst], 2, line_type),
+                        )
+                        for i in range(3)
+                    ]
+                )
+                check_builder(
+                    lambda **kw: object_fifo_link(*next(links), **kw),
+                    "aie.objectfifo.link",
+                )
+                func_names = iter(f"kernel{i}" for i in range(3))
+                check_builder(
+                    lambda **kw: external_func(next(func_names), [line_type], **kw),
+                    "func.func",
+                )
 
         assert module.operation.verify()
 
@@ -194,13 +127,15 @@ def iron_locations():
                 objects = [
                     (
                         Flow(src, dst, shim_symbol="input"),
-                        ["aie.flow", "aie.shim_dma_allocation"],
+                        ["aie.route_endpoint", "aie.route_endpoint", "aie.route"],
                     ),
                     (
                         PacketFlow(
                             1,
-                            dst,
                             src,
+                            dst,
+                            src_channel=1,
+                            dst_channel=1,
                             extra_dsts=[PacketDest(extra)],
                             shim_symbol="output",
                         ),

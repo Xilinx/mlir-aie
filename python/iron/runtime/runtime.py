@@ -17,7 +17,6 @@ bounds) elaborates to a flat binary sequence.
 
 from __future__ import annotations
 
-import contextlib
 import itertools
 import logging
 from typing import TYPE_CHECKING, Callable, Sequence, get_origin
@@ -35,13 +34,7 @@ from ...dialects.aiex import (
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
-from ...helpers.astloc import with_statement_locations
-from ...helpers.sourceloc import (
-    SourceSite,
-    site_location,
-    site_of_function,
-    traced_body,
-)
+from ...helpers.sourceloc import SourceSite, traced_body
 from ...helpers.util import (
     flatten_fn_args,
     np_dtype_to_mlir_type,
@@ -122,22 +115,19 @@ class ActiveSequence:
         actions = tg._actions
         if not actions:
             return
-        wait_tasks = [act for act in actions if act[0] == dma_await_task]
-        free_tasks = [act for act in actions if act[0] == dma_free_task]
+        wait_tasks = [(fn, a) for (fn, a) in actions if fn == dma_await_task]
+        free_tasks = [(fn, a) for (fn, a) in actions if fn == dma_free_task]
         if len(wait_tasks) + len(free_tasks) != len(actions):
             unknown = [
-                act
-                for act in actions
-                if act[0] != dma_await_task and act[0] != dma_free_task
+                (fn, a)
+                for (fn, a) in actions
+                if fn != dma_await_task and fn != dma_free_task
             ]
             raise IronRuntimeError(
                 f"Unknown action type detected: {','.join(str(a) for a in unknown)}"
             )
-        # These ops are emitted here, long after the fill()/drain() that queued
-        # them returned, so the transfer's own site is carried along rather than
-        # letting them inherit the enclosing sequence's location.
-        for fn, a, action_loc in wait_tasks + free_tasks:
-            with action_loc if action_loc is not None else contextlib.nullcontext():
+        for fn, a in wait_tasks + free_tasks:
+            with a[0].location:
                 fn(*a)
         tg._actions = []
 
@@ -158,10 +148,9 @@ class ActiveSequence:
         else:
             self._used_default = True
             group = self._default_task_group
-        action_loc = site_location(getattr(task, "_source_site", None))
         if task.will_wait():
-            group._actions.append((dma_await_task, [task.task], action_loc))
-        group._actions.append((dma_free_task, [task.task], action_loc))
+            group._actions.append((dma_await_task, [task.task]))
+        group._actions.append((dma_free_task, [task.task]))
 
     def finalize(self) -> None:
         """Close bookkeeping after the body runs."""
@@ -194,8 +183,6 @@ class Runtime(Resolvable):
     constructor; its body reads the runtime buffers as parameters and moves
     data with ``fifo.fill(...)`` / ``fifo.drain(...)``.
     """
-
-    _source_site: SourceSite | None
 
     def __init__(
         self,
@@ -241,6 +228,7 @@ class Runtime(Resolvable):
                 in the order ``seq_fn`` expects them. Defaults to None (empty list).
             strict_task_groups (bool): Disallow mixing the default and explicit task groups. Defaults to True.
         """
+        self._site = SourceSite.capture()
         self._seq_fn: Callable = seq_fn
         self._fn_args = list(fn_args) if fn_args is not None else []
         self._dispatch_binding = object()
@@ -467,20 +455,13 @@ class Runtime(Resolvable):
             for rt_data in self._block_data
             if rt_data is not None
         ]
-        # Like a Worker core body, the sequence body becomes MLIR by being
-        # run, so point the ambient location at seq_fn rather than letting
-        # its ops default to unknown.
-        body_loc = site_location(site_of_function(self._seq_fn), "sequence") or loc
-        traced_seq_fn = with_statement_locations(self._seq_fn)
-        seq_op = RuntimeSequenceOp(sym_name="sequence", loc=loc)
+        loc = loc or self._site.location()
+        seq_op = RuntimeSequenceOp(sym_name="sequence", loc=loc, ip=ip)
         active = ActiveSequence(self, seq_op, device)
-        # Block arguments carry their own locations; without arg_locs they
-        # print as loc(unknown) even though every op in the body is attributed.
         entry_block = seq_op.body.blocks.append(
-            *rt_dtypes,
-            arg_locs=[body_loc] * len(rt_dtypes) if body_loc is not None else None,
+            *rt_dtypes, arg_locs=[loc] * len(rt_dtypes)
         )
-        with ir.InsertionPoint(entry_block):
+        with ir.InsertionPoint(entry_block), seq_op.location:
             # Full-ELF designs configure the device themselves: no xclbin
             # pre-loads the PDI, so the sequence must start by loading it.
             if load_pdi_device_ref is not None:
@@ -546,12 +527,9 @@ class Runtime(Resolvable):
                 else:
                     body_args.append(arg)
 
-            with active_sequence_scope(active), (
-                body_loc if body_loc is not None else contextlib.nullcontext()
-            ), traced_body(
-                getattr(self._seq_fn, "__name__", "sequence"), self._source_site
-            ):
-                traced_seq_fn(*body_args)
+            with active_sequence_scope(active):
+                with traced_body(self._seq_fn):
+                    self._seq_fn(*body_args)
                 active.finalize()
 
         self._dedup_runtime_consumers()

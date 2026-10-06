@@ -10,7 +10,7 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
 )
 from ...dialects.aie import LogicalTileOp
-from ...helpers.sourceloc import capture_source_site
+from ...helpers.sourceloc import SourceSite
 
 
 class Tile:
@@ -49,7 +49,7 @@ class Tile:
         self.packet_type: int = packet_type
         self.packet_id: int | None = packet_id
         self._op: LogicalTileOp | None = None
-        self._source_site = capture_source_site()
+        self._site = SourceSite.capture()
 
     def copy(self) -> Tile:
         """Return a copy of this Tile, including its control-packet id."""
@@ -60,7 +60,8 @@ class Tile:
             packet_type=self.packet_type,
             packet_id=self.packet_id,
         )
-        clone._source_site = self._source_site or capture_source_site()
+        if self._site.filename is not None:
+            clone._site = self._site
         return clone
 
     def with_type(
@@ -86,7 +87,8 @@ class Tile:
             packet_type=self.packet_type,
             packet_id=self.packet_id,
         )
-        clone._source_site = self._source_site or capture_source_site()
+        if self._site.filename is not None:
+            clone._site = self._site
         return clone
 
     @property
@@ -134,9 +136,6 @@ AnyShimTile = Tile(tile_type=AIETileType.ShimNOCTile)
 AnyMemTile = Tile(tile_type=AIETileType.MemTile)
 AnyComputeTile = Tile(tile_type=AIETileType.CoreTile)
 
-# These are declared here, not by a user, so they carry no source site of their
-# own; whoever adopts one (a Worker, an endpoint) supplies it instead. Without
-# this they would otherwise report the user's `import aie.iron` line.
+# Declared at import, so a clone takes the site of the user code that made it.
 for _singleton in (AnyShimTile, AnyMemTile, AnyComputeTile):
-    _singleton._source_site = None
-del _singleton
+    _singleton._site = SourceSite(None)

@@ -14,8 +14,8 @@ from ..dialects.aie import (
 )
 from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import FuncBase
-from ..helpers.errors import design_boundary
-from ..helpers.sourceloc import capture_source_site, site_location
+from ..helpers.errors import design_error
+from ..helpers.sourceloc import SourceSite
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
 from .dataflow.objectfifo import ObjectFifoLink
@@ -70,7 +70,7 @@ class Program:
         self._coremem_events = None
         self._memtile_events = None
         self._shimtile_events = None
-        self._source_site = capture_source_site()
+        self._site = SourceSite.capture()
         self._core_trace_mode = TraceMode.EventTime
 
     def enable_trace(
@@ -126,7 +126,6 @@ class Program:
         self._core_trace_mode = core_trace_mode
         self._egress_shim_col = egress_shim_col
 
-    @design_boundary
     def resolve_program(self, device_name="main"):
         """Resolve the program components in order to generate MLIR.
 
@@ -136,13 +135,15 @@ class Program:
         Returns:
             module (Module): The module containing the MLIR context information.
         """
-        # The module and device ops predate any Resolvable, so they get their
-        # location from where this Program was declared. Building the Location
-        # needs a live Context, hence creating one up front rather than letting
-        # mlir_mod_ctx do it.
+        try:
+            return self._resolve_program(device_name)
+        except Exception as exc:
+            raise design_error(exc) from None
+
+    def _resolve_program(self, device_name):
         context = ir.Context()
-        with context:
-            loc = site_location(self._source_site) or ir.Location.unknown()
+        with context, ir.Location.unknown():
+            loc = self._site.location()
 
         self._name_unnamed()
         with mlir_mod_ctx(context=context, location=loc) as ctx:
