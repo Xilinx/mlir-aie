@@ -11,6 +11,7 @@
 // colliding.
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | aie-opt --aie-find-flows=emit-vias=true | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s | aie-opt --aie-find-flows=emit-vias=true | aie-opt --aie-split-flow-vias | FileCheck %s --check-prefix=ROUNDTRIP
 
 // Circuit broadcast: (0,2) -> {(0,4), (0,5)}, fanning out at (0,4).
 // CHECK: %[[T02:.*]] = aie.tile(0, 2)
@@ -24,6 +25,24 @@
 // CHECK: aie.flow(%[[T04]], South : [[IN]], %[[T05]], South : [[MID:[0-9]+]]) via (%[[T04]] : South : [[IN]] -> North : [[MID]])
 // CHECK: aie.flow(%[[T05]], South : [[MID]], %[[T05]], DMA : 0) via (%[[T05]] : South : [[MID]] -> DMA : 0)
 // CHECK: aie.flow(%[[T05]], South : [[MID]], %[[T06]], DMA : 0) via (%[[T05]] : South : [[MID]] -> North : [[OUT:[0-9]+]], %[[T06]] : South : [[OUT]] -> DMA : 0)
+
+// ROUNDTRIP: %[[RT02:.*]] = aie.tile(0, 2)
+// ROUNDTRIP: aie.switchbox(%[[RT02]]) {
+// ROUNDTRIP:   aie.connect<DMA : 0, North : [[RT_TRUNK:[0-9]+]]>
+// ROUNDTRIP: %[[RT04:.*]] = aie.tile(0, 4)
+// ROUNDTRIP: aie.switchbox(%[[RT04]]) {
+// ROUNDTRIP-DAG:   aie.connect<South : [[RT_FIRST:[0-9]+]], DMA : 0>
+// ROUNDTRIP-DAG:   aie.connect<South : [[RT_FIRST]], North : [[RT_SECOND:[0-9]+]]>
+// ROUNDTRIP: %[[RT05:.*]] = aie.tile(0, 5)
+// ROUNDTRIP: aie.switchbox(%[[RT05]]) {
+// ROUNDTRIP-DAG:   aie.connect<South : [[RT_SECOND]], DMA : 0>
+// ROUNDTRIP-DAG:   aie.connect<South : [[RT_SECOND]], North : [[RT_LAST:[0-9]+]]>
+// ROUNDTRIP: %[[RT06:.*]] = aie.tile(0, 6)
+// ROUNDTRIP: aie.switchbox(%[[RT06]]) {
+// ROUNDTRIP:   aie.connect<South : [[RT_LAST]], DMA : 0>
+// ROUNDTRIP: %[[RT03:.*]] = aie.tile(0, 3)
+// ROUNDTRIP: aie.switchbox(%[[RT03]]) {
+// ROUNDTRIP:   aie.connect<South : [[RT_TRUNK]], North : [[RT_FIRST]]>
 module {
   aie.device(xcvc1902) {
     %t02 = aie.tile(0, 2)
