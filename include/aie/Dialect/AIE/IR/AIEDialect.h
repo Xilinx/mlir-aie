@@ -348,9 +348,7 @@ void printTraceEventEnum(mlir::AsmPrinter &printer, mlir::Attribute attr);
 
 namespace xilinx::AIE {
 
-// Discardable attributes `--aie-create-pathfinder-flows` sets on the switchbox
-// ops that carry the control-packet overlay, and on the packet rules of the
-// ports priority_route flows start at.
+// Marks the control-packet overlay's switchbox ops and packet rules.
 inline constexpr llvm::StringLiteral kCtrlPktOverlayAttrName =
     "is_ctrl_pkt_overlay";
 inline constexpr llvm::StringLiteral kPriorityRouteAttrName = "priority_route";

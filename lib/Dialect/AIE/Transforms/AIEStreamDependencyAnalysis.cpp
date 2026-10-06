@@ -1730,15 +1730,15 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
     for (WaitNode n : *scc)
       component[n.second] = components;
 
-  // A counted wait within one component lies on a closed walk. A packet holds
-  // its arbiter until its tail passes, so no state has two trees holding one
-  // arbiter, and a walk that needs that is no deadlock. Nor is one where each
-  // packet is behind the next on links below one arbiter they merged at, which
-  // granted them those links in one order, so a walk from a link wait below
-  // one must also wait otherwise. The search fixes or rules out a holder per
-  // arbiter until the shortest walk left agrees. Each clash splits it in two,
-  // so past maxWalkSearches it keeps the first walk, which at worst steers the
-  // router off a routing that cannot deadlock.
+  // A counted wait within one component lies on a closed walk. No state has two
+  // trees holding one arbiter (see HoldCycle), so a walk that needs that is no
+  // deadlock. Nor is one where each packet is behind the next on links below
+  // one arbiter they merged at, which granted them those links in one order, so
+  // a walk from a link wait below one must also wait otherwise. The search
+  // fixes or rules out a holder per arbiter until the shortest walk left
+  // agrees. Each clash splits it in two, so past maxWalkSearches it keeps the
+  // first walk, which at worst steers the router off a routing that cannot
+  // deadlock.
   struct Holders {
     std::optional<size_t> fixed;
     SmallVector<size_t, 2> excluded;

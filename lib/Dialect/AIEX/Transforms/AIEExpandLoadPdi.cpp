@@ -115,8 +115,8 @@ struct PortSetting {
   bool skipped;
 };
 
-// The settings `op` writes, and whether a control-packet reload skips each.
-// Each packet rule fills one slot, and a reload skips the rules marked
+// The settings `op` writes, and whether a reload skips each. Each packet rule
+// fills one slot, and a reload skips the rules marked
 // is_ctrl_pkt_overlay. It skips enabling the port if it skips any of them.
 static SmallVector<PortSetting> portSettings(Operation &op,
                                              AIE::SwitchboxOp sb) {
