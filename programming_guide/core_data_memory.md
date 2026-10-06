@@ -403,10 +403,18 @@ buffer has nowhere to go, the allocator undoes an earlier choice and tries that
 buffer's next-best address. It explores in rank order, so the first arrangement
 it tries is the one the ranking prefers and most designs never backtrack at all.
 
-The search is bounded at 20000 placements per tile — packing around fixed
-obstacles is NP-hard, and the bound is a count rather than a time limit so
-builds stay reproducible. Reaching it is reported (see the diagnostics below)
-rather than passed off as "no such layout exists".
+Backtracking only tries positions flush against what is already placed, so a
+layout where a buffer must sit against one placed after it is out of its reach.
+When the ranked search fails, an exhaustive one takes over: it slides every
+buffer down into address order and chooses which buffer comes next, which
+reaches every layout that exists. Most designs never get there, and those that
+do only need a legal layout, so it does not rank.
+
+Each search is bounded by the pass's `placement-budget` option, 100000
+placements per tile by default — packing around fixed obstacles is NP-hard, and
+the bound is a count rather than a time limit so builds stay reproducible. Within the bound, "no room" is a proof that no
+layout exists; reaching it is reported (see the diagnostics below) rather than
+passed off as one.
 
 - **`Buffer(mem_bank=...)`** pins a buffer to a bank. The pin is honored or the
   build fails; it is never silently dropped.
@@ -498,12 +506,13 @@ may well exist while being too fragmented to use, so shrinking any extent can
 help, not only the one named. Lower `data_size`, shrink or move buffers, or
 lower `stack_size`.
 
-**`the search hit its 20000-placement budget with arrangements still untried`
+**`the search hit its 100000-placement budget with arrangements still untried`
 (note, attached to the error above).** The allocator gave up rather than proved
 the design infeasible, so a layout may exist that it did not reach. This is
-rare and worth reporting: please file an issue with the design. Pinning a
-buffer or two with `mem_bank` cuts the search down and often gets a build
-through in the meantime.
+rare and worth reporting: please file an issue with the design. Raising
+`placement-budget` (`--aie-assign-buffer-addresses='placement-budget=N'`) lets
+the search go further, and pinning a buffer or two with `mem_bank` cuts it down;
+either often gets a build through in the meantime.
 
 **`<what> requires N bytes, which cannot fit in bank B (C bytes total)`
 (error).** A `mem_bank` pin, or a kernel's bank-pinned static data, asks for

@@ -159,6 +159,8 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
                  "Placements undone and retried">,
        Statistic<"numBudgetExhausted", "budget-exhausted",
                  "Tiles abandoned at the placement budget">,
+       Statistic<"numTilesCompacted", "tiles-compacted",
+                 "Tiles only the exhaustive search could place">,
   ];
 }
 
