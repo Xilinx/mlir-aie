@@ -29,7 +29,7 @@ _FLOWS = {
 }
 
 _DESIGN = textwrap.dedent("""
-    import json, logging, sys
+    import json, logging, os, sys
     from collections import Counter
     from pathlib import Path
     import numpy as np
@@ -40,6 +40,9 @@ _DESIGN = textwrap.dedent("""
     from aie.utils import set_current_device
 
     source = Path(sys.argv[1])
+    # Kernel flags the environment hands the module: a mutable input no
+    # recorded file can stand in for.
+    KERNEL_FLAGS = os.environ.get("KERNEL_FLAGS", "").split()
     tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
 
     @iron.jit
@@ -49,6 +52,7 @@ _DESIGN = textwrap.dedent("""
             source_file=str(source),
             include_dirs=[str(source.parent)],
             arg_types=[tile_ty, tile_ty, np.int32],
+            compile_flags=list(KERNEL_FLAGS),
         )
         tensor_ty = np.ndarray[(n,), np.dtype[np.int32]]
         of_in, of_out = ObjectFifo(tile_ty, name="in"), ObjectFifo(tile_ty, name="out")
@@ -105,7 +109,12 @@ _DESIGN = textwrap.dedent("""
     }))
     """)
 
-_SOURCE = 'extern "C" void add_one(int *i, int *o, int n) { for (int j = 0; j < n; j++) o[j] = i[j] + STEP; }\n'
+_SOURCE = (
+    '#include "step.h"\n'
+    "#ifndef ADD\n#define ADD 0\n#endif\n"
+    'extern "C" void add_one(int *i, int *o, int n) '
+    "{ for (int j = 0; j < n; j++) o[j] = i[j] + STEP + ADD; }\n"
+)
 
 
 @pytest.fixture(
@@ -133,13 +142,17 @@ def _set_step(source, step):
     (source.parent / "step.h").write_text(f"#define STEP {step}\n")
 
 
-def _run(tmp_path, source, flow, home, n=32, mode="warm", out=None):
+def _run(tmp_path, source, flow, home, n=32, mode="warm", out=None, flags=None):
     script = tmp_path / "design.py"
     script.write_text(_DESIGN)
     named = [str(out)] if out is not None else []
     result = subprocess.run(
         [sys.executable, str(script), str(source), str(n), mode, flow, *named],
-        env={**os.environ, "NPU_CACHE_HOME": str(tmp_path / home)},
+        env={
+            **os.environ,
+            "NPU_CACHE_HOME": str(tmp_path / home),
+            "KERNEL_FLAGS": flags or "",
+        },
         capture_output=True,
         text=True,
         timeout=600,
@@ -148,8 +161,8 @@ def _run(tmp_path, source, flow, home, n=32, mode="warm", out=None):
     return json.loads(result.stdout.splitlines()[-1])
 
 
-def _build(tmp_path, source, flow, home, n=32, mode="warm", out=None):
-    build = _run(tmp_path, source, flow, home, n, mode, out)
+def _build(tmp_path, source, flow, home, n=32, mode="warm", out=None, flags=None):
+    build = _run(tmp_path, source, flow, home, n, mode, out, flags)
     return Path(build["dir"]), build.get("hit", 0), build.get("miss", 0)
 
 
@@ -225,6 +238,31 @@ def test_a_header_edit_reaches_the_core_elf(tmp_path, source, flow):
     assert _binaries(reverted, flow) == {
         name: data for name, data in step_one.items() if not name.startswith("elfs_")
     }
+
+
+def test_kernel_flags_a_design_reads_at_run_time_move_the_key(tmp_path, source, flow):
+    """Compile flags reaching the design outside its files are part of its key.
+
+    A header edit is caught by the recorded inputs; a flags edit changes no
+    file, and the mutable list they arrived in was dropped from the key, so
+    the cached entry was silently reused with the old kernel.
+    """
+    first, hits, misses = _build(tmp_path, source, flow, "warm", flags="-DADD=1")
+    assert (hits, misses) == (0, 1)
+    second, hits, misses = _build(tmp_path, source, flow, "warm", flags="-DADD=2")
+    assert (hits, misses) == (0, 1)
+    assert first != second
+    one, two = _binaries(first, flow), _binaries(second, flow)
+    assert {name for name in one if one[name] != two[name]} >= {
+        "add_one.o",
+        "main.pdi",
+    }
+    # The unchanged build is reused whole: the same entry, and no kernel
+    # compiled -- a design-level hit returns before the object cache is
+    # even consulted.
+    again, hits, misses = _build(tmp_path, source, flow, "warm", flags="-DADD=1")
+    assert (hits, misses) == (0, 0)
+    assert again == first
 
 
 def _named_outputs(out, prj):
