@@ -32,7 +32,8 @@ module @core_endpoint {
     }
     aie.runtime_sequence() {
       aiex.dma_channel_reset(%t, S2MM, 0)
-      aiex.set_lock(%lock, 1)
+      %lock_v1 = arith.constant 1 : i32
+      aiex.set_lock(%lock, %lock_v1)
     }
   }
 }
@@ -65,7 +66,8 @@ module @mem_endpoint {
     }
     aie.runtime_sequence() {
       aiex.dma_channel_reset(%t, MM2S, 0)
-      aiex.set_lock(%lock, 1)
+      %lock_v1 = arith.constant 1 : i32
+      aiex.set_lock(%lock, %lock_v1)
     }
   }
 }

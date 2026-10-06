@@ -32,7 +32,7 @@ import argparse
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
@@ -121,10 +121,14 @@ def dwconv1d(
     # (channels_per_core, *) block streams through the core's per-channel
     # ObjectFifo as channels_per_core row-tiles (same fill-a-block /
     # acquire-a-row-at-a-time split the row_ty ObjectFifos above assume).
-    x_taps = TensorTiler2D.simple_tiler((channels, in_row), (channels_per_core, in_row))
-    w_taps = TensorTiler2D.simple_tiler((channels, w_row), (channels_per_core, w_row))
-    y_taps = TensorTiler2D.simple_tiler(
-        (channels, seq_len), (channels_per_core, seq_len)
+    x_taps = TensorAccessPattern.full((channels, in_row)).tile(
+        (channels_per_core, in_row)
+    )
+    w_taps = TensorAccessPattern.full((channels, w_row)).tile(
+        (channels_per_core, w_row)
+    )
+    y_taps = TensorAccessPattern.full((channels, seq_len)).tile(
+        (channels_per_core, seq_len)
     )
 
     def sequence(X, W, Y, in_prods, w_prods, out_conses):

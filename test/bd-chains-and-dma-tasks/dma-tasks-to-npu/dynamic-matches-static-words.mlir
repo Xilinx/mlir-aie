@@ -113,3 +113,41 @@ aie.device(npu2) {
     }
   }
 }
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// Mem tile with lock values the pass cannot fold: an AcquireGreaterEqual
+// encoded negated in the 7-bit acquire field, and a release.
+//===----------------------------------------------------------------------===//
+
+// CHECK: memref.global {{.*}} : memref<8xi32> = dense<[4096, 0, 0, 0, 0, 0, 0, -2092892607]>
+// CHECK-LABEL: @memtile_lock_words
+// CHECK: aiex.npu.blockwrite_values(%{{.*}} : i32) values %c4096_i32, %c0_i32, %c0_i32, %c0_i32, %c0_i32, %c0_i32, %c0_i32, %c-2092892607_i32
+
+aie.device(npu2) {
+  %tile_0_1 = aie.tile(0, 1)
+  %buf = aie.buffer(%tile_0_1) {address = 4096 : i32} : memref<4096xi32>
+  %prod = aie.lock(%tile_0_1, 0) {init = 0 : i32}
+  %cons = aie.lock(%tile_0_1, 1) {init = 0 : i32}
+  aie.runtime_sequence @memtile_lock_words() {
+    %static = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+      %c2_acq = arith.constant 2 : i32
+      aie.use_lock(%cons, AcquireGreaterEqual, %c2_acq)
+      aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 4096) {bd_id = 0 : i32}
+      %c3_rel = arith.constant 3 : i32
+      aie.use_lock(%prod, Release, %c3_rel)
+      aie.end
+    }
+    %c1 = arith.constant 1 : i32
+    %acq = arith.addi %c1, %c1 : i32
+    %c2 = arith.constant 2 : i32
+    %rel = arith.addi %c1, %c2 : i32
+    %dynamic = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+      aie.use_lock(%cons, AcquireGreaterEqual, %acq)
+      aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 4096) {bd_id = 1 : i32}
+      aie.use_lock(%prod, Release, %rel)
+      aie.end
+    }
+  }
+}

@@ -237,6 +237,39 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   return success();
 }
 
+LogicalResult AIEX::emitUpdateBdLengthFromParameter(
+    OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
+    int64_t lengthUnit, const AIE::AIETargetModel &targetModel, int col,
+    int row, int bdId) {
+  auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("length_state_table_idx");
+  assert(idxAttr && "emitUpdateBdLengthFromParameter called without "
+                    "length_state_table_idx attribute");
+
+  if (failed(AIE::verifyLengthParameterTile(bdOp, targetModel, col, row)))
+    return failure();
+  uint64_t registerAddr =
+      targetModel.getDmaBdAddress(col, row, bdId) +
+      4 * targetModel.getDmaBdLayout(col, row)->bufferLength.word;
+
+  uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
+  FailureOr<int64_t> unitBytes =
+      AIE::getLengthUnitBytes(bdOp, lengthUnit, bufType);
+  if (failed(unitBytes))
+    return failure();
+
+  // The length register counts 32-bit words, so func=mul adds n * unitBytes / 4
+  // words: func_arg is unitBytes / 4 for an addr parameter (StateTable[idx]
+  // holds n) and unitBytes / 16 for a core parameter (it holds n << 2).
+  int64_t bytesPerStateUnit = bdOp->hasAttr("length_core_encoded") ? 16 : 4;
+  AIEX::NpuUpdateFromScratchpadOp::create(
+      builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
+      // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+      /*func_arg=*/static_cast<uint32_t>(*unitBytes / bytesPerStateUnit),
+      /*address=*/static_cast<uint32_t>(registerAddr),
+      /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
+  return success();
+}
+
 void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
   SmallVector<AIEX::ScratchpadParameterOp> allParams;
   moduleOp.walk([&](AIEX::ScratchpadParameterOp p) { allParams.push_back(p); });
@@ -258,8 +291,26 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
     StringRef kindStr =
         *kind == AIEX::ScratchpadParameterKind::Addr ? "addr" : "core";
     os << p.getSymName() << " " << static_cast<unsigned>(*stateTableIdx) << " "
-       << typeStr << " " << kindStr << "\n";
+       << typeStr << " " << kindStr;
+    auto minValue = p.getMinValue();
+    auto maxValue = p.getMaxValue();
+    if (minValue && maxValue)
+      os << " " << static_cast<int32_t>(*minValue) << " "
+         << static_cast<int32_t>(*maxValue);
+    else
+      os << " - -";
+    os << "\n";
   }
+
+  SmallVector<std::pair<StringRef, AIEX::JointBoundAttr>> jointBounds;
+  for (auto p : allParams)
+    if (ArrayAttr bounds = p.getJointBoundsAttr())
+      for (auto bound : bounds.getAsRange<AIEX::JointBoundAttr>())
+        jointBounds.push_back({p.getSymName(), bound});
+  os << jointBounds.size() << "\n";
+  for (auto [length, bound] : jointBounds)
+    os << length << " " << bound.getOffset().getValue() << " "
+       << bound.getLengthStep() << " " << bound.getMax() << "\n";
 }
 
 bool AIEX::getReachableConfigures(

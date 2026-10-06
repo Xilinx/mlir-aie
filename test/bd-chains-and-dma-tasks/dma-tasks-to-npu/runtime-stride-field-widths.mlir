@@ -11,11 +11,12 @@
 // type, and the same descriptor on three tile types is what pins that wiring
 // to the target model rather than to a hardcoded shim width.
 //
-// AIE2 step field widths: shim NOC 20 bits (1048575), mem tile 17 (131071),
-// core tile 13 (8191).
+// AIE2 step field widths: shim NOC 20 bits, mem tile 17, core tile 13. A
+// stride of N elements is stored as N - 1 granules, so i32 strides reach 2^20,
+// 2^17 and 2^13.
 
 // CHECK-LABEL: @shim_stride
-// CHECK: aiex.npu.assert_bd_field(%{{.*}}) {max = 1048575 : i32}
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d2 stride must be in [1:1048576] when its size > 1"
 module @shim_stride {
   aie.device(npu2) {
     %tile_0_0 = aie.tile(0, 0)
@@ -31,7 +32,7 @@ module @shim_stride {
 // -----
 
 // CHECK-LABEL: @memtile_stride
-// CHECK: aiex.npu.assert_bd_field(%{{.*}}) {max = 131071 : i32}
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d2 stride must be in [1:131072] when its size > 1"
 module @memtile_stride {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
@@ -48,7 +49,7 @@ module @memtile_stride {
 // -----
 
 // CHECK-LABEL: @coretile_stride
-// CHECK: aiex.npu.assert_bd_field(%{{.*}}) {max = 8191 : i32}
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d2 stride must be in [1:8192] when its size > 1"
 module @coretile_stride {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)

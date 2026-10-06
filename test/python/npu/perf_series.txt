@@ -18,8 +18,12 @@ add_weighted/1920x16/int16/gamma
 add_weighted/1920x16/uint8
 add_weighted/1920x16/uint8/gamma
 add_weighted/32x4/uint8/line_width=32/edge-one-vector
+affine_cast/16x4/float32_bfloat16/cols=16/rows=1/edge-tiny
+affine_cast/2048x4/float32_bfloat16/cols=256/rows=8/wide
+affine_cast/3072x16/float32_bfloat16
 axpy/1024x16/bfloat16
 axpy/1024x256/bfloat16
+axpy/1024x4/bfloat16/inexact-a
 axpy/64x4/bfloat16/short-row
 bf16_exp/1024x16/bfloat16
 bf16_exp/1024x256/bfloat16
@@ -250,6 +254,7 @@ layer_norm_f32/1024x16/float32/cols=1024
 layer_norm_f32/112x16/float32/cols=112/row-tail
 leaky_relu/1024x16/bfloat16
 leaky_relu/1024x256/bfloat16
+leaky_relu/1024x4/bfloat16/inexact-alpha
 leaky_relu/160x4/bfloat16/unroll-tail
 mha/64x64x64x4/bfloat16
 mha/64x64x64x4/bfloat16/pv=True
@@ -326,8 +331,11 @@ mv/4x128x4/bfloat16/vec_size=64/edge-two-chunks
 mv/4x2048x16/bfloat16/vec_size=64
 mv/4x64x16/bfloat16/vec_size=32
 mv/4x64x4/bfloat16/vec_size=64/edge-one-chunk
+mv/512x4/bfloat16/a_col_maj=True/vec_size=16/edge-narrowest
 mv/6x128x4/bfloat16/vec_size=64/edge-rows-not-multiple-of-4
 mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down
+mv/8192x4/bfloat16/a_col_maj=True/vec_size=32/edge-eight-vectors
+mv/8192x4/bfloat16/a_col_maj=True/vec_size=64
 passthrough/1024x16/int16
 passthrough/128x4/int16/edge-tiny
 passthrough/16x4/int32/edge-one-vector

@@ -24,8 +24,8 @@ reprogram a mem or core tile's DMA from inside the sequence body.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
-from typing import Any, Iterable, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Iterable
 
 import numpy as np
 
@@ -37,9 +37,6 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
 )
 from ...dialects.aie import (
     EndOp,  # pyright: ignore[reportAttributeAccessIssue]
-    _as_bd_i32,
-    _as_bd_i64,
-    _as_i32,
     dma_bd,  # pyright: ignore[reportAttributeAccessIssue]
     dma_start,
     mem,
@@ -51,6 +48,8 @@ from ...dialects.aie import (
 from ...dialects.aie import bds as bd_blocks
 from ...dialects.aiex import dma_configure_task, dma_configure_task_for
 from ...helpers.npdtypes import pack_pad_value
+from ...helpers.taplib import TensorAccessPattern
+from ...helpers.taplib._symbolic import is_sym, si32, sprod, sym_any
 from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock
@@ -63,28 +62,36 @@ _SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
 
 @dataclass
 class Acquire:
-    """An ``aie.use_lock(..., AcquireGreaterEqual|Acquire)`` op at the start of a BD."""
+    """An ``aie.use_lock(..., AcquireGreaterEqual|Acquire)`` op at the start of a BD.
+
+    In a runtime-sequence task, ``value`` may be a dispatch-time value; the
+    instruction stream is rejected if it falls outside the lock's range (at
+    least 1 for ``greater_equal``).
+    """
 
     lock: Lock
-    value: int = 1
+    value: int | ir.Value = 1
     greater_equal: bool = True  # False → exact Acquire
 
     def emit(self) -> None:
         action = (
             LockAction.AcquireGreaterEqual if self.greater_equal else LockAction.Acquire
         )
-        use_lock(self.lock.op, action, value=self.value)
+        use_lock(self.lock.op, action, value=si32(self.value))
 
 
 @dataclass
 class Release:
-    """An ``aie.use_lock(..., Release)`` op at the end of a BD."""
+    """An ``aie.use_lock(..., Release)`` op at the end of a BD.
+
+    In a runtime-sequence task, ``value`` may be a dispatch-time value.
+    """
 
     lock: Lock
-    value: int = 1
+    value: int | ir.Value = 1
 
     def emit(self) -> None:
-        use_lock(self.lock.op, LockAction.Release, value=self.value)
+        use_lock(self.lock.op, LockAction.Release, value=si32(self.value))
 
 
 @dataclass
@@ -126,8 +133,9 @@ class Bd:
     """
 
     buffer: Buffer
-    offset: int = 0
-    length: int | None = None  # default: full buffer
+    # Default: the whole buffer. A padded tap sets the BD's pad geometry
+    # (MemTile only).
+    tap: TensorAccessPattern | None = None
     acquires: list[Acquire] = field(default_factory=list)
     releases: list[Release] = field(default_factory=list)
     next: int | str | None = None
@@ -137,47 +145,12 @@ class Bd:
     packet: tuple[int, int] | None = None
     # Explicit id (other ids are auto-assigned around it).
     bd_id: int | None = None
-    # Strided access pattern, outermost dimension first; each entry is a
-    # constant int or a runtime Value. Empty (default) emits a contiguous
-    # transfer. sizes and strides must have equal length.
-    sizes: list = field(default_factory=list)
-    strides: list = field(default_factory=list)
-    # Per-BD constant-pad geometry (MemTile only): one (const_pad_before,
-    # const_pad_after) pair per dimension, outermost first, matching the
-    # sizes/strides layout. The fill value is per-channel (DmaChannel.pad_value).
-    pad_dimensions: list[Sequence[int]] | None = None
     # BD iteration state: one BD covers N sub-buffers over N executions instead
     # of an N-deep chain. See BdIteration. Absent = iteration disabled.
     iteration: BdIteration | None = None
     # The out-of-order id stamped into the packet header. Names the slot a
     # receiving out-of-order S2MM channel places this BD's data into.
     out_of_order_id: int | None = None
-
-    def _with_runtime_fields(self) -> Bd:
-        """Return this Bd with its runtime values cast to the BD's field widths.
-
-        A runtime descriptor's block lowers only constants, so the casts, and
-        the length a runtime access pattern needs, are emitted here, ahead of
-        the task.
-        """
-        sizes: list[Any] = [_as_bd_i64(v) for v in self.sizes]
-        strides = [_as_bd_i64(v) for v in self.strides]
-        length = self.length
-        runtime = any(_is_value(v) for v in (*self.sizes, *self.strides, self.offset))
-        if length is None and runtime:
-            # The outermost of four sizes is the iteration count, which repeats
-            # the transfer rather than lengthening it (as in shim_dma_bd).
-            if sizes:
-                length = np.prod(sizes[-3:])
-            else:
-                length = int(np.prod(self.buffer.shape))
-        return replace(
-            self,
-            sizes=sizes,
-            strides=strides,
-            offset=_as_bd_i32(self.offset),
-            length=_as_bd_i32(length),
-        )
 
     def _emit(self, bd_id: int | None) -> None:
         """Emit the acquires, ``aie.dma_bd`` and releases at the insertion point.
@@ -188,13 +161,20 @@ class Bd:
         """
         for acq in self.acquires:
             acq.emit()
-        bd_kwargs: dict[str, Any] = dict(sizes=self.sizes, strides=self.strides)
-        if _is_value(self.offset) or self.offset:
-            bd_kwargs["offset"] = self.offset
-        if self.length is not None:
-            bd_kwargs["transfer_len"] = self.length
-        if self.pad_dimensions is not None:
-            bd_kwargs["pad_dimensions"] = self.pad_dimensions
+        bd_kwargs: dict[str, Any] = {}
+        if (tap := self.tap) is not None:
+            if tap.padding is None:
+                tap = tap.coalesce()
+            else:
+                bd_kwargs["pad_dimensions"] = list(tap.padding)
+            stride = tap.strides[-1]
+            if tap.padding or tap.rank > 1 or is_sym(stride) or stride != 1:
+                bd_kwargs.update(sizes=list(tap.sizes), strides=list(tap.strides))
+            if is_sym(tap.offset) or tap.offset:
+                bd_kwargs["offset"] = tap.offset
+            # A runtime walk with dims gets its length from them compiler-side.
+            if "sizes" not in bd_kwargs or not sym_any(tap.padded_sizes):
+                bd_kwargs["transfer_len"] = sprod(tap.padded_sizes)
         if self.iteration is not None:
             it = self.iteration
             bd_kwargs["iteration"] = (it.size, it.stride, it.current)
@@ -285,7 +265,9 @@ class DmaEndpoint:
         after the last start.
 
         ```python
-        load = into.endpoint(mem).task(Bd(resident, sizes=[n], strides=[1]))
+        load = into.endpoint(mem).task(
+            Bd(resident, tap=TensorAccessPattern.full((N,))[:n])
+        )
         load.start()
         ...
         load.start()
@@ -293,10 +275,10 @@ class DmaEndpoint:
         ```
 
         Each [`Bd`][iron.Bd] is spelled as in a [`TileDma`][iron.TileDma], but
-        without ``next``, and its access pattern, offset and length may be
-        dispatch-time values. A runtime descriptor needs a length, so one left
-        unset defaults to the product of ``sizes`` (or the whole buffer). A
-        buffer that has no tile yet is placed on this one.
+        without ``next``, and its ``tap`` may hold dispatch-time values. An
+        ``iteration`` takes the descriptor's outermost dimension, so its
+        ``tap`` gets one dimension fewer. A buffer that has no tile yet is
+        placed on this one.
 
         Args:
             *bds: The descriptors, walked in order as one task; a bare
@@ -341,11 +323,10 @@ class DmaEndpoint:
                 f"compiler-assigned {self}."
             )
 
-        bds = tuple(bd._with_runtime_fields() for bd in bds)
         if isinstance(runs, (int, np.integer)):
             repeat = dict(repeat_count=int(runs) - 1)
         else:
-            repeat = dict(repeat_count_val=_as_bd_i32(runs) - _as_i32(1))
+            repeat = dict(repeat_count_val=runs - 1)
         operand = self._operand()
         if isinstance(operand, str):
             op = dma_configure_task_for(operand, issue_token=wait, **repeat)
@@ -462,7 +443,7 @@ class DmaChannel:
 
         Returns None for the default 0 (elides the attribute). The element width
         is taken from the padded BD(s); a nonzero pad_value requires at least one
-        BD with pad_dimensions (else it would silently no-op), and all padded
+        BD with a padded tap (else it would silently no-op), and all padded
         BDs on the channel must share an element size (one register serves them
         all).
         """
@@ -471,12 +452,12 @@ class DmaChannel:
         elem_sizes = {
             np.dtype(bd.buffer.dtype).itemsize
             for bd in self.bds
-            if bd.pad_dimensions is not None
+            if bd.tap is not None and bd.tap.padding is not None
         }
         if not elem_sizes:
             raise ValueError(
-                "DmaChannel.pad_value is set but no BD on the channel has "
-                "pad_dimensions; a pad value needs a padded region."
+                "DmaChannel.pad_value is set but no BD on the channel has a "
+                "padded tap; a pad value needs a padded region."
             )
         if len(elem_sizes) > 1:
             raise ValueError(
@@ -513,10 +494,6 @@ class DmaChannel:
             repeat_count=self._start_repeat_count(),
             out_of_order=self.out_of_order,
         )
-
-
-def _is_value(v) -> bool:
-    return v is not None and not isinstance(v, (int, np.integer))
 
 
 class TileDma(Resolvable):
@@ -637,9 +614,6 @@ class TileDma(Resolvable):
         # using extra block indices for multi-BD chains).
         channels = self._channels
 
-        def _ooo_slot_id(bd: Bd, pos: int) -> int:
-            return bd.bd_id if bd.bd_id is not None else pos
-
         pinned_bd_ids: dict[int, int | DmaEndpoint] = {}  # slot id -> channel
         for ch in channels:
             if ch.out_of_order and ch.direction != DMAChannelDir.S2MM:
@@ -659,7 +633,7 @@ class TileDma(Resolvable):
                             f"out_of_order channel {ch.channel} BD at slot "
                             f"{slot} must be packet-enabled"
                         )
-                    pinned = _ooo_slot_id(bd, slot)
+                    pinned = slot if bd.bd_id is None else bd.bd_id
                     if pinned in pinned_bd_ids:
                         raise ValueError(
                             f"out_of_order bd_id {pinned} is used by more than "
@@ -714,7 +688,7 @@ class TileDma(Resolvable):
                 for bd_pos, bd in enumerate(ch.bds):
                     with block[bd_block_idx[bd_pos]]:
                         bd._emit(
-                            _ooo_slot_id(bd, bd_pos) if ch.out_of_order else bd.bd_id
+                            bd_pos if ch.out_of_order and bd.bd_id is None else bd.bd_id
                         )
                         # next_bd target
                         if ch.out_of_order:

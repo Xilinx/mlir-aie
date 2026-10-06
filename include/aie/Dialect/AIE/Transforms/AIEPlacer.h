@@ -674,7 +674,6 @@ private:
   int bestOverallCost = INT_MAX; // best regardless of legality (fallback)
   PlacementResult bestPlacement; // corresponds to bestCost
   PlacementResult bestOverallPlacement; // corresponds to bestOverallCost
-  std::uniform_real_distribution<double> acceptDist{0.0, 1.0};
   int deviceSlots = 0;
   int zeroDeltaMoves = 0, posDeltaMoves = 0, negDeltaMoves = 0;
   int acceptedUphill = 0, rejectedMoves = 0;

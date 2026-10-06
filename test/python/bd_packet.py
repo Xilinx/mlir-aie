@@ -29,8 +29,6 @@ def emit_packet_bd():
                 bds=[
                     Bd(
                         buffer=buf,
-                        offset=0,
-                        length=n,
                         packet=(0, 5),
                     ),
                 ],
@@ -48,5 +46,5 @@ def emit_packet_bd():
 
 
 # CHECK-NOT: aie.dma_bd_packet
-# CHECK: aie.dma_bd({{.*}} : memref<256xi32> len = 256) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
+# CHECK: aie.dma_bd({{.*}} : memref<256xi32>) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
 print(emit_packet_bd())

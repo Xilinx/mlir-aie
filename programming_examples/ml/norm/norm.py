@@ -39,7 +39,7 @@ import argparse
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
@@ -113,8 +113,8 @@ def norm(
         for i in range(n_cores)
     ]
 
-    taps = TensorTiler2D.simple_tiler(
-        (sequence_length, embedding_dim), (rows_per_core, embedding_dim)
+    taps = TensorAccessPattern.full((sequence_length, embedding_dim)).tile(
+        (rows_per_core, embedding_dim)
     )
 
     def sequence(a, c, in_prods, out_conses):
@@ -207,11 +207,13 @@ def norm_affine(
         for i in range(n_cores)
     ]
 
-    taps = TensorTiler2D.simple_tiler(
-        (sequence_length, embedding_dim), (rows_per_core, embedding_dim)
+    taps = TensorAccessPattern.full((sequence_length, embedding_dim)).tile(
+        (rows_per_core, embedding_dim)
     )
     # One tile == the whole gb tensor; every core loads the SAME full range.
-    gb_taps = TensorTiler2D.simple_tiler((1, 2 * embedding_dim))
+    gb_taps = TensorAccessPattern.full((1, 2 * embedding_dim)).tile(
+        (1, 2 * embedding_dim)
+    )
 
     def sequence(a, gb, c, in_prods, gb_prods, out_conses):
         for i in range(n_cores):

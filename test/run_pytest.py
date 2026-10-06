@@ -58,11 +58,15 @@ import os
 from pathlib import Path
 
 
-def test_crash_once():
+def test_crash_once(request):
     attempts = Path(os.environ[\"ATTEMPTS_FILE\"])
     count = int(attempts.read_text()) if attempts.exists() else 0
     attempts.write_text(str(count + 1))
     if count == 0:
+        # pytest-rerunfailures sends the rerun budget to the controller
+        # without waiting for an ack; a blocking query on the same connection
+        # makes sure it has landed before the worker dies.
+        request.config.failures_db.get_test_reruns(request.node.nodeid)
         os._exit(3)
 """)
     environment = os.environ.copy()

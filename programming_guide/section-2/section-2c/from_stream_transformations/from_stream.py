@@ -3,25 +3,25 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""``dims_from_stream`` example — Iron API design with ``@iron.jit``.
+"""``from_stream`` example — Iron API design with ``@iron.jit``.
 
 A 24-element int32 vector is forwarded shim -> memtile -> core -> memtile
--> shim.  The memtile->core ObjectFifo's ``dims_from_stream=[(3, 1),
-(8, 3)]`` reshapes the linear stream into the equivalent of a (3, 8) ->
+-> shim.  The memtile->core ObjectFifo's
+``from_stream=TensorAccessPattern.full((8, 3)).T`` reshapes the linear stream into the equivalent of a (3, 8) ->
 (8, 3) transpose by the time the core sees it, so the host output is
 the transposed view of the input ``arange(24)``.
 """
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -33,7 +33,11 @@ data_ty = np.ndarray[(24,), np.dtype[np.int32]]
 def from_stream(a_in: In, c_out: Out):
     of_in0 = ObjectFifo(data_ty, name="in0")
     of_in1 = of_in0.cons().forward(
-        name="in1", obj_type=data_ty, dims_from_stream=[(3, 1), (8, 3)]
+        name="in1",
+        obj_type=data_ty,
+        # Write the incoming (3, 8) stream into the object as its (8, 3)
+        # transpose: sizes [3, 8], strides [1, 3].
+        from_stream=TensorAccessPattern.full((8, 3)).T,
     )
 
     of_out1 = ObjectFifo(data_ty, name="out1")
@@ -58,21 +62,19 @@ def from_stream(a_in: In, c_out: Out):
     return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
 
 
-def _expected_output():
-    # The dims_from_stream=[(3,1),(8,3)] reshape is equivalent to viewing
-    # arange(24) as a (3, 8) row-major matrix and transposing it to (8, 3).
-    return np.arange(24, dtype=np.int32).reshape(3, 8).T.reshape(-1)
-
-
 def _run_and_verify(opts):
     a_in = iron.arange(24, dtype=np.int32, device="npu")
     c_out = iron.zeros(24, dtype=np.int32, device="npu")
     from_stream(a_in, c_out)
-    assert_pass(c_out.numpy(), _expected_output(), fail_msg="from_stream mismatch")
+    assert_pass(
+        c_out.numpy(),
+        np.arange(24, dtype=np.int32).reshape(3, 8).T.reshape(-1),
+        fail_msg="from_stream mismatch",
+    )
 
 
 def main():
-    p = argparse.ArgumentParser(prog="dims_from_stream example")
+    p = argparse.ArgumentParser(prog="from_stream example")
     add_compile_args(p, with_emit_mlir=True)
     opts = p.parse_args()
     run_design_cli(

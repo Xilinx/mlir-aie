@@ -21,13 +21,15 @@
 // CHECK:       aiex.dma_start_task(%[[R:.*]]) {no_token, repeat_count = 255 : i32}
 // CHECK-NEXT:  aiex.dma_start_task(%[[R]]) {repeat_count = 44 : i32}
 
-// The iter_arg can hold either of two configures, so only the override is
-// known.
+// The iter_arg can hold either of two configures, so only the overrides are
+// known: the attribute and a repeat operand that folds to a constant.
 // CHECK-LABEL: @two_configures
 // CHECK:       scf.for
 // CHECK:       aiex.dma_start_task(%[[P:.*]]){{$}}
 // CHECK-NEXT:  aiex.dma_start_task(%[[P]]) {no_token, repeat_count = 255 : i32}
 // CHECK-NEXT:  aiex.dma_start_task(%[[P]]) {repeat_count = 3 : i32}
+// CHECK-NEXT:  aiex.dma_start_task(%[[P]]) {no_token, repeat_count = 255 : i32}
+// CHECK-NEXT:  aiex.dma_start_task(%[[P]]) {repeat_count = 3 : i32}{{$}}
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence @carried(%arg0: memref<256xi32>, %n: index) {
@@ -51,9 +53,11 @@ aie.device(npu2) {
       aie.dma_bd(%arg0 : memref<256xi32> offset = 0 len = 256)
       aie.end
     } {repeat_count = 300 : i32}
+    %c259 = arith.constant 259 : i32
     %last = scf.for %i = %c0 to %n step %c1 iter_args(%p = %init) -> (index) {
       aiex.dma_start_task(%p)
       aiex.dma_start_task(%p) {repeat_count = 259 : i32}
+      aiex.dma_start_task(%p) repeat %c259 : i32
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<256xi32> offset = 0 len = 256)
         aie.end

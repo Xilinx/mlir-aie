@@ -5,8 +5,10 @@
 #
 """Tiled transform algorithms (unary/binary, single-core/parallel) built on IRON."""
 
+from typing import get_origin
+
 import numpy as np
-from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
@@ -332,20 +334,11 @@ def _transform_parallel_gen(
         for chan in range(num_channels)
     ]
 
-    # One TensorAccessPattern per (column, channel) — each carries its own
-    # disjoint sub-range of the input, addressed by its position in
-    # row-major (col, chan) order.
-    per_worker_elements = num_elements // (num_columns * num_channels)
-    taps = [
-        TensorAccessPattern(
-            (1, num_elements),
-            per_worker_elements * (col * num_channels + chan),
-            [1, 1, 1, per_worker_elements],
-            [0, 0, 0, 1],
-        )
-        for col in range(num_columns)
-        for chan in range(num_channels)
-    ]
+    # One chunk per (column, channel): equal, disjoint sub-ranges of the
+    # input in row-major (col, chan) order.
+    taps = TensorAccessPattern.full((num_elements,)).partition(
+        num_columns * num_channels
+    )
 
     # Runtime operations to move data to/from the AIE-array.
     # Pre-build the prod/cons handle grids so they can be registered via fn_args
@@ -447,7 +440,7 @@ def make_param_descriptor(tensor_ty):
 
 def _expand_param(param):
     """Allow callers to pass either a real tensor or a numpy ndarray type."""
-    if hasattr(param, "__args__") and len(getattr(param, "__args__", ())) == 2:
+    if get_origin(param) is np.ndarray:
         return make_param_descriptor(param)
     return param
 

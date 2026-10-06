@@ -15,8 +15,8 @@
 
 // A constant innermost stride whose byte extent isn't a whole granule is not
 // realizable (int8, stride 2 = 16 bits vs the 32-bit granule), even when
-// another dimension is runtime. (A unit stride, or a granule-aligned one, is
-// fine -- see dma_to_npu_dynamic.mlir.)
+// another dimension is runtime. (A unit stride is fine -- see
+// dma_to_npu_dynamic.mlir.)
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)
@@ -24,6 +24,22 @@ module {
     aie.runtime_sequence @s(%arg0: memref<64xi8>, %n: i64) {
       // expected-error@+1 {{stride 0 is 2 elements at 1 bytes each, not a multiple of the 4-byte address-gen granule}}
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 4, %n][0, 0, 4, 2]) {id = 0 : i64, metadata = @a} : memref<64xi8>
+    }
+  }
+}
+
+// -----
+
+// A granule-aligned innermost stride is still unrealizable for a sub-word
+// element: the DMA steps whole granules, so stride 2 on bf16 would move both
+// halves of each word rather than every other element.
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a(%t, MM2S, 0)
+    aie.runtime_sequence @s(%arg0: memref<64xbf16>, %n: i64) {
+      // expected-error@+1 {{stride 0 is 2 elements, but must be 1 for 2-byte elements: the DMA moves whole 4-byte granules.}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, %n, 4][0, 0, 8, 2]) {id = 0 : i64, metadata = @a} : memref<64xbf16>
     }
   }
 }
@@ -45,37 +61,17 @@ module {
 
 // -----
 
-// The assert_bd_field guard op rejects a constant value over its field max.
+// A guard whose condition folds to false is a compile-time error rather than
+// a cf.assert that could never pass: the constant d0 extent alone runs past
+// the 64-element host buffer, whatever the runtime d1 size is.
 module {
   aie.device(npu1) {
-    aie.runtime_sequence @s(%arg0: memref<4xi32>) {
-      %c = arith.constant 5000 : i32
-      // expected-error@+1 {{constant value 5000 is outside the guarded field range [0:1023]}}
-      aiex.npu.assert_bd_field(%c) {max = 1023 : i32} : i32
-    }
-  }
-}
-
-// -----
-
-// And one under its min.
-module {
-  aie.device(npu1) {
-    aie.runtime_sequence @s(%arg0: memref<4xi32>) {
-      %c = arith.constant 2 : i32
-      // expected-error@+1 {{constant value 2 is outside the guarded field range [4:1023]}}
-      aiex.npu.assert_bd_field(%c) {max = 1023 : i32, min = 4 : i32} : i32
-    }
-  }
-}
-
-// -----
-
-module {
-  aie.device(npu1) {
-    aie.runtime_sequence @s(%arg0: memref<4xi32>, %n: i32) {
-      // expected-error@+1 {{min 8 exceeds max 4.}}
-      aiex.npu.assert_bd_field(%n) {max = 4 : i32, min = 8 : i32} : i32
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a(%t, MM2S, 0)
+    aie.runtime_sequence @s(%arg0: memref<64xi32>, %n: i64) {
+      // expected-error@+2 {{a runtime DMA access runs past the end of its 64-element host buffer}}
+      // expected-error@+1 {{failed to legalize operation 'aiex.npu.dma_memcpy_nd'}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, %n, 128][0, 0, 128, 1]) {id = 0 : i64, metadata = @a} : memref<64xi32>
     }
   }
 }
@@ -113,14 +109,16 @@ module {
 
 // -----
 
-// The assert_bd_divisible guard op rejects a constant value not divisible by
-// its divisor.
+// A constant offset past the end of the host buffer is likewise rejected at
+// compile time when the walk has a runtime size.
 module {
   aie.device(npu1) {
-    aie.runtime_sequence @s(%arg0: memref<4xi32>) {
-      %c = arith.constant 3 : i32
-      // expected-error@+1 {{constant value 3 is not divisible by 4}}
-      aiex.npu.assert_bd_divisible(%c) {divisor = 4 : i32} : i32
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a(%t, MM2S, 0)
+    aie.runtime_sequence @s(%arg0: memref<64xi32>, %n: i64) {
+      // expected-error@+2 {{a runtime DMA access runs past the end of its 64-element host buffer}}
+      // expected-error@+1 {{failed to legalize operation 'aiex.npu.dma_memcpy_nd'}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 64][1, 1, 1, %n][0, 0, 0, 1]) {id = 0 : i64, metadata = @a} : memref<64xi32>
     }
   }
 }

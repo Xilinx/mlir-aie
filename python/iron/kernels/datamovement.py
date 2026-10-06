@@ -3,12 +3,13 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Data-movement / conversion kernel factories: axpy, convert_copy, expand, transpose.
+"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, transpose.
 
 Each wraps one source under ``aie_kernels/datamovement/`` — plain ``aie_api``
 vector code with no LUT dependency.  ``convert_copy`` binds
 ``cast_f32_bf16.cc``, the f32->bf16 cast with host-matching ``conv_even``
-rounding.
+rounding, and ``affine_cast`` applies a per-column ``gamma``/``beta`` ahead
+of the same cast.
 """
 
 import numpy as np
@@ -39,8 +40,12 @@ _BF16_ROUNDTRIP = Tolerance.bf16_ulps(
 
 
 def axpy_ref(x, y, a):
-    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32."""
-    return np.float32(a) * x.astype(np.float32) + y.astype(np.float32)
+    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32.
+
+    The kernel broadcasts ``a`` as bf16, so it is rounded to bf16 here.
+    """
+    a = np.float32(bfloat16(a))
+    return a * x.astype(np.float32) + y.astype(np.float32)
 
 
 def convert_copy_ref(x):
@@ -51,6 +56,20 @@ def convert_copy_ref(x):
     bit-for-bit.
     """
     return x.astype(bfloat16)
+
+
+def affine_cast_ref(x, gamma_beta):
+    """Numpy reference for [`affine_cast`][iron.kernels.datamovement.affine_cast].
+
+    ``gamma_beta`` is ``gamma`` then ``beta``, ``cols`` float32 values each;
+    ``x`` is row-major with ``cols`` per row. The multiply and add round in
+    float32 and the bf16 cast half-to-even, as the kernel does.
+    """
+    gb = np.asarray(gamma_beta, dtype=np.float32).reshape(-1)
+    cols = gb.size // 2
+    x32 = np.asarray(x, dtype=np.float32)
+    y = x32.reshape(-1, cols) * gb[:cols] + gb[cols:]
+    return y.astype(bfloat16).reshape(x32.shape)
 
 
 def expand_ref(payload, *, tile_size: int, group_size: int):
@@ -185,6 +204,58 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
             tolerance=Tolerance.exact(
                 note="conv_even rounding matches ml_dtypes bit-for-bit (test_kernels_e2e)"
             ),
+        ),
+    )
+
+
+def affine_cast(rows: int = 96, cols: int = 32) -> ExternalFunction:
+    """Per-column affine transform narrowed to bf16: ``out = bfloat16(in * gamma + beta)``.
+
+    Works on a row-major ``rows`` x ``cols`` float32 tile; ``gamma`` and
+    ``beta`` hold one float32 value per column and arrive packed in one
+    ``2 * cols`` buffer, ``gamma`` first. The bf16 store rounds with
+    ``conv_even``, as [`convert_copy`][iron.kernels.datamovement.convert_copy]
+    does, and the kernel restores the core's rounding mode on exit.
+
+    Args:
+        rows: Rows per tile.
+        cols: Columns per tile (multiple of 16).
+
+    Returns:
+        ExternalFunction for ``affine_cast_f32_bf16``.
+
+    Raises:
+        ValueError: When ``rows`` is below 1 or ``cols`` is not a positive
+            multiple of 16.
+    """
+    if rows < 1 or cols < 16 or cols % 16 != 0:
+        raise ValueError(
+            "affine_cast() needs rows >= 1 and cols a positive multiple of 16, "
+            f"got rows={rows}, cols={cols}."
+        )
+    in_ty = np.ndarray[(rows * cols,), np.dtype[np.float32]]
+    gb_ty = np.ndarray[(2 * cols,), np.dtype[np.float32]]
+    out_ty = np.ndarray[(rows * cols,), np.dtype[bfloat16]]
+    return _make_extern(
+        "affine_cast_f32_bf16",
+        _kernel_source("datamovement/affine_cast_f32_bf16.cc"),
+        [in_ty, gb_ty, out_ty, np.int32, np.int32],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, Out, Param, Param),
+            parameter_bindings=((3, rows), (4, cols)),
+            reference=affine_cast_ref,
+            acc_dtype=np.float32,
+            reduction=1,
+            tolerance=Tolerance.bf16_ulps(
+                1,
+                atol=2.0**-126,
+                note="aie::mul emulates the float32 product in bf16 terms and "
+                "can land one float32 ulp off, which tips a bf16 tie: 3 of "
+                "1769472 outputs one ulp off on npu2. atol is the smallest "
+                "normal bf16, for the device's subnormal flush to zero",
+            ),
+            ops_per_call=2 * rows * cols,
         ),
     )
 
