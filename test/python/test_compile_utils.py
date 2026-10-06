@@ -3,43 +3,33 @@
 #
 # RUN: %pytest --noconftest %s
 
-"""Compiler invocation tests without MLIR bindings or an installed toolchain."""
+"""Compiler invocation tests without an installed toolchain."""
 
 import importlib.util
 import os
+from pathlib import Path
 import subprocess
 import sys
 import traceback
 import types
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 
 @pytest.fixture
-def compile_utils():
+def compile_utils(monkeypatch):
     source = Path(__file__).resolve().parents[2] / "python/utils/compile/utils.py"
     spec = importlib.util.spec_from_file_location("compile_utils", source)
     module = importlib.util.module_from_spec(spec)
-    aie = types.ModuleType("aie")
-    aie.utils = types.ModuleType("aie.utils")
-    aie.utils.config = types.SimpleNamespace(
-        aiecc_path=lambda: "tools/aiecc",
-        peano_install_dir=lambda: "tools/peano",
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(
+        module,
+        "config",
+        types.SimpleNamespace(
+            aiecc_path=lambda: "tools/aiecc",
+            peano_install_dir=lambda: "tools/peano",
+        ),
     )
-    errors = types.ModuleType("aie.helpers.errors")
-    errors.compile_error_from_output = lambda output: None
-    with patch.dict(
-        sys.modules,
-        {
-            "aie": aie,
-            "aie.utils": aie.utils,
-            "aie.utils.config": aie.utils.config,
-            "aie.helpers.errors": errors,
-        },
-    ):
-        spec.loader.exec_module(module)
     return module
 
 
@@ -228,3 +218,91 @@ def test_copy_object_files_missing_source(compile_utils, tmp_path):
         compile_utils._copy_object_files([source], tmp_path)
 
     assert dest.read_bytes() == b"stale object"
+
+
+def test_compile_mlir_module_ignores_stale_external_functions(
+    compile_utils, monkeypatch, tmp_path
+):
+    """Only kernels the current module actually declares reach the auto-build
+    (and its built_for_arch check) -- ``ExternalFunction._instances`` also holds
+    unrelated entries left over from an earlier, unrelated compile in the same
+    process, and those must not be treated as belonging to this one."""
+    monkeypatch.chdir(tmp_path)
+    work_dir = tmp_path / "build"
+    work_dir.mkdir()
+
+    class FakeExternalFunction:
+        def __init__(self, name, built_for_arch):
+            self.name = name
+            self.source_file = "kernel.cc"
+            self.built_for_arch = built_for_arch
+
+    referenced = FakeExternalFunction("referenced_kernel", "aie2")
+    stale = FakeExternalFunction("stale_kernel_from_earlier_compile", "aie2p")
+    FakeExternalFunction._instances = {referenced, stale}
+
+    monkeypatch.setitem(
+        sys.modules,
+        "aie.iron.kernel",
+        types.SimpleNamespace(ExternalFunction=FakeExternalFunction),
+    )
+    monkeypatch.setattr(compile_utils, "resolve_target_arch", lambda device: "aie2")
+
+    captured = {}
+
+    def fake_compile_external_kernels(funcs, kernel_dir, target_arch, **kwargs):
+        captured["funcs"] = list(funcs)
+
+    monkeypatch.setattr(
+        compile_utils, "compile_external_kernels", fake_compile_external_kernels
+    )
+    monkeypatch.setattr(
+        compile_utils.subprocess,
+        "run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, "", ""),
+    )
+
+    compile_utils.compile_mlir_module(
+        "module { func.func private @referenced_kernel() }",
+        insts_path="insts.bin",
+        work_dir=work_dir,
+        device=object(),
+    )
+
+    assert [f.name for f in captured["funcs"]] == ["referenced_kernel"]
+
+
+def test_declared_link_with_picks_among_kernels_sharing_a_symbol(compile_utils):
+    """The declaration's ``link_with`` picks among kernels sharing a symbol.
+
+    An inline kernel keeps its bare symbol on every arch. A symbol no instance
+    matches keeps them all, so the arch check can still report it.
+    """
+    aie2 = types.SimpleNamespace(name="setup", object_file_name="setup_aaaa.ll")
+    aie2p = types.SimpleNamespace(name="setup", object_file_name="setup_bbbb.ll")
+    other = types.SimpleNamespace(name="kernel", object_file_name="kernel.o")
+
+    def select(funcs, text):
+        declared = compile_utils._declared_objects(text)
+        return compile_utils._select_declared_kernels(funcs, declared)
+
+    text = """module {
+      func.func private @setup() attributes {link_with = "setup_bbbb.ll"}
+      func.func private @kernel(%arg0: i32)
+    }"""
+    assert select([aie2, aie2p, other], text) == [aie2p, other]
+    stale = """module {
+      func.func private @setup() attributes {link_with = "setup_cccc.ll"}
+    }"""
+    assert select([aie2, aie2p], stale) == [aie2, aie2p]
+    both = """module {
+      module @a {
+        func.func private @setup() attributes {link_with = "setup_aaaa.ll"}
+      }
+      module @b {
+        func.func private @setup() attributes {link_with = "setup_bbbb.ll"}
+        func.func private @kernel(%arg0: i32)
+      }
+    }"""
+    assert select([aie2, aie2p, other], both) == [aie2, aie2p, other]
+    assert select([aie2, other], "module {}") == []

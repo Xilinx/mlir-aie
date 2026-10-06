@@ -67,7 +67,8 @@ module {
       aiex.npu.push_queue (0, 2, MM2S:0) bd_id %bd_good repeat %rc {issue_token = true} : i32, i32
 
       // Arm cons so the good BD runs (aie-rt XAie_LockSetValue via aiex.set_lock).
-      aiex.set_lock(%cons, 1)
+      %cons_v1 = arith.constant 1 : i32
+      aiex.set_lock(%cons, %cons_v1)
 
       aiex.npu.dma_memcpy_nd(%arg0[0,0,0,0][1,1,1,8][0,0,0,1]) {id=0:i64, issue_token=true, metadata=@out0} : memref<8xi32>
       aiex.npu.dma_wait {symbol=@out0}

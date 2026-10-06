@@ -226,6 +226,25 @@ def test_judge_honors_explicit_tolerance_override():
     assert fn.judge(got, ref, tolerance=Tolerance.relative(0.01))
 
 
+def test_judge_evaluates_a_bound_tolerance_on_the_inputs_and_scalars():
+    fn = _kernel(
+        [_tile(np.float32), np.float32, _tile(np.float32)],
+        KernelContract(
+            roles=(In, Param, Out),
+            reference=lambda x, scale: x * scale,
+            tolerance=Tolerance.bounded(lambda x, scale: np.abs(x) * scale / 100),
+        ),
+    )
+    x = np.array([[1, 2, 3, 4], [0, 10, 20, 30]], dtype=np.float32)
+    ref = fn.expected([x], scalars=(2.0,))
+    got = ref.ravel() + np.float32(0.015) * np.abs(x.ravel())
+    assert fn.judge(got, ref, calls=2, inputs=[x], scalars=(2.0,))
+    # The bound follows the scalar the reference was given.
+    assert not fn.judge(got, ref, calls=2, inputs=[x], scalars=(1.0,))
+    with pytest.raises(ValueError, match="function of the inputs"):
+        fn.judge(got, ref, calls=2)
+
+
 def test_output_only_reference_repeats_per_call_after_layout_decode():
     layout = TensorLayout((2, 2), unpack=lambda x: x.reshape(-1, 2, 2))
     fn = _kernel(

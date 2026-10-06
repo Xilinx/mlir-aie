@@ -17,8 +17,6 @@
 #ifndef AIECC_COMMANDLINEOPTIONS_H
 #define AIECC_COMMANDLINEOPTIONS_H
 
-#include "AIECCVersion.h"
-
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 
 #include "llvm/ADT/SmallString.h"
@@ -70,6 +68,19 @@ inline cl::opt<bool> noEnforceDmaQueueDepth(
     cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
              "slot"));
 
+// Out of BD ids, the compiler may take them back from a started task it can
+// prove finished by polling its channel. The poll hangs if that task's
+// completion depends on a push issued after it, which the compiler cannot see.
+inline cl::opt<bool> reclaimRuntimeBds(
+    "reclaim-runtime-bds",
+    cl::desc("Reuse the BD ids of started, unreleased runtime-sequence tasks "
+             "when a tile runs out, polling for their completion"));
+
+inline cl::opt<bool> verifyEach(
+    "verify-each",
+    cl::desc("Verify the IR after every pass, not once per pass pipeline "
+             "(slower; names the pass that produced invalid IR)"));
+
 inline cl::opt<bool> verbose("verbose", cl::desc("Verbose execution"));
 inline cl::alias verboseAlias("v", cl::desc("Alias for --verbose"),
                               cl::aliasopt(verbose));
@@ -102,6 +113,16 @@ inline cl::opt<int>
     saSeed("sa-seed",
            cl::desc("Random seed for SA placer (0 = non-deterministic)"),
            cl::init(1));
+inline cl::opt<double> saEffort(
+    "sa-effort",
+    cl::desc("Scale on the SA placer's search budget (1.0 = full; lower "
+             "trades placement cost for compile time)"),
+    cl::init(1.0));
+inline cl::opt<int64_t> placementBudget(
+    "placement-budget",
+    cl::desc("Buffer placements aie-assign-buffer-addresses may try per tile "
+             "before giving up"),
+    cl::init(100000));
 inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Dynamic objectFIFOs"),
                                      cl::init(true));
@@ -427,6 +448,31 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
   return table;
 }
 
+inline void printOutputSelectorTable(llvm::raw_ostream &os) {
+  for (const OutputSelector &s : outputSelectors())
+    os << "  --get-" << s.niceName << "  (" << s.edgeName << ")\n";
+}
+
+// `--get-<name>` is resolved by applyOutputSelectorFlags() below before
+// llvm::cl ever parses argv, so the shorthands are never registered as a
+// cl::opt and are invisible to --help/--help-hidden without this.
+// cl::extrahelp appends the text after the normal --help output.
+inline std::string outputSelectorHelpText() {
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  os << "\nOUTPUT SELECTORS:\n"
+        "  Named shorthands for --get=<name> (see above), and the artifact "
+        "each\n  selects (relative to --output-dir):\n";
+  printOutputSelectorTable(os);
+  return text;
+}
+
+// cl::extrahelp only keeps a StringRef, so the backing std::string needs its
+// own storage; declared first so it is initialized before the extrahelp that
+// references it (declaration order fixes initialization order within a TU).
+inline const std::string kOutputSelectorHelpText = outputSelectorHelpText();
+inline llvm::cl::extrahelp outputSelectorExtraHelp(kOutputSelectorHelpText);
+
 // Resolve the `--get-<niceName>` shorthands in `args` before cl parsing: set
 // each recognized selector's bool and drop its token; a token after a `--`
 // separator (host passthrough) is left untouched. Returns false after
@@ -450,9 +496,7 @@ inline bool applyOutputSelectorFlags(std::vector<std::string> &args) {
       if (!sel) {
         llvm::errs() << "aiecc: unknown output selector '--get-" << nice
                      << "'; available selectors are:\n";
-        for (const OutputSelector &s : outputSelectors())
-          llvm::errs() << "  --get-" << s.niceName << "  (" << s.edgeName
-                       << ")\n";
+        printOutputSelectorTable(llvm::errs());
         return false;
       }
       *sel->flag = true;
@@ -487,6 +531,13 @@ inline cl::opt<bool> progress(
 inline cl::opt<bool> noProgress(
     "no-progress",
     cl::desc("Disable the default single-line execution progress output"));
+// Reuse each aie.device's compiled cores across builds; see DeviceCache.h.
+inline cl::opt<std::string> deviceCacheDir(
+    "device-cache",
+    cl::desc("Reuse the placement and linked core ELFs of any aie.device an "
+             "earlier build stored in this dir, and store the ones this build "
+             "compiles (Peano only)"),
+    cl::value_desc("dir"), cl::init(""));
 // Graph cut / checkpoint & resume. `--checkpoint=<dir>` dumps the artifacts
 // selected by `--cut` plus a `manifest.json` describing them into <dir> after a
 // successful run — a "prefix" of the build. `--resume=<manifest.json>` rebuilds
@@ -564,12 +615,6 @@ inline bool resolveOptions() {
 //===----------------------------------------------------------------------===//
 // Helper functions
 //===----------------------------------------------------------------------===//
-
-inline void printVersion(llvm::raw_ostream &os) {
-  os << "aiecc (mlir-aie declarative driver)\n";
-  os << "  git SHA:  " << AIECC_GIT_SHA << "\n";
-  os << "  compiled: " << __DATE__ << " " << __TIME__ << "\n";
-}
 
 // A positional argument is a host source file when it has a C/C++ extension.
 inline bool isHostSourceFile(llvm::StringRef name) {

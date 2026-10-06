@@ -6,7 +6,7 @@
 """Shared helpers for the kernels submodules."""
 
 import hashlib
-import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
@@ -17,11 +17,10 @@ from aie.helpers.npdtypes import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
-
-_log = logging.getLogger(__name__)
 
 
 class Param:
@@ -46,7 +45,7 @@ class TensorLayout:
     ``shape`` is the logical tile. ``pack`` and ``unpack`` are the reversible
     host codec between ``(calls, *shape)`` and ``(calls, storage_elements)``;
     identity is the default. ``stream`` is the DMA transform
-    (``dims_to_stream``) a design applies on the hop that feeds this operand
+    (``to_stream``) a design applies on the hop that feeds this operand
     to the kernel or drains it, ``None`` when the operand streams as stored;
     ``block`` is the micro-tile the kernel consumes or produces, ``(r, s)``
     for an MMUL operand. The codec is built from the same two facts, so the
@@ -57,7 +56,7 @@ class TensorLayout:
     shape: tuple[int, ...]
     pack: Callable | None = None
     unpack: Callable | None = None
-    stream: list | None = None
+    stream: TensorAccessPattern | None = None
     block: tuple[int, ...] | None = None
 
     def encode(self, values):
@@ -69,6 +68,41 @@ class TensorLayout:
         return (
             self.unpack(values) if self.unpack else values.reshape(calls, *self.shape)
         )
+
+
+@dataclass(frozen=True)
+class Trace:
+    """How a kernel's ``event0()``/``event1()`` markers bracket one call.
+
+    ``Trace.whole_call()``: one pair brackets every call of the entry symbol
+    and nothing it calls emits another, so each trace interval is one call.
+    ``Trace.none(reason)``: a call emits no marker. ``Trace.partial(reason)``:
+    markers exist but do not bracket each call exactly once (around an inner
+    loop, or skipped on an early return), so intervals cannot be attributed
+    to calls. ``test_kernel_trace_markers.py`` checks the declaration against
+    the compiled IR of every library build.
+    """
+
+    shape: str
+    reason: str | None = None
+
+    def __post_init__(self):
+        if self.shape not in ("whole_call", "none", "partial"):
+            raise ValueError(f"unknown trace shape {self.shape!r}")
+        if (self.shape == "whole_call") != (self.reason is None):
+            raise ValueError("only an untimed trace shape carries a reason")
+
+    @classmethod
+    def whole_call(cls):
+        return cls("whole_call")
+
+    @classmethod
+    def none(cls, reason: str):
+        return cls("none", reason)
+
+    @classmethod
+    def partial(cls, reason: str):
+        return cls("partial", reason)
 
 
 @dataclass(frozen=True)
@@ -93,7 +127,7 @@ class KernelContract:
             output for all calls, a tuple for several outputs. ``None``
             builds the kernel but does not judge it.
         tolerance: How close the device must come; ``None`` is
-            :meth:`Tolerance.default_for` the output dtype.
+            ``Tolerance.default_for`` the output dtype.
         ops_per_call: Arithmetic operations per call; ``None`` means one
             per output element.
         out_valid: Meaningful leading elements of a DMA-padded output tile;
@@ -107,22 +141,36 @@ class KernelContract:
             means one.
         setup: A kernel to run once on the core first (``conv_even`` sets
             the rounding mode a bf16 store needs); ``None`` when the source
-            sets its own mode or narrows nothing.
+            sets its own mode or narrows nothing. A Worker handed the kernel
+            calls it before its loop.
         stack_bytes: Core stack a Worker calling this kernel needs, when
-            more than the target's default. Say where the number came from.
+            more than the target's default. Say where the number came from;
+            a note that gives only bytes per build means aiecc's
+            measured_stack_size.
         unsupported: Why the builder cannot run this kernel, or ``None``. A
             kernel with no output argument (a cascade PUT half) says so here.
-        layouts: A :class:`TensorLayout` per argument; ``None`` is identity.
+        layouts: A ``TensorLayout`` per argument; ``None`` is identity.
         parameter_bindings: ``(index, value)`` pairs fixing ``Param``
             operands, counts included; the rest come from the caller.
         initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
             ``factory(fn)`` returns the kernel that initializes the buffer.
-        trace_cycles: Whether one event0/event1 pair brackets a whole call
-            and nothing else does; False unless audited.
+        out_offset: ``(index, step)`` for a kernel that writes ``step``
+            elements of its one ``Out`` per call, at the offset it reads
+            from bound scalar ``Param`` ``index``. The builder then hands
+            every call the same output tile, passes ``call * step`` as the
+            offset and drains the tile once, so the calls must fill it
+            exactly. ``None``: each call writes a whole tile of its own.
+        trace: The ``Trace`` shape of the kernel's markers. Every
+            library factory declares one; ``None`` (undeclared) is only for
+            ad-hoc kernels, and ``cycles_per_call`` refuses it.
         uses_lut: Whether the kernel gathers through an ``aie::lut<4>`` table
             pair, so a build should verify the two tables land in different
             banks. Set it on the contract, not per source file: the LUT often
             comes in through a header (``lut_based_ops.h``, ``lut_inv.h``).
+        alignments: ``(index, bytes)`` pairs for arguments the kernel loads
+            as whole vectors from their start, so they must begin at a
+            multiple of ``bytes``. A call handed a ``memref.view`` at a
+            constant offset that breaks one raises.
 
     Overflow, rounding and NaN handling are not declared twice: the
     reference is the arithmetic model and the tolerance the slack against it.
@@ -142,8 +190,10 @@ class KernelContract:
     layouts: tuple[TensorLayout | None, ...] = ()
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
-    trace_cycles: bool = False
+    out_offset: tuple[int, int] | None = None
+    trace: Trace | None = None
     uses_lut: bool = False
+    alignments: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in _ROLES]
@@ -174,12 +224,24 @@ class KernelContract:
             for i in initialized
         ):
             raise ValueError("initializers must name distinct InOut arguments")
+        if self.out_offset is not None:
+            index, step = self.out_offset
+            if index not in bound or self.roles.count(Out) != 1 or InOut in self.roles:
+                raise ValueError(
+                    "out_offset needs a bound Param offset and exactly one Out"
+                )
+            if step < 1:
+                raise ValueError(f"out_offset step must be >= 1, got {step}")
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
         if self.stack_bytes is not None and self.stack_bytes < 1:
             raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
         if self.unsupported is not None and not self.unsupported:
             raise ValueError("unsupported must be a reason, or None")
+        if any(
+            not 0 <= i < len(self.roles) or align < 1 for i, align in self.alignments
+        ):
+            raise ValueError("alignments must name arguments with positive byte counts")
 
     @property
     def out_indices(self) -> tuple[int, ...]:
@@ -191,7 +253,7 @@ class KernelContract:
         """Position of the one output, written (``Out``) or accumulated into (``InOut``).
 
         Raises for a kernel with several outputs: code that must handle any
-        kernel reads :attr:`out_indices`.
+        kernel reads ``out_indices``.
         """
         if len(self.out_indices) > 1:
             raise ValueError("multiple outputs: use out_indices")
@@ -273,60 +335,96 @@ class KernelContract:
                 raise ValueError(f"argument {i}: expected scalar parameter")
 
 
-def _detect_arch() -> str:
-    """Return ``'aie2p'`` or ``'aie2'`` based on the active device.
+@dataclass(frozen=True)
+class ArchTraits:
+    """What the kernel sources assume of one architecture.
 
-    Falls back to ``'aie2'`` if no device is currently set.
+    One row of ``aie_kernels/aie_arch.h``, which the C++ side reads;
+    ``test_arch_traits.py`` compiles the two against each other.
+
+    Attributes:
+        name: The architecture, as ``resolve_target_arch`` names it.
+        aie_arch: The compiler's ``__AIE_ARCH__``.
+        device: The ``from_name`` device a factory models when none is bound.
+        bf16_lanes: bf16 lanes in one vector multiply, the width the sources
+            walk a buffer at. A tile has to be whole vectors of it.
+        native_tanh: Has a tanh instruction; otherwise tanh reads a LUT.
+        native_exp2: Has an exp2 instruction; otherwise exp2 is a polynomial.
+        bfp16: Has the bfp16ebs8 block type.
+        ctz_popcount: Peano lowers ``__builtin_ctz`` and ``__builtin_popcount``.
+        lut_16b_run: uint16 entries per bank run in an ``aie::lut`` table.
     """
-    try:
-        from aie.utils import get_current_device
-        from aie.utils.compile.utils import resolve_target_arch
 
-        device = get_current_device(probe_runtime=False)
-        return resolve_target_arch(device)
-    except (ImportError, RuntimeError, AttributeError, ValueError):
-        # ImportError: iron not built; RuntimeError: no explicit device set;
-        # AttributeError/ValueError: unrecognised device.  Anything else (e.g.
-        # OSError from a misconfigured install) bubbles up so the user sees it.
-        _log.warning(
-            "_detect_arch: no explicit device or unrecognised device; "
-            "falling back to 'aie2'",
-            exc_info=True,
-        )
-        return "aie2"
+    name: str
+    aie_arch: int
+    device: str
+    bf16_lanes: int
+    native_tanh: bool
+    native_exp2: bool
+    bfp16: bool
+    lut_16b_run: int
+    ctz_popcount: bool
 
 
-def _kernel_source(arch: str, subdir: str, filename: str) -> Path:
+ARCH_TRAITS = {
+    t.name: t
+    for t in (
+        ArchTraits("aie2", 20, "npu1", 16, False, False, False, 8, False),
+        ArchTraits("aie2p", 21, "npu2", 32, True, True, True, 16, True),
+    )
+}
+
+
+def _detect_arch() -> str:
+    """Return the bound device's architecture, or ``'aie2'`` when none is bound.
+
+    Raises:
+        RuntimeError: When the bound device's architecture has no kernels.
+    """
+    from aie.utils import get_current_device
+    from aie.utils.compile.utils import resolve_target_arch
+
+    return resolve_target_arch(get_current_device(probe_runtime=False))
+
+
+def _arch_traits() -> ArchTraits:
+    """Return the traits of the architecture ``_detect_arch`` names."""
+    return ARCH_TRAITS[_detect_arch()]
+
+
+def _tuned_arch() -> str:
+    """Return the arch whose ``AIE_TUNED_*`` code is built, or ``"portable"``.
+
+    A factory choice that follows the code of one branch -- a stack size, a
+    tolerance, a reference model -- keys on this rather than on
+    ``_detect_arch``, so that it pairs with the branch built when
+    ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch.
+    """
+    if os.environ.get("AIE_KERNELS_PORTABLE") == "1":
+        return "portable"
+    return _detect_arch()
+
+
+def _portable_flags() -> tuple[str, ...]:
+    """Return the compile flags that select the branch ``_tuned_arch`` names."""
+    return ("-DAIE_KERNELS_PORTABLE",) if _tuned_arch() == "portable" else ()
+
+
+def _kernel_source(relpath: str) -> Path:
     """Return the absolute path to a kernel source file.
 
     Args:
-        arch: Target architecture string (``'aie2'`` or ``'aie2p'``).
-        subdir: Subdirectory under ``aie_kernels/`` (e.g. ``'aie2'``).
-        filename: Source file name (e.g. ``'scale.cc'``).
-
-    Returns:
-        Path to the source file.
+        relpath: Path under ``aie_kernels/``, e.g. ``'eltwise/scale.cc'``.
 
     Raises:
-        FileNotFoundError: When the source file cannot be found.
+        FileNotFoundError: When the source file does not exist.
     """
     from aie.utils import config
 
-    base = Path(config.aie_kernels_dir())
-    candidate = base / subdir / filename
-    if candidate.exists():
-        return candidate
-    if subdir != "aie2":
-        aie2_fallback = base / "aie2" / filename
-        if aie2_fallback.exists():
-            return aie2_fallback
-    generic = base / "generic" / filename
-    if generic.exists():
-        return generic
-    raise FileNotFoundError(
-        f"Kernel source '{filename}' not found under {base}/{subdir}/, "
-        f"{base}/aie2/, or {base}/generic/"
-    )
+    path = Path(config.aie_kernels_dir()) / relpath
+    if not path.exists():
+        raise FileNotFoundError(f"Kernel source {path} not found")
+    return path
 
 
 def _include_dirs() -> list[str]:
@@ -447,19 +545,8 @@ def _device():
 
     device = get_current_device(probe_runtime=False)
     if device is None:
-        device = from_name("npu2" if _detect_arch() == "aie2p" else "npu1")
+        device = from_name(_arch_traits().device)
     return device
-
-
-def _bf16_lanes() -> int:
-    """Elements per bf16 vector in this architecture's kernel sources.
-
-    ``aie::vector<bfloat16, 16>`` on aie2, ``<bfloat16, 32>`` on aie2p
-    (``silu.cc``, ``layer_norm.cc``, ...). A tile has to be whole vectors of
-    it. This is what the sources chose, not a target-model query: the
-    register is wider than the bf16 datapath on aie2.
-    """
-    return 32 if _detect_arch() == "aie2p" else 16
 
 
 def _min_dma_aligned_elems(dtype) -> int:
@@ -475,34 +562,15 @@ def _min_dma_aligned_elems(dtype) -> int:
     return max(1, (align + itemsize - 1) // itemsize)
 
 
-def _default_source_path(filename: str, subdir: str | None = None) -> Path:
-    """Return ``_kernel_source(arch, subdir or arch, filename)`` using the active arch."""
-    arch = _detect_arch()
-    return _kernel_source(arch, subdir or arch, filename)
-
-
 def _arg_type_key(t):
-    """Hashable key for one entry of ``arg_types`` (used by ``_EXTERN_CACHE``)."""
-    if hasattr(t, "__args__"):
-        # np.ndarray[(shape,), np.dtype[T]]
-        shape = t.__args__[0]
-        inner = t.__args__[1]
-        dtype = inner.__args__[0] if hasattr(inner, "__args__") else inner
+    """Hashable key for one entry of ``arg_types`` (part of a kernel's identity)."""
+    if get_origin(t) is np.ndarray:
+        shape, inner = get_args(t)
+        dtype = get_args(inner)[0] if get_origin(inner) is np.dtype else inner
         return ("ndarray", tuple(shape), str(dtype))
     return repr(t)
 
 
-# Cache keyed on the full input parameter tuple.  Identical helper calls
-# (kernels.mm(...) twice with same kwargs) should return the SAME
-# ExternalFunction instance — otherwise both end up in
-# ExternalFunction._instances, both get JIT-compiled, and (because they
-# share the default ``<name>.o`` output filename) the second compilation
-# overwrites the first's object file with whichever just-rebuilt copy
-# wins the race.  The whole_array port hit exactly this footgun: a
-# default-flag kernels.mm() call (just to fetch .mac_dims) and a
-# c_col_maj=True kernels.mm() call for the actual binding produced two
-# differently-flagged ExternalFunctions whose .o files collided on disk.
-_EXTERN_CACHE: dict = {}
 _KernelT = TypeVar("_KernelT", bound=ExternalFunction)
 
 
@@ -518,6 +586,7 @@ def _make_extern(
     object_file_name: str | None = None,
     contract: KernelContract | None = None,
     cls: type[_KernelT],
+    include_dirs: list[str] | None = None,
 ) -> _KernelT: ...
 
 
@@ -532,6 +601,7 @@ def _make_extern(
     inline: bool = False,
     object_file_name: str | None = None,
     contract: KernelContract | None = None,
+    include_dirs: list[str] | None = None,
 ) -> ExternalFunction: ...
 
 
@@ -546,25 +616,24 @@ def _make_extern(
     object_file_name: str | None = None,
     contract: KernelContract | None = None,
     cls: type[ExternalFunction] = ExternalFunction,
+    include_dirs: list[str] | None = None,
 ) -> ExternalFunction:
-    """Construct (or reuse) an ExternalFunction with the standard include_dirs.
+    """Construct an ExternalFunction with the standard include_dirs.
 
-    ``contract`` (a :class:`KernelContract`) is what harnesses and tests read
+    ``contract`` (a ``KernelContract``) is what harnesses and tests read
     to build, run and judge the kernel generically; every factory passes
     one. ``cls`` is the class to construct, for factories whose kernels have
     more to say than a plain ``ExternalFunction`` (``linalg.MatrixKernel``).
+    ``include_dirs`` replaces the standard include path.
 
     ``inline`` uses Peano's always-inline LLVM IR and merge linking. Inline
     factories must use distinct C++ symbol names for distinct variants because
     LLVM IR cannot use the object-file symbol-prefix mechanism.
 
-    Memoized on (func_name, source_path, arg_types, compile_flags,
-    use_chess) so repeated calls with identical parameters return the
-    SAME ExternalFunction instance (see ``_EXTERN_CACHE`` for rationale).
-
-    Different parameterizations get distinct instances AND distinct
+    Equal parameters give equal kernels, which share one object and one
+    declaration. Different parameterizations get distinct
     ``object_file_name``s — the latter is auto-suffixed with a short
-    digest of the cache key so per-parameterization .o files don't
+    digest of the identity so per-parameterization .o files don't
     overwrite each other on disk.  The default ``<name>.o`` is preserved
     when ``compile_flags`` is empty AND ``use_chess`` is False (no
     parameterization to disambiguate).
@@ -577,26 +646,31 @@ def _make_extern(
     time).
 
     ``object_file_name`` names the output explicitly instead of deriving it
-    from the cache key. Two factories that bind different symbols of the
+    from the identity. Two factories that bind different symbols of the
     same translation unit with identical compile flags can name the same
     object, and ``ExternalFunction``
     then gives both one ``KernelObject``: one compile, one link artifact,
     where separate digest-named objects would each carry every symbol of
     the ``.cc`` and collide at link.
     """
-    flags_tuple = tuple(compile_flags or [])
+    flags_tuple = tuple(compile_flags or []) + _portable_flags()
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
-    cache_key = (func_name, str(source_path), arg_keys, flags_tuple, use_chess)
+    # One source serves every arch, so the arch is part of the kernel's identity.
+    identity = (
+        func_name,
+        str(source_path),
+        arg_keys,
+        flags_tuple,
+        use_chess,
+        _detect_arch(),
+    )
     if inline:
         if use_chess:
             raise ValueError("inline kernels require Peano, not Chess")
         # Keep existing object artifact identities unchanged.
-        cache_key += ("inline",)
-    cached = _EXTERN_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
+        identity += ("inline",)
 
-    # The object_file_name suffix must distinguish every distinct cache_key,
+    # The object_file_name suffix must distinguish every distinct identity,
     # not just compile_flags — otherwise two helper calls with the same
     # name + flags but different source / arg_types would generate
     # ExternalFunctions with identical .o filenames and trip the collision
@@ -609,9 +683,9 @@ def _make_extern(
         digest = None
     elif flags_tuple or arg_keys or str(source_path):
         # 8 hex chars of sha256 — short enough not to bloat MLIR strings,
-        # wide enough that the chance of two distinct cache_keys colliding
+        # wide enough that the chance of two distinct identities colliding
         # is vanishingly small (~2^-32).
-        digest = hashlib.sha256(repr(cache_key).encode()).hexdigest()[:8]
+        digest = hashlib.sha256(repr(identity).encode()).hexdigest()[:8]
         object_file_name = f"{func_name}_{digest}{'.ll' if inline else '.o'}"
     else:
         digest = None
@@ -632,7 +706,7 @@ def _make_extern(
     # registered?", the full-model ``make objs`` cache and a per-block design
     # would disagree (one emits the unprefixed name, the other the prefixed
     # one), breaking .o reuse — undefined symbol at link, or a missing-file
-    # copy.  ``digest`` is a pure function of ``cache_key``, so prefixing every
+    # copy.  ``digest`` is a pure function of ``identity``, so prefixing every
     # parameterized variant unconditionally keeps the symbol and the
     # suffix-form ``f"{func_name}_{digest}.o"`` filename identical across builds.
     # When ``digest`` is None (unparameterized default-name kernel, or an
@@ -642,40 +716,19 @@ def _make_extern(
     # ``llvm-objcopy --redefine-sym`` (see compile_external_kernel), which only
     # understands ELF — it corrupts xchesscc-produced objects ("Invalid section
     # index ... when converting EOL-table").  So a chess kernel must NOT carry a
-    # symbol_prefix; it keeps the bare symbol baked into its .cc.  That is safe
-    # only while at most one variant of a given chess kernel name exists in a
-    # design (two would export the same bare symbol and collide at link).  Guard
-    # that invariant loudly here rather than letting it surface as an opaque
-    # duplicate-symbol link error.  The .o *filename* stays the deterministic
-    # suffix form regardless — only the symbol rename is skipped.
-    if use_chess:
-        # ``cache_key`` layout: (func_name, source_path, arg_keys, flags, chess).
-        # A prior chess entry with the same func_name but any other field
-        # different is a genuine second variant that we cannot disambiguate.
-        for other_key in _EXTERN_CACHE:
-            if (
-                other_key[0] == func_name
-                and other_key[4] is True
-                and other_key != cache_key
-            ):
-                raise ValueError(
-                    f"Chess kernel '{func_name}' already has a different "
-                    f"parameterization registered.  Chess (.o) objects cannot "
-                    f"be symbol-renamed (llvm-objcopy corrupts them), so two "
-                    f"variants of the same chess kernel name would export the "
-                    f"same symbol and collide at link.  Give one a distinct "
-                    f"`name=` (or build it with Peano)."
-                )
-        symbol_prefix = None
-    else:
-        symbol_prefix = None if inline else digest
+    # symbol_prefix; it keeps the bare symbol baked into its .cc, so two
+    # variants of one chess kernel cannot share a design: resolving the second
+    # finds the first's declaration with a different object and raises.  The .o
+    # *filename* stays the deterministic suffix form regardless -- only the
+    # symbol rename is skipped.
+    symbol_prefix = None if use_chess or inline else digest
 
     extern = cls(
         func_name,
         object_file_name=object_file_name,
         source_file=str(source_path),
         arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        include_dirs=include_dirs or _include_dirs(),
         compile_flags=list(flags_tuple),
         symbol_prefix=symbol_prefix,
         use_chess=use_chess,
@@ -684,5 +737,7 @@ def _make_extern(
     )
     if contract is not None:
         contract.validate_types(extern.arg_types())
-    _EXTERN_CACHE[cache_key] = extern
+    # The factory picked its source, flags and contract for this arch; a
+    # design that compiles it for another one fails there, not in Peano.
+    extern.built_for_arch = _detect_arch()
     return extern

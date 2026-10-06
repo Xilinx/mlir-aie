@@ -23,7 +23,7 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -46,6 +46,10 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
 
+# Per-core tile and core count; the CLI validator and the design share them.
+ELEMS_PER_CORE = 256
+N_CORES = 8
+
 
 @iron.jit
 def vector_reduce_max(
@@ -60,8 +64,8 @@ def vector_reduce_max(
     if out_size != 4:
         raise ValueError("Output buffer must be size 4 (4 bytes = 1 integer).")
 
-    n_cores = 8
-    elems_per_core = 256
+    n_cores = N_CORES
+    elems_per_core = ELEMS_PER_CORE
     n_channels = n_cores
     if n_cores > 8:
         raise ValueError("This design does not support more than 8 cores.")
@@ -69,7 +73,6 @@ def vector_reduce_max(
     dtype = str_to_dtype(dtype_str)
     in_tensor_size = in1_size // dtype(0).nbytes
     out_tensor_size = out_size // dtype(0).nbytes
-    N_per_channel = in_tensor_size // n_channels
     num_iter = in_tensor_size // (elems_per_core * n_channels)
 
     enable_trace = 1 if trace_size > 0 else 0
@@ -108,9 +111,8 @@ def vector_reduce_max(
             )
         )
 
-    # One TAP per channel — each reads a contiguous ``N_per_channel``
-    # slice of the input tensor.
-    taps = TensorTiler2D.simple_tiler((1, in_tensor_size), (1, N_per_channel))
+    # One TAP per channel — each reads a contiguous slice of the input tensor.
+    taps = TensorAccessPattern.full((in_tensor_size,)).partition(n_channels)
 
     def core_body(*args):
         compute_max = args[-1]
@@ -122,7 +124,10 @@ def vector_reduce_max(
         of_out = args[1]
         in_fifos = args[2:-4]
 
-        for _ in range_(num_iter):
+        elem_in = of_in.acquire(1)
+        reduce_max_vector(elem_in, nextC_buffer, elems_per_core)
+        of_in.release(1)
+        for _ in range_(num_iter - 1):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
             compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
@@ -232,8 +237,17 @@ def _run_and_verify(opts):
 
 
 def _validate(opts):
-    if opts.in1_size % 64 != 0 or opts.in1_size < 512:
-        sys.exit(f"in1_size ({opts.in1_size}) must be a multiple of 64 and >= 512")
+    if opts.in1_size % 64 != 0:
+        sys.exit(f"in1_size ({opts.in1_size}) must be a multiple of 64")
+    # Each core reads one tile before its loop, so an input shorter than the
+    # whole row leaves those reads waiting on fills that never come.
+    row = ELEMS_PER_CORE * N_CORES
+    elems = opts.in1_size // str_to_dtype(opts.dtype)(0).nbytes
+    if elems < row:
+        sys.exit(
+            f"in1_size ({opts.in1_size} bytes = {elems} {opts.dtype}) must hold at "
+            f"least one {row}-element row"
+        )
 
 
 def main():

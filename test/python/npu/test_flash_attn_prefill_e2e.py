@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+# RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
 # RUN: %run_on_npu2_hrx% %pytest %s
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
@@ -19,6 +20,8 @@ it would only assert the kernel against itself. What that costs is a tolerance,
 because the kernel rounds to bf16 at each rescale and inside its polynomial
 exp2, and the reference models neither. Measured over the original four cases the
 worst deviation is 2.6 bf16 steps of the output's range; the bound allows 4.
+AIE2 evaluates exp2 with exp2_bf16.h's cubic instead of aie::exp2, and there
+the worst is 0.25 steps and the bound 1.
 For scale, the bugs this test exists to catch -- a mask closing a key early, a
 query grid mapped to the wrong row, keys permuted inside a chunk, V off by a
 row -- move the output by 7 to 112 of those steps.
@@ -47,6 +50,7 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
+from aie.utils.compile.utils import resolve_target_arch
 from ml_dtypes import bfloat16
 
 BF = np.dtype[bfloat16]
@@ -59,6 +63,11 @@ I32 = np.dtype[np.int32]
 # catch -- a mask closing one key early -- moves the output by 6.62, so the
 # bound sits between them with room on both sides.
 _ATOL_ULP = 4
+
+# The same on aie2, where the worst of 31 seeds on npu1 runs at 0.25 steps. It
+# catches an exp2 argument 0.2 high in the rescale, 1.66 steps, and scores
+# sharpened by half, 1.19; an argument 0.1 high moves the output 0.83.
+_ATOL_ULP_AIE2 = 1
 
 # PrefillGeom<DH>: head_dim -> (query chunk, key chunk).
 _GEOM = {512: (8, 8), 256: (16, 16)}
@@ -362,7 +371,9 @@ def test_prefill_round_matches_masked_attention(
     # and its relative error is unbounded -- 180x in the worst element -- while
     # the absolute error stays flat.
     ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
-    np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
+    aie2 = resolve_target_arch(iron.get_current_device()) == "aie2"
+    atol_ulp = _ATOL_ULP_AIE2 if aie2 else _ATOL_ULP
+    np.testing.assert_allclose(got, ref, rtol=0, atol=atol_ulp * ulp)
 
     # The reference above carries the kernel's bf16 scaled-attention multiplier,
     # so on its own it would pass a systematically sharpened softmax.

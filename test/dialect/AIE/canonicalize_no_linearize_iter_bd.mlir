@@ -88,3 +88,31 @@ module {
     }
   }
 }
+
+
+
+// -----
+
+// No len, runtime dims that fold to constants: the transfer stays the
+// d0*d1*d2 extent rather than becoming the whole buffer.
+// CANON-LABEL: @iter_bd_folded_dims_keep_extent
+// CANON:         aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 16 sizes = [3, 1, 2, 8] strides = [0, 0, 8, 1])
+// LOWER-LABEL: @iter_bd_folded_dims_keep_extent
+// LOWER:         aiex.npu.writebd
+// LOWER-SAME:      buffer_length = 16
+module {
+  aie.device(npu1) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_folded (%tile_0_0, MM2S, 0)
+    aie.runtime_sequence @iter_bd_folded_dims_keep_extent(%arg0 : memref<4096xi32>) {
+      %c2_i32 = arith.constant 2 : i32
+      %c8_i32 = arith.constant 8 : i32
+      %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 sizes = [3, 1, %c2_i32 : i32, 8] strides = [0, 0, %c8_i32 : i32, 1]) {bd_id = 0 : i32}
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t)
+      aiex.dma_await_task(%t)
+    }
+  }
+}

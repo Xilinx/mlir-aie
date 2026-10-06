@@ -41,7 +41,7 @@
 // CHECK-DAG:     %[[COL:.*]] = arith.constant 2 : i32
 // CHECK-DAG:     %[[CHAN:.*]] = arith.constant 3 : i32
 // CHECK:     aiex.npu.sync(%[[COL]], %{{.*}}, %{{.*}}, %[[CHAN]], %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
-// CHECK:     aiex.dma_bd_pool_push({{.*}}) bd_id %[[INNER_ID]] : i32
+// CHECK:     aiex.dma_bd_pool_push({{.*}}) partition {{.*}} bd_id %[[INNER_ID]] : i32
 // CHECK:   }
 // CHECK: }
 // sync operands: column=2, row=0, direction=0, channel=3, column_num=1, row_num=1

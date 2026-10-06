@@ -16,8 +16,9 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     TensorLayout,
-    _default_source_path,
-    _detect_arch,
+    Trace,
+    _arch_traits,
+    _kernel_source,
     _make_extern,
     dtypes,
 )
@@ -63,7 +64,7 @@ def zero(
     size = math.prod(shape)
     block = dtype is v8bfp16ebs8
     if block:
-        if _detect_arch() != "aie2p":
+        if not _arch_traits().bfp16:
             raise NotImplementedError("zero: bfp16ebs8 requires an NPU2 device")
         from aie.utils import bfp
 
@@ -86,11 +87,12 @@ def zero(
         flags.append("-DZERO_SCALAR")
     return _make_extern(
         "zero",
-        _default_source_path("zero.cc", subdir="generic"),
+        _kernel_source("zero/zero.cc"),
         [np.ndarray[shape, np.dtype[dtype]]],
         compile_flags=flags,
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(Out,),
             layouts=(layout,),
             reference=lambda: np.zeros((1, *layout.shape), dtype=reference_dtype),

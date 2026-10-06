@@ -87,7 +87,9 @@ pre-commit run --all-files
 The hooks cover:
 
 - **C++ and TableGen (`*.td`)** — [`clang-format`](https://clang.llvm.org/docs/ClangFormat.html)
-  (LLVM style; config in `.clang-format`).
+  (LLVM style; config in `.clang-format`). The hook pins clang-format 23.1.1,
+  which is what CI runs; a system `clang-format` of another version can
+  format the same file differently.
 - **Python and notebooks** — [`black`](https://black.readthedocs.io/) for
   formatting, plus `nbstripout` to scrub notebook output before it is
   committed.
@@ -96,6 +98,16 @@ The hooks cover:
 - **C++ static analysis** — [`clang-tidy`](https://clang.llvm.org/extra/clang-tidy/),
   scoped to a growing list of files (see
   [Static analysis for C++](#static-analysis-for-c-clang-tidy) below).
+- **Comment slop** — `utils/check_comment_slop.py`, on every commit, reads
+  the diff and flags a concept explained again at three or more sites,
+  comment blocks over 12 lines, and high comment density. CI runs it over
+  everything since the merge base with the PR's target branch, so a
+  history of individually clean commits can still fail there.
+- **Submodule pointers** — `utils/check_submodule_regression.py`, on every
+  commit and push, rejects a submodule pointer change unless the new commit
+  descends from the old one, so a stale checkout swept in by `git commit -a`
+  can't roll a submodule back. Bumps pass; for an intentional downgrade, use
+  `SKIP=check-submodule-regression`.
 - **Baseline hygiene** — trailing whitespace, end-of-file, merge-conflict
   markers, and [REUSE](https://reuse.software/) license-header compliance.
 
@@ -109,8 +121,10 @@ Python style and common bugs are checked with
 [ruff](https://docs.astral.sh/ruff/), scoped to `python/{iron,utils,helpers,
 compiler}` and a growing set of `programming_examples/` directories —
 `ruff.toml`'s `include` list at the repo root is the source of truth for
-exactly which paths are covered. The pre-push hook runs `ruff check` and
-blocks the push on any violation; run it by hand with:
+exactly which paths are covered. The pre-push hook runs `ruff check` on the
+files you push and blocks the push on any violation. CI runs it on every
+covered file, so a violation in a file you didn't touch (after a merge, for
+instance) fails CI but not the hook; run it by hand with:
 
 ```shell
 ruff check
@@ -211,6 +225,12 @@ disable rules.
   imperative first line, terminal punctuation) — see
   [Linting Python](#linting-python). Writing a docstring in the first place is
   still expected for anything public-facing, just not yet machine-enforced.
+  Docstrings render as Markdown, not reStructuredText: write ``` ``Name`` ```
+  (or an mkdocstrings cross-reference) instead of `:class:`/`:meth:`/`:func:`
+  roles, fenced ```` ```python ```` blocks at the docstring's text indent
+  instead of `Example::` literal blocks, and a Google `Note:` section instead
+  of `.. note::`. `mkdocs build --strict` does not catch these, so check
+  them by eye.
 - **C++** — use Doxygen-style triple-slash comments (`///`, with `\brief`,
   `\param`, `\returns` as needed) on public declarations in headers. These feed
   the [C++ API reference](docs/api/cpp_doxygen.md).

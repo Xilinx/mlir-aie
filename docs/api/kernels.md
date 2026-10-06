@@ -47,6 +47,13 @@ kernel sources these wrap, see [C++ AIE kernels](aie_kernels.md).
     options:
       show_root_heading: false
 
+`fused_mm` computes one bf16 matrix-multiply tile on a single core, with an
+f32 reduction and an optional activation and clamp fused into the drain.
+
+::: iron.kernels.fused
+    options:
+      show_root_heading: false
+
 ## Convolution
 
 ::: iron.kernels.conv
@@ -102,6 +109,7 @@ reimplements the math.
         - KernelContract
         - TensorLayout
         - Param
+        - Trace
 
 `aie.iron.algorithms.kernel_design` turns any contract-bearing factory into a
 design of one Worker, built on the same single-core pipeline as
@@ -129,15 +137,18 @@ The former `aie.utils.kernel_harness` module has been removed.
         - output_size
         - upload
         - cycles_per_call
+        - CallCycles
+        - traced_intervals
+        - split_intervals
 
 
-`test/python/npu/test_kernels_bench.py` times the library: correctness
+`test/python/npu/test_kernels_perf.py` times the library: correctness
 first, then cycles, wall time and build size, gated by a device preflight
 and a measurement-sanity test. It is an ordinary pytest module, so `-k`
 selects cases and the session's exit status decides whether any numbers are
-written. Build time and artifact sizes come from
-[`CallableDesign.measure_compile`](iron.md#compile-time--jit), so any design can
-report them; the timing helpers live here:
+written. `--baseline-sources DIR` measures every selected case a second
+time with its kernels from `DIR` and compares the two runs' raw output words
+and cycles in `--perf-meta`. The timing helpers live here:
 
 ::: utils.benchmark
     options:
@@ -149,11 +160,14 @@ report them; the timing helpers live here:
         - run_iters
         - preflight
         - provenance
+        - kernel_tree_digest
 
 ## Static checks
 
 These compiler-remark checks are available on demand through
 `python -m aie.utils.compile.remarks`; there is no static-check CI workflow.
+The trace-marker check (`test/python/test_kernel_trace_markers.py`) runs in
+lit on every PR, through `trace_markers` below.
 
 ::: utils.compile.remarks
     options:
@@ -168,6 +182,12 @@ These compiler-remark checks are available on demand through
         - compile_command
         - analyze
         - kernel_builds
+        - Linked
+        - linked
+        - parse_readobj
+        - trace_markers
+        - trace_shape
+        - entry_symbol
 
 ## Host-side helpers
 
@@ -194,3 +214,20 @@ this module.
         - Verdict
         - compare
         - bf16_ulp_distance
+
+## Sampling
+
+`sample_select` and `sample_combine` draw the next token from a row of bf16
+logits on the device: each `sample_select` core reduces one slice to its top
+k, and one `sample_combine` core draws from those summaries. `sample_ref` is
+the bit-exact host reference.
+
+::: iron.kernels.sample
+    options:
+      show_root_heading: false
+
+## FastFlowLM Gemma 4
+
+::: iron.kernels.flm_gemma4
+    options:
+      show_root_heading: false

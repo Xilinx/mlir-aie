@@ -22,54 +22,28 @@ alignas(aie::vector_decl_align) extern unsigned char m_inv_lut[128];
 // Clamp to the LUT's supported range before Q8 conversion can wrap.
 static constexpr float EXP_BF16_CLAMP = 88.0f;
 
+// exp(x) = exp(int(x)) * exp(frac(x)), from a 256-entry table each: the
+// aie::parallel_lookup of the Q8 input (steps 8 and 0) written out. Its byte
+// offsets are floor(4x) and floor(1024x) within the 1 KiB tables; vfloor
+// floors whatever crRnd is, where parallel_lookup's accumulator shift needed
+// crRnd set to floor, and saving, setting and restoring it on every call kept
+// the calling loops from pipelining. The integer offset's two low bits select
+// the same entry, so both are masked to 0x3FC.
 __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
-  bfloat16 __aie_dm_resource_a *ilut_ab =
-      (bfloat16 __aie_dm_resource_a *)exp_ilut_ab;
-  bfloat16 __aie_dm_resource_b *ilut_cd =
-      (bfloat16 __aie_dm_resource_b *)exp_ilut_cd;
-  bfloat16 __aie_dm_resource_a *flut_ab =
-      (bfloat16 __aie_dm_resource_a *)exp_flut_ab;
-  bfloat16 __aie_dm_resource_b *flut_cd =
-      (bfloat16 __aie_dm_resource_b *)exp_flut_cd;
+  aie::vector<bfloat16, 16> xc =
+      aie::max(aie::min(aie::vector<bfloat16, 16>(x),
+                        aie::broadcast<bfloat16, 16>((bfloat16)EXP_BF16_CLAMP)),
+               aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP));
+  v16int32 index_i = ::band(bfloat16_to_int(xc, 2), broadcast_s32(0x3FC));
+  v16int32 index_f = ::band(bfloat16_to_int(xc, 10), broadcast_s32(0x3FC));
 
-  using lut_type = aie::lut<4, bfloat16, bfloat16>;
-  const int LUT_elems = 256;
-  const int step_i = 8;
-  const int step_f = 0;
-
-  lut_type lut_i(LUT_elems, ilut_ab, ilut_cd);
-  lut_type lut_f(LUT_elems, flut_ab, flut_cd);
-  aie::parallel_lookup<uint16, lut_type, aie::lut_oor_policy::truncate>
-      lookup_i(lut_i, step_i);
-  aie::parallel_lookup<uint16, lut_type, aie::lut_oor_policy::truncate>
-      lookup_f(lut_f, step_f);
-
-  aie::vector<bfloat16, 16> I_val_vec, F_val_vec;
-  aie::accum<accfloat, 16> exp_val;
-  aie::vector<bfloat16, 16> input_bf16 = x;
-
-  // -max(-x, -c) also saturates +inf, unlike min(x, c) on AIE2P.
-  input_bf16 = aie::neg(
-      aie::max(aie::neg(input_bf16),
-               aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP)));
-  input_bf16 = aie::max(
-      input_bf16, aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP));
-
-  // position of output decimal point = 8, making input become 8 bits, and for
-  // LUT_elems = 256 lookup. aie::vector<int16, 16>
-  // input=aie::to_fixed<int16>(input_bf16,8);
-  aie::vector<int16, 32> input0 = v32int16(bfloat16_to_int(input_bf16, 8));
-  aie::vector<int16, 16> input = aie::filter_even(input0);
-
-  // Lookup indices require floor rounding (aie_api CRVO-4425).
-  aie::rounding_mode saved_rnd = aie::tile::current().get_rounding();
-  aie::tile::current().set_rounding(aie::rounding_mode::floor);
-  I_val_vec = lookup_i.fetch(input.cast_to<uint16>());
-  F_val_vec = lookup_f.fetch(input.cast_to<uint16>());
-  aie::tile::current().set_rounding(saved_rnd);
-
-  exp_val = aie::mul(I_val_vec, F_val_vec);
-  return v16accfloat(exp_val);
+  v64int8 i0, i1, f0, f1;
+  load_lut_2x_int8(exp_ilut_ab, exp_ilut_cd, index_i, i0, i1);
+  load_lut_2x_int8(exp_flut_ab, exp_flut_cd, index_f, f0, f1);
+  aie::vector<bfloat16, 32> i_val = (v32bfloat16)::shuffle(i0, i1, T16_16x4_lo);
+  v32bfloat16 f_val = (v32bfloat16)::shuffle(f0, f1, T16_16x4_lo);
+  i_val.insert<16>(1, aie::zeros<bfloat16, 16>());
+  return mul_elem_16_2(i_val, f_val);
 }
 
 __attribute__((always_inline)) bfloat16 getInvBf16(float x) {
@@ -95,27 +69,73 @@ __attribute__((always_inline)) bfloat16 getInvBf16(float x) {
 extern float tanh_lut_ab[];
 extern float tanh_lut_cd[];
 
+// aie::linear_approx<bfloat16, aie::lut<4, float, bfloat16>> with step_bits
+// -2 and bias 16, written out: 32 segments of 0.25 over [-4, 4), each
+// offset + slope * x. The object form is rebuilt on every call, and its
+// scratchpad member makes it escape, so each call stored the whole object to
+// the stack and read the input back through it.
 inline __attribute__((always_inline)) v16bfloat16
 getTanhBf16(v16bfloat16 vInput) {
-  aie::vector<bfloat16, 16> input = vInput;
+  // Byte offset of the segment: floor(x * 4) entries of 16 bytes, relative to
+  // the middle of the table. x is clamped to the table's range first; the end
+  // segments have slope 0, so the result is unchanged, and +-inf no longer
+  // makes 0 * inf.
+  constexpr int bias_bytes = 16 << 4;
+  const float *lut_ab = tanh_lut_ab + bias_bytes / sizeof(float);
+  const float *lut_cd = tanh_lut_cd + bias_bytes / sizeof(float);
+  aie::vector<bfloat16, 16> xc = aie::max(
+      aie::min(aie::vector<bfloat16, 16>(vInput), bfloat16(4.0f - 1.0f / 64)),
+      bfloat16(-4.0f));
+  v16int32 index = bfloat16_to_int(xc, 6);
 
-  int step_bits = -2;
-  int bias = 16;
-  int data_size = 16;
-  int LUT_elems = 32;
-  int shift_offset = 0; // unused
+  v32bfloat16 coeff0, coeff1;
+  load_lut_2x_float(lut_ab, lut_cd, index, coeff0, coeff1);
+  v16accfloat offset = (v16accfloat)::shuffle(coeff0, coeff1, T32_16x2_hi);
+  v32bfloat16 slope = ::shuffle(coeff0, coeff1, T16_16x4_lo);
+  aie::vector<bfloat16, 32> x = aie::zeros<bfloat16, 32>();
+  x.insert<16>(1, xc);
 
-  using lut_type = aie::lut<4, float, bfloat16>;
-
-  lut_type test_lut(LUT_elems, (bfloat16 *)tanh_lut_ab,
-                    (bfloat16 *)tanh_lut_cd);
-
-  aie::linear_approx<bfloat16, lut_type> lin_aprox(test_lut, step_bits, bias,
-                                                   shift_offset);
-
-  aie::vector<bfloat16, 16> output =
-      lin_aprox.compute(input).to_vector<bfloat16>();
-
-  return (v16bfloat16)output;
+  aie::accum<accfloat, 16> result = mac_elem_16_2(slope, x, offset);
+  return (v16bfloat16)result.to_vector<bfloat16>();
+}
+// Applies f, a function of one 16-lane vector that reads a table, to n
+// elements, a multiple of 16. The table reads are ordered against every other
+// load and store, so a loop that loads one vector, looks it up and stores it
+// runs them one after another. K vectors per trip instead, and all K stores
+// after all K lookups. With Prefetch each trip's input is loaded by the one
+// before it (the last trip reloads its own), which pays where f does more
+// than the lookup (gelu, silu) and costs where it does little else (tanh).
+template <int K = 4, bool Prefetch = true, typename F>
+inline __attribute__((always_inline)) void
+lut_map_bf16(const bfloat16 *restrict in, bfloat16 *restrict out, int n, F f) {
+  using V = aie::vector<bfloat16, 16>;
+  auto it_out = aie::begin_restrict_vector<16>(out);
+  const int trips = n / (16 * K);
+  if (trips > 0) {
+    V next[K];
+    if constexpr (Prefetch)
+      for (int j = 0; j < K; j++)
+        next[j] = aie::load_v<16>(in + 16 * j);
+    for (int i = 0; i < trips; i++) {
+      V x[K], y[K];
+      if constexpr (Prefetch) {
+        for (int j = 0; j < K; j++)
+          x[j] = next[j];
+        const bfloat16 *p = in + (i + 1 < trips ? i + 1 : i) * 16 * K;
+        for (int j = 0; j < K; j++)
+          next[j] = aie::load_v<16>(p + 16 * j);
+      } else {
+        for (int j = 0; j < K; j++)
+          x[j] = aie::load_v<16>(in + i * 16 * K + 16 * j);
+      }
+      for (int j = 0; j < K; j++)
+        y[j] = f(x[j]);
+      for (int j = 0; j < K; j++)
+        *it_out++ = y[j];
+    }
+  }
+  auto it_in = aie::begin_restrict_vector<16>(in + trips * 16 * K);
+  for (int i = 0; i < n % (16 * K); i += 16)
+    *it_out++ = f(*it_in++);
 }
 #endif //__LUT_BASED_OPS_H__

@@ -13,8 +13,15 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import aie.dialects.aiex  # noqa: F401  (registers the aiex.bfp type)
 import numpy as np
 import pytest
+from aie._mlir_libs._aie import (  # pyright: ignore[reportMissingImports]
+    type_size_in_bits,
+)
+from aie.helpers.npdtypes import v16bfp16ebs16
+from aie.helpers.util import np_dtype_to_mlir_type
+from aie.ir import Context  # pyright: ignore[reportMissingImports]
 from aie.utils import bfp
 from ml_dtypes import bfloat16
 
@@ -34,6 +41,19 @@ def test_dtype_metadata_uses_native_scalar_sizes():
         assert bfp.values_per_elem(dtype) == 1
     assert bfp.itemsize(bfp.v8bfp16ebs8) == 9
     assert bfp.values_per_elem(bfp.v8bfp16ebs8) == 8
+    assert bfp.dtype_name(bfp.v8bfp16ebs8) == "bfp16ebs8"
+    assert bfp.itemsize(v16bfp16ebs16) == 17
+    assert bfp.values_per_elem(v16bfp16ebs16) == 16
+    assert bfp.dtype_name(v16bfp16ebs16) == "bfp16ebs16"
+    assert bfp.is_bfp(bfp.v8bfp16ebs8) and not bfp.is_bfp(v16bfp16ebs16)
+
+
+@pytest.mark.parametrize("marker", [bfp.v8bfp16ebs8, v16bfp16ebs16])
+def test_block_layout_matches_the_mlir_type(marker):
+    with Context():
+        mlir_type = np_dtype_to_mlir_type(marker)
+        assert str(mlir_type) == f'!aiex.bfp<"{marker.__name__}">'
+        assert type_size_in_bits(mlir_type) == 8 * marker.block_bytes
 
 
 def test_decode_accepts_strided_and_empty_storage():
@@ -64,11 +84,59 @@ def test_layout_and_small_integers_are_exact():
     assert q.shape == (16, 64) and q.dtype == np.float32
 
 
+def test_conv_even_carry_is_one_sided():
+    # 1.999 * 64 rounds to +128, which does not fit, so the block's exponent
+    # goes up and 0.01 (0.64 LSB) is lost at the coarser step.
+    up = np.array([[1.999, 0.5, -0.25, 0.01, 0, 0, 0, 0]], np.float32)
+    np.testing.assert_array_equal(
+        bfp.quantize(up, rounding="conv_even"), [[2.0, 0.5, -0.25, 0, 0, 0, 0, 0]]
+    )
+    # -1.999 * 64 rounds to -128, which fits: the exponent stays and 0.01
+    # keeps its 1 LSB of 2**-6.
+    down = -up
+    np.testing.assert_array_equal(
+        bfp.quantize(down, rounding="conv_even"),
+        [[-2.0, -0.5, 0.25, -(2.0**-6), 0, 0, 0, 0]],
+    )
+
+
+# amd/IRON's f32_to_bfp16ebs8 (iron/operators/flm/packing.py) on the input
+# below, pasted from one run. The blocks cover ties to even (106.5 and 94.5
+# LSBs), a value 32 binades below its block (0 or -1), +128 saturating to 127
+# and -128 fitting.
+_IRON_CONV_EVEN_IN = np.array(
+    [
+        [1.0, 106.5 / 64, 94.5 / 64, -1.5, 0.3, -0.7, 1e-12, -1e-12],
+        [1.999, 0.5, -0.25, 0.1, -0.1, 0.01, -0.01, 0.0],
+        [-1.999, 0.5, 0.25, -0.1, 0.1, -0.01, 0.01, 0.0],
+        [-106.5 / 64, -93.5 / 64, 3.0, -2.75, 0.123, -0.456, 0.789, -0.001],
+    ],
+    np.float32,
+).reshape(1, 32)
+_IRON_CONV_EVEN_BYTES = [
+    [127, 64, 106, 94, 160, 19, 211, 0, 255],
+    [127, 127, 32, 240, 6, 250, 1, 255, 0],
+    [127, 128, 32, 16, 250, 6, 255, 1, 0],
+    [128, 203, 209, 96, 168, 4, 241, 25, 0],
+]
+
+
+def test_encode_conv_even_matches_iron_packer():
+    enc = bfp.encode(_IRON_CONV_EVEN_IN, rounding="conv_even")
+    np.testing.assert_array_equal(enc, np.reshape(_IRON_CONV_EVEN_BYTES, (1, 36)))
+    # floor is still the default, and truncates toward -inf instead: -6.4
+    # and -53.25 LSBs become -7 and -54.
+    floor = bfp.encode(_IRON_CONV_EVEN_IN).view(np.int8)
+    assert floor[0, 14] == -7 and floor[0, 28] == -54
+
+
 def test_encode_rejects_bad_shapes_and_non_finite():
     with pytest.raises(ValueError):
         bfp.encode(np.ones((2, 12), np.float32))
     with pytest.raises(ValueError):
         bfp.encode(np.array([np.inf] + [0.0] * 7, np.float32))
+    with pytest.raises(ValueError):
+        bfp.encode(np.ones((1, 8), np.float32), rounding="ceil")
     with pytest.raises(ValueError):
         bfp.decode(np.zeros(10, np.uint8))
     with pytest.raises(ValueError):

@@ -12,7 +12,7 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -20,7 +20,6 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
-    StreamDims,
     Worker,
     kernels,
 )
@@ -45,7 +44,6 @@ def matrix_vector(
     use_chess: CompileTime[bool] = False,
 ):
     n_cores = 1
-    M_div_n_cores = M // n_cores
     M_div_m_div_n_cores = M // (m * n_cores)
     K_div_k = K // k
 
@@ -64,9 +62,9 @@ def matrix_vector(
     outC_ty = np.ndarray[(m,), dtype_out]
 
     # The vectorized mv kernel reads A in a "32-bit-word transposed" layout
-    # (see aie_kernels/generic/mv_i16.cc); the kernel's contract declares the DMA
+    # (see aie_kernels/linalg/mv_i16.cc); the kernel's contract declares the DMA
     # transform on A's layout, so the design applies what the kernel wants.
-    a_dims_from_stream: StreamDims | None = matvec_kernel.contract.layouts[0].stream
+    a_from_stream: TensorAccessPattern | None = matvec_kernel.contract.layouts[0].stream
 
     def core_fn(of_a, of_b, of_c, zero, matvec):
         elem_out = of_c.acquire(1)
@@ -87,7 +85,7 @@ def matrix_vector(
     for i in range(n_cores):
         a_fifo = ObjectFifo(inA_ty, name=f"memA{i}")
         memA_fifos.append(a_fifo)
-        coreA_fifos.append(a_fifo.cons().forward(dims_from_stream=a_dims_from_stream))
+        coreA_fifos.append(a_fifo.cons().forward(from_stream=a_from_stream))
         outC_fifos.append(ObjectFifo(outC_ty, name=f"outC{i}"))
         workers.append(
             Worker(
@@ -102,13 +100,9 @@ def matrix_vector(
             )
         )
 
-    A_taps = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (M_div_m_div_n_cores, K_div_k), prune_step=False
-    )
-    C_taps = TensorTiler2D.simple_tiler((1, M), (1, M_div_n_cores), prune_step=False)
-    b_tap = TensorTiler2D.simple_tiler(
-        (1, K), pattern_repeat=M_div_m_div_n_cores, prune_step=False
-    )[0]
+    A_taps = TensorAccessPattern.full((M, K)).tile((m, k)).split(0, M_div_m_div_n_cores)
+    C_taps = TensorAccessPattern.full((M,)).partition(n_cores)
+    b_tap = TensorAccessPattern.full((1, K)).repeat(M_div_m_div_n_cores)
 
     memA_prods = [f.prod() for f in memA_fifos]
     outC_cons = [f.cons() for f in outC_fifos]

@@ -9,16 +9,17 @@ import hashlib
 import logging
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, get_origin
 
 import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
-from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
+from ..dialects import arith, memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..dialects.aie import external_func
-from ..extras.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import call
 from ..helpers.sourceloc import capture_source_site, site_location
+from ..helpers.npdtypes import is_block_float
+from ..helpers.util import try_convert_np_type_to_mlir_type
 from .buffer import Buffer
 from .resolvable import Resolvable
 
@@ -37,9 +38,7 @@ def _as_dtype(dt):
     Older numpy versions coerce custom ``np.generic`` subclasses to void rather
     than rejecting them, so preserve the block formats before conversion.
     """
-    from ..helpers.npdtypes import v8bfp16ebs8, v16bfp16ebs16
-
-    if dt is v8bfp16ebs8 or dt is v16bfp16ebs16:
+    if is_block_float(dt):
         return dt
     try:
         return np.dtype(dt)
@@ -108,6 +107,40 @@ def _maybe_collapse_to_match(arg, expected_ty):
     return memref.collapse_shape(exp_mr, arg, reassociation)
 
 
+def _view_byte_offset(arg) -> tuple[int | None, str | None]:
+    """Return the byte offset of ``arg`` into its buffer, and the buffer's name.
+
+    Follows ``memref.view`` ops down to the buffer they carve. The offset is
+    ``None`` when a shift is only known at run time; a value that is not a
+    view sits at offset 0.
+    """
+    if not isinstance(arg, ir.Value):
+        return 0, None
+    offset = 0
+    owner = arg.owner
+    while isinstance(owner, memref.ViewOp):
+        shift = owner.byte_shift.owner
+        if not isinstance(shift, arith.ConstantOp):
+            return None, None
+        offset += ir.IntegerAttr(shift.value).value
+        owner = owner.source.owner
+    if isinstance(owner, ir.OpView) and "sym_name" in owner.attributes:
+        return offset, ir.StringAttr(owner.attributes["sym_name"]).value
+    return offset, None
+
+
+def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
+    """Return the symbol table a declaration or call at ``ip`` resolves against."""
+    op = ip.block.owner.operation
+    while True:
+        try:
+            return ir.SymbolTable(op)
+        except TypeError:
+            op = op.parent
+            if op is None:
+                raise ValueError("Kernels must be used inside a symbol table.")
+
+
 @dataclass(frozen=True)
 class _KernelSource:
     source_file: str | None
@@ -134,6 +167,10 @@ class KernelObject:
     _source: _KernelSource | None = field(default=None, repr=False)
     _compiled_dirs: set[str] = field(default_factory=set, repr=False)
     _symbol_prefix: str | None = field(default=None, repr=False, kw_only=True)
+    # The archs kernels/ factories built this artifact's recipe for. They live
+    # on the artifact so every binding of it, discovery ones included, sees
+    # them.
+    _built_for_archs: set[str] = field(default_factory=set, repr=False, kw_only=True)
 
     def __post_init__(self):
         if not self.name:
@@ -202,6 +239,14 @@ class Kernel(Resolvable):
     the core's LLVM module before codegen.  The mode is explicit metadata --
     it is never inferred from the file suffix.
     """
+
+    # What the kernel computes (aie.iron.kernels.KernelContract); only an
+    # ExternalFunction takes one at construction. Typed Any rather than
+    # KernelContract because pyright analyzes the sources and the staged
+    # package as two module trees, so naming the class here would make the
+    # factories' own KernelContract a different type. The class-level default
+    # also covers a discovery binding, which is created without __init__.
+    contract: Any = None
 
     def __init__(
         self,
@@ -283,12 +328,24 @@ class Kernel(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
+        """Declare this kernel in the enclosing symbol table, once.
+
+        The declaration lives in the IR, not on the kernel, so one kernel can
+        be resolved into any number of designs and contexts. A kernel equal to
+        one already declared reuses that declaration; one that shares only the
+        symbol name is rejected.
+        """
         if self.object_file._source is not None:
             # JIT clears its discovery registry before generating a design.
             # Re-register the artifact even when only a sibling binding survives.
             ExternalFunction._register_object(self)
-        if not self._op:
-            self._op = external_func(
+        point = ip if ip is not None else ir.InsertionPoint.current
+        table = _enclosing_symbol_table(point)
+        if self._name in table:
+            self._check_declaration(table[self._name])
+            return
+        with point:
+            external_func(
                 self._name,
                 inputs=self._arg_types,
                 link_with=self._object_file_name,
@@ -296,6 +353,49 @@ class Kernel(Resolvable):
                 stack_size_override=self._stack_size_override,
                 loc=loc,
                 ip=ip,
+            )
+
+    def _check_declaration(self, existing) -> None:
+        op_name = existing.operation.name
+        if op_name != "func.func":
+            raise ValueError(
+                f"Kernel '{self._name}' cannot be declared: '@{self._name}' "
+                f"already names a {op_name} in this scope."
+            )
+        attrs = existing.attributes
+        found = {
+            "signature": str(attrs["function_type"].value),
+            "link_with": attrs["link_with"].value if "link_with" in attrs else None,
+            "link_with_mode": (
+                attrs["link_with_mode"].value if "link_with_mode" in attrs else None
+            ),
+            "stack_size_override": (
+                attrs["stack_size_override"].value
+                if "stack_size_override" in attrs
+                else None
+            ),
+        }
+        wanted = {
+            "signature": str(
+                ir.FunctionType.get(
+                    [try_convert_np_type_to_mlir_type(t) for t in self._arg_types], []
+                )
+            ),
+            "link_with": self._object_file_name,
+            "link_with_mode": self._link_with_mode,
+            "stack_size_override": self._stack_size_override,
+        }
+        differences = [
+            f"{key}: {found[key]!r} vs {wanted[key]!r}"
+            for key in wanted
+            if found[key] != wanted[key]
+        ]
+        if differences:
+            raise ValueError(
+                f"Kernel '{self._name}' conflicts with the '@{self._name}' already "
+                f"declared in this scope ({'; '.join(differences)}). Kernels that "
+                "share a symbol must share its signature and object; give one a "
+                "distinct name or symbol_prefix."
             )
 
     def _init_identity(
@@ -315,7 +415,6 @@ class Kernel(Resolvable):
         # kernel builds MLIR types from it without disturbing it, so this stays
         # readable before and after a build.
         self._arg_types = list(arg_types) if arg_types is not None else []
-        self._op: FuncOp | None = None
 
     @property
     def name(self) -> str:
@@ -425,24 +524,35 @@ class Kernel(Resolvable):
         `**kwargs` are forwarded to the underlying `func.call` builder
         (typically `loc=`, `ip=` for MLIR location / insertion point).
         """
-        if not self._op:
+        table = _enclosing_symbol_table(kwargs.get("ip") or ir.InsertionPoint.current)
+        if self._name not in table:
             raise ValueError("Kernel must be resolved before it can be called.")
+        callee = table[self._name]
+        self._check_declaration(callee)
         if len(args) != len(self._arg_types):
             raise ValueError(
                 f"Kernel '{self._name}' expects {len(self._arg_types)} "
                 f"argument(s), but {len(args)} were provided."
             )
+        alignments = self.contract.alignments if self.contract else ()
+        for index, align in alignments:
+            offset, buffer = _view_byte_offset(args[index])
+            if offset is not None and offset % align:
+                pad = align - offset % align
+                raise ValueError(
+                    f"Kernel '{self._name}' loads argument {index} as "
+                    f"{align}-byte aligned vectors, but it is a view at byte "
+                    f"offset {offset} of buffer '{buffer}'. Place the view at "
+                    f"a multiple of {align} bytes: {pad} bytes of padding "
+                    f"before it put it at byte {offset + pad}."
+                )
         arg_ops = [a.op if isinstance(a, Buffer) else a for a in args]
-        expected_input_types = self._op.function_type.value.inputs
+        expected_input_types = callee.function_type.value.inputs
         adapted = [
             _maybe_collapse_to_match(a, expected_ty)
             for a, expected_ty in zip(arg_ops, expected_input_types)
         ]
-        # A kernel call happens while the core body runs, so the user's call
-        # line is live on the stack -- more precise than the body's ambient
-        # location, which only names the enclosing function.
-        kwargs.setdefault("loc", site_location(capture_source_site()))
-        call(self._op, adapted, **kwargs)
+        call(callee, adapted, **kwargs)
 
 
 class ExternalFunction(Kernel):
@@ -481,13 +591,42 @@ class ExternalFunction(Kernel):
         binding._cached_digest = None
         cls._instances.add(binding)
 
-    # What the kernel computes (aie.iron.kernels.KernelContract), given at
-    # construction. Typed Any rather than KernelContract because pyright
-    # analyzes the sources and the staged package as two module trees, so
-    # naming the class here would make the factories' own KernelContract a
-    # different type. The class-level default covers a discovery binding,
-    # which is created without running __init__.
-    contract: Any = None
+    @property
+    def built_for_arch(self) -> str | None:
+        """The arch a kernels/ factory built this for, or None when unknown.
+
+        Stored on the shared ``KernelObject``, so a sibling binding from
+        ``object_file.bind(...)`` carries it as well. An artifact that
+        factories built for more than one arch reads as unknown.
+        """
+        archs = self.object_file._built_for_archs
+        return next(iter(archs)) if len(archs) == 1 else None
+
+    @built_for_arch.setter
+    def built_for_arch(self, arch: str | None) -> None:
+        if arch is not None:
+            self.object_file._built_for_archs.add(arch)
+
+    def check_target_arch(self, target_arch: str) -> None:
+        """Raise unless this kernel may compile for ``target_arch``.
+
+        A kernels/ factory picks its source, flags and contract for the arch of
+        the device bound when it runs, so compiling the result for another arch
+        fails here rather than in Peano. A kernel no factory built accepts any.
+
+        Raises:
+            ValueError: When the kernel was built for another architecture,
+                which happens when its factory ran before the device was bound.
+        """
+        built = self.built_for_arch
+        if built is not None and built != target_arch:
+            raise ValueError(
+                f"kernel {self.name} was built for {built} but this design "
+                f"compiles for {target_arch}: its factory ran with an {built} "
+                "device bound (or none, which reads as aie2). Call the factory "
+                "inside the design, or bind the device first with "
+                "iron.set_current_device()"
+            )
 
     def _require_contract(self):
         if self.contract is None:
@@ -551,15 +690,11 @@ class ExternalFunction(Kernel):
         limit = int(np.sqrt(budget // n)) if n_tensors >= 2 else budget // n
         return max(1, min(limit, int(np.iinfo(dt).max)))
 
-    def expected(self, inputs: list, *, scalars: tuple = ()):
-        """Return reference output(s), cast to each output argument's dtype."""
-        from aie.helpers.npdtypes import v8bfp16ebs8
-
+    def _reference_args(self, inputs: list, scalars: tuple) -> list:
+        """Interleave ``inputs`` and ``scalars`` in the reference's argument order."""
         from .kernels._common import _is_tensor_type
 
         c = self._require_contract()
-        if c.reference is None:
-            raise ValueError(f"{self.name}: contract has no reference")
         types = self.arg_types()
         c.validate_types(types)
         is_tensor = [_is_tensor_type(types[i]) for i in c.reference_indices()]
@@ -570,8 +705,14 @@ class ExternalFunction(Kernel):
         if len(scalars) != n_scalars:
             raise ValueError(f"{self.name}: expected {n_scalars} scalar(s)")
         tensors, s = iter(inputs), iter(scalars)
-        args = [next(tensors) if tensor else next(s) for tensor in is_tensor]
-        result = c.reference(*args)
+        return [next(tensors) if tensor else next(s) for tensor in is_tensor]
+
+    def expected(self, inputs: list, *, scalars: tuple = ()):
+        """Return reference output(s), cast to each output argument's dtype."""
+        c = self._require_contract()
+        if c.reference is None:
+            raise ValueError(f"{self.name}: contract has no reference")
+        result = c.reference(*self._reference_args(inputs, scalars))
         multiple = len(c.out_indices) > 1
         results = result if multiple else (result,)
         if multiple and (
@@ -582,20 +723,18 @@ class ExternalFunction(Kernel):
         for i, value in zip(c.out_indices, results):
             dt = self.arg_dtype(i)
             outputs.append(
-                np.asarray(value).astype(np.float32 if dt is v8bfp16ebs8 else dt)
+                np.asarray(value).astype(np.float32 if is_block_float(dt) else dt)
             )
         return tuple(outputs) if multiple else outputs[0]
 
     def output_dtype(self, ref_dtype=None):
         """Host dtype(s) of the device output buffer(s).
 
-        Defaults to the declared argument dtypes, with bfp16ebs8 represented
-        as packed bytes. The optional reference dtype override is retained
-        for compatibility. Multiple outputs return a tuple in argument order.
+        Defaults to the declared argument dtypes, with block-floating-point
+        types represented as packed bytes. The optional reference dtype
+        override is retained for compatibility. Multiple outputs return a
+        tuple in argument order.
         """
-        import numpy as np
-        from aie.helpers.npdtypes import v8bfp16ebs8
-
         outputs = self._require_contract().out_indices
         multiple = len(outputs) > 1
         dtypes = (
@@ -608,12 +747,21 @@ class ExternalFunction(Kernel):
         ):
             raise ValueError("provide one reference dtype per output")
         result = tuple(
-            np.uint8 if self.arg_dtype(i) is v8bfp16ebs8 else dt
+            np.uint8 if is_block_float(self.arg_dtype(i)) else dt
             for i, dt in zip(outputs, dtypes)
         )
         return result if multiple else result[0]
 
-    def judge(self, got, ref, *, calls: int = 1, tolerance=None):
+    def judge(
+        self,
+        got,
+        ref,
+        *,
+        calls: int = 1,
+        tolerance=None,
+        inputs: list | None = None,
+        scalars: tuple = (),
+    ):
         """Compare a flat device output against a reference under the contract.
 
         Declared layouts decode each output into logical tiles. DMA padding
@@ -621,6 +769,8 @@ class ExternalFunction(Kernel):
         if any output fails; its detail identifies the failing output.
         Without streamed inputs, a complete one-call reference may be repeated.
         With no streamed inputs, a one-tile reference is repeated across calls.
+        A tolerance that is a function of the inputs needs the ``inputs`` and
+        ``scalars`` the reference was given.
         """
         from aie.utils.compile.jit.markers import In
         from aie.utils.verify import Tolerance, Verdict, compare
@@ -635,8 +785,20 @@ class ExternalFunction(Kernel):
             or len(references) != len(c.out_indices)
         ):
             raise ValueError("provide one actual and reference array per output")
+        tol = tolerance or c.tolerance
+        bounds = (None,) * len(c.out_indices)
+        if tol is not None and tol.kind == "bound":
+            if inputs is None:
+                raise ValueError(
+                    f"{self.name}: its tolerance is a function of the inputs; "
+                    "pass the reference's inputs= (and scalars=) to judge"
+                )
+            bounds = tol.bound(*self._reference_args(inputs, scalars))
+            bounds = bounds if multiple else (bounds,)
         verdicts = []
-        for i, actual, reference in zip(c.out_indices, actuals, references):
+        for i, actual, reference, bound in zip(
+            c.out_indices, actuals, references, bounds
+        ):
             layout = c.layouts[i] if c.layouts else None
             got = layout.decode(actual, calls=calls) if layout else np.asarray(actual)
             got, ref = got.reshape(calls, -1), np.asarray(reference)
@@ -650,8 +812,9 @@ class ExternalFunction(Kernel):
                 compare(
                     got,
                     ref,
-                    tolerance or c.tolerance or Tolerance.default_for(ref.dtype),
+                    tol or Tolerance.default_for(ref.dtype),
                     range_axis=1,
+                    bound=None if bound is None else np.reshape(bound, ref.shape),
                 )
             )
         if not multiple:
@@ -709,6 +872,7 @@ class ExternalFunction(Kernel):
                 None (empty list).
             include_dirs: Additional ``-I`` directories passed to the chosen
                 compiler (Peano by default; xchesscc when ``use_chess=True``).
+                Relative paths resolve against the current directory at construction.
                 Defaults to None (empty list).
             compile_flags: Additional flags passed verbatim to the chosen
                 compiler.  Defaults to None (empty list).
@@ -800,7 +964,7 @@ class ExternalFunction(Kernel):
                 str(Path(source_file).resolve()) if source_file is not None else None,
                 source_string if source_file is None else None,
                 hashlib.sha256(source_bytes).hexdigest(),
-                tuple(include_dirs or ()),
+                tuple(str(Path(d).absolute()) for d in include_dirs or ()),
                 tuple(compile_flags or ()),
                 use_chess,
                 symbol_prefix,
@@ -949,16 +1113,16 @@ class ExternalFunction(Kernel):
                     f"Argument {index}: expected scalar, got {type(arg).__name__}"
                 )
             return
-        if not (hasattr(expected_ty, "__args__") and hasattr(arg, "shape")):
+        if get_origin(expected_ty) is not np.ndarray or not isinstance(
+            arg, (Buffer, np.ndarray)
+        ):
             return
-        # Only host-side (numpy) arguments are compared. An MLIR value's
+        # Only Buffers and host arrays are compared. An MLIR value's
         # element type is spelled differently (`i32` vs `np.int32`) and its
         # shape may legitimately differ from the declaration until
         # `_maybe_collapse_to_match` flattens it, so MLIR verification is what
         # checks those.
-        arg_dtype = getattr(arg, "dtype", None)
-        if not isinstance(arg_dtype, (np.dtype, type)):
-            return
+        arg_dtype = arg.dtype
         expected_shape = expected_ty.__args__[0]
         expected_dtype = expected_ty.__args__[1].__args__[0]
         if arg.shape != expected_shape or arg_dtype != expected_dtype:

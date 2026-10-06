@@ -5,8 +5,8 @@
 #
 """Element-wise f32 -> bf16 narrowing cast, IRON API + ``@iron.jit``.
 
-NPU2-only: the underlying ``cast_f32_bf16.cc`` kernel lives under
-``aie_kernels/aie2p/`` and has no aie2 counterpart.
+Runs on NPU1 (aie2) and NPU2 (aie2p): the underlying ``cast_f32_bf16.cc``
+kernel lives under ``aie_kernels/datamovement/`` and builds for both.
 
 Eight cores each cast ``n_vectors // 8`` vectors of ``vector_size`` elements.
 Rounding is round-to-nearest-even.
@@ -23,7 +23,7 @@ import argparse
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -66,7 +66,7 @@ def cast_f32_bf16(
     of_ins = [ObjectFifo(chunk_in_ty, name=f"in_{i}") for i in range(n_cores)]
     of_outs = [ObjectFifo(chunk_out_ty, name=f"out_{i}") for i in range(n_cores)]
 
-    # aie_kernels/aie2p/cast_f32_bf16.cc (cast_f32_bf16_row), sized per chunk.
+    # aie_kernels/datamovement/cast_f32_bf16.cc (cast_f32_bf16_row), sized per chunk.
     cast_fn = kernels.convert_copy(tile_size=vector_size)
 
     def core_fn(of_in, of_out, kernel):
@@ -82,8 +82,8 @@ def cast_f32_bf16(
         for i in range(n_cores)
     ]
 
-    taps = TensorTiler2D.simple_tiler(
-        (n_vectors, vector_size), (rows_per_core, vector_size)
+    taps = TensorAccessPattern.full((n_vectors, vector_size)).tile(
+        (rows_per_core, vector_size)
     )
 
     def sequence(a, c, in_prods, out_conses):

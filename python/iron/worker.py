@@ -31,6 +31,7 @@ from .buffer import Buffer
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
 from .device import AnyComputeTile, Tile
+from .kernel import Kernel
 from .resolvable import Resolvable
 from .scratchpad_parameter import ScratchpadParameter
 
@@ -189,7 +190,7 @@ class Worker(ObjectFifoEndpoint, Resolvable):
                 if arg._owner_worker is not None and arg._owner_worker is not self:
                     if not arg._explicit_tile:
                         raise ValueError(
-                            f"Buffer '{arg._name}' has no explicit tile and is shared "
+                            f"Buffer {arg._name or arg._arr_type} has no explicit tile and is shared "
                             f"across Workers; pin it to a tile (Buffer(tile=...)) so "
                             f"placement is unambiguous."
                         )
@@ -203,8 +204,7 @@ class Worker(ObjectFifoEndpoint, Resolvable):
                     # tile (AIE compute tiles can read N/S/E/W neighbors' L1
                     # directly), honor that placement — Program.resolve discovers
                     # the neighbor tile via Buffer.tiles().
-                    if arg._tile is None:
-                        arg._tile = self._tile
+                    arg.place(self._tile)
             elif isinstance(arg, ScratchpadParameter):
                 pass  # ScratchpadParameters are device-level symbols; no tile placement needed
             elif isinstance(arg, ObjectFifo):
@@ -221,6 +221,21 @@ class Worker(ObjectFifoEndpoint, Resolvable):
             # func.func declaration. Other unrecognized args are assumed to be
             # metaprogramming values (Python scalars, etc.).
 
+        # A library kernel's contract may name a setup kernel, such as the
+        # rounding mode its bf16 stores assume; a fresh core boots in floor.
+        # Run each once before the loop, unless fn_args already hands it over
+        # for core_fn to call.
+        kernels = [a for a in flatten_fn_args(self.fn_args) if isinstance(a, Kernel)]
+        handed = {k.name for k in kernels}
+        self._setup_kernels = []
+        for k in kernels:
+            if k.contract is None or k.contract.setup is None:
+                continue
+            setup = k.contract.setup()
+            if setup.name not in handed:
+                handed.add(setup.name)
+                self._setup_kernels.append(setup)
+
     @staticmethod
     def grid(
         rows: int,
@@ -229,15 +244,19 @@ class Worker(ObjectFifoEndpoint, Resolvable):
     ) -> list[list["Worker"]]:
         """Build a 2D grid of Workers; ``factory(r, c)`` returns one Worker.
 
-        Replaces the common pattern::
+        Replaces the common pattern:
 
-            ws = [Worker(...) for i in range(R) for j in range(C)]
-            ws[i * C + j]  # 1-D index arithmetic
+        ```python
+        ws = [Worker(...) for i in range(R) for j in range(C)]
+        ws[i * C + j]  # 1-D index arithmetic
+        ```
 
-        with::
+        with:
 
-            ws = Worker.grid(R, C, lambda r, c: Worker(...))
-            ws[i][j]       # natural 2-D access
+        ```python
+        ws = Worker.grid(R, C, lambda r, c: Worker(...))
+        ws[i][j]       # natural 2-D access
+        ```
 
         Args:
             rows: Outer-dimension count (e.g. column index).
@@ -270,9 +289,10 @@ class Worker(ObjectFifoEndpoint, Resolvable):
         """fn_args with any nested lists/tuples flattened to their leaves.
 
         Use this (not ``fn_args``) when iterating to register/resolve individual
-        arguments; ``fn_args`` keeps its structure for the core_fn call.
+        arguments; ``fn_args`` keeps its structure for the core_fn call. The
+        setup kernels the Worker runs for its kernels' contracts come last.
         """
-        return list(flatten_fn_args(self.fn_args))
+        return list(flatten_fn_args(self.fn_args)) + self._setup_kernels
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
@@ -306,7 +326,7 @@ class Worker(ObjectFifoEndpoint, Resolvable):
         # and register them in the corresponding barriers.
         for barrier in self._barriers:
             barrier_lock = lock(my_tile, loc=loc)
-            barrier._add_worker_lock(barrier_lock)
+            barrier.worker_locks.append(barrier_lock)
 
         # Ops inside the body are emitted while core_fn runs, so they pick up
         # whichever location is ambient; point that at core_fn rather than
@@ -332,6 +352,8 @@ class Worker(ObjectFifoEndpoint, Resolvable):
             with (
                 body_loc if body_loc is not None else contextlib.nullcontext()
             ), traced_body(self._core_fn_name, self._source_site):
+                for setup in self._setup_kernels:
+                    setup()
                 for _ in range_(sys.maxsize if self._while_true else 1):
                     traced_core_fn(*self.fn_args)
 
@@ -351,7 +373,10 @@ class WorkerRuntimeBarrier:
     def wait_for_value(self, value: int):
         """Wait for the barrier to be set to `value`.
 
-        Should be called from inside a core function.
+        Should be called from inside a core function. The wait leaves the
+        barrier at ``value``; a worker that loops over dispatches calls
+        ``release_with_value`` after reading its runtime parameters so the
+        next iteration waits for the next ``set``.
 
         Args:
             value (int): The value to wait for.
@@ -373,20 +398,16 @@ class WorkerRuntimeBarrier:
         """
         _BarrierSetOp(self, value).resolve()
 
-    def _add_worker_lock(self, lock):
-        """Register an additional lock in the barrier."""
-        self.worker_locks.append(lock)
-
     def _set_barrier_value(self, value: int):
         """Set the value of the barrier."""
         for worker_lock in self.worker_locks:
             set_lock_value(worker_lock, value)
 
     def release_with_value(self, value: int):
-        """Release and decrement the barrier by `value` inside the core.
+        """Release the barrier, adding ``value`` to it, inside the core.
 
         Args:
-            value (int): The value to decrement by in Release.
+            value (int): The value to add.
         """
         if len(self.worker_locks) == 0:
             raise ValueError(

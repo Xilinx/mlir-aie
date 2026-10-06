@@ -3,13 +3,13 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Data-movement / conversion kernel factories: axpy, convert_copy, expand, transpose.
+"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, transpose.
 
-Most wrap arch-agnostic sources under ``aie_kernels/generic/`` — plain
-``aie_api`` vector code with no LUT dependency, resolved through
-``_default_source_path``'s ``generic/`` fallback.  ``convert_copy`` is the
-exception: it binds ``aie2p/cast_f32_bf16.cc`` (the maintained f32->bf16 cast
-with host-matching ``conv_even`` rounding), and is aie2p-only.
+Each wraps one source under ``aie_kernels/datamovement/`` — plain ``aie_api``
+vector code with no LUT dependency.  ``convert_copy`` binds
+``cast_f32_bf16.cc``, the f32->bf16 cast with host-matching ``conv_even``
+rounding, and ``affine_cast`` applies a per-column ``gamma``/``beta`` ahead
+of the same cast.
 """
 
 import numpy as np
@@ -21,8 +21,8 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     Param,
-    _default_source_path,
-    _detect_arch,
+    Trace,
+    _kernel_source,
     _make_extern,
     dtypes,
 )
@@ -40,8 +40,12 @@ _BF16_ROUNDTRIP = Tolerance.bf16_ulps(
 
 
 def axpy_ref(x, y, a):
-    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32."""
-    return np.float32(a) * x.astype(np.float32) + y.astype(np.float32)
+    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32.
+
+    The kernel broadcasts ``a`` as bf16, so it is rounded to bf16 here.
+    """
+    a = np.float32(bfloat16(a))
+    return a * x.astype(np.float32) + y.astype(np.float32)
 
 
 def convert_copy_ref(x):
@@ -52,6 +56,20 @@ def convert_copy_ref(x):
     bit-for-bit.
     """
     return x.astype(bfloat16)
+
+
+def affine_cast_ref(x, gamma_beta):
+    """Numpy reference for [`affine_cast`][iron.kernels.datamovement.affine_cast].
+
+    ``gamma_beta`` is ``gamma`` then ``beta``, ``cols`` float32 values each;
+    ``x`` is row-major with ``cols`` per row. The multiply and add round in
+    float32 and the bf16 cast half-to-even, as the kernel does.
+    """
+    gb = np.asarray(gamma_beta, dtype=np.float32).reshape(-1)
+    cols = gb.size // 2
+    x32 = np.asarray(x, dtype=np.float32)
+    y = x32.reshape(-1, cols) * gb[:cols] + gb[cols:]
+    return y.astype(bfloat16).reshape(x32.shape)
 
 
 def expand_ref(payload, *, tile_size: int, group_size: int):
@@ -130,9 +148,10 @@ def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
     func = "saxpy" if vectorized else "saxpy_scalar"
     return _make_extern(
         func,
-        _default_source_path("axpy.cc"),
+        _kernel_source("datamovement/axpy.cc"),
         [tile_ty, tile_ty, a_ty, tile_ty, np.int32],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, Param, Out, Param),
             parameter_bindings=((4, tile_size),),
@@ -153,10 +172,10 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
     kernel processes 16 elements per iteration, so ``tile_size`` must be a
     multiple of 16.
 
-    Backed by ``aie_kernels/aie2p/cast_f32_bf16.cc`` (symbol
+    Backed by ``aie_kernels/datamovement/cast_f32_bf16.cc`` (symbol
     ``cast_f32_bf16_row``), which rounds with ``conv_even`` — bit-for-bit
     agreeing with a host AVX512-BF16 pack — and restores the core's rounding
-    mode on exit.  aie2p-only.
+    mode on exit.  The same source builds for aie2.
 
     Args:
         tile_size: Elements per tile (multiple of 16).
@@ -166,27 +185,77 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
 
     Raises:
         ValueError: When ``tile_size`` is not a multiple of 16.
-        NotImplementedError: On aie2 (the kernel has not been ported).
     """
     if tile_size % 16 != 0:
         raise ValueError(
             f"convert_copy() tile_size must be a multiple of 16, got {tile_size}."
         )
-    if _detect_arch() != "aie2p":
-        raise NotImplementedError("convert_copy() is only available on aie2p.")
     in_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
     out_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "cast_f32_bf16_row",
-        _default_source_path("cast_f32_bf16.cc"),
+        _kernel_source("datamovement/cast_f32_bf16.cc"),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
             reference=convert_copy_ref,
             tolerance=Tolerance.exact(
                 note="conv_even rounding matches ml_dtypes bit-for-bit (test_kernels_e2e)"
             ),
+        ),
+    )
+
+
+def affine_cast(rows: int = 96, cols: int = 32) -> ExternalFunction:
+    """Per-column affine transform narrowed to bf16: ``out = bfloat16(in * gamma + beta)``.
+
+    Works on a row-major ``rows`` x ``cols`` float32 tile; ``gamma`` and
+    ``beta`` hold one float32 value per column and arrive packed in one
+    ``2 * cols`` buffer, ``gamma`` first. The bf16 store rounds with
+    ``conv_even``, as [`convert_copy`][iron.kernels.datamovement.convert_copy]
+    does, and the kernel restores the core's rounding mode on exit.
+
+    Args:
+        rows: Rows per tile.
+        cols: Columns per tile (multiple of 16).
+
+    Returns:
+        ExternalFunction for ``affine_cast_f32_bf16``.
+
+    Raises:
+        ValueError: When ``rows`` is below 1 or ``cols`` is not a positive
+            multiple of 16.
+    """
+    if rows < 1 or cols < 16 or cols % 16 != 0:
+        raise ValueError(
+            "affine_cast() needs rows >= 1 and cols a positive multiple of 16, "
+            f"got rows={rows}, cols={cols}."
+        )
+    in_ty = np.ndarray[(rows * cols,), np.dtype[np.float32]]
+    gb_ty = np.ndarray[(2 * cols,), np.dtype[np.float32]]
+    out_ty = np.ndarray[(rows * cols,), np.dtype[bfloat16]]
+    return _make_extern(
+        "affine_cast_f32_bf16",
+        _kernel_source("datamovement/affine_cast_f32_bf16.cc"),
+        [in_ty, gb_ty, out_ty, np.int32, np.int32],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, Out, Param, Param),
+            parameter_bindings=((3, rows), (4, cols)),
+            reference=affine_cast_ref,
+            acc_dtype=np.float32,
+            reduction=1,
+            tolerance=Tolerance.bf16_ulps(
+                1,
+                atol=2.0**-126,
+                note="aie::mul emulates the float32 product in bf16 terms and "
+                "can land one float32 ulp off, which tips a bf16 tie: 3 of "
+                "1769472 outputs one ulp off on npu2. atol is the smallest "
+                "normal bf16, for the device's subnormal flush to zero",
+            ),
+            ops_per_call=2 * rows * cols,
         ),
     )
 
@@ -226,10 +295,12 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
     out_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "expand_uint4_to_bfloat16",
-        _default_source_path("expand.cc"),
+        _kernel_source("datamovement/expand.cc"),
         [in_ty, out_ty],
         compile_flags=[f"-DTILE_SIZE={tile_size}", f"-DGROUP_SIZE={group_size}"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
+            setup=conv_even,
             roles=(In, Out),
             reference=lambda p: expand_ref(
                 p, tile_size=tile_size, group_size=group_size
@@ -252,17 +323,18 @@ def rope(
     HuggingFace-style ``rope_two_halves`` over the Llama-paper interleave
     ``rope``. ``cols`` aliases ``tile_size``. Both architectures use the generic
     source; rows must be positive multiples of 16 (interleaved) or 32
-    (two halves, keeping each half 32-byte aligned). Two-halves rows may end
-    with a scalar tail. Each input row has its own streamed (cos, sin) LUT.
+    (two halves, keeping each half 32-byte aligned). Each input row has its own
+    streamed (cos, sin) LUT.
     """
     tile_size = _row_size("rope", tile_size, cols, 32 if two_halves else 16)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     func = "rope_two_halves" if two_halves else "rope"
     return _make_extern(
         func,
-        _default_source_path("rope.cc"),
+        _kernel_source("datamovement/rope.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, Out, Param),
             parameter_bindings=((3, tile_size),),
@@ -368,10 +440,11 @@ def transpose(
     tile_ty = np.ndarray[(dim_m * dim_n,), np.dtype[dtype]]
     return _make_extern(
         f"transpose_{subtile}x{subtile}",
-        _default_source_path("transpose.cc"),
+        _kernel_source("datamovement/transpose.cc"),
         [tile_ty, tile_ty],
         compile_flags=flags,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out),
             reference=lambda x: transpose_ref(
                 x, dim_m=dim_m, dim_n=dim_n, subtile=subtile

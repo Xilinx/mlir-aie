@@ -52,6 +52,8 @@ RegMap replay(const std::vector<uint32_t> &t) {
       r[sk++] = t[p + 3];
       p += 4;
     } else if (o == TXN_OPC_DDR_PATCH) {
+      // The firmware overwrites the register, so its placeholder is not state.
+      r[t[p + 6]] = t[p + 10];
       r[sk++] = t[p + 6];
       r[sk++] = t[p + 8];
       r[sk++] = t[p + 10];

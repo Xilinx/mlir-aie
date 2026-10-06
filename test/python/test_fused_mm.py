@@ -28,8 +28,8 @@ def device(request):
 def test_fused_variants_have_distinct_symbols_and_reuse_bindings(device):
     plain = fused_mm()
     activated = fused_mm(epilogue="silu")
-    assert fused_mm() is plain
-    assert fused_mm(epilogue="silu") is activated
+    assert fused_mm() == plain
+    assert fused_mm(epilogue="silu") == activated
     assert plain.name != activated.name
     assert plain.object_file_name != activated.object_file_name
     assert plain._symbol_prefix and activated._symbol_prefix
@@ -56,9 +56,9 @@ def test_fused_architectures_have_distinct_symbols():
         aie2p = fused_mm()
         assert aie2.name != aie2p.name
         assert aie2.object_file_name != aie2p.object_file_name
-        assert fused_mm() is aie2p
+        assert fused_mm() == aie2p
         set_current_device(NPU1Col1())
-        assert fused_mm() is aie2
+        assert fused_mm() == aie2
     finally:
         set_current_device(None)
 
@@ -217,3 +217,79 @@ def test_fused_reference_and_generic_lowering(device, epilogue):
 def test_fused_rejects_invalid_geometry_and_epilogue(device, kwargs):
     with pytest.raises(ValueError):
         fused_mm(**kwargs)
+
+
+def test_fused_binds_every_entry_point_of_its_object(device):
+    fn = fused_mm(dim_m=64, band_m=32, dim_k=128, dim_n=64, chunk_k=128)
+    assert fn.fused_mm_tile is fn
+    for name in ("mm_fused_acc_init", "mm_fused_k_step", "mm_fused_epilogue_chunk"):
+        entry = getattr(fn, name)
+        assert entry.name == f"{fn._symbol_prefix}_{name}"
+        assert entry.object_file is fn.object_file
+    shapes = [kd.shape_dtype(t)[0] for t in fn.mm_fused_k_step.arg_types()[:3]]
+    assert shapes == [(32 * 128,), (128 * 64,), (64 * 64,)]
+    assert kd.shape_dtype(fn.mm_fused_epilogue_chunk.arg_types()[0])[0] == (64,)
+
+
+def test_fused_options_reach_the_compile_flags(device):
+    assert "-DROUND_CONV_EVEN" in fused_mm().compile_flags
+    assert "-DROUND_CONV_EVEN" not in fused_mm(rounding="floor").compile_flags
+    steps = fused_mm(epilogue="gelu", gelu="bf16_steps").compile_flags
+    assert "-DMM_FUSED_GELU_BF16_STEPS" in steps
+    marked = fused_mm(step_markers=True)
+    assert "-DMM_FUSED_STEP_MARKERS" in marked.compile_flags
+    assert marked.contract.trace.shape == "partial"
+    every = fused_mm(epilogue_modes=("none", "gelu", "silu", "sigmoid"))
+    assert "-DMM_FUSED_EPILOGUE_MODE_MASK=15" in every.compile_flags
+    assert "-DMM_FUSED_C_DEPTH=4" in fused_mm(c_depth=4).compile_flags
+    rst = fused_mm(dim_n=32, mmul_shape=(8, 8, 8)).compile_flags
+    assert {"-DMM_FUSED_R=8", "-DMM_FUSED_S=8", "-DMM_FUSED_T=8"} <= set(rst)
+
+
+def test_fused_bound_mode_distinguishes_kernels_with_one_mask(device):
+    modes = ("none", "gelu")
+    a = fused_mm(epilogue="none", epilogue_modes=modes)
+    b = fused_mm(epilogue="gelu", epilogue_modes=modes)
+    assert a.compile_flags == b.compile_flags
+    assert a.name != b.name
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"epilogue": "gelu", "epilogue_modes": ("none",)},
+        {"epilogue_modes": ("none", "relu")},
+        {"rounding": "nearest"},
+        {"gelu": "fp64"},
+        {"c_depth": 3},
+        {"mmul_shape": (4, 8, 3)},
+    ],
+)
+def test_fused_rejects_invalid_options(device, kwargs):
+    with pytest.raises(ValueError):
+        fused_mm(**kwargs)
+
+
+def _bf16_floor_ref(x):
+    """Round float64 toward minus infinity at bf16 precision."""
+    x = np.asarray(x, np.float64)
+    ulp = np.exp2(np.floor(np.log2(np.where(x == 0, 1.0, np.abs(x)))) - 7)
+    return np.where(x == 0, 0.0, np.floor(x / ulp) * ulp)
+
+
+def test_fused_gelu_bf16_steps_reference_rounds_after_each_step(device):
+    """The reference follows gelu_bf16_steps_vec: x * sigmoid(1.703125x), each
+    of five results rounded toward minus infinity."""
+    fn = fused_mm(epilogue="gelu", gelu="bf16_steps", rounding="floor")
+    rng = np.random.default_rng(7)
+    a = (rng.normal(size=(1, 32, 32)) / 4).astype(bfloat16)
+    b = (rng.normal(size=(1, 32, 16)) / 4).astype(bfloat16)
+    c = a.astype(np.float64) @ b.astype(np.float64)
+    x = _bf16_floor_ref(c)
+    y = _bf16_floor_ref(x * 1.703125)
+    sig = _bf16_floor_ref(np.tanh(y / 2) + 1) / 2
+    expected = _bf16_floor_ref(x * sig)
+    got = fn.contract.reference(a, b).reshape(expected.shape)
+    np.testing.assert_array_equal(got, expected)
+    fp32 = fused_mm(epilogue="gelu", rounding="floor").contract.reference(a, b)
+    assert np.count_nonzero(fp32.reshape(expected.shape) != expected) > 100

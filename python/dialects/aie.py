@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import inspect
 from typing import List, Tuple, Dict, Any, Union
 import contextlib
-from enum import IntEnum
+from enum import Enum, IntEnum
 
 import numpy as np
 
@@ -55,6 +55,7 @@ from ..extras.util import (
     region_adder,
 )
 from ..helpers.sourceloc import capture_source_site, site_location
+from ..helpers.taplib import TensorAccessPattern
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
 from ..ir import (
@@ -65,6 +66,7 @@ from ..ir import (
     DenseElementsAttr,
     DenseI32ArrayAttr,
     DictAttr,
+    FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
     IntegerAttr,
@@ -189,11 +191,13 @@ def dma_bd(
     (``transfer_len`` maps to the op's ``len`` operand; the Python name avoids
     shadowing the builtin and matches ``shim_dma_bd``.)
 
-    Example::
+    For example:
 
-        %len = ...
-        aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
-                   offset=0 len=%len)
+    ```mlir
+    %len = ...
+    aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
+               offset=0 len=%len)
+    ```
     """
     if loc is None:
         loc = _default_loc()
@@ -416,9 +420,11 @@ def _trace_event_attr(x, context):
         return Attribute.parse(f'#aie.trace_event<"{x}">', context=context)
     elif isinstance(x, StringAttr):
         return Attribute.parse(f'#aie.trace_event<"{x.value}">', context=context)
-    elif hasattr(x, "code"):  # GenericEvent, PortEvent, etc. - check before Enum
+    from aie.utils.trace.events import GenericEvent
+
+    if isinstance(x, GenericEvent):
         return Attribute.parse(f'#aie.trace_event<"{x.code.name}">', context=context)
-    elif hasattr(x, "name") and hasattr(x, "value"):  # Enum (CoreEvent, MemEvent, etc.)
+    elif isinstance(x, Enum):
         return Attribute.parse(f'#aie.trace_event<"{x.name}">', context=context)
     else:
         # Assume it's already an Attribute
@@ -665,6 +671,33 @@ class external_buffer(MemRefValue):
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
 class object_fifo(ObjectFifoCreateOp):
+    @staticmethod
+    def stream_dims(dims, what, can_pad=False):
+        """Return `dims` as the `(size, stride)` pairs a DMA walks each transfer by.
+
+        `dims` is the pair list itself or a TensorAccessPattern over what one
+        transfer moves: an object, or a segment of one when a link joins or
+        distributes it. The DMA starts each walk at the transfer's first
+        element, so a pattern must have offset 0.
+
+        Raises:
+            ValueError: If the pattern is staged, has a nonzero offset, or
+                pads where `can_pad` is False.
+        """
+        if not isinstance(dims, TensorAccessPattern):
+            return [] if dims is None else dims
+        if dims.is_symbolic:
+            raise ValueError(f"{what} {dims!r} must have compile-time values")
+        if dims.offset != 0:
+            raise ValueError(
+                f"{what} {dims!r} has offset {dims.offset}, but an objectfifo "
+                "walks each transfer from its first element; apply the offset "
+                "where the buffer is addressed instead"
+            )
+        if dims.padding is not None and not can_pad:
+            raise ValueError(f"only a producer's walk can pad, but {what} is {dims!r}")
+        return list(dims.transformation_dims)
+
     def __init__(
         self,
         name,
@@ -701,6 +734,22 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer = [[] for _ in range(len(consumerTiles))]
         if dimensionsToStream is None:
             dimensionsToStream = []
+        if isinstance(dimensionsToStream, TensorAccessPattern) and (
+            dimensionsToStream.padding is not None
+        ):
+            if padDimensions is not None:
+                raise ValueError(
+                    "dimensionsToStream is a padded TensorAccessPattern; "
+                    "do not also pass padDimensions"
+                )
+            padDimensions = list(dimensionsToStream.padding)
+        dimensionsToStream = self.stream_dims(
+            dimensionsToStream, "dimensionsToStream", can_pad=True
+        )
+        dimensionsFromStreamPerConsumer = [
+            self.stream_dims(dims, "dimensionsFromStreamPerConsumer")
+            for dims in dimensionsFromStreamPerConsumer
+        ]
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
         consumerElemType = None
         if self.consumer_datatype is not None:
@@ -994,12 +1043,29 @@ def another_bd(dma_op):
     raise Exception("couldn't find empty region to add to.")
 
 
+def _dma_channel_attr(channel):
+    """A DMA program's channel: an index, or the `aie.route_endpoint` (op or
+    symbol name) whose channel allocation picks."""
+    if isinstance(channel, (IntegerAttr, FlatSymbolRefAttr)):
+        return channel
+    if isinstance(channel, (int, np.integer)):
+        return IntegerAttr.get(T.i32(), int(channel))
+    if isinstance(channel, str):
+        return FlatSymbolRefAttr.get(channel)
+    if isinstance(channel, RouteEndpointOp):
+        return FlatSymbolRefAttr.get(channel.sym_name.value)
+    raise TypeError(
+        "A DMA channel is an index or an aie.route_endpoint (op or symbol "
+        f"name), not {type(channel).__name__}."
+    )
+
+
 @_cext.register_operation(_Dialect, replace=True)
 class DMAStartOp(DMAStartOp):
     def __init__(
         self,
         channel_dir,
-        channel_index,
+        channel,
         *,
         dest: Successor | Block | None = None,
         chain: Successor | Block | None = None,
@@ -1019,7 +1085,7 @@ class DMAStartOp(DMAStartOp):
             chain = InsertionPoint.current.block
         super().__init__(
             channel_dir,
-            channel_index,
+            _dma_channel_attr(channel),
             dest,
             chain,
             repeat_count=repeat_count,
@@ -1040,7 +1106,7 @@ class DMAStartOp(DMAStartOp):
 
 def dma_start(
     channel_dir,
-    channel_index,
+    channel,
     *,
     dest: Successor | Block | ContextManagedBlock | None = None,
     chain: Successor | Block | ContextManagedBlock | None = None,
@@ -1054,7 +1120,7 @@ def dma_start(
     dest_block = dest.block if isinstance(dest, ContextManagedBlock) else dest
     op = DMAStartOp(
         channel_dir,
-        channel_index,
+        channel,
         dest=dest_block,
         chain=chain_block,
         loc=loc,

@@ -1765,6 +1765,8 @@ void AIEPathfinderPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
 
   DeviceOp d = getOperation();
+  if (failed(verifyDMAChannelsResolved(d)))
+    return signalPassFailure();
   DynamicTileAnalysis &analyzer = getAnalysis<DynamicTileAnalysis>();
   if (failed(analyzer.runAnalysis(d))) {
     signalPassFailure();

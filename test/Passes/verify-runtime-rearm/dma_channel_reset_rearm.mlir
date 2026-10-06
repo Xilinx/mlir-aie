@@ -28,8 +28,10 @@ module {
     }
     aie.runtime_sequence() {
       aiex.dma_channel_reset(%t, S2MM, 0)
-      aiex.set_lock(%prod, 1)
-      aiex.set_lock(%cons, 0)
+      %prod_v1 = arith.constant 1 : i32
+      aiex.set_lock(%prod, %prod_v1)
+      %cons_v0 = arith.constant 0 : i32
+      aiex.set_lock(%cons, %cons_v0)
     }
   }
 }
@@ -89,7 +91,8 @@ module {
     aie.runtime_sequence() {
       // expected-error @+1 {{resets a DMA channel whose objectFIFO lock is never re-armed}}
       aiex.dma_channel_reset(%t, S2MM, 0)
-      aiex.set_lock(%prod, 1)
+      %prod_v1 = arith.constant 1 : i32
+      aiex.set_lock(%prod, %prod_v1)
     }
   }
 }
@@ -139,8 +142,10 @@ module {
     }
     aie.runtime_sequence() {
       aiex.dma_channel_reset(%t, S2MM, 0)
-      aiex.set_lock(%prod, 1)
-      aiex.set_lock(%cons, 0)
+      %prod_v1 = arith.constant 1 : i32
+      aiex.set_lock(%prod, %prod_v1)
+      %cons_v0 = arith.constant 0 : i32
+      aiex.set_lock(%cons, %cons_v0)
     }
   }
 }
@@ -169,7 +174,8 @@ module {
     aie.runtime_sequence() {
       // expected-error @+1 {{resets a DMA channel whose objectFIFO lock is never re-armed}}
       aiex.dma_channel_reset(%mt, S2MM, 0)
-      aiex.set_lock(%cons, 0)
+      %cons_v0 = arith.constant 0 : i32
+      aiex.set_lock(%cons, %cons_v0)
     }
   }
 }
@@ -199,8 +205,10 @@ module {
       aiex.dma_channel_reset(%t, S2MM, 0)
     }
     aie.runtime_sequence @rearm() {
-      aiex.set_lock(%prod, 1)
-      aiex.set_lock(%cons, 0)
+      %prod_v1 = arith.constant 1 : i32
+      aiex.set_lock(%prod, %prod_v1)
+      %cons_v0 = arith.constant 0 : i32
+      aiex.set_lock(%cons, %cons_v0)
     }
   }
 }

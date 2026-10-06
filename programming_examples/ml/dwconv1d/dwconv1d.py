@@ -5,8 +5,10 @@
 #
 """Depthwise conv1d, 'same' padding, stride 1, bf16, IRON API + ``@iron.jit``.
 
-NPU2-only: ``aie_kernels/aie2p/dwconv1d_channels_first.cc`` has no aie2
-counterpart.
+Runs on NPU1 (aie2) and NPU2 (aie2p): ``dwconv1d_channels_first.cc`` lives
+under ``aie_kernels/conv/`` and builds for both. On NPU1 pass ``-n 4``: each
+core streams ``x`` and ``w`` from the shim, and NPU1's four shim tiles have 8
+such DMA channels, so the default 8 cores do not place.
 
 ``n_cores`` cores each process ``channels // n_cores`` channels; one channel
 is one length-``seq_len`` time series with its own ``kernel_size`` taps (+ an
@@ -30,7 +32,7 @@ import argparse
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
@@ -119,10 +121,14 @@ def dwconv1d(
     # (channels_per_core, *) block streams through the core's per-channel
     # ObjectFifo as channels_per_core row-tiles (same fill-a-block /
     # acquire-a-row-at-a-time split the row_ty ObjectFifos above assume).
-    x_taps = TensorTiler2D.simple_tiler((channels, in_row), (channels_per_core, in_row))
-    w_taps = TensorTiler2D.simple_tiler((channels, w_row), (channels_per_core, w_row))
-    y_taps = TensorTiler2D.simple_tiler(
-        (channels, seq_len), (channels_per_core, seq_len)
+    x_taps = TensorAccessPattern.full((channels, in_row)).tile(
+        (channels_per_core, in_row)
+    )
+    w_taps = TensorAccessPattern.full((channels, w_row)).tile(
+        (channels_per_core, w_row)
+    )
+    y_taps = TensorAccessPattern.full((channels, seq_len)).tile(
+        (channels_per_core, seq_len)
     )
 
     def sequence(X, W, Y, in_prods, w_prods, out_conses):

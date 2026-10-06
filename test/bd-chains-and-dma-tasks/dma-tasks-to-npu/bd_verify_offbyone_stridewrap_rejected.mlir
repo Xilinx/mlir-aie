@@ -121,7 +121,7 @@ module @iteration_size_limit_plus1 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<200000xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Size 3 is 65 (encoded as 64), which exceeds the [1:64] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op iteration count 65 exceeds the [1:64] range.}}
         aie.dma_bd(%arg0 : memref<200000xi32> offset = 0 len = 2048 sizes = [65, 1, 1, 2048] strides = [2048, 0, 0, 1]) {bd_id = 0 : i32}
         aie.end
       }
@@ -136,7 +136,7 @@ module @iteration_size_limit_plus2 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<200000xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Size 3 is 66 (encoded as 65), which exceeds the [1:64] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op iteration count 66 exceeds the [1:64] range.}}
         aie.dma_bd(%arg0 : memref<200000xi32> offset = 0 len = 2048 sizes = [66, 1, 1, 2048] strides = [2048, 0, 0, 1]) {bd_id = 0 : i32}
         aie.end
       }

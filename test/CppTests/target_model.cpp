@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 #include <stdexcept>
+#include <vector>
 
 using namespace xilinx;
 
@@ -20,6 +21,17 @@ static void checkControllerTopology(AIE::AIEDevice device, uint32_t perColumn,
     throw std::runtime_error("Failed microcontroller topology check for " +
                              stringifyAIEDevice(device).str());
   }
+}
+
+static void checkPartitionStarts(AIE::AIEDevice device, int physicalColumns,
+                                 std::vector<int> expectedStarts) {
+  const auto &model = AIE::getTargetModel(device);
+  if (model.physicalColumns() != physicalColumns)
+    throw std::runtime_error("Failed physicalColumns for " +
+                             stringifyAIEDevice(device).str());
+  if (model.partitionStartColumns(model.columns()) != expectedStarts)
+    throw std::runtime_error("Failed partitionStartColumns for " +
+                             stringifyAIEDevice(device).str());
 }
 
 void test() {
@@ -156,6 +168,10 @@ void test() {
     if (AIE::getTargetModel(dev).rows() != 6) {
       throw std::runtime_error("Failed npu1_ncol rows");
     }
+    std::vector<int> expectedStarts;
+    for (int c = 0; c + cols <= 4; ++c)
+      expectedStarts.push_back(c);
+    checkPartitionStarts(dev, 4, expectedStarts);
     checkControllerTopology(dev, 0, 0);
   }
 
@@ -186,6 +202,7 @@ void test() {
   if (AIE::getTargetModel(AIE::AIEDevice::npu2).rows() != 6) {
     throw std::runtime_error("Failed npu2 rows");
   }
+  checkPartitionStarts(AIE::AIEDevice::npu2, 8, {0});
   checkControllerTopology(AIE::AIEDevice::npu2, 0, 0);
 
   // AIEDevice::npu2_1col, npu2_2col, npu2_3col, npu2_4col, npu2_5col,
@@ -224,6 +241,10 @@ void test() {
     if (AIE::getTargetModel(dev).rows() != 6) {
       throw std::runtime_error("Failed npu2_ncol rows");
     }
+    std::vector<int> expectedStarts;
+    for (int c = 0; c + cols <= 8; ++c)
+      expectedStarts.push_back(c);
+    checkPartitionStarts(dev, 8, expectedStarts);
     checkControllerTopology(dev, 0, 0);
   }
 

@@ -3,10 +3,8 @@
 
 # RUN: %python %s | FileCheck %s
 
-"""Test that Bd.packet emits a distinct aie.dma_bd_packet op BEFORE the
-aie.dma_bd, rather than a `packet` attribute on the dma_bd. The CDO/xclbin
-backends (AIERT, AIETargetXAIEV2) read the packet header only from the
-dma_bd_packet op, so the header must be emitted as that op to reach hardware."""
+"""Test that Bd.packet emits the packet header as the dma_bd's `packet`
+attribute, the one form every backend reads."""
 
 import numpy as np
 
@@ -31,8 +29,6 @@ def emit_packet_bd():
                 bds=[
                     Bd(
                         buffer=buf,
-                        offset=0,
-                        length=n,
                         packet=(0, 5),
                     ),
                 ],
@@ -49,9 +45,6 @@ def emit_packet_bd():
     return Program(NPU2Col1(), rt).resolve_program()
 
 
-# The packet header is a distinct op emitted immediately before the dma_bd,
-# and the dma_bd itself carries no packet attribute.
-# CHECK: aie.dma_bd_packet(0, 5)
-# CHECK-NEXT: aie.dma_bd({{.*}} : memref<256xi32> len = 256)
-# CHECK-NOT: aie.dma_bd({{.*}}packet
+# CHECK-NOT: aie.dma_bd_packet
+# CHECK: aie.dma_bd({{.*}} : memref<256xi32>) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
 print(emit_packet_bd())

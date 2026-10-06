@@ -5,8 +5,10 @@
 #
 """Tiled transform algorithms (unary/binary, single-core/parallel) built on IRON."""
 
+from typing import get_origin
+
 import numpy as np
-from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
@@ -16,6 +18,12 @@ from aie.iron.worker import Worker
 from aie.utils import get_current_device
 
 from ._pipeline import Stage, kernel_params, pipeline
+
+
+def _stack_size(func):
+    """Return the core stack a library kernel's contract asks for, or None."""
+    contract = getattr(func, "contract", None)
+    return contract.stack_bytes if contract is not None else None
 
 
 def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size=0):
@@ -97,6 +105,7 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
         held=kparams.fifos,
         constants=[func],
         iterations=N_div_n,
+        stack_size=_stack_size(func),
         trace=trace_size > 0,
     )
     # Host buffers: inputs, output, then the tensor params.
@@ -318,26 +327,18 @@ def _transform_parallel_gen(
             + [of.cons() for of in param_of_list]
             + [of_outs[col][chan].prod()]
             + [func],
+            stack_size=_stack_size(func),
             trace=(1 if trace_size > 0 else 0),
         )
         for col in range(num_columns)
         for chan in range(num_channels)
     ]
 
-    # One TensorAccessPattern per (column, channel) — each carries its own
-    # disjoint sub-range of the input, addressed by its position in
-    # row-major (col, chan) order.
-    per_worker_elements = num_elements // (num_columns * num_channels)
-    taps = [
-        TensorAccessPattern(
-            (1, num_elements),
-            per_worker_elements * (col * num_channels + chan),
-            [1, 1, 1, per_worker_elements],
-            [0, 0, 0, 1],
-        )
-        for col in range(num_columns)
-        for chan in range(num_channels)
-    ]
+    # One chunk per (column, channel): equal, disjoint sub-ranges of the
+    # input in row-major (col, chan) order.
+    taps = TensorAccessPattern.full((num_elements,)).partition(
+        num_columns * num_channels
+    )
 
     # Runtime operations to move data to/from the AIE-array.
     # Pre-build the prod/cons handle grids so they can be registered via fn_args
@@ -439,7 +440,7 @@ def make_param_descriptor(tensor_ty):
 
 def _expand_param(param):
     """Allow callers to pass either a real tensor or a numpy ndarray type."""
-    if hasattr(param, "__args__") and len(getattr(param, "__args__", ())) == 2:
+    if get_origin(param) is np.ndarray:
         return make_param_descriptor(param)
     return param
 
@@ -498,13 +499,15 @@ def transform(func, tensor_ty, *params, tile_size=16, trace_size=0):
     Like [`transform`][iron.algorithms._transform.transform] but accepts a numpy ``ndarray`` type descriptor
     instead of a real tensor.  Intended for use inside ``@iron.jit`` generator
     bodies where the tensor's shape and dtype are expressed as ``CompileTime[T]``
-    parameters and the actual tensors are not yet available::
+    parameters and the actual tensors are not yet available:
 
-        @iron.jit
-        def my_design(inp: In, out: Out,
-                      N: CompileTime[int], dtype: CompileTime[type] = np.int32):
-            tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-            return iron.algorithms.transform(lambda x: x + 1, tensor_ty)
+    ```python
+    @iron.jit
+    def my_design(inp: In, out: Out,
+                  N: CompileTime[int], dtype: CompileTime[type] = np.int32):
+        tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+        return iron.algorithms.transform(lambda x: x + 1, tensor_ty)
+    ```
 
     Args:
         func: Function or `ExternalFunction` to apply.

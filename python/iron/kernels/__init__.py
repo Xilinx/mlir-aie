@@ -7,20 +7,25 @@
 
 Submodules:
 - `eltwise` — passthrough, scale, add, mul, relu
-- `datamovement` — axpy, convert_copy, expand, rope, transpose
+- `datamovement` — affine_cast, axpy, convert_copy, expand, rope, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
-- `reduce` — reduce_add, reduce_min, reduce_max, compute_max
+- `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
+- `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
+- `flm_gemma4` — core kernels extracted from FastFlowLM's Gemma 4
+  implementation (AIE2P): prefill attention, the q4nx LM head and the decode
+  layer's cores, each with its object's entry points as attributes. Not
+  intended for other models.
 - `linalg` — mm, mv, cascade_mm, mm_bfp (a ``MatrixKernel``: ``.mac_dims``
   and ``.stream_dims`` read the blocking and DMA transforms off the
   contract's operand layouts)
 - `mm(...).zero` and `mv(...).zero` construct companion zero-fill kernels;
-  `mm.mac_dims(...)` and `cascade_mm.mac_dims(...)` query micro-kernel geometry
-  without constructing a kernel.
+  `mm.mac_dims(...)`, `cascade_mm.mac_dims(...)` and `mha.mac_dims(...)` query
+  micro-kernel geometry without constructing a kernel.
 - `zero` — independent zero-fill kernel
 
 Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
@@ -28,7 +33,7 @@ Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
 ``Param``), a numpy reference, a tolerance and the dtype facts a signature
 cannot say. It is what ``aie.iron.algorithms.kernel_design`` uses to build,
 run and check any kernel, and the ``*_ref`` functions exported here are those
-references. :func:`factories` lists the factory names.
+references. ``factories`` lists the factory names.
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
 
@@ -42,6 +47,7 @@ from ._common import (
     KernelContract,
     Param,
     TensorLayout,
+    Trace,
 )
 from .activation import (
     bf16_exp,
@@ -58,15 +64,18 @@ from .activation import (
     sigmoid,
     sigmoid_lut_ref,
     sigmoid_ref,
+    sigmoid_table_ref,
     silu,
     silu_lut_ref,
     silu_ref,
     silu_sized,
+    silu_table_ref,
     softmax,
     softmax_ref,
     swiglu,
     swiglu_lut_ref,
     swiglu_ref,
+    swiglu_table_ref,
     tanh,
     tanh_lut_ref,
     tanh_ref,
@@ -106,6 +115,8 @@ from .conv import (
 )
 from .core import RoundingMode, conv_even, set_rounding
 from .datamovement import (
+    affine_cast,
+    affine_cast_ref,
     axpy,
     axpy_ref,
     convert_copy,
@@ -132,12 +143,83 @@ from .eltwise import (
     scale,
     scale_ref,
 )
+from .flm_gemma4 import (
+    FLM_GEMMA4_E2B_DECODE,
+    FLM_GEMMA4_E4B_DECODE,
+    FlmGemma4DecodeGeometry,
+    flm_gemma4_attn_kv_core,
+    flm_gemma4_attn_kv_core_ref,
+    flm_gemma4_attn_kv_kvh2_core,
+    flm_gemma4_attn_kv_kvh2_core_ref,
+    flm_gemma4_attn_prefill,
+    flm_gemma4_attn_prefill_ref,
+    flm_gemma4_attn_qk_core,
+    flm_gemma4_attn_qk_core_ref,
+    flm_gemma4_attn_qk_kvh2_core,
+    flm_gemma4_attn_qk_kvh2_core_ref,
+    flm_gemma4_bf16_proj_core,
+    flm_gemma4_bf16_proj_core_ref,
+    flm_gemma4_decode_attn_kv,
+    flm_gemma4_decode_attn_kv_kvh2,
+    flm_gemma4_decode_attn_qk,
+    flm_gemma4_decode_attn_qk_kvh2,
+    flm_gemma4_decode_gate_layer_embedding,
+    flm_gemma4_decode_glu,
+    flm_gemma4_decode_per_layer_up,
+    flm_gemma4_decode_proj_layer_embedding,
+    flm_gemma4_decode_proj_main,
+    flm_gemma4_decode_rms_residual,
+    flm_gemma4_decode_rope,
+    flm_gemma4_decode_swa_attn_kv,
+    flm_gemma4_glu_core,
+    flm_gemma4_glu_core_ref,
+    flm_gemma4_pli_gelu_core,
+    flm_gemma4_pli_gelu_core_ref,
+    flm_gemma4_prefill_block_begin,
+    flm_gemma4_prefill_block_begin_ref,
+    flm_gemma4_prefill_block_end,
+    flm_gemma4_prefill_block_end_ref,
+    flm_gemma4_prefill_block_mid_core,
+    flm_gemma4_prefill_block_mid_core_ref,
+    flm_gemma4_prefill_blocks,
+    flm_gemma4_prefill_blocks_ref,
+    flm_gemma4_prefill_finalize,
+    flm_gemma4_prefill_finalize_ref,
+    flm_gemma4_prefill_fv_core,
+    flm_gemma4_prefill_fv_core_ref,
+    flm_gemma4_prefill_qk_core,
+    flm_gemma4_prefill_qk_core_ref,
+    flm_gemma4_prefill_round_begin,
+    flm_gemma4_prefill_round_begin_ref,
+    flm_gemma4_prefill_rounds,
+    flm_gemma4_prefill_rounds_ref,
+    flm_gemma4_q4nx_lm_head,
+    flm_gemma4_q4nx_lm_head_epilogue,
+    flm_gemma4_q4nx_lm_head_epilogue_ref,
+    flm_gemma4_q4nx_lm_head_ref,
+    flm_gemma4_q4nx_lm_head_rms,
+    flm_gemma4_q4nx_lm_head_rms_ref,
+    flm_gemma4_rms_residual_core,
+    flm_gemma4_rms_residual_core_ref,
+    flm_gemma4_rope_core,
+    flm_gemma4_rope_core_ref,
+    flm_gemma4_swa_attn_kv_core,
+    flm_gemma4_swa_attn_kv_core_ref,
+    flm_gemma4_swa_prefill,
+    flm_gemma4_swa_prefill_ref,
+    flm_gemma4_v_norm_core,
+    flm_gemma4_v_norm_core_ref,
+)
 from .fused import fused_mm
 from .linalg import (
+    MV_COL_MAJ_FIRST,
+    MV_COL_MAJ_LAST,
     MatrixKernel,
     cascade_mm,
     cascade_mm_put,
     mha,
+    mha_softmax,
+    mha_softmax_ref,
     mm,
     mm_acc_dtype,
     mm_bfp,
@@ -159,6 +241,10 @@ from .linalg import (
 from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
 from .quant import q4nx_dequant, q4nx_dequant_ref
 from .reduce import (
+    argmax,
+    argmax_combine,
+    argmax_combine_ref,
+    argmax_ref,
     compute_max,
     compute_max_ref,
     reduce_add,
@@ -168,12 +254,14 @@ from .reduce import (
     reduce_min,
     reduce_min_ref,
 )
+from .sample import exp64_ref, sample_combine, sample_ref, sample_select
 from .transformer import (
     layer_norm_affine_cast,
     layer_norm_affine_cast_ref,
     layer_norm_f32,
     layer_norm_f32_ref,
     mm_activation_epilogue,
+    mm_activation_epilogue_lut_ref,
     mm_activation_epilogue_ref,
 )
 from .vision import (
@@ -200,6 +288,7 @@ __all__ = [
     "KernelContract",
     "MatrixKernel",
     "TensorLayout",
+    "Trace",
     "Param",
     "RoundingMode",
     "conv_even",
@@ -216,6 +305,10 @@ __all__ = [
     "rms_norm",
     "q4nx_dequant",
     "q4nx_dequant_ref",
+    "sample_select",
+    "sample_combine",
+    "sample_ref",
+    "exp64_ref",
     "rms_norm_ref",
     "layer_norm",
     "layer_norm_ref",
@@ -227,11 +320,81 @@ __all__ = [
     "rope_ref",
     "mm_activation_epilogue",
     "mm_activation_epilogue_ref",
+    "mm_activation_epilogue_lut_ref",
+    "FLM_GEMMA4_E2B_DECODE",
+    "FLM_GEMMA4_E4B_DECODE",
+    "FlmGemma4DecodeGeometry",
+    "flm_gemma4_attn_prefill",
+    "flm_gemma4_attn_prefill_ref",
+    "flm_gemma4_swa_prefill",
+    "flm_gemma4_swa_prefill_ref",
+    "flm_gemma4_prefill_block_begin",
+    "flm_gemma4_prefill_block_begin_ref",
+    "flm_gemma4_prefill_block_end",
+    "flm_gemma4_prefill_block_end_ref",
+    "flm_gemma4_prefill_rounds",
+    "flm_gemma4_prefill_rounds_ref",
+    "flm_gemma4_prefill_blocks",
+    "flm_gemma4_prefill_blocks_ref",
+    "flm_gemma4_prefill_finalize",
+    "flm_gemma4_prefill_finalize_ref",
+    "flm_gemma4_prefill_round_begin",
+    "flm_gemma4_prefill_round_begin_ref",
+    "flm_gemma4_prefill_qk_core",
+    "flm_gemma4_prefill_qk_core_ref",
+    "flm_gemma4_prefill_fv_core",
+    "flm_gemma4_prefill_fv_core_ref",
+    "flm_gemma4_prefill_block_mid_core",
+    "flm_gemma4_prefill_block_mid_core_ref",
+    "flm_gemma4_q4nx_lm_head",
+    "flm_gemma4_q4nx_lm_head_epilogue",
+    "flm_gemma4_q4nx_lm_head_epilogue_ref",
+    "flm_gemma4_q4nx_lm_head_ref",
+    "flm_gemma4_q4nx_lm_head_rms",
+    "flm_gemma4_q4nx_lm_head_rms_ref",
+    "flm_gemma4_decode_glu",
+    "flm_gemma4_glu_core",
+    "flm_gemma4_glu_core_ref",
+    "flm_gemma4_decode_attn_kv",
+    "flm_gemma4_decode_attn_kv_kvh2",
+    "flm_gemma4_decode_attn_qk",
+    "flm_gemma4_decode_attn_qk_kvh2",
+    "flm_gemma4_attn_qk_core",
+    "flm_gemma4_attn_qk_core_ref",
+    "flm_gemma4_attn_qk_kvh2_core",
+    "flm_gemma4_attn_qk_kvh2_core_ref",
+    "flm_gemma4_decode_swa_attn_kv",
+    "flm_gemma4_attn_kv_core",
+    "flm_gemma4_attn_kv_core_ref",
+    "flm_gemma4_attn_kv_kvh2_core",
+    "flm_gemma4_attn_kv_kvh2_core_ref",
+    "flm_gemma4_swa_attn_kv_core",
+    "flm_gemma4_swa_attn_kv_core_ref",
+    "flm_gemma4_decode_rope",
+    "flm_gemma4_rope_core",
+    "flm_gemma4_rope_core_ref",
+    "flm_gemma4_v_norm_core",
+    "flm_gemma4_v_norm_core_ref",
+    "flm_gemma4_decode_rms_residual",
+    "flm_gemma4_rms_residual_core",
+    "flm_gemma4_rms_residual_core_ref",
+    "flm_gemma4_decode_proj_main",
+    "flm_gemma4_decode_per_layer_up",
+    "flm_gemma4_bf16_proj_core",
+    "flm_gemma4_bf16_proj_core_ref",
+    "flm_gemma4_decode_proj_layer_embedding",
+    "flm_gemma4_decode_gate_layer_embedding",
+    "flm_gemma4_pli_gelu_core",
+    "flm_gemma4_pli_gelu_core_ref",
     "reduce_add",
     "reduce_min",
     "reduce_max",
     "compute_max",
     "compute_max_ref",
+    "argmax",
+    "argmax_ref",
+    "argmax_combine",
+    "argmax_combine_ref",
     "relu",
     "relu_sized",
     "rgba2hue",
@@ -262,6 +425,7 @@ __all__ = [
     "tanh",
     "sigmoid",
     "leaky_relu",
+    "affine_cast",
     "axpy",
     "convert_copy",
     "expand",
@@ -272,6 +436,7 @@ __all__ = [
     "reduce_add_ref",
     "reduce_min_ref",
     "reduce_max_ref",
+    "affine_cast_ref",
     "axpy_ref",
     "convert_copy_ref",
     "expand_ref",
@@ -291,8 +456,11 @@ __all__ = [
     "exp2f_vec_ref",
     "softmax_ref",
     "sigmoid_lut_ref",
+    "sigmoid_table_ref",
     "silu_lut_ref",
+    "silu_table_ref",
     "swiglu_lut_ref",
+    "swiglu_table_ref",
     "tanh_lut_ref",
     "tanh_ref",
     "sigmoid_ref",
@@ -301,6 +469,8 @@ __all__ = [
     "fused_mm",
     "mm_acc_dtype",
     "mha",
+    "mha_softmax",
+    "mha_softmax_ref",
     "prefill_fv",
     "prefill_fv_ref",
     "mm_bfp",
@@ -310,6 +480,8 @@ __all__ = [
     "mm_bfp_shuffle_ref",
     "mm_bfp_shuffle",
     "mv",
+    "MV_COL_MAJ_FIRST",
+    "MV_COL_MAJ_LAST",
     "cascade_mm",
     "cascade_mm_put",
     "conv2dk1",

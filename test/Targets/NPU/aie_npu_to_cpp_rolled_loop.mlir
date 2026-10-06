@@ -18,32 +18,32 @@
 // RUN: | aie-translate --aie-npu-to-cpp | FileCheck %s
 
 // The pool is declared once from the target model's BD count.
-// CHECK: aie_runtime::BdPool bd_pool_0_0 = aie_runtime::bd_pool_init(16);
+// CHECK: aie_runtime::BdPool bd_pool_0_0_0_16 = aie_runtime::bd_pool_init_range(0, 16);
 // The op-count is a runtime accumulator, not a compile-time literal.
 // CHECK: uint32_t __opcount = 0;
 // The prologue pops the initial id.
-// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return std::nullopt;
+// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0_0_16, bd_{{[0-9]+}})) return aie_runtime::txn_refused("{{.*}}");
 // The runtime-bound loop is a real C++ for-loop over the trip-count param.
 // CHECK: for (size_t
 // Inside the loop: pop, count, and push the previous id.
-// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return std::nullopt;
+// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0_0_16, bd_{{[0-9]+}})) return aie_runtime::txn_refused("{{.*}}");
 // CHECK: ++__opcount;
-// CHECK: aie_runtime::bd_pool_push(bd_pool_0_0,
+// CHECK: aie_runtime::bd_pool_push(bd_pool_0_0_0_16,
 // The header reads the runtime count.
 // CHECK: aie_runtime::txn_prepend_header(txn, __opcount,
 
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
-  aie.runtime_sequence @rolled(%arg0: memref<1024xi32>, %n: index) {
+  aie.runtime_sequence @rolled(%arg0: memref<8192xi32>, %n: index) {
     %c1 = arith.constant 1 : index
     %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 1024 sizes = [1, 4, 8, 32] strides = [4096, 512, 32, 1])
+      aie.dma_bd(%arg0 : memref<8192xi32> offset = 0 len = 1024 sizes = [1, 4, 8, 32] strides = [4096, 512, 32, 1])
       aie.end
     } {issue_token = true}
     aiex.dma_start_task(%init)
     %last = scf.for %i = %c1 to %n step %c1 iter_args(%prev = %init) -> (index) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 1024 sizes = [1, 4, 8, 32] strides = [4096, 512, 32, 1])
+        aie.dma_bd(%arg0 : memref<8192xi32> offset = 0 len = 1024 sizes = [1, 4, 8, 32] strides = [4096, 512, 32, 1])
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)

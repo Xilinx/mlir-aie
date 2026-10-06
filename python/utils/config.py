@@ -79,6 +79,33 @@ def aiecc_path():
     )
 
 
+def aiecc_tool_path(name, *, override=None, cwd=None):
+    """Return the executable aiecc runs for ``name``, found the way aiecc finds it.
+
+    An explicit override takes precedence over ``AIE_XCLBINUTIL`` for
+    ``xclbinutil``. Otherwise Peano's bin directory is searched ahead of PATH.
+    """
+    if override is None and name == "xclbinutil":
+        override = os.environ.get("AIE_XCLBINUTIL")
+    if override:
+        override_path = Path(override)
+        if (
+            cwd is not None
+            and not override_path.is_absolute()
+            and any(sep and sep in override for sep in (os.sep, os.altsep))
+        ):
+            override = str(Path(cwd) / override_path)
+        found = shutil.which(override)
+    else:
+        search = os.pathsep.join(
+            [os.path.join(config.peano_install_dir, "bin"), *os.get_exec_path()]
+        )
+        found = shutil.which(_executable_name(name), path=search)
+    if not found:
+        raise RuntimeError(f"aiecc cannot find {override or name}.")
+    return found
+
+
 def host_cxx_path():
     """Return a host C++ compiler: ``CXX``, then ``c++``/``g++``/``clang++``.
 
@@ -136,6 +163,8 @@ def _llvm_tool_dirs():
     the MLIR-AIE wheel bundles llvm-objcopy, while the Peano (llvm-aie) wheel
     ships llvm-ar and llvm-nm. Searching only one of them leaves a stock
     install unable to find a tool that is sitting on disk in the other.
+    A build tree bundles nothing (llvm-objcopy is copied at install time),
+    so the bin directory of the LLVM it was configured against comes last.
     """
     dirs = []
     for get_dir in (root_path, peano_install_dir):
@@ -144,6 +173,11 @@ def _llvm_tool_dirs():
         except RuntimeError:
             # A source or dev install may configure only one of the two.
             continue
+    # Absent from a configure.py generated before it was recorded; a wheel
+    # records its build machine's directory, which is skipped for not existing.
+    llvm_bin = getattr(config, "llvm_tools_binary_dir", "")
+    if llvm_bin and os.path.isdir(llvm_bin):
+        dirs.append(llvm_bin)
     return dirs
 
 
@@ -188,10 +222,10 @@ def _find_llvm_tool(name, env_var):
     """Resolve an LLVM binutil, preferring a candidate that actually runs.
 
     Resolution order: ``env_var``, the bundled MLIR-AIE and Peano bin
-    directories, then PATH. Candidates that fail to execute are passed over in
-    favour of a later one; if every candidate is broken the first is returned
-    anyway, so the caller surfaces that tool's own error rather than a
-    misleading "not found".
+    directories, the configured LLVM's bin directory, then PATH. Candidates
+    that fail to execute are passed over in favour of a later one; if every
+    candidate is broken the first is returned anyway, so the caller surfaces
+    that tool's own error rather than a misleading "not found".
     """
     override = os.environ.get(env_var)
     if override:
@@ -221,11 +255,50 @@ def _find_llvm_tool(name, env_var):
 
     raise RuntimeError(
         f"Could not find {name}. Resolves in the order of the {env_var} "
-        f"environment variable, the MLIR-AIE and Peano bin directories, then "
+        f"environment variable, the MLIR-AIE and Peano bin directories, the "
+        "LLVM bin directory the build was configured against, then "
         f"PATH (including versioned spellings such as {name}-18). Searched: "
         + (", ".join(searched) if searched else "(no bundled bin directories)")
         + ". PATH directories: "
         + ", ".join(directory or os.curdir for directory in os.get_exec_path())
+    )
+
+
+def xclbinutil_path():
+    """Return the xclbinutil used to read sections out of an xclbin.
+
+    Resolution order: ``AIE_XCLBINUTIL``, the MLIR-AIE bin directory (where
+    ``tools/hrx-xclbinutil`` installs, needing no system XRT), then PATH. The
+    override means what it means to aiecc: a value with a path separator names
+    an executable, a bare name is looked up on PATH, and one that resolves to
+    nothing is an error rather than a fallback, so a flow that pins its
+    xclbinutil gets exactly that one.
+    """
+    override = os.environ.get("AIE_XCLBINUTIL")
+    if override:
+        found = shutil.which(override)
+        if not found:
+            raise RuntimeError(
+                f"AIE_XCLBINUTIL is set to {override!r}, but that is not an "
+                "executable file or a program on PATH."
+            )
+        return found
+
+    try:
+        bundled = os.path.join(root_path(), "bin", _executable_name("xclbinutil"))
+    except RuntimeError:
+        # A source checkout with no install tree has no bundled copy.
+        bundled = None
+    if bundled and os.path.isfile(bundled):
+        return bundled
+
+    found = shutil.which("xclbinutil")
+    if found:
+        return found
+
+    raise RuntimeError(
+        "xclbinutil not found. Build mlir-aie with -DAIE_BUILD_HRXXCLBINUTIL=ON, "
+        "install XRT, or set AIE_XCLBINUTIL."
     )
 
 
@@ -272,6 +345,16 @@ def ar_path():
     compiler that produced the objects.
     """
     return _find_llvm_tool("llvm-ar", "AIE_AR_PATH")
+
+
+def readobj_path():
+    """Return the llvm-readobj the static checks read kernel objects with.
+
+    Its JSON output (sections, symbols, relocations) is what tells which
+    functions a linked kernel keeps and which runtime helpers it calls; GNU
+    readelf has no JSON form and does not decode the AIE relocations.
+    """
+    return _find_llvm_tool("llvm-readobj", "AIE_READOBJ_PATH")
 
 
 def aie_kernels_dir():

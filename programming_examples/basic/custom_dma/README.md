@@ -9,6 +9,8 @@
 
 This IRON design demonstrates how to program custom DMA patterns that integrate with the IRON API by using a `Resolvable` subclass. `ScatterReadDMA` is automatically discovered in the Worker's `fn_args` by `Program`, which calls `resolve()` to emit the DMA configuration.
 
+A `Resolvable` is the tool for packaging a pattern as a reusable class. To spell out a one-off DMA program, IRON's `Buffer`, `Lock`, `Flow` and `TileDma` / `Bd` classes express the same kind of BD chain directly; see [section 2g of the programming guide](../../../programming_guide/section-2/section-2g/README.md).
+
 ## Source Files Overview
 
 1. `custom_dma.py`: A Python script that defines the IRON design. It contains a `ScatterReadDMA` class (a `Resolvable` subclass) that emits custom locks, DMA buffer descriptors, and flows alongside standard IRON components.
