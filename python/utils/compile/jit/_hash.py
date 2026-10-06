@@ -202,11 +202,14 @@ def _import_identity(module: ModuleType) -> tuple[str, tuple[str, ...]]:
         # Importing a submodule binds it on its package, so a package's
         # namespace grows with whatever else the process imports. Its
         # submodules are reached through what they define, or by the code that
-        # names them (see _python_identity).
+        # names them (see _python_identity). Likewise a global bound to an
+        # instance after import (aie.utils' default NPU runtime) is state, not
+        # source: only modules, classes and functions are followed.
         reached = {
             _stamped_module(v)
             for k, v in vars(module).items()
-            if not isinstance(v, ModuleType) or v.__name__ != f"{module.__name__}.{k}"
+            if isinstance(v, (type, FunctionType))
+            or (isinstance(v, ModuleType) and v.__name__ != f"{module.__name__}.{k}")
         }
         names = tuple(sorted(m.__name__ for m in reached if m is not None))
         entry = _IMPORTS[module.__name__] = (module.__spec__, stamp, names)

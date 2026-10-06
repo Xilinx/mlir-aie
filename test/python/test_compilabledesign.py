@@ -1300,6 +1300,50 @@ def test_the_kernel_harness_key_is_the_same_in_every_process(tmp_path):
     }
 
 
+_LAZY_FILES = {
+    "lazy_impl": "class Impl:\n    pass\n",
+    "lazy_holder": (
+        "_instance = None\n\n\n"
+        "def load():\n"
+        "    global _instance\n"
+        "    from lazy_impl import Impl\n\n"
+        "    _instance = Impl()\n"
+    ),
+    "lazy_design": (
+        "import lazy_holder\n"
+        "from aie.utils.compile.jit.markers import CompileTime\n\n\n"
+        "def design(*, N: CompileTime[int]):\n"
+        "    lazy_holder.load()\n"
+    ),
+}
+
+
+def test_the_key_does_not_follow_an_instance_bound_after_import(tmp_path):
+    """A global bound lazily, as aie.utils binds its default NPU runtime, is state.
+
+    Following it made the key depend on whether the process had loaded the
+    runtime before the key first reached the module.
+    """
+    for name, text in _LAZY_FILES.items():
+        (tmp_path / f"{name}.py").write_text(text)
+    sys.path.insert(0, str(tmp_path))
+
+    def key(load):
+        for name in _LAZY_FILES:
+            sys.modules.pop(name, None)
+        gen = importlib.import_module("lazy_design").design
+        if load:
+            sys.modules["lazy_holder"].load()
+        return _compute_recipe_hash(gen, {"N": 1}, (), ())
+
+    try:
+        assert key(load=True) == key(load=False)
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in _LAZY_FILES:
+            sys.modules.pop(name, None)
+
+
 def test_hash_is_24_hex_chars():
     d = CompilableDesign(_gemm_gen())
     hex_str = d._compute_cache_hash()
