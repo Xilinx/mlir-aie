@@ -40,4 +40,3 @@ module {
     aie.packet_flow(20) { aie.packet_source<%t_0_3, DMA : 1> aie.packet_dest<%t_0_1, DMA : 4> }
   }
 }
-

@@ -191,15 +191,15 @@ static LogicalResult verifyReloadKeepsOverlay(AIE::DeviceOp device,
       for (auto &[port, value, setter, skipped] : portSettings(op, sb)) {
         auto it = overlaySettings.find(port);
         if (skipped && it == overlaySettings.end()) {
-          setter->emitError() << "a control-packet reload skips this op, but @"
-                              << overlayName << " does not set "
-                              << port.describe();
+          setter->emitError()
+              << "a control-packet reload skips this op, but @" << overlayName
+              << " does not set " << port.describe();
           return WalkResult::interrupt();
         }
         if (skipped && it->second != value) {
-          setter->emitError() << "a control-packet reload skips this op, but @"
-                              << overlayName << " sets " << port.describe()
-                              << " differently";
+          setter->emitError()
+              << "a control-packet reload skips this op, but @" << overlayName
+              << " sets " << port.describe() << " differently";
           return WalkResult::interrupt();
         }
         if (!skipped && it != overlaySettings.end()) {

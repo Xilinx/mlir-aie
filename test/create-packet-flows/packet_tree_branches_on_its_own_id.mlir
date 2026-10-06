@@ -103,4 +103,3 @@ module {
     aie.packet_flow(2) { aie.packet_source<%t_0_0, DMA : 1> aie.packet_source<%t_0_4, Core : 0> aie.packet_dest<%t_0_1, DMA : 4> aie.packet_dest<%t_0_4, DMA : 0> aie.packet_dest<%t_0_5, DMA : 1> } {priority_route = true}
   }
 }
-
