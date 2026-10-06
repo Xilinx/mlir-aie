@@ -444,6 +444,8 @@ private:
   // The packet ids each source sends each destination.
   std::map<std::pair<PathEndPoint, PathEndPoint>, llvm::SmallVector<int, 2>>
       packetIdsTo;
+  // The packet ids each source sends, to any destination.
+  std::map<PathEndPoint, std::set<int>> idsBySource() const;
   // The packet ids each source sends in prioritized flows.
   std::map<PathEndPoint, std::set<int>> priorityIds;
   // Where each source's flow to each destination was declared.

@@ -430,16 +430,21 @@ bool Pathfinder::capCrowdedFanOut() {
   return cappedTiles.size() > capped;
 }
 
+std::map<PathEndPoint, std::set<int>> Pathfinder::idsBySource() const {
+  std::map<PathEndPoint, std::set<int>> ids;
+  for (const auto &[ends, sent] : packetIdsTo)
+    ids[ends.first].insert(sent.begin(), sent.end());
+  return ids;
+}
+
 bool Pathfinder::routeIdsApart() {
   if (idsApart)
     return false;
   idsApart = true;
   shareChannels = false;
   cappedTiles.clear();
-  std::map<PathEndPoint, std::set<int>> ids;
-  for (const auto &[ends, sent] : packetIdsTo)
-    ids[ends.first].insert(sent.begin(), sent.end());
-  return llvm::any_of(ids, [](const auto &s) { return s.second.size() > 1; });
+  return llvm::any_of(idsBySource(),
+                      [](const auto &s) { return s.second.size() > 1; });
 }
 
 bool Pathfinder::splitSharedIds() {
@@ -448,9 +453,7 @@ bool Pathfinder::splitSharedIds() {
   splitShared = true;
   shareChannels = false;
   cappedTiles.clear();
-  std::map<PathEndPoint, std::set<int>> ids;
-  for (const auto &[ends, sent] : packetIdsTo)
-    ids[ends.first].insert(sent.begin(), sent.end());
+  std::map<PathEndPoint, std::set<int>> ids = idsBySource();
   for (const auto &[src, srcIds] : ids)
     for (const auto &[other, otherIds] : ids) {
       const std::set<int> &theirs = otherIds;
@@ -1755,7 +1758,7 @@ llvm::DenseSet<int> Pathfinder::TreeBuilder::splitOff(int dst) const {
       if (!entersAt(s))
         continue;
       off.insert(below.begin(), below.end());
-      if (apart >= 0)
+      if (apart)
         off.insert(s);
     }
   return off;
