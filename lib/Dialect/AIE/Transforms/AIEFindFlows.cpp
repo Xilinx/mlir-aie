@@ -67,6 +67,13 @@ using PacketConnection = struct PacketConnection {
   llvm::SmallVector<Operation *, 8> usedOps;
 };
 
+using CircuitFanoutSeed = struct CircuitFanoutSeed {
+  Operation *op;
+  Port ingress;
+  Port egress;
+  llvm::SmallVector<Operation *, 3> ops;
+};
+
 class ConnectivityAnalysis {
   DeviceOp &device;
   // Fan-out splitting: when enabled, a linear traversal stops at any switchbox
@@ -76,6 +83,7 @@ class ConnectivityAnalysis {
   bool splitFanouts = false;
   mutable llvm::DenseSet<std::pair<Operation *, int>> fanoutIngresses;
   mutable llvm::DenseSet<std::pair<Operation *, int>> fanoutEgressSeeds;
+  mutable llvm::SmallVector<CircuitFanoutSeed, 8> circuitFanoutSeeds;
 
   static int encodePort(Port p) {
     return static_cast<int>(p.bundle) * 64 + p.channel;
@@ -157,6 +165,9 @@ public:
   // Consumed and cleared by the pass.
   llvm::DenseSet<std::pair<Operation *, int>> &getFanoutEgressSeeds() {
     return fanoutEgressSeeds;
+  }
+  llvm::SmallVector<CircuitFanoutSeed, 8> &getCircuitFanoutSeeds() {
+    return circuitFanoutSeeds;
   }
   static Port decodePort(int e) {
     return {static_cast<WireBundle>(e / 64), e % 64};
@@ -367,8 +378,19 @@ public:
           fanoutIngresses.count({other, encodePort(otherPort)})) {
         connectedTiles.push_back(t);
         for (PortMaskValue &pmv :
-             getConnectionsThroughSwitchbox(*connections, otherPort))
-          fanoutEgressSeeds.insert({other, encodePort(pmv.port)});
+             getConnectionsThroughSwitchbox(*connections, otherPort)) {
+          if (pmv.mv.mask == 0) {
+            auto sameSeed = [&](const CircuitFanoutSeed &seed) {
+              return seed.op == other && seed.ingress == otherPort &&
+                     seed.egress == pmv.port;
+            };
+            if (!llvm::any_of(circuitFanoutSeeds, sameSeed))
+              circuitFanoutSeeds.push_back(
+                  {other, otherPort, pmv.port, pmv.ops});
+          } else {
+            fanoutEgressSeeds.insert({other, encodePort(pmv.port)});
+          }
+        }
         continue;
       }
       std::vector<PortMaskValue> nextPortMaskValues =
@@ -430,6 +452,21 @@ public:
     if (!t)
       return {};
     return traverse({PacketConnection{*t, {0, 0}, {}, {}}}, keepPartialFlows);
+  }
+
+  std::vector<PacketConnection>
+  getConnectedTilesFromCircuitFanout(const CircuitFanoutSeed &seed,
+                                     bool keepPartialFlows) const {
+    auto connection = getConnectionThroughWire(seed.op, seed.egress);
+    if (!connection)
+      return {};
+    Value tile = cast<SwitchboxOp>(seed.op).getTile();
+    SmallVector<Operation *, 8> usedOps(seed.ops.begin(), seed.ops.end());
+    PacketConnection branch{*connection,
+                            {0, 0},
+                            {{tile, seed.ingress, seed.egress}},
+                            std::move(usedOps)};
+    return traverse({std::move(branch)}, keepPartialFlows);
   }
 };
 
@@ -986,6 +1023,18 @@ struct AIEFindFlowsPass
     // nodes themselves stay explicit.
     if (clEmitVias) {
       builder.setInsertionPoint(d.getBody()->getTerminator());
+      for (size_t i = 0; i < analysis.getCircuitFanoutSeeds().size(); ++i) {
+        CircuitFanoutSeed seed = analysis.getCircuitFanoutSeeds()[i];
+        Value srcTile = resolveEndpointTile(seed.op);
+        if (!srcTile)
+          continue;
+        std::vector<PacketConnection> tiles =
+            analysis.getConnectedTilesFromCircuitFanout(seed,
+                                                        clKeepPartialFlows);
+        emitFlows(builder, seed.op->getLoc(), srcTile, seed.ingress.bundle,
+                  seed.ingress.channel, tiles, clEmitVias,
+                  /*dropIntraTile=*/false, idMask, seen, consumed);
+      }
       llvm::DenseSet<std::pair<Operation *, int>> seeded;
       bool progress = true;
       while (progress) {
