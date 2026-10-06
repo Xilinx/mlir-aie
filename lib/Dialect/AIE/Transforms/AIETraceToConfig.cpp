@@ -102,6 +102,28 @@ struct AIETraceToConfigPass
             comboOp.emitError("unknown trace event '") << eventBName << "'";
             return signalPassFailure();
           }
+        }
+      }
+
+      // 0b. Emit explicit register writes (e.g., Locks_Event_Selection_n)
+      for (auto &op : trace.getBody().getOps()) {
+        if (auto regOp = dyn_cast<TraceRegOp>(op)) {
+          // Resolve register information from the target model.
+          auto regInfo = targetModel.getRegisterInfo(regOp.getRegName());
+          if (!regInfo) {
+            regOp.emitError("unknown register '") << regOp.getRegName() << "'";
+            return signalPassFailure();
+          }
+
+          // Create a write to the register with the supplied value.
+          // The WriteRegOp takes (builder, loc, tile, offset, value).
+          configBuilder.create<WriteRegOp>(
+              regOp.getLoc(),
+              trace.getTile(),
+              regInfo->offset,
+              regOp.getValue());
+        }
+      }
 
           // Map slot to input event fields
           StringRef eventAField, eventBField, controlField;
