@@ -728,6 +728,11 @@ static LogicalResult verifyMulFMAElemOp(T op) {
 }
 
 LogicalResult aievec::MulElemOp::verify() {
+  if (getVectorLaneSize(cast<VectorType>(getLhs().getType())) == 64 &&
+      (!getElementTypeOrSelf(getLhs().getType()).isBF16() ||
+       !getElementTypeOrSelf(getResult().getType()).isF32()))
+    return emitError("64 lanes are supported only for bf16 operands with an "
+                     "f32 result");
   return verifyMulFMAElemOp<aievec::MulElemOp>(*this);
 }
 
