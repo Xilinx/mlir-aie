@@ -41,15 +41,6 @@ std::optional<TileID> tileOf(Value tile) {
   return std::nullopt;
 }
 
-// Whether packets leave `master` of `tile` with their header, as AIERT sets
-// it: not into a DMA, nor down the shim's South to one, unless `keep` says.
-bool keepsPktHeader(TileID tile, Port master, std::optional<bool> keep) {
-  if (keep)
-    return *keep;
-  return master.bundle != WireBundle::DMA &&
-         (tile.row != 0 || master.bundle != WireBundle::South);
-}
-
 std::optional<DmaChannelProgram> makeProgram(Operation *op, DeviceOp device) {
   auto parentTile = [](Operation *op) -> std::optional<TileID> {
     if (auto element = op->getParentOfType<TileElement>())
@@ -400,9 +391,7 @@ private:
         for (auto masterSet : b.getOps<MasterSetOp>())
           if (llvm::is_contained(masterSet.getAmsels(), rule.getAmsel()))
             next(masterSet.destPort(), ruleID, arbiter,
-                 keepsPktHeader(sb.getTileOp().getTileID(),
-                                masterSet.destPort(),
-                                masterSet.getKeepPktHeader()));
+                 masterSet.keepsPktHeader());
       };
       for (int packetID = id.value_or(0); packetID <= id.value_or(maxPacketID);
            ++packetID)

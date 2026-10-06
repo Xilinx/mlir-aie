@@ -3159,11 +3159,6 @@ void AIEPathfinderPass::runOnOperation() {
   };
   // The last flow to end at a port sets its keep_pkt_header; a reload keeps
   // the overlay's.
-  auto keepsHeader = [](PacketFlowOp flow, const PathEndPoint &dst) {
-    return flow.getKeepPktHeader().value_or(
-        dst.port.bundle != WireBundle::DMA &&
-        (dst.coords.row != 0 || dst.port.bundle != WireBundle::South));
-  };
   bool reload = reloadsOverlay(d);
   std::map<PathEndPoint, std::pair<PacketFlowOp, PacketFlowOp>> lastTo;
   for (PacketFlowOp flow : d.getOps<PacketFlowOp>())
@@ -3177,7 +3172,9 @@ void AIEPathfinderPass::runOnOperation() {
     }
   for (const auto &[dst, flows] : lastTo) {
     auto [prio, last] = flows;
-    if (!prio || keepsHeader(prio, dst) == keepsHeader(last, dst))
+    if (!prio ||
+        keepsPktHeader(dst.coords, dst.port, prio.getKeepPktHeader()) ==
+            keepsPktHeader(dst.coords, dst.port, last.getKeepPktHeader()))
       continue;
     last.emitError() << "packet flow " << last.IDInt()
                      << " is the last to end at "

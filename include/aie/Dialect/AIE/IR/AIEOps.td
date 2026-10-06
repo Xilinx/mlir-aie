@@ -719,6 +719,7 @@ def AIE_MasterSetOp
   let extraClassDeclaration = [{
     int destIndex() { return getDestChannel(); }
     Port destPort() { return {getDestBundle(), destIndex()}; }
+    bool keepsPktHeader();
   }];
 
   let hasVerifier = 1;

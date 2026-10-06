@@ -2745,6 +2745,20 @@ LogicalResult MasterSetOp::verify() {
   return success();
 }
 
+bool MasterSetOp::keepsPktHeader() {
+  return AIE::keepsPktHeader(
+      (*this)->getParentOfType<SwitchboxOp>().getTileOp().getTileID(),
+      destPort(), getKeepPktHeader());
+}
+
+bool xilinx::AIE::keepsPktHeader(TileID tile, Port master,
+                                 std::optional<bool> keep) {
+  if (keep)
+    return *keep;
+  return master.bundle != WireBundle::DMA &&
+         (tile.row != 0 || master.bundle != WireBundle::South);
+}
+
 // A Core or DMA port a flow starts or ends at on a placed tile must exist
 // there. The placer checks logical tiles' channel budgets.
 static LogicalResult verifyFlowEndpoint(Operation *op, Value tile, Port port,

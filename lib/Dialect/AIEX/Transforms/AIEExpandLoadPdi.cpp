@@ -145,13 +145,10 @@ static SmallVector<PortSetting> portSettings(Operation &op,
       arbiter = a.arbiterIndex();
       mask |= 1 << a.getMselValue();
     }
-    bool keepHeader = masterSet.getKeepPktHeader().value_or(
-        masterSet.getDestBundle() != AIE::WireBundle::DMA &&
-        (sb.rowIndex() != 0 ||
-         masterSet.getDestBundle() != AIE::WireBundle::South));
-    std::string value = llvm::formatv("packet {0}/{1} {2}", arbiter, mask,
-                                      keepHeader ? "keep" : "drop")
-                            .str();
+    std::string value =
+        llvm::formatv("packet {0}/{1} {2}", arbiter, mask,
+                      masterSet.keepsPktHeader() ? "keep" : "drop")
+            .str();
     settings.push_back({key(true, masterSet.destPort()), value, &op, skipped});
   } else if (auto rules = dyn_cast<AIE::PacketRulesOp>(op)) {
     // An empty packet_rules op writes nothing to the hardware.

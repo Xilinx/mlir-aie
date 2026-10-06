@@ -767,23 +767,9 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
         mask |= (1 << msel);
       }
 
-      // the default is to keep header
-      bool keepHeader = true;
-      // the default for dma destinations is to drop the header
-      if (masterSetOp.getDestBundle() == WireBundle::DMA)
-        keepHeader = false;
-      // assume a connection going south from row zero gets wired to shimdma
-      // by a shimmux.
-      if (switchboxOp.rowIndex() == 0 &&
-          masterSetOp.getDestBundle() == WireBundle::South)
-        keepHeader = false;
-
-      // "keep_pkt_header" attribute overrides the above defaults, if set
-      if (auto keep = masterSetOp.getKeepPktHeader())
-        keepHeader = *keep;
-
-      auto dropHeader =
-          keepHeader ? XAIE_SS_PKT_DONOT_DROP_HEADER : XAIE_SS_PKT_DROP_HEADER;
+      auto dropHeader = masterSetOp.keepsPktHeader()
+                            ? XAIE_SS_PKT_DONOT_DROP_HEADER
+                            : XAIE_SS_PKT_DROP_HEADER;
       TRY_XAIE_API_EMIT_ERROR(
           masterSetOp, XAie_StrmPktSwMstrPortEnable, &aiert->devInst, tileLoc,
           WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(masterSetOp.getDestBundle()),

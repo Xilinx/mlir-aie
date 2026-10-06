@@ -353,6 +353,10 @@ inline constexpr llvm::StringLiteral kCtrlPktOverlayAttrName =
     "is_ctrl_pkt_overlay";
 inline constexpr llvm::StringLiteral kPriorityRouteAttrName = "priority_route";
 
+// Whether packets leave `master` of `tile` with their header: not into a DMA,
+// nor down the shim's South to one, unless `keep` says.
+bool keepsPktHeader(TileID tile, Port master, std::optional<bool> keep);
+
 void collectTiles(DeviceOp &device,
                   llvm::DenseMap<TileID, mlir::Operation *> &tiles);
 
