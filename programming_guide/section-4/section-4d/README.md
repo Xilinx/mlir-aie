@@ -30,6 +30,7 @@ The kernel library ([`aie.iron.kernels`](../../kernels_library.md)) comes with c
 | [`test/python/npu/test_kernels_perf.py`](../../../test/python/npu/test_kernels_perf.py) | How fast is it? Checks correctness first, then records traced core `cycles` per call, wall-clock `npu_us`, compile time and binary sizes. |
 | `python -m aie.utils.compile.remarks` | What did the compiler do? Compiles each kernel exactly as the JIT does and reports every loop's II, stages, zero-overhead-loop status, program memory, dropped pragmas, runtime-library calls and stack depth. No device needed. |
 | [Nightly Kernel Checks](https://xilinx.github.io/mlir-aie/kernel-checks/) | Last night's run per NPU (power mode, host, Peano, what passed, what moved past its threshold, and warnings when the numbers are less comparable), then the history: the [kernels view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels) lists every kernel, its sources, which NPUs build it and passed it last night; a kernel's own page (`#view=kernel&kernel=<factory>`) has every case's latest numbers and charts; the charts view has one chart per case and metric. |
+| [Nightly Component Checks](https://xilinx.github.io/mlir-aie/kernel-checks/#view=components) | The same dashboard's components view: last night's SA placer seed sweep (which seeds placed, their cost, CPU time and memory) and the SA placer hardware check (mobilenet compiled, run and verified on an NPU2 for a few seeds at batch 1 to 64: time per image, streaming time and compile time), each as cards and a chart like a kernel's, with the command that reproduces each failed seed or run. See [Nightly SA placer checks](../../section-1/README.md#nightly-sa-placer-checks). |
 
 All of them honour `MLIR_AIE_KERNEL_SOURCES` (see [section 4c](../section-4c#before-you-start-make-sure-your-edits-are-compiled)): point it at a checkout and they compile that checkout's `aie_kernels/`. That is also how you build a "before" version to compare against.
 
@@ -50,7 +51,7 @@ RuntimeError: expected <N> trace intervals, got <M>; a kernel on the core emits 
 
 A trace buffer that fills keeps only the first intervals. The split still labels them, and the row's `range` says `truncated`.
 
-Adding markers has a cost of its own: on AIE2P they grew one kernel's stack frame by 64 bytes. After instrumenting, check the remarks tool's `stack_bytes` row (see [Keeping it correct](#keeping-it-correct)).
+Adding markers has a cost of its own: on AIE2P they grew one kernel's stack frame by 64 bytes. After instrumenting, check the remarks tool's `kernel_stack_bytes` row (see [Keeping it correct](#keeping-it-correct)).
 
 ## <u>A worked example: `add`</u>
 
@@ -194,7 +195,7 @@ The remarks tool (see [Static checks](../../kernels_library.md#static-checks)) w
 
 Per kernel, `pm_bytes` is program memory, `pass_failed` lists `#pragma clang loop` or `AIE_*` hints the compiler could not apply, and `schedule_notes` holds the scheduler's messages. "Unable to find schedule" means the modulo scheduler gave up; the loop may still have been packed by the post-pass scheduler, so read `ii` and `ns` too. The tool builds each factory at its defaults and at each entry of its `.dtypes` table, not at every case's parameters.
 
-**Library calls and stack.** Scalar code that looks harmless can compile to a function call. The tool also reads each kernel object. Its `libcalls` row counts the runtime-library routines that the entry symbol reaches, and the build prints their names (`calls the runtime library: __divsf3 __mulsf3`). A healthy kernel has none. [Peano and AIE2P traps](#peano-and-aie2p-traps) lists the calls to look for. For an object outside the library, `$PEANO_INSTALL_DIR/bin/llvm-nm -u <kernel>.o` lists the same symbols, next to any other kernels it calls. The `stack_bytes` row is the deepest chain of stack frames from the entry symbol, not counting the library routines' own frames. When it is over the contract's `stack_bytes` (or the target's default), the tool prints a warning.
+**Library calls and stack.** Scalar code that looks harmless can compile to a function call. The tool also reads each kernel object. Its `libcalls` row counts the runtime-library routines that the entry symbol reaches, and the build prints their names (`calls the runtime library: __divsf3 __mulsf3`). A healthy kernel has none. [Peano and AIE2P traps](#peano-and-aie2p-traps) lists the calls to look for. For an object outside the library, `$PEANO_INSTALL_DIR/bin/llvm-nm -u <kernel>.o` lists the same symbols, next to any other kernels it calls. The `kernel_stack_bytes` row is the deepest chain of stack frames from the entry symbol, not counting the library routines' own frames or the core's `main`, so the core needs more than it says. When it is over the contract's `stack_bytes` (or the target's default), the tool prints a warning.
 
 **The object.** When a number moves unexpectedly, look before you explain. In the loop body, count the `vlda`/`vldb`/`vmac`/`vst` operations and any `[sp, #...]` accesses (spills to the stack). Size code per function, not per object: `llvm-size -A` and the `.text.<entry>` section. A `static` helper that is inlined into its `extern "C"` entry point can also be emitted on its own; it counts in the object, and the linker then drops it.
 
@@ -255,7 +256,7 @@ Step 64 lanes for 8- and 16-bit data and 32 lanes for bf16 arithmetic, not 16. `
 On an int8 convolution network, three more changes measured faster:
 * doing the bias add on an int32 vector and then `acc.to_vector<int8>(shift)` with `rounding_mode::conv_even`, which is bit-exact with the scalar rounding: 20-25% per kernel;
 * having the producing kernel write the matrix-multiply A operand in the order the consumer's `mmul` loads it: -23.6% on one block;
-* moving a pure strided copy (a stride-2 deinterleave) out of the kernel into the memory tile's DMA (`dims_to_stream`): +12%. This helps only when each contiguous element is at least 512 bytes, and int8 vector loads still need a 32-byte-aligned start.
+* moving a pure strided copy (a stride-2 deinterleave) out of the kernel into the memory tile's DMA (`to_stream`): +12%. This helps only when each contiguous element is at least 512 bytes, and int8 vector loads still need a 32-byte-aligned start.
 
 ## <u>Peano and AIE2P traps</u>
 
@@ -266,7 +267,7 @@ Some things compile without a warning and then run silently slower or give wrong
 **Pragmas that do nothing, or the opposite.** Under Peano, `AIE_PREPARE_FOR_PIPELINING` expands to nothing, and so do the other Chess-only controls ([pragma reference](../section-4c#loop-pragma-reference)). Code built with and without it is byte-identical. `AIE_PREPARE_FOR_POSTPIPELINING` expands to `pipeline(disable)`: it **turns pipelining off**. `AIE_LOOP_RANGE` states a trip count and unrolls nothing. `chess_storage(...)` silently drops its alignment and bank placement: the same table was 32-byte aligned under Chess and 4-byte aligned under Peano. Use `alignas`.
 
 **Silent wrong results.**
-* A stack overflow does not trap on AIE2P; it overwrites the neighbouring buffer. aiecc measures the stack each core needs and fails the build when the declared size is too small. The IRON `Worker` default is 1024 bytes; a kernel contract states a larger need in `stack_bytes`. The remarks `stack_bytes` row gives the deepest path before you build.
+* A stack overflow does not trap on AIE2P; it overwrites the neighbouring buffer. aiecc measures the stack each core needs and fails the build when the declared size is too small. The IRON `Worker` default is 1024 bytes; a kernel contract states a larger need in `stack_bytes`. The remarks `kernel_stack_bytes` row gives the kernel's deepest path before you build; the core adds `main`'s frame.
 * On hardware, a block stream's `pop_seek` that directly follows a plain `pop()` landed on the wrong block when the seek stride was odd; even strides were correct. [mm_bfp.cc](../../../aie_kernels/linalg/mm_bfp.cc) therefore seeks after every pop when the number of k blocks is odd, and an odd-K case in [kernel_cases.py](../../../test/python/npu/kernel_cases.py) covers that path.
 * An unaligned `load_v<int8, 32>` silently returns wrong bytes: use two aligned loads and `shuffle_down`. Vector stores of 64 lanes need a 64-byte-aligned buffer (32 at the least), and lookup tables need `alignas(32)`.
 * `mmul::to_vector<int32>` dumps the accumulator in a different lane order from `to_vector<int8>(shift)`.

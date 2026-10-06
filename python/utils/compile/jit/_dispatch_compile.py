@@ -15,6 +15,7 @@ cannot replace a mapped generation or pin a staging DLL on Windows.
 
 from __future__ import annotations
 
+import functools
 import subprocess
 import tempfile
 from pathlib import Path
@@ -56,13 +57,19 @@ def _scalar_c_type(mlir_type) -> str:
     raise TypeError(f"Unsupported dispatch scalar MLIR type: {mlir_type}")
 
 
+@functools.cache
+def _npu_scalar_c_type(declared) -> str | None:
+    with Context():
+        mlir_type = try_convert_np_type_to_mlir_type(declared)
+        if isinstance(mlir_type, (IndexType, IntegerType)):
+            return _scalar_c_type(mlir_type)
+    return None
+
+
 def dispatch_scalar_c_type(declared) -> str:
     """Return the scalar's C ABI type using Runtime's NumPy-to-MLIR conversion."""
-    if declared in get_args(NpuDType):
-        with Context():
-            mlir_type = try_convert_np_type_to_mlir_type(declared)
-            if isinstance(mlir_type, (IndexType, IntegerType)):
-                return _scalar_c_type(mlir_type)
+    if declared in get_args(NpuDType) and (c_type := _npu_scalar_c_type(declared)):
+        return c_type
     raise TypeError(
         f"Unsupported DispatchTime[{getattr(declared, '__name__', declared)}]: "
         "use a NumPy integer scalar type supported by Runtime, such as np.int32."

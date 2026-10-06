@@ -30,12 +30,12 @@ Instead of an explicit copy, the ObjectFifo API provides an implicit copy via th
 ```python
 def forward(
     self,
-    tile: Tile = AnyMemTile,
+    tile: Tile | None = AnyMemTile,
     obj_type: type[np.ndarray] | None = None,
     depth: int | None = None,
     name: str | None = None,
-    dims_to_stream: list[Sequence[int]] | None = None,
-    dims_from_stream: list[Sequence[int]] | None = None,
+    to_stream: TensorAccessPattern | None = None,
+    from_stream: TensorAccessPattern | None = None,
     plio: bool = False,
 )
 ```
@@ -82,12 +82,12 @@ Users can use the ObjectFifo API to describe a distribute pattern where parts of
 def split(
     self,
     offsets: list[int],
-    tile: Tile = AnyMemTile,
+    tile: Tile | None = AnyMemTile,
     depths: list[int] | None = None,
-    obj_types: list[type[np.ndarray]] = None,
-    names: list[str] | None = None,
-    dims_to_stream: list[list[Sequence[int]]] | None = None,
-    dims_from_stream: list[list[Sequence[int]]] | None = None,
+    obj_types: list[type[np.ndarray]] | None = None,
+    names: Sequence[str | None] | None = None,
+    to_stream: Sequence[TensorAccessPattern | None] | None = None,
+    from_stream: Sequence[TensorAccessPattern | None] | None = None,
     plio: bool = False,
 ) -> list[ObjectFifo]
 ```
@@ -137,12 +137,12 @@ The join pattern is the opposite of the distribute pattern where data received f
 def join(
     self,
     offsets: list[int],
-    tile: Tile = AnyMemTile,
+    tile: Tile | None = AnyMemTile,
     depths: list[int] | None = None,
-    obj_types: list[type[np.ndarray]] = None,
-    names: list[str] | None = None,
-    dims_to_stream: list[list[Sequence[int] | None]] | None = None,
-    dims_from_stream: list[list[Sequence[int] | None]] | None = None,
+    obj_types: list[type[np.ndarray]] | None = None,
+    names: Sequence[str | None] | None = None,
+    to_stream: Sequence[TensorAccessPattern | None] | None = None,
+    from_stream: Sequence[TensorAccessPattern | None] | None = None,
     plio: bool = False,
 ) -> list[ObjectFifo]
 ```

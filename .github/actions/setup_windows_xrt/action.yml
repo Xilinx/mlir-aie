@@ -1,0 +1,52 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: "Ensure Windows XRT SDK"
+
+description: >-
+  Use XRT_ROOT if set; otherwise install the pinned XRT SDK from
+  docs/buildHostWinNative.md Section 3 to a versioned dir and set XRT_ROOT.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Ensure Windows XRT SDK
+      shell: cmd
+      run: |
+        if defined XRT_ROOT if exist "%XRT_ROOT%" goto :xrt_ready
+        set "XRT_SDK_VERSION=2.21.75"
+        set "XRT_SDK_DIR=C:\Xilinx\XRT-%XRT_SDK_VERSION%"
+        if exist "%XRT_SDK_DIR%" goto :xrt_installed
+
+        echo XRT SDK %XRT_SDK_VERSION% not found on this runner - downloading it
+        set "XRT_SDK_SHA256=ccc244c2c423588972ade76142cdc01049477aaa39a35be97e782b97eb7c5295"
+        if exist "xrt_sdk_download" rmdir /s /q "xrt_sdk_download"
+        mkdir xrt_sdk_download
+        curl.exe --fail --location --connect-timeout 15 --max-time 300 --retry 3 --retry-all-errors --retry-delay 5 -o "xrt_sdk_download\xrt_windows_sdk.zip" "https://github.com/Xilinx/XRT/releases/download/%XRT_SDK_VERSION%/xrt_windows_sdk.zip"
+        if errorlevel 1 exit /b 1
+
+        python -c "import hashlib,sys; h = hashlib.sha256(open(r'xrt_sdk_download\xrt_windows_sdk.zip', 'rb').read()).hexdigest(); sys.exit(0 if h == '%XRT_SDK_SHA256%' else 1)"
+        if errorlevel 1 (
+          echo ##[error]xrt_windows_sdk.zip sha256 mismatch - refusing to extract an unverified archive
+          exit /b 1
+        )
+
+        python -c "import zipfile; zipfile.ZipFile(r'xrt_sdk_download\xrt_windows_sdk.zip').extractall(r'xrt_sdk_download')"
+        if errorlevel 1 exit /b 1
+
+        if not exist "xrt_sdk_download\xrt_sdk\xrt" (
+          echo ##[error]xrt_sdk\xrt not found after extracting xrt_windows_sdk.zip - check the archive layout
+          exit /b 1
+        )
+
+        if not exist "C:\Xilinx" mkdir "C:\Xilinx"
+        move /y "xrt_sdk_download\xrt_sdk\xrt" "%XRT_SDK_DIR%"
+        if errorlevel 1 exit /b 1
+        rmdir /s /q "xrt_sdk_download"
+
+        :xrt_installed
+        echo XRT_ROOT=%XRT_SDK_DIR%>>"%GITHUB_ENV%"
+        exit /b 0
+
+        :xrt_ready
+        echo Using existing XRT_ROOT=%XRT_ROOT%

@@ -278,10 +278,12 @@ def device_from_args(
     """Resolve a parsed-argparse namespace to a `aie.iron.device.Device`.
 
     Collapses the boilerplate variants the example suite used to repeat
-    across ~30 sites::
+    across ~30 sites:
 
-        from_name(args.dev, n_cols=None)   # "use all cols"
-        from_name(args.dev, n_cols=1)      # "single col"
+    ```python
+    from_name(args.dev, n_cols=None)   # "use all cols"
+    from_name(args.dev, n_cols=1)      # "single col"
+    ```
 
     into one helper with an explicit ``n_cols`` parameter.
 

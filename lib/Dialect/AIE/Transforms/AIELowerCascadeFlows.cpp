@@ -63,7 +63,7 @@ struct AIELowerCascadeFlowsPass
       }
     }
 
-    // generate configure cascade ops, in tile order
+    // generate configure cascade ops
     for (TileOp tile : device.getOps<TileOp>()) {
       if (!tilesWithCascadeFlow.contains(tile))
         continue;

@@ -11,6 +11,7 @@ from typing import Callable
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.accuracy import round_to
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -152,7 +153,7 @@ _VTANH_FAMILY_BOUNDS = {
 _EXP_POLY_TOLERANCE = Tolerance.relative(
     0.005,
     1e-38,
-    note="AIE2P exp2_poly range reduction, measured on npu2; aie2 uses the "
+    note="AIE2P range-reduced polynomial, measured on npu2; aie2 uses the "
     "LUT and is judged against bf16_exp_lut_ref instead",
 )
 _EXP_LUT_TOLERANCE = Tolerance.bf16_ulps(
@@ -213,8 +214,9 @@ def _gelu_vtanh_bound(x):
     ``1 - t*t`` carries that through. vtanh adds its own error, and
     ``x/2 * (1 + t)`` scales the sum by ``|x|/2``. One output ulp covers the
     final store, and the smallest normal covers a subnormal flushed to zero.
+    The kernel clamps -inf, so it is bounded as the most negative f32.
     """
-    x = np.asarray(x, np.float64)
+    x = np.maximum(np.asarray(x, np.float64), -np.finfo(np.float32).max)
     s = math.sqrt(2 / math.pi)
     with np.errstate(over="ignore", invalid="ignore"):
         cubic = 0.044715 * x**3
@@ -449,7 +451,7 @@ def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             silu_ref,
             count=False,
             use_lut=use_lut,
-            elementwise=silu_lut_ref,
+            elementwise=silu_table_ref if _tuned_arch() == "aie2p" else silu_lut_ref,
             tolerance=_vtanh_family_tolerance("silu"),
         ),
         use_lut_tanh=use_lut,
@@ -516,7 +518,11 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, In, Out),
-            reference=swiglu_lut_ref if use_lut_model else swiglu_ref,
+            reference=(
+                swiglu_ref
+                if not use_lut_model
+                else swiglu_table_ref if _tuned_arch() == "aie2p" else swiglu_lut_ref
+            ),
             acc_dtype=bfloat16,
             tolerance=(
                 _LUT_MODEL_TOLERANCE
@@ -530,8 +536,8 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
-# aiecc measured 3008 for the polynomial branch on aie2p.
-_BF16_EXP_POLY_STACK_BYTES = 3072
+# aiecc measured 1600 for the polynomial branch on aie2p.
+_BF16_EXP_POLY_STACK_BYTES = 2048
 
 
 def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
@@ -539,8 +545,8 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
 
     Computes ``exp(clip(x, -88, 88))``: the kernel saturates rather than
     overflowing for real inputs, including infinities. On AIE2P a
-    range-reduced polynomial and integer exponent reconstruction replace
-    the hardware exp2 approximation, preserving subnormal outputs. See
+    range-reduced polynomial replaces the table and rounds every result
+    correctly, subnormal outputs included. See
     [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref] for why that
     clamp matches the AIE2 table's domain.
     """
@@ -554,13 +560,15 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
             bf16_exp_ref,
             count=False,
             # Only aie2's tuned branch reaches getExpBf16. The other computes a
-            # range-reduced polynomial (exp2_poly.h), which this model does
-            # not describe, so it keeps the true-function reference and a
-            # measured bound, whether or not there is a tanh instruction.
+            # range-reduced polynomial, which this model does not describe,
+            # so it keeps the true-function reference and a measured bound,
+            # whether or not there is a tanh instruction.
             elementwise=bf16_exp_lut_ref if _tuned_arch() == "aie2" else None,
             lut_tolerance=_EXP_LUT_TOLERANCE,
             use_lut=True,
             tolerance=_EXP_POLY_TOLERANCE,
+            # The polynomial sets conv_even itself.
+            setup=conv_even if _tuned_arch() == "aie2" else None,
             stack_bytes=(
                 None if _tuned_arch() == "aie2" else _BF16_EXP_POLY_STACK_BYTES
             ),
@@ -569,24 +577,21 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
 
 
 def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
-    """Software f32 ``2**x`` kernel: a degree-5 minimax poly, not a LUT.
+    """Software f32 ``2**x`` kernel: a minimax poly, not a LUT.
 
     A float32-output alternative to [`bf16_exp`]
-    [iron.kernels.activation.bf16_exp], sharing its AIE2P range-reduced
-    polynomial but with a separately configurable input domain. See
-    ``aie_kernels/activation/exp2f_vec.cc`` for the accuracy rationale and the
-    ``noinline`` codegen hazard this kernel carries.
+    [iron.kernels.activation.bf16_exp] with a separately configurable
+    input domain. See ``aie_kernels/activation/exp2f_vec.cc`` for the
+    accuracy rationale: 9.2e-6 relative error on aie2p, 8.9e-5 on aie2.
 
     The same source builds for aie2.
 
     Args:
         tile_size: Number of elements per tile; must be a multiple of 16
             (the kernel's vector width).
-        min_x: Input is clamped to this before evaluation. The default
-            -111 is the lowest exponent that still holds the kernel's
-            8.9e-5 relative error; -126 is the hard floor (one f32
-            exponent field), reachable at up to 6.5e-3. See
-            ``aie_kernels/activation/exp2f_vec.cc`` for the measured table.
+        min_x: Input is clamped to this before evaluation. -126 is the
+            hard floor (one f32 exponent field); on aie2p the kernel holds
+            its accuracy down to it.
 
     Returns:
         ExternalFunction configured for the exp2f_vec kernel.
@@ -614,16 +619,20 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            setup=conv_even,
+            # The aie2p branch sets conv_even itself.
+            setup=None if _tuned_arch() == "aie2p" else conv_even,
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
             reference=lambda x: exp2f_vec_ref(x, min_x=min_x),
             acc_dtype=np.float32,
             tolerance=Tolerance.relative(
                 1e-3,
-                note="minimax poly targets 8.9e-5 relative error; see exp2f_vec_ref",
+                note="measured 9.2e-6 on aie2p and 8.9e-5 on aie2; clamping "
+                "[127.999, 128) costs up to 7.8e-4",
             ),
-            stack_bytes=2048 if _detect_arch() == "aie2" else None,
+            # aiecc measured 1984 on aie2p (448 portable); remarks gives the
+            # kernel 1792 on aie2 (832 portable).
+            stack_bytes={"aie2": 2048, "aie2p": 2048}.get(_tuned_arch()),
         ),
     )
 
@@ -678,7 +687,9 @@ def sigmoid(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             sigmoid_ref,
             count=tile_size,
             use_lut=use_lut,
-            elementwise=sigmoid_lut_ref,
+            elementwise=(
+                sigmoid_table_ref if _tuned_arch() == "aie2p" else sigmoid_lut_ref
+            ),
             tolerance=_vtanh_family_tolerance("sigmoid"),
         ),
         use_lut_tanh=use_lut,
@@ -726,10 +737,32 @@ def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
 # Reference (numpy) implementations
 # ---------------------------------------------------------------------------
 # The kernels above are LUT approximations.  The functions below compute the
-# corresponding op in float32 numpy so host harnesses can verify the AIE
-# output without each design re-implementing the math.  Output dtype matches
-# the input (so a bf16 input yields a bf16 reference, comparable to the AIE
+# corresponding op in numpy so host harnesses can verify the AIE output
+# without each design re-implementing the math.  Output dtype matches the
+# input (so a bf16 input yields a bf16 reference, comparable to the AIE
 # kernel output via ``aie.utils.verify.{nearly_equal, count_mismatches}``).
+# The transcendental ones work in float64 and round once to the output
+# dtype: float32's exp(-x) overflows from x = -88.7 down, which made
+# sigmoid and silu 0 where the true result is a nonzero bf16.
+
+
+def _f64(x):
+    return np.asarray(x).astype(np.float64)
+
+
+def _no_neg_inf(xf):
+    """``xf`` with -inf as the most negative float64.
+
+    silu and gelu go to -0 as x goes to -inf, but at -inf itself they are
+    ``-inf / inf`` and ``-inf * 0``; at any finite x the float64 arithmetic
+    rounds to the limit.
+    """
+    return np.maximum(xf, -np.finfo(np.float64).max)
+
+
+def _rounded(v, like):
+    """Correctly round float64 ``v`` to ``like``'s dtype (a cast rounds twice)."""
+    return round_to(v, np.asarray(like).dtype)
 
 
 def relu_ref(x):
@@ -747,8 +780,9 @@ def silu_ref(x):
     LUT-approximation territory; pair with ``rtol=0.128`` (the default
     in `count_mismatches`) when verifying.
     """
-    xf = x.astype(np.float32)
-    return (xf / (1.0 + np.exp(-xf))).astype(x.dtype)
+    xf = _no_neg_inf(_f64(x))
+    with np.errstate(over="ignore"):
+        return _rounded(xf / (1.0 + np.exp(-xf)), x)
 
 
 def gelu_ref(x):
@@ -759,8 +793,9 @@ def gelu_ref(x):
     in float32, ``1 + tanh`` cancels for x below about -4.5 and leaves
     values over ten times too large.
     """
-    xf = x.astype(np.float64)
-    inner = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
+    xf = _no_neg_inf(x.astype(np.float64))
+    with np.errstate(over="ignore"):
+        inner = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
     return (0.5 * xf * (1.0 + np.tanh(inner))).astype(x.dtype)
 
 
@@ -797,11 +832,23 @@ def _bf16(v):
     return np.asarray(v, np.float32).astype(bfloat16).astype(np.float32)
 
 
-def sigmoid_lut_ref(x):
-    """Model of [`sigmoid`][iron.kernels.activation.sigmoid] built with ``use_lut=True``.
+def _bf16_ftz(v):
+    """Round an f32 product to bf16 as an accumulator store does.
 
-    Follows activation/sigmoid.cc step for step: ``x/2`` is exact (0.5 is a power
-    of two), the accumulator overload of ``tanh_bf16_v16`` narrows to bf16
+    A subnormal product is flushed to zero first, keeping its sign, so it
+    does not round to a subnormal bf16 or up to 2**-126.
+    """
+    v = np.asarray(v, np.float32)
+    return _bf16(np.where(np.abs(v) < 2.0**-126, np.copysign(np.float32(0), v), v))
+
+
+def sigmoid_lut_ref(x):
+    """Model of [`sigmoid`][iron.kernels.activation.sigmoid]'s LUT build on aie2.
+
+    AIE2P's reads a table of its own; see
+    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref]. This
+    follows activation/sigmoid.cc's aie2 branch step for step: ``x/2`` is
+    exact (0.5 is a power of two), the accumulator overload of ``tanh_bf16_v16`` narrows to bf16
     before the table, and the ``+1`` and ``*0.5`` stay in the accumulator so
     there is a single store rounding at the end.
     """
@@ -810,34 +857,87 @@ def sigmoid_lut_ref(x):
     return _bf16((t + 1.0) * 0.5).astype(np.asarray(x).dtype)
 
 
-def silu_lut_ref(x):
-    """Model of [`silu`][iron.kernels.activation.silu] built with ``use_lut=True``.
+def sigmoid_table_ref(x):
+    """Model of AIE2P's [`sigmoid`][iron.kernels.activation.sigmoid] built with ``use_lut=True``.
 
+    activation/sigmoid.cc reads its own table there: getTanhBf16's segments
+    rewritten for ``0.5 + 0.5 * tanh(x/2)``, so segment ``e`` has slope
+    ``slope[e] / 4`` and offset ``0.5 + 0.5 * offset[e]`` and covers 0.5 of x.
+    x is clamped to ``[-8, 8 - 1/32]``; the one rounding is the store to bf16,
+    as in [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref].
+    [`sigmoid_lut_ref`][iron.kernels.activation.sigmoid_lut_ref] also rounds
+    ``tanh`` to bf16 before ``0.5 * (1 + t)``, which makes it 0 over
+    ``[-7.5, -6.9]``, where this is not.
+    """
+    xf = np.clip(np.asarray(x).astype(np.float32), -8.0, 8.0 - 1.0 / 32)
+    e = np.clip(np.floor(xf * 2.0).astype(np.int64), -16, 15) + 16
+    slope = np.asarray(_TANH_LUT_SLOPE, np.float32)[e] / 4
+    offset = 0.5 + 0.5 * np.asarray(_TANH_LUT_OFFSET, np.float32)[e]
+    return (slope * xf + offset).astype(bfloat16).astype(np.asarray(x).dtype)
+
+
+def silu_lut_ref(x):
+    """Model of [`silu`][iron.kernels.activation.silu]'s LUT build on aie2.
+
+    AIE2P's multiplies by its sigmoid table instead; see
+    [`silu_table_ref`][iron.kernels.activation.silu_table_ref].
     activation/silu.cc narrows the sigmoid factor to bf16 before the final
     multiply, so that rounding is modelled too, not folded away. The sigmoid
     is exactly 0 from x = -8 down, and x is clamped there before the multiply,
-    so -inf gives 0 rather than NaN.
+    so -inf gives 0 rather than NaN. A subnormal product is flushed to zero.
     """
     xf = np.asarray(x).astype(np.float32)
     sig = np.asarray(sigmoid_lut_ref(xf), np.float32)
-    return _bf16(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
+    return _bf16_ftz(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
+
+
+def silu_table_ref(x):
+    """Model of AIE2P's [`silu`][iron.kernels.activation.silu] built with ``use_lut=True``.
+
+    [`silu_lut_ref`][iron.kernels.activation.silu_lut_ref] with AIE2P's
+    sigmoid table,
+    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref], as the
+    bf16 factor.
+    """
+    xf = np.asarray(x).astype(np.float32)
+    sig = np.asarray(sigmoid_table_ref(xf), np.float32)
+    return _bf16_ftz(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
 
 
 def swiglu_lut_ref(x, w1, w2):
-    """Model of [`swiglu`][iron.kernels.activation.swiglu] built with ``use_lut=True``.
+    """Model of [`swiglu`][iron.kernels.activation.swiglu]'s LUT build on aie2.
 
+    AIE2P's reads its sigmoid table instead; see
+    [`swiglu_table_ref`][iron.kernels.activation.swiglu_table_ref].
     activation/swiglu.cc narrows after every multiply -- ``x*w1``, ``x*w2``, the
     sigmoid factor and the silu product each land in a bf16 register before
     the next step -- which is what this reproduces. ``x*w2`` is clamped at -8
     before its multiply, as in silu_lut_ref, and where the silu product is 0
     the output is 0, so an overflowed ``x*w1`` does not make ``inf * 0``.
+    Each subnormal product is flushed to zero, so a subnormal ``x*w2`` zeroes
+    the output through the gate.
     """
+    return _swiglu_model(x, w1, w2, sigmoid_lut_ref)
+
+
+def swiglu_table_ref(x, w1, w2):
+    """Model of AIE2P's [`swiglu`][iron.kernels.activation.swiglu] built with ``use_lut=True``.
+
+    [`swiglu_lut_ref`][iron.kernels.activation.swiglu_lut_ref] with AIE2P's
+    sigmoid table,
+    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref], as the
+    bf16 factor.
+    """
+    return _swiglu_model(x, w1, w2, sigmoid_table_ref)
+
+
+def _swiglu_model(x, w1, w2, sigmoid):
     with np.errstate(over="ignore", invalid="ignore"):
-        xw1 = _bf16(np.asarray(x, np.float32) * np.asarray(w1, np.float32))
-        xw2 = _bf16(np.asarray(x, np.float32) * np.asarray(w2, np.float32))
-        sig = np.asarray(sigmoid_lut_ref(xw2), np.float32)
-        silu_out = _bf16(np.maximum(xw2, -8.0) * sig)
-        out = np.where(silu_out == 0, np.float32(0.0), _bf16(xw1 * silu_out))
+        xw1 = _bf16_ftz(np.asarray(x, np.float32) * np.asarray(w1, np.float32))
+        xw2 = _bf16_ftz(np.asarray(x, np.float32) * np.asarray(w2, np.float32))
+        sig = np.asarray(sigmoid(xw2), np.float32)
+        silu_out = _bf16_ftz(np.maximum(xw2, -8.0) * sig)
+        out = np.where(silu_out == 0, np.float32(0.0), _bf16_ftz(xw1 * silu_out))
     return out.astype(np.asarray(x).dtype)
 
 
@@ -871,7 +971,7 @@ def tanh_ref(x):
 
     LUT/native-approximation territory; pair with ``rtol=0.128`` when verifying.
     """
-    return np.tanh(x.astype(np.float32)).astype(x.dtype)
+    return _rounded(np.tanh(_f64(x)), x)
 
 
 def sigmoid_ref(x):
@@ -879,17 +979,19 @@ def sigmoid_ref(x):
 
     LUT-approximation territory; pair with ``rtol=0.128`` when verifying.
     """
-    xf = x.astype(np.float32)
-    return (1.0 / (1.0 + np.exp(-xf))).astype(x.dtype)
+    with np.errstate(over="ignore"):
+        return _rounded(1.0 / (1.0 + np.exp(-_f64(x))), x)
 
 
 def leaky_relu_ref(x, alpha=0.01):
     """Numpy reference for [`leaky_relu`][iron.kernels.activation.leaky_relu].
 
     ``x if x > 0 else alpha * x``.  ``alpha`` must match the slope the design
-    passes to the kernel at runtime.  Exact up to bf16 rounding; pair with a
-    small ``rtol`` when verifying.
+    passes to the kernel at runtime; the kernel takes it as bf16, so it is
+    rounded to bf16 here.  Exact up to bf16 rounding; pair with a small
+    ``rtol`` when verifying.
     """
+    alpha = np.float32(bfloat16(alpha))
     xf = x.astype(np.float32)
     return np.where(xf > 0.0, xf, alpha * xf).astype(x.dtype)
 
@@ -900,12 +1002,19 @@ def swiglu_ref(x, w1, w2):
     ``swiglu.cc`` forms the two products in bf16, then ``silu`` of the second
     through the tanh LUT (``0.5 * (1 + tanh(z / 2))``). The reference rounds
     the two products to bf16 as the kernel does and computes the rest in
-    float32; LUT-approximation territory, pair with ``rtol=0.128``.
+    float64; LUT-approximation territory, pair with ``rtol=0.128``.
+
+    Where silu is 0 (``x * w2`` is -inf, or low enough to underflow) the
+    output is 0, as swiglu_lut_ref's is, even where ``x * w1`` overflowed:
+    0 is the limit as x goes to -inf, and ``inf * 0`` would be NaN.
     """
-    xf = x.astype(np.float32)
-    xw1 = (xf * w1.astype(np.float32)).astype(bfloat16).astype(np.float32)
-    xw2 = (xf * w2.astype(np.float32)).astype(bfloat16).astype(np.float32)
-    return (xw1 * (xw2 / (1.0 + np.exp(-xw2)))).astype(x.dtype)
+    xf = _f64(x)
+    xw1 = _f64(round_to(xf * _f64(w1), bfloat16))
+    xw2 = _no_neg_inf(_f64(round_to(xf * _f64(w2), bfloat16)))
+    with np.errstate(over="ignore", invalid="ignore"):
+        silu = xw2 / (1.0 + np.exp(-xw2))
+        out = np.where(silu == 0, np.copysign(0.0, xw1) * silu, xw1 * silu)
+    return _rounded(out, x)
 
 
 def bf16_exp_ref(x):
@@ -922,24 +1031,24 @@ def bf16_exp_ref(x):
     ``exp(-88)`` is a nonzero bf16 subnormal (about ``6.06e-39``), not
     zero: AIE2P preserves it through integer exponent reconstruction,
     whereas the AIE2 LUT may flush the tail under the absolute tolerance.
-    The clamp also keeps the reference itself in range:
-    ``exp(88) = 1.65e+38`` fits float32 where ``exp(89)`` would not.
+    The clamp also keeps the result in range: ``exp(88) = 1.65e+38`` fits
+    bf16 and float32 where ``exp(89)`` would not.
     """
-    xf = np.clip(x.astype(np.float32), -_EXP_BF16_CLAMP, _EXP_BF16_CLAMP)
+    xf = np.clip(_f64(x), -_EXP_BF16_CLAMP, _EXP_BF16_CLAMP)
     # The clamp rules out overflow, so that warning stays un-suppressed and
     # would now be a real signal. A NaN input still reaches exp -- the kernel
     # declares nonfinite="unspecified" and callers do feed raw bit patterns
     # (programming_examples/basic/vector_exp sweeps all 65536 of them).
     with np.errstate(invalid="ignore"):
-        return np.exp(xf).astype(x.dtype)
+        return _rounded(np.exp(xf), x)
 
 
 def exp2f_vec_ref(x, min_x: float = -111.0):
     """Numpy reference for [`exp2f_vec`][iron.kernels.activation.exp2f_vec]: exact ``2**x``.
 
     Unlike the LUT-based refs above, this is float64 ``2**x`` (not a
-    reimplementation of the on-device poly): the kernel targets ~8.9e-5
-    relative error by design, several orders tighter than the LUT-based
+    reimplementation of the on-device poly): the kernel holds 8.9e-5
+    relative error or better, several orders tighter than the LUT-based
     kernels' 12.8% default, so pair with a correspondingly tight
     tolerance (e.g. ``rtol=1e-3``) rather than the LUT default.
 
@@ -956,10 +1065,10 @@ def softmax_ref(x, *, tile_size: int = 1024):
 
     The AIE kernel computes softmax independently per ``tile_size``-element
     tile (no cross-tile reduction), so the reference splits ``x`` the same
-    way before applying the float32 softmax.  ``x.size`` must be a
+    way before applying the softmax, in float64.  ``x.size`` must be a
     multiple of ``tile_size``.
     """
-    xf = x.astype(np.float32)
+    xf = _f64(x)
     if xf.size % tile_size != 0:
         raise ValueError(
             f"softmax_ref: x has {xf.size} elements; not a multiple of "
@@ -969,4 +1078,4 @@ def softmax_ref(x, *, tile_size: int = 1024):
     flat = flat - flat.max(axis=1, keepdims=True)
     exp = np.exp(flat)
     out = exp / exp.sum(axis=1, keepdims=True)
-    return out.reshape(x.shape).astype(x.dtype)
+    return _rounded(out.reshape(x.shape), x)

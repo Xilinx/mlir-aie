@@ -326,6 +326,9 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
                         XAie_DmaDesc &dmaTileBd, Block &block, int col, int row,
                         bool outOfOrder) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
+  AIE::UseLockOp acquire, release;
+  if (failed(AIE::verifyBdLockPair(block, outOfOrder, acquire, release)))
+    return failure();
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn = false;
 
@@ -360,18 +363,6 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
       break;
     }
     }
-  }
-
-  // Allow release-only for out-of-order's lock-driven completion mechanism.
-  if (outOfOrder) {
-    if (!relValue || !relLockId)
-      return (*block.getOps<AIE::UseLockOp>().begin())
-          .emitOpError("out-of-order buffer descriptor with a lock must have a "
-                       "use_lock(release)");
-  } else if (!acqValue || !relValue || !acqLockId || !relLockId) {
-    return (*block.getOps<AIE::UseLockOp>().begin())
-        .emitOpError("buffer descriptor with a lock must have both "
-                     "use_lock(acquire) and use_lock(release)");
   }
 
   if (targetModel.isMemTile(col, row)) {
@@ -881,6 +872,9 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
 LogicalResult
 xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
                                          bool skipCtrlPktOverlay) {
+
+  if (failed(verifyDMAChannelsResolved(targetOp)))
+    return failure();
 
   if (failed(initLocks(targetOp))) {
     return failure();

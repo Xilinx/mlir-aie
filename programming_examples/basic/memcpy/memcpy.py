@@ -19,7 +19,7 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -40,8 +40,6 @@ def memcpy(
     line_size = 1024
     line_type = np.ndarray[(line_size,), np.dtype[xfr_dtype]]
     transfer_type = np.ndarray[(size,), np.dtype[xfr_dtype]]
-
-    chunk = size // num_columns // num_channels
 
     of_ins = [
         ObjectFifo(line_type, name=f"in{i}_{j}")
@@ -86,9 +84,9 @@ def memcpy(
             for j in range(num_channels)
         ]
 
-    # One TAP per (column, channel) shim DMA — same as iterating
-    # `(1, chunk)` tiles row-major across the `(1, size)` tensor.
-    taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
+    # One TAP per (column, channel) shim DMA: an equal contiguous slice of
+    # the `(1, size)` tensor.
+    taps = TensorAccessPattern.full((size,)).partition(num_columns * num_channels)
 
     in_prods = [
         of_ins[i * num_channels + j].prod()
@@ -146,16 +144,12 @@ def _validate(opts):
         )
 
 
-def _bypass_bool(s: str) -> bool:
-    return s.lower() in ("yes", "true", "t", "1")
-
-
 def _compile_kwargs(opts):
     return dict(
         size=opts.length,
         num_columns=opts.cols,
         num_channels=opts.chans,
-        bypass=_bypass_bool(opts.bypass),
+        bypass=opts.bypass.lower() in ("yes", "true", "t", "1"),
     )
 
 

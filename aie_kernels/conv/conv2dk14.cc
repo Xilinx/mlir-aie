@@ -251,7 +251,7 @@ void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
   const int pixels_div_2 = kernel_width * kernel_width / 2; // 98
 
   uint8_t *__restrict in_ptr_1 = input;
-  uint8_t *__restrict in_ptr_2 = input + 98 * 64;
+  uint8_t *__restrict in_ptr_2 = input + pixels_div_2 * 64;
   int8_t *__restrict k_ptr = kernels;
   int8_t *__restrict out_ptr = output;
 

@@ -3,25 +3,25 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""``dims_to_stream`` example — Iron API design with ``@iron.jit``.
+"""``to_stream`` example — Iron API design with ``@iron.jit``.
 
-Mirror of the ``dims_from_stream`` example: the core copies a 24-element
+Mirror of the ``from_stream`` example: the core copies a 24-element
 int32 vector through unchanged, and the core->memtile ObjectFifo's
-``dims_to_stream=[(8, 1), (3, 8)]`` reshapes the output as it streams
-back to the shim, producing the same (3, 8) -> (8, 3) transpose of the
+``to_stream=TensorAccessPattern.full((3, 8)).T`` reshapes the output as it
+streams back to the shim, producing the same (3, 8) -> (8, 3) transpose of the
 input ``arange(24)``.
 """
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -34,7 +34,11 @@ def to_stream(a_in: In, c_out: Out):
     of_in0 = ObjectFifo(data_ty, name="in0")
     of_in1 = of_in0.cons().forward(name="in1", obj_type=data_ty)
 
-    of_out1 = ObjectFifo(data_ty, name="out1", dims_to_stream=[(8, 1), (3, 8)])
+    # Read the (3, 8) object out as its (8, 3) transpose: sizes [8, 3],
+    # strides [1, 8].
+    of_out1 = ObjectFifo(
+        data_ty, name="out1", to_stream=TensorAccessPattern.full((3, 8)).T
+    )
     of_out0 = of_out1.cons().forward(name="out0", obj_type=data_ty)
 
     def core_fn(of_in, of_out):
@@ -56,19 +60,19 @@ def to_stream(a_in: In, c_out: Out):
     return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
 
 
-def _expected_output():
-    return np.arange(24, dtype=np.int32).reshape(3, 8).T.reshape(-1)
-
-
 def _run_and_verify(opts):
     a_in = iron.arange(24, dtype=np.int32, device="npu")
     c_out = iron.zeros(24, dtype=np.int32, device="npu")
     to_stream(a_in, c_out)
-    assert_pass(c_out.numpy(), _expected_output(), fail_msg="to_stream mismatch")
+    assert_pass(
+        c_out.numpy(),
+        np.arange(24, dtype=np.int32).reshape(3, 8).T.reshape(-1),
+        fail_msg="to_stream mismatch",
+    )
 
 
 def main():
-    p = argparse.ArgumentParser(prog="dims_to_stream example")
+    p = argparse.ArgumentParser(prog="to_stream example")
     add_compile_args(p, with_emit_mlir=True)
     opts = p.parse_args()
     run_design_cli(

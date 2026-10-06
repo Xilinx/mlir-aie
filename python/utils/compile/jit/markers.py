@@ -27,6 +27,11 @@ Five annotation categories are defined here (all exported from ``aie.iron``):
     Marks a generator function parameter as a runtime bidirectional tensor.
     Data is DMA-transferred in both directions on every kernel call.
 
+A generator receives each tensor's type, ``np.ndarray[shape, np.dtype[T]]``,
+never its data: the type of the tensor the design is called with, or one bound
+ahead of time with ``specialize(name=np.ndarray[...])``. A different shape or
+dtype is a different compiled design.
+
 ``DispatchTime[T]``
     Marks a keyword-only integer scalar that can vary per dispatch without
     recompiling. Explicit specialization instead fixes it at compile time.
@@ -43,7 +48,9 @@ instead.
 
 from __future__ import annotations
 
-from typing import Annotated, NoReturn, TypeVar
+from typing import TYPE_CHECKING, Annotated, NoReturn, TypeVar
+
+import numpy as np
 
 T = TypeVar("T")
 
@@ -58,27 +65,31 @@ construction time (or bound by ``@iron.jit(...)``).
 Changing a ``CompileTime[T]``-annotated value → new cache key → recompile.
 Required unless a default is given.
 
-Example::
+For example:
 
-    from ml_dtypes import bfloat16
+```python
+from ml_dtypes import bfloat16
 
-    def gemm(a: In, b: In, c: Out,
-             M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
-             dtype: CompileTime[type] = bfloat16):
-        ...
+def gemm(a: In, b: In, c: Out,
+         M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
+         dtype: CompileTime[type] = bfloat16):
+    ...
+```
 """
 
 
-class In:
-    """Runtime input tensor annotation (host → NPU, DMA each call)."""
+if TYPE_CHECKING:
+    In = Out = InOut = type[np.ndarray]
+else:
 
+    class In:
+        """Runtime input tensor annotation (host → NPU, DMA each call)."""
 
-class Out:
-    """Runtime output tensor annotation (NPU → host, DMA each call)."""
+    class Out:
+        """Runtime output tensor annotation (NPU → host, DMA each call)."""
 
-
-class InOut:
-    """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
+    class InOut:
+        """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
 
 
 DispatchTime = Annotated[T, "aie.dispatch_time"]
@@ -104,12 +115,14 @@ require ``CompileTime`` or specialization instead.
 The Python bridge supports one runtime sequence, rejects remaining load-PDI
 operations, and cannot use ``full_elf=True`` while any parameters remain dynamic.
 
-Example::
+For example:
 
-    import numpy as np
+```python
+import numpy as np
 
-    def scaled_copy(a: In, b: Out, *, scale: DispatchTime[np.int32]):
-        ...
+def scaled_copy(a: In, b: Out, *, scale: DispatchTime[np.int32]):
+    ...
+```
 """
 
 

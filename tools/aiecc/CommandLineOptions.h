@@ -74,6 +74,14 @@ inline cl::opt<bool> allowDeadlockProneRouting(
              "deadlock however they are routed or through receivers packet "
              "flows share"));
 
+// Out of BD ids, the compiler may take them back from a started task it can
+// prove finished by polling its channel. The poll hangs if that task's
+// completion depends on a push issued after it, which the compiler cannot see.
+inline cl::opt<bool> reclaimRuntimeBds(
+    "reclaim-runtime-bds",
+    cl::desc("Reuse the BD ids of started, unreleased runtime-sequence tasks "
+             "when a tile runs out, polling for their completion"));
+
 inline cl::opt<bool> verifyEach(
     "verify-each",
     cl::desc("Verify the IR after every pass, not once per pass pipeline "
@@ -111,6 +119,16 @@ inline cl::opt<int>
     saSeed("sa-seed",
            cl::desc("Random seed for SA placer (0 = non-deterministic)"),
            cl::init(1));
+inline cl::opt<double> saEffort(
+    "sa-effort",
+    cl::desc("Scale on the SA placer's search budget (1.0 = full; lower "
+             "trades placement cost for compile time)"),
+    cl::init(1.0));
+inline cl::opt<int64_t> placementBudget(
+    "placement-budget",
+    cl::desc("Buffer placements aie-assign-buffer-addresses may try per tile "
+             "before giving up"),
+    cl::init(100000));
 inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Dynamic objectFIFOs"),
                                      cl::init(true));

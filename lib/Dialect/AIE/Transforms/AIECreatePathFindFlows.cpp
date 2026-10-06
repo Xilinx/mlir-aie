@@ -3109,6 +3109,8 @@ void AIEPathfinderPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
 
   DeviceOp d = getOperation();
+  if (failed(verifyDMAChannelsResolved(d)))
+    return signalPassFailure();
   OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
   if (clRoutePacket)
     unmuxShimDMAPacketPorts(d);

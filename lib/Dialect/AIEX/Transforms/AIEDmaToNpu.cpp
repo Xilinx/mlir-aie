@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
@@ -219,8 +220,8 @@ public:
     uint32_t bdIdMask =
         tm.isMemTile(op.getColumn(), op.getRow()) ? 0x3Fu : 0xFu;
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
-    std::optional<uint32_t> repeat_cnt =
-        getConstantIntOperand(op.getRepeatCount());
+    std::optional<uint64_t> repeat_cnt =
+        getConstantInt64Operand(op.getRepeatCount());
     uint32_t issueBit = op.getIssueToken() ? 0x80000000 : 0;
 
     Value cmdVal;
@@ -231,17 +232,41 @@ public:
     } else {
       // (bd_id & bdIdMask) | ((repeat & 0xFF) << 16) | issueBit, as arith over
       // the runtime operands (a constant field folds to its contribution).
+      // A runtime repeat_count is masked to its 8-bit field below, so an
+      // out-of-range value would silently wrap to a different number of
+      // executions. Refuse the dispatch instead (host-side guard); the
+      // unsigned compare also rejects a negative count (zero executions).
+      Value repeat;
+      if (repeat_cnt) {
+        repeat = createConstantI32(rewriter, loc, *repeat_cnt);
+      } else {
+        Value repeat64 =
+            getAsI64(rewriter, loc, OpFoldResult(op.getRepeatCount()));
+        if (!repeat64)
+          return failure();
+        uint32_t maxRepeat = tm.getMaxRepeatCount();
+        Value inRange = arith::CmpIOp::create(
+            rewriter, loc, arith::CmpIPredicate::ule, repeat64,
+            arith::ConstantOp::create(rewriter, loc,
+                                      rewriter.getI64IntegerAttr(maxRepeat)));
+        if (failed(emitRuntimeCheck(
+                rewriter, loc, inRange,
+                "a runtime DMA repeat count exceeds the task queue's [0:" +
+                    Twine(maxRepeat) + "] range (at most " +
+                    Twine(maxRepeat + 1) + " executions)")))
+          return failure();
+        repeat = rewriter.createOrFold<arith::TruncIOp>(loc, i32ty, repeat64);
+      }
       Value cmd = createConstantI32(rewriter, loc, issueBit);
-      Value bdField = arith::AndIOp::create(
-          rewriter, loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
+      Value bdField = rewriter.createOrFold<arith::AndIOp>(
+          loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
           createConstantI32(rewriter, loc, bdIdMask));
-      cmd = arith::OrIOp::create(rewriter, loc, cmd, bdField);
-      Value masked =
-          arith::AndIOp::create(rewriter, loc, op.getRepeatCount(),
-                                createConstantI32(rewriter, loc, 0xFF));
-      Value shifted = arith::ShLIOp::create(
-          rewriter, loc, masked, createConstantI32(rewriter, loc, 16));
-      cmdVal = arith::OrIOp::create(rewriter, loc, cmd, shifted);
+      cmd = rewriter.createOrFold<arith::OrIOp>(loc, cmd, bdField);
+      Value masked = rewriter.createOrFold<arith::AndIOp>(
+          loc, repeat, createConstantI32(rewriter, loc, 0xFF));
+      Value shifted = rewriter.createOrFold<arith::ShLIOp>(
+          loc, masked, createConstantI32(rewriter, loc, 16));
+      cmdVal = rewriter.createOrFold<arith::OrIOp>(loc, cmd, shifted);
     }
 
     NpuWrite32Op::create(
@@ -350,6 +375,15 @@ public:
     llvm::SmallVector<int64_t, 4> inputStrides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    // A contiguous row-major ND access on a shim NOC tile is lowered to linear
+    // mode (d0_size=d1_size=0) just like an already-canonical linear transfer.
+    // This allows naturally-expressed multidimensional transfers (e.g., a 2D
+    // image as [height, width]) without hitting the 10-bit ND wrap-size limit.
+    bool isLinear = op.isLinearTransferWithoutTransformation() ||
+                    (targetModel.isShimNOCTile(tileCol, tileRow) &&
+                     isContiguousTransfer(inputSizes, inputStrides));
+    if (!isLinear && op.getLengthStateTableIdxAttr())
+      AIE::placeRuntimeLengthDimension(inputSizes, inputStrides);
     llvm::SmallVector<int64_t, 4> sizes(4);
     llvm::SmallVector<int64_t, 4> strides(4);
     getHardwareStridesWraps(targetModel, op, bufferType, inputSizes,
@@ -361,13 +395,6 @@ public:
     // row
     row = IntegerAttr::get(i32ty, tileRow);
 
-    // A contiguous row-major ND access on a shim NOC tile is lowered to linear
-    // mode (d0_size=d1_size=0) just like an already-canonical linear transfer.
-    // This allows naturally-expressed multidimensional transfers (e.g., a 2D
-    // image as [height, width]) without hitting the 10-bit ND wrap-size limit.
-    bool isLinear = op.isLinearTransferWithoutTransformation() ||
-                    (targetModel.isShimNOCTile(tileCol, tileRow) &&
-                     isContiguousTransfer(inputSizes, inputStrides));
     if (failed(verifyStridesWraps(op, bufferType, tileCol, tileRow, inputSizes,
                                   inputStrides, sizes, strides, isLinear))) {
       return failure();
@@ -510,6 +537,17 @@ public:
                                       arg_idx)))
       return failure();
 
+    // A length_state_table_idx adds the runtime length to the BD's
+    // Buffer_Length, after the BD write above has set the static length. The
+    // verifier requires a length_unit with it.
+    auto lengthUnit = op.getLengthUnit();
+    if (op.getLengthStateTableIdxAttr() && lengthUnit) {
+      if (failed(emitUpdateBdLengthFromParameter(rewriter, op, bufferType,
+                                                 *lengthUnit, targetModel,
+                                                 tileCol, tileRow, op.getId())))
+        return failure();
+    }
+
     // push the patched bd onto the dma task queue. bd_id and repeat_count are
     // SSA operands; materialize them as constants here (the static path).
     NpuPushQueueOp::create(
@@ -528,7 +566,9 @@ public:
   // back to, and emit the address-patch (plus an offset-state update, if the op
   // carries one) that binds the runtime buffer pointer into the BD. Shared by
   // the static and dynamic lowering paths, which are otherwise identical here.
-  // On success `argIdx` receives the resolved index.
+  // A walk with any runtime offset, size or stride also gets a host-side check
+  // that it stays inside the host buffer. On success `argIdx` receives the
+  // resolved index.
   LogicalResult emitBufferAddressPatch(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                                        ConversionPatternRewriter &rewriter,
                                        int tileCol, int tileRow,
@@ -558,11 +598,24 @@ public:
     // (byte-identical to the static path); a runtime offset operand is built
     // with arith so it flows into the patch instead of being rejected. The
     // subview trace contributes a constant base byte offset.
+    SmallVector<OpFoldResult> offsets = op.getMixedOffsets();
+    SmallVector<OpFoldResult> strides = op.getMixedStrides();
+    int64_t elemBytes = op.getElementTypeBitwidth() / 8;
+    SmallVector<OpFoldResult> sizes = op.getMixedSizes();
+    bool isRuntime =
+        llvm::any_of(llvm::concat<OpFoldResult>(offsets, sizes, strides),
+                     [](OpFoldResult v) { return !getConstantIntValue(v); });
+    if (isRuntime && failed(guardWithinHostBuffer(
+                         rewriter, op->getLoc(),
+                         cast<BaseMemRefType>(traceResult->rootArg.getType()),
+                         traceResult->offsetInBytes, elemBytes, offsets,
+                         strides, sizes, strides)))
+      return failure();
     Value argPlus = buildArgPlusValue(
-        rewriter, op->getLoc(),
-        llvm::to_vector(llvm::reverse(op.getMixedOffsets())),
-        llvm::to_vector(llvm::reverse(op.getMixedStrides())),
-        op.getElementTypeBitwidth() / 8, traceResult->offsetInBytes);
+        rewriter, op->getLoc(), offsets, strides, elemBytes,
+        traceResult->offsetInBytes, targetModel.getAddressGenGranularity() / 8);
+    if (!argPlus)
+      return failure();
     NpuAddressPatchOp::create(rewriter, op->getLoc(), patchAddr,
                               /*addr_val=*/Value(), argIdx, argPlus);
 
@@ -618,15 +671,15 @@ public:
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    // buffer_length is the size-product here, hence no override; the encoder
-    // returns the hw repeat_count for the queue push.
+    // buffer_length is the size-product here, hence no explicit length; the
+    // encoder returns the hw repeat_count for the queue push.
     SmallVector<Value> words;
     Value repeatCount;
-    if (failed(buildShimBdWords(
-            rewriter, loc, targetModel, fields, op.getMixedSizes(),
-            op.getMixedStrides(), op.getElementTypeBitwidth(),
-            op.getBurstLength(), op.getAxcacheOrDefault(),
-            /*bufLenOverride=*/Value(), repeatCount, words)))
+    if (failed(buildBdWords(rewriter, loc, targetModel, tileCol, tileRow,
+                            fields, op.getMixedSizes(), op.getMixedStrides(),
+                            op.getElementTypeBitwidth(), op.getBurstLength(),
+                            op.getAxcacheOrDefault(),
+                            /*lenElems=*/OpFoldResult(), repeatCount, words)))
       return failure();
     Value bdBase =
         getBdRegisterBase(rewriter, loc, targetModel, tileCol, tileRow,
@@ -722,168 +775,57 @@ public:
     int col = op.getColumn();
     int row = op.getRow();
 
-    int num_words = 0;
-    if (isa<AIE::AIE2TargetModel>(tm)) {
-      // Tile DMAs have 6 words, MemTile and Shim have 8 words
-      if (tm.isCoreTile(col, row))
-        num_words = 6;
-      else
-        num_words = 8;
-    } else {
-      llvm_unreachable(
-          "Unsupported AIETargetModel in WriteBdToBlockWritePattern");
-    }
+    const AIE::DmaBdLayout *layout = tm.getDmaBdLayout(col, row);
+    if (!layout)
+      return op->emitOpError("has no buffer descriptor layout on this tile");
+    if (!tm.isMemTile(col, row) &&
+        (op.getD0ZeroBefore() || op.getD1ZeroBefore() || op.getD2ZeroBefore() ||
+         op.getD0ZeroAfter() || op.getD1ZeroAfter() || op.getD2ZeroAfter()))
+      return op->emitOpError("Zero padding is only available on MemTile");
 
-    std::vector<uint32_t> words(num_words, 0);
+    std::vector<uint32_t> words(layout->numWords, 0);
+    auto set = [&](const AIE::DmaBdField &field, uint64_t value) {
+      if (field.exists())
+        words[field.word] |= field.place(value);
+    };
+    uint64_t bufferOffset = op.getBufferOffset();
+    if (tm.isCoreTile(col, row))
+      bufferOffset /= 4;
+    set(layout->bufferLength, op.getBufferLength());
+    set(layout->bufferOffset, bufferOffset);
+    set(layout->enablePacket, op.getEnablePacket());
+    set(layout->packetType, op.getPacketType());
+    set(layout->packetId, op.getPacketId());
+    set(layout->outOfOrderId, op.getOutOfOrderId());
+    set(layout->d0Size, op.getD0Size());
+    set(layout->d0Stride, op.getD0Stride());
+    set(layout->d1Size, op.getD1Size());
+    set(layout->d1Stride, op.getD1Stride());
+    set(layout->d2Stride, op.getD2Stride());
+    set(layout->iterationCurrent, op.getIterationCurrent());
+    set(layout->iterationSize, op.getIterationSize());
+    set(layout->iterationStride, op.getIterationStride());
+    set(layout->d0ZeroBefore, op.getD0ZeroBefore());
+    set(layout->d1ZeroBefore, op.getD1ZeroBefore());
+    set(layout->d2ZeroBefore, op.getD2ZeroBefore());
+    set(layout->d0ZeroAfter, op.getD0ZeroAfter());
+    set(layout->d1ZeroAfter, op.getD1ZeroAfter());
+    set(layout->d2ZeroAfter, op.getD2ZeroAfter());
+    if (layout->burstLength.exists())
+      set(layout->burstLength,
+          getShimBurstLengthEncoding(tm, op.getBurstLength()));
+    set(layout->axcache, op.getAxcacheOrDefault());
+    set(layout->nextBd, op.getNextBd());
+    set(layout->useNextBd, op.getUseNextBd());
+    set(layout->validBd, op.getValidBd());
+    set(layout->lockRelValue, op.getLockRelVal());
+    set(layout->lockRelId, op.getLockRelId());
+    set(layout->lockAcqEnable, op.getLockAcqEnable());
+    set(layout->lockAcqValue, op.getLockAcqVal());
+    set(layout->lockAcqId, op.getLockAcqId());
 
     uint32_t bd_id = op.getBdId();
     uint64_t bd_addr = tm.getDmaBdAddress(col, row, bd_id);
-    if (tm.isShimNOCTile(col, row)) {
-      // DMA_BDX_0
-      words[0] = op.getBufferLength();
-
-      // DMA_BDX_1
-      words[1] = op.getBufferOffset();
-
-      // DMA_BDX_2
-      // En Packet , OoO BD ID , Packet ID , Packet Type
-      words[2] |= (op.getEnablePacket() & 0x1) << 30;
-      words[2] |= (op.getOutOfOrderId() & 0x3f) << 24;
-      words[2] |= (op.getPacketId() & 0x1f) << 19;
-      words[2] |= (op.getPacketType() & 0x7) << 16;
-
-      // DMA_BDX_3
-      // TODO: Secure Access
-      words[3] |= (op.getD0Size() & 0x3ff) << 20;
-      words[3] |= op.getD0Stride() & 0xfffff;
-
-      // DMA_BDX_4
-      words[4] = (getShimBurstLengthEncoding(tm, op.getBurstLength()) & 0x3)
-                 << 30;
-      words[4] |= (op.getD1Size() & 0x3ff) << 20;
-      words[4] |= op.getD1Stride() & 0xfffff;
-
-      // DMA_BDX_5
-      // TODO: SIMID, AXQoS
-      words[5] |= (op.getAxcacheOrDefault() & 0xf) << 24;
-      words[5] |= op.getD2Stride() & 0xfffff;
-
-      // DMA_BDX_6
-      words[6] |= (op.getIterationCurrent() & 0x3f) << 26;
-      words[6] |= (op.getIterationSize() & 0x3f) << 20;
-      words[6] |= op.getIterationStride() & 0xfffff;
-
-      // DMA_BDX_7
-      // TODO: TLAST Suppress
-      words[7] |= (op.getNextBd() & 0xf) << 27;
-      words[7] |= (op.getUseNextBd() & 0x1) << 26;
-      words[7] |= (op.getValidBd() & 0x1) << 25;
-      words[7] |= (op.getLockRelVal() & 0x7f) << 18;
-      words[7] |= (op.getLockRelId() & 0xf) << 13;
-      words[7] |= (op.getLockAcqEnable() & 0x1) << 12;
-      words[7] |= (op.getLockAcqVal() & 0x7f) << 5;
-      words[7] |= op.getLockAcqId() & 0xf;
-      if (op.getD0ZeroBefore() || op.getD1ZeroBefore() ||
-          op.getD2ZeroBefore() || op.getD0ZeroAfter() || op.getD1ZeroAfter() ||
-          op.getD2ZeroAfter()) {
-        op->emitError("Zero padding is only available on MemTile");
-      }
-    } else if (tm.isMemTile(op.getColumn(), op.getRow())) {
-
-      // DMA_BDX_0
-      words[0] |= (op.getEnablePacket() & 0x1) << 31;
-      words[0] |= (op.getPacketType() & 0x7) << 28;
-      words[0] |= (op.getPacketId() & 0x1f) << 23;
-      words[0] |= (op.getOutOfOrderId() & 0x3f) << 17;
-      words[0] |= op.getBufferLength() & 0x1ffff;
-
-      // DMA_BDX_1
-      words[1] |= (op.getD0ZeroBefore() & 0x3F) << 26;
-      words[1] |= (op.getNextBd() & 0x3f) << 20;
-      words[1] |= (op.getUseNextBd() & 0x1) << 19;
-      words[1] |= op.getBufferOffset() & 0x7ffff;
-
-      // DMA_BDX_2
-      words[2] |= (op.getD0Size() & 0x3ff) << 17;
-      words[2] |= op.getD0Stride() & 0x1ffff;
-
-      // DMA_BDX_3
-      // TODO: Secure Access
-      words[3] |= (op.getD1ZeroBefore() & 0x1F) << 27;
-      words[3] |= (op.getD1Size() & 0x3ff) << 17;
-      words[3] |= op.getD1Stride() & 0x1ffff;
-
-      // DMA_BDX_4
-      // TODO: D2Size
-      words[4] |= (op.getD2ZeroBefore() & 0xF) << 27;
-      words[4] |= op.getD2Stride() & 0x1ffff;
-
-      // DMA_BDX_5
-      // ToDO: D3Stride
-      words[5] |= (op.getD2ZeroAfter() & 0xF) << 28;
-      words[5] |= (op.getD1ZeroAfter() & 0x1F) << 23;
-      words[5] |= (op.getD0ZeroAfter() & 0x3F) << 17;
-
-      // DMA_BDX_6
-      words[6] |= (op.getIterationCurrent() & 0x3f) << 23;
-      words[6] |= (op.getIterationSize() & 0x3f) << 17;
-      words[6] |= op.getIterationStride() & 0x1ffff;
-
-      // DMA_BDX_7
-      words[7] |= (op.getValidBd() & 0x1) << 31;
-      words[7] |= (op.getLockRelVal() & 0x7f) << 24;
-      words[7] |= (op.getLockRelId() & 0xff) << 16;
-      words[7] |= (op.getLockAcqEnable() & 0x1) << 15;
-      words[7] |= (op.getLockAcqVal() & 0x7f) << 8;
-      words[7] |= op.getLockAcqId() & 0xff;
-    } else {
-      // AIE2 Tile DMA - 6 words
-      // DMA_BDX_0
-      // Base_Address [27:14], Buffer_Length [13:0]
-      words[0] = ((op.getBufferOffset() / 4) & 0x3fff) << 14;
-      words[0] |= op.getBufferLength() & 0x3fff;
-
-      // DMA_BDX_1
-      // Enable_Compression [31], Enable_Packet [30], Out_Of_Order_BD_ID
-      // [29:24], Packet_ID [23:19], Packet_Type [18:16]
-      words[1] = 0; // Enable_Compression
-      words[1] |= (op.getEnablePacket() & 0x1) << 30;
-      words[1] |= (op.getOutOfOrderId() & 0x3f) << 24;
-      words[1] |= (op.getPacketId() & 0x1f) << 19;
-      words[1] |= (op.getPacketType() & 0x7) << 16;
-
-      // DMA_BDX_2
-      // D1_Stepsize [25:13], D0_Stepsize [12:0]
-      words[2] = (op.getD1Stride() & 0x1fff) << 13;
-      words[2] |= op.getD0Stride() & 0x1fff;
-
-      // DMA_BDX_3
-      // D1_Wrap [28:21], D0_Wrap [20:13], D2_Stepsize [12:0]
-      words[3] = (op.getD1Size() & 0xff) << 21;
-      words[3] |= (op.getD0Size() & 0xff) << 13;
-      words[3] |= op.getD2Stride() & 0x1fff;
-
-      // DMA_BDX_4
-      // Iteration_Current [24:19], Iteration_Wrap [18:13], Iteration_Stepsize
-      // [12:0]
-      words[4] = (op.getIterationCurrent() & 0x3f) << 19;
-      words[4] |= (op.getIterationSize() & 0x3f) << 13;
-      words[4] |= op.getIterationStride() & 0x1fff;
-
-      // DMA_BDX_5
-      // TLAST_Suppress [31], Next_BD [30:27], Use_Next_BD [26], Valid_BD [25],
-      // Lock_Rel_Value [24:18], Lock_Rel_ID [16:13], Lock_Acq_Enable [12],
-      // Lock_Acq_Value [11:5], Lock_Acq_ID [3:0]
-      words[5] = 0; // TLAST_Suppress
-      words[5] |= (op.getNextBd() & 0xf) << 27;
-      words[5] |= (op.getUseNextBd() & 0x1) << 26;
-      words[5] |= (op.getValidBd() & 0x1) << 25;
-      words[5] |= (op.getLockRelVal() & 0x7f) << 18;
-      words[5] |= (op.getLockRelId() & 0xf) << 13;
-      words[5] |= (op.getLockAcqEnable() & 0x1) << 12;
-      words[5] |= (op.getLockAcqVal() & 0x7f) << 5;
-      words[5] |= op.getLockAcqId() & 0xf;
-    }
 
     memref::GlobalOp global = nullptr;
     {
@@ -941,6 +883,7 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addLegalDialect<AIEXDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<arith::ArithDialect>();
+    target.addLegalOp<cf::AssertOp>();
     target.addLegalOp<AIE::BufferOp>();
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
     target.addLegalOp<AIE::TileOp>();
@@ -1000,6 +943,8 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     pushPatterns.insert<PushQueuetoWrite32Pattern>(&getContext());
     if (failed(applyPartialConversion(device, target, std::move(pushPatterns))))
       signalPassFailure();
+
+    eraseDeadArith(device);
   }
 };
 
