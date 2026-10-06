@@ -355,6 +355,56 @@ def test_epilogue_silu_saturates_for_huge_inputs():
     assert verdict, verdict.detail
 
 
+@pytest.mark.parametrize("vectorized", [True, False], ids=["vector", "scalar"])
+def test_argmax_of_a_tile_with_no_finite_value(vectorized):
+    """A tile of -inf, or of NaN, resolves to its first element as -inf."""
+    n = 1000
+    tiles = np.stack([np.full(n, -np.inf), np.full(n, np.nan)]).astype(bfloat16)
+    fn = kernels.argmax(tile_size=n, dtype=bfloat16, vectorized=vectorized)
+    design = kd.design(
+        kernels.argmax,
+        calls=2,
+        scalars=(7,),
+        tile_size=n,
+        dtype=bfloat16,
+        vectorized=vectorized,
+    )
+    got = _run(design, fn, [tiles], kd.output_size(fn, calls=2), np.dtype(np.int32))
+    records = got.reshape(2, 2)
+    np.testing.assert_array_equal(records[:, 0].view(np.float32), [-np.inf, -np.inf])
+    np.testing.assert_array_equal(records[:, 1], [7, 7])
+    verdict = fn.judge(got, fn.expected([tiles], scalars=(7,)), calls=2)
+    assert verdict, verdict.detail
+
+
+@pytest.mark.parametrize("vectorized", [True, False], ids=["vector", "scalar"])
+def test_argmax_ties_minus_zero_with_plus_zero(vectorized):
+    """-0 reads as +0, so the first zero wins whichever sign it has."""
+    n = 72
+    # (-0's index, +0's index): across lanes, within a lane, into the tail.
+    zeros_at = [(33, 0), (1, 32), (1, 33), (2, 66)]
+    tiles = np.full((len(zeros_at), n), -np.inf, np.float32)
+    for tile, (minus, plus) in zip(tiles, zeros_at):
+        tile[[minus, plus]] = [-0.0, 0.0]
+    tiles = tiles.astype(bfloat16)
+    calls = len(tiles)
+    fn = kernels.argmax(tile_size=n, dtype=bfloat16, vectorized=vectorized)
+    design = kd.design(
+        kernels.argmax,
+        calls=calls,
+        scalars=(0,),
+        tile_size=n,
+        dtype=bfloat16,
+        vectorized=vectorized,
+    )
+    got = _run(design, fn, [tiles], kd.output_size(fn, calls=calls), np.dtype(np.int32))
+    records = got.reshape(calls, 2)
+    np.testing.assert_array_equal(records[:, 0], [0] * calls)
+    np.testing.assert_array_equal(records[:, 1], [0, 1, 1, 2])
+    verdict = fn.judge(got, fn.expected([tiles], scalars=(0,)), calls=calls)
+    assert verdict, verdict.detail
+
+
 def _bf16_from_bits(u):
     return (np.asarray(u, np.uint32) << 16).view(np.float32).astype(bfloat16)
 

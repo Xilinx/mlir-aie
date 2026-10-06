@@ -3,7 +3,9 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Reduction kernel factories: reduce_add, reduce_min, reduce_max, compute_max."""
+"""Reduction kernel factories: reduce_add, reduce_min, reduce_max, compute_max, argmax."""
+
+from functools import partial
 
 import numpy as np
 import numpy.typing as npt
@@ -26,6 +28,13 @@ from ._common import (
 # The unspecialized pairwise max can share an object across dtypes.
 # Size-specialized reductions use separate, symbol-prefixed objects.
 _REDUCE_MAX_OBJ = "reduce_max.cc.o"
+
+# argmax_combine() shares one unspecialized object across dtypes, like
+# compute_max().
+_ARGMAX_OBJ = "argmax.cc.o"
+
+# argmax.cc indexes a tile's lanes with int16.
+_ARGMAX_MAX_ELEMS = 32767
 
 # reduce_{add,min,max}.cc step a 16-element int32 vector (32 for bfloat16).
 _REDUCE_VEC_ELEMS = 16
@@ -280,3 +289,168 @@ def compute_max_ref(a, b):
     ``max(a[..., 0], b[..., 0])`` with a trailing axis of length 1.
     """
     return np.maximum(np.asarray(a)[..., :1], np.asarray(b)[..., :1])
+
+
+def argmax_ref(x, index_offset: int = 0):
+    """Numpy reference for [`argmax`][iron.kernels.reduce.argmax]: one record per tile.
+
+    Returns the ``(..., 2)`` int32 records the kernel writes, so a host can
+    compare them verbatim. A NaN reads as -inf and a -0 as +0, as they do in
+    the kernel's comparisons; that is where this differs from a plain
+    ``numpy.argmax``.
+    """
+    x = np.asarray(x)
+    if np.issubdtype(x.dtype, np.integer):
+        keys = x.astype(np.int32)
+    else:
+        keys = x.astype(np.float32)
+        keys = np.where(np.isnan(keys), np.float32(-np.inf), keys)
+        keys = np.where(keys == 0, np.float32(0), keys)
+    index = keys.argmax(axis=-1)[..., None]
+    value = np.take_along_axis(keys, index, axis=-1).view(np.int32)
+    return np.concatenate([value, (index + index_offset).astype(np.int32)], axis=-1)
+
+
+@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
+def argmax(
+    tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
+) -> ExternalFunction:
+    """Reduction kernel: the largest element of a tile and its index.
+
+    The partial half of a distributed argmax, in the same shape as
+    [`reduce_max`][iron.kernels.reduce.reduce_max] +
+    [`compute_max`][iron.kernels.reduce.compute_max]: each core runs this over
+    its own slice and a tree merges the records with
+    [`argmax_combine`][iron.kernels.reduce.argmax_combine].
+
+    The kernel writes a 2-element int32 record: ``out[0]`` the winning value
+    (int32 as itself, bfloat16 widened to float and bit-cast) and ``out[1]``
+    its index plus the ``index_offset`` runtime argument. A caller that passes
+    its slice's start gets global indices, and the combine order stops
+    mattering.
+
+    Ties resolve to the lowest index, matching ``numpy.argmax``. A NaN never
+    compares greater, so it reads as -inf, and a -0 reads as +0, so -0 and +0
+    tie.
+
+    Args:
+        tile_size: Number of elements in the input slice, 1..32767. The
+            vector path takes any remainder in a scalar tail.
+        dtype: Element data type (``np.int32`` or ``bfloat16``).
+        vectorized: If ``True`` use vectorized path; ``False`` selects scalar.
+
+    Returns:
+        ExternalFunction configured for the argmax kernel; signature is
+        ``(in_ty, out_ty, int32 tile_size, int32 index_offset)``.
+
+    Raises:
+        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``, or
+            ``tile_size`` is not in 1..32767.
+    """
+    is_bf16 = np.dtype(dtype) == np.dtype(bfloat16)
+    is_int32 = np.dtype(dtype) == np.dtype(np.int32)
+    if not is_bf16 and not is_int32:
+        raise ValueError(f"argmax() dtype must be np.int32 or bfloat16, got {dtype}")
+    actual_dtype = bfloat16 if is_bf16 else np.int32
+    if not 0 < tile_size <= _ARGMAX_MAX_ELEMS:
+        raise ValueError(
+            f"argmax() tile_size must be in 1..{_ARGMAX_MAX_ELEMS} (the kernel "
+            f"indexes a tile with int16 lanes), got {tile_size}"
+        )
+    in_ty = np.ndarray[(tile_size,), np.dtype[actual_dtype]]
+    out_ty = np.ndarray[(2,), np.dtype[np.int32]]
+    func_variant = "vector" if vectorized else "scalar"
+    suffix = "_bfloat16" if is_bf16 else ""
+    return _make_extern(
+        f"argmax_{func_variant}{suffix}",
+        _kernel_source("reduce/argmax.cc"),
+        [in_ty, out_ty, np.int32, np.int32],
+        compile_flags=[f"-DARGMAX_ELEMS={tile_size}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=argmax_ref,
+            tolerance=Tolerance.exact(note="an exact selection"),
+            ops_per_call=tile_size,
+        ),
+    )
+
+
+def argmax_combine_ref(a, b, dtype: type = np.int32):
+    """Numpy reference for [`argmax_combine`][iron.kernels.reduce.argmax_combine].
+
+    Keeps, per call, the record with the larger value, or the lower index when
+    the values are equal. ``dtype`` is the original input's and says how
+    ``out[0]`` reads.
+    """
+    a, b = np.asarray(a, np.int32), np.asarray(b, np.int32)
+    is_bf16 = np.dtype(dtype) == np.dtype(bfloat16)
+    value_dtype = np.float32 if is_bf16 else np.int32
+    va, vb = a[..., :1].view(value_dtype), b[..., :1].view(value_dtype)
+    take_b = (vb > va) | ((vb == va) & (b[..., 1:] < a[..., 1:]))
+    return np.where(take_b, b, a)
+
+
+def argmax_combine_sample(rng, calls: int, *, dtype: type) -> list:
+    """Two tiles of records ``argmax`` can write, with frequent value ties.
+
+    The values come from a handful of small integers plus the extremes a
+    record can hold (int32's limits, or ±inf and -0.0), so equal values (and
+    the index tie-break) come up in most calls; a record never carries a NaN.
+    """
+    if np.dtype(dtype) == np.dtype(bfloat16):
+        pool = np.array([-np.inf, -3, -1, -0.0, 0, 2, np.inf], np.float32)
+        pool = pool.view(np.int32)
+    else:
+        info = np.iinfo(np.int32)
+        pool = np.array([info.min, -3, -1, 0, 2, info.max], np.int32)
+    values = rng.choice(pool, size=(2, calls, 1))
+    indices = rng.integers(0, 8, size=(2, calls, 1))
+    records = np.concatenate([values, indices], axis=-1).astype(np.int32)
+    return [records[0], records[1]]
+
+
+def argmax_combine(dtype: type = np.int32) -> ExternalFunction:
+    """Pairwise record merge — companion to [`argmax`][iron.kernels.reduce.argmax].
+
+    Takes two of the records described in [`argmax`][iron.kernels.reduce.argmax]
+    and keeps the one with the larger value, or the lower index when the values
+    are equal. When both operands carry global indices, the merge order does
+    not affect the result.
+
+    Args:
+        dtype: Element data type of the original input (``np.int32`` or
+            ``bfloat16``); it selects how ``out[0]`` is compared.
+
+    Returns:
+        ExternalFunction configured for the ``argmax_combine`` kernel;
+        signature is ``(rec_ty, rec_ty, rec_ty)`` where ``rec_ty`` is a
+        2-element int32 record.
+
+    Raises:
+        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.
+    """
+    is_bf16 = np.dtype(dtype) == np.dtype(bfloat16)
+    is_int32 = np.dtype(dtype) == np.dtype(np.int32)
+    if not is_bf16 and not is_int32:
+        raise ValueError(
+            f"argmax_combine() dtype must be np.int32 or bfloat16, got {dtype}"
+        )
+    actual_dtype = bfloat16 if is_bf16 else np.int32
+    rec_ty = np.ndarray[(2,), np.dtype[np.int32]]
+    suffix = "_bfloat16" if is_bf16 else ""
+    return _make_extern(
+        f"argmax_combine{suffix}",
+        _kernel_source("reduce/argmax.cc"),
+        [rec_ty, rec_ty, rec_ty],
+        object_file_name=_ARGMAX_OBJ,
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, Out),
+            reference=partial(argmax_combine_ref, dtype=actual_dtype),
+            sample=partial(argmax_combine_sample, dtype=actual_dtype),
+            tolerance=Tolerance.exact(note="selection"),
+            ops_per_call=1,
+        ),
+    )
