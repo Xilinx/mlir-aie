@@ -195,7 +195,7 @@ aie.device(npu2) {
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
   aie.runtime_sequence(%arg0 : memref<8192xi32>) {
-    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op Size 1 exceeds the [0:1023] range.}}
+    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op Size 1 is 2048 (encoded as 2048), which exceeds the [0:1023] range.}}
     aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 2048, 2][0, 0, 4, 1]) {id = 0 : i64, metadata = @dma, length_parameter = @n, length_unit = 4 : i64} : memref<8192xi32>
   }
   %tile = aie.tile(0, 0)
