@@ -78,6 +78,7 @@ my_design(a, b)              # compile + run + sync back
 | The implicit-MLIR-context error you just hit | [Implicit MLIR context](./implicit_mlir_context.md) |
 | Setting-by-setting configuration (cache dir, tensor backend, log level) | [Configuration options](./iron_configuration.md) |
 | What happens between `@iron.jit` and the NPU running | [Compilation stages](./compilation_stages.md) |
+| A routing error, or how flows become switch settings | [Routing](./routing.md) |
 | Ready-made compute kernels (matmul, conv, eltwise, vision) | [Kernel library](./kernels_library.md) |
 | Every control op you can put in a runtime sequence | [AIEX dialect reference](../AIEXDialect.md) |
 

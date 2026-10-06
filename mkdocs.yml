@@ -42,7 +42,6 @@ exclude_docs: |
   # Legacy raw-MLIR walkthroughs (deprecated AIE. syntax, Versal-era). Kept in
   # the repo for reference but not published on the site.
   /AIEDesignPatterns.md
-  /AIERouting.md
   /AIEVectorization.md
   # Internal maintainer notes (wheel-build machinery). Kept in the repo, not
   # published on the site.
@@ -247,6 +246,7 @@ nav:
     - Extra References:
       - IRON Configuration: programming_guide/iron_configuration.md
       - Core Data Memory: programming_guide/core_data_memory.md
+      - Routing: programming_guide/routing.md
       - HRX Runtime (amdxdna): programming_guide/hrx_runtime.md
       - HSA Runtime (ROCR): programming_guide/hsa_runtime.md
       - Compilation Stages: programming_guide/compilation_stages.md
