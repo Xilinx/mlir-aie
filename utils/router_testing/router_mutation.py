@@ -1386,8 +1386,8 @@ def run_seed(seed, args):
             rows.append(("relation", "broken", name, f"{what}: {check}", d))
             continue
         q = rp.aie_opt(e.emit(), hops_on, timeout=120)
-        # Splitting, merging or reordering flows can change the route a
-        # prioritized source takes alone, which the rest has to route around.
+        # Reshaping flows can move a prioritized source's own route (see the
+        # pinned overlay in AIECreatePathFindFlows.cpp), so the model judges.
         if q.returncode and rp.priority_trees(d, trees) != rp.priority_trees(e, trees):
             outcome, detail = judge(e, "model", hops_on, seed)
             rows.append(("relation", outcome, name, f"{what}: {detail}", e))
