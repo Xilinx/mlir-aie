@@ -17,7 +17,7 @@
 static inline aie::vector<bfloat16, 16> exp2_bf16_16(aie::vector<float, 16> x) {
   x = aie::max(x, aie::broadcast<float, 16>(-200.0f));
   x = aie::min(x, aie::broadcast<float, 16>(127.0f));
-  // Adding 1.5 * 2^23 rounds x to an integer in the low mantissa bits.
+  // The 1.5 * 2^23 rounding: see exp2_poly.h.
   const auto magic = aie::broadcast<float, 16>(12582912.0f);
   const aie::vector<float, 16> xm = aie::add(x, magic);
   const aie::vector<int32_t, 16> k =

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import Callable, Sequence, get_origin
+from typing import TYPE_CHECKING, Callable, Sequence, get_origin
 
 import numpy as np
 
@@ -41,7 +41,7 @@ from ...helpers.util import (
 )
 from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
-from ..dataflow import ObjectFifoHandle
+from ..dataflow.objectfifo import ObjectFifoHandle
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_sequence, active_sequence_scope
@@ -49,6 +49,9 @@ from .data import RuntimeData
 from .dmatask import DMATask
 from .endpoint import RuntimeEndpoint
 from .taskgroup import TaskGroup
+
+if TYPE_CHECKING:
+    from ..device import Device
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +75,10 @@ class ActiveSequence:
     and cores afterward, with every runtime endpoint already bound.
     """
 
-    def __init__(self, runtime: "Runtime"):
+    def __init__(self, runtime: "Runtime", seq_op: RuntimeSequenceOp, device=None):
         self._runtime = runtime
+        self._seq_op = seq_op
+        self._device = device
         # The implicit group for fill/drain calls that pass no explicit group.
         self._default_task_group = TaskGroup(next(runtime._task_group_index))
         self._open_task_groups: list[TaskGroup] = []
@@ -82,7 +87,18 @@ class ActiveSequence:
 
     def note_fifo(self, handle: ObjectFifoHandle) -> None:
         """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
-        self._runtime._fifos.add(handle)
+        self._runtime._fifos[handle] = None
+
+    def resolve_in_device(self, resolvable) -> None:
+        """Resolve a Buffer or Lock the body reaches first, ahead of the sequence.
+
+        Program resolves the objects it can find before the body runs; one only
+        a runtime task names is placed here, at device scope.
+        """
+        with ir.InsertionPoint(self._seq_op):
+            if self._device is not None:
+                self._device.resolve_tile(resolvable.tile)
+            resolvable.resolve()
 
     def register_task_group(self, tg: TaskGroup) -> None:
         self._open_task_groups.append(tg)
@@ -274,7 +290,7 @@ class Runtime(Resolvable):
                         "Runtime cannot mix bare scalar types with DispatchTime parameters."
                     )
                 self._block_data.append(data)
-        self._fifos: set[ObjectFifoHandle] = set()
+        self._fifos: dict[ObjectFifoHandle, None] = {}
         self._register_fn_args()
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
@@ -303,7 +319,7 @@ class Runtime(Resolvable):
             if isinstance(arg, ObjectFifoHandle):
                 if arg.endpoint is None:
                     arg.endpoint = RuntimeEndpoint(arg._shim_tile)
-                self._fifos.add(arg)
+                self._fifos[arg] = None
 
     def add_flow(self, flow) -> None:
         """Register an explicit flow so the Program resolves it alongside the ObjectFifos.
@@ -313,9 +329,10 @@ class Runtime(Resolvable):
         self._flows.append(flow)
 
     def add_lock(self, lock) -> None:
-        """Register an explicit [`Lock`][iron.Lock] shared between a Worker and a TileDma.
+        """Register an explicit [`Lock`][iron.Lock] no TileDma, task or Worker reaches.
 
-        See [`TileDma`][iron.TileDma].
+        Locks a [`TileDma`][iron.TileDma]'s or a task's Bds use are found
+        from them, and a Worker's from its ``fn_args``.
         """
         self._locks.append(lock)
 
@@ -370,6 +387,27 @@ class Runtime(Resolvable):
         """The ObjectFifoHandles driven from the runtime by fill()/drain()."""
         return list(self._fifos)
 
+    def register_parameter(self, param: ScratchpadParameter | str | None) -> str | None:
+        """Record a ScratchpadParameter a transfer uses, for the Program to declare.
+
+        Args:
+            param: The parameter, the name of one the Program declares anyway
+                (e.g. from a Worker's `fn_args`), or None.
+
+        Returns:
+            The parameter's name, or None for None.
+        """
+        if isinstance(param, ScratchpadParameter):
+            if param not in self._scratchpad_parameters:
+                self._scratchpad_parameters.append(param)
+            return param.name
+        return param
+
+    @property
+    def scratchpad_parameters(self) -> list[ScratchpadParameter]:
+        """The ScratchpadParameters the sequence's transfers registered."""
+        return list(self._scratchpad_parameters)
+
     def resolve(
         self,
         loc: ir.Location | None = None,
@@ -379,6 +417,7 @@ class Runtime(Resolvable):
         reuse_output_buffer: bool = False,
         egress_shim_col: int = 0,
         load_pdi_device_ref: str | None = None,
+        device: Device | None = None,
     ) -> None:
         """Build the ``runtime_sequence`` op and run the sequence body inside it.
 
@@ -403,6 +442,8 @@ class Runtime(Resolvable):
             load_pdi_device_ref: On the full-ELF path (no xclbin configures the
                 device), the device symbol to load via ``npu_load_pdi`` as the
                 first op in the sequence. ``None`` on the xclbin path.
+            device: The [`Device`][iron.Device] that places tiles the body
+                reaches first, such as a buffer only a runtime task names.
         """
         # A runtime_sequence block arg per runtime (type) input; folded-constant
         # inputs contribute no block arg.
@@ -411,9 +452,8 @@ class Runtime(Resolvable):
             for rt_data in self._block_data
             if rt_data is not None
         ]
-        active = ActiveSequence(self)
-
         seq_op = RuntimeSequenceOp(sym_name="sequence")
+        active = ActiveSequence(self, seq_op, device)
         entry_block = seq_op.body.blocks.append(*rt_dtypes)
         with ir.InsertionPoint(entry_block):
             # Full-ELF designs configure the device themselves: no xclbin
@@ -506,7 +546,7 @@ class Runtime(Resolvable):
                         runtime_cons = c
                     elif (
                         c.depth == runtime_cons.depth
-                        and c.dims_from_stream == runtime_cons.dims_from_stream
+                        and c.from_stream == runtime_cons.from_stream
                     ):
                         to_remove.append(c)
                     else:

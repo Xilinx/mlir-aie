@@ -37,6 +37,7 @@ Provides the primary abstractions for describing NPU designs:
     surface at MLIR verification time.
 """
 
+from aie.helpers.taplib._symbolic import require
 from aie.utils import (
     arange,
     ceildiv,
@@ -74,15 +75,17 @@ from .dataflow import (
     BdIteration,
     CascadeFlow,
     DmaChannel,
+    DmaEndpoint,
     Flow,
+    FlowEndpoint,
     ObjectFifo,
     PacketDest,
     PacketFlow,
-    PadDims,
     Release,
-    StreamDims,
     TileDma,
+    TileDmaTask,
 )
+from .device import Device
 from .dtype import dtype_to_str, str_to_dtype
 from .kernel import ExternalFunction, Kernel, KernelObject, ObjectFile
 from .lock import Lock
@@ -99,6 +102,7 @@ __all__ = [
     "KernelObject",
     "ObjectFile",
     "Program",
+    "Device",
     "Worker",
     "WorkerRuntimeBarrier",
     "Runtime",
@@ -107,21 +111,22 @@ __all__ = [
     "Task",
     "sync_parameters",
     "ObjectFifo",
-    "PadDims",
-    "StreamDims",
     # Lower-level explicit-routing primitives
     "Acquire",
     "Bd",
     "BdIteration",
     "CascadeFlow",
     "DmaChannel",
+    "DmaEndpoint",
     "Flow",
+    "FlowEndpoint",
     "Lock",
     "ScratchpadParameter",
     "PacketDest",
     "PacketFlow",
     "Release",
     "TileDma",
+    "TileDmaTask",
     # Compile-time / JIT API
     "CompileTime",
     "DispatchTime",
@@ -134,6 +139,7 @@ __all__ = [
     "jit",
     "compile_context",
     "get_compile_arg",
+    "require",
     # Tensor factories
     "tensor",
     "ones",

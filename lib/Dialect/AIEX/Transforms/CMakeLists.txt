@@ -19,6 +19,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIEMaterializeRuntimeSequences.cpp
   AIEAssignRuntimeSequenceBDIDs.cpp
   AIEReserveRuntimeBDIDs.cpp
+  AIESplitLongRepeats.cpp
   AIEUnrollRuntimeSequenceLoops.cpp
   AIELowerDynamicBDPool.cpp
   AIEDMATasksToNPU.cpp
@@ -47,9 +48,11 @@ add_mlir_dialect_library(AIEXTransforms
 
   LINK_LIBS PUBLIC
   AIE
+  MLIRAnalysis
   AIETransforms
   MLIRAIEToConfiguration
   AIEXUtils
+  MLIRControlFlowDialect
   MLIRIR
   MLIRPass
   MLIRSCFToControlFlow

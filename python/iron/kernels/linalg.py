@@ -10,7 +10,7 @@ from typing import NamedTuple, get_args
 
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.iron.dataflow import StreamDims
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.compile.utils import resolve_target_arch
@@ -42,15 +42,14 @@ _CASCADE_COMBOS = {
 
 # Mirror of the ``combos(X)`` macro in aie_kernels/linalg/cascade_mm.cc.
 # Designs use ``kernels.cascade_mm(...).mac_dims`` to look up the
-# scalar-block geometry the compiled cascade kernel expects.  cascade_mm
-# only ships an aie2 .cc today; if an aie2p variant lands the table
-# needs the new arch added.
+# scalar-block geometry the compiled cascade kernel expects.
 #
-# The cascade_mm.cc kernel is fully scalar — `a[row * colA + i]` walks A
-# element-by-element with no SIMD tiling — so the L2->L1 buffer must be
-# plain row-major.  mac_dims (1, 1, 1) yields the identity dim_to_stream
-# pattern when designs build it as [(m//r, r*k), (k//s, s), (r, k), (s, 1)].
-# Larger values would shuffle A/B into a tiled layout the scalar kernel
+# The cascade_mm.cc kernel reads its operands row-major on both targets —
+# the AIE2 kernel is scalar and the AIE2P one tiles A and B in registers —
+# so the L2->L1 buffer must be plain row-major.  mac_dims (1, 1, 1) yields
+# the identity dim_to_stream pattern when designs build it as
+# [(m//r, r*k), (k//s, s), (r, k), (s, 1)].
+# Larger values would shuffle A/B into a tiled layout the kernel
 # does not understand, producing garbage outputs (262144-element mismatch
 # observed in CI with the previous (4, 4, 4) entries).
 _CASCADE_MM_SCALAR_DIMS = {
@@ -61,8 +60,7 @@ _CASCADE_MM_SCALAR_DIMS = {
 }
 
 _CASCADE_MM_MAC_DIMS = {
-    # cascade_mm.cc is one source for both targets and scalar on both, so
-    # the required stream layout remains plain row-major.
+    # cascade_mm.cc is one source for both targets and row-major on both.
     "aie2": _CASCADE_MM_SCALAR_DIMS,
     "aie2p": _CASCADE_MM_SCALAR_DIMS,
 }
@@ -238,10 +236,8 @@ def _tile_layout(shape, dims=None, *, axes=None, inverse=False, block=None):
     if axes is not None:
         logical = logical.transpose(axes)
     order = logical.ravel()
-    if dims:
-        offsets = np.zeros(1, dtype=np.int64)
-        for size, stride in dims:
-            offsets = (offsets[:, None] + np.arange(size) * stride).ravel()
+    if dims is not None:
+        offsets = dims.gather(np.arange(order.size))
         order = order[np.argsort(offsets) if inverse else offsets]
     undo = np.argsort(order)
     return TensorLayout(
@@ -334,14 +330,14 @@ def _linalg_tolerance(input_dtype) -> Tolerance:
 
 
 class StreamDimsABC(NamedTuple):
-    """The three ``dims_to_stream`` a matmul design needs, one per operand.
+    """The three ``to_stream`` a matmul design needs, one per operand.
 
     ``None`` for an operand a build streams untransformed.
     """
 
-    A: StreamDims | None
-    B: StreamDims | None
-    C: StreamDims | None
+    A: TensorAccessPattern | None
+    B: TensorAccessPattern | None
+    C: TensorAccessPattern | None
 
 
 class _ZeroInitializedKernel(ExternalFunction):
@@ -370,7 +366,7 @@ class MatrixKernel(_ZeroInitializedKernel):
 
     @property
     def stream_dims(self) -> StreamDimsABC:
-        """The ``dims_to_stream`` a design applies to A, B and C; ``None`` streams as stored."""
+        """The ``to_stream`` a design applies to A, B and C; ``None`` streams as stored."""
         a, b, c = self.contract.layouts[:3]
         return StreamDimsABC(A=a.stream, B=b.stream, C=c.stream)
 
@@ -379,16 +375,6 @@ class _CascadeMatrixKernel(MatrixKernel):
     get_only: MatrixKernel
     put_only: Kernel
     put_get: Kernel
-
-
-def _blocked(rows: int, cols: int, tile_rows: int, tile_cols: int) -> list:
-    """``dims_to_stream`` walking a ``(rows, cols)`` tensor in tile-sized blocks."""
-    from aie.helpers.taplib import TensorTiler2D
-
-    tiles = TensorTiler2D.group_tiler(
-        (rows, cols), (tile_rows, tile_cols), (rows // tile_rows, cols // tile_cols)
-    )
-    return list(tiles[0].transformation_dims)
 
 
 def mm_stream_dims(
@@ -400,7 +386,7 @@ def mm_stream_dims(
     b_col_maj: bool = False,
     c_col_maj: bool = False,
 ) -> StreamDimsABC:
-    """DMA ``dims_to_stream`` that feed ``mm.cc`` its (r, s, t) micro-tiles.
+    """DMA ``to_stream`` that feed ``mm.cc`` its (r, s, t) micro-tiles.
 
     ``mm.cc`` consumes A, B and produces C in the micro-tile blocking given by
     ``mac_dims``; a plain row-major stream yields wrong numbers, not an error.
@@ -414,21 +400,15 @@ def mm_stream_dims(
     """
     r, s, t = mac_dims
     m, k, n = dim_m, dim_k, dim_n
-    # Walking an operand as (r x s) blocks is what TensorTiler2D generates, so
-    # A and B ask for it rather than restating it.
-    a = _blocked(m, k, r, s)
-    b = _blocked(n, k, t, s) if b_col_maj else _blocked(k, n, s, t)
-    # C is not expressible that way. The DMA reads a core-blocked buffer and
-    # writes a differently ordered stream, so the intra-tile row term comes
-    # *outside* the tile index -- (r, t) before (n//t, r*t). Every
-    # TensorTiler2D classmethod iterates tiles outermost and elements within
-    # them, and no combination of tile_col_major / iter_col_major /
-    # prune_step produces this order. Closing the gap needs an un-blocking
-    # tiler in taplib, which is its own change.
-    if c_col_maj:
-        c = [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
-    else:
-        c = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    # A and B are read row-major and emitted as (r x s) / (s x t) blocks.
+    a = TensorAccessPattern.full((m, k)).tile((r, s))
+    b_shape, b_tile = ((n, k), (t, s)) if b_col_maj else ((k, n), (s, t))
+    b = TensorAccessPattern.full(b_shape).tile(b_tile)
+    # C goes the other way: the DMA reads the core's block-ordered buffer and
+    # emits it row-major, so the intra-tile row term sits outside the tile
+    # index -- (r, t) before (n//t, r*t). That is the inverse of tiling.
+    c_shape, c_tile = ((n, m), (t, r)) if c_col_maj else ((m, n), (r, t))
+    c = TensorAccessPattern.full(c_shape).tile(c_tile).inverse()
     return StreamDimsABC(A=a, B=b, C=c)
 
 
@@ -483,6 +463,35 @@ class _CascadeMatMulFactory:
         return _CASCADE_MM_MAC_DIMS[arch][key]
 
 
+class _MhaFactory:
+    @classmethod
+    def mac_dims(
+        cls,
+        *,
+        pv: bool = False,
+        device=None,
+        arch: str | None = None,
+        emulate_bf16_mmul_with_bfp16: bool = False,
+    ) -> tuple[int, int, int]:
+        """Query geometry without constructing a kernel; ``arch`` overrides ``device``.
+
+        ``QK^T`` uses ``mm_aie2p.h`` on both architectures: (4, 8, 8),
+        or (8, 8, 8) with BFP16 emulation on AIE2P. ``P*V``
+        (``matmul_bf16_bf16_rowmaj``) expands ``aie::mmul<8, 8, 8>`` itself.
+        """
+        arch = arch or (
+            resolve_target_arch(device) if device is not None else _detect_arch()
+        )
+        if arch not in _MM_MAC_DIMS:
+            raise ValueError(f"mha.mac_dims(): unsupported arch {arch}.")
+        if pv:
+            return (8, 8, 8)
+        key = (bfloat16, bfloat16)
+        if emulate_bf16_mmul_with_bfp16 and arch == "aie2p":
+            return _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
+        return _MM_MAC_DIMS["aie2p"][key]
+
+
 @dtypes(
     tuple({"input_dtype": i, "output_dtype": o} for (i, o) in _MM_MAC_DIMS["aie2p"])
 )
@@ -514,10 +523,10 @@ def mm(
         vectorized: If ``True`` use the vectorized variant.
         b_col_maj: If ``True`` compile with ``-DB_COL_MAJ`` so the kernel
             consumes B laid out column-major.  Must agree with the
-            design's B ``dims_to_stream``.
+            design's B ``to_stream``.
         c_col_maj: If ``True`` compile with ``-DC_COL_MAJ`` so the kernel
             writes C laid out column-major.  Must agree with the design's
-            C output ``dims_to_stream``.
+            C output ``to_stream``.
         use_chess: If ``True`` build with ``xchesscc_wrapper`` instead of
             Peano's ``clang++``.  All ExternalFunctions in a single
             ``@iron.jit`` design must share the same toolchain.
@@ -613,7 +622,29 @@ def mm(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
-            stack_bytes=0xD00,  # programming_examples/basic/matrix_multiplication
+            # Tuned or not: at most 512 B on aie2
+            # and 192 B on aie2p, except aie2p's int8 -> int32 kernel, whose
+            # fully unrolled K loop spills about 16 B per unit of K (c_col_maj:
+            # 1088 B at K = 56, 6208 B at K = 384, at most 1024 B up to K =
+            # 48). mm_aie2p.h rolls K from K = 416 (192 B), and a 16x16 tile
+            # does not spill (640 B). The fit covers only that kernel over 48 <
+            # dim_k < 416 (787 M/N/K/layout combos, see 0c60e6be3f2); the rest
+            # fit the 1024 B default. Too small a value fails the aiecc build
+            # loudly, as checkStackSizeRequirements reads the real
+            # .stack_sizes. A chess core cannot be measured, so use_chess keeps
+            # the matrix_multiplication examples' constant.
+            stack_bytes=(
+                0xD00
+                if use_chess
+                else (
+                    16 * dim_k + 256
+                    if arch == "aie2p"
+                    and vectorized
+                    and key == (np.int8, np.int32)
+                    and 48 < dim_k < 416
+                    else None
+                )
+            ),
             # mm_aie2p.h sets conv_even itself and restores it; mm_aie2.h
             # does so only under round_conv_even, and otherwise stores bf16
             # in whatever mode the core is in.
@@ -653,6 +684,7 @@ def mv(
     use_chess: bool = False,
     vec_size: int = 64,
     output_rows: int | None = None,
+    a_col_maj: bool = False,
 ) -> ExternalFunction:
     """Matrix-vector multiply kernel: c += A * b.
 
@@ -665,9 +697,24 @@ def mv(
     is ``(m, row_offset, A, b, c)``: ``row_offset`` shifts the write into
     ``c`` so one core can fill several output blocks; A is row-major.
 
+    ``a_col_maj=True`` builds the same file with ``-DA_COL_MAJ``, signature
+    ``(flags, A, b, acc, c)``: ``A`` is ``dim_k`` stored rows of a ``(K, M)``
+    matrix, ``dim_m`` elements each (the transpose), and ``b`` their ``dim_k``
+    elements of the vector. ``acc`` holds ``vec_size * dim_m`` float32 partial
+    sums that carry from call to call, so a whole ``K`` is a
+    ``MV_COL_MAJ_FIRST`` call, calls with no flags, and a ``MV_COL_MAJ_LAST``
+    call, which writes the ``dim_m`` outputs to ``c`` (or one call with both
+    flags). The sums are the row-major kernel's at the same ``vec_size`` over
+    that ``K``, in its order, so over ``A.T`` it returns the same bits, on
+    rows the row-major kernel computes in whole groups of four (the source
+    spells out the order). Choose ``vec_size`` as the row-major kernel would
+    for the whole ``K``.
+
     Args:
-        dim_m: Number of rows of A (output vector length).
-        dim_k: Number of columns of A (input vector length).
+        dim_m: Number of rows of A (output vector length). With
+            ``a_col_maj``: 16, 32 or a multiple of 64.
+        dim_k: Number of columns of A (input vector length). With
+            ``a_col_maj``: the stored rows of A one call takes.
         input_dtype: Input element type: ``np.int16`` or ``bfloat16``.
         output_dtype: Output element type: ``np.int32`` for ``np.int16``
             inputs, ``bfloat16`` for ``bfloat16`` inputs.
@@ -675,12 +722,15 @@ def mv(
         use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
             instead of Peano.  See [`mm`][iron.kernels.linalg.mm] for the design-level
             constraint (all EFs in one design must agree).
-        vec_size: bf16 only: the kernel's ``VEC_SIZE`` accumulation width.
+        vec_size: bf16 only: the kernel's ``VEC_SIZE`` accumulation width;
+            16, 32 or 64 with ``a_col_maj``.
         output_rows: bf16 only: the rows of a C tile that successive calls
             fill ``dim_m`` rows at a time through ``row_offset``, with b
             held for all of them, as amd/IRON's GEMV core does (its
             ``tile_size_output``). ``None``: every call writes its own
             ``dim_m`` rows.
+        a_col_maj: bf16 and vectorized only: A is stored ``(dim_k, dim_m)``,
+            the transpose, with partial sums carried across calls (above).
 
     Returns:
         ExternalFunction configured for the matvec kernel.
@@ -689,7 +739,11 @@ def mv(
         ValueError: When the dtype combination is not supported.
     """
     if (input_dtype, output_dtype) == (bfloat16, bfloat16):
-        return _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size, output_rows)
+        return _mv_bf16(
+            dim_m, dim_k, vectorized, use_chess, vec_size, output_rows, a_col_maj
+        )
+    if a_col_maj:
+        raise ValueError("mv(): a_col_maj is a bf16 layout")
     if output_rows is not None:
         raise ValueError("mv(): output_rows needs the bf16 kernel's row_offset")
     if input_dtype != np.int16 or output_dtype != np.int32:
@@ -704,11 +758,13 @@ def mv(
     # The vectorized kernel reads A in a "32-bit-word transposed" layout (see
     # aie_kernels/linalg/mv_i16.cc): 2-byte elements are packed two per word, rows
     # of each 2-column word slowly, m rows then the next 2-col word. A design
-    # applies this as dims_from_stream on the hop into the core, reading it
+    # applies this as from_stream on the hop into the core, reading it
     # from the layout (programming_examples/basic/matrix_multiplication/
     # matrix_vector does).
-    a_dims_from_stream = (
-        [(dim_m, 2), (dim_k // 2, 2 * dim_m), (2, 1)] if vectorized else None
+    a_from_stream = (
+        TensorAccessPattern.full((dim_k // 2, dim_m, 2)).permute((1, 0, 2))
+        if vectorized
+        else None
     )
     return _make_extern(
         f"{prefix}_i16_i32",
@@ -721,7 +777,7 @@ def mv(
             trace=Trace.whole_call(),
             roles=(In, In, InOut),
             layouts=(
-                _tile_layout((dim_m, dim_k), a_dims_from_stream, inverse=True),
+                _tile_layout((dim_m, dim_k), a_from_stream, inverse=True),
                 TensorLayout((dim_k,)),
                 TensorLayout((dim_m,)),
             ),
@@ -735,8 +791,14 @@ def mv(
     )
 
 
+# The column-major matvec's flags: FIRST starts the partial sums, LAST
+# rounds them into c. A whole K in one call takes both.
+MV_COL_MAJ_FIRST = 1
+MV_COL_MAJ_LAST = 2
+
+
 def _mv_bf16(
-    dim_m, dim_k, vectorized, use_chess, vec_size, output_rows
+    dim_m, dim_k, vectorized, use_chess, vec_size, output_rows, a_col_maj
 ) -> ExternalFunction:
     """bf16 matvec from ``aie_kernels/linalg/mv_bf16.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
     if vec_size <= 0 or dim_k <= 0 or dim_k % vec_size:
@@ -747,42 +809,90 @@ def _mv_bf16(
         raise ValueError(
             f"mv(): output_rows ({output_rows}) must be a positive multiple of dim_m ({dim_m})"
         )
-    # A C tile filled over several calls holds b for all of them, so b is a
-    # Param the core keeps rather than an input streamed with each call.
     tiled = output_rows is not None
-    prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
-    a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k,), np.dtype[bfloat16]]
     c_ty = np.ndarray[(output_rows or dim_m,), np.dtype[bfloat16]]
     flags = [f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"]
-    if not use_chess:
-        # Peano's outer-loop pointer optimizer turns three of the second row
-        # group's offset loads into post-modify loads from the unoffset base,
-        # so rows 4-6 come out wrong. Drop the flag once llvm-aie fixes the
-        # pass.
-        flags += ["-mllvm", "--aie-enable-outer-loop-pointer-opt=false"]
+    if a_col_maj:
+        if not vectorized or tiled:
+            raise ValueError(
+                "mv(): a_col_maj is vectorized only, and a call writes all "
+                "dim_m of its outputs, so it takes no output_rows"
+            )
+        if vec_size not in (16, 32, 64):
+            raise ValueError(
+                f"mv(): a_col_maj needs vec_size ({vec_size}) of 16, 32 or 64"
+            )
+        if dim_m not in (16, 32) and (dim_m <= 0 or dim_m % 64):
+            raise ValueError(
+                f"mv(): a_col_maj needs dim_m ({dim_m}) of 16, 32 or a multiple of 64"
+            )
+        symbol = "matvec_vectorized_col_maj_bf16_bf16"
+        flags = ["-DA_COL_MAJ", f"-DDIM_M={dim_m}", *flags]
+        arg_types = [
+            np.int32,
+            np.ndarray[(dim_k * dim_m,), np.dtype[bfloat16]],
+            b_ty,
+            np.ndarray[(vec_size * dim_m,), np.dtype[np.float32]],
+            c_ty,
+        ]
+        roles = (Param, In, In, Param, Out)
+        # Judged a whole K per call: the sums start and finish in one call,
+        # so acc is scratch the core keeps rather than an input.
+        bindings = (
+            (0, MV_COL_MAJ_FIRST | MV_COL_MAJ_LAST),
+            (3, np.zeros(vec_size * dim_m, np.float32)),
+        )
+        layouts = (
+            None,
+            TensorLayout((dim_k, dim_m)),
+            TensorLayout((dim_k,)),
+            None,
+            TensorLayout((dim_m,)),
+        )
+        subscripts = "ckm,ck->cm"
+    else:
+        prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
+        symbol = f"{prefix}_bf16_bf16"
+        if not use_chess:
+            # Peano's outer-loop pointer optimizer turns three of the second
+            # row group's offset loads into post-modify loads from the
+            # unoffset base, so rows 4-6 come out wrong. Drop the flag once
+            # llvm-aie fixes the pass.
+            flags += ["-mllvm", "--aie-enable-outer-loop-pointer-opt=false"]
+        arg_types = [
+            np.int32,
+            np.int32,
+            np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
+            b_ty,
+            c_ty,
+        ]
+        # A C tile filled over several calls holds b for all of them, so b is
+        # a Param the core keeps rather than an input streamed with each call.
+        roles = (Param, Param, In, Param if tiled else In, Out)
+        bindings = ((0, dim_m), (1, 0))
+        layouts = (
+            None,
+            None,
+            TensorLayout((dim_m, dim_k)),
+            TensorLayout((dim_k,)),
+            TensorLayout((dim_m,)),
+        )
+        subscripts = "cmk,k->cm" if tiled else "cmk,ck->cm"
     return _make_extern(
-        f"{prefix}_bf16_bf16",
+        symbol,
         _kernel_source("linalg/mv_bf16.cc"),
-        [np.int32, np.int32, a_ty, b_ty, c_ty],
+        arg_types,
         compile_flags=flags,
         use_chess=use_chess,
         contract=KernelContract(
             trace=Trace.whole_call(),
-            roles=(Param, Param, In, Param if tiled else In, Out),
-            parameter_bindings=((0, dim_m), (1, 0)),
+            roles=roles,
+            parameter_bindings=bindings,
             out_offset=(1, dim_m) if tiled else None,
-            layouts=(
-                None,
-                None,
-                TensorLayout((dim_m, dim_k)),
-                TensorLayout((dim_k,)),
-                TensorLayout((dim_m,)),
-            ),
+            layouts=layouts,
             reference=lambda a, b: np.einsum(
-                "cmk,k->cm" if tiled else "cmk,ck->cm",
-                a.astype(np.float32),
-                b.astype(np.float32),
+                subscripts, a.astype(np.float32), b.astype(np.float32)
             ),
             acc_dtype=np.float32,  # accfloat, reduced to bf16 on store
             reduction=dim_k,
@@ -882,7 +992,6 @@ def mm_bfp(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
-            stack_bytes=0xF00,  # programming_examples/ml/block_datatypes
             setup=conv_even,
             roles=(In, In, InOut),
             reference=partial(
@@ -984,19 +1093,21 @@ def mha(
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
-    One translation unit that includes ``softmax.cc`` and ``mm.cc`` and
+    One translation unit that includes ``softmax_aie2p.h`` and ``mm_aie2p.h`` and
     exports the symbols an attention dataflow composes over one micro-tile.
     The returned kernel is one of the toolkit's two matmuls, both
     accumulating into ``C``, so it is a
     [`MatrixKernel`][iron.kernels.linalg.MatrixKernel] judged like
     [`mm`][iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
-    ``matmul_bf16_bf16_wrapper``, ``mm.cc``'s bf16 product on its 4x8x8
+    ``matmul_bf16_bf16_wrapper``, ``mm_aie2p.h``'s bf16 product on its 4x8x8
     micro-tile behind an ``idx_buffer`` gate (the call runs when
     ``idx[0] <= idx[1]``) bound here to ``[0, 0]``. With ``pv`` it is the
     ``P*V`` product ``matmul_bf16_bf16_rowmaj``, mha.cc's own expansion of
     the native 8x8x8 micro-tile and ungated. ``matmul_PV`` is that same
     product preceded by a row rescale, which needs the online softmax's
     running state and so is exercised by ``test_mha_e2e.py`` instead.
+    ``mha.mac_dims(pv=...)`` answers either product's micro-tile without
+    building a kernel, as ``mm.mac_dims`` does.
 
     Bind the others from the same object with
     ``fn.object_file.bind(symbol, arg_types)``:
@@ -1042,17 +1153,12 @@ def mha(
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
-    # mha.cc includes mm.cc without C_COL_MAJ, and without B_COL_MAJ unless
-    # b_col_maj. matmul_bf16_bf16_rowmaj is always row-major and expands
-    # aie::mmul<8, 8, 8, bf16, bf16> directly, not the micro-tile
-    # _MM_MAC_DIMS records for mm.cc.
+    # mha.cc includes mm_aie2p.h without C_COL_MAJ, and without B_COL_MAJ unless
+    # b_col_maj. matmul_bf16_bf16_rowmaj is always row-major.
     b_col_maj = b_col_maj and not pv
-    if pv:
-        r, s, t = (8, 8, 8)
-    elif emulate_bf16_mmul_with_bfp16:
-        r, s, t = _MM_EMULATED_BF16_MAC_DIMS_AIE2P[(bfloat16, bfloat16)]
-    else:
-        r, s, t = _MM_MAC_DIMS["aie2p"][(bfloat16, bfloat16)]
+    r, s, t = _MhaFactory.mac_dims(
+        pv=pv, emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16
+    )
     streams = mm_stream_dims(dim_m, dim_k, dim_n, (r, s, t), b_col_maj=b_col_maj)
     return _make_extern(
         "matmul_bf16_bf16_rowmaj" if pv else "matmul_bf16_bf16_wrapper",
@@ -1073,7 +1179,6 @@ def mha(
                 _tile_layout((dim_m, dim_n), streams.C, inverse=True, block=(r, t)),
                 *(() if pv else (None,)),
             ),
-            stack_bytes=0xD00,  # mm.cc's product: programming_examples/basic/matrix_multiplication
             roles=(In, In, InOut) if pv else (In, In, InOut, Param),
             parameter_bindings=(() if pv else ((3, np.array([0, 0], np.int32)),)),
             reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
@@ -1084,6 +1189,9 @@ def mha(
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
+
+
+mha.mac_dims = _MhaFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
 
 
 _MHA_BLOCK = 64  # partial_softmax's fast path needs 64 keys per block
@@ -1121,10 +1229,12 @@ def mha_softmax() -> ExternalFunction:
             parameter_bindings=((4, scale), (5, b), (6, b)),
             initializers=((2, _zero_output),),
             reference=partial(mha_softmax_ref, scale=scale),
-            # aiecc measured_stack_size of the untuned loop on aie2, where a
-            # whole 64-lane row spills; the tuned one fits the default.
+            # The untuned loop on aie2, where a whole 64-lane row spills; the
+            # tuned one fits the default.
             stack_bytes=(
-                1376 if _detect_arch() == "aie2" and _tuned_arch() is None else None
+                1376
+                if _detect_arch() == "aie2" and _tuned_arch() == "portable"
+                else None
             ),
             # aie::exp2<bfloat16> interpolates 2**frac linearly, overshooting
             # by up to 6.15%, and two bf16 roundings bring it to 6.98%
@@ -1225,11 +1335,10 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     v_ty = np.ndarray[(lk * head_dim,), np.dtype[bfloat16]]
     streams = mm_stream_dims(lq, lk, head_dim, (r, s, t))
     # attn_fv walks V n-block-outer, k-block-inner -- the transpose of mm.cc's
-    # B block order, so this comes off _blocked rather than streams.B. At
+    # B block order, so this is built here rather than taken from streams.B. At
     # head_dim 512 LK is 8, making the k term degenerate, so only the 256
     # geometry can tell the two orders apart.
-    k_blocks, n_blocks, *within = _blocked(lk, head_dim, s, t)
-    v_dims = [n_blocks, k_blocks, *within]
+    v_dims = TensorAccessPattern.full((lk, head_dim)).tile((s, t)).permute((1, 0, 2, 3))
     return _make_extern(
         "prefill_fv_step",
         _kernel_source("linalg/flash_attn_prefill.cc"),
@@ -1251,7 +1360,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             reference=partial(prefill_fv_ref, dim_m=lq, dim_k=lk, dim_n=head_dim),
             acc_dtype=np.float32,
             reduction=lk,
-            stack_bytes=stack_bytes,  # aiecc measured_stack_size
+            stack_bytes=stack_bytes,
             # Derived, not inherited: _linalg_tolerance(bfloat16)'s 0.05/0.5 is
             # for a kernel that narrows C back to bf16, and y here is float32.
             # bf16 mantissas are 8 bits, so every product is exact in f32
@@ -1348,9 +1457,12 @@ def cascade_mm(
     ``.zero`` initializes accumulators using independent ``kernels.zero``.
     The pair is a two-tile
     design, which the generic builder does not run; the device test builds
-    and judges it (``test/python/npu/test_kernels_e2e.py``). The partial sum
-    crosses the cascade as a 32-bit integer lane: with a floating-point
-    output type the PUT half's product is truncated toward zero.
+    and judges it (``test/python/npu/test_kernels_e2e.py``). On AIE2 each
+    output's partial sum crosses the cascade as one 32-bit lane, a float
+    chain as the float's bits. On AIE2P, when ``dim_m`` and ``dim_k`` are
+    multiples of 8 and ``dim_n`` of 16, the whole accumulator crosses the
+    cascade; other shapes run the AIE2 kernel. Either way a float chain
+    sums in float and rounds once, to nearest even, at the GET half.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -1389,7 +1501,7 @@ def cascade_mm(
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, InOut),
-            # Scalar on both targets: row-major operands, nothing streamed
+            # Row-major operands on both targets, nothing streamed
             # transformed, so the layouts carry the 1x1x1 blocking and no
             # stream (see _CASCADE_MM_SCALAR_DIMS).
             layouts=(

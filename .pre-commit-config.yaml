@@ -70,7 +70,8 @@ repos:
           programming_examples/(algorithms|basic|getting_started|vision)/.*\.py|
           programming_examples/lit\.cfg\.py|
           programming_examples/ml/(block_datatypes|mobilenet|bottleneck|cast_f32_bf16|conv2d|conv2d_14x14|dwconv1d|eltwise|eltwise_unary|magika|mm_activation_epilogue|norm|resnet|rope|scale_shift|softmax|swiglu)/.*\.py|
-          utils/kernel_checks/.*\.py
+          utils/kernel_checks/.*\.py|
+          utils/component_checks/.*\.py
         )$
 
 # Baseline hygiene: validators run on every commit, fixers gated to pre-push
@@ -78,6 +79,9 @@ repos:
   rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
   hooks:
     - id: check-yaml
+      # mkdocs.yml names Python objects with !!python/name tags; check its
+      # syntax without constructing them.
+      args: [--unsafe]
       exclude: &generated_exclude |
         (?x)^(
           third_party/.*|
@@ -292,3 +296,12 @@ repos:
       pass_filenames: false
       require_serial: true
       types_or: [c, c++, python]
+
+    # Catches a stale submodule checkout swept in by `git commit -a`/`git add .`.
+    - id: check-submodule-regression
+      name: Check submodule pointers only move forward
+      language: python
+      entry: python utils/check_submodule_regression.py
+      pass_filenames: false
+      stages: [pre-commit, pre-push]
+      always_run: true

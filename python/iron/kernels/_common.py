@@ -17,6 +17,7 @@ from aie.helpers.npdtypes import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
@@ -44,7 +45,7 @@ class TensorLayout:
     ``shape`` is the logical tile. ``pack`` and ``unpack`` are the reversible
     host codec between ``(calls, *shape)`` and ``(calls, storage_elements)``;
     identity is the default. ``stream`` is the DMA transform
-    (``dims_to_stream``) a design applies on the hop that feeds this operand
+    (``to_stream``) a design applies on the hop that feeds this operand
     to the kernel or drains it, ``None`` when the operand streams as stored;
     ``block`` is the micro-tile the kernel consumes or produces, ``(r, s)``
     for an MMUL operand. The codec is built from the same two facts, so the
@@ -55,7 +56,7 @@ class TensorLayout:
     shape: tuple[int, ...]
     pack: Callable | None = None
     unpack: Callable | None = None
-    stream: list | None = None
+    stream: TensorAccessPattern | None = None
     block: tuple[int, ...] | None = None
 
     def encode(self, values):
@@ -140,9 +141,12 @@ class KernelContract:
             means one.
         setup: A kernel to run once on the core first (``conv_even`` sets
             the rounding mode a bf16 store needs); ``None`` when the source
-            sets its own mode or narrows nothing.
+            sets its own mode or narrows nothing. A Worker handed the kernel
+            calls it before its loop.
         stack_bytes: Core stack a Worker calling this kernel needs, when
-            more than the target's default. Say where the number came from.
+            more than the target's default. Say where the number came from;
+            a note that gives only bytes per build means aiecc's
+            measured_stack_size.
         unsupported: Why the builder cannot run this kernel, or ``None``. A
             kernel with no output argument (a cascade PUT half) says so here.
         layouts: A ``TensorLayout`` per argument; ``None`` is identity.
@@ -163,6 +167,10 @@ class KernelContract:
             pair, so a build should verify the two tables land in different
             banks. Set it on the contract, not per source file: the LUT often
             comes in through a header (``lut_based_ops.h``, ``lut_inv.h``).
+        alignments: ``(index, bytes)`` pairs for arguments the kernel loads
+            as whole vectors from their start, so they must begin at a
+            multiple of ``bytes``. A call handed a ``memref.view`` at a
+            constant offset that breaks one raises.
 
     Overflow, rounding and NaN handling are not declared twice: the
     reference is the arithmetic model and the tolerance the slack against it.
@@ -185,6 +193,7 @@ class KernelContract:
     out_offset: tuple[int, int] | None = None
     trace: Trace | None = None
     uses_lut: bool = False
+    alignments: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in _ROLES]
@@ -229,6 +238,10 @@ class KernelContract:
             raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
         if self.unsupported is not None and not self.unsupported:
             raise ValueError("unsupported must be a reason, or None")
+        if any(
+            not 0 <= i < len(self.roles) or align < 1 for i, align in self.alignments
+        ):
+            raise ValueError("alignments must name arguments with positive byte counts")
 
     @property
     def out_indices(self) -> tuple[int, ...]:
@@ -338,6 +351,7 @@ class ArchTraits:
         native_tanh: Has a tanh instruction; otherwise tanh reads a LUT.
         native_exp2: Has an exp2 instruction; otherwise exp2 is a polynomial.
         bfp16: Has the bfp16ebs8 block type.
+        ctz_popcount: Peano lowers ``__builtin_ctz`` and ``__builtin_popcount``.
         lut_16b_run: uint16 entries per bank run in an ``aie::lut`` table.
     """
 
@@ -349,13 +363,14 @@ class ArchTraits:
     native_exp2: bool
     bfp16: bool
     lut_16b_run: int
+    ctz_popcount: bool
 
 
 ARCH_TRAITS = {
     t.name: t
     for t in (
-        ArchTraits("aie2", 20, "npu1", 16, False, False, False, 8),
-        ArchTraits("aie2p", 21, "npu2", 32, True, True, True, 16),
+        ArchTraits("aie2", 20, "npu1", 16, False, False, False, 8, False),
+        ArchTraits("aie2p", 21, "npu2", 32, True, True, True, 16, True),
     )
 }
 
@@ -377,25 +392,22 @@ def _arch_traits() -> ArchTraits:
     return ARCH_TRAITS[_detect_arch()]
 
 
-def _portable() -> bool:
-    """Whether ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch."""
-    return os.environ.get("AIE_KERNELS_PORTABLE") == "1"
-
-
-def _tuned_arch() -> str | None:
-    """Return the architecture whose ``AIE_TUNED_*`` code the sources build, or None.
+def _tuned_arch() -> str:
+    """Return the arch whose ``AIE_TUNED_*`` code is built, or ``"portable"``.
 
     A factory choice that follows the code of one branch -- a stack size, a
     tolerance, a reference model -- keys on this rather than on
     ``_detect_arch``, so that it pairs with the branch built when
-    ``_portable()`` holds.
+    ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch.
     """
-    return None if _portable() else _detect_arch()
+    if os.environ.get("AIE_KERNELS_PORTABLE") == "1":
+        return "portable"
+    return _detect_arch()
 
 
 def _portable_flags() -> tuple[str, ...]:
     """Return the compile flags that select the branch ``_tuned_arch`` names."""
-    return ("-DAIE_KERNELS_PORTABLE",) if _portable() else ()
+    return ("-DAIE_KERNELS_PORTABLE",) if _tuned_arch() == "portable" else ()
 
 
 def _kernel_source(relpath: str) -> Path:
@@ -552,11 +564,9 @@ def _min_dma_aligned_elems(dtype) -> int:
 
 def _arg_type_key(t):
     """Hashable key for one entry of ``arg_types`` (part of a kernel's identity)."""
-    if hasattr(t, "__args__"):
-        # np.ndarray[(shape,), np.dtype[T]]
-        shape = t.__args__[0]
-        inner = t.__args__[1]
-        dtype = inner.__args__[0] if hasattr(inner, "__args__") else inner
+    if get_origin(t) is np.ndarray:
+        shape, inner = get_args(t)
+        dtype = get_args(inner)[0] if get_origin(inner) is np.dtype else inner
         return ("ndarray", tuple(shape), str(dtype))
     return repr(t)
 
@@ -727,4 +737,7 @@ def _make_extern(
     )
     if contract is not None:
         contract.validate_types(extern.arg_types())
+    # The factory picked its source, flags and contract for this arch; a
+    # design that compiles it for another one fails there, not in Peano.
+    extern.built_for_arch = _detect_arch()
     return extern

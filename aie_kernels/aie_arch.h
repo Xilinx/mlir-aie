@@ -8,6 +8,7 @@
 //
 // AIE_BF16_LANES    bf16 lanes in one vector multiply.
 // AIE_HAS_*         an instruction the sources use when present.
+// AIE_HAS_CTZ_POPCOUNT  Peano lowers ctz and popcount (aie::mask::count()).
 // AIE_LUT_16B_RUN   uint16 entries per bank run in an aie::lut table.
 // AIE_TUNED_*       selects a kernel's code written for that architecture.
 
@@ -21,6 +22,7 @@
 #define AIE_HAS_NATIVE_TANH 0
 #define AIE_HAS_NATIVE_EXP2 0
 #define AIE_HAS_BFP16 0
+#define AIE_HAS_CTZ_POPCOUNT 0
 #define AIE_LUT_16B_RUN 8
 #elif __AIE_ARCH__ == 21
 #define AIE_ARCH_AIE2 0
@@ -29,6 +31,7 @@
 #define AIE_HAS_NATIVE_TANH 1
 #define AIE_HAS_NATIVE_EXP2 1
 #define AIE_HAS_BFP16 1
+#define AIE_HAS_CTZ_POPCOUNT 1
 #define AIE_LUT_16B_RUN 16
 #else
 #error "aie_kernels: no row for this __AIE_ARCH__ in aie_arch.h"
@@ -52,6 +55,15 @@
 #define AIE2_RESTRICT __restrict
 #else
 #define AIE2_RESTRICT
+#endif
+
+// minsize on AIE2 only: for a kernel's once-per-call code where the core's
+// 16 KB of program memory is otherwise too small, leaving its hot loops at
+// the build's -O level. Code size only; the arithmetic is the same.
+#if AIE_ARCH_AIE2
+#define AIE2_MINSIZE __attribute__((minsize))
+#else
+#define AIE2_MINSIZE
 #endif
 
 #endif

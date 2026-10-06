@@ -58,11 +58,15 @@ llvm_config.with_system_environment(
     ]
 )
 
+# A CI job that must not skip the kernel checks page's node tests sets this.
+llvm_config.with_system_environment("MLIR_AIE_REQUIRE_NODE")
+
 # Basic substitutions
 # lit runs many Python/JIT tests in one suite; give each test file its own
 # NPU cache namespace so cache state cannot leak between unrelated tests while
 # still allowing multiple RUN lines from one test to share that test-local cache.
 _python_with_test_cache = LitConfigHelper._run_with_test_cache_wrap(config.aie_src_root)
+_pytest_wrapper = os.path.join(config.aie_src_root, "utils", "run_pytest.py")
 config.substitutions.append(
     (
         "%PYTHON",
@@ -76,7 +80,14 @@ config.substitutions.append(
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # Show only failures
-config.substitutions.append(("%pytest", f"{_python_with_test_cache} pytest -rA"))
+config.substitutions.append(
+    (
+        "%pytest",
+        f"{_python_with_test_cache} "
+        f"{LitConfigHelper._quote_lit_arg(config.python_executable)} "
+        f"{LitConfigHelper._quote_lit_arg(_pytest_wrapper)} -rA",
+    )
+)
 
 # Setup test library substitutions
 LitConfigHelper.setup_test_lib_substitutions(
@@ -218,12 +229,7 @@ lit_config.parallelism_groups["npu-xrt"] = 1
 if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
     config.available_features.add("aie-lsp-server")
 
-# The bundled XRT-free hrx-xclbinutil (-DAIE_BUILD_HRXXCLBINUTIL=ON) installs a
-# `xclbinutil` into the AIE tools dir. Gate the packaging section-check test on
-# its presence so the test only runs when that tool was actually built (and so
-# the bare `xclbinutil` it invokes resolves to the bundled copy).
-if shutil.which("xclbinutil", path=config.aie_tools_dir) is not None:
-    config.available_features.add("hrxxclbinutil")
+LitConfigHelper.add_hrxxclbinutil_feature(config)
 
 # aiebu ELF packager: gate tests that feed a runtime-assembled TXN blob to the
 # real `aiebu-asm` (the downstream tool that enforces invariants plain XRT

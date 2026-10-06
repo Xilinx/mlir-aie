@@ -96,7 +96,16 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
            "placement and anchored non-core placement are unaffected.">,
        Option<"clSASeed", "sa-seed", "int",
               /*default=*/"1",
-              "Random seed for SA placer (0 = non-deterministic).">];
+              "Random seed for SA placer (0 = non-deterministic).">,
+       Option<"clSAEffort", "sa-effort", "double",
+              /*default=*/"1.0",
+              "Scales the SA placer's moves per temperature step and its "
+              "greedy tail. Below 1.0 trades placement cost for compile "
+              "time.">];
+
+  let statistics = [Statistic<"saFinalCost", "sa-final-cost",
+                              "SA placer cost of the placement it kept">,
+  ];
 }
 
 def AIEPrepareBuffers : Pass<"aie-prepare-buffers", "DeviceOp"> {
@@ -132,6 +141,13 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
+
+  let options = [Option<"clPlacementBudget", "placement-budget", "int64_t",
+                        /*default=*/"100000",
+                        "Placements the search may try per tile before it "
+                        "gives up. A node count rather than a time limit, so "
+                        "a build stays reproducible; raise it for a tile that "
+                        "reports the budget was hit.">];
 
   // Placement is a bounded search. A change that degrades it without breaking
   // it outright moves these rather than failing anything, so they are worth
@@ -475,6 +491,12 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     lower routes to circuit/packet flows and emit shim runtime allocations.
     Existing buffers, locks and pinned channels stay fixed.
 
+    A route endpoint that a DMA program or runtime task names is given its
+    channel after the objectFIFOs' endpoints, by the BDs its chains need. Each
+    `aie.dma_start` naming it then takes that channel's index, and each
+    `aiex.dma_configure_task_for` naming it becomes an
+    `aiex.dma_configure_task` on the endpoint's tile and channel.
+
     MemTile memory checks count each fixed buffer once (including aliased tile
     coordinates), even without new allocations. Pool sizes use BufferOp's
     DataLayout byte sizing, including BFP. Planning shares the basic sequential
@@ -644,7 +666,9 @@ def AIEGenerateColumnControlOverlay
            "clRouteShimCTRLToTCT", "route-shim-to-tct", "std::string",
            /*default=*/"\"shim-only\"",
            "Flag to generate TCT routing between tile CTRL and shim SOUTH "
-           "ports. Available options: ['shim-only', 'all-tiles', 'disable'].">,
+           "ports. Available options: ['shim-only', 'all-tiles', 'disable']. "
+           "'shim-only' also routes any tile a runtime sequence task issues "
+           "a token from.">,
        Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool",
               /*default=*/"false",
               "Flag to generate routing between shim dma DMA and tile CTRL "

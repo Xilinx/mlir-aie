@@ -24,8 +24,10 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -461,6 +463,7 @@ template <typename ConcreteType>
 LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   DenseSet<DMAChannel> inputChannels;
   DenseSet<DMAChannel> outputChannels;
+  DenseSet<std::pair<DMAChannelDir, StringAttr>> namedChannels;
   auto element = cast<ConcreteType>(op);
   Region &body = element.getBody();
   if (body.empty())
@@ -468,6 +471,10 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   for (auto &bodyOp : body.getOps()) {
     // check for duplicate DMA channels within the same ShimDMAOp
     if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
+      if (FlatSymbolRefAttr endpoint = dmaStart.getEndpoint()) {
+        namedChannels.insert({dmaStart.getChannelDir(), endpoint.getAttr()});
+        continue;
+      }
       DMAChannel dmaChan = {dmaStart.getChannelDir(),
                             dmaStart.getChannelIndex()};
       // check if number of input and output channels is more than available
@@ -483,11 +490,17 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   if (!tile)
     return op->emitOpError("tile must implement TileLike interface");
 
-  if (inputChannels.size() > tile.getNumSourceConnections(WireBundle::DMA))
+  auto named = [&](DMAChannelDir dir) -> size_t {
+    return llvm::count_if(namedChannels,
+                          [&](auto channel) { return channel.first == dir; });
+  };
+  if (inputChannels.size() + named(DMAChannelDir::S2MM) >
+      tile.getNumSourceConnections(WireBundle::DMA))
     return op->emitOpError(
         "uses more input channels than available on this tile");
 
-  if (outputChannels.size() > tile.getNumDestConnections(WireBundle::DMA))
+  if (outputChannels.size() + named(DMAChannelDir::MM2S) >
+      tile.getNumDestConnections(WireBundle::DMA))
     return op->emitOpError(
         "uses more output channels than available on this tile");
   return success();
@@ -695,6 +708,12 @@ LogicalResult ObjectFifoPoolOp::verify() {
   if (auto buffers = getBuffers()) {
     if (static_cast<int64_t>(buffers->size()) != getDepth()) {
       return emitOpError("expects 'depth' buffers");
+    }
+  }
+
+  if (auto initValues = getInitValues()) {
+    if (static_cast<int64_t>(initValues->size()) > getDepth()) {
+      return emitOpError("has more 'init_values' than 'depth' objects");
     }
   }
 
@@ -914,6 +933,27 @@ ObjectFifoDmaEndpointOp::getSelectedSegments() {
   return selectSegments(getPoolOp(), getSegments());
 }
 
+int64_t ObjectFifoDmaEndpointOp::getNumDescriptors() {
+  ObjectFifoPoolOp pool = getPoolOp();
+  if (!pool)
+    return 0;
+  return pool.getDepth() * getSelectedSegments().size();
+}
+
+int64_t ObjectFifoDmaEndpointOp::getRepeat() {
+  ObjectFifoPoolOp pool = getPoolOp();
+  // The filling end covers the batch in one acquire instead.
+  return pool && drains() ? pool.getRepeatCount().value_or(1) : 1;
+}
+
+bool ObjectFifoDmaEndpointOp::repeatsInHardware() {
+  return getRepeat() > 1 && getNumDescriptors() == 1 && !getIterCount();
+}
+
+int64_t ObjectFifoDmaEndpointOp::getNumBDs() {
+  return getNumDescriptors() * (repeatsInHardware() ? 1 : getRepeat());
+}
+
 DMAChannelDir ObjectFifoDmaEndpointOp::getRouteDirection() {
   return drains() ? DMAChannelDir::MM2S : DMAChannelDir::S2MM;
 }
@@ -1044,9 +1084,12 @@ LogicalResult RouteEndpointOp::verify() {
   }
   switch (getBundle()) {
   case WireBundle::DMA:
+    // The runtime drives a shim's DMA, and a DMA program or the runtime
+    // sequence any other tile's; either names this op for the channel.
+    return success();
   case WireBundle::PLIO:
     if (!tile.isShimTile()) {
-      return emitOpError("a DMA or PLIO end the runtime drives is on a shim");
+      return emitOpError("a PLIO end is on a shim");
     }
     return success();
   case WireBundle::Core:
@@ -1126,6 +1169,41 @@ void xilinx::AIE::printObjectFifoProducerTile(OpAsmPrinter &printer,
     printer << " dimensionsToStream ";
     printer.printStrippedAttrOrType(dimensions);
   }
+}
+
+ParseResult xilinx::AIE::parseDMAStartChannel(OpAsmParser &parser,
+                                              Attribute &channel) {
+  StringAttr name;
+  if (succeeded(parser.parseOptionalSymbolName(name))) {
+    channel = FlatSymbolRefAttr::get(name);
+    return success();
+  }
+  int32_t index;
+  if (parser.parseInteger(index))
+    return failure();
+  channel = parser.getBuilder().getI32IntegerAttr(index);
+  return success();
+}
+
+LogicalResult xilinx::AIE::verifyDMAChannelsResolved(DeviceOp device) {
+  bool resolved = true;
+  device.walk([&](DMAStartOp start) {
+    if (FlatSymbolRefAttr endpoint = start.getEndpoint()) {
+      start.emitOpError() << "names route endpoint " << endpoint
+                          << " in place of a channel index; run "
+                             "--aie-objectfifo-allocate to assign one";
+      resolved = false;
+    }
+  });
+  return success(resolved);
+}
+
+void xilinx::AIE::printDMAStartChannel(OpAsmPrinter &printer, Operation *op,
+                                       Attribute channel) {
+  if (auto index = dyn_cast<IntegerAttr>(channel))
+    printer << index.getInt();
+  else
+    printer.printAttributeWithoutType(channel);
 }
 
 ParseResult
@@ -1360,6 +1438,11 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   if (objFifo.getAieStream().has_value())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "using stream port");
+  for (Operation *op = (*this)->getPrevNode(); op; op = op->getPrevNode())
+    if (auto other = dyn_cast<ObjectFifoAllocateOp>(op);
+        other && other.getObjFifoName() == getObjFifoName())
+      return emitOpError("objectfifo ")
+             << getObjFifoNameAttr() << " already has an allocate operation";
   return success();
 }
 
@@ -2064,6 +2147,70 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
   return failure(result.wasInterrupted());
 }
 
+// Rejects two aie.flows into one port and a packet flow sharing an endpoint
+// with an aie.flow: a circuit sends every word from its source, packets
+// included, and its destination takes words from nothing else.
+LogicalResult verifyNoSharedCircuitPorts(DeviceOp device) {
+  std::map<PortKey, FlowOp> circuitSources, circuitDests;
+  WalkResult result =
+      device.walk([&](FlowOp flow) {
+        std::optional<PortKey> src = tryGetPortKey(
+            flow.getSource(), flow.getSourceBundle(), flow.getSourceChannel());
+        std::optional<PortKey> dst = tryGetPortKey(
+            flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
+        if (src)
+          circuitSources.try_emplace(*src, flow);
+        if (!dst)
+          return WalkResult::advance();
+        auto [it, inserted] = circuitDests.try_emplace(*dst, flow);
+        if (inserted)
+          return WalkResult::advance();
+        InFlightDiagnostic diag =
+            flow.emitOpError()
+            << "ends at " << to_string(*dst)
+            << ", where another circuit flow ends; a port takes one circuit";
+        diag.attachNote(it->second.getLoc())
+            << "the other circuit flow is here";
+        return WalkResult::interrupt();
+      });
+  if (result.wasInterrupted())
+    return failure();
+  result = device.walk([&](PacketFlowOp packetFlow) {
+    Region &body = packetFlow.getPorts();
+    if (body.empty())
+      return WalkResult::advance();
+    for (Operation &op : body.front()) {
+      std::optional<PortKey> port;
+      std::map<PortKey, FlowOp> *circuits = nullptr;
+      StringRef role;
+      if (auto source = dyn_cast<PacketSourceOp>(op)) {
+        port = tryGetPortKey(source.getTile(), source.getBundle(),
+                             source.getChannel());
+        circuits = &circuitSources;
+        role = "starts";
+      } else if (auto dest = dyn_cast<PacketDestOp>(op)) {
+        port =
+            tryGetPortKey(dest.getTile(), dest.getBundle(), dest.getChannel());
+        circuits = &circuitDests;
+        role = "ends";
+      }
+      if (!port)
+        continue;
+      auto it = circuits->find(*port);
+      if (it == circuits->end())
+        continue;
+      InFlightDiagnostic diag =
+          packetFlow.emitOpError()
+          << role << " at " << to_string(*port) << ", where a circuit flow "
+          << role << "; a port carries either one circuit or packets";
+      diag.attachNote(it->second.getLoc()) << "the circuit flow is here";
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
+}
+
 // `mlir::detail::verifySymbolTable` compares names carried by `Symbol` ops.
 // `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` name themselves
 // with `sym_name` but define an SSA value, so they are not `Symbol` ops and
@@ -2136,6 +2283,8 @@ LogicalResult DeviceOp::verify() {
   if (failed(verifyNoDuplicateFlows(*this)))
     return failure();
   if (failed(verifyNoDuplicatePacketFlows(*this)))
+    return failure();
+  if (failed(verifyNoSharedCircuitPorts(*this)))
     return failure();
 
   if (failed(verifyNoDuplicateNames(*this))) {
@@ -2927,7 +3076,9 @@ LogicalResult MemTileDMAOp::verify() {
                << "allocOp in MemTileDMAOp region should have an id attribute";
     }
     if (auto startOp = dyn_cast<DMAStartOp>(bodyOp)) {
-      if (startOp.getChannelIndex() > 3) {
+      // An endpoint's channel is not known yet; allocation keeps one whose
+      // BDs reach another tile's memory off the local-only channels.
+      if (!startOp.getEndpoint() && startOp.getChannelIndex() > 3) {
         // Channels 4 and 5 in a memtile are restricted to only access local
         // buffers and locks.
 
@@ -3017,6 +3168,41 @@ xilinx::AIE::verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext) {
   return success();
 }
 
+// BD iteration bounds. Values are true/element (aie-rt encodes value-1);
+// size <= 1 disables iteration (stride ignored). The stride is checked in
+// whole 32-bit words against the tile-specific step field. aiex.npu.writebd
+// checks the same tile-correct step limit (getDmaBdStepBits) inline in its own
+// raw-register terms.
+LogicalResult xilinx::AIE::verifyDMABDIteration(DMABDOp bd,
+                                                AIETileType tileType) {
+  std::optional<BDIterationAttr> iter = bd.getIteration();
+  if (!iter)
+    return success();
+  const AIETargetModel &targetModel = getTargetModel(bd.getOperation());
+  if (!targetModel.hasProperty(AIETargetModel::UsesBDIteration))
+    return bd.emitOpError("BD iteration is not supported on this target");
+  uint32_t size = iter->getSize(), current = iter->getCurrent();
+  uint32_t maxSize = 1u << targetModel.getDmaBdIterBits(tileType);
+  if (size < 1 || size > maxSize)
+    return bd.emitOpError("BD iteration size must be in [1, ")
+           << maxSize << "]";
+  if (size > 1) {
+    int64_t strideInBytes = static_cast<int64_t>(iter->getStride()) *
+                            bd.getBufferElementTypeWidthInBytes();
+    if (strideInBytes % 4)
+      return bd.emitOpError(
+          "BD iteration stride must be aligned to 32-bit words");
+    int64_t stepInWords = strideInBytes / 4;
+    int64_t maxStep = 1LL << targetModel.getDmaBdStepBits(tileType);
+    if (stepInWords < 1 || stepInWords > maxStep)
+      return bd.emitOpError() << "BD iteration stride must be in [1, "
+                              << maxStep << "] 32-bit words";
+  }
+  if (current >= size)
+    return bd.emitOpError("BD iteration current must be in [0, size)");
+  return success();
+}
+
 static LogicalResult verifyDMARepeatCount(Operation *op, int32_t repeatCount) {
   uint32_t maxRepeat = getTargetModel(op).getMaxRepeatCount();
   if (maxRepeat == 0) {
@@ -3074,6 +3260,33 @@ xilinx::AIE::verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
   return success();
 }
 
+LogicalResult xilinx::AIE::verifyBdLockPair(Block &block, bool outOfOrder,
+                                            UseLockOp &acquire,
+                                            UseLockOp &release) {
+  acquire = nullptr;
+  release = nullptr;
+  auto reject = [&](UseLockOp at) {
+    auto diag = at.emitOpError(
+        "does not fit its buffer descriptor, which has one lock-acquire field "
+        "and one lock-release field; a buffer descriptor block uses either no "
+        "lock or one use_lock(acquire) and one use_lock(release)");
+    if (outOfOrder)
+      diag << ", or a use_lock(release) alone when out-of-order";
+    return diag;
+  };
+  for (UseLockOp op : block.getOps<UseLockOp>()) {
+    UseLockOp &slot = op.release() ? release : acquire;
+    if (slot)
+      return reject(op);
+    slot = op;
+  }
+  if (!acquire && !release)
+    return success();
+  if (release && (acquire || outOfOrder))
+    return success();
+  return reject(acquire ? acquire : release);
+}
+
 LogicalResult DMAOp::verify() {
   auto *parentOp = getOperation()->getParentOp();
   if (parentOp->getRegion(0).getBlocks().size() > 1)
@@ -3119,14 +3332,32 @@ BufferOp DMABDOp::getBufferOp() {
   return cast<BufferOp>(getBuffer().getDefiningOp());
 }
 
-// Parse/print hooks for the custom<DynamicScalar>($operand, $static_attr)
-// directive: a single scalar that is either an SSA value (runtime, %v) or a
-// compile-time integer constant (folded into the attribute), so a constant
-// never materializes an operand. The scalar analog of custom<DynamicIndexList>.
+// The optional `: type` after an SSA operand, defaulting to `defaultType`, so
+// the common width keeps its untyped spelling.
+static ParseResult parseOptionalOperandType(OpAsmParser &parser, Type &type,
+                                            Type defaultType) {
+  type = defaultType;
+  if (succeeded(parser.parseOptionalColon()))
+    return parser.parseType(type);
+  return success();
+}
+
+static void printOptionallyTypedOperand(OpAsmPrinter &printer, Value operand,
+                                        Type defaultType) {
+  printer << operand;
+  if (operand.getType() != defaultType)
+    printer << " : " << operand.getType();
+}
+
+// Parse/print hooks for the custom<DynamicScalar>($operand, $static_attr,
+// type($operand)) directive: a single scalar that is either an SSA value
+// (runtime, `%v` for i32 or `%v : type`) or a compile-time integer constant
+// (folded into the attribute), so a constant never materializes an operand.
+// The scalar analog of custom<TypedDynamicIndexList>.
 static ParseResult
 parseDynamicScalar(OpAsmParser &parser,
                    std::optional<OpAsmParser::UnresolvedOperand> &operand,
-                   IntegerAttr &staticAttr) {
+                   IntegerAttr &staticAttr, Type &type) {
   int64_t intValue;
   OptionalParseResult intResult = parser.parseOptionalInteger(intValue);
   if (intResult.has_value()) {
@@ -3136,20 +3367,65 @@ parseDynamicScalar(OpAsmParser &parser,
         parser.getBuilder().getI32IntegerAttr(static_cast<int32_t>(intValue));
     return success();
   }
-  // Not a plain integer: parse an SSA operand (resolved to i32 by the caller).
   OpAsmParser::UnresolvedOperand op;
-  if (parser.parseOperand(op))
+  if (parser.parseOperand(op) ||
+      parseOptionalOperandType(parser, type, parser.getBuilder().getI32Type()))
     return failure();
   operand = op;
   return success();
 }
 
 static void printDynamicScalar(OpAsmPrinter &printer, Operation *,
-                               Value operand, IntegerAttr staticAttr) {
+                               Value operand, IntegerAttr staticAttr, Type) {
   if (operand)
-    printer << operand;
+    printOptionallyTypedOperand(printer, operand,
+                                IntegerType::get(operand.getContext(), 32));
   else
     printer << staticAttr.getInt();
+}
+
+ParseResult xilinx::AIE::parseTypedDynamicIndexList(
+    OpAsmParser &parser,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &values,
+    DenseI64ArrayAttr &integers, SmallVectorImpl<Type> &types) {
+  SmallVector<int64_t> ints;
+  auto parseEntry = [&]() -> ParseResult {
+    OpAsmParser::UnresolvedOperand operand;
+    OptionalParseResult isOperand = parser.parseOptionalOperand(operand);
+    if (!isOperand.has_value())
+      return parser.parseInteger(ints.emplace_back());
+    Type type;
+    if (failed(*isOperand) ||
+        parseOptionalOperandType(parser, type,
+                                 parser.getBuilder().getI64Type()))
+      return failure();
+    values.push_back(operand);
+    types.push_back(type);
+    ints.push_back(ShapedType::kDynamic);
+    return success();
+  };
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseEntry))
+    return failure();
+  integers = parser.getBuilder().getDenseI64ArrayAttr(ints);
+  return success();
+}
+
+void xilinx::AIE::printTypedDynamicIndexList(OpAsmPrinter &printer, Operation *,
+                                             OperandRange values,
+                                             ArrayRef<int64_t> integers,
+                                             TypeRange) {
+  printer << '[';
+  auto value = values.begin();
+  llvm::interleaveComma(integers, printer, [&](int64_t i) {
+    if (!ShapedType::isDynamic(i)) {
+      printer << i;
+      return;
+    }
+    Value v = *value++;
+    printOptionallyTypedOperand(printer, v,
+                                IntegerType::get(v.getContext(), 64));
+  });
+  printer << ']';
 }
 
 // Split a scalar OpFoldResult into an operand (runtime value) or an i32
@@ -3213,6 +3489,10 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*iteration=*/nullptr,
         /*offset_parameter=*/nullptr,
         /*offset_state_table_idx=*/nullptr,
+        /*length_parameter=*/nullptr,
+        /*length_unit=*/nullptr,
+        /*length_state_table_idx=*/nullptr,
+        /*length_core_encoded=*/nullptr,
         /*next_bd_id=*/nullptr);
 }
 
@@ -3301,6 +3581,54 @@ DMABDOp::getConstantDimensions() {
   return getFoldedDimensions([&]() { return emitOpError(); });
 }
 
+// With dims the furthest index bounds the access (a stride-0 dim may transfer
+// more elements than the buffer holds); without them the length does. A
+// runtime-sequence argument's type does not bound the host buffer behind it.
+LogicalResult DMABDOp::verifyTransferInBounds() {
+  auto buffer = llvm::dyn_cast<MemRefType>(getBuffer().getType());
+  if (!buffer || !buffer.hasStaticShape() ||
+      llvm::isa<BlockArgument>(getBuffer()))
+    return success();
+  if ((getOffsetParameterAttr() || getOffsetStateTableIdxAttr()) && !hasLen())
+    return emitOpError("offset_parameter requires an explicit `len` on a local "
+                       "buffer; the default whole-buffer length runs past the "
+                       "end for any nonzero runtime offset");
+  std::optional<int32_t> offset = hasOffset() ? getConstantOffset() : 0;
+  if (!offset || *offset < 0)
+    return success();
+  int64_t numElements = buffer.getNumElements();
+  SmallVector<OpFoldResult> sizes = getMixedSizes();
+  SmallVector<OpFoldResult> strides = getMixedStrides();
+  if (sizes.empty()) {
+    std::optional<int64_t> len =
+        hasLen() ? std::optional<int64_t>(getConstantLen()) : numElements;
+    if (!len || *len <= 0 || *offset + *len <= numElements)
+      return success();
+    InFlightDiagnostic err = emitOpError("transfer of ")
+                             << *len << " elements at offset " << *offset
+                             << " runs past the end of the " << numElements
+                             << "-element buffer";
+    if (!hasLen())
+      err.attachNote() << "an omitted `len` is the whole buffer; give the "
+                          "length to transfer from this offset";
+    return err;
+  }
+  int64_t maxIdx = *offset;
+  for (auto [size, stride] : llvm::zip(sizes, strides)) {
+    std::optional<int64_t> s = getConstantIntValue(size);
+    std::optional<int64_t> t = getConstantIntValue(stride);
+    if (!s || !t)
+      return success();
+    maxIdx += *t * (*s - 1);
+  }
+  if (maxIdx < numElements)
+    return success();
+  return emitOpError() << "Specified stride(s) and size(s) result in out of "
+                          "bounds access in buffer, for index "
+                       << maxIdx << " in memref of length " << numElements
+                       << ".";
+}
+
 // A BDDimLayoutAttr array (outermost-first) describes a contiguous row-major
 // scan when the innermost stride is 1 and each outer stride equals the product
 // of all inner sizes.  Used by both DMABDOp verification and canonicalization.
@@ -3322,6 +3650,91 @@ bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
   return true;
 }
 
+// The firmware's UPDATE_REG reads the 32-bit length word with its low two bits
+// cleared, adds the delta, and writes the sum back with them cleared again.
+// The length word counts 32-bit words, so both the static length and every
+// added unit must be multiples of four words (16 bytes) to survive.
+FailureOr<int64_t> xilinx::AIE::getLengthUnitBytes(Operation *op,
+                                                   int64_t lengthUnit,
+                                                   BaseMemRefType buffer) {
+  uint64_t elemBitWidth = buffer.getElementTypeBitWidth();
+  if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
+    return op->emitOpError("length_parameter requires a whole-byte element "
+                           "type");
+  std::optional<int64_t> unitBytes =
+      llvm::checkedMul(lengthUnit, static_cast<int64_t>(elemBitWidth / 8));
+  if (!unitBytes || *unitBytes / 4 > std::numeric_limits<uint32_t>::max())
+    return op->emitOpError("length_unit (")
+           << lengthUnit
+           << " elements) exceeds the 32-bit word count of a BD length";
+  if (*unitBytes % 16 != 0)
+    return op->emitOpError("length_unit must be a multiple of 16 bytes, got ")
+           << *unitBytes << " bytes";
+  return *unitBytes;
+}
+
+LogicalResult xilinx::AIE::verifyLengthParameter(
+    Operation *op, std::optional<int64_t> lengthUnit, BaseMemRefType buffer,
+    std::optional<int64_t> lenElems, bool contiguous,
+    llvm::ArrayRef<int64_t> innerSizes) {
+  if (!lengthUnit)
+    return op->emitOpError("length_parameter requires length_unit");
+  if (failed(getLengthUnitBytes(op, *lengthUnit, buffer)))
+    return failure();
+  int64_t elemBytes = buffer.getElementTypeBitWidth() / 8;
+  if (!lenElems)
+    return op->emitOpError("length_parameter requires a constant length");
+  if ((*lenElems * elemBytes) % 16 != 0)
+    return op->emitOpError("length_parameter requires a static length that is "
+                           "a multiple of 16 bytes, got ")
+           << *lenElems * elemBytes << " bytes";
+  if (contiguous)
+    return success();
+  llvm::SmallVector<int64_t, 3> sizes(innerSizes);
+  llvm::SmallVector<int64_t, 3> strides(3, 0);
+  placeRuntimeLengthDimension(sizes, strides);
+  if (sizes[2] <= 1)
+    return op->emitOpError("length_parameter on a non-contiguous pattern "
+                           "requires its second or third dimension to have a "
+                           "size above one: the added length continues it");
+  int64_t rowElems = sizes[0] * sizes[1];
+  if (*lengthUnit % rowElems != 0)
+    return op->emitOpError("length_unit (")
+           << *lengthUnit << " elements) must be a multiple of the " << rowElems
+           << " elements moved per step of the dimension the added length "
+              "continues";
+  return success();
+}
+
+void xilinx::AIE::placeRuntimeLengthDimension(
+    llvm::MutableArrayRef<int64_t> sizes,
+    llvm::MutableArrayRef<int64_t> strides) {
+  if (sizes[2] > 1 || sizes[1] <= 1)
+    return;
+  sizes[2] = sizes[1];
+  strides[2] = strides[1];
+  sizes[1] = 1;
+  strides[1] = 0;
+}
+
+LogicalResult xilinx::AIE::verifyLengthParameterTile(
+    Operation *op, const AIETargetModel &targetModel, int col, int row) {
+  AIEArch arch = targetModel.getTargetArch();
+  if (arch != AIEArch::AIE2 && arch != AIEArch::AIE2p)
+    return op->emitOpError("length_parameter is only supported on AIE2 and "
+                           "AIE2P devices");
+  if (!targetModel.isShimNOCTile(col, row))
+    return op->emitOpError("length_parameter is only supported on shim NOC "
+                           "tiles, got tile (")
+           << col << ", " << row << ")";
+  const DmaBdLayout *layout = targetModel.getDmaBdLayout(col, row);
+  if (!layout || layout->bufferLength.shift != 0 ||
+      layout->bufferLength.width != 32)
+    return op->emitOpError("length_parameter requires a BD whose buffer "
+                           "length fills a 32-bit register");
+  return success();
+}
+
 llvm::SmallVector<uint32_t> xilinx::AIE::getAssignedBdIds(DmaBody program) {
   llvm::SmallVector<uint32_t> ids;
   program.getDmaBody().walk([&](DMABDOp bd) {
@@ -3337,6 +3750,43 @@ LogicalResult DMABDOp::verify() {
                                 .getElementTypeBitWidth();
     if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
       return emitOpError("offset_parameter requires a whole-byte element type");
+  }
+
+  if (getLengthParameterAttr() || getLengthStateTableIdxAttr()) {
+    // The length is patched by a runtime-sequence instruction, so only a BD
+    // the runtime sequence configures can have one.
+    if (llvm::isa<MemOp, MemTileDMAOp, ShimDMAOp, DMAOp>(
+            (*this)->getParentOp()))
+      return emitOpError("length_parameter is only supported on a BD in a "
+                         "runtime sequence");
+    std::optional<llvm::SmallVector<BDDimLayoutAttr>> dims =
+        getFoldedDimensions([&]() {
+          return emitOpError("length_parameter requires a static pattern: ");
+        });
+    if (!dims)
+      return failure();
+    // aie-decompose-large-dma-bd leaves a runtime-length BD whole.
+    if (dims->size() > 4)
+      return emitOpError("length_parameter requires at most 4 dimensions, got ")
+             << dims->size();
+    // The outermost of four dimensions is the iteration, which repeats the
+    // whole length.
+    llvm::ArrayRef<BDDimLayoutAttr> inner(*dims);
+    if (inner.size() == 4)
+      inner = inner.drop_front();
+    llvm::SmallVector<int64_t, 3> innerSizes(3, 1);
+    for (auto [i, dim] : llvm::enumerate(llvm::reverse(inner)))
+      innerSizes[i] = dim.getSize();
+    auto buffer = llvm::cast<BaseMemRefType>(getBuffer().getType());
+    std::optional<int64_t> lenElems;
+    if (std::optional<int32_t> len = getConstantLen())
+      lenElems = *len;
+    else if (!hasLen() && buffer.hasStaticShape())
+      lenElems = buffer.getNumElements();
+    if (failed(verifyLengthParameter(*this, getLengthUnit(), buffer, lenElems,
+                                     isContiguousBDTransfer(inner),
+                                     innerSizes)))
+      return failure();
   }
 
   // Skip verification of the BDOp outside of mem operations.
@@ -3423,7 +3873,7 @@ LogicalResult DMABDOp::verify() {
     }
   }
 
-  if (failed(verifyMixedSizesAndStrides()))
+  if (failed(verifyMixedSizesAndStrides()) || failed(verifyTransferInBounds()))
     return failure();
 
   // Fold the mixed sizes/strides to a constant BDDimLayoutAttr list for
@@ -3450,13 +3900,6 @@ LogicalResult DMABDOp::verify() {
     if (!buffer)
       return emitOpError() << "dimensions attribute cannot be used with "
                               "unranked memref buffer type.";
-    int64_t maxIdx = getDimsMaxIdx(*dims);
-    if (buffer.getNumElements() <= maxIdx)
-      return emitOpError() << "Specified stride(s) and size(s) result in out "
-                              "of bounds access in buffer, for index "
-                           << std::to_string(maxIdx) << " in memref of length "
-                           << std::to_string(buffer.getNumElements()) << ".";
-
     // A contiguous row-major access on a shim tile is lowered to linear mode
     // by aie-dma-tasks-to-npu / aie-dma-to-npu, using the wide buffer_length
     // register which is exempt from the 10-bit ND wrap-size limit.
@@ -3485,7 +3928,7 @@ LogicalResult DMABDOp::verify() {
     uint64_t maxStride = stepBits > 0 ? (1ULL << stepBits) : 0;
 
     for (BDDimLayoutAttr dim : *dims) {
-      if (0 == dim.getStride())
+      if (0 == dim.getStride() && dim.getSize() != 1)
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
       if (dim.getStride() > buffer.getNumElements())
@@ -3644,35 +4087,7 @@ LogicalResult DMABDOp::verify() {
     }
   }
 
-  // BD iteration bounds. Values are true/element (aie-rt encodes value-1);
-  // size <= 1 disables iteration (stride ignored). The stride is checked in
-  // whole 32-bit words against the tile-specific step field; the wrap is a
-  // 6-bit field everywhere. aiex.npu.writebd checks the same tile-correct step
-  // limit (getDmaBdStepBits) inline in its own raw-register terms.
-  if (auto iter = getIteration()) {
-    if (!targetModel.hasProperty(AIETargetModel::UsesBDIteration))
-      return emitOpError("BD iteration is not supported on this target");
-    uint32_t size = iter->getSize(), current = iter->getCurrent();
-    if (size < 1 || size > 64) // 64 = aie-rt IterWrapMax + 1
-      return emitOpError("BD iteration size must be in [1, 64]");
-    if (size > 1) {
-      int64_t strideInBytes = static_cast<int64_t>(iter->getStride()) *
-                              getBufferElementTypeWidthInBytes();
-      if (strideInBytes % 4)
-        return emitOpError(
-            "BD iteration stride must be aligned to 32-bit words");
-      int64_t stepInWords = strideInBytes / 4;
-      int64_t maxStep =
-          1LL << targetModel.getDmaBdStepBits(parentTile.getTileType());
-      if (stepInWords < 1 || stepInWords > maxStep)
-        return emitOpError() << "BD iteration stride must be in [1, " << maxStep
-                             << "] 32-bit words";
-    }
-    if (current >= size)
-      return emitOpError("BD iteration current must be in [0, size)");
-  }
-
-  return success();
+  return verifyDMABDIteration(*this, parentTile.getTileType());
 }
 
 LogicalResult DMABDPACKETOp::verify() {
@@ -3754,7 +4169,7 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
     if (!areEquivalentBDs(*patternIt, uniquePattern[idx]))
       return failure();
     patternIt++;
-    idx = (++idx) % uniquePattern.size();
+    idx = (idx + 1) % uniquePattern.size();
   }
 
   // Repeating BD chains detected. Erasing repetitions.
@@ -3874,6 +4289,18 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
     mlir::dispatchIndexOpFoldResults(sizes, dynSizes, staticSizes);
     mlir::dispatchIndexOpFoldResults(strides, dynStrides, staticStrides);
 
+    // Without `len`, a BD with runtime dims transfers their d0*d1*d2 extent,
+    // but a fully static one transfers its whole buffer. Pin the extent
+    // before the last runtime dim folds away so the transfer keeps its size.
+    bool wasDynamic = !op.getSizes().empty() || !op.getStrides().empty();
+    if (!op.hasLen() && wasDynamic && dynSizes.empty() && dynStrides.empty() &&
+        !staticSizes.empty()) {
+      int64_t extent = 1;
+      for (int64_t s : llvm::ArrayRef(staticSizes).take_back(3))
+        extent *= s;
+      foldLen = static_cast<int32_t>(extent);
+    }
+
     rewriter.modifyOpInPlace(op, [&]() {
       op.getSizesMutable().assign(dynSizes);
       op.getStridesMutable().assign(dynStrides);
@@ -3908,6 +4335,41 @@ void DMABDOp::getCanonicalizationPatterns(RewritePatternSet &results,
 void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.add(FoldDMAStartOp);
+}
+
+RouteEndpointOp DMAStartOp::getEndpointOp() {
+  FlatSymbolRefAttr name = getEndpoint();
+  if (!name)
+    return nullptr;
+  return SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(*this, name);
+}
+
+LogicalResult DMAStartOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  FlatSymbolRefAttr name = getEndpoint();
+  if (!name)
+    return success();
+  auto program = dyn_cast<DmaBody>((*this)->getParentOp());
+  auto device = (*this)->getParentOfType<DeviceOp>();
+  if (!program || !device)
+    return emitOpError("only a tile's DMA program may name its channel by a "
+                       "route endpoint");
+  auto endpoint = symbolTable.lookupSymbolIn<RouteEndpointOp>(device, name);
+  if (!endpoint)
+    return emitOpError() << name << " is not an aie.route_endpoint";
+  if (endpoint.getBundle() != WireBundle::DMA)
+    return emitOpError() << name << " names a "
+                         << stringifyWireBundle(endpoint.getBundle())
+                         << " port, not a DMA channel";
+  auto here = cast<TileLike>(program.getTile().getDefiningOp());
+  TileLike there = endpoint.getTileLike();
+  bool sameTile = endpoint.getTile() == program.getTile() ||
+                  (here.tryGetCol() && here.tryGetRow() &&
+                   here.tryGetCol() == there.tryGetCol() &&
+                   here.tryGetRow() == there.tryGetRow());
+  if (!sameTile)
+    return emitOpError() << name
+                         << " is on a different tile than this DMA program";
+  return success();
 }
 
 LogicalResult DMAStartOp::verify() {
@@ -3953,6 +4415,9 @@ LogicalResult SwitchboxOp::verify() {
   const auto &targetModel = getTargetModel(tile);
   if (body.empty())
     return emitOpError("should have non-empty body");
+  // A circuit connection claims its source port wherever it appears.
+  for (auto connectOp : body.front().getOps<ConnectOp>())
+    sourceset.insert({connectOp.getSourceBundle(), connectOp.sourceIndex()});
   for (auto &ops : body.front()) {
     // Would be simpler if this could be templatized.
     auto checkBound = [&ops](StringRef dir, WireBundle bundle, int index,
@@ -3972,7 +4437,6 @@ LogicalResult SwitchboxOp::verify() {
 
     if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
       Port source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};
-      sourceset.insert(source);
 
       Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
       if (destset.count(dest)) {
@@ -4204,12 +4668,15 @@ LogicalResult UseLockOp::verify() {
   if (HasSomeParent<CoreOp, func::FuncOp>::verifyTrait(*this).succeeded()) {
     return success();
   }
-  // Or it can be in a DMAConfigureTaskOp (for runtime DMA configuration)
-  // Check by operation name to avoid circular dependency with AIEX dialect
+  // Or it can be in a DMAConfigureTaskOp or DMAConfigureTaskForOp (for runtime
+  // DMA configuration). Check by operation name to avoid circular dependency
+  // with AIEX dialect
   {
     Operation *operation = (*this)->getParentOp();
     while (operation) {
-      if (operation->getName().getStringRef() == "aiex.dma_configure_task")
+      StringRef name = operation->getName().getStringRef();
+      if (name == "aiex.dma_configure_task" ||
+          name == "aiex.dma_configure_task_for")
         return success();
       operation = operation->getParentOp();
     }

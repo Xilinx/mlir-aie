@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 // Applied to the emitted entry points; see emitDispatchShimFuncs.
@@ -72,7 +73,7 @@ enum TxnOpcode : uint32_t {
 // Upper bound on a tile's buffer-descriptor count across all tile types, sizing
 // the pool's fixed storage. This is a standalone header (no MLIR / target model
 // here), so the ACTUAL per-tile count is supplied at runtime by the compiler
-// via bd_pool_init(getNumBDs(col,row)) -- this constant only bounds the array.
+// via bd_pool_init_range -- this constant only bounds the array.
 // AIE2 memtiles have the most BDs (48); shim/core have 16. Keep this >= the
 // largest getNumBDs any target model returns.
 constexpr uint32_t kMaxBDsPerTile = 48;
@@ -87,24 +88,30 @@ struct BdPool {
   int head;
 };
 
-// Initialize a pool with `n` free IDs. `n` is the tile's BD count, which the
-// compiler reads from the target model (getNumBDs) and passes in. IDs are
-// stacked so that pop() hands out the LOWEST free id first (id 0, then 1, ...),
-// matching the static allocator's lowest-free-first order -- so a first pop
-// from a fresh pool equals a pinned bd_id = 0.
-inline BdPool bd_pool_init(uint32_t n) {
+// Initialize a pool over the half-open id range [lo, hi), the ids one BD
+// partition of a tile can submit (the compiler reads it from the target model).
+// A mem tile splits its BD table by channel parity, so each half gets its own
+// pool; one flat list would hand a channel ids it cannot submit. IDs are
+// stacked so that pop() hands out the LOWEST free id first, matching the static
+// allocator's lowest-free-first order -- so a first pop from a fresh pool
+// equals a pinned bd_id = lo.
+inline BdPool bd_pool_init_range(uint32_t lo, uint32_t hi) {
   BdPool p;
   p.head = 0;
-  uint32_t count = n < kMaxBDsPerTile ? n : kMaxBDsPerTile;
-  for (uint32_t i = 0; i < count; ++i)
-    p.free_ids[p.head++] = count - 1 - i; // top of stack is id 0
+  if (hi > kMaxBDsPerTile)
+    hi = kMaxBDsPerTile;
+  for (uint32_t i = hi; i > lo; --i)
+    p.free_ids[p.head++] = i - 1; // top of stack is `lo`
   return p;
 }
 
+// Initialize a pool with the `n` free IDs [0, n).
+inline BdPool bd_pool_init(uint32_t n) { return bd_pool_init_range(0, n); }
+
 // Withhold `id` from the pool -- a static BD already owns that slot in the
 // tile's shared BD table, and popping it here would silently overwrite it.
-// `free_ids[0..head)` is kept sorted highest-to-lowest (see bd_pool_init) so
-// pop keeps handing out the lowest remaining id first; shift the tail down
+// `free_ids[0..head)` is kept sorted highest-to-lowest (see bd_pool_init_range)
+// so pop keeps handing out the lowest remaining id first; shift the tail down
 // instead of swapping in the top, which would scramble that order.
 inline void bd_pool_reserve(BdPool &p, uint32_t id) {
   for (int i = 0; i < p.head; ++i)
@@ -294,6 +301,18 @@ inline void txn_append_loadpdi(std::vector<uint32_t> &txn, uint32_t id,
 // Append a 1-word preempt instruction.
 inline void txn_append_preempt(std::vector<uint32_t> &txn, uint32_t level) {
   txn.push_back(TXN_OPC_PREEMPT | (level << 8));
+}
+
+// Why the last generated builder on this thread declined (returned
+// std::nullopt): a shape guard, a buffer-descriptor field overflow or an
+// empty BD pool records a message here before returning, and the dispatch
+// shim reports it through dispatch_last_refusal(). Null after a successful
+// build. The pointer is to a string literal in the generated code.
+inline thread_local const char *txn_refusal = nullptr;
+// `return aie_runtime::txn_refused("why");` declines a build with a reason.
+inline std::nullopt_t txn_refused(const char *why) {
+  txn_refusal = why;
+  return std::nullopt;
 }
 
 // Reserve 4 placeholder words for the TXN header. Call this BEFORE appending

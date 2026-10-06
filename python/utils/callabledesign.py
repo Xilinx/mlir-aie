@@ -32,10 +32,12 @@ from __future__ import annotations
 import inspect as _inspect
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
+import numpy as np
 from aie.utils.compile.cache.utils import _create_function_cache_key
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
+from aie.utils.hostruntime.tensor_class import NpuTensor
 
 if TYPE_CHECKING:
     from aie.utils.npukernel import NPUKernel
@@ -53,24 +55,28 @@ class CallableDesign:
 
     Supports two ``CompileTime[T]`` binding patterns:
 
-    * **Pre-bound** — pass compile params at decoration time (Triton style)::
+    * **Pre-bound** — pass compile params at decoration time:
 
-          @iron.jit(M=512, K=512, N=512)
-          def gemm(a: In, b: In, c: Out,
-                   M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
-              ...
+      ```python
+      @iron.jit(M=512, K=512, N=512)
+      def gemm(a: In, b: In, c: Out,
+               M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
+          ...
 
-          gemm(a, b, c)  # compiles once, cached thereafter
+      gemm(a, b, c)  # compiles once, cached thereafter
+      ```
 
-    * **Call-time** — pass compile params as kwargs at each call site::
+    * **Call-time** — pass compile params as kwargs at each call site:
 
-          @iron.jit
-          def gemm(a: In, b: In, c: Out,
-                   M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
-              ...
+      ```python
+      @iron.jit
+      def gemm(a: In, b: In, c: Out,
+               M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
+          ...
 
-          gemm(a, b, c, M=512, K=512, N=512)  # compiled for this shape
-          gemm(a2, b2, c2, M=1024, K=1024, N=1024)  # separate cached kernel
+      gemm(a, b, c, M=512, K=512, N=512)  # compiled for this shape
+      gemm(a2, b2, c2, M=1024, K=1024, N=1024)  # separate cached kernel
+      ```
 
     Args:
         mlir_generator: A callable, ``Path`` to a ``.mlir`` file, or an
@@ -193,13 +199,27 @@ class CallableDesign:
     def _build_compilable(
         self,
         call_compile_kwargs: dict[str, Any],
+        tensor_args: Sequence = (),
     ) -> CompilableDesign:
         """Return a compilable for this call's effective compile kwargs.
 
-        If call-time compile params were supplied a transient ``CompilableDesign``
-        is created so the original ``self.compilable`` remains unchanged for
-        future calls.  Otherwise ``self.compilable`` is returned directly.
+        Each named tensor's type, ``np.ndarray[shape, np.dtype[T]]``, is bound
+        to its parameter so the generator sees it. If anything is bound a
+        transient ``CompilableDesign`` is created so the original
+        ``self.compilable`` remains unchanged for future calls.  Otherwise
+        ``self.compilable`` is returned directly.
         """
+        call_compile_kwargs = dict(call_compile_kwargs)
+        named = [
+            n
+            for n in self.compilable.tensor_params
+            if n != self.compilable.variadic_tensor_param
+        ]
+        for name, tensor in zip(named, tensor_args):
+            if isinstance(tensor, (NpuTensor, np.ndarray)):
+                call_compile_kwargs[name] = np.ndarray[
+                    tuple(tensor.shape), np.dtype[np.dtype(tensor.dtype).type]
+                ]
         if call_compile_kwargs:
             return self.compilable.specialize(**call_compile_kwargs)
         return self.compilable
@@ -250,7 +270,7 @@ class CallableDesign:
                 dispatch_params=compilable.dispatch_params,
                 dispatch_lib_path=compilable.get_dispatch_lib_path(),
             )
-        if compilable.use_cache:
+        if compilable.use_cache and cache_key is not None:
             self._kernel_cache[cache_key] = kernel
         return kernel
 
@@ -339,13 +359,11 @@ class CallableDesign:
 
         ensure_current_device()
 
-        compilable = self._build_compilable(call_compile_kwargs)
+        tensor_args, remaining_scalars = self.compilable.split_runtime_args(
+            runtime_args, scalar_runtime_kwargs
+        )
+        compilable = self._build_compilable(call_compile_kwargs, tensor_args)
 
-        # In-process key includes runtime_args (tensor shapes) and the active
-        # device; on-disk key in _compute_cache_hash does not include tensor
-        # shapes. Divergence is intentional: if a generator
-        # omits CompileTime[T] for shape, the disk artifact reuses but the in-process
-        # slot changes, so validate_tensor_args() surfaces the mismatch.
         generator = compilable.mlir_generator
         if callable(generator):
             cache_fn = generator
@@ -355,9 +373,6 @@ class CallableDesign:
         # Tensor args are the whole runtime half of the key: a DispatchTime[T]
         # value is not part of the compiled artifact, so keying on it would
         # build one kernel per distinct value.
-        tensor_args, remaining_scalars = compilable.split_runtime_args(
-            runtime_args, scalar_runtime_kwargs
-        )
         cache_key = _create_function_cache_key(
             cache_fn,
             tuple(tensor_args),
@@ -458,12 +473,14 @@ class CallableDesign:
         full-ELF path, symmetric with ``@iron.jit(full_elf=True)``.
 
         Use together with ``compile`` to perform ahead-of-time compilation
-        of a JIT-decorated design at known shapes::
+        of a JIT-decorated design at known shapes:
 
-            @iron.jit
-            def matmul(...): ...
+        ```python
+        @iron.jit
+        def matmul(...): ...
 
-            matmul.specialize(M=256, K=256, N=256, element_type=np.int16).compile()
+        matmul.specialize(M=256, K=256, N=256, element_type=np.int16).compile()
+        ```
         """
         # trace_config is dual-natured: it configures the CallableDesign wrapper
         # (buffer read-back after the run) AND, for designs that declare it as a
@@ -547,13 +564,27 @@ class CallableDesign:
         """
         return self.compilable.get_pdi_paths()
 
+    def instructions(self, **kwargs) -> np.ndarray:
+        """Compile (if needed) and return the instruction words a call would run.
+
+        ``kwargs`` takes call-time ``CompileTime[T]`` values and, for a design
+        with ``DispatchTime[T]`` parameters, the dispatch values whose
+        instruction stream to build. Nothing runs on an NPU, so this is how a
+        dispatch-time design is checked against a static specialization with
+        ``aie.utils.txn_trace``.
+        """
+        call_compile_kwargs, dispatch_scalars, _ = self._extract_compile_kwargs(kwargs)
+        compilable = self._build_compilable(call_compile_kwargs)
+        kernel = self._compile_and_build_kernel(compilable, None, None)
+        return kernel.instructions(**dispatch_scalars)
+
     def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:
         """Return the resolved MLIR text for this kernel without compiling.
 
-        Accepts the same arguments as ``__call__``. Tensor arguments may be
-        ``None``: their contents are not read, and shape/dtype must come from
-        ``CompileTime[T]`` parameters. ``DispatchTime[T]`` scalar values are
-        still used during generation.
+        Accepts the same arguments as ``__call__``. Tensor contents are not
+        read, only their types; a tensor argument may be ``None`` when the
+        generator does not need its type. ``DispatchTime[T]`` scalar values
+        are still used during generation.
 
         Returns:
             The MLIR module as a string (suitable for inspection, debugging,
@@ -562,8 +593,10 @@ class CallableDesign:
         call_compile_kwargs, _scalar_runtime_kwargs, _ = self._extract_compile_kwargs(
             runtime_kwargs
         )
-        compilable = self._build_compilable(call_compile_kwargs)
-        compilable.split_runtime_args(runtime_args, _scalar_runtime_kwargs)
+        tensor_args, _ = self.compilable.split_runtime_args(
+            runtime_args, _scalar_runtime_kwargs
+        )
+        compilable = self._build_compilable(call_compile_kwargs, tensor_args)
         return str(compilable.generate_mlir())
 
     def __repr__(self) -> str:

@@ -14,7 +14,7 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -58,7 +58,6 @@ def swiglu(
     line_type = np.ndarray[(line_size,), np.dtype[xfr_dtype]]
     transfer_type = np.ndarray[(size,), np.dtype[xfr_dtype]]
     transfer_type_wts = np.ndarray[(2 * size,), np.dtype[xfr_dtype]]
-    chunk = size // num_columns
 
     of_ins = [ObjectFifo(line_type, name=f"in{i}") for i in range(num_columns)]
     of_wts = [ObjectFifo(line_type, depth=4, name=f"w{i}") for i in range(num_columns)]
@@ -88,8 +87,8 @@ def swiglu(
         for i in range(num_columns)
     ]
 
-    taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
-    taps_wts = TensorTiler2D.simple_tiler((1, 2 * size), (1, 2 * chunk))
+    taps = TensorAccessPattern.full((size,)).partition(num_columns)
+    taps_wts = TensorAccessPattern.full((2 * size,)).partition(num_columns)
 
     def sequence(a, w, b, in_prods, wts_prods, out_conses):
         tg = TaskGroup()
@@ -129,10 +128,6 @@ def _compile_kwargs(opts):
     return dict(size=opts.length, num_columns=opts.columns)
 
 
-def _silu_ref_f32(x):
-    return x / (1.0 + np.exp(-x))
-
-
 def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     n = opts.length
@@ -155,7 +150,8 @@ def _run_and_verify(opts):
     x_f32 = in_np.astype(np.float32)
     w1_f32 = w1_np.astype(np.float32)
     w2_f32 = w2_np.astype(np.float32)
-    expected = ((x_f32 * w1_f32) * _silu_ref_f32(x_f32 * w2_f32)).astype(bfloat16)
+    gate = x_f32 * w2_f32
+    expected = ((x_f32 * w1_f32) * (gate / (1.0 + np.exp(-gate)))).astype(bfloat16)
     assert_pass(
         b_t.numpy(),
         expected,

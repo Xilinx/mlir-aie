@@ -50,9 +50,14 @@ _FIXTURE_BODY = r"""
 
 thread_local static std::vector<uint32_t> g_result;
 
+thread_local static const char *g_refusal = nullptr;
+
+extern "C" AIE_DISPATCH_EXPORT const char *dispatch_last_refusal() { return g_refusal; }
+
 extern "C" AIE_DISPATCH_EXPORT int64_t dispatch_generate(int32_t scale, size_t n_tiles,
                                       uint32_t **out_ptr) {
-  if (scale == 0) return -2;
+  g_refusal = nullptr;
+  if (scale == 0) { g_refusal = "scale must be nonzero"; return -2; }
   g_result.assign(n_tiles, 0);
   for (size_t i = 0; i < n_tiles; ++i) g_result[i] = static_cast<uint32_t>(scale) + i;
   *out_ptr = g_result.data();
@@ -120,7 +125,9 @@ def test_generate_handles_varying_sizes_across_calls(fixture_so):
 
 def test_generate_raises_on_guard_failed(fixture_so):
     bridge = _bridge(fixture_so)
-    with pytest.raises(HostRuntimeError, match="overflowed a hardware BD field"):
+    with pytest.raises(
+        HostRuntimeError, match="dispatch refused .*scale must be nonzero"
+    ):
         bridge.generate({"scale": 0, "n_tiles": 1})
 
 

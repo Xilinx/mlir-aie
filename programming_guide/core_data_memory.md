@@ -8,7 +8,7 @@
 # Core Data Memory
 
 Every AIE compute tile has one small block of local data memory, 64 kB on npu2
-for example. Three things share that block:
+for example; IRON reads the size as `dev.core_memory_bytes`. Three things share that block:
 
 - the **stack**, at offset zero by default;
 - the **`aie.buffer`s** that the buffer allocator places on the tile: the L1
@@ -42,8 +42,8 @@ build reports the number to set and stops.
 
 `stack_size` is a per-core attribute on `aie.core`. A core that leaves it
 absent uses the target default from
-`AIETargetModel::getDefaultCoreStackSize()`, currently 1024 bytes. IRON spells
-it on the `Worker`:
+`AIETargetModel::getDefaultCoreStackSize()`, currently 1024 bytes, which IRON
+reads as `dev.default_core_stack_bytes`. IRON spells it on the `Worker`:
 
 ```python
 Worker(core_fn, [args], stack_size=4096)
@@ -410,11 +410,11 @@ buffer down into address order and chooses which buffer comes next, which
 reaches every layout that exists. Most designs never get there, and those that
 do only need a legal layout, so it does not rank.
 
-The exhaustive search is bounded at 200000 placements per tile — packing around
-fixed obstacles is NP-hard, and the bound is a count rather than a time limit
-so builds stay reproducible. Within the bound, "no room" is a proof that no
-layout exists; reaching it is reported (see the diagnostics below) rather than
-passed off as one.
+Each search is bounded by the pass's `placement-budget` option, 100000
+placements per tile by default — packing around fixed obstacles is NP-hard, and
+the bound is a count rather than a time limit so builds stay reproducible.
+Within the bound, "no room" is a proof that no layout exists; reaching it is
+reported (see the diagnostics below) rather than passed off as one.
 
 - **`Buffer(mem_bank=...)`** pins a buffer to a bank. The pin is honored or the
   build fails; it is never silently dropped.
@@ -506,12 +506,13 @@ may well exist while being too fragmented to use, so shrinking any extent can
 help, not only the one named. Lower `data_size`, shrink or move buffers, or
 lower `stack_size`.
 
-**`the search hit its 200000-placement budget with arrangements still untried`
+**`the search hit its 100000-placement budget with arrangements still untried`
 (note, attached to the error above).** The allocator gave up rather than proved
 the design infeasible, so a layout may exist that it did not reach. This is
-rare and worth reporting: please file an issue with the design. Pinning a
-buffer or two with `mem_bank` cuts the search down and often gets a build
-through in the meantime.
+rare and worth reporting: please file an issue with the design. Raising
+`placement-budget` (`--aie-assign-buffer-addresses='placement-budget=N'`) lets
+the search go further, and pinning a buffer or two with `mem_bank` cuts it down;
+either often gets a build through in the meantime.
 
 **`<what> requires N bytes, which cannot fit in bank B (C bytes total)`
 (error).** A `mem_bank` pin, or a kernel's bank-pinned static data, asks for

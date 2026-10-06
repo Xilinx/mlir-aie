@@ -26,14 +26,13 @@ Not covered: a key block that is all padding inside the causal region.
 factor in ``scale_buffer``; that is existing kernel behaviour, not frozen here.
 """
 
-from collections.abc import Sequence
-
 import ml_dtypes
 import numpy as np
 import pytest
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -52,7 +51,8 @@ from aie.utils.verify import nearly_equal
 BF = np.dtype[bfloat16]
 I32 = np.dtype[np.int32]
 
-# mha.cc's P zeroing is compiled for 64, so every block and tile is 64.
+# The key block and the head, which mha.cc is compiled for. A round's query
+# block is these 64 rows or a narrower multiple of 16.
 _B = 64
 
 # log2(e) / sqrt(d) as the bf16 scalar the kernel takes.
@@ -71,35 +71,22 @@ _LOWEST = float(ml_dtypes.finfo(bfloat16).min)
 # envelope is 6.98%. Measured: weights 6.79%, row sums 6.66%.
 _RTOL_EXP2 = 0.07
 
-# Reads row-major P back in the mmul's 8x8 block order.
-_REBLOCK: list[Sequence[int]] = [(8, 512), (8, 8), (8, 64), (8, 1)]
+
+def _unblock(flat: np.ndarray, rows: int = _B) -> np.ndarray:
+    """The 8x8-blocked O tile back to (rows, 64)."""
+    return flat.reshape(rows // 8, 8, 8, 8).transpose(0, 2, 1, 3).reshape(rows, _B)
 
 
-def _block(mat: np.ndarray) -> np.ndarray:
-    """(64, 64) -> mm.cc's 8x8-blocked operand order; its own inverse."""
-    return mat.reshape(8, 8, 8, 8).transpose(0, 2, 1, 3).reshape(-1).copy()
-
-
-def _unblock(flat: np.ndarray) -> np.ndarray:
-    """The 8x8-blocked O tile back to (64, 64)."""
-    return flat.reshape(8, 8, 8, 8).transpose(0, 2, 1, 3).reshape(_B, _B)
-
-
-def _keep(q_block: int, kv_block: int, s_q_eff: int, s_kv_eff: int) -> np.ndarray:
+def _keep(
+    q_block: int, kv_block: int, s_q_eff: int, s_kv_eff: int, b_q: int = _B
+) -> np.ndarray:
     """Which (query, key) pairs of this block pair a causal mask admits."""
-    rows = q_block * _B + np.arange(_B)
+    rows = q_block * b_q + np.arange(b_q)
     cols = kv_block * _B + np.arange(_B)
     return (
         (cols[None, :] <= rows[:, None])
         & (rows[:, None] < s_q_eff)
         & (cols[None, :] < s_kv_eff)
-    )
-
-
-def _keep_round(q_block: int, n_kv: int, s_q_eff: int, s_kv_eff: int) -> np.ndarray:
-    """``_keep`` over every key block a round streams, side by side."""
-    return np.concatenate(
-        [_keep(q_block, kv, s_q_eff, s_kv_eff) for kv in range(n_kv)], axis=1
     )
 
 
@@ -190,7 +177,7 @@ def softmax_blocks(
     worker = Worker(
         core,
         fn_args=[of_a.cons(), of_p.prod(), of_scale.prod(), softmax, init, *idx],
-        stack_size=mha.contract.stack_bytes,
+        stack_size=kernels.mha_softmax().contract.stack_bytes,
     )
 
     host = [
@@ -389,35 +376,43 @@ def mha_round(
     n_kv: CompileTime[int] = 1,
     s_q_eff: CompileTime[int] = _B,
     s_kv_eff: CompileTime[int] = _B,
+    b_q: CompileTime[int] = _B,
 ):
     """One decode round on one core: mha.cc's steps from the mask on.
 
     ``QK^T`` has its own device case and stays on the host, so the scores can
     be chosen. P is reblocked through a memtile on its way to ``matmul_PV``.
+    The query block is ``b_q`` rows against the 64-row key block.
     """
-    tile_ty = np.ndarray[(_B * _B,), BF]
-    scale_ty = np.ndarray[(4 * _B,), BF]
+    tile_ty = np.ndarray[(b_q * _B,), BF]
+    v_ty = np.ndarray[(_B * _B,), BF]
+    scale_ty = np.ndarray[(4 * b_q,), BF]
     idx_ty = np.ndarray[(2,), I32]
 
-    qkt = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B)
+    qkt = kernels.mha(dim_m=b_q, dim_k=_B, dim_n=_B)
     obj = qkt.object_file
     softmax = obj.bind(
         "partial_softmax",
-        [tile_ty, tile_ty, scale_ty, idx_ty, bfloat16, *([np.int32] * 4)],
+        [v_ty, tile_ty, scale_ty, idx_ty, bfloat16, *([np.int32] * 4)],
     )
     init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
     pv = obj.bind(
-        "matmul_PV", [tile_ty, tile_ty, tile_ty, scale_ty, np.int32, np.int32, idx_ty]
+        "matmul_PV",
+        [tile_ty, v_ty, tile_ty, scale_ty, np.int32, np.int32, idx_ty, np.int32],
     )
     rescale = obj.bind("rescale_O", [tile_ty, scale_ty, np.int32, idx_ty])
-    zero = kernels.zero(_B * _B, bfloat16)
+    zero = kernels.zero(b_q * _B, bfloat16)
 
-    # S and V share one input channel; the reblocked P takes the other.
-    of_sv = ObjectFifo(tile_ty, name="sv", depth=2)
+    # S and V share one input channel, S in the first b_q rows of its slot; the
+    # reblocked P takes the other.
+    of_sv = ObjectFifo(v_ty, name="sv", depth=2)
     # O is held as the accumulator for the whole round.
     of_o = ObjectFifo(tile_ty, name="o", depth=1)
     of_p = ObjectFifo(tile_ty, name="p", depth=1)
-    of_pb = of_p.cons().forward(dims_to_stream=_REBLOCK, depth=1)
+    # The row-major P is read back in the mmul's 8x8 block order.
+    of_pb = of_p.cons().forward(
+        to_stream=TensorAccessPattern.full((b_q, _B)).tile((8, 8)), depth=1
+    )
 
     scale_buf = Buffer(scale_ty, name="scale")
     idx_bufs = [
@@ -428,7 +423,7 @@ def mha_round(
     def core(of_sv, of_o, of_p, of_pb, softmax, init, pv, rescale, zero, scale, *idx):
         o = of_o.acquire(1)
         zero(o)
-        init(scale, _B)
+        init(scale, b_q)
         for k in range(n_kv):
             softmax(
                 of_sv.acquire(1),
@@ -436,17 +431,26 @@ def mha_round(
                 scale,
                 idx[k],
                 _INV_SCALE,
-                _B,
+                b_q,
                 _B,
                 s_q_eff,
                 s_kv_eff,
             )
             of_p.release(1)
             of_sv.release(1)
-            pv(of_pb.acquire(1), of_sv.acquire(1), o, scale, _B, int(k > 0), idx[k])
+            pv(
+                of_pb.acquire(1),
+                of_sv.acquire(1),
+                o,
+                scale,
+                b_q,
+                int(k > 0),
+                idx[k],
+                s_kv_eff,
+            )
             of_pb.release(1)
             of_sv.release(1)
-        rescale(o, scale, _B, idx[0])
+        rescale(o, scale, b_q, idx[0])
         of_o.release(1)
 
     worker = Worker(
@@ -464,10 +468,10 @@ def mha_round(
             scale_buf,
             *idx_bufs,
         ],
-        stack_size=qkt.contract.stack_bytes,
+        stack_size=kernels.mha_softmax().contract.stack_bytes,
     )
 
-    host = [np.ndarray[(2 * n_kv * _B * _B,), BF], np.ndarray[(_B * _B,), BF]]
+    host = [np.ndarray[(2 * n_kv * _B * _B,), BF], tile_ty]
 
     def sequence(sv_h, o_h, svf, of):
         svf.fill(sv_h)
@@ -477,28 +481,38 @@ def mha_round(
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
-def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff):
+def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B):
     """Inputs for one round, as the mathematical operands and as device buffers."""
     rng = np.random.default_rng(20260923 + 97 * q_block + n_kv + s_q_eff + s_kv_eff)
-    q = _dyadic(rng, (_B, _B), 0.25, mag=2)
+    q = _dyadic(rng, (b_q, _B), 0.25, mag=2)
     k = _dyadic(rng, (n_kv * _B, _B), 0.125, mag=2)
     v = _dyadic(rng, (n_kv * _B, _B), 0.25, mag=2)
     # Aim each query at its diagonal key, in the last block, so the running max
     # rises late and matmul_PV must rescale what earlier blocks accumulated.
-    keep = _keep_round(q_block, n_kv, s_q_eff, s_kv_eff)
-    for row in range(_B):
+    keep = np.concatenate(
+        [_keep(q_block, kv, s_q_eff, s_kv_eff, b_q) for kv in range(n_kv)], axis=1
+    )
+    for row in range(b_q):
         if keep[row].any():
-            k[q_block * _B + row] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
+            k[q_block * b_q + row] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
 
     scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(bfloat16)
-    # Each block's row-major scores, then its blocked V.
+    # Keys from s_kv_eff on do not exist; the device's V rows for them hold
+    # NaN, which must not reach O.
+    stale = v.copy()
+    stale[s_kv_eff:] = np.nan
+    # Each block's row-major scores, padded to a whole slot, then its blocked V.
     sv_host = np.concatenate(
         [
             arr
             for b in range(n_kv)
             for arr in (
-                np.asarray(scores[:, b * _B : (b + 1) * _B]).reshape(-1).copy(),
-                _block(v[b * _B : (b + 1) * _B]),
+                np.pad(scores[:, b * _B : (b + 1) * _B], ((0, _B - b_q), (0, 0)))
+                .reshape(-1)
+                .copy(),
+                TensorAccessPattern.full((_B, _B))
+                .tile((8, 8))
+                .gather(stale[b * _B : (b + 1) * _B]),
             )
         ]
     )
@@ -506,19 +520,24 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff):
 
 
 @pytest.mark.parametrize(
-    "q_block,n_kv,s_q_eff,s_kv_eff",
+    "q_block,n_kv,s_q_eff,s_kv_eff,b_q",
     [
-        (0, 1, _B, _B),  # the pure diagonal
-        (1, 2, 2 * _B, 2 * _B),  # a real correction carried between blocks
-        (1, 2, 100, 100),  # query and key tails both mid-vector
-        (0, 1, 100, 40),  # key tail cutting before the diagonal for most rows
-        (1, 3, 2 * _B, 3 * _B),  # a block past the diagonal, which must drop
+        (0, 1, _B, _B, _B),  # the pure diagonal
+        (1, 2, 2 * _B, 2 * _B, _B),  # a real correction carried between blocks
+        (1, 2, 100, 100, _B),  # query and key tails both mid-vector
+        (0, 1, 100, 40, _B),  # key tail cutting before the diagonal for most rows
+        (1, 3, 2 * _B, 3 * _B, _B),  # a block past the diagonal, which must drop
+        (1, 1, _B, _B, 32),  # a narrower query block, its diagonal mid-block
+        (3, 2, 4 * 32, 2 * _B, 32),  # carried across key blocks, then mid-block
+        (1, 2, 2 * 32, 2 * _B, 32),  # a key block past every row, which must drop
+        (3, 1, 4 * 16, _B, 16),  # the 16-row state walk
+        (1, 1, _B, _B, _B),  # a query block wholly past s_q_eff
     ],
 )
-def test_mha_round_matches_masked_attention(q_block, n_kv, s_q_eff, s_kv_eff):
-    scores, v, keep, sv_host = _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff)
+def test_mha_round_matches_masked_attention(q_block, n_kv, s_q_eff, s_kv_eff, b_q):
+    scores, v, keep, sv_host = _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q)
 
-    o_t = iron.zeros((_B * _B,), dtype=bfloat16)
+    o_t = iron.zeros((b_q * _B,), dtype=bfloat16)
     mha_round(
         iron.tensor(sv_host, dtype=bfloat16),
         o_t,
@@ -526,14 +545,17 @@ def test_mha_round_matches_masked_attention(q_block, n_kv, s_q_eff, s_kv_eff):
         n_kv=n_kv,
         s_q_eff=s_q_eff,
         s_kv_eff=s_kv_eff,
+        b_q=b_q,
     )
-    got = _unblock(o_t.numpy()).astype(np.float32)
+    got = _unblock(o_t.numpy(), b_q).astype(np.float32)
 
     ref = _attention(scores, v, keep, inv_scale=_INV_SCALE).astype(np.float32)
     live = keep.any(axis=1)
     # Outputs are convex combinations of V rows, so measure in steps of max|v|.
     ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
     np.testing.assert_allclose(got[live], ref[live], rtol=0, atol=_ATOL_ULP * ulp)
+    # A row past s_q_eff attends over nothing; it must come out 0, not 0 * (1 / 0).
+    np.testing.assert_array_equal(got[~live], 0)
 
     # The reference uses the kernel's bf16 scale; check it against the exact one.
     exact = _attention(scores, v, keep, inv_scale=np.log2(np.e) / np.sqrt(_B)).astype(

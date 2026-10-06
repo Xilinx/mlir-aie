@@ -103,6 +103,11 @@ The hooks cover:
   comment blocks over 12 lines, and high comment density. CI runs it over
   everything since the merge base with the PR's target branch, so a
   history of individually clean commits can still fail there.
+- **Submodule pointers** — `utils/check_submodule_regression.py`, on every
+  commit and push, rejects a submodule pointer change unless the new commit
+  descends from the old one, so a stale checkout swept in by `git commit -a`
+  can't roll a submodule back. Bumps pass; for an intentional downgrade, use
+  `SKIP=check-submodule-regression`.
 - **Baseline hygiene** — trailing whitespace, end-of-file, merge-conflict
   markers, and [REUSE](https://reuse.software/) license-header compliance.
 
@@ -220,6 +225,12 @@ disable rules.
   imperative first line, terminal punctuation) — see
   [Linting Python](#linting-python). Writing a docstring in the first place is
   still expected for anything public-facing, just not yet machine-enforced.
+  Docstrings render as Markdown, not reStructuredText: write ``` ``Name`` ```
+  (or an mkdocstrings cross-reference) instead of `:class:`/`:meth:`/`:func:`
+  roles, fenced ```` ```python ```` blocks at the docstring's text indent
+  instead of `Example::` literal blocks, and a Google `Note:` section instead
+  of `.. note::`. `mkdocs build --strict` does not catch these, so check
+  them by eye.
 - **C++** — use Doxygen-style triple-slash comments (`///`, with `\brief`,
   `\param`, `\returns` as needed) on public declarations in headers. These feed
   the [C++ API reference](docs/api/cpp_doxygen.md).

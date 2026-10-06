@@ -11,6 +11,8 @@ from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
 )
 from ...dialects.aiex import shim_dma_single_bd_task
 from ...helpers.taplib import TensorAccessPattern
+from ..scratchpad_parameter import ScratchpadParameter
+from ._context import active_sequence
 from .data import RuntimeData
 from .dmataskhandle import Task
 from .task import RuntimeTask
@@ -22,22 +24,15 @@ class DMATask(RuntimeTask):
         self,
         alloc: str,
         rt_data: RuntimeData,
-        tap: TensorAccessPattern | None = None,
+        tap: TensorAccessPattern,
         task_group: TaskGroup | None = None,
         wait: bool = False,
         offset_parameter: str | None = None,
         packet: tuple[int, int] | None = None,
-        sizes=None,
-        strides=None,
-        offset=None,
-        transfer_len=None,
+        length_parameter: str | None = None,
+        length_unit: int | None = None,
     ):
         """Construct a RuntimeTask that will resolve to a DMA Operation.
-
-        Provide the access pattern either as a static ``tap``
-        (TensorAccessPattern) or as explicit ``sizes``/``strides``/``offset``/
-        ``transfer_len`` lists whose entries may be runtime SSA values (for the
-        dynamic lowering). The two forms are mutually exclusive.
 
         Args:
             alloc (str): Name of the shim DMA allocation this transfer drives,
@@ -46,42 +41,31 @@ class DMATask(RuntimeTask):
                 allocation of its own name; a [`Flow`][iron.Flow] generates one
                 for its ``shim_symbol``.
             rt_data (RuntimeData): The Runtime buffer associated with the operation.
-            tap (TensorAccessPattern | None, optional): The static access pattern. Mutually exclusive with sizes/strides/offset/transfer_len.
+            tap (TensorAccessPattern): The walk over ``rt_data``; its values may be staged.
             task_group (TaskGroup | None, optional): The task group associated with the operation. Defaults to None.
             wait (bool, optional): Whether this task should conclude with a call to await or a call to free. Defaults to False.
             offset_parameter (str | None, optional): Name of a ScratchpadParameter whose
                 value is used as the element offset for this DMA transfer. Defaults to None.
+            length_parameter (str | None, optional): Name of a ScratchpadParameter
+                n; the transfer moves exactly n passes of ``tap`` (per
+                iteration). Defaults to None.
+            length_unit (int | None, optional): Elements per unit of
+                length_parameter, a multiple of 16 bytes. Defaults to the
+                elements one pass of ``tap`` moves.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
                 BD with a packet header `(pkt_type, pkt_id)`. Pairs with
                 downstream packet-switched routing (e.g. an
                 [`ObjectFifo`][iron.ObjectFifo] built with ``packet=True`` or
                 an explicit [`PacketFlow`][iron.PacketFlow]). Defaults to None.
-            sizes (optional): Explicit access-pattern sizes whose entries may be
-                runtime SSA values. Used instead of ``tap`` for the dynamic path.
-            strides (optional): Explicit access-pattern strides, paired with
-                ``sizes``. Used instead of ``tap`` for the dynamic path.
-            offset (optional): Explicit access-pattern offset. Used instead of
-                ``tap`` for the dynamic path.
-            transfer_len (optional): Explicit access-pattern transfer length.
-                Used instead of ``tap`` for the dynamic path.
         """
-        if tap is not None and any(
-            v is not None for v in (sizes, strides, offset, transfer_len)
-        ):
-            raise ValueError(
-                "DMATask: tap and sizes/strides/offset/transfer_len are mutually "
-                "exclusive access-pattern specifications; pass only one."
-            )
         self._alloc = alloc
         self._rt_data = rt_data
         self._tap = tap
         self._wait = wait
         self._offset_parameter = offset_parameter
+        self._length_parameter = length_parameter
+        self._length_unit = length_unit
         self._packet = packet
-        self._sizes = sizes
-        self._strides = strides
-        self._offset = offset
-        self._transfer_len = transfer_len
         self._task = None
         RuntimeTask.__init__(self, task_group)
 
@@ -110,28 +94,17 @@ class DMATask(RuntimeTask):
         # reduces an op to its sym_name anyway). That keeps building the task
         # independent of the op that declares the allocation, so this code does
         # not have to hold or thread one.
-        if self._tap is not None:
-            self._task = shim_dma_single_bd_task(
-                self._alloc,
-                self._rt_data.op,
-                tap=self._tap,
-                issue_token=self._wait,
-                offset_parameter=self._offset_parameter,
-                packet=self._packet,  # pyright: ignore[reportArgumentType]
-            )
-        else:
-            # Explicit (possibly runtime-valued) access pattern for the dynamic path.
-            self._task = shim_dma_single_bd_task(
-                self._alloc,
-                self._rt_data.op,
-                offset=self._offset,
-                sizes=self._sizes,
-                strides=self._strides,
-                transfer_len=self._transfer_len,
-                issue_token=self._wait,
-                offset_parameter=self._offset_parameter,
-                packet=self._packet,  # pyright: ignore[reportArgumentType]
-            )
+        self._task = shim_dma_single_bd_task(
+            self._alloc,
+            self._rt_data.op,
+            tap=self._tap,
+            transfer_len=0 if self._length_parameter is not None else None,
+            issue_token=self._wait,
+            offset_parameter=self._offset_parameter,
+            length_parameter=self._length_parameter,
+            length_unit=self._length_unit,
+            packet=self._packet,  # pyright: ignore[reportArgumentType]
+        )
         dma_start_task(self._task)
 
 
@@ -141,13 +114,11 @@ def emit_shim_transfer(
     tap=None,
     wait: bool = False,
     packet: tuple[int, int] | None = None,
-    offset_parameter=None,
+    offset_parameter: ScratchpadParameter | str | None = None,
     group=None,
-    sizes=None,
-    strides=None,
-    offset=None,
-    transfer_len=None,
     managed: bool = True,
+    length_parameter: ScratchpadParameter | str | None = None,
+    length_unit: int | None = None,
 ) -> Task:
     """Emit one shim DMA transfer on the ``alloc`` channel, inside the active sequence.
 
@@ -156,10 +127,8 @@ def emit_shim_transfer(
     differ only in how they name the shim channel and in the endpoint
     bookkeeping they do first.
 
-    The access pattern is given either as a static ``tap`` or as explicit
-    ``sizes``/``strides``/``offset``/``transfer_len`` whose entries may be
-    runtime SSA values (the dynamic path). The two forms are mutually exclusive;
-    when neither is given, a linear transfer of the whole buffer is used.
+    ``tap`` is the walk over the runtime buffer; its offset, sizes and strides
+    may be runtime values. When it is None, the whole buffer moves linearly.
 
     When ``managed`` is True (default), the transfer is enrolled in a TaskGroup
     (explicit ``group`` or the sequence's implicit one), which awaits/frees it at
@@ -167,14 +136,13 @@ def emit_shim_transfer(
     returned Task's ``.free()``/``.await_()`` -- used for hand-rolled software
     pipelines that carry the task across ``scf.for`` iterations.
 
+    ``offset_parameter`` and ``length_parameter`` take a ScratchpadParameter (or
+    its name). A ``length_parameter`` n makes the transfer move exactly n
+    passes of ``tap`` (per iteration); see DMATask.
+
     Returns:
         Task: A handle to the transfer.
-
-    Lazy imports break the runtime<->scratchpad import cycle.
     """
-    from ..scratchpad_parameter import ScratchpadParameter
-    from ._context import active_sequence
-
     active = active_sequence()
     rt = active._runtime
 
@@ -185,12 +153,7 @@ def emit_shim_transfer(
             f"{rt_data} is not a RuntimeData object declared by sequence()"
         )
 
-    explicit = any(v is not None for v in (sizes, strides, offset, transfer_len))
-    if tap is not None and explicit:
-        raise ValueError(
-            "Pass either tap or sizes/strides/offset/transfer_len, not both."
-        )
-    if tap is None and not explicit:
+    if tap is None:
         tap = rt_data.default_tap()
 
     if not managed and group is not None:
@@ -199,27 +162,16 @@ def emit_shim_transfer(
             "do not also pass group=."
         )
 
-    offset_param_name = None
-    if offset_parameter is not None:
-        if isinstance(offset_parameter, ScratchpadParameter):
-            offset_param_name = offset_parameter.name
-            if offset_parameter not in rt._scratchpad_parameters:
-                rt._scratchpad_parameters.append(offset_parameter)
-        else:
-            offset_param_name = offset_parameter
-
     task = DMATask(
         alloc,
         rt_data,
         tap=tap,
         task_group=group,
         wait=wait,
-        offset_parameter=offset_param_name,
+        offset_parameter=rt.register_parameter(offset_parameter),
         packet=packet,
-        sizes=sizes,
-        strides=strides,
-        offset=offset,
-        transfer_len=transfer_len,
+        length_parameter=rt.register_parameter(length_parameter),
+        length_unit=length_unit,
     )
     if managed:
         active.emit_transfer(task, group)

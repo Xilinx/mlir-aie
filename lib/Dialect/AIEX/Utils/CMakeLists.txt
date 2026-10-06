@@ -27,4 +27,6 @@ add_mlir_dialect_library(AIEXUtils
   MLIRIR
   MLIRSupport
   MLIRArithDialect
+  MLIRControlFlowDialect
+  MLIRControlFlowInterfaces
   )
