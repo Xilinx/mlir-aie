@@ -135,9 +135,8 @@ struct SwitchboxConnect {
   // update demand at the beginning of each dijkstraShortestPaths iteration
   void updateDemand();
 
-  // Inside each dijkstraShortestPaths iteration, bump demand when it exceeds
-  // capacity, all but ruling the connection out if a prioritized flow uses it,
-  // to keep prioritized flows' routes.
+  // Bumps an over-capacity cell's demand, all but ruling it out if a
+  // prioritized flow uses it, to keep prioritized flows' routes.
   static void bumpDemand(Cell &c);
 
 private:
@@ -169,7 +168,7 @@ struct PathEndPoint {
 };
 
 struct Flow {
-  // Packet flows of one group may share channels; -1 for a circuit flow.
+  // -1 for a circuit flow.
   int packetGroupId = -1;
   bool isPriorityFlow = false;
   PathEndPoint src;
@@ -261,8 +260,8 @@ struct RoutingFaults {
   // in a hold cycle, so their trees should meet: each routes the ids the
   // other does not send as a part of their own from then on.
   std::vector<std::pair<PathEndPoint, PathEndPoint>> together;
-  // Whether the connections are all of flows leaving a switchbox by a master
-  // port of the prioritized flows, and by no master set of theirs.
+  // Whether the connections all break the overlay's master sets; see
+  // RouteState::overlayMasters.
   bool onlyOverlayMasters = false;
 };
 
@@ -410,13 +409,11 @@ private:
   // Dijkstra over the dense graph from the states in `seeds`, each starting at
   // its cost in `seedCosts`. Fills `preds` (predecessor state id, or -1) and
   // `predEdge` (the edge taken to reach each state). Reuses the scratch buffers
-  // below. Master ports on an arbiter with flows in `avoid` cost
-  // conflictSharePenalty more, and from a state in `branchAvoid`, as much again
-  // for the flows it maps to. A channel a flow with the same `packetId` already
-  // shares costs as a full one. States in `stops` are reached but not left, and
-  // a crossbar hop is taken only if `mayCross` allows it. The search ends once
-  // every state in `targets` is settled; only their `distance` and paths are
-  // final then.
+  // below. Each edge costs its edgeWeight given `packetId`, `avoid` and, from a
+  // state in `branchAvoid`, the flows it maps to. States in `stops` are reached
+  // but not left, and a crossbar hop is taken only if `mayCross` allows it. The
+  // search ends once every state in `targets` is settled; only their `distance`
+  // and paths are final then.
   void dijkstraShortestPaths(
       llvm::ArrayRef<int> seeds, llvm::ArrayRef<double> seedCosts,
       std::optional<int> packetId, const llvm::BitVector *avoid = nullptr,

@@ -18,6 +18,11 @@
 #include "aie/Dialect/AIEX/IR/AIEXEnums.h"
 #include "mlir/IR/Operation.h"
 
+#include "aie/Dialect/AIEX/IR/AIEXInterfaces.h.inc"
+
+#define GET_ATTRDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXAttrDefs.h.inc"
+
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.h.inc"

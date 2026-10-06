@@ -11,7 +11,9 @@ Tests that exercise compile() or end-to-end kernel execution live in
 test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
+import builtins
 import dataclasses
+import importlib
 import json
 import os
 import subprocess
@@ -25,11 +27,13 @@ import pytest
 import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
 from aie.iron import kernels
+from aie.iron.algorithms import _pipeline
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
-from aie.utils.compile.jit._hash import _compute_artifact_hash
+from aie.utils.compile.jit import _hash as _hash_mod
+from aie.utils.compile.jit._hash import _compute_artifact_hash, _compute_recipe_hash
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
@@ -303,6 +307,123 @@ def test_hash_is_stable_across_two_constructions():
     assert hash(d1) == hash(d2)
 
 
+_SCALE_HELPER = """
+DEPTH = 2
+
+
+def depth():
+    return DEPTH
+"""
+
+_SCALE_DESIGN = """
+import numpy as np
+
+import scale_flags
+from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron.device import NPU2Col1
+from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import CompileTime, In, Out
+from scale_helper import depth
+
+SOURCE = "void scale(int *a, int *b) {}"
+
+
+def scale(a: In, b: Out, *, N: CompileTime[int]):
+    ty = np.ndarray[(N,), np.dtype[np.int32]]
+    kernel = ExternalFunction(
+        "scale",
+        object_file_name="scale.o",
+        source_string=SOURCE,
+        arg_types=[ty, ty],
+        compile_flags=scale_flags.FLAGS,
+    )
+    of_in = ObjectFifo(ty, depth=depth())
+    of_out = ObjectFifo(ty)
+
+    def core_fn(of_in, of_out, kernel):
+        elem_in = of_in.acquire(1)
+        elem_out = of_out.acquire(1)
+        kernel(elem_in, elem_out)
+        of_in.release(1)
+        of_out.release(1)
+
+    worker = Worker(core_fn, [of_in.cons(), of_out.prod(), kernel])
+
+    def sequence(a, b, a_in, b_out):
+        a_in.fill(a)
+        b_out.drain(b, wait=True)
+
+    rt = Runtime(sequence, [ty, ty, of_in.prod(), of_out.cons()])
+    return Program(NPU2Col1(), rt, workers=[worker]).resolve_program()
+"""
+
+_SCALE_FILES = {
+    "scale_design": _SCALE_DESIGN,
+    "scale_helper": _SCALE_HELPER,
+    "scale_flags": "FLAGS = []\n",
+}
+
+
+@pytest.fixture
+def scale_design(tmp_path):
+    """A design whose generator, helper and kernel flags live in their own module files."""
+    for name, text in _SCALE_FILES.items():
+        (tmp_path / f"{name}.py").write_text(text)
+    sys.path.insert(0, str(tmp_path))
+    try:
+        yield tmp_path, importlib.import_module("scale_design").scale
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in _SCALE_FILES:
+            sys.modules.pop(name, None)
+
+
+@pytest.mark.parametrize(
+    "module, old, new",
+    [
+        ("scale_helper", "DEPTH = 2", "DEPTH = 4  # deeper"),
+        ("scale_flags", "FLAGS = []", 'FLAGS = ["-O1"]'),
+        (
+            "scale_design",
+            "void scale(int *a, int *b) {}",
+            "void scale(int *a, int *b) { *b = *a; }",
+        ),
+    ],
+)
+def test_cache_key_covers_the_sources_the_generator_reaches(
+    scale_design, module, old, new
+):
+    """An edit to a module the generator reaches moves the key once it is imported."""
+    tmp_path, gen = scale_design
+
+    def key():
+        return CompilableDesign(gen, compile_kwargs={"N": 64})._compute_cache_hash()
+
+    path = tmp_path / f"{module}.py"
+    before = key()
+    path.write_text(path.read_text().replace(old, new))
+    assert key() == before, "the key follows the code that runs, not the disk"
+    importlib.reload(sys.modules[module])
+    assert key() != before
+
+
+def test_cache_key_does_not_generate_the_design():
+    def scale(a: In, *, N: CompileTime[int]):
+        raise AssertionError("the key generated the design")
+
+    CompilableDesign(scale, compile_kwargs={"N": 64})._compute_cache_hash()
+
+
+def test_unnamed_fifos_are_named_per_program(scale_design, npu2_device):
+    """The same design generates the same names however many came before it."""
+    _, gen = scale_design
+    first, second = (
+        CompilableDesign(gen, compile_kwargs={"N": 64})._generated[0] for _ in range(2)
+    )
+    assert first == second
+    assert "aie.objectfifo @of0(" in first and "aie.objectfifo @of1(" in first
+
+
 def test_hash_differs_for_different_kwargs_value():
     gen = _gemm_gen()
     d1 = CompilableDesign(gen, compile_kwargs={"M": 512})
@@ -512,13 +633,34 @@ def test_dispatch_specialization_keyword_only_binding():
         design.split_runtime_args(("tensor", 6), {})
 
 
-def test_tensor_types_cannot_prebind_runtime_tensor_parameters():
-    def gen(a: In, *, count: DispatchTime[np.int32]):
-        pass
+def test_tensor_type_binds_and_keys_the_design():
+    observed = []
 
-    tensor_type = np.ndarray[(16, 32), np.dtype[np.int16]]
-    with pytest.raises(TypeError, match="runtime tensors"):
-        CompilableDesign(gen, compile_kwargs={"a": tensor_type})
+    def gen(a: In):
+        observed.append(a)
+
+    small = np.ndarray[(16, 32), np.dtype[np.int16]]
+    large = np.ndarray[(32, 32), np.dtype[np.int16]]
+    design = CompilableDesign(gen).specialize(a=small)
+    design.generate_mlir()
+    assert observed == [small]
+    assert design.split_runtime_args(("tensor",), {}) == (["tensor"], {})
+    assert (
+        design._compute_cache_hash()
+        == CompilableDesign(gen, compile_kwargs={"a": small})._compute_cache_hash()
+    )
+    assert (
+        design._compute_cache_hash() != design.specialize(a=large)._compute_cache_hash()
+    )
+    assert design._compute_cache_hash() != CompilableDesign(gen)._compute_cache_hash()
+
+
+def test_unbound_tensor_parameter_names_specialize():
+    def gen(a: In):
+        a.shape
+
+    with pytest.raises(RuntimeError, match=r"specialize\(a=np.ndarray"):
+        CompilableDesign(gen).generate_mlir()
 
 
 def test_dispatch_keyword_only_specialization_generates_constant():
@@ -783,8 +925,6 @@ def test_content_digest_streams_a_large_file(tmp_path):
     """
     import hashlib
 
-    from aie.utils.compile.jit import _hash as _hash_mod
-
     blob = tmp_path / "big.h"
     payload = (b"0123456789abcdef" * 64) * 1024 + b"tail"  # 1 MiB + 4, two reads
     blob.write_bytes(payload)
@@ -798,8 +938,6 @@ def test_unreadable_input_does_not_alias_onto_a_readable_one(tmp_path):
     Skipping it would collapse "missing" and "empty" onto the same digest, so a
     design whose kernel disappeared would hit the entry built when it was there.
     """
-    from aie.utils.compile.jit import _hash as _hash_mod
-
     missing = tmp_path / "gone.cc"
     empty = tmp_path / "empty.cc"
     empty.write_bytes(b"")
@@ -809,9 +947,9 @@ def test_unreadable_input_does_not_alias_onto_a_readable_one(tmp_path):
     assert absent != _hash_mod._content_digest(empty)
 
 
-def _design(body, name="design"):
+def _design(body, name="design", module="designs.probe"):
     """A generator built from source, so a pair can differ in exactly one way."""
-    ns = {"__name__": "designs.probe"}
+    ns = {"__name__": module}
     exec(body, ns)  # noqa: S102 -- controlling the source is the point
     return ns[name]
 
@@ -877,12 +1015,13 @@ def test_hash_distinguishes_designs_calling_different_symbols():
             "    return core_body\n"
         )
 
-    def nested(fn):
-        return next(c for c in fn.__code__.co_consts if isinstance(c, CodeType))
-
     a, b = build("matmul_bf16"), build("matmul_i8")
+    nested_a, nested_b = (
+        next(c for c in fn.__code__.co_consts if isinstance(c, CodeType))
+        for fn in (a, b)
+    )
     assert (
-        nested(a).co_code == nested(b).co_code
+        nested_a.co_code == nested_b.co_code
     ), "nested bytecode differs; this test would not exercise co_names"
     assert _compute_hash(a, {}, [], [], [], []) != _compute_hash(b, {}, [], [], [], [])
 
@@ -924,6 +1063,98 @@ def test_hash_of_a_callable_compile_time_value_is_stable_and_not_blind():
 
     assert key(build(2)) == key(build(2))
     assert key(build(2)) != key(build(3))
+
+
+def test_hash_of_a_callable_compile_time_value_follows_its_callees():
+    """A callable compile-time value's helpers are followed like the generator's.
+
+    ``act`` calls ``helper`` from its own module; only recursion into the
+    callee's body (not just ``act``'s own bytecode, which only names
+    ``helper``) can tell the two builds apart.
+    """
+
+    def build(leaf):
+        return _design(
+            f"def helper(x):\n"
+            f"    return x + {leaf}\n"
+            "def act(x):\n"
+            "    return helper(x)\n",
+            name="act",
+        )
+
+    gen = _design("def design(a, b):\n    return a\n")
+
+    def key(act):
+        return _compute_hash(gen, {"act": act}, [], [], [], [])
+
+    assert key(build(1)) == key(build(1))
+    assert key(build(1)) != key(build(2))
+
+
+def test_hash_follows_a_generators_closure():
+    """A closure reaches its helper and constants through cells, not globals.
+
+    Both generators have identical bytecode and globals; only the captured
+    helper's body, or the captured constant, tells them apart.
+    """
+
+    def build(leaf, scale):
+        return _design(
+            "def make():\n"
+            "    def helper(x):\n"
+            f"        return x + {leaf}\n"
+            f"    scale = {scale}\n"
+            "    def design(a, b):\n"
+            "        return helper(a) * scale\n"
+            "    return design\n",
+            name="make",
+        )()
+
+    def key(fn):
+        return _compute_hash(fn, {}, [], [], [], [])
+
+    a, b, c = build(1, 2), build(2, 2), build(1, 3)
+    assert a.__code__.co_code == b.__code__.co_code == c.__code__.co_code
+    assert key(a) == key(build(1, 2))
+    assert key(a) != key(b)
+    assert key(a) != key(c)
+
+
+def _add_value(flag):
+    return ExternalFunction(
+        "add_value",
+        source_string="void add_value() {}",
+        arg_types=[],
+        compile_flags=[f"-DADD_VALUE={flag}"],
+    )
+
+
+def _via_global(flag):
+    ns = {"__name__": "designs.probe", "kernel": _add_value(flag)}
+    exec("def design(a, b):\n    return kernel(a, b)\n", ns)  # noqa: S102
+    return ns["design"]
+
+
+def _via_closure(flag):
+    kernel = _add_value(flag)
+
+    def design(a, b):
+        return kernel(a, b)
+
+    return design
+
+
+@pytest.mark.parametrize("build", [_via_global, _via_closure])
+def test_hash_follows_an_external_function_the_generator_reaches(build):
+    """A kernel's compile flags change neither the bytecode nor its sources."""
+
+    def key(fn):
+        return _compute_hash(fn, {}, [], [], [], [])
+
+    a, b = build(5), build(10)
+    assert a.__code__.co_code == b.__code__.co_code
+    assert key(a) == key(build(5))
+    assert key(a) != key(b)
 
 
 def test_hash_survives_a_move_of_the_design_file():
@@ -970,6 +1201,103 @@ def test_hash_distinguishes_bodies_nested_past_any_fixed_depth():
 def test_hash_handles_deeply_nested_functions():
     """The walk must terminate on pathological nesting."""
     assert len(_compute_hash(_nest("pass"), {}, [], [], [], [])) == 24
+
+
+def test_hash_follows_the_helpers_a_generator_calls():
+    """The generator's bytecode names a helper; the helper's body is elsewhere."""
+
+    def build(leaf, limit=4):
+        return _design(
+            f"LIMIT = {limit}\n"
+            "def helper(x):\n"
+            f"    return min(x + {leaf}, LIMIT)\n"
+            "def design(a):\n"
+            "    return helper(a)\n"
+        )
+
+    def key(fn):
+        return _compute_hash(fn, {}, [], [], [], [])
+
+    assert key(build(1)) == key(build(1))
+    assert key(build(1)) != key(build(2))
+    assert key(build(1)) != key(build(1, limit=8))
+
+
+def test_hash_follows_fileless_helpers_but_not_installed_packages():
+    """Code with no file is followed by its code; an installed package is not followed."""
+
+    def key(module, leaf):
+        gen = _design("def design(a):\n    return helper(a)\n")
+        helper = f"def helper(x):\n    return x + {leaf}\n"
+        gen.__globals__["helper"] = _design(helper, "helper", module)
+        return _compute_hash(gen, {}, [], [], [], [])
+
+    assert key("designs.util", 1) != key("designs.util", 2)
+    assert key("numpy", 1) == key("numpy", 2)
+
+
+def test_the_kernel_harness_key_covers_its_helper_modules():
+    """kernel_design's one generator builds every kernel test through helpers.
+
+    An edit to one used to keep the key, so a design cached before the edit
+    ran in place of the edited one.
+    """
+    reached = _hash_mod._python_identity([kd._stream.compilable.mlir_generator])
+    for module in (kd, _pipeline):
+        assert f"{module.__name__}@".encode() in reached
+
+
+def test_the_key_reaches_the_builtins_module():
+    """`builtins` is a module with no `__file__` attribute at all."""
+
+    def generator(x):
+        if not x:
+            raise builtins.AssertionError("x")
+
+    assert _hash_mod._python_identity([generator]) == _hash_mod._python_identity(
+        [generator]
+    )
+
+
+def test_the_key_of_a_generator_with_a_rewritten_assert():
+    """pytest rewrites `assert` to reach `AssertionError` through `builtins`."""
+
+    def generator(x):
+        assert x, "x"
+        raise ValueError("y")
+
+    assert _hash_mod._python_identity([generator]) == _hash_mod._python_identity(
+        [generator]
+    )
+
+
+def test_the_kernel_harness_key_is_the_same_in_every_process(tmp_path):
+    """Neither the hash seed nor what else the process imported moves the key.
+
+    Importing a submodule binds it on its package, which the key reaches.
+    """
+    script = tmp_path / "probe.py"
+    script.write_text(
+        "import sys\n"
+        "for name in sys.argv[1:]:\n"
+        "    __import__(name)\n"
+        "from aie.iron.algorithms import kernel_design as kd\n"
+        "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
+        "print(_compute_recipe_hash(kd._stream.compilable.mlir_generator, {}, (), ()))\n"
+    )
+    seen = {
+        subprocess.run(
+            [sys.executable, str(script), *imports],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**os.environ, "PYTHONHASHSEED": seed},
+        ).stdout.strip()
+        for seed, imports in (("1", ()), ("2", ("aie.utils.hostruntime.cli",)))
+    }
+    assert seen == {
+        _compute_recipe_hash(kd._stream.compilable.mlir_generator, {}, (), ())
+    }
 
 
 def test_hash_is_24_hex_chars():
@@ -1293,7 +1621,7 @@ def test_generate_mlir_unplaced_style_uses_return_value():
 
 
 def test_construction_rejects_tensor_name_in_compile_kwargs():
-    """compile_kwargs must not contain names annotated as In/Out/InOut.
+    """compile_kwargs may hold only a type for a name annotated In/Out/InOut.
 
     Rejected at construction, not generation: `a` is a real parameter, so the
     design would otherwise be hashable and the misplaced key would reach the
@@ -1444,6 +1772,9 @@ def test_parse_dma_sizes_matches_real_mlir_format(tmp_path):
     sample_mlir = """\
 module {
   aie.device(npu1) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_in(%shim, MM2S, 0)
+    aie.shim_dma_allocation @of_out(%shim, S2MM, 0)
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -1528,6 +1859,9 @@ def test_parse_dma_sizes_handles_repeated_transfer(tmp_path):
     sample_mlir = """\
 module {
   aie.device(npu1) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_in(%shim, MM2S, 0)
+    aie.shim_dma_allocation @of_in_again(%shim, MM2S, 1)
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -1557,6 +1891,9 @@ def test_parse_dma_sizes_handles_disjoint_fan_out(tmp_path):
     sample_mlir = """\
 module {
   aie.device(npu1) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_in_a(%shim, MM2S, 0)
+    aie.shim_dma_allocation @of_in_b(%shim, MM2S, 1)
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
       %c0_i32 = arith.constant 0 : i32
       %c512_i32 = arith.constant 512 : i32

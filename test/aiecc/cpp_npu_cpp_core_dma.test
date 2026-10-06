@@ -5,22 +5,27 @@
 // builders run on the host, but generating them requires the core toolchain.
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
-// RUN: aiecc --get-npu-cpp --output-dir=%t.d/pingpong --tmpdir=%t.d/pingpong/work %S/../npu-xrt/dynamic_pingpong_passthrough/aie.mlir
+// RUN: sed 's/NPUDEVICE/npu2/g' %S/../npu-xrt/dynamic_pingpong_passthrough/aie.mlir > %t.d/pingpong.mlir
+// RUN: aiecc --get-npu-cpp --output-dir=%t.d/pingpong --tmpdir=%t.d/pingpong/work %t.d/pingpong.mlir
 // RUN: %host_clang -std=c++17 -I%S/../../include -DGEN_HDR='"%t.d/pingpong/npu_main_sequence.cpp"' -DGEN_FN=generate_txn_main_sequence -DSCALAR %S/Inputs/npu_cpp_dump.cpp %host_link_flags -o %t.d/pingpong/native
 // RUN: %t.d/pingpong/native %t.d/pingpong/two.bin 2 && %t.d/pingpong/native %t.d/pingpong/eight.bin 8
 // RUN: not cmp %t.d/pingpong/two.bin %t.d/pingpong/eight.bin
-// RUN: aiecc --get-npu-cpp --output-dir=%t.d/iterarg --tmpdir=%t.d/iterarg/work %S/../npu-xrt/dynamic_pingpong_iterarg_await/aie.mlir
+// RUN: sed 's/NPUDEVICE/npu2/g' %S/../npu-xrt/dynamic_pingpong_iterarg_await/aie.mlir > %t.d/iterarg.mlir
+// RUN: aiecc --get-npu-cpp --output-dir=%t.d/iterarg --tmpdir=%t.d/iterarg/work %t.d/iterarg.mlir
 // RUN: %host_clang -std=c++17 -I%S/../../include -DGEN_HDR='"%t.d/iterarg/npu_main_sequence.cpp"' -DGEN_FN=generate_txn_main_sequence -DSCALAR %S/Inputs/npu_cpp_dump.cpp %host_link_flags -o %t.d/iterarg/native
 // RUN: %t.d/iterarg/native %t.d/iterarg/two.bin 2 && %t.d/iterarg/native %t.d/iterarg/eight.bin 8
 // RUN: not cmp %t.d/iterarg/two.bin %t.d/iterarg/eight.bin
-// RUN: aiecc --get-npu-cpp --output-dir=%t.d/conditional --tmpdir=%t.d/conditional/work %S/../npu-xrt/dynamic_conditional_passthrough/aie.mlir
+// RUN: sed 's/NPUDEVICE/npu2/g' %S/../npu-xrt/dynamic_conditional_passthrough/aie.mlir > %t.d/conditional.mlir
+// RUN: aiecc --get-npu-cpp --output-dir=%t.d/conditional --tmpdir=%t.d/conditional/work %t.d/conditional.mlir
 // RUN: %host_clang -std=c++17 -I%S/../../include -DGEN_HDR='"%t.d/conditional/npu_main_sequence.cpp"' -DGEN_FN=generate_txn_main_sequence -DCONDITIONAL %S/Inputs/npu_cpp_dump.cpp %host_link_flags -o %t.d/conditional/native
 // RUN: %t.d/conditional/native %t.d/conditional/false.bin 2 0 && %t.d/conditional/native %t.d/conditional/true.bin 2 1
 // RUN: %PYTHON -c "import pathlib; assert pathlib.Path('%/t.d/conditional/false.bin').stat().st_size == 16; assert pathlib.Path('%/t.d/conditional/true.bin').stat().st_size > 16"
-// RUN: aiecc --get-npu-cpp --output-dir=%t.d/trace --tmpdir=%t.d/trace/work %S/../npu-xrt/dynamic_pingpong_trace/aie.mlir
+// RUN: sed 's/NPUDEVICE/npu2/g' %S/../npu-xrt/dynamic_pingpong_trace/aie.mlir > %t.d/trace.mlir
+// RUN: aiecc --get-npu-cpp --output-dir=%t.d/trace --tmpdir=%t.d/trace/work %t.d/trace.mlir
 // RUN: %host_clang -std=c++17 -I%S/../../include -DGEN_HDR='"%t.d/trace/npu_main_sequence.cpp"' -DGEN_FN=generate_txn_main_sequence -DSCALAR %S/Inputs/npu_cpp_dump.cpp %host_link_flags -o %t.d/trace/native
 // RUN: %t.d/trace/native %t.d/trace/two.bin 2 && %t.d/trace/native %t.d/trace/eight.bin 8
 // RUN: not cmp %t.d/trace/two.bin %t.d/trace/eight.bin
-// RUN: aiecc --get-npu-cpp --output-dir=%t.d/ooo --tmpdir=%t.d/ooo/work %S/../npu-xrt/dma_s2mm_ooo_shim_recv/aie.mlir
+// RUN: sed 's/NPUDEVICE/npu2/g' %S/../npu-xrt/dma_s2mm_ooo_shim_recv/aie.mlir > %t.d/ooo.mlir
+// RUN: aiecc --get-npu-cpp --output-dir=%t.d/ooo --tmpdir=%t.d/ooo/work %t.d/ooo.mlir
 // RUN: %host_clang -std=c++17 -I%S/../../include -DGEN_HDR='"%t.d/ooo/npu_main_sequence.cpp"' -DGEN_FN=generate_txn_main_sequence %S/Inputs/npu_cpp_dump.cpp %host_link_flags -o %t.d/ooo/native
 // RUN: %t.d/ooo/native %t.d/ooo/insts.bin

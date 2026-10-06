@@ -43,9 +43,9 @@ constexpr int maxPacketStreamCapacity = 32;
 constexpr int routingCheckPenalty = 5;
 // Iterations spent steering away from a usable routing the check rejects.
 constexpr int maxSteers = 16;
-// Routings in a row the check rejects only for flows leaving by master ports
-// of the prioritized flows before routing gives up: the penalties move such a
-// flow between the ports of the switchbox it has to leave by them.
+// Routings in a row the check rejects only for onlyOverlayMasters before
+// routing gives up: the penalties move such a flow between the ports of the
+// switchbox it has to leave by.
 constexpr int maxOverlayFaults = 16;
 // Times the routing check may fault where two trees meet before they stop
 // meeting; each fault moves the meeting elsewhere.
@@ -157,8 +157,7 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // Canonicalize all flows after both packet and circuit flows are collected.
   pathfinder.sortFlows();
 
-  // A control-packet reload configures a switchbox only if the overlay
-  // routes control packets to its tile.
+  // A reload configures only the switchboxes the overlay reaches.
   if (auto reload = device->getAttrOfType<BoolAttr>("has_ctrl_pkt_overlay");
       reload && reload.getValue()) {
     llvm::DenseSet<TileID> reached;
@@ -453,11 +452,13 @@ bool Pathfinder::splitSharedIds() {
   for (const auto &[ends, sent] : packetIdsTo)
     ids[ends.first].insert(sent.begin(), sent.end());
   for (const auto &[src, srcIds] : ids)
-    for (const auto &[other, otherIds] : ids)
+    for (const auto &[other, otherIds] : ids) {
+      const std::set<int> &theirs = otherIds;
       if (!(src == other) &&
-          llvm::any_of(srcIds, [&](int id) { return otherIds.count(id); }) &&
-          llvm::any_of(srcIds, [&](int id) { return !otherIds.count(id); }))
+          llvm::any_of(srcIds, [&](int id) { return theirs.count(id); }) &&
+          llvm::any_of(srcIds, [&](int id) { return !theirs.count(id); }))
         return true;
+    }
   return false;
 }
 
@@ -880,8 +881,8 @@ struct Pathfinder::RouteState {
   // group flows based on packetGroupId; pinned trees go in first, so the
   // flows routed around them see them.
   llvm::MapVector<int, SmallVector<int, 8>> groupedFlows;
-  // Packet flows that conflict, by the ids each carries, or whose sources the
-  // routing check found in a hold cycle together.
+  // Packet flows that conflict, by the ids each carries or by
+  // RoutingFaults::apart.
   std::vector<llvm::BitVector> conflicting;
   std::set<std::pair<PathEndPoint, PathEndPoint>> apartSources;
   std::set<std::pair<PathEndPoint, PathEndPoint>> togetherSources;
@@ -1001,8 +1002,7 @@ bool Pathfinder::RouteState::reorder(int later, int earlier, bool again) {
 }
 
 // Whether a tree whose packets leave a switchbox by `masters` from one slave
-// port may leave it by `next` too: unless that takes a master port of the
-// prioritized flows, after which the tree keeps within one of their sets.
+// port may leave it by `next` too; see overlayMasters.
 bool Pathfinder::RouteState::mayLeave(ArrayRef<int> masters, int next) const {
   if (!overlayMasters.count(next) &&
       llvm::none_of(masters, [&](int m) { return overlayMasters.count(m); }))
@@ -1079,8 +1079,9 @@ int Pathfinder::RouteState::splitPart(int flow, const std::set<int> &ids) {
   llvm::erase_if(parts[flow].dsts,
                  [&](const PathEndPoint &p) { return !carries(flow, p); });
   f.packetId = *ids.begin();
-  if (ids.count(*parts[flow].packetId))
-    parts[flow].packetId = *flowIds[flow].begin();
+  std::optional<int> &flowId = parts[flow].packetId;
+  if (flowId && ids.count(*flowId))
+    flowId = *flowIds[flow].begin();
   auto prioritized = [&](const std::set<int> &carried) {
     auto prio = pf.priorityIds.find(f.src);
     return prio != pf.priorityIds.end() && llvm::any_of(carried, [&](int id) {
@@ -1333,9 +1334,9 @@ Pathfinder::TreeBuilder::TreeBuilder(Pathfinder &pf, RouteState &st, int flow)
     // Route to self: the port is both ends. Where its switchbox cannot
     // connect it to itself (Core to Core), the stream has to leave and
     // come back, which Dijkstra finds from the In side to the Out side.
-    // A tree the flow joins may reach the port for it instead. A port the
-    // prioritized flows keep is reached like any other destination, so the
-    // tree keeps to their master sets.
+    // A tree the flow joins may reach the port for it instead. A port in
+    // overlayMasters is reached like any other destination, so mayLeave
+    // still holds.
     int self = stateId(srcId, Out);
     if (endPoint == part.src && !st.overlayMasters.count(self) &&
         llvm::any_of(pf.adjacency[srcId],
@@ -1459,15 +1460,15 @@ void Pathfinder::TreeBuilder::findJoins() {
   }
 }
 
-// Trees from two sources wait on each other wherever they meet, and a packet
-// holds every arbiter it has taken until its tail passes, so two trees
-// meeting at two switchboxes can each hold one and wait at the other. The
-// flow meets each tree it shares destinations with at one switchbox, those
-// it shares the most with first, on that tree's way from its source to where
-// it branches for them, by a slave port that takes each master port the tree
-// takes there toward them. Only a packet going to two of them can hold the
-// arbiter where the trees meet for one and wait where they meet for the other,
-// so two trees meet only when each sends some id to two shared destinations.
+// Trees from two sources wait on each other wherever they meet (see HoldCycle),
+// so two trees meeting at two switchboxes can each hold one arbiter and wait at
+// the other. The flow meets each tree it shares destinations with at one
+// switchbox, those it shares the most with first, on that tree's way from its
+// source to where it branches for them, by a slave port that takes each master
+// port the tree takes there toward them. Only a packet going to two of them can
+// hold the arbiter where the trees meet for one and wait where they meet for
+// the other, so two trees meet only when each sends some id to two shared
+// destinations.
 void Pathfinder::TreeBuilder::meet() {
   auto spans = [&](int k, ArrayRef<int> dsts) {
     return llvm::any_of(st.flowIds[k], [&](int id) {
@@ -1768,12 +1769,12 @@ llvm::DenseSet<int> Pathfinder::TreeBuilder::trunkOff(int dst) const {
     return off;
   int root = tree.front();
   auto exitOf = [&](int s) {
-    for (auto it = planned.find(s);
+    for (const auto *it = planned.find(s);
          it != planned.end() && it->second.first != root; it = planned.find(s))
       s = it->second.first;
     return s;
   };
-  auto other = llvm::find_if(reached, [&](int d) {
+  const auto *other = llvm::find_if(reached, [&](int d) {
     return d != dst && trunkDsts.count(d) && planned.count(d);
   });
   if (other == reached.end())
@@ -1963,10 +1964,9 @@ void Pathfinder::TreeBuilder::claim() {
     if (packetId)
       st.treeOf[flow].try_emplace(currId, predId, e);
     cell.isPriority |= part.isPriorityFlow;
-    // Packet flows in the same group may share a channel. Two trees with
-    // the same id may merge onto one only where nothing fans out after, or
-    // where both take the id to the same destinations, so a merged id never
-    // fans back out to one tree's destinations alone. The flow's own tree
+    // Two trees with the same id may merge onto one only where nothing fans out
+    // after, or where both take the id to the same destinations, so a merged id
+    // never fans back out to one tree's destinations alone. The flow's own tree
     // branching at a port never merges back.
     // packetGroupId only becomes >= 0 when packetId has a value (see
     // Pathfinder::addFlow), so the dereferences below are safe; the

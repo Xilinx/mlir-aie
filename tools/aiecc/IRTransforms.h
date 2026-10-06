@@ -1154,12 +1154,14 @@ inline std::string downgradeIRForChess(llvm::StringRef ir) {
 // Tile placement (`aie-place-tiles`), nested under DeviceOp.
 inline std::unique_ptr<mlir::PassManager>
 getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
-                     xilinx::AIE::PlacerType placerType, int saSeed) {
+                     xilinx::AIE::PlacerType placerType, int saSeed,
+                     double saEffort) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   xilinx::AIE::AIEPlaceTilesOptions opts;
   opts.clPlacerType = placerType;
   opts.clCoresPerCol = coresPerCol;
   opts.clSASeed = saSeed;
+  opts.clSAEffort = saEffort;
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
       xilinx::AIE::createAIEPlaceTilesPass(opts));
   return pm;
@@ -1448,11 +1450,14 @@ inline bool runtimeCodeReferencesCoreTile(xilinx::AIE::CoreOp core) {
 // Pairs with `getInputWithAddressesPipeline(..., assignAddresses=false)`.
 // Anchored on DeviceOp, so a caller can place some of a module's devices.
 inline std::unique_ptr<mlir::PassManager>
-getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx) {
+getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx,
+                                 int64_t placementBudget) {
   using namespace xilinx::AIE;
   auto pm =
       std::make_unique<mlir::PassManager>(ctx, DeviceOp::getOperationName());
-  pm->addPass(createAIEAssignBufferAddressesPass());
+  AIEAssignBufferAddressesOptions opts;
+  opts.clPlacementBudget = placementBudget;
+  pm->addPass(createAIEAssignBufferAddressesPass(opts));
   return pm;
 }
 
@@ -1750,6 +1755,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   // Decompose oversized non-contiguous ND transfers (wrap/stride exceeding the
   // hardware BD field limits) into legal sub-transfers before BD lowering.
   dpm.addPass(X::createAIEDecomposeLargeDmaBdPass());
+  dpm.addPass(X::createAIESplitLongRepeatsPass());
   // A runtime-bound scf.for that survived unroll takes the dynamic BD pool path
   // (rewritten to pool pop/push, ids drawn at runtime); the static allocator
   // below skips it. Straight-line sequences fall through unchanged.
@@ -1759,6 +1765,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(mlir::createCanonicalizerPass());
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
@@ -1816,8 +1823,10 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
+  dpm.addPass(X::createAIESplitLongRepeatsPass());
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(mlir::createCanonicalizerPass());
   dpm.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());

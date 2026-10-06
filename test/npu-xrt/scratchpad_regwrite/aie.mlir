@@ -93,7 +93,8 @@ module {
             }
 
             // Unblock the core (lock was init=0, now set to 1)
-            aiex.set_lock(%sync_lock, 1)
+            %sync_lock_v1 = arith.constant 1 : i32
+            aiex.set_lock(%sync_lock, %sync_lock_v1)
 
             // Configure output DMA
             %t_out = aiex.dma_configure_task_for @objfifo_out {

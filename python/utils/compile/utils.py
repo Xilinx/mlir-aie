@@ -20,14 +20,10 @@ import tempfile
 import threading
 import weakref
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import aie.utils.config as config
-
-if TYPE_CHECKING:
-    from aie.ir import (  # pyright: ignore[reportMissingImports]
-        Module,  # pyright: ignore[reportAttributeAccessIssue]
-    )
+from aie import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+from aie.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 
 logger = logging.getLogger(__name__)
 
@@ -236,12 +232,14 @@ def _make_ir_inlinable(ir_path: str, symbol_name: str) -> None:
     ``linkonce_odr`` linkage (so the now-dead definition is DCE'd post-inline
     instead of being codegen'd).
 
-    Both edits have to respect the ``define`` grammar::
+    Both edits have to respect the ``define`` grammar:
 
-        define [linkage] [preemption] [visibility] [dll] [cconv] [ret attrs]
-               <ty> @<name>(<params>) [unnamed_addr] [addrspace(N)] [fn attrs]
-               [section] [partition] [comdat] [align] [gc] [prefix] [prologue]
-               [personality] (!name !N)* { ...
+    ```llvm
+    define [linkage] [preemption] [visibility] [dll] [cconv] [ret attrs]
+           <ty> @<name>(<params>) [unnamed_addr] [addrspace(N)] [fn attrs]
+           [section] [partition] [comdat] [align] [gc] [prefix] [prologue]
+           [personality] (!name !N)* { ...
+    ```
 
     so ``alwaysinline`` is inserted right after the parameter list (and any
     ``unnamed_addr`` / ``addrspace``), not next to the opening brace: placing a
@@ -657,7 +655,7 @@ def _run_aiecc(mlir_file: str, args: list[str], cwd: str | Path | None = None):
 
 
 def compile_mlir_module(
-    mlir_module: "str | Module",
+    mlir_module: "str | ir.Module",
     insts_path: str | Path | None = None,
     pdi_path: str | Path | None = None,
     xclbin_path: str | Path | None = None,
@@ -770,6 +768,8 @@ def compile_mlir_module(
         args.append("--verbose")
     if options:
         args.extend(options)
+    mlir_text = mlir_module if isinstance(mlir_module, str) else str(mlir_module)
+
     # Auto-build any source-bearing ExternalFunction kernels into work_dir
     # so aiecc's linker can find the .o referenced by link_with.  Mirrors
     # the loop in compilabledesign.py but for callers (e.g. low-level
@@ -779,13 +779,18 @@ def compile_mlir_module(
         # so a module-level import here deadlocks on a cold aie.utils.compile entry.
         from aie.iron.kernel import ExternalFunction
 
+        # ``_instances`` outlives any single compile: kernels can be reused,
+        # and shared by name, across designs (see ``resolve()``), so it is
+        # never cleared here. ``resolve()`` declares every kernel a module
+        # uses, so the module's declarations scope this compile: an instance
+        # left over from an earlier, unrelated design in the same process is
+        # neither built nor checked against this design's arch.
         target_arch = resolve_target_arch(device)
         compile_external_kernels(
-            [
-                f
-                for f in ExternalFunction._instances
-                if getattr(f, "_source_file", None)
-            ],
+            _select_declared_kernels(
+                [f for f in ExternalFunction._instances if f.source_file],
+                _declared_objects(mlir_module),
+            ),
             str(work_dir),
             target_arch,
             embed_bitcode=_check_lut_banks_enabled(options or []),
@@ -800,11 +805,11 @@ def compile_mlir_module(
     if work_dir:
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
-            f.write(str(mlir_module))
+            f.write(mlir_text)
         _run_aiecc(mlir_file, args, cwd=work_dir)
     else:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".mlir", delete=False) as f:
-            f.write(str(mlir_module))
+            f.write(mlir_text)
             mlir_file = f.name
         try:
             _run_aiecc(mlir_file, args)
@@ -1101,6 +1106,61 @@ def _compiled_into(func, kernel_dir, embed_bitcode=False) -> bool:
     return os.path.abspath(compiled_dir) == os.path.abspath(kernel_dir)
 
 
+def _declared_objects(mlir_module: "str | ir.Module") -> dict[str, set[str | None]]:
+    """Map each function ``mlir_module`` declares to the objects it links with.
+
+    A module can hold several device symbol tables, each declaring a symbol
+    with its own ``link_with``; a declaration without one maps to ``None``.
+    """
+    if isinstance(mlir_module, str):
+        with ir.Context(), ir.Location.unknown():
+            return _declared_objects(ir.Module.parse(mlir_module))
+    declared: dict[str, set[str | None]] = {}
+
+    def collect(op):
+        decl = op.opview
+        if isinstance(decl, FuncOp) and decl.is_external:
+            attrs = decl.attributes
+            link_with = (
+                ir.StringAttr(attrs["link_with"]).value
+                if "link_with" in attrs
+                else None
+            )
+            declared.setdefault(decl.sym_name.value, set()).add(link_with)
+        return ir.WalkResult.ADVANCE
+
+    mlir_module.operation.walk(collect)
+    return declared
+
+
+def _select_declared_kernels(funcs, link_with: dict[str, set[str | None]]) -> list:
+    """Keep the kernels whose object is the one a declaration links a symbol with.
+
+    ``link_with`` is :func:`_declared_objects` of the module being compiled.
+    Instances can share a symbol: an inline library kernel keeps its bare name
+    across archs, and each arch's factory gives it its own object. The
+    declaration's ``link_with`` picks the one this module uses. A symbol no
+    instance links as declared (or declared without ``link_with``) keeps every
+    instance, so one built for another arch still reports that. When several
+    device symbol tables declare the symbol, every declared object is kept.
+    """
+    funcs = [f for f in funcs if f.name in link_with]
+    objects = {}
+    for f in funcs:
+        if None not in link_with[f.name]:
+            objects.setdefault(f.name, set()).add(f.object_file_name)
+    resolved = {
+        name
+        for name, declared in link_with.items()
+        if None not in declared and declared <= objects.get(name, set())
+    }
+    return [
+        f
+        for f in funcs
+        if f.name not in resolved or f.object_file_name in link_with[f.name]
+    ]
+
+
 def compile_external_kernels(
     funcs,
     kernel_dir,
@@ -1123,7 +1183,14 @@ def compile_external_kernels(
 
     ``object_cache`` (a ``KernelObjectCache``) shares compiled objects across
     work directories; see ``compile_external_kernel``.
+
+    Raises:
+        ValueError: When a library kernel was built for another architecture
+            (see ``ExternalFunction.check_target_arch``).
     """
+    funcs = list(funcs)
+    for f in funcs:
+        f.check_target_arch(target_arch)
     pending = []
     for f in funcs:
         # A checked compile can be replacing an already-owned object to add IR.

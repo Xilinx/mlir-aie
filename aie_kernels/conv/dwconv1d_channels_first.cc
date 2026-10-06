@@ -128,6 +128,92 @@ static inline void dwconv1d_channels_first_impl(const bfloat16 *restrict in_pad,
   ::aie::set_rounding(saved_rounding);
   event1();
 }
+#elif AIE_TUNED_AIE2P
+__attribute__((always_inline)) static inline ::aie::vector<bfloat16, 32>
+shifted(const ::aie::vector<bfloat16, 32> &w0,
+        const ::aie::vector<bfloat16, 32> &w1, int p) {
+  if (p == 0)
+    return w0;
+  return ::aie::shuffle_down_fill(w0, w1, p);
+}
+
+// 32 outputs per block, one shift and one 32-lane vmac.f per tap. The taps
+// split into the same two chains, in the same order, as the generic branch so
+// the sums round identically.
+template <int K>
+__attribute__((always_inline)) static inline ::aie::accum<accfloat, 32>
+dwconv1d_cf_block(const ::aie::vector<bfloat16, 32> (&taps)[K],
+                  const ::aie::vector<float, 32> &bias_v,
+                  const ::aie::vector<bfloat16, 32> &w0,
+                  const ::aie::vector<bfloat16, 32> &w1) {
+  constexpr int KA = (K + 1) / 2;
+  ::aie::accum<accfloat, 32> a;
+  a.from_vector(bias_v);
+  AIE_LOOP_UNROLL_FULL
+  for (int p = 0; p < KA; p++)
+    a = ::aie::mac(a, taps[p], shifted(w0, w1, p));
+  if constexpr (K > KA) {
+    ::aie::accum<accfloat, 32> b = ::aie::mul(taps[KA], shifted(w0, w1, KA));
+    AIE_LOOP_UNROLL_FULL
+    for (int p = KA + 1; p < K; p++)
+      b = ::aie::mac(b, taps[p], shifted(w0, w1, p));
+    a = ::aie::add(a, b);
+  }
+  return a;
+}
+
+template <int K, bool BIAS>
+static inline void dwconv1d_channels_first_impl(const bfloat16 *restrict in_pad,
+                                                const bfloat16 *restrict w,
+                                                bfloat16 *restrict out,
+                                                int32_t T) {
+  static_assert(K >= 1 && K <= 17,
+                "K taps must fit one 32-lane window (16 + K - 1 <= 32)");
+  event0();
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
+
+  const float bias = BIAS ? static_cast<float>(w[K]) : 0.0f;
+  const ::aie::vector<float, 32> bias_v = ::aie::broadcast<float, 32>(bias);
+  ::aie::vector<bfloat16, 32> taps[K];
+  AIE_LOOP_UNROLL_FULL
+  for (int p = 0; p < K; p++)
+    taps[p] = ::aie::broadcast<bfloat16, 32>(w[p]);
+
+  auto block32 = [&]() __attribute__((always_inline)) {
+    // Samples t .. t + 47; the lanes past t + 47 are never read.
+    const ::aie::vector<bfloat16, 32> w0 = ::aie::concat(
+        ::aie::load_v<16>(in_pad), ::aie::load_v<16>(in_pad + 16));
+    const ::aie::vector<bfloat16, 32> w1 =
+        ::aie::load_v<16>(in_pad + 32).template grow<32>();
+    in_pad += 32;
+    ::aie::store_v(out, dwconv1d_cf_block<K>(taps, bias_v, w0, w1)
+                            .template to_vector<bfloat16>());
+    out += 32;
+  };
+  // Four promised trips let the pipeliner overlap blocks; a short row takes
+  // the plain loop.
+  const int32_t nb = (uint32_t)T / 32;
+  if (nb >= 4) {
+    AIE_LOOP_MIN_ITERATION_COUNT(4)
+    for (int32_t n = nb; n > 0; n--)
+      block32();
+  } else {
+    AIE_LOOP_NO_UNROLL
+    for (int32_t n = nb; n > 0; n--)
+      block32();
+  }
+  if (T & 16) {
+    // Only the low 16 lanes are kept; they read samples t .. t + 31.
+    const ::aie::vector<bfloat16, 32> w0 = ::aie::concat(
+        ::aie::load_v<16>(in_pad), ::aie::load_v<16>(in_pad + 16));
+    ::aie::store_v(out, dwconv1d_cf_block<K>(taps, bias_v, w0, w0)
+                            .template to_vector<bfloat16>()
+                            .template extract<16>(0));
+  }
+  ::aie::set_rounding(saved_rounding);
+  event1();
+}
 #else
 template <int K, bool BIAS>
 static inline void dwconv1d_channels_first_impl(const bfloat16 *restrict in_pad,

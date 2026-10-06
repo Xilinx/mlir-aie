@@ -130,7 +130,7 @@ Multiply per-tile peak by `(rows × columns)` for the full array. You won't hit 
   | Shim tile | **3** | 16 | 2^32 − 1 |
 
   This drives real design decisions: a reshape needing 4 `(size, stride)` dimensions **must**
-  land on a mem-tile DMA. If a compute tile's `dims_to_stream` or a shim's tap already needs
+  land on a mem-tile DMA. If a compute tile's `to_stream` or a shim's tap already needs
   3 dimensions, you have no fourth to spend — route L3→L2→L1 and put the reshape on the
   mem-tile `split()`/`join()`/`forward()` instead. For access patterns beyond the limit, chain
   multiple BDs or use runtime repeat counts.

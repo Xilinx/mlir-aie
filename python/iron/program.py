@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import itertools
 import logging
 
 from ..dialects.aie import (
@@ -14,6 +15,7 @@ from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImport
 from ..helpers.dialects.func import FuncBase
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
+from .dataflow.objectfifo import ObjectFifoLink
 from .device import Device
 from .resolvable import Resolvable
 from .runtime import Runtime
@@ -129,6 +131,7 @@ class Program:
         Returns:
             module (Module): The module containing the MLIR context information.
         """
+        self._name_unnamed()
         with mlir_mod_ctx() as ctx:
             # Create a fresh device instance of the same type to avoid stale MLIR operations
             # This preserves the device configuration while ensuring clean state
@@ -202,13 +205,14 @@ class Program:
                 for lk in self._rt.locks:
                     lk.resolve()
 
-                # Resolve any Buffers referenced by explicit TileDma programs
-                # (those aren't reached via worker.fn_args).
+                # Resolve any Buffers and Locks referenced by explicit TileDma
+                # programs (those aren't reached via worker.fn_args).
                 for td in self._rt.tile_dmas:
-                    bufs, _ = td.all_buffers_and_locks()
+                    bufs, locks = td.all_buffers_and_locks()
+                    for lk in locks:
+                        lk.resolve()
                     for b in bufs:
-                        if b.tile is None:
-                            b._tile = td.tile
+                        b.place(td.tile)
                         b.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
@@ -279,6 +283,7 @@ class Program:
                     reuse_output_buffer=self._reuse_output_buffer,
                     egress_shim_col=self._egress_shim_col,
                     load_pdi_device_ref=load_pdi_device_ref,
+                    device=self._device,
                 )
 
                 # Flow transfers name their allocations while the sequence runs.
@@ -287,16 +292,49 @@ class Program:
                     fl.resolve()
 
             # Resolve parameters only discoverable once the sequence body has
-            # traced (offset_parameter= passed directly to fill()/drain(),
-            # rather than declared up front via Worker fn_args). device_body's
-            # own insertion point is scoped to its @device region, so by now
-            # the ambient insertion point is back to module scope -- the same
-            # place the fn_args-declared parameters above were resolved.
-            for p in self._rt._scratchpad_parameters:
+            # traced (offset_parameter=/length_parameter= passed directly to
+            # fill()/drain(), rather than declared up front via Worker
+            # fn_args). device_body's own insertion point is scoped to its
+            # @device region, so by now the ambient insertion point is back to
+            # module scope -- the same place the fn_args-declared parameters
+            # above were resolved.
+            for p in self._rt.scratchpad_parameters:
                 p.resolve()
 
             self._print_verify(ctx)
             return ctx.module
+
+    def _name_unnamed(self) -> None:
+        """Name the ObjectFifos, and the Buffers the runtime writes, left unnamed.
+
+        Ops refer to them by symbol, so they are numbered here in the order the
+        design reaches them, independent of what else the process has built.
+        """
+        fifos = [h._object_fifo for h in self._rt.fifos]
+        fifos += [h._object_fifo for w in self._workers for h in w.fifos]
+        fifos = list(dict.fromkeys(fifos))
+        for of in fifos:
+            for handle in [of._prod, *of._cons]:
+                link = handle.endpoint if handle is not None else None
+                if isinstance(link, ObjectFifoLink):
+                    reached = [h._object_fifo for h in [*link._srcs, *link._dsts]]
+                    fifos += [f for f in reached if f not in fifos]
+        rtps = [b for w in self._workers for b in w.buffers if b._use_write_rtp]
+        taken = {of.name for of in fifos} | {b._name for b in rtps}
+
+        def fresh(prefix):
+            name = next(
+                n for i in itertools.count() if (n := f"{prefix}{i}") not in taken
+            )
+            taken.add(name)
+            return name
+
+        for of in fifos:
+            if of.name is None:
+                of.name = fresh("of")
+        for b in rtps:
+            if b._name is None:
+                b._name = fresh("rtp")
 
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()

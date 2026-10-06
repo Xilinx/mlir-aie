@@ -37,9 +37,15 @@ def AIEDecomposeLargeDmaBd
     (and that cannot be linearized because the access is non-contiguous) into
     one or more hardware-legal ND transfers that move exactly the same data.
 
-    On the task path, multiple sub-patterns are linked with `aie.next_bd`
-    blocks inside the configure region; `bd_id` / `next_bd_id` are left for
-    later passes to assign.
+    On the task path, sub-patterns are linked with `aie.next_bd` blocks inside
+    the configure region; `bd_id` / `next_bd_id` are left for later passes to
+    assign. Past the channel's task-queue depth, or when they need repeat
+    counts of their own, each becomes a single-BD task instead; only the last
+    issues the token, and their starts are interleaved with the starts issued
+    alongside them. A task-path descriptor may give more than 4 dimensions if
+    all are constant; ones that do not fold are split into a task per index.
+    See "Running Out of Buffer Descriptors" in
+    programming_guide/section-2/section-2d/DMATasks.md.
 
     Two techniques are used: dimension factoring (split an oversized dimension
     of size N=a*b across a free dimension slot) is preferred, falling back to
@@ -189,6 +195,7 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIEDmaToNpuPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
                            "mlir::func::FuncDialect",
                            "mlir::memref::MemRefDialect",
                            "xilinx::AIE::AIEDialect",
@@ -336,13 +343,47 @@ def AIEAssignRuntimeSequenceBDIDs
            "through the compute core, which the runtime sequence cannot see, "
            "so this reports designs that are correct by an argument the "
            "compiler does not have. Useful when chasing a suspected BD "
-           "aliasing hang.">];
+           "aliasing hang.">,
+       Option<"reclaimBds", "reclaim-bds", "bool",
+              /*default=*/"false",
+              "When a tile runs out of BD ids, take them back from a started "
+              "task that was never released instead of failing, inserting an "
+              "aiex.npu.maskpoll that proves it finished if no existing poll "
+              "does. Emits a remark for each inserted poll. Off by default: "
+              "the poll hangs if the task's completion depends, through a "
+              "core or another tile, on a push issued after it.">];
 
   let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
+}
+
+def AIESplitLongRepeats : Pass<"aie-split-long-repeats", "AIE::DeviceOp"> {
+  let summary = "Split a task start whose repeat count overflows a queue push";
+  let description = [{
+    Issues each `aiex.dma_start_task` whose constant repeat count is past the
+    target's queue-push field as several starts of the same task: full-size
+    ones first, then the remainder. Only the last keeps the task's token, so
+    an await still completes after every pass. A runtime repeat count is left
+    for `aie-dma-to-npu` to guard. A start on a task carried through `scf`
+    control flow uses its own count, or else the count of the one configure
+    the task can come from.
+
+    Runs before `aie-assign-runtime-sequence-bd-ids`, which then counts one
+    queue slot per start. A start that needs more pushes than the queue holds
+    is a warning, since the sequence then waits for the channel to drain. One
+    that needs more than `max-pushes` is an error.
+  }];
+
+  let options = [Option<"maxPushes", "max-pushes", "unsigned",
+                        /*default=*/"1024",
+                        "Most queue pushes one start may be split into">,
+  ];
+
+  let constructor = "xilinx::AIEX::createAIESplitLongRepeatsPass()";
+  let dependentDialects = ["xilinx::AIEX::AIEXDialect"];
 }
 
 def AIEReserveRuntimeBDIDs
@@ -425,8 +466,9 @@ def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   let summary = "Lower configured DMA tasks to NPU instructions";
 
   let constructor = "xilinx::AIEX::createAIEDMATasksToNPUPass()";
-  let dependentDialects = ["mlir::arith::ArithDialect", "mlir::ub::UBDialect",
-                           "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
+                           "mlir::ub::UBDialect", "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
 }
@@ -467,6 +509,7 @@ def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIELowerSetLockPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -537,11 +580,14 @@ def AIELowerScratchpadParameters
     - In each qualifying core: inserts `aie.lock` + `aie.use_lock(Acquire, 1)`.
     - In each qualifying runtime sequence: inserts `aiex.npu.create_scratchpad`,
       per-parameter `aiex.npu.write32` + `aiex.npu.update_from_scratchpad`,
-      and `aiex.set_lock` for each core lock.
+      and `aiex.set_lock` for each core lock, after the last top-level
+      `aiex.npu.load_pdi` (or first, if the sequence loads no PDI).
 
     Sets a `kind` attribute on each `aiex.scratchpad_parameter` based on how
     it is used: `core` if read by `aiex.read_scratchpad_parameter`, `addr` if
-    used as a DMA `offset_parameter`. A parameter may not be used as both.
+    used as a DMA `offset_parameter`. A parameter may not be used as both. A
+    DMA `length_parameter` works with either kind and makes an otherwise
+    unused parameter `addr`; a core-kind length gets `length_core_encoded`.
 
     Optionally emits a `params.txt` file describing every parameter in the
     module (name, global state_table_idx, type, and kind).

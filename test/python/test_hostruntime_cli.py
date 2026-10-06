@@ -18,6 +18,8 @@ from aie.utils.hostruntime import cli
 
 
 class _Design:
+    compilable = SimpleNamespace(dispatch_params=[])
+
     def __init__(self):
         self.compile_kwargs = None
         self.compile_options = None
@@ -221,4 +223,40 @@ def test_compile_only_without_runtime_requires_an_explicit_target(monkeypatch):
     opts = _automatic_options(xclbin_path="out.xclbin", insts_path="out.insts")
 
     with pytest.raises(SystemExit, match=r"compile-only mode requires --dev"):
+        cli.run_design_cli(_Design(), opts, compile_kwargs={})
+
+
+@pytest.fixture
+def keep_device():
+    from aie.utils import get_current_device, set_current_device
+
+    previous = get_current_device(probe_runtime=False)
+    try:
+        yield
+    finally:
+        set_current_device(previous)
+
+
+def test_compile_only_refuses_insts_path_for_a_dispatch_time_design(
+    tmp_path, keep_device
+):
+    opts = SimpleNamespace(
+        dev="npu2",
+        emit_mlir=False,
+        xclbin_path=str(tmp_path / "copy.xclbin"),
+        insts_path=str(tmp_path / "copy.insts"),
+    )
+
+    design = _Design()
+    design.compilable = SimpleNamespace(dispatch_params=["n"])
+
+    with pytest.raises(SystemExit, match=r"builds its instructions per call"):
+        cli.run_design_cli(design, opts, compile_kwargs={})
+
+
+def test_compile_only_still_requires_insts_path_for_a_static_design(keep_device):
+    opts = _automatic_options(xclbin_path="out.xclbin")
+    opts.dev = "npu2"
+
+    with pytest.raises(SystemExit, match=r"--xclbin-path requires --insts-path"):
         cli.run_design_cli(_Design(), opts, compile_kwargs={})

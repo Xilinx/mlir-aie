@@ -16,8 +16,7 @@
 import aie.iron as iron
 import numpy as np
 import pytest
-from aie.extras.dialects import arith
-from aie.helpers.util import np_dtype_to_mlir_type
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     DispatchTime,
@@ -62,30 +61,13 @@ def dyn_copy(
     worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
     def seq(a_h, b_h, start, n, in_prod, out_cons):
-        i32 = np_dtype_to_mlir_type(np.int32)
-        i64 = np_dtype_to_mlir_type(np.int64)
-        n64 = arith.extsi(i64, n)
-        for tile in range_(n64):
-            tile_i32 = arith.index_cast(tile, to=i32)
-            offset = (start + tile_i32) * arith.constant(tile_size, i32)
+        tiles = TensorAccessPattern.full((max_tiles * tile_size,)).split(0, tile_size)
+        for tile in range_(n):
+            # The index counter is cast to the scalar width by the arithmetic.
+            tap = tiles[start + tile]
             tg = TaskGroup()
-            out_cons.drain(
-                b_h,
-                sizes=[1, 1, 1, tile_size],
-                strides=[0, 0, tile_size, 1],
-                offset=offset,
-                transfer_len=tile_size,
-                wait=True,
-                group=tg,
-            )
-            in_prod.fill(
-                a_h,
-                sizes=[1, 1, 1, tile_size],
-                strides=[0, 0, tile_size, 1],
-                offset=offset,
-                transfer_len=tile_size,
-                group=tg,
-            )
+            out_cons.drain(b_h, tap=tap, wait=True, group=tg)
+            in_prod.fill(a_h, tap=tap, group=tg)
             tg.finish()
 
     # Reverse the same-typed dispatch parameters to exercise identity binding.

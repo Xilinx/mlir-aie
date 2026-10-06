@@ -3,11 +3,14 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-from contextlib import contextmanager
+import copy
 import re
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 
 import pytest
+
+_controller_config = None
 
 # Tests in this directory run under both host runtimes (the %run_on_npu*_xrt%
 # and %run_on_npu2_hrx% RUN lines). A few exercise features the HRX backend does
@@ -33,6 +36,8 @@ def pytest_configure(config):
     rootdir -- and pytest does not read a conftest.py above the rootdir.
     Without this, every run of these tests warns about an unknown mark.
     """
+    global _controller_config
+    _controller_config = config
     config.addinivalue_line(
         "markers",
         "extensive: the full sweep (every case x edge data x seed); deselect with "
@@ -47,8 +52,61 @@ def pytest_configure(config):
         "markers",
         "perf: times a kernel and records performance rows; select with -m perf",
     )
+    config.addinivalue_line(
+        "markers",
+        "kernel_check(*factories): dedicated hardware correctness test for the "
+        "named factories; included in nightly checks and the kernel catalogue. "
+        "invalidates_timing=True makes a shared-setup failure reject all timing",
+    )
     config._perf_rows = []
     config._perf_meta = {}
+    config._error_report = {}
+    config._reported_perf_rows = 0
+    config._reruns = {}
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    if hasattr(item.config, "workerinput"):
+        report = outcome.get_result()
+        if report.when != "call" and not report.failed:
+            return
+        first_unreported = item.config._reported_perf_rows
+        report.npu_perf_rows = copy.deepcopy(item.config._perf_rows[first_unreported:])
+        item.config._reported_perf_rows = len(item.config._perf_rows)
+        report.npu_perf_meta = copy.deepcopy(item.config._perf_meta)
+        report.npu_error_report = item.config._error_report
+        item.config._error_report = {}
+
+
+def _merge_dict(destination, source):
+    for key, value in source.items():
+        if isinstance(value, dict) and isinstance(destination.get(key), dict):
+            _merge_dict(destination[key], value)
+        else:
+            destination[key] = value
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_logreport(report):
+    config = _controller_config
+    if config is None or hasattr(config, "workerinput"):
+        return
+    # pytest-rerunfailures numbers each attempt; a test that took more than
+    # one says so in the JUnit report (before junitxml reads the teardown)
+    # and in the meta, so a pass on a retry is not a silent pass.
+    retries = getattr(report, "rerun", 0)
+    if retries and report.when == "teardown":
+        report.user_properties.append(("reruns", retries))
+        config._reruns[report.nodeid] = retries
+    rows = getattr(report, "npu_perf_rows", ())
+    if rows:
+        rows_by_name = {row["name"]: row for row in config._perf_rows}
+        rows_by_name.update((row["name"], row) for row in rows)
+        config._perf_rows = list(rows_by_name.values())
+    _merge_dict(config._perf_meta, getattr(report, "npu_perf_meta", {}))
+    config._error_report.update(getattr(report, "npu_error_report", {}))
 
 
 def _running_on_hrx() -> bool:
@@ -104,8 +162,19 @@ def pytest_addoption(parser):
         metavar="DIR",
         default=None,
         help="also measure every case with its kernels from DIR (a checkout root, "
-        "as MLIR_AIE_KERNEL_SOURCES) and compare the raw output words; the pair "
-        "goes to --perf-meta and the terminal summary, the rows stay this tree's",
+        "as MLIR_AIE_KERNEL_SOURCES) and compare the raw output words, the "
+        "check() cases untimed; the pair "
+        "goes to --perf-meta and the terminal summary, the rows stay this tree's; "
+        "a baseline that fails this tree's contract is reported, not failed",
+    )
+    parser.addoption(
+        "--report-error",
+        metavar="PATH",
+        default=None,
+        help="write each kernel test's error against its contract's reference "
+        "run on float64 inputs (ulps, not correctly rounded, max abs/rel; each "
+        "entry names the precision the reference reached), passing or not, to "
+        "PATH as JSON, and summarize it after the run",
     )
 
 
@@ -135,24 +204,72 @@ def record_perf(request):
     return record
 
 
+@pytest.fixture
+def report_error(request):
+    """Record one run's ``cases.error_report`` entries, or None without the option.
+
+    Keyed by ``<case>/<data>/s<seed>``; ``passed`` is the contract's verdict.
+    """
+    config = request.config
+    if not config.getoption("--report-error"):
+        return None
+
+    def record(key: str, entries: list[dict], passed: bool):
+        config._error_report[key] = {"passed": passed, "outputs": entries}
+
+    return record
+
+
 def _checked_cases(path):
-    """Read the extensive sweep, excluding a case if any input or seed failed."""
+    """Exclude failed sweep cases and factories with failed dedicated checks.
+
+    An unrecognized failure or a failed shared-setup check rejects the whole
+    timing run: unrelated kernels cannot establish that the setup is sound.
+    """
     tests = list(ET.parse(path).iter("testcase"))
     if not tests:
         raise ValueError("correctness report contains no tests")
-    checked, rejected, failed = set(), set(), []
+    checked, rejected, rejected_factories, failed = set(), set(), set(), []
     for test in tests:
         name = test.get("name", "")
         match = re.fullmatch(r"test_kernel_extensive\[(.+)/[^/]+/s\d+\]", name)
         bad = test.find("failure") is not None or test.find("error") is not None
         if bad:
-            if not match:
-                raise ValueError(f"unmapped correctness failure: {name}")
-            rejected.add(match[1])
+            if match:
+                rejected.add(match[1])
+            else:
+                properties = test.findall("properties/property")
+                factories = {
+                    prop.get("value")
+                    for prop in properties
+                    if prop.get("name") == "kernel_check" and prop.get("value")
+                }
+                if any(
+                    prop.get("name") == "kernel_check_invalidates_timing"
+                    and prop.get("value") == "true"
+                    for prop in properties
+                ):
+                    raise ValueError(f"shared setup correctness failure: {name}")
+                if not factories:
+                    raise ValueError(f"unmapped correctness failure: {name}")
+                rejected_factories.update(factories)
             failed.append(f"{test.get('classname', '')}::{name}")
         elif match and test.find("skipped") is None:
             checked.add(match[1])
-    return checked - rejected, failed
+    return {
+        case
+        for case in checked - rejected
+        if case.split("/", 1)[0] not in rejected_factories
+    }, failed
+
+
+def _reason(report) -> str:
+    """The first line of a failed test's error, short enough for a table."""
+    longrepr = getattr(report, "longrepr", None)
+    crash = getattr(longrepr, "reprcrash", None)
+    text = getattr(crash, "message", None) or str(longrepr or "")
+    line = text.strip().splitlines()[0] if text.strip() else ""
+    return line[:200]
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -164,13 +281,18 @@ def pytest_sessionfinish(session, exitstatus):
     kernel's series shows a gap for this run. What a partial file
     cannot survive is a bad device: if preflight (power mode) or the
     measurement sanity check failed, no number from the run is trustworthy
-    and nothing is written. Meta is written either way and lists the failed
-    tests, so a missing series or an empty run is explained.
+    and nothing is written; a sanity check that was selected must pass. A
+    ``-k`` that deselects it leaves ``measurement_sane`` null in the meta and
+    still writes the rows. Meta is written either way and lists the failed
+    tests, so a missing series or an empty run is explained. The
+    ``--report-error`` JSON is written whatever happened.
     """
     import json
     from pathlib import Path
 
     config = session.config
+    if hasattr(config, "workerinput"):
+        return
     rows = getattr(config, "_perf_rows", [])
     meta = getattr(config, "_perf_meta", {})
     reporter = config.pluginmanager.get_plugin("terminalreporter")
@@ -185,32 +307,102 @@ def pytest_sessionfinish(session, exitstatus):
             meta["correctness_error"] = str(exc)
             rows = []
 
+    sanity_selected = any(i.name == "test_measurement_is_sane" for i in session.items)
+    meta.setdefault("measurement_sane", None)
     if meta_path := config.getoption("--perf-meta"):
         meta["exitstatus"] = int(exitstatus)
         meta["n_rows"] = len(rows)
         meta["failed"] = failed
+        # Why each timing-run test failed, for the pull request report.
+        meta["reasons"] = {
+            r.nodeid: _reason(r) for k in ("failed", "error") for r in stats.get(k, [])
+        }
+        # Tests that took more than one attempt: how many retries each.
+        meta["reruns"] = dict(sorted(getattr(config, "_reruns", {}).items()))
+        # How long each timed case ran in a row before its last check.
+        warmup, iters = config.getoption("--warmup"), config.getoption("--iters")
+        if isinstance(warmup, int) and isinstance(iters, int):
+            meta["runs_per_case"] = 2 + warmup + iters
         Path(meta_path).write_text(json.dumps(meta, indent=1))
 
-    npu_ok = "preflight" in meta and meta.get("measurement_sane") is True
+    sane = meta["measurement_sane"]
+    npu_ok = "preflight" in meta and (
+        sane is True or (sane is None and not sanity_selected)
+    )
     completed = exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED)
     if out := config.getoption("--perf-out"):
         if npu_ok and completed and rows:
             Path(out).write_text(json.dumps(rows, indent=1))
+    if out := config.getoption("--report-error"):
+        Path(out).write_text(json.dumps(config._error_report, indent=1))
+
+
+def _accuracy_line(entry: dict) -> str:
+    return (
+        f"{entry['dtype']} vs {entry['reference']}: "
+        f"{entry['not_correctly_rounded']}/{entry['n']} not correctly rounded, "
+        f"max {entry['max_ulp']} ulp ({entry['max_ulp_error']:.3g} exact), "
+        f"mean {entry['mean_ulp']:.3g}"
+    )
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
-    """Print the ``--baseline-sources`` comparison, one line per case."""
+    """Print the ``--report-error`` stats and the ``--baseline-sources`` comparison.
+
+    Each baseline arm shows its min..max over n calls (cycles) or iterations
+    (npu_us), so "the candidate's max is below the base's min" reads off one
+    line, and its error against the reference (``cases.error_report``)
+    below the words.
+    """
+    tr = terminalreporter
+    if errors := getattr(config, "_error_report", None):
+        tr.section(f"error vs reference -> {config.getoption('--report-error')}")
+        for key, run in errors.items():
+            verdict = "" if run["passed"] else "  [FAILED]"
+            if not run["outputs"]:
+                tr.write_line(f"{key}  no floating output{verdict}")
+            for entry in run["outputs"]:
+                tr.write_line(
+                    f"{key}[{entry['output']}]  {_accuracy_line(entry)}{verdict}"
+                )
     baseline = getattr(config, "_perf_meta", {}).get("baseline")
     if not baseline:
         return
-    tr = terminalreporter
+
+    def span(r):
+        return f"{r['min']}..{r['max']} n={r['n']}" if r else "-"
+
     tr.section(f"baseline {baseline['sources']} -> this tree")
-    tr.write_line(f"{'case':<48} {'cycles':>17} {'npu_us min':>19}  words")
+    tr.write_line(f"this tree's kernels: {baseline['current_sources']}")
+    if baseline["warning"]:
+        tr.write_line(f"warning: {baseline['warning']}", yellow=True, bold=True)
     for name, c in baseline["cases"].items():
-        cycles = "{} -> {}".format(*c["cycles"])
-        npu = "{} -> {}".format(*c["npu_us_min"])
         words = "same" if not c["differing_words"] else f"{c['differing_words']} differ"
-        tr.write_line(f"{name:<48} {cycles:>17} {npu:>19}  {words}")
+        tr.write_line(f"{name}  words {words}")
+        if c.get("current_failed"):
+            tr.write_line(
+                f"  this tree fails its contract: {c['current_failed']}", red=True
+            )
+        if c["baseline_failed"]:
+            tr.write_line(
+                f"  baseline fails this tree's contract: {c['baseline_failed']}",
+                yellow=True,
+            )
+        if stack := c.get("baseline_stack"):
+            tr.write_line(
+                f"  baseline built with a {stack[1]} B stack: it needs more than "
+                f"the {stack[0]} B this tree's contract gives",
+                yellow=True,
+            )
+        base, cur = c.get("accuracy", ([], []))
+        for b, a in zip(base, cur):
+            tr.write_line(f"  error[{b['output']}] {_accuracy_line(b)}")
+            tr.write_line(f"  {'':>8} -> {_accuracy_line(a)}")
+        for metric in ("cycles", "npu_us"):
+            if not any(c[f"{metric}_range"]):
+                continue
+            base, cur = c[f"{metric}_range"]
+            tr.write_line(f"  {metric:<7} {span(base):>26} -> {span(cur)}")
 
 
 def _device_generation() -> str | None:
@@ -269,6 +461,10 @@ def pytest_collection_modifyitems(config, items):
     _shard(config, items)
     generation = _device_generation()
     for item in items:
+        for check in item.iter_markers("kernel_check"):
+            item.user_properties.extend(("kernel_check", name) for name in check.args)
+            if check.kwargs.get("invalidates_timing"):
+                item.user_properties.append(("kernel_check_invalidates_timing", "true"))
         marker = item.get_closest_marker("supported_devices")
         if marker and generation and generation not in marker.args:
             item.add_marker(

@@ -347,6 +347,29 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
   }
 }
 
+// V's rows from row on are keys past S_kv, which do not exist: their weights
+// in P are 0, but the product still reads the rows, whatever the buffer held.
+// Emulated through bfp16 it shares one exponent over eight rows of the
+// reduction, so a stale row changes the valid rows beside it, and 0 * NaN is
+// NaN. V is blocked as matmul_bf16_bf16_rowmaj reads it: one vector is an 8x8
+// tile, row-major, and a band of DIM_N / 8 tiles is eight rows.
+static void zero_rows_from(bfloat16 *V, int32_t row) {
+  constexpr int32_t band = DIM_N / 8;
+  const auto zeros = aie::zeros<bfloat16, VECTOR_LENGTH>();
+  bfloat16 *__restrict p = V + (row / 8) * band * VECTOR_LENGTH;
+  if (row % 8) {
+    const auto stale =
+        aie::ge(aie::load_v<VECTOR_LENGTH>(sm_lane_idx),
+                aie::broadcast<int16_t, VECTOR_LENGTH>((row % 8) * 8));
+    for (int32_t j = 0; j < band; j++, p += VECTOR_LENGTH) {
+      aie::store_v(p, aie::select(aie::load_v<VECTOR_LENGTH>(p), zeros, stale));
+    }
+  }
+  for (; p < V + DIM_K * DIM_N; p += VECTOR_LENGTH) {
+    aie::store_v(p, zeros);
+  }
+}
+
 // The online state is four B_q-long regions, so a vector walking one is at
 // most B_q wide: the widest of 64, 32 and 16 lanes that divides B_q.
 template <typename F>
@@ -401,9 +424,14 @@ static inline void init_state_w(bfloat16 *scale_buffer, int32_t size) {
 
 template <int W>
 static inline void invert_sums_w(bfloat16 *scale_buffer, int32_t B_q) {
+  // A row past S_q attended over nothing: its sum is 0 and its O row is 0,
+  // and 0 * (1 / 0) would make it NaN. It is scaled by 0 instead. Every other
+  // row attends at least its diagonal, so its sum is positive.
+  const auto zeros = aie::zeros<bfloat16, W>();
   for (int32_t i = 0; i < B_q; i += W) {
     aie::vector<bfloat16, W> l_vec = aie::load_v<W>(scale_buffer + 2 * B_q + i);
-    l_vec = aie::inv(l_vec);
+    aie::mask<W> empty = aie::eq(l_vec, zeros);
+    l_vec = aie::select(aie::inv(l_vec), zeros, empty);
     aie::store_v(scale_buffer + 2 * B_q + i, l_vec);
   }
 }
@@ -440,7 +468,8 @@ void matmul_bf16_bf16_wrapper_scalar(bfloat16 *a_in, bfloat16 *b_in,
 }
 
 void matmul_PV(bfloat16 *Q, bfloat16 *K, bfloat16 *out, bfloat16 *scale_buffer,
-               const int32_t B_q, int32_t first_iter, int32_t *idx_buffer) {
+               const int32_t B_q, int32_t first_iter, int32_t *idx_buffer,
+               int32_t S_kv_eff) {
   event0();
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
@@ -450,6 +479,11 @@ void matmul_PV(bfloat16 *Q, bfloat16 *K, bfloat16 *out, bfloat16 *scale_buffer,
     ::aie::set_rounding(saved_rounding);
     event1();
     return;
+  }
+
+  int32_t valid_kv_rows = S_kv_eff - idx_buffer[0] * DIM_K;
+  if (valid_kv_rows < DIM_K) {
+    zero_rows_from(K, valid_kv_rows < 0 ? 0 : valid_kv_rows);
   }
 
   // 64 emul: O dims = [(8, 512), (8, 8), (8, 64), (8, 1)]

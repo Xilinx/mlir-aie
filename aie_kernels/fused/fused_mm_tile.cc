@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // One call runs the whole tile, so it is timed as one interval.
+// MM_FUSED_STEP_MARKERS times each step instead, for a caller that calls the
+// entry points itself.
+#ifndef MM_FUSED_STEP_MARKERS
 #define MM_FUSED_WHOLE_TILE_MARKERS
+#endif
 #include "mm_fused.h"
 
 #if !ACTIVATIONS_NATIVE_TANH
@@ -26,7 +30,9 @@ constexpr int b_chunk_bytes =
 extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c,
                               int32_t mode, int32_t clamp_min_bits,
                               int32_t clamp_max_bits) {
+#ifdef MM_FUSED_WHOLE_TILE_MARKERS
   event0();
+#endif
   alignas(aie::vector_decl_align) float acc[MM_FUSED_TILE_M * MM_FUSED_TILE_N];
   mm_fused_acc_init(acc);
   for (int k = 0; k < MM_FUSED_TILE_K / MM_FUSED_CT_K; ++k)
@@ -36,12 +42,14 @@ extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c,
           reinterpret_cast<mm_fused_b_elem_t *>(reinterpret_cast<uint8_t *>(b) +
                                                 k * b_chunk_bytes),
           acc, band);
-  for (int outer = 0;
-       outer < MM_FUSED_TILE_M * MM_FUSED_TILE_N / (2 * MM_FUSED_OUT_CHUNK);
+  for (int outer = 0; outer < MM_FUSED_TILE_M * MM_FUSED_TILE_N /
+                                  (MM_FUSED_C_DEPTH * MM_FUSED_OUT_CHUNK);
        ++outer)
-    for (int half = 0; half < 2; ++half)
-      mm_fused_epilogue_chunk(c + (outer * 2 + half) * MM_FUSED_OUT_CHUNK, acc,
-                              outer, half, mode, clamp_min_bits,
-                              clamp_max_bits);
+    for (int half = 0; half < MM_FUSED_C_DEPTH; ++half)
+      mm_fused_epilogue_chunk(
+          c + (outer * MM_FUSED_C_DEPTH + half) * MM_FUSED_OUT_CHUNK, acc,
+          outer, half, mode, clamp_min_bits, clamp_max_bits);
+#ifdef MM_FUSED_WHOLE_TILE_MARKERS
   event1();
+#endif
 }

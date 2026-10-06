@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/IR/AIECoreMemory.h"
 #include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
@@ -17,6 +18,7 @@
 
 #include <limits>
 #include <optional>
+#include <set>
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEASSIGNBUFFERADDRESSES
@@ -40,25 +42,6 @@ static std::optional<int64_t> getMeasuredStackSize(TileOp tile) {
     return static_cast<int64_t>(*measured);
   }
   return std::nullopt;
-}
-
-// A memtile is reached by DMA rather than by core vector load and store, so its
-// bus width also covers the vector-alignment requirement.
-struct TileMemoryLimits {
-  int64_t maxDataMemorySize;
-  uint32_t tileAlignBitWidth;
-  uint32_t maxVecAlignBits;
-};
-static TileMemoryLimits tileMemoryLimits(TileOp tile,
-                                         const AIETargetModel &targetModel) {
-  if (tile.isMemTile()) {
-    return {targetModel.getMemTileSize(),
-            targetModel.getMemTileLoadStoreBusWidth(),
-            targetModel.getMemTileLoadStoreBusWidth()};
-  }
-  return {targetModel.getLocalMemorySize(),
-          targetModel.getComputeTileLoadStoreBusWidth(),
-          targetModel.getComputeTileMaxVectorAlignBits()};
 }
 
 // Every buffer must already have an address.
@@ -320,23 +303,6 @@ static int64_t getMeasuredDataAlignBytes(BufferOp buffer) {
   return 1;
 }
 
-// Return the alignment (in bits) `buffer` must satisfy.
-//
-// Bus width alone is insufficient: from AIE2P on, a full-width vector access
-// needs 512-bit alignment while the bus is 256 bits wide. An externally
-// compiled kernel may perform such an access, so a buffer large enough to hold
-// a full-width vector gets the stricter alignment. A smaller buffer keeps the
-// bus width and costs no padding.
-static uint32_t getRequiredAlignBits(BufferOp buffer, uint32_t busAlignBits,
-                                     uint32_t maxVecAlignBits) {
-  if (maxVecAlignBits <= busAlignBits) {
-    return busAlignBits;
-  }
-  int64_t sizeBits = static_cast<int64_t>(buffer.getAllocationSize()) * 8;
-  return sizeBits >= static_cast<int64_t>(maxVecAlignBits) ? maxVecAlignBits
-                                                           : busAlignBits;
-}
-
 // Check alignment (when `aligned` is set) and that no two buffers overlap. The
 // input vector must be sorted by ascending address. Returns false and emits an
 // error on the first offending buffer; true otherwise.
@@ -354,7 +320,8 @@ static bool checkAndPrintBufferOverlap(ArrayRef<BufferOp> sortedBuffers,
     uint32_t reqAlignBits =
         isBufferPreAllocated(cur)
             ? tileAlignBitWidth
-            : getRequiredAlignBits(cur, tileAlignBitWidth, maxVecAlignBits);
+            : requiredBufferAlignBits(tileAlignBitWidth, maxVecAlignBits,
+                                      cur.getAllocationSize());
     uint32_t alignByteWidth = reqAlignBits / 8;
     if (cur.getAligned() && alignByteWidth != 0 &&
         curAddr % alignByteWidth != 0) {
@@ -632,9 +599,11 @@ static int64_t getBufferAlignBytes(BufferOp buffer, uint32_t tileAlignBitWidth,
   if (!buffer.getAligned()) {
     return measuredAlign;
   }
-  return std::max<int64_t>(
-      getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBits) / 8,
-      measuredAlign);
+  return std::max<int64_t>(requiredBufferAlignBits(tileAlignBitWidth,
+                                                   maxVecAlignBits,
+                                                   buffer.getAllocationSize()) /
+                               8,
+                           measuredAlign);
 }
 
 // Index of the bank owning `addr`, or -1 when it falls outside every bank.
@@ -668,6 +637,9 @@ struct BankAwareContext {
   // Whether this tile has a core, and so compiled sections that need a
   // contiguous region. A memtile has none.
   bool hasCore;
+  // Bytes at the start of the tile an initialized buffer must not cover; see
+  // allocateTile. Other buffers may still use them.
+  int64_t initGuardBytes = 0;
 };
 
 // Places a buffer carrying an explicit `address`, and checks that the space is
@@ -859,9 +831,17 @@ struct Placement {
 static SmallVector<Placement>
 rankedPlacements(BufferOp buffer, const BankAwareContext &ctx,
                  int startBankIndex, const RequiredBanks &requiredBanks,
-                 const MemoryOccupancy &occupancy, int64_t contiguityCap) {
+                 const MemoryOccupancy &tileOccupancy, int64_t contiguityCap) {
   assert(startBankIndex < ctx.numBanks &&
          "Unexpected input value for startBankIndex");
+  // An initialized buffer sees the guarded bytes as taken, so none of its
+  // candidates cover them. Every other buffer may still be placed there.
+  std::optional<MemoryOccupancy> guarded;
+  if (ctx.initGuardBytes > 0 && buffer.getInitialValue().has_value()) {
+    guarded = tileOccupancy;
+    guarded->markOccupied(0, std::min(ctx.initGuardBytes, guarded->size()));
+  }
+  const MemoryOccupancy &occupancy = guarded ? *guarded : tileOccupancy;
   int64_t size = buffer.getAllocationSize();
   int64_t alignBytes =
       getBufferAlignBytes(buffer, ctx.tileAlignBitWidth, ctx.maxVecAlignBits);
@@ -1018,13 +998,6 @@ struct PlacementStats {
 };
 } // namespace
 
-// How many placements the search may try per tile before giving up and
-// reporting the deepest failure it reached. Packing around fixed obstacles is
-// NP-hard, so the tree has no useful worst-case bound; this keeps a design the
-// search cannot solve to bounded compile time instead of exponential. A node
-// count rather than a time limit, so a build stays reproducible.
-static constexpr int64_t kPlacementBudget = 20000;
-
 // Depth-first placement over `order`, trying each buffer's addresses in rank
 // order and undoing a choice that leaves a later buffer nowhere to go.
 //
@@ -1040,7 +1013,13 @@ struct PlacementSearch {
   MemoryOccupancy &occupancy;
   SmallVectorImpl<BufferOp> &placed;
   PlacementStats &stats;
-  int64_t budget = kPlacementBudget;
+  // How many placements the search may still try on this tile before giving
+  // up and reporting the deepest failure it reached; the pass's
+  // placement-budget option. Packing around fixed obstacles is NP-hard, so the
+  // tree has no useful worst-case bound; this keeps a design the search cannot
+  // solve to bounded compile time instead of exponential. A node count rather
+  // than a time limit, so a build stays reproducible.
+  int64_t budget;
   // Set when the node budget ran out with candidates still untried, so the
   // caller can say "gave up" rather than "no such layout exists".
   bool exhausted = false;
@@ -1055,9 +1034,23 @@ struct PlacementSearch {
   BufferOp deepest = nullptr;
   SmallVector<std::pair<BufferOp, Placement>> deepestLayout = {};
 
+  // Subproblems already searched in full without a layout, keyed by the next
+  // buffer's index and the free runs left. The candidates a buffer gets depend
+  // on nothing else -- the cursor only orders them -- so one of these can never
+  // succeed. Same-sized buffers reach the same free runs in every order they
+  // are placed in; without this the search retries each order.
+  std::set<SmallVector<int64_t>> failedStates = {};
+
   bool run(size_t index, int startBankIndex, int64_t remaining) {
     if (index == order.size()) {
       return true;
+    }
+    SmallVector<int64_t> state = {static_cast<int64_t>(index)};
+    for (MemoryRun gap : occupancy.gapsIn(0, occupancy.size())) {
+      state.append({gap.start, gap.size});
+    }
+    if (failedStates.count(state)) {
+      return false;
     }
     BufferOp buffer = order[index];
     int64_t size = buffer.getAllocationSize();
@@ -1070,6 +1063,11 @@ struct PlacementSearch {
     }
     for (const Placement &candidate : candidates) {
       if (budget <= 0) {
+        // Out of budget before this buffer had an address: it is where the
+        // search stopped, so it is the one to report.
+        if (!deepest || index > deepestIndex) {
+          recordDeepest(index, buffer);
+        }
         exhausted = true;
         break;
       }
@@ -1093,6 +1091,9 @@ struct PlacementSearch {
       } else {
         buffer.setMemBank(required->second.front());
       }
+    }
+    if (!exhausted) {
+      failedStates.insert(std::move(state));
     }
     return false;
   }
@@ -1124,18 +1125,17 @@ private:
 // Places every buffer in `buffersToAlloc`. Returns the buffer that could not be
 // placed, or nullptr when they all were; `placed` collects what was assigned so
 // a failed attempt can be rolled back.
-static BufferOp placeFreeBuffers(ArrayRef<BufferOp> buffersToAlloc,
-                                 const BankAwareContext &ctx,
-                                 const RequiredBanks &requiredBanks,
-                                 MemoryOccupancy &occupancy,
-                                 SmallVectorImpl<BufferOp> &placed,
-                                 bool &exhausted, PlacementStats &stats) {
+static BufferOp
+placeFreeBuffers(ArrayRef<BufferOp> buffersToAlloc, const BankAwareContext &ctx,
+                 const RequiredBanks &requiredBanks, MemoryOccupancy &occupancy,
+                 SmallVectorImpl<BufferOp> &placed, int64_t budget,
+                 bool &exhausted, PlacementStats &stats) {
   int64_t remaining = 0;
   for (auto buffer : buffersToAlloc) {
     remaining += buffer.getAllocationSize();
   }
-  PlacementSearch search{buffersToAlloc, ctx,    requiredBanks,
-                         occupancy,      placed, stats};
+  PlacementSearch search{buffersToAlloc, ctx,   requiredBanks, occupancy,
+                         placed,         stats, budget};
   int64_t before = stats.backtracks;
   bool solved = search.run(/*index=*/0, /*startBankIndex=*/0, remaining);
   if (stats.backtracks > before) {
@@ -1224,7 +1224,8 @@ placementOrder(ArrayRef<BufferOp> buffersToAlloc,
   return order;
 }
 
-static LogicalResult allocateTile(TileOp tile, PlacementStats &stats) {
+static LogicalResult allocateTile(TileOp tile, int64_t budget,
+                                  PlacementStats &stats) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device) {
     return failure();
@@ -1234,7 +1235,7 @@ static LogicalResult allocateTile(TileOp tile, PlacementStats &stats) {
 
   const auto &targetModel = getTargetModel(tile);
   auto [maxDataMemorySize, tileAlignBitWidth, maxVecAlignBits] =
-      tileMemoryLimits(tile, targetModel);
+      tileMemoryLimits(targetModel, tile.getTileType());
 
   int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
   int64_t bankSize = maxDataMemorySize / numBanks;
@@ -1305,6 +1306,23 @@ static LogicalResult allocateTile(TileOp tile, PlacementStats &stats) {
     return failure();
   }
 
+  // On npu2, the first word of the column-0 memtile reads back as 0x00CD0CD0
+  // on every dispatch after the first, though nothing in the design writes it.
+  // A buffer that DMA refills each dispatch is unaffected, but an initialized
+  // one is loaded only once and keeps the bad word, so keep initialized buffers
+  // off that word. Other buffers may still take it, and a buffer the user
+  // pinned there keeps its address.
+  //
+  // TODO: Investigate. This is a low-confidence workaround for a cause nobody
+  // has found: the word may be reserved by the firmware or driver, or clobbered
+  // by something else. The value predates initialized buffers dropping their
+  // locks (#3608 saw it first), so that change is not the cause.
+  if (tile.isMemTile() && tile.getCol() == 0 &&
+      targetModel.hasProperty(AIETargetModel::IsNPU) &&
+      targetModel.getTargetArch() == AIEArch::AIE2p) {
+    ctx.initGuardBytes = tileAlignBitWidth / 8;
+  }
+
   // Buffers this pass placed (not the pre-allocated ones), for rollback and
   // diagnostics on failure.
   SmallVector<BufferOp> allocatedBuffers;
@@ -1318,12 +1336,13 @@ static LogicalResult allocateTile(TileOp tile, PlacementStats &stats) {
   bool searchExhausted = false;
   BufferOp failedBuffer =
       placeFreeBuffers(order, ctx, requiredBanks, occupancy, allocatedBuffers,
-                       searchExhausted, stats);
+                       budget, searchExhausted, stats);
 
   if (BufferOp failed = failedBuffer) {
     // A buffer pinned to a bank that cannot hold it is a user constraint, not
-    // an out-of-room tile: give it its own error and no memory map.
-    if (requiredBanks.count(failed)) {
+    // an out-of-room tile: give it its own error and no memory map. Unless the
+    // search merely ran out of budget, in which case the bank may have room.
+    if (!searchExhausted && requiredBanks.count(failed)) {
       auto banks = requiredBanks.lookup(failed);
       if (banks.size() > 1) {
         failed.emitOpError("")
@@ -1357,9 +1376,10 @@ static LogicalResult allocateTile(TileOp tile, PlacementStats &stats) {
                               << failed.getAllocationSize()
                               << " bytes and this tile has no room left for it";
     if (searchExhausted) {
-      diag.attachNote() << "the search hit its " << kPlacementBudget
+      diag.attachNote() << "the search hit its " << budget
                         << "-placement budget with arrangements still untried, "
-                           "so a layout may exist that it did not reach";
+                           "so a layout may exist that it did not reach (raise "
+                           "it with placement-budget)";
     }
     // Print before rollback, while the addresses are still set.
     printMemMap(tile, allocatedBuffers, preAllocatedBuffers, ctx);
@@ -1401,6 +1421,11 @@ struct AIEAssignBufferAddressesPass
     : xilinx::AIE::impl::AIEAssignBufferAddressesBase<
           AIEAssignBufferAddressesPass> {
 
+  AIEAssignBufferAddressesPass() = default;
+
+  AIEAssignBufferAddressesPass(const AIEAssignBufferAddressesOptions &options)
+      : AIEAssignBufferAddressesBase(options) {}
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
     registry.insert<AIEDialect>();
@@ -1408,6 +1433,11 @@ struct AIEAssignBufferAddressesPass
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
+    int64_t budget = clPlacementBudget;
+    if (budget <= 0) {
+      device.emitError("placement-budget must be positive, got ") << budget;
+      return signalPassFailure();
+    }
     if (failed(applySignatureBankConstraints(device))) {
       return signalPassFailure();
     }
@@ -1422,7 +1452,7 @@ struct AIEAssignBufferAddressesPass
     // why it could not.
     PlacementStats stats;
     for (auto tile : device.getOps<TileOp>()) {
-      if (failed(allocateTile(tile, stats))) {
+      if (failed(allocateTile(tile, budget, stats))) {
         return signalPassFailure();
       }
     }
@@ -1471,4 +1501,10 @@ std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEPrepareBuffersPass() {
 std::unique_ptr<OperationPass<DeviceOp>>
 AIE::createAIEAssignBufferAddressesPass() {
   return std::make_unique<AIEAssignBufferAddressesPass>();
+}
+
+std::unique_ptr<OperationPass<DeviceOp>>
+AIE::createAIEAssignBufferAddressesPass(
+    const AIEAssignBufferAddressesOptions &options) {
+  return std::make_unique<AIEAssignBufferAddressesPass>(options);
 }

@@ -20,6 +20,7 @@ channel. See harness.py for the run/verify sweep and the pad cases.
 
 import aie.iron as iron
 import numpy as np
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime
 from aie.iron.dataflow import ObjectFifoLink
 from aie.iron.device import AnyShimTile
@@ -35,8 +36,7 @@ def _forward(elem_dtype):
         of_in = ObjectFifo(small, name="in")
         of_out = of_in.cons().forward(
             obj_type=big,
-            dims_to_stream=[(REAL, 1)],
-            pad_dimensions=[(PAD_BEFORE, PAD_AFTER)],
+            to_stream=TensorAccessPattern.full((REAL,)).pad([(PAD_BEFORE, PAD_AFTER)]),
             pad_value=pad_value,
             name="out",
         )
@@ -55,8 +55,9 @@ def _split(elem_dtype):
         (of_out,) = of_in.cons().split(
             [0],
             obj_types=[big],
-            dims_to_stream=[[(REAL, 1)]],
-            pad_dimensions=[[(PAD_BEFORE, PAD_AFTER)]],
+            to_stream=[
+                TensorAccessPattern.full((REAL,)).pad([(PAD_BEFORE, PAD_AFTER)])
+            ],
             pad_value=[pad_value],
             names=["out"],
         )
@@ -77,8 +78,7 @@ def _link(elem_dtype):
         of_out = ObjectFifo(
             big,
             name="out",
-            dims_to_stream=[(REAL, 1)],
-            pad_dimensions=[(PAD_BEFORE, PAD_AFTER)],
+            to_stream=TensorAccessPattern.full((REAL,)).pad([(PAD_BEFORE, PAD_AFTER)]),
             pad_value=pad_value,
         )
         ObjectFifoLink(of_in.cons(), of_out.prod())
