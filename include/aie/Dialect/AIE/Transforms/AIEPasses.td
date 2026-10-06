@@ -144,10 +144,10 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
 
   let options = [Option<"clPlacementBudget", "placement-budget", "int64_t",
                         /*default=*/"100000",
-                        "Placements the search may try per tile before it "
-                        "gives up. A node count rather than a time limit, so "
-                        "a build stays reproducible; raise it for a tile that "
-                        "reports the budget was hit.">];
+                        "Placements each search, ranked then exhaustive, may "
+                        "try per tile before it gives up. A node count rather "
+                        "than a time limit, so a build stays reproducible; "
+                        "raise it for a tile that reports hitting it.">];
 
   // Placement is a bounded search. A change that degrades it without breaking
   // it outright moves these rather than failing anything, so they are worth
