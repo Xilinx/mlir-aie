@@ -51,9 +51,8 @@ std::optional<DmaChannelProgram> makeProgram(Operation *op, DeviceOp device) {
     std::optional<TileID> tile = parentTile(op);
     if (!tile)
       return std::nullopt;
-    DmaChannelProgram p{op,
-                        {*tile, start.getChannelDir(),
-                         static_cast<int>(start.getChannelIndex())}};
+    DmaChannelProgram p{
+        op, {*tile, start.getChannelDir(), start.getChannelIndex()}};
     p.passes += start.getRepeatCount();
     llvm::SmallPtrSet<Block *, 8> seen;
     for (Block *b = start.getDest(); b;) {
@@ -72,9 +71,8 @@ std::optional<DmaChannelProgram> makeProgram(Operation *op, DeviceOp device) {
     std::optional<TileID> tile = parentTile(op);
     if (!tile)
       return std::nullopt;
-    DmaChannelProgram p{
-        op,
-        {*tile, dma.getChannelDir(), static_cast<int>(dma.getChannelIndex())}};
+    DmaChannelProgram p{op,
+                        {*tile, dma.getChannelDir(), dma.getChannelIndex()}};
     p.passes += dma.getRepeatCount();
     for (Region &r : dma.getBds())
       p.regions.push_back(&r);
@@ -273,7 +271,7 @@ public:
 
 private:
   struct Hop {
-    Operation *interconnect;
+    Interconnect interconnect;
     Port input;
   };
 
@@ -291,7 +289,7 @@ private:
     return ports;
   }
 
-  void traceFrom(StreamEndpoint src, Operation *interconnect, Port input) {
+  void traceFrom(StreamEndpoint src, Interconnect interconnect, Port input) {
     std::optional<std::set<int>> ids;
     // A tile sends from its MM2S channel on the port of the same number.
     if (src.port.bundle == WireBundle::DMA) {
@@ -309,10 +307,8 @@ private:
 
   // The switchbox input a master port of `from` drives, or the tile port it
   // leaves the fabric at.
-  std::variant<Hop, StreamEndpoint> follow(Operation *from, Port out) {
-    TileID here = isa<SwitchboxOp>(from)
-                      ? cast<SwitchboxOp>(from).getTileOp().getTileID()
-                      : cast<ShimMuxOp>(from).getTileOp().getTileID();
+  std::variant<Hop, StreamEndpoint> follow(Interconnect from, Port out) {
+    TileID here{from.colIndex(), from.rowIndex()};
     if (isa<ShimMuxOp>(from)) {
       if (out.bundle == WireBundle::North)
         if (auto sb = switchboxes.find(here); sb != switchboxes.end())
@@ -356,11 +352,8 @@ private:
     if (!onPath.insert(input).second)
       return;
     llvm::scope_exit leave([&] { onPath.erase(input); });
-    auto sb = dyn_cast<SwitchboxOp>(hop.interconnect);
-    Region &connections =
-        sb ? sb.getConnections()
-           : cast<ShimMuxOp>(hop.interconnect).getConnections();
-    Block &b = connections.front();
+    auto sb = dyn_cast<SwitchboxOp>(hop.interconnect.getOperation());
+    Block &b = hop.interconnect.getConnections().front();
 
     auto next = [&](Port out, std::optional<int> nextID,
                     std::optional<int> arbiter, bool keepsPktHeader = false) {
@@ -450,7 +443,7 @@ std::vector<RoutedStream> AIE::requestedStreams(DeviceOp device) {
           streams.push_back(
               {{*srcTile, src.port()},
                {*dstTile, dst.port()},
-               static_cast<int>(flow.IDInt()),
+               flow.IDInt(),
                keepsPktHeader(*dstTile, dst.port(),
                               keepAt.lookup({*dstTile, dst.port()})),
                {},
@@ -484,24 +477,14 @@ static SmallVector<Block *> chainBlocks(const DmaChannelProgram &p) {
   return sequence;
 }
 
-// The first block of the part of `sequence` a program runs over and over:
-// where a looping chain returns to, or the whole chain for a repeated one.
-static size_t cycleStart(const DmaChannelProgram &p) {
-  return p.loops ? p.loopStart : 0;
-}
-
 // Index into `sequence` of the block a program runs at `step`: the blocks
-// before the cycle once, then the cycle over and over.
+// before the cycle once, then the cycle over and over. A looping chain cycles
+// from where it returns to, a repeated one over the whole chain.
 static size_t blockAt(const DmaChannelProgram &p, size_t size, uint64_t step) {
-  size_t start = cycleStart(p);
+  size_t start = p.loops ? p.loopStart : 0;
   if (step < start)
     return step;
   return start + (step - start) % (size - start);
-}
-
-// Whether the stream carries packets with id `id`.
-static bool carriesID(const RoutedStream &s, int id) {
-  return !s.packetID || ((id ^ *s.packetID) & s.packetMask) == 0;
 }
 
 // The value `use` acquires or releases, if it is a constant.
@@ -523,25 +506,18 @@ static std::optional<uint64_t> lockTokens(UseLockOp use) {
 
 constexpr int maxBDSteps = 1024;
 
-static bool inLoop(Operation *op) {
-  return op->getParentOfType<LoopLikeOpInterface>() != nullptr;
-}
-
 std::optional<uint64_t>
 StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
   if (stream.src.port.bundle != WireBundle::DMA)
     return std::nullopt;
   TileDMAChannel dma{stream.src.tile, DMAChannelDir::MM2S,
                      stream.src.port.channel};
-  auto carries = [&](std::optional<PacketInfoAttr> packet) {
-    return !packet || carriesID(stream, packet->getPktId());
-  };
   constexpr uint64_t pktHeaderBytes = 4;
   auto headerBytes = [&](std::optional<PacketInfoAttr> packet) -> uint64_t {
     return packet && stream.keepsPktHeader ? pktHeaderBytes : 0;
   };
   auto bytesOf = [&](DMABDOp bd) -> uint64_t {
-    if (!carries(bd.getPacket()))
+    if (!stream.carries(bd.getPacket()))
       return 0;
     return bd.getLenInBytes() + headerBytes(bd.getPacket());
   };
@@ -552,7 +528,7 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
       bool carried = false;
       uint64_t bytes = 0;
       forEachInProgram<DMABDOp>(p, [&](DMABDOp bd) {
-        if (!carries(bd.getPacket()))
+        if (!stream.carries(bd.getPacket()))
           return;
         carried = true;
         bytes += bytesOf(bd);
@@ -582,7 +558,7 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
           // forward the task to starts this does not count.
           if (!isa<AIEX::DMAStartTaskOp>(user))
             return std::nullopt;
-          if (inLoop(user))
+          if (user->getParentOfType<LoopLikeOpInterface>())
             return std::nullopt;
           runs += p.passes;
         }
@@ -598,10 +574,11 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
         packet = ShimDMAAllocationOp::getForSymbol(
                      device, memcpy.getMetadata().getRootReference())
                      .getPacket();
-      if (!carries(packet))
+      if (!stream.carries(packet))
         continue;
       auto type = dyn_cast<BaseMemRefType>(memcpy.getMemref().getType());
-      if (inLoop(memcpy) || !type || !type.getElementType().isIntOrFloat())
+      if (memcpy->getParentOfType<LoopLikeOpInterface>() || !type ||
+          !type.getElementType().isIntOrFloat())
         return std::nullopt;
       std::optional<SmallVector<int64_t>> sizes =
           getConstantIntValues(memcpy.getMixedSizes());
@@ -734,14 +711,10 @@ StreamVolumeAnalysis::maySendAfter(const RoutedStream &first,
       !isa<DMAStartOp, DMAOp>(it->second.front().op) || memcpys.count(dma))
     return std::nullopt;
   const DmaChannelProgram &p = it->second.front();
-  auto carries = [](DMABDOp bd, const RoutedStream &s) {
-    std::optional<PacketInfoAttr> packet = bd.getPacket();
-    return !packet || carriesID(s, packet->getPktId());
-  };
   bool sent = false, after = false;
   auto visit = [&](DMABDOp bd) {
-    after |= sent && carries(bd, then);
-    sent |= carries(bd, first);
+    after |= sent && then.carries(bd.getPacket());
+    sent |= first.carries(bd.getPacket());
   };
   if (p.loops) {
     if (!walkLoop(p, visit))
@@ -825,7 +798,7 @@ static std::optional<uint64_t> programCapacity(const DmaChannelProgram &p,
   // lock where it found it, or with more tokens, runs again the same way.
   std::optional<DenseMap<Operation *, int64_t>> cycleLocks;
   uint64_t cycleBytes = 0;
-  size_t start = cycleStart(p);
+  size_t start = p.loops ? p.loopStart : 0;
   for (uint64_t step = 0;; step++) {
     if (!p.loops && step >= p.passes * sequence.size())
       return bytes;
@@ -1028,10 +1001,6 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
         return SmallVector<TileDMAChannel>{};
       return std::nullopt;
     };
-    auto agentOf = [&](const TileDMAChannel &dma) {
-      return getOrCreate(Agent::channel(dma));
-    };
-
     llvm::SetVector<TileDMAChannel, SmallVector<TileDMAChannel>,
                     std::set<TileDMAChannel>>
         issuedKeys;
@@ -1044,7 +1013,7 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
     walkLoopsTwice(sequence.getBody(), [&](Operation *op) {
       if (std::optional<SmallVector<TileDMAChannel>> keys = issued(op)) {
         for (const TileDMAChannel &key : *keys) {
-          unsigned agent = agentOf(key);
+          unsigned agent = getOrCreate(Agent::channel(key));
           modeled.insert(agent);
           for (unsigned w : waited)
             if (w != agent)
@@ -1060,7 +1029,7 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
                      awaited(op)) {
         for (const TileDMAChannel &key :
              keys->empty() ? issuedKeys.getArrayRef() : ArrayRef(*keys)) {
-          waited.insert(agentOf(key));
+          waited.insert(getOrCreate(Agent::channel(key)));
           for (unsigned a = 0; a < numStreamAgents; a++)
             if (agents[a].kind == Agent::Kind::Controller &&
                 agents[a].dma.tile.col == key.tile.col)
@@ -1156,12 +1125,6 @@ SmallVector<unsigned> StreamWaitGraph::drainersOf(unsigned agent) const {
     if (e.kind != EdgeKind::Stream)
       drainers.push_back(e.to);
   return drainers;
-}
-
-bool StreamWaitGraph::reaches(ArrayRef<unsigned> from,
-                              ArrayRef<unsigned> targets,
-                              ArrayRef<unsigned> avoid) const {
-  return !waitChain(from, targets, avoid).empty();
 }
 
 SmallVector<unsigned>

@@ -85,6 +85,13 @@ struct RoutedStream {
   llvm::SmallVector<StreamHop, 8> hops{};
   /// The stream carries every id that agrees with `packetID` on these bits.
   int packetMask = ~0;
+
+  /// Whether what a BD sends with header `packet`, or with none, goes on this
+  /// stream.
+  bool carries(std::optional<PacketInfoAttr> packet) const {
+    return !packet || !packetID ||
+           ((packet->getPktId() ^ *packetID) & packetMask) == 0;
+  }
 };
 
 /// A cycle of waits packet streams can deadlock in, given their routes. A
@@ -238,11 +245,6 @@ public:
   /// locks it acquires and, if the host issues it, on what the host waits for
   /// first.
   llvm::SmallVector<unsigned> drainersOf(unsigned agent) const;
-
-  /// Whether any agent in `targets` is reachable from `from` without passing
-  /// through `avoid`.
-  bool reaches(llvm::ArrayRef<unsigned> from, llvm::ArrayRef<unsigned> targets,
-               llvm::ArrayRef<unsigned> avoid) const;
 
   /// A shortest chain of waits from an agent in `from` to one in `targets`
   /// that avoids `avoid`, both ends included; empty when there is none.
