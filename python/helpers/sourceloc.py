@@ -14,12 +14,12 @@ from types import FunctionType
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 # Unresolved, like co_filename: a dev build symlinks build/python/aie to source.
-_AIE_ROOT = Path(__file__).parent.parent
+AIE_ROOT = Path(__file__).parent.parent
 
 
 def is_internal_file(filename: str) -> bool:
     """Whether `filename` is part of the `aie` package rather than user code."""
-    return Path(filename).is_relative_to(_AIE_ROOT)
+    return Path(filename).is_relative_to(AIE_ROOT)
 
 
 class SourceSite:

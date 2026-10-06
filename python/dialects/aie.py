@@ -5,7 +5,6 @@ import inspect
 from typing import List, Tuple, Dict, Any, Union
 import contextlib
 import os
-from pathlib import Path
 from enum import Enum, IntEnum
 
 import numpy as np
@@ -56,6 +55,7 @@ from ..extras.util import (
     get_user_code_loc,
     region_adder,
 )
+from ..helpers.sourceloc import AIE_ROOT
 from ..helpers.taplib import TensorAccessPattern
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
@@ -84,9 +84,7 @@ from ..ir import (
 register_dialect(get_dialect_registry())
 assert _cext.globals._check_dialect_module_loaded("aie")
 # Lets ir.loc_tracebacks() skip this package; the exclusion is a path prefix.
-_cext.globals.register_traceback_file_exclusion(
-    os.path.join(Path(__file__).parent.parent, "")
-)
+_cext.globals.register_traceback_file_exclusion(f"{AIE_ROOT}{os.sep}")
 
 # The generated `use_lock` builder takes the lock value as an SSA i32 operand.
 # Wrap it so callers may still pass a plain Python int (materialized as an
