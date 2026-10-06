@@ -1,0 +1,71 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Publish CI health
+
+# Records CI health for the maintainer dashboard (utils/kernel_checks/ci_health.py,
+# the workflows in utils/kernel_checks/ci_workflows.json): the critical test
+# workflows' pass rates, flakiness, durations and slowest jobs over the last
+# two weeks; how long pull requests take to merge; and the scheduled
+# workflows' recent runs on main. Writes gh-pages:ci-health/status.json and
+# history.json (a point a day), and the dashboard page beside them; the page
+# reads the files, so no browser asks GitHub's API itself. Every six hours:
+# the figures cover two weeks, and a nightly that failed or a leg still
+# waiting for a runner shows the same morning. Never gates anything.
+
+on:
+  schedule:
+    - cron: '47 */6 * * *'        # 00:47, 06:47, 12:47, 18:47: off the hour, after the 06:00 and 06:30 nightlies start
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write   # the gh-pages branch
+      actions: read     # the workflows' runs and jobs
+      pull-requests: read  # how long pull requests took to merge
+    # The lock every gh-pages writer takes; a run queues behind the others
+    # rather than racing them on the branch.
+    concurrency:
+      group: gh-pages-publish
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Fetch publication branch
+        run: git fetch origin gh-pages:gh-pages --depth=1
+
+      # The published history is extended, a point a day.
+      - name: Read the workflows' runs and the pull requests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git show gh-pages:ci-health/history.json > "$RUNNER_TEMP/history.json" 2>/dev/null ||
+            echo "no published history yet"
+          python3 utils/kernel_checks/ci_health.py --out "$RUNNER_TEMP/ci-health" \
+            --history "$RUNNER_TEMP/history.json"
+
+      # The page is installed too, so the CI health tab is current whichever
+      # publisher ran last.
+      - name: Publish
+        run: |
+          cp utils/kernel_checks/index.html "$RUNNER_TEMP/index.html"
+          git switch -q gh-pages
+          mkdir -p ci-health dashboard
+          cp "$RUNNER_TEMP/ci-health/status.json" "$RUNNER_TEMP/ci-health/history.json" ci-health/
+          cp "$RUNNER_TEMP/index.html" dashboard/index.html
+          git add -A ci-health dashboard
+          git diff --cached --quiet || git -c user.name=ci-health \
+            -c user.email=github@users.noreply.github.com \
+            commit -q -m "Publish CI health for ${GITHUB_SHA:0:10}"
+          git checkout -q -
+
+      - name: Push
+        run: git push origin gh-pages:gh-pages

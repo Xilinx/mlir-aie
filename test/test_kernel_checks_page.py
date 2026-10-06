@@ -99,7 +99,10 @@ const el0 = {};
         # On stdin: the page outgrew the 128 KiB a single argument may hold,
         # and Windows' 32767-character command line.
         source = known + setup + script + data + checks
-        subprocess.run([node, "-"], input=source, encoding="utf-8", check=True)
+        env = {**os.environ, "WORKFLOWS": str(ROOT / ".github/workflows")}
+        subprocess.run(
+            [node, "-"], input=source, encoding="utf-8", check=True, env=env
+        )
 
     return run
 
@@ -190,7 +193,7 @@ global.fetch = async url => {
   let h = await loadHistories(['npu1'], ['cycles', 'npu_us']);
   assert.equal(h.series.length, 1);
   h = await loadHistories(['npu1'], ['cycles']);
-  assert.deepEqual(fetched, ['npu1/history/cycles.json', 'npu1/history/npu_us.json']);
+  assert.deepEqual(fetched, ['../kernel-checks/npu1/history/cycles.json', '../kernel-checks/npu1/history/npu_us.json']);
 
   const index = { runs: [
     { id: 'a', pmode: 'default', published: true },
@@ -525,7 +528,7 @@ assert.equal(fallback.commit, 'abcdef123456');
 assert.equal(fallback.pmode, 'turbo');
 assert.deepEqual(warningsFor('npu1', fallback, now), []);
 assert.deepEqual(warningsFor('npu1', fallback, now + 48 * 3600 * 1000),
-                 [{ level: 'bad', text: 'no run since 1970-01-01 00:00 UTC' }]);
+                 [{ level: 'bad', text: 'no run since 1970-01-01 00:00 UTC', stale: true }]);
 // Only the catalogue (every run dropped): nothing published, nothing failed.
 const empty = latestRun('npu1', { schema: 1, runs: [] }, fromRecords({}), catalogue);
 assert.equal(empty.sane, null);
@@ -556,12 +559,16 @@ const [v1, v2] = $('verdicts').children;
 assert.equal(v1.className, 'verdict bad');
 const headline = v1.children.find(c => c.className === 'headline');
 assert.equal(headline.text, '1 case slower, 1 failing correctness, 1 failed timing. 1 faster.');
-const figures = v1.children.find(c => c.className === 'figures');
+// The counts are under Run details, shut.
+const runMore = v1.children.find(c => c.className === 'band-more');
+assert.ok(!runMore.open);
+assert.equal(runMore.children[0].text, 'Run details');
+const figures = runMore.children.find(c => c.className === 'figures');
 assert.deepEqual(figures.children.map(li => [li.className || '', li.text]), [
   ['', '1timed'], ['', '3pass correctness'], ['bad', '1failing'], ['warn', '1timing failed'],
-  ['', '1correctness only'], ['', '2/2kernels on hardware'],
+  ['', '1not timed, by design'], ['', '2 of 2kernels run on the NPU'],
 ]);
-const meta = v1.children.find(c => c.className === 'meta');
+const meta = runMore.children.find(c => c.className === 'meta');
 assert.deepEqual(meta.children.map(c => c.text), [
   '1 Jan, 00:00 UTC', 'abcdef1 same revision', 'Peano 22.0.0+bbbb', 'XRT 2.20.0, driver 2.20.0_1',
   'host bench-2', 'turbo mode',
@@ -668,7 +675,7 @@ assert.deepEqual(kernelState(night, 'relu'), { level: 'warn', text: 'flaky', tit
 const [shown] = $('verdicts').children;
 assert.equal(shown.className, 'verdict warn');
 assert.equal(shown.children.find(c => c.className === 'headline').text, '1 passed on a retry.');
-assert.ok(shown.children.find(c => c.className === 'figures').children.some(li => li.text === '1passed on a retry'));
+assert.ok(shown.children.find(c => c.className === 'band-more').children.find(c => c.className === 'figures').children.some(li => li.text === '1passed on a retry'));
 const items = $('attention-list').children;
 assert.deepEqual(items.map(li => li.className), ['warn']);
 assert.ok(items[0].text.includes('passed when the runner retried it'));
@@ -797,8 +804,9 @@ assert.equal(header.children[0].title, 'softmax/1024/bfloat16');
 assert.equal(header.children[0].text, '1024bfloat16');
 assert.equal(header.children.at(-1).text, 'npu2 ÷ npu1 cycles 2.00×');
 assert.deepEqual(grid.children.map(c => c.children[0].text), ['Cycles', 'Cycles / 1k ops', 'Object size', 'Host time']);
-// Before → after and the change; npu2 has only one nightly.
-assert.equal(grid.children[0].text, 'Cyclesnpu11,000 → 1,100 +10.0%npu22,200');
+// The value and its change, the value before in the tooltip; npu2 has only one nightly.
+assert.equal(grid.children[0].text, 'Cyclesnpu11,100 +10.0%npu22,200');
+assert.equal(grid.children[0].children[1].children[1].title, 'was 1,000 the nightly before');
 assert.equal(grid.children[0].href, '#view=charts&metric=cycles&show=all&kernel=softmax%2F1024%2Fbfloat16');
 assert.equal(grid.children[2].text, 'Object sizenpu14.0 KiBnpu2—');
 assert.ok(cards[1].children[0].text.includes('npu1: timing failed'));
@@ -847,20 +855,43 @@ def test_views_come_from_the_hash_and_old_links_keep_working(page):
 location.hash = '#view=catalogue';
 assert.equal(applyView(), 'kernels');
 assert.equal($('kernels').hidden, false);
+assert.equal($('kernels-section').hidden, false);
 assert.equal($('charts-view').hidden, true);
 assert.equal($('tab-kernels').className, 'current');
+assert.equal($('nav-kernels').className, 'current');
+assert.equal($('nav-overview').className, '');
 location.hash = '#view=kernel&kernel=softmax';
 assert.equal(applyView(), 'kernel');
 assert.equal($('tab-kernel').hidden, false);
 assert.equal($('kernel').hidden, false);
+// No hash is the overview; the kernels' last night was "dashboard".
 location.hash = '';
-assert.equal(applyView(), 'dashboard');
+assert.equal(applyView(), 'overview');
+assert.equal($('overview').hidden, false);
+assert.equal($('kernels-section').hidden, true);
+assert.equal($('nav-overview').className, 'current');
+location.hash = '#view=dashboard';
+assert.equal(applyView(), 'night');
 assert.equal($('dashboard').hidden, false);
+assert.equal($('tab-night').className, 'current');
 assert.equal($('tab-kernel').hidden, true);
 assert.equal($('status').hidden, true);
 location.hash = '#view=charts&metric=cycles';
 assert.equal(applyView(), 'charts');
 assert.equal($('status').hidden, false);
+// The old components view goes to the section that charts its metric.
+location.hash = '#view=components';
+assert.equal(applyView(), 'placement');
+assert.equal($('placement').hidden, false);
+assert.equal($('kernels-section').hidden, true);
+assert.equal($('nav-placement').className, 'current');
+location.hash = '#view=components&metric=us_per_image';
+assert.equal(applyView(), 'performance');
+assert.equal($('performance').hidden, false);
+assert.equal($('placement').hidden, true);
+location.hash = '#view=routing';
+assert.equal(applyView(), 'routing');
+assert.equal($('routing').hidden, false);
 """)
 
 
@@ -954,7 +985,7 @@ assert.equal(name.children[1].title, 'reported as RyzenAI-npu1');
 COMPONENT_RUNS = """
 const all = (n, f) => typeof n === 'string' ? [] : [...(f(n) ? [n] : []), ...n.children.flatMap(c => all(c, f))];
 const one = (n, f) => { const found = all(n, f); assert.equal(found.length, 1); return found[0]; };
-const [sweep, hw] = COMPONENTS;
+const [sweep, hwPlacement, hw] = BANDS;
 const night = (id, date, pmode, extra) => ({
   id, url: `https://example.com/runs/${id}`, date, commit: { ...commit }, pmode, provenance: {},
   sane: true, published: true, failed: [], ...(extra || {}),
@@ -985,8 +1016,9 @@ assert.equal(grid.children[0].children[1].children[1].className, 'vals worse');
 assert.equal(grid.children[2].text, 'CPU timemean—max21,000 ms');
 // A record without detail, as published before it, has no Seeds chart.
 assert.equal(all(card, n => n.className === 'charts').length, 0);
-const repro = one(card, n => n.tag === 'details');
-assert.equal(repro.open, true);
+const repro = one(card, n => n.className === 'repro');
+// Beside the verdict, shut: a click away.
+assert.ok(!repro.open && card.children.includes(repro));
 assert.ok(repro.text.includes('artifact component-checks-sa-placer-7'));
 assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n'), [
   'git checkout abcdef123456',
@@ -1035,10 +1067,10 @@ assert.ok(header.text.includes('utils/component_checks/fixtures/mobilenet.mlir')
 assert.ok(header.text.includes('4 seeds'));
 assert.equal(header.children.at(-1).text, 'worst ÷ mean cost 1.06×');
 const cost = grid.children[1];
-assert.equal(cost.text, 'Placement costmean100 → 103.3 +3.3%worst100 → 110 +10.0%');
+assert.equal(cost.text, 'Placement costmean103.3 +3.3%worst110 +10.0%');
 assert.deepEqual(all(cost, n => /^chg /.test(n.className || '')).map(n => n.className), ['chg worse strong', 'chg worse strong']);
 assert.equal(all(grid.children[2], n => /^chg /.test(n.className || ''))[0].className, 'chg flat');
-assert.equal(cost.href, '#view=components&metric=final_cost_mean');
+assert.equal(cost.href, '#view=placement&metric=final_cost_mean');
 // The Seeds chart: a bar per seed, the nightly before as ticks, seed 4 a ✕.
 const [bars, ticks, crosses] = chart.data.datasets;
 assert.deepEqual(chart.data.labels, ['1', '2', '3', '4']);
@@ -1087,8 +1119,20 @@ const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(card.className, 'verdict ok');
 assert.equal(one(card, n => n.className === 'headline').text,
              'Every run passed. Seed 3 streams at 92.2 µs per image; one image takes 295.7 µs.');
-const repro = one(card, n => n.tag === 'details');
-assert.equal(repro.open, false);
+const repro = one(card, n => n.className === 'repro');
+assert.ok(!repro.open);
+// Shown: the verdict, what moved, and the trend chart's slot. Behind
+// Details: what the check does, the cards, the batch chart, how to run it.
+const top = card.children.map(c => c.className);
+assert.deepEqual(top, ['verdict-top', 'headline', 'moves', 'trend-slot', 'band-more']);
+const more = card.children.at(-1);
+assert.ok(!more.open);
+assert.ok(all(more, n => n.className === 'glance').length === 1);
+assert.ok(all(more, n => n.className === 'repro').length === 1);
+assert.equal(card.trend.className, 'trend-slot');
+// A quiet night: "nothing moved" is detail too.
+const quiet = componentBand(hw, hwIndex, hwRecord('7', hwAfter.date, 98), NOW, hwBefore);
+assert.deepEqual(quiet.children.map(c => c.className), ['verdict-top', 'headline', 'trend-slot', 'band-more']);
 assert.ok(one(repro, n => n.tag === 'pre').text.includes('python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 1.0 --batch B'));
 assert.ok(card.text.includes('turbo mode'));
 // Nothing published yet.
@@ -1106,17 +1150,19 @@ assert.equal(one(card, n => n.className === 'moves').text,
 assert.deepEqual(card.cards.map(c => c.kase), ['mobilenet/seed=3', 'mobilenet/seed=7']);
 const [header, grid] = card.cards[0].children;
 assert.equal(header.children[0].text, "seed 3the design's default");
-assert.equal(header.children[1].text, 'placement 0123456789ab · cost 303 0.0%');
+// The placement, its cost under Placement.
+assert.equal(header.children[1].text, 'placement 0123456789ab');
+assert.equal(header.children[1].href, '#view=placement&metric=placement_cost');
 assert.equal(header.children.at(-1).text, 'b16 ÷ b1 per image 0.35×');
 assert.deepEqual(grid.children.map(c => c.children[0].text), ['Per image', 'Streaming', 'End-to-end / image', 'Compile time']);
 // A lane per batch, colored past the threshold only; streaming has no b1.
 const perImage = grid.children[0];
-assert.equal(perImage.text, 'Per imageb1295.7 µs → 295.7 µs 0.0%b1698 µs → 104.9 µs +7.0%');
+assert.equal(perImage.text, 'Per imageb1295.7 µs 0.0%b16104.9 µs +7.0%');
 assert.deepEqual(perImage.children.slice(1, 3).map(r => r.children[0].className), ['npu n-series-1', 'npu n-series-2']);
 assert.deepEqual(all(perImage, n => /^chg /.test(n.className || '')).map(n => n.className), ['chg flat', 'chg worse']);
 assert.equal(grid.children[1].children.length, 3);
-assert.equal(grid.children[3].text, 'Compile timeb140 s → 40 s 0.0%b1640 s → 40 s 0.0%');
-assert.equal(perImage.href, '#view=components&metric=us_per_image');
+assert.equal(grid.children[3].text, 'Compile timeb140 s 0.0%b1640 s 0.0%');
+assert.equal(perImage.href, '#view=performance&metric=us_per_image');
 // The trend lines, a line per batch.
 fillSparks(card.cards, collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter])));
 const spark = card.cards[0].sparks.get('us_per_image');
@@ -1153,13 +1199,16 @@ const index = { target: 'sa-placer-hw', runs: [night('6', hwBefore.date, 'turbo'
 const card = componentBand(hw, index, failedAt, NOW, hwBefore);
 assert.equal(card.className, 'verdict bad');
 assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: seed 7 at batch 16.');
+// A failure's repro is beside the verdict, outside Details.
+assert.ok(card.children.some(c => c.className === 'repro'));
 const lanes = card.cards[1].children[1].children[0];
-assert.equal(lanes.text, 'Per imageb1295.7 µs → 295.7 µs 0.0%b16failed');
+assert.equal(lanes.text, 'Per imageb1295.7 µs 0.0%b16failed');
 // No ratio from the failed batch's number of the night before.
 assert.ok(!card.cards[1].children[0].text.includes('÷'));
 assert.ok(card.cards[0].children[0].text.includes('b16 ÷ b1'));
-const repro = one(card, n => n.tag === 'details');
-assert.equal(repro.open, true);
+const repro = one(card, n => n.className === 'repro');
+// Beside the verdict, shut: a click away.
+assert.ok(!repro.open && card.children.includes(repro));
 assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n').slice(0, 3), [
   'git checkout abcdef123456',
   'cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed 7 --sa-effort 1.0 --batch 16',
@@ -1226,4 +1275,400 @@ assert.equal(formatValue(1, 'seeds'), '1 seed');
 assert.equal(formatValue(0, 'seeds'), '0 seeds');
 assert.equal(formatValue(12345.678, 'cost'), '12,345.68');
 assert.equal(formatValue(295.7, 'us'), '295.7 us');
+""")
+
+
+def test_the_placement_band_shows_each_seeds_placement_and_runs(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+assert.equal(hwPlacement.section, 'placement');
+assert.equal(hw.section, 'performance');
+const card = componentBand(hwPlacement, hwIndex, hwAfter, NOW, hwBefore);
+assert.equal(card.className, 'verdict ok');
+assert.equal(one(card, n => n.className === 'headline').text,
+             'Every seed placed, compiled and verified. Placement cost 303 at seed 3, 307 at seed 7.');
+// Only the section's metrics count as moves: seed 3's per-image regression is Performance's.
+assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:nothing moved past its threshold.');
+assert.equal(card.cards.length, 1);
+const [, grid] = card.cards[0].children;
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Placement cost', 'Placement', 'Runs', 'Failed runs']);
+assert.equal(grid.children[0].text, 'Placement costseed 3303 0.0%seed 7307 0.0%');
+assert.equal(grid.children[1].text, 'Placementseed 30123456789abseed 70123456789ab');
+assert.equal(grid.children[2].text, 'Runsseed 32 of 2 passedseed 72 of 2 passed');
+assert.equal(grid.children[2].href, '#view=performance');
+// Words-only cells have no trend line; the metrics do.
+assert.deepEqual([...card.cards[0].sparks.keys()], ['placement_cost', 'failed_seeds']);
+// A failed run is named on its seed.
+const failedAt = hwRecord('7', hwAfter.date, 104.9);
+failedAt.detail[3].passed = false;
+failedAt.failed = ['mobilenet/seed=7/batch=16'];
+const bad = componentBand(hwPlacement, hwIndex, failedAt, NOW, hwBefore);
+assert.equal(bad.cards[0].children[1].children[2].text, 'Runsseed 32 of 2 passedseed 7failed at b16');
+""")
+
+
+def test_the_overview_has_a_tile_per_section_and_says_when_one_is_late(page):
+    page(MOVED + RUNS + COMPONENT_RUNS + HW_NIGHTS + """
+const nightsNow = renderDashboard(['npu1'], db, new Map([['npu1', catalogue]]), new Map([['npu1', index]]), 3600 * 1000);
+const loaded = [
+  { check: hwPlacement, index: hwIndex, latest: hwAfter, previous: hwBefore },
+  { check: hw, index: hwIndex, latest: hwAfter, previous: hwBefore },
+];
+const tiles = overviewTiles(nightsNow, loaded, NOW);
+// In tab order: CI health, Kernels, then the sections, placement last.
+assert.deepEqual(tiles.map(t => t.href), ['#view=ci', '#view=night', '#view=performance', '#view=routing', '#view=placement']);
+// A row each: the name, one status word, one line, how long ago.
+assert.deepEqual(tiles.map(t => t.children.map(c => c.className)[0]), ['area-name', 'area-name', 'area-name', 'area-name', 'area-name']);
+assert.deepEqual(tiles.map(t => t.children[0].text), ['CI health', 'Kernels', 'Performance', 'Routing', 'Placement']);
+const [ciTile, kernels, perf, routing, placement] = tiles;
+// GitHub not asked yet.
+assert.equal(ciTile.children[1].text, 'Loading…');
+assert.equal(perf.level, 'ok');
+assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['All passing', 'Every run passed.']);
+// The whole of each line is in the row's tooltip.
+assert.ok(perf.title.includes('MobileNet: Every run passed.'));
+// No checks: says so instead of a verdict.
+assert.equal(routing.level, 'none');
+assert.equal(routing.children[1].text, 'Not tracked yet');
+// Two days without a run: late and red, the line says so first.
+const late = overviewTiles(null, loaded, NOW + 2 * 86400 * 1000);
+assert.equal(late[2].level, 'bad');
+assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. Every run passed.');
+assert.equal(late[1].children[1].text, 'Loading…');
+// The band says it above its verdict.
+const lateBand = componentBand(hw, hwIndex, hwAfter, NOW + 2 * 86400 * 1000, hwBefore);
+assert.equal(one(lateBand, n => n.className === 'stale-line').text,
+             'No run for 2 days 1 h: the numbers below are from 2 Oct, 06:30 UTC.');
+assert.equal(one(lateBand, n => n.className === 'headline').text.slice(0, 16), 'Every run passed');
+""")
+
+
+def test_old_links_land_on_their_new_views(page):
+    page("""
+for (const [hash, view] of [['', 'overview'], ['#view=dashboard', 'night'], ['#view=catalogue', 'kernels'],
+    ['#view=components', 'placement'], ['#view=components&metric=compile_s', 'performance'],
+    ['#view=design', 'performance'], ['#view=nonsense', 'overview']]) {
+  location.hash = hash;
+  assert.equal(currentView(), view, hash);
+}
+""")
+
+
+def test_performance_trends_chart_each_batch_as_the_mean_over_seeds(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+const read = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
+const data = seedMeans(read);
+const perImage = data.series.filter(s => s.metric === 'us_per_image');
+// A series per batch, not per seed and batch.
+assert.deepEqual(perImage.map(s => s.kase).sort(), ['mobilenet/batch=1', 'mobilenet/batch=16']);
+const b16 = perImage.find(s => s.kase === 'mobilenet/batch=16');
+// Seeds 3 and 7 at batch 16: (98 + 99) / 2, then (104.9 + 99) / 2; one point per run.
+assert.deepEqual(b16.byMode.get('turbo').map(p => p.row.value), [98.5, 101.95]);
+assert.equal(b16.byMode.get('turbo')[1].row.range, 'seeds 99 to 104.9, n=2');
+// The band runs from the fastest seed to the slowest.
+assert.deepEqual(spreadOf(101.95, b16.byMode.get('turbo')[1].row), [99, 104.9]);
+// Series that are not per seed and batch pass through.
+assert.ok(data.series.some(s => s.kase === 'mobilenet/seed=3' && s.metric === 'placement_cost'));
+// Charted like a kernel case: one chart per batch, the mean moved +3.5%, under 5%.
+const groups = chartGroups(perImage);
+assert.equal(groups.length, 2);
+draw(el0, groups.find(g => g.kase === 'mobilenet/batch=16'), ['turbo'], data);
+assert.equal(chart.data.datasets.filter(d => d.band).length, 2);
+""")
+
+
+CI_RUNS = """
+const H = 3600 * 1000;
+const NOW = Date.parse('2026-10-06T12:00:00Z');
+const at = h => new Date(NOW - h * H).toISOString();
+const run = (id, hoursAgo, status, conclusion) => ({ id, url: `https://example.com/runs/${id}`, status, conclusion,
+  created_at: at(hoursAgo), run_started_at: at(hoursAgo), head_sha: 'abcdef1234567' });
+const job = (name, hoursAgo, status, conclusion) => ({ name, url: `https://example.com/jobs/${name}`, status, conclusion, created_at: at(hoursAgo) });
+const nightly = { group: 'On the NPUs', file: 'nightlyKernelChecks.yml', title: 'Kernel checks', every: 24, legs: true, why: 'w' };
+// A critical workflow as ci_health.py publishes it.
+const crit = (extra) => ({ file: 'buildAndTestRyzenAI.yml', title: 'Linux hardware tests', runs: 40,
+  main: { passed: 9, failed: 1, rate: 0.9 }, latest_main: run(30, 3, 'completed', 'success'),
+  pull_requests: { passed: 20, failed: 10, rate: 0.667 }, merge_queue: { passed: 8, failed: 0, rate: 1 },
+  flaky: { commits: 30, flaky: 2, rate: 0.067 }, minutes_median: 84, minutes_p90: 130, queued_median: 3.5,
+  slowest_jobs: [{ name: 'build-and-test (aie2p-8col)', n: 6, minutes_median: 70, minutes_p90: 95, queued_median: 12, failed: 1 }],
+  jobs_sampled: 6, ...(extra || {}) });
+const status = (extra) => ({ schema: 1, generated_at: new Date(NOW - 0.5 * H).toISOString(), window_days: 14,
+  critical: [crit()], merge_time: { merged: 31, hours_median: 26.4, hours_p90: 190, open: 42, open_drafts: 9, open_over_30_days: 11 },
+  workflows: [{ ...nightly, runs: [run(1, 6, 'completed', 'success')], jobs: [] }], ...(extra || {}) });
+const loadedOf = raw => {
+  const st = readable(raw);
+  return { status: st, newer: Boolean(raw) && !st, results: ((st && st.workflows) || []).map(w => ({ wf: w, runs: w.runs, jobs: w.jobs, error: w.error })),
+           critical: (st && st.critical) || [], merge: (st && st.merge_time) || null, history: null };
+};
+"""
+
+
+def test_ci_runs_read_as_passed_failed_running_or_waiting_for_a_runner(page):
+    page(CI_RUNS + """
+assert.deepEqual(ciRunLevel(run(1, 2, 'completed', 'success'), NOW), { level: 'ok', text: 'passed' });
+assert.deepEqual(ciRunLevel(run(1, 2, 'completed', 'failure'), NOW), { level: 'bad', text: 'failed' });
+assert.deepEqual(ciRunLevel(run(1, 2, 'completed', 'cancelled'), NOW), { level: 'warn', text: 'cancelled' });
+assert.deepEqual(ciRunLevel(run(1, 2, 'in_progress', null), NOW), { level: 'running', text: 'running' });
+assert.deepEqual(ciRunLevel(run(1, 2, 'queued', null), NOW), { level: 'running', text: 'queued' });
+// Queued past six hours: no runner with its labels is online.
+assert.deepEqual(ciRunLevel(run(1, 30, 'queued', null), NOW), { level: 'warn', text: 'waiting for a runner for 1 day 6 h' });
+// A nightly still going is judged by the run before it.
+let v = ciVerdict(nightly, [run(2, 1, 'in_progress', null), run(1, 25, 'completed', 'failure')], [], NOW);
+assert.deepEqual([v.level, v.headline], ['bad', 'Running now; the run before failed.']);
+// A leg that never found a runner is named, and warns even when the run is still going.
+v = ciVerdict(nightly, [run(2, 30, 'in_progress', null), run(1, 54, 'completed', 'success')],
+  [job('Kernel checks (aie2-4col)', 30, 'completed', 'success'), job('Kernel checks (aie2p-8col)', 30, 'queued', null)], NOW);
+assert.equal(v.level, 'warn');
+assert.deepEqual(v.legs.map(l => [l.name, l.text]), [['Kernel checks (aie2p-8col)', 'waiting for a runner for 1 day 6 h']]);
+// A job queued a short while is not listed: it is about to start.
+assert.deepEqual(ciLegs([job('soon', 1, 'queued', null)], NOW), []);
+// Late: no scheduled run for 1.5 of its period.
+v = ciVerdict(nightly, [run(1, 40, 'completed', 'success')], [], NOW);
+assert.deepEqual([v.level, v.late, v.headline], ['bad', true, 'No scheduled run for 1 day 16 h. Its last passed.']);
+// Nothing on record.
+assert.equal(ciVerdict(nightly, [], [], NOW).level, 'none');
+""")
+
+
+def test_ci_rows_name_the_failing_jobs_and_strip_the_recent_runs(page):
+    page(CI_RUNS + """
+const runs = [run(3, 6, 'completed', 'failure'), run(2, 30, 'completed', 'success'), run(1, 54, 'completed', 'failure')];
+const jobs = [job('build', 6, 'completed', 'success'), job('test (npu2)', 6, 'completed', 'failure')];
+const tr = ciRow(nightly, runs, jobs, NOW);
+const [wf, state, legs] = tr.children;
+// The pill says failed; no line repeats it. The strip sits under the latest run.
+assert.deepEqual(state.children.map(c => c.className), ['pill s-bad', 'when', 'nights']);
+const strip = state.children[2];
+assert.equal(wf.children[0].href, 'https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyKernelChecks.yml?query=event%3Aschedule%20branch%3Amain');
+assert.equal(state.children[0].text, 'failing');
+assert.equal(state.children[1].children[0].href, 'https://example.com/runs/3');
+assert.equal(legs.children[0].children.map(a => [a.text, a.className, a.href]).join('|'),
+             'test (npu2),pill s-bad,https://example.com/jobs/test (npu2)');
+// Oldest first, the latest outlined.
+assert.deepEqual(strip.children.map(n => n.className), ['night bad', 'night ok', 'night bad latest']);
+const quiet = ciRow(nightly, [run(4, 6, 'completed', 'success')], [job('build', 6, 'completed', 'success')], NOW);
+assert.equal(quiet.children[2].text, 'all 1 job passed');
+""")
+
+
+def test_critical_workflows_judge_main_and_flakiness_not_pull_requests(page):
+    page(CI_RUNS + """
+// Healthy: 90% on main is the line, a third of PRs failing is not judged.
+assert.deepEqual(criticalVerdict(crit(), NOW), { level: 'ok', notes: [], failedJobs: [], late: false });
+// Main's latest run failed: the jobs that failed are named.
+let v = criticalVerdict(crit({ latest_main: run(30, 3, 'completed', 'failure'),
+  latest_main_jobs: [job('Linux hardware tests (aie2p-8col)', 3, 'completed', 'failure'), job('lint', 3, 'completed', 'success')] }), NOW);
+assert.deepEqual(v, { level: 'bad', notes: ['its latest run on main failed (aie2p-8col)'], failedJobs: ['aie2p-8col'], late: false });
+assert.equal(criticalTile(crit({ latest_main: run(30, 3, 'completed', 'failure'),
+  latest_main_jobs: [job('build', 3, 'completed', 'failure')] }), NOW).text, 'Failed on main 3 h ago: build');
+// Main passing less, and one commit in ten re-run to pass.
+v = criticalVerdict(crit({ main: { passed: 8, failed: 2, rate: 0.8 }, flaky: { commits: 20, flaky: 3, rate: 0.15 } }), NOW);
+assert.deepEqual(v.notes, ['passed 80% of its runs on main', '3 of 20 commits needed a re-run to pass']);
+assert.equal(v.level, 'warn');
+// Main runs it nightly: no run for 1.5 days means the nightly stopped.
+v = criticalVerdict(crit({ every: 24, latest_main: run(30, 40, 'completed', 'success') }), NOW);
+assert.deepEqual([v.level, v.late, v.notes[0]], ['bad', true, 'no run on main for 1 day 16 h']);
+assert.equal(criticalTile(crit({ every: 24, latest_main: run(30, 40, 'completed', 'success') }), NOW).text, 'No run on main for 1 day 16 h');
+// A run still going counts as recent.
+assert.equal(criticalVerdict(crit({ every: 24, latest_main: run(30, 40, 'completed', 'success'), newest_main: run(31, 2, 'in_progress', null) }), NOW).late, false);
+assert.equal(criticalVerdict({ file: 'x.yml', error: 'HTTP 404' }).level, 'none');
+// The row: main's latest and its share, PRs, the queue, flaky, run time and wait.
+const tr = criticalRow(crit({ main: { passed: 8, failed: 2, rate: 0.8 } }));
+assert.deepEqual(tr.children.map(c => c.text.replace(/Slowest jobs.*$/, '')), [
+  'Linux hardware tests',
+  'passed80% passed', '67%', '100%', '7%', '1 h 24 min2 h 10 min', '4 min']);
+assert.equal(tr.children[1].children[1].className, 'when worse');
+assert.equal(tr.children[2].title, '20 passed, 10 failed');
+// Pull requests are shown, not colored.
+assert.equal(tr.children[2].children[0].className, '');
+// The slowest jobs, folded under the name.
+const fold = tr.children[0].children.find(c => c.className === 'jobs-fold');
+assert.equal(fold.children[0].text, 'Slowest jobs');
+assert.equal(fold.children[0].title, 'from the latest 6 runs');
+assert.equal(fold.children[1].text, 'build-and-test (aie2p-8col) 1 failed1 h 10 minwaited 12 min');
+""")
+
+
+def test_merging_reads_as_figures_and_trends_need_two_days(page):
+    page(CI_RUNS + """
+assert.deepEqual(mergeFigures(status().merge_time).map(li => li.text),
+  ['31pull requests merged in two weeks', '26.4 hmedian to merge', '42open, 11 for over 30 days']);
+// The rest on hover.
+assert.deepEqual(mergeFigures(status().merge_time).map(li => li.title), ['', 'the slowest tenth took 7.9 days or more', '9 of them drafts']);
+assert.equal(mergeFigures({ error: 'HTTP 403' })[0].text, 'GitHub did not answer: HTTP 403');
+assert.equal(formatMinutes(42.4), '42 min');
+assert.equal(formatMinutes(120), '2 h');
+// One day is no trend; two are.
+const day = (date, hours) => ({ date, merge: { hours_median: hours, hours_p90: 2 * hours }, critical: { 'buildAndTestRyzenAI.yml': { main: 0.9, minutes_median: 80, flaky: 0.05 } } });
+assert.deepEqual(ciTrendCharts({ points: [day('2026-10-05', 20)] }, [crit()]), []);
+const trend = ciTrendCharts({ points: [day('2026-10-05', 20), day('2026-10-06', 30)] }, [crit()]);
+assert.deepEqual(trend.map(c => c.children[0].children[0]), ['Time to merge', 'Run time', 'Passed on main', 'Flaky']);
+// The run time chart: a line per critical workflow, by its title.
+assert.deepEqual(chart.data.datasets.map(d => d.label), ['Linux hardware tests']);
+assert.deepEqual(chart.data.labels, ['5 Oct', '6 Oct']);
+""")
+
+
+def test_the_published_status_says_how_fresh_it_is(page):
+    page(CI_RUNS + """
+assert.equal(ciStatus(loadedOf(status()), NOW).text, 'Read from GitHub 6 Oct, 11:30 UTC by publishCiHealth.yml, which runs every six hours.');
+assert.equal(ciStatus(loadedOf(status()), NOW).level, '');
+// The publisher stopped: its last answers, said to be old.
+// Six hours old is the schedule, not a problem; past thirteen, a run was missed.
+assert.equal(ciStatus(loadedOf(status()), NOW + 6 * H).level, '');
+const old = ciStatus(loadedOf(status()), NOW + 13.5 * H);
+assert.equal(old.level, 'bad');
+assert.ok(old.text.startsWith('The CI health publisher last ran 14 h ago'));
+// A workflow GitHub did not answer for.
+const partly = ciStatus(loadedOf(status({ workflows: [{ ...nightly, runs: null, error: 'HTTP 502' }] })), NOW);
+assert.ok(partly.text.endsWith('GitHub did not answer for 1 workflow: Kernel checks.'));
+assert.equal(ciStatus(loadedOf(null), NOW).text, 'Nothing published yet: publishCiHealth.yml writes ci-health/status.json every six hours.');
+assert.ok(ciStatus(loadedOf({ schema: 2 }), NOW).text.includes('newer version'));
+""")
+
+
+def test_the_overview_lists_the_workflows_that_need_a_look(page):
+    page(CI_RUNS + """
+const loaded = loadedOf(status({
+  critical: [crit({ latest_main: run(30, 3, 'completed', 'failure') }), crit({ file: 'lint.yml', title: 'Lint' })],
+  workflows: [{ ...nightly, runs: [run(2, 6, 'completed', 'failure')], jobs: [job('test', 6, 'completed', 'failure')] },
+              { ...nightly, file: 'b.yml', title: 'B', runs: [run(3, 6, 'completed', 'success')], jobs: [] }],
+}));
+assert.deepEqual(ciLines(loaded, NOW).map(l => [l.level, l.who, l.text]), [
+  ['bad', 'Linux hardware tests', 'Its latest run on main failed.'],
+  ['bad', 'Kernel checks', 'Failed. test: failed.'],
+  ['none', 'The rest', '1 of 2 merge-gating tests healthy; 1 of 2 other scheduled jobs passed their last run.'],
+  ['none', 'Merging', 'Median 26.4 h to merge; 42 open.'],
+]);
+const [tile] = overviewTiles(null, [], NOW, loaded);
+assert.equal(tile.level, 'bad');
+assert.equal(tile.children.at(-1).text, 'read 30 min ago');
+// One line: who needs a look.
+assert.equal(tile.children[2].text, '2 need a look: Linux hardware tests and Kernel checks.');
+assert.equal(ciSummary(loadedOf(status()), NOW), 'All clear. 1 of 1 merge-gating test healthy; 1 of 1 other scheduled job passed their last run.');
+// All healthy.
+const fine = ciLines(loadedOf(status()), NOW);
+assert.deepEqual(fine[0], { level: 'ok', who: 'All workflows', text: '1 of 1 merge-gating test healthy; 1 of 1 other scheduled job passed their last run.' });
+// Nothing published: says so rather than "no results".
+assert.equal(overviewTiles(null, [], NOW, loadedOf(null))[0].children[1].text, 'Not published yet');
+""")
+
+
+def test_ci_health_reads_at_a_glance(page):
+    page(CI_RUNS + """
+// All clear: one sentence, the counts beside it, how fresh.
+let verdictBox = ciVerdictBand(loadedOf(status()), NOW);
+assert.equal(verdictBox.className, 'verdict ok');
+assert.equal(verdictBox.children[0].text, 'All clear. 1 of 1 merge-gating test healthy; 1 of 1 other scheduled job passed their last run.');
+assert.equal(verdictBox.children.at(-1).text, 'Read from GitHub 6 Oct, 11:30 UTC by publishCiHealth.yml, which runs every six hours.');
+// Problems: how many, each a line linked to its run, worst first, then the rest.
+const loaded = loadedOf(status({
+  critical: [crit({ latest_main: run(30, 3, 'completed', 'failure') }), crit({ file: 'py.yml', title: 'Python versions', main: { passed: 8, failed: 2, rate: 0.8 } })],
+  workflows: [{ ...nightly, runs: [run(2, 30, 'in_progress', null)], jobs: [job('Kernel checks (aie2p-8col)', 30, 'queued', null)] }],
+}));
+verdictBox = ciVerdictBand(loaded, NOW);
+assert.equal(verdictBox.className, 'verdict bad');
+assert.equal(verdictBox.children[0].text, '3 workflows need a look.');
+assert.deepEqual(verdictBox.children[1].children.map(li => [li.className, li.text]), [
+  ['bad', 'Linux hardware testsIts latest run on main failed.'],
+  ['warn', 'Python versionsPassed 80% of its runs on main.'],
+  ['warn', 'Kernel checksRunning now. aie2p-8col: waiting for a runner for 1 day 6 h.'],
+]);
+assert.equal(verdictBox.children[1].children[0].children[1].children[0].children[0].href, 'https://example.com/runs/30');
+// The rest is one line under the verdict, not in it.
+assert.equal(ciHealthyLine(loaded, NOW), '0 of 1 other scheduled job passed their last run.');
+assert.equal(ciHealthyLine(loadedOf(status()), NOW), '');
+// Nothing published.
+assert.equal(ciVerdictBand(loadedOf(null), NOW).children[0].text, 'No CI health published yet.');
+// The board: a tile a workflow, one state each.
+const groups = ciBoard(loaded, NOW);
+assert.deepEqual(groups.map(g => g.children[0].text), ['Tests that gate a merge', 'Other scheduled jobs']);
+const tiles = groups.flatMap(g => g.children[1].children);
+assert.deepEqual(tiles.map(t => [t.className, t.text]), [
+  ['ci-tile bad', 'Linux hardware testsFailed on main 3 h ago'],
+  ['ci-tile warn', 'Python versionsPassed 80% of its runs on main'],
+  ['ci-tile warn', 'Kernel checksWaiting for a runner: aie2p-8col'],
+]);
+assert.equal(boardTile(criticalTile(crit(), NOW)).text, 'Linux hardware testsPassing: 90% on main, 1 h 24 min a run');
+assert.equal(scheduledTile({ wf: nightly, runs: [run(5, 6, 'completed', 'success')], jobs: [] }, NOW).text, 'Passed 6 h ago');
+assert.equal(scheduledTile({ wf: nightly, runs: [run(5, 40, 'completed', 'success')], jobs: [] }, NOW).text, 'No run for 1 day 16 h');
+assert.equal(scheduledTile({ wf: nightly, runs: null, error: 'HTTP 502' }, NOW).text, 'GitHub did not answer');
+assert.equal(jobName('Kernel checks (aie2p-8col)', 'Kernel checks'), 'aie2p-8col');
+assert.equal(jobName('build-and-test (aie2p-8col)', 'Linux hardware tests'), 'build-and-test (aie2p-8col)');
+""")
+
+
+def test_performance_is_one_chart_a_line_per_batch(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
+const config = seedTrendConfig(data, 'us_per_image');
+// A line per batch, the mean over the seeds, each with its seed range shaded.
+const lines = config.data.datasets.filter(d => !d.band);
+assert.deepEqual(lines.map(d => d.label), ['batch 1', 'batch 16']);
+assert.deepEqual(lines[1].data, [98.5, 101.95]);
+assert.equal(config.data.datasets.filter(d => d.band).length, 4);
+// One point per nightly, by date.
+assert.deepEqual(config.data.labels, ['1 Oct', '2 Oct']);
+// The legend names the batches, not the shading.
+const legend = config.options.plugins.legend.labels.filter;
+assert.deepEqual(config.data.datasets.map((d, datasetIndex) => legend({ datasetIndex })), config.data.datasets.map(d => !d.band));
+// Per-image times on a log axis; the tooltip gives the seed range.
+assert.equal(config.options.scales.y.type, 'logarithmic');
+assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[1], dataIndex: 1, raw: 101.95 }),
+             'batch 16: 102 µs (seeds 99 µs to 104.9 µs)');
+// Both axes say what they are, the y axis with its unit.
+assert.equal(config.options.scales.y.title.text, 'Time per image (µs)');
+assert.equal(config.options.scales.x.title.text, 'Nightly run');
+// Hover names the run's commit; a click opens it.
+const tips = config.options.plugins.tooltip.callbacks;
+assert.equal(tips.afterTitle([{ dataIndex: 1 }]), 'abcdef1 same revision');
+assert.equal(tips.footer([{ dataIndex: 1 }]), 'Click for the commit');
+config.options.onClick(null, [{ index: 1 }]);
+assert.deepEqual(opened, ['https://github.com/Xilinx/mlir-aie/commit/abcdef123456', '_blank', 'noopener']);
+assert.equal(commitLine({ id: '0123456789abcdef', message: 'x'.repeat(100) + '\\nbody' }), `0123456 ${'x'.repeat(71)}…`);
+// Compile time, seconds, on a plain axis.
+assert.equal(seedTrendConfig(data, 'compile_s').options.scales.y.type, 'linear');
+assert.equal(seedTrendConfig(data, 'compile_s').options.scales.y.title.text, 'Compile time (s)');
+// The box: a switch for the measure, drawn once on screen, redrawn on a switch.
+const box = seedTrendBox(data, 'compile_s');
+assert.equal(box.metric(), 'compile_s');
+const seg = box.children[0].children[0];
+assert.deepEqual(seg.children.map(b => b.value), ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s']);
+assert.equal(chart.options.scales.y.type, 'linear');
+seg.children[0].on.click();
+assert.equal(box.metric(), 'us_per_image');
+assert.equal(chart.options.scales.y.type, 'logarithmic');
+assert.equal(seedTrendBox(collect([]), '').text, 'No history published yet.');
+""")
+
+
+def test_without_chartjs_the_performance_chart_is_drawn_as_svg(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+// Round ticks: 1, 2 and 5 times a power of ten on a log axis.
+// Too few 1-2-5 values in a narrow range: round steps instead.
+assert.deepEqual(niceTicks(62, 353, true), [100, 200, 300]);
+assert.deepEqual(niceTicks(60, 2100, true), [100, 200, 500, 1000, 2000]);
+assert.deepEqual(niceTicks(38, 42, false), [38, 39, 40, 41, 42]);
+// A holder as the page has: the canvas inside a box inside the chart.
+const outer = document.createElement('div');
+const holder = document.createElement('div');
+holder.parentNode = outer; holder.clientWidth = 600; holder.clientHeight = 300;
+outer.insertBefore = (node, before) => outer.children.unshift(node);
+const canvas = document.createElement('canvas');
+canvas.parentNode = holder;
+holder.append(canvas);
+const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
+const drawn = svgChart(canvas, seedTrendConfig(data, 'us_per_image'));
+// A line and a shaded band per batch, the legend naming the batches.
+assert.deepEqual(drawn.legend, ['batch 1', 'batch 16']);
+assert.equal(drawn.svg.filter(p => p.startsWith('<polyline')).length, 2);
+assert.equal(drawn.svg.filter(p => p.startsWith('<polygon')).length, 2);
+// The axis titles, as the Chart.js chart has them.
+assert.ok(drawn.svg.some(p => p.includes('rotate(-90)') && p.includes('Time per image (µs)')));
+assert.ok(drawn.svg.some(p => p.includes('>Nightly run<')));
+// Each point: hover text with the commit, and a link to it.
+assert.ok(drawn.svg.some(p => p.includes('<title>2 Oct, 06:30 UTC\\nabcdef1 same revision\\nbatch 16: ') && p.includes('href="https://github.com/Xilinx/mlir-aie/commit/abcdef123456"')));
+assert.ok(canvas.hidden);
+assert.equal(outer.children[0].className, 'note svg-legend');
+// Chart.js loaded: lineChart uses it.
+assert.ok(lineChart(canvas, { data: { labels: [], datasets: [] }, options: { scales: {} } }) instanceof Chart);
 """)

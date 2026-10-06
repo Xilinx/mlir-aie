@@ -14,8 +14,9 @@ name: Nightly Component Checks
 # Runs nightly from main, and on pull requests that touch the placer or
 # these checks (the CPU sweep only). The nightly and an unfiltered dispatch
 # on main publish, to component-checks/<check>/ on the site, in the kernel
-# checks' format (utils/kernel_checks/publish.py); the kernel checks page
-# shows them under Components. The hardware check refuses to time a
+# checks' format (utils/kernel_checks/publish.py); the maintainer dashboard
+# (dashboard/ on the site) shows the sweep under Placement and the hardware
+# check under both Placement and Performance. The hardware check refuses to time a
 # publishing run unless the NPU is in $PERF_PMODE. A check that fails still
 # publishes what it measured, and its record lists the failed seeds and
 # runs.
@@ -265,19 +266,24 @@ jobs:
       - name: Fetch publication branch
         run: git fetch origin gh-pages:gh-pages --depth=1
 
-      # As publishKernelResults.yml, one directory per check. The page is
-      # published too, so its Components view is there whichever nightly
-      # publishes first. The old per-check pages (github-action-benchmark's,
-      # removed by migrate) and the old index become redirects to that view.
+      # As publishKernelResults.yml, one directory per check. The dashboard
+      # is published too, so it is there whichever nightly publishes first.
+      # The old per-check pages (github-action-benchmark's, removed by
+      # migrate), the old index and the kernel checks' old address become
+      # redirects to the dashboard's sections.
       - name: Publish results
         run: |
           cp utils/kernel_checks/index.html "$RUNNER_TEMP/index.html"
           cp utils/kernel_checks/publish.py "$RUNNER_TEMP/publish.py"
           git switch -q gh-pages
-          mkdir -p kernel-checks
-          cp "$RUNNER_TEMP/index.html" kernel-checks/index.html
+          mkdir -p dashboard
+          cp "$RUNNER_TEMP/index.html" dashboard/index.html
+          python3 "$RUNNER_TEMP/publish.py" redirect --out kernel-checks \
+            --to "../dashboard/#view=night"
           python3 "$RUNNER_TEMP/publish.py" redirect --out component-checks \
-            --to "../kernel-checks/#view=components"
+            --to "../dashboard/#view=placement"
+          # Each check's old page goes to its section (publish.SECTION_OF).
+          declare -A section=([sa-placer]=placement [sa-placer-hw]=performance)
           for check in sa-placer sa-placer-hw; do
             dir="component-checks/$check"
             python3 "$RUNNER_TEMP/publish.py" migrate --out "$dir"
@@ -292,10 +298,10 @@ jobs:
             fi
             if [[ -d "$dir" ]]; then
               python3 "$RUNNER_TEMP/publish.py" redirect --out "$dir" \
-                --to "../../kernel-checks/#view=components"
+                --to "../../dashboard/#view=${section[$check]}"
             fi
           done
-          git add -A kernel-checks component-checks
+          git add -A kernel-checks component-checks dashboard
           git diff --cached --quiet || git -c user.name=component-checks \
             -c user.email=github@users.noreply.github.com \
             commit -q -m "Publish component checks for ${GITHUB_SHA:0:10}"
