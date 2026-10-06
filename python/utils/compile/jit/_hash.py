@@ -132,8 +132,8 @@ def _code_identity(code: CodeType) -> bytes:
 
 _PLAIN = (int, float, complex, str, bytes, bool, type(None))
 
-# What a generator can read a mutable compile input through: a module-level
-# list of kernel compile flags, say. Not just plain leaves (see _plain).
+# Mutable containers a generator can read compile inputs through (a
+# module-level list of kernel flags, say).
 _CONTAINER = (list, tuple, dict, set, frozenset)
 
 
@@ -253,13 +253,8 @@ def _python_identity(roots) -> bytes:
             records.add(f"{where}={value!r}".encode())
         elif isinstance(value, _CONTAINER) and id(value) not in seen:
             # A container the code reads is an input like a plain constant
-            # is: a module-level list a generator forwards as kernel compile
-            # flags changes what it builds without one file moving. Tuples of
-            # plain values never reach here (``_plain`` covers them); the ones
-            # that do hold members this walk follows one by one, so a module
-            # or a function inside a container is named by its identity
-            # rather than flattened into a repr. Sequences keep their order
-            # (flag order is meaningful); mappings and sets do not.
+            # is (a module-level list of kernel flags, say): digest it
+            # member by member — sequences ordered, mappings/sets not.
             seen.add(id(value))
             if isinstance(value, dict):
                 for item in value.items():
