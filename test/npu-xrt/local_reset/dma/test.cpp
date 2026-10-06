@@ -11,6 +11,7 @@
 // require every dispatch to return the good buffer [100..107] -- were the reset
 // skipped, the bad BD would send [900..907] instead. See aie.mlir / README.md.
 
+#include <atomic>
 #include <cstdint>
 #include <iostream>
 #include <vector>
@@ -62,10 +63,13 @@ int main(int argc, const char *argv[]) {
       return 1;
     }
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    // Some XRT shims leave their host-only cache invalidation unfenced.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     for (int i = 0; i < BUF_SIZE; i++) {
       uint32_t want = 100 + i;
-      if (out[i] != want) {
-        std::cout << "dispatch " << d << " out[" << i << "] = " << out[i]
+      uint32_t got = out[i];
+      if (got != want) {
+        std::cout << "dispatch " << d << " out[" << i << "] = " << got
                   << " != " << want << "\n";
         errors++;
       }
