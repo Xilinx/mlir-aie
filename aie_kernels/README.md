@@ -126,6 +126,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 ## reduce
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
+| [argmax.cc](./reduce/argmax.cc) | AIE API | Index of the max value across a tensor, plus a pairwise record combine | `int32_t`, `bfloat16` |
 | [reduce_add.cc](./reduce/reduce_add.cc) | Intrinsics | Sum of elements in a tensor | `int32_t` |
 | [reduce_max.cc](./reduce/reduce_max.cc) | Intrinsics | Max value across a tensor | `int32_t`, `bfloat16` |
 | [reduce_min.cc](./reduce/reduce_min.cc) | Intrinsics | Min value across a tensor | `int32_t` |

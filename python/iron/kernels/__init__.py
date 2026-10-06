@@ -9,7 +9,7 @@ Submodules:
 - `eltwise` — passthrough, scale, add, mul, relu
 - `datamovement` — affine_cast, axpy, convert_copy, expand, rope, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
-- `reduce` — reduce_add, reduce_min, reduce_max, compute_max
+- `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm
@@ -241,6 +241,10 @@ from .linalg import (
 from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
 from .quant import q4nx_dequant, q4nx_dequant_ref
 from .reduce import (
+    argmax,
+    argmax_combine,
+    argmax_combine_ref,
+    argmax_ref,
     compute_max,
     compute_max_ref,
     reduce_add,
@@ -387,6 +391,10 @@ __all__ = [
     "reduce_max",
     "compute_max",
     "compute_max_ref",
+    "argmax",
+    "argmax_ref",
+    "argmax_combine",
+    "argmax_combine_ref",
     "relu",
     "relu_sized",
     "rgba2hue",
