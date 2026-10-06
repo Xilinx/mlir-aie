@@ -772,11 +772,12 @@ struct AIEDMATasksToNPUPass
         });
     if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId ||
         runtimeNextBd || runtimeLock) {
-      // The verifier leaves a runtime bd_id, next_bd or lock value as the only
-      // ways here.
+      // The verifier leaves a runtime offset, bd_id, next_bd or lock value as
+      // the only ways here. An offset that depends on a runtime-sequence loop
+      // is constant by now if the loop was unrolled.
       if (bd_op.getLengthStateTableIdxAttr())
-        return bd_op->emitOpError("length_parameter requires a constant bd_id, "
-                                  "next_bd and lock value");
+        return bd_op->emitOpError("length_parameter requires a constant "
+                                  "offset, bd_id, next_bd and lock value");
       int col = tile.getCol(), row = tile.getRow();
       if (!target_model.isShimNOCTile(col, row) &&
           !target_model.isMemTile(col, row) &&
