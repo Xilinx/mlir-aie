@@ -872,6 +872,12 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
     return failure();
   }
 
+  // A DMA whose lock is already satisfied streams as soon as it is enabled, so
+  // its route must exist first.
+  if (failed(configureSwitches(targetOp, skipCtrlPktOverlay))) {
+    return failure();
+  }
+
   auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
   llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
   llvm::append_range(memOps, targetOp.getOps<ShimDMAOp>());
@@ -936,10 +942,6 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
             return failure();
         }
       }
-  }
-
-  if (failed(configureSwitches(targetOp, skipCtrlPktOverlay))) {
-    return failure();
   }
 
   return success();
