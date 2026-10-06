@@ -21,7 +21,7 @@
 
 // The fill's access pattern, outermost first (aie2.py's SIZES and STRIDES).
 static const int sizes[6] = {2, 3, 4, 2, 8, 16};
-static const int strides[6] = {16384, 4096, 16, 1024, 128, 1};
+static const int strides[6] = {16384, 4096, 16, 1024, 64, 1};
 
 int main() {
   std::vector<uint32_t> instr_v = test_utils::load_instr_binary("insts.bin");

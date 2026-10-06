@@ -46,6 +46,7 @@ from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports
     AIETileType,
     DMAChannelDir,
 )
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Acquire,
     Bd,
@@ -114,8 +115,7 @@ def bd_iteration(
                 bds=[
                     Bd(
                         buffer=mem_buf,
-                        offset=0,
-                        length=CHUNK,
+                        tap=TensorAccessPattern.full((TOTAL,))[:CHUNK],
                         iteration=BdIteration(
                             size=n_slots, stride=CHUNK, current=start
                         ),
@@ -130,8 +130,6 @@ def bd_iteration(
                 bds=[
                     Bd(
                         buffer=mem_buf,
-                        offset=0,
-                        length=TOTAL,
                         acquires=[
                             Acquire(fill_count, value=N_CHUNKS, greater_equal=True)
                         ],

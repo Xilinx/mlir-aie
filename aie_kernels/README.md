@@ -63,6 +63,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [axpy.cc](./datamovement/axpy.cc) | AIE API | `z = a*x + y` (SAXPY) | `bfloat16` |
 | [rope.cc](./datamovement/rope.cc) | AIE API | RoPE — `rope` (interleaved / Llama) + `rope_two_halves` (HF) | `bfloat16` |
 | [cast_f32_bf16.cc](./datamovement/cast_f32_bf16.cc) | AIE API | f32→bf16 narrowing cast (host-matching `conv_even` rounding) | `float32`→`bfloat16` |
+| [affine_cast_f32_bf16.cc](./datamovement/affine_cast_f32_bf16.cc) | AIE API | Per-column affine `out = bf16(in*gamma + beta)`, gamma and beta packed in one buffer (`conv_even` rounding) | `float32`→`bfloat16` |
 
 ## eltwise
 | Name | Coding style | Purpose | Datatypes |
@@ -106,7 +107,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [cascade_mm.cc](./linalg/cascade_mm.cc) | Scalar, cascade intrinsics | Cascade Matrix/Matrix multiply (multi-core) | `int16_t`,`bfloat16` |
 | [mm_bfp.cc](./linalg/mm_bfp.cc) | AIE API | Block-floating-point matmul (AIE2P only) | `bfp16` |
 | [mm_bfp_mixed.cc](./linalg/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul (AIE2P only) | `bfp16` |
-| [mv_bf16.cc](./linalg/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV) | `bfloat16` |
+| [mv_bf16.cc](./linalg/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV); `-DA_COL_MAJ` reads A column-major with partial sums carried across calls, bit-identical to row-major | `bfloat16` |
 | [mv_i16.cc](./linalg/mv_i16.cc) | AIE API | Matrix/Vector multiply, A word-transposed | `int16_t`→`int32_t` |
 | [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention **decode** toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 16 rows; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16` |
 | [flash_attn_prefill.cc](./linalg/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 sliding-window | `bfloat16` |

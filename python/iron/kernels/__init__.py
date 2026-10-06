@@ -7,7 +7,7 @@
 
 Submodules:
 - `eltwise` — passthrough, scale, add, mul, relu
-- `datamovement` — axpy, convert_copy, expand, rope, transpose
+- `datamovement` — affine_cast, axpy, convert_copy, expand, rope, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
@@ -115,6 +115,8 @@ from .conv import (
 )
 from .core import RoundingMode, conv_even, set_rounding
 from .datamovement import (
+    affine_cast,
+    affine_cast_ref,
     axpy,
     axpy_ref,
     convert_copy,
@@ -210,6 +212,8 @@ from .flm_gemma4 import (
 )
 from .fused import fused_mm
 from .linalg import (
+    MV_COL_MAJ_FIRST,
+    MV_COL_MAJ_LAST,
     MatrixKernel,
     cascade_mm,
     cascade_mm_put,
@@ -413,6 +417,7 @@ __all__ = [
     "tanh",
     "sigmoid",
     "leaky_relu",
+    "affine_cast",
     "axpy",
     "convert_copy",
     "expand",
@@ -423,6 +428,7 @@ __all__ = [
     "reduce_add_ref",
     "reduce_min_ref",
     "reduce_max_ref",
+    "affine_cast_ref",
     "axpy_ref",
     "convert_copy_ref",
     "expand_ref",
@@ -466,6 +472,8 @@ __all__ = [
     "mm_bfp_shuffle_ref",
     "mm_bfp_shuffle",
     "mv",
+    "MV_COL_MAJ_FIRST",
+    "MV_COL_MAJ_LAST",
     "cascade_mm",
     "cascade_mm_put",
     "conv2dk1",

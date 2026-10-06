@@ -24,8 +24,10 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -3166,6 +3168,41 @@ xilinx::AIE::verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext) {
   return success();
 }
 
+// BD iteration bounds. Values are true/element (aie-rt encodes value-1);
+// size <= 1 disables iteration (stride ignored). The stride is checked in
+// whole 32-bit words against the tile-specific step field. aiex.npu.writebd
+// checks the same tile-correct step limit (getDmaBdStepBits) inline in its own
+// raw-register terms.
+LogicalResult xilinx::AIE::verifyDMABDIteration(DMABDOp bd,
+                                                AIETileType tileType) {
+  std::optional<BDIterationAttr> iter = bd.getIteration();
+  if (!iter)
+    return success();
+  const AIETargetModel &targetModel = getTargetModel(bd.getOperation());
+  if (!targetModel.hasProperty(AIETargetModel::UsesBDIteration))
+    return bd.emitOpError("BD iteration is not supported on this target");
+  uint32_t size = iter->getSize(), current = iter->getCurrent();
+  uint32_t maxSize = 1u << targetModel.getDmaBdIterBits(tileType);
+  if (size < 1 || size > maxSize)
+    return bd.emitOpError("BD iteration size must be in [1, ")
+           << maxSize << "]";
+  if (size > 1) {
+    int64_t strideInBytes = static_cast<int64_t>(iter->getStride()) *
+                            bd.getBufferElementTypeWidthInBytes();
+    if (strideInBytes % 4)
+      return bd.emitOpError(
+          "BD iteration stride must be aligned to 32-bit words");
+    int64_t stepInWords = strideInBytes / 4;
+    int64_t maxStep = 1LL << targetModel.getDmaBdStepBits(tileType);
+    if (stepInWords < 1 || stepInWords > maxStep)
+      return bd.emitOpError() << "BD iteration stride must be in [1, "
+                              << maxStep << "] 32-bit words";
+  }
+  if (current >= size)
+    return bd.emitOpError("BD iteration current must be in [0, size)");
+  return success();
+}
+
 static LogicalResult verifyDMARepeatCount(Operation *op, int32_t repeatCount) {
   uint32_t maxRepeat = getTargetModel(op).getMaxRepeatCount();
   if (maxRepeat == 0) {
@@ -3295,14 +3332,32 @@ BufferOp DMABDOp::getBufferOp() {
   return cast<BufferOp>(getBuffer().getDefiningOp());
 }
 
-// Parse/print hooks for the custom<DynamicScalar>($operand, $static_attr)
-// directive: a single scalar that is either an SSA value (runtime, %v) or a
-// compile-time integer constant (folded into the attribute), so a constant
-// never materializes an operand. The scalar analog of custom<DynamicIndexList>.
+// The optional `: type` after an SSA operand, defaulting to `defaultType`, so
+// the common width keeps its untyped spelling.
+static ParseResult parseOptionalOperandType(OpAsmParser &parser, Type &type,
+                                            Type defaultType) {
+  type = defaultType;
+  if (succeeded(parser.parseOptionalColon()))
+    return parser.parseType(type);
+  return success();
+}
+
+static void printOptionallyTypedOperand(OpAsmPrinter &printer, Value operand,
+                                        Type defaultType) {
+  printer << operand;
+  if (operand.getType() != defaultType)
+    printer << " : " << operand.getType();
+}
+
+// Parse/print hooks for the custom<DynamicScalar>($operand, $static_attr,
+// type($operand)) directive: a single scalar that is either an SSA value
+// (runtime, `%v` for i32 or `%v : type`) or a compile-time integer constant
+// (folded into the attribute), so a constant never materializes an operand.
+// The scalar analog of custom<TypedDynamicIndexList>.
 static ParseResult
 parseDynamicScalar(OpAsmParser &parser,
                    std::optional<OpAsmParser::UnresolvedOperand> &operand,
-                   IntegerAttr &staticAttr) {
+                   IntegerAttr &staticAttr, Type &type) {
   int64_t intValue;
   OptionalParseResult intResult = parser.parseOptionalInteger(intValue);
   if (intResult.has_value()) {
@@ -3312,20 +3367,65 @@ parseDynamicScalar(OpAsmParser &parser,
         parser.getBuilder().getI32IntegerAttr(static_cast<int32_t>(intValue));
     return success();
   }
-  // Not a plain integer: parse an SSA operand (resolved to i32 by the caller).
   OpAsmParser::UnresolvedOperand op;
-  if (parser.parseOperand(op))
+  if (parser.parseOperand(op) ||
+      parseOptionalOperandType(parser, type, parser.getBuilder().getI32Type()))
     return failure();
   operand = op;
   return success();
 }
 
 static void printDynamicScalar(OpAsmPrinter &printer, Operation *,
-                               Value operand, IntegerAttr staticAttr) {
+                               Value operand, IntegerAttr staticAttr, Type) {
   if (operand)
-    printer << operand;
+    printOptionallyTypedOperand(printer, operand,
+                                IntegerType::get(operand.getContext(), 32));
   else
     printer << staticAttr.getInt();
+}
+
+ParseResult xilinx::AIE::parseTypedDynamicIndexList(
+    OpAsmParser &parser,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &values,
+    DenseI64ArrayAttr &integers, SmallVectorImpl<Type> &types) {
+  SmallVector<int64_t> ints;
+  auto parseEntry = [&]() -> ParseResult {
+    OpAsmParser::UnresolvedOperand operand;
+    OptionalParseResult isOperand = parser.parseOptionalOperand(operand);
+    if (!isOperand.has_value())
+      return parser.parseInteger(ints.emplace_back());
+    Type type;
+    if (failed(*isOperand) ||
+        parseOptionalOperandType(parser, type,
+                                 parser.getBuilder().getI64Type()))
+      return failure();
+    values.push_back(operand);
+    types.push_back(type);
+    ints.push_back(ShapedType::kDynamic);
+    return success();
+  };
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseEntry))
+    return failure();
+  integers = parser.getBuilder().getDenseI64ArrayAttr(ints);
+  return success();
+}
+
+void xilinx::AIE::printTypedDynamicIndexList(OpAsmPrinter &printer, Operation *,
+                                             OperandRange values,
+                                             ArrayRef<int64_t> integers,
+                                             TypeRange) {
+  printer << '[';
+  auto value = values.begin();
+  llvm::interleaveComma(integers, printer, [&](int64_t i) {
+    if (!ShapedType::isDynamic(i)) {
+      printer << i;
+      return;
+    }
+    Value v = *value++;
+    printOptionallyTypedOperand(printer, v,
+                                IntegerType::get(v.getContext(), 64));
+  });
+  printer << ']';
 }
 
 // Split a scalar OpFoldResult into an operand (runtime value) or an i32
@@ -3389,6 +3489,10 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*iteration=*/nullptr,
         /*offset_parameter=*/nullptr,
         /*offset_state_table_idx=*/nullptr,
+        /*length_parameter=*/nullptr,
+        /*length_unit=*/nullptr,
+        /*length_state_table_idx=*/nullptr,
+        /*length_core_encoded=*/nullptr,
         /*next_bd_id=*/nullptr);
 }
 
@@ -3477,6 +3581,54 @@ DMABDOp::getConstantDimensions() {
   return getFoldedDimensions([&]() { return emitOpError(); });
 }
 
+// With dims the furthest index bounds the access (a stride-0 dim may transfer
+// more elements than the buffer holds); without them the length does. A
+// runtime-sequence argument's type does not bound the host buffer behind it.
+LogicalResult DMABDOp::verifyTransferInBounds() {
+  auto buffer = llvm::dyn_cast<MemRefType>(getBuffer().getType());
+  if (!buffer || !buffer.hasStaticShape() ||
+      llvm::isa<BlockArgument>(getBuffer()))
+    return success();
+  if ((getOffsetParameterAttr() || getOffsetStateTableIdxAttr()) && !hasLen())
+    return emitOpError("offset_parameter requires an explicit `len` on a local "
+                       "buffer; the default whole-buffer length runs past the "
+                       "end for any nonzero runtime offset");
+  std::optional<int32_t> offset = hasOffset() ? getConstantOffset() : 0;
+  if (!offset || *offset < 0)
+    return success();
+  int64_t numElements = buffer.getNumElements();
+  SmallVector<OpFoldResult> sizes = getMixedSizes();
+  SmallVector<OpFoldResult> strides = getMixedStrides();
+  if (sizes.empty()) {
+    std::optional<int64_t> len =
+        hasLen() ? std::optional<int64_t>(getConstantLen()) : numElements;
+    if (!len || *len <= 0 || *offset + *len <= numElements)
+      return success();
+    InFlightDiagnostic err = emitOpError("transfer of ")
+                             << *len << " elements at offset " << *offset
+                             << " runs past the end of the " << numElements
+                             << "-element buffer";
+    if (!hasLen())
+      err.attachNote() << "an omitted `len` is the whole buffer; give the "
+                          "length to transfer from this offset";
+    return err;
+  }
+  int64_t maxIdx = *offset;
+  for (auto [size, stride] : llvm::zip(sizes, strides)) {
+    std::optional<int64_t> s = getConstantIntValue(size);
+    std::optional<int64_t> t = getConstantIntValue(stride);
+    if (!s || !t)
+      return success();
+    maxIdx += *t * (*s - 1);
+  }
+  if (maxIdx < numElements)
+    return success();
+  return emitOpError() << "Specified stride(s) and size(s) result in out of "
+                          "bounds access in buffer, for index "
+                       << maxIdx << " in memref of length " << numElements
+                       << ".";
+}
+
 // A BDDimLayoutAttr array (outermost-first) describes a contiguous row-major
 // scan when the innermost stride is 1 and each outer stride equals the product
 // of all inner sizes.  Used by both DMABDOp verification and canonicalization.
@@ -3498,6 +3650,91 @@ bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
   return true;
 }
 
+// The firmware's UPDATE_REG reads the 32-bit length word with its low two bits
+// cleared, adds the delta, and writes the sum back with them cleared again.
+// The length word counts 32-bit words, so both the static length and every
+// added unit must be multiples of four words (16 bytes) to survive.
+FailureOr<int64_t> xilinx::AIE::getLengthUnitBytes(Operation *op,
+                                                   int64_t lengthUnit,
+                                                   BaseMemRefType buffer) {
+  uint64_t elemBitWidth = buffer.getElementTypeBitWidth();
+  if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
+    return op->emitOpError("length_parameter requires a whole-byte element "
+                           "type");
+  std::optional<int64_t> unitBytes =
+      llvm::checkedMul(lengthUnit, static_cast<int64_t>(elemBitWidth / 8));
+  if (!unitBytes || *unitBytes / 4 > std::numeric_limits<uint32_t>::max())
+    return op->emitOpError("length_unit (")
+           << lengthUnit
+           << " elements) exceeds the 32-bit word count of a BD length";
+  if (*unitBytes % 16 != 0)
+    return op->emitOpError("length_unit must be a multiple of 16 bytes, got ")
+           << *unitBytes << " bytes";
+  return *unitBytes;
+}
+
+LogicalResult xilinx::AIE::verifyLengthParameter(
+    Operation *op, std::optional<int64_t> lengthUnit, BaseMemRefType buffer,
+    std::optional<int64_t> lenElems, bool contiguous,
+    llvm::ArrayRef<int64_t> innerSizes) {
+  if (!lengthUnit)
+    return op->emitOpError("length_parameter requires length_unit");
+  if (failed(getLengthUnitBytes(op, *lengthUnit, buffer)))
+    return failure();
+  int64_t elemBytes = buffer.getElementTypeBitWidth() / 8;
+  if (!lenElems)
+    return op->emitOpError("length_parameter requires a constant length");
+  if ((*lenElems * elemBytes) % 16 != 0)
+    return op->emitOpError("length_parameter requires a static length that is "
+                           "a multiple of 16 bytes, got ")
+           << *lenElems * elemBytes << " bytes";
+  if (contiguous)
+    return success();
+  llvm::SmallVector<int64_t, 3> sizes(innerSizes);
+  llvm::SmallVector<int64_t, 3> strides(3, 0);
+  placeRuntimeLengthDimension(sizes, strides);
+  if (sizes[2] <= 1)
+    return op->emitOpError("length_parameter on a non-contiguous pattern "
+                           "requires its second or third dimension to have a "
+                           "size above one: the added length continues it");
+  int64_t rowElems = sizes[0] * sizes[1];
+  if (*lengthUnit % rowElems != 0)
+    return op->emitOpError("length_unit (")
+           << *lengthUnit << " elements) must be a multiple of the " << rowElems
+           << " elements moved per step of the dimension the added length "
+              "continues";
+  return success();
+}
+
+void xilinx::AIE::placeRuntimeLengthDimension(
+    llvm::MutableArrayRef<int64_t> sizes,
+    llvm::MutableArrayRef<int64_t> strides) {
+  if (sizes[2] > 1 || sizes[1] <= 1)
+    return;
+  sizes[2] = sizes[1];
+  strides[2] = strides[1];
+  sizes[1] = 1;
+  strides[1] = 0;
+}
+
+LogicalResult xilinx::AIE::verifyLengthParameterTile(
+    Operation *op, const AIETargetModel &targetModel, int col, int row) {
+  AIEArch arch = targetModel.getTargetArch();
+  if (arch != AIEArch::AIE2 && arch != AIEArch::AIE2p)
+    return op->emitOpError("length_parameter is only supported on AIE2 and "
+                           "AIE2P devices");
+  if (!targetModel.isShimNOCTile(col, row))
+    return op->emitOpError("length_parameter is only supported on shim NOC "
+                           "tiles, got tile (")
+           << col << ", " << row << ")";
+  const DmaBdLayout *layout = targetModel.getDmaBdLayout(col, row);
+  if (!layout || layout->bufferLength.shift != 0 ||
+      layout->bufferLength.width != 32)
+    return op->emitOpError("length_parameter requires a BD whose buffer "
+                           "length fills a 32-bit register");
+  return success();
+}
+
 llvm::SmallVector<uint32_t> xilinx::AIE::getAssignedBdIds(DmaBody program) {
   llvm::SmallVector<uint32_t> ids;
   program.getDmaBody().walk([&](DMABDOp bd) {
@@ -3513,6 +3750,43 @@ LogicalResult DMABDOp::verify() {
                                 .getElementTypeBitWidth();
     if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
       return emitOpError("offset_parameter requires a whole-byte element type");
+  }
+
+  if (getLengthParameterAttr() || getLengthStateTableIdxAttr()) {
+    // The length is patched by a runtime-sequence instruction, so only a BD
+    // the runtime sequence configures can have one.
+    if (llvm::isa<MemOp, MemTileDMAOp, ShimDMAOp, DMAOp>(
+            (*this)->getParentOp()))
+      return emitOpError("length_parameter is only supported on a BD in a "
+                         "runtime sequence");
+    std::optional<llvm::SmallVector<BDDimLayoutAttr>> dims =
+        getFoldedDimensions([&]() {
+          return emitOpError("length_parameter requires a static pattern: ");
+        });
+    if (!dims)
+      return failure();
+    // aie-decompose-large-dma-bd leaves a runtime-length BD whole.
+    if (dims->size() > 4)
+      return emitOpError("length_parameter requires at most 4 dimensions, got ")
+             << dims->size();
+    // The outermost of four dimensions is the iteration, which repeats the
+    // whole length.
+    llvm::ArrayRef<BDDimLayoutAttr> inner(*dims);
+    if (inner.size() == 4)
+      inner = inner.drop_front();
+    llvm::SmallVector<int64_t, 3> innerSizes(3, 1);
+    for (auto [i, dim] : llvm::enumerate(llvm::reverse(inner)))
+      innerSizes[i] = dim.getSize();
+    auto buffer = llvm::cast<BaseMemRefType>(getBuffer().getType());
+    std::optional<int64_t> lenElems;
+    if (std::optional<int32_t> len = getConstantLen())
+      lenElems = *len;
+    else if (!hasLen() && buffer.hasStaticShape())
+      lenElems = buffer.getNumElements();
+    if (failed(verifyLengthParameter(*this, getLengthUnit(), buffer, lenElems,
+                                     isContiguousBDTransfer(inner),
+                                     innerSizes)))
+      return failure();
   }
 
   // Skip verification of the BDOp outside of mem operations.
@@ -3599,7 +3873,7 @@ LogicalResult DMABDOp::verify() {
     }
   }
 
-  if (failed(verifyMixedSizesAndStrides()))
+  if (failed(verifyMixedSizesAndStrides()) || failed(verifyTransferInBounds()))
     return failure();
 
   // Fold the mixed sizes/strides to a constant BDDimLayoutAttr list for
@@ -3626,13 +3900,6 @@ LogicalResult DMABDOp::verify() {
     if (!buffer)
       return emitOpError() << "dimensions attribute cannot be used with "
                               "unranked memref buffer type.";
-    int64_t maxIdx = getDimsMaxIdx(*dims);
-    if (buffer.getNumElements() <= maxIdx)
-      return emitOpError() << "Specified stride(s) and size(s) result in out "
-                              "of bounds access in buffer, for index "
-                           << std::to_string(maxIdx) << " in memref of length "
-                           << std::to_string(buffer.getNumElements()) << ".";
-
     // A contiguous row-major access on a shim tile is lowered to linear mode
     // by aie-dma-tasks-to-npu / aie-dma-to-npu, using the wide buffer_length
     // register which is exempt from the 10-bit ND wrap-size limit.
@@ -3661,7 +3928,7 @@ LogicalResult DMABDOp::verify() {
     uint64_t maxStride = stepBits > 0 ? (1ULL << stepBits) : 0;
 
     for (BDDimLayoutAttr dim : *dims) {
-      if (0 == dim.getStride())
+      if (0 == dim.getStride() && dim.getSize() != 1)
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
       if (dim.getStride() > buffer.getNumElements())
@@ -3820,35 +4087,7 @@ LogicalResult DMABDOp::verify() {
     }
   }
 
-  // BD iteration bounds. Values are true/element (aie-rt encodes value-1);
-  // size <= 1 disables iteration (stride ignored). The stride is checked in
-  // whole 32-bit words against the tile-specific step field; the wrap is a
-  // 6-bit field everywhere. aiex.npu.writebd checks the same tile-correct step
-  // limit (getDmaBdStepBits) inline in its own raw-register terms.
-  if (auto iter = getIteration()) {
-    if (!targetModel.hasProperty(AIETargetModel::UsesBDIteration))
-      return emitOpError("BD iteration is not supported on this target");
-    uint32_t size = iter->getSize(), current = iter->getCurrent();
-    if (size < 1 || size > 64) // 64 = aie-rt IterWrapMax + 1
-      return emitOpError("BD iteration size must be in [1, 64]");
-    if (size > 1) {
-      int64_t strideInBytes = static_cast<int64_t>(iter->getStride()) *
-                              getBufferElementTypeWidthInBytes();
-      if (strideInBytes % 4)
-        return emitOpError(
-            "BD iteration stride must be aligned to 32-bit words");
-      int64_t stepInWords = strideInBytes / 4;
-      int64_t maxStep =
-          1LL << targetModel.getDmaBdStepBits(parentTile.getTileType());
-      if (stepInWords < 1 || stepInWords > maxStep)
-        return emitOpError() << "BD iteration stride must be in [1, " << maxStep
-                             << "] 32-bit words";
-    }
-    if (current >= size)
-      return emitOpError("BD iteration current must be in [0, size)");
-  }
-
-  return success();
+  return verifyDMABDIteration(*this, parentTile.getTileType());
 }
 
 LogicalResult DMABDPACKETOp::verify() {
@@ -4049,6 +4288,18 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
     llvm::SmallVector<mlir::Value> dynSizes, dynStrides;
     mlir::dispatchIndexOpFoldResults(sizes, dynSizes, staticSizes);
     mlir::dispatchIndexOpFoldResults(strides, dynStrides, staticStrides);
+
+    // Without `len`, a BD with runtime dims transfers their d0*d1*d2 extent,
+    // but a fully static one transfers its whole buffer. Pin the extent
+    // before the last runtime dim folds away so the transfer keeps its size.
+    bool wasDynamic = !op.getSizes().empty() || !op.getStrides().empty();
+    if (!op.hasLen() && wasDynamic && dynSizes.empty() && dynStrides.empty() &&
+        !staticSizes.empty()) {
+      int64_t extent = 1;
+      for (int64_t s : llvm::ArrayRef(staticSizes).take_back(3))
+        extent *= s;
+      foldLen = static_cast<int32_t>(extent);
+    }
 
     rewriter.modifyOpInPlace(op, [&]() {
       op.getSizesMutable().assign(dynSizes);

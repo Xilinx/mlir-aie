@@ -32,6 +32,7 @@
 # MLIR-NEXT: aiex.npu.maskpoll
 
 import numpy as np
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.device import NPU2, Tile
 
@@ -39,13 +40,12 @@ N_CHUNKS = 40
 # Large enough that a task is still moving data when the command processor
 # reaches the next reclaim; at 4 KiB chunks the DMA outruns the rewrite.
 CHUNK = 16384
-HALF = CHUNK // 2
-LEN = N_CHUNKS * CHUNK
 LANES = 2
+HALF = CHUNK // LANES
 
 
 def design():
-    buff_ty = np.ndarray[(LEN,), np.dtype[np.int32]]
+    buff_ty = np.ndarray[(N_CHUNKS, LANES, HALF), np.dtype[np.int32]]
     half_ty = np.ndarray[(HALF,), np.dtype[np.int32]]
 
     shim, mem = Tile(0, 0), Tile(0, 1)
@@ -54,11 +54,11 @@ def design():
 
     def sequence(a, b, *ends):
         fills, drains = ends[:LANES], ends[LANES:]
-        for i in range(N_CHUNKS):
-            for h in range(LANES):
-                at = dict(offset=i * CHUNK + h * HALF, sizes=[1, 1, 1, HALF])
-                fills[h].fill(a, **at)
-                drains[h].drain(b, wait=i == N_CHUNKS - 1, **at)
+        chunks = TensorAccessPattern.full((N_CHUNKS, LANES, HALF))
+        for i, chunk in enumerate(chunks):
+            for fill, drain, half in zip(fills, drains, chunk):
+                fill.fill(a, tap=half)
+                drain.drain(b, tap=half, wait=i == N_CHUNKS - 1)
 
     rt = Runtime(
         sequence,

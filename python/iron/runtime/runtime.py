@@ -87,7 +87,7 @@ class ActiveSequence:
 
     def note_fifo(self, handle: ObjectFifoHandle) -> None:
         """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
-        self._runtime._fifos.add(handle)
+        self._runtime._fifos[handle] = None
 
     def resolve_in_device(self, resolvable) -> None:
         """Resolve a Buffer or Lock the body reaches first, ahead of the sequence.
@@ -290,7 +290,7 @@ class Runtime(Resolvable):
                         "Runtime cannot mix bare scalar types with DispatchTime parameters."
                     )
                 self._block_data.append(data)
-        self._fifos: set[ObjectFifoHandle] = set()
+        self._fifos: dict[ObjectFifoHandle, None] = {}
         self._register_fn_args()
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
@@ -319,7 +319,7 @@ class Runtime(Resolvable):
             if isinstance(arg, ObjectFifoHandle):
                 if arg.endpoint is None:
                     arg.endpoint = RuntimeEndpoint(arg._shim_tile)
-                self._fifos.add(arg)
+                self._fifos[arg] = None
 
     def add_flow(self, flow) -> None:
         """Register an explicit flow so the Program resolves it alongside the ObjectFifos.
@@ -386,6 +386,27 @@ class Runtime(Resolvable):
     def fifos(self) -> list[ObjectFifoHandle]:
         """The ObjectFifoHandles driven from the runtime by fill()/drain()."""
         return list(self._fifos)
+
+    def register_parameter(self, param: ScratchpadParameter | str | None) -> str | None:
+        """Record a ScratchpadParameter a transfer uses, for the Program to declare.
+
+        Args:
+            param: The parameter, the name of one the Program declares anyway
+                (e.g. from a Worker's `fn_args`), or None.
+
+        Returns:
+            The parameter's name, or None for None.
+        """
+        if isinstance(param, ScratchpadParameter):
+            if param not in self._scratchpad_parameters:
+                self._scratchpad_parameters.append(param)
+            return param.name
+        return param
+
+    @property
+    def scratchpad_parameters(self) -> list[ScratchpadParameter]:
+        """The ScratchpadParameters the sequence's transfers registered."""
+        return list(self._scratchpad_parameters)
 
     def resolve(
         self,
@@ -525,7 +546,7 @@ class Runtime(Resolvable):
                         runtime_cons = c
                     elif (
                         c.depth == runtime_cons.depth
-                        and c.dims_from_stream == runtime_cons.dims_from_stream
+                        and c.from_stream == runtime_cons.from_stream
                     ):
                         to_remove.append(c)
                     else:

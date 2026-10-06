@@ -41,6 +41,9 @@ using namespace xilinx;
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
 
+#define GET_ATTRDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXAttrDefs.cpp.inc"
+
 namespace xilinx::AIEX {
 
 // FIXME: use Tablegen'd dialect class
@@ -53,9 +56,16 @@ void AIEXDialect::initialize() {
 #define GET_TYPEDEF_LIST
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
       >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "aie/Dialect/AIEX/IR/AIEXAttrDefs.cpp.inc"
+      >();
 }
 
 } // namespace xilinx::AIEX
+
+using xilinx::AIE::parseTypedDynamicIndexList;
+using xilinx::AIE::printTypedDynamicIndexList;
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
@@ -156,7 +166,6 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
 
   uint32_t wrap_bits = targetModel.getDmaBdWrapBits(tileCol, tileRow);
   uint32_t step_bits = targetModel.getDmaBdStepBits(tileCol, tileRow);
-  uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
 
   for (int i = 0; i < 4; i++) {
     if (inputSizes[i] <= 0) {
@@ -204,6 +213,14 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
       return forOp->emitOpError(msg.str());
     }
   }
+  // The innermost dimension steps whole granules, so for elements of another
+  // width it can only be contiguous.
+  if (elemWidth != addressGranularity && inputSizes[0] > 1 &&
+      inputStrides[0] != 1)
+    return forOp->emitOpError("Stride 0 is ")
+           << inputStrides[0] << " elements, but must be 1 for "
+           << (elemWidth / 8) << "-byte elements: the DMA moves whole "
+           << (addressGranularity / 8) << "-byte words.";
 
   if (!skipTransformationChecks && hardwareSizes[0] > (1 << wrap_bits) - 1)
     return forOp->emitOpError(
@@ -213,9 +230,16 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
     return forOp->emitOpError(
         "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
-  if (hardwareSizes[3] > (1 << iter_bits) - 1)
-    return forOp->emitOpError(
-        "Size 3 exceeds the [1:" + std::to_string(1 << iter_bits) + "] range.");
+  // A zero d3 stride is a pure repeat: the lowerings leave the iteration fields
+  // 0 and carry the count on the queue push, so the repeat limit applies.
+  bool pureRepeat = inputStrides[3] == 0;
+  int64_t maxCount =
+      pureRepeat ? targetModel.getMaxRepeatCount() + 1
+                 : 1LL << targetModel.getDmaBdIterBits(tileCol, tileRow);
+  if (inputSizes[3] > maxCount)
+    return forOp->emitOpError()
+           << (pureRepeat ? "repeat count " : "iteration count ")
+           << inputSizes[3] << " exceeds the [1:" << maxCount << "] range.";
   if (hardwareStrides[0] > (1 << step_bits) - 1)
     return forOp->emitOpError("Stride 0 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
@@ -440,19 +464,7 @@ struct LinearizeContiguousTransfer
                                                      linearOffset};
 
     rewriter.replaceOpWithNewOp<AIEX::NpuDmaMemcpyNdOp>(
-        op, op.getMemref(),
-        /*offsets=*/mlir::ValueRange{},
-        /*sizes=*/mlir::ValueRange{},
-        /*strides=*/mlir::ValueRange{},
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newOffsetsOuter),
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newSizesOuter),
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newStridesOuter),
-        op.getPacketAttr(), op.getMetadata(), op.getIdAttr(),
-        op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
-        op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
-        op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
+        op, op, newOffsetsOuter, newSizesOuter, newStridesOuter);
     return mlir::success();
   }
 };
@@ -530,8 +542,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
 
   // The innermost stride may be runtime like any other dimension: the encoder
   // resolves its collapse-to-zero case with a select, and its realizability
-  // (unit stride, or granule-aligned) is enforced below for constants and by an
-  // assert_bd_divisible guard for runtime values.
+  // (unit stride, or granule-aligned) is enforced below for constants and by a
+  // host-side check (buildBdWords) for runtime values.
 
   // (The memref must also trace to a runtime-sequence block argument through
   // static subview/cast offsets; that structural check, with the same clean
@@ -564,31 +576,28 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   int64_t d1Hw = hwSize(sizesRev[1]);
   int64_t iterRaw = hwSize(sizesRev[3]);
   int64_t iterHw = iterRaw > 1 ? iterRaw - 1 : 0;
-  int64_t wrapMax =
-      (1ll << targetModel.getDmaBdWrapBits(tile.getCol(), tile.getRow())) - 1;
-  int64_t iterMax =
-      (1ll << targetModel.getDmaBdIterBits(tile.getCol(), tile.getRow())) - 1;
+  std::optional<int64_t> outerStride = getConstantIntValue(strides.front());
+  bool pureRepeat = outerStride && *outerStride == 0;
+  AIE::AIETileType tileType =
+      targetModel.getTileType(tile.getCol(), tile.getRow());
+  int64_t wrapMax = (1LL << targetModel.getDmaBdWrapBits(tileType)) - 1;
+  int64_t maxCount = pureRepeat ? targetModel.getMaxRepeatCount() + 1
+                                : 1LL << targetModel.getDmaBdIterBits(tileType);
   if (failed(checkSize(sizesRev[0], d0Hw, wrapMax, "d0 size")) ||
       failed(checkSize(sizesRev[1], d1Hw, wrapMax, "d1 size")) ||
-      failed(checkSize(sizesRev[3], iterHw, iterMax, "iteration size")))
+      failed(checkSize(sizesRev[3], iterHw, maxCount - 1,
+                       pureRepeat ? "repeat count" : "iteration size")))
     return failure();
 
   // Realizability of the CONSTANT size/stride operands (divisibility +
-  // positivity, innermost-first). Runtime operands get an assert_bd_divisible
-  // guard at lowering time. Shared with the dma_task path.
+  // positivity, innermost-first). Runtime operands get a host-side check at
+  // lowering time. Shared with the dma_task path.
   llvm::SmallVector<mlir::OpFoldResult, 4> stridesRev(llvm::reverse(strides));
   if (failed(verifyConstBdRealizability(getOperation(), sizesRev, stridesRev,
                                         elemWidth, gran)))
     return failure();
 
-  // A runtime size landing in a narrow BD field (d0/d1 wrap 10-bit, iteration
-  // 6-bit) could exceed the field and silently truncate on hardware. The TXN
-  // stream has no on-device trap, so the dynamic lowering emits a host-side
-  // bounds guard (npu.assert_bd_field -> generated-C++ early return of nullopt)
-  // for exactly those fields. Nothing to reject here: buffer_length via linear
-  // mode is wide enough to need no guard, narrow fields are guarded at
-  // lowering time, and so is the 8-bit repeat_count, where the queue push is
-  // packed.
+  // Runtime fields are checked at dispatch instead; see buildBdWords.
 
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
   if (errorMessage.has_value())
@@ -628,6 +637,15 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return getConstantIntValue(s).has_value();
   });
 
+  bool hasLengthParameter =
+      getLengthParameterAttr() || getLengthStateTableIdxAttr();
+  // Runtime offsets, sizes and strides lower only through EmitC, which has no
+  // scratchpad.
+  if (hasLengthParameter &&
+      (!allStridesConstant || !allSizesConstant || !allOffsetsConstant))
+    return emitOpError(
+        "length_parameter requires constant offsets, sizes and strides");
+
   // Dynamic path: any runtime size/stride/offset. A runtime offset flows into
   // the address-patch arg_plus as arith (see AIEDmaToNpu.cpp emitBufferAddress-
   // Patch); runtime sizes/strides use the dynamic BD-word encoder. The shared
@@ -652,6 +670,22 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
   if (errorMessage.has_value()) {
     return emitOpError(errorMessage.value());
+  }
+
+  if (hasLengthParameter) {
+    if (failed(AIE::verifyLengthParameter(
+            *this, getLengthUnit(), buffer,
+            inputSizes[0] * inputSizes[1] * inputSizes[2],
+            AIEX::isContiguousTransfer(inputSizes, inputStrides),
+            llvm::ArrayRef<int64_t>(inputSizes).take_front(3))))
+      return failure();
+    AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+    if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+            dev, getMetadata().getRootReference()))
+      if (AIE::TileOp tile = allocOp.getTileOp())
+        if (failed(AIE::verifyLengthParameterTile(
+                *this, targetModel, tile.getCol(), tile.getRow())))
+          return failure();
   }
 
   // The experimental HSA target uses this op on AIE1, skip all the AIE2
@@ -694,7 +728,10 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     llvm::SmallVector<int64_t, 4> inputOffsets = llvm::map_to_vector(
         llvm::reverse(getMixedOffsets()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    if (AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
+    // aie-decompose-large-dma-bd leaves a transfer with a runtime length
+    // alone, so it must be legal as written.
+    if (!hasLengthParameter &&
+        AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
                                          col, row, inputOffsets, inputSizes,
                                          inputStrides)) {
       // ok: will be decomposed before lowering
@@ -737,14 +774,14 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   // bd_id and repeat_count are SSA operands; range-check them only when they
-  // are compile-time constants. For runtime ones, see the npu.assert_bd_field
-  // aie-dma-to-npu emits and the BD pool, which only hands out valid ids.
+  // are compile-time constants. A runtime repeat_count is checked on the host
+  // when lowered (AIEDmaToNpu); a runtime bd_id comes from the tile's BD pool.
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
-      bdId && *bdId > numBds)
+      bdId && *bdId >= numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   uint32_t maxRepeat = targetModel.getMaxRepeatCount();
-  if (std::optional<uint32_t> repeatCount =
-          getConstantIntOperand(getRepeatCount());
+  if (std::optional<uint64_t> repeatCount =
+          getConstantInt64Operand(getRepeatCount());
       repeatCount && *repeatCount > maxRepeat)
     return emitOpError("Repeat count exceeds the [0:")
            << maxRepeat << "] range.";
@@ -760,7 +797,7 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   bool isLinearTransfer =
       (getD0Size() >= 1) && (getD1Size() == 1) && (getIterationSize() == 0);
-  if (getBdId() > numBds)
+  if (getBdId() >= numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   if (getPacketId() > 31)
     return emitOpError("Packet ID exceeds the maximum supported by 5 bits.");
@@ -950,40 +987,6 @@ std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
   if (!addressOffset)
     return std::nullopt;
   return ::getAbsoluteAddress(this, *addressOffset);
-}
-
-//===----------------------------------------------------------------------===//
-// NpuAssertBdFieldOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult AIEX::NpuAssertBdFieldOp::verify() {
-  if (getMin() > getMax())
-    return emitOpError("min ")
-           << getMin() << " exceeds max " << getMax() << ".";
-  if (auto c = getConstantIntValue(getValue()))
-    if (*c < getMin() || *c > getMax())
-      return emitOpError("constant value ")
-             << *c << " is outside the guarded field range [" << getMin() << ":"
-             << getMax() << "].";
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// NpuAssertBdDivisibleOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult AIEX::NpuAssertBdDivisibleOp::verify() {
-  if (getDivisor() == 0)
-    return emitOpError("divisor must be non-zero.");
-  if (auto c = getConstantIntValue(getValue())) {
-    if (getAllowUnit() && *c == 1)
-      return success();
-    if (*c % (int64_t)getDivisor() != 0)
-      return emitOpError("constant value ")
-             << *c << " is not divisible by " << getDivisor()
-             << " (transfer is not a whole number of address-gen granules).";
-  }
-  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1228,6 +1231,9 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 // past the third is an iteration dimension, and aie-decompose-large-dma-bd
 // splits them off into descriptors of 4. With a runtime value among them it
 // cannot, so the cap applies here.
+//
+// A BD's `iteration` attribute claims that iteration register itself, so its
+// sizes/strides must leave it free: one dimension fewer, with no splitting.
 static LogicalResult
 verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
                        Region &body) {
@@ -1242,15 +1248,23 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
       result = failure();
       return;
     }
-    if (bd.getIteration()) {
-      // See aie.dma_bd's ## BD iteration doc in AIEOps.td.
-      bd.emitOpError() << "the iteration attribute is not supported on the "
-                          "runtime-sequence path; express iteration via the "
-                          "outermost sizes/strides dimension instead";
+    if (failed(
+            AIE::verifyDMABDIteration(bd, targetModel.getTileType(col, row)))) {
       result = failure();
       return;
     }
     size_t numDims = bd.getMixedSizes().size();
+    if (bd.getIteration()) {
+      if (numDims + 1 > maxNDims) {
+        bd.emitOpError() << "Cannot give more than "
+                         << std::to_string(maxNDims - 1)
+                         << " dimensions for step sizes and wraps alongside "
+                            "the iteration attribute on this tile (got "
+                         << std::to_string(numDims) << " dimensions).";
+        result = failure();
+      }
+      return;
+    }
     auto isConstant = [](OpFoldResult v) {
       return getConstantIntValue(v).has_value();
     };
@@ -1308,7 +1322,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
         result = failure();
       }
       // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
-      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)))
+      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
+          failed(bd.verifyTransferInBounds()))
         result = failure();
       bds.push_back(bd);
     });
@@ -1331,6 +1346,9 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
 }
 
 LogicalResult AIEX::DMAStartTaskOp::verify() {
+  if (getRepeatCountAttr() && getRepeatCountVal())
+    return emitOpError(
+        "takes repeat_count or a runtime repeat count, not both");
   if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
     return emitOpError("repeat_count must be non-negative, got ")
            << rc.getInt();
@@ -1445,12 +1463,13 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return emitOpError("SetLockOp is not supported on AIE1.");
 
-  if (getValueAttr().getValue().isNegative())
-    return emitOpError("Lock value must be non-negative");
-
-  if (getValue() > targetModel.getMaxLockValue())
-    return emitOpError("Lock value exceeds the maximum value of " +
-                       std::to_string(targetModel.getMaxLockValue()));
+  if (std::optional<int64_t> value = getConstantIntValue(getValue())) {
+    if (*value < 0)
+      return emitOpError("Lock value must be non-negative");
+    if (*value > targetModel.getMaxLockValue())
+      return emitOpError("Lock value exceeds the maximum value of " +
+                         std::to_string(targetModel.getMaxLockValue()));
+  }
 
   auto lockOp = getLockOp();
   auto lockIDOpt = getLockOp().getLockID();

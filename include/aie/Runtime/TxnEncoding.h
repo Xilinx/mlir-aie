@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 // Applied to the emitted entry points; see emitDispatchShimFuncs.
@@ -300,6 +301,18 @@ inline void txn_append_loadpdi(std::vector<uint32_t> &txn, uint32_t id,
 // Append a 1-word preempt instruction.
 inline void txn_append_preempt(std::vector<uint32_t> &txn, uint32_t level) {
   txn.push_back(TXN_OPC_PREEMPT | (level << 8));
+}
+
+// Why the last generated builder on this thread declined (returned
+// std::nullopt): a shape guard, a buffer-descriptor field overflow or an
+// empty BD pool records a message here before returning, and the dispatch
+// shim reports it through dispatch_last_refusal(). Null after a successful
+// build. The pointer is to a string literal in the generated code.
+inline thread_local const char *txn_refusal = nullptr;
+// `return aie_runtime::txn_refused("why");` declines a build with a reason.
+inline std::nullopt_t txn_refused(const char *why) {
+  txn_refusal = why;
+  return std::nullopt;
 }
 
 // Reserve 4 placeholder words for the TXN header. Call this BEFORE appending
