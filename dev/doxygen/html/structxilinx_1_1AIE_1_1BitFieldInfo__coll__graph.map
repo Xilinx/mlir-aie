@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::BitFieldInfo" name="xilinx::AIE::BitFieldInfo">
+<area shape="rect" id="Node000001" title="Bit field information for a register." alt="" coords="5,137,175,163"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="7,5,66,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="34,45,32,78,34,96,40,112,51,125,65,135,62,139,47,129,36,115,29,97,26,79,28,44"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="107,5,182,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="142,45,132,78,118,115,102,138,98,135,113,112,127,77,137,43"/>
+</map>
