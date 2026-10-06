@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import inspect
 from typing import List, Tuple, Dict, Any, Union
 import contextlib
+import os
 from pathlib import Path
 from enum import Enum, IntEnum
 
@@ -82,8 +83,10 @@ from ..ir import (
 # Comes from _aie
 register_dialect(get_dialect_registry())
 assert _cext.globals._check_dialect_module_loaded("aie")
-# Lets ir.loc_tracebacks() attribute ops to user code rather than to this package.
-_cext.globals.register_traceback_file_exclusion(str(Path(__file__).parent.parent))
+# Lets ir.loc_tracebacks() skip this package; the exclusion is a path prefix.
+_cext.globals.register_traceback_file_exclusion(
+    os.path.join(Path(__file__).parent.parent, "")
+)
 
 # The generated `use_lock` builder takes the lock value as an SSA i32 operand.
 # Wrap it so callers may still pass a plain Python int (materialized as an

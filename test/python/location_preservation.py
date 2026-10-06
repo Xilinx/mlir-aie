@@ -142,12 +142,7 @@ def iron_locations():
                         ["aie.packet_flow", "aie.shim_dma_allocation"],
                     ),
                     (Lock(dst, lock_id=0, name="lock"), ["aie.lock"]),
-                    (
-                        Buffer(
-                            np.ndarray[(16,), np.dtype[np.int32]], tile=dst, name="buf"
-                        ),
-                        ["aie.buffer"],
-                    ),
+                    (Buffer(line_type, tile=dst, name="buf"), ["aie.buffer"]),
                 ]
                 loc = Location.file("resolve.py", 27, 4)
                 for obj, names in objects:

@@ -9,24 +9,16 @@ import traceback
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1Col1
+from aie.helpers.sourceloc import is_internal_file
 from aie.ir import MLIRError
 
 THIS_FILE = os.path.abspath(__file__)
-SOURCE = open(THIS_FILE).read().splitlines()
 
 line_type = np.ndarray[(256,), np.dtype[np.uint8]]
 vector_type = np.ndarray[(1024,), np.dtype[np.uint8]]
 
 MISTAKE = "elem_out[0] = elem_in[0] + elem_in[1]  # unsupported on uint8"
 BAD_TRANSFER = "out_handle.fill(b_out)  # a consumer handle cannot fill"
-
-
-def _line_of(fragment):
-    # Match the statement, not the constant above that spells it out: the
-    # declaration reads `NAME = "..."` and so never starts with the fragment.
-    return next(
-        i + 1 for i, text in enumerate(SOURCE) if text.lstrip().startswith(fragment)
-    )
 
 
 def verifier_failure():
@@ -95,14 +87,9 @@ def check_verifier_failure():
     user_frames = [f for f in frames if f[0] == THIS_FILE]
     assert user_frames, f"no frame in {THIS_FILE}:\n{frames}"
 
-    # Innermost frame: the statement that failed, quoted from this file.
     filename, lineno, name, text = user_frames[-1]
-    assert lineno == _line_of(MISTAKE), (
-        f"innermost frame is line {lineno} ({text!r}), expected the line "
-        f"holding {MISTAKE!r}"
-    )
+    assert text == MISTAKE, f"innermost frame is line {lineno}: {text!r}"
     assert name == "core_fn", f"frame should name the core body, got {name!r}"
-    assert "elem_in[0] + elem_in[1]" in text, f"source not quoted: {text!r}"
 
     return f"{filename}:{lineno} in {name}"
 
@@ -115,11 +102,7 @@ def check_guard_failure():
     else:
         raise AssertionError("expected the consumer fill to be rejected")
 
-    internal = [
-        f
-        for f in frames
-        if any(part in f[0] for part in ("aie/iron", "aie/dialects", "aie/helpers"))
-    ]
+    internal = [f for f in frames if is_internal_file(f[0])]
     # resolve_program re-raises, so its own frame is the one that remains.
     assert len(internal) <= 1, "IRON frames not filtered:\n" + "\n".join(
         f"  {f[0]}:{f[1]} in {f[2]}" for f in internal
@@ -128,10 +111,7 @@ def check_guard_failure():
     user_frames = [f for f in frames if f[0] == THIS_FILE]
     assert user_frames, f"no frame in {THIS_FILE}:\n{frames}"
     _, lineno, _, text = user_frames[-1]
-    assert lineno == _line_of(BAD_TRANSFER), (
-        f"innermost frame is line {lineno} ({text!r}), expected the line "
-        f"holding {BAD_TRANSFER!r}"
-    )
+    assert text == BAD_TRANSFER, f"innermost frame is line {lineno}: {text!r}"
     return f"{len(frames)} frames, {len(internal)} internal"
 
 

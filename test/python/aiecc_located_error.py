@@ -59,7 +59,6 @@ def check_aiecc_failure_points_at_design():
     assert "could not be placed" in message, message
     innermost = frames[-1]
     assert os.path.abspath(innermost.filename) == THIS_FILE, frames
-    assert "# two 48 KiB buffers" in SOURCE[innermost.lineno - 1], innermost
     assert "# two 48 KiB buffers" in (innermost.line or ""), innermost
 
 

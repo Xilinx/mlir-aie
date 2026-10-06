@@ -138,7 +138,7 @@ class Program:
         try:
             return self._resolve_program(device_name)
         except Exception as exc:
-            raise design_error(exc) from None
+            raise design_error(exc)
 
     def _resolve_program(self, device_name):
         context = ir.Context()
