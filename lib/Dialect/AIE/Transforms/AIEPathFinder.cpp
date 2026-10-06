@@ -452,11 +452,13 @@ bool Pathfinder::splitSharedIds() {
   for (const auto &[ends, sent] : packetIdsTo)
     ids[ends.first].insert(sent.begin(), sent.end());
   for (const auto &[src, srcIds] : ids)
-    for (const auto &[other, otherIds] : ids)
+    for (const auto &[other, otherIds] : ids) {
+      const std::set<int> &theirs = otherIds;
       if (!(src == other) &&
-          llvm::any_of(srcIds, [&](int id) { return otherIds.count(id); }) &&
-          llvm::any_of(srcIds, [&](int id) { return !otherIds.count(id); }))
+          llvm::any_of(srcIds, [&](int id) { return theirs.count(id); }) &&
+          llvm::any_of(srcIds, [&](int id) { return !theirs.count(id); }))
         return true;
+    }
   return false;
 }
 
@@ -1077,8 +1079,9 @@ int Pathfinder::RouteState::splitPart(int flow, const std::set<int> &ids) {
   llvm::erase_if(parts[flow].dsts,
                  [&](const PathEndPoint &p) { return !carries(flow, p); });
   f.packetId = *ids.begin();
-  if (ids.count(*parts[flow].packetId))
-    parts[flow].packetId = *flowIds[flow].begin();
+  std::optional<int> &flowId = parts[flow].packetId;
+  if (flowId && ids.count(*flowId))
+    flowId = *flowIds[flow].begin();
   auto prioritized = [&](const std::set<int> &carried) {
     auto prio = pf.priorityIds.find(f.src);
     return prio != pf.priorityIds.end() && llvm::any_of(carried, [&](int id) {
@@ -1766,12 +1769,12 @@ llvm::DenseSet<int> Pathfinder::TreeBuilder::trunkOff(int dst) const {
     return off;
   int root = tree.front();
   auto exitOf = [&](int s) {
-    for (auto it = planned.find(s);
+    for (const auto *it = planned.find(s);
          it != planned.end() && it->second.first != root; it = planned.find(s))
       s = it->second.first;
     return s;
   };
-  auto other = llvm::find_if(reached, [&](int d) {
+  const auto *other = llvm::find_if(reached, [&](int d) {
     return d != dst && trunkDsts.count(d) && planned.count(d);
   });
   if (other == reached.end())

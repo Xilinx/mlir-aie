@@ -813,7 +813,7 @@ planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
       unit.masterSets.push_back(f.masters);
   }
   for (Unit &unit : units) {
-    auto ctrlEnd = std::stable_partition(
+    auto *ctrlEnd = std::stable_partition(
         unit.masterSets.begin(), unit.masterSets.end(),
         [&](const SmallVector<Port, 4> &masters) {
           return llvm::any_of(unit.flows, [&](size_t f) {
@@ -2365,10 +2365,11 @@ void PacketFlowRouting::checkRules() {
         if (f.slave != slave || f.isCtrlPkt)
           continue;
         for (auto own : claim(f)) {
-          const auto *rule = llvm::find_if(overlay, [&](const PortRule &r) {
-            return cubesIntersect(own, {r.mask, r.value}) &&
-                   ruleMasters[r.group] != f.masters;
-          });
+          const auto *rule =
+              llvm::find_if(overlay, [&, &f = f](const PortRule &r) {
+                return cubesIntersect(own, {r.mask, r.value}) &&
+                       ruleMasters[r.group] != f.masters;
+              });
           if (rule == overlay.end())
             continue;
           moveFlow(tileId, key);
@@ -3092,11 +3093,14 @@ llvm::Expected<PacketPlan> AIEPathfinderPass::route(
   }
   // The routing found may still leave a hold cycle through receivers flows
   // share, as the check lets one through where it names nothing to move.
-  if (!plan || !plan->sharedReceiverCycle || clAllowDeadlockProne)
+  if (!plan || clAllowDeadlockProne)
+    return plan;
+  const std::optional<HoldCycle> &cycle = plan->sharedReceiverCycle;
+  if (!cycle)
     return plan;
   return llvm::make_error<DeadlockProneRouting>(
-      (llvm::Twine(sharedReceiverCycleReason) +
-       conflicts.explain(*plan->sharedReceiverCycle) + allowDeadlockProneHint)
+      (llvm::Twine(sharedReceiverCycleReason) + conflicts.explain(*cycle) +
+       allowDeadlockProneHint)
           .str());
 }
 
@@ -3158,7 +3162,7 @@ void AIEPathfinderPass::runOnOperation() {
   auto keepsHeader = [](PacketFlowOp flow, const PathEndPoint &dst) {
     return flow.getKeepPktHeader().value_or(
         dst.port.bundle != WireBundle::DMA &&
-        !(dst.coords.row == 0 && dst.port.bundle == WireBundle::South));
+        (dst.coords.row != 0 || dst.port.bundle != WireBundle::South));
   };
   bool reload = reloadsOverlay(d);
   std::map<PathEndPoint, std::pair<PacketFlowOp, PacketFlowOp>> lastTo;

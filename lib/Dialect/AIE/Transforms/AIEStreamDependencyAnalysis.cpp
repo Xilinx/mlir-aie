@@ -47,7 +47,7 @@ bool keepsPktHeader(TileID tile, Port master, std::optional<bool> keep) {
   if (keep)
     return *keep;
   return master.bundle != WireBundle::DMA &&
-         !(tile.row == 0 && master.bundle == WireBundle::South);
+         (tile.row != 0 || master.bundle != WireBundle::South);
 }
 
 std::optional<DmaChannelProgram> makeProgram(Operation *op, DeviceOp device) {
@@ -614,17 +614,16 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
       auto type = dyn_cast<BaseMemRefType>(memcpy.getMemref().getType());
       if (inLoop(memcpy) || !type || !type.getElementType().isIntOrFloat())
         return std::nullopt;
+      std::optional<SmallVector<int64_t>> sizes =
+          getConstantIntValues(memcpy.getMixedSizes());
+      if (!sizes)
+        return std::nullopt;
       uint64_t elements = 1;
-      SmallVector<OpFoldResult> sizes = memcpy.getMixedSizes();
-      for (OpFoldResult size : sizes) {
-        std::optional<int64_t> n = getConstantIntValue(size);
-        if (!n)
-          return std::nullopt;
-        elements *= *n;
-      }
+      for (int64_t n : *sizes)
+        elements *= n;
       // The outermost dimension re-runs the BD (as iterations, or as repeats
       // when its stride is 0), and each run sends its own header.
-      uint64_t runs = *getConstantIntValue(sizes.front());
+      uint64_t runs = sizes->front();
       known = true;
       total += elements * type.getElementTypeBitWidth() / 8 +
                runs * headerBytes(packet);
@@ -1554,11 +1553,11 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
     if (streams[trees[a].members.front()].packetID !=
         streams[trees[b].members.front()].packetID)
       return false;
-    for (auto [h, parent] : llvm::enumerate(trees[a].parent))
-      if (parent == ha &&
+    for (auto above : llvm::enumerate(trees[a].parent))
+      if (above.value() == ha &&
           llvm::any_of(llvm::enumerate(trees[b].parent), [&](auto below) {
             return below.value() == hb &&
-                   trees[b].hops[below.index()] == trees[a].hops[h];
+                   trees[b].hops[below.index()] == trees[a].hops[above.index()];
           }))
         return true;
     return false;
@@ -1685,7 +1684,7 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
           continue;
         for (size_t m : trees[g].members)
           if (blocks(s, m) &&
-              !(definite && !getAnalysis().assumptions(s, m).empty())) {
+              (!definite || getAnalysis().assumptions(s, m).empty())) {
             out.push_back({anywhereNode(g),
                            HoldCycle::Step{HoldCycle::Wait::Drain, s, s, m,
                                            TileID{}, Port{}, Port{}, -1}});
