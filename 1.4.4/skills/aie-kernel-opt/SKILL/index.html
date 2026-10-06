@@ -1,0 +1,5021 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Make one compiled AIE kernel faster, and prove it. For C++ kernels built by Peano (llvm-aie) for AIE2P (npu2) or AIE2 (npu1) in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv, in aie_kernels/ or the user's own .cc. Use when a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; when the user wants to vectorize or restructure a kernel, or port one architecture's tuned code to the other; or when they want to know whether a kernel change is really faster or bit-identical on the NPU. Drives the aie.utils.compile.remarks static report and its base-arm diff, the kernel_design contract gate and traced cycles per call, and, for library kernels, the test_kernels_e2e gate and the test_kernels_perf back-to-back A/B. Carries the levers that measured faster on hardware and the traps that compile cleanly and run wrong. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-code-creator).">
+      
+      
+        <meta name="author" content="AMD Advanced Micro Devices">
+      
+      
+        <link rel="canonical" href="https://xilinx.github.io/mlir-aie/1.4.4/skills/aie-kernel-opt/SKILL/">
+      
+      
+        <link rel="prev" href="../../aie-hw-bringup/SKILL/">
+      
+      
+        <link rel="next" href="../../aie-dataflow-opt/SKILL/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.svg">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Phase 4: Kernel Optimization - IRON / MLIR-AIE</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../assets/css/iron.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#aie-kernel-optimization" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="IRON / MLIR-AIE" class="md-header__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+      
+  <img src="../../../assets/images/favicon.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            IRON / MLIR-AIE
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Phase 4: Kernel Optimization
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Xilinx/mlir-aie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Xilinx/mlir-aie
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../getting-started/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../programming_guide/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Programming Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../agentic_programming/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Agentic Programming
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API & Internals
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../UsedIn/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="IRON / MLIR-AIE" class="md-nav__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+      
+  <img src="../../../assets/images/favicon.svg" alt="logo">
+
+    </a>
+    IRON / MLIR-AIE
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Xilinx/mlir-aie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Xilinx/mlir-aie
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../buildHostWin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (WSL)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../buildHostWinNative/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (Native)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../buildHostLinNonUbuntu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Non-Ubuntu Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build from Source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Devices/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Devices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../BuildingVersal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Platform/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../programming_guide/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Programming Guide
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Programming Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/mini_tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mini Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-0/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 0: Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 1: Tiles and Buffers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../programming_guide/section-2/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 2: Data Movement
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Section 2: Data Movement
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2a: Single-Tile Data Movement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../programming_guide/section-2/section-2b/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2b: ObjectFifo Patterns
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_3" id="__nav_3_5_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2b: ObjectFifo Patterns
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2b/01_Reuse/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2b/02_Broadcast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Broadcast
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2b/03_Implicit_Copy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implicit Copy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2b/04_Repeat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../programming_guide/section-2/section-2c/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2c: Data Layout Transformations
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_4" id="__nav_3_5_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2c: Data Layout Transformations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2c/to_stream_transformations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    To Stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2c/from_stream_transformations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From Stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../programming_guide/section-2/section-2d/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2d: DMA and Runtime Tasks
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_5" id="__nav_3_5_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2d: DMA and Runtime Tasks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2d/DMATasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DMA Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2d/RuntimeTasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2e/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2e: Multiple Cores
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../programming_guide/section-2/section-2f/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2f: Multi-Core Patterns
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_7" id="__nav_3_5_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2f: Multi-Core Patterns
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2f/01_single_double_buffer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Single/Double Buffer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2f/02_external_mem_to_core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ext Mem to Core
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2f/03_external_mem_to_core_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ext Mem to Core (L2)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2f/04_distribute_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distribute L2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2f/05_join_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Join L2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2g/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2g: Data Movement Without ObjectFifos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-2/section-2h/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2h: Tensor Access Patterns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 3: My First Program
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../programming_guide/section-4/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 4: Performance
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_7" id="__nav_3_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Section 4: Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-4/section-4a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4a: Timers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-4/section-4b/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4b: Tracing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-4/section-4c/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-4/section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-5/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 5: Example Designs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-6/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 6: ML Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extra References
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extra References
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/iron_configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IRON Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/core_data_memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Data Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/hrx_runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HRX Runtime (amdxdna)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/hsa_runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HSA Runtime (ROCR)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/compilation_stages/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compilation Stages
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/implicit_mlir_context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implicit MLIR Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/kernels_library/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel Library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nightly Kernel Checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=components" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nightly Component Checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic Programming
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Agentic Programming
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agentic_programming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../aie-model-baseline/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 1: Model Baseline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../aie-dataflow-presim/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 2: Dataflow Pre-Sim
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../aie-hw-bringup/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: HW Bring-up
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 4: Kernel Optimization
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 4: Kernel Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#your-own-kernel-or-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Your own kernel or design
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-resolve-what-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Resolve what runs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-gate-and-prove-the-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Gate, and prove the gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-build-the-base-arm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Build the base arm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-read-the-static-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Read the static report
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-diagnose-then-change-one-thing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Diagnose, then change one thing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-measure-both-arms-back-to-back" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Measure both arms back to back
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-exactness-and-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Exactness and record
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-hardware-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading hardware rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#levers-that-measured-faster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Levers that measured faster
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#traps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Traps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#changes-that-measured-worse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changes that measured worse
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to stop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#background" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../aie-dataflow-opt/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 4: Dataflow Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../api/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API & Internals
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API & Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Python API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/iron/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IRON (aie.iron)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/dialect_wrappers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dialect op wrappers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/taplib/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/kernels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Kernel Library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/hostruntime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Host Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/aie_kernels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++ AIE kernels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_3" id="__nav_5_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLIR / C++
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    MLIR / C++
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../ObjectFifoLowering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ObjectFifo Lowering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIE Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEXDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEX Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEVecDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEVec Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIE Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEXPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEX Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEVecPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEVec Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/cpp_doxygen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++ API (Doxygen)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../aiecc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    aiecc Compiler Driver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Community
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../UsedIn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Used in / Cited in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../CONTRIBUTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../ROADMAP/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../SECURITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#your-own-kernel-or-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Your own kernel or design
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-resolve-what-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Resolve what runs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-gate-and-prove-the-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Gate, and prove the gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-build-the-base-arm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Build the base arm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-read-the-static-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Read the static report
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-diagnose-then-change-one-thing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Diagnose, then change one thing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-measure-both-arms-back-to-back" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Measure both arms back to back
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-exactness-and-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Exactness and record
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-hardware-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading hardware rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#levers-that-measured-faster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Levers that measured faster
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#traps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Traps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#changes-that-measured-worse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changes that measured worse
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to stop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#background" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../../agentic_programming/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Agentic Programming
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
+<h1 id="aie-kernel-optimization">AIE kernel optimization<a class="headerlink" href="#aie-kernel-optimization" title="Permanent link">&para;</a></h1>
+<p>This skill makes <strong>one compiled kernel</strong> faster. It assumes the kernel is
+already correct on hardware (<code>aie-hw-bringup</code>) and worth the work
+(<code>aie-dataflow-opt</code> ranks kernels by ablation).</p>
+<p><strong>Evidence rule.</strong> The static report tells you what to try and predicts the
+result. Only two arms measured back to back on the NPU, as traced cycles per
+call of the kernel itself, show a speedup. Only a raw output-word diff shows
+bit-exactness. Without a device, report a static change as "candidate, HW
+unconfirmed", never as faster: an II33 → 18 change measured 594 → 594 (it
+edited a symbol no factory calls), an II37 → 31 change measured slower, and
+rolling int8 <code>mm</code>'s K loop, a uniform static win, measured +3..+28% on half
+the shapes (51d0a8e000a).</p>
+<h2 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">source</span><span class="w"> </span>/opt/xilinx/xrt/setup.sh<span class="w">            </span><span class="c1"># XRT first, or pyxrt is missing</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">source</span><span class="w"> </span>&lt;venv&gt;/bin/activate
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">source</span><span class="w"> </span>utils/env_setup.sh<span class="w"> </span>install<span class="w">          </span><span class="c1"># from the repository root (docs/Building.md)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">MLIR_AIE_KERNEL_SOURCES</span><span class="o">=</span><span class="nv">$PWD</span><span class="w">        </span><span class="c1"># else &quot;this tree&quot; is build/include&#39;s stale copy</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nv">W</span><span class="o">=</span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="nv">K</span><span class="o">=</span>&lt;factory&gt;<span class="p">;</span><span class="w"> </span><span class="nv">CASE</span><span class="o">=</span>&lt;<span class="k">case</span><span class="w"> </span>name<span class="w"> </span>from<span class="w"> </span>kernel_cases.py&gt;<span class="p">;</span><span class="w"> </span><span class="nv">CPUS</span><span class="o">=</span>&lt;fixed<span class="w"> </span>host<span class="w"> </span>CPU<span class="w"> </span>list&gt;
+</code></pre></div>
+<p>Remarks takes <code>--target aie2p</code> for npu2 (Strix, Krackan) or <code>--target aie2</code>
+for npu1 (Phoenix); <code>xrt-smi examine</code> shows which device you have. What an
+intrinsic lowers to is in <code>third_party/aie_api/include/aie_api/detail/&lt;arch&gt;/</code>.</p>
+<h3 id="your-own-kernel-or-design">Your own kernel or design<a class="headerlink" href="#your-own-kernel-or-design" title="Permanent link">&para;</a></h3>
+<p>The commands below are written for a library kernel (an <code>aie.iron.kernels</code>
+factory with cases in <code>test/python/npu/kernel_cases.py</code>). The workflow is
+the same for a kernel in your own design; only the drivers change:</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Library kernel</th>
+<th>Your own <code>ExternalFunction</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Static report (1, 4)</td>
+<td><code>python -m aie.utils.compile.remarks --cases ...</code></td>
+<td><code>remarks.analyze(ef, "aie2p", Path(dir))</code> (<code>aie.utils.compile.remarks</code>) returns the same <code>StaticReport</code>: <code>loops</code> (<code>ii</code>, <code>ns</code>, <code>zol</code>, <code>trips</code>, <code>bundle_count</code>), <code>libcalls</code>, <code>kernel_stack_bytes</code>, <code>pass_failed</code>. <code>remarks.compile_command(ef, ...)</code> gives the exact clang++ line</td>
+</tr>
+<tr>
+<td>Arms (3)</td>
+<td><code>MLIR_AIE_KERNEL_SOURCES=$BASE</code>, <code>--baseline-sources $BASE</code></td>
+<td>Two copies of your <code>.cc</code>, one <code>ExternalFunction</code> per copy (<code>source_file=</code>); run <code>analyze</code> on each and compare the reports</td>
+</tr>
+<tr>
+<td>Gate (2)</td>
+<td><code>test_kernels_e2e.py -m extensive</code></td>
+<td>Attach a <code>KernelContract</code> (<code>aie.iron.kernels</code>: roles, a single-pass reference, tolerance, <code>trace=</code>) and drive it with <code>aie.iron.algorithms.kernel_design</code> (<code>kd.design(my_factory, calls=N, guard=True)</code> with <code>my_factory</code> a module-level function returning the kernel, <code>kd.sample_inputs</code>, <code>kd.upload(..., poison=True)</code>), or keep your design's own test with poisoned outputs</td>
+</tr>
+<tr>
+<td>Measure (6)</td>
+<td><code>test_kernels_perf.py --baseline-sources</code></td>
+<td><code>kd.cycles_per_call</code> on each arm's design for a <code>Trace.whole_call()</code> contract, or <code>event0()</code>/<code>event1()</code> markers around the call in your design traced with <code>TraceConfig</code>; alternate the arms back to back</td>
+</tr>
+<tr>
+<td>Whole design</td>
+<td>MobileNet in the examples below</td>
+<td>Your design's own end-to-end timing, same rules (warm up, min, back to back)</td>
+</tr>
+</tbody>
+</table>
+<p>Every rule and lever holds either way. The MobileNet, ResNet and llama
+numbers below are examples of a consumer design exercising a kernel, not
+requirements; the short hashes cite the mlir-aie commits that measured them
+(<code>git fetch origin pull/3807/head</code> brings them in after the squash merge).</p>
+<h2 id="workflow">Workflow<a class="headerlink" href="#workflow" title="Permanent link">&para;</a></h2>
+<h3 id="1-resolve-what-runs">1. Resolve what runs<a class="headerlink" href="#1-resolve-what-runs" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;def </span><span class="nv">$K</span><span class="s2">\b&quot;</span><span class="w"> </span>-A40<span class="w"> </span>python/iron/kernels/*.py<span class="w">      </span><span class="c1"># source, -D flags, extern &quot;C&quot; symbol, trace=</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;Case(\&quot;</span><span class="nv">$K</span><span class="s2">&quot;</span><span class="w"> </span>test/python/npu/kernel_cases.py<span class="w">     </span><span class="c1"># cases, calls=, kwargs</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>python<span class="w"> </span>-m<span class="w"> </span>aie.utils.compile.remarks<span class="w"> </span>--target<span class="w"> </span>aie2p<span class="w"> </span>--cases<span class="w"> </span>test/python/npu/kernel_cases.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span>--only<span class="w"> </span><span class="s2">&quot;^</span><span class="nv">$K</span><span class="s2">&quot;</span><span class="w"> </span>--out<span class="w"> </span><span class="nv">$W</span>/rows.json<span class="w"> </span>--meta<span class="w"> </span><span class="nv">$W</span>/meta.json
+</code></pre></div>
+<ul>
+<li>Remarks prints <code>[OK] &lt;build&gt;: &lt;symbol&gt; from &lt;source&gt;</code> per build. Follow
+  that symbol to the function it calls and edit only that. A <code>.cc</code> often
+  holds siblings no factory selects (in-place, <code>_scalar</code>, another dtype).</li>
+<li><code>--cases</code> compiles exactly the builds the cases run, named by case
+  (4c8c4d91ff4); it first prints <code>cases: N builds for M cases ...</code>, and a
+  case missing from M is a finding. Without it remarks builds only factory
+  defaults and <code>.dtypes</code>, which missed every stride-2 and sized <code>-D</code> build
+  of the conv kernels. For a shape no case has, use
+  <code>--build FACTORY:KEY=VALUE,...</code> (repeatable; 3dfa82d81af).</li>
+<li>Read the contract's <code>trace=</code>. Only <code>Trace.whole_call()</code> gets a cycles row.
+  <code>Trace.none(reason)</code> and <code>Trace.partial(reason)</code> leave you with wall clock.</li>
+<li><strong>Grep the vector path's guard.</strong> Every condition on a runtime scalar
+  (not width or alignment) needs a case on each side, at the values the
+  consumer design passes. MobileNet passed <code>skip_scale</code> 0, the guard was
+  <code>&gt; 0</code>, no case used 0, and three layers ran scalar at 579k-927k cycles a
+  call, 16.2 of the network's 16.3 ms. Relaxing the guard took the network
+  to 0.77 ms (9e649eda9d7).</li>
+<li><strong>Time the case at the design's scalars.</strong> A case at other widths can
+  take another path. <code>xy_pool</code> read 820 at <code>outC</code> 120, but MobileNet
+  passes 960 padded to 1280, and a scalar pad loop ran at 3066 a call
+  until it stored vectors (875, 8fafbef845b). bn2's dw row (56 wide) ran
+  the generic path because the 8-pixel path stopped at 32 pixels: 4302 →
+  840 (eb89013e5d8). A gap that is the same on every row is per-call work,
+  not a DMA stall.</li>
+</ul>
+<h3 id="2-gate-and-prove-the-gate">2. Gate, and prove the gate<a class="headerlink" href="#2-gate-and-prove-the-gate" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pytest<span class="w"> </span>test/python/test_kernel_contracts.py<span class="w"> </span>-k<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$K</span><span class="s2">&quot;</span><span class="w"> </span>-q<span class="w">           </span><span class="c1"># host only</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>pytest<span class="w"> </span>test/python/npu/test_kernels_e2e.py<span class="w"> </span>-m<span class="w"> </span>extensive<span class="w"> </span>-k<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CASE</span><span class="s2">&quot;</span><span class="w"> </span>--seeds<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--report-error<span class="w"> </span><span class="nv">$W</span>/err.json<span class="w"> </span>&gt;<span class="w"> </span><span class="nv">$W</span>/gate.log<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+</code></pre></div>
+<ul>
+<li><code>-m extensive</code> runs every case, every data case (random plus the
+  contract's edge cases) and every seed. <code>-k</code> is a substring match (<code>-k add</code>
+  also runs <code>mul_add</code>); check the selection with <code>--collect-only -q</code>.
+  Keep the whole log: an unreproducible failure needs its words.</li>
+<li><code>--report-error</code> records per case <code>max_ulp</code>, <code>not_correctly_rounded</code>,
+  the worst index and the reference precision judged against
+  (8f749a06d52); a "correctly rounded" claim must quote a <code>float64</code> entry.
+  For a unary bf16 kernel run the whole domain:
+  <code>aie.utils.accuracy.all_bf16(nan=False)</code> against <code>round_to(ref64, bfloat16)</code>.</li>
+<li><strong>Mutation-prove it.</strong> Break the kernel on purpose (drop a term, skip the
+  tail, swap two loads), watch the gate fail, revert. A surviving mutant
+  is a missing case or dead work: decide which. Report it with the reason;
+  don't swap in a louder one. Mutate data, not addresses, on aligned paths
+  (a 64 B-aligned <code>load_v</code> ignores a 32 B offset), and count only random
+  data runs (zeros pass most mutants).</li>
+<li><strong>Derive every tolerance</strong> from the arithmetic, over the longest case
+  (one kernel's error was 0.07 at 4 calls and 0.25 at 256).</li>
+<li><strong>The reference must not replay the kernel.</strong> Write a single-pass fp32
+  (or float64) reference, and judge against the mathematics (see the exp2
+  and tanh traps below). Define the semantics at every scalar the kernel
+  accepts; a scalar path that is undefined there (a shift by -1) is not a
+  reference.</li>
+<li><strong>One case per parameter and per path.</strong> A check case for each factory
+  parameter away from its default (<code>conv2dk14</code> second tile group: 404/1024
+  wrong, fae15d5b998), each fallback dtype (<code>cascade_mm</code> bf16 fallback: max
+  |Δ| 1.091 → 1.7e-6, aa3d8476a03), and a size at which an unrolled or
+  versioned loop actually runs, not only its fallback.</li>
+<li><strong>Misaligned views.</strong> A design that packs several weights into one
+  buffer hands them out at offsets like 16 mod 64; kernel tests bind each
+  argument alone and aligned. Test it with <code>Case(...,
+  arg_byte_offsets=((idx, 16),))</code> (c7d229b9316), and run it on the base
+  kernels first so it fails. Declare <code>alignments</code> in the contract for
+  what the fast path loads (d8e877d26fc).</li>
+<li>Keep outputs poisoned (<code>kd.upload(..., poison=True)</code>; the core's output
+  tile is poisoned too, 36bd3b637a7) and guarded (<code>kd.design(...,
+  guard=True)</code>), so an unwritten output or a write past a tile's end fails.
+  Gate every entry point alone, and the composition once.</li>
+</ul>
+<h3 id="3-build-the-base-arm">3. Build the base arm<a class="headerlink" href="#3-build-the-base-arm" title="Permanent link">&para;</a></h3>
+<p>An arm is a directory holding <code>aie_kernels/</code> and <code>aie_runtime_lib/</code>.
+Remarks and the JIT compile from <code>MLIR_AIE_KERNEL_SOURCES=&lt;arm&gt;</code> when it is
+set, and both take <code>--baseline-sources &lt;arm&gt;</code> for the comparison.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nv">BASE</span><span class="o">=</span><span class="nv">$W</span>/base<span class="p">;</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="nv">$BASE</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>git<span class="w"> </span>archive<span class="w"> </span>HEAD<span class="w"> </span>aie_kernels<span class="w"> </span>aie_runtime_lib<span class="w"> </span><span class="p">|</span><span class="w"> </span>tar<span class="w"> </span>-x<span class="w"> </span>-C<span class="w"> </span><span class="nv">$BASE</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># Shared tree, or your file includes a sibling (mha.cc includes mm, softmax, zero):</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>cp<span class="w"> </span>-r<span class="w"> </span>aie_kernels<span class="w"> </span>aie_runtime_lib<span class="w"> </span><span class="nv">$BASE</span>/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>show<span class="w"> </span>&lt;rev&gt;:&lt;file&gt;<span class="w"> </span>&gt;<span class="w"> </span><span class="nv">$BASE</span>/&lt;file&gt;
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>diff<span class="w"> </span>-rq<span class="w"> </span>aie_kernels<span class="w"> </span><span class="nv">$BASE</span>/aie_kernels<span class="w">     </span><span class="c1"># must list only your files</span>
+</code></pre></div>
+<p>The factories, cases and <code>-D</code> flags come from the installed Python in both
+arms, so snapshot Python-side parameters (stack sizes, geometry tables) you
+change along with the arm. Archive right before the A/B: on a shared
+branch an older archive lacks others' later commits and credits their gains
+to you.</p>
+<h3 id="4-read-the-static-report">4. Read the static report<a class="headerlink" href="#4-read-the-static-report" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python<span class="w"> </span>-m<span class="w"> </span>aie.utils.compile.remarks<span class="w"> </span>--target<span class="w"> </span>aie2p<span class="w"> </span>--cases<span class="w"> </span>test/python/npu/kernel_cases.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--only<span class="w"> </span><span class="s2">&quot;^</span><span class="nv">$CASE</span><span class="s2">&quot;</span><span class="w"> </span>--out<span class="w"> </span><span class="nv">$W</span>/rows.json<span class="w"> </span>--meta<span class="w"> </span><span class="nv">$W</span>/meta.json<span class="w"> </span>--keep<span class="w"> </span><span class="nv">$W</span>/objs<span class="w"> </span>--baseline-sources<span class="w"> </span><span class="nv">$BASE</span>
+</code></pre></div>
+<ul>
+<li>Per build: <code>[OK]</code>, then any <code>dropped pragma:</code>, <code>calls the runtime
+  library: &lt;symbols&gt;</code>, and a <code>stack:</code> warning over the contract's budget.
+  It exits 3 if a build fails to compile; that is a finding, and the
+  failure prints the first <code>error:</code>/<code>LLVM ERROR</code>/assertion lines
+  (9872411c243). The builds that compiled still get rows and a diff
+  (d7a37082e05). With <code>--baseline-sources</code> it ends with <code>N rows differ</code> and
+  one <code>name: before -&gt; after</code> line per row: that is the static A/B.</li>
+<li>Both summaries name the <code>aie_kernels/</code> they compiled and warn when
+    <code>MLIR_AIE_KERNEL_SOURCES</code> is unset or both arms are one tree
+    (0e867c0d9c4): the comparison is void.</li>
+<li>Loops LLVM only renumbered are paired and reported as <code>M loops renamed
+    with the same rows, not listed</code> (2f11f40eefb).</li>
+<li><code>0 rows differ</code> after an edit you expected to move something: check
+    that the hunk landed (<code>diff -r</code> against the arm) before concluding.</li>
+<li>Rows: <code>unpipelined_loops</code>, <code>non_zol_loops</code>, <code>missing_bank_loads</code>,
+  <code>pass_failed_warnings</code>, <code>pm_bytes</code>, <code>libcalls</code>, <code>kernel_stack_bytes</code>, and
+  per loop <code>loop/&lt;fn&gt;/&lt;bb&gt;/II</code> and <code>not_zol</code>. They cover only functions the
+  entry symbol reaches.</li>
+<li>A loop with a constant trip count also gets <code>II_x_trips</code> (a0340f8676b).
+  Compare it, not II, when a change unrolls or widens a body: the llama
+  transpose went II 26 → 27 but II_x_trips 3328 → 864, and HW 3344 → 880.
+  Runtime-count loops have no trips; multiply nested loops yourself.</li>
+<li>Meta per loop: <code>ii</code>, <code>ns</code> (stage count), <code>pipelined</code>, <code>zol</code>,
+  <code>bundle_count</code>, <code>byte_count</code>, <code>file</code>, <code>line</code>; per build <code>pass_failed</code> and
+  <code>schedule_notes</code> (<code>MII</code>, <code>SwpMaxMii</code>). Meta covers this tree only; for
+  the base arm's loops run again with <code>MLIR_AIE_KERNEL_SOURCES=$BASE</code>.
+  <code>ns</code> 1 means the iterations don't overlap: the II is one iteration's
+  critical path, and it moves unpredictably with unrelated edits.</li>
+<li>Trust the loop row, not a pipeliner remark: a copy loop "found II 3"
+  and was emitted without a ZOL at II 7-8.</li>
+<li>Why a loop missed its II: <code>remarks.compile_command(ef, target, dir)</code>
+  gives the exact clang++ line. Add <code>-mllvm -debug-only=pipeliner</code> for
+  <code>MII = N (rec=R, res=S)</code> and Found/Rejected per loop,
+  <code>-debug-only=postpipeliner</code> for ResMII/RecMII, or <code>-mllvm -debug</code>
+  grepped for <code>^PLI</code> for each rejected II's reason.</li>
+<li>Spills: <code>[sp, #</code> inside a loop body in the kept object.
+  <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nv">$PEANO_INSTALL_DIR</span>/bin/llvm-objdump<span class="w"> </span>-d<span class="w"> </span>--no-show-raw-insn<span class="w"> </span>&lt;object&gt;<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;\[sp, #&#39;</span>
+</code></pre></div></li>
+<li>Size: use <code>pm_bytes</code> / <code>pm_bytes_by_function</code>, not an object's <code>.text</code>,
+  which counts siblings the link drops.</li>
+<li>Stack: <code>kernel_stack_bytes</code> is the kernel's own call path (398e3d9b77e);
+  the core adds main's frame (+128 B on AIE2P, +96 on AIE2 in the kernel
+  harness). Size a contract's <code>stack_bytes</code> from aiecc's <code>this core needs
+  N</code>, over every size the cases use.</li>
+<li>A <code>noinline</code> body reports its caller's II; count its bundles yourself.</li>
+<li><strong>Other architecture unchanged.</strong> Run remarks with the other <code>--target</code>
+  and <code>--keep</code> in both arms; <code>0 rows differ</code> covers only the builds it
+  compiled. Compare per section (<code>llvm-objdump -s -j .text.&lt;symbol&gt;</code>),
+  since a moved source line renumbers <code>.Ltmp</code> labels in <code>-d</code> output.</li>
+</ul>
+<h3 id="5-diagnose-then-change-one-thing">5. Diagnose, then change one thing<a class="headerlink" href="#5-diagnose-then-change-one-thing" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Report or object shows</th>
+<th>Lever</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The other architecture has a tuned branch; this one runs portable code</td>
+<td>L21</td>
+</tr>
+<tr>
+<td><code>libcalls</code> names a helper called in a loop</td>
+<td>L02; L11 for <code>__divsi3</code></td>
+</tr>
+<tr>
+<td><code>vector&lt;float&gt;</code> multiply, min or max in a loop</td>
+<td>L03; L04 on AIE2P</td>
+</tr>
+<tr>
+<td>Array of accumulators or vectors indexed by a loop counter; <code>[sp</code> traffic</td>
+<td>L01</td>
+</tr>
+<tr>
+<td><code>kernel_stack_bytes</code> &gt; 0 on a leaf kernel with no arrays</td>
+<td>L25</td>
+</tr>
+<tr>
+<td>The loop you care about isn't innermost or single-block; unpipelined parent</td>
+<td>L10</td>
+</tr>
+<tr>
+<td>Loop body branches on its counter</td>
+<td>L13</td>
+</tr>
+<tr>
+<td>Address arithmetic in the body; no <code>__restrict</code>; <code>ns</code> 1 with load → op → store</td>
+<td>L06</td>
+</tr>
+<tr>
+<td>Runtime trip count, not pipelined or <code>ns</code> 1</td>
+<td>L22</td>
+</tr>
+<tr>
+<td>Pipelined, many empty bundles; <code>byte_count</code> flat from ×1 to ×4</td>
+<td>L07</td>
+</tr>
+<tr>
+<td><code>ns</code> 1, one long chain per vector (activation, exp, epilogue)</td>
+<td>L07</td>
+</tr>
+<tr>
+<td>Stepping fewer lanes than the accumulator holds; one wide load per four V-ops</td>
+<td>L08</td>
+</tr>
+<tr>
+<td>int8 <code>mmul&lt;4,8,8&gt;</code> on AIE2P</td>
+<td>L23</td>
+</tr>
+<tr>
+<td>One long mac chain, or broadcasts spilled per block; one A load per output block</td>
+<td>L09</td>
+</tr>
+<tr>
+<td>First mac waits on loading C</td>
+<td>L28</td>
+</tr>
+<tr>
+<td>MAC loop pipelined, epilogue after it isn't</td>
+<td>L27</td>
+</tr>
+<tr>
+<td>Pipelined, <code>ns</code> 3, one long latency chain with no dominant step</td>
+<td>L17</td>
+</tr>
+<tr>
+<td>Several <code>mmul&lt;8,8,8&gt;</code> accumulators for Y += S·V; high II, big frame</td>
+<td>L18</td>
+</tr>
+<tr>
+<td>A <code>reduce_add</code>/<code>reduce_max</code> per row that the row loop never overlaps</td>
+<td>L20</td>
+</tr>
+<tr>
+<td>bfp16 stream state (<code>sfl/sfh</code>, FIFO) spilled around <code>vst.push</code>/<code>vldb.pop</code></td>
+<td>L19</td>
+</tr>
+<tr>
+<td><code>(tanh+1)/2</code>, or separate constant multiplies</td>
+<td>L05</td>
+</tr>
+<tr>
+<td>Table gather and arithmetic in one loop</td>
+<td>L26</td>
+</tr>
+<tr>
+<td>RecMII holds an unaligned-store loop with a small body (AIE2P)</td>
+<td>L24</td>
+</tr>
+<tr>
+<td>Runtime shape the factory knows at build time; dead chunk-count bodies</td>
+<td>L29</td>
+</tr>
+<tr>
+<td><code>lda.s8</code>/<code>st.s8</code> byte loop</td>
+<td>L12</td>
+</tr>
+<tr>
+<td>Scalar int8 requantize tail</td>
+<td>L14</td>
+</tr>
+<tr>
+<td>Scalar gather building the mmul A operand</td>
+<td>L15</td>
+</tr>
+<tr>
+<td>Body is only a rearrangement</td>
+<td>L16</td>
+</tr>
+<tr>
+<td>II already at a resource or latency bound</td>
+<td>stop (§When to stop)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>One change per candidate. The lever's Check must move in the
+  <code>--baseline-sources</code> diff; if no static metric moved, revert.</li>
+<li>Before an unroll, screen it: two scratch arms that differ only in the
+  pragma, remarks on <code>x4</code> with <code>--baseline-sources $W/x1</code>. Loop
+  <code>byte_count</code> flat at ×4 means latency-bound: go. Roughly ×4, a new
+  <code>[sp, #</code>, or more stack: stop. Try 2 and 8 when 4 is borderline.</li>
+<li>If the change creates a path no case reaches (an unroll remainder, a
+  non-square shape, an odd block count, an odd row length), add a <code>Case</code> to
+  <code>test/python/npu/kernel_cases.py</code> and its name to
+  <code>test/python/npu/perf_series.txt</code> (<code>test_perf_series_names.py</code> checks).
+  <code>check(...)</code> cases are gated but never timed.</li>
+<li>A change that hides work from LLVM (an opaque pointer bump, <code>volatile</code>, a
+  LICM blocker) to get a lower II has measured slower (prefill <code>fv</code>: static
+  II37 → 31, HW 1374-1576 against 1265).</li>
+<li>Write the per-call prediction before measuring:
+  <code>bundles_outside_loop + 5 + (trips - 1) × II</code>, per loop, trips from the
+  loop-count setup in the object. Compare II per unit of work (per row,
+  value or tile), not per loop: a raw II that rises can still win. Never
+  turn an II ratio into a speedup (prefill <code>fv</code>'s said -70%; HW gave -35%).
+  A loop that isn't a pipelined ZOL defeats the model: int8 <code>mm</code>'s
+  predicted a wash and measured -19% (d3b4b66fd7a).</li>
+<li>Re-run <code>test_kernel_contracts.py</code> and the gate.</li>
+</ul>
+<h3 id="6-measure-both-arms-back-to-back">6. Measure both arms back to back<a class="headerlink" href="#6-measure-both-arms-back-to-back" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>taskset<span class="w"> </span>-c<span class="w"> </span><span class="nv">$CPUS</span><span class="w"> </span>pytest<span class="w"> </span>test/python/npu/test_kernels_perf.py<span class="w"> </span>-m<span class="w"> </span>perf<span class="w"> </span>-k<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$K</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--baseline-sources<span class="w"> </span><span class="nv">$BASE</span><span class="w"> </span>--perf-out<span class="w"> </span><span class="nv">$W</span>/perf.json<span class="w"> </span>--perf-meta<span class="w"> </span><span class="nv">$W</span>/meta.json
+</code></pre></div>
+<ul>
+<li>Each case runs from this tree, then from <code>$BASE</code>, with the same inputs.
+  The summary prints <code>cycles base -&gt; cur</code> and each arm's <code>min..max n=</code> for
+  cycles and <code>npu_us</code>, <code>same</code> or <code>N differ</code> raw output words, and each
+  arm's error vs the reference (3b507540694, 8f749a06d52). <code>--perf-meta</code>
+  holds the same under <code>baseline.cases.&lt;case&gt;</code> (<code>cycles_range</code>,
+  <code>npu_us_range</code>, <code>accuracy</code> as [base, cur]).</li>
+<li><strong>Time every case of the kernel</strong>, not the one you targeted. Every case
+  is one command, and a change often wins one shape and loses another: 8
+  pixels per mmul won six bn 1x1 shapes and lost relu 28/40/120 2236 →
+  2853 (147bbd32f8d); an unrelated loop in the same function moved II 103
+  → 105.</li>
+<li><code>-k "[$CASE]"</code>, brackets included, selects exactly one case. <code>-k</code>
+  rejects <code>=</code>; select a prefix and check with <code>--collect-only -q</code>. <code>-k</code>
+  subsets still write their rows.</li>
+<li>The baseline is timed even if it fails this tree's contract
+  (a82f73e3e27) and rebuilt with the stack it needs (16d203e06d2); a
+  failing candidate still gets its words diffed (74550f29195). Each
+  <code>check(...)</code> case gets an untimed <code>test_kernel_same_as_baseline[&lt;case&gt;]</code>
+  words line (56a68449765); select it by node id.</li>
+<li>To screen a candidate kept in its own copy, set
+  <code>MLIR_AIE_KERNEL_SOURCES=$W/cand-&lt;name&gt;</code>; the JIT cache key includes it
+  and the design generator's own helpers (d4f088355b5). After editing IRON
+  or <code>aie.iron.kernels</code>, use a fresh <code>NPU_CACHE_HOME</code>. To A/B compile flags
+  without editing a shared factory, wrap <code>ExternalFunction.__init__</code> in a
+  pytest <code>-p</code> plugin.</li>
+</ul>
+<p>Verdict:</p>
+<table>
+<thead>
+<tr>
+<th>You see</th>
+<th>Verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Candidate's max below base's min; the unchanged kernel reproduces to the cycle</td>
+<td>confirmed</td>
+</tr>
+<tr>
+<td>Ranges overlap, or the delta sits inside an unchanged kernel's spread</td>
+<td>no change: revert</td>
+</tr>
+<tr>
+<td>Candidate higher</td>
+<td>rejected: revert</td>
+</tr>
+<tr>
+<td>The unchanged kernel moved</td>
+<td>void: the arms differ in more than your change; fix and rerun</td>
+</tr>
+</tbody>
+</table>
+<p>Check the result against the prediction (<code>zero</code> predicted ~75 / ~130,
+measured 78 / 134); if they disagree, find out which is wrong first.</p>
+<h3 id="7-exactness-and-record">7. Exactness and record<a class="headerlink" href="#7-exactness-and-record" title="Permanent link">&para;</a></h3>
+<ul>
+<li>"Bit-identical" means every case reads <code>same</code> in step 6's run. A
+  tolerance pass isn't proof: <code>fused_mm</code> passed 27 of 27 cases with a
+  dropped term, and a mutation that changed 45,159 words passed rtol 0.04.
+  Mutation-prove the diff too, with a mutant inside the tolerance
+  (<code>set_rounding(ceil)</code>, one LSB, a dropped low limb): the words line must
+  show it. A mutant that only touches values random data never produces
+  (-NaN lanes) reads <code>same</code>. If the change reorders accumulation, say so and
+  give the max |Δ|. Integer paths with an exact contract are proved by
+  the gate itself.</li>
+<li><strong>Build every design that links the kernel</strong> and read each core's program
+  memory and stack. A core holds every kernel and size variant it calls in
+  16384 B: bn 1x1 relu + skip grew 800 + 848 → 8944 + 10736 B and
+  overflowed a MobileNet core the kernel tests never see (a9cfcbc2130,
+  1d9069f69d7). Designs that build their own Workers use the 1024 B default
+  stack, not the contract's.</li>
+<li>One commit per kernel and change, with base → after cycles per case, n,
+  the arm sources and the gate line. List each rejected variant with the
+  number that killed it. NO-CHANGE with a measured bound is a valid result.
+  A rejected lever is worth retrying after a structural change: the
+  whole-granule store lost before a row-width specialization and won after
+  it (1c32c246a33).</li>
+<li>Record provenance with every number: the row's <code>extra</code> (commit, Peano,
+  <code>kernels</code> digest) and what <code>$BASE</code> came from. <code>git status</code> at measure time
+  is not provenance on a shared tree; the JIT cache is:
+  <code>$NPU_CACHE_HOME/objects/&lt;key&gt;/</code> holds a copy of every <code>.cc</code> it compiled
+  (the <code>.o.d</code> depfiles name them), so diff those against <code>git show
+  &lt;rev&gt;:&lt;path&gt;</code>. When two numbers conflict, compare digests first.</li>
+<li>Several agents on one NPU: wrap every hardware command in <code>flock</code> on one
+  shared lock file, and build base arms by copying the live tree.</li>
+<li>Keep every <code>extern "C"</code> name, signature and buffer layout. Leave
+  <code>*_scalar</code> variants alone.</li>
+</ul>
+<h2 id="reading-hardware-rows">Reading hardware rows<a class="headerlink" href="#reading-hardware-rows" title="Permanent link">&para;</a></h2>
+<p><code>&lt;case&gt;/cycles</code> is the <strong>min</strong> of the kernel's own intervals, split from its
+initializers' by position (<code>kd.cycles_per_call</code>). Its <code>range</code> gives
+<code>median X max Y n=N</code> and <code>init[i] min M</code> per initializer. The harness
+traces markers only and flushes after the last call, so every call arrives
+or the test fails with <code>N of M calls traced</code> (53f84828939); intervals over
+524,288 cycles are unwrapped (62739edc49f).</p>
+<table>
+<thead>
+<tr>
+<th>You see</th>
+<th>Do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No <code>&lt;case&gt;/cycles</code> row</td>
+<td>The contract is <code>none</code>/<code>partial</code> (in the library, only <code>set_rounding</code>), or the case is a <code>check</code>. Use wall clock and say so, or move one marker pair to bracket the whole call and declare <code>Trace.whole_call()</code></td>
+</tr>
+<tr>
+<td><code>expected E trace intervals and up to F flush pairs</code></td>
+<td>A marker the contract doesn't declare. <code>pytest test/python/test_kernel_trace_markers.py</code> names the build</td>
+</tr>
+<tr>
+<td><code>N of M calls traced</code></td>
+<td>A stale design or a marker pair too short to flush; use a fresh <code>NPU_CACHE_HOME</code>, then run the marker audit</td>
+</tr>
+<tr>
+<td>A row moved but its file didn't</td>
+<td>Something in its include closure changed: <code>git diff &lt;rev&gt; -- &lt;closure&gt;</code>. A 33% "matmul" gain was all <code>zero.cc</code></td>
+</tr>
+<tr>
+<td>A stream you traced yourself, K kernels per call</td>
+<td>Population j is <code>intervals[j::K]</code>. Never quote min or median over the mixed stream. Your own <code>pipeline(...)</code> flushes with <code>Stage.trace_flush</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>A cycle row names the design, not the kernel. Before crediting a delta,
+  confirm the <code>[OK]</code> line names the entry you changed.</li>
+<li>A fast kernel's max carries the NPU's stall tail (<code>add</code> 46, max 68):
+  compare mins.</li>
+<li><code>core_fraction = cycles × calls ÷ 1.76e9 ÷ npu_seconds</code> (1.76 GHz
+  measured on AIE2P). Below 0.5 the case is dispatch-bound: a 16-call
+  dispatch costs 60-90 µs whatever the core does. Judge the kernel on
+  cycles; if production is dispatch-bound too, hand off to
+  <code>aie-dataflow-opt</code>.</li>
+<li>Wall clock, only when the kernel can't be traced: quote the pinned
+  <strong>min</strong> (<code>npu_us_min</code>), never the mean (it showed 7.5% between
+  byte-identical builds). For the per-call cost, difference two cases that
+  differ only in <code>calls</code>: <code>(t20 − t4) / 16</code>.</li>
+<li>Ablation prices a region: replace it with a cheap wrong computation and
+  trace. The bf16 GEMV went 1154 → 634, pricing its reduction at 520. A
+  price is where the time goes, not a bound: six local tweaks lost, then
+  restructuring the reduction (L20) won 1154 → 788.</li>
+</ul>
+<p><strong>Whole-design latency</strong> (to confirm a kernel win in the design that uses
+it, c0991c9950f):</p>
+<ul>
+<li>The NPU ramps for 6-13 launches after load (MobileNet 5826, 1604, 947, …
+  732 µs); one warmup and five iterations read ~1.6x high. Warm up ≥ 20.</li>
+<li>Time back to back on one hardware context. A context switch reloads the
+  whole PDI (+2.85 ms for 3.95 MB), and after ≥ 50 ms idle even an empty
+  transaction costs ~340 µs against 55 µs.</li>
+<li>Quote the min and record <code>uptime</code>: at load average 9-15 MobileNet's
+  median spread over 725-850 µs while its min held 695-712.</li>
+<li>For a base arm of the whole design, <code>git archive</code> the base's Python too,
+  put it first on <code>PYTHONPATH</code>, and check one known base number before
+  trusting the rest (MobileNet 176.4 ms against 176.2).</li>
+<li>Find the layer that paces the design before optimizing one: make the
+  kernel return at entry for that layer's shape and time the design. The
+  noop is live only if the output changed (MobileNet's residuals can keep
+  it passing, so check that <code>max_difference</code> moved). bn2's dw noop took
+  MobileNet 604 → 561-569 µs; the fix then reached 557-588 (eb89013e5d8).
+  Noops of bn6's and bn12's dw moved nothing.</li>
+<li>The min spread 533-571 µs over 38 runs of one build, so a Δmin under
+  ~15 µs from two ABAB pairs is noise: four 3x3 layers read −9..−13 µs,
+  then +1..+3 in three more pairs.</li>
+<li>Compile each arm once outside the NPU lock (<code>--xclbin-path</code>,
+  <code>--insts-path</code>, the arm's <code>NPU_CACHE_HOME</code>); a cached timed run holds it
+  ~4 s.</li>
+</ul>
+<h2 id="levers-that-measured-faster">Levers that measured faster<a class="headerlink" href="#levers-that-measured-faster" title="Permanent link">&para;</a></h2>
+<p>Each gives the change, what must move in the static report where it isn't
+obvious, and one hardware result (npu2 cycles per call unless noted;
+"model" means wall clock in a model outside this repository).</p>
+<p><strong>L01 Fully unroll loops that index register arrays.</strong> A short loop
+indexes <code>acc[i]</code> or calls <code>insert</code>/<code>extract</code> with its counter; <code>[sp</code> around
+the accumulators. <code>AIE_LOOP_UNROLL_FULL</code> makes each index constant. Check:
+stack traffic gone, the enclosing loop gets an II. <code>conv2dk1_i8</code> 7623 → 504.
+A full unroll over a size parameter grows the frame with it: chunk the
+loop (<code>dwconv1d_cl</code> 8608 → ≤ 1280 B at C=960, cycles unchanged,
+8343faea7b9). A loop that runs exactly once lets LICM hoist its loads into
+the parent and spill them (1216 B at width 56, 8bd78ee2771).</p>
+<p><strong>L02 No libcalls in hot loops.</strong> The <code>libcalls</code> row names a helper (see
+the traps). Use <code>aie::max</code>/<code>min</code> for compares, <code>aie::inv</code> times a multiply
+for divides, <code>aie::to_float</code> for int → float, integers for index math;
+reduce a per-chunk max element-wise and horizontally once at the end.
+Check: helper gone, loop gets an II. <code>rms_norm</code> 1597 → 438.</p>
+<p><strong>L03 Avoid the f32 vector multiply (AIE2P).</strong> Skip multiplies by a known 1
+or 0. If one operand is exact in bf16 (a tanh result, a chosen constant),
+split only the f32 operand into <strong>three</strong> bf16 limbs (residuals via
+<code>aie::msc</code>; two limbs change bits) and mac each against it. Matmul silu
+epilogue 8098 → 3213, bit-identical. When both operands are f32, three
+limbs each (six products) still beat the emulation: <code>bf16_exp</code> 13459 →
+1866 and correctly rounded (c785995b735); <code>exp2f_vec</code> 14125 → 2174, max
+ulp 1476 → 115 (f376889eab8). Issue the high-limb products first and the
+low ones last (2226 → 1937). A numpy bit model (float64 product, one f32
+rounding) predicted the hardware words exactly. Clamp without f32
+<code>min</code>/<code>max</code>: compare bf16 results against bounds rounded the same way, or
+select on the integer bit pattern (<code>mm</code> relu 1106 → 274, 2f76486caed);
+NaN compares as a large integer, so handle it explicitly if the contract
+needs it (1937 → 2174).</p>
+<p><strong>L04 Run emulated f32 chains 32 lanes wide (AIE2P).</strong> A 16-lane emulated
+f32 multiply pays for 32 lanes. Step 32 lanes; replace a vector
+<code>to_fixed</code>/<code>to_float</code> floor with the magic-number floor <code>x + 1.5*2^23</code>.
+Check: bundles per element drop. <code>bf16_exp</code> 32482 → 15425 (with other
+changes).</p>
+<p><strong>L05 Fold constants into one mac.</strong> Write <code>(tanh+1)/2</code> as one mac into an
+accumulator preloaded with 0.5; fold constant scales together
+(power-of-two scaling is bit-exact). <code>sigmoid</code> 498 → 118.</p>
+<p><strong>L06 Walking <code>__restrict</code> cursors.</strong> Peano doesn't strength-reduce
+<code>base[i*stride]</code>. Advance a <code>T *__restrict</code> cursor, mark non-aliasing
+in/out pointers <code>__restrict</code> (not for in-place kernels), and use
+<code>add_2d_byte</code>/<code>add_3d_byte</code> for multi-dimensional walks
+(<code>aie_kernels/quant/q4nx_dequant.cc</code>). Check: II and body <code>[sp</code> drop.
+<code>zero&lt;float,4096&gt;</code> 519 → 262. <code>AIE2_RESTRICT</code> expands to nothing on AIE2P;
+an AIE2P loop at <code>ns</code> 1 with a load → op → store chain wants plain
+<code>__restrict</code> too: <code>bitwise_and</code> 306 → 40 (3714284145d), <code>threshold</code> 400 →
+103 (b797494776c), <code>add_weighted</code> 1134 → 136 (50ee7db49d8), a walked
+<code>reduce_add</code> 215 → 85 (0b841e34862), <code>bn_conv2dk3</code> II 47 → 27
+(8bd78ee2771). Gate it per architecture so the other <code>.text</code> doesn't move.</p>
+<p><strong>L07 Unroll latency-bound bodies</strong>, after the unroll screen passes. Not
+on load-, resource- or register-bound bodies. Check: II per element drops,
+no new <code>[sp</code>. <code>leaky_relu</code> 298 → 86. <code>UNROLL(2)</code> on <code>fused_mm</code>'s epilogue
+chunk loop: gelu 2582 → 1919. A loop at <code>ns</code> 1 whose vectors are each one
+long serial chain (split, tanh, exp, mul) gets its overlap only from
+independent vectors in one body: unroll under <code>VERSIONED_LOOP</code> (L22) with
+a minimum count ≥ the unroll. <code>mm</code> epilogue silu ×4 3143 → 1101, gelu ×2
+3090 → 1597 (eb01ca2eef1); <code>bf16_exp</code> 3021 → 1866 (c785995b735);
+<code>expand</code> 162 → 92 (de5c90cb91d). Stop where the ZOL or the stack goes
+(silu ×8 lost its ZOL and slowed).</p>
+<p><strong>L08 Fill the accumulator.</strong> Step 64 lanes on 8/16-bit data and
+<code>AIE_BF16_LANES</code> (<code>aie_kernels/aie_arch.h</code>) on bf16 arithmetic. Check: trip
+count halves at a similar II. <code>rope</code> 1932 → 298 (with L06). On AIE2P
+a bf16 <code>vmac.f</code> writes a whole 2048-bit accumulator, so 64 lanes cost
+what 32 do: <code>layer_norm</code> 581 → 380 (b34923542bc), <code>rms_norm</code> 438 → 308
+(aed4fa9129f), <code>dwconv1d_cl</code> 98 → 75 (e3cbc517fe7). 8-bit <code>sliding_mul</code>
+at 64 lanes over whole blocks: <code>filter2d</code> 4702 → 387 (5dfab7ef261). int32
+into <code>acc64</code> at 32 lanes, where the tell was one 64 B load per four V-ops:
+<code>scale</code> 338 → 180 (2d22b268d28).</p>
+<p><strong>L09 Split dependency chains.</strong> Two independent accumulators added at the
+end, or one broadcast feeding several row blocks; stop before spills.
+int16 <code>mv/32x32</code> 291 → 127. Name them (<code>acc0, acc1, …</code>): an <code>acc[4]</code> array
+did not scalarize, and bf16 <code>reduce_add</code> went 140 → 84 once named
+(1a21fed7cab). The same for mmuls: five output-channel accumulators
+sharing each input load took <code>xy_pool</code> 4447 → 1366 (7bf129aa3da);
+requantize each to a small vector before the next group's epilogue, or
+the live accumulators spill.</p>
+<p><strong>L10 Make the hot loop innermost and single-block</strong>, the only loops Peano
+pipelines: fully unroll a short K reduction into its parent, fold nested
+tile loops into one counter, split a per-tile <code>if</code> into straight loops. Opt
+in per dtype. int8 <code>mm</code> 993 → 737. <code>UNROLL(2)</code> on an unpipelined outer loop
+overlaps two trips' loads and stores: <code>fused_mm</code> 1084.5 → 991.5.</p>
+<p><strong>L11 Unsigned counted trip.</strong> Compute the trip count up front as unsigned;
+a signed divide or shift by 2^k is <code>__divsi3</code>. <code>axpy</code> 317 → 178. A counted
+trip alone gives a ZOL, not overlap; see L22.</p>
+<p><strong>L12 Wide stores, never byte loops.</strong> Peano won't pipeline an
+<code>lda.s8</code>/<code>st.s8</code> loop. Copy with <code>uint64_t</code>/<code>uint32_t</code> or 32 B vector
+stores, both ends aligned. bfp16 shuffle 10.4x per call.</p>
+<p><strong>L13 <code>UNROLL_FULL</code>, not <code>RANGE</code>, on a loop that switches on its counter.</strong>
+<code>AIE_LOOP_RANGE</code> is only a trip-count hint and leaves the branch. 5.31 →
+2.84 ms (model).</p>
+<p><strong>L14 Vector int8 epilogue (AIE2P).</strong> Add the bias on an int32 vector, then
+<code>acc.to_vector&lt;int8&gt;(shift)</code> under <code>aie::rounding_mode::conv_even</code>, which
+is bit-exact with scalar banker's-rounding SRS. -42% on one block (model).</p>
+<p><strong>L15 Producer writes mmul-A order (AIE2P).</strong> <code>aie::concat</code> won't join
+vectors under 128 bits, so a strided A operand becomes a scalar byte copy.
+When you own both ends, have the producer store <code>to_vector&lt;int8&gt;(shift)</code>
+(already mmul-A order) and the consumer do one aligned load, or
+<code>aie::shuffle_down(aie::concat(lo, hi), shift)</code> over two aligned blocks.
+-23.6% on one block (model).</p>
+<p><strong>L16 Pure rearrangement → DMA, or wide shuffles.</strong> A body that is only a
+deinterleave or transpose belongs in a memtile <code>to_stream</code> transform
+(element ≥ 512 B; int8 vector loads need a 32 B-aligned start). Hand off to
+<code>aie-dataflow-opt</code>. <code>programming_examples/basic/transposes/transposes.py</code>
+shows <code>--strategy dma</code> and <code>--strategy combined</code>. When it must stay in the
+core, widen the body to whole 512-bit <code>shuffle</code> stages: llama transpose
+3344 → 880, uint32 818 → 150 (ef03238bcc1).</p>
+<p><strong>L17 Raise the pipeliner stage cap on one long chain.</strong> The loop is
+pipelined at <code>ns</code> 3 and no single step dominates. Add
+<code>["-mllvm", "--aie-pipeliner-max-stagecount=5"]</code> to that factory's
+<code>compile_flags</code> only (as <code>python/iron/kernels/quant.py</code> does). Check: <code>ns</code>
+rises; the final II may barely move, so measure anyway. <code>q4nx_dequant</code>
+2245 → 2115.</p>
+<p><strong>L18 Two 8x8 tiles on one 64-lane accumulator (AIE2P, bf16).</strong> For Y +=
+S·V, keep two neighbouring output tiles on one <code>accfloat</code> accumulator so
+one <code>vmac.f</code> advances both; build the S operand once per row block; load
+the next pair's y before this pair's store (clamp the last pointer to
+itself). Prefill <code>fv</code> 2034 → 1265, bit-identical.</p>
+<p><strong>L19 One bfp16 stream per operand (AIE2P).</strong> Output streams share one <code>sf</code>
+register and inputs two <code>lf</code> FIFOs, so extra live streams spill every step.
+Write output through one contiguous stream; hop one A and one B stream
+between rows with <code>pop_seek</code>. <code>mm_bfp</code> 4243 → 951; <code>q4nx_dequant</code> 2.10x.</p>
+<p><strong>L20 Batch horizontal reductions.</strong> Mac four rows per load of b, pack the
+four accumulators so one <code>interleave_unzip</code> + <code>add</code> tree folds all rows,
+and finish group g's tree after group g+1's macs issue; keep the single-row
+code for the tail. Rows per group are bounded by the stack (8 overflowed
+1 KB in <code>mv</code>). bf16 <code>mv/32x256</code> 1154 → 788; <code>mha</code> <code>partial_softmax</code> 8171 →
+1696, both bit-identical.</p>
+<p><strong>L21 Port the other architecture's tuned branch.</strong> Enable it on this
+target before inventing a new body: <code>add</code> 150 → 46 (9929a7a7202), <code>mul</code>
+142 → 46 (9b193aea86e), <code>mul_add</code> 911 → 52 (41c0876239d), <code>axpy</code> 178 → 55
+(c2570669139); <code>bn_conv2dk1_i8</code> 298868 → 1767 (ddf0f4dcbd7), <code>bn_conv2dk3</code>
+293058 → 1543 (eae144bf389). Then re-check L01, L06 and alignment on the
+new target: loops AIE2 unrolls by itself stay rolled on AIE2P (bn 1x1
+stack 64 → 1408 B, II 20-22; <code>UNROLL_FULL</code> gave 128-192 B, II 8-12), and
+AIE2's <code>&amp; 31</code> alignment guards are wrong for 512-bit loads (see the traps).</p>
+<p><strong>L22 Promise a minimum trip count.</strong> A runtime-count loop Peano can't
+prove runs ≥ n times is left unpipelined or at <code>ns</code> 1. Wrap it in
+<code>VERSIONED_LOOP(MinIters, count, body)</code> (<code>aie_kernel_utils.h</code>), which
+keeps a plain loop for shorter counts: <code>mm</code> identity copy 518 → 144
+(2f76486caed). A bare <code>AIE_LOOP_MIN_ITERATION_COUNT(n)</code> needs its own
+guard and a plain loop for shorter counts: <code>rope</code> 298 → 167
+(5279bd73571), <code>dwconv1d_cf</code> k9 1505 → 501 (954e1ba1f71); on AIE2 <code>axpy</code>
+269 → 87. It stringifies its argument, so pass a literal or a macro, and
+re-check <code>non_zol_loops</code>.</p>
+<p><strong>L23 Native <code>mmul&lt;8,8,8&gt;</code> for int8 (AIE2P).</strong> <code>mmul&lt;4,8,8&gt;</code> on 8-bit data
+is an 8x8x8 op with half of A zero. Make the chunk 8 pixels (64 B): bn 1x1
+<code>i8</code> 56/64/24 1179 → 693 (d90990786a9), <code>relu</code> 112/16/64 1838 → 1142
+(147bbd32f8d), <code>skip</code> 56/72/24 1499 → 890 (558a406e7d5); <code>bn_conv2dk3</code>
+1115 → 683, then a 64-lane carry 683 → 455 (8bd78ee2771). Unaligned
+64-lane loads with a shallow input-channel loop lost (relu 28/40/120 2236
+→ 2853), and static rows didn't predict it; measure every case.</p>
+<p><strong>L24 Aligned granule stores (AIE2P).</strong> <code>store_unaligned_v</code> reads back the
+32 B granule it ends in, so neighbouring blocks form a store → load
+recurrence and RecMII holds the loop whatever the body costs. Store whole
+aligned granules from <code>at &amp; ~31</code> with the previous block's tail shuffled in
+front, and one store after the loop: dw <code>out_split</code> 7x480 3692 → 1771
+(1c32c246a33).</p>
+<p><strong>L25 Keep helper objects in registers.</strong> A LUT or approximation helper
+object whose address is taken lives on the stack; the tell is
+<code>kernel_stack_bytes</code> &gt; 0 on a leaf kernel. Write the lookup out inline:
+tanh LUT 1643 → 816, silu 2658 → 1960, swiglu 3202 → 2504, stack 512 → 0
+(83ceb77cf0f).</p>
+<p><strong>L26 Split a table gather from its arithmetic.</strong> A gather loop with math
+in it runs at the math's II; one pass that only gathers and a second in
+place that only computes each pipeline: <code>sigmoid</code> 1769 → 925
+(88958a67e0a), <code>silu</code> 1960 → 962 (fd10d6df7b7), <code>swiglu</code> 2504 → 1135
+(573a3719e9a).</p>
+<p><strong>L27 Pipeline the epilogue, not only the MAC loop.</strong> Widen the A loads,
+load and store C tiles in pairs, and keep one accumulator live at a time
+through the store: <code>cascade_mm</code> i16 64³ 9532 → 7260 (117707e388f), 7260
+→ 5404 (aa99f6b92ce). Forming both tiles' accumulators first measured
+6300.</p>
+<p><strong>L28 Start the chain with <code>mul</code>; add the loaded C last.</strong> When C is wide
+(2048 bits for int32 tiles), the first mac waits on four C loads.
+<code>MMUL(aie::add(C.to_accum(), acc))</code> after a mul-first K chain folds into
+one <code>vaddmac</code>: int8 <code>mm</code> 64x32x64 733 → 593 (d3b4b66fd7a). It needs more
+live accumulators: ungated it lost at K=128 (1741 → 2181), so it is gated
+on <code>colA ≤ 4</code>. Integer sums only; float order changes bits.</p>
+<p><strong>L29 Compile-time shape.</strong> When the factory knows the shape, pass it as a
+<code>-D</code> flag the kernel reads on one architecture: dead chunk-count bodies
+and the scalar fallback fold away. dw stride 2 14x336 10012 → 6376, <code>.text</code>
+8112 → 1344-4416 per width (234d9d8fc18); a runtime-trip loop in
+<code>conv2dk1_skip_init</code> at <code>ns</code> 1 1458 → 771 (504d188ee5e). Each shape is its
+own symbol, so a core with two shapes links two copies. A constant can
+also slow a loop the pipeliner scheduled well at run time (dw8 28x120 1840
+→ 1985): keep the runtime value for that loop.</p>
+<p><strong>AIE2 (npu1).</strong> Gate AIE2-only code with <code>AIE_TUNED_AIE2</code> or a capability
+from <code>aie_kernels/aie_arch.h</code>; the other target's <code>.text</code> must not change.</p>
+<ul>
+<li>The AIE2 pipeliner needs <code>__restrict</code> to overlap a streaming loop; library
+  kernels spell it <code>AIE2_RESTRICT</code>, which AIE2P ignores (L06).</li>
+<li>An unrolled body above MII 27 gets no overlap. One chain under
+  <code>AIE_LOOP_NO_UNROLL</code> with <code>__restrict</code> pipelined at II1: <code>add</code> 342 → 78.</li>
+<li>A LUT loop runs in series when its reads are ordered against its stores:
+  rotate it one vector ahead, or use <code>lut_map_bf16</code>.</li>
+<li>There is no native bf16 <code>sliding_mul</code>; use <code>mac_elem_16_2</code>.</li>
+<li>Replace <code>aie::transpose</code> in a loop with two-register <code>shuffle</code> stages.</li>
+</ul>
+<h2 id="traps">Traps<a class="headerlink" href="#traps" title="Permanent link">&para;</a></h2>
+<p>Code that compiles cleanly and then does nothing, runs slowly or produces
+wrong data. None of these is a compiler bug. A Peano crash or miscompile
+is: reduce it to a repro, file it against llvm-aie, and name the issue next
+to any workaround rather than recording it here. Wrong words clustered by
+address class (every other block, one pixel column) or only past a shape
+threshold point at addressing before arithmetic: add a device case at the
+failing shape (6e57e9dfc6d) and diff the raw words.</p>
+<ul>
+<li><strong>Libcalls (AIE2 and AIE2P).</strong> The scalar unit has no float multiplier
+  or divider: <code>float * float</code> (<code>__mulsf3</code>), <code>float / float</code> (<code>__divsf3</code>),
+  <code>(float)int</code> (<code>__floatsisf</code>), float compares (<code>__ltsf2</code>) and any <code>double</code>
+  are runtime calls, as are 64-bit multiply and divide and any integer
+  divide or modulo that isn't by a power-of-two constant. A libcall in a
+  loop also blocks pipelining. Float add/sub and bf16 ↔ float casts are
+  native. The remarks report lists every libcall a kernel makes.</li>
+<li><strong>No f32 vector multiplier.</strong> <code>aie::mul</code>/<code>mac</code> on <code>vector&lt;float,N&gt;</code> is a
+  bf16 emulation (224 B of code where one bf16 mac is 4 B). f32 <code>aie::max</code>
+  is emulated too (~17 cycles a vector).</li>
+<li><strong>512-bit accesses round the address down to 64 B (AIE2P).</strong> A <code>load_v</code>
+  or <code>store_v</code> of 64 B at 32 mod 64 silently reads or overwrites the 32
+  bytes before it. Buffers ≥ 64 B are 64-aligned, but views into them and
+  row offsets are not: weights at 32 B gave 8 of 10 <code>bn_conv2dk3</code> cases
+  wrong (b86cb6bd6d9), packed weights at 16 mod 64 gave 88/3920
+  (a6b8d06ba3a), and a row stride that is an odd multiple of 32 gave
+  510/1536 until 8bd78ee2771 split those stores. Guard every pointer the
+  path accesses wide, weights too; grep <code>&amp; 31</code> near <code>load_v&lt;N&gt;</code> whenever
+  N × bits &gt; 256.</li>
+<li><strong>Rounding and saturation are core-global.</strong> The default rounding is
+  floor, so a bf16 conversion lands 1 ulp low: <code>expand</code> 27% of outputs
+  (b20ab7dfcd2); declare the contract's rounding setup, which now runs in
+  every Worker (<code>scale_shift</code> 38116/65536 wrong → 0, 0d677e9f72d). A mode
+  set with <code>set_saturation</code>/<code>set_rounding</code> outlives the call and breaks
+  code that relied on the reset value (an unsigned cascade <code>lsrs</code> read
+  25-30% wrong under <code>saturate</code>); use <code>swap_*</code> and restore on exit.</li>
+<li><strong><code>vconv.bf16.fp32</code> misrounds f32 subnormals</strong> (61.9 ulp), and AIE2P
+  <code>vadd.f</code> has no guard bit, so a Sterbenz-exact subtraction isn't: do
+  exact residuals with <code>msc</code> in the accumulator (f376889eab8).</li>
+<li><strong>Pragmas.</strong> Under Peano <code>AIE_PREPARE_FOR_PIPELINING</code>, <code>AIE_LOOP_FLATTEN</code>
+  and the other Chess hints in <code>aie_kernels/aie_kernel_utils.h</code> expand to
+  nothing, and <code>AIE_PREPARE_FOR_POSTPIPELINING</code> disables pipelining. The
+  ones that act are <code>AIE_LOOP_UNROLL(n)</code>/<code>_FULL</code>/<code>NO_UNROLL</code> and the
+  trip-count hints (<code>AIE_LOOP_RANGE</code> is only a hint). Put each immediately
+  before the <code>for</code>; <code>pass_failed</code> lists any the compiler dropped.</li>
+<li><strong>Stack overflow is silent.</strong> It corrupts the neighbouring buffer:
+  suspect it when errors are small, scattered and row-local. The IRON
+  Worker default is 1024 B; aiecc errors with <code>this core needs N bytes</code>
+  when the declaration is short, and the remarks <code>kernel_stack_bytes</code> row
+  warns over the contract's <code>stack_bytes</code> (it leaves out libcall frames and
+  main's). Anything that grows the frame (unroll, accumulators, markers,
+  a new size) needs a new declaration in the same change, and a design that
+  builds its own Worker needs it too.</li>
+<li><strong><code>to_vector&lt;int32&gt;</code> is a raw accumulator dump</strong>; <code>to_vector&lt;int8&gt;(shift)</code>
+  applies the row-major permutation. Indexing one as the other got 61454 of
+  65536 values wrong.</li>
+<li><strong>Software pipelining stops at MII 27</strong> (<code>SwpMaxMii</code> in <code>schedule_notes</code>);
+  above it only the postpipeliner runs. A loop over the cap can still win
+  if it does more work per trip.</li>
+<li><strong>A list-scheduled loop's bundle count moves with edits beside it.</strong>
+  bn2's dw block loop (too much register pressure to pipeline) went 84 →
+  91 → 97 bundles, HW 778 / 840 / 891, from a guard in the caller, a
+  dropped min-trip hint and pointer bumps (eb89013e5d8). Measure every
+  shape after each edit.</li>
+<li><strong><code>aie::exp2</code> (AIE2P) is an interpolant</strong> that overshoots true <code>exp2</code> by
+  up to 6.15%. Keep <code>np.exp2</code> in references with a derived envelope
+  (<code>test/python/npu/test_mha_e2e.py</code>).</li>
+<li><strong>Native <code>vtanh</code> returns x for |x| ≤ 0.5</strong>, and tanh wants its f32
+  argument (a bf16-rounded one raised silu's error 1.35x). The native build
+  is latency-bound, the LUT build (<code>-DACTIVATIONS_TANH_LUT=1</code>) load-bound:
+  gate unrolls on <code>ACTIVATIONS_NATIVE_TANH</code> and measure both.</li>
+</ul>
+<h2 id="changes-that-measured-worse">Changes that measured worse<a class="headerlink" href="#changes-that-measured-worse" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Fewer lanes, 8 rows per group, or hoisting operands in bf16 <code>mv</code>: slower
+  or spilled (register pressure).</li>
+<li><code>UNROLL_FULL</code> on <code>fused_mm</code>'s i loop: accumulators spilled, k_step 216 →
+  287, and three builds failed their stack check.</li>
+<li><code>mmul&lt;8,8,8&gt;</code> fed by a scalar A gather in a 1x1 int8 conv: 3.34 → 3.58 ms
+  (model).</li>
+<li>An <code>if</code> or ternary inside a mac loop: 7% slower (model).</li>
+<li>Unrolling a load-, resource- or register-bound body (tanh stayed at II4;
+  swiglu ×2 doubled its stack), and <code>AIE_LOOP_MIN_ITERATION_COUNT</code> on AIE2P
+  loops that then lost their zero-overhead loop. The compiler reports
+  these before hardware does; trust it.</li>
+<li>Unrolling far enough that LICM parks invariant loads in the frame:
+  <code>conv2dk1_skip</code> <code>UNROLL(8)</code> 946 and 3264 B against 777 (ebbb20bb013).</li>
+<li>Rolling int8 <code>mm</code>'s fully unrolled K: static II 4 and a 64 B stack, HW
+  +3..+28% on N=64 and column-major B (51d0a8e000a).</li>
+<li>Turning off the pipeliner's register-pressure tracking: II 12 = ResMII,
+  HW 1378 → 1658 from spills (c0e7bb857d0).</li>
+<li>An out-of-line helper for a second path in a hot function: callee-saved
+  spills and a longer dispatch, dw 28x120 1606 → 1669, 14x184 2495 → 2551
+  (1c32c246a33).</li>
+<li>A new stride inside an existing loop: dw stride 1 reached 778, but the
+  min-trip hint also reached stride 2 (+10 cycles) and needed a guard for
+  short stride-1 rows. It got its own loop at 840 (eb89013e5d8).</li>
+</ul>
+<h2 id="when-to-stop">When to stop<a class="headerlink" href="#when-to-stop" title="Permanent link">&para;</a></h2>
+<p>Report NO-CHANGE with the bound when the II equals a resource or latency
+bound. <code>mm_bfp_mixed</code>'s k loop sits at II6, the <code>vmac.f</code> acc → acc latency,
+with no fifth accumulator register for another chain. bf16 <code>mm</code>'s k loop
+needs 34 mv-slot ops per step, so II35 is 97% slot efficiency. Before
+calling a loop port-bound, count slot users per iteration in the object; if
+the II sits above that count, the bound is something else. On AIE2P one
+slot carries <code>vshuffle</code>, <code>vsel</code>, <code>vadd</code>/<code>vsub</code>, <code>veqz</code>, <code>vmax_lt</code>/<code>vmin_ge</code>,
+<code>vbor</code> and <code>vmov</code>: <code>gray2rgba</code> sits at II 9 against a ResMII of 8
+(43a2b1c3b2c), and a load the compiler merges into a <code>vmov</code> competes for
+it (dw stride 2 2234 → 1378 once the loads stayed, c0e7bb857d0).</p>
+<h2 id="background">Background<a class="headerlink" href="#background" title="Permanent link">&para;</a></h2>
+<p><code>programming_guide/section-4/section-4c/README.md</code> (how Peano schedules a
+loop, the pragma reference) and <code>section-4d/README.md</code> (this workflow for
+humans, with a worked <code>add</code> example).</p>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../../aie-hw-bringup/SKILL/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Phase 3: HW Bring-up">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Phase 3: HW Bring-up
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../aie-dataflow-opt/SKILL/" class="md-footer__link md-footer__link--next" aria-label="Next: Phase 4: Dataflow Optimization">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Phase 4: Dataflow Optimization
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright © 2019–2021 Xilinx, Inc. | Copyright © 2022–2026 Advanced Micro Devices, Inc. Licensed under Apache 2.0 with LLVM exception.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/Xilinx/mlir-aie" target="_blank" rel="noopener" title="mlir-aie on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/UbXzGdXsR5" target="_blank" rel="noopener" title="Join us on the ROCm Discord (#ROCm-NPU)" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:aup@amd.com" target="_blank" rel="noopener" title="AMD University Program" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M536.4-26.3c9.8-3.5 20.6-1 28 6.3s9.8 18.2 6.3 28l-178 496.9c-5 13.9-18.1 23.1-32.8 23.1-14.2 0-27-8.6-32.3-21.7l-64.2-158c-4.5-11-2.5-23.6 5.2-32.6l94.5-112.4c5.1-6.1 4.7-15-.9-20.6s-14.6-6-20.6-.9l-112.4 94.3c-9.1 7.6-21.6 9.6-32.6 5.2L38.1 216.8c-13.1-5.3-21.7-18.1-21.7-32.3 0-14.7 9.2-27.8 23.1-32.8z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

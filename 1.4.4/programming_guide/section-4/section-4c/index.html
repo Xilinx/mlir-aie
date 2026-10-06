@@ -1,0 +1,5003 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="IRON — a close-to-metal Python API for programming AMD Ryzen™ AI NPUs, built on an open-source MLIR-based compiler toolchain.">
+      
+      
+        <meta name="author" content="AMD Advanced Micro Devices">
+      
+      
+        <link rel="canonical" href="https://xilinx.github.io/mlir-aie/1.4.4/programming_guide/section-4/section-4c/">
+      
+      
+        <link rel="prev" href="../section-4b/">
+      
+      
+        <link rel="next" href="../section-4d/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.svg">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>4c: Vectorization - IRON / MLIR-AIE</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../assets/css/iron.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#section-4c---kernel-vectorization" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="IRON / MLIR-AIE" class="md-header__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+      
+  <img src="../../../assets/images/favicon.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            IRON / MLIR-AIE
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              4c: Vectorization
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Xilinx/mlir-aie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Xilinx/mlir-aie
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../getting-started/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Programming Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../skills/agentic_programming/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Agentic Programming
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API & Internals
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../UsedIn/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="IRON / MLIR-AIE" class="md-nav__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+      
+  <img src="../../../assets/images/favicon.svg" alt="logo">
+
+    </a>
+    IRON / MLIR-AIE
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Xilinx/mlir-aie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Xilinx/mlir-aie
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../buildHostWin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (WSL)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../buildHostWinNative/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (Native)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../buildHostLinNonUbuntu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Non-Ubuntu Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build from Source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Devices/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Devices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../BuildingVersal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Platform/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Programming Guide
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Programming Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../mini_tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mini Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-0/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 0: Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 1: Tiles and Buffers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../section-2/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 2: Data Movement
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5" id="__nav_3_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Section 2: Data Movement
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2a: Single-Tile Data Movement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../section-2/section-2b/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2b: ObjectFifo Patterns
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_3" id="__nav_3_5_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2b: ObjectFifo Patterns
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2b/01_Reuse/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2b/02_Broadcast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Broadcast
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2b/03_Implicit_Copy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implicit Copy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2b/04_Repeat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../section-2/section-2c/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2c: Data Layout Transformations
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_4" id="__nav_3_5_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2c: Data Layout Transformations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2c/to_stream_transformations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    To Stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2c/from_stream_transformations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From Stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../section-2/section-2d/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2d: DMA and Runtime Tasks
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_5" id="__nav_3_5_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2d: DMA and Runtime Tasks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2d/DMATasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DMA Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2d/RuntimeTasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2e/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2e: Multiple Cores
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../section-2/section-2f/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2f: Multi-Core Patterns
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_7" id="__nav_3_5_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2f: Multi-Core Patterns
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2f/01_single_double_buffer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Single/Double Buffer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2f/02_external_mem_to_core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ext Mem to Core
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2f/03_external_mem_to_core_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ext Mem to Core (L2)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2f/04_distribute_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distribute L2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2f/05_join_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Join L2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2g/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2g: Data Movement Without ObjectFifos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-2/section-2h/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2h: Tensor Access Patterns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 3: My First Program
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_7" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 4: Performance
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_7" id="__nav_3_7_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Section 4: Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-4a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4a: Timers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-4b/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4b: Tracing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#before-you-start-make-sure-your-edits-are-compiled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before you start: make sure your edits are compiled
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-scalar-kernel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The scalar kernel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aie-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AIE API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AIE API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vector-registers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vector registers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vector-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vector load
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vector-multiply-and-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vector multiply and store
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aie-api-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AIE API quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vectorization-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vectorization Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-compiler-schedules-a-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the Compiler Schedules a Loop
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How the Compiler Schedules a Loop">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reading-the-schedule-static-remarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the schedule: static remarks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reading-the-schedule-disassembly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the schedule: disassembly
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#schedule-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trip-counts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trip Counts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trip-count-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trip Count Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coding-for-the-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coding for the Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Coding for the Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-vector-unit---loads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Vector Unit - Loads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-vector-unit---multiply-and-add-mac" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Vector Unit - Multiply and Add (MAC)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-vector-unit---srs-and-stores" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Vector Unit - SRS and Stores
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-vector-unit---shift-shuffle-adder-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Vector Unit - Shift/ Shuffle/ Adder Path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aie2-and-aie2p-differences-that-change-this-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AIE2 and AIE2P differences that change this example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multiplier-utilization-efficiency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiplier Utilization Efficiency
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Multiplier Utilization Efficiency">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mac-efficiency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MAC efficiency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#load-store-bandwidth-efficiency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Load/ Store bandwidth efficiency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-movement-efficiency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data movement efficiency
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optimization-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optimization Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#loop-pragma-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop Pragma Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-5/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 5: Example Designs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../section-6/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 6: ML Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extra References
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extra References
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../iron_configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IRON Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../core_data_memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Data Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hrx_runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HRX Runtime (amdxdna)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hsa_runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HSA Runtime (ROCR)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compilation_stages/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compilation Stages
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../implicit_mlir_context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implicit MLIR Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../kernels_library/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel Library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nightly Kernel Checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=components" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nightly Component Checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../skills/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic Programming
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Agentic Programming
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../skills/agentic_programming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../skills/aie-model-baseline/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 1: Model Baseline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../skills/aie-dataflow-presim/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 2: Dataflow Pre-Sim
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: HW Bring-up
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../skills/aie-kernel-opt/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 4: Kernel Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../skills/aie-dataflow-opt/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 4: Dataflow Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../api/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API & Internals
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API & Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Python API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/iron/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IRON (aie.iron)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/dialect_wrappers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dialect op wrappers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/taplib/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/kernels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Kernel Library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/hostruntime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Host Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/aie_kernels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++ AIE kernels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_3" id="__nav_5_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLIR / C++
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    MLIR / C++
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../ObjectFifoLowering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ObjectFifo Lowering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIE Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEXDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEX Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEVecDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEVec Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIE Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEXPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEX Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../AIEVecPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEVec Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/cpp_doxygen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++ API (Doxygen)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../aiecc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    aiecc Compiler Driver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Community
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../UsedIn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Used in / Cited in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../CONTRIBUTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../ROADMAP/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../SECURITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#before-you-start-make-sure-your-edits-are-compiled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before you start: make sure your edits are compiled
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-scalar-kernel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The scalar kernel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aie-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AIE API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AIE API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vector-registers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vector registers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vector-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vector load
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vector-multiply-and-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vector multiply and store
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aie-api-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AIE API quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vectorization-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vectorization Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-compiler-schedules-a-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the Compiler Schedules a Loop
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How the Compiler Schedules a Loop">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reading-the-schedule-static-remarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the schedule: static remarks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reading-the-schedule-disassembly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the schedule: disassembly
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#schedule-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trip-counts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trip Counts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trip-count-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trip Count Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coding-for-the-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coding for the Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Coding for the Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-vector-unit---loads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Vector Unit - Loads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-vector-unit---multiply-and-add-mac" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Vector Unit - Multiply and Add (MAC)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-vector-unit---srs-and-stores" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Vector Unit - SRS and Stores
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-vector-unit---shift-shuffle-adder-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Vector Unit - Shift/ Shuffle/ Adder Path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aie2-and-aie2p-differences-that-change-this-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AIE2 and AIE2P differences that change this example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multiplier-utilization-efficiency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiplier Utilization Efficiency
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Multiplier Utilization Efficiency">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mac-efficiency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MAC efficiency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#load-store-bandwidth-efficiency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Load/ Store bandwidth efficiency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-movement-efficiency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data movement efficiency
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optimization-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optimization Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#loop-pragma-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop Pragma Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../../" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Programming Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Section 4: Performance
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!---//===- README.md --------------------------*- Markdown -*-===//
+//
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//-->
+
+<h1 id="section-4c---kernel-vectorization">Section 4c - Kernel Vectorization<a class="headerlink" href="#section-4c---kernel-vectorization" title="Permanent link">&para;</a></h1>
+<ul>
+<li><a href="../../section-4">Section 4 - Performance Measurement &amp; Vector Programming</a><ul>
+<li><a href="../section-4a">Section 4a - Timers</a></li>
+<li><a href="../section-4b">Section 4b - Trace</a></li>
+<li>Section 4c - Kernel Vectorization</li>
+<li><a href="../section-4d">Section 4d - Measure-First Kernel Optimization</a></li>
+</ul>
+</li>
+</ul>
+<hr />
+<p>In <a href="../section-4a">section-4a</a> we timed a whole application, and in <a href="../section-4b">section-4b</a> we used trace to count the cycles a kernel spends between <code>event0()</code> and <code>event1()</code>. This section uses those cycle counts to look at a kernel from the inside: how the scalar version turns into vector code, how the compiler schedules the vector loop, and how close that schedule gets to what the hardware can do.</p>
+<p>We switch from the local copy in section-4b to the <a href="https://github.com/Xilinx/mlir-aie/tree/v1.4.4/programming_examples/basic/vector_scalar_mul">vector-scalar multiply example</a>. By default it works on 16-bit data and uses the vectorized kernel. Read the example's summary first, then open its kernel source, <a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/aie_kernels/eltwise/scale.cc">scale.cc</a>. The same <code>scale.cc</code> is compiled for both AIE2 (npu1, Phoenix/Hawk Point) and AIE2P (npu2, Strix-class) devices.</p>
+<p>Unless a number says otherwise, the cycle counts in this section were measured on an npu2 (AIE2P) device with the default compiler, Peano (llvm-aie). Where the proprietary Chess compiler behaves differently, both numbers are shown. Each kernel call processes 1024 elements. Your counts may be off by a cycle or two, and will move more with a different compiler version.</p>
+<h3 id="before-you-start-make-sure-your-edits-are-compiled"><u>Before you start: make sure your edits are compiled</u><a class="headerlink" href="#before-you-start-make-sure-your-edits-are-compiled" title="Permanent link">&para;</a></h3>
+<p>The exercises below ask you to edit <code>scale.cc</code> and to switch the design between its scalar and vector kernels. Three settings control what actually gets built:</p>
+<ul>
+<li><strong>Which <code>aie_kernels/</code> is compiled.</strong> The kernel library compiles the <em>installed</em> copy of <code>aie_kernels/</code> (inside the wheel or the install tree), not the file in your clone. To compile the clone's sources instead, point <code>MLIR_AIE_KERNEL_SOURCES</code> at the checkout before you run <code>make</code> (see <a href="../../iron_configuration/#kernel-sources-mlir_aie_kernel_sources">Kernel sources</a>):
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">MLIR_AIE_KERNEL_SOURCES</span><span class="o">=</span>&lt;mlir-aie&gt;
+</code></pre></div>
+    Without it, edits to <code>&lt;mlir-aie&gt;/aie_kernels/eltwise/scale.cc</code> are silently ignored. The kernel's source bytes are part of the build cache key, so an edited kernel is always recompiled.</li>
+<li><strong>Scalar or vector.</strong> <a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py">vector_scalar_mul.py</a> takes <code>vectorized: CompileTime[bool] = True</code>. There is no command-line flag for it: edit the default to <code>False</code> to build the scalar kernel.</li>
+<li><strong>Data type and compiler.</strong> <code>make int_bit_width=32 trace</code> builds the 32-bit version (the default is 16). <code>make CHESS=true trace</code> compiles the kernel with Chess instead of Peano, if you have the AIE tools installed.</li>
+</ul>
+<p>Run <code>make clean</code> between configurations.</p>
+<h3 id="the-scalar-kernel"><u>The scalar kernel</u><a class="headerlink" href="#the-scalar-kernel" title="Permanent link">&para;</a></h3>
+<p>The scalar code in <a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/aie_kernels/eltwise/scale.cc">scale.cc</a> is close to the code we traced in section-4b:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">scale_scalar</span><span class="p">(</span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="n">c</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="n">factor</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">N</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="n">event0</span><span class="p">();</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">SCALE_ELEMS</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="n">c</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">factor</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">a</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="n">event1</span><span class="p">();</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>The loop reads each element of <code>a</code>, multiplies it by the scalar <code>factor</code>, and stores it to <code>c</code>. <code>SCALE_ELEMS</code> is a macro: the kernel library passes <code>-DSCALE_ELEMS=&lt;tile_size&gt;</code> when it compiles the kernel, so the trip count is a compile-time constant (1024 here). The <code>N</code> argument is still passed at runtime, and if <code>SCALE_ELEMS</code> is not defined, the loop falls back to <code>N</code>. We come back to why this matters in <a href="#trip-counts">Trip counts</a>.</p>
+<h3 id="aie-api"><u>AIE API</u><a class="headerlink" href="#aie-api" title="Permanent link">&para;</a></h3>
+<p>To vectorize this loop we use the AIE API, a header-only C++ library that wraps the processor's low-level intrinsics in portable types and operations. The same source then compiles to efficient instructions for each AIE generation. The <a href="https://xilinx.github.io/aie_api/topics.html">AIE API documentation</a> covers every type and operation, with per-architecture tables. The vector-times-scalar multiply we need is the <code>aie::mul</code> overload taking a vector and a scalar, under <a href="https://xilinx.github.io/aie_api/group__group__arithmetic.html">Arithmetic</a>.</p>
+<p>Include the API header in the kernel source:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;aie_api/aie.hpp&gt;</span>
+</code></pre></div></p>
+<h4 id="vector-registers"><u>Vector registers</u><a class="headerlink" href="#vector-registers" title="Permanent link">&para;</a></h4>
+<p>A vector is declared as:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">aie</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">my_vector</span>
+</code></pre></div>
+* <code>T</code> - the element type, such as <code>int16_t</code>
+* <code>vec_factor</code> - the number of elements, such as 32</p>
+<p>A native vector register is <strong>512 bits</strong> on both AIE2 and AIE2P, so it holds 32 <code>int16_t</code> values:</p>
+<table>
+<thead>
+<tr>
+<th>Data type</th>
+<th>Elements in 512 bits</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>int32_t</td>
+<td>16</td>
+</tr>
+<tr>
+<td>int16_t</td>
+<td>32</td>
+</tr>
+<tr>
+<td>int8_t</td>
+<td>64</td>
+</tr>
+<tr>
+<td>int4_t</td>
+<td>128</td>
+</tr>
+</tbody>
+</table>
+<p>The full table of supported vectors is in the AIE API <a href="https://xilinx.github.io/aie_api/group__group__basic__types.html">basic types</a> page. A vector wider than 512 bits is legal; it is simply held in two or more registers.</p>
+<h4 id="vector-load"><u>Vector load</u><a class="headerlink" href="#vector-load" title="Permanent link">&para;</a></h4>
+<p><code>aie::load_v</code> loads a vector register from local L1 memory:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="w">      </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pA1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">a</span><span class="p">;</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">      </span><span class="n">aie</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">A0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">load_v</span><span class="o">&lt;</span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="p">(</span><span class="n">pA1</span><span class="p">);</span>
+</code></pre></div>
+<code>__restrict</code> promises the compiler that <code>pA1</code> is the only pointer used to access this buffer. Without it, the compiler must assume that a store through the output pointer could change the input, and it cannot overlap one iteration's loads with the previous iteration's stores. The template argument <code>vec_factor</code> matches the one in the vector declaration.</p>
+<h4 id="vector-multiply-and-store"><u>Vector multiply and store</u><a class="headerlink" href="#vector-multiply-and-store" title="Permanent link">&para;</a></h4>
+<p><code>aie::mul</code> takes a vector and a scalar and returns its products in an accumulator register:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="w">      </span><span class="n">aie</span><span class="o">::</span><span class="n">accum</span><span class="o">&lt;</span><span class="n">acc32</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cout</span>
+</code></pre></div>
+Accumulators are wider than the vector registers so that sums of products keep their precision. <code>acc32</code> holds 32-bit lanes. Multiplying two <code>int32_t</code> values needs a 64-bit accumulator (<code>acc64</code>), and a 512-bit register then only holds 16 lanes.</p>
+<p>The result goes back to memory with <code>aie::store_v</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="w">      </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pC1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">      </span><span class="n">aie</span><span class="o">::</span><span class="n">store_v</span><span class="p">(</span><span class="n">pC1</span><span class="p">,</span><span class="w"> </span><span class="n">cout</span><span class="p">.</span><span class="k">template</span><span class="w"> </span><span class="n">to_vector</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
+</code></pre></div>
+<code>.template to_vector&lt;T&gt;(shift)</code> converts the accumulator back to a vector of <code>T</code>. On the way it shifts right by <code>shift</code> bits, rounds, and saturates (SRS). The rounding follows the core's rounding-mode register (<code>aie::set_rounding</code>).</p>
+<p>The whole vector kernel is then:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">scale_vectorized</span><span class="p">(</span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">c</span><span class="p">,</span><span class="w"> </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">factor</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">                      </span><span class="k">const</span><span class="w"> </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">N</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="n">event0</span><span class="p">();</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span><span class="k">constexpr</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">vec_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="p">;</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pA1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">a</span><span class="p">;</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">  </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pC1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">F</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SCALE_ELEMS</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">vec_factor</span><span class="p">;</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">  </span><span class="n">T</span><span class="w"> </span><span class="n">fac</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">factor</span><span class="p">;</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">  </span><span class="n">AIE_PREPARE_FOR_PIPELINING</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">F</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">A0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">load_v</span><span class="o">&lt;</span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="p">(</span><span class="n">pA1</span><span class="p">);</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="w">    </span><span class="n">pA1</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">vec_factor</span><span class="p">;</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">accum</span><span class="o">&lt;</span><span class="n">acc32</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">mul</span><span class="p">(</span><span class="n">A0</span><span class="p">,</span><span class="w"> </span><span class="n">fac</span><span class="p">);</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">store_v</span><span class="p">(</span><span class="n">pC1</span><span class="p">,</span><span class="w"> </span><span class="n">cout</span><span class="p">.</span><span class="k">template</span><span class="w"> </span><span class="n">to_vector</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="w">    </span><span class="n">pC1</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">vec_factor</span><span class="p">;</span>
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="w">  </span><span class="n">event1</span><span class="p">();</span>
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="p">}</span>
+</code></pre></div></p>
+<p><a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/aie_kernels/eltwise/scale.cc">scale.cc</a> also has a specialization for <code>int32_t</code>. It is the same loop with <code>vec_factor = 16</code> and an <code>acc64</code> accumulator.</p>
+<p>Instead of one multiply per element, each iteration now loads 32 elements, multiplies them in one vector operation, and stores 32 results, so the loop runs <code>SCALE_ELEMS / 32</code> times. <code>AIE_PREPARE_FOR_PIPELINING</code> is a loop pragma from <a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/aie_kernels/aie_kernel_utils.h">aie_kernel_utils.h</a>. What it does depends on the compiler, as we will see below.</p>
+<blockquote>
+<p><strong>NOTE</strong> - AIE kernels can also be written directly with the low-level intrinsics that the AIE API is built on. Intrinsics are specific to one AIE generation, while the AIE API is portable across them.</p>
+</blockquote>
+<h3 id="aie-api-quick-reference"><u>AIE API quick reference</u><a class="headerlink" href="#aie-api-quick-reference" title="Permanent link">&para;</a></h3>
+<p>The operations used most often in kernel code:</p>
+<table>
+<thead>
+<tr>
+<th>Signature</th>
+<th>Description</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>aie::vector&lt;T, N&gt; v</code></td>
+<td>A vector of <code>N</code> elements of type <code>T</code>.</td>
+<td><code>aie::vector&lt;int16_t, 32&gt; v;</code></td>
+</tr>
+<tr>
+<td><code>aie::load_v&lt;N&gt;(ptr)</code></td>
+<td>Load <code>N</code> contiguous elements into a vector.</td>
+<td><code>auto a = aie::load_v&lt;32&gt;(pA);</code></td>
+</tr>
+<tr>
+<td><code>aie::store_v(ptr, v)</code></td>
+<td>Store a vector to local memory.</td>
+<td><code>aie::store_v(pC, v);</code></td>
+</tr>
+<tr>
+<td><code>aie::mul(a, b)</code> / <code>aie::mac(acc, a, b)</code></td>
+<td>Vector multiply / multiply-accumulate into an accumulator. <code>b</code> may be a vector or a scalar.</td>
+<td><code>auto acc = aie::mul(a, fac);</code></td>
+</tr>
+<tr>
+<td><code>aie::accum&lt;AccT, N&gt; acc</code></td>
+<td>An accumulator of <code>N</code> lanes, such as <code>acc32</code>, <code>acc64</code> or <code>accfloat</code>.</td>
+<td><code>aie::accum&lt;acc32, 32&gt; acc;</code></td>
+</tr>
+<tr>
+<td><code>acc.to_vector&lt;T&gt;(shift)</code></td>
+<td>Shift, round and saturate an accumulator back to a vector.</td>
+<td><code>auto v = acc.to_vector&lt;int16_t&gt;(0);</code></td>
+</tr>
+<tr>
+<td><code>aie::begin_restrict_vector&lt;N&gt;(ptr)</code></td>
+<td>A vector iterator over a non-aliased buffer. <code>*it++</code> loads or stores one vector and advances.</td>
+<td><code>auto pC = aie::begin_restrict_vector&lt;32&gt;(c);</code></td>
+</tr>
+<tr>
+<td><code>aie::reduce_add(v)</code></td>
+<td>Sum the lanes of a vector to one scalar.</td>
+<td><code>int32_t s = aie::reduce_add(v);</code></td>
+</tr>
+<tr>
+<td><code>aie::max(a, b)</code> / <code>aie::inv(v)</code></td>
+<td>Lane-wise maximum; lane-wise reciprocal.</td>
+<td><code>auto r = aie::inv(v);</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="vectorization-exercises"><u>Vectorization Exercises</u><a class="headerlink" href="#vectorization-exercises" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p>Let's trace the scalar kernel first. Set <code>vectorized: CompileTime[bool] = False</code> in <a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py">vector_scalar_mul.py</a> and build the 32-bit version of the design with <code>make clean; make int_bit_width=32 trace</code>. The <code>int_bit_width</code> argument sets the data type and buffer sizes in both the design (<code>vector_scalar_mul.py</code>) and the host code (<code>test.cpp</code>). Open <code>trace_vector_scalar_mul.json</code> in https://ui.perfetto.dev and measure the time between <code>event 0</code> and <code>event 1</code>. In the Perfetto waveform, 1 us is one clock cycle. How many cycles did you measure?
+    <details markdown="1"><summary>Show answer</summary>
+    10761 cycles with Peano (10245 with Chess). That is about 10.5 cycles per element.
+    </details></p>
+<p>The <code>trace</code> target also runs <a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/python/utils/trace/get_trace_summary.py">get_trace_summary.py</a>, which pairs every <code>event 0</code> with the next <code>event 1</code> and prints the number of kernel invocations and the first/min/avg/max cycles. It is a handy summary for single-core designs like this one. <a href="../section-4d#cycles-you-can-trust">Section 4d</a> covers what it can and cannot tell you in larger designs.</p>
+</li>
+<li>
+<p>Now set <code>vectorized</code> back to <code>True</code> and rebuild the 32-bit version (<code>make clean; make int_bit_width=32 trace</code>). How many cycles now?
+    <details markdown="1"><summary>Show answer</summary>
+    338 cycles with Peano (336 with Chess), about 32x faster than the scalar kernel.
+    </details></p>
+</li>
+<li>
+<p>Finally, build the default 16-bit version (<code>make clean; make trace</code>). How many cycles now, and why is it faster than the 32-bit vector kernel?
+    <details markdown="1"><summary>Show answer</summary>
+    46 cycles with Peano (44 with Chess). The 16-bit scalar kernel takes the same 10761 cycles as the 32-bit one, so this is about 234x faster than scalar. Two things help. Each iteration handles 32 elements instead of 16, so there are half as many iterations. And a 16-bit multiply is a single native vector instruction, while a 32-bit multiply is built from several 16-bit partial products, which we will see in the disassembly below.
+    </details></p>
+</li>
+</ol>
+<h2 id="how-the-compiler-schedules-a-loop"><u>How the Compiler Schedules a Loop</u><a class="headerlink" href="#how-the-compiler-schedules-a-loop" title="Permanent link">&para;</a></h2>
+<p>The cycle counts above are set almost entirely by how the compiler schedules the inner loop. Three ideas explain them.</p>
+<p><strong>VLIW bundles.</strong> The AIE core is a VLIW processor. Each instruction word, or <em>bundle</em>, has slots for several operations that issue in the same cycle: two loads, one store, scalar ALU work, a vector multiply, a move, and so on. A bundle takes one cycle whether its slots are full or empty (<code>nop</code>).</p>
+<p><strong>Software pipelining.</strong> A loop iteration is a chain: load, then multiply, then store. Each step waits several cycles for the one before it. Run iterations one after another and most bundles are empty. A software-pipelined loop overlaps them: while iteration <em>i</em> stores, <em>i+1</em> multiplies and <em>i+2</em> loads. Two numbers describe the result:
+* <strong>II (initiation interval)</strong> - the number of cycles between the starts of two iterations, which is also the number of bundles in the steady-state loop body. The loop costs about II cycles per iteration.
+* <strong>Stages</strong> - how many iterations are in flight at once. The compiler emits a <em>prologue</em> before the loop to fill the pipeline and an <em>epilogue</em> after it to drain it.</p>
+<p><strong>Zero-overhead loops (ZOL).</strong> The core has loop hardware (the loop start, loop end and loop count registers <code>ls</code>, <code>le</code>, <code>lc</code>) that jumps back from the last bundle of a loop body to the first at no cost. A loop that uses it spends no cycles on branch instructions.</p>
+<p>Together they give a rule of thumb:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>cycles ≈ II × trips + prologue/epilogue + function entry/exit
+</code></pre></div>
+<p>Predict the count before you measure. When the prediction and the trace disagree, one of them is not measuring what you think.</p>
+<h3 id="reading-the-schedule-static-remarks"><u>Reading the schedule: static remarks</u><a class="headerlink" href="#reading-the-schedule-static-remarks" title="Permanent link">&para;</a></h3>
+<p>You do not need hardware to see the schedule. <code>aie.utils.compile.remarks</code> compiles each kernel library build exactly as the JIT does and reports every loop's II, stages, bundle count and whether it is a zero-overhead loop. It honours <code>MLIR_AIE_KERNEL_SOURCES</code>, so with that exported as above it reads your edited sources; without it, it compiles the installed copy:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>python<span class="w"> </span>-m<span class="w"> </span>aie.utils.compile.remarks<span class="w"> </span>--target<span class="w"> </span>aie2p<span class="w"> </span>--only<span class="w"> </span>scale<span class="w"> </span>--out<span class="w"> </span>scale.json<span class="w"> </span>--meta<span class="w"> </span>scale_meta.json
+</code></pre></div>
+<code>scale.json</code> is a list of rows in the benchmark-chart format. Each loop gets one row, whose <code>name</code> is <code>&lt;kernel&gt;/loop/&lt;function&gt;/&lt;block&gt;/II</code>, whose <code>value</code> is the II, and whose <code>range</code> holds the rest of the schedule:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">{</span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;scale/loop/vector_scalar_mul_vector/for.body.i/II&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cycles&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w"> </span><span class="nt">&quot;range&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;NS=5 pro=23 epi=20 zol=True via=postpipeliner at vector.hpp:1105&quot;</span><span class="p">}</span>
+</code></pre></div>
+Read it as: II 5, 5 stages, a 23-bundle prologue and a 20-bundle epilogue, a zero-overhead loop, placed by Peano's post-pass pipeliner, attributed to line 1105 of an AIE API header (the loop was inlined from there). Per-kernel rows follow the same pattern: <code>scale/unpipelined_loops</code>, <code>scale/non_zol_loops</code>, <code>scale/pm_bytes</code> (program memory) and <code>scale/pass_failed_warnings</code> (loop pragmas the compiler could not apply). <code>scale_meta.json</code> holds the same data as one record per loop, with <code>ii</code>, <code>ns</code>, <code>prologue_bundles</code>, <code>epilogue_bundles</code>, <code>zol</code>, <code>pipelined</code>, <code>bundle_count</code>, <code>file</code> and <code>line</code>, plus the scheduler's notes per kernel. Use <code>--target aie2</code> for AIE2. The tool builds the <code>scale</code> kernel for 32-bit data only. See <a href="../../kernels_library/#static-checks">kernels_library.md</a> for the rest of its output, and <a href="../section-4d#reading-the-static-report">section 4d</a> for how to use it when optimizing.</p>
+<h3 id="reading-the-schedule-disassembly"><u>Reading the schedule: disassembly</u><a class="headerlink" href="#reading-the-schedule-disassembly" title="Permanent link">&para;</a></h3>
+<p>The disassembly shows the exact bundles. The kernel object and the core's linked ELF are in the build's project directory, for the default 16-bit build:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>build/final_trace_8192.prj/vector_scalar_mul_vector_&lt;hash&gt;.o
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>build/final_trace_8192.prj/elfs_main_core_0_2/elfs_main_core_0_2.elf
+</code></pre></div>
+The 32-bit build uses <code>final_trace_16384.prj</code>. The two numbers in <code>core_0_2</code> are the core's column and row. A design with several cores has one ELF per core. Disassemble with the <code>llvm-objdump</code> that ships with Peano:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nv">$PEANO_INSTALL_DIR</span>/bin/llvm-objdump<span class="w"> </span>-d<span class="w"> </span>-z<span class="w"> </span>build/final_trace_8192.prj/vector_scalar_mul_vector_*.o<span class="w"> </span>&gt;<span class="w"> </span>disassembly.txt
+</code></pre></div>
+<code>-z</code> prints bundles that are entirely <code>nop</code>s; without it they are elided as <code>...</code> and you will miscount. Function symbols carry a short hash prefix, for example <code>&lt;1846b0bf_vector_scalar_mul_vector&gt;</code>. Each line is one bundle: an address, the encoded bundle, then the operations in its slots separated by <code>;</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Example operations</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nop</code>, <code>nopa</code>, <code>nopb</code>, <code>nopx</code>, ...</td>
+<td>An empty slot</td>
+</tr>
+<tr>
+<td><code>mov</code>, <code>add</code>, <code>mul</code></td>
+<td>Scalar move and arithmetic</td>
+</tr>
+<tr>
+<td><code>lda</code>, <code>st</code></td>
+<td>Scalar load / store</td>
+</tr>
+<tr>
+<td><code>vlda</code>, <code>vldb</code></td>
+<td>Vector load on load unit A / B</td>
+</tr>
+<tr>
+<td><code>vmul</code>, <code>vmac</code></td>
+<td>Vector multiply / multiply-accumulate</td>
+</tr>
+<tr>
+<td><code>vst</code>, <code>vst.srs</code></td>
+<td>Vector store / store through the SRS path</td>
+</tr>
+<tr>
+<td><code>vshuffle</code></td>
+<td>Vector shuffle</td>
+</tr>
+<tr>
+<td><code>event</code></td>
+<td>The <code>event0()</code> / <code>event1()</code> markers</td>
+</tr>
+</tbody>
+</table>
+<p>A zero-overhead loop is set up by writes to <code>ls</code>, <code>le</code> and <code>lc</code>, and its body is marked by two labels:
+* <code>&lt;.LBB?_?&gt;:</code> - the first bundle of the loop body.
+* <code>&lt;.L_LEnd?&gt;:</code> - the <strong>last</strong> bundle of the loop body. A label names the bundle on the line after it, so the loop body is everything from the <code>.LBB</code> label up to <em>and including</em> the bundle after <code>.L_LEnd</code>. When the loop is a single bundle, both labels point at the same address.</p>
+<h2 id="schedule-exercises"><u>Schedule Exercises</u><a class="headerlink" href="#schedule-exercises" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p>Run the remarks tool on the shipped <code>scale.cc</code>. What II does it report for the vector loop (<code>vector_scalar_mul_vector/for.body.i</code>) and for the scalar loop (<code>vector_scalar_mul_scalar/for.body.i</code>)?
+    <details markdown="1"><summary>Show answer</summary>
+    Vector: II 5 with 5 stages, pipelined, ZOL (<code>NS=5 ... zol=True via=postpipeliner</code>). Scalar: II 42, not software-pipelined (<code>NS=1 ... via=None</code>), ZOL. The compiler unrolled the scalar loop four times, so 42 cycles cover 4 elements.
+    </details></p>
+</li>
+<li>
+<p>Use the rule of thumb to predict the two 32-bit cycle counts from Exercises 1 and 2. How close are you?
+    <details markdown="1"><summary>Show answer</summary>
+    Vector: 1024 / 16 = 64 iterations × 5 = 320, plus about 18 cycles of fill, drain and function overhead = 338, exactly what the trace shows. Scalar: 1024 / 4 = 256 iterations × 42 = 10752, plus 9 = 10761.
+    </details></p>
+</li>
+<li>
+<p>Build the default 16-bit design and disassemble the kernel object. Find <code>vector_scalar_mul_vector</code> and its <code>.LBB</code> / <code>.L_LEnd</code> labels. How many bundles are in the loop body, and which vector operations are in it? How does that explain 46 cycles?
+    <details markdown="1"><summary>Show answer</summary>
+    One bundle: <code>vldb x4, [p0], #0x40</code> (a 64-byte load), <code>vst.srs.2x ... [p1], #0x40</code> (a 64-byte store through SRS) and <code>vmul</code>. It is II 1: the loop loads, multiplies and stores one full 32-element vector every cycle, so 1024 / 32 = 32 cycles, plus 14 of fill, drain and overhead = 46. The bundles before the loop are the prologue: the same <code>vldb</code>/<code>vmul</code> repeated while the pipeline fills.
+    </details></p>
+</li>
+<li>
+<p>Now look at the 32-bit specialization in the same file (the <code>scale_vectorized&lt;int32_t&gt;</code> symbol is emitted even in the 16-bit build). Its loop has 5 bundles. Which vector operations are in it?
+    <details markdown="1"><summary>Show answer</summary>
+    One <code>vmul</code> and three <code>vmac</code>, plus <code>vshuffle</code>s. AIE2P has no single 32-bit × 32-bit vector multiply, so the product is assembled from 16-bit partial products. That is why the 32-bit loop is II 5 on 16 lanes, and the 16-bit loop is II 1 on 32 lanes.
+    </details></p>
+</li>
+<li>
+<p>Compile the 16-bit design for AIE2. You do not need an npu1 device to compile: <code>make clean; make devicename=npu build/final_8192.xclbin</code>, then disassemble the kernel object in <code>build/final_8192.prj/</code>. How many bundles is the AIE2 loop?
+    <details markdown="1"><summary>Show answer</summary>
+    Two. On AIE2 each vector load moves 256 bits, so the 512-bit input takes a <code>vlda</code> plus a <code>vldb</code>, and the output takes two 256-bit <code>vst.srs</code> stores. With only one store unit, two stores need two cycles, so II 2 is the floor on AIE2. AIE2P moves 512 bits per load and per store here, so it reaches II 1. The 32-bit loop is II 8 on AIE2. On an npu1 the 16-bit kernel measured 78 cycles for 1024 elements: 32 iterations at II 2 plus 14 cycles of pipeline fill, drain and call.
+    </details></p>
+</li>
+</ol>
+<h2 id="trip-counts"><u>Trip Counts</u><a class="headerlink" href="#trip-counts" title="Permanent link">&para;</a></h2>
+<p>A software-pipelined loop needs enough iterations to fill its stages. If the compiler cannot prove that the loop runs at least that many times, it has to pick between a slower schedule that is correct for any count and a guarded fast path. So the compiler's knowledge of the trip count matters as much as the loop body.</p>
+<p>In the shipped <code>scale.cc</code> the trip count is <code>SCALE_ELEMS / 32</code>, a compile-time constant, so the compiler knows the loop runs exactly 32 times. Kernels whose size arrives as the runtime <code>N</code> argument do not get that for free. Two pragmas from <a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/aie_kernels/aie_kernel_utils.h">aie_kernel_utils.h</a> tell the compiler what to expect:
+* <code>AIE_LOOP_MIN_ITERATION_COUNT(MIN)</code> - the loop always runs at least <code>MIN</code> times.
+* <code>AIE_LOOP_RANGE(MIN, MAX)</code> - the loop runs between <code>MIN</code> and <code>MAX</code> times. It is only a trip-count hint: it does not unroll anything.</p>
+<p>This is also where the two compilers differ most:
+* Under <strong>Chess</strong>, <code>AIE_PREPARE_FOR_PIPELINING</code> (<code>chess::prepare_for_pipelining</code>) is what enables software pipelining for the loop. Trip-count hints refine the schedule it picks.
+* Under <strong>Peano</strong>, <code>AIE_PREPARE_FOR_PIPELINING</code> expands to nothing. Peano tries to pipeline every innermost loop whose body is a single basic block (no <code>if</code> inside) on its own, so the trip count it can prove, from a constant or from a hint, decides the schedule.</p>
+<h2 id="trip-count-exercises"><u>Trip Count Exercises</u><a class="headerlink" href="#trip-count-exercises" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p>In your <code>MLIR_AIE_KERNEL_SOURCES</code> copy of <code>scale.cc</code>, change <code>const int F = SCALE_ELEMS / vec_factor;</code> to <code>const int F = N / vec_factor;</code> in both vector templates, so the trip count is only known at runtime. Rebuild and trace the 16-bit and the 32-bit designs. What changed?
+    <details markdown="1"><summary>Show answer</summary>
+    With Peano, 16-bit: 46 → 464 cycles; 32-bit: 338 → 1426. The data and the loop body are unchanged, but the 16-bit loop is now II 14 (14 × 32 + 16 = 464) and the 32-bit loop II 22 (22 × 64 + 18 = 1426). In the 16-bit disassembly the loop is still one <code>vldb</code>, one <code>vmul</code> and one <code>vst.srs</code>, now spread over 14 bundles that are mostly <code>nop</code>s, with a branch before it that skips the loop when <code>N</code> is below 32.</p>
+<p>With Chess, 16-bit: 62; 32-bit: 355. <code>AIE_PREPARE_FOR_PIPELINING</code> still lets Chess pipeline the loop.
+</details></p>
+</li>
+<li>
+<p>Now add <code>AIE_LOOP_MIN_ITERATION_COUNT(16)</code> on the line after <code>AIE_PREPARE_FOR_PIPELINING</code> in both templates. Rebuild and trace again.
+    <details markdown="1"><summary>Show answer</summary>
+    Peano: back to 46 and 338 cycles, the same schedules as the compile-time constant. Chess: 44 and 335.
+    </details></p>
+</li>
+<li>
+<p>Which pragma did the work? Remove <code>AIE_PREPARE_FOR_PIPELINING</code> but keep the hint, and build the 32-bit design with each compiler. Then remove both.
+    <details markdown="1"><summary>Show answer</summary></p>
+<table>
+<thead>
+<tr>
+<th>32-bit, runtime <code>N</code></th>
+<th>Peano</th>
+<th>Chess</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AIE_PREPARE_FOR_PIPELINING</code> + <code>MIN_ITERATION_COUNT(16)</code></td>
+<td>338</td>
+<td>335</td>
+</tr>
+<tr>
+<td><code>MIN_ITERATION_COUNT(16)</code> only</td>
+<td>338</td>
+<td>1415</td>
+</tr>
+<tr>
+<td><code>AIE_PREPARE_FOR_PIPELINING</code> only</td>
+<td>1426</td>
+<td>355</td>
+</tr>
+<tr>
+<td>neither</td>
+<td>1426</td>
+<td>1426</td>
+</tr>
+</tbody>
+</table>
+<p>Under Peano the two builds with and without <code>AIE_PREPARE_FOR_PIPELINING</code> produce byte-identical code: the hint does all the work. Under Chess the hint alone does nothing and <code>AIE_PREPARE_FOR_PIPELINING</code> does most of it. Kernels that must build with both compilers use both pragmas, which is why they appear together throughout <code>aie_kernels/</code>.
+</details></p>
+</li>
+<li>
+<p>Why 16? Try <code>AIE_LOOP_MIN_ITERATION_COUNT(4)</code> on the 16-bit build with Peano and count the loop bundles.
+    <details markdown="1"><summary>Show answer</summary>
+    Four bundles (II 4). In the compiler's output, Peano settles at II 7 for a minimum of 1 or 2, II 4 for 4, II 2 for 8 and II 1 for 16. (Only the 16 case was traced for this section, at 46 cycles.) The II 1 schedule has 14 stages, so the compiler needs to know at least that many iterations will run. The hint is a promise, not a request: the compiler may drop its short-loop path, so the count must be true for every caller. Give the smallest count that holds for all of them.
+    </details></p>
+</li>
+</ol>
+<h2 id="coding-for-the-architecture"><u>Coding for the Architecture</u><a class="headerlink" href="#coding-for-the-architecture" title="Permanent link">&para;</a></h2>
+<p>The vectorized kernel is 234x faster than scalar, but is it good? To answer that we compare it with what the hardware can do. The vector unit diagrams below are from the <a href="https://docs.amd.com/r/en-US/am020-versal-aie-ml/Fixed-Point-Vector-Unit">AIE-ML (AIE2) architecture manual (am020)</a>. AIE2P has the same overall structure, with the differences listed in the table after them.</p>
+<h3 id="the-vector-unit---loads">The Vector Unit - Loads<a class="headerlink" href="#the-vector-unit---loads" title="Permanent link">&para;</a></h3>
+<p><img src="../../assets/aie-ml_vector_unit.png" title="AIE-ML (AIE2) Vector Unit." height=450></p>
+<p>Vector registers are filled by two load units working in parallel from local L1 memory. They feed the permute blocks and then the multiplier. Not every load instruction exists on both units: in <a href="../section-4d#a-worked-example-add">section 4d</a>, a converting bf16 load that exists only on load unit A sets the pace of a loop.</p>
+<h3 id="the-vector-unit---multiply-and-add-mac">The Vector Unit - Multiply and Add (MAC)<a class="headerlink" href="#the-vector-unit---multiply-and-add-mac" title="Permanent link">&para;</a></h3>
+<p>The multiplier supports the AIE data types. An optional post-add step (heavily used by matrix multiplication) sums products before they land in the accumulator registers. The best-scheduled code issues one vector MAC every cycle.</p>
+<h3 id="the-vector-unit---srs-and-stores">The Vector Unit - SRS and Stores<a class="headerlink" href="#the-vector-unit---srs-and-stores" title="Permanent link">&para;</a></h3>
+<p>Results go back to L1 through a single store unit. The SRS (shift-round-saturate) path converts accumulators to vectors on the way out; the upshift (UPS) path goes the other way, from vectors to accumulators.</p>
+<p><img src="../../assets/aie-ml_srs_ups.png" title="AIE-ML (AIE2) SRS UPS Unit." height=230></p>
+<h3 id="the-vector-unit---shift-shuffle-adder-path">The Vector Unit - Shift/ Shuffle/ Adder Path<a class="headerlink" href="#the-vector-unit---shift-shuffle-adder-path" title="Permanent link">&para;</a></h3>
+<p>A parallel path performs shifts, shuffles, simple additions, comparisons and other vector functions without using the multiplier.</p>
+<p><img src="../../assets/aie-ml_shift_adder_path.png" title="AIE-ML (AIE2) Shift Adder Unit." height=200></p>
+<h3 id="aie2-and-aie2p-differences-that-change-this-example">AIE2 and AIE2P differences that change this example<a class="headerlink" href="#aie2-and-aie2p-differences-that-change-this-example" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>AIE2 (npu1)</th>
+<th>AIE2P (npu2)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Loads in the 16-bit <code>scale</code> loop</td>
+<td><code>vlda</code> + <code>vldb</code>, 256 bits each</td>
+<td>one <code>vldb</code>, 512 bits</td>
+</tr>
+<tr>
+<td>Stores in the 16-bit <code>scale</code> loop</td>
+<td>two 256-bit <code>vst.srs</code></td>
+<td>one 512-bit <code>vst.srs.2x</code></td>
+</tr>
+<tr>
+<td>16-bit <code>scale</code> loop</td>
+<td>II 2</td>
+<td>II 1</td>
+</tr>
+<tr>
+<td>32-bit <code>scale</code> loop</td>
+<td>II 8</td>
+<td>II 5 (32-bit multiply built from 16-bit partial products)</td>
+</tr>
+<tr>
+<td>int16 matrix-multiply instruction</td>
+<td>4x4x4, 64 MACs</td>
+<td>4x4x8, 128 MACs</td>
+</tr>
+<tr>
+<td><code>float</code> vector multiply</td>
+<td>no native instruction; emulated with several bf16 multiplies</td>
+<td>no native instruction; emulated with several bf16 multiplies</td>
+</tr>
+<tr>
+<td>Scalar <code>float</code> multiply and divide</td>
+<td>library calls (<code>__mulsf3</code>, <code>__divsf3</code>)</td>
+<td>library calls (<code>__mulsf3</code>, <code>__divsf3</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>The first four rows are Peano's output for this example. The matrix-multiply shapes are from the AIE API <a href="https://xilinx.github.io/aie_api/group__group__mmul.html">matrix multiplication</a> table. The last row applies to scalar <code>float</code> code with Peano on both architectures: every scalar <code>float</code> multiply or divide in a hot loop is a function call. <a href="../section-4d#reading-the-static-report">Section 4d</a> shows how to find them, and <a href="../section-4d#1-take-library-calls-and-emulated-float-math-out-of-the-loop">what removing them gained</a>.</p>
+<h3 id="multiplier-utilization-efficiency"><u>Multiplier Utilization Efficiency</u><a class="headerlink" href="#multiplier-utilization-efficiency" title="Permanent link">&para;</a></h3>
+<p><img src="../../assets/aie_compute_details1.png" title="AIE Compute Details." height=450></p>
+<p>The table in this diagram gives the number of MACs per cycle for each precision. Another source is <code>Table: Supported Precision Width of the Vector Data Path</code> in the <a href="https://docs.amd.com/r/en-US/am020-versal-aie-ml/Functional-Overview">AM020 spec</a> for AIE2. Those peak figures are for matrix multiplication, where the post-add step sums several products into each accumulator lane. An elementwise multiply produces one result per lane, so it uses at most one multiplier per accumulator lane: 32 lanes of 16-bit data per instruction.</p>
+<h4 id="mac-efficiency"><u>MAC efficiency</u><a class="headerlink" href="#mac-efficiency" title="Permanent link">&para;</a></h4>
+<p>Each kernel call multiplies 1024 16-bit values. At 32 per cycle the ideal is 1024 / 32 = <strong>32 cycles</strong>; on AIE2P we measured 46.</p>
+<p>Total MAC efficiency is the product of two ratios:
+* MAC schedule efficiency: ideal MAC cycles / actual cycles = 32 / 46 = 70%.
+* Per-clock MAC utilization: MACs used / MACs available = 32 / 128 = 25% on AIE2P (32 / 64 = 50% on AIE2).</p>
+<p>Total: 70% × 25% ≈ 17%. That sounds poor, but an elementwise multiply simply has no sums for the matrix hardware to do. The more useful question is what limits the schedule.</p>
+<h4 id="load-store-bandwidth-efficiency"><u>Load/ Store bandwidth efficiency</u><a class="headerlink" href="#load-store-bandwidth-efficiency" title="Permanent link">&para;</a></h4>
+<p>On AIE2P the loop issues one 512-bit load, one multiply and one 512-bit store every cycle. II 1 is the smallest II any loop can have, so the loop body is as fast as it can be; the remaining 14 cycles are filling and draining a 14-stage pipeline and entering and leaving the function. On AIE2 the two 256-bit stores per vector need two cycles through the single store unit, so the compiler's AIE2 schedule cannot beat 64 cycles for this kernel regardless of the multiplier; an npu1 measured 78.</p>
+<h4 id="data-movement-efficiency"><u>Data movement efficiency</u><a class="headerlink" href="#data-movement-efficiency" title="Permanent link">&para;</a></h4>
+<p>Compute is only half the picture. Each call's 1024 × 16-bit input has to arrive through a DMA and its output has to leave through one. The next exercise measures how long that takes.</p>
+<h2 id="optimization-exercises"><u>Optimization Exercises</u><a class="headerlink" href="#optimization-exercises" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p>Trace the default 16-bit design again and open the waveform. Hover over the blocks of <code>PortRunning0</code> (input DMA) and <code>PortRunning1</code> (output DMA). How many cycles does each 2 KiB chunk take?</p>
+<p><img src="../../assets/aie_vector_scalar_ml_opt1.png" title="Example PortRunning waveform (an older capture; your counts will differ)." height=250></p>
+<p><details markdown="1"><summary>Show answer</summary>
+About 256 cycles on npu2 (8 bytes per cycle). The 32-bit design moves 4 KiB per chunk in about 512 cycles. The kernel needs only 46 cycles per chunk, so this design is limited by data movement by a factor of about 5: the core waits for data most of the time. Making <code>scale</code> faster would not make the application faster.
+</details></p>
+</li>
+<li>
+<p>A kernel with more compute per byte balances this better. The <a href="https://github.com/Xilinx/mlir-aie/tree/v1.4.4/programming_examples/basic/matrix_multiplication/single_core">single-core matrix multiply</a> example by default multiplies 512x512x512 <code>int16_t</code> matrices in kernel calls of m×k×n = 32x32x32 (32,768 MACs per call). The AIE2P int16 kernel uses the 4x4x8 matrix-multiply instruction, 128 MACs. What is the ideal cycle count per call?
+    <details markdown="1"><summary>Show answer</summary>
+    32,768 / 128 = 256 cycles.
+    </details>
+    Each call reads a 32x32 <code>int16_t</code> tile of A and of B, 2 KiB each, on separate channels. At the rate you measured in the previous exercise, how long does moving them take?
+    <details markdown="1"><summary>Show answer</summary>
+    About 256 cycles for each tile, in parallel. On paper compute and data movement are balanced.
+    </details></p>
+</li>
+<li>
+<p>Navigate to the <a href="https://github.com/Xilinx/mlir-aie/tree/v1.4.4/programming_examples/basic/matrix_multiplication/single_core">single-core matrix multiply</a> example, run <code>make clean; make trace</code>, and look at the <code>get_trace_summary.py</code> output. What are the first and min cycle counts?
+    <details markdown="1"><summary>Show answer</summary>
+    First 537, min 70 (Peano, npu2). 537 is the matrix-multiply kernel: its inner loop is II 4 with four 4x4x8 MACs per iteration, one MAC instruction per cycle, and the whole call is predicted at 536 cycles including each block's prologue and epilogue. That is 48% of the 256-cycle ideal and well above the data movement time.</p>
+<p>The min of 70 is <em>not</em> a faster matmul call. The same core also runs a <code>zero</code> kernel that clears the output accumulator before each block, and it carries its own <code>event0()</code>/<code>event1()</code>. The summary pools both kernels into one list. The summary also counted fewer invocations than the design makes, because the trace buffer filled. <a href="../section-4d#cycles-you-can-trust">Section 4d</a> explains how to separate the two populations and why you should check before quoting any trace-summary number.
+</details></p>
+</li>
+</ol>
+<h2 id="loop-pragma-reference"><u>Loop Pragma Reference</u><a class="headerlink" href="#loop-pragma-reference" title="Permanent link">&para;</a></h2>
+<p>The macros in <a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/aie_kernels/aie_kernel_utils.h">aie_kernel_utils.h</a> let one kernel source carry hints for both compilers. Put them on the line directly before the <code>for</code>. Each expands differently under each compiler, and several do nothing under Peano:</p>
+<table>
+<thead>
+<tr>
+<th>Macro</th>
+<th>Peano (<code>#pragma clang loop ...</code>)</th>
+<th>Chess</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AIE_LOOP_MIN_ITERATION_COUNT(n)</code></td>
+<td><code>min_iteration_count(n)</code></td>
+<td><code>chess::min_loop_count(n)</code></td>
+<td>Must be true for every call. Measured: 1426 → 338 on the 32-bit <code>scale</code> with a runtime <code>N</code> (<a href="#trip-count-exercises">Trip Count Exercises</a>). On AIE2 it let <code>axpy</code>'s runtime-count loop overlap (269 → 87), with a plain loop kept for shorter rows. In two other kernels the compiler reported that it cost the zero-overhead loop, so check <code>zol</code> after adding it.</td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_MAX_ITERATION_COUNT(n)</code></td>
+<td><code>max_iteration_count(n)</code></td>
+<td><code>chess::max_loop_count(n)</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_RANGE(a, b)</code></td>
+<td>min + max iteration count</td>
+<td>min + max loop count</td>
+<td>A trip-count hint only. It does not unroll.</td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_UNROLL(n)</code></td>
+<td><code>unroll_count(n)</code></td>
+<td><code>chess::unroll_loop(n)</code></td>
+<td>Measured: ×4 on a latency-bound loop took <code>add</code> from 390 to 150 cycles (<a href="../section-4d#3-fill-the-empty-bundles">4d</a>).</td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_UNROLL_FULL</code></td>
+<td><code>unroll(full)</code></td>
+<td><code>chess::unroll_loop()</code></td>
+<td>Needs a constant trip count. Measured: keeping an accumulator array in registers took <code>conv2dk1_i8</code> from 7623 to 504 cycles (<a href="../section-4d#2-keep-arrays-and-addresses-in-registers">4d</a>).</td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_NO_UNROLL</code></td>
+<td><code>unroll(disable)</code></td>
+<td><code>chess::no_unroll</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>AIE_TRY_INITIATION_INTERVAL(n)</code></td>
+<td><code>pipeline_initiation_interval(n)</code></td>
+<td>nothing</td>
+<td>Asks Peano's pipeliner to try this II. Not measured in this guide.</td>
+</tr>
+<tr>
+<td><code>AIE_PREPARE_FOR_PIPELINING</code></td>
+<td><strong>nothing</strong></td>
+<td><code>chess::prepare_for_pipelining</code></td>
+<td>Enables pipelining under Chess. Under Peano the code is byte-identical with or without it.</td>
+</tr>
+<tr>
+<td><code>AIE_PREPARE_FOR_POSTPIPELINING</code></td>
+<td><strong><code>pipeline(disable)</code></strong></td>
+<td>nothing</td>
+<td>Under Peano this <em>turns pipelining off</em> for the loop.</td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_HINT(key, value)</code> / <code>AIE_LOOP_GPR_REALLOC</code></td>
+<td><code>hint(key, value)</code> / <code>hint(aie-gpr-realloc, 1)</code></td>
+<td>nothing</td>
+<td>Peano back-end tuning hints.</td>
+</tr>
+<tr>
+<td><code>AIE_NO_PREPARE_FOR_PIPELINING</code>, <code>AIE_MODULO_SCHEDULING_BUDGET_RATIO(n)</code>, <code>AIE_KEEP_SW_LOOP</code>, <code>AIE_PEEL_PIPELINED_LOOP(n)</code>, <code>AIE_KEEP_FREE_FOR_PIPELINING(r)</code>, <code>AIE_ALLOCATE(r)</code>, <code>AIE_NO_HW_LOOP</code>, <code>AIE_LOOP_FLATTEN</code></td>
+<td><strong>nothing</strong></td>
+<td>the matching Chess attribute</td>
+<td>Chess-only scheduling controls.</td>
+</tr>
+</tbody>
+</table>
+<p>Two per-architecture definitions from <a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/aie_kernels/aie_arch.h">aie_arch.h</a> sit beside these pragmas in library kernels: <code>AIE_BF16_LANES</code> is the bf16 vector-multiply width (16 on AIE2, 32 on AIE2P), and <code>AIE2_RESTRICT</code> puts <code>__restrict</code> on a pointer parameter only on AIE2, whose pipeliner needs it to overlap a streaming loop.</p>
+<p>The Peano expansions are the ones active by default. Check <a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/aie_kernels/aie_kernel_utils.h">aie_kernel_utils.h</a> for the exact spelling before relying on a macro. A pragma that expands to nothing leaves the compiled code byte-identical, so the quickest way to know whether a pragma did anything is to compare the II the remarks tool reports, or the disassembly, with and without it. Whether it made the kernel faster is a question for the hardware: <a href="../section-4d">section 4d</a> shows how to answer it with the kernel benchmark.</p>
+<p>Peano flags that are not pragmas can be passed to one kernel through the <code>compile_flags</code> of its <code>ExternalFunction</code>. <a href="../section-4d#3-fill-the-empty-bundles">Section 4d</a> has one measured example, a higher pipeliner stage limit.</p>
+<hr />
+<p><a href="../section-4b">Prev</a> &middot; <a href="../../section-4">Top</a> &middot; <a href="../section-4d">Next</a></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../section-4b/" class="md-footer__link md-footer__link--prev" aria-label="Previous: 4b: Tracing">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                4b: Tracing
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../section-4d/" class="md-footer__link md-footer__link--next" aria-label="Next: 4d: Kernel Optimization">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                4d: Kernel Optimization
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright © 2019–2021 Xilinx, Inc. | Copyright © 2022–2026 Advanced Micro Devices, Inc. Licensed under Apache 2.0 with LLVM exception.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/Xilinx/mlir-aie" target="_blank" rel="noopener" title="mlir-aie on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/UbXzGdXsR5" target="_blank" rel="noopener" title="Join us on the ROCm Discord (#ROCm-NPU)" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:aup@amd.com" target="_blank" rel="noopener" title="AMD University Program" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M536.4-26.3c9.8-3.5 20.6-1 28 6.3s9.8 18.2 6.3 28l-178 496.9c-5 13.9-18.1 23.1-32.8 23.1-14.2 0-27-8.6-32.3-21.7l-64.2-158c-4.5-11-2.5-23.6 5.2-32.6l94.5-112.4c5.1-6.1 4.7-15-.9-20.6s-14.6-6-20.6-.9l-112.4 94.3c-9.1 7.6-21.6 9.6-32.6 5.2L38.1 216.8c-13.1-5.3-21.7-18.1-21.7-32.3 0-14.7 9.2-27.8 23.1-32.8z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

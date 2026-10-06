@@ -1,0 +1,4539 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="IRON — a close-to-metal Python API for programming AMD Ryzen™ AI NPUs, built on an open-source MLIR-based compiler toolchain.">
+      
+      
+        <meta name="author" content="AMD Advanced Micro Devices">
+      
+      
+        <link rel="canonical" href="https://xilinx.github.io/mlir-aie/1.4.4/programming_guide/core_data_memory/">
+      
+      
+        <link rel="prev" href="../iron_configuration/">
+      
+      
+        <link rel="next" href="../hrx_runtime/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.svg">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Core Data Memory - IRON / MLIR-AIE</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../assets/css/iron.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#core-data-memory" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="IRON / MLIR-AIE" class="md-header__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+      
+  <img src="../../assets/images/favicon.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            IRON / MLIR-AIE
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Core Data Memory
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Xilinx/mlir-aie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Xilinx/mlir-aie
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Programming Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../skills/agentic_programming/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Agentic Programming
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API & Internals
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../UsedIn/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="IRON / MLIR-AIE" class="md-nav__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+      
+  <img src="../../assets/images/favicon.svg" alt="logo">
+
+    </a>
+    IRON / MLIR-AIE
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Xilinx/mlir-aie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Xilinx/mlir-aie
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../buildHostWin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (WSL)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../buildHostWinNative/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (Native)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../buildHostLinNonUbuntu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Non-Ubuntu Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build from Source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Devices/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Devices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../BuildingVersal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Platform/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Programming Guide
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Programming Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mini_tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mini Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-0/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 0: Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 1: Tiles and Buffers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../section-2/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 2: Data Movement
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5" id="__nav_3_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Section 2: Data Movement
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2a: Single-Tile Data Movement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../section-2/section-2b/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2b: ObjectFifo Patterns
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_3" id="__nav_3_5_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2b: ObjectFifo Patterns
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2b/01_Reuse/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2b/02_Broadcast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Broadcast
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2b/03_Implicit_Copy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implicit Copy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2b/04_Repeat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../section-2/section-2c/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2c: Data Layout Transformations
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_4" id="__nav_3_5_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2c: Data Layout Transformations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2c/to_stream_transformations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    To Stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2c/from_stream_transformations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From Stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../section-2/section-2d/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2d: DMA and Runtime Tasks
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_5" id="__nav_3_5_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2d: DMA and Runtime Tasks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2d/DMATasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DMA Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2d/RuntimeTasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2e/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2e: Multiple Cores
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../section-2/section-2f/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2f: Multi-Core Patterns
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_7" id="__nav_3_5_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2f: Multi-Core Patterns
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2f/01_single_double_buffer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Single/Double Buffer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2f/02_external_mem_to_core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ext Mem to Core
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2f/03_external_mem_to_core_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ext Mem to Core (L2)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2f/04_distribute_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distribute L2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2f/05_join_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Join L2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2g/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2g: Data Movement Without ObjectFifos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-2/section-2h/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2h: Tensor Access Patterns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 3: My First Program
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../section-4/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 4: Performance
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_7" id="__nav_3_7_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Section 4: Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-4/section-4a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4a: Timers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-4/section-4b/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4b: Tracing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-4/section-4c/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-4/section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-5/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 5: Example Designs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-6/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 6: ML Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extra References
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extra References
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../iron_configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IRON Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Data Memory
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Data Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-stack-stack_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The stack: stack_size
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The stack: stack_size">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stack-placement-stack_bank-and-stack_address" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack placement: stack_bank and stack_address
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#overriding-a-kernels-stack-contribution-stack_size_override" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overriding a kernel's stack contribution: stack_size_override
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-cores-own-sections-data_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The core's own sections: data_size
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The core&#39;s own sections: data_size">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#measured_data_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        measured_data_size
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bank-pinned-static-tables-and-lut-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bank-pinned static tables and LUT checks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bank-pinned static tables and LUT checks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-allocator-reserves-these-banks-for-you" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The allocator reserves these banks for you
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cores-built-ahead-of-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cores built ahead of time
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#escape-hatches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Escape hatches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-placement-chooses-addresses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How placement chooses addresses
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-to-do-when-you-hit-a-diagnostic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to do when you hit a diagnostic
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hrx_runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HRX Runtime (amdxdna)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hsa_runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HSA Runtime (ROCR)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compilation_stages/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compilation Stages
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../implicit_mlir_context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implicit MLIR Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kernels_library/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel Library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nightly Kernel Checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=components" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nightly Component Checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../skills/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic Programming
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Agentic Programming
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../skills/agentic_programming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../skills/aie-model-baseline/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 1: Model Baseline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../skills/aie-dataflow-presim/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 2: Dataflow Pre-Sim
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: HW Bring-up
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../skills/aie-kernel-opt/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 4: Kernel Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../skills/aie-dataflow-opt/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 4: Dataflow Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../api/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API & Internals
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API & Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Python API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/iron/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IRON (aie.iron)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/dialect_wrappers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dialect op wrappers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/taplib/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/kernels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Kernel Library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/hostruntime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Host Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/aie_kernels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++ AIE kernels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_3" id="__nav_5_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLIR / C++
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    MLIR / C++
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ObjectFifoLowering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ObjectFifo Lowering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../AIEDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIE Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../AIEXDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEX Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../AIEVecDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEVec Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../AIEPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIE Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../AIEXPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEX Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../AIEVecPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEVec Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/cpp_doxygen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++ API (Doxygen)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../aiecc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    aiecc Compiler Driver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Community
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../UsedIn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Used in / Cited in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../CONTRIBUTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ROADMAP/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../SECURITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-stack-stack_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The stack: stack_size
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The stack: stack_size">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stack-placement-stack_bank-and-stack_address" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack placement: stack_bank and stack_address
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#overriding-a-kernels-stack-contribution-stack_size_override" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overriding a kernel's stack contribution: stack_size_override
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-cores-own-sections-data_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The core's own sections: data_size
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The core&#39;s own sections: data_size">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#measured_data_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        measured_data_size
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bank-pinned-static-tables-and-lut-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bank-pinned static tables and LUT checks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bank-pinned static tables and LUT checks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-allocator-reserves-these-banks-for-you" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The allocator reserves these banks for you
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cores-built-ahead-of-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cores built ahead of time
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#escape-hatches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Escape hatches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-placement-chooses-addresses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How placement chooses addresses
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-to-do-when-you-hit-a-diagnostic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to do when you hit a diagnostic
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Programming Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../iron_configuration/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Extra References
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!---//===- core_data_memory.md ------------------------*- Markdown -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//-->
+
+<h1 id="core-data-memory">Core Data Memory<a class="headerlink" href="#core-data-memory" title="Permanent link">&para;</a></h1>
+<p>Every AIE compute tile has one small block of local data memory, 64 kB on npu2
+for example; IRON reads the size as <code>dev.core_memory_bytes</code>. Three things share that block:</p>
+<ul>
+<li>the <strong>stack</strong>, at offset zero by default;</li>
+<li>the <strong><code>aie.buffer</code>s</strong> that the buffer allocator places on the tile: the L1
+  storage behind ObjectFifos, and any hand-declared buffer;</li>
+<li>the core's <strong>own compiled sections</strong> (<code>.data</code>, <code>.rodata</code>, <code>.bss</code>, and
+  bank-pinned sections): the
+  globals, the constants and the zero-initialized statics of the code that
+  runs on the core, including its kernels.</li>
+</ul>
+<p>The buffer allocator keeps the <code>aie.buffer</code>s clear of the stack reservation.
+Ordinary static data needs one contiguous run that the buffers leave. On
+Peano, bank-pinned static tables instead use separate bank-specific linker
+regions; Chess uses its native storage constraints. Buffer and stack placement
+therefore govern whether the core links.</p>
+<p>Placement runs <em>after</em> each core is compiled, so how much of each bank that
+core's own sections want is measured first and reserved. See
+<a href="#the-allocator-reserves-these-banks-for-you">The allocator reserves these banks for you</a>.</p>
+<p>This page covers the <strong>stack</strong> and the <strong>core's own sections</strong>: sizing,
+bank placement, the attributes and flags that control them, and what to do
+when a diagnostic fires.</p>
+<p>One rule governs both checks: <em>the compiler measures and reports, you declare
+and rebuild.</em> <code>aiecc</code> never writes <code>stack_size</code> or <code>data_size</code>. A value you set
+explicitly stays as you wrote it (<code>data_size = 0</code> is legal; <code>stack_size</code> must
+be positive). When the measured requirement exceeds the declared value, the
+build reports the number to set and stops.</p>
+<h2 id="the-stack-stack_size">The stack: <code>stack_size</code><a class="headerlink" href="#the-stack-stack_size" title="Permanent link">&para;</a></h2>
+<p><code>stack_size</code> is a per-core attribute on <code>aie.core</code>. A core that leaves it
+absent uses the target default from
+<code>AIETargetModel::getDefaultCoreStackSize()</code>, currently 1024 bytes, which IRON
+reads as <code>dev.default_core_stack_bytes</code>. IRON spells it on the <code>Worker</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">Worker</span><span class="p">(</span><span class="n">core_fn</span><span class="p">,</span> <span class="p">[</span><span class="n">args</span><span class="p">],</span> <span class="n">stack_size</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+</code></pre></div>
+<p>The stack grows upward from its assigned address. A core whose frames exceed
+the reservation can overwrite buffers or static data beyond it. <code>aiecc</code>
+therefore measures each core's stack requirement and checks <code>stack_size</code>
+against that number. It measures the <strong>linked core ELF</strong>: the linker decides
+which objects a core contains, so its output covers the kernels and the
+toolchain's own startup code. The analysis reads the <code>.stack_sizes</code> section for
+each frame, follows the relocations for the call edges, and takes the
+<strong>maximum over all root-to-leaf call paths</strong> from the ELF entry point. One call
+chain is live at a time, so the maximum bounds the requirement. Static data
+differs: all of it coexists, whatever the control flow.</p>
+<p>The walk starts at <code>__start</code> (crt0), which calls <code>_main_init</code> (crt1), which
+calls the core body, which calls its kernels. <code>_main_init</code> holds a frame that
+stays live across the whole chain, so it counts. <code>__start</code> establishes the
+stack pointer, so its own frame counts as 0.</p>
+<p>The check runs once, after each core is linked, and the Peano link keeps the
+relocations (<code>-Wl,--emit-relocs</code>) that the walk needs. <code>aiecc</code> writes the
+result to the <code>measured_stack_size</code> attribute on the <code>aie.core</code>, so you can
+inspect it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aie.core(%tile_0_2) { ... } {stack_size = 8192 : i32, measured_stack_size = 4128 : i32}
+</code></pre></div>
+<p>Pass <code>--get=measured_stack_sizes.mlir</code> to dump that module. A <code>stack_size</code>
+below <code>measured_stack_size</code> fails the build. <code>measured_stack_size</code> stays absent
+when <code>aiecc</code> cannot measure the core; see the stack-contribution overrides below.</p>
+<h3 id="stack-placement-stack_bank-and-stack_address">Stack placement: <code>stack_bank</code> and <code>stack_address</code><a class="headerlink" href="#stack-placement-stack_bank-and-stack_address" title="Permanent link">&para;</a></h3>
+<p>These optional attributes on <code>aie.core</code> control placement, independently of
+<code>stack_size</code>:</p>
+<ul>
+<li><strong><code>stack_address</code></strong> is a byte offset within the tile's local data memory,
+  not an absolute ELF address.</li>
+<li><strong><code>stack_bank</code></strong> selects bank 0–3 (A–D) on AIE2/AIE2P. With no address, the
+  allocator chooses an aligned free run in that bank and writes
+  <code>stack_address</code>, accounting for fixed-address buffers first.</li>
+<li>With both attributes, the address must lie in the requested bank.</li>
+</ul>
+<p>For example, on npu2, bank B starts at tile-relative offset <code>0x4000</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>aie.core(%tile_0_2) { ... } {stack_size = 2048 : i32, stack_bank = 1 : i32, stack_address = 16384 : i32}
+</code></pre></div>
+<p>An explicitly placed stack must stay within local memory and not overlap a
+buffer or static-data reservation. The address must satisfy the stack ABI
+alignment: 32 bytes on AIE1/AIE2, 64 bytes on AIE2P/AIE2PS. Omitting both
+attributes retains the legacy stack at offset zero.</p>
+<p>A <code>stack_address</code> may cross bank boundaries, as the legacy stack always could.
+What such a stack cannot do is claim a bank: <code>-aie-stack-addrspace</code> names one,
+so aiecc leaves it at Peano's unrestricted default rather than promise the
+bank-conflict model something untrue. <code>stack_bank</code> is the attribute that names
+a bank, and it must hold the whole stack -- a <code>stack_bank</code> whose stack runs
+past it is an error, because the two would disagree.</p>
+<p>Moving within bank A works with both Peano and Chess. Moving to banks B–D
+through <code>aiecc</code> requires Peano compilation and linking, with no separately
+linked kernel inputs (<code>link_files</code>). Use LLVM IR kernels with
+<code>link_with_mode = "merge"</code> instead: <code>aiecc</code> passes the selected stack address
+space to Peano when compiling the combined core. Separately compiled kernels
+may still assume bank A, and equivalent Chess assumptions cannot be verified,
+so those combinations are rejected.</p>
+<p>These placement attributes currently belong to the MLIR <code>aie.core</code> API;
+IRON's <code>Worker</code> exposes <code>stack_size</code>, but not <code>stack_bank</code> or <code>stack_address</code>.</p>
+<h2 id="overriding-a-kernels-stack-contribution-stack_size_override">Overriding a kernel's stack contribution: <code>stack_size_override</code><a class="headerlink" href="#overriding-a-kernels-stack-contribution-stack_size_override" title="Permanent link">&para;</a></h2>
+<p>The analysis cannot size some symbols:</p>
+<ul>
+<li><strong>recursion</strong>: a cycle in the call graph is unbounded;</li>
+<li><strong>an indirect call through a function pointer</strong>: the analysis fans out
+  conservatively and still misses some targets;</li>
+<li><strong>a kernel compiled without <code>-fstack-size-section</code></strong>: the linked core carries
+  no frame for it. A Chess-compiled object and a pre-compiled object both hit
+  this case.</li>
+</ul>
+<p>For these, declare the answer with <code>stack_size_override</code>. It lives on the
+<strong>kernel's <code>func.func</code></strong>, at function granularity, and not on the core. Two
+reasons drive that placement. Several cores often link one kernel. And the
+problematic symbol usually sits inside a kernel object that MLIR never reads,
+so the override has to address the one granularity MLIR does read: the
+external-function declaration. <code>aiecc</code> takes the declared value as the
+requirement of that kernel's whole call subtree and stops the walk there. The
+value is a declaration, not a clamp: an explicit value replaces the computed
+one, even when it is smaller. An explicit <code>0</code> is legal.</p>
+<p>IRON spells it as a keyword on the kernel declaration:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">Kernel</span><span class="p">(</span><span class="s2">&quot;recursive_kernel&quot;</span><span class="p">,</span> <span class="s2">&quot;recursive.o&quot;</span><span class="p">,</span> <span class="p">[</span><span class="o">...</span><span class="p">],</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">ExternalFunction</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">external_func</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="the-cores-own-sections-data_size">The core's own sections: <code>data_size</code><a class="headerlink" href="#the-cores-own-sections-data_size" title="Permanent link">&para;</a></h2>
+<p>Ordinary, unpinned <code>.data</code>, <code>.rodata</code> and <code>.bss</code> do not go wherever there is
+room. Peano's generated linker script grants them <strong>one</strong> contiguous <code>data</code>
+region, so the number that matters is the largest single free run on the tile,
+not the total free memory. Bank-pinned sections have separate regions,
+described below.</p>
+<p><code>data_size</code> is a per-core attribute that reserves that run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aie.core(%tile_0_2) { ... } {data_size = 8192 : i32}
+</code></pre></div>
+<p><code>aie-assign-buffer-addresses</code> turns the reservation into an <code>aie.buffer</code> marked
+<code>core_data</code> and places it alongside the tile's other buffers:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>%core_data_0_2 = aie.buffer(%tile_0_2) {address = 49152 : i32, core_data, sym_name = &quot;core_data_0_2&quot;} : memref&lt;8192xi8&gt;
+</code></pre></div>
+<p><code>aie-translate</code> emits that buffer's extent as the <code>data</code> MEMORY region of the
+linker script. The buffer names no symbol, so nothing else refers to it.</p>
+<p>Reserving costs nothing when the tile has room, and it improves placement. The
+allocator packs the buffers around a declared reservation, and a packing that
+leaves 8192 contiguous bytes often exists where the unconstrained placement
+leaves two runs of 4096. A reservation the allocator cannot satisfy fails buffer
+allocation and names the core.</p>
+<p>On Peano, a core that leaves <code>data_size</code> absent normally gets an exact aligned
+<code>core_data</code> reservation from the probe's <code>measured_data_size</code> and
+<code>measured_data_alignment</code>, before buffer placement. No explicit <code>data_size</code> is
+needed to make the allocator account for this ordinary static data.</p>
+<p>Without that measurement or an explicit reservation, ordinary data uses the
+largest aligned free run left by the stack and buffers. This fallback applies
+when measurement is disabled or unavailable, including the Chess flow. On
+Peano, any nonempty bank-pinned sections intersecting that run move the
+ordinary-data start past them; the end stays fixed. This can leave unused gaps
+rather than packing data into every hole.</p>
+<p>The allocator caps the leftover run it aims for. Free space beyond the bytes
+still to place serves nothing, so the ranking counts a run only up to that
+amount. Within the cap it prefers layouts that spread buffers across banks,
+which limits DMA contention.</p>
+<h3 id="measured_data_size"><code>measured_data_size</code><a class="headerlink" href="#measured_data_size" title="Permanent link">&para;</a></h3>
+<p><code>aiecc</code> counts the allocated <code>.data</code>, <code>.rodata</code> and <code>.bss</code> of each <strong>linked core
+ELF</strong> and writes the total to <code>measured_data_size</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>aie.core(%tile_0_2) { ... } {data_size = 8192 : i32, measured_data_size = 6144 : i32}
+</code></pre></div>
+<p>The count comes from the linked ELF because <code>--gc-sections</code> runs during the
+link. A kernel header that defines a large lookup table no code reads adds to
+the object files and drops out of the ELF. A count taken from the objects would
+reject designs that fit.</p>
+<p>Before placement, the probe measurement also includes padding between output
+sections and records their maximum alignment as <code>measured_data_alignment</code>.
+The allocator preserves this alignment for the core-data reservation, including
+an explicitly declared <code>data_size</code>, so over-aligned globals do not consume
+unreserved leading padding at the final link.
+Bank-pinned reservations likewise retain their per-bank start alignment in
+<code>measured_bank_alignments</code>; rounding only their sizes cannot cover that padding.</p>
+<p>On Peano, this count excludes the separate <code>.aie.bank0</code>–<code>.aie.bank3</code> output
+sections. It is not a total of all static storage on the tile: pinned sections
+must fit their own regions, independently of <code>data_size</code>. Chess sections whose
+names start with <code>.data</code>, <code>.rodata</code> or <code>.bss</code> are included in the count.</p>
+<p>Pass <code>--get=measured_data_sizes.mlir</code> to dump the module carrying both measured
+attributes (when both measurements are enabled). A <code>data_size</code> below
+<code>measured_data_size</code> fails the build and reports the number to set.</p>
+<h2 id="bank-pinned-static-tables-and-lut-checks">Bank-pinned static tables and LUT checks<a class="headerlink" href="#bank-pinned-static-tables-and-lut-checks" title="Permanent link">&para;</a></h2>
+<p>For AIE2/AIE2P, include the installed <code>aie_bank_placement.h</code> in a kernel and
+annotate tables with <code>AIE_BANK_A</code> through <code>AIE_BANK_D</code>. For example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;aie_bank_placement.h&quot;</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">alignas</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">table_ab</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span><span class="w"> </span><span class="n">AIE_BANK_A</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">};</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="k">alignas</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">table_cd</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span><span class="w"> </span><span class="n">AIE_BANK_B</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">};</span>
+</code></pre></div>
+<p>The table contents, sizes and alignment must still match the LUT operation.
+These annotations place static storage; they do not move automatic,
+stack-local arrays. The AIE2/AIE2P runtime exp and tanh table pairs use these
+macros to select banks A and B.</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Peano</th>
+<th>Chess</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AIE_BANK_A</code>–<code>AIE_BANK_D</code></td>
+<td>Emit <code>.aie.bank0</code>–<code>.aie.bank3</code> sections; Peano does not honor <code>chess_storage</code>.</td>
+<td>Use native <code>chess_storage(DM_bankA)</code>–<code>DM_bankD</code> constraints.</td>
+</tr>
+<tr>
+<td>Bank-specific linker regions</td>
+<td>One aligned contiguous reservation per measured bank, excluding buffers, the stack and ordinary-data reservations; falls back to a free run when unmeasured.</td>
+<td>Not used; placement uses the Chess/BCF flow.</td>
+</tr>
+<tr>
+<td>Default bank-placement check</td>
+<td>Supported; reads object sections and linked ELF symbols.</td>
+<td>Supported; recognizes native <code>DM_bankX</code> section names, without needing LLVM IR.</td>
+</tr>
+<tr>
+<td>Opt-in <code>--check-lut-banks</code></td>
+<td>Supported for recognized gather patterns with readable LLVM IR.</td>
+<td>Rejected with <code>--xchesscc</code> or <code>--xbridge</code>; Chess IR is incompatible with the analyzer.</td>
+</tr>
+</tbody>
+</table>
+<p>A Peano bank region never spills into a neighboring bank. An explicit
+<code>data_size</code> reservation competes with pinned tables for memory; increasing it
+can leave less space in the requested banks, not more. Without an explicit
+<code>data_size</code>, the probe normally supplies the ordinary-data reservation. Only
+the unmeasured fallback adjusts the leftover <code>data</code> region around pinned
+sections as described above.</p>
+<h3 id="the-allocator-reserves-these-banks-for-you">The allocator reserves these banks for you<a class="headerlink" href="#the-allocator-reserves-these-banks-for-you" title="Permanent link">&para;</a></h3>
+<p>Nothing above needs declaring. <code>aiecc</code> compiles each core, links it once
+against permissive regions to see how large its <code>.aie.bank&lt;N&gt;</code> sections
+actually are, and records the answer in <code>measured_bank_sizes</code> on the
+<code>aie.core</code>. Buffer placement then holds that much room in each of those banks
+before it places anything unconstrained, so a buffer cannot take a bank a
+kernel's tables need.</p>
+<p>This is why placement runs after the core compile rather than before it: the
+sections only exist once the object is built. A consequence worth knowing is
+that <code>input_with_addresses.mlir</code> now costs a core compile. Use
+<code>--get-input-with-symbols</code> for the same module before placement, which does
+not.</p>
+<p>The measurement is the linked size, so <code>--gc-sections</code> has already run and a
+pinned table the kernel never reads reserves nothing. Reservations appear in a
+tile's memory map as <code>(bank-pinned static data)</code>. Chess places bank-pinned
+statics through its own storage constraints rather than linker regions, so none
+of this applies there.</p>
+<p>A table larger than its bank still cannot be placed, and is now reported while
+reserving rather than by the linker:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>error: &#39;aie.buffer&#39; op this core&#39;s static data pinned to bank 1 requires 32768
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>bytes, which cannot fit in bank 1 (16384 bytes total)
+</code></pre></div>
+<p>The <strong>default placement check</strong> compares each unambiguous bank-annotated
+definition with its linked address and complete nonzero symbol extent. It
+reads native objects and static-archive members, including thin archives.
+Absent or ambiguous symbols are skipped, and bank assumptions expressed only
+by pointer casts inside a kernel are not visible to this check. It is not a
+proof that every LUT pair occupies different banks.</p>
+<p>The stronger <strong><code>--check-lut-banks</code></strong> check recovers pairs from LLVM IR and
+requires the two tables to occupy different banks. Object-linked kernels need
+readable embedded <code>.llvmbc</code>; merged kernels and generated core code use the
+optimized core IR. The check can resolve parameters bound to bank-pinned MLIR
+buffers on the core's own tile. Missing IR, unresolved operands or parameter
+bindings, and stack-local tables fail rather than silently passing. Archive
+inputs and prebuilt <code>elf_file</code> cores are unsupported by this opt-in check.
+Native functions known to have been removed by linker garbage collection are
+omitted; analysis stays conservative about inlined or renamed functions.</p>
+<p>The option is off by default because preserving IR adds compilation cost:</p>
+<ul>
+<li>For source-backed kernels built through IRON, use
+  <code>@iron.jit(aiecc_flags=["--check-lut-banks"])</code>.</li>
+<li>Direct <code>compile_mlir_module(..., options=["--check-lut-banks"],
+  device=..., work_dir=...)</code> calls also retain IR when auto-building
+  source-backed external kernels.</li>
+<li>When compiling a kernel separately with <code>compile_cxx_core_function</code>, request
+  <code>embed_bitcode=True</code> and pass <code>--check-lut-banks</code> to the later <code>aiecc</code> call.
+  Precompiled objects are not retroactively given IR.</li>
+<li>Participating Make recipes using <code>attach_bitcode</code> opt in with
+  <code>AIE_CHECK_LUT_BANKS=1</code>; that variable does not modify arbitrary build
+  recipes.</li>
+</ul>
+<p>For LLVM IR kernel compilation, see the
+<a href="https://github.com/Xilinx/mlir-aie/blob/v1.4.4/programming_examples/basic/inline_kernel/README.md">merge-mode example</a>.</p>
+<h2 id="cores-built-ahead-of-time">Cores built ahead of time<a class="headerlink" href="#cores-built-ahead-of-time" title="Permanent link">&para;</a></h2>
+<p>A core that carries an <code>elf_file</code> attribute comes linked, and its <code>.data</code>,
+<code>.bss</code> and any <code>.aie.bank&lt;N&gt;</code> tables sit at the addresses that link chose.
+<code>aiecc</code> reads those extents back out of the ELF and records them on the core as
+<code>measured_data_ranges</code>, address/size pairs relative to the tile. Placement pins
+a buffer over each one, so the tile's own buffers are kept clear of memory the
+image already holds.</p>
+<p>This is the same measurement a compiled core gets, read from the same sections;
+only what is taken from it differs. A compiled core is probed for <em>sizes</em>,
+because its addresses are chosen afterwards. A prebaked core is read for its
+<em>addresses</em>, because they are already final.</p>
+<p><code>data_size</code> cannot express this: it is a size, and what a prebaked ELF occupies
+is a specific range. Declaring the range yourself still works, and is worth
+doing when the ELF is not where <code>aiecc</code> can read it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>%prebaked = aie.buffer(%tile_0_3) {sym_name = &quot;prebaked_data&quot;, address = 8192 : i32} : memref&lt;4096xi8&gt;
+</code></pre></div>
+<p>Either way the allocator treats the extent as occupied space, keeps every
+buffer it places clear of it, reports a collision against it by name, and lists
+it in the memory map when a tile runs out of room.</p>
+<p>With <code>--xchesscc</code>/<code>--xbridge</code>, <code>aiecc</code> compiles and links an <code>elf_file</code> core, so
+that core gets a <code>data</code> region like any other.</p>
+<h2 id="escape-hatches">Escape hatches<a class="headerlink" href="#escape-hatches" title="Permanent link">&para;</a></h2>
+<p>Separate flags disable measurements and checks, for debugging or a build that
+has to skip them:</p>
+<ul>
+<li><strong><code>--no-measure-stack-size</code></strong> drops the stack measurement and its check, so no
+  <code>measured_stack_size</code> reaches the IR.</li>
+<li><strong><code>--no-measure-data-size</code></strong> drops ordinary static-data measurement before
+  placement and after linking, including its <code>data_size</code> check. Per-bank
+  measurements and reservations remain enabled. Explicit <code>data_size</code>
+  reservations and linker capacity limits still apply.</li>
+<li><strong><code>--no-check-bank-placement</code></strong> drops the default annotation-placement
+  check, but does not relax linker bank regions or disable an explicitly
+  requested <code>--check-lut-banks</code>.</li>
+</ul>
+<p>A design-wide stand-in for the built-in default covers any core that leaves
+<code>stack_size</code> absent:</p>
+<ul>
+<li><strong><code>--default-stack-size=&lt;bytes&gt;</code></strong> assumes this many bytes in place of
+  <code>AIETargetModel::getDefaultCoreStackSize()</code> for any core without an explicit
+  <code>stack_size</code>. The rest of the build then treats that core as if it declared
+  <code>stack_size</code> explicitly, and the diagnostics call the value assumed. A core
+  with an explicit <code>stack_size</code> keeps it.</li>
+</ul>
+<h2 id="how-placement-chooses-addresses">How placement chooses addresses<a class="headerlink" href="#how-placement-chooses-addresses" title="Permanent link">&para;</a></h2>
+<p>One allocator places every extent on a tile: the stack, each buffer, the core's
+own sections, and the bank reservations described above. It is bank-aware
+throughout — there is no second, bank-oblivious scheme to select or fall back
+to, because "succeeding" by ignoring a <code>mem_bank</code> request is not success.</p>
+<p>Extents are placed most-constrained first: those with an explicit <code>address</code>,
+then those pinned to a bank, then the rest, largest first. Each candidate
+address is ranked by</p>
+<ol>
+<li>banks touched, fewest first — a spanned bank costs DMA bandwidth;</li>
+<li>the largest free run left behind, biggest first, capped by the bytes still
+   to place;</li>
+<li>distance from a round-robin cursor, which spreads buffers over banks;</li>
+<li>tightness of fit, then lowest address for determinism.</li>
+</ol>
+<p>A buffer larger than one bank must span banks, and any unpinned buffer may span
+if that is what fits; the memory map marks it <code>(straddles into bank N)</code>. A
+<code>mem_bank</code> pin is a hard single-bank constraint, so a pinned buffer larger than
+its bank is an error rather than a straddle — the pin exists to tell Peano's
+bank-conflict model which bank the accesses hit, and a straddling buffer would
+make that untrue.</p>
+<p><strong>Placement backtracks.</strong> Ranking alone is not enough: the placement that
+touches the fewest banks can strand the free run a later buffer needs. When a
+buffer has nowhere to go, the allocator undoes an earlier choice and tries that
+buffer's next-best address. It explores in rank order, so the first arrangement
+it tries is the one the ranking prefers and most designs never backtrack at all.</p>
+<p>The search is bounded at 20000 placements per tile — packing around fixed
+obstacles is NP-hard, and the bound is a count rather than a time limit so
+builds stay reproducible. Reaching it is reported (see the diagnostics below)
+rather than passed off as "no such layout exists".</p>
+<ul>
+<li><strong><code>Buffer(mem_bank=...)</code></strong> pins a buffer to a bank. The pin is honored or the
+  build fails; it is never silently dropped.</li>
+<li><strong><code>Buffer(address=...)</code></strong> pins an exact address, for a buffer an external ABI
+  fixes — an RTP buffer a host writes at a known location, say. A pinned
+  address is held only to the bus width, not the stricter vector alignment the
+  allocator applies to addresses it chooses itself.</li>
+</ul>
+<h2 id="what-to-do-when-you-hit-a-diagnostic">What to do when you hit a diagnostic<a class="headerlink" href="#what-to-do-when-you-hit-a-diagnostic" title="Permanent link">&para;</a></h2>
+<p><strong><code>cannot determine this core's stack requirement: ...</code> (error).</strong> The call
+graph has a cycle, and recursion is unbounded. Set <code>stack_size_override</code> on
+the affected kernel's <code>external_func()</code> or <code>func.func</code> declaration, to a value
+large enough for the deepest recursion. Pass <code>--no-measure-stack-size</code> to skip
+the check instead.</p>
+<p><strong><code>cannot determine this core's stack requirement: ...; stack_size is not being
+validated for this core</code> (warning).</strong> The linked core is unreadable, its
+<code>.stack_sizes</code> data is malformed, or the link kept no relocations, so the call
+graph is unavailable. The chess/BCF link produces such an ELF, so a
+<code>--xbridge</code> build leaves <code>stack_size</code> unchecked and writes no
+<code>measured_stack_size</code>.</p>
+<p><strong><code>no stack size information for N function(s) this core reaches, so its
+requirement is at least M bytes and may be higher</code> (warning).</strong> The linked core
+carries no <code>.stack_sizes</code> entry for the functions the diagnostic names, and
+their frames count as 0. <code>M</code> is therefore a lower bound: <code>aiecc</code> still fails a
+core that declares less than <code>M</code>, and writes no <code>measured_stack_size</code>. Compile
+the named source with <code>-fstack-size-section</code>, or set <code>stack_size_override</code> on
+the affected kernel.</p>
+<p><strong><code>stack_size is absent, so this core uses the device default of M bytes, but
+it needs N bytes</code> (error).</strong> Set <code>stack_size = N</code>, or <code>Worker(stack_size=N)</code>,
+and rebuild.</p>
+<p><strong><code>stack_size = M is insufficient: this core needs N bytes</code> (error).</strong> The same
+case, with <code>stack_size</code> already set explicitly to a value below the
+requirement. Increase it to <code>N</code> and rebuild.</p>
+<p>At this point the requirement is known, and <code>--no-measure-stack-size</code> silences a
+proven overflow. Reach for it only when you believe the measurement itself is
+wrong, and please file an issue in that case.</p>
+<p><strong><code>section '.bss' will not fit in region 'data'</code> from the linker, followed by
+<code>core X needs space for up to N bytes of static data</code>.</strong> The core's own
+sections do not fit the run left for them, and the linker rather than the
+allocator noticed. A core whose sections were measured usually fails earlier,
+while placing, with the <code>could not be placed</code> error above; this is the residual
+case — a <code>--xbridge</code> build, or a core whose measurement was skipped. <code>aiecc</code>
+adds the linker's shortfall to the size of the region to state <code>N</code>. Set
+<code>data_size = N</code> on the core, or <code>Worker(data_size=N)</code> in IRON, and rebuild.
+Shrinking or moving buffers, or lowering <code>stack_size</code>, frees the bytes when <code>N</code>
+does not fit.</p>
+<p><strong><code>will not fit in region 'program'</code>, followed by <code>this core's code exceeds
+the tile's program memory</code>.</strong> Program memory is fixed and the region covers all
+of it, so only the code can shrink. Split the work across more cores, remove
+unused kernels from <code>link_files</code>, or lower the optimization level.</p>
+<p><strong><code>will not fit in region 'bankN'</code> from the Peano linker.</strong> Pinned sections
+cannot fit the contiguous free run in that bank. Shrink or repin the tables,
+or move buffers, the stack or an explicit <code>data_size</code> reservation out of it.
+Increasing <code>data_size</code> does not enlarge a pinned region.</p>
+<p><strong>A bank-placement violation or LUT-pair separation error.</strong> Check the final
+symbol addresses, their complete extents, and the requested banks. Put the two
+tables in distinct banks using the portable annotations or bank-pinned MLIR
+buffers. If the opt-in check cannot recover placement, supply readable kernel
+IR and resolvable table bindings rather than treating the result as a
+same-bank diagnosis.</p>
+<p><strong><code>requires a N-byte stack in bank B, but no contiguous aligned space remains
+after address-pinned buffers</code> (error).</strong> <code>stack_bank</code> names a bank whose free
+space is already broken up by buffers pinned to exact addresses, which cannot
+move. Repin those buffers, choose another bank, or give the stack an explicit
+aligned <code>stack_address</code>. Moving outside bank A also requires the Peano
+merge-mode restrictions described above.</p>
+<p><strong><code>data_size M is smaller than the N bytes this core's linked sections occupy</code>
+(error).</strong> <code>aiecc</code> measured the linked ELF and the reservation does not cover
+it. Set <code>data_size = N</code> and rebuild.</p>
+<p><strong><code>could not be placed: &lt;what&gt; needs N bytes and this tile has no room left for
+it</code> (error).</strong> Everything the tile must hold does not fit. The message lists
+the tile's memory map, showing the closest arrangement the allocator reached,
+and <code>&lt;what&gt;</code> names the one extent left over — a buffer, <code>this core's data
+sections (data_size)</code>, or <code>this core's static data pinned to bank B</code>. The bytes
+may well exist while being too fragmented to use, so shrinking any extent can
+help, not only the one named. Lower <code>data_size</code>, shrink or move buffers, or
+lower <code>stack_size</code>.</p>
+<p><strong><code>the search hit its 20000-placement budget with arrangements still untried</code>
+(note, attached to the error above).</strong> The allocator gave up rather than proved
+the design infeasible, so a layout may exist that it did not reach. This is
+rare and worth reporting: please file an issue with the design. Pinning a
+buffer or two with <code>mem_bank</code> cuts the search down and often gets a build
+through in the meantime.</p>
+<p><strong><code>&lt;what&gt; requires N bytes, which cannot fit in bank B (C bytes total)</code>
+(error).</strong> A <code>mem_bank</code> pin, or a kernel's bank-pinned static data, asks for
+more than a whole bank holds. Nothing about the rest of the design can fix
+this: shrink the extent, or drop the pin and let it span banks.</p>
+<p><strong><code>&lt;what&gt; requires N bytes in bank B, but only M of C bytes are free there</code>
+(error).</strong> The bank would hold it on its own, but the stack, address-pinned
+buffers, or another pin already in that bank leave too little. Repin to a
+different bank, or move what is in the way.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../iron_configuration/" class="md-footer__link md-footer__link--prev" aria-label="Previous: IRON Configuration">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                IRON Configuration
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../hrx_runtime/" class="md-footer__link md-footer__link--next" aria-label="Next: HRX Runtime (amdxdna)">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                HRX Runtime (amdxdna)
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright © 2019–2021 Xilinx, Inc. | Copyright © 2022–2026 Advanced Micro Devices, Inc. Licensed under Apache 2.0 with LLVM exception.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/Xilinx/mlir-aie" target="_blank" rel="noopener" title="mlir-aie on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/UbXzGdXsR5" target="_blank" rel="noopener" title="Join us on the ROCm Discord (#ROCm-NPU)" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:aup@amd.com" target="_blank" rel="noopener" title="AMD University Program" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M536.4-26.3c9.8-3.5 20.6-1 28 6.3s9.8 18.2 6.3 28l-178 496.9c-5 13.9-18.1 23.1-32.8 23.1-14.2 0-27-8.6-32.3-21.7l-64.2-158c-4.5-11-2.5-23.6 5.2-32.6l94.5-112.4c5.1-6.1 4.7-15-.9-20.6s-14.6-6-20.6-.9l-112.4 94.3c-9.1 7.6-21.6 9.6-32.6 5.2L38.1 216.8c-13.1-5.3-21.7-18.1-21.7-32.3 0-14.7 9.2-27.8 23.1-32.8z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

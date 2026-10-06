@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- IRON favicon: a simple "I" monogram in the brand blue on a charcoal
+       rounded square. Generic, non-trademark. -->
+  <rect width="32" height="32" rx="6" fill="#27282b"/>
+  <rect x="13" y="8" width="6" height="16" rx="1" fill="#3d8bff"/>
+  <rect x="9"  y="8" width="14" height="4" rx="1" fill="#3d8bff"/>
+  <rect x="9"  y="20" width="14" height="4" rx="1" fill="#3d8bff"/>
+</svg>

@@ -1,0 +1,37 @@
+# IRON / MLIR-AIE
+
+> IRON is a close-to-metal Python API for programming AMD Ryzen™ AI NPUs,
+> built on an open-source MLIR-based compiler toolchain (mlir-aie).
+
+IRON lets performance engineers write Python code that compiles directly to
+AMD AI Engine (AIE) hardware — the NPU inside Ryzen AI processors. It
+exposes tile placement, data movement via ObjectFifos, and host runtime
+as Python objects, and compiles them to an xclbin + instruction stream via
+the LLVM/MLIR-based Peano compiler.
+
+## Key concepts
+
+- **Worker**: code running on one AIE compute tile
+- **ObjectFifo**: streaming data channel between tiles or host↔tile
+- **Runtime**: host-side sequence — fill inputs, drain outputs
+- **TensorAccessPattern (TAP)**: describes multi-dimensional DMA tiling
+- **@iron.jit**: decorator that JIT-compiles a design to the NPU on first call
+
+## Documentation sections
+
+- [Getting Started](https://xilinx.github.io/mlir-aie/): install IRON on Ubuntu, build and run your first design
+- [Programming Guide](https://xilinx.github.io/mlir-aie/programming_guide/README/): full tutorial from tiles to multi-core ML examples
+- [API & Internals](https://xilinx.github.io/mlir-aie/api/): Python API (iron, taplib, kernels) and MLIR/C++ internals
+- [MLIR Dialect Reference](https://xilinx.github.io/mlir-aie/AIEDesignPatterns/): AIE, AIEX, AIEVec dialect and pass docs
+- [C++ API](https://xilinx.github.io/mlir-aie/doxygen/html/): Doxygen reference for the compiler internals
+
+## Repository
+
+- GitHub: https://github.com/Xilinx/mlir-aie
+- License: Apache-2.0 WITH LLVM-exception
+- Wheels: pip install mlir_aie (Python 3.11–3.14, Linux/Windows)
+
+## Target hardware
+
+AMD Ryzen™ AI NPUs (npu1: Phoenix/HawkPoint, npu2: Strix/Krackan) — XDNA™ and XDNA™ 2.
+Also supports AMD Versal™ AI Engine devices, though the NPU path is the actively-tested focus.
