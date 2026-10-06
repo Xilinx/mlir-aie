@@ -158,8 +158,7 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   pathfinder.sortFlows();
 
   // A reload configures only the switchboxes the overlay reaches.
-  if (auto reload = device->getAttrOfType<BoolAttr>("has_ctrl_pkt_overlay");
-      reload && reload.getValue()) {
+  if (device.getHasCtrlPktOverlay()) {
     llvm::DenseSet<TileID> reached;
     for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
       if (!pktFlowOp.getPriorityRoute().value_or(false))

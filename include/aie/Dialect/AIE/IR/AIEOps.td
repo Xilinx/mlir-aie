@@ -58,7 +58,10 @@ def AIE_DeviceOp
   }];
 
   let arguments = (ins AIEDevice:$device,
-      DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name);
+      DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name,
+      // A control-packet reload installs @ctrl_pkt_overlay first and the rest
+      // through it, so the overlay keeps the switch settings it takes alone.
+      DefaultValuedOptionalAttr<BoolAttr, "false">:$has_ctrl_pkt_overlay);
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
     `(` $device `)` ($sym_name^)? regions attr-dict

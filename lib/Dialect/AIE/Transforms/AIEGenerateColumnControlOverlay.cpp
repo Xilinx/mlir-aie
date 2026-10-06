@@ -153,7 +153,7 @@ struct AIEGenerateColumnControlOverlayPass
     for (auto dev : sourceDevices) {
       if (deviceOptedOut(dev)) {
         if (clEmitStandaloneOverlay) {
-          dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(false));
+          dev.setHasCtrlPktOverlay(false);
         }
         continue;
       }
@@ -161,7 +161,7 @@ struct AIEGenerateColumnControlOverlayPass
       // second one.
       if (deviceHasControlOverlay(dev)) {
         if (clEmitStandaloneOverlay) {
-          dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+          dev.setHasCtrlPktOverlay(true);
         }
         continue;
       }
@@ -186,7 +186,7 @@ struct AIEGenerateColumnControlOverlayPass
       if (failed(applyOverlayToDevice(dev, tokenTiles)))
         return signalPassFailure();
       if (clEmitStandaloneOverlay)
-        dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+        dev.setHasCtrlPktOverlay(true);
     }
 
     // Emit standalone `@ctrl_pkt_overlay` device.
@@ -285,7 +285,7 @@ struct AIEGenerateColumnControlOverlayPass
     if (failed(applyOverlayToDevice(overlayDevice, tokenTiles)))
       return failure();
 
-    overlayDevice->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+    overlayDevice.setHasCtrlPktOverlay(true);
     return success();
   }
 

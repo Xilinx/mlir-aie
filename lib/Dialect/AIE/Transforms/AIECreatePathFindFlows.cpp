@@ -46,14 +46,6 @@ using PhysPort = std::pair<TileID, Port>;
 using OverlayRules =
     std::map<PhysPort, SmallVector<std::tuple<int, int, int>, 2>>;
 
-/// Whether a control-packet reload configures `d`: it installs
-/// @ctrl_pkt_overlay first, and control packets through the overlay configure
-/// the rest, so the overlay must keep the switch settings it takes alone.
-static bool reloadsOverlay(DeviceOp d) {
-  auto reload = d->getAttrOfType<BoolAttr>("has_ctrl_pkt_overlay");
-  return reload && reload.getValue();
-}
-
 /// Whether `flow` stays out of the control overlay of a design a control-packet
 /// reload configures. The reload installs @ctrl_pkt_overlay, which holds the
 /// flows to and from TileControl ports alone, and configures the design's
@@ -62,7 +54,7 @@ static bool reloadConfigures(PacketFlowOp flow) {
   auto control = [](auto end) {
     return end.getBundle() == WireBundle::TileControl;
   };
-  return reloadsOverlay(flow->getParentOfType<DeviceOp>()) &&
+  return flow->getParentOfType<DeviceOp>().getHasCtrlPktOverlay() &&
          llvm::none_of(flow.getPorts().getOps<PacketSourceOp>(), control) &&
          llvm::none_of(flow.getPorts().getOps<PacketDestOp>(), control);
 }
@@ -713,7 +705,7 @@ static SmallVector<PortRule> portRules(ArrayRef<GroupClaims> groups,
 
 // The rules of a slave port, in slot order after the `existing` ones. The
 // overlay's groups take the rules they take alone, in the first slots (see
-// reloadsOverlay), and the other groups' rules follow.
+// has_ctrl_pkt_overlay), and the other groups' rules follow.
 static SmallVector<PortRule>
 slavePortRules(ArrayRef<GroupClaims> groups,
                ArrayRef<std::pair<int, int>> existing, int idBits,
@@ -920,7 +912,7 @@ planArbiters(const AIETargetModel &targetModel, ArrayRef<SlaveFlow> flows,
 
   // Control packets take the highest msels, as they do elsewhere, in master
   // port order so the overlay's msels don't depend on the design's flows (see
-  // reloadsOverlay).
+  // has_ctrl_pkt_overlay).
   SmallVector<size_t, 8> mselOrder(units.size());
   std::iota(mselOrder.begin(), mselOrder.end(), 0);
   llvm::stable_sort(mselOrder, [&](size_t a, size_t b) {
@@ -1391,7 +1383,7 @@ struct PacketFlowRouting : PacketPlan {
                     bool circuitSwitchHops, bool prioritize)
       : device(device), routing(routing), conflicts(conflicts), pinned(pinned),
         prioritize(prioritize),
-        keepOverlay(!pinned.rules.empty() && reloadsOverlay(device)),
+        keepOverlay(!pinned.rules.empty() && device.getHasCtrlPktOverlay()),
         routeCircuit(routeCircuit), circuitSwitchHops(circuitSwitchHops),
         targetModel(device.getTargetModel()),
         numArbiters(targetModel.getNumArbiters()),
@@ -3165,7 +3157,7 @@ void AIEPathfinderPass::runOnOperation() {
   };
   // The last flow to end at a port sets its keep_pkt_header; a reload keeps
   // the overlay's.
-  bool reload = reloadsOverlay(d);
+  bool reload = d.getHasCtrlPktOverlay();
   std::map<PathEndPoint, std::pair<PacketFlowOp, PacketFlowOp>> lastTo;
   for (PacketFlowOp flow : d.getOps<PacketFlowOp>())
     for (PacketDestOp dst : flow.getPorts().getOps<PacketDestOp>()) {
