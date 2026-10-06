@@ -833,7 +833,7 @@ def load_design(text):
                                 tile=tile,
                                 kind="start",
                                 dir=_int(a["channel_dir"]),
-                                ch=_int(a["channel_index"]),
+                                ch=_int(a["channel"]),
                                 seq=seq,
                                 loops=loops,
                                 loop_to=loop_to,
