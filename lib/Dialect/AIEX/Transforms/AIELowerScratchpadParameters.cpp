@@ -10,6 +10,10 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"
+#include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"
+#include "mlir/Analysis/DataFlow/IntegerRangeAnalysis.h"
+#include "mlir/Analysis/DataFlowFramework.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -126,11 +130,43 @@ getTransferExtent(NpuDmaMemcpyNdOp op, std::optional<int64_t> lengthUnit) {
       (*sizes)[0] * (*sizes)[1] * (*sizes)[2], *sizes, *strides, lengthUnit);
 }
 
+/// The range of a BD's runtime offset, if it is known to stay within the
+/// buffer. An offset computed from a runtime-sequence loop's induction variable
+/// is only folded once the loop is unrolled, after this pass.
+static std::optional<std::pair<int64_t, int64_t>>
+getOffsetRange(Value offset, int64_t bufferElems, DataFlowSolver *solver) {
+  if (!solver)
+    return std::nullopt;
+  auto *state = solver->lookupState<dataflow::IntegerValueRangeLattice>(offset);
+  if (!state || state->getValue().isUninitialized())
+    return std::nullopt;
+  const ConstantIntRanges &range = state->getValue().getValue();
+  // The offset may be wider than 64 bits; an extremum that does not fit is
+  // outside the buffer anyway.
+  std::optional<int64_t> lo = range.smin().trySExtValue();
+  std::optional<int64_t> hi = range.smax().trySExtValue();
+  if (!lo || !hi || *lo < 0 || *hi >= bufferElems)
+    return std::nullopt;
+  return std::make_pair(*lo, *hi);
+}
+
+/// With a runtime offset, the extent starts at its smallest value and ends
+/// at its largest.
 static std::optional<TransferExtent>
-getTransferExtent(AIE::DMABDOp op, std::optional<int64_t> lengthUnit) {
+getTransferExtent(AIE::DMABDOp op, std::optional<int64_t> lengthUnit,
+                  DataFlowSolver *solver) {
   auto buffer = llvm::cast<BaseMemRefType>(op.getBuffer().getType());
-  std::optional<int32_t> offset =
-      op.hasOffset() ? op.getConstantOffset() : std::optional<int32_t>(0);
+  std::optional<int64_t> offset = 0, offsetMin = 0;
+  if (op.hasOffset()) {
+    offset = offsetMin = op.getConstantOffset();
+    if (!offset && buffer.hasStaticShape()) {
+      if (auto range =
+              getOffsetRange(op.getOffset(), buffer.getNumElements(), solver)) {
+        offsetMin = range->first;
+        offset = range->second;
+      }
+    }
+  }
   std::optional<int64_t> len;
   if (op.hasLen())
     len = op.getConstantLen();
@@ -144,7 +180,11 @@ getTransferExtent(AIE::DMABDOp op, std::optional<int64_t> lengthUnit) {
     return std::nullopt;
   std::reverse(sizes->begin(), sizes->end());
   std::reverse(strides->begin(), strides->end());
-  return getTransferExtent(buffer, *offset, *len, *sizes, *strides, lengthUnit);
+  std::optional<TransferExtent> extent =
+      getTransferExtent(buffer, *offset, *len, *sizes, *strides, lengthUnit);
+  if (extent)
+    extent->offset = *offsetMin;
+  return extent;
 }
 
 /// The largest length parameter value that keeps the shim BD's Buffer_Length,
@@ -447,6 +487,23 @@ struct AIELowerScratchpadParametersPass
     ModuleOp moduleOp = getOperation();
     OpBuilder builder(&getContext());
 
+    // Ranges are only needed for a parameterized BD with a runtime offset.
+    std::unique_ptr<DataFlowSolver> solver;
+    WalkResult needRanges = moduleOp.walk([](AIE::DMABDOp bd) {
+      bool param = bd.getLengthParameterAttr() || bd.getOffsetParameterAttr();
+      return param && bd.getOffset() && !bd.getConstantOffset()
+                 ? WalkResult::interrupt()
+                 : WalkResult::advance();
+    });
+    if (needRanges.wasInterrupted()) {
+      solver = std::make_unique<DataFlowSolver>();
+      solver->load<dataflow::DeadCodeAnalysis>();
+      solver->load<dataflow::SparseConstantPropagation>();
+      solver->load<dataflow::IntegerRangeAnalysis>();
+      if (failed(solver->initializeAndRun(moduleOp)))
+        solver.reset();
+    }
+
     // Step 1: collect every parameter in the module.
     SmallVector<ScratchpadParameterOp> allParams;
     moduleOp.walk([&](ScratchpadParameterOp p) { allParams.push_back(p); });
@@ -629,7 +686,8 @@ struct AIELowerScratchpadParametersPass
           lengthUnit = bdOp.getLengthUnit();
         if (failed(rewriteParams(
                 op, offsetRef, lengthRef, bdOp.getBuffer().getType(),
-                getTransferExtent(bdOp, lengthUnit), getMaxLengthSteps(bdOp))))
+                getTransferExtent(bdOp, lengthUnit, solver.get()),
+                getMaxLengthSteps(bdOp))))
           return WalkResult::interrupt();
       }
       return WalkResult::advance();

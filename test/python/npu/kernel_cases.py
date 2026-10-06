@@ -22,7 +22,7 @@ marks kernels whose source exists only for AIE2P.
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron.kernels import FLM_GEMMA4_E4B_DECODE
-from cases import Case
+from cases import FLOAT_BASE, Case
 from ml_dtypes import bfloat16
 
 _bf16 = dict(dtype=bfloat16)
@@ -129,6 +129,38 @@ CASES: list[Case] = [
     Case("reduce_max", _bf16, calls=256),
     check("reduce_max", dict(tile_size=16), tag="edge-one-vector"),
     check("reduce_max", dict(tile_size=32, dtype=bfloat16), tag="edge-one-vector"),
+    Case("argmax", calls=16, scalars=(0,), smoke=True),
+    Case("argmax", calls=256, scalars=(0,)),
+    Case(
+        "argmax",
+        _bf16,
+        calls=16,
+        scalars=(0,),
+        data_cases=(*FLOAT_BASE, "min", "nan_inf"),
+        smoke=True,
+    ),
+    Case("argmax", _bf16, calls=256, scalars=(0,)),
+    check("argmax", scalars=(4096,), tag="offset", smoke=True),
+    check("argmax", dict(vectorized=False), scalars=(0,), tag="scalar"),
+    check("argmax", dict(tile_size=16), scalars=(0,), tag="edge-one-vector"),
+    check("argmax", dict(tile_size=1000), scalars=(0,), tag="edge-tail", smoke=True),
+    check("argmax", dict(tile_size=5), scalars=(0,), tag="edge-under-one-vector"),
+    check(
+        "argmax",
+        dict(tile_size=1000, dtype=bfloat16),
+        scalars=(0,),
+        tag="edge-tail",
+        smoke=True,
+    ),
+    check(
+        "argmax",
+        dict(tile_size=32, dtype=bfloat16),
+        scalars=(0,),
+        tag="edge-one-vector",
+    ),
+    Case("argmax_combine", calls=16, smoke=True),
+    # The records are int32 either way, so the name needs the value dtype.
+    Case("argmax_combine", _bf16, calls=16, tag="bfloat16-values", smoke=True),
     # activation
     Case("gelu", calls=16, smoke=True),
     Case("gelu", calls=256),
@@ -226,6 +258,10 @@ CASES: list[Case] = [
         check(name, dict(tile_size=64), tag="short-row", **kw)
         for name, kw in (("axpy", dict(scalars=(2.5,))), ("convert_copy", {}))
     ],
+    Case("affine_cast", calls=16, smoke=True),
+    # One row and one 16-lane column block: each loop runs a single trip.
+    check("affine_cast", dict(rows=1, cols=16), tag="edge-tiny", smoke=True),
+    check("affine_cast", dict(rows=8, cols=256), tag="wide"),
     Case("expand", calls=16, smoke=True),
     Case("expand", calls=256),
     # AIE2 builds a group's scale once when a group spans blocks; 96 leaves one
