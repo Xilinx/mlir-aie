@@ -1033,6 +1033,19 @@ SmallVector<size_t, 8> largestApartSet(const StreamConflicts &conflicts,
   return best;
 }
 
+/// The amsels, as arbiter + msel * arbiters, the input's switchboxes already
+/// configure, by tile. An amsel no master set uses still has rules steering
+/// packets to it.
+std::map<TileID, std::set<int>> configuredAmsels(DeviceOp device) {
+  const int numArbiters = device.getTargetModel().getNumArbiters();
+  std::map<TileID, std::set<int>> amsels;
+  for (auto swboxOp : device.getOps<SwitchboxOp>())
+    for (auto amselOp : swboxOp.getConnections().getOps<AMSelOp>())
+      amsels[swboxOp.getTileOp().getTileID()].insert(
+          amselOp.arbiterIndex() + amselOp.getMselValue() * numArbiters);
+  return amsels;
+}
+
 /// Packet streams take an arbiter at the tile they end at whatever the
 /// routing, and where `pinsHops` says hops cannot be circuit switched, or the
 /// stream is prioritized, at the tile they start at and every tile each of
@@ -1062,21 +1075,16 @@ tooFewArbiters(DeviceOp device, const StreamConflicts &conflicts,
       if (circuitless || pinsHops(t))
         pinned[t].push_back(i);
   }
-  std::set<std::pair<TileID, int>> reserved;
-  for (auto swboxOp : device.getOps<SwitchboxOp>())
-    for (auto amselOp : swboxOp.getConnections().getOps<AMSelOp>())
-      reserved.insert(
-          {swboxOp.getTileOp().getTileID(),
-           amselOp.arbiterIndex() + amselOp.getMselValue() * numArbiters});
+  std::map<TileID, std::set<int>> reserved = configuredAmsels(device);
 
   ArrayRef<RoutedStream> streams = conflicts.getStreams();
   for (const auto &[tileId, candidates] : pinned) {
+    const std::set<int> &taken = reserved[tileId];
     size_t free = 0;
     for (int a = 0; a < numArbiters; a++)
-      free += llvm::any_of(
-          llvm::seq(numMselsPerArbiter), [&, tileId = tileId](int m) {
-            return !reserved.count({tileId, a + m * numArbiters});
-          });
+      free += llvm::any_of(llvm::seq(numMselsPerArbiter), [&](int m) {
+        return !taken.count(a + m * numArbiters);
+      });
     // Streams that must be kept apart have distinct sources and destinations.
     std::set<std::pair<TileID, Port>> srcs, dsts;
     for (size_t s : candidates) {
@@ -1609,16 +1617,17 @@ void PacketFlowRouting::collectFlows() {
               pinnedMasks[{{currTile, {src.bundle, src.channel}}, flowID}]
                   .insert(*mask);
             }
-            if (pktFlowOp.getPriorityRoute().value_or(false) &&
-                !reloadConfigures(pktFlowOp))
-              markedFlows.insert(slaveFlow);
-            if (pktFlowOp.getPriorityRoute().value_or(false) &&
-                (prioritize || pinned.trees.count(srcPoint))) {
-              prioritizedFlows.insert(slaveFlow);
-              if (!reloadConfigures(pktFlowOp))
-                overlayFlows.insert(slaveFlow);
-              if (slavePort == PhysPort{srcSB, srcPort})
-                prioritizedSourcePorts.insert(slavePort);
+            if (pktFlowOp.getPriorityRoute().value_or(false)) {
+              bool overlay = !reloadConfigures(pktFlowOp);
+              if (overlay)
+                markedFlows.insert(slaveFlow);
+              if (prioritize || pinned.trees.count(srcPoint)) {
+                prioritizedFlows.insert(slaveFlow);
+                if (overlay)
+                  overlayFlows.insert(slaveFlow);
+                if (slavePort == PhysPort{srcSB, srcPort})
+                  prioritizedSourcePorts.insert(slavePort);
+              }
             }
           }
         }
@@ -1663,13 +1672,7 @@ const SwitchSettings &PacketFlowRouting::settingsOf(const PathEndPoint &src,
 void PacketFlowRouting::findCircuitHops() {
   // Seed the reserved set from the packet-switch configuration the switchboxes
   // already carry, so this run allocates around it instead of over it.
-  for (auto swboxOp : device.getOps<SwitchboxOp>()) {
-    TileID tileId = swboxOp.getTileOp().getTileID();
-    // An amsel no master set uses still has rules steering packets to it.
-    for (auto amselOp : swboxOp.getConnections().getOps<AMSelOp>())
-      reservedAmsels[tileId].insert(amselOp.arbiterIndex() +
-                                    amselOp.getMselValue() * numArbiters);
-  }
+  reservedAmsels = configuredAmsels(device);
 
   // Ports the input's own aie.switchbox ops already drive, circuit or packet.
   std::set<PhysPort> claimedSlaves, claimedMasters;

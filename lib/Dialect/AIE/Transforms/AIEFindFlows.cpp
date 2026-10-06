@@ -370,6 +370,8 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
                       const std::vector<PacketConnection> &endpoints,
                       bool dropIntraTile, int idMask, FlowKeySet &seen,
                       LiftedOps &lifted) {
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(rewriter.getContext());
+  AIEDialect::PriorityRouteAttrHelper prioritizedRule(rewriter.getContext());
   for (const PacketConnection &c : endpoints) {
     Operation *destOp = c.portConnection.op;
     Port destPort = c.portConnection.port;
@@ -381,8 +383,6 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     // The routing of a priority_route flow carries the is_ctrl_pkt_overlay
     // marker. The control overlay's flows, which start or end at a TileControl
     // port, stay materialized, since a lifted flow cannot rebuild the overlay.
-    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(rewriter.getContext());
-    AIEDialect::PriorityRouteAttrHelper prioritizedRule(rewriter.getContext());
     bool marked = llvm::any_of(c.usedOps, [&](Operation *op) {
       Operation *rulesParent =
           isa_and_nonnull<PacketRuleOp>(op) ? op->getParentOp() : nullptr;
