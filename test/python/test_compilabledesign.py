@@ -1344,6 +1344,47 @@ def test_the_key_does_not_follow_an_instance_bound_after_import(tmp_path):
             sys.modules.pop(name, None)
 
 
+_SETTINGS_FILES = {
+    "eager_settings": "class Settings:\n    depth = 2\n\n\nSETTINGS = Settings()\n",
+    "eager_helper": (
+        "from eager_settings import SETTINGS\n\n\n"
+        "def depth():\n"
+        "    return SETTINGS.depth\n"
+    ),
+    "eager_design": (
+        "from eager_helper import depth\n"
+        "from aie.utils.compile.jit.markers import CompileTime\n\n\n"
+        "def design(*, N: CompileTime[int]):\n"
+        "    depth()\n"
+    ),
+}
+
+
+def test_the_key_follows_an_instance_bound_at_import(tmp_path):
+    """An instance a module imports is source: editing the module it comes
+    from changes the key.
+    """
+    for name, text in _SETTINGS_FILES.items():
+        (tmp_path / f"{name}.py").write_text(text)
+    sys.path.insert(0, str(tmp_path))
+
+    def key():
+        for name in _SETTINGS_FILES:
+            sys.modules.pop(name, None)
+        gen = importlib.import_module("eager_design").design
+        return _compute_recipe_hash(gen, {"N": 1}, (), ())
+
+    try:
+        before = key()
+        settings = tmp_path / "eager_settings.py"
+        settings.write_text(settings.read_text().replace("depth = 2", "depth = 32"))
+        assert key() != before
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in _SETTINGS_FILES:
+            sys.modules.pop(name, None)
+
+
 def test_hash_is_24_hex_chars():
     d = CompilableDesign(_gemm_gen())
     hex_str = d._compute_cache_hash()
