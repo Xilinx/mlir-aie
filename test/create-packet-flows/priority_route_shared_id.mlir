@@ -19,18 +19,18 @@
 // CHECK-NEXT:    %[[PLAIN:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:    %[[CTRL:.*]] = aie.amsel<5> (3)
 // CHECK-NEXT:    aie.masterset(North : {{[0-9]+}}, %[[PLAIN]])
-// CHECK-NEXT:    aie.masterset(North : {{[0-9]+}}, %[[CTRL]]) {is_ctrl_pkt_overlay}
+// CHECK-NEXT:    aie.masterset(North : {{[0-9]+}}, %[[CTRL]]) {aie.is_ctrl_pkt_overlay}
 // CHECK-NEXT:    aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:      aie.rule(31, 2, %[[CTRL]]) {is_ctrl_pkt_overlay, priority_route}
+// CHECK-NEXT:      aie.rule(31, 2, %[[CTRL]]) {aie.is_ctrl_pkt_overlay, aie.priority_route}
 // CHECK-NEXT:      aie.rule(31, 31, %[[PLAIN]])
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-LABEL: aie.switchbox(%tile_2_2) {
-// CHECK:         aie.masterset(DMA : 1, %[[CTRL:.*]]) {is_ctrl_pkt_overlay}
-// CHECK:         aie.masterset(North : {{[0-9]+}}, %[[CTRL]]) {is_ctrl_pkt_overlay}
+// CHECK:         aie.masterset(DMA : 1, %[[CTRL:.*]]) {aie.is_ctrl_pkt_overlay}
+// CHECK:         aie.masterset(North : {{[0-9]+}}, %[[CTRL]]) {aie.is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 2, %[[CTRL]])
-// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
+// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
 
 module {
   aie.device(npu2_3col) {
@@ -61,19 +61,19 @@ module {
 
 // CHECK-LABEL: aie.switchbox(%tile_3_2) {
 // CHECK-NEXT:    %[[CTRL:.*]] = aie.amsel<5> (3)
-// CHECK-NEXT:    aie.masterset(North : 1, %[[CTRL]]) {is_ctrl_pkt_overlay}
+// CHECK-NEXT:    aie.masterset(North : 1, %[[CTRL]]) {aie.is_ctrl_pkt_overlay}
 // CHECK-NEXT:    aie.packet_rules(DMA : 1) {
 // CHECK-NEXT:      aie.rule(31, 15, %[[CTRL]])
 // CHECK-NEXT:    }
 // CHECK-NEXT:    aie.packet_rules(South : 5) {
 // CHECK-NEXT:      aie.rule(31, 15, %[[CTRL]])
-// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
+// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
 // CHECK-LABEL: aie.switchbox(%tile_3_5) {
 // CHECK-NEXT:    %[[CTRL:.*]] = aie.amsel<5> (3)
-// CHECK-NEXT:    aie.masterset(DMA : 0, %[[CTRL]]) {is_ctrl_pkt_overlay}
+// CHECK-NEXT:    aie.masterset(DMA : 0, %[[CTRL]]) {aie.is_ctrl_pkt_overlay}
 // CHECK-NEXT:    aie.packet_rules(South : 4) {
 // CHECK-NEXT:      aie.rule(31, 15, %[[CTRL]])
-// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
+// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
 
 module {
   aie.device(npu2_4col) {

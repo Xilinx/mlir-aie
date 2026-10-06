@@ -19,9 +19,9 @@
 // CHECK-DAG:     %[[A51:.+]] = aie.amsel<5> (1)
 // CHECK-DAG:     %[[A52:.+]] = aie.amsel<5> (2)
 // CHECK-DAG:     %[[A53:.+]] = aie.amsel<5> (3)
-// CHECK-DAG:     aie.masterset(South : 0, %[[A53]]) {is_ctrl_pkt_overlay, keep_pkt_header = true}
-// CHECK-DAG:     aie.masterset(North : 4, %[[A52]]) {is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A51]]) {is_ctrl_pkt_overlay, keep_pkt_header = true}
+// CHECK-DAG:     aie.masterset(South : 0, %[[A53]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
+// CHECK-DAG:     aie.masterset(North : 4, %[[A52]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A51]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
 
 module {
   aie.device(npu2_1col) @design {

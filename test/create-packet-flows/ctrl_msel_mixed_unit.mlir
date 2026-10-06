@@ -14,7 +14,7 @@
 
 // CHECK-LABEL: aie.switchbox(%{{.*}}tile_0_3) {
 // CHECK-DAG:     %[[HIGH:.*]] = aie.amsel<5> (3)
-// CHECK-DAG:     aie.masterset(DMA : 0, %[[HIGH]]) {is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(DMA : 0, %[[HIGH]]) {aie.is_ctrl_pkt_overlay}
 // CHECK-DAG:     aie.rule(31, 2, %[[HIGH]])
 // CHECK-DAG:     aie.rule(31, 1, %[[HIGH]])
 // CHECK:       }

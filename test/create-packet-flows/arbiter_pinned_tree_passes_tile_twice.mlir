@@ -29,7 +29,7 @@
 // CHECK-DAG:     aie.masterset(South : {{[0-9]}}, %[[A5_2]], %[[A5_3]])
 // CHECK:           aie.rule(31, 16, %[[A4]])
 // CHECK:         aie.packet_rules(Core : 1) {
-// CHECK-NEXT:      aie.rule(31, 16, %[[A5_2]]) {priority_route}
+// CHECK-NEXT:      aie.rule(31, 16, %[[A5_2]]) {aie.priority_route}
 // CHECK-NEXT:      aie.rule(31, 12, %[[A5_3]])
 // CHECK:           aie.rule(31, 2, %[[A4]])
 

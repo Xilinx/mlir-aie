@@ -17,11 +17,11 @@
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[A:.*]] = aie.amsel<{{[0-9]}}> ({{[0-9]}})
-// CHECK:         aie.masterset(North : {{[0-9]}}, %[[A]]) {is_ctrl_pkt_overlay}
+// CHECK:         aie.masterset(North : {{[0-9]}}, %[[A]]) {aie.is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:      aie.rule(31, 12, %[[A]]) {priority_route}
+// CHECK-NEXT:      aie.rule(31, 12, %[[A]]) {aie.priority_route}
 // CHECK:         aie.packet_rules(DMA : 5) {
-// CHECK-NEXT:      aie.rule({{[0-9]+}}, {{[0-9]+}}, %[[A]]) {priority_route}
+// CHECK-NEXT:      aie.rule({{[0-9]+}}, {{[0-9]+}}, %[[A]]) {aie.priority_route}
 
 module {
   aie.device(npu2_3col) {

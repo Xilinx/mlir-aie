@@ -729,6 +729,7 @@ LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
 LogicalResult
 xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
                                              bool skipCtrlPktOverlay) {
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(targetOp.getContext());
 
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
@@ -740,7 +741,7 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
 
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      if (skipCtrlPktOverlay && connectOp->hasAttr(kCtrlPktOverlayAttrName))
+      if (skipCtrlPktOverlay && overlay.isAttrPresent(connectOp))
         continue;
       TxnLocBracket bracket(*this, connectOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(
@@ -752,7 +753,7 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     }
 
     for (auto masterSetOp : b.getOps<MasterSetOp>()) {
-      if (skipCtrlPktOverlay && masterSetOp->hasAttr(kCtrlPktOverlayAttrName))
+      if (skipCtrlPktOverlay && overlay.isAttrPresent(masterSetOp))
         continue;
       TxnLocBracket bracket(*this, masterSetOp.getLoc());
       int mask = 0;
@@ -777,7 +778,7 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     }
 
     for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
-      if (skipCtrlPktOverlay && packetRulesOp->hasAttr(kCtrlPktOverlayAttrName))
+      if (skipCtrlPktOverlay && overlay.isAttrPresent(packetRulesOp))
         continue;
       TxnLocBracket bracket(*this, packetRulesOp.getLoc());
       int slot = 0;
@@ -786,11 +787,11 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
       // design's rules, and the overlay already enabled the port.
       bool overlayPort =
           skipCtrlPktOverlay &&
-          llvm::any_of(block.getOps<PacketRuleOp>(), [](PacketRuleOp rule) {
-            return rule->hasAttr(kCtrlPktOverlayAttrName);
+          llvm::any_of(block.getOps<PacketRuleOp>(), [&](PacketRuleOp rule) {
+            return overlay.isAttrPresent(rule);
           });
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
-        if (skipCtrlPktOverlay && slotOp->hasAttr(kCtrlPktOverlayAttrName)) {
+        if (skipCtrlPktOverlay && overlay.isAttrPresent(slotOp)) {
           slot++;
           continue;
         }

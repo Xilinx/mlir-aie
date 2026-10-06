@@ -17,8 +17,8 @@
 // CHECK-NEXT:   aie.connect<DMA : 0, North : 3>
 // CHECK-NEXT: }
 // CHECK:      aie.packet_rules(South : 3) {
-// CHECK-NEXT:   aie.rule(30, 26, %{{.*}}) {is_ctrl_pkt_overlay, priority_route}
-// CHECK-NEXT:   aie.rule(31, 15, %{{.*}}) {is_ctrl_pkt_overlay, priority_route}
+// CHECK-NEXT:   aie.rule(30, 26, %{{.*}}) {aie.is_ctrl_pkt_overlay, aie.priority_route}
+// CHECK-NEXT:   aie.rule(31, 15, %{{.*}}) {aie.is_ctrl_pkt_overlay, aie.priority_route}
 // FIND-NEXT:  }
 // ROUTE-NEXT:   aie.rule(31, 9,
 // CHECK:      aie.switchbox(%{{.*}}tile_0_2)

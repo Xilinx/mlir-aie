@@ -21,35 +21,35 @@
 // CHECK-DAG:     %[[A51:.+]] = aie.amsel<5> (1)
 // CHECK-DAG:     %[[A52:.+]] = aie.amsel<5> (2)
 // CHECK-DAG:     %[[A53:.+]] = aie.amsel<5> (3)
-// CHECK-DAG:     aie.masterset(South : 0, %[[A53]]) {is_ctrl_pkt_overlay, keep_pkt_header = true}
-// CHECK-DAG:     aie.masterset(North : 1, %[[A52]]) {is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.masterset(North : 3, %[[A51]]) {is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A50]]) {is_ctrl_pkt_overlay, keep_pkt_header = true}
+// CHECK-DAG:     aie.masterset(South : 0, %[[A53]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
+// CHECK-DAG:     aie.masterset(North : 1, %[[A52]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(North : 3, %[[A51]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A50]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
 // CHECK:         aie.packet_rules(South : 7) {
-// CHECK-NEXT:      aie.rule(28, 28, %[[A52]]) {priority_route}
-// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
+// CHECK-NEXT:      aie.rule(28, 28, %[[A52]]) {aie.priority_route}
+// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : 3) {
-// CHECK-NEXT:      aie.rule(30, 26, %[[A51]]) {priority_route}
-// CHECK-NEXT:      aie.rule(31, 15, %[[A50]]) {priority_route}
-// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
+// CHECK-NEXT:      aie.rule(30, 26, %[[A51]]) {aie.priority_route}
+// CHECK-NEXT:      aie.rule(31, 15, %[[A50]]) {aie.priority_route}
+// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(TileControl : 0) {
-// CHECK-NEXT:      aie.rule(31, 15, %[[A53]]) {priority_route}
-// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
+// CHECK-NEXT:      aie.rule(31, 15, %[[A53]]) {aie.priority_route}
+// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1) {
 // CHECK-DAG:     %[[A51:.+]] = aie.amsel<5> (1)
 // CHECK-DAG:     %[[A52:.+]] = aie.amsel<5> (2)
 // CHECK-DAG:     %[[A53:.+]] = aie.amsel<5> (3)
-// CHECK-DAG:     aie.masterset(North : 1, %[[A53]]) {is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.masterset(North : 3, %[[A52]]) {is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A51]]) {is_ctrl_pkt_overlay, keep_pkt_header = true}
+// CHECK-DAG:     aie.masterset(North : 1, %[[A53]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(North : 3, %[[A52]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A51]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
 // CHECK:         aie.packet_rules(South : 1) {
 // CHECK-NEXT:      aie.rule(28, 28, %[[A53]])
-// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
+// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : 3) {
 // CHECK-NEXT:      aie.rule(31, 27, %[[A52]])
 // CHECK-NEXT:      aie.rule(31, 26, %[[A51]])
-// CHECK-NEXT:    } {is_ctrl_pkt_overlay}
+// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
 
 module {
   aie.device(npu2) @design {

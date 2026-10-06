@@ -127,7 +127,8 @@ static SmallVector<PortSetting> portSettings(Operation &op,
     auto a = v.getDefiningOp<AIE::AMSelOp>();
     return llvm::formatv("{0}.{1}", a.arbiterIndex(), a.getMselValue()).str();
   };
-  bool skipped = op.hasAttr(AIE::kCtrlPktOverlayAttrName);
+  AIE::AIEDialect::IsCtrlPktOverlayAttrHelper overlay(op.getContext());
+  bool skipped = overlay.isAttrPresent(&op);
   SmallVector<PortSetting> settings;
   if (auto connect = dyn_cast<AIE::ConnectOp>(op)) {
     AIE::Port src = connect.sourcePort();
@@ -157,7 +158,7 @@ static SmallVector<PortSetting> portSettings(Operation &op,
       return settings;
     bool anySkipped = skipped;
     for (auto [slot, rule] : llvm::enumerate(ruleOps)) {
-      bool ruleSkipped = skipped || rule->hasAttr(AIE::kCtrlPktOverlayAttrName);
+      bool ruleSkipped = skipped || overlay.isAttrPresent(rule);
       anySkipped |= ruleSkipped;
       settings.push_back({key(false, rules.sourcePort(), slot),
                           llvm::formatv("{0}/{1}>{2}", rule.valueInt(),

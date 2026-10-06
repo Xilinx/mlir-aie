@@ -381,11 +381,13 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     // The routing of a priority_route flow carries the is_ctrl_pkt_overlay
     // marker. The control overlay's flows, which start or end at a TileControl
     // port, stay materialized, since a lifted flow cannot rebuild the overlay.
-    bool marked = llvm::any_of(c.usedOps, [](Operation *op) {
+    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(rewriter.getContext());
+    AIEDialect::PriorityRouteAttrHelper prioritizedRule(rewriter.getContext());
+    bool marked = llvm::any_of(c.usedOps, [&](Operation *op) {
       Operation *rulesParent =
           isa_and_nonnull<PacketRuleOp>(op) ? op->getParentOp() : nullptr;
-      return (op && op->hasAttr(kCtrlPktOverlayAttrName)) ||
-             (rulesParent && rulesParent->hasAttr(kCtrlPktOverlayAttrName));
+      return (op && overlay.isAttrPresent(op)) ||
+             (rulesParent && overlay.isAttrPresent(rulesParent));
     });
     if (marked && (srcBundle == WireBundle::TileControl ||
                    destPort.bundle == WireBundle::TileControl)) {
@@ -430,11 +432,11 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
           if (ms.getDestBundle() == destPort.bundle &&
               ms.getDestChannel() == destPort.channel) {
             keepPktHeader = ms.getKeepPktHeaderAttr();
-            markedDest = ms->hasAttr(kCtrlPktOverlayAttrName);
+            markedDest = overlay.isAttrPresent(ms);
           }
         }
         if (isa_and_nonnull<PacketRuleOp>(op) &&
-            op->hasAttr(kPriorityRouteAttrName)) {
+            prioritizedRule.isAttrPresent(op)) {
           markedSource = true;
         }
       }

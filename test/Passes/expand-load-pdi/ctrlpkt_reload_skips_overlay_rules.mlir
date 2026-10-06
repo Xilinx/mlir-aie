@@ -22,10 +22,10 @@ module {
     %t = aie.tile(0, 2)
     aie.switchbox(%t) {
       %a = aie.amsel<5> (3)
-      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_pkt_overlay}
       aie.packet_rules(South : 1) {
         aie.rule(31, 1, %a)
-      } {is_ctrl_pkt_overlay}
+      } {aie.is_ctrl_pkt_overlay}
     }
   }
   aie.device(npu2_1col) @design {
@@ -33,10 +33,10 @@ module {
     aie.switchbox(%t) {
       %a = aie.amsel<5> (3)
       %b = aie.amsel<0> (0)
-      aie.masterset(TileControl : 0, %a) {is_ctrl_pkt_overlay}
+      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_pkt_overlay}
       aie.masterset(DMA : 0, %b)
       aie.packet_rules(South : 1) {
-        aie.rule(31, 1, %a) {is_ctrl_pkt_overlay}
+        aie.rule(31, 1, %a) {aie.is_ctrl_pkt_overlay}
         aie.rule(31, 2, %b)
       }
     }

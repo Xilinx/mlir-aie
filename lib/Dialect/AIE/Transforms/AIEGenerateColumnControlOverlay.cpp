@@ -518,6 +518,7 @@ struct AIEGenerateColumnControlOverlayPass
   static bool hasRoutedPacket(DeviceOp device, int pktID, TileID from,
                               ArrayRef<Port> startPorts, TileID to,
                               Port toPort) {
+    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
     DenseMap<TileID, AIE::SwitchboxOp> switchboxes;
     for (auto switchbox : device.getOps<AIE::SwitchboxOp>()) {
       auto tile = dyn_cast<TileLike>(switchbox.getTile().getDefiningOp());
@@ -566,7 +567,7 @@ struct AIEGenerateColumnControlOverlayPass
 
       for (auto [dest, op] : outputs) {
         if (tileID == to && dest == toPort) {
-          if (op->hasAttr(kCtrlPktOverlayAttrName))
+          if (overlay.isAttrPresent(op))
             return true;
           continue;
         }

@@ -29,7 +29,7 @@
 // RELOAD-LABEL: aie.switchbox(%shim_noc_tile_0_0)
 // RELOAD-DAG:     %[[TOKEN:.*]] = aie.amsel<5> (3)
 // RELOAD-DAG:     %[[ID0:.*]] = aie.amsel<0> (0)
-// RELOAD-DAG:     aie.masterset(South : 0, %[[TOKEN]]) {is_ctrl_pkt_overlay
+// RELOAD-DAG:     aie.masterset(South : 0, %[[TOKEN]]) {aie.is_ctrl_pkt_overlay
 // RELOAD-DAG:     aie.masterset(East : 0, %[[ID0]])
 
 // CHECK-LABEL: aie.switchbox(%shim_noc_tile_0_0)

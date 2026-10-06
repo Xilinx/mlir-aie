@@ -20,9 +20,9 @@
 // CHECK-DAG:     %[[A4:.*]] = aie.amsel<4> (3)
 // CHECK-DAG:     %[[A5:.*]] = aie.amsel<5> (3)
 // CHECK:         aie.packet_rules(Core : 0) {
-// CHECK-NEXT:      aie.rule(31, 19, %[[A5]]) {priority_route}
+// CHECK-NEXT:      aie.rule(31, 19, %[[A5]]) {aie.priority_route}
 // CHECK:         aie.packet_rules(South : 1) {
-// CHECK-NEXT:      aie.rule(31, 7, %[[A4]]) {is_ctrl_pkt_overlay}
+// CHECK-NEXT:      aie.rule(31, 7, %[[A4]]) {aie.is_ctrl_pkt_overlay}
 // CHECK-NEXT:      aie.rule(31, 30, %[[A4]])
 
 // WARN-NOT: {{warning|error}}

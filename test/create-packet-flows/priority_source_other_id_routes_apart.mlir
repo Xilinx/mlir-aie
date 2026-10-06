@@ -14,9 +14,9 @@
 
 // CHECK-LABEL: aie.switchbox(%tile_0_5)
 // CHECK-DAG:     aie.masterset(South : 0, %[[OWN:[0-9]+]]){{$}}
-// CHECK-DAG:     aie.masterset(East : 1, %[[KEPT:[0-9]+]]) {is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(East : 1, %[[KEPT:[0-9]+]]) {aie.is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(DMA : 0) {
-// CHECK-DAG:       aie.rule(31, 0, %[[KEPT]]) {is_ctrl_pkt_overlay, priority_route}
+// CHECK-DAG:       aie.rule(31, 0, %[[KEPT]]) {aie.is_ctrl_pkt_overlay, aie.priority_route}
 // CHECK-DAG:       aie.rule(31, 21, %[[OWN]])
 // CHECK:         }
 // CHECK-LABEL: aie.switchbox(%tile_2_4)

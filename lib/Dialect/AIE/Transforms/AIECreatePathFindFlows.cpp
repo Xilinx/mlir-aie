@@ -76,12 +76,12 @@ struct PinnedOverlay {
 
 static OverlayRules overlayRules(DeviceOp d) {
   const int numArbiters = d.getTargetModel().getNumArbiters();
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(d.getContext());
   OverlayRules rules;
   for (SwitchboxOp box : d.getOps<SwitchboxOp>())
     for (PacketRulesOp port : box.getOps<PacketRulesOp>())
       for (PacketRuleOp rule : port.getRules().front().getOps<PacketRuleOp>())
-        if (port->hasAttr(kCtrlPktOverlayAttrName) ||
-            rule->hasAttr(kCtrlPktOverlayAttrName)) {
+        if (overlay.isAttrPresent(port) || overlay.isAttrPresent(rule)) {
           auto amsel = cast<AMSelOp>(rule.getAmsel().getDefiningOp());
           rules[{box.getTileOp().getTileID(),
                  {port.getSourceBundle(), port.sourceIndex()}}]
@@ -2643,6 +2643,9 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
   const uint32_t maxPacketId = targetModel.getMaxPacketId();
   const int idBits = llvm::Log2_32_Ceil(maxPacketId + 1);
   const int idMask = (1 << idBits) - 1;
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(builder.getContext());
+  AIEDialect::PriorityRouteAttrHelper priorityRoute(builder.getContext());
+  UnitAttr unit = builder.getUnitAttr();
 
   // A master port can only be associated with one arbiter, and each arbiter
   // has numMselsPerArbiter msels, so a tile has numArbiters x
@@ -2778,7 +2781,7 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
           builder, tileLoc, builder.getIndexType(), master.second.bundle,
           master.second.channel, amsels, keepPktHeaderAttr.lookup(master));
       if (ctrlPktOverlayMasterPorts.contains(master))
-        msOp->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
+        overlay.setAttr(msOp, unit);
     }
 
     // Generate the packet rules, adding to any the switchbox already has.
@@ -2921,12 +2924,12 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
         if (llvm::all_of(ruleGroup, [&](const auto &member) {
               return markedFlows.contains(member);
             }))
-          rule->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
+          overlay.setAttr(rule, unit);
         if (prioritizedSourcePorts.contains(port) &&
             llvm::any_of(ruleGroup, [&](const auto &member) {
               return prioritizedFlows.contains(member);
             }))
-          rule->setAttr(kPriorityRouteAttrName, builder.getUnitAttr());
+          priorityRoute.setAttr(rule, unit);
       }
     }
 
@@ -2934,21 +2937,21 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
     // once; a port it shares says so rule by rule.
     for (auto rulesOp : b.getOps<PacketRulesOp>()) {
       auto rules = rulesOp.getRules().getOps<PacketRuleOp>();
-      bool blockTagged = rulesOp->hasAttr(kCtrlPktOverlayAttrName);
+      bool blockTagged = overlay.isAttrPresent(rulesOp);
       auto tagged = [&](PacketRuleOp rule) {
-        return blockTagged || rule->hasAttr(kCtrlPktOverlayAttrName);
+        return blockTagged || overlay.isAttrPresent(rule);
       };
       bool all = llvm::all_of(rules, tagged);
       for (PacketRuleOp rule : rules) {
         if (!all && tagged(rule))
-          rule->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
+          overlay.setAttr(rule, unit);
         else
-          rule->removeAttr(kCtrlPktOverlayAttrName);
+          rule->removeDiscardableAttr(overlay.getName());
       }
       if (all && !rules.empty())
-        rulesOp->setAttr(kCtrlPktOverlayAttrName, builder.getUnitAttr());
+        overlay.setAttr(rulesOp, unit);
       else
-        rulesOp->removeAttr(kCtrlPktOverlayAttrName);
+        rulesOp->removeDiscardableAttr(overlay.getName());
     }
   }
   return success();

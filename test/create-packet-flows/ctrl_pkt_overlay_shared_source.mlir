@@ -19,7 +19,7 @@
 
 // CHECK-LABEL: aie.switchbox(%shim_noc_tile_0_0) {
 // CHECK-DAG:     %[[A52:.+]] = aie.amsel<5> (2)
-// CHECK-DAG:     aie.masterset(North : 1, %[[A52]]) {is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(North : 1, %[[A52]]) {aie.is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : 7) {
 // CHECK-NEXT:      aie.rule(28, 28, %[[A52]])
 // DESIGN-SAME:       is_ctrl_pkt_overlay

@@ -15,21 +15,21 @@
 // they do, so it follows their route and their rule sends it the right way.
 
 // CHECK-LABEL: aie.switchbox(%shim_noc_tile_0_0)
-// CHECK:         aie.masterset(North : 1, %[[A:.+]]) {is_ctrl_pkt_overlay}
+// CHECK:         aie.masterset(North : 1, %[[A:.+]]) {aie.is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : 3) {
-// CHECK-NEXT:      aie.rule(28, 24, %[[A]]) {is_ctrl_pkt_overlay, priority_route}
+// CHECK-NEXT:      aie.rule(28, 24, %[[A]]) {aie.is_ctrl_pkt_overlay, aie.priority_route}
 // CHECK-NEXT:      aie.rule(31, 27, %[[A]])
 // CHECK-NEXT:    }
 // CHECK-LABEL: aie.switchbox(%tile_0_2)
-// CHECK:         aie.masterset(DMA : 0, %[[B:.+]]) {is_ctrl_pkt_overlay}
+// CHECK:         aie.masterset(DMA : 0, %[[B:.+]]) {aie.is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : 1) {
-// CHECK-NEXT:      aie.rule(28, 24, %[[B]]) {is_ctrl_pkt_overlay}
+// CHECK-NEXT:      aie.rule(28, 24, %[[B]]) {aie.is_ctrl_pkt_overlay}
 // CHECK-NEXT:      aie.rule(31, 27, %[[B]])
 // CHECK-NEXT:    }
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
-// CHECK:         aie.masterset(North : 1, %[[C:.+]]) {is_ctrl_pkt_overlay}
+// CHECK:         aie.masterset(North : 1, %[[C:.+]]) {aie.is_ctrl_pkt_overlay}
 // CHECK:         aie.packet_rules(South : 1) {
-// CHECK-NEXT:      aie.rule(28, 24, %[[C]]) {is_ctrl_pkt_overlay}
+// CHECK-NEXT:      aie.rule(28, 24, %[[C]]) {aie.is_ctrl_pkt_overlay}
 // CHECK-NEXT:      aie.rule(31, 27, %[[C]])
 // CHECK-NEXT:    }
 
