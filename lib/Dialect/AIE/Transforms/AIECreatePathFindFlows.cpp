@@ -59,8 +59,7 @@ static bool reloadConfigures(PacketFlowOp flow) {
          llvm::none_of(flow.getPorts().getOps<PacketDestOp>(), control);
 }
 
-/// What the prioritized flows (the control overlay) take when routed alone,
-/// which a reload keeps.
+/// What the prioritized flows take routed alone (see has_ctrl_pkt_overlay).
 struct PinnedOverlay {
   PacketTrees trees;
   OverlayRules rules;
@@ -1826,9 +1825,9 @@ std::optional<ArbiterPlan> PacketFlowRouting::planTile(
       sub.push_back(flows[m]);
     return sub;
   };
-  // The overlay's flows take the amsels they take on their own where they
-  // can, and the other flows plan around them. A reload keeps them;
-  // otherwise, if the design rules them out, they are planned anew.
+  // The pinned amsels go first where they fit and the rest plan around them
+  // (see has_ctrl_pkt_overlay); without a reload, ones the design rules out
+  // are planned anew.
   auto keepPinned = [&]() -> std::optional<ArbiterPlan> {
     std::string reason;
     llvm::raw_string_ostream os(reason);
@@ -3267,8 +3266,9 @@ void AIEPathfinderPass::runOnOperation() {
   llvm::Expected<PacketPlan> plan =
       routeRelaxing(d, analyzer, conflicts, overlay);
   // If routing fails with the prioritized flows first, they route like the
-  // others, but for the overlay a reload keeps. Without a reload the error is
-  // that routing's, unless only the first found one allow-deadlock-prone takes.
+  // others, all but what a reload pins (see has_ctrl_pkt_overlay). Without one
+  // the error is that routing's, unless only the first found one
+  // allow-deadlock-prone takes.
   if (!plan && !prioritized.empty()) {
     llvm::Error err = plan.takeError();
     if (!reload)
