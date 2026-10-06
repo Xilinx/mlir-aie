@@ -50,8 +50,10 @@ jobs:
     # in python/aie_lit_utils/lit_config_helpers.py); JIT-style Python
     # examples (@iron.jit) still run and cover the NPU end to end.
     runs-on: [self-hosted, windows, devlab-dispatch, strix-halo]
-    # Normal exec is ~31 min; observed hang on this job 71.4 min (2026-08-04).
-    timeout-minutes: 90
+    # Normal exec is ~40 min, but the fresh-runner setup steps are bound by
+    # GitHub download speed and have taken ~60 min on a slow link. Hangs are
+    # caught by the test step's own timeout instead.
+    timeout-minutes: 150
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
@@ -158,9 +160,9 @@ jobs:
           mkdir my_install
           pushd my_install
           REM Fetch the ~1GB wheel with curl, not pip download: pip has no stall
-          REM detection. --speed-limit/--speed-time abort a stalled transfer and
-          REM --retry -C - resumes it.
-          curl.exe --fail --location --connect-timeout 15 --speed-limit 1048576 --speed-time 60 --retry 5 --retry-all-errors --retry-delay 5 -C - -o "mlir-%MLIR_VERSION%-py3-none-win_amd64.whl" "https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-%MLIR_VERSION%-py3-none-win_amd64.whl"
+          REM detection. --speed-limit/--speed-time abort a stalled (not merely
+          REM slow) transfer and --retry -C - resumes it.
+          curl.exe --fail --location --connect-timeout 15 --speed-limit 102400 --speed-time 60 --retry 5 --retry-all-errors --retry-delay 5 -C - -o "mlir-%MLIR_VERSION%-py3-none-win_amd64.whl" "https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-%MLIR_VERSION%-py3-none-win_amd64.whl"
           if errorlevel 1 exit /b 1
           dir mlir-*.whl
           python -c "import zipfile,glob; zipfile.ZipFile(glob.glob('mlir-*.whl')[0]).extractall('.')"
@@ -221,6 +223,8 @@ jobs:
           if errorlevel 1 exit /b 1
 
       - name: Run tests and examples
+        # Normally ~35 min; observed hang on this job 71.4 min (2026-08-04).
+        timeout-minutes: 60
         shell: cmd
         run: |
           call .\iron_env.cmd
