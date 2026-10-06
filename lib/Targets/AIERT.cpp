@@ -729,6 +729,7 @@ LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
 LogicalResult
 xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
                                              bool skipCtrlPktOverlay) {
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(targetOp.getContext());
 
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
@@ -740,7 +741,7 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
 
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      if (skipCtrlPktOverlay && connectOp->hasAttr("is_ctrl_pkt_overlay"))
+      if (skipCtrlPktOverlay && overlay.isAttrPresent(connectOp))
         continue;
       TxnLocBracket bracket(*this, connectOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(
@@ -752,7 +753,7 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     }
 
     for (auto masterSetOp : b.getOps<MasterSetOp>()) {
-      if (skipCtrlPktOverlay && masterSetOp->hasAttr("is_ctrl_pkt_overlay"))
+      if (skipCtrlPktOverlay && overlay.isAttrPresent(masterSetOp))
         continue;
       TxnLocBracket bracket(*this, masterSetOp.getLoc());
       int mask = 0;
@@ -767,23 +768,9 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
         mask |= (1 << msel);
       }
 
-      // the default is to keep header
-      bool keepHeader = true;
-      // the default for dma destinations is to drop the header
-      if (masterSetOp.getDestBundle() == WireBundle::DMA)
-        keepHeader = false;
-      // assume a connection going south from row zero gets wired to shimdma
-      // by a shimmux.
-      if (switchboxOp.rowIndex() == 0 &&
-          masterSetOp.getDestBundle() == WireBundle::South)
-        keepHeader = false;
-
-      // "keep_pkt_header" attribute overrides the above defaults, if set
-      if (auto keep = masterSetOp.getKeepPktHeader())
-        keepHeader = *keep;
-
-      auto dropHeader =
-          keepHeader ? XAIE_SS_PKT_DONOT_DROP_HEADER : XAIE_SS_PKT_DROP_HEADER;
+      auto dropHeader = masterSetOp.keepsPktHeader()
+                            ? XAIE_SS_PKT_DONOT_DROP_HEADER
+                            : XAIE_SS_PKT_DROP_HEADER;
       TRY_XAIE_API_EMIT_ERROR(
           masterSetOp, XAie_StrmPktSwMstrPortEnable, &aiert->devInst, tileLoc,
           WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(masterSetOp.getDestBundle()),
@@ -791,20 +778,32 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     }
 
     for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
-      if (skipCtrlPktOverlay && packetRulesOp->hasAttr("is_ctrl_pkt_overlay"))
+      if (skipCtrlPktOverlay && overlay.isAttrPresent(packetRulesOp))
         continue;
       TxnLocBracket bracket(*this, packetRulesOp.getLoc());
       int slot = 0;
       Block &block = packetRulesOp.getRules().front();
+      // The overlay's rules take the first slots of a port they share with the
+      // design's rules, and the overlay already enabled the port.
+      bool overlayPort =
+          skipCtrlPktOverlay &&
+          llvm::any_of(block.getOps<PacketRuleOp>(), [&](PacketRuleOp rule) {
+            return overlay.isAttrPresent(rule);
+          });
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
+        if (skipCtrlPktOverlay && overlay.isAttrPresent(slotOp)) {
+          slot++;
+          continue;
+        }
         AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
         int arbiter = amselOp.arbiterIndex();
         int msel = amselOp.getMselValue();
-        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortEnable,
-                                &aiert->devInst, tileLoc,
-                                WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
-                                    packetRulesOp.getSourceBundle()),
-                                packetRulesOp.sourceIndex());
+        if (!overlayPort)
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortEnable,
+                                  &aiert->devInst, tileLoc,
+                                  WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                      packetRulesOp.getSourceBundle()),
+                                  packetRulesOp.sourceIndex());
         auto packetInit = XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0);
         // TODO Need to better define packet id,type used here
         TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotEnable,
