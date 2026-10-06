@@ -412,9 +412,9 @@ do only need a legal layout, so it does not rank.
 
 Each search is bounded by the pass's `placement-budget` option, 100000
 placements per tile by default — packing around fixed obstacles is NP-hard, and
-the bound is a count rather than a time limit so builds stay reproducible. Within the bound, "no room" is a proof that no
-layout exists; reaching it is reported (see the diagnostics below) rather than
-passed off as one.
+the bound is a count rather than a time limit so builds stay reproducible.
+Within the bound, "no room" is a proof that no layout exists; reaching it is
+reported (see the diagnostics below) rather than passed off as one.
 
 - **`Buffer(mem_bank=...)`** pins a buffer to a bank. The pin is honored or the
   build fails; it is never silently dropped.
