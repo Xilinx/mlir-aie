@@ -17,11 +17,11 @@ starts the next phase.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.npdtypes import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -35,28 +35,10 @@ from aie.iron import (
     WorkerRuntimeBarrier,
 )
 from aie.iron.controlflow import range_
-from aie.iron.kernel import ExternalFunction
-from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
-
-_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2/scale_shift.cc"
-
-
-def _scale_shift_extern(tile_ty):
-    return ExternalFunction(
-        "eltwise_mul_add_bf16_vector",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[
-            tile_ty,
-            tile_ty,
-            tile_ty,
-            np.int32,  # pyright: ignore[reportArgumentType]
-        ],
-        include_dirs=[config.cxx_header_path()],
-    )
 
 
 @iron.jit
@@ -108,7 +90,7 @@ def scale_shift(
         names=[f"memC{i}" for i in range(n_cores)],
     )
 
-    mul_add_fn = _scale_shift_extern(tile_ty)
+    mul_add_fn = kernels.mul_add(tile_size=tile_size)
 
     rtps = [
         Buffer(
@@ -202,26 +184,19 @@ def _compile_kwargs(opts):
 
 
 def _run_and_verify(opts):
-    # Constant inputs match the C++ test (4.0, 3.35, 0.77); the two-pass
-    # mul-then-add with bf16 intermediate-store makes random inputs flaky
-    # to mirror exactly in numpy.
-    a_t = iron.full(opts.length, 4.0, dtype=bfloat16, device="npu")
-    b_t = iron.full(opts.length, 3.35, dtype=bfloat16, device="npu")
-    c_t = iron.full(opts.length, 0.77, dtype=bfloat16, device="npu")
+    # Each pass rounds its fp32 result to the nearest bf16, as numpy's cast
+    # does, so the product is stored to bf16 before the add.
+    rng = np.random.default_rng(0)
+    a, b, c = (rng.uniform(-4, 4, opts.length).astype(bfloat16) for _ in range(3))
+    a_t, b_t, c_t = (iron.tensor(x, dtype=bfloat16, device="npu") for x in (a, b, c))
     d_t = iron.zeros_like(a_t)
 
     scale_shift(a_t, b_t, c_t, d_t, **_compile_kwargs(opts))
 
-    expected = (
-        a_t.numpy().astype(np.float32) * b_t.numpy().astype(np.float32)
-        + c_t.numpy().astype(np.float32)
-    ).astype(bfloat16)
-    assert_pass(
-        d_t.numpy(),
-        expected,
-        atol=0.002,
-        fail_msg="scale_shift output mismatch",
-    )
+    f32 = np.float32
+    product = (a.astype(f32) * b.astype(f32)).astype(bfloat16)
+    expected = (product.astype(f32) + c.astype(f32)).astype(bfloat16)
+    assert_pass(d_t.numpy(), expected, fail_msg="scale_shift output mismatch")
 
 
 def main():

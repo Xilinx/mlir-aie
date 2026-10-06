@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import inspect
 from typing import List, Tuple, Dict, Any, Union
 import contextlib
-from enum import IntEnum
+from enum import Enum, IntEnum
 
 import numpy as np
 
@@ -54,6 +54,7 @@ from ..extras.util import (
     get_user_code_loc,
     region_adder,
 )
+from ..helpers.taplib import TensorAccessPattern
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
 from ..ir import (
@@ -63,6 +64,7 @@ from ..ir import (
     DenseElementsAttr,
     DenseI32ArrayAttr,
     DictAttr,
+    FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
     IntegerAttr,
@@ -156,11 +158,13 @@ def dma_bd(
     (``transfer_len`` maps to the op's ``len`` operand; the Python name avoids
     shadowing the builtin and matches ``shim_dma_bd``.)
 
-    Example::
+    For example:
 
-        %len = ...
-        aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
-                   offset=0 len=%len)
+    ```mlir
+    %len = ...
+    aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
+               offset=0 len=%len)
+    ```
     """
     dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
     dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
@@ -253,18 +257,15 @@ class external_func(FuncOp):
                     f"signed 32-bit integer (<= {2**31 - 1}), got "
                     f"{stack_size_override}."
                 )
-        if outputs is None:
-            outputs = []
-        for i, ty in enumerate(inputs):
-            new_type = try_convert_np_type_to_mlir_type(ty)
-            if new_type != ty:
-                inputs[i] = new_type
-        for i, ty in enumerate(outputs):
-            new_type = try_convert_np_type_to_mlir_type(ty)
-            if new_type != ty:
-                outputs[i] = new_type
+        # Convert into new lists rather than in place: `inputs` belongs to the
+        # caller, and a Kernel holds on to it as the declaration it was built
+        # with (see Kernel.arg_types).
+        mlir_inputs = [try_convert_np_type_to_mlir_type(ty) for ty in inputs]
+        mlir_outputs = [try_convert_np_type_to_mlir_type(ty) for ty in outputs or []]
         super().__init__(
-            name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
+            name=name,
+            type=FunctionType.get(mlir_inputs, mlir_outputs),
+            visibility=visibility,
         )
         if link_with is not None:
             self.operation.attributes["link_with"] = StringAttr.get(link_with)
@@ -376,9 +377,11 @@ def _trace_event_attr(x, context):
         return Attribute.parse(f'#aie.trace_event<"{x}">', context=context)
     elif isinstance(x, StringAttr):
         return Attribute.parse(f'#aie.trace_event<"{x.value}">', context=context)
-    elif hasattr(x, "code"):  # GenericEvent, PortEvent, etc. - check before Enum
+    from aie.utils.trace.events import GenericEvent
+
+    if isinstance(x, GenericEvent):
         return Attribute.parse(f'#aie.trace_event<"{x.code.name}">', context=context)
-    elif hasattr(x, "name") and hasattr(x, "value"):  # Enum (CoreEvent, MemEvent, etc.)
+    elif isinstance(x, Enum):
         return Attribute.parse(f'#aie.trace_event<"{x.name}">', context=context)
     else:
         # Assume it's already an Attribute
@@ -617,6 +620,33 @@ class external_buffer(MemRefValue):
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
 class object_fifo(ObjectFifoCreateOp):
+    @staticmethod
+    def stream_dims(dims, what, can_pad=False):
+        """Return `dims` as the `(size, stride)` pairs a DMA walks each transfer by.
+
+        `dims` is the pair list itself or a TensorAccessPattern over what one
+        transfer moves: an object, or a segment of one when a link joins or
+        distributes it. The DMA starts each walk at the transfer's first
+        element, so a pattern must have offset 0.
+
+        Raises:
+            ValueError: If the pattern is staged, has a nonzero offset, or
+                pads where `can_pad` is False.
+        """
+        if not isinstance(dims, TensorAccessPattern):
+            return [] if dims is None else dims
+        if dims.is_symbolic:
+            raise ValueError(f"{what} {dims!r} must have compile-time values")
+        if dims.offset != 0:
+            raise ValueError(
+                f"{what} {dims!r} has offset {dims.offset}, but an objectfifo "
+                "walks each transfer from its first element; apply the offset "
+                "where the buffer is addressed instead"
+            )
+        if dims.padding is not None and not can_pad:
+            raise ValueError(f"only a producer's walk can pad, but {what} is {dims!r}")
+        return list(dims.transformation_dims)
+
     def __init__(
         self,
         name,
@@ -649,6 +679,22 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer = [[] for _ in range(len(consumerTiles))]
         if dimensionsToStream is None:
             dimensionsToStream = []
+        if isinstance(dimensionsToStream, TensorAccessPattern) and (
+            dimensionsToStream.padding is not None
+        ):
+            if padDimensions is not None:
+                raise ValueError(
+                    "dimensionsToStream is a padded TensorAccessPattern; "
+                    "do not also pass padDimensions"
+                )
+            padDimensions = list(dimensionsToStream.padding)
+        dimensionsToStream = self.stream_dims(
+            dimensionsToStream, "dimensionsToStream", can_pad=True
+        )
+        dimensionsFromStreamPerConsumer = [
+            self.stream_dims(dims, "dimensionsFromStreamPerConsumer")
+            for dims in dimensionsFromStreamPerConsumer
+        ]
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
         consumerElemType = None
         if self.consumer_datatype is not None:
@@ -923,12 +969,29 @@ def another_bd(dma_op):
     raise Exception("couldn't find empty region to add to.")
 
 
+def _dma_channel_attr(channel):
+    """A DMA program's channel: an index, or the `aie.route_endpoint` (op or
+    symbol name) whose channel allocation picks."""
+    if isinstance(channel, (IntegerAttr, FlatSymbolRefAttr)):
+        return channel
+    if isinstance(channel, (int, np.integer)):
+        return IntegerAttr.get(T.i32(), int(channel))
+    if isinstance(channel, str):
+        return FlatSymbolRefAttr.get(channel)
+    if isinstance(channel, RouteEndpointOp):
+        return FlatSymbolRefAttr.get(channel.sym_name.value)
+    raise TypeError(
+        "A DMA channel is an index or an aie.route_endpoint (op or symbol "
+        f"name), not {type(channel).__name__}."
+    )
+
+
 @_cext.register_operation(_Dialect, replace=True)
 class DMAStartOp(DMAStartOp):
     def __init__(
         self,
         channel_dir,
-        channel_index,
+        channel,
         *,
         dest: Successor | Block | None = None,
         chain: Successor | Block | None = None,
@@ -948,7 +1011,7 @@ class DMAStartOp(DMAStartOp):
             chain = InsertionPoint.current.block
         super().__init__(
             channel_dir,
-            channel_index,
+            _dma_channel_attr(channel),
             dest,
             chain,
             repeat_count=repeat_count,
@@ -969,7 +1032,7 @@ class DMAStartOp(DMAStartOp):
 
 def dma_start(
     channel_dir,
-    channel_index,
+    channel,
     *,
     dest: Successor | Block | ContextManagedBlock | None = None,
     chain: Successor | Block | ContextManagedBlock | None = None,
@@ -983,7 +1046,7 @@ def dma_start(
     dest_block = dest.block if isinstance(dest, ContextManagedBlock) else dest
     op = DMAStartOp(
         channel_dir,
-        channel_index,
+        channel,
         dest=dest_block,
         chain=chain_block,
         loc=loc,
@@ -1286,13 +1349,10 @@ def tile(
     *,
     loc=None,
     ip=None,
-    allocation_scheme=None,
     packet_type=0,
     packet_id=None,
 ):
-    tile_op = TileOp(
-        col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme
-    )
+    tile_op = TileOp(col=col, row=row, loc=loc, ip=ip)
     if packet_id is not None:
         tile_op.attributes["controller_id"] = packet_info_attr_builder(
             (packet_type, packet_id)
@@ -1329,7 +1389,6 @@ def logical_tile(
     *,
     col=None,
     row=None,
-    allocation_scheme=None,
     loc=None,
     ip=None,
     packet_type=0,
@@ -1339,7 +1398,6 @@ def logical_tile(
         tile_type=tile_type,
         col=col,
         row=row,
-        allocation_scheme=allocation_scheme,
         loc=loc,
         ip=ip,
     )

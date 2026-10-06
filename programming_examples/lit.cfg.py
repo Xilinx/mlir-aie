@@ -41,6 +41,7 @@ LitConfigHelper.setup_standard_environment(
 )
 
 LitConfigHelper.add_makefile_examples_feature(config)
+LitConfigHelper.add_cmake_examples_feature(config)
 
 # Basic substitutions
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
@@ -153,6 +154,8 @@ LitConfigHelper.apply_config_to_lit(
         "opencv": opencv_config,
     },
 )
+
+LitConfigHelper.add_hrxxclbinutil_feature(config)
 
 LitConfigHelper.setup_host_compiler_substitutions(config)
 LitConfigHelper.setup_aiecc_substitution(config)

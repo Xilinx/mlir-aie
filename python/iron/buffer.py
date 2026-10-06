@@ -5,14 +5,13 @@
 #
 """Named memory region accessible by both Workers and the Runtime."""
 
-import itertools
 from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import buffer
-from ..helpers.util import (
+from ..helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
@@ -29,9 +28,6 @@ class Buffer(Resolvable):
 
     This is often used for Runtime Parameters.
     """
-
-    # Used to generate unique names when none is provided during construction.
-    _gbuf_index = itertools.count()
 
     def __init__(
         self,
@@ -51,8 +47,9 @@ class Buffer(Resolvable):
             type (type[np.ndarray] | None, optional): The type of the buffer. Defaults to None.
             initial_value (np.ndarray | None, optional): An initial value to set the buffer
                 to. Should be of same datatype and shape as the buffer. Defaults to None.
-            name (str | None, optional): The name of the buffer. If none is given, a unique
-                name will be generated. Defaults to None.
+            name (str | None, optional): The name of the buffer. If none is given, the
+                buffer is left unnamed, or the Program names it if the runtime writes
+                it. Defaults to None.
             tile (Tile | None, optional): The tile for the buffer. Automatically set to the
                 Worker's tile when the buffer is passed in the Worker's fn_args list.
                 Defaults to None.
@@ -63,10 +60,9 @@ class Buffer(Resolvable):
                 for host-written RTP buffers the runtime pokes at a hardcoded address.
                 Defaults to None (compiler-assigned).
             mem_bank (int | None, optional): Pin the buffer to a specific L1 memory bank.
-                Bank-aware allocation treats the pin as a hard constraint and reports an
-                error when the bank cannot hold the buffer. The basic-sequential scheme
-                has no notion of banks and ignores the pin. Defaults to None
-                (compiler-assigned).
+                The pin is a hard constraint: if the bank cannot hold the buffer, the
+                compiler reports an error rather than placing it elsewhere. Defaults to
+                None (compiler-assigned).
 
         Raises:
             ValueError: If neither ``type`` nor ``initial_value`` is provided, or if
@@ -97,8 +93,6 @@ class Buffer(Resolvable):
         self._name = name
         self._op = None
         self._arr_type = type
-        if not self._name:
-            self._name = f"buf_{next(Buffer._gbuf_index)}"
         self._use_write_rtp = use_write_rtp
         self._address = address
         self._mem_bank = mem_bank
@@ -114,6 +108,20 @@ class Buffer(Resolvable):
     @property
     def tile(self) -> Tile | None:
         """The tile this buffer is on."""
+        return self._tile
+
+    def place(self, tile: Tile) -> Tile:
+        """Put this buffer on ``tile`` unless it already has one.
+
+        Args:
+            tile: The tile to place an unplaced buffer on.
+
+        Returns:
+            The tile the buffer is on, which differs from ``tile`` if it was
+            already placed elsewhere.
+        """
+        if self._tile is None:
+            self._tile = tile
         return self._tile
 
     def tiles(self) -> list:
@@ -135,7 +143,7 @@ class Buffer(Resolvable):
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property
-    def dtype(self) -> NpuDType:
+    def dtype(self) -> type[NpuDType]:
         """The per-element datatype of the buffer."""
         return np_ndarray_type_get_dtype(self._arr_type)
 

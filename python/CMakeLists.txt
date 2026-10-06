@@ -40,9 +40,12 @@ declare_mlir_python_sources(AIEPythonSources.Utils
   SOURCES
     utils/__init__.py
     utils/_log_setup.py
+    utils/accuracy.py
     utils/benchmark.py
+    utils/bfp.py
     utils/config.py
     utils/probe.py
+    utils/txn_trace.py
     utils/tensor_factory.py
     utils/test.py
     utils/ml.py
@@ -75,14 +78,19 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/hsaruntime/hostruntime.py
     utils/hostruntime/hsaruntime/tensor.py
     utils/compile/__init__.py
+    utils/compile/remarks.py
     utils/compile/utils.py
     utils/compile/cache/utils.py
     utils/compile/jit/__init__.py
     utils/compile/jit/compilabledesign.py
+    utils/compile/jit/_dispatch_bridge.py
+    utils/compile/jit/_dispatch_compile.py
     utils/compile/jit/_dma_size_parser.py
+    utils/compile/jit/_explicit_builds.py
     utils/compile/jit/_hash.py
     utils/compile/jit/_introspect.py
     utils/compile/jit/_manifest.py
+    utils/compile/jit/_object_cache.py
     utils/compile/jit/_serialization.py
     utils/compile/jit/markers.py
     utils/compile/jit/context.py
@@ -165,13 +173,14 @@ install(
   DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/utils
 )
 
-# Note that compiler/ is not globbed but compiler/txn2mlir/ is; this is so
-# that compiler/txn2mlir.py does not get distributed through this dir but
-# actually through bin (see all the way at the bottom of this file)
+# Note that compiler/ is not globbed but its subdirectories are; this is so
+# that the compiler/*.py launcher scripts do not get distributed through this
+# dir but actually through bin (see all the way at the bottom of this file)
 declare_mlir_python_sources(AIEPythonSources.Compiler
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     compiler/txn2mlir/*.py
+    compiler/hsaco/*.py
 )
 
 ################################################################################
@@ -350,5 +359,32 @@ add_custom_command(
   ${CMAKE_CURRENT_SOURCE_DIR}/compiler/txn2mlir.py
   ${CMAKE_BINARY_DIR}/bin
 )
-# during install
 install(PROGRAMS compiler/txn2mlir.py DESTINATION bin)
+
+# On POSIX the hsaco launchers install without their .py suffix, so a source
+# build and a wheel expose the same command names (see the console_scripts
+# entries in utils/mlir_aie_wheels/setup.py). `cmake -E copy` preserves the
+# source mode, so the sources are checked in executable; install(PROGRAMS) sets
+# 0755 for the install tree.
+#
+# Windows gets the .py kept, like txn2mlir.py: an extensionless file whose only
+# entry point is a #! line is not runnable by cmd.exe or PowerShell and has no
+# file association, so stripping the suffix there would produce a command that
+# cannot be invoked at all. Wheel users are unaffected either way -- pip
+# generates a real aie-hsaco.exe wrapper from console_scripts.
+if(WIN32)
+  set(_hsaco_suffix ".py")
+else()
+  set(_hsaco_suffix "")
+endif()
+foreach(_hsaco_tool aie-hsaco aie-hsaco-dump)
+  add_custom_command(
+    TARGET AIEPythonModules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${CMAKE_CURRENT_SOURCE_DIR}/compiler/${_hsaco_tool}.py
+    ${CMAKE_BINARY_DIR}/bin/${_hsaco_tool}${_hsaco_suffix}
+  )
+  install(PROGRAMS compiler/${_hsaco_tool}.py
+          DESTINATION bin
+          RENAME ${_hsaco_tool}${_hsaco_suffix})
+endforeach()

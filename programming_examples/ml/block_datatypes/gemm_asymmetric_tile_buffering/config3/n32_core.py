@@ -17,7 +17,7 @@ from pathlib import Path
 import aie.iron as iron
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -70,24 +70,16 @@ def n32_core_gemm(
         f"-I{_AIE_KERNELS_INC}",
     ]
 
-    # mm_bfp_mixed.cc keeps a TU-local staging buffer that matmul and
-    # zero share, so we point both ExternalFunctions at the same .o
-    # (one compile, both symbols emitted, link picks each per call).
-    _SHARED_OBJ = "mm_bfp_mixed.o"
-    zero_kernel = ExternalFunction(
-        "zero_kernel",
-        object_file_name=_SHARED_OBJ,
-        source_file=str(_KERNEL_SRC),
-        arg_types=[C_l1_ty],
-        compile_flags=kernel_flags,
-    )
+    # This initializer also clears a TU-local bf16 staging buffer, not just C.
+    # It must bind the matmul's object rather than use the ordinary zero factory.
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_bfp16",
-        object_file_name=_SHARED_OBJ,
+        object_file_name="mm_bfp_mixed.o",
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
         compile_flags=kernel_flags,
     )
+    zero_kernel = matmul_kernel.object_file.bind("zero_kernel", [C_l1_ty])
 
     A_l3l2_fifos: list[ObjectFifo] = []
     A_l2l1_fifos: list[ObjectFifo] = []
@@ -163,11 +155,9 @@ def n32_core_gemm(
     B_ty = np.ndarray[(K * N // 8,), np.dtype[v8bfp16ebs8]]
     C_ty = np.ndarray[(M * N // 8,), np.dtype[v8bfp16ebs8]]
 
-    A_taps = TensorTiler2D.group_tiler((1, M * K // 8), (1, m * K // 8), (1, 1))
-    B_taps = TensorTiler2D.group_tiler((1, N * K // 8), (1, n * K // 8), (1, 1))
-    C_taps = TensorTiler2D.group_tiler(
-        (1, M * N // 8), (1, n_aie_rows * m * n // 8), (1, 1)
-    )
+    A_taps = TensorAccessPattern.full((M * K // 8,)).tile((m * K // 8,))
+    B_taps = TensorAccessPattern.full((N * K // 8,)).tile((n * K // 8,))
+    C_taps = TensorAccessPattern.full((M * N // 8,)).tile((n_aie_rows * m * n // 8,))
 
     num_row_tile = M // m // n_aie_rows
     num_col_tile = N // n // n_aie_cols

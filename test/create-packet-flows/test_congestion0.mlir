@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows=remove-lifted=false %s -o %t.opt
 // RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
 // RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
 
@@ -14,11 +14,9 @@
 // CHECK1:    %[[VAL_2:.*]] = aie.tile(0, 3)
 // CHECK1:    %[[VAL_3:.*]] = aie.tile(0, 4)
 // CHECK1:    %[[VAL_4:.*]] = aie.tile(0, 5)
-// The flows below are the ones --aie-find-flows recovers from the routing, in
-// the order it walks the tiles and their packet rules; the flows this file
-// declares up front are replaced by them rather than kept alongside. Both
-// flows out of tile (0, 2) share a source port, so their relative order comes
-// from the routed switchbox rather than from this file.
+// The pathfinder now removes the lowered packet flows; --aie-find-flows
+// re-derives them from the switchbox routing, emitting the two fan-out
+// destinations of tile(0,2) DMA:0 in discovery order (flow 4 before flow 0).
 // CHECK1:    aie.packet_flow(4) {
 // CHECK1:      aie.packet_source<%[[VAL_1:.*]], DMA : 0>
 // CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 4>
@@ -50,24 +48,24 @@ module {
   %tile_0_4 = aie.tile(0, 4)
   %tile_0_5 = aie.tile(0, 5)
 
-  aie.packet_flow(0) { 
-    aie.packet_source<%tile_0_2, DMA : 0> 
+  aie.packet_flow(0) {
+    aie.packet_source<%tile_0_2, DMA : 0>
     aie.packet_dest<%tile_0_1, DMA : 0>
   }
-  aie.packet_flow(1) { 
-    aie.packet_source<%tile_0_3, DMA : 0> 
+  aie.packet_flow(1) {
+    aie.packet_source<%tile_0_3, DMA : 0>
     aie.packet_dest<%tile_0_1, DMA : 1>
   }
-  aie.packet_flow(2) { 
-    aie.packet_source<%tile_0_4, DMA : 0> 
+  aie.packet_flow(2) {
+    aie.packet_source<%tile_0_4, DMA : 0>
     aie.packet_dest<%tile_0_1, DMA : 2>
   }
-  aie.packet_flow(3) { 
-    aie.packet_source<%tile_0_5, DMA : 0> 
+  aie.packet_flow(3) {
+    aie.packet_source<%tile_0_5, DMA : 0>
     aie.packet_dest<%tile_0_1, DMA : 3>
   }
-  aie.packet_flow(4) { 
-    aie.packet_source<%tile_0_2, DMA : 0> 
+  aie.packet_flow(4) {
+    aie.packet_source<%tile_0_2, DMA : 0>
     aie.packet_dest<%tile_0_1, DMA : 4>
   }
  }

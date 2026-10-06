@@ -1,0 +1,27 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Exercise the actual reconfiguration design without requiring NPU hardware:
+// packaging stays static, but each generated native builder must reproduce the
+// full ELF's unpatched transaction bytes in all three configuration modes.
+// REQUIRES: peano
+// RUN: rm -rf %t.d && mkdir -p %t.d
+// RUN: aiecc --get-full-elf --get-npu-cpp --get=npu_insts_full_elf_{0}.bin --output-dir=%t.d/pdi --tmpdir=%t.d/pdi/work %S/../npu-xrt/reconfigure_loadpdi/aie.mlir
+// RUN: %host_clang -std=c++17 -I%S/../../include -DGEN_HDR='"%t.d/pdi/npu_main_sequence.cpp"' -DGEN_FN=generate_txn_main_sequence %S/Inputs/npu_cpp_dump.cpp %host_link_flags -o %t.d/pdi/native
+// RUN: %t.d/pdi/native %t.d/pdi/native.bin && cmp %t.d/pdi/native.bin %t.d/pdi/npu_insts_full_elf_main_sequence.bin
+// RUN: aiecc --get-full-elf --get-npu-cpp --get=npu_insts_full_elf_{0}.bin --expand-load-pdis --output-dir=%t.d/expanded --tmpdir=%t.d/expanded/work %S/../npu-xrt/reconfigure_loadpdi/aie.mlir
+// RUN: %host_clang -std=c++17 -I%S/../../include -DGEN_HDR='"%t.d/expanded/npu_main_sequence.cpp"' -DGEN_FN=generate_txn_main_sequence %S/Inputs/npu_cpp_dump.cpp %host_link_flags -o %t.d/expanded/native
+// RUN: %t.d/expanded/native %t.d/expanded/native.bin && cmp %t.d/expanded/native.bin %t.d/expanded/npu_insts_full_elf_main_sequence.bin
+// RUN: aiecc --get-full-elf --get-npu-cpp --get=npu_insts_full_elf_{0}.bin --load-pdi-to-ctrl-pkt --output-dir=%t.d/ctrlpkt --tmpdir=%t.d/ctrlpkt/work %S/../npu-xrt/reconfigure_loadpdi/aie.mlir
+// RUN: %host_clang -std=c++17 -I%S/../../include -DGEN_HDR='"%t.d/ctrlpkt/npu_main_sequence.cpp"' -DGEN_FN=generate_txn_main_sequence %S/Inputs/npu_cpp_dump.cpp %host_link_flags -o %t.d/ctrlpkt/native
+// RUN: %t.d/ctrlpkt/native %t.d/ctrlpkt/native.bin && cmp %t.d/ctrlpkt/native.bin %t.d/ctrlpkt/npu_insts_full_elf_main_sequence.bin
+
+// An argument index >= 5 distinguishes the full-ELF default from the regular
+// instruction-buffer ABI. The standalone .bin output remains folded.
+// RUN: aiecc --get-full-elf --get-npu-cpp --get-npu-insts --get=npu_insts_full_elf_{0}.bin --sequence-name=static17 --output-dir=%t.d/abi --tmpdir=%t.d/abi/work %S/cpp_npu_cpp_dynamic.mlir
+// RUN: %host_clang -std=c++17 -I%S/../../include -DGEN_HDR='"%t.d/abi/npu_main_static17.cpp"' -DGEN_FN=generate_txn_main_static17 %S/Inputs/npu_cpp_dump.cpp %host_link_flags -o %t.d/abi/native
+// RUN: %t.d/abi/native %t.d/abi/native.bin && cmp %t.d/abi/native.bin %t.d/abi/npu_insts_full_elf_main_static17.bin
+// RUN: not cmp %t.d/abi/native.bin %t.d/abi/insts_main_static17.bin
+// RUN: aiecc --get-full-elf --get-npu-cpp --fold-ddr-addr-offset=true --sequence-name=static17 --output-dir=%t.d/override --tmpdir=%t.d/override/work %S/cpp_npu_cpp_dynamic.mlir
+// RUN: %host_clang -std=c++17 -I%S/../../include -DGEN_HDR='"%t.d/override/npu_main_static17.cpp"' -DGEN_FN=generate_txn_main_static17 %S/Inputs/npu_cpp_dump.cpp %host_link_flags -o %t.d/override/native
+// RUN: %t.d/override/native %t.d/override/native.bin && cmp %t.d/override/native.bin %t.d/abi/insts_main_static17.bin

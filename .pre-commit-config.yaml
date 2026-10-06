@@ -13,10 +13,15 @@ repos:
 
 # Formatting hooks (run on pre-push to catch issues before CI)
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: 34b241d706d24e4ccb69e38f9f0fa190b5f486ec  # frozen: v23.1.0
+  rev: e2b496dc2bd8340c2524cb9a2d2a943cde1bb6df  # frozen: v23.1.1
   hooks:
     - id: clang-format
-      types_or: [c, c++]
+      # Keep this extension list in sync with lintAndFormat.yml's clang-format
+      # job so contributors and CI format the same C/C++ and TableGen files.
+      files: \.(c|cc|cpp|cxx|h|hpp|td)$
+      # Override the mirror's built-in type filter so pre-commit doesn't drop
+      # TableGen files before the filename regex can match them.
+      types_or: [text]
       stages: [pre-push]
       # Exclude generated files and third-party / vendored code (matches black)
       exclude: |
@@ -48,7 +53,7 @@ repos:
         )$
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: 1f1e8bf348ff38fc88619a38d3ca4d9c56abea49  # frozen: v0.16.5
+  rev: e8f7d69b957a30acb2c875078d5fd012de24b64c  # frozen: v0.16.7
   hooks:
     - id: ruff-check
       stages: [pre-push]
@@ -64,7 +69,9 @@ repos:
           python/(iron|utils|helpers|compiler)/.*\.py|
           programming_examples/(algorithms|basic|getting_started|vision)/.*\.py|
           programming_examples/lit\.cfg\.py|
-          programming_examples/ml/(block_datatypes|mobilenet|bottleneck|conv2d|conv2d_14x14|eltwise|eltwise_unary|magika|norm|resnet|rope|scale_shift|softmax|swiglu)/.*\.py
+          programming_examples/ml/(block_datatypes|mobilenet|bottleneck|cast_f32_bf16|conv2d|conv2d_14x14|dwconv1d|eltwise|eltwise_unary|magika|mm_activation_epilogue|norm|resnet|rope|scale_shift|softmax|swiglu)/.*\.py|
+          utils/kernel_checks/.*\.py|
+          utils/component_checks/.*\.py
         )$
 
 # Baseline hygiene: validators run on every commit, fixers gated to pre-push
@@ -72,6 +79,9 @@ repos:
   rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
   hooks:
     - id: check-yaml
+      # mkdocs.yml names Python objects with !!python/name tags; check its
+      # syntax without constructing them.
+      args: [--unsafe]
       exclude: &generated_exclude |
         (?x)^(
           third_party/.*|
@@ -286,3 +296,12 @@ repos:
       pass_filenames: false
       require_serial: true
       types_or: [c, c++, python]
+
+    # Catches a stale submodule checkout swept in by `git commit -a`/`git add .`.
+    - id: check-submodule-regression
+      name: Check submodule pointers only move forward
+      language: python
+      entry: python utils/check_submodule_regression.py
+      pass_filenames: false
+      stages: [pre-commit, pre-push]
+      always_run: true

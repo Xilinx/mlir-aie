@@ -14,6 +14,7 @@ import aie.utils.compile.utils as compile_utils
 import pytest
 from aie.utils.compile.utils import (
     _copy_source,
+    _replace_staged_source,
     _write_source,
     compile_external_kernels,
 )
@@ -39,18 +40,22 @@ def _stub_func(name, source_file):
         _use_chess=False,
         _compiled=False,
         object_file_name=f"{name}.o",
+        check_target_arch=lambda target_arch: None,
     )
 
 
 @pytest.fixture
 def stub_compiler(monkeypatch):
     """Replace the Peano invocation with a no-op that just produces the object."""
+    calls = []
 
     def fake_compile(source_path, output_path, **kwargs):
+        calls.append(kwargs)
         with open(output_path, "w"):
             pass
 
     monkeypatch.setattr(compile_utils, "compile_cxx_core_function", fake_compile)
+    return calls
 
 
 def test_rewrite_leaves_an_open_reader_on_its_own_file(tmp_path):
@@ -80,8 +85,8 @@ def test_shared_source_kernels_do_not_clobber_each_other(tmp_path, stub_compiler
     kernel_dir.mkdir()
     dest = kernel_dir / "shared.cc"
 
-    # The copy is named after the .cc but the grouping key is the kernel name,
-    # so these two are not ordered against each other despite sharing a path.
+    # Distinct objects still stage their source at the same basename. Each
+    # replacement must leave existing readers attached to their original file.
     put, get = (_stub_func(n, upstream) for n in ("kernel_put", "kernel_get"))
 
     compile_external_kernels([put], str(kernel_dir), "aie2p")
@@ -112,6 +117,65 @@ def test_source_that_is_already_in_place_is_not_rewritten(tmp_path, stub_compile
     assert upstream.read_text() == SOURCE
 
 
+def test_design_include_dirs_follow_kernel_and_source_dirs(tmp_path, stub_compiler):
+    upstream = tmp_path / "source" / "kernel.cc"
+    upstream.parent.mkdir()
+    upstream.write_text(SOURCE)
+    kernel_dir = tmp_path / "work"
+    kernel_dir.mkdir()
+    func = _stub_func("kernel", upstream)
+    func._include_dirs = ["kernel/include"]
+
+    compile_external_kernels(
+        [func], kernel_dir, "aie2p", include_dirs=[tmp_path / "design/include"]
+    )
+
+    assert stub_compiler[0]["include_dirs"] == [
+        "kernel/include",
+        str(upstream.parent),
+        tmp_path / "design/include",
+    ]
+
+
+def test_source_string_design_include_dirs_follow_kernel_dirs(tmp_path, stub_compiler):
+    func = _stub_func("kernel", None)
+    func._source_file = None
+    func._source_string = SOURCE
+    func._include_dirs = ["kernel/include"]
+
+    compile_external_kernels(
+        [func], tmp_path, "aie2p", include_dirs=[tmp_path / "design/include"]
+    )
+
+    assert stub_compiler[0]["include_dirs"] == [
+        "kernel/include",
+        tmp_path / "design/include",
+    ]
+    assert func._include_dirs == ["kernel/include"]
+
+
+def test_reused_kernel_compiles_into_each_design_directory(stub_compiler, tmp_path):
+    """One ExternalFunction compiled by two designs must land in both directories."""
+    src = tmp_path / "k.cc"
+    src.write_text(SOURCE)
+    func = _stub_func("k", src)
+    dir_a = tmp_path / "design_a"
+    dir_a.mkdir()
+    dir_b = tmp_path / "design_b"
+    dir_b.mkdir()
+
+    compile_external_kernels(
+        [func], str(dir_a), "aie2p", include_dirs=[tmp_path / "inc_a"]
+    )
+    compile_external_kernels(
+        [func], str(dir_b), "aie2p", include_dirs=[tmp_path / "inc_b"]
+    )
+
+    assert (dir_a / "k.o").exists()
+    assert (dir_b / "k.o").exists()
+    assert stub_compiler[1]["include_dirs"][-1] == tmp_path / "inc_b"
+
+
 def test_materialized_source_keeps_umask_permissions(tmp_path):
     """Staging through mkstemp must not narrow the source to 0600."""
     written = tmp_path / "from_string.cc"
@@ -132,3 +196,38 @@ def test_failed_write_leaves_no_temp_files(tmp_path):
         _copy_source(str(dest), str(tmp_path / "missing.cc"))
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_windows_sharing_violation_tolerates_identical_staged_source(tmp_path):
+    dest = tmp_path / "kernel.cc"
+    dest.write_text(SOURCE)
+    tmp = tmp_path / "kernel.cc.same.tmp"
+    tmp.write_text(SOURCE)
+
+    def sharing_violation(*_args):
+        raise PermissionError("sharing violation")
+
+    _replace_staged_source(
+        str(tmp), str(dest), replace=sharing_violation, is_windows=True
+    )
+
+    assert dest.read_text() == SOURCE
+    assert not tmp.exists()
+
+
+def test_windows_sharing_violation_raises_for_mismatched_staged_source(tmp_path):
+    dest = tmp_path / "kernel.cc"
+    dest.write_text(SOURCE)
+    tmp = tmp_path / "kernel.cc.diff.tmp"
+    tmp.write_text("// different kernel\n")
+
+    def sharing_violation(*_args):
+        raise PermissionError("sharing violation")
+
+    with pytest.raises(PermissionError):
+        _replace_staged_source(
+            str(tmp), str(dest), replace=sharing_violation, is_windows=True
+        )
+
+    assert dest.read_text() == SOURCE
+    assert tmp.read_text() == "// different kernel\n"

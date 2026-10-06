@@ -56,7 +56,7 @@ module {
 // -----
 
 // CHECK-LABEL: emitc.func @generate_txn_main_seq_address_patch
-// CHECK: call_opaque "aie_runtime::txn_append_address_patch"
+// CHECK: call_opaque "aie_runtime::txn_append_arg_patch"
 module {
   aie.device(npu1_1col) {
     aie.runtime_sequence @seq_address_patch(%arg0: memref<8xi32>) {
@@ -151,7 +151,7 @@ module {
 // npu2 device: the header carries devGen=4, rows=6, cols=8, memtilerows=1
 // (vs npu1's devGen=3). Exercises the BaseNPU2TargetModel branch.
 // CHECK-LABEL: emitc.func @generate_txn_main_seq_npu2
-// CHECK: verbatim "aie_runtime::txn_prepend_header(txn, 1u, {0, 1, 4, 6, 8, 1});"
+// CHECK: verbatim "aie_runtime::txn_prepend_header(txn, 1u, aie_runtime::txn_device_info(4, 6, 8, 1));"
 module {
   aie.device(npu2) {
     aie.runtime_sequence @seq_npu2(%arg0: memref<8xi32>) {

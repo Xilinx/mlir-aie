@@ -18,8 +18,28 @@ module {
       %c16 = arith.constant 16 : i64
       %c32 = arith.constant 32 : i64
       %c128 = arith.constant 128 : i64
-      // expected-error@+1 {{Size 3 exceeds the [1:64] range}}
+      // With a zero outermost stride the outermost size is a repeat count, so
+      // 128 is fine; with a nonzero stride it is a BD iteration count, [1:64].
       aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c128,%c2,%c2,%c8][%c0,%c16,%c8,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<128x4x2x8xi32>
+      // expected-error@+1 {{iteration count 128 exceeds the [1:64] range.}}
+      aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c128,%c2,%c2,%c8][%c32,%c16,%c8,%c1]) { metadata = @of_fromMem, id = 1 : i64 } : memref<128x4x2x8xi32>
+    }
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
+  }
+}
+
+// -----
+
+// A zero-stride outermost size is a repeat count, carried by the queue push's
+// 8-bit repeat_count rather than the 6-bit iteration wrap: 256 runs fit, 257
+// do not.
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence(%in : memref<32xi32>) {
+      aiex.npu.dma_memcpy_nd (%in[0, 0, 0, 0][256, 1, 2, 16][0, 0, 16, 1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<32xi32>
+      // expected-error@+1 {{repeat count 257 exceeds the [1:256] range.}}
+      aiex.npu.dma_memcpy_nd (%in[0, 0, 0, 0][257, 1, 2, 16][0, 0, 16, 1]) { metadata = @of_fromMem, id = 1 : i64 } : memref<32xi32>
     }
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
@@ -35,7 +55,7 @@ module {
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
       %c2097152 = arith.constant 2097152 : i64
-      // expected-error@+1 {{Stride 1 exceeds the [1:1048576] range}}
+      // The decomposition pass can split this oversized stride into legal BDs.
       aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c1,%c1,%c2,%c2][%c0,%c0,%c2097152,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<8388608xi32>
     }
     %tile_0_0 = aie.tile(0, 0)
@@ -135,6 +155,26 @@ module {
       %c8 = arith.constant 8 : i64
       // expected-error@+1 {{Stride 0 is 2 elements * 1 bytes = 2 bytes, which is not divisible by 4}}
       aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c8][%c0,%c0,%c0,%c2]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi8>
+    }
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
+  }
+}
+
+// -----
+
+// stride of 2 bf16 is a whole word, but the DMA steps whole words, so it would
+// move both halves of each word rather than every other element
+
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence(%a : memref<16xbf16>) {
+      %c0 = arith.constant 0 : i64
+      %c1 = arith.constant 1 : i64
+      %c2 = arith.constant 2 : i64
+      %c8 = arith.constant 8 : i64
+      // expected-error@+1 {{Stride 0 is 2 elements, but must be 1 for 2-byte elements: the DMA moves whole 4-byte words.}}
+      aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c8][%c0,%c0,%c0,%c2]) { metadata = @objectfifo, id = 0 : i64 } : memref<16xbf16>
     }
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)

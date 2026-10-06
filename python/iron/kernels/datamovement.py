@@ -3,20 +3,119 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Data-movement / conversion kernel factories: axpy, convert_copy, expand, transpose.
+"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, transpose.
 
-Most wrap arch-agnostic sources under ``aie_kernels/generic/`` — plain
-``aie_api`` vector code with no LUT dependency, resolved through
-``_default_source_path``'s ``generic/`` fallback.  ``convert_copy`` is the
-exception: it binds ``aie2p/cast_f32_bf16.cc`` (the maintained f32->bf16 cast
-with host-matching ``conv_even`` rounding), and is aie2p-only.
+Each wraps one source under ``aie_kernels/datamovement/`` — plain ``aie_api``
+vector code with no LUT dependency.  ``convert_copy`` binds
+``cast_f32_bf16.cc``, the f32->bf16 cast with host-matching ``conv_even``
+rounding, and ``affine_cast`` applies a per-column ``gamma``/``beta`` ahead
+of the same cast.
 """
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import In, Out
+from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
-from ._common import _default_source_path, _make_extern
+from ._common import (
+    KernelContract,
+    Param,
+    Trace,
+    _kernel_source,
+    _make_extern,
+    dtypes,
+)
+from .core import conv_even
+from .norm import _row_size
+
+# One bf16 ulp with a subnormal floor; see eltwise._BF16_ROUNDTRIP for how the
+# two numbers are derived.
+_BF16_ROUNDTRIP = Tolerance.bf16_ulps(
+    1,
+    atol=2.0**-126,
+    note="fp32 compute, one bf16 rounding on the store; atol is the smallest "
+    "normal bf16, for the device's subnormal flush to zero",
+)
+
+
+def axpy_ref(x, y, a):
+    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32.
+
+    The kernel broadcasts ``a`` as bf16, so it is rounded to bf16 here.
+    """
+    a = np.float32(bfloat16(a))
+    return a * x.astype(np.float32) + y.astype(np.float32)
+
+
+def convert_copy_ref(x):
+    """Numpy reference for [`convert_copy`][iron.kernels.datamovement.convert_copy].
+
+    ``ml_dtypes`` rounds f32 -> bf16 half-to-even, exactly as the kernel's
+    ``conv_even`` does, so the cast is the reference and the match is
+    bit-for-bit.
+    """
+    return x.astype(bfloat16)
+
+
+def affine_cast_ref(x, gamma_beta):
+    """Numpy reference for [`affine_cast`][iron.kernels.datamovement.affine_cast].
+
+    ``gamma_beta`` is ``gamma`` then ``beta``, ``cols`` float32 values each;
+    ``x`` is row-major with ``cols`` per row. The multiply and add round in
+    float32 and the bf16 cast half-to-even, as the kernel does.
+    """
+    gb = np.asarray(gamma_beta, dtype=np.float32).reshape(-1)
+    cols = gb.size // 2
+    x32 = np.asarray(x, dtype=np.float32)
+    y = x32.reshape(-1, cols) * gb[:cols] + gb[cols:]
+    return y.astype(bfloat16).reshape(x32.shape)
+
+
+def expand_ref(payload, *, tile_size: int, group_size: int):
+    """Numpy reference for [`expand`][iron.kernels.datamovement.expand].
+
+    ``payload`` holds, per tile, ``tile_size`` packed uint4 values
+    (``tile_size // 2`` bytes, low nibble first) followed by one bf16 scale per
+    ``group_size`` elements; the result is ``nibble * scale-of-its-group``.
+    """
+    payload = np.asarray(payload, dtype=np.uint8)
+    payload = payload.reshape(-1, payload.shape[-1])
+    n_scales = tile_size // group_size
+    packed = payload[:, : tile_size // 2]
+    scales = np.ascontiguousarray(payload[:, tile_size // 2 :]).view(bfloat16)
+    scales = scales.reshape(-1, n_scales).astype(np.float32)
+    nibbles = np.empty((payload.shape[0], tile_size), np.float32)
+    nibbles[:, 0::2] = packed & 0x0F
+    nibbles[:, 1::2] = packed >> 4
+    return nibbles * np.repeat(scales, group_size, axis=1)
+
+
+def expand_sample(rng, calls: int, *, tile_size: int, group_size: int) -> list:
+    """Random ``expand`` payloads: packed uint4 values then bf16 scales in [0.1, 1)."""
+    n_scales = tile_size // group_size
+    nibbles = rng.integers(0, 16, size=(calls, tile_size), dtype=np.uint8)
+    packed = (nibbles[:, 0::2] | (nibbles[:, 1::2] << 4)).astype(np.uint8)
+    scales = rng.uniform(0.1, 1.0, size=(calls, n_scales)).astype(bfloat16)
+    return [np.concatenate([packed, scales.view(np.uint8)], axis=1)]
+
+
+def transpose_ref(x, *, dim_m: int, dim_n: int, subtile: int):
+    """Numpy reference for [`transpose`][iron.kernels.datamovement.transpose].
+
+    Transposes each ``subtile`` x ``subtile`` block of the ``dim_n`` x ``dim_m``
+    matrix in place -- the blocks move, the matrix does not.
+    """
+    x = np.asarray(x)
+    mats = x.reshape(-1, dim_n, dim_m)
+    out = mats.copy()
+    for r in range(0, dim_n, subtile):
+        for c in range(0, dim_m, subtile):
+            out[:, r : r + subtile, c : c + subtile] = np.swapaxes(
+                mats[:, r : r + subtile, c : c + subtile], 1, 2
+            )
+    return out.reshape(x.shape)
+
 
 _AXPY_VEC = 64  # saxpy processes 64 bf16/iteration
 
@@ -49,8 +148,19 @@ def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
     func = "saxpy" if vectorized else "saxpy_scalar"
     return _make_extern(
         func,
-        _default_source_path("axpy.cc"),
+        _kernel_source("datamovement/axpy.cc"),
         [tile_ty, tile_ty, a_ty, tile_ty, np.int32],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            setup=conv_even,
+            roles=(In, In, Param, Out, Param),
+            parameter_bindings=((4, tile_size),),
+            reference=axpy_ref,
+            acc_dtype=np.float32,
+            reduction=1,
+            tolerance=_BF16_ROUNDTRIP,
+            ops_per_call=2 * tile_size,
+        ),
     )
 
 
@@ -62,10 +172,10 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
     kernel processes 16 elements per iteration, so ``tile_size`` must be a
     multiple of 16.
 
-    Backed by ``aie_kernels/aie2p/cast_f32_bf16.cc`` (symbol
+    Backed by ``aie_kernels/datamovement/cast_f32_bf16.cc`` (symbol
     ``cast_f32_bf16_row``), which rounds with ``conv_even`` — bit-for-bit
     agreeing with a host AVX512-BF16 pack — and restores the core's rounding
-    mode on exit.  aie2p-only.
+    mode on exit.  The same source builds for aie2.
 
     Args:
         tile_size: Elements per tile (multiple of 16).
@@ -84,8 +194,69 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
     out_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "cast_f32_bf16_row",
-        _default_source_path("cast_f32_bf16.cc"),
+        _kernel_source("datamovement/cast_f32_bf16.cc"),
         [in_ty, out_ty, np.int32],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=convert_copy_ref,
+            tolerance=Tolerance.exact(
+                note="conv_even rounding matches ml_dtypes bit-for-bit (test_kernels_e2e)"
+            ),
+        ),
+    )
+
+
+def affine_cast(rows: int = 96, cols: int = 32) -> ExternalFunction:
+    """Per-column affine transform narrowed to bf16: ``out = bfloat16(in * gamma + beta)``.
+
+    Works on a row-major ``rows`` x ``cols`` float32 tile; ``gamma`` and
+    ``beta`` hold one float32 value per column and arrive packed in one
+    ``2 * cols`` buffer, ``gamma`` first. The bf16 store rounds with
+    ``conv_even``, as [`convert_copy`][iron.kernels.datamovement.convert_copy]
+    does, and the kernel restores the core's rounding mode on exit.
+
+    Args:
+        rows: Rows per tile.
+        cols: Columns per tile (multiple of 16).
+
+    Returns:
+        ExternalFunction for ``affine_cast_f32_bf16``.
+
+    Raises:
+        ValueError: When ``rows`` is below 1 or ``cols`` is not a positive
+            multiple of 16.
+    """
+    if rows < 1 or cols < 16 or cols % 16 != 0:
+        raise ValueError(
+            "affine_cast() needs rows >= 1 and cols a positive multiple of 16, "
+            f"got rows={rows}, cols={cols}."
+        )
+    in_ty = np.ndarray[(rows * cols,), np.dtype[np.float32]]
+    gb_ty = np.ndarray[(2 * cols,), np.dtype[np.float32]]
+    out_ty = np.ndarray[(rows * cols,), np.dtype[bfloat16]]
+    return _make_extern(
+        "affine_cast_f32_bf16",
+        _kernel_source("datamovement/affine_cast_f32_bf16.cc"),
+        [in_ty, gb_ty, out_ty, np.int32, np.int32],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, Out, Param, Param),
+            parameter_bindings=((3, rows), (4, cols)),
+            reference=affine_cast_ref,
+            acc_dtype=np.float32,
+            reduction=1,
+            tolerance=Tolerance.bf16_ulps(
+                1,
+                atol=2.0**-126,
+                note="aie::mul emulates the float32 product in bf16 terms and "
+                "can land one float32 ulp off, which tips a bf16 tie: 3 of "
+                "1769472 outputs one ulp off on npu2. atol is the smallest "
+                "normal bf16, for the device's subnormal flush to zero",
+            ),
+            ops_per_call=2 * rows * cols,
+        ),
     )
 
 
@@ -124,37 +295,161 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
     out_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "expand_uint4_to_bfloat16",
-        _default_source_path("expand.cc"),
+        _kernel_source("datamovement/expand.cc"),
         [in_ty, out_ty],
         compile_flags=[f"-DTILE_SIZE={tile_size}", f"-DGROUP_SIZE={group_size}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            setup=conv_even,
+            roles=(In, Out),
+            reference=lambda p: expand_ref(
+                p, tile_size=tile_size, group_size=group_size
+            ),
+            tolerance=_BF16_ROUNDTRIP,
+            ops_per_call=tile_size,
+            sample=lambda rng, calls: expand_sample(
+                rng, calls, tile_size=tile_size, group_size=group_size
+            ),
+        ),
     )
 
 
-def transpose(dim_m: int = 32, dim_n: int = 32, subtile: int = 4) -> ExternalFunction:
-    """Blocked bf16 transpose using AIE-API shuffle intrinsics.
+def rope(
+    tile_size: int = 1024, two_halves: bool = False, *, cols: int | None = None
+) -> ExternalFunction:
+    """RoPE positional rotation over bf16 tiles; ``dims`` read at runtime.
 
-    Transposes ``subtile``x``subtile`` blocks of a ``dim_n`` x ``dim_m`` matrix.
-    ``dim_m``/``dim_n`` are compile-time (``-DDIM_m`` / ``-DDIM_n``); the C++
-    ``#error`` guard rejects a build without them.
+    Design passes ``(in, lut, out, dims)``.  ``two_halves`` selects the
+    HuggingFace-style ``rope_two_halves`` over the Llama-paper interleave
+    ``rope``. ``cols`` aliases ``tile_size``. Both architectures use the generic
+    source; rows must be positive multiples of 16 (interleaved) or 32
+    (two halves, keeping each half 32-byte aligned). Each input row has its own
+    streamed (cos, sin) LUT.
+    """
+    tile_size = _row_size("rope", tile_size, cols, 32 if two_halves else 16)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    func = "rope_two_halves" if two_halves else "rope"
+    return _make_extern(
+        func,
+        _kernel_source("datamovement/rope.cc"),
+        [tile_ty, tile_ty, tile_ty, np.int32],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            setup=conv_even,
+            roles=(In, In, Out, Param),
+            parameter_bindings=((3, tile_size),),
+            reference=lambda x, lut: rope_ref(x, lut, two_halves=two_halves),
+            acc_dtype=np.float32,
+            reduction=2,
+            tolerance=Tolerance.relative(
+                0.128, note="programming_examples/ml/rope: default bf16 rtol"
+            ),
+            ops_per_call=3 * tile_size,
+        ),
+    )
+
+
+def rope_ref(x, lut, *, two_halves: bool = False):
+    """Rotate bf16 pairs by an interleaved (cos, sin) LUT, in either RoPE layout."""
+    x32, l32 = x.astype(np.float32), lut.astype(np.float32)
+    cos_v, sin_v = l32[..., 0::2], l32[..., 1::2]
+    if two_halves:
+        half = x32.shape[-1] // 2
+        x1, x2 = x32[..., :half], x32[..., half:]
+        return np.concatenate(
+            (x1 * cos_v - x2 * sin_v, x2 * cos_v + x1 * sin_v), axis=-1
+        ).astype(x.dtype)
+    x_even, x_odd = x32[..., 0::2], x32[..., 1::2]
+    out = np.empty_like(x32)
+    out[..., 0::2] = x_even * cos_v - x_odd * sin_v
+    out[..., 1::2] = x_even * sin_v + x_odd * cos_v
+    return out.astype(x.dtype)
+
+
+# -DDTYPE_* flag per element width; the transpose only moves bytes.
+def _transpose_strip(dim_m: int, subtile: int, bits: int) -> tuple[int, int]:
+    """``(W, R)``: the strip of ``R`` rows by ``W`` columns transpose.cc walks.
+
+    Mirrors the kernel's constexpr arithmetic so the factory can refuse a
+    shape the kernel would reject at compile time, with the reason.
+    """
+    vec = 1024 // bits
+    w = max(subtile, min(dim_m, vec // subtile))
+    r = min(subtile, vec // w)
+    return w, r
+
+
+@dtypes(
+    (
+        {"dtype": bfloat16},
+        {"dtype": np.uint8},
+        {"dtype": np.uint16},
+        {"dtype": np.uint32},
+    )
+)
+def transpose(
+    dim_m: int = 32, dim_n: int = 32, subtile: int = 4, dtype: type = bfloat16
+) -> ExternalFunction:
+    """Blocked transpose through ``aie::transpose``.
+
+    Transposes each ``subtile`` x ``subtile`` block of a ``dim_n`` x ``dim_m``
+    matrix in place: the blocks stay put, the elements inside them move.
+    ``dim_m`` / ``dim_n`` are compile-time (``-DDIM_m`` / ``-DDIM_n``). The
+    kernel only moves bytes, so any 1-, 2- or 4-byte ``dtype`` works and
+    selects ``-DBIT_WIDTH`` as the other generic kernels do; bf16 is the
+    default. programming_examples/basic/transposes uses this kernel for its
+    ``combined`` strategy.
 
     Args:
         dim_m: Inner (contiguous) dimension.
         dim_n: Outer dimension.
-        subtile: Block size to transpose — 4 (``transpose_4x4``) or 8
+        subtile: Block size to transpose, 4 (``transpose_4x4``) or 8
             (``transpose_8x8``).
+        dtype: Element type, 1, 2 or 4 bytes wide.
 
     Returns:
         ExternalFunction for the selected transpose variant.
 
     Raises:
-        ValueError: When ``subtile`` is not 4 or 8.
+        ValueError: When ``subtile`` is not 4 or 8, when ``dtype`` is not 1, 2
+            or 4 bytes, or when the shape does not divide into the strips the
+            kernel walks (``dim_n`` a multiple of ``subtile``; ``dim_m`` a
+            multiple of the strip width, at least 16 bytes long).
     """
     if subtile not in (4, 8):
         raise ValueError(f"transpose() subtile must be 4 or 8, got {subtile}.")
-    tile_ty = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
+    if dim_m <= 0 or dim_n <= 0:
+        raise ValueError(
+            f"transpose() dim_m and dim_n must be positive, got {dim_m}x{dim_n}."
+        )
+    width = np.dtype(dtype).itemsize
+    if width not in (1, 2, 4):
+        raise ValueError(
+            f"transpose() dtype must be 1, 2 or 4 bytes wide, got {dtype}."
+        )
+    bits = 8 * width
+    strip_w, _ = _transpose_strip(dim_m, subtile, bits)
+    if dim_n % subtile or dim_m % strip_w or strip_w * width < 16:
+        raise ValueError(
+            f"transpose() {dim_m}x{dim_n} with {subtile}x{subtile} blocks of "
+            f"{width}-byte elements: dim_n must be a multiple of {subtile} and "
+            f"dim_m a multiple of {strip_w} (the kernel's strip width), with "
+            "dim_m at least 16 bytes long."
+        )
+    flags = [f"-DDIM_m={dim_m}", f"-DDIM_n={dim_n}", f"-DBIT_WIDTH={bits}"]
+    tile_ty = np.ndarray[(dim_m * dim_n,), np.dtype[dtype]]
     return _make_extern(
         f"transpose_{subtile}x{subtile}",
-        _default_source_path("transpose.cc"),
+        _kernel_source("datamovement/transpose.cc"),
         [tile_ty, tile_ty],
-        compile_flags=[f"-DDIM_m={dim_m}", f"-DDIM_n={dim_n}"],
+        compile_flags=flags,
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out),
+            reference=lambda x: transpose_ref(
+                x, dim_m=dim_m, dim_n=dim_n, subtile=subtile
+            ),
+            tolerance=Tolerance.exact(note="data movement only; lossless"),
+            ops_per_call=0,
+        ),
     )

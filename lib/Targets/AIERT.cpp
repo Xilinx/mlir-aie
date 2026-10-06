@@ -244,7 +244,7 @@ xilinx::AIE::TxnLocBracket::~TxnLocBracket() {
   ctl.recordTxnLocRange(startCmds, endCmds, loc);
 }
 
-xilinx::AIE::AIERTControl::~AIERTControl() = default;
+xilinx::AIE::AIERTControl::~AIERTControl() { XAie_Finish(&aiert->devInst); }
 
 xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
     : targetModel(tm), aiert(std::make_unique<AIERtImpl>()) {
@@ -326,6 +326,9 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
                         XAie_DmaDesc &dmaTileBd, Block &block, int col, int row,
                         bool outOfOrder) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
+  AIE::UseLockOp acquire, release;
+  if (failed(AIE::verifyBdLockPair(block, outOfOrder, acquire, release)))
+    return failure();
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn = false;
 
@@ -360,18 +363,6 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
       break;
     }
     }
-  }
-
-  // Allow release-only for out-of-order's lock-driven completion mechanism.
-  if (outOfOrder) {
-    if (!relValue || !relLockId)
-      return (*block.getOps<AIE::UseLockOp>().begin())
-          .emitOpError("out-of-order buffer descriptor with a lock must have a "
-                       "use_lock(release)");
-  } else if (!acqValue || !relValue || !acqLockId || !relLockId) {
-    return (*block.getOps<AIE::UseLockOp>().begin())
-        .emitOpError("buffer descriptor with a lock must have both "
-                     "use_lock(acquire) and use_lock(release)");
   }
 
   if (targetModel.isMemTile(col, row)) {
@@ -489,12 +480,10 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
                             basePlusOffsetInBytes, lenInBytes);
   } else {
+    llvm::SmallVector<XAie_DmaDimDesc, 4> dimDescs(dims->size());
     XAie_DmaTensor dmaTileBdTensor = {};
-    dmaTileBdTensor.NumDim = dims->size();
-    dmaTileBdTensor.Dim = static_cast<XAie_DmaDimDesc *>(
-        calloc(dmaTileBdTensor.NumDim, sizeof(XAie_DmaDimDesc)));
-    if (!dmaTileBdTensor.Dim)
-      return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
+    dmaTileBdTensor.NumDim = dimDescs.size();
+    dmaTileBdTensor.Dim = dimDescs.data();
     // libxaie requires stride in multiples of 32b
     double elementWidthIn32bWords =
         static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
@@ -543,12 +532,10 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
       bdOp.getPadDimensions();
 
   if (padDims) {
+    llvm::SmallVector<XAie_PadDesc, 4> padDescs(padDims->size());
     XAie_DmaPadTensor dmaPadTensor = {};
-    dmaPadTensor.NumDim = padDims->size();
-    dmaPadTensor.PadDesc = static_cast<XAie_PadDesc *>(
-        calloc(dmaPadTensor.NumDim, sizeof(XAie_PadDesc)));
-    if (!dmaPadTensor.PadDesc)
-      return bdOp.emitError("couldn't allocate array of XAie_PadDesc");
+    dmaPadTensor.NumDim = padDescs.size();
+    dmaPadTensor.PadDesc = padDescs.data();
     // libxaie requires stride in multiples of 32b
     double elementWidthIn32bWords =
         static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
@@ -873,6 +860,9 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
 LogicalResult
 xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
                                          bool skipCtrlPktOverlay) {
+
+  if (failed(verifyDMAChannelsResolved(targetOp)))
+    return failure();
 
   if (failed(initLocks(targetOp))) {
     return failure();
@@ -1227,6 +1217,7 @@ std::vector<uint8_t> xilinx::AIE::AIERTControl::exportSerializedTransaction() {
   uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&aiert->devInst, 0, 0);
   XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;
   std::vector<uint8_t> txn_data(txn_ptr, txn_ptr + hdr->TxnSize);
+  free(txn_ptr);
 
   // Exporting leaves the recorded commands intact, so the loc projection can
   // still walk CmdBuf here. With nothing bracketed there is no location to

@@ -26,7 +26,7 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.npdtypes import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -79,7 +79,7 @@ def vector_reduce_max(
     int_ty = np.ndarray[(out_tensor_size * n_cores,), np.dtype[dtype]]
 
     of_in = ObjectFifo(mem_ty, name="of_in")
-    outC = ObjectFifo(int_ty, name="outC", dims_to_stream=[(1, 2), (1, 1)])
+    outC = ObjectFifo(int_ty, name="outC")
     of_out = ObjectFifo(out_ty, name="of_out")
 
     of_a_offsets = [

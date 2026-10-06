@@ -1,0 +1,9 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Shard 0 of 4 of test_kernels_e2e.py.
+
+# RUN: %run_on_npu1_xrt% %pytest -m "not extensive" --shard 0/4 %S/test_kernels_e2e.py
+# RUN: %run_on_npu2_xrt% %pytest -m "not extensive" --shard 0/4 %S/test_kernels_e2e.py
+# RUN: %run_on_npu2_hrx% %pytest -m "not extensive" --shard 0/4 %S/test_kernels_e2e.py
+# REQUIRES: xrt_python_bindings || hrx_python_bindings
