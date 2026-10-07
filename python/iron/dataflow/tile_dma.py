@@ -48,6 +48,7 @@ from ...dialects.aie import (
 from ...dialects.aie import bds as bd_blocks
 from ...dialects.aiex import dma_configure_task, dma_configure_task_for
 from ...helpers.npdtypes import pack_pad_value
+from ...helpers.sourceloc import SourceSite
 from ...helpers.taplib import TensorAccessPattern
 from ...helpers.taplib._symbolic import is_sym, si32, sprod, sym_any
 from ..buffer import Buffer
@@ -508,6 +509,7 @@ class TileDma(Resolvable):
     """
 
     def __init__(self, tile: Tile, channels: Iterable[DmaChannel]):
+        self._site = SourceSite.capture()
         self._tile = tile
         self._channels: list[DmaChannel] = []
         self.add_channels(channels)
@@ -601,127 +603,131 @@ class TileDma(Resolvable):
         if self._resolved:
             return
         self._resolved = True
+        with loc or self._site.location():
+            decorator = self._region_decorator()
 
-        decorator = self._region_decorator()
+            # Layout: 2N+1 basic blocks for N channels
+            #   block[0]   — entry (chain of dma_start)
+            #   block[2i+1] — channel i's BD chain head
+            #   block[2i+2] — channel i+1's dma_start  (or final EndOp for i+1 == N)
+            # Each BD inside a channel gets its own basic block: the first BD of
+            # channel i occupies block[2i+1]; subsequent BDs share the same
+            # decorator-managed block sequence after all channels (handled by
+            # using extra block indices for multi-BD chains).
+            channels = self._channels
 
-        # Layout: 2N+1 basic blocks for N channels
-        #   block[0]   — entry (chain of dma_start)
-        #   block[2i+1] — channel i's BD chain head
-        #   block[2i+2] — channel i+1's dma_start  (or final EndOp for i+1 == N)
-        # Each BD inside a channel gets its own basic block: the first BD of
-        # channel i occupies block[2i+1]; subsequent BDs share the same
-        # decorator-managed block sequence after all channels (handled by
-        # using extra block indices for multi-BD chains).
-        channels = self._channels
-
-        pinned_bd_ids: dict[int, int | DmaEndpoint] = {}  # slot id -> channel
-        for ch in channels:
-            if ch.out_of_order and ch.direction != DMAChannelDir.S2MM:
-                raise ValueError(
-                    "out_of_order is only valid for an S2MM DmaChannel; "
-                    f"channel {ch.channel} is {ch.direction}"
-                )
-            if ch.out_of_order:
-                if not ch.bds:
+            pinned_bd_ids: dict[int, int | DmaEndpoint] = {}  # slot id -> channel
+            for ch in channels:
+                if ch.out_of_order and ch.direction != DMAChannelDir.S2MM:
                     raise ValueError(
-                        f"out_of_order channel {ch.channel} needs at least one "
-                        "receive BD"
+                        "out_of_order is only valid for an S2MM DmaChannel; "
+                        f"channel {ch.channel} is {ch.direction}"
                     )
-                for slot, bd in enumerate(ch.bds):
-                    if bd.packet is None:
+                if ch.out_of_order:
+                    if not ch.bds:
                         raise ValueError(
-                            f"out_of_order channel {ch.channel} BD at slot "
-                            f"{slot} must be packet-enabled"
+                            f"out_of_order channel {ch.channel} needs at least one "
+                            "receive BD"
                         )
-                    pinned = slot if bd.bd_id is None else bd.bd_id
-                    if pinned in pinned_bd_ids:
-                        raise ValueError(
-                            f"out_of_order bd_id {pinned} is used by more than "
-                            f"one BD on this tile (channels "
-                            f"{pinned_bd_ids[pinned]} and {ch.channel})"
-                        )
-                    pinned_bd_ids[pinned] = ch.channel
-        if not channels:
-            # Degenerate: nothing to do.  Emit an empty mem region.
+                    for slot, bd in enumerate(ch.bds):
+                        if bd.packet is None:
+                            raise ValueError(
+                                f"out_of_order channel {ch.channel} BD at slot "
+                                f"{slot} must be packet-enabled"
+                            )
+                        pinned = slot if bd.bd_id is None else bd.bd_id
+                        if pinned in pinned_bd_ids:
+                            raise ValueError(
+                                f"out_of_order bd_id {pinned} is used by more than "
+                                f"one BD on this tile (channels "
+                                f"{pinned_bd_ids[pinned]} and {ch.channel})"
+                            )
+                        pinned_bd_ids[pinned] = ch.channel
+            if not channels:
+                # Degenerate: nothing to do.  Emit an empty mem region.
+                @decorator
+                def _body(block):
+                    with block[0]:
+                        EndOp()
+
+                return
+
+            # For multi-BD chains we need 1 + len(ch.bds) blocks per channel
+            # (1 head + len(bds) actually overlapping; the first BD goes in
+            # the head block, subsequent BDs in trailing blocks).  Compute
+            # absolute block indices up front.
+            chan_head_idx: list[int] = []  # block holding first BD per channel
+            chan_extra_idx: list[list[int]] = []  # extra BD blocks per channel
+            chan_chain_idx: list[int] = []  # block where next channel's dma_start sits
+            next_idx = 1
+            for ch in channels:
+                chan_head_idx.append(next_idx)
+                next_idx += 1
+                extras = []
+                for _ in ch.bds[1:]:
+                    extras.append(next_idx)
+                    next_idx += 1
+                chan_extra_idx.append(extras)
+                chan_chain_idx.append(next_idx)
+                next_idx += 1
+            end_idx = chan_chain_idx[-1]
+
             @decorator
             def _body(block):
-                with block[0]:
-                    EndOp()
-
-            return
-
-        # For multi-BD chains we need 1 + len(ch.bds) blocks per channel
-        # (1 head + len(bds) actually overlapping; the first BD goes in
-        # the head block, subsequent BDs in trailing blocks).  Compute
-        # absolute block indices up front.
-        chan_head_idx: list[int] = []  # block holding first BD per channel
-        chan_extra_idx: list[list[int]] = []  # extra BD blocks per channel
-        chan_chain_idx: list[int] = []  # block where next channel's dma_start sits
-        next_idx = 1
-        for ch in channels:
-            chan_head_idx.append(next_idx)
-            next_idx += 1
-            extras = []
-            for _ in ch.bds[1:]:
-                extras.append(next_idx)
-                next_idx += 1
-            chan_extra_idx.append(extras)
-            chan_chain_idx.append(next_idx)
-            next_idx += 1
-        end_idx = chan_chain_idx[-1]
-
-        @decorator
-        def _body(block):
-            # Wire up dma_start chain in the entry / chain blocks.
-            # Entry block: dma_start for channel 0
-            channels[0]._emit_start(block[chan_head_idx[0]], block[chan_chain_idx[0]])
-            # Chain blocks: dma_start for channels 1..N-1
-            for i in range(1, len(channels)):
-                with block[chan_chain_idx[i - 1]]:
-                    channels[i]._emit_start(
-                        block[chan_head_idx[i]], block[chan_chain_idx[i]]
-                    )
-
-            # Per-channel BD bodies.
-            for i, ch in enumerate(channels):
-                bd_block_idx = [chan_head_idx[i], *chan_extra_idx[i]]
-                for bd_pos, bd in enumerate(ch.bds):
-                    with block[bd_block_idx[bd_pos]]:
-                        bd._emit(
-                            bd_pos if ch.out_of_order and bd.bd_id is None else bd.bd_id
+                # Wire up dma_start chain in the entry / chain blocks.
+                # Entry block: dma_start for channel 0
+                channels[0]._emit_start(
+                    block[chan_head_idx[0]], block[chan_chain_idx[0]]
+                )
+                # Chain blocks: dma_start for channels 1..N-1
+                for i in range(1, len(channels)):
+                    with block[chan_chain_idx[i - 1]]:
+                        channels[i]._emit_start(
+                            block[chan_head_idx[i]], block[chan_chain_idx[i]]
                         )
-                        # next_bd target
-                        if ch.out_of_order:
-                            # Chain BDs only for configuration; the hardware
-                            # ignores the chain.
-                            nxt = (bd_pos + 1) % len(ch.bds)
-                            next_bd(block[bd_block_idx[nxt]])
-                        elif bd.next is None:
-                            if bd_pos + 1 < len(ch.bds):
-                                next_bd(block[bd_block_idx[bd_pos + 1]])
-                            elif ch.loop:
-                                next_bd(block[bd_block_idx[0]])
-                            else:
-                                # The region's aie.end block. A next_bd landing
-                                # on it is how the dialect spells "chain ends
-                                # here" -- aie-assign-bd-ids reads that as no
-                                # next BD, so the task completes and
-                                # repeat_count can re-run it.
-                                next_bd(block[end_idx])
-                        elif bd.next == "self":
-                            next_bd(block[bd_block_idx[bd_pos]])
-                        elif isinstance(bd.next, int):
-                            if not 0 <= bd.next < len(ch.bds):
-                                raise ValueError(
-                                    f"Bd.next index {bd.next} out of range "
-                                    f"for channel with {len(ch.bds)} BDs"
-                                )
-                            next_bd(block[bd_block_idx[bd.next]])
-                        else:
-                            raise ValueError(
-                                f"Bd.next must be 'self', an int index, or None; got {bd.next!r}"
-                            )
 
-            # Final EndOp in the trailing chain block.
-            with block[end_idx]:
-                EndOp()
+                # Per-channel BD bodies.
+                for i, ch in enumerate(channels):
+                    bd_block_idx = [chan_head_idx[i], *chan_extra_idx[i]]
+                    for bd_pos, bd in enumerate(ch.bds):
+                        with block[bd_block_idx[bd_pos]]:
+                            bd._emit(
+                                bd_pos
+                                if ch.out_of_order and bd.bd_id is None
+                                else bd.bd_id
+                            )
+                            # next_bd target
+                            if ch.out_of_order:
+                                # Chain BDs only for configuration; the hardware
+                                # ignores the chain.
+                                nxt = (bd_pos + 1) % len(ch.bds)
+                                next_bd(block[bd_block_idx[nxt]])
+                            elif bd.next is None:
+                                if bd_pos + 1 < len(ch.bds):
+                                    next_bd(block[bd_block_idx[bd_pos + 1]])
+                                elif ch.loop:
+                                    next_bd(block[bd_block_idx[0]])
+                                else:
+                                    # The region's aie.end block. A next_bd landing
+                                    # on it is how the dialect spells "chain ends
+                                    # here" -- aie-assign-bd-ids reads that as no
+                                    # next BD, so the task completes and
+                                    # repeat_count can re-run it.
+                                    next_bd(block[end_idx])
+                            elif bd.next == "self":
+                                next_bd(block[bd_block_idx[bd_pos]])
+                            elif isinstance(bd.next, int):
+                                if not 0 <= bd.next < len(ch.bds):
+                                    raise ValueError(
+                                        f"Bd.next index {bd.next} out of range "
+                                        f"for channel with {len(ch.bds)} BDs"
+                                    )
+                                next_bd(block[bd_block_idx[bd.next]])
+                            else:
+                                raise ValueError(
+                                    f"Bd.next must be 'self', an int index, or None; got {bd.next!r}"
+                                )
+
+                # Final EndOp in the trailing chain block.
+                with block[end_idx]:
+                    EndOp()

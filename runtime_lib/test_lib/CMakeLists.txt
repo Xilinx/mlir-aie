@@ -45,12 +45,16 @@ if (BUILD_TEST_UTILS_LIBRARY)
   set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;xrt_test_wrapper.h;hrx_test_wrapper.h;cxxopts.hpp;parameter_scratchpad.h")
   add_runtime_pic_flag(test_utils)
 
-  # XRT headers on Windows pull in boost/any.hpp which is not typically
-  # available.  Skip XRT integration there; the core helpers (load_instr_*,
-  # nearly_equal, etc.) are still usable without it.
-  if (XRT_FOUND AND NOT WIN32)
+  # xrt_test_wrapper.h calls init_xrt_load_kernel, so the XRT helpers must be
+  # built on every platform a host test can link from, Windows included.
+  if (XRT_FOUND)
     target_compile_options(test_utils PRIVATE -DTEST_UTILS_USE_XRT)
     target_include_directories(test_utils PRIVATE ${XRT_INCLUDE_DIR})
+    # MSVC reports __cplusplus as 199711L unless told otherwise, which sends
+    # xrt/detail/any.h down its pre-C++17 path and into boost/any.hpp.
+    if (MSVC)
+      target_compile_options(test_utils PRIVATE /Zc:__cplusplus)
+    endif()
   endif()
   target_include_directories(test_utils PRIVATE
       ${LibXAIE_INC_DIR}

@@ -34,6 +34,7 @@ from ...dialects.aiex import (
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
+from ...helpers.sourceloc import SourceSite, traced_body
 from ...helpers.util import (
     flatten_fn_args,
     np_dtype_to_mlir_type,
@@ -126,7 +127,8 @@ class ActiveSequence:
                 f"Unknown action type detected: {','.join(str(a) for a in unknown)}"
             )
         for fn, a in wait_tasks + free_tasks:
-            fn(*a)
+            with a[0].location:
+                fn(*a)
         tg._actions = []
 
     def emit_transfer(self, task: DMATask, task_group: TaskGroup | None) -> None:
@@ -226,6 +228,7 @@ class Runtime(Resolvable):
                 in the order ``seq_fn`` expects them. Defaults to None (empty list).
             strict_task_groups (bool): Disallow mixing the default and explicit task groups. Defaults to True.
         """
+        self._site = SourceSite.capture()
         self._seq_fn: Callable = seq_fn
         self._fn_args = list(fn_args) if fn_args is not None else []
         self._dispatch_binding = object()
@@ -452,10 +455,13 @@ class Runtime(Resolvable):
             for rt_data in self._block_data
             if rt_data is not None
         ]
-        seq_op = RuntimeSequenceOp(sym_name="sequence")
+        loc = loc or self._site.location()
+        seq_op = RuntimeSequenceOp(sym_name="sequence", loc=loc, ip=ip)
         active = ActiveSequence(self, seq_op, device)
-        entry_block = seq_op.body.blocks.append(*rt_dtypes)
-        with ir.InsertionPoint(entry_block):
+        entry_block = seq_op.body.blocks.append(
+            *rt_dtypes, arg_locs=[loc] * len(rt_dtypes)
+        )
+        with ir.InsertionPoint(entry_block), seq_op.location:
             # Full-ELF designs configure the device themselves: no xclbin
             # pre-loads the PDI, so the sequence must start by loading it.
             if load_pdi_device_ref is not None:
@@ -522,7 +528,8 @@ class Runtime(Resolvable):
                     body_args.append(arg)
 
             with active_sequence_scope(active):
-                self._seq_fn(*body_args)
+                with traced_body(self._seq_fn):
+                    self._seq_fn(*body_args)
                 active.finalize()
 
         self._dedup_runtime_consumers()

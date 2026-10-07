@@ -15,10 +15,10 @@ from aie.passmanager import PassManager
 
 
 # CHECK: aie.objectfifo @of_a({{.*}} loc([[FIFO:#loc[0-9]*]])
-# CHECK: [[FIFO]] = loc("of_a")
+# CHECK: [[FIFO]] = loc("of_a"({{.*}}))
 # CHECK-LABEL: // lowered
 # CHECK: aie.connect<DMA : 0, {{.*}}> loc([[FLOW:#loc[0-9]*]])
-# CHECK: [[FLOW]] = loc("of_a")
+# CHECK: [[FLOW]] = loc("of_a"({{.*}}))
 def test_fifo_name_locates_its_flow():
     tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
     of_a = ObjectFifo(tile_ty, depth=2, name="of_a")
