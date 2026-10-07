@@ -76,6 +76,19 @@ using namespace xilinx::aiecc::cli;
 
 namespace {
 
+class SynchronizedSourceMgrDiagnosticHandler
+    : public mlir::SourceMgrDiagnosticHandler {
+public:
+  SynchronizedSourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
+                                         mlir::MLIRContext *ctx)
+      : mlir::SourceMgrDiagnosticHandler(mgr, ctx) {
+    setHandler([this](mlir::Diagnostic &diag) {
+      auto log = endProgressLine();
+      emitDiagnostic(diag);
+    });
+  }
+};
+
 // Defined here rather than in CommandLineOptions.h: __DATE__/__TIME__ need
 // -Wno-date-time, which CMakeLists.txt sets for this file only.
 void printVersion(llvm::raw_ostream &os) {
@@ -1549,8 +1562,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                 out.value = File{};
                                 return mlir::success();
                               }
-                              return assemblePdi(bifItem, out, verbose,
-                                                 ShellCommand::progress);
+                              return assemblePdi(bifItem, out, verbose);
                             });
 #else
   auto &pdi = bif.map<File>(pdiName.getValue(), ShellCommand{"bootgen"}
@@ -1645,8 +1657,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                        std::string patch =
                            llvm::formatv("{0:2}", patchItem.get()).str();
                        return assembleElf(dmaSeqItem.get(), ctrlItem.get(),
-                                          llvm::StringRef(patch), out, verbose,
-                                          ShellCommand::progress);
+                                          llvm::StringRef(patch), out, verbose);
                      });
 #else
   auto &ctrlpktElf = bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
@@ -1901,8 +1912,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                          [](const Item<std::vector<char>> &item,
                             Item<File> &out) -> mlir::LogicalResult {
                            return assembleElf(item.get(), /*buffer2=*/{},
-                                              /*patchJson=*/{}, out, verbose,
-                                              ShellCommand::progress);
+                                              /*patchJson=*/{}, out, verbose);
                          });
 #else
   auto &instElf =
@@ -2092,7 +2102,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                       std::vector<char>(json.begin(), json.end()));
                 }
                 return assembleFullElf(configItem.asString(), files, out,
-                                       verbose, ShellCommand::progress);
+                                       verbose);
               });
 #else
   auto &fullElf =
@@ -2458,7 +2468,7 @@ int main(int argc, char **argv) {
     inputBufferId =
         sourceMgr.AddNewSourceBuffer(std::move(inputBuf), llvm::SMLoc());
   }
-  mlir::SourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
+  SynchronizedSourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
   if (!ShellCommand::addInstallPrefix("peano", peanoInstallDir)) {
     return 1;
   }
@@ -2597,7 +2607,6 @@ int main(int argc, char **argv) {
   // Progress is on by default; --no-progress turns it off, and --verbose
   // (line-per-edge logging) takes precedence over the single-line display.
   bool showProgress = !noProgress && !verbose;
-  ShellCommand::progress = showProgress;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads, profile});
   // --cut stops the build at the cut point: only the prefix up to the cut

@@ -387,8 +387,7 @@ struct Engine {
         if (item->filePath.empty())
           continue;
         if (!seenPaths.insert(item->filePath).second) {
-          if (opts.progress)
-            llvm::errs() << '\n';
+          auto log = endProgressLine();
           llvm::errs() << "aiecc: edge '" << displayName(e)
                        << "' produced duplicate output path '" << item->filePath
                        << "'\n";
@@ -447,6 +446,7 @@ struct Engine {
       llvm::errs() << '\r' << line << std::string(pad, ' ');
       llvm::errs().flush();
       progressPrevLen = line.size();
+      progressLineOpen() = true;
     }
 
     // Re-scan the reachable edges and enqueue every task that is now runnable.
@@ -684,8 +684,7 @@ struct Engine {
       }
 
       // Terminate the single progress line before any further output.
-      if (opts.progress)
-        llvm::errs() << '\n';
+      endProgressLine();
 
       if (failed) {
         if (stalled)

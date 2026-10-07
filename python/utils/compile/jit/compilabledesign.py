@@ -1691,7 +1691,8 @@ class CompilableDesign:
                     raise RuntimeError(
                         f"MLIR verification failed for '{self.generator_name}'"
                     )
-                mlir_text = str(module)
+                # str() drops locations, and aiecc reports against this text.
+                mlir_text = module.operation.get_asm(enable_debug_info=True)
 
         external_kernels = list(ExternalFunction._instances)
         ExternalFunction._instances.clear()

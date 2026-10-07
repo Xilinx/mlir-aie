@@ -16,6 +16,7 @@ from ..helpers.npdtypes import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
+from ..helpers.sourceloc import SourceSite
 from .device import Tile
 from .resolvable import NotResolvedError, Resolvable
 
@@ -68,6 +69,7 @@ class Buffer(Resolvable):
             ValueError: If neither ``type`` nor ``initial_value`` is provided, or if
                 ``address``/``mem_bank`` are provided but are not a non-negative int.
         """
+        self._site = SourceSite.capture()
         if type is None and initial_value is None:
             raise ValueError("Must provide either type, initial value, or both.")
         if address is not None:
@@ -184,4 +186,6 @@ class Buffer(Resolvable):
                 mem_bank=self._mem_bank,
                 initial_value=self._initial_value,
                 use_write_rtp=self._use_write_rtp,
+                loc=loc or self._site.location(self._name),
+                ip=ip,
             )

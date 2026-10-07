@@ -227,7 +227,10 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
 TileOp DynamicTileAnalysis::getTile(OpBuilder &builder, int col, int row) {
   TileOp &tileOp = coordToTile[{col, row}];
   if (!tileOp)
-    tileOp = TileOp::create(builder, builder.getUnknownLoc(), col, row);
+    tileOp = TileOp::create(
+        builder,
+        cast<DeviceOp>(builder.getInsertionBlock()->getParentOp()).getLoc(),
+        col, row);
   return tileOp;
 }
 
@@ -241,10 +244,10 @@ SwitchboxOp DynamicTileAnalysis::getSwitchbox(OpBuilder &builder, int col,
   assert(row >= 0);
   if (SwitchboxOp switchboxOp = lookupSwitchbox({col, row}))
     return switchboxOp;
-  auto switchboxOp = SwitchboxOp::create(builder, builder.getUnknownLoc(),
-                                         getTile(builder, col, row));
+  auto tileOp = getTile(builder, col, row);
+  auto switchboxOp = SwitchboxOp::create(builder, tileOp.getLoc(), tileOp);
   SwitchboxOp::ensureTerminator(switchboxOp.getConnections(), builder,
-                                builder.getUnknownLoc());
+                                tileOp.getLoc());
   coordToSwitchbox[{col, row}] = switchboxOp;
   return switchboxOp;
 }
@@ -253,11 +256,11 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
   assert(col >= 0);
   if (ShimMuxOp shimMuxOp = lookupShimMux(col))
     return shimMuxOp;
-  assert(getTile(builder, col, 0).isShimNOCorPLTile());
-  auto shimMuxOp = ShimMuxOp::create(builder, builder.getUnknownLoc(),
-                                     getTile(builder, col, 0));
+  auto tileOp = getTile(builder, col, 0);
+  assert(tileOp.isShimNOCorPLTile());
+  auto shimMuxOp = ShimMuxOp::create(builder, tileOp.getLoc(), tileOp);
   ShimMuxOp::ensureTerminator(shimMuxOp.getConnections(), builder,
-                              builder.getUnknownLoc());
+                              tileOp.getLoc());
   coordToShimMux[{col, 0}] = shimMuxOp;
   return shimMuxOp;
 }
