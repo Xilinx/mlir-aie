@@ -597,6 +597,10 @@ public:
 
   /// Return the number of packet-rule slots per stream-switch slave port.
   virtual uint32_t getNumSlaveSlots() const = 0;
+  /// Return the number of arbiters per stream switch.
+  virtual uint32_t getNumArbiters() const = 0;
+  /// Return the number of master select values per stream-switch arbiter.
+  virtual uint32_t getNumMselsPerArbiter() const = 0;
   /// Return the largest packet id the stream switch can route.
   virtual uint32_t getMaxPacketId() const = 0;
   /// Return the largest out-of-order BD id (unsupported = 0).
@@ -705,6 +709,8 @@ public:
   AIEArch getTargetArch() const override;
 
   uint32_t getNumSlaveSlots() const override { return 4; }
+  uint32_t getNumArbiters() const override { return 6; }
+  uint32_t getNumMselsPerArbiter() const override { return 4; }
   uint32_t getMaxPacketId() const override { return 31; }
   uint32_t getMaxOutOfOrderId() const override { return 0; }
   uint32_t getMaxRepeatCount() const override { return 0; }
@@ -848,6 +854,8 @@ public:
   uint32_t getAddressGenGranularity() const override { return 32; }
 
   uint32_t getNumSlaveSlots() const override { return 4; }
+  uint32_t getNumArbiters() const override { return 6; }
+  uint32_t getNumMselsPerArbiter() const override { return 4; }
   uint32_t getMaxPacketId() const override { return 31; }
   uint32_t getMaxOutOfOrderId() const override { return 63; }
   uint32_t getMaxRepeatCount() const override { return 255; }

@@ -817,11 +817,18 @@ class packetflow(PacketFlowOp):
         source_channel,
         dests: Union[Dict, List[Dict]],
         keep_pkt_header: bool | None = None,
+        priority_route: bool | None = None,
         *,
         loc=None,
         ip=None,
     ):
-        super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header, loc=loc, ip=ip)
+        super().__init__(
+            ID=pkt_id,
+            keep_pkt_header=keep_pkt_header,
+            priority_route=priority_route,
+            loc=loc,
+            ip=ip,
+        )
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
             PacketSourceOp(source, source_port, source_channel, loc=loc)

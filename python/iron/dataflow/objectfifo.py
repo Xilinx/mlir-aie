@@ -518,7 +518,9 @@ class ObjectFifo(Resolvable):
                 consumer_datatype=consumer_datatype,
                 packet=self._packet or None,
                 packet_id=self._packet_id,
-                loc=loc or self._site.location(self.name),
+                loc=ir.Location.name(
+                    self.name, childLoc=loc or self._site.location(self.name)
+                ),
                 ip=ip,
             )
             self._op = op

@@ -1,7 +1,7 @@
 //===- AIEFlowsToJSON.cpp ---------------------------------------*- C++ -*-===//
 //
 // Copyright (C) 2021-2022 Xilinx, Inc.
-// Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
@@ -423,9 +423,29 @@ static void translatePacketFlows(DeviceOp targetOp, int &flowCount,
 mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output,
                                    llvm::StringRef deviceName) {
   DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
-  if (!targetOp) {
-    module.emitOpError("expected AIE.device operation at toplevel");
-  }
+  if (!targetOp)
+    return module.emitOpError("expected AIE.device operation at toplevel");
+
+  std::set<TileID> switchboxes;
+  for (SwitchboxOp switchboxOp : targetOp.getOps<SwitchboxOp>())
+    switchboxes.insert({switchboxOp.colIndex(), switchboxOp.rowIndex()});
+  WalkResult untraceable = targetOp.walk([&](Operation *op) {
+    Value source;
+    if (auto flowOp = dyn_cast<FlowOp>(op))
+      source = flowOp.getSource();
+    else if (auto pktSource = dyn_cast<PacketSourceOp>(op))
+      source = pktSource.getTile();
+    else
+      return WalkResult::advance();
+    if (switchboxes.count(cast<TileOp>(source.getDefiningOp()).getTileID()))
+      return WalkResult::advance();
+    op->emitError("no switchbox at the flow's source to trace it through; "
+                  "keep the routed switchboxes with "
+                  "--aie-find-flows=remove-lifted=false");
+    return WalkResult::interrupt();
+  });
+  if (untraceable.wasInterrupted())
+    return failure();
 
   output << "{\n";
   int flowCount = 0;
