@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
- "date": "2026-10-07T00:05:02.666779+00:00",
+ "commit": "b541bba8ad114e3aa1316083f61c5170353f212d",
+ "date": "2026-10-07T07:23:18.000236+00:00",
  "swept": true,
  "timing_refused": "power mode is default, required 'turbo'",
  "kernels": [
@@ -1169,6 +1169,49 @@
    "flaky": []
   },
   {
+   "factory": "argmax",
+   "family": "reduce",
+   "summary": "Reduction kernel: the largest element of a tile and its index.",
+   "sources": [
+    "reduce/argmax.cc"
+   ],
+   "builds": [
+    "argmax",
+    "argmax/dtype=bfloat16"
+   ],
+   "passed": 11,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "argmax/1000x4/bfloat16_int32/edge-tail",
+    "argmax/1000x4/int32/edge-tail",
+    "argmax/1024x4/int32/offset",
+    "argmax/1024x4/int32/vectorized=False/scalar",
+    "argmax/16x4/int32/edge-one-vector",
+    "argmax/32x4/bfloat16_int32/edge-one-vector",
+    "argmax/5x4/int32/edge-under-one-vector"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "argmax_combine",
+   "family": "reduce",
+   "summary": "Pairwise record merge \u2014 companion to [`argmax`][iron.kernels.reduce.argmax].",
+   "sources": [
+    "reduce/argmax.cc"
+   ],
+   "builds": [
+    "argmax_combine"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
+  },
+  {
    "factory": "relu",
    "family": "eltwise",
    "summary": "Element-wise bf16 ReLU (tile_size must be 1024, hard-coded in C++).",
@@ -1392,12 +1435,13 @@
    "builds": [
     "softmax"
    ],
-   "passed": 5,
+   "passed": 7,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
    "untimed": [
     "softmax/160x4/bfloat16/min-pipelined",
+    "softmax/32x4/bfloat16/accurate_exp2=True/accurate-short",
     "softmax/32x4/bfloat16/short-trip"
    ],
    "flaky": []
@@ -1405,14 +1449,14 @@
   {
    "factory": "gelu",
    "family": "activation",
-   "summary": "GELU activation kernel (tanh approximation) for bf16 tiles (must be 1024).",
+   "summary": "GELU activation kernel (tanh approximation) for bf16 tiles.",
    "sources": [
     "activation/gelu.cc"
    ],
    "builds": [
     "gelu"
    ],
-   "passed": 2,
+   "passed": 3,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
@@ -1429,13 +1473,14 @@
    "builds": [
     "gelu_sized"
    ],
-   "passed": 4,
+   "passed": 5,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
    "untimed": [
     "gelu_sized/1024x16/bfloat16",
     "gelu_sized/160x4/bfloat16/unroll-tail",
+    "gelu_sized/160x4/bfloat16/use_lut=True/lut-unroll-tail",
     "gelu_sized/32x4/bfloat16/edge-tiny",
     "gelu_sized/96x4/bfloat16/short-trip"
    ],
@@ -1806,11 +1851,12 @@
    "builds": [
     "mha_softmax"
    ],
-   "passed": 3,
+   "passed": 5,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
    "untimed": [
+    "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/accurate_exp2=True/accurate-diagonal-padded",
     "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal-padded"
    ],
    "flaky": []

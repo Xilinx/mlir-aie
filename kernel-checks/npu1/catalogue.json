@@ -1,8 +1,8 @@
 {
  "npu": "npu1",
  "arch": "aie2",
- "commit": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
- "date": "2026-10-06T06:42:42.944529+00:00",
+ "commit": "b541bba8ad114e3aa1316083f61c5170353f212d",
+ "date": "2026-10-07T06:45:10.209610+00:00",
  "swept": true,
  "timing_refused": "power mode is default, required 'turbo'",
  "kernels": [
@@ -939,6 +939,49 @@
    "flaky": []
   },
   {
+   "factory": "argmax",
+   "family": "reduce",
+   "summary": "Reduction kernel: the largest element of a tile and its index.",
+   "sources": [
+    "reduce/argmax.cc"
+   ],
+   "builds": [
+    "argmax",
+    "argmax/dtype=bfloat16"
+   ],
+   "passed": 11,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "argmax/1000x4/bfloat16_int32/edge-tail",
+    "argmax/1000x4/int32/edge-tail",
+    "argmax/1024x4/int32/offset",
+    "argmax/1024x4/int32/vectorized=False/scalar",
+    "argmax/16x4/int32/edge-one-vector",
+    "argmax/32x4/bfloat16_int32/edge-one-vector",
+    "argmax/5x4/int32/edge-under-one-vector"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "argmax_combine",
+   "family": "reduce",
+   "summary": "Pairwise record merge \u2014 companion to [`argmax`][iron.kernels.reduce.argmax].",
+   "sources": [
+    "reduce/argmax.cc"
+   ],
+   "builds": [
+    "argmax_combine"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": []
+  },
+  {
    "factory": "relu",
    "family": "eltwise",
    "summary": "Element-wise bf16 ReLU (tile_size must be 1024, hard-coded in C++).",
@@ -1175,7 +1218,7 @@
   {
    "factory": "gelu",
    "family": "activation",
-   "summary": "GELU activation kernel (tanh approximation) for bf16 tiles (must be 1024).",
+   "summary": "GELU activation kernel (tanh approximation) for bf16 tiles.",
    "sources": [
     "activation/gelu.cc"
    ],
