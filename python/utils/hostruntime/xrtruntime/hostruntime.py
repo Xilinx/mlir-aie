@@ -243,7 +243,7 @@ class XRTHostRuntime(HostRuntime):
 
     @staticmethod
     def _kernel_name(kernel_name: str | None, kernel_args: dict[str, int]) -> str:
-        """The kernel a load names, or the xclbin's first when it names none.
+        """Pick the kernel a load names, or the xclbin's first when it names none.
 
         Args:
             kernel_name: The name the NPU kernel gives, or None.
@@ -657,7 +657,7 @@ class CachedXRTRuntime(XRTHostRuntime):
 
     @staticmethod
     def _file_key(path, what: str) -> tuple[int, int, int]:
-        """The cache identity of the file at `path`: device, inode and mtime.
+        """Return the cache identity of `path`: device, inode and mtime.
 
         One stat and no path resolution, which walks every component of a
         path (about 40 us on NFS, per file per dispatch). Aliases of a file
