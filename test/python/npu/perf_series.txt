@@ -415,6 +415,12 @@ rope/1024x16/bfloat16/cols=1024/two_halves=True
 rope/112x16/bfloat16/cols=112/row-tail
 rope/64x16/bfloat16/cols=64/two_halves=True/llama
 rope/96x16/bfloat16/cols=96/two_halves=True/row-tail
+row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/bit-48
+row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/carry
+row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/unsigned-words
+row_addresses/16x4/int32_uint32/row_bytes=4100/rows=16/table_rows=1048576/past-4-gib
+row_addresses/1x16/int32_uint32/row_bytes=4096/rows=1/table_rows=128256
+row_addresses/64x16/int32_uint32/row_bytes=260/rows=64/table_rows=1000
 scale/1024x16/int16
 scale/1024x16/int32
 scale/1024x16/int32/edge-negfactor

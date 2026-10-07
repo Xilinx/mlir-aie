@@ -299,6 +299,50 @@ CASES: list[Case] = [
     # block of each group unpaired.
     check("expand", dict(tile_size=1024, group_size=64), calls=16, tag="group-64"),
     check("expand", dict(tile_size=768, group_size=96), calls=16, tag="group-96"),
+    # amd/IRON's GatherWords at Llama 3.2 1B's embedding table (one id a
+    # decode step), and a gather of many rows. The table sits at 0x240000040.
+    Case(
+        "row_addresses",
+        dict(rows=1, table_rows=128256, row_bytes=4096),
+        calls=16,
+        scalars=(0x40, 0x12),
+        smoke=True,
+    ),
+    Case(
+        "row_addresses",
+        dict(rows=64, table_rows=1000, row_bytes=260),
+        calls=16,
+        scalars=(0x40, 0x12),
+    ),
+    # Rows past 0xFFFFF000 carry into the high word, at bit 48 the high word
+    # keeps its 16 bits, and lo and hi are read as unsigned (an odd lo shows
+    # the low word rounded down to 4 bytes).
+    check(
+        "row_addresses",
+        dict(rows=16, table_rows=16, row_bytes=4096),
+        scalars=(0x1FFFF000, 3),
+        tag="carry",
+        smoke=True,
+    ),
+    check(
+        "row_addresses",
+        dict(rows=16, table_rows=16, row_bytes=4096),
+        scalars=(0x40, 0x80000),
+        tag="bit-48",
+    ),
+    check(
+        "row_addresses",
+        dict(rows=16, table_rows=16, row_bytes=4096),
+        scalars=(-3, -1),
+        tag="unsigned-words",
+    ),
+    # Offsets past 4 GiB take the 64-bit multiply.
+    check(
+        "row_addresses",
+        dict(rows=16, table_rows=1 << 20, row_bytes=4100),
+        scalars=(0x40, 0x12),
+        tag="past-4-gib",
+    ),
     Case("transpose", dict(subtile=4), calls=16, smoke=True),
     Case("transpose", dict(subtile=8), calls=16, smoke=True),
     Case("transpose", dict(subtile=4, dtype=np.uint8), calls=16, smoke=True),

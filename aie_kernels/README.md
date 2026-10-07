@@ -62,6 +62,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [expand.cc](./datamovement/expand.cc) | AIE API | uint4→bf16 dequant with per-group scale factors (zero-extended, no zero point) | `uint4`→`bfloat16` |
 | [axpy.cc](./datamovement/axpy.cc) | AIE API | `z = a*x + y` (SAXPY) | `bfloat16` |
 | [rope.cc](./datamovement/rope.cc) | AIE API | RoPE — `rope` (interleaved / Llama) + `rope_two_halves` (HF) | `bfloat16` |
+| [row_addresses.cc](./datamovement/row_addresses.cc) | Generic C | Each id's table row as a shim buffer descriptor's address words, the id clipped to the table | `int32`→`uint32` |
 | [cast_f32_bf16.cc](./datamovement/cast_f32_bf16.cc) | AIE API | f32→bf16 narrowing cast (host-matching `conv_even` rounding) | `float32`→`bfloat16` |
 | [affine_cast_f32_bf16.cc](./datamovement/affine_cast_f32_bf16.cc) | AIE API | Per-column affine `out = bf16(in*gamma + beta)`, gamma and beta packed in one buffer (`conv_even` rounding) | `float32`→`bfloat16` |
 

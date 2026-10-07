@@ -2020,7 +2020,7 @@ def _condition(expr: str, macros: dict) -> bool:
     )
     for _ in range(8):
         expr = re.sub(r"\b[A-Za-z_]\w*\b", lambda m: f"({macros.get(m[0], '0')})", expr)
-    assert re.fullmatch(r"[\d\s()<>=!&|+*/-]*", expr), expr
+    assert re.fullmatch(r"(?:0[xX][\da-fA-F]+|[\d\s()<>=!&|+*/-])*", expr), expr
     expr = expr.replace("&&", " and ").replace("||", " or ")
     expr = re.sub(r"!(?!=)", " not ", expr)
     return bool(eval(expr, {"__builtins__": {}}))

@@ -836,6 +836,18 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
     ),
     KernelSpec(
+        name="row_addresses",
+        factory=kernels.row_addresses,
+        kwargs=dict(rows=8, table_rows=1024, row_bytes=4096),
+        arg_count=4,  # ids, address words, lo, hi
+        expected_name="row_addresses",
+        invalid_kwargs=[
+            (dict(rows=0), "positive multiple of 4"),
+            (dict(row_bytes=6), "positive multiple of 4"),
+        ],
+        shape_checks=[(dict(rows=3), 1, (6,))],
+    ),
+    KernelSpec(
         name="convert_copy",
         factory=kernels.convert_copy,
         kwargs=dict(tile_size=1024),
