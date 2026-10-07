@@ -1406,20 +1406,6 @@ void xilinx::AIE::printFlowVias(OpAsmPrinter &printer, Operation *op,
   printer << ")";
 }
 
-LogicalResult FlowOp::verify() {
-  size_t n = getVias().size();
-  DenseI32ArrayAttr arrays[] = {
-      getViaIngressBundlesAttr(), getViaIngressChannelsAttr(),
-      getViaEgressBundlesAttr(), getViaEgressChannelsAttr()};
-  for (DenseI32ArrayAttr a : arrays) {
-    size_t size = a ? a.size() : 0;
-    if (size != n)
-      return emitOpError("has ")
-             << n << " via tile(s) but a via port array of size " << size;
-  }
-  return success();
-}
-
 static ParseResult parseObjectFifoConsumerElemType(OpAsmParser &parser,
                                                    TypeAttr &consumerElemType) {
   if (failed(parser.parseOptionalArrow()))
@@ -2865,8 +2851,21 @@ LogicalResult FlowOp::verify() {
   if (failed(verifyFlowEndpoint(*this, getSource(),
                                 {getSourceBundle(), sourceIndex()}, true)))
     return failure();
-  return verifyFlowEndpoint(*this, getDest(), {getDestBundle(), destIndex()},
-                            false);
+  if (failed(verifyFlowEndpoint(*this, getDest(),
+                                {getDestBundle(), destIndex()}, false)))
+    return failure();
+
+  size_t n = getVias().size();
+  DenseI32ArrayAttr arrays[] = {
+      getViaIngressBundlesAttr(), getViaIngressChannelsAttr(),
+      getViaEgressBundlesAttr(), getViaEgressChannelsAttr()};
+  for (DenseI32ArrayAttr a : arrays) {
+    size_t size = a ? a.size() : 0;
+    if (size != n)
+      return emitOpError("has ")
+             << n << " via tile(s) but a via port array of size " << size;
+  }
+  return success();
 }
 
 LogicalResult PacketSourceOp::verify() {

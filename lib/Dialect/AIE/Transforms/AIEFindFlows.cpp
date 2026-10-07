@@ -430,7 +430,7 @@ public:
     if (!t) {
       return {};
     }
-  return traverse({PacketConnection{*t, claim, {}, {}}}, keepPartialFlows);
+    return traverse({PacketConnection{*t, claim, {}, {}}}, keepPartialFlows);
   }
 
   std::vector<PacketConnection>
@@ -438,7 +438,7 @@ public:
                              bool keepPartialFlows,
                              MaskValue claim = {0, 0}) const {
     return traverse(
-                              {PacketConnection{PortConnection{switchOp, inputPort}, claim, {}, {}}},
+        {PacketConnection{PortConnection{switchOp, inputPort}, claim, {}, {}}},
         keepPartialFlows);
   }
 
@@ -536,8 +536,7 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
                       WireBundle srcBundle, int srcChannel,
                       const std::vector<PacketConnection> &endpoints,
                       bool emitVias, bool dropIntraTile, int idMask,
-                      FlowKeySet &seen,
-                      LiftedOps &lifted) {
+                      FlowKeySet &seen, LiftedOps &lifted) {
   AIEDialect::IsCtrlPktOverlayAttrHelper overlay(rewriter.getContext());
   AIEDialect::PriorityRouteAttrHelper prioritizedRule(rewriter.getContext());
   for (const PacketConnection &c : endpoints) {
@@ -740,22 +739,29 @@ static std::vector<PacketConnection> exactPacketEndpoints(
   llvm::copy_if(endpoints, std::back_inserter(result),
                 [&](const PacketConnection &c) { return !isPacket(c); });
 
-  auto sameDest = [](const PortConnection &a, const PortConnection &b) {
-    return a.op == b.op && a.port == b.port;
+  auto samePath = [](const PacketConnection &a, const PacketConnection &b) {
+    if (a.portConnection.op != b.portConnection.op ||
+        a.portConnection.port != b.portConnection.port ||
+        a.vias.size() != b.vias.size())
+      return false;
+    return llvm::equal(a.vias, b.vias, [](const Via &x, const Via &y) {
+      return x.tile == y.tile && x.ingress == y.ingress && x.egress == y.egress;
+    });
   };
-  SmallVector<PortConnection> dests;
-  auto destIndex = [&](const PortConnection &d) {
-    auto *it = llvm::find_if(
-        dests, [&](const PortConnection &e) { return sameDest(d, e); });
-    if (it != dests.end()) {
-      return static_cast<unsigned>(it - dests.begin());
+  SmallVector<PacketConnection> paths;
+  auto pathIndex = [&](const PacketConnection &connection) {
+    auto *it = llvm::find_if(paths, [&](const PacketConnection &path) {
+      return samePath(connection, path);
+    });
+    if (it != paths.end()) {
+      return static_cast<unsigned>(it - paths.begin());
     }
-    dests.push_back(d);
-    return static_cast<unsigned>(dests.size() - 1);
+    paths.push_back(connection);
+    return static_cast<unsigned>(paths.size() - 1);
   };
   for (const PacketConnection &c : endpoints) {
     if (isPacket(c)) {
-      destIndex(c.portConnection);
+      pathIndex(c);
     }
   }
 
@@ -768,11 +774,11 @@ static std::vector<PacketConnection> exactPacketEndpoints(
       if (!isPacket(c)) {
         continue;
       }
-      unsigned d = destIndex(c.portConnection);
-      if (!llvm::is_contained(reached, d)) {
-        reached.push_back(d);
+      unsigned path = pathIndex(c);
+      if (!llvm::is_contained(reached, path)) {
+        reached.push_back(path);
       }
-      SmallVector<Operation *, 8> &ops = opsTo[{id, d}];
+      SmallVector<Operation *, 8> &ops = opsTo[{id, path}];
       for (Operation *op : c.usedOps) {
         if (!llvm::is_contained(ops, op)) {
           ops.push_back(op);
@@ -834,20 +840,21 @@ static std::vector<PacketConnection> exactPacketEndpoints(
   });
   for (const auto &[reached, ids] : groups) {
     SmallVector<MaskValue> cubes = disjointCubes(ids);
-    for (unsigned d : *reached) {
+    for (unsigned path : *reached) {
       for (MaskValue cube : cubes) {
         SmallVector<Operation *, 8> ops;
         for (int id : ids) {
           if ((id & cube.mask) != cube.value) {
             continue;
           }
-          for (Operation *op : opsTo[{id, d}]) {
+          for (Operation *op : opsTo[{id, path}]) {
             if (!llvm::is_contained(ops, op)) {
               ops.push_back(op);
             }
           }
         }
-        result.push_back({dests[d], cube, ops});
+        result.push_back(
+            {paths[path].portConnection, cube, paths[path].vias, ops});
       }
     }
   }
@@ -876,7 +883,7 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
           });
       LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");
       emitFlows(rewriter, Op->getLoc(), Op->getResult(0), bundle, (int)i, tiles,
-            emitVias, /*dropIntraTile=*/false, idMask, seen, lifted);
+                emitVias, /*dropIntraTile=*/false, idMask, seen, lifted);
     }
   }
 }
@@ -957,7 +964,7 @@ static void findFlowsFromInterconnect(Operation *switchOp,
                                                      keepPartialFlows, claim);
         });
     emitFlows(rewriter, switchOp->getLoc(), srcTile, srcBundle, srcChannel,
-          tiles, emitVias, /*dropIntraTile=*/true, idMask, seen, lifted);
+              tiles, emitVias, /*dropIntraTile=*/true, idMask, seen, lifted);
   }
 }
 
@@ -1001,7 +1008,7 @@ struct AIEFindFlowsPass
     OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
     for (auto tile : d.getOps<TileOp>()) {
       findFlowsFrom(tile, analysis, builder, clKeepPartialFlows, clEmitVias,
-            idMask, seen, lifted);
+                    idMask, seen, lifted);
     }
     // Lift flows whose source is not a core/DMA (transit fills, packet routing
     // steered at runtime, PLIO/edge entries) directly from the interconnect.
@@ -1033,7 +1040,7 @@ struct AIEFindFlowsPass
                                                         clKeepPartialFlows);
         emitFlows(builder, seed.op->getLoc(), srcTile, seed.ingress.bundle,
                   seed.ingress.channel, tiles, clEmitVias,
-                  /*dropIntraTile=*/false, idMask, seen, consumed);
+                  /*dropIntraTile=*/false, idMask, seen, lifted);
       }
       llvm::DenseSet<std::pair<Operation *, int>> seeded;
       bool progress = true;
