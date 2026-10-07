@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, transpose.
+"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, row_addresses, transpose.
 
 Each wraps one source under ``aie_kernels/datamovement/`` — plain ``aie_api``
 vector code with no LUT dependency.  ``convert_copy`` binds
@@ -364,6 +364,112 @@ def rope_ref(x, lut, *, two_halves: bool = False):
     out[..., 0::2] = x_even * cos_v - x_odd * sin_v
     out[..., 1::2] = x_even * sin_v + x_odd * cos_v
     return out.astype(x.dtype)
+
+
+def row_addresses_ref(
+    ids, lo, hi, *, table_rows: int, row_bytes: int, low_bits: int, aperture: int
+):
+    """Numpy reference for [`row_addresses`][iron.kernels.datamovement.row_addresses].
+
+    The table sits at ``(hi << low_bits) + lo``, each word read as unsigned; an
+    id past the table is clipped to its first or last row and a negative one
+    counts from the end, ``np.clip(ids, -n, n - 1) % n``.
+    """
+    ids = np.asarray(ids, dtype=np.int64)
+    rows = np.clip(ids, -table_rows, table_rows - 1) % table_rows
+    base = ((int(hi) & 0xFFFFFFFF) << low_bits) + (int(lo) & 0xFFFFFFFF) + aperture
+    address = (base + rows * row_bytes).astype(np.uint64)
+    words = np.empty(ids.shape[:-1] + (2 * ids.shape[-1],), np.uint32)
+    words[..., 0::2] = address & np.uint64(0xFFFFFFFC)
+    words[..., 1::2] = (address >> np.uint64(32)) & np.uint64(0xFFFF)
+    return words
+
+
+def row_addresses_sample(rng, calls: int, *, rows: int, table_rows: int) -> list:
+    """Ids over twice the table each way, the first calls' led by the edges of its range."""
+    n = table_rows
+    ids = rng.integers(-2 * n, 2 * n, size=calls * rows, dtype=np.int64)
+    edges = [-n - 1, -n, -1, 0, n - 1, n, -(2**31), 2**31 - 1]
+    ids[: len(edges)] = edges[: ids.size]
+    return [ids.reshape(calls, rows).astype(np.int32)]
+
+
+def row_addresses(
+    rows: int = 8,
+    table_rows: int = 1024,
+    row_bytes: int = 4096,
+    *,
+    low_bits: int = 29,
+    aperture: int = 0x80000000,
+) -> ExternalFunction:
+    """Row-address kernel: each id's table row as a shim buffer descriptor's address words.
+
+    Takes ``(ids, out, lo, hi)``: ``rows`` int32 ids, and for each the low
+    and high address words of its row, ``2 * rows`` uint32. The table sits at
+    ``(hi << low_bits) + lo``, split so each part fits the 30 bits a core
+    reads of a runtime value; ``aperture`` is added to every address. An id
+    past the table is clipped to its first or last row and a negative one
+    counts from the end, so every id names a row. The low word is rounded
+    down to 4 bytes and the high word keeps 16 bits, as a shim buffer
+    descriptor's address fields hold them. amd/IRON's ``GatherWords`` writes
+    these into the control packets of a gather whose ids the device made.
+
+    Args:
+        rows: Ids per call.
+        table_rows: Rows of the table.
+        row_bytes: Bytes per row (a positive multiple of 4).
+        low_bits: Bits of the address ``lo`` holds.
+        aperture: Added to every address; the default is the offset a DDR
+            address carries in a shim buffer descriptor (kDDRAIEAddrOffset).
+
+    Returns:
+        ExternalFunction for ``row_addresses``.
+
+    Raises:
+        ValueError: When ``rows`` or ``table_rows`` is below 1, or
+            ``row_bytes`` is not a positive multiple of 4.
+    """
+    if rows < 1 or table_rows < 1 or row_bytes < 4 or row_bytes % 4:
+        raise ValueError(
+            "row_addresses() needs rows and table_rows >= 1 and row_bytes a "
+            f"positive multiple of 4, got rows={rows}, table_rows={table_rows}, "
+            f"row_bytes={row_bytes}."
+        )
+    return _make_extern(
+        "row_addresses",
+        _kernel_source("datamovement/row_addresses.cc"),
+        [
+            np.ndarray[(rows,), np.dtype[np.int32]],
+            np.ndarray[(2 * rows,), np.dtype[np.uint32]],
+            np.int32,
+            np.int32,
+        ],
+        compile_flags=[
+            f"-DROWS={rows}",
+            f"-DTABLE_ROWS={table_rows}",
+            f"-DROW_BYTES={row_bytes}",
+            f"-DLOW_BITS={low_bits}",
+            f"-DAPERTURE={aperture:#x}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param),
+            reference=lambda ids, lo, hi: row_addresses_ref(
+                ids,
+                lo,
+                hi,
+                table_rows=table_rows,
+                row_bytes=row_bytes,
+                low_bits=low_bits,
+                aperture=aperture,
+            ),
+            tolerance=Tolerance.exact(note="integer address arithmetic"),
+            ops_per_call=0,
+            sample=lambda rng, calls: row_addresses_sample(
+                rng, calls, rows=rows, table_rows=table_rows
+            ),
+        ),
+    )
 
 
 # -DDTYPE_* flag per element width; the transpose only moves bytes.
