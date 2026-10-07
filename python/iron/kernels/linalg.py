@@ -519,10 +519,10 @@ def mm(
     the same initializer for the generic harness.
 
     ``.k_tail(A, B, k_valid)`` zeroes A's columns and B's rows from
-    ``k_valid`` on, in the blocking this kernel reads, so a call after it
-    sums only the first ``k_valid`` of the tile's K, whatever the rest holds:
-    the last tile of a reduction whose length is not a multiple of
-    ``dim_k``.
+    ``k_valid`` (clamped to ``[0, dim_k]``) on, in the blocking this kernel
+    reads, so a call after it sums only the first ``k_valid`` of the tile's
+    K, whatever the rest holds: the last tile of a reduction whose length is
+    not a multiple of ``dim_k``.
 
     Args:
         dim_m: Number of rows of A / C.

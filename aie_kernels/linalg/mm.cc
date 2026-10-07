@@ -52,6 +52,7 @@ template <typename T, unsigned m, unsigned k, unsigned n, unsigned r,
           unsigned s, unsigned t, bool b_row_maj>
 static inline void matmul_zero_k_tail(T *__restrict pA, T *__restrict pB,
                                       int32_t k_valid) {
+  k_valid = std::clamp<int32_t>(k_valid, 0, k);
   const int32_t first = k_valid / s;
   const int32_t part = k_valid % s;
   // The lanes of a 32-lane word whose column, `s` to a row, is below `part`.

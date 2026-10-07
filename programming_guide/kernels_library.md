@@ -92,7 +92,8 @@ hardcoding for one NPU generation.  See
 §Arch-aware kernel introspection.
 
 `.k_tail(A, B, k_valid)`, a second symbol of the same object, zeroes A's
-columns and B's rows from `k_valid` on, in the blocking the matmul reads.
+columns and B's rows from `k_valid` (clamped to `[0, dim_k]`) on, in the
+blocking the matmul reads.
 Call it on the last K tile of a reduction whose length is not a multiple of
 `dim_k`: the matmul after it sums only the first `k_valid` of the tile's K,
 whatever the rest of the tile holds.

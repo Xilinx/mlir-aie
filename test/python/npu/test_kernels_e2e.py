@@ -763,8 +763,9 @@ _K_TAIL_CONFIGS = {
     ),
 }
 _K_TAIL_DIM = 64
-# Every boundary inside, at and past a micro-tile of K (1, 4 or 8 wide).
-_K_TAIL_VALID = (0, 1, 3, 4, 5, 7, 8, 9, 33, 63, 64)
+# Every boundary inside, at and past a micro-tile of K (1, 4 or 8 wide), and
+# bounds outside the tile, which clamp to it.
+_K_TAIL_VALID = (-9, -1, 0, 1, 3, 4, 5, 7, 8, 9, 33, 63, 64, 65)
 _K_TAIL_CALLS = [(kv, side) for kv in _K_TAIL_VALID for side in "ab"]
 
 
@@ -828,10 +829,11 @@ def test_mm_k_tail_zeroes_each_operand_past_k_valid(config):
     a, b = kd.sample_inputs(fn, calls=calls, rng=np.random.default_rng(5))
     poison = np.iinfo(in_dt).max if in_dt.kind == "i" else np.nan
     for i, (kv, side) in enumerate(_K_TAIL_CALLS):
+        clamped = min(max(kv, 0), _K_TAIL_DIM)
         if side == "a":
-            a[i, :, kv:] = poison
+            a[i, :, clamped:] = poison
         else:
-            b[i, kv:] = poison
+            b[i, clamped:] = poison
     a_dev = iron.tensor(fn.contract.layouts[0].encode(a).reshape(-1), dtype=in_dt)
     b_dev = iron.tensor(fn.contract.layouts[1].encode(b).reshape(-1), dtype=in_dt)
     c_dev = iron.tensor(
@@ -842,7 +844,8 @@ def test_mm_k_tail_zeroes_each_operand_past_k_valid(config):
 
     wide = np.int64 if in_dt.kind == "i" else np.float64
     for i, (kv, side) in enumerate(_K_TAIL_CALLS):
-        exact = a[i, :, :kv].astype(wide) @ b[i, :kv].astype(wide)
+        clamped = min(max(kv, 0), _K_TAIL_DIM)
+        exact = a[i, :, :clamped].astype(wide) @ b[i, :clamped].astype(wide)
         verdict = fn.judge(got[i], exact.astype(out_dt)[None])
         assert verdict, f"k_valid {kv}, {side}'s tail: {verdict.detail}"
 
