@@ -14,6 +14,7 @@ import aie.iron as iron
 from aie.iron import CompileTime, In, Out, ObjectFifo, Worker, Runtime, Program
 from aie.iron.controlflow import range_
 import aie.utils
+from aie.utils.hostruntime.hostruntime import HostRuntimeError
 from aie.utils.hostruntime.xrtruntime.hostruntime import (
     CachedXRTRuntime,
     XRTHostRuntime,
@@ -385,6 +386,28 @@ def test_base_runtime_load_run(runtime):
 
     # Verify no caching in base runtime
     assert not hasattr(base_runtime, "_context_cache")
+
+
+def test_run_refuses_more_buffers_than_the_kernel_declares(runtime):
+    """Both runtimes check a run's buffers against the loaded kernel's ABI."""
+
+    npu_kernel = NPUKernel(
+        *transform.specialize(func=lambda x: x + 1, num_elements=32).compile()
+    )
+    for host_runtime in (runtime, XRTHostRuntime()):
+        handle = host_runtime.load(npu_kernel)
+        assert handle.name is not None
+        input_tensor = iron.arange(32, dtype=np.int32)
+        output_tensor = iron.zeros(32, dtype=np.int32)
+        host_runtime.run(handle, [input_tensor, output_tensor])
+        np.testing.assert_array_equal(
+            output_tensor.numpy(), np.arange(32, dtype=np.int32) + 1
+        )
+
+        declared = handle.num_args - 3
+        extra = [iron.zeros(32, dtype=np.int32) for _ in range(declared + 1)]
+        with pytest.raises(HostRuntimeError, match="host buffer"):
+            host_runtime.run(handle, extra)
 
 
 def test_cache_size_limit(runtime):
