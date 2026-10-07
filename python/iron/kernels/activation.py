@@ -449,8 +449,17 @@ def softmax(tile_size: int = 1024, accurate_exp2: bool = False) -> ExternalFunct
 _GELU_AIE2_STACK_BYTES = 1280
 
 
-def gelu(tile_size: int = 1024) -> ExternalFunction:
-    """GELU activation kernel (tanh approximation) for bf16 tiles (must be 1024)."""
+def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
+    """GELU activation kernel (tanh approximation) for bf16 tiles.
+
+    Args:
+        tile_size: Elements per call (must be 1024).
+        use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
+            vtanh instruction, which returns its argument up to 0.5, and be
+            judged against an exact model of the kernel,
+            [`gelu_lut_ref`][iron.kernels.activation.gelu_lut_ref]. Moot on
+            aie2.
+    """
     return _bf16_lut_factory(
         "gelu",
         "gelu_bf16",
@@ -461,8 +470,11 @@ def gelu(tile_size: int = 1024) -> ExternalFunction:
             gelu_ref,
             count=False,
             tolerance=_gelu_tolerance(),
+            use_lut=use_lut,
+            elementwise=gelu_lut_ref if _tuned_arch() == "aie2p" else None,
             stack_bytes=_GELU_AIE2_STACK_BYTES if _tuned_arch() == "aie2" else None,
         ),
+        use_lut_tanh=use_lut,
     )
 
 
@@ -513,12 +525,16 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
-def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
+def gelu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     """GELU (tanh approx) for bf16 tiles, with a compiled-in element count.
 
     Runtime-size sibling of [`gelu`][iron.kernels.activation.gelu]; design
     keeps the ``(in, out, size)`` ABI. Positive whole vectors only: multiples
     of 16 on aie2 or 32 on aie2p.
+
+    Args:
+        tile_size: Elements per call.
+        use_lut: As for [`gelu`][iron.kernels.activation.gelu].
     """
     _require_vector_alignment("gelu_sized", tile_size, _arch_traits().bf16_lanes)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
@@ -531,8 +547,11 @@ def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
             gelu_ref,
             count=tile_size,
             tolerance=_gelu_tolerance(),
+            use_lut=use_lut,
+            elementwise=gelu_lut_ref if _tuned_arch() == "aie2p" else None,
             stack_bytes=_GELU_AIE2_STACK_BYTES if _tuned_arch() == "aie2" else None,
         ),
+        use_lut_tanh=use_lut,
     )
 
 
@@ -831,6 +850,27 @@ def gelu_ref(x):
     with np.errstate(over="ignore"):
         inner = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
     return (0.5 * xf * (1.0 + np.tanh(inner))).astype(x.dtype)
+
+
+def gelu_lut_ref(x):
+    """Model of AIE2P's [`gelu`][iron.kernels.activation.gelu] built with ``use_lut=True``.
+
+    gelu_aie2p.h step for step: ``x*x`` and ``x*s_beta`` are stored to bf16,
+    the tanh argument ``x*s + s_beta*x*x^2`` is summed in f32 and narrowed to
+    bf16 for [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref], and
+    ``x/2 + t * x/2`` is one f32 mac, rounded once to bf16 with a subnormal
+    flushed to zero. ``x/2`` takes x clamped at -8, where ``1 + t`` is
+    already 0, so -inf gives 0.
+    """
+    xf = np.asarray(x).astype(np.float32)
+    s = np.float32(bfloat16(math.sqrt(2.0 / math.pi)))
+    s_beta = np.float32(bfloat16(s * np.float32(0.044715)))
+    with np.errstate(over="ignore", invalid="ignore"):
+        x2 = _bf16_ftz(xf * xf)
+        sbeta_x = _bf16_ftz(xf * s_beta)
+        t = np.asarray(tanh_lut_ref(_bf16(xf * s + sbeta_x * x2)), np.float32)
+    half_x = np.maximum(xf, -8.0) * np.float32(0.5)
+    return _bf16_ftz(half_x + t * half_x).astype(np.asarray(x).dtype)
 
 
 def bf16_exp_lut_ref(x):

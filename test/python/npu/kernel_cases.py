@@ -164,6 +164,9 @@ CASES: list[Case] = [
     # activation
     Case("gelu", calls=16, smoke=True),
     Case("gelu", calls=256),
+    Case(
+        "gelu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
+    ),
     Case("silu", calls=16, smoke=True),
     Case(
         "silu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
@@ -254,6 +257,13 @@ CASES: list[Case] = [
     # AIE2 gelu takes 64 elements per trip and loads the next trip's input
     # ahead: 96 runs a single trip, reloading its own input, then the remainder.
     check("gelu_sized", dict(tile_size=96), tag="short-trip", smoke=True),
+    check(
+        "gelu_sized",
+        dict(tile_size=160, use_lut=True),
+        tag="lut-unroll-tail",
+        devices=("npu2",),
+        smoke=True,
+    ),
     *[
         check(name, dict(tile_size=32), tag="edge-tiny", smoke=True)
         for name in ("add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized")
