@@ -2913,6 +2913,13 @@ static LogicalResult verifyFlowVias(Operation *op, OperandRange vias,
     return success();
   }
 
+  for (auto [index, via] : llvm::enumerate(vias)) {
+    if (!isa_and_nonnull<TileLike>(via.getDefiningOp())) {
+      return op->emitOpError("has via operand at index ")
+             << index << " that is not defined by a tile-like operation";
+    }
+  }
+
   auto verifyBundles = [&](DenseI32ArrayAttr bundles,
                            StringRef direction) -> LogicalResult {
     for (auto [index, bundle] : llvm::enumerate(bundles.asArrayRef())) {

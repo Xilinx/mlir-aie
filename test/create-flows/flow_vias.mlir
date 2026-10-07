@@ -27,10 +27,23 @@
 // CHECK:   aie.connect<South : 4, DMA : 0>
 // CHECK: }
 // CHECK-NOT: aie.flow
+// CHECK: aie.packet_flow(1) {
+// CHECK:   aie.packet_source<%[[T02]], DMA : 1>
+// CHECK:   aie.packet_dest<%[[T03]], South : 0>
+// CHECK: } {priority_route = true}
+// CHECK: aie.packet_flow(1) {
+// CHECK:   aie.packet_source<%[[T03]], North : 0>
+// CHECK:   aie.packet_dest<%[[T05:.*]], DMA : 0>
+// CHECK: } {keep_pkt_header = true, priority_route = true}
 module {
   aie.device(xcvc1902) {
     %t02 = aie.tile(0, 2)
     %t03 = aie.tile(0, 3)
+    %t05 = aie.tile(0, 5)
     aie.flow(%t02, DMA : 0, %t03, DMA : 0) via (%t02 : DMA : 0 -> North : 4, %t03 : South : 4 -> DMA : 0)
+    aie.packet_flow(1) {
+      aie.packet_source<%t02, DMA : 1>
+      aie.packet_dest<%t05, DMA : 0>
+    } via (%t03 : South : 0 -> North : 0) {keep_pkt_header = true, priority_route = true}
   }
 }

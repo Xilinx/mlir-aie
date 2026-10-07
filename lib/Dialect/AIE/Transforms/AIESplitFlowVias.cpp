@@ -13,6 +13,8 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallSet.h"
 
+#include <optional>
+
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIESPLITFLOWVIAS
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
@@ -99,7 +101,9 @@ static ShimMuxOp getOrCreateShimMux(OpBuilder &builder, Value tile,
 // Allocate a fresh (arbiter, msel) amsel in `sb` that is not already used by
 // its configuration, creating the amsel at the top of the switchbox block so it
 // dominates the master sets and rules that reference it.
-static AMSelOp allocateAmsel(OpBuilder &builder, Location loc, SwitchboxOp sb) {
+static AMSelOp
+allocateAmsel(OpBuilder &builder, Location loc, SwitchboxOp sb,
+              std::optional<int> requiredArbiter = std::nullopt) {
   Block &block = sb.getConnections().front();
   llvm::SmallSet<std::pair<int, int>, 24> used;
   for (auto a : block.getOps<AMSelOp>()) {
@@ -109,9 +113,23 @@ static AMSelOp allocateAmsel(OpBuilder &builder, Location loc, SwitchboxOp sb) {
   builder.setInsertionPointToStart(&block);
   for (int msel = 0; msel < 4; msel++) {
     for (int arb = 0; arb < 6; arb++) {
+      if (requiredArbiter && arb != *requiredArbiter) {
+        continue;
+      }
       if (!used.count({arb, msel})) {
         return AMSelOp::create(builder, loc, arb, msel);
       }
+    }
+  }
+  return nullptr;
+}
+
+static MasterSetOp findMasterSet(SwitchboxOp sb, WireBundle egress,
+                                 int egressChannel) {
+  for (auto masterSet : sb.getConnections().getOps<MasterSetOp>()) {
+    if (masterSet.getDestBundle() == egress &&
+        masterSet.getDestChannel() == egressChannel) {
+      return masterSet;
     }
   }
   return nullptr;
@@ -142,13 +160,12 @@ static PacketRulesOp getOrCreatePacketRules(OpBuilder &builder, Location loc,
 // shim-mux, since the switchbox South:N port appears as mux North:N). Whatever
 // remains is a gap the router must fill and becomes a flow -- circuit when
 // `packetID` < 0, otherwise a packet_flow(packetID).
-static void emitRoutableSegment(OpBuilder &builder, Location loc,
-                                Operation *anchor, Value srcTile,
-                                WireBundle srcBundle, int srcChannel,
-                                Value dstTile, WireBundle dstBundle,
-                                int dstChannel, int packetID,
-                                DenseMap<Value, ShimMuxOp> &shimMuxes,
-                                mlir::IntegerAttr maskAttr = {}) {
+static void emitRoutableSegment(
+    OpBuilder &builder, Location loc, Operation *anchor, Value srcTile,
+    WireBundle srcBundle, int srcChannel, Value dstTile, WireBundle dstBundle,
+    int dstChannel, int packetID, DenseMap<Value, ShimMuxOp> &shimMuxes,
+    mlir::IntegerAttr maskAttr = {}, mlir::BoolAttr keepPktHeaderAttr = {},
+    mlir::BoolAttr priorityRouteAttr = {}) {
   if (srcTile == dstTile && srcBundle == dstBundle &&
       srcChannel == dstChannel) {
     return;
@@ -179,7 +196,7 @@ static void emitRoutableSegment(OpBuilder &builder, Location loc,
     return;
   }
   auto pf = PacketFlowOp::create(builder, loc, static_cast<uint8_t>(packetID),
-                                 BoolAttr(), BoolAttr());
+                                 keepPktHeaderAttr, priorityRouteAttr);
   // Preserve the flow's pinned packet-rule mask on the routed remainder;
   // without it the pathfinder derives a full 0x1f mask that mismatches the
   // pinned via segments' rules for the same flow and the packet is never
@@ -266,10 +283,10 @@ struct AIESplitFlowViasPass
       flow.erase();
     }
 
-    // Packet sections pin their route with vias too. Each via becomes a
-    // stream-switch rule/master-set pair carrying the flow's ID; the amsel is
-    // allocated locally (its numeric value is not pinned). Fan-out/fan-in nodes
-    // are already materialized in the IR, so a section only needs its own hops.
+    // Packet sections pin their route with vias too. Each via creates a rule
+    // carrying the flow's ID. Vias with the same egress share a master set and
+    // use msel values from its arbiter. Fan-out/fan-in nodes are already
+    // materialized in the IR, so a section only needs its own hops.
     SmallVector<PacketFlowOp> pktFlowsWithVias;
     for (auto pf : device.getOps<PacketFlowOp>()) {
       if (!pf.getVias().empty()) {
@@ -301,10 +318,11 @@ struct AIESplitFlowViasPass
       WireBundle srcBundle = source.getBundle();
       int srcChannel = source.getChannel();
       auto emitSegment = [&](Value dstTile, WireBundle dstBundle,
-                             int dstChannel) {
+                             int dstChannel, BoolAttr keepPktHeader = {}) {
         emitRoutableSegment(builder, loc, pf, srcTile, srcBundle, srcChannel,
                             dstTile, dstBundle, dstChannel, id, shimMuxes,
-                            pf.getMaskAttr());
+                            pf.getMaskAttr(), keepPktHeader,
+                            pf.getPriorityRouteAttr());
       };
 
       for (size_t i = 0, e = pf.getVias().size(); i < e; i++) {
@@ -317,25 +335,45 @@ struct AIESplitFlowViasPass
         emitSegment(viaTile, ingress, ingressChannel);
 
         SwitchboxOp sb = getOrCreateSwitchbox(builder, viaTile, switchboxes);
-        AMSelOp amsel = allocateAmsel(builder, loc, sb);
+        MasterSetOp masterSet = findMasterSet(sb, egress, egressChannel);
+        std::optional<int> arbiter;
+        if (masterSet && !masterSet.getAmsels().empty()) {
+          arbiter = cast<AMSelOp>(masterSet.getAmsels().front().getDefiningOp())
+                        .arbiterIndex();
+        }
+        AMSelOp amsel = allocateAmsel(builder, loc, sb, arbiter);
         if (!amsel) {
           pf.emitOpError("via tile has no free arbiter-msel combination");
           signalPassFailure();
           return;
         }
+        BoolAttr keepPktHeader;
+        if (viaTile == dest.getTile() && egress == dest.getBundle() &&
+            egressChannel == dest.getChannel()) {
+          keepPktHeader = pf.getKeepPktHeaderAttr();
+        }
+        if (masterSet) {
+          bool keepsHeader = AIE::keepsPktHeader(
+              sb.getTileOp().getTileID(), masterSet.destPort(),
+              keepPktHeader ? std::optional<bool>(keepPktHeader.getValue())
+                            : std::nullopt);
+          if (masterSet.keepsPktHeader() != keepsHeader) {
+            pf.emitOpError("shares a via egress with incompatible "
+                           "keep_pkt_header behavior");
+            signalPassFailure();
+            return;
+          }
+          masterSet.getAmselsMutable().append(ValueRange{amsel});
+        }
         {
           OpBuilder::InsertionGuard guard(builder);
           builder.setInsertionPoint(
               sb.getConnections().front().getTerminator());
-          // Restore keep_pkt_header on the master set that drives the flow's
-          // destination; the intermediate hops always keep the header.
-          BoolAttr keepPktHeader;
-          if (viaTile == dest.getTile() && egress == dest.getBundle() &&
-              egressChannel == dest.getChannel()) {
-            keepPktHeader = pf.getKeepPktHeaderAttr();
+          if (!masterSet) {
+            MasterSetOp::create(builder, loc, builder.getIndexType(), egress,
+                                egressChannel, ValueRange{amsel},
+                                keepPktHeader);
           }
-          MasterSetOp::create(builder, loc, builder.getIndexType(), egress,
-                              egressChannel, ValueRange{amsel}, keepPktHeader);
         }
         PacketRulesOp rules =
             getOrCreatePacketRules(builder, loc, sb, ingress, ingressChannel);
@@ -350,7 +388,8 @@ struct AIESplitFlowViasPass
         srcChannel = egressChannel;
       }
 
-      emitSegment(dest.getTile(), dest.getBundle(), dest.getChannel());
+      emitSegment(dest.getTile(), dest.getBundle(), dest.getChannel(),
+                  pf.getKeepPktHeaderAttr());
       pf.erase();
     }
   }

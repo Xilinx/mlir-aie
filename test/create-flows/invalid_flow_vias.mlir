@@ -98,6 +98,19 @@ module {
 
 // -----
 
+"builtin.module"() ({
+  "aie.device"() <{device = 5 : i32, sym_name = "main"}> ({
+    %src = "aie.tile"() <{col = 0 : i32, row = 2 : i32}> : () -> index
+    %via = "arith.constant"() <{value = 0 : index}> : () -> index
+    %dst = "aie.tile"() <{col = 0 : i32, row = 4 : i32}> : () -> index
+    // expected-error@+1 {{has via operand at index 0 that is not defined by a tile-like operation}}
+    "aie.flow"(%src, %dst, %via) <{dest_bundle = 1 : i32, dest_channel = 0 : i32, source_bundle = 1 : i32, source_channel = 0 : i32, via_egress_bundles = array<i32: 5>, via_egress_channels = array<i32: 0>, via_ingress_bundles = array<i32: 3>, via_ingress_channels = array<i32: 0>}> : (index, index, index) -> ()
+    "aie.end"() : () -> ()
+  }) : () -> ()
+}) : () -> ()
+
+// -----
+
 module {
   aie.device(npu1_1col) {
     %src = aie.tile(0, 2)
