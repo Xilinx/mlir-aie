@@ -20,7 +20,6 @@ from ._common import (
     TensorLayout,
     Trace,
     _detect_arch,
-    _device,
     _include_dirs,
     _kernel_source,
     _portable_flags,
@@ -115,7 +114,6 @@ def fused_mm(
     ``fn.fused_mm_tile`` (``fn`` itself).
     """
     arch = _detect_arch()
-    device = _device()
     if bfp16_b and not ARCH_TRAITS[arch].bfp16:
         raise ValueError("fused_mm: bfp16_b needs aie2p; bfp16ebs8 is an AIE2P type")
     if bfp16_b:
@@ -353,7 +351,6 @@ def fused_mm(
         tuple(compile_flags),
         False,
         arch,
-        device.default_core_stack_bytes,
         # The clamp is no longer a compile flag, so two clamps of the same
         # kernel share compile_flags. They still need their own bindings,
         # reference and tolerance, so the bounds belong in the key.
@@ -420,11 +417,6 @@ def fused_mm(
         ops_per_call=2 * dim_m * dim_k * dim_n,
         # The aie2 epilogue reaches getTanhBf16; aie2p has no table.
         uses_lut=True,
-        # Reserve the f32 accumulator plus call frames and epilogue spills:
-        # AIE2P SiLU with clamp needs 1600 bytes beyond the accumulator.
-        # aiecc still checks the measured linked stack.
-        stack_bytes=np.dtype(np.float32).itemsize * dim_m * dim_n
-        + max(device.default_core_stack_bytes, 2048),
     )
     fn = _FusedMMKernel(
         "fused_mm_tile",

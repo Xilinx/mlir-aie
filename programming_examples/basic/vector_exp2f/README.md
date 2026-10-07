@@ -42,8 +42,8 @@ python3 vector_exp2f.py
 
 The IRON JIT runtime detects the attached NPU generation automatically.
 The kernel source, `aie_kernels/activation/exp2f_vec.cc`, builds for aie2
-and aie2p. On aie2 it needs a 2048-byte core stack, which the design takes
-from `exp2f_fn.contract.stack_bytes`.
+and aie2p. aiecc sizes each core's stack from the linked kernel, so the
+design sets no `stack_size`.
 
 The host driver builds four input blocks: a dense grid over `[-111, 0]`, a
 random sample over the same range, a block from `-500` to just below

@@ -183,7 +183,6 @@ def softmax_blocks(
     worker = Worker(
         core,
         fn_args=[of_a.cons(), of_p.prod(), of_scale.prod(), softmax, init, *idx],
-        stack_size=kernels.mha_softmax(accurate_exp2).contract.stack_bytes,
     )
 
     host = [
@@ -241,7 +240,6 @@ def rescale_tile(o_in: In, scale_in: In, o_out: Out):
             copy,
             idx,
         ],
-        stack_size=mha.contract.stack_bytes,
     )
 
     def sequence(o_h, scale_h, out_h, in_fifo, scale_fifo, out_fifo):
@@ -494,7 +492,6 @@ def mha_round(
             scale_buf,
             *idx_bufs,
         ],
-        stack_size=kernels.mha_softmax(accurate_exp2).contract.stack_bytes,
     )
 
     host = [np.ndarray[(2 * n_kv * _B * _B,), BF], tile_ty]

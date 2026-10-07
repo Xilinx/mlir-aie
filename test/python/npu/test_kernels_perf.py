@@ -36,7 +36,6 @@ cases, which are not timed, join that comparison untimed.
 
 from __future__ import annotations
 
-import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -63,10 +62,6 @@ TRACE_BYTES_PER_INTERVAL = 512
 # risk a host buffer the runtime cannot allocate.
 TRACE_RETRIES = 3
 TRACE_MAX_BYTES = 4 << 20
-
-_STACK_SHORT = re.compile(
-    r"stack_size = (\d+) is insufficient: this core needs (\d+) bytes"
-)
 
 # A kernel whose cost is known well enough to catch a broken measurement:
 # 8 KB copied, identical across its calls and across nightlies (264 cycles
@@ -99,14 +94,13 @@ def _measure(
     workdir: Path,
     *,
     strict: bool = True,
-    stack_bytes: int | None = None,
     timed: bool = True,
 ) -> dict:
     """Build, check and time one case. Raises if it is wrong, unless not ``strict``.
 
     Not ``strict``, a wrong output is timed anyway and its verdict's detail
-    is the result's ``"failed"`` (None when it passed). ``stack_bytes``
-    replaces the contract's core stack. Not ``timed``, it only runs once.
+    is the result's ``"failed"`` (None when it passed). Not ``timed``, it
+    only runs once.
     """
     fn = case.fn()
     factory = getattr(kernels, case.factory)
@@ -115,7 +109,6 @@ def _measure(
         factory,
         **case.harness_opts(),
         params=fn.param_values(inputs),
-        stack_bytes=stack_bytes,
         **case.kwargs,
     )
 
@@ -417,38 +410,18 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
     tolerance tightened along with the kernel. Returns the pair of each
     arm's cycles and npu_us (min, and min, max and n), each arm's error
     against the reference (``cases.error_report``), the differing words and
-    each arm's verdict.
-
-    The contract's stack is sized for this tree's kernel too, and aiecc
-    refuses a baseline that needs more; that one is built with the stack
-    aiecc measured, recorded as ``"baseline_stack"`` ``[contract, needed]``.
-    The baseline is timed only if ``current`` was.
+    each arm's verdict. The baseline is timed only if ``current`` was.
     """
     timed = "wall" in current
     # The baseline's kernels share their object names with this tree's but
     # not their sources; the registry would refuse them as a collision.
     ExternalFunction._instances.clear()
-    stack = None
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("MLIR_AIE_KERNEL_SOURCES", tree)
         try:
-            try:
-                base = _measure(
-                    case, config, workdir / "baseline", strict=False, timed=timed
-                )
-            except RuntimeError as e:
-                if not (short := _STACK_SHORT.search(str(e))):
-                    raise
-                stack = [int(short[1]), int(short[2])]
-                ExternalFunction._instances.clear()
-                base = _measure(
-                    case,
-                    config,
-                    workdir / "baseline",
-                    strict=False,
-                    stack_bytes=stack[1],
-                    timed=timed,
-                )
+            base = _measure(
+                case, config, workdir / "baseline", strict=False, timed=timed
+            )
         except AssertionError as e:
             raise AssertionError(f"baseline tree {tree}: {e}") from None
 
@@ -477,7 +450,6 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
         "accuracy": [base["error"], current["error"]],
         "baseline_failed": base["failed"],
         "current_failed": current["failed"],
-        "baseline_stack": stack,
     }
 
 
@@ -531,30 +503,6 @@ def test_a_baseline_that_fails_the_contract_is_timed(request, workdir, tmp_path)
     assert entry["npu_us_min"][0] is not None
     if not request.config.getoption("--no-cycles"):
         assert entry["cycles"][0] is not None
-
-
-@pytest.mark.perf
-def test_a_baseline_that_needs_more_stack_is_timed(request, workdir, tmp_path):
-    """A baseline over this tree's stack contract is built with the stack it needs.
-
-    A change that shrinks a kernel's frame lowers its ``stack_bytes`` with
-    it, and aiecc refuses the old kernel under the new contract.
-    """
-    tree = tmp_path / "base"
-    shutil.copytree(aie_kernels_dir(), tree / "aie_kernels")
-    shutil.copytree(aie_runtime_lib_dir(), tree / "aie_runtime_lib")
-    frame = "  volatile int frame[1024];\n  for (int k = 0; k < 1024; k++)\n    frame[k] = k;\n"
-    for header in ("relu_aie2.h", "relu_aie2p.h"):
-        path = tree / "aie_kernels" / "eltwise" / header
-        assert path.read_text().count("  event1();") == 1
-        path.write_text(path.read_text().replace("  event1();", f"{frame}  event1();"))
-    case = Case("relu", calls=4)
-    current = _measure(case, request.config, workdir)
-    entry = _compare(case, request.config, workdir, current, str(tree))
-    contract, needed = entry["baseline_stack"]
-    assert contract == kd._stack_bytes(case.fn()) and needed > 4096
-    assert entry["baseline_failed"] is None and entry["differing_words"] == 0
-    assert entry["npu_us_min"][0] is not None
 
 
 @pytest.mark.perf

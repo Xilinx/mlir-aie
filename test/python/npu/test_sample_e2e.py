@@ -132,7 +132,6 @@ def sample_positions(
                 of_record.prod(),
                 combine,
             ],
-            stack_size=combine.contract.stack_bytes,
         )
     )
 

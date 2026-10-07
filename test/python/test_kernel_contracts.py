@@ -470,177 +470,12 @@ def test_rounding_mode_preserves_string_api(mode):
 
 
 @pytest.mark.parametrize(
-    "factory,minimum",
-    [
-        (kernels.conv2dk1, 1088),
-        (kernels.conv2dk1_skip, 512),
-        (kernels.conv2dk1_skip_init, 1216),
-        (kernels.conv2dk3, 384),
-    ],
-)
-def test_stack_contract_covers_measured_core(factory, minimum):
-    assert factory().contract.stack_bytes >= minimum
-
-
-@pytest.mark.parametrize(
-    "device,portable,minimum",
-    [
-        (NPU2Col1, False, 896),
-        (NPU2Col1, True, 896),
-        (NPU1Col1, False, 160),
-        (NPU1Col1, True, 736),
-    ],
-)
-def test_layer_norm_f32_stack_covers_measured_core(
-    monkeypatch, device, portable, minimum
-):
-    # aiecc's measured_stack_size, plus the 64-byte frame of __mulsf3 or
-    # __divsf3 where the build calls one: compiler-rt emits no .stack_sizes.
-    if portable:
-        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
-    set_current_device(device())
-    mlir = str(kd.design(kernels.layer_norm_f32, cols=1024, calls=16).as_mlir())
-    stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
-    assert stack_sizes
-    assert all(int(size) >= minimum for size in stack_sizes)
-
-
-@pytest.mark.parametrize("portable", [False, True])
-@pytest.mark.parametrize(
-    "device,dim_k,dim_n,minimum",
-    [
-        (NPU2Col1, 56, 16, 1088),
-        (NPU2Col1, 72, 32, 1024),
-        (NPU2Col1, 144, 32, 2240),
-        (NPU2Col1, 256, 16, 4160),
-        (NPU2Col1, 256, 32, 4032),
-        (NPU2Col1, 384, 16, 6208),
-        (NPU1Col1, 256, 32, 512),
-    ],
-)
-def test_mm_i8_i32_stack_covers_measured_core(
-    monkeypatch, device, dim_k, dim_n, minimum, portable
-):
-    # aiecc's measured_stack_size, worst of the b_col_maj/c_col_maj builds.
-    if portable:
-        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
-    set_current_device(device())
-    fn = kernels.mm(
-        dim_m=32,
-        dim_k=dim_k,
-        dim_n=dim_n,
-        input_dtype=np.int8,
-        output_dtype=np.int32,
-    )
-    assert kd._stack_bytes(fn) >= minimum
-
-
-@pytest.mark.parametrize(
-    "kwargs,expected",
-    [
-        # In the fitted range: 16 * dim_k + 256.
-        (dict(dim_k=56, input_dtype=np.int8, output_dtype=np.int32), 16 * 56 + 256),
-        (dict(dim_k=408, input_dtype=np.int8, output_dtype=np.int32), 16 * 408 + 256),
-        # Excluded at both ends: the device default (None) covers these.
-        (dict(dim_k=48, input_dtype=np.int8, output_dtype=np.int32), None),
-        (dict(dim_k=416, input_dtype=np.int8, output_dtype=np.int32), None),
-        # Excluded by not being the tuned aie2p/vectorized/int8->int32 case.
-        (
-            dict(
-                dim_k=200,
-                input_dtype=np.int8,
-                output_dtype=np.int32,
-                vectorized=False,
-            ),
-            None,
-        ),
-        (dict(dim_k=200, input_dtype=np.int16, output_dtype=np.int32), None),
-    ],
-)
-def test_mm_i8_i32_stack_formula_envelope(kwargs, expected):
-    # Pins the 48 < dim_k < 416 fit boundaries themselves (kernel_cases.py and
-    # test_mm_i8_i32_stack_covers_measured_core pin measured values inside
-    # them), so a change to the envelope is caught even where it still
-    # happens to satisfy every measured minimum above.
-    set_current_device(NPU2Col1())
-    fn = kernels.mm(dim_m=32, dim_n=16, **kwargs)
-    assert fn.contract.stack_bytes == expected
-
-
-def test_mm_stack_falls_back_off_aie2p_and_under_chess():
-    set_current_device(NPU1Col1())
-    assert (
-        kernels.mm(
-            dim_k=200, input_dtype=np.int8, output_dtype=np.int32
-        ).contract.stack_bytes
-        is None
-    )
-    set_current_device(NPU2Col1())
-    assert (
-        kernels.mm(
-            dim_k=200, input_dtype=np.int8, output_dtype=np.int32, use_chess=True
-        ).contract.stack_bytes
-        == 0xD00
-    )
-
-
-@pytest.mark.parametrize(
     "input_width,kernel_width", [(112, 14), (336, 14), (230, 14), (240, 15)]
 )
 def test_conv2dk14_rejects_shapes_the_vector_paths_skip(input_width, kernel_width):
     # The vector paths step 16 patches and 2 pixels at a time.
     with pytest.raises(ValueError, match="conv2dk14"):
         kernels.conv2dk14(input_width=input_width, kernel_width=kernel_width)
-
-
-@pytest.mark.parametrize(
-    "device,portable,channels,minimum",
-    [
-        (NPU2Col1, False, 448, 1280),
-        (NPU2Col1, False, 224, 1024),
-        (NPU2Col1, True, 256, 1280),
-        (NPU1Col1, True, 192, 416),
-        (NPU1Col1, False, 416, 1056),
-        (NPU1Col1, False, 1248, 9760),
-    ],
-)
-def test_dwconv1d_channels_last_stack_covers_measured_core(
-    monkeypatch, device, portable, channels, minimum
-):
-    # aiecc's measured_stack_size at the worst channel count of each build,
-    # and at the first aie2 count that needs more than the default
-    if portable:
-        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
-    set_current_device(device())
-    mlir = str(
-        kd.design(kernels.dwconv1d_channels_last, channels=channels, calls=1).as_mlir()
-    )
-    stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
-    assert stack_sizes
-    assert all(int(size) >= minimum for size in stack_sizes)
-
-
-@pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
-@pytest.mark.parametrize("dim_m,dim_n", [(32, 16), (64, 32)])
-@pytest.mark.parametrize("epilogue", ["none", "gelu", "silu", "sigmoid"])
-def test_fused_mm_stack_covers_accumulator_and_epilogue(device, dim_m, dim_n, epilogue):
-    set_current_device(device())
-    kwargs = dict(
-        dim_m=dim_m,
-        dim_k=48,
-        dim_n=dim_n,
-        epilogue=epilogue,
-        clamp=(-0.125, 0.75),
-    )
-    # The 32x16 AIE2P SiLU+clamp core measured 3648 bytes with pinned Peano.
-    accumulator_bytes = np.dtype(np.float32).itemsize * dim_m * dim_n
-    minimum = accumulator_bytes + max(device().default_core_stack_bytes, 1600)
-    fn = kernels.fused_mm(**kwargs)
-    assert fn.contract.stack_bytes >= minimum
-    mlir = str(kd.design(kernels.fused_mm, calls=4, **kwargs).as_mlir())
-    stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
-    assert stack_sizes
-    assert all(int(size) >= minimum for size in stack_sizes)
 
 
 def test_contract_validates_argument_bindings():
@@ -751,7 +586,6 @@ def test_mixed_params_infer_scalar_and_tensor_abi():
             x - weights,
         ),
         acc_dtype=np.int32,
-        stack_bytes=1024,
     )
     inputs = kd.sample_inputs(fn, calls=3)
     assert [a.shape for a in inputs] == [(3, 4), (4,)]
@@ -814,7 +648,6 @@ def test_parameter_only_kernel_can_have_multiple_outputs():
     fn.contract = KernelContract(
         roles=(Param, Param, Out, Out),
         reference=lambda weights, factor: (weights * factor, weights + factor),
-        stack_bytes=1024,
     )
     inputs = kd.sample_inputs(fn)
     assert len(inputs) == 1
@@ -1894,17 +1727,10 @@ def test_transformer_references_match_the_example_formulas():
 def test_contract_validates_its_remaining_fields():
     with pytest.raises(ValueError, match="reduction"):
         KernelContract(roles=(In, Out), reduction=0)
-    with pytest.raises(ValueError, match="stack_bytes"):
-        KernelContract(roles=(In, Out), stack_bytes=0)
     with pytest.raises(ValueError, match="role"):
         KernelContract(roles=(In, "out"))
     c = KernelContract(roles=(In, Out))
-    assert (c.acc_dtype, c.reduction, c.setup, c.stack_bytes) == (
-        None,
-        None,
-        None,
-        None,
-    )
+    assert (c.acc_dtype, c.reduction, c.setup) == (None, None, None)
 
 
 def test_input_limit_keeps_the_reference_inside_the_accumulator():

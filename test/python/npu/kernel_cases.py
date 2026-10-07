@@ -1692,7 +1692,7 @@ CASES: list[Case] = [
         calls=16,
         tag="odd-chunk-tail",
     ),
-    # overflowed its declared stack on three builds when every channel unrolled
+    # needed a stack above the default on three builds when every channel unrolled
     check(
         "dwconv1d_channels_last",
         dict(channels=512),
