@@ -61,6 +61,7 @@ def fused_mm(
     epilogue="none",
     clamp=None,
     bfp16_b=False,
+    b_col_maj=False,
     epilogue_modes=None,
     rounding="conv_even",
     gelu="fp32",
@@ -86,6 +87,12 @@ def fused_mm(
     8x8x8, and the core converts A to bfp16 itself. The host rounds B in the
     ``rounding`` mode, as IRON's ``pack_b`` does, and the reference
     multiplies both operands as the core sees them.
+
+    ``b_col_maj`` (aie2, with an ``(r, 8, 8)`` mmul) takes B as stored
+    transposed, the ``(n, k)`` layout of a checkpoint's weights: each k chunk
+    holds k panels of ``s`` rows, every n row of a panel ``s`` contiguous k,
+    a layout a DMA builds from ``(n, k)`` storage in 16-byte runs. The core
+    transposes each half block in one shuffle.
 
     ``epilogue_modes`` lists the activations compiled in, for a caller that
     selects one at run time through ``mm_fused_epilogue_chunk``'s mode
@@ -118,6 +125,8 @@ def fused_mm(
     arch = _detect_arch()
     if bfp16_b and not ARCH_TRAITS[arch].bfp16:
         raise ValueError("fused_mm: bfp16_b needs aie2p; bfp16ebs8 is an AIE2P type")
+    if b_col_maj and (arch != "aie2" or bfp16_b):
+        raise ValueError("fused_mm: b_col_maj is aie2's bf16 B form")
     if bfp16_b:
         r, s, t = 8, 8, 8
     else:
@@ -126,6 +135,8 @@ def fused_mm(
         if bfp16_b and tuple(mmul_shape) != (8, 8, 8):
             raise ValueError("fused_mm: bfp16_b needs mmul_shape (8, 8, 8)")
         r, s, t = mmul_shape
+    if b_col_maj and (s, t) != (8, 8):
+        raise ValueError("fused_mm: b_col_maj needs an (r, 8, 8) mmul_shape")
     dims = (dim_m, dim_k, dim_n, band_m, chunk_k, out_chunk, c_depth, r, s, t)
     if any(not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in dims):
         raise ValueError("fused_mm dimensions must be positive integers")
@@ -183,6 +194,21 @@ def fused_mm(
         return (
             b.reshape(-1, dim_k // chunk_k, dim_n // t, chunk_k // s, s, t)
             .transpose(0, 1, 3, 4, 2, 5)
+            .reshape(-1, dim_k, dim_n)
+        )
+
+    # Block (i, j) of a k chunk at (i * colB + j), each B^T: n-major.
+    def pack_b_t(b):
+        return (
+            b.reshape(-1, dim_k // chunk_k, chunk_k // s, s, dim_n // t, t)
+            .transpose(0, 1, 2, 4, 5, 3)
+            .reshape(len(b), -1)
+        )
+
+    def unpack_b_t(b):
+        return (
+            b.reshape(-1, dim_k // chunk_k, chunk_k // s, dim_n // t, t, s)
+            .transpose(0, 1, 2, 5, 3, 4)
             .reshape(-1, dim_k, dim_n)
         )
 
@@ -328,6 +354,8 @@ def fused_mm(
             "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
             "-DMM_FUSED_BFP16_B",
         ]
+    if b_col_maj:
+        compile_flags.append("-DMM_FUSED_B_COL_MAJ")
     if gelu == "bf16_steps":
         compile_flags.append("-DMM_FUSED_GELU_BF16_STEPS")
     if step_markers:
@@ -363,6 +391,12 @@ def fused_mm(
     if len(set(epilogue_modes)) > 1:
         key += (modes[epilogue],)
     prefix = hashlib.sha256(repr(key).encode()).hexdigest()[:16]
+    if bfp16_b:
+        b_codec = (pack_b_bfp, unpack_b_bfp)
+    elif b_col_maj:
+        b_codec = (pack_b_t, unpack_b_t)
+    else:
+        b_codec = (pack_b, unpack_b)
     contract = KernelContract(
         trace=(
             Trace.partial("markers bracket each init, k step and drain chunk")
@@ -374,11 +408,7 @@ def fused_mm(
         # streamed transformed, the host packs them (block, no stream).
         layouts=(
             TensorLayout((dim_m, dim_k), pack_a, unpack_a, block=(r, s)),
-            (
-                TensorLayout((dim_k, dim_n), pack_b_bfp, unpack_b_bfp, block=(s, t))
-                if bfp16_b
-                else TensorLayout((dim_k, dim_n), pack_b, unpack_b, block=(s, t))
-            ),
+            TensorLayout((dim_k, dim_n), *b_codec, block=(s, t)),
             TensorLayout((dim_m, dim_n), pack_c, unpack_c, block=(r, t)),
             None,
             None,
