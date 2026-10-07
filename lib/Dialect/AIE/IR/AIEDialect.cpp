@@ -2275,6 +2275,41 @@ LogicalResult verifyNoSharedCircuitPorts(DeviceOp device) {
   return failure(result.wasInterrupted());
 }
 
+LogicalResult verifyNoSharedCircuitViaEgresses(DeviceOp device) {
+  std::map<PortKey, std::pair<FlowOp, size_t>> claimedEgresses;
+  WalkResult result = device.walk([&](FlowOp flow) {
+    ArrayRef<int32_t> bundles =
+        flow.getViaEgressBundlesAttr()
+            ? flow.getViaEgressBundlesAttr().asArrayRef()
+            : ArrayRef<int32_t>();
+    ArrayRef<int32_t> channels =
+        flow.getViaEgressChannelsAttr()
+            ? flow.getViaEgressChannelsAttr().asArrayRef()
+            : ArrayRef<int32_t>();
+    if (bundles.size() != flow.getVias().size() ||
+        channels.size() != flow.getVias().size())
+      return WalkResult::advance();
+    for (auto [index, via] : llvm::enumerate(flow.getVias())) {
+      std::optional<PortKey> egress = tryGetPortKey(
+          via, static_cast<WireBundle>(bundles[index]), channels[index]);
+      if (!egress)
+        continue;
+      auto [it, inserted] = claimedEgresses.try_emplace(*egress, flow, index);
+      if (inserted)
+        continue;
+      InFlightDiagnostic diag = flow.emitOpError()
+                                << "via " << index << " claims circuit egress "
+                                << to_string(*egress)
+                                << ", which another via already claims";
+      diag.attachNote(it->second.first.getLoc())
+          << "via " << it->second.second << " claims the same circuit egress";
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
+}
+
 // `mlir::detail::verifySymbolTable` compares names carried by `Symbol` ops.
 // `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` name themselves
 // with `sym_name` but define an SSA value, so they are not `Symbol` ops and
@@ -2349,6 +2384,8 @@ LogicalResult DeviceOp::verify() {
   if (failed(verifyNoDuplicatePacketFlows(*this)))
     return failure();
   if (failed(verifyNoSharedCircuitPorts(*this)))
+    return failure();
+  if (failed(verifyNoSharedCircuitViaEgresses(*this)))
     return failure();
 
   if (failed(verifyNoDuplicateNames(*this))) {
@@ -2847,6 +2884,48 @@ static LogicalResult verifyFlowEndpoint(Operation *op, Value tile, Port port,
                            << " its stream switch";
 }
 
+static LogicalResult verifyFlowVias(Operation *op, OperandRange vias,
+                                    DenseI32ArrayAttr ingressBundles,
+                                    DenseI32ArrayAttr ingressChannels,
+                                    DenseI32ArrayAttr egressBundles,
+                                    DenseI32ArrayAttr egressChannels) {
+  size_t numVias = vias.size();
+  DenseI32ArrayAttr arrays[] = {ingressBundles, ingressChannels, egressBundles,
+                                egressChannels};
+  for (DenseI32ArrayAttr array : arrays) {
+    size_t size = array ? array.size() : 0;
+    if (size != numVias)
+      return op->emitOpError("has ")
+             << numVias << " via tile(s) but a via port array of size " << size;
+  }
+  if (numVias == 0)
+    return success();
+
+  auto verifyBundles = [&](DenseI32ArrayAttr bundles,
+                           StringRef direction) -> LogicalResult {
+    for (auto [index, bundle] : llvm::enumerate(bundles.asArrayRef()))
+      if (bundle < 0 ||
+          bundle > static_cast<int32_t>(getMaxEnumValForWireBundle()))
+        return op->emitOpError("has invalid via ")
+               << direction << " bundle " << bundle << " at index " << index;
+    return success();
+  };
+  auto verifyChannels = [&](DenseI32ArrayAttr channels,
+                            StringRef direction) -> LogicalResult {
+    for (auto [index, channel] : llvm::enumerate(channels.asArrayRef()))
+      if (channel < 0)
+        return op->emitOpError("has negative via ")
+               << direction << " channel " << channel << " at index " << index;
+    return success();
+  };
+  if (failed(verifyBundles(ingressBundles, "ingress")) ||
+      failed(verifyChannels(ingressChannels, "ingress")) ||
+      failed(verifyBundles(egressBundles, "egress")) ||
+      failed(verifyChannels(egressChannels, "egress")))
+    return failure();
+  return success();
+}
+
 LogicalResult FlowOp::verify() {
   if (failed(verifyFlowEndpoint(*this, getSource(),
                                 {getSourceBundle(), sourceIndex()}, true)))
@@ -2855,17 +2934,9 @@ LogicalResult FlowOp::verify() {
                                 {getDestBundle(), destIndex()}, false)))
     return failure();
 
-  size_t n = getVias().size();
-  DenseI32ArrayAttr arrays[] = {
-      getViaIngressBundlesAttr(), getViaIngressChannelsAttr(),
-      getViaEgressBundlesAttr(), getViaEgressChannelsAttr()};
-  for (DenseI32ArrayAttr a : arrays) {
-    size_t size = a ? a.size() : 0;
-    if (size != n)
-      return emitOpError("has ")
-             << n << " via tile(s) but a via port array of size " << size;
-  }
-  return success();
+  return verifyFlowVias(*this, getVias(), getViaIngressBundlesAttr(),
+                        getViaIngressChannelsAttr(), getViaEgressBundlesAttr(),
+                        getViaEgressChannelsAttr());
 }
 
 LogicalResult PacketSourceOp::verify() {
@@ -2895,6 +2966,12 @@ LogicalResult PacketFlowOp::verify() {
     return emitOpError("must have at least one aie.packet_source");
   if (numDests < 1)
     return emitOpError("must have at least one aie.packet_dest");
+  if (!getVias().empty() && numSources != 1)
+    return emitOpError(
+        "with via waypoints must have exactly one aie.packet_source");
+  if (!getVias().empty() && numDests != 1)
+    return emitOpError(
+        "with via waypoints must have exactly one aie.packet_dest");
 
   // A slave port accepts a packet when `incoming & mask == ID`, so a bit set
   // in ID and clear in the mask rejects every packet.
@@ -2907,18 +2984,9 @@ LogicalResult PacketFlowOp::verify() {
     }
   }
 
-  size_t n = getVias().size();
-  DenseI32ArrayAttr arrays[] = {
-      getViaIngressBundlesAttr(), getViaIngressChannelsAttr(),
-      getViaEgressBundlesAttr(), getViaEgressChannelsAttr()};
-  for (DenseI32ArrayAttr a : arrays) {
-    size_t size = a ? a.size() : 0;
-    if (size != n)
-      return emitOpError("has ")
-             << n << " via tile(s) but a via port array of size " << size;
-  }
-
-  return success();
+  return verifyFlowVias(*this, getVias(), getViaIngressBundlesAttr(),
+                        getViaIngressChannelsAttr(), getViaEgressBundlesAttr(),
+                        getViaEgressChannelsAttr());
 }
 
 //===----------------------------------------------------------------------===//

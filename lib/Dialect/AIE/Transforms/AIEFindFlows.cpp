@@ -109,57 +109,9 @@ public:
       for (Port p : sources)
         if (getConnectionsThroughSwitchbox(connections, p).size() > 1)
           fanoutIngresses.insert({sw, encodePort(p)});
-      // Fan-in: an output driven from more than one source (a packet merge).
-      // Every source feeding a shared output is a section boundary as well, so
-      // the merge node stays materialized and the linear sections stop at it.
-      llvm::DenseMap<int, llvm::SmallVector<Port, 4>> outputSources;
-      for (Port p : sources)
-        for (PortMaskValue &pmv :
-             getConnectionsThroughSwitchbox(connections, p)) {
-          auto &v = outputSources[encodePort(pmv.port)];
-          if (!llvm::is_contained(v, p))
-            v.push_back(p);
-        }
-      for (auto &[egress, srcs] : outputSources)
-        if (srcs.size() > 1)
-          for (Port p : srcs)
-            fanoutIngresses.insert({sw, encodePort(p)});
-      // Break at hops whose configuration carries state a lifted flow cannot
-      // reconstruct, so only that switchbox stays materialized while the rest
-      // of the flow still lifts (split-at-change). keep_pkt_header on a real
-      // endpoint is carried on the flow (so it does not break), and control
-      // overlays are kept whole elsewhere; every other attribute breaks here.
-      auto isFabric = [](WireBundle bnd) {
-        return bnd == WireBundle::North || bnd == WireBundle::South ||
-               bnd == WireBundle::East || bnd == WireBundle::West;
-      };
-      auto hasNonCtrlDiscardable = [](Operation *op) {
-        return llvm::any_of(op->getDiscardableAttrDictionary(),
-                            [](NamedAttribute a) {
-                              return a.getName() != "is_ctrl_pkt_overlay";
-                            });
-      };
-      for (Port p : sources)
-        for (PortMaskValue &pmv :
-             getConnectionsThroughSwitchbox(connections, p))
-          for (Operation *op : pmv.ops) {
-            if (!op)
-              continue;
-            bool unliftable = hasNonCtrlDiscardable(op);
-            if (auto r = dyn_cast<PacketRuleOp>(op))
-              if (Operation *par = r->getParentOp())
-                unliftable |= hasNonCtrlDiscardable(par);
-            if (auto ms = dyn_cast<MasterSetOp>(op))
-              unliftable |=
-                  ms.getKeepPktHeaderAttr() && isFabric(ms.getDestBundle());
-            if (unliftable)
-              fanoutIngresses.insert({sw, encodePort(p)});
-          }
     };
     for (auto switchOp : device.getOps<SwitchboxOp>())
       scan(switchOp, switchOp.getConnections());
-    for (auto shimMuxOp : device.getOps<ShimMuxOp>())
-      scan(shimMuxOp, shimMuxOp.getConnections());
   }
 
   // Consumed and cleared by the pass.
@@ -379,7 +331,7 @@ public:
         connectedTiles.push_back(t);
         for (PortMaskValue &pmv :
              getConnectionsThroughSwitchbox(*connections, otherPort)) {
-          if (pmv.mv.mask == 0) {
+          if (isa<ConnectOp>(pmv.ops.front())) {
             auto sameSeed = [&](const CircuitFanoutSeed &seed) {
               return seed.op == other && seed.ingress == otherPort &&
                      seed.egress == pmv.port;
@@ -547,31 +499,17 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     if (!destTile) {
       continue;
     }
-    // A control overlay stays materialized: its configuration carries the
-    // is_ctrl_pkt_overlay marker, and a lifted flow cannot rebuild it. When
-    // pinning, so does a hop carrying state the rebuild drops: keep_pkt_header
-    // away from the destination, or a discardable attribute.
-    bool keepMaterialized = false;
-    for (Operation *op : c.usedOps) {
+    // The routing of a priority_route flow carries the is_ctrl_pkt_overlay
+    // marker. The control overlay's flows, which start or end at a TileControl
+    // port, stay materialized, since a lifted flow cannot rebuild the overlay.
+    bool marked = llvm::any_of(c.usedOps, [&](Operation *op) {
       Operation *rulesParent =
           isa_and_nonnull<PacketRuleOp>(op) ? op->getParentOp() : nullptr;
-      if (op->hasAttr("is_ctrl_pkt_overlay") ||
-          (rulesParent && rulesParent->hasAttr("is_ctrl_pkt_overlay"))) {
-        keepMaterialized = true;
-      } else if (emitVias) {
-        if (!op->getDiscardableAttrDictionary().empty() ||
-            (rulesParent &&
-             !rulesParent->getDiscardableAttrDictionary().empty()))
-          keepMaterialized = true;
-        else if (auto ms = dyn_cast<MasterSetOp>(op))
-          keepMaterialized = ms.getKeepPktHeaderAttr() &&
-                             (ms.getDestBundle() != destPort.bundle ||
-                              ms.getDestChannel() != destPort.channel);
-      }
-      if (keepMaterialized)
-        break;
-    }
-    if (keepMaterialized) {
+      return (op && overlay.isAttrPresent(op)) ||
+             (rulesParent && overlay.isAttrPresent(rulesParent));
+    });
+    if (marked && (srcBundle == WireBundle::TileControl ||
+                   destPort.bundle == WireBundle::TileControl)) {
       for (Operation *op : c.usedOps)
         if (op)
           lifted.kept.insert(op);
@@ -597,7 +535,7 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     if (key && !seen.insert(*key).second) {
       continue;
     }
-    if (isPacket && !emitVias) {
+    if (isPacket) {
       for (Operation *op : c.usedOps) {
         if (op) {
           lifted.consumed.insert(op);
@@ -638,10 +576,29 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
       if (maskValue.mask != idMask) {
         mask = rewriter.getI8IntegerAttr(maskValue.mask);
       }
+      MLIRContext *ctx = rewriter.getContext();
+      SmallVector<Value> viaTiles;
+      SmallVector<int32_t> ingressBundles, ingressChannels, egressBundles,
+          egressChannels;
+      if (emitVias)
+        for (const Via &via : c.vias) {
+          viaTiles.push_back(via.tile);
+          ingressBundles.push_back(static_cast<int32_t>(via.ingress.bundle));
+          ingressChannels.push_back(via.ingress.channel);
+          egressBundles.push_back(static_cast<int32_t>(via.egress.bundle));
+          egressChannels.push_back(via.egress.channel);
+        }
+      auto ib = viaTiles.empty() ? nullptr
+                                 : DenseI32ArrayAttr::get(ctx, ingressBundles);
+      auto ic = viaTiles.empty() ? nullptr
+                                 : DenseI32ArrayAttr::get(ctx, ingressChannels);
+      auto eb = viaTiles.empty() ? nullptr
+                                 : DenseI32ArrayAttr::get(ctx, egressBundles);
+      auto ec = viaTiles.empty() ? nullptr
+                                 : DenseI32ArrayAttr::get(ctx, egressChannels);
       auto flowOp = PacketFlowOp::create(
           rewriter, loc, rewriter.getI8IntegerAttr(maskValue.value), mask,
-          keepPktHeader, priorityRoute, mlir::ValueRange{}, nullptr, nullptr,
-          nullptr, nullptr);
+          keepPktHeader, priorityRoute, viaTiles, ib, ic, eb, ec);
       PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter, loc);
       OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
       rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
@@ -687,35 +644,8 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
         viaTiles.empty() ? nullptr : DenseI32ArrayAttr::get(ctx, egressBundles);
     auto ec = viaTiles.empty() ? nullptr
                                : DenseI32ArrayAttr::get(ctx, egressChannels);
-    if (maskValue.mask == 0) {
-      FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
-                     destPort.bundle, destPort.channel, viaTiles, ib, ic, eb,
-                     ec);
-    } else {
-      // The mask lets --aie-split-flow-vias rebuild the switchbox rules.
-      // keep_pkt_header lives on the master set that drives the section's
-      // destination. Carry it onto the recovered flow.
-      BoolAttr keepPktHeader;
-      for (Operation *op : c.usedOps) {
-        if (auto ms = dyn_cast_or_null<MasterSetOp>(op)) {
-          if (ms.getDestBundle() == destPort.bundle &&
-              ms.getDestChannel() == destPort.channel) {
-            keepPktHeader = ms.getKeepPktHeaderAttr();
-          }
-        }
-      }
-      auto flowOp = PacketFlowOp::create(
-          rewriter, loc, rewriter.getI8IntegerAttr(maskValue.value),
-          rewriter.getI8IntegerAttr(maskValue.mask), keepPktHeader, BoolAttr(),
-          viaTiles, ib, ic, eb, ec);
-      PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter, loc);
-      OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
-      rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
-      PacketSourceOp::create(rewriter, loc, srcTile, srcBundle, srcChannel);
-      PacketDestOp::create(rewriter, loc, destTile, destPort.bundle,
-                           destPort.channel);
-      rewriter.restoreInsertionPoint(ip);
-    }
+    FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
+                   destPort.bundle, destPort.channel, viaTiles, ib, ic, eb, ec);
   }
 }
 
@@ -726,7 +656,8 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
 // same ids or none in common.
 static std::vector<PacketConnection> exactPacketEndpoints(
     std::vector<PacketConnection> endpoints, int idMask,
-    llvm::function_ref<std::vector<PacketConnection>(MaskValue)> trace) {
+    llvm::function_ref<std::vector<PacketConnection>(MaskValue)> trace,
+    bool emitVias) {
   auto isPacket = [](const PacketConnection &c) {
     return llvm::any_of(c.usedOps, [](Operation *op) {
       return isa_and_nonnull<PacketRuleOp>(op);
@@ -748,10 +679,14 @@ static std::vector<PacketConnection> exactPacketEndpoints(
       return x.tile == y.tile && x.ingress == y.ingress && x.egress == y.egress;
     });
   };
+  auto sameDest = [](const PacketConnection &a, const PacketConnection &b) {
+    return a.portConnection.op == b.portConnection.op &&
+           a.portConnection.port == b.portConnection.port;
+  };
   SmallVector<PacketConnection> paths;
   auto pathIndex = [&](const PacketConnection &connection) {
     auto *it = llvm::find_if(paths, [&](const PacketConnection &path) {
-      return samePath(connection, path);
+      return emitVias ? samePath(connection, path) : sameDest(connection, path);
     });
     if (it != paths.end()) {
       return static_cast<unsigned>(it - paths.begin());
@@ -880,7 +815,8 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
           [&](MaskValue claim) {
             return analysis.getConnectedTiles(op, port, keepPartialFlows,
                                               claim);
-          });
+          },
+          emitVias);
       LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");
       emitFlows(rewriter, Op->getLoc(), Op->getResult(0), bundle, (int)i, tiles,
                 emitVias, /*dropIntraTile=*/false, idMask, seen, lifted);
@@ -929,43 +865,31 @@ static void findFlowsFromInterconnect(Operation *switchOp,
   for (Port p : sourcePorts) {
     Value srcTile;
     WireBundle srcBundle = p.bundle;
-    int srcChannel = p.channel;
-    if (auto up = analysis.upstreamOf(switchOp, p)) {
-      Operation *upOp = up->op;
-      Port upPort = up->port;
-      if (upOp && upOp->hasTrait<IsFlowEndPoint>()) {
-        // Driven by a tile.  Core/DMA sources are handled by findFlowsFrom;
-        // recover the remaining tile-source bundles (e.g. PLIO) from here.
-        if (upPort.bundle == WireBundle::Core ||
-            upPort.bundle == WireBundle::DMA) {
-          continue;
-        }
-        srcTile = resolveEndpointTile(upOp);
-        srcBundle = upPort.bundle;
-        srcChannel = upPort.channel;
-      } else if (analysis.drivesPort(upOp, upPort)) {
-        // Mid-chain: an upstream interconnect drives this port.
-        continue;
-      } else {
-        // Wire exists but nothing drives it: this input is a fabric entry.
-        srcTile = resolveEndpointTile(switchOp);
-      }
-    } else {
-      // No upstream wire: this input is a fabric entry (array edge).
-      srcTile = resolveEndpointTile(switchOp);
-    }
-    if (!srcTile) {
-      continue;
-    }
-    std::vector<PacketConnection> tiles = exactPacketEndpoints(
-        analysis.getConnectedTilesFromInput(switchOp, p, keepPartialFlows),
-        idMask, [&](MaskValue claim) {
-          return analysis.getConnectedTilesFromInput(switchOp, p,
-                                                     keepPartialFlows, claim);
-        });
-    emitFlows(rewriter, switchOp->getLoc(), srcTile, srcBundle, srcChannel,
-              tiles, emitVias, /*dropIntraTile=*/true, idMask, seen, lifted);
+    // Mid-chain: an upstream interconnect drives this port.
+    continue;
   }
+  else {
+    // Wire exists but nothing drives it: this input is a fabric entry.
+    srcTile = resolveEndpointTile(switchOp);
+  }
+}
+else {
+  // No upstream wire: this input is a fabric entry (array edge).
+  srcTile = resolveEndpointTile(switchOp);
+}
+if (!srcTile) {
+  continue;
+}
+std::vector<PacketConnection> tiles = exactPacketEndpoints(
+    analysis.getConnectedTilesFromInput(switchOp, p, keepPartialFlows), idMask,
+    [&](MaskValue claim) {
+      return analysis.getConnectedTilesFromInput(switchOp, p, keepPartialFlows,
+                                                 claim);
+    },
+    emitVias);
+emitFlows(rewriter, switchOp->getLoc(), srcTile, srcBundle, srcChannel, tiles,
+          emitVias, /*dropIntraTile=*/true, idMask, seen, lifted);
+}
 }
 
 struct AIEFindFlowsPass
@@ -990,14 +914,6 @@ struct AIEFindFlowsPass
     d.getTargetModel().validate();
     if (clEmitVias)
       analysis.enableFanoutSplitting();
-
-    // In pinning mode the packet routes are re-emitted as straight-line section
-    // flows carrying vias; the original packet_flow ops they replace are
-    // recorded now so they can be dropped once the sections are in place.
-    SmallVector<PacketFlowOp> originalPacketFlows;
-    if (clEmitVias)
-      for (auto pf : d.getOps<PacketFlowOp>())
-        originalPacketFlows.push_back(pf);
 
     // Widest mask the target's packet ids can carry.
     const int idMask =
@@ -1068,12 +984,6 @@ struct AIEFindFlowsPass
                     idMask, seen, lifted);
         }
       }
-    }
-
-    // The lifted section flows now describe the packet routes; drop the
-    // originals so they are not routed a second time.
-    for (PacketFlowOp pf : originalPacketFlows) {
-      pf.erase();
     }
 
     if (!clRemoveLifted) {

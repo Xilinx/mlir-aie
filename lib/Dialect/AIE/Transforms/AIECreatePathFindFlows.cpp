@@ -3328,6 +3328,15 @@ void AIEPathfinderPass::runOnOperation() {
       return;
     }
   }
+  for (auto flowOp : d.getOps<PacketFlowOp>()) {
+    if (!flowOp.getVias().empty()) {
+      flowOp.emitOpError("cannot be routed while it carries via waypoints; run "
+                         "--aie-split-flow-vias first to lower the vias into "
+                         "switchbox connections");
+      signalPassFailure();
+      return;
+    }
+  }
 
   if (clRouteCircuit && failed(runOnFlow(d, analyzer))) {
     signalPassFailure();

@@ -868,6 +868,11 @@ def AIE_PacketFlowOp
     from other routes. The ID must have no bit outside the mask, or no packet
     can match.
 
+    A packet flow with via waypoints represents one linear route section and
+    must have exactly one source and one destination. Packet broadcasts and
+    merges use separate linear sections around materialized switchbox
+    configuration.
+
     Example:
     ```
       %01 = aie.tile(0, 1)

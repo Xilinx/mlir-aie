@@ -409,7 +409,7 @@ def AIESplitFlowVias : Pass<"aie-split-flow-vias", "DeviceOp"> {
 }
 
 def AIEVectorTransferLowering
-  : Pass<"aie-vector-transfer-lowering", "DeviceOp"> {
+    : Pass<"aie-vector-transfer-lowering", "DeviceOp"> {
   let summary = "Lower vector.transfer_read/write to vector.load/store for AIE";
   let description = [{
     This pass lowers vector.transfer_read operations to vector.load + vector.broadcast

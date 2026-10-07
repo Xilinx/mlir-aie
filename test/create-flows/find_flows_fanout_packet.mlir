@@ -20,15 +20,15 @@
 // CHECK:   aie.masterset(DMA : 0, %[[AS]])
 // CHECK:   aie.masterset(North : {{[0-9]+}}, %[[AS]])
 // CHECK:   aie.packet_rules(South : {{[0-9]+}}) {
-// CHECK:     aie.rule(31, 1, %[[AS]])
+// CHECK:     aie.rule(0, 0, %[[AS]])
 // CHECK:   }
 // CHECK: }
 // The sections into and out of the fan-out node are pinned packet flows.
-// CHECK: aie.packet_flow(1, mask = 31) {
+// CHECK: aie.packet_flow(0, mask = 0) {
 // CHECK:   aie.packet_source<%{{.*}}, DMA : 0>
 // CHECK:   aie.packet_dest<%[[P04]], South : {{[0-9]+}}>
 // CHECK: } via (
-// CHECK: aie.packet_flow(1, mask = 31) {
+// CHECK: aie.packet_flow(0, mask = 0) {
 // CHECK:   aie.packet_source<%[[P04]], North : {{[0-9]+}}>
 // CHECK:   aie.packet_dest<%{{.*}}, DMA : 0>
 // CHECK: } via (
@@ -42,7 +42,7 @@ module {
     %t02 = aie.tile(0, 2)
     %t04 = aie.tile(0, 4)
     %t05 = aie.tile(0, 5)
-    aie.packet_flow(0x1) {
+    aie.packet_flow(0, mask = 0) {
       aie.packet_source<%t02, DMA : 0>
       aie.packet_dest<%t04, DMA : 0>
       aie.packet_dest<%t05, DMA : 0>
