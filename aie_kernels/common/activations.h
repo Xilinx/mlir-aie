@@ -200,6 +200,14 @@ tanh_bf16_vec(aie::vector<float, vec_size> x) {
   const aie::vector<bfloat16, vec_size> n =
       narrowed.template to_vector<bfloat16>();
   aie::vector<bfloat16, vec_size> out;
+#if AIE_TUNED_AIE2P
+  // See lut_segments_acc's 32-lane overload for why not the 16-lane one.
+  if constexpr (vec_size % 32 == 0) {
+    for (unsigned i = 0; i < vec_size / 32; i++)
+      out.insert(i, tanh_lut_bf16(n.template extract<32>(i)));
+    return out;
+  }
+#endif
   for (unsigned i = 0; i < vec_size / 16; i++)
     out.insert(i, tanh_lut_bf16(n.template extract<16>(i)));
   return out;
