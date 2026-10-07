@@ -9,7 +9,8 @@
 #endif
 #include "mm_fused.h"
 
-#if !ACTIVATIONS_NATIVE_TANH
+// Only an activation reads the tables, and on AIE2 they hold 5 KB of L1.
+#if !ACTIVATIONS_NATIVE_TANH && (MM_FUSED_EPILOGUE_MODE_MASK & (2 | 4 | 8))
 #include "lut_based_ops.cpp"
 #endif
 
