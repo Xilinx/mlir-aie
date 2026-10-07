@@ -244,39 +244,30 @@ def test_runtime_cache_fill(runtime):
         runtime._cache_size = original_size
 
 
-def test_context_creation_retry_after_capacity_error(runtime, monkeypatch):
-    """Test context creation after evicting a cached context."""
+def test_context_creation_retry_after_capacity_error(runtime):
+    """A context the driver refuses at its limit is made after evicting one."""
 
-    import aie.utils.hostruntime.xrtruntime.hostruntime as hostruntime_module
-
+    limit = CachedXRTRuntime.NPU_CONTEXT_CACHE_SIZE[runtime.npu_str]
     original_size = runtime._cache_size
-    runtime._cache_size = 2
+    # Past the driver's limit, so the driver refuses before the cache evicts.
+    runtime._cache_size = limit + 1
 
     try:
-        transform._kernel_cache.clear()
         runtime.cleanup()
-
         input_tensor = iron.arange(32, dtype=np.int32)
-        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
+        for i in range(limit + 1):
+            kernel = NPUKernel(
+                *transform.specialize(
+                    func=lambda x, val=i: x + val, num_elements=32
+                ).compile()
+            )
+            output_tensor = iron.zeros(32, dtype=np.int32)
+            kernel(input_tensor, output_tensor)
+            np.testing.assert_array_equal(
+                output_tensor.numpy(), np.arange(32, dtype=np.int32) + i
+            )
 
-        real_hw_context = hostruntime_module.pyxrt.hw_context
-        attempts = 0
-
-        def fail_once(*args):
-            nonlocal attempts
-            attempts += 1
-            if attempts == 1:
-                raise RuntimeError(
-                    "Failed to create context virtual (0xc01e0009): "
-                    "There was an error while creating context"
-                )
-            return real_hw_context(*args)
-
-        monkeypatch.setattr(hostruntime_module.pyxrt, "hw_context", fail_once)
-        transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
-
-        assert attempts == 2
-        assert len(runtime._context_cache) == 1
+        assert len(runtime._context_cache) <= limit
     finally:
         runtime.cleanup()
         runtime._cache_size = original_size
@@ -285,23 +276,24 @@ def test_context_creation_retry_after_capacity_error(runtime, monkeypatch):
 def test_runtime_mtime_sensitivity(runtime):
     """Test that updating the file (changing mtime) causes a reload."""
 
+    kernel = NPUKernel(
+        *transform.specialize(func=lambda x: x + 1, num_elements=32).compile()
+    )
     input_tensor = iron.arange(32, dtype=np.int32)
-    # Load kernel
-    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
-    assert len(runtime._context_cache) == 1
 
-    # Get the xclbin path from the cache key
-    key = list(runtime._context_cache.keys())[0]
-    xclbin_path = key[0]
+    kernel(input_tensor, input_tensor)
+    assert len(runtime._context_cache) == 1
 
     # Wait a bit to ensure mtime changes
     time.sleep(0.01)
 
     # Touch the xclbin file
-    os.utime(xclbin_path, None)
+    os.utime(kernel.xclbin_path, None)
 
-    # Load again
-    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
+    kernel(input_tensor, input_tensor)
+    np.testing.assert_array_equal(
+        input_tensor.numpy(), np.arange(32, dtype=np.int32) + 2
+    )
 
     # Should have 2 entries now (old one and new one with new mtime)
     # Because CachedXRTRuntime keys include mtime, and it doesn't automatically evict old mtime entries for same path unless LRU kicks in.
@@ -318,31 +310,13 @@ def test_runtime_handle_invalidation(runtime):
     original_size = runtime._cache_size
     runtime._cache_size = 1
 
-    # Capture load calls to get paths
-    original_load = runtime.load
-    captured_kernels = []
-
-    def side_effect_load(npu_kernel, **kwargs):
-        captured_kernels.append(npu_kernel)
-        return original_load(npu_kernel, **kwargs)
-
-    runtime.load = side_effect_load
-
     try:
         input_tensor = iron.arange(32, dtype=np.int32)
 
-        # Load first kernel to generate artifacts
-        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
-
-        # Restore load
-        runtime.load = original_load
-
-        # Manually load to get a strong reference to the handle
-        npu_kernel_captured = captured_kernels[0]
-        xclbin_path = npu_kernel_captured.xclbin_path
-        insts_path = npu_kernel_captured.insts_path
-
-        npu_kernel = NPUKernel(xclbin_path, insts_path)
+        # Load to get a strong reference to the handle
+        npu_kernel = NPUKernel(
+            *transform.specialize(func=lambda x: x + 1, num_elements=32).compile()
+        )
         handle = runtime.load(npu_kernel)
 
         assert handle is not None
@@ -361,30 +335,10 @@ def test_runtime_handle_invalidation(runtime):
 def test_runtime_cleanup(runtime):
     """Test that cleanup clears the cache and invalidates handles."""
 
-    input_tensor = iron.arange(32, dtype=np.int32)
-
-    # Capture load calls to get paths
-    original_load = runtime.load
-    captured_kernels = []
-
-    def side_effect_load(npu_kernel, **kwargs):
-        captured_kernels.append(npu_kernel)
-        return original_load(npu_kernel, **kwargs)
-
-    runtime.load = side_effect_load
-
-    # Load kernel to generate artifacts
-    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
-
-    # Restore load
-    runtime.load = original_load
-
-    # Manually load to get a strong reference to the handle
-    npu_kernel_captured = captured_kernels[0]
-    xclbin_path = npu_kernel_captured.xclbin_path
-    insts_path = npu_kernel_captured.insts_path
-
-    npu_kernel = NPUKernel(xclbin_path, insts_path)
+    # Load to get a strong reference to the handle
+    npu_kernel = NPUKernel(
+        *transform.specialize(func=lambda x: x + 1, num_elements=32).compile()
+    )
     handle = runtime.load(npu_kernel)
 
     assert handle is not None
@@ -402,33 +356,17 @@ def test_base_runtime_load_run(runtime):
 
     input_tensor = iron.arange(32, dtype=np.int32)
 
-    # Capture load calls to get paths
-    original_load = runtime.load
-    captured_kernels = []
-
-    def side_effect_load(npu_kernel, **kwargs):
-        captured_kernels.append(npu_kernel)
-        return original_load(npu_kernel, **kwargs)
-
-    runtime.load = side_effect_load
-
-    # Run transform to generate artifacts using the cached runtime (fixture)
+    # Run transform using the cached runtime (fixture)
     transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
-
-    # Restore load
-    runtime.load = original_load
 
     # Verify result
     res = input_tensor.numpy()
     expected = np.arange(32, dtype=np.int32) + 1
     np.testing.assert_array_equal(res, expected)
 
-    # Get paths from cached runtime to use with base runtime
-    npu_kernel_captured = captured_kernels[0]
-    xclbin_path = npu_kernel_captured.xclbin_path
-    insts_path = npu_kernel_captured.insts_path
-
-    npu_kernel = NPUKernel(xclbin_path, insts_path)
+    npu_kernel = NPUKernel(
+        *transform.specialize(func=lambda x: x + 1, num_elements=32).compile()
+    )
 
     # Create base runtime
     base_runtime = XRTHostRuntime()
@@ -466,30 +404,9 @@ def test_cache_size_limit(runtime):
 
 def test_runtime_retry_disable(runtime):
     """Test that retry=False is accepted."""
-    input_tensor = iron.arange(32, dtype=np.int32)
-
-    # Capture load calls to get paths
-    original_load = runtime.load
-    captured_kernels = []
-
-    def side_effect_load(npu_kernel, **kwargs):
-        captured_kernels.append(npu_kernel)
-        return original_load(npu_kernel, **kwargs)
-
-    runtime.load = side_effect_load
-
-    # Run transform to generate artifacts
-    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
-
-    # Restore load
-    runtime.load = original_load
-
-    # Get paths
-    npu_kernel_captured = captured_kernels[0]
-    xclbin_path = npu_kernel_captured.xclbin_path
-    insts_path = npu_kernel_captured.insts_path
-
-    npu_kernel = NPUKernel(xclbin_path, insts_path)
+    npu_kernel = NPUKernel(
+        *transform.specialize(func=lambda x: x + 1, num_elements=32).compile()
+    )
 
     # Load with retry=False
     handle = runtime.load(npu_kernel, retry=False)
@@ -499,29 +416,9 @@ def test_runtime_retry_disable(runtime):
 def test_runtime_run_only_if_loaded(runtime):
     """Test that run with only_if_loaded=True fails if kernel is evicted."""
     input_tensor = iron.arange(32, dtype=np.int32)
-
-    # Capture load calls to get paths
-    original_load = runtime.load
-    captured_kernels = []
-
-    def side_effect_load(npu_kernel, **kwargs):
-        captured_kernels.append(npu_kernel)
-        return original_load(npu_kernel, **kwargs)
-
-    runtime.load = side_effect_load
-
-    # Run transform to generate artifacts
-    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
-
-    # Restore load
-    runtime.load = original_load
-
-    # Get paths
-    npu_kernel_captured = captured_kernels[0]
-    xclbin_path = npu_kernel_captured.xclbin_path
-    insts_path = npu_kernel_captured.insts_path
-
-    npu_kernel = NPUKernel(xclbin_path, insts_path)
+    npu_kernel = NPUKernel(
+        *transform.specialize(func=lambda x: x + 1, num_elements=32).compile()
+    )
 
     # Load
     handle = runtime.load(npu_kernel)
@@ -659,24 +556,9 @@ def test_load_returns_fresh_handle_each_call(runtime):
     Each load() call returns a fresh CachedXRTKernelHandle (not the same object),
     but the underlying pyxrt.kernel is shared.
     """
-    input_tensor = iron.arange(32, dtype=np.int32)
-
-    # Capture load calls to get paths
-    original_load = runtime.load
-    captured_kernels = []
-
-    def side_effect_load(npu_kernel, **kwargs):
-        captured_kernels.append(npu_kernel)
-        return original_load(npu_kernel, **kwargs)
-
-    runtime.load = side_effect_load
-
-    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
-
-    runtime.load = original_load
-
-    npu_kernel = captured_kernels[0]
-    real_kernel = NPUKernel(npu_kernel.xclbin_path, npu_kernel.insts_path)
+    real_kernel = NPUKernel(
+        *transform.specialize(func=lambda x: x + 1, num_elements=32).compile()
+    )
 
     handle1 = runtime.load(real_kernel)
     handle2 = runtime.load(real_kernel)
@@ -767,29 +649,9 @@ def test_insts_bo_released_on_cleanup(runtime):
 
 
 @pytest.fixture
-def kernel_paths(runtime):
-    """
-    Pytest fixture: run one transform() call, capture the npu_kernel passed to
-    load(), and return (xclbin_path, insts_path).
-
-    Uses a try/finally so the monkeypatch is always undone even if transform()
-    raises, avoiding fixture-state leakage into subsequent tests.
-    """
-    original_load = runtime.load
-    captured = []
-
-    def side_effect(npu_kernel, **kwargs):
-        captured.append(npu_kernel)
-        return original_load(npu_kernel, **kwargs)
-
-    runtime.load = side_effect
-    try:
-        input_tensor = iron.arange(32, dtype=np.int32)
-        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
-    finally:
-        runtime.load = original_load
-
-    return captured[0].xclbin_path, captured[0].insts_path
+def kernel_paths():
+    """The (xclbin_path, insts_path) of one compiled transform()."""
+    return transform.specialize(func=lambda x: x + 1, num_elements=32).compile()
 
 
 def test_context_released_when_evicted(runtime):
