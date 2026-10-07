@@ -21,10 +21,13 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
+#include "llvm/Support/Signals.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -58,10 +61,18 @@ public:
     if (llvm::sys::fs::createTemporaryFile("aiecc-lib", "log", fd, path))
       return;
     tmpPath = std::string(path.str());
+    static const bool crashHandlerAdded =
+        (llvm::sys::AddSignalHandler(replayOnCrash, nullptr), true);
+    (void)crashHandlerAdded;
     std::fflush(stdout);
     std::fflush(stderr);
     savedOut = ::dup(STDOUT_FILENO);
     savedErr = ::dup(STDERR_FILENO);
+    if (tmpPath.size() < sizeof(crashPath)) {
+      std::memcpy(crashPath, tmpPath.c_str(), tmpPath.size() + 1);
+      crashSavedOut = savedOut;
+      crashSavedErr = savedErr;
+    }
     ::dup2(fd, STDOUT_FILENO);
     ::dup2(fd, STDERR_FILENO);
     ::close(fd);
@@ -73,6 +84,7 @@ public:
 #ifndef _WIN32
     if (savedOut < 0)
       return;
+    crashSavedErr = -1;
     std::fflush(stdout);
     std::fflush(stderr);
     ::dup2(savedOut, STDOUT_FILENO);
@@ -90,6 +102,33 @@ public:
   CaptureStdio &operator=(const CaptureStdio &) = delete;
 
 private:
+#ifndef _WIN32
+  // A crash inside the library would otherwise die with its abort message, and
+  // LLVM's stack trace, sealed in the capture file while the real stderr stays
+  // empty. Runs in a signal handler, so it sticks to async-signal-safe calls.
+  static void replayOnCrash(void *) {
+    int err = crashSavedErr;
+    if (err < 0)
+      return;
+    ::dup2(crashSavedOut, STDOUT_FILENO);
+    ::dup2(err, STDERR_FILENO);
+    static const char banner[] =
+        "aiecc: crashed inside an in-process tool; its captured output:\n";
+    (void)!::write(STDERR_FILENO, banner, sizeof(banner) - 1);
+    int fd = ::open(crashPath, O_RDONLY);
+    if (fd < 0)
+      return;
+    char buf[4096];
+    ssize_t n;
+    while ((n = ::read(fd, buf, sizeof(buf))) > 0)
+      (void)!::write(STDERR_FILENO, buf, n);
+    ::close(fd);
+    ::unlink(crashPath);
+  }
+  static inline std::atomic<int> crashSavedOut{-1}, crashSavedErr{-1};
+  static inline char crashPath[4096];
+#endif
+
   std::string &out;
   int savedOut = -1, savedErr = -1;
   std::string tmpPath;

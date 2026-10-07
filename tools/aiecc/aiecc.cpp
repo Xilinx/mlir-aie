@@ -2451,6 +2451,16 @@ int main(int argc, char **argv) {
   if (!ShellCommand::addInstallPrefix("peano", peanoInstallDir)) {
     return 1;
   }
+  // A crash stack trace is only symbolized when llvm-symbolizer is found, and
+  // aiecc is PIE, so raw addresses cannot be symbolized after the fact.
+#ifndef _WIN32
+  if (!peanoInstallDir.empty() && !std::getenv("LLVM_SYMBOLIZER_PATH")) {
+    llvm::SmallString<256> symbolizer(peanoInstallDir);
+    llvm::sys::path::append(symbolizer, "bin", "llvm-symbolizer");
+    if (llvm::sys::fs::can_execute(symbolizer))
+      ::setenv("LLVM_SYMBOLIZER_PATH", symbolizer.c_str(), /*overwrite=*/0);
+  }
+#endif
   // discoverAietoolsDir has the same shape: it falls through to $AIETOOLS_ROOT
   // and then to xchesscc on PATH.
   if (!aietoolsDir.empty() && !llvm::sys::fs::is_directory(aietoolsDir)) {
