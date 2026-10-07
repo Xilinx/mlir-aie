@@ -61,7 +61,7 @@ class Worker(ObjectFifoEndpoint):
             fn_args (list | None, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to None (empty list).
             tile (Tile, optional): The compute tile for the Worker. Also accepts None (treated as AnyComputeTile). Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
-            stack_size (int, optional): The stack_size in bytes for the worker. Defaults to AIETargetModel::getDefaultCoreStackSize() (currently 1024 bytes).
+            stack_size (int, optional): The stack_size in bytes for the worker. None lets aiecc reserve the core's measured stack requirement, never less than AIETargetModel::getDefaultCoreStackSize() (currently 1024 bytes). Set it where aiecc cannot measure the core, as in a Chess build. Defaults to None.
             data_size (int, optional): Bytes of data memory to reserve for this
                 core's compiled sections (.data/.rodata/.bss), beyond the stack. The
                 buffer allocator packs the tile's buffers around the reservation. None
