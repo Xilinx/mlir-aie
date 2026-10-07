@@ -11,12 +11,12 @@
 // per-core and unified lowering. At -O0 both counters stay i64.
 // Only IR outputs are requested, so no core compiler is needed.
 
-// RUN: %aiecc -O0 --get=input_with_addresses.mlir --get='perCoreArches_{0}.txt' --get='llvmIR_{0}.ll' --tmpdir=%t.o0 --output-dir=%t.o0 %s
-// RUN: FileCheck %s --check-prefix=O0-IR --input-file=%t.o0/input_with_addresses.mlir
+// RUN: %aiecc -O0 --get=input_with_symbols.mlir --get='perCoreArches_{0}.txt' --get='llvmIR_{0}.ll' --tmpdir=%t.o0 --output-dir=%t.o0 %s
+// RUN: FileCheck %s --check-prefix=O0-IR --input-file=%t.o0/input_with_symbols.mlir
 // RUN: FileCheck %s --check-prefix=O0-LL --input-file=%t.o0/llvmIR_main_core_0_2.ll
 
-// RUN: %aiecc --get=input_with_addresses.mlir --get='perCoreArches_{0}.txt' --get='llvmIR_{0}.ll' --tmpdir=%t.default --output-dir=%t.default %s
-// RUN: FileCheck %s --implicit-check-not=9223372036854775807 --check-prefix=NARROW-IR --input-file=%t.default/input_with_addresses.mlir
+// RUN: %aiecc --get=input_with_symbols.mlir --get='perCoreArches_{0}.txt' --get='llvmIR_{0}.ll' --tmpdir=%t.default --output-dir=%t.default %s
+// RUN: FileCheck %s --implicit-check-not=9223372036854775807 --check-prefix=NARROW-IR --input-file=%t.default/input_with_symbols.mlir
 // RUN: FileCheck %s --implicit-check-not=9223372036854775807 --check-prefix=NARROW-LL --input-file=%t.default/llvmIR_main_core_0_2.ll
 
 // RUN: %aiecc --unified --get='perCoreArches_{0}.txt' --get='llvmIR_{0}.ll' --tmpdir=%t.unified --output-dir=%t.unified %s
