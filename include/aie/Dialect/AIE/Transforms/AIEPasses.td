@@ -504,6 +504,54 @@ def AIECoreIntRangeNarrowing
   ];
 }
 
+def AIECoreForeverLoops : Pass<"aie-core-forever-loops", "DeviceOp"> {
+  let summary = "Drop the counter of core loops that never finish in practice";
+  let description = [{
+    A core that runs forever is written as a counted loop with a huge bound:
+    IRON's `Worker` emits `range_(sys.maxsize)`, a `0` to `INT64_MAX` loop.
+    The counter is never read, but it is still kept live, incremented and
+    compared, and because the bound needs 64 bits, so does the counter.
+
+    This pass rewrites an `scf.for` in an `aie.core` or in a `func.func` in
+    the device into an `scf.while` whose condition is always true, when its
+    static trip count is at least `min-trip-count` and its induction variable
+    is unused. Loop-carried values are kept. Runtime sequences are left alone.
+
+    The default `min-trip-count` is 2^56: more than a year even at one
+    iteration per cycle, so in practice the rewrite does not change behavior.
+    It sits below `INT64_MAX` so that it also matches the forever loop of a
+    core with static objectFifo lowering, whose unrolling divides the trip
+    count by the unroll factor (up to 128 is covered). Older designs that use `0xFFFFFFFF` as a forever bound can
+    opt in with `min-trip-count=4294967295`, at the cost of no longer exiting
+    after that many iterations.
+
+    Must run before SCF-to-CF lowering.
+
+    Example:
+      Before:
+        scf.for %i = %c0 to %c9223372036854775807 step %c1 {
+          func.call @work() : () -> ()
+        }
+
+      After:
+        scf.while : () -> () {
+          %true = arith.constant true
+          scf.condition(%true)
+        } do {
+          func.call @work() : () -> ()
+          scf.yield
+        }
+  }];
+
+  let constructor = "xilinx::AIE::createAIECoreForeverLoopsPass()";
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::scf::SCFDialect"];
+  let options = [Option<"minTripCount", "min-trip-count", "uint64_t",
+                        "uint64_t(1) << 56",
+                        "Smallest static trip count treated as forever">,
+  ];
+}
+
 def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
   let summary = "Split objectFifos into pools and endpoints";
   let description = [{
