@@ -2101,6 +2101,8 @@
       
         
       
+        
+      
     
     
     
@@ -2189,6 +2191,34 @@
     
   
     Core Data Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../programming_guide/routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Routing
   
 
     
@@ -4818,17 +4848,29 @@ Each aie.flow is replaced with aie.connect operation.
 Each aie.packetflow is replace with the set of aie.amsel, aie.masterset
 and aie.packet_rules operations.</p>
 <p>An arbiter holds its grant until end of packet, so two slave ports sharing
-one arbiter serialize even on different master ports. Where that can
-deadlock, amsel allocation separates them; with no independent arbiter free
-it keeps the sharing and warns. Only oversubscribed switchboxes are
-affected.</p>
+one arbiter serialize even on different master ports. A switchbox with
+more packet master ports than arbiters first turns packet hops that alone
+use both their ports into aie.connect, which passes the header through to
+the next switchbox and needs no arbiter. Where master ports still have to
+share, amsel allocation keeps apart the flows that can deadlock, judged
+from the design's locks, streams, BD lengths and runtime waits. Where a
+routing leaves no such allocation, the router routes the flows involved
+elsewhere. If flows that can deadlock pairwise must take more arbiters at
+some switchbox than it has, whatever the routing, or no routing keeps them
+apart, the pass fails and names the flows and what it assumed about them.
+It also fails where flows can deadlock however they are routed, as one
+source or receiver orders them, or where packet flows into receivers they
+share hold arbiters in a cycle no routing found breaks, unless
+allow-deadlock-prone is set, which only warns of those.</p>
 <p>This reads buffer descriptor lengths from the DMA bodies (aie.mem,
-aie.memtile_dma, aie.shim_dma), so run the pass after those exist. Channels
-with no body here (e.g. shim channels, once the runtime sequence is lowered
-away) are simply left to the remaining rules.</p>
+aie.memtile_dma, aie.shim_dma), so run the pass after those exist. A
+channel with no body here is assumed to wait on anything on its tile, and
+a flow whose volume is unknown to overrun its receiver.</p>
 <h4 id="options_2">Options<a class="headerlink" href="#options_2" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>-route-circuit : Flag to enable aie.flow lowering.
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>-route-packet  : Flag to enable aie.packetflow lowering.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>-route-circuit        : Flag to enable aie.flow lowering.
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>-route-packet         : Flag to enable aie.packetflow lowering.
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>-circuit-switch-hops  : Circuit-switch exclusive packet hops at switchboxes with more packet master ports than free arbiters.
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>-allow-deadlock-prone : Warn of, rather than fail on, flows that can deadlock however they are routed, and hold cycles through receivers packet flows share that no routing found avoids.
 </code></pre></div>
 <h3 id="-aie-find-flows"><code>-aie-find-flows</code><a class="headerlink" href="#-aie-find-flows" title="Permanent link">&para;</a></h3>
 <p><em>Recover flows from switchbox configuration</em></p>

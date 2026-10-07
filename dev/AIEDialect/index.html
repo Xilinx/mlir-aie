@@ -2101,6 +2101,8 @@
       
         
       
+        
+      
     
     
     
@@ -2189,6 +2191,34 @@
     
   
     Core Data Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../programming_guide/routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Routing
   
 
     
@@ -11756,6 +11786,11 @@ a portion of a device which may be relocatable, the intention would be to provid
 operation, for instance maybe <code>aie.segment</code>.
 The design itself is described using a region of code contained by the device
 operation.</p>
+<p>The optional <code>has_ctrl_pkt_overlay</code> attribute marks a design that a
+control-packet reload (<code>aiecc --load-pdi-to-ctrl-pkt</code>) installs. The reload
+configures the <code>@ctrl_pkt_overlay</code> device first and the rest of the design
+through it, so the router keeps the switch settings the overlay's flows
+take on their own. <code>aie-generate-column-control-overlay</code> sets it.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>aie.device(xcvc1902) {
 <a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>  %tile = aie.tile(1, 1)
@@ -11769,6 +11804,7 @@ operation.</p>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>device</code></td><td>xilinx::AIE::AIEDeviceAttr</td><td>AIE Device</td></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>has_ctrl_pkt_overlay</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 <h3 id="aiedma-xilinxaiedmaop"><code>aie.dma</code> (::xilinx::AIE::DMAOp)<a class="headerlink" href="#aiedma-xilinxaiedmaop" title="Permanent link">&para;</a></h3>
@@ -13227,10 +13263,11 @@ route, this is replaced by MasterSets and PacketRules inside
 switchboxes.</p>
 <p>The optional attribute keep_pkt_header indicates whether each
 data packet's packet header gets preserved at the flow's
-destination. The optional attribute priority_route indicates
-whether the packet flow is routed in priority over other flows,
-so that they always get allocated with the same master, slave
-ports, arbiters and master selects (msel).</p>
+destination. The optional attribute priority_route routes the flow
+first, on its own, and the other flows route around it. If the design
+cannot route that way, the flow routes with the others. In a device
+with <code>has_ctrl_pkt_overlay</code>, the control overlay's flows (those to or
+from a TileControl port) always keep the route they take on their own.</p>
 <p>The optional attribute mask, written after the ID in the parentheses,
 states the packet-rule mask of the flow. A slave port accepts a packet
 when <code>incoming &amp; mask == ID</code>, so the flow claims every ID that agrees

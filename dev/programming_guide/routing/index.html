@@ -12,31 +12,31 @@
         <meta name="author" content="AMD Advanced Micro Devices">
       
       
-        <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/Building/">
+        <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/programming_guide/routing/">
       
       
-        <link rel="prev" href="../buildHostLinNonUbuntu/">
+        <link rel="prev" href="../core_data_memory/">
       
       
-        <link rel="next" href="../Devices/">
+        <link rel="next" href="../hrx_runtime/">
       
       
         
       
       
-      <link rel="icon" href="../assets/images/favicon.svg">
+      <link rel="icon" href="../../assets/images/favicon.svg">
       <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
-        <title>Build from Source - IRON / MLIR-AIE</title>
+        <title>Routing - IRON / MLIR-AIE</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -55,11 +55,11 @@
       
     
     
-      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
     
-      <link rel="stylesheet" href="../assets/css/iron.css">
+      <link rel="stylesheet" href="../../assets/css/iron.css">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -84,7 +84,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#building-the-mlir-aie-codebase-on-linux" class="md-skip">
+        <a href="#routing" class="md-skip">
           Skip to content
         </a>
       
@@ -104,9 +104,9 @@
 
 <header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="IRON / MLIR-AIE" class="md-header__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+    <a href="../.." title="IRON / MLIR-AIE" class="md-header__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
       
-  <img src="../assets/images/favicon.svg" alt="logo">
+  <img src="../../assets/images/favicon.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Build from Source
+              Routing
             
           </span>
         </div>
@@ -230,7 +230,7 @@
   
   
     <li class="md-tabs__item">
-      <a href=".." class="md-tabs__link">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -247,13 +247,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../getting-started/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../getting-started/" class="md-tabs__link">
           
   
   
@@ -271,11 +269,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../programming_guide/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
           
   
   
@@ -297,7 +297,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../skills/agentic_programming/" class="md-tabs__link">
+        <a href="../../skills/agentic_programming/" class="md-tabs__link">
           
   
   
@@ -319,7 +319,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../api/" class="md-tabs__link">
+        <a href="../../api/" class="md-tabs__link">
           
   
   
@@ -341,7 +341,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../UsedIn/" class="md-tabs__link">
+        <a href="../../UsedIn/" class="md-tabs__link">
           
   
   
@@ -383,9 +383,9 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="IRON / MLIR-AIE" class="md-nav__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+    <a href="../.." title="IRON / MLIR-AIE" class="md-nav__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
       
-  <img src="../assets/images/favicon.svg" alt="logo">
+  <img src="../../assets/images/favicon.svg" alt="logo">
 
     </a>
     IRON / MLIR-AIE
@@ -412,7 +412,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -436,12 +436,319 @@
       
   
   
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../buildHostWin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (WSL)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../buildHostWinNative/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (Native)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../buildHostLinNonUbuntu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Non-Ubuntu Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build from Source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Devices/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Devices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../BuildingVersal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Platform/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
   
     
     
+      
+        
+          
+        
+      
+        
       
         
       
@@ -475,526 +782,11 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
-        
-          
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Getting Started
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_2">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Getting Started
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../getting-started/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Getting started
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../buildHostWin/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Windows (WSL)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../buildHostWinNative/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Windows (Native)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../buildHostLinNonUbuntu/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Non-Ubuntu Linux
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-    
-  
-  
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Build from Source
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Build from Source
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#initial-setup" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Initial Setup
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Prerequisites
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Prerequisites">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#bios-settings" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        BIOS Settings:
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#install-the-xdna-driver-and-xrt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Install the XDNA™ Driver and XRT
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Install the XDNA™ Driver and XRT">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#install-from-upstream-packages-ubuntu-2404" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#install-aietools" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Install AIETools
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#install-iron-and-mlir-aie-prerequisites" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Install IRON and MLIR-AIE Prerequisites
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#build-and-install-mlir-aie-and-iron" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Build and Install mlir-aie and IRON
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#run-an-iron-design-on-the-amd-ryzen-ai-npu-on-linux" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Run an IRON Design on the AMD Ryzen™ AI NPU on Linux
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#learn-more" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Learn more
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#alternative-build-xdna-driver-and-xrt-from-source" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternative: Build XDNA™ Driver and XRT from source
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting:
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting:">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#update-bios" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Update BIOS:
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../Devices/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Devices
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../BuildingVersal/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Versal
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../Platform/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Platform Notes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-      
-        
-          
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/" class="md-nav__link ">
+            <a href="../" class="md-nav__link ">
               
   
   
@@ -1012,13 +804,13 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1038,7 +830,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/mini_tutorial/" class="md-nav__link">
+      <a href="../mini_tutorial/" class="md-nav__link">
         
   
   
@@ -1066,7 +858,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-0/" class="md-nav__link">
+      <a href="../section-0/" class="md-nav__link">
         
   
   
@@ -1094,7 +886,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-1/" class="md-nav__link">
+      <a href="../section-1/" class="md-nav__link">
         
   
   
@@ -1150,10 +942,13 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
@@ -1161,7 +956,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-2/" class="md-nav__link ">
+            <a href="../section-2/" class="md-nav__link ">
               
   
   
@@ -1179,7 +974,7 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_3_5" id="__nav_3_5_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
@@ -1205,7 +1000,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2a/" class="md-nav__link">
+      <a href="../section-2/section-2a/" class="md-nav__link">
         
   
   
@@ -1264,7 +1059,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-2/section-2b/" class="md-nav__link ">
+            <a href="../section-2/section-2b/" class="md-nav__link ">
               
   
   
@@ -1308,7 +1103,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2b/01_Reuse/" class="md-nav__link">
+      <a href="../section-2/section-2b/01_Reuse/" class="md-nav__link">
         
   
   
@@ -1336,7 +1131,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2b/02_Broadcast/" class="md-nav__link">
+      <a href="../section-2/section-2b/02_Broadcast/" class="md-nav__link">
         
   
   
@@ -1364,7 +1159,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2b/03_Implicit_Copy/" class="md-nav__link">
+      <a href="../section-2/section-2b/03_Implicit_Copy/" class="md-nav__link">
         
   
   
@@ -1392,7 +1187,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2b/04_Repeat/" class="md-nav__link">
+      <a href="../section-2/section-2b/04_Repeat/" class="md-nav__link">
         
   
   
@@ -1455,7 +1250,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-2/section-2c/" class="md-nav__link ">
+            <a href="../section-2/section-2c/" class="md-nav__link ">
               
   
   
@@ -1499,7 +1294,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2c/to_stream_transformations/" class="md-nav__link">
+      <a href="../section-2/section-2c/to_stream_transformations/" class="md-nav__link">
         
   
   
@@ -1527,7 +1322,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2c/from_stream_transformations/" class="md-nav__link">
+      <a href="../section-2/section-2c/from_stream_transformations/" class="md-nav__link">
         
   
   
@@ -1590,7 +1385,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-2/section-2d/" class="md-nav__link ">
+            <a href="../section-2/section-2d/" class="md-nav__link ">
               
   
   
@@ -1634,7 +1429,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2d/DMATasks/" class="md-nav__link">
+      <a href="../section-2/section-2d/DMATasks/" class="md-nav__link">
         
   
   
@@ -1662,7 +1457,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2d/RuntimeTasks/" class="md-nav__link">
+      <a href="../section-2/section-2d/RuntimeTasks/" class="md-nav__link">
         
   
   
@@ -1698,7 +1493,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2e/" class="md-nav__link">
+      <a href="../section-2/section-2e/" class="md-nav__link">
         
   
   
@@ -1759,7 +1554,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-2/section-2f/" class="md-nav__link ">
+            <a href="../section-2/section-2f/" class="md-nav__link ">
               
   
   
@@ -1803,7 +1598,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2f/01_single_double_buffer/" class="md-nav__link">
+      <a href="../section-2/section-2f/01_single_double_buffer/" class="md-nav__link">
         
   
   
@@ -1831,7 +1626,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2f/02_external_mem_to_core/" class="md-nav__link">
+      <a href="../section-2/section-2f/02_external_mem_to_core/" class="md-nav__link">
         
   
   
@@ -1859,7 +1654,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2f/03_external_mem_to_core_L2/" class="md-nav__link">
+      <a href="../section-2/section-2f/03_external_mem_to_core_L2/" class="md-nav__link">
         
   
   
@@ -1887,7 +1682,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2f/04_distribute_L2/" class="md-nav__link">
+      <a href="../section-2/section-2f/04_distribute_L2/" class="md-nav__link">
         
   
   
@@ -1915,7 +1710,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2f/05_join_L2/" class="md-nav__link">
+      <a href="../section-2/section-2f/05_join_L2/" class="md-nav__link">
         
   
   
@@ -1951,7 +1746,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2g/" class="md-nav__link">
+      <a href="../section-2/section-2g/" class="md-nav__link">
         
   
   
@@ -1979,7 +1774,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2h/" class="md-nav__link">
+      <a href="../section-2/section-2h/" class="md-nav__link">
         
   
   
@@ -2015,7 +1810,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-3/" class="md-nav__link">
+      <a href="../section-3/" class="md-nav__link">
         
   
   
@@ -2063,10 +1858,13 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
@@ -2074,7 +1872,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-4/" class="md-nav__link ">
+            <a href="../section-4/" class="md-nav__link ">
               
   
   
@@ -2092,7 +1890,7 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3_7" id="__nav_3_7_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_3_7" id="__nav_3_7_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
@@ -2118,7 +1916,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-4/section-4a/" class="md-nav__link">
+      <a href="../section-4/section-4a/" class="md-nav__link">
         
   
   
@@ -2146,7 +1944,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-4/section-4b/" class="md-nav__link">
+      <a href="../section-4/section-4b/" class="md-nav__link">
         
   
   
@@ -2174,7 +1972,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-4/section-4c/" class="md-nav__link">
+      <a href="../section-4/section-4c/" class="md-nav__link">
         
   
   
@@ -2202,7 +2000,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-4/section-4d/" class="md-nav__link">
+      <a href="../section-4/section-4d/" class="md-nav__link">
         
   
   
@@ -2238,7 +2036,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-5/" class="md-nav__link">
+      <a href="../section-5/" class="md-nav__link">
         
   
   
@@ -2266,7 +2064,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-6/" class="md-nav__link">
+      <a href="../section-6/" class="md-nav__link">
         
   
   
@@ -2291,8 +2089,10 @@
                 
   
   
+    
   
   
+  
     
     
       
@@ -2321,18 +2121,21 @@
     
       
       
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
         
           
-          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="0">
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="">
             
   
   
@@ -2350,7 +2153,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3_10">
             <span class="md-nav__icon md-icon"></span>
             
@@ -2368,7 +2171,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/iron_configuration/" class="md-nav__link">
+      <a href="../iron_configuration/" class="md-nav__link">
         
   
   
@@ -2396,7 +2199,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/core_data_memory/" class="md-nav__link">
+      <a href="../core_data_memory/" class="md-nav__link">
         
   
   
@@ -2421,10 +2224,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../programming_guide/routing/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Routing
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -2440,6 +2270,131 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#stream-switches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stream switches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#circuit-switched-flows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Circuit-switched flows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#packet-switched-flows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packet-switched flows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arbiters-and-deadlock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Arbiters and deadlock
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Arbiters and deadlock">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-routing-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When routing fails
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#priority-routes-and-the-control-overlay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority routes and the control overlay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#visualizing-routing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visualizing routing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmarking-routing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmarking routing
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2452,7 +2407,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/hrx_runtime/" class="md-nav__link">
+      <a href="../hrx_runtime/" class="md-nav__link">
         
   
   
@@ -2480,7 +2435,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/hsa_runtime/" class="md-nav__link">
+      <a href="../hsa_runtime/" class="md-nav__link">
         
   
   
@@ -2508,7 +2463,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/compilation_stages/" class="md-nav__link">
+      <a href="../compilation_stages/" class="md-nav__link">
         
   
   
@@ -2536,7 +2491,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/implicit_mlir_context/" class="md-nav__link">
+      <a href="../implicit_mlir_context/" class="md-nav__link">
         
   
   
@@ -2564,7 +2519,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/kernels_library/" class="md-nav__link">
+      <a href="../kernels_library/" class="md-nav__link">
         
   
   
@@ -2698,7 +2653,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../skills/" class="md-nav__link ">
+            <a href="../../skills/" class="md-nav__link ">
               
   
   
@@ -2740,7 +2695,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/agentic_programming/" class="md-nav__link">
+      <a href="../../skills/agentic_programming/" class="md-nav__link">
         
   
   
@@ -2770,7 +2725,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/aie-model-baseline/SKILL/" class="md-nav__link">
+      <a href="../../skills/aie-model-baseline/SKILL/" class="md-nav__link">
         
   
   
@@ -2798,7 +2753,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/aie-dataflow-presim/SKILL/" class="md-nav__link">
+      <a href="../../skills/aie-dataflow-presim/SKILL/" class="md-nav__link">
         
   
   
@@ -2826,7 +2781,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
+      <a href="../../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
   
@@ -2854,7 +2809,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/aie-kernel-opt/SKILL/" class="md-nav__link">
+      <a href="../../skills/aie-kernel-opt/SKILL/" class="md-nav__link">
         
   
   
@@ -2882,7 +2837,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/aie-dataflow-opt/SKILL/" class="md-nav__link">
+      <a href="../../skills/aie-dataflow-opt/SKILL/" class="md-nav__link">
         
   
   
@@ -2946,7 +2901,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../api/" class="md-nav__link ">
+            <a href="../../api/" class="md-nav__link ">
               
   
   
@@ -3056,7 +3011,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/iron/" class="md-nav__link">
+      <a href="../../api/iron/" class="md-nav__link">
         
   
   
@@ -3084,7 +3039,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/dialect_wrappers/" class="md-nav__link">
+      <a href="../../api/dialect_wrappers/" class="md-nav__link">
         
   
   
@@ -3112,7 +3067,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/taplib/" class="md-nav__link">
+      <a href="../../api/taplib/" class="md-nav__link">
         
   
   
@@ -3140,7 +3095,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/kernels/" class="md-nav__link">
+      <a href="../../api/kernels/" class="md-nav__link">
         
   
   
@@ -3168,7 +3123,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/hostruntime/" class="md-nav__link">
+      <a href="../../api/hostruntime/" class="md-nav__link">
         
   
   
@@ -3196,7 +3151,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/aie_kernels/" class="md-nav__link">
+      <a href="../../api/aie_kernels/" class="md-nav__link">
         
   
   
@@ -3302,7 +3257,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ObjectFifoLowering/" class="md-nav__link">
+      <a href="../../ObjectFifoLowering/" class="md-nav__link">
         
   
   
@@ -3330,7 +3285,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEDialect/" class="md-nav__link">
+      <a href="../../AIEDialect/" class="md-nav__link">
         
   
   
@@ -3358,7 +3313,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEXDialect/" class="md-nav__link">
+      <a href="../../AIEXDialect/" class="md-nav__link">
         
   
   
@@ -3386,7 +3341,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEVecDialect/" class="md-nav__link">
+      <a href="../../AIEVecDialect/" class="md-nav__link">
         
   
   
@@ -3414,7 +3369,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEPasses/" class="md-nav__link">
+      <a href="../../AIEPasses/" class="md-nav__link">
         
   
   
@@ -3442,7 +3397,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEXPasses/" class="md-nav__link">
+      <a href="../../AIEXPasses/" class="md-nav__link">
         
   
   
@@ -3470,7 +3425,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEVecPasses/" class="md-nav__link">
+      <a href="../../AIEVecPasses/" class="md-nav__link">
         
   
   
@@ -3498,7 +3453,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/cpp_doxygen/" class="md-nav__link">
+      <a href="../../api/cpp_doxygen/" class="md-nav__link">
         
   
   
@@ -3534,7 +3489,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../aiecc/" class="md-nav__link">
+      <a href="../../aiecc/" class="md-nav__link">
         
   
   
@@ -3631,7 +3586,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../UsedIn/" class="md-nav__link">
+      <a href="../../UsedIn/" class="md-nav__link">
         
   
   
@@ -3659,7 +3614,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../CONTRIBUTING/" class="md-nav__link">
+      <a href="../../CONTRIBUTING/" class="md-nav__link">
         
   
   
@@ -3687,7 +3642,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ROADMAP/" class="md-nav__link">
+      <a href="../../ROADMAP/" class="md-nav__link">
         
   
   
@@ -3715,7 +3670,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../SECURITY/" class="md-nav__link">
+      <a href="../../SECURITY/" class="md-nav__link">
         
   
   
@@ -3770,10 +3725,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#initial-setup" class="md-nav__link">
+  <a href="#stream-switches" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Initial Setup
+        Stream switches
       
     </span>
   </a>
@@ -3781,72 +3736,44 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
+  <a href="#circuit-switched-flows" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Prerequisites
+        Circuit-switched flows
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Prerequisites">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#packet-switched-flows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packet-switched flows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arbiters-and-deadlock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Arbiters and deadlock
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Arbiters and deadlock">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#bios-settings" class="md-nav__link">
+  <a href="#when-routing-fails" class="md-nav__link">
     <span class="md-ellipsis">
       
-        BIOS Settings:
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#install-the-xdna-driver-and-xrt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Install the XDNA™ Driver and XRT
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Install the XDNA™ Driver and XRT">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#install-from-upstream-packages-ubuntu-2404" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#install-aietools" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Install AIETools
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#install-iron-and-mlir-aie-prerequisites" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Install IRON and MLIR-AIE Prerequisites
+        When routing fails
       
     </span>
   </a>
@@ -3859,10 +3786,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#build-and-install-mlir-aie-and-iron" class="md-nav__link">
+  <a href="#priority-routes-and-the-control-overlay" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Build and Install mlir-aie and IRON
+        Priority routes and the control overlay
       
     </span>
   </a>
@@ -3870,10 +3797,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#run-an-iron-design-on-the-amd-ryzen-ai-npu-on-linux" class="md-nav__link">
+  <a href="#options" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Run an IRON Design on the AMD Ryzen™ AI NPU on Linux
+        Options
       
     </span>
   </a>
@@ -3881,10 +3808,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#learn-more" class="md-nav__link">
+  <a href="#visualizing-routing" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Learn more
+        Visualizing routing
       
     </span>
   </a>
@@ -3892,41 +3819,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#alternative-build-xdna-driver-and-xrt-from-source" class="md-nav__link">
+  <a href="#benchmarking-routing" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Alternative: Build XDNA™ Driver and XRT from source
+        Benchmarking routing
       
     </span>
   </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting:
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting:">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#update-bios" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Update BIOS:
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -3955,7 +3854,7 @@
   
   
     <li class="md-path__item">
-      <a href=".." class="md-path__link">
+      <a href="../.." class="md-path__link">
         
   <span class="md-ellipsis">
     Home
@@ -3973,10 +3872,28 @@
     
     
       <li class="md-path__item">
-        <a href="../getting-started/" class="md-path__link">
+        <a href="../" class="md-path__link">
           
   <span class="md-ellipsis">
-    Getting Started
+    Programming Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../iron_configuration/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Extra References
   </span>
 
         </a>
@@ -3998,202 +3915,270 @@
   
 
 
-<!-- Copyright (C) 2019-2025 Advanced Micro Devices, Inc. -->
-<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
-<h1 id="building-the-mlir-aie-codebase-on-linux">Building the MLIR-AIE Codebase on Linux<a class="headerlink" href="#building-the-mlir-aie-codebase-on-linux" title="Permanent link">&para;</a></h1>
-<p>These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones <strong>Ubuntu 24.04</strong> or <strong>Ubuntu 24.10</strong> install. It is possible to use <strong>Ubuntu 22.04</strong> however you must follow the documentation on the <a href="https://github.com/amd/xdna-driver">xdna-driver</a> repository to configure the Linux kernel, driver and runtime for deployment.</p>
-<h2 id="initial-setup">Initial Setup<a class="headerlink" href="#initial-setup" title="Permanent link">&para;</a></h2>
-<blockquote>
-<p>Be sure you have the latest BIOS on your laptop or mini-PC that enables the NPU. See <a href="#update-bios">here</a>.</p>
-</blockquote>
-<p>If starting from <code>Ubuntu 24.04</code> you may need to update the Linux kernel to 6.11+ by installing the Hardware Enablement (HWE) stack:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>update
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>--install-recommends<span class="w"> </span>linux-generic-hwe-24.04
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>sudo<span class="w"> </span>reboot
-</code></pre></div>
-<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
-<h3 id="bios-settings">BIOS Settings:<a class="headerlink" href="#bios-settings" title="Permanent link">&para;</a></h3>
-<p>Turn off SecureBoot (Allows for unsigned drivers to be installed):
-   <code>BIOS → Security → Secure boot → Disable</code></p>
-<h3 id="install-the-xdna-driver-and-xrt">Install the XDNA™ Driver and XRT<a class="headerlink" href="#install-the-xdna-driver-and-xrt" title="Permanent link">&para;</a></h3>
-<h4 id="install-from-upstream-packages-ubuntu-2404">Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)<a class="headerlink" href="#install-from-upstream-packages-ubuntu-2404" title="Permanent link">&para;</a></h4>
-<p>Install the XDNA driver and XRT runtime from the AMD PPA:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sudo<span class="w"> </span>add-apt-repository<span class="w"> </span>ppa:amd-team/xrt
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>sudo<span class="w"> </span>apt<span class="w"> </span>update
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libxrt2<span class="w"> </span>libxrt-npu2<span class="w"> </span>libxrt-dev<span class="w"> </span>libxrt-utils<span class="w"> </span>libxrt-utils-npu<span class="w"> </span>amdxdna-dkms
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>sudo<span class="w"> </span>reboot
-</code></pre></div>
-<blockquote>
-<p>Make sure you are in the <code>render</code> group to access the NPU:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>render<span class="w"> </span><span class="nv">$USER</span>
-</code></pre></div>
-<p>You may need to logout and log back in after modifying user groups.</p>
-<p>If you are on a different Linux distribution or kernel not supported by the upstream packages, see <a href="#alternative-build-xdna-driver-and-xrt-from-source">Build from source</a> below.</p>
-</blockquote>
-<p>Verify the NPU device is present:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>xrt-smi<span class="w"> </span>examine
-</code></pre></div>
-<blockquote>
-<p>At the bottom of the output you should see:
- ```
- Devices present
- BDF             :  Name</p>
-<hr />
-<p>[0000:66:00.1]  :  NPU Strix
- ```</p>
-</blockquote>
-<h3 id="install-aietools">Install AIETools<a class="headerlink" href="#install-aietools" title="Permanent link">&para;</a></h3>
-<ol>
-<li>Install Vitis™ AIE Essentials from <a href="https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab">Ryzen AI Software 1.3 Early Access</a>. We will assume you use the installation directory, <code>/tools/ryzen_ai-1.3.0/vitis_aie_essentials</code>.</li>
-</ol>
-<blockquote>
-<p>This is an early access lounge, you must register and be granted access at this time.</p>
-</blockquote>
-<div class="highlight"><pre><span></span><code>1. Download VAIML Installer for Linux based compilation: `ryzen_ai-1.3.0ea1.tgz`
+<!---//===- routing.md ---------------------------------------*- Markdown -*-===//
+//
+// Copyright (C) 2021 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//-->
 
-1. Extract the required tools:
-
-   ``` bash
-      tar -xzvf ryzen_ai-1.3.0ea1.tgz
-      cd ryzen_ai-1.3.0
-      mkdir vitis_aie_essentials
-      mv vitis_aie_essentials*.whl vitis_aie_essentials
-      cd vitis_aie_essentials
-      unzip vitis_aie_essentials*.whl
-   ```
+<h1 id="routing">Routing<a class="headerlink" href="#routing" title="Permanent link">&para;</a></h1>
+<p>Every tile has a stream switch, and data moves between tiles over the links
+between neighbouring switches. A design names only the two ends of each
+stream: an ObjectFifo, an IRON <code>Flow</code> or <code>PacketFlow</code>, or an <code>aie.flow</code> or
+<code>aie.packet_flow</code> in MLIR. The <code>aie-create-pathfinder-flows</code> pass, which
+<code>aiecc</code> runs for you, picks the path each stream takes and writes the switch
+settings that carry it.</p>
+<p>Most designs never need to think about routing. This page is for when you
+read the routed MLIR, write flows by hand, or hit a routing error. It covers
+what the router produces, the hang that packet-switched streams can cause and
+how the router avoids it, and how to act on its errors.</p>
+<h2 id="stream-switches">Stream switches<a class="headerlink" href="#stream-switches" title="Permanent link">&para;</a></h2>
+<p>A stream switch connects <em>slave</em> ports, where streams come in, to <em>master</em>
+ports, where they go out. Ports come in bundles: <code>DMA</code> and <code>Core</code> for the
+tile's own channels; <code>North</code>, <code>South</code>, <code>East</code> and <code>West</code> for the links to the
+neighbouring switches; and a few more, such as <code>TileControl</code> and <code>Trace</code>.</p>
+<p>A stream is one of two kinds:</p>
+<ul>
+<li><strong>Circuit-switched</strong> (<code>aie.flow</code>): it owns every master port on its path,
+  and no other stream can use them.</li>
+<li><strong>Packet-switched</strong> (<code>aie.packet_flow</code>): each packet starts with a header
+  that carries a 5-bit ID. Switches forward the packet by that ID, so streams
+  with different IDs can share ports.</li>
+</ul>
+<p>Packet switching shares ports through <em>arbiters</em>. Each switch has 6 arbiters,
+and each arbiter has 4 master selects (<em>msels</em>) that pick the master ports a
+packet goes out on. An arbiter passes one packet at a time from the slave
+ports routed through it.</p>
+<h2 id="circuit-switched-flows">Circuit-switched flows<a class="headerlink" href="#circuit-switched-flows" title="Permanent link">&para;</a></h2>
+<p><code>aie.flow</code> connects one port to another:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>aie.device(npu2) {
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  %t00 = aie.tile(0, 0)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  %t02 = aie.tile(0, 2)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  aie.flow(%t00, DMA : 0, %t02, DMA : 0)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  aie.flow(%t02, DMA : 0, %t00, DMA : 0)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>}
 </code></pre></div>
+<p>The router replaces the flows with an <code>aie.switchbox</code> for each tile they
+cross. Each switchbox holds an <code>aie.connect&lt;source, destination&gt;</code> for each
+hop:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>%switchbox_0_0 = aie.switchbox(%shim_noc_tile_0_0) {
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  aie.connect&lt;South : 3, North : 1&gt;
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  aie.connect&lt;North : 0, South : 2&gt;
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>}
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>%shim_mux_0_0 = aie.shim_mux(%shim_noc_tile_0_0) {
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>  aie.connect&lt;DMA : 0, North : 3&gt;
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  aie.connect&lt;North : 2, DMA : 0&gt;
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>}
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>%switchbox_0_1 = aie.switchbox(%mem_tile_0_1) {
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>  aie.connect&lt;South : 1, North : 1&gt;
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>  aie.connect&lt;North : 0, South : 0&gt;
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>}
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>%switchbox_0_2 = aie.switchbox(%tile_0_2) {
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>  aie.connect&lt;South : 1, DMA : 0&gt;
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>  aie.connect&lt;DMA : 0, South : 0&gt;
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>}
+</code></pre></div>
+<p><code>North : 1</code> leaving tile (0,0) arrives at tile (0,1) as <code>South : 1</code>. A master
+port takes one connection. A slave port can feed several, which is how a flow
+broadcasts.</p>
+<p>A shim tile's DMA reaches its switch through the <code>aie.shim_mux</code>, which maps
+DMA channels onto fixed stream channels. On the way into the array, DMA 0 and
+DMA 1 enter as <code>North : 3</code> and <code>North : 7</code>. On the way out, <code>North : 2</code> and
+<code>North : 3</code> drain into DMA 0 and DMA 1. The router writes the shim mux for
+you.</p>
+<p>You can also write <code>aie.switchbox</code> and <code>aie.connect</code> yourself. The router
+keeps what is already there and routes the flows around the ports it uses.</p>
+<h2 id="packet-switched-flows">Packet-switched flows<a class="headerlink" href="#packet-switched-flows" title="Permanent link">&para;</a></h2>
+<p>Here two packet flows from different tiles end at the same DMA channel:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>aie.device(npu2) {
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  %t02 = aie.tile(0, 2)
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  %t03 = aie.tile(0, 3)
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  %t04 = aie.tile(0, 4)
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  aie.packet_flow(1) { aie.packet_source&lt;%t02, DMA : 0&gt; aie.packet_dest&lt;%t04, DMA : 0&gt; }
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  aie.packet_flow(2) { aie.packet_source&lt;%t03, DMA : 0&gt; aie.packet_dest&lt;%t04, DMA : 0&gt; }
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>}
+</code></pre></div>
+<p>For each switch on the way, the router writes three kinds of ops:</p>
+<ul>
+<li><code>aie.amsel&lt;arbiter&gt; (msel)</code> names an arbiter and one of its msels.</li>
+<li><code>aie.masterset(port, amsels...)</code> names the master port each amsel drives.</li>
+<li><code>aie.packet_rules(slave port) { aie.rule(mask, value, amsel) }</code> says which
+  amsel a packet arriving at that slave port takes. A rule matches when
+  <code>id &amp; mask == value</code>.</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>%switchbox_0_3 = aie.switchbox(%tile_0_3) {
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  %0 = aie.amsel&lt;0&gt; (0)
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  %1 = aie.amsel&lt;1&gt; (0)
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  %2 = aie.masterset(North : 3, %0)
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  %3 = aie.masterset(North : 4, %1)
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  aie.packet_rules(DMA : 0) {
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    aie.rule(31, 2, %0)
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  }
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>  aie.packet_rules(South : 3) {
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    aie.rule(31, 1, %1)
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>  }
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>}
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>%switchbox_0_4 = aie.switchbox(%tile_0_4) {
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>  %0 = aie.amsel&lt;0&gt; (0)
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>  %1 = aie.masterset(DMA : 0, %0)
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>  aie.packet_rules(South : 3) {
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>    aie.rule(31, 2, %0)
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>  }
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>  aie.packet_rules(South : 4) {
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>    aie.rule(31, 1, %0)
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>  }
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>}
+</code></pre></div>
+<p>At (0,3) the two flows leave on separate links through separate arbiters. At
+(0,4) they go out of the same master port, so they share its arbiter, and
+their packets take turns.</p>
+<p>A packet flow takes three optional attributes:</p>
+<ul>
+<li><code>mask</code> claims a range of IDs: <code>aie.packet_flow(0x10, mask = 0x1c)</code> claims
+  0x10 through 0x13.</li>
+<li><code>keep_pkt_header</code> says whether the destination keeps the header. By
+  default, a DMA destination, or a shim's <code>South</code> port, drops it, and any
+  other destination keeps it.</li>
+<li><code>priority_route</code> routes the flow before the others; see
+  <a href="#priority-routes-and-the-control-overlay">Priority routes and the control overlay</a>.</li>
+</ul>
+<p>In IRON, <code>ObjectFifo(..., packet=True)</code> routes a fifo as a packet flow, and
+<code>PacketFlow</code> declares one directly (see
+<a href="../section-2/section-2g/">Section 2g</a>).</p>
+<h2 id="arbiters-and-deadlock">Arbiters and deadlock<a class="headerlink" href="#arbiters-and-deadlock" title="Permanent link">&para;</a></h2>
+<p>An arbiter holds its grant until the packet it is passing ends. Two slave
+ports whose packets go through one arbiter therefore take turns, even when
+they head to different master ports. Suppose the packet being passed can't
+finish until the other stream moves, for example because its receiver waits
+on a lock that the other stream's receiver releases. Then the array hangs.</p>
+<p>The router avoids this. Before routing, it works out which packet flows can
+hold each other up. It reads the design's locks, DMA programs, buffer
+descriptor (BD) lengths and the runtime sequence's waits. Then it:</p>
 <ol>
-<li>
-<p>Set up an AI Engine license.</p>
-<ol>
-<li>
-<p>Get a local license for AI Engine tools from <a href="https://www.xilinx.com/getlicense">https://www.xilinx.com/getlicense</a>.</p>
-</li>
-<li>
-<p>Copy your license file (Xilinx.lic) to your preferred location, e.g. <code>/opt/Xilinx.lic</code>:</p>
-</li>
+<li>keeps flows that can hold each other up off a shared arbiter;</li>
+<li>where a switch has more packet master ports in use than free arbiters,
+   turns a hop into a circuit connection when its slave port is the only one
+   feeding its master ports toward the neighbouring switches. The connection
+   needs no arbiter and passes the header on to the next switch.</li>
+<li>routes the flows elsewhere where no assignment of arbiters works;</li>
+<li>breaks <em>hold cycles</em>, where packets into receivers they share each hold an
+   arbiter that another needs, across several switches.</li>
 </ol>
-</li>
-<li>
-<p>Setup your environment using the following script for Vitis™ for AIETools:</p>
-</li>
-</ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="ch">#!/bin/bash</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1">#################################################################################</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># Setup Vitis AIE Essentials</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1">#################################################################################</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AIETOOLS_ROOT</span><span class="o">=</span>/tools/ryzen_ai-1.3.0/vitis_aie_essentials
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="nb">export</span><span class="w"> </span><span class="nv">PATH</span><span class="o">=</span><span class="nv">$PATH</span>:<span class="si">${</span><span class="nv">AIETOOLS_ROOT</span><span class="si">}</span>/bin
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LM_LICENSE_FILE</span><span class="o">=</span>/opt/Xilinx.lic
+<p>Where the router can't see something, it assumes the worst. A DMA channel the
+design doesn't program (in <code>aie.mem</code>, <code>aie.memtile_dma</code> or <code>aie.shim_dma</code>) is
+assumed to wait on anything on its tile. A flow whose length is unknown is
+assumed to fill its receiver.</p>
+<h3 id="when-routing-fails">When routing fails<a class="headerlink" href="#when-routing-fails" title="Permanent link">&para;</a></h3>
+<p>Sometimes the flows that must stay apart need more arbiters at a switch than
+it has, whatever the routing. Then the pass fails, names the flows, and says
+why it thinks they can hold each other up. For example,
+<a href="https://github.com/Xilinx/mlir-aie/blob/main/test/create-packet-flows/arbiter_cut_tile_clique.mlir"><code>arbiter_cut_tile_clique.mlir</code></a>
+with <code>circuit-switch-hops=false</code> fails with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>error: Unable to find a legal routing: at tile (0, 3), no two of packet flow (0, 2) DMA:0 -&gt; (0, 4) DMA:0 (id 0), packet flow (0, 2) DMA:1 -&gt; (0, 4) DMA:1 (id 1), packet flow (0, 2) Core:0 -&gt; (0, 4) Core:0 (id 2) can share an arbiter, and each takes one there whatever the routing, but the switchbox has 2 free. For example, packet flow (0, 2) DMA:0 -&gt; (0, 4) DMA:0 (id 0) can fill its receiver, and draining that waits on (0, 4) S2MM 1, which receives packet flow (0, 2) DMA:1 -&gt; (0, 4) DMA:1 (id 1). The volume packet flow (0, 2) DMA:0 -&gt; (0, 4) DMA:0 (id 0) carries is unknown, so it is assumed to overrun its receiver. Nothing in the design programs (0, 4) S2MM 0, so it is assumed to wait on anything on its tile.
 </code></pre></div>
-<h3 id="install-iron-and-mlir-aie-prerequisites">Install IRON and MLIR-AIE Prerequisites<a class="headerlink" href="#install-iron-and-mlir-aie-prerequisites" title="Permanent link">&para;</a></h3>
-<ol>
-<li>
-<p>Install the following packages needed for MLIR-AIE:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Python versions 3.11, 3.12, 3.13, and 3.14 are currently supported by our wheels</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>build-essential<span class="w"> </span>clang<span class="w"> </span>clang-14<span class="w"> </span>lld<span class="w"> </span>lld-14<span class="w"> </span>cmake<span class="w"> </span>ninja-build<span class="w"> </span>python3-venv<span class="w"> </span>python3-pip<span class="w"> </span>uuid-dev
+<p>The last two sentences are assumptions. If the design states what was
+assumed, such as the receiving DMA programs and their BD lengths, the
+conflict often goes away. Otherwise, spread the flows over more tiles or
+columns, or make some of them circuit flows. In an IRON design, the error is
+reported at the ObjectFifo's name.</p>
+<p>Two errors point at the design, not the routing:</p>
+<ul>
+<li><em>Flows can deadlock however they are routed</em>: one DMA channel sends or
+  receives two flows in an order that lets one hold up the other, so no
+  routing can keep them apart.</li>
+<li><em>Packet flows into receivers they share can deadlock holding arbiters across
+  switchboxes, and no routing found avoids it.</em></li>
+</ul>
+<p>If you know the hang can't happen, for example because the runtime never
+issues the transfers in that order, set <code>allow-deadlock-prone</code>. The router
+then routes the flows anyway and warns instead.</p>
+<h2 id="priority-routes-and-the-control-overlay">Priority routes and the control overlay<a class="headerlink" href="#priority-routes-and-the-control-overlay" title="Permanent link">&para;</a></h2>
+<p>A packet flow with <code>priority_route = true</code> routes first, on its own, and the
+other flows route around it. If the design can't route that way, the flow
+routes with the others. The control overlay that <code>aiecc
+--generate-ctrl-pkt-overlay</code> adds, which carries control packets to and from
+tiles, uses priority routes.</p>
+<p>A control-packet reload (<code>aiecc --load-pdi-to-ctrl-pkt</code>) goes further. It
+loads the <code>@ctrl_pkt_overlay</code> device first and configures the rest of the
+design through it, so the overlay's switch settings can't change. Such a
+design carries <code>has_ctrl_pkt_overlay</code> on its <code>aie.device</code>. The router keeps
+the overlay's flows (those to or from a <code>TileControl</code> port) on the routes
+they take alone, and fails if the design's flows don't fit around them.</p>
+<h2 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Pass option</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>route-circuit</code></td>
+<td><code>true</code></td>
+<td>Route <code>aie.flow</code>s.</td>
+</tr>
+<tr>
+<td><code>route-packet</code></td>
+<td><code>true</code></td>
+<td>Route <code>aie.packet_flow</code>s.</td>
+</tr>
+<tr>
+<td><code>circuit-switch-hops</code></td>
+<td><code>true</code></td>
+<td>Turn packet hops into circuit connections where a switch runs short of arbiters (step 2 above).</td>
+</tr>
+<tr>
+<td><code>allow-deadlock-prone</code></td>
+<td><code>false</code></td>
+<td>Warn instead of failing on the two design errors above. From <code>aiecc</code>, pass <code>--allow-deadlock-prone-routing</code>; from IRON, use <code>@iron.jit(aiecc_flags=["--allow-deadlock-prone-routing"])</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>For example:
+<code>aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" design.mlir</code>.</p>
+<p>In a build with assertions enabled,
+<code>-debug-only=aie-pathfinder,aie-stream-dependency</code> prints each routing
+iteration and the dependencies found between streams. See the
+<a href="../../AIEPasses/">pass reference</a> and the
+<a href="../../AIEDialect/">dialect reference</a> for every op and attribute.</p>
+<h2 id="visualizing-routing">Visualizing routing<a class="headerlink" href="#visualizing-routing" title="Permanent link">&para;</a></h2>
+<p><a href="https://github.com/Xilinx/mlir-aie/blob/main/tools/aie-routing-command-line/visualize.py"><code>visualize.py</code></a> draws each
+routed flow as text. It reads JSON from <code>aie-translate --aie-flows-to-json</code>,
+which traces the flows through the switchboxes. Keep those switchboxes with
+<code>--aie-find-flows=remove-lifted=false</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>aie-opt --aie-create-pathfinder-flows --aie-find-flows=remove-lifted=false design.mlir \
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    | aie-translate --aie-flows-to-json &gt; design.json
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>python3 tools/aie-routing-command-line/visualize.py -j design.json
 </code></pre></div>
-</li>
-</ol>
-<h2 id="build-and-install-mlir-aie-and-iron">Build and Install mlir-aie and IRON<a class="headerlink" href="#build-and-install-mlir-aie-and-iron" title="Permanent link">&para;</a></h2>
-<ol>
-<li>
-<p>Clone <a href="https://github.com/Xilinx/mlir-aie.git">the mlir-aie repository</a>:
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Xilinx/mlir-aie.git
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nb">cd</span><span class="w"> </span>mlir-aie
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>git<span class="w"> </span>submodule<span class="w"> </span>update<span class="w"> </span>--init<span class="w"> </span>--recursive
-</code></pre></div></p>
-</li>
-<li>
-<p>Setup a virtual environment:
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>ironenv
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nb">source</span><span class="w"> </span>ironenv/bin/activate
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pip
-</code></pre></div></p>
-</li>
-<li>
-<p>Install required Python packages:
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Install basic Python requirements</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>python/requirements.txt
-</code></pre></div></p>
-</li>
-<li>
-<p>Install Python packages required for development and testing:
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Install Python requirements for development and testing</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>python/requirements_dev.txt
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="c1"># (pre-push runs clang-format/black/ruff/clang-tidy to catch formatting and</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="c1"># lint issues before CI)</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>pre-commit<span class="w"> </span>install
-</code></pre></div></p>
-</li>
-<li>
-<p>Use scripted mlir-aie build process. This script downloads llvm/mlir from wheels before building.
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>bash<span class="w"> </span>./utils/build-mlir-aie-from-wheels.sh
-</code></pre></div></p>
-</li>
-<li>
-<p>(Optional) Generate a compile database so the <code>clang-tidy</code> pre-push hook
-   can run (see <a href="https://github.com/Xilinx/mlir-aie/blob/main/CONTRIBUTING.md#static-analysis-for-c-clang-tidy">CONTRIBUTING.md</a>):
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>ninja<span class="w"> </span>-C<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>compdb<span class="w"> </span>&gt;<span class="w"> </span>build/compile_commands.json
-</code></pre></div></p>
-</li>
-<li>
-<p>Setup environment
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nb">source</span><span class="w"> </span>utils/env_setup.sh<span class="w"> </span>install
-</code></pre></div></p>
-</li>
-</ol>
-<h2 id="run-an-iron-design-on-the-amd-ryzen-ai-npu-on-linux">Run an IRON Design on the AMD Ryzen™ AI NPU on Linux<a class="headerlink" href="#run-an-iron-design-on-the-amd-ryzen-ai-npu-on-linux" title="Permanent link">&para;</a></h2>
-<p>The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples">programming examples</a> use either of two entry points. Most examples use standalone <code>@iron.jit</code> to compile, run, and verify directly from Python:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nb">cd</span><span class="w"> </span>programming_examples/&lt;category&gt;/&lt;example&gt;
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>python3<span class="w"> </span>&lt;example&gt;.py
+<p>The script writes one text file per flow into <code>./design/</code>. Here is a flow
+from shim (0,0) to tiles (0,3) and (1,3):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>    ┌─────┐ ₁ ┌─────┐ ₁ ┌─────┐ ₁ ┌─────┐
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a> →→→│ 0,0 ├→→→┤ 0,1 ├→→→┤ 0,2 ├→→→┤ 0,3 │
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>╶───┤S #  ├───┤  #  ├───┤  #  │   │  # D│
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  ¹ └─────┘ ¹ └─────┘ ¹ └───┬─┘   └─┬───┘
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>                            │¹     ¹↓
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>                        ┌───┴─┐   ┌─┴───┐
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>                        │ 1,2 │   │ 1,3 │
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>                        │  *  │   │  # D│
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>                        └─────┘   └─────┘
 </code></pre></div>
-<p>Examples with a separate native host, explicit artifact builds, or multi-stage workflow have a <code>Makefile</code>. Follow the example's README for its supported targets, such as <code>make run</code> or <code>make run_py</code>.</p>
-<h2 id="learn-more">Learn more<a class="headerlink" href="#learn-more" title="Permanent link">&para;</a></h2>
-<ol>
-<li>
-<p>Additional MLIR-AIE documentation is available on the <a href="https://xilinx.github.io/mlir-aie/">website</a></p>
-</li>
-<li>
-<p>AIE API header library documentation for single-core AIE programming in C++ is avaiable <a href="https://xilinx.github.io/aie_api/topics.html">here</a></p>
-</li>
-</ol>
-<h2 id="alternative-build-xdna-driver-and-xrt-from-source">Alternative: Build XDNA™ Driver and XRT from source<a class="headerlink" href="#alternative-build-xdna-driver-and-xrt-from-source" title="Permanent link">&para;</a></h2>
-<p>If the <a href="#install-from-upstream-packages-ubuntu-2404">upstream packages</a> do not support your kernel or distribution, you can build the driver and XRT from source:</p>
-<ol>
-<li>
-<p>Execute the scripted build process:</p>
-<blockquote>
-<p>This script will install package dependencies, build the xdna-driver and xrt packages, and install them. <em>These steps require <code>sudo</code> access.</em></p>
-</blockquote>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>bash<span class="w"> </span>./utils/build_drivers.sh
+<p>Each box is a tile, labeled <code>col,row</code>. Arrows mark the current flow, and the
+numbers on the links count the streams that use them. <code>S</code> and <code>D</code> mark the
+flow's source and destinations, <code>#</code> the tiles it crosses, and <code>*</code> the tiles
+other flows use. Run <code>python3 visualize.py --help</code> for the other options.</p>
+<h2 id="benchmarking-routing">Benchmarking routing<a class="headerlink" href="#benchmarking-routing" title="Permanent link">&para;</a></h2>
+<p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/router_performance.py"><code>router_performance.py</code></a> runs the
+<code>aie-opt</code> command in every test in a directory, with <code>--debug</code>, which needs
+a build with assertions enabled. It writes the wall-clock time and the path
+length of each routing to <code>routing_performance_results.csv</code> in that
+directory:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python3 utils/router_performance.py test/create-flows/
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>python3 utils/router_performance.py test/create-packet-flows/
 </code></pre></div>
-</li>
-<li>
-<p>Reboot as directed after the script exits.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>sudo<span class="w"> </span>reboot
-</code></pre></div>
-</li>
-<li>
-<p>Check that the NPU is working if the device appears with xrt-smi:</p>
-</li>
-</ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nb">source</span><span class="w"> </span>/opt/xilinx/xrt/setup.sh
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>xrt-smi<span class="w"> </span>examine
-</code></pre></div>
-<h2 id="troubleshooting">Troubleshooting:<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
-<h3 id="update-bios">Update BIOS:<a class="headerlink" href="#update-bios" title="Permanent link">&para;</a></h3>
-<p>Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
-   <code>Advanced → CPU Configuration → IPU</code></p>
-<blockquote>
-<p><strong>NOTE:</strong> Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu.</p>
-</blockquote>
-<p><a href="https://xilinx.github.io/mlir-aie/">MLIR Dialect and Compiler Documentation</a></p>
-<hr />
-<p align="center">Copyright&copy; 2019-2025 Advanced Micro Devices, Inc</p>
 
 
 
@@ -4231,7 +4216,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../buildHostLinNonUbuntu/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Non-Ubuntu Linux">
+          <a href="../core_data_memory/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Core Data Memory">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -4241,20 +4226,20 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Non-Ubuntu Linux
+                Core Data Memory
               </div>
             </div>
           </a>
         
         
           
-          <a href="../Devices/" class="md-footer__link md-footer__link--next" aria-label="Next: Devices">
+          <a href="../hrx_runtime/" class="md-footer__link md-footer__link--next" aria-label="Next: HRX Runtime (amdxdna)">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Devices
+                HRX Runtime (amdxdna)
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -4324,10 +4309,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
