@@ -633,29 +633,6 @@ def mm(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
-            # Tuned or not: at most 512 B on aie2
-            # and 192 B on aie2p, except aie2p's int8 -> int32 kernel, whose
-            # fully unrolled K loop spills about 16 B per unit of K (c_col_maj:
-            # 1088 B at K = 56, 6208 B at K = 384, at most 1024 B up to K =
-            # 48). mm_aie2p.h rolls K from K = 416 (192 B), and a 16x16 tile
-            # does not spill (640 B). The fit covers only that kernel over 48 <
-            # dim_k < 416 (787 M/N/K/layout combos, see 0c60e6be3f2); the rest
-            # fit the 1024 B default. Too small a value fails the aiecc build
-            # loudly, as checkStackSizeRequirements reads the real
-            # .stack_sizes. A chess core cannot be measured, so use_chess keeps
-            # the matrix_multiplication examples' constant.
-            stack_bytes=(
-                0xD00
-                if use_chess
-                else (
-                    16 * dim_k + 256
-                    if arch == "aie2p"
-                    and vectorized
-                    and key == (np.int8, np.int32)
-                    and 48 < dim_k < 416
-                    else None
-                )
-            ),
             # mm_aie2p.h sets conv_even itself and restores it; mm_aie2.h
             # does so only under round_conv_even, and otherwise stores bf16
             # in whatever mode the core is in.
@@ -1287,18 +1264,6 @@ def mha_softmax(accurate_exp2: bool = False) -> ExternalFunction:
             parameter_bindings=((4, scale), (5, b), (6, b)),
             initializers=((2, _zero_output),),
             reference=partial(mha_softmax_ref, scale=scale),
-            # The untuned loop on aie2, where a whole 64-lane row spills; the
-            # tuned one fits the default. The polynomial exp2's constants
-            # spill; 3712 is aiecc's measure under IRON's MHA Worker.
-            stack_bytes=(
-                3712
-                if accurate_exp2
-                else (
-                    1376
-                    if _detect_arch() == "aie2" and _tuned_arch() == "portable"
-                    else None
-                )
-            ),
             # aie::exp2<bfloat16> interpolates 2**frac linearly, overshooting
             # by up to 6.15%, and two bf16 roundings bring it to 6.98%
             # (test_mha_e2e.py's _RTOL_EXP2). This form's rtol multiplies
@@ -1352,15 +1317,9 @@ def mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, *, scale):
     return p.reshape(len(p), -1), state
 
 
-# head_dim -> (LQ, LK, stack_bytes) for flash_attn_prefill.h's PrefillGeom
-# specializations: 512 is global attention, 256 sliding-window. The stack is
-# aiecc's measured_stack_size: fv_step -> sv_row_block is the deepest call the
-# five entry points reach, and both geometries share sv_row_block's frame, so
-# they need the same stack. On aie2 both need _PREFILL_STACK_AIE2, measured
-# with all five entry points on one core (test_flash_attn_prefill_e2e.py);
-# prefill_epilogue is the deepest.
-_PREFILL_GEOM = {512: (8, 8, 1984), 256: (16, 16, 1984)}
-_PREFILL_STACK_AIE2 = 1152
+# head_dim -> (LQ, LK) for flash_attn_prefill.h's PrefillGeom
+# specializations: 512 is global attention, 256 sliding-window.
+_PREFILL_GEOM = {512: (8, 8), 256: (16, 16)}
 
 
 def prefill_fv(head_dim: int = 512) -> ExternalFunction:
@@ -1391,9 +1350,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     """
     if head_dim not in _PREFILL_GEOM:
         raise ValueError(f"prefill_fv: head_dim must be 512 or 256, got {head_dim}")
-    lq, lk, stack_bytes = _PREFILL_GEOM[head_dim]
-    if _detect_arch() == "aie2":
-        stack_bytes = _PREFILL_STACK_AIE2
+    lq, lk = _PREFILL_GEOM[head_dim]
     # flash_attn_prefill.h's MMUL is aie::mmul<8, 8, 8, bf16, bf16>, the native
     # bf16 micro-tile, not the (4, 8, 8) _MM_MAC_DIMS records for mm.cc.
     r = s = t = 8
@@ -1427,7 +1384,6 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             reference=partial(prefill_fv_ref, dim_m=lq, dim_k=lk, dim_n=head_dim),
             acc_dtype=np.float32,
             reduction=lk,
-            stack_bytes=stack_bytes,
             # Derived, not inherited: _linalg_tolerance(bfloat16)'s 0.05/0.5 is
             # for a kernel that narrows C back to bf16, and y here is float32.
             # bf16 mantissas are 8 bits, so every product is exact in f32

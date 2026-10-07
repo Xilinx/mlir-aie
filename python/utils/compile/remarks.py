@@ -47,10 +47,7 @@ The loop counts and ``pm_bytes`` cover only the functions the entry symbol
 reaches in the object, which are the ones the core link keeps.
 ``kernel_stack_bytes`` counts the kernel's frames only: the core that calls
 it also holds ``main``'s, which aiecc's measured stack size includes
-(dwconv1d_channels_last on AIE2P: 64 here, 256 for the core). Over the
-contract's ``stack_bytes`` (else the device default) it prints a warning:
-the design reserves that much for the whole core, and an overflow corrupts
-the neighbouring memory without a fault.
+(dwconv1d_channels_last on AIE2P: 64 here, 256 for the core).
 ``--baseline-sources DIR`` compiles everything a second time from ``DIR``
 and prints each row that differs, for a before/after of a kernel change;
 a loop LLVM only renamed, its rows unchanged, is counted but not listed,
@@ -1408,9 +1405,6 @@ def _run(a: argparse.Namespace) -> int:
 
     for index, ((name, ef), (rep, detail)) in enumerate(zip(builds, analyzed)):
         source = ef.source_file or f"<inline {ef.name}.cc>"
-        budget = (
-            ef.contract and ef.contract.stack_bytes
-        ) or device.default_core_stack_bytes
         if rep is None:
             failed[name] = detail
         else:
@@ -1432,7 +1426,6 @@ def _run(a: argparse.Namespace) -> int:
                 },
                 "libcalls": rep.libcalls,
                 "kernel_stack_bytes": rep.kernel_stack_bytes,
-                "stack_budget": budget,
                 "schedule_notes": rep.schedule_notes,
             }
         print(
@@ -1443,16 +1436,6 @@ def _run(a: argparse.Namespace) -> int:
             print("\n".join(f"  dropped pragma: {w}" for w in rep.pass_failed))
         if rep and rep.libcalls:
             print(f"  calls the runtime library: {' '.join(rep.libcalls)}")
-        if (
-            rep
-            and rep.kernel_stack_bytes is not None
-            and rep.kernel_stack_bytes > budget
-        ):
-            print(
-                f"  stack: the kernel alone takes {rep.kernel_stack_bytes} bytes, "
-                f"over the {budget} the design reserves for the whole core; "
-                "the core overwrites its neighbours silently"
-            )
         if a.annotate:
             print(
                 "\n".join(

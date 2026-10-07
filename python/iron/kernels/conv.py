@@ -364,12 +364,6 @@ def dwconv1d_channels_first(
                 0.128, 0.05, note="programming_examples/ml/dwconv1d: atol 0.05"
             ),
             ops_per_call=2 * kernel_size * seq_len,
-            stack_bytes=(
-                # At 17 taps
-                1888
-                if _detect_arch() == "aie2" and _tuned_arch() == "portable"
-                else None
-            ),
         ),
     )
 
@@ -454,15 +448,6 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
         contract=KernelContract(
             alignments=_vector_args(*range(2 * _TAPS + 1)),
             trace=Trace.whole_call(),
-            # Over 32 to 1280 channels: tuned for aie2p, 1280 B on the
-            # 64-lane path and 1024 B on the generic one; portable, 1280 B on
-            # aie2p and 416 B on aie2. The tuned aie2 build unrolls every
-            # channel: 672 B up to 384 channels, then up to 9 B per channel
-            # (8608 B at 960).
-            stack_bytes={
-                "aie2": None if channels <= 384 else 9 * channels - 32,
-                "aie2p": 1280 if channels % 64 == 0 else None,
-            }.get(_tuned_arch(), 1280),
             setup=conv_even,
             # lo/hi are buffers the design writes, so they are Param like
             # mha's idx gate: bound here rather than sampled, which also keeps
@@ -553,10 +538,6 @@ def conv2dk1(
         contract=KernelContract(
             alignments=_vector_args(0, 1, 2),
             trace=Trace.whole_call(),
-            # 1088 B tuned for aie2p, which keeps the oc-invariant input block
-            # on the stack; 2752 B untuned on aie2p (1504 B on aie2); 288 B
-            # tuned for aie2
-            stack_bytes={"aie2": None, "aie2p": 1088}.get(_tuned_arch(), 2752),
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_ref,
             acc_dtype=np.int32,
@@ -625,8 +606,6 @@ def conv2dk3(
         contract=KernelContract(
             alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
-            # 384 B tuned for aie2p, 4736 B untuned; 0 B tuned for aie2
-            stack_bytes={"aie2": None, "aie2p": 384}.get(_tuned_arch(), 4736),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
             reference=conv2dk3_ref,
             acc_dtype=np.int32,
@@ -684,9 +663,6 @@ def conv2dk1_skip(
         contract=KernelContract(
             alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
-            # With an int8 skip: 512 B tuned for aie2p, 2816 B untuned; 32 B
-            # tuned for aie2
-            stack_bytes={"aie2": None, "aie2p": 512}.get(_tuned_arch(), 2816),
             roles=(In, In, Param, Out, In, *((Param,) * 5)),
             reference=conv2dk1_skip_ref,
             acc_dtype=np.int32,
@@ -726,9 +702,6 @@ def conv2dk1_i8(
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # At most 480 B tuned for aie2, 128 B tuned for aie2p and 256 B
-            # portable, all under the 1024 B default
-            stack_bytes=None,
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_i8_ref,
             acc_dtype=np.int32,
@@ -871,10 +844,6 @@ def conv2dk1_skip_init(
         contract=KernelContract(
             alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
-            # 1728 B tuned for aie2p, the largest over input_channels 16..256;
-            # untuned >=2144 plus __modsi3, which has no .stack_sizes; 288 B
-            # tuned for aie2
-            stack_bytes={"aie2": None, "aie2p": 1728}.get(_tuned_arch(), 0x2000),
             roles=(In, In, Param, Out, In, *((Param,) * 7)),
             reference=conv2dk1_skip_init_ref,
             acc_dtype=np.int32,
@@ -1427,9 +1396,6 @@ def bn_conv2dk1_relu_xy_pool_padded(
         contract=KernelContract(
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
-            # 1088 B tuned for aie2p; tuned for aie2 and untuned fit the
-            # default core stack
-            stack_bytes=1088 if _tuned_arch() == "aie2p" else None,
             roles=(In, Param, InOut, *((Param,) * 8)),
             reference=bn_conv2dk1_relu_xy_pool_padded_ref,
             initializers=((2, _zero_output),),

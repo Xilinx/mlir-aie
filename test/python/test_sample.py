@@ -84,8 +84,12 @@ def test_factories_reject_non_positive_integers(factory, name, bad):
     [
         (kernels.sample_select, dict(slice_size=32, chunk=32, k_max=33), "k_max"),
         (kernels.sample_combine, dict(slice_size=32, k_max=33), "k_max"),
-        (kernels.sample_select, dict(slice_size=1024, chunk=256, k_max=129), "stack"),
-        (kernels.sample_combine, dict(slice_size=1024, k_max=129), "stack"),
+        (
+            kernels.sample_select,
+            dict(slice_size=1024, chunk=256, k_max=129),
+            "verified",
+        ),
+        (kernels.sample_combine, dict(slice_size=1024, k_max=129), "verified"),
         (kernels.sample_select, dict(slice_size=1 << 24, chunk=1 << 12), "2\\*\\*24"),
         (kernels.sample_combine, dict(slice_size=1 << 24, columns=1), "2\\*\\*24"),
         (kernels.sample_select, dict(slice_size=1024, chunk=384), "divide"),
@@ -534,7 +538,6 @@ def test_combine_factory_metadata(npu2_device):
     assert fn.arg_shape(2) == fn.arg_shape(3) == (1,)
     assert all(fn.arg_dtype(i) == np.int32 for i in range(4))
     assert fn.contract.roles == (In, In, Out, Out)
-    assert fn.contract.stack_bytes == 4096
 
 
 # --- builds ----------------------------------------------------------------

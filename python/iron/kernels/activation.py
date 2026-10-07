@@ -261,7 +261,6 @@ def _unary_lut_contract(
     use_lut: bool = False,
     elementwise: Callable | None = None,
     lut_tolerance: Tolerance = _LUT_MODEL_TOLERANCE,
-    stack_bytes: int | None = None,
 ) -> KernelContract:
     """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
 
@@ -295,7 +294,6 @@ def _unary_lut_contract(
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
         setup=setup,
         uses_lut=True,
-        stack_bytes=stack_bytes,
     )
 
 
@@ -381,9 +379,6 @@ _SOFTMAX_ACCURATE_TOLERANCE = Tolerance.bf16_ulps(
     "product each rounded to bf16 (1.76 ulp measured on npu2); atol admits "
     "2^x flushed to +0 below -125.5",
 )
-# As aiecc measures it under IRON's Softmax Worker, whose main frame is 64 B
-# more than kernel_design's: the polynomial's constants spill.
-_SOFTMAX_ACCURATE_STACK_BYTES = 1280
 
 
 def softmax(tile_size: int = 1024, accurate_exp2: bool = False) -> ExternalFunction:
@@ -440,13 +435,8 @@ def softmax(tile_size: int = 1024, accurate_exp2: bool = False) -> ExternalFunct
             ),
             # softmax_aie2p.h sets conv_even itself; the aie2 LUT path does not.
             setup=conv_even if _tuned_arch() == "aie2" else None,
-            stack_bytes=_SOFTMAX_ACCURATE_STACK_BYTES if accurate_exp2 else None,
         ),
     )
-
-
-# aiecc measured 1120 on aie2, past the 1 KiB default.
-_GELU_AIE2_STACK_BYTES = 1280
 
 
 def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
@@ -472,7 +462,6 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             tolerance=_gelu_tolerance(),
             use_lut=use_lut,
             elementwise=gelu_lut_ref if _tuned_arch() == "aie2p" else None,
-            stack_bytes=_GELU_AIE2_STACK_BYTES if _tuned_arch() == "aie2" else None,
         ),
         use_lut_tanh=use_lut,
     )
@@ -549,7 +538,6 @@ def gelu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction
             tolerance=_gelu_tolerance(),
             use_lut=use_lut,
             elementwise=gelu_lut_ref if _tuned_arch() == "aie2p" else None,
-            stack_bytes=_GELU_AIE2_STACK_BYTES if _tuned_arch() == "aie2" else None,
         ),
         use_lut_tanh=use_lut,
     )
@@ -589,10 +577,6 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
-# aiecc measured 1600 for the polynomial branch on aie2p.
-_BF16_EXP_POLY_STACK_BYTES = 2048
-
-
 def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
     """Element-wise exponential kernel for bf16 tiles (must be 1024).
 
@@ -622,9 +606,6 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
             tolerance=_EXP_POLY_TOLERANCE,
             # The polynomial sets conv_even itself.
             setup=conv_even if _tuned_arch() == "aie2" else None,
-            stack_bytes=(
-                None if _tuned_arch() == "aie2" else _BF16_EXP_POLY_STACK_BYTES
-            ),
         ),
     )
 
@@ -683,9 +664,6 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
                 note="measured 9.2e-6 on aie2p and 8.9e-5 on aie2; clamping "
                 "[127.999, 128) costs up to 7.8e-4",
             ),
-            # aiecc measured 1984 on aie2p (448 portable); remarks gives the
-            # kernel 1792 on aie2 (832 portable).
-            stack_bytes={"aie2": 2048, "aie2p": 2048}.get(_tuned_arch()),
         ),
     )
 

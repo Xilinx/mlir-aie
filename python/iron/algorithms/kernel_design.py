@@ -99,10 +99,6 @@ def _device():
     return device
 
 
-def _stack_bytes(fn):
-    return _contract(fn).stack_bytes or _device().default_core_stack_bytes
-
-
 def _guarded(fn, guard):
     """Return the outputs ``guard`` covers: every one but bfp."""
     types = fn.arg_types()
@@ -122,7 +118,7 @@ def _poison_fill(words, use_chess):
 
     Not a loop in the core's main: that keeps the object FIFO lowering from
     unrolling the calls, and the buffer selects it leaves spill into main's
-    frame, past the stack the contracts measured. The value is an argument
+    frame and grow the core's stack. The value is an argument
     because a constant fill becomes a memset libcall, whose stack aiecc
     cannot measure.
     """
@@ -290,11 +286,13 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
         ]
 
     # Two sets of tiles (ping-pong) when they fit beside the parameters and
-    # the stack, one otherwise.
+    # the stack, one otherwise. aiecc reserves at least the default stack.
     tile_bytes = sum(nbytes(i) for i in [*ins, *outs]) + GUARD_BYTES * len(guarded)
     shifted = dict(arg_byte_offsets)
     fixed_bytes = (
-        sum(nbytes(i) for i in param_pos) + (VIEW_PAD + 4) * len(shifted) + stack_bytes
+        sum(nbytes(i) for i in param_pos)
+        + (VIEW_PAD + 4) * len(shifted)
+        + (stack_bytes or _device().default_core_stack_bytes)
     )
     core_bytes = _device().core_memory_bytes
     depth = next(
@@ -408,7 +406,7 @@ def _build_stream(
     factory,
     factory_kwargs,
     calls,
-    stack_bytes,
+    stack_bytes=None,
     scalars=(),
     params=(),
     trace_config=None,
@@ -458,7 +456,7 @@ def _stream(
     factory: CompileTime[Callable],
     factory_kwargs: CompileTime[dict],
     calls: CompileTime[int],
-    stack_bytes: CompileTime[int],
+    stack_bytes: CompileTime[int | None] = None,
     scalars: CompileTime[tuple] = (),
     params: CompileTime[tuple] = (),
     trace_config: CompileTime[TraceConfig | None] = None,
@@ -496,8 +494,9 @@ def design(
     This harness embeds these values for every call; changing them recompiles
     the design. Direct designs can supply different operands on each call.
 
-    ``stack_bytes`` replaces the core stack the contract declares, for a
-    kernel built from sources other than the ones the contract was sized for.
+    ``stack_bytes`` fixes the core stack. Leave it unset and aiecc sizes the
+    stack from the linked core; set it where aiecc cannot measure, as for a
+    Chess build.
 
     With ``guard=True`` the core fills each output tile and ``GUARD_BYTES``
     after it with ``0x55`` before every call and drains the guard with the
@@ -536,13 +535,11 @@ def design(
         factory=factory,
         factory_kwargs=factory_kwargs,
         calls=calls,
-        # A key of its own: the contract that sets it can change in a module
-        # the cache key never reads, and a stale stack overflows silently.
-        stack_bytes=stack_bytes or _stack_bytes(fn),
         scalars=tuple(scalars),
         params=_encode_params(fn, params or ()),
         guard=guard,
         # Only when given, so every other design keeps its cache key.
+        **({"stack_bytes": stack_bytes} if stack_bytes else {}),
         **({"arg_byte_offsets": offsets} if offsets else {}),
         **({"aiecc_flags": flags} if flags else {}),
     )
