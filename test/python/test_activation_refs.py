@@ -151,6 +151,7 @@ def test_lut_models_flush_subnormal_products():
             "silu_table_ref(x)": kernels.silu_table_ref(x),
             "swiglu_table_ref(x, 1, 1)": kernels.swiglu_table_ref(x, one, one),
             "swiglu_table_ref(1, 1, x)": kernels.swiglu_table_ref(one, one, x),
+            "gelu_lut_ref(x)": kernels.gelu_lut_ref(x),
         }
     for name, got in outs.items():
         a = np.abs(got.astype(np.float32))

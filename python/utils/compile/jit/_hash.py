@@ -37,6 +37,7 @@ Carved out of ``compilabledesign.py`` to keep the main file focused on the
 
 from __future__ import annotations
 
+import dis
 import hashlib
 import json
 import logging
@@ -148,6 +149,39 @@ def _names(code: CodeType) -> set[str]:
     return names
 
 
+_STORE_GLOBAL = bytes([dis.opmap["STORE_GLOBAL"]])
+
+
+def _rebound_globals(module: ModuleType) -> set[str]:
+    """Return the globals of ``module`` its own functions assign (``global x``).
+
+    Such a global is state bound after import, as aie.utils binds its default
+    NPU runtime on first use; one bound by the module's body, or imported
+    into it, is not.
+    """
+    todo = []
+    for value in vars(module).values():
+        own = isinstance(value, type) and value.__module__ == module.__name__
+        members = vars(value).values() if own else (value,)
+        for f in members:
+            if isinstance(f, (staticmethod, classmethod)):
+                f = f.__func__
+            if isinstance(f, FunctionType) and f.__module__ == module.__name__:
+                todo.append(f.__code__)
+    names = set()
+    while todo:
+        code = todo.pop()
+        todo.extend(k for k in code.co_consts if isinstance(k, CodeType))
+        # Opcodes sit at even offsets; a match there is worth disassembling.
+        if _STORE_GLOBAL in code.co_code[::2]:
+            names.update(
+                i.argval
+                for i in dis.get_instructions(code)
+                if i.opname == "STORE_GLOBAL"
+            )
+    return names
+
+
 @cache
 def _installed_dirs() -> tuple[Path, ...]:
     paths = sysconfig.get_paths()
@@ -202,11 +236,16 @@ def _import_identity(module: ModuleType) -> tuple[str, tuple[str, ...]]:
         # Importing a submodule binds it on its package, so a package's
         # namespace grows with whatever else the process imports. Its
         # submodules are reached through what they define, or by the code that
-        # names them (see _python_identity).
+        # names them (see _python_identity). Likewise a global the module's
+        # functions rebind holds whatever the process has done so far.
+        rebound = _rebound_globals(module)
         reached = {
             _stamped_module(v)
             for k, v in vars(module).items()
-            if not isinstance(v, ModuleType) or v.__name__ != f"{module.__name__}.{k}"
+            if k not in rebound
+            and (
+                not isinstance(v, ModuleType) or v.__name__ != f"{module.__name__}.{k}"
+            )
         }
         names = tuple(sorted(m.__name__ for m in reached if m is not None))
         entry = _IMPORTS[module.__name__] = (module.__spec__, stamp, names)

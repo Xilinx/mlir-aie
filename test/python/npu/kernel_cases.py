@@ -164,6 +164,9 @@ CASES: list[Case] = [
     # activation
     Case("gelu", calls=16, smoke=True),
     Case("gelu", calls=256),
+    Case(
+        "gelu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
+    ),
     Case("silu", calls=16, smoke=True),
     Case(
         "silu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
@@ -206,6 +209,21 @@ CASES: list[Case] = [
     # the pipelined path.
     check("softmax", dict(tile_size=32), tag="short-trip", smoke=True),
     check("softmax", dict(tile_size=160), tag="min-pipelined", smoke=True),
+    Case(
+        "softmax",
+        dict(accurate_exp2=True),
+        calls=16,
+        tag="accurate",
+        devices=("npu2",),
+        smoke=True,
+    ),
+    check(
+        "softmax",
+        dict(tile_size=32, accurate_exp2=True),
+        tag="accurate-short",
+        devices=("npu2",),
+        smoke=True,
+    ),
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     # 160 is a multiple of the kernel's 32-element step but not of the 128 its
@@ -239,6 +257,13 @@ CASES: list[Case] = [
     # AIE2 gelu takes 64 elements per trip and loads the next trip's input
     # ahead: 96 runs a single trip, reloading its own input, then the remainder.
     check("gelu_sized", dict(tile_size=96), tag="short-trip", smoke=True),
+    check(
+        "gelu_sized",
+        dict(tile_size=160, use_lut=True),
+        tag="lut-unroll-tail",
+        devices=("npu2",),
+        smoke=True,
+    ),
     *[
         check(name, dict(tile_size=32), tag="edge-tiny", smoke=True)
         for name in ("add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized")
@@ -1799,6 +1824,25 @@ CASES += [
         params=((0, 0),),
         scalars=(37, 37),
         tag="diagonal-padded",
+        smoke=True,
+    ),
+    Case(
+        "mha_softmax",
+        dict(accurate_exp2=True),
+        calls=4,
+        params=((0, 1),),
+        scalars=(128, 64),
+        tag="accurate",
+        devices=("npu2",),
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(accurate_exp2=True),
+        params=((0, 0),),
+        scalars=(37, 37),
+        tag="accurate-diagonal-padded",
+        devices=("npu2",),
         smoke=True,
     ),
     # The prefill toolkit's S*V accumulate, one case per geometry. Each
