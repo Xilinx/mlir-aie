@@ -14,12 +14,17 @@
 
 // RUN: aie-opt --aie-find-flows --split-input-file %s | FileCheck %s
 // RUN: aie-opt --aie-find-flows=keep-partial-flows=false --split-input-file %s | FileCheck %s --check-prefix=NONE
+// RUN: aie-opt --aie-find-flows='emit-vias=true keep-partial-flows=true' --split-input-file %s | FileCheck %s --check-prefix=VIAS
+// RUN: aie-opt --aie-find-flows='emit-vias=true keep-partial-flows=false' --split-input-file %s | FileCheck %s --check-prefix=NONE
 
 // A circuit-switched connection driven out an edge port (North:0 has no wire).
 // NONE-NOT: aie.flow
 // CHECK-LABEL: aie.device
 // CHECK: %[[T02:.*]] = aie.tile(0, 2)
 // CHECK: aie.flow(%[[T02]], DMA : 0, %[[T02]], North : 0)
+// VIAS-LABEL: aie.device
+// VIAS: %[[T02_VIA:.*]] = aie.tile(0, 2)
+// VIAS: aie.flow(%[[T02_VIA]], DMA : 0, %[[T02_VIA]], North : 0) via (%[[T02_VIA]] : DMA : 0 -> North : 0)
 module {
   aie.device(xcvc1902) {
     %t02 = aie.tile(0, 2)
@@ -43,6 +48,9 @@ module {
 // CHECK: aie.packet_flow(1)
 // CHECK:   aie.packet_source<%[[T12]], DMA : 0>
 // CHECK:   aie.packet_dest<%[[T12]], East : 0>
+// VIAS-LABEL: aie.device
+// VIAS-NOT: aie.packet_flow
+// VIAS: aie.packet_rules(DMA : 0)
 module {
   aie.device(xcvc1902) {
     %t02 = aie.tile(0, 2)
@@ -70,6 +78,9 @@ module {
 // CHECK-LABEL: aie.device
 // CHECK: %[[T22:.*]] = aie.tile(2, 2)
 // CHECK: aie.flow(%[[T22]], West : 0, %[[T22]], East : 0)
+// VIAS-LABEL: aie.device
+// VIAS: %[[T22_VIA:.*]] = aie.tile(2, 2)
+// VIAS: aie.flow(%[[T22_VIA]], West : 0, %[[T22_VIA]], East : 0) via (%[[T22_VIA]] : West : 0 -> East : 0)
 module {
   aie.device(xcvc1902) {
     %t22 = aie.tile(2, 2)
