@@ -206,6 +206,21 @@ CASES: list[Case] = [
     # the pipelined path.
     check("softmax", dict(tile_size=32), tag="short-trip", smoke=True),
     check("softmax", dict(tile_size=160), tag="min-pipelined", smoke=True),
+    Case(
+        "softmax",
+        dict(accurate_exp2=True),
+        calls=16,
+        tag="accurate",
+        devices=("npu2",),
+        smoke=True,
+    ),
+    check(
+        "softmax",
+        dict(tile_size=32, accurate_exp2=True),
+        tag="accurate-short",
+        devices=("npu2",),
+        smoke=True,
+    ),
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     # 160 is a multiple of the kernel's 32-element step but not of the 128 its

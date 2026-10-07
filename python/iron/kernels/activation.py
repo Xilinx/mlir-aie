@@ -373,22 +373,50 @@ def _bf16_lut_factory(
     )
 
 
-def softmax(tile_size: int = 1024) -> ExternalFunction:
+# Three bf16 roundings reach an output: 2^x, 1 / sum and their product.
+_SOFTMAX_ACCURATE_TOLERANCE = Tolerance.bf16_ulps(
+    2,
+    atol=2.0**-125,
+    note="exp2 within 2.8e-6 before its bf16 rounding, then 1 / sum and the "
+    "product each rounded to bf16 (1.76 ulp measured on npu2); atol admits "
+    "2^x flushed to +0 below -125.5",
+)
+# As aiecc measures it under IRON's Softmax Worker, whose main frame is 64 B
+# more than kernel_design's: the polynomial's constants spill.
+_SOFTMAX_ACCURATE_STACK_BYTES = 1280
+
+
+def softmax(tile_size: int = 1024, accurate_exp2: bool = False) -> ExternalFunction:
     """Softmax activation kernel for bf16 tiles.
 
     Args:
         tile_size: Number of elements per tile, passed at run time; a
             positive multiple of 32, the kernel's vector step.
+        accurate_exp2: Scale by log2(e) to f32 and take 2^x with a polynomial
+            within 2.8e-6 (`-DEXP2_BF16_ACCURATE`), in place of bf16(log2(e))
+            and AIE2P's exp2 instruction. The block entry points
+            (`softmax_sum_bf16`, `softmax_scale_bf16`) bound from this
+            object follow it too.
 
     Returns:
         ExternalFunction configured for the softmax kernel.
+
+    Raises:
+        NotImplementedError: `accurate_exp2` on an architecture without the
+            exp2 instruction it replaces.
     """
     _require_vector_alignment("softmax", tile_size, _RUNTIME_VECTOR_WIDTH)
+    if accurate_exp2 and not _arch_traits().native_exp2:
+        raise NotImplementedError(
+            "softmax: accurate_exp2 replaces AIE2P's exp2 instruction; "
+            "select an NPU2 device"
+        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "softmax_bf16",
         "softmax.cc",
         [tile_ty, tile_ty, np.int32],
+        compile_flags=["-DEXP2_BF16_ACCURATE=1"] if accurate_exp2 else None,
         contract=_unary_lut_contract(
             lambda x: softmax_ref(x, tile_size=tile_size),
             count=tile_size,
@@ -397,16 +425,22 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
             # accept an all-zero output. A tenth of an average element still
             # covers the exp LUT's underflow on the far tail, while an
             # unwritten tile mismatches on most elements.
-            tolerance=Tolerance.relative(
-                0.04,
-                0.1 / tile_size,
-                note="AIE2P exp instruction through the softmax normalisation, "
-                "measured on npu2 at 2.94e-2 relative; atol = 0.1 / tile_size "
-                "so an unwritten (all-zero) tile fails, since every softmax "
-                "output is below a generic absolute floor",
+            tolerance=(
+                _SOFTMAX_ACCURATE_TOLERANCE
+                if accurate_exp2
+                else Tolerance.relative(
+                    0.04,
+                    0.1 / tile_size,
+                    note="AIE2P exp instruction through the softmax "
+                    "normalisation, measured on npu2 at 2.94e-2 relative; "
+                    "atol = 0.1 / tile_size so an unwritten (all-zero) tile "
+                    "fails, since every softmax output is below a generic "
+                    "absolute floor",
+                )
             ),
             # softmax_aie2p.h sets conv_even itself; the aie2 LUT path does not.
             setup=conv_even if _tuned_arch() == "aie2" else None,
+            stack_bytes=_SOFTMAX_ACCURATE_STACK_BYTES if accurate_exp2 else None,
         ),
     )
 

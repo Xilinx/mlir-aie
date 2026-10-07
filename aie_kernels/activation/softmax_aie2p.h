@@ -17,6 +17,24 @@
 
 using namespace aie;
 
+// x * log2(e) in f32. Under EXP2_BF16_ACCURATE log2(e) is three bf16 limbs,
+// to 2^-26, summed smallest product first; otherwise it is bf16(log2(e)),
+// 1.8e-3 low. A row's maximum is scaled through this too, so its own exponent
+// argument is exactly 0.
+static inline aie::accum<accfloat, SM_VEC_LEN>
+scale_log2e(aie::vector<bfloat16, SM_VEC_LEN> x) {
+#ifdef EXP2_BF16_ACCURATE
+  auto limb = [](int16_t bits) {
+    return aie::broadcast<int16_t, SM_VEC_LEN>(bits).cast_to<bfloat16>();
+  };
+  aie::accum<accfloat, SM_VEC_LEN> t = aie::mul(x, limb(0x36ec));
+  t = aie::mac(t, x, limb(0xbb2c));
+  return aie::mac(t, x, limb(0x3fb9));
+#else
+  return aie::mul(x, aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)log2e));
+#endif
+}
+
 void softmax_simple_bf16(bfloat16 *restrict input_vector,
                          bfloat16 *restrict output_vector,
                          const int32_t vector_size) {
@@ -43,18 +61,14 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   auto it_soft_out =
       aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
 
-  aie::vector<bfloat16, SM_VEC_LEN> in_elems, exp_val, input_bf16, log2e_vec,
-      max_val_vec;
-  aie::accum<accfloat, SM_VEC_LEN> out_vals, exp_val_accum, scaled_accum,
-      exp_in_accum;
+  aie::vector<bfloat16, SM_VEC_LEN> in_elems, exp_val, input_bf16, max_val_vec;
+  aie::accum<accfloat, SM_VEC_LEN> out_vals, exp_val_accum, exp_in_accum;
 
   float accum_exp_val = 0;
   bfloat16 col_sum_inv;
   const int elem_iters = (uint32_t)vector_size / SM_VEC_LEN;
 
   exp_val_accum = aie::zeros<accfloat, SM_VEC_LEN>();
-
-  log2e_vec = aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)log2e);
 
   // First pass - Optimized: element-wise max + single final reduce_max
   // Use vector max accumulation, then reduce once at the end.
@@ -81,7 +95,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   // every other one is negative, so exp2 <= 1, the sum is >= 1, and the
   // reciprocal of the sum cannot overflow.
   aie::vector<float, SM_VEC_LEN> max_scaled =
-      aie::mul(max_val_vec, log2e_vec).to_vector<float>();
+      scale_log2e(max_val_vec).to_vector<float>();
 
   // Second pass
   AIE_LOOP_MIN_ITERATION_COUNT(1)
@@ -89,8 +103,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
 
     input_bf16 = *it_exp_in++;
 
-    scaled_accum = aie::mul(input_bf16, log2e_vec);
-    exp_in_accum = aie::sub(scaled_accum, max_scaled);
+    exp_in_accum = aie::sub(scale_log2e(input_bf16), max_scaled);
     exp_val = exp2_bf16(exp_in_accum.to_vector<float>());
     exp_val_accum = add(exp_val_accum, exp_val);
 
@@ -222,22 +235,18 @@ void softmax_sum_block(bfloat16 *restrict input_vector, float *restrict state,
   auto it_in = aie::cbegin_restrict_vector<SM_VEC_LEN>(input_vector);
   const int elem_iters = (uint32_t)vector_size / SM_VEC_LEN;
 
-  aie::vector<bfloat16, SM_VEC_LEN> log2e_vec =
-      aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)log2e);
-  aie::vector<bfloat16, SM_VEC_LEN> max_val_vec =
-      aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)state[SM_VEC_LEN]);
   aie::vector<float, SM_VEC_LEN> max_scaled =
-      aie::mul(max_val_vec, log2e_vec).to_vector<float>();
+      scale_log2e(
+          aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)state[SM_VEC_LEN]))
+          .to_vector<float>();
 
   aie::accum<accfloat, SM_VEC_LEN> exp_val_accum;
   exp_val_accum.from_vector(aie::load_v<SM_VEC_LEN>(state));
 
   AIE_LOOP_MIN_ITERATION_COUNT(1)
   for (int i = 0; i < elem_iters; i++) {
-    aie::accum<accfloat, SM_VEC_LEN> scaled_accum =
-        aie::mul(*it_in++, log2e_vec);
     aie::accum<accfloat, SM_VEC_LEN> exp_in_accum =
-        aie::sub(scaled_accum, max_scaled);
+        aie::sub(scale_log2e(*it_in++), max_scaled);
     aie::vector<bfloat16, SM_VEC_LEN> exp_val =
         exp2_bf16(exp_in_accum.to_vector<float>());
     exp_val_accum = add(exp_val_accum, exp_val);
@@ -257,12 +266,10 @@ void softmax_scale_block(bfloat16 *restrict input_vector,
   auto it_out = aie::begin_restrict_vector<SM_VEC_LEN>(output_vector);
   const int elem_iters = (uint32_t)vector_size / SM_VEC_LEN;
 
-  aie::vector<bfloat16, SM_VEC_LEN> log2e_vec =
-      aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)log2e);
-  aie::vector<bfloat16, SM_VEC_LEN> max_val_vec =
-      aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)state[SM_VEC_LEN]);
   aie::vector<float, SM_VEC_LEN> max_scaled =
-      aie::mul(max_val_vec, log2e_vec).to_vector<float>();
+      scale_log2e(
+          aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)state[SM_VEC_LEN]))
+          .to_vector<float>();
 
   aie::vector<float, SM_VEC_LEN> reduce = aie::load_v<SM_VEC_LEN>(state);
   float accum_exp_val = aie::reduce_add(reduce);
@@ -270,10 +277,8 @@ void softmax_scale_block(bfloat16 *restrict input_vector,
 
   AIE_LOOP_MIN_ITERATION_COUNT(1)
   for (int i = 0; i < elem_iters; i++) {
-    aie::accum<accfloat, SM_VEC_LEN> scaled_accum =
-        aie::mul(*it_in++, log2e_vec);
     aie::accum<accfloat, SM_VEC_LEN> exp_in_accum =
-        aie::sub(scaled_accum, max_scaled);
+        aie::sub(scale_log2e(*it_in++), max_scaled);
     aie::vector<bfloat16, SM_VEC_LEN> exp_val =
         exp2_bf16(exp_in_accum.to_vector<float>());
     *it_out++ = aie::mul(exp_val, col_sum_inv).to_vector<bfloat16>();
