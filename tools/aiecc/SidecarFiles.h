@@ -18,7 +18,9 @@
 #include "IRTransforms.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -28,6 +30,8 @@
 #include <optional>
 #include <random>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace xilinx::aiecc {
 
@@ -256,10 +260,13 @@ inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
 
 // Full-ELF config.json for aiebu's aie2_config assembler (in-process, or
 // `aiebu-asm -t aie2_config`). One xrt-kernel per device with ≥1 runtime
-// sequence; PDIs array is shared (all devices) so aiebu can resolve any
-// load_pdi reference. Argument count is max(3, max runtime-seq arity). PDI IDs
-// are read from `aiecc.pdi_id` on each DeviceOp (stamped by
-// `assignDevicePdiIds`).
+// sequence. A kernel lists its own device's PDI and each PDI its sequences
+// `load_pdi`: aiebu emits a section per PDI per kernel, so listing every PDI
+// in every kernel grows quadratically with the devices and passes aiebu's
+// section limit at about 255 of them. Argument count is max(3, max
+// runtime-seq arity). PDI IDs are read from `aiecc.pdi_id` on each DeviceOp
+// (stamped by `assignDevicePdiIds`, and onto each load_pdi by
+// `assignLoadPdiIds`).
 //
 // `ctrlPktPaths` / `patchInfoPaths` (both keyed per runtime sequence as
 // "<device>_<sequence>" via `npuSeqKey`, optional) carry that sequence's
@@ -279,11 +286,10 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
         d->getAttrOfType<mlir::IntegerAttr>(kPdiIdAttr).getInt());
   };
 
-  llvm::json::Array allPdis;
+  std::vector<std::pair<int, std::string>> allPdis;
   for (const auto &item : devices.items)
     if (auto it = pdiPaths.find(item.key); it != pdiPaths.end())
-      allPdis.push_back(
-          O{{"id", devId(item.get().op)}, {"PDI_file", it->second}});
+      allPdis.emplace_back(devId(item.get().op), it->second);
 
   llvm::json::Array xrtKernels;
   for (const auto &item : devices.items) {
@@ -330,13 +336,18 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
     if (instances.empty())
       continue;
 
-    llvm::json::Array pdisCopy;
-    for (const auto &p : allPdis)
-      pdisCopy.push_back(llvm::json::Value(p));
+    llvm::SmallDenseSet<int> loaded{devId(devOp)};
+    devOp.walk([&](xilinx::AIEX::NpuLoadPdiOp lp) {
+      loaded.insert(static_cast<int>(lp.getId()));
+    });
+    llvm::json::Array pdis;
+    for (const auto &[id, file] : allPdis)
+      if (loaded.contains(id))
+        pdis.push_back(O{{"id", id}, {"PDI_file", file}});
 
     xrtKernels.push_back(O{{"name", devName},
                            {"arguments", std::move(arguments)},
-                           {"PDIs", std::move(pdisCopy)},
+                           {"PDIs", std::move(pdis)},
                            {"instance", std::move(instances)}});
   }
 
