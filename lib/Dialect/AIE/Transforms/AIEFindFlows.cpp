@@ -883,23 +883,28 @@ static void findFlowsFromInterconnect(Operation *switchOp,
     Value srcTile;
     WireBundle srcBundle = p.bundle;
     int srcChannel = p.channel;
-    if (auto upstream = analysis.upstreamOf(switchOp, p)) {
-      Operation *upstreamOp = upstream->op;
-      Port upstreamPort = upstream->port;
-      if (upstreamOp && upstreamOp->hasTrait<IsFlowEndPoint>()) {
-        if (upstreamPort.bundle == WireBundle::Core ||
-            upstreamPort.bundle == WireBundle::DMA) {
+    if (auto up = analysis.upstreamOf(switchOp, p)) {
+      Operation *upOp = up->op;
+      Port upPort = up->port;
+      if (upOp && upOp->hasTrait<IsFlowEndPoint>()) {
+        // Driven by a tile.  Core/DMA sources are handled by findFlowsFrom;
+        // recover the remaining tile-source bundles (e.g. PLIO) from here.
+        if (upPort.bundle == WireBundle::Core ||
+            upPort.bundle == WireBundle::DMA) {
           continue;
         }
-        srcTile = resolveEndpointTile(upstreamOp);
-        srcBundle = upstreamPort.bundle;
-        srcChannel = upstreamPort.channel;
-      } else if (analysis.drivesPort(upstreamOp, upstreamPort)) {
+        srcTile = resolveEndpointTile(upOp);
+        srcBundle = upPort.bundle;
+        srcChannel = upPort.channel;
+      } else if (analysis.drivesPort(upOp, upPort)) {
+        // Mid-chain: an upstream interconnect drives this port.
         continue;
       } else {
+        // Wire exists but nothing drives it: this input is a fabric entry.
         srcTile = resolveEndpointTile(switchOp);
       }
     } else {
+      // No upstream wire: this input is a fabric entry (array edge).
       srcTile = resolveEndpointTile(switchOp);
     }
     if (!srcTile) {
