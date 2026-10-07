@@ -392,7 +392,7 @@ def collect(get, repo: str, config: dict, now: datetime.datetime) -> dict:
     }
 
 
-def main(argv=None, now: datetime.datetime = None) -> int:
+def main(argv=None, now: datetime.datetime | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
     parser.add_argument(
         "--out",
