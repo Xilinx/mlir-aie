@@ -1,0 +1,17 @@
+<map id="xilinx::AIE::RoutedStream" name="xilinx::AIE::RoutedStream">
+<area shape="rect" id="Node000001" title="One stream from a source tile port to a destination tile port, recovered from the physical switchbox ..." alt="" coords="680,151,868,176"/>
+<area shape="rect" id="Node000002" href="$structxilinx_1_1AIE_1_1StreamEndpoint.html" title="A tile port at the edge of the stream fabric." alt="" coords="323,52,521,77"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="534,77,596,89,657,106,708,127,751,148,748,153,706,131,655,111,594,95,533,82"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,5,244,60"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="258,44,323,51,322,57,257,50"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="31,84,218,109"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="231,83,322,73,322,78,232,88"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="361,101,483,127"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="498,120,656,141,702,148,701,153,656,146,497,125"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="397,151,447,176"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="461,161,680,161,680,166,461,166"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="341,201,503,241"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="517,203,656,181,699,173,700,179,656,186,517,208"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="403,265,441,291"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="455,270,546,251,655,219,707,197,750,174,752,178,709,202,657,225,547,257,456,275"/>
+</map>
