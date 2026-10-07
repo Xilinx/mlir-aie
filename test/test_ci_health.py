@@ -315,7 +315,8 @@ def test_main_writes_both_files_and_fails_only_when_nothing_answered(
                 str(config),
                 "--history",
                 str(tmp_path / "old.json"),
-            ]
+            ],
+            now=NOW,
         )
         == 0
     )
@@ -328,4 +329,4 @@ def test_main_writes_both_files_and_fails_only_when_nothing_answered(
     monkeypatch.setattr(
         ci, "github", lambda token: FakeGitHub([(r".", ci.ApiError("HTTP 401"))])
     )
-    assert ci.main(["--out", str(out), "--workflows", str(config)]) == 1
+    assert ci.main(["--out", str(out), "--workflows", str(config)], now=NOW) == 1

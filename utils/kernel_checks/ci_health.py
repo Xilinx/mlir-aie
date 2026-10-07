@@ -392,7 +392,7 @@ def collect(get, repo: str, config: dict, now: datetime.datetime) -> dict:
     }
 
 
-def main(argv=None) -> int:
+def main(argv=None, now: datetime.datetime = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
     parser.add_argument(
         "--out",
@@ -409,7 +409,7 @@ def main(argv=None) -> int:
     parser.add_argument("--workflows", type=Path, default=WORKFLOWS)
     args = parser.parse_args(argv)
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = now or datetime.datetime.now(datetime.timezone.utc)
     status = collect(
         github(os.environ.get("GITHUB_TOKEN", "")),
         args.repo,
