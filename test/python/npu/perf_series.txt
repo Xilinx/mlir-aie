@@ -140,6 +140,11 @@ bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/arg1@16
 bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/fc1
 bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/ic-tail
 bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/short
+clamp/1024x16/bfloat16
+clamp/1024x256/bfloat16
+clamp/1024x4/bfloat16/one-point
+clamp/1024x4/bfloat16/one-sign
+clamp/32x4/bfloat16/edge-one-vector
 compute_max/1x16/int32
 compute_max/2x16/bfloat16
 conv2dk1/2048x8/int8_uint8

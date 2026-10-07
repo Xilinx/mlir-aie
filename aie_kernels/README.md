@@ -74,6 +74,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [scale.cc](./eltwise/scale.cc) | AIE API | Scale all elements of a tensor with a scale factor | `int32_t` |
 | [scale_shift.cc](./eltwise/scale_shift.cc) | AIE API | Scale-and-shift | `int32_t` |
 | [relu.cc](./eltwise/relu.cc) | Intrinsics | ReLU activation | `bfloat16` |
+| [clamp.cc](./eltwise/clamp.cc) | AIE API | Clamp to runtime bounds, each passed as its bf16 bits | `bfloat16` |
 
 ## fused
 | Name | Coding style | Purpose | Datatypes |

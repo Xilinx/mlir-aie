@@ -108,6 +108,12 @@ CASES: list[Case] = [
     Case("mul", calls=256, data_cases=IEEE_FLOAT),
     Case("relu", calls=16, smoke=True),
     Case("relu", calls=256),
+    # clamp's bounds are bf16 bits: -0.75 and 1.25 cut random data on both sides.
+    Case("clamp", calls=16, scalars=(0xBF40, 0x3FA0), smoke=True),
+    Case("clamp", calls=256, scalars=(0xBF40, 0x3FA0), data_cases=IEEE_FLOAT),
+    check("clamp", scalars=(0x3F00, 0x3FC0), tag="one-sign", smoke=True),
+    check("clamp", scalars=(0x3F80, 0x3F80), tag="one-point"),
+    check("clamp", dict(tile_size=32), scalars=(0xBF40, 0x3FA0), tag="edge-one-vector"),
     # reduce
     Case("reduce_add", calls=16, smoke=True),
     Case("reduce_add", calls=256),

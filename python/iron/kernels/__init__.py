@@ -6,7 +6,7 @@
 """Factory functions for AIE kernel ExternalFunctions.
 
 Submodules:
-- `eltwise` — passthrough, scale, add, mul, relu
+- `eltwise` — passthrough, scale, add, mul, relu, clamp
 - `datamovement` — affine_cast, axpy, convert_copy, expand, rope, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
@@ -133,6 +133,8 @@ from .eltwise import (
     add,
     add_ref,
     add_sized,
+    clamp,
+    clamp_ref,
     mul,
     mul_add,
     mul_add_ref,
@@ -398,6 +400,8 @@ __all__ = [
     "argmax_combine_ref",
     "relu",
     "relu_sized",
+    "clamp",
+    "clamp_ref",
     "rgba2hue",
     "rgba2hue_ref",
     "threshold",
