@@ -221,15 +221,12 @@ struct AIEObjectFifoUnrollPass
   /// SSA on every core where that folds each object to its buffer; elsewhere
   /// they are left in memory.
   ///
-  /// An object still picked at run time once promoted is a memref descriptor
-  /// carried through control flow, and LLVM cannot tell such descriptors apart,
-  /// so every access to one may alias every other; left in memory, SROA reduces
-  /// it to a pointer instead. Whether the rotations fold depends on the fold
-  /// pipeline (a loop whose trip count is not a multiple of the depth leaves
-  /// the objects rotated, for instance), so as with peeling each core is
-  /// promoted for real and measured against a detached clone, which is swapped
-  /// back in, with its slots untagged, when the promotion picks more memrefs at
-  /// run time than before.
+  /// A promoted object still picked at run time is a memref descriptor carried
+  /// through control flow, which LLVM's alias analysis cannot tell apart from
+  /// the others; left in memory, SROA reduces it to a pointer. Whether the
+  /// rotations fold depends on the fold pipeline, so as with peeling each core
+  /// is promoted for real and measured against a detached clone, which is
+  /// swapped back in, slots untagged, if more memrefs are picked at run time.
   LogicalResult foldPromotingObjectSlots(DeviceOp device,
                                          ArrayRef<memref::AllocaOp> slots,
                                          OpPassManager &foldPipeline) {
