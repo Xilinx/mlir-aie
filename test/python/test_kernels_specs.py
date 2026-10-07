@@ -171,6 +171,14 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,  # in, out, size
         expected_name="relu_bf16_size",
     ),
+    KernelSpec(
+        name="clamp",
+        factory=kernels.clamp,
+        kwargs=dict(tile_size=1024),
+        arg_count=5,  # in, out, size, low, high
+        expected_name="clamp_bf16",
+        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+    ),
     # ----- reduce -----
     KernelSpec(
         name="reduce_add",

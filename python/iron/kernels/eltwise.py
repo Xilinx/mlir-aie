@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Element-wise kernel factories: passthrough, scale, add, mul, relu."""
+"""Element-wise kernel factories: passthrough, scale, add, mul, relu, clamp."""
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
@@ -369,3 +369,38 @@ def relu_sized(tile_size: int = 1024) -> ExternalFunction:
             ops_per_call=tile_size,
         ),
     )
+
+
+def clamp(tile_size: int = 1024) -> ExternalFunction:
+    """Element-wise bf16 clamp to ``[low, high]``, with a compiled-in element count.
+
+    The design passes ``(in, out, size, low, high)``, each bound as its bf16
+    bits in an int32 (``int(np.array(b, bfloat16).view(np.uint16))``), the
+    type a runtime parameter word holds, so the bounds stay runtime values.
+    Positive multiples of 32 elements are supported.
+    """
+    _require_vector_alignment("clamp", tile_size, 32)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "clamp_bf16",
+        _kernel_source("eltwise/clamp.cc"),
+        [tile_ty, tile_ty, np.int32, np.int32, np.int32],
+        compile_flags=[f"-DCLAMP_ELEMS={tile_size}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=clamp_ref,
+            tolerance=Tolerance.exact(note="selection: min and max are exact in bf16"),
+            ops_per_call=tile_size,
+        ),
+    )
+
+
+def clamp_ref(x, low, high):
+    """Numpy reference for [`clamp`][iron.kernels.eltwise.clamp]: ``min(max(x, low), high)``.
+
+    ``low`` and ``high`` are the bounds' bf16 bits, as the kernel takes them.
+    """
+    low, high = (np.uint16(b).view(bfloat16).astype(np.float32) for b in (low, high))
+    return np.minimum(np.maximum(x.astype(np.float32), low), high)
