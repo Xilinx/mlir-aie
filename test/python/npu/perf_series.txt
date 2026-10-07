@@ -242,6 +242,8 @@ fused_mm/32x48x16x4/bfloat16/epilogue=gelu/gelu=bf16_steps/rounding=floor
 fused_mm/32x48x16x4/bfloat16/epilogue=sigmoid
 fused_mm/32x48x16x4/bfloat16/epilogue=silu
 fused_mm/32x48x16x4/bfloat16/rounding=floor
+fused_mm/64x128x16x4/bfloat16/band_m=64/chunk_k=16/mmul_shape=(8, 8, 8)/out_chunk=512
+fused_mm/64x128x32x4/bfloat16/band_m=64/chunk_k=32/mmul_shape=(8, 8, 8)/out_chunk=512
 fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=silu/out_chunk=512
 fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=gelu/epilogue_modes=('none', 'gelu', 'silu', 'sigmoid')/gelu=bf16_steps/out_chunk=512/rounding=floor
 fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/out_chunk=512

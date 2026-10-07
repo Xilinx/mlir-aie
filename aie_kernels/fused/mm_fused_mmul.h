@@ -135,8 +135,10 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
 #if AIE_TUNED_AIE2
   // A pipelined loop of two or four trips is almost all prologue and epilogue.
   // Unrolling i and j instead leaves one straight block per z pair, in which
-  // the next block's C loads overlap this one's macs.
-  constexpr bool unroll_ij = colA <= 4 && colB <= 4;
+  // the next block's C loads overlap this one's macs. Only while a z pair's C
+  // is at most 256 floats: 8x8 tiles four wide spill kilobytes of stack and
+  // run slower than the rolled loop.
+  constexpr bool unroll_ij = colA <= 4 && colB <= 4 && 2 * colB * r * t <= 256;
 #endif
   // Rolled, the z loop does not pipeline and each trip pays the j loop's
   // entry and exit; two trips per body let those overlap.
