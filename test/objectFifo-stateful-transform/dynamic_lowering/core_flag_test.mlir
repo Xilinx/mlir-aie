@@ -39,47 +39,34 @@
 // CHECK-DAG:           aie.flow(%[[SHIM]], DMA : 1, %[[T4]], DMA : 0)
 // CHECK-DAG:           aie.flow(%[[T4]], DMA : 0, %[[SHIM]], DMA : 1)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
-// CHECK-DAG:             %[[C10:.*]] = arith.constant 10 : index
-// CHECK-DAG:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK-DAG:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:             %[[I0:.*]] = arith.constant 0 : i32
-// CHECK-DAG:             %[[I1:.*]] = arith.constant 1 : i32
-// CHECK-DAG:             %[[I2:.*]] = arith.constant 2 : i32
-// CHECK:             %{{.*}}:2 = scf.for %{{.*}} = %[[C0]] to %[[C10]] step %[[C1]] iter_args(%[[OIDX:.*]] = %[[I0]], %[[IIDX:.*]] = %[[I0]]) -> (i32, i32) {
-// CHECK:               aie.use_lock(%[[OF_PROD]], AcquireGreaterEqual, %[[I1]])
-// CHECK:               %[[OC:.*]] = arith.index_cast %[[OIDX]] : i32 to index
-// CHECK:               %[[OB:.*]] = scf.index_switch %[[OC]] -> memref<10xi32>
-// CHECK:               case 0 {
-// CHECK:                 scf.yield %[[OF_B0]] : memref<10xi32>
-// CHECK:               }
-// CHECK:               case 1 {
-// CHECK:                 scf.yield %[[OF_B1]] : memref<10xi32>
-// CHECK:               }
-// CHECK:               default {
-// CHECK:                 scf.yield %[[OF_B0]] : memref<10xi32>
-// CHECK:               }
-// CHECK:               aie.use_lock(%[[IF_CONS]], AcquireGreaterEqual, %[[I1]])
-// CHECK:               %[[IC:.*]] = arith.index_cast %[[IIDX]] : i32 to index
-// CHECK:               %[[IB:.*]] = scf.index_switch %[[IC]] -> memref<10xi32>
-// CHECK:               case 0 {
-// CHECK:                 scf.yield %[[IF_B0]] : memref<10xi32>
-// CHECK:               }
-// CHECK:               case 1 {
-// CHECK:                 scf.yield %[[IF_B1]] : memref<10xi32>
-// CHECK:               }
-// CHECK:               default {
-// CHECK:                 scf.yield %[[IF_B0]] : memref<10xi32>
-// CHECK:               }
-// CHECK:               func.call @passthrough_10_i32(%[[IB]], %[[OB]]) : (memref<10xi32>, memref<10xi32>) -> ()
-// CHECK:               aie.use_lock(%[[IF_PROD]], Release, %[[I1]])
-// CHECK:               %[[IN:.*]] = arith.addi %[[IIDX]], %[[I1]] : i32
-// CHECK:               %[[ICMP:.*]] = arith.cmpi sge, %[[IN]], %[[I2]] : i32
-// CHECK:               %[[ISEL:.*]] = arith.select %[[ICMP]], %[[I0]], %[[IN]] : i32
-// CHECK:               aie.use_lock(%[[OF_CONS]], Release, %[[I1]])
-// CHECK:               %[[ON:.*]] = arith.addi %[[OIDX]], %[[I1]] : i32
-// CHECK:               %[[OCMP:.*]] = arith.cmpi sge, %[[ON]], %[[I2]] : i32
-// CHECK:               %[[OSEL:.*]] = arith.select %[[OCMP]], %[[I0]], %[[ON]] : i32
-// CHECK:               scf.yield %[[OSEL]], %[[ISEL]] : i32, i32
+// CHECK-DAG:             %[[T2_C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[T2_C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:             %[[T2_C10:.*]] = arith.constant 10 : index
+// CHECK-DAG:             %[[T2_C1I:.*]] = arith.constant 1 : i32
+// CHECK:             %[[OF_S0:.*]] = memref.alloca() : memref<memref<10xi32>>
+// CHECK:             memref.store %[[OF_B0]], %[[OF_S0]][] : memref<memref<10xi32>>
+// CHECK:             %[[OF_S1:.*]] = memref.alloca() : memref<memref<10xi32>>
+// CHECK:             memref.store %[[OF_B1]], %[[OF_S1]][] : memref<memref<10xi32>>
+// CHECK:             %[[IF_S0:.*]] = memref.alloca() : memref<memref<10xi32>>
+// CHECK:             memref.store %[[IF_B0]], %[[IF_S0]][] : memref<memref<10xi32>>
+// CHECK:             %[[IF_S1:.*]] = memref.alloca() : memref<memref<10xi32>>
+// CHECK:             memref.store %[[IF_B1]], %[[IF_S1]][] : memref<memref<10xi32>>
+// CHECK:             scf.for %{{.*}} = %[[T2_C0]] to %[[T2_C10]] step %[[T2_C1]] {
+// CHECK:               aie.use_lock(%[[OF_PROD]], AcquireGreaterEqual, %[[T2_C1I]])
+// CHECK:               %[[OF_OBJ:.*]] = memref.load %[[OF_S0]][] : memref<memref<10xi32>>
+// CHECK:               aie.use_lock(%[[IF_CONS]], AcquireGreaterEqual, %[[T2_C1I]])
+// CHECK:               %[[IF_OBJ:.*]] = memref.load %[[IF_S0]][] : memref<memref<10xi32>>
+// CHECK:               func.call @passthrough_10_i32(%[[IF_OBJ]], %[[OF_OBJ]]) : (memref<10xi32>, memref<10xi32>) -> ()
+// CHECK:               aie.use_lock(%[[IF_PROD]], Release, %[[T2_C1I]])
+// CHECK:               %[[IF_X:.*]] = memref.load %[[IF_S0]][] : memref<memref<10xi32>>
+// CHECK:               %[[IF_Y:.*]] = memref.load %[[IF_S1]][] : memref<memref<10xi32>>
+// CHECK:               memref.store %[[IF_Y]], %[[IF_S0]][] : memref<memref<10xi32>>
+// CHECK:               memref.store %[[IF_X]], %[[IF_S1]][] : memref<memref<10xi32>>
+// CHECK:               aie.use_lock(%[[OF_CONS]], Release, %[[T2_C1I]])
+// CHECK:               %[[OF_X:.*]] = memref.load %[[OF_S0]][] : memref<memref<10xi32>>
+// CHECK:               %[[OF_Y:.*]] = memref.load %[[OF_S1]][] : memref<memref<10xi32>>
+// CHECK:               memref.store %[[OF_Y]], %[[OF_S0]][] : memref<memref<10xi32>>
+// CHECK:               memref.store %[[OF_X]], %[[OF_S1]][] : memref<memref<10xi32>>
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           } {dynamic_objfifo_lowering = true}

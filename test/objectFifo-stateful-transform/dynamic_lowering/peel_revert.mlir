@@ -23,7 +23,7 @@
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
 // Nothing is acquired ahead of the loop: the peeled copy was discarded.
 // CHECK-NOT:         aie.use_lock
-// CHECK:             %{{.*}}:2 = scf.for %{{.*}} iter_args(%{{.*}} = %{{.*}}, %[[HELD:.*]] = %{{.*}}) -> (i32, i32) {
+// CHECK:             %{{.*}} = scf.for %{{.*}} iter_args(%[[HELD:.*]] = %{{.*}}) -> (i32) {
 // CHECK:               %[[DELTA:.*]] = arith.subi %{{.*}}, %[[HELD]] : i32
 // CHECK:               %[[ACQ:.*]] = arith.maxsi %[[DELTA]], %{{.*}} : i32
 // CHECK:               aie.use_lock(%{{.*}}, AcquireGreaterEqual, %[[ACQ]])
