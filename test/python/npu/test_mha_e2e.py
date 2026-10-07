@@ -46,7 +46,7 @@ from aie.iron import (
     kernels,
 )
 from aie.utils.compile.utils import resolve_target_arch
-from aie.utils.verify import nearly_equal
+from aie.utils.verify import Tolerance, compare, nearly_equal
 
 BF = np.dtype[bfloat16]
 I32 = np.dtype[np.int32]
@@ -71,6 +71,10 @@ _LOWEST = float(ml_dtypes.finfo(bfloat16).min)
 # envelope is 6.98%. Measured: weights 6.79%, row sums 6.66%.
 _RTOL_EXP2 = 0.07
 
+# Under -DEXP2_BF16_ACCURATE, a row sum's distance from the exact one, in its
+# own bf16 ulps (1.41 measured on npu2).
+_L_ULPS_ACCURATE = 2
+
 
 def _unblock(flat: np.ndarray, rows: int = _B) -> np.ndarray:
     """The 8x8-blocked O tile back to (rows, 64)."""
@@ -94,7 +98,8 @@ def _softmax_step(scores, keep, m_prev, l_prev):
     """One key block of the online softmax: (weights, running max, row sum)."""
     scaled = scores.astype(np.float32) * np.float32(_INV_SCALE)
     m_new = np.where(keep, scaled, -np.float32(np.inf)).max(axis=1)
-    m_new = np.maximum(m_new, m_prev)
+    # The kernel stores the running max in bf16 before exponentiating against it.
+    m_new = np.maximum(m_new.astype(bfloat16).astype(np.float32), m_prev)
     p = np.exp2(np.where(keep, scaled, m_new[:, None]) - m_new[:, None])
     # The row sum accumulates the stored bf16 weights.
     p = np.where(keep, p.astype(bfloat16).astype(np.float32), np.float32(0))
@@ -128,6 +133,7 @@ def softmax_blocks(
     kv_second: CompileTime[int] = 1,
     s_q_eff: CompileTime[int] = 64,
     s_kv_eff: CompileTime[int] = 64,
+    accurate_exp2: CompileTime[bool] = False,
 ):
     """``partial_softmax`` over two key blocks sharing one ``scale_buffer``.
 
@@ -137,7 +143,7 @@ def softmax_blocks(
     scale_ty = np.ndarray[(4 * _B,), BF]
     idx_ty = np.ndarray[(2,), I32]
 
-    mha = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B)
+    mha = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2)
     obj = mha.object_file
     softmax = obj.bind(
         "partial_softmax",
@@ -177,7 +183,7 @@ def softmax_blocks(
     worker = Worker(
         core,
         fn_args=[of_a.cons(), of_p.prod(), of_scale.prod(), softmax, init, *idx],
-        stack_size=kernels.mha_softmax().contract.stack_bytes,
+        stack_size=kernels.mha_softmax(accurate_exp2).contract.stack_bytes,
     )
 
     host = [
@@ -280,8 +286,12 @@ def _softmax_case_data(q_block, kv_first, kv_second, s_q_eff, s_kv_eff):
         (1, 0, 1, 100, 70),  # short key tail under padded query rows
     ],
 )
+@pytest.mark.parametrize(
+    "accurate_exp2",
+    [False, pytest.param(True, marks=pytest.mark.supported_devices("npu2"))],
+)
 def test_partial_softmax_matches_masked_attention(
-    q_block, kv_first, kv_second, s_q_eff, s_kv_eff
+    q_block, kv_first, kv_second, s_q_eff, s_kv_eff, accurate_exp2
 ):
     scores, keeps = _softmax_case_data(
         q_block, kv_first, kv_second, s_q_eff, s_kv_eff
@@ -298,6 +308,7 @@ def test_partial_softmax_matches_masked_attention(
         kv_second=kv_second,
         s_q_eff=s_q_eff,
         s_kv_eff=s_kv_eff,
+        accurate_exp2=accurate_exp2,
     )
     got_p = p_t.numpy().astype(np.float32).reshape(2, _B, _B)
     got_scale = scale_t.numpy().astype(np.float32)
@@ -310,11 +321,16 @@ def test_partial_softmax_matches_masked_attention(
 
     # The exp2 envelope with an absolute floor for weights near zero; padded
     # rows must be exact zeros. On aie2, the factory's bound (0.389% measured).
+    # The accurate exp2 is held to its factory's ulps.
     aie2 = resolve_target_arch(iron.get_current_device()) == "aie2"
     tol = kernels.mha_softmax().contract.tolerance
     assert tol.rtol is not None and tol.atol is not None
     ulp = 2**-7
-    if aie2:
+    if accurate_exp2:
+        accurate = kernels.mha_softmax(accurate_exp2=True).contract.tolerance
+        verdict = compare(p_t.numpy().reshape(2, _B, _B), np.stack(ref_p), accurate)
+        assert verdict, verdict.detail
+    elif aie2:
         assert nearly_equal(got_p, np.stack(ref_p), rtol=tol.rtol, atol=tol.atol).all()
     else:
         np.testing.assert_allclose(
@@ -330,8 +346,17 @@ def test_partial_softmax_matches_masked_attention(
     )
     # A sum of weights shares their envelope. On aie2 it is c * l_prev + sum(P)
     # with c an exp2 too, so it gets two weights' allowance (0.54% measured).
+    # With the accurate exp2 it is a block's weights summed and stored, then
+    # rescaled by a rounded 2^x and stored again.
     got_l = got_scale[2 * _B : 3 * _B][live]
-    if aie2:
+    if accurate_exp2:
+        verdict = compare(
+            scale_t.numpy()[2 * _B : 3 * _B][live],
+            l[live],
+            Tolerance.bf16_ulps(_L_ULPS_ACCURATE),
+        )
+        assert verdict, verdict.detail
+    elif aie2:
         assert nearly_equal(got_l, l[live], rtol=2 * tol.rtol, atol=tol.atol).all()
     else:
         l_ulp = 2**-7 * float(l[live].max())
@@ -377,6 +402,7 @@ def mha_round(
     s_q_eff: CompileTime[int] = _B,
     s_kv_eff: CompileTime[int] = _B,
     b_q: CompileTime[int] = _B,
+    accurate_exp2: CompileTime[bool] = False,
 ):
     """One decode round on one core: mha.cc's steps from the mask on.
 
@@ -389,7 +415,7 @@ def mha_round(
     scale_ty = np.ndarray[(4 * b_q,), BF]
     idx_ty = np.ndarray[(2,), I32]
 
-    qkt = kernels.mha(dim_m=b_q, dim_k=_B, dim_n=_B)
+    qkt = kernels.mha(dim_m=b_q, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2)
     obj = qkt.object_file
     softmax = obj.bind(
         "partial_softmax",
@@ -468,7 +494,7 @@ def mha_round(
             scale_buf,
             *idx_bufs,
         ],
-        stack_size=kernels.mha_softmax().contract.stack_bytes,
+        stack_size=kernels.mha_softmax(accurate_exp2).contract.stack_bytes,
     )
 
     host = [np.ndarray[(2 * n_kv * _B * _B,), BF], tile_ty]
@@ -534,7 +560,13 @@ def _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q=_B):
         (1, 1, _B, _B, _B),  # a query block wholly past s_q_eff
     ],
 )
-def test_mha_round_matches_masked_attention(q_block, n_kv, s_q_eff, s_kv_eff, b_q):
+@pytest.mark.parametrize(
+    "accurate_exp2",
+    [False, pytest.param(True, marks=pytest.mark.supported_devices("npu2"))],
+)
+def test_mha_round_matches_masked_attention(
+    q_block, n_kv, s_q_eff, s_kv_eff, b_q, accurate_exp2
+):
     scores, v, keep, sv_host = _round_case_data(q_block, n_kv, s_q_eff, s_kv_eff, b_q)
 
     o_t = iron.zeros((b_q * _B,), dtype=bfloat16)
@@ -546,6 +578,7 @@ def test_mha_round_matches_masked_attention(q_block, n_kv, s_q_eff, s_kv_eff, b_
         s_q_eff=s_q_eff,
         s_kv_eff=s_kv_eff,
         b_q=b_q,
+        accurate_exp2=accurate_exp2,
     )
     got = _unblock(o_t.numpy(), b_q).astype(np.float32)
 
