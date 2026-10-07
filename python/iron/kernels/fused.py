@@ -91,7 +91,9 @@ def fused_mm(
     ``epilogue_modes`` lists the activations compiled in, for a caller that
     selects one at run time through ``mm_fused_epilogue_chunk``'s mode
     argument. It defaults to ``(epilogue,)``. ``epilogue`` is the mode
-    ``fused_mm_tile`` and the reference use, and must be in the list.
+    ``fused_mm_tile`` and the reference use, and must be in the list. On
+    aie2 an activation links the tanh tables, 5 KB of L1; ``("none",)``
+    links none.
 
     ``rounding`` is the core's rounding mode for every f32 -> bf16 and
     bf16 -> bfp16 conversion: ``conv_even`` or ``floor``, the mode a core
@@ -418,8 +420,9 @@ def fused_mm(
         acc_dtype=np.float32,
         reduction=dim_k,
         ops_per_call=2 * dim_m * dim_k * dim_n,
-        # The aie2 epilogue reaches getTanhBf16; aie2p has no table.
-        uses_lut=True,
+        # An aie2 activation reaches getTanhBf16; aie2p has no table, and
+        # without an activation the source links none.
+        uses_lut=any(m != "none" for m in epilogue_modes),
         # Reserve the f32 accumulator plus call frames and epilogue spills:
         # AIE2P SiLU with clamp needs 1600 bytes beyond the accumulator.
         # aiecc still checks the measured linked stack.
