@@ -1,0 +1,41 @@
+{
+ "schema": 1,
+ "target": "sa-placer",
+ "metrics": [
+  "cpu_ms_max",
+  "cpu_ms_mean",
+  "failed_seeds",
+  "final_cost_max",
+  "final_cost_mean",
+  "peak_rss_mb_max"
+ ],
+ "runs": [
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "37426577467",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37426577467",
+   "date": "2026-10-06T06:55:59+00:00",
+   "commit": {
+    "id": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
+    "message": "[AIEX] Allow a length_parameter BD whose offset comes from a runtime-sequence loop (#3868)",
+    "timestamp": "2026-10-05T22:42:18Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "74ccfe99b1",
+    "fixtures": "3aa7139253a0"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
+  }
+ ]
+}
