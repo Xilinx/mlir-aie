@@ -199,22 +199,14 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
 
 #else
 
-// Write one row-major C block back from its left and right column halves.
-template <unsigned halfT, typename Acc>
-__aie_inline void mm_fused_store_halves(float *__restrict p, const Acc &lo,
-                                        const Acc &hi) {
-  auto [first, second] = aie::interleave_zip(
-      lo.template to_vector<float>(), hi.template to_vector<float>(), halfT);
-  aie::store_v(p, first);
-  aie::store_v(p + Acc::size_C, second);
-}
-
 // B arrives as B^T, the (n, k) storage a checkpoint's weights have, cut into
 // k panels a DMA can lay out without moving single elements: block (i, j) at
 // (i * colB + j), each t x s and n-major. aie2's mac takes B as s x t/2, so
 // each half block (t/2 rows of B^T) is transposed in one shuffle, and each C
-// block is held as its two t/2-column halves. The four shuffles per i are the
-// ones aie::mmul<r, s, t> spends unzipping a row-major B block.
+// block is held as its two t/2-column halves, in registers and in pC alike:
+// the epilogue rejoins them once per tile rather than every k step. The four
+// shuffles per i are the ones aie::mmul<r, s, t> spends unzipping a row-major
+// B block.
 template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
           unsigned t>
 __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
@@ -225,6 +217,7 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
   constexpr unsigned sizeB = s * t;
   constexpr unsigned sizeC = r * t;
   constexpr unsigned half = MMUL::size_B;
+  constexpr unsigned halfC = MMUL::size_C;
   static_assert(sizeA == MMUL::size_A && 2 * MMUL::size_C == sizeC);
 #if AIE_TUNED_AIE2
   constexpr bool unroll_ij = colA <= 4 && colB <= 4 && 2 * colB * r * t <= 256;
@@ -246,20 +239,14 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
       const bfloat16 *__restrict pB1 = pB + j * sizeB;
       const bfloat16 *__restrict pB2 = pB1 + sizeB;
 
-      auto [c00, c00h] =
-          aie::interleave_unzip(aie::load_v<sizeC / 2>(pC1),
-                                aie::load_v<sizeC / 2>(pC1 + sizeC / 2), t / 2);
-      auto [c01, c01h] = aie::interleave_unzip(
-          aie::load_v<sizeC / 2>(pC1 + sizeC),
-          aie::load_v<sizeC / 2>(pC1 + 3 * sizeC / 2), t / 2);
-      auto [c10, c10h] =
-          aie::interleave_unzip(aie::load_v<sizeC / 2>(pC2),
-                                aie::load_v<sizeC / 2>(pC2 + sizeC / 2), t / 2);
-      auto [c11, c11h] = aie::interleave_unzip(
-          aie::load_v<sizeC / 2>(pC2 + sizeC),
-          aie::load_v<sizeC / 2>(pC2 + 3 * sizeC / 2), t / 2);
-      MMUL C00(c00), C00h(c00h), C01(c01), C01h(c01h);
-      MMUL C10(c10), C10h(c10h), C11(c11), C11h(c11h);
+      MMUL C00(aie::load_v<halfC>(pC1));
+      MMUL C00h(aie::load_v<halfC>(pC1 + halfC));
+      MMUL C01(aie::load_v<halfC>(pC1 + sizeC));
+      MMUL C01h(aie::load_v<halfC>(pC1 + sizeC + halfC));
+      MMUL C10(aie::load_v<halfC>(pC2));
+      MMUL C10h(aie::load_v<halfC>(pC2 + halfC));
+      MMUL C11(aie::load_v<halfC>(pC2 + sizeC));
+      MMUL C11h(aie::load_v<halfC>(pC2 + sizeC + halfC));
 
       AIE_LOOP_MAX_ITERATION_COUNT(colA)
 #if AIE_TUNED_AIE2
@@ -290,10 +277,8 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
         C11.mac(A1, B1);
         C11h.mac(A1, B1h);
       }
-      mm_fused_store_halves<t / 2>(pC1, C00, C00h);
-      mm_fused_store_halves<t / 2>(pC1 + sizeC, C01, C01h);
-      mm_fused_store_halves<t / 2>(pC2, C10, C10h);
-      mm_fused_store_halves<t / 2>(pC2 + sizeC, C11, C11h);
+      mm_fused_store_2x2<halfC>(pC1, pC1 + sizeC, C00, C00h, C01, C01h);
+      mm_fused_store_2x2<halfC>(pC2, pC2 + sizeC, C10, C10h, C11, C11h);
       pC1 += 2 * sizeC;
       pC2 += 2 * sizeC;
     }
