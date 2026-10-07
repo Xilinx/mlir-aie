@@ -31,29 +31,35 @@ namespace {
 // produces.
 static bool isDirectWire(Value srcTile, WireBundle srcBundle, int srcChannel,
                          Value dstTile, WireBundle dstBundle, int dstChannel) {
-  if (srcChannel != dstChannel)
+  if (srcChannel != dstChannel) {
     return false;
+  }
   auto src = srcTile.getDefiningOp<TileOp>();
   auto dst = dstTile.getDefiningOp<TileOp>();
-  if (!src || !dst)
+  if (!src || !dst) {
     return false;
+  }
   int sc = src.colIndex(), sr = src.rowIndex();
   int dc = dst.colIndex(), dr = dst.rowIndex();
   if (sc == dc) {
     if (srcBundle == WireBundle::North && dstBundle == WireBundle::South &&
-        dr == sr + 1)
+        dr == sr + 1) {
       return true;
+    }
     if (srcBundle == WireBundle::South && dstBundle == WireBundle::North &&
-        dr == sr - 1)
+        dr == sr - 1) {
       return true;
+    }
   }
   if (sr == dr) {
     if (srcBundle == WireBundle::East && dstBundle == WireBundle::West &&
-        dc == sc + 1)
+        dc == sc + 1) {
       return true;
+    }
     if (srcBundle == WireBundle::West && dstBundle == WireBundle::East &&
-        dc == sc - 1)
+        dc == sc - 1) {
       return true;
+    }
   }
   return false;
 }
@@ -62,8 +68,9 @@ static bool isDirectWire(Value srcTile, WireBundle srcBundle, int srcChannel,
 // one immediately after the tile so its operand dominates the connections.
 static SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, Value tile,
                                         DenseMap<Value, SwitchboxOp> &cache) {
-  if (auto it = cache.find(tile); it != cache.end())
+  if (auto it = cache.find(tile); it != cache.end()) {
     return it->second;
+  }
   OpBuilder::InsertionGuard guard(builder);
   builder.setInsertionPointAfterValue(tile);
   auto switchboxOp = SwitchboxOp::create(builder, tile.getLoc(), tile);
@@ -77,8 +84,9 @@ static SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, Value tile,
 // one immediately after the tile so its operand dominates the connections.
 static ShimMuxOp getOrCreateShimMux(OpBuilder &builder, Value tile,
                                     DenseMap<Value, ShimMuxOp> &cache) {
-  if (auto it = cache.find(tile); it != cache.end())
+  if (auto it = cache.find(tile); it != cache.end()) {
     return it->second;
+  }
   OpBuilder::InsertionGuard guard(builder);
   builder.setInsertionPointAfterValue(tile);
   auto shimMuxOp = ShimMuxOp::create(builder, tile.getLoc(), tile);
@@ -94,14 +102,18 @@ static ShimMuxOp getOrCreateShimMux(OpBuilder &builder, Value tile,
 static AMSelOp allocateAmsel(OpBuilder &builder, Location loc, SwitchboxOp sb) {
   Block &block = sb.getConnections().front();
   llvm::SmallSet<std::pair<int, int>, 24> used;
-  for (auto a : block.getOps<AMSelOp>())
+  for (auto a : block.getOps<AMSelOp>()) {
     used.insert({a.arbiterIndex(), a.getMselValue()});
+  }
   OpBuilder::InsertionGuard guard(builder);
   builder.setInsertionPointToStart(&block);
-  for (int msel = 0; msel < 4; msel++)
-    for (int arb = 0; arb < 6; arb++)
-      if (!used.count({arb, msel}))
+  for (int msel = 0; msel < 4; msel++) {
+    for (int arb = 0; arb < 6; arb++) {
+      if (!used.count({arb, msel})) {
         return AMSelOp::create(builder, loc, arb, msel);
+      }
+    }
+  }
   return nullptr;
 }
 
@@ -111,10 +123,12 @@ static PacketRulesOp getOrCreatePacketRules(OpBuilder &builder, Location loc,
                                             SwitchboxOp sb, WireBundle ingress,
                                             int ingressChannel) {
   Block &block = sb.getConnections().front();
-  for (auto rules : block.getOps<PacketRulesOp>())
+  for (auto rules : block.getOps<PacketRulesOp>()) {
     if (rules.getSourceBundle() == ingress &&
-        rules.getSourceChannel() == ingressChannel)
+        rules.getSourceChannel() == ingressChannel) {
       return rules;
+    }
+  }
   OpBuilder::InsertionGuard guard(builder);
   builder.setInsertionPoint(block.getTerminator());
   auto rules = PacketRulesOp::create(builder, loc, ingress, ingressChannel);
@@ -135,11 +149,14 @@ static void emitRoutableSegment(OpBuilder &builder, Location loc,
                                 int dstChannel, int packetID,
                                 DenseMap<Value, ShimMuxOp> &shimMuxes,
                                 mlir::IntegerAttr maskAttr = {}) {
-  if (srcTile == dstTile && srcBundle == dstBundle && srcChannel == dstChannel)
+  if (srcTile == dstTile && srcBundle == dstBundle &&
+      srcChannel == dstChannel) {
     return;
+  }
   if (isDirectWire(srcTile, srcBundle, srcChannel, dstTile, dstBundle,
-                   dstChannel))
+                   dstChannel)) {
     return;
+  }
   if (srcTile == dstTile) {
     if (auto tileOp = srcTile.getDefiningOp<TileOp>();
         tileOp && tileOp.isShimNOCorPLTile()) {
@@ -167,8 +184,9 @@ static void emitRoutableSegment(OpBuilder &builder, Location loc,
   // without it the pathfinder derives a full 0x1f mask that mismatches the
   // pinned via segments' rules for the same flow and the packet is never
   // accepted.
-  if (maskAttr)
+  if (maskAttr) {
     pf.setMaskAttr(maskAttr);
+  }
   PacketFlowOp::ensureTerminator(pf.getPorts(), builder, loc);
   builder.setInsertionPoint(pf.getPorts().front().getTerminator());
   PacketSourceOp::create(builder, loc, srcTile, srcBundle, srcChannel);
@@ -182,16 +200,20 @@ struct AIESplitFlowViasPass
     OpBuilder builder(device.getContext());
 
     DenseMap<Value, SwitchboxOp> switchboxes;
-    for (auto switchboxOp : device.getOps<SwitchboxOp>())
+    for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
       switchboxes[switchboxOp.getTile()] = switchboxOp;
+    }
     DenseMap<Value, ShimMuxOp> shimMuxes;
-    for (auto shimMuxOp : device.getOps<ShimMuxOp>())
+    for (auto shimMuxOp : device.getOps<ShimMuxOp>()) {
       shimMuxes[shimMuxOp.getTile()] = shimMuxOp;
+    }
 
     SmallVector<FlowOp> flowsWithVias;
-    for (auto flow : device.getOps<FlowOp>())
-      if (!flow.getVias().empty())
+    for (auto flow : device.getOps<FlowOp>()) {
+      if (!flow.getVias().empty()) {
         flowsWithVias.push_back(flow);
+      }
+    }
 
     for (FlowOp flow : flowsWithVias) {
       ArrayRef<int32_t> ingressBundles =
@@ -249,9 +271,11 @@ struct AIESplitFlowViasPass
     // allocated locally (its numeric value is not pinned). Fan-out/fan-in nodes
     // are already materialized in the IR, so a section only needs its own hops.
     SmallVector<PacketFlowOp> pktFlowsWithVias;
-    for (auto pf : device.getOps<PacketFlowOp>())
-      if (!pf.getVias().empty())
+    for (auto pf : device.getOps<PacketFlowOp>()) {
+      if (!pf.getVias().empty()) {
         pktFlowsWithVias.push_back(pf);
+      }
+    }
 
     for (PacketFlowOp pf : pktFlowsWithVias) {
       Location loc = pf.getLoc();
@@ -267,10 +291,11 @@ struct AIESplitFlowViasPass
       PacketSourceOp source;
       PacketDestOp dest;
       for (Operation &op : pf.getPorts().front()) {
-        if (auto s = dyn_cast<PacketSourceOp>(op))
+        if (auto s = dyn_cast<PacketSourceOp>(op)) {
           source = s;
-        else if (auto d = dyn_cast<PacketDestOp>(op))
+        } else if (auto d = dyn_cast<PacketDestOp>(op)) {
           dest = d;
+        }
       }
       Value srcTile = source.getTile();
       WireBundle srcBundle = source.getBundle();
@@ -306,8 +331,9 @@ struct AIESplitFlowViasPass
           // destination; the intermediate hops always keep the header.
           BoolAttr keepPktHeader;
           if (viaTile == dest.getTile() && egress == dest.getBundle() &&
-              egressChannel == dest.getChannel())
+              egressChannel == dest.getChannel()) {
             keepPktHeader = pf.getKeepPktHeaderAttr();
+          }
           MasterSetOp::create(builder, loc, builder.getIndexType(), egress,
                               egressChannel, ValueRange{amsel}, keepPktHeader);
         }

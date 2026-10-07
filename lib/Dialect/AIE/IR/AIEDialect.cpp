@@ -1349,12 +1349,14 @@ ParseResult xilinx::AIE::parseFlowVias(
   SmallVector<int32_t> inBundles, inChannels, egBundles, egChannels;
   auto parseBundle = [&](SmallVectorImpl<int32_t> &out) -> ParseResult {
     StringRef kw;
-    if (parser.parseKeyword(&kw))
+    if (parser.parseKeyword(&kw)) {
       return failure();
+    }
     auto bundle = symbolizeWireBundle(kw);
-    if (!bundle)
+    if (!bundle) {
       return parser.emitError(parser.getCurrentLocation(),
                               "invalid wire bundle '" + kw + "'");
+    }
     out.push_back(static_cast<int32_t>(*bundle));
     return success();
   };
@@ -1366,14 +1368,16 @@ ParseResult xilinx::AIE::parseFlowVias(
           parseBundle(inBundles) || parser.parseColon() ||
           parser.parseInteger(inChan) || parser.parseArrow() ||
           parseBundle(egBundles) || parser.parseColon() ||
-          parser.parseInteger(egChan))
+          parser.parseInteger(egChan)) {
         return failure();
+      }
       inChannels.push_back(inChan);
       egChannels.push_back(egChan);
       return success();
     };
-    if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseOne))
+    if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseOne)) {
       return failure();
+    }
   }
   if (!vias.empty()) {
     MLIRContext *ctx = parser.getContext();
@@ -1391,12 +1395,14 @@ void xilinx::AIE::printFlowVias(OpAsmPrinter &printer, Operation *op,
                                 DenseI32ArrayAttr ingressChannels,
                                 DenseI32ArrayAttr egressBundles,
                                 DenseI32ArrayAttr egressChannels) {
-  if (vias.empty())
+  if (vias.empty()) {
     return;
+  }
   printer << "via (";
   for (size_t i = 0; i < vias.size(); i++) {
-    if (i)
+    if (i) {
       printer << ", ";
+    }
     printer << vias[i] << " : "
             << stringifyWireBundle(static_cast<WireBundle>(ingressBundles[i]))
             << " : " << ingressChannels[i] << " -> "
@@ -2287,16 +2293,19 @@ LogicalResult verifyNoSharedCircuitViaEgresses(DeviceOp device) {
             ? flow.getViaEgressChannelsAttr().asArrayRef()
             : ArrayRef<int32_t>();
     if (bundles.size() != flow.getVias().size() ||
-        channels.size() != flow.getVias().size())
+        channels.size() != flow.getVias().size()) {
       return WalkResult::advance();
+    }
     for (auto [index, via] : llvm::enumerate(flow.getVias())) {
       std::optional<PortKey> egress = tryGetPortKey(
           via, static_cast<WireBundle>(bundles[index]), channels[index]);
-      if (!egress)
+      if (!egress) {
         continue;
+      }
       auto [it, inserted] = claimedEgresses.try_emplace(*egress, flow, index);
-      if (inserted)
+      if (inserted) {
         continue;
+      }
       InFlightDiagnostic diag = flow.emitOpError()
                                 << "via " << index << " claims circuit egress "
                                 << to_string(*egress)
@@ -2385,8 +2394,9 @@ LogicalResult DeviceOp::verify() {
     return failure();
   if (failed(verifyNoSharedCircuitPorts(*this)))
     return failure();
-  if (failed(verifyNoSharedCircuitViaEgresses(*this)))
+  if (failed(verifyNoSharedCircuitViaEgresses(*this))) {
     return failure();
+  }
 
   if (failed(verifyNoDuplicateNames(*this))) {
     return failure();
@@ -2894,35 +2904,42 @@ static LogicalResult verifyFlowVias(Operation *op, OperandRange vias,
                                 egressChannels};
   for (DenseI32ArrayAttr array : arrays) {
     size_t size = array ? array.size() : 0;
-    if (size != numVias)
+    if (size != numVias) {
       return op->emitOpError("has ")
              << numVias << " via tile(s) but a via port array of size " << size;
+    }
   }
-  if (numVias == 0)
+  if (numVias == 0) {
     return success();
+  }
 
   auto verifyBundles = [&](DenseI32ArrayAttr bundles,
                            StringRef direction) -> LogicalResult {
-    for (auto [index, bundle] : llvm::enumerate(bundles.asArrayRef()))
+    for (auto [index, bundle] : llvm::enumerate(bundles.asArrayRef())) {
       if (bundle < 0 ||
-          bundle > static_cast<int32_t>(getMaxEnumValForWireBundle()))
+          bundle > static_cast<int32_t>(getMaxEnumValForWireBundle())) {
         return op->emitOpError("has invalid via ")
                << direction << " bundle " << bundle << " at index " << index;
+      }
+    }
     return success();
   };
   auto verifyChannels = [&](DenseI32ArrayAttr channels,
                             StringRef direction) -> LogicalResult {
-    for (auto [index, channel] : llvm::enumerate(channels.asArrayRef()))
-      if (channel < 0)
+    for (auto [index, channel] : llvm::enumerate(channels.asArrayRef())) {
+      if (channel < 0) {
         return op->emitOpError("has negative via ")
                << direction << " channel " << channel << " at index " << index;
+      }
+    }
     return success();
   };
   if (failed(verifyBundles(ingressBundles, "ingress")) ||
       failed(verifyChannels(ingressChannels, "ingress")) ||
       failed(verifyBundles(egressBundles, "egress")) ||
-      failed(verifyChannels(egressChannels, "egress")))
+      failed(verifyChannels(egressChannels, "egress"))) {
     return failure();
+  }
   return success();
 }
 
@@ -2931,8 +2948,9 @@ LogicalResult FlowOp::verify() {
                                 {getSourceBundle(), sourceIndex()}, true)))
     return failure();
   if (failed(verifyFlowEndpoint(*this, getDest(),
-                                {getDestBundle(), destIndex()}, false)))
+                                {getDestBundle(), destIndex()}, false))) {
     return failure();
+  }
 
   return verifyFlowVias(*this, getVias(), getViaIngressBundlesAttr(),
                         getViaIngressChannelsAttr(), getViaEgressBundlesAttr(),
@@ -2966,12 +2984,14 @@ LogicalResult PacketFlowOp::verify() {
     return emitOpError("must have at least one aie.packet_source");
   if (numDests < 1)
     return emitOpError("must have at least one aie.packet_dest");
-  if (!getVias().empty() && numSources != 1)
+  if (!getVias().empty() && numSources != 1) {
     return emitOpError(
         "with via waypoints must have exactly one aie.packet_source");
-  if (!getVias().empty() && numDests != 1)
+  }
+  if (!getVias().empty() && numDests != 1) {
     return emitOpError(
         "with via waypoints must have exactly one aie.packet_dest");
+  }
 
   // A slave port accepts a packet when `incoming & mask == ID`, so a bit set
   // in ID and clear in the mask rejects every packet.
