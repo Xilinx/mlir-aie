@@ -124,4 +124,3 @@ run_ctrlpkt: ${elf_ctrlpkt} test_fullelf
 
 clean:
 	rm -rf build test_separate test_runlist test_fullelf
-

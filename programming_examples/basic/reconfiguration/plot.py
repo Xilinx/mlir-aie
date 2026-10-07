@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# Plot the reconfiguration benchmark CSV (from benchmark.py) as a grouped bar
-# chart on a black background.  For each (config, approach) the first `warmup`
-# iterations are dropped and the median of the rest is plotted, with min/max
-# whiskers.  The x-axis annotates both the array shape and the program-memory
-# footprint, since reconfiguration cost scales with both.
-#
-# Usage:
-#   python3 plot.py [--csv benchmark.csv] [--output benchmark.png] [--warmup W]
 
 import argparse
 import csv

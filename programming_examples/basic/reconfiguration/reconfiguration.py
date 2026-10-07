@@ -1,37 +1,5 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# Reconfiguration example.
-#
-# A 2D array of `cols` x `rows` compute cores each write a single i32 (their own
-# global index) into a dedicated ObjectFIFO.  A shim tile has two S2MM channels,
-# so the mem tile of each column joins the `rows` core FIFOs and forwards them
-# to the shim tile.  A runtime sequence drains every column's values into the
-# host output buffer, which then equals [0, 1, ..., cols*rows - 1].
-#
-# Three build variants are emitted from the same core/join/drain building blocks:
-#
-#   --flow reconfig  (default): three `aie.device`s (@worker, @empty, @main).
-#       @main's runtime sequence, for each reconfiguration, loads @empty (reset)
-#       then loads and runs @worker via aiex.configure / aiex.run.  Built for
-#       the full-ELF flow (aiecc --get-full-elf, optionally --expand-load-pdis
-#       or --load-pdi-to-ctrl-pkt).
-#
-#   --flow single: a single `aie.device` with no reconfiguration (no load_pdi).
-#       The cores loop, so the design is re-run through the ordinary xclbin +
-#       insts flow (a single run, or an xrt::runlist of runs).
-#
-#   --flow empty: a single empty `aie.device`.  Loading its xclbin/PDI resets
-#       the array.  The xclbin and runlist benchmarks load it between iterations
-#       to force a reconfiguration, because the device caches the configuration.
-#
-# Parameters: --cols, --rows, --nops (program-memory padding per core),
-# --reconfigs (reconfig flow only), --switchboxes (unused switchboxes filled
-# with padding stream-switch configuration).
-#
-# Usage:
-#   python3 reconfiguration.py [--flow reconfig|single|empty] \
-#       [--cols C] [--rows R] [--nops M] [--reconfigs N] [--switchboxes S] > aie.mlir
 
 import argparse
 import sys

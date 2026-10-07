@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# Line plot of reconfiguration runtime vs core program memory, from the CSV
-# written by benchmark_progmem.py.  One line per approach; median over the
-# steady-state iterations, with a min/max band.  Black background.
-#
-# Usage:
-#   python3 plot_progmem.py [--csv progmem.csv] [--output progmem.png] [--warmup W]
 
 import argparse
 import csv

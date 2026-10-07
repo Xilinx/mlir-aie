@@ -4,28 +4,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-//
-// Host testbench / micro-benchmark for the reconfiguration example, selected at
-// compile time. Every mode runs `iters` timed iterations, checks the output is
-// [0, 1, ..., cols*rows-1], and prints:
-//
-//   runtimes_us: t0,t1,...            (per-iteration device time)
-//   stats_us: mean,min,max
-//
-// Modes:
-//   (default)   "separate xclbins": worker + empty are separate xclbins, each
-//               iteration runs the worker then the empty reset (two contexts).
-//                 argv: <worker.xclbin> <worker.bin> <empty.xclbin> <empty.bin>
-//                       <cols> <rows> <iters>
-//   -DRUNLIST   worker + empty (WORKER + EMPTY kernels in one combined xclbin,
-//               one context) chained in one xrt::runlist per iteration.
-//                 argv: <combined.xclbin> <worker.bin> <empty.bin>
-//                       <cols> <rows> <iters>
-//   -DFULL_ELF  full-ELF reconfig flow (kernel main:sequence); the ELF resets
-//               itself (loads @empty then @worker), so no host-side reset.
-//                 argv: <aie.elf> <cols> <rows> <iters>
-//
-//===----------------------------------------------------------------------===//
 
 #include <algorithm>
 #include <chrono>

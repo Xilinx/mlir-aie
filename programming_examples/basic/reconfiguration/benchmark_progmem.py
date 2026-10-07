@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# Sweep core program-memory size (via NOPS) and record reconfiguration runtime
-# for every approach, writing the raw per-iteration times to a CSV.  The array
-# is kept tiny (1x1, no filled switchboxes) so switchbox config stays constant
-# and program memory is the only thing that grows.  Plot with plot_progmem.py.
-#
-# Usage:
-#   python3 benchmark_progmem.py [--iters N] [--output progmem.csv]
 
 import argparse
 import csv

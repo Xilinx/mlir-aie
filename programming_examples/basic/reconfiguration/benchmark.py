@@ -1,16 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# Benchmark the reconfiguration approaches over a set of array sizes and write
-# the raw per-iteration runtimes to a CSV.  Plotting is done separately by
-# plot.py (which reads the CSV).
-#
-# Each (approach, size) is built and run through the Makefile; the C++ testbench
-# prints a `runtimes_us:` line with one time per iteration.
-#
-# Usage:
-#   python3 benchmark.py [--iters N] [--output benchmark.csv]
 
 import argparse
 import csv

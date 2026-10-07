@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# Line plot of reconfiguration runtime vs number of used switchboxes, from the
-# CSV written by benchmark_switchbox.py.  One line per reconfiguration approach;
-# median over the steady-state iterations, with a min/max band.  Black
-# background.
-#
-# Usage:
-#   python3 plot_switchbox.py [--csv switchbox.csv] [--output switchbox.png] [--warmup W]
 
 import argparse
 import csv

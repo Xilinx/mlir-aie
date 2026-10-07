@@ -1,21 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# Sweep switchbox-configuration size and record reconfiguration runtime for each
-# approach, writing the raw per-iteration times to a CSV.  Plot with
-# plot_switchbox.py.
-#
-# The design is a single active compute core with one outbound flow (its output
-# drain), so the benchmark checks that the configuration loads and runs.  Every
-# other compute-tile switchbox is filled directly with stream-switch
-# configuration (see reconfiguration.py `_fill_switchboxes`); the sweep
-# parameter is how many of those switchboxes are filled, so the X axis is the
-# number of switchboxes the configuration touches.  One line per reconfiguration
-# approach.
-#
-# Usage:
-#   python3 benchmark_switchbox.py [--iters N] [--output switchbox.csv]
 
 import argparse
 import csv
