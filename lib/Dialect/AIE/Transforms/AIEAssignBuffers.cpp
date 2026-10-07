@@ -1175,6 +1175,21 @@ struct CompactionSearch {
                       ctx.bankLimits[banks.front()].size +
                           ctx.bankLimits[banks.back()].size}};
       }
+      // An initialized buffer must dodge the guarded bytes at the foot of
+      // the tile, the same restriction rankedPlacements enforces (see the
+      // npu2 column-0 memtile comment in allocateTile). Clamping the ranges
+      // here, before the equivalence classes below are computed, keeps a
+      // guarded buffer out of any class an unguarded one of the same size
+      // could also join.
+      if (ctx.initGuardBytes > 0 && buffer.getInitialValue().has_value()) {
+        SmallVector<MemoryRun, 2> clamped;
+        for (MemoryRun range : allowed) {
+          int64_t start = std::max(range.start, ctx.initGuardBytes);
+          if (start < range.end())
+            clamped.push_back({start, range.end() - start});
+        }
+        allowed = std::move(clamped);
+      }
       ranges.push_back(allowed);
       unsigned cls = i;
       for (size_t j = 0; j < i; ++j) {
