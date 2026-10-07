@@ -519,7 +519,7 @@ class ObjectFifo(Resolvable):
                 packet=self._packet or None,
                 packet_id=self._packet_id,
                 loc=ir.Location.name(
-                    self.name, childLoc=loc or self._site.location(self.name)
+                    self.name, childLoc=loc or self._site.location()
                 ),
                 ip=ip,
             )
