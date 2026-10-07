@@ -5,7 +5,7 @@ import numpy as np
 from aie.iron import (
     Buffer,
     CompileTime,
-    Configuration,
+    DeviceConfiguration,
     Kernel,
     ObjectFifo,
     Out,
@@ -62,7 +62,7 @@ def make_event_configuration(name, event, counts, trace_size):
     runtimes = [
         make_runtime(index, count) for index, count in enumerate(counts, start=1)
     ]
-    configuration = Configuration(
+    configuration = DeviceConfiguration(
         f"dev_{name}",
         NPU2Col1(),
         workers=[worker],
@@ -99,5 +99,5 @@ def build_design(_out: Out, *, trace_size: CompileTime[int]):
                 runtime.call(out.window(index * 4, (4,)))
 
     entry = Runtime(coordinator, [Out24])
-    main = Configuration("main", NPU2Col1(), runtimes=[entry])
+    main = DeviceConfiguration("main", NPU2Col1(), runtimes=[entry])
     return Program.compose([main, dev_a, dev_b], entry=entry).resolve_program()

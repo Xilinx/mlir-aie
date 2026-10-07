@@ -5,9 +5,12 @@
 #
 """Structural protocol for objects that lower to MLIR operations."""
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+
+if TYPE_CHECKING:
+    from .configuration import DeviceConfiguration
 
 
 # Structural typing via @runtime_checkable Protocol: any class with both
@@ -36,10 +39,32 @@ class Resolvable(Protocol):
 
         Override this in user-side Resolvable subclasses that reference tiles
         which aren't already discoverable via Workers or ObjectFifos. The
-        Program will resolve these tiles before calling `resolve`, so
+        DeviceConfiguration resolves these tiles before calling `resolve`, so
         `tile.op` is valid by then. Default: empty list.
         """
         return []
+
+
+class PerDeviceConfiguration:
+    """An object that belongs to one ``aie.device`` image."""
+
+    def _bind_device_configuration(self, configuration: "DeviceConfiguration") -> None:
+        owner = getattr(self, "_device_configuration", None)
+        if owner is not None and owner is not configuration:
+            raise ValueError(
+                f"{type(self).__name__} already belongs to device configuration "
+                f"{owner.name!r}; it cannot also belong to {configuration.name!r}."
+            )
+        self._device_configuration = configuration
+
+
+class PerDeviceConfigurationResolvable(PerDeviceConfiguration, Resolvable):
+    """A resolvable whose emitted operations belong to one ``aie.device``.
+
+    User-defined worker arguments that emit device-local operations should
+    inherit this class. Structural ``Resolvable`` implementations remain
+    supported, but this base reports cross-configuration reuse at the object.
+    """
 
 
 class NotResolvedError(Exception):

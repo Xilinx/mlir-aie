@@ -54,7 +54,7 @@ from ...helpers.taplib._symbolic import is_sym, si32, sprod, sym_any
 from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock
-from ..resolvable import Resolvable
+from ..resolvable import PerDeviceConfigurationResolvable
 from ..runtime._context import active_sequence
 from ..runtime.dmataskhandle import Task
 
@@ -497,7 +497,7 @@ class DmaChannel:
         )
 
 
-class TileDma(Resolvable):
+class TileDma(PerDeviceConfigurationResolvable):
     """Per-tile DMA program.
 
     Lowers to an `aie.mem` (compute tile), `aie.memtile_dma` (memtile), or

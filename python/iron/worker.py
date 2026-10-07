@@ -30,11 +30,11 @@ from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
 from .device import AnyComputeTile, Tile
 from .kernel import Kernel
-from .resolvable import Resolvable
+from .resolvable import PerDeviceConfiguration, Resolvable
 from .scratchpad_parameter import ScratchpadParameter
 
 
-class Worker(ObjectFifoEndpoint):
+class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
     """A task to be run on an AIE compute core.
 
     A Worker takes a ``core_fn`` callable and the arguments it needs (ObjectFIFO handles,
@@ -155,9 +155,7 @@ class Worker(ObjectFifoEndpoint):
         self._fifos = []
         self._buffers = []
         self._barriers = []
-        # CascadeFlow objects whose source is this Worker. Populated by
-        # CascadeFlow(src, dst).__init__ and consumed by Program.resolve()
-        # to emit aie.cascade_flow ops after worker placement.
+        # CascadeFlow registers each outgoing edge here for configuration discovery.
         self._outgoing_cascades: list = []
 
         # Check arguments to the core. Some information is saved for resolution.
@@ -193,7 +191,7 @@ class Worker(ObjectFifoEndpoint):
                     # If the Buffer has no tile, pin it to the Worker's tile as a
                     # convenience.  If the user pinned it explicitly to a neighbor
                     # tile (AIE compute tiles can read N/S/E/W neighbors' L1
-                    # directly), honor that placement — Program.resolve discovers
+                    # directly), honor that placement. DeviceConfiguration discovers
                     # the neighbor tile via Buffer.tiles().
                     arg.place(self._tile)
             elif isinstance(arg, ScratchpadParameter):
@@ -327,7 +325,7 @@ class Worker(ObjectFifoEndpoint):
                         self.core_fn(*self.fn_args)
 
 
-class WorkerRuntimeBarrier:
+class WorkerRuntimeBarrier(PerDeviceConfiguration):
     """A barrier allowing individual workers to synchronize with the runtime sequence."""
 
     def __init__(self, initial_value: int = 0):

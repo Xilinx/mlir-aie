@@ -5,7 +5,7 @@
 
 import numpy as np
 from aie.extras.context import mlir_mod_ctx
-from aie.iron import Configuration, Program, Runtime
+from aie.iron import DeviceConfiguration, Program, Runtime
 from aie.iron.device import NPU2Col1
 
 Out4 = np.ndarray[(4,), np.dtype[np.int32]]
@@ -18,8 +18,8 @@ def child_sequence(_out):
 
 seq_a = Runtime(child_sequence, [Out4], name="seq_a")
 seq_b = Runtime(child_sequence, [Out4], name="seq_b")
-config_a = Configuration("dev_a", NPU2Col1(), runtimes=[seq_a])
-config_b = Configuration("dev_b", NPU2Col1(), runtimes=[seq_b])
+config_a = DeviceConfiguration("dev_a", NPU2Col1(), runtimes=[seq_a])
+config_b = DeviceConfiguration("dev_b", NPU2Col1(), runtimes=[seq_b])
 
 
 def coordinator(out):
@@ -30,7 +30,7 @@ def coordinator(out):
 
 
 entry = Runtime(coordinator, [Out8])
-main = Configuration("main", NPU2Col1(), runtimes=[entry])
+main = DeviceConfiguration("main", NPU2Col1(), runtimes=[entry])
 print(Program.compose([main, config_a, config_b], entry=entry).resolve_program())
 
 flow_a = object()
@@ -43,7 +43,7 @@ assert config_a.flows == [flow_a]
 assert config_b.flows == [flow_b]
 
 try:
-    Configuration("other", NPU2Col1(), runtimes=[seq_a])
+    DeviceConfiguration("other", NPU2Col1(), runtimes=[seq_a])
 except ValueError as error:
     print(f"owner: {error}")
 else:

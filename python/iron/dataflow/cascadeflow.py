@@ -13,7 +13,7 @@ from ...dialects.aie import (
     cascade_flow as _cascade_flow_op,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...helpers.sourceloc import SourceSite
-from ..resolvable import Resolvable
+from ..resolvable import PerDeviceConfigurationResolvable
 
 if TYPE_CHECKING:
     # Import guarded: worker.py imports from dataflow/, so a module-level
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from ..worker import Worker
 
 
-class CascadeFlow(Resolvable):
+class CascadeFlow(PerDeviceConfigurationResolvable):
     """A directed cascade stream connection from one Worker to another.
 
     Construct one of these for each cascade edge in your design:
@@ -45,8 +45,8 @@ class CascadeFlow(Resolvable):
     * ShimTiles and MemTiles do not have cascade interfaces.
 
     Discovery: each newly-constructed CascadeFlow registers itself on its
-    *source* Worker's ``_outgoing_cascades`` list. ``Program.resolve()``
-    walks the runtime's workers and resolves each worker's outgoing
+    *source* Worker's ``_outgoing_cascades`` list. ``DeviceConfiguration.resolve()``
+    walks its workers and resolves each worker's outgoing
     cascades after placement — no global registry, no drain step.
     """
 
@@ -60,8 +60,7 @@ class CascadeFlow(Resolvable):
         self._site = SourceSite.capture()
         self._src = src
         self._dst = dst
-        # Self-register on the source Worker so Program.resolve() can find
-        # us by walking its workers (the same walk it already does).
+        # The source registration makes the edge part of its configuration's graph.
         src._outgoing_cascades.append(self)
 
     def resolve(self, loc=None, ip=None) -> None:

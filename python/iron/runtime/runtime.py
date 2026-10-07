@@ -53,7 +53,7 @@ from .endpoint import RuntimeEndpoint
 from .taskgroup import TaskGroup
 
 if TYPE_CHECKING:
-    from ..configuration import Configuration
+    from ..configuration import DeviceConfiguration
     from ..device import Device
 
 logger = logging.getLogger(__name__)
@@ -74,8 +74,8 @@ class ActiveSequence:
     The body runs exactly once, inside the ``runtime_sequence`` op: each verb
     both binds its ObjectFifo's shim endpoint and emits the shim DMA. The DMA
     references the fifo by symbol name (a legal MLIR forward reference), so it
-    does not require the fifo to be resolved yet -- the Program resolves fifos
-    and cores afterward, with every runtime endpoint already bound.
+    does not require the fifo to be resolved yet. DeviceConfiguration resolves
+    fifos and cores afterward, with every runtime endpoint already bound.
     """
 
     def __init__(self, runtime: "Runtime", seq_op: RuntimeSequenceOp, device=None):
@@ -95,9 +95,12 @@ class ActiveSequence:
     def resolve_in_device(self, resolvable) -> None:
         """Resolve a Buffer or Lock the body reaches first, ahead of the sequence.
 
-        Program resolves the objects it can find before the body runs; one only
-        a runtime task names is placed here, at device scope.
+        DeviceConfiguration resolves discoverable objects before the body runs.
+        This method places an object named only by a runtime task at device scope.
         """
+        configuration = self._runtime.configuration
+        if configuration is not None:
+            configuration.claim_runtime_resource(resolvable)
         with ir.InsertionPoint(self._seq_op):
             if self._device is not None:
                 self._device.resolve_tile(resolvable.tile)
@@ -236,7 +239,7 @@ class Runtime(Resolvable):
             raise ValueError("Runtime name must not be empty.")
         self._site = SourceSite.capture()
         self._name = name
-        self._configuration: Configuration | None = None
+        self._configuration: DeviceConfiguration | None = None
         self._seq_fn: Callable = seq_fn
         self._fn_args = list(fn_args) if fn_args is not None else []
         self._dispatch_binding = object()
@@ -319,10 +322,10 @@ class Runtime(Resolvable):
         return self._name
 
     @property
-    def configuration(self) -> "Configuration | None":
+    def configuration(self) -> "DeviceConfiguration | None":
         return self._configuration
 
-    def _bind_configuration(self, configuration: "Configuration") -> None:
+    def _bind_configuration(self, configuration: "DeviceConfiguration") -> None:
         if self._configuration is not None:
             raise ValueError(
                 f"Runtime {self._name!r} already belongs to configuration "
@@ -352,11 +355,11 @@ class Runtime(Resolvable):
         run(self._name, values)
 
     def _register_fn_args(self) -> None:
-        """Bind shared objects in fn_args now, before the Program resolves.
+        """Bind shared objects before DeviceConfiguration resolves them.
 
         Mirrors Worker.__init__: an ObjectFifoHandle gets its shim endpoint bound
         (from the handle's prod()/cons() tile) and is recorded, so the fifo has
-        both ends known when the Program resolves it -- letting the sequence body
+        both ends known when DeviceConfiguration resolves it, letting the sequence body
         emit last (after workers), which the body's worker-reading verbs need.
 
         A fn_args entry may be a nested list/tuple of handles (e.g. one per
@@ -370,7 +373,7 @@ class Runtime(Resolvable):
                 self._fifos[arg] = None
 
     def add_flow(self, flow) -> None:
-        """Register an explicit flow so the Program resolves it alongside the ObjectFifos.
+        """Register a flow for resolution alongside the ObjectFifos.
 
         Accepts a [`Flow`][iron.Flow] or [`PacketFlow`][iron.PacketFlow].
         """
@@ -394,8 +397,6 @@ class Runtime(Resolvable):
         """Register a TileDma; channels sharing a Tile are combined at resolution."""
         if self._configuration is not None:
             self._configuration.add_tile_dma(tile_dma)
-        if tile_dma in self._tile_dmas:
-            return
         if self._resolved_tile_dmas is not None:
             raise IronRuntimeError("Cannot register TileDma after DMA resolution.")
         self._tile_dmas.append(tile_dma)
