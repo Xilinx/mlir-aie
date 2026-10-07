@@ -484,6 +484,25 @@ CASES: list[Case] = [
         calls=4,
         devices=("npu2",),
     ),
+    # IRON's aie2 flm tiles at N16 and N32 (8x8x8, CT_K = N): N16 unrolls
+    # the mmul's i and j loops, N32 rolls them.
+    *[
+        Case(
+            "fused_mm",
+            dict(
+                dim_m=64,
+                band_m=64,
+                dim_k=128,
+                dim_n=n,
+                chunk_k=n,
+                out_chunk=512,
+                mmul_shape=(8, 8, 8),
+            ),
+            calls=4,
+            devices=("npu1",),
+        )
+        for n in (16, 32)
+    ],
     Case(
         "fused_mm",
         dict(
