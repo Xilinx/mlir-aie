@@ -8,10 +8,11 @@
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
 """Numeric gates for mha.cc's softmax entry points, alone and as one round.
 
-``partial_softmax`` and ``rescale_O`` read and write a carried
+``partial_softmax`` and ``rescale_O`` read and write a carried float32
 ``scale_buffer``, so neither fits a kernel contract, whose outputs are zeroed on
 core. Each is driven alone, which sees its raw weights and carried state, and
-then all four steps run as one decode round, which checks that they agree.
+then all four steps run as one decode round, which checks that they agree, and
+as one round over a long context, which checks that the carry stays accurate.
 
 References use true ``np.exp2`` and state the mask over absolute positions;
 nothing models the device's arithmetic. On AIE2P, ``aie::exp2`` is a linear
@@ -45,10 +46,12 @@ from aie.iron import (
     jit,
     kernels,
 )
+from aie.iron.controlflow import range_
 from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.verify import Tolerance, compare, nearly_equal
 
 BF = np.dtype[bfloat16]
+F32 = np.dtype[np.float32]
 I32 = np.dtype[np.int32]
 
 # The key block and the head, which mha.cc is compiled for. A round's query
@@ -71,9 +74,9 @@ _LOWEST = float(ml_dtypes.finfo(bfloat16).min)
 # envelope is 6.98%. Measured: weights 6.79%, row sums 6.66%.
 _RTOL_EXP2 = 0.07
 
-# Under -DEXP2_BF16_ACCURATE, a row sum's distance from the exact one, in its
-# own bf16 ulps (1.41 measured on npu2).
-_L_ULPS_ACCURATE = 2
+# Under -DEXP2_BF16_ACCURATE, a float32 row sum is off by its weights' bf16
+# roundings and its correction factor's, at most 2^-8 of it.
+_L_RTOL_ACCURATE = 2.0**-9
 
 
 def _unblock(flat: np.ndarray, rows: int = _B) -> np.ndarray:
@@ -108,7 +111,10 @@ def _softmax_step(scores, keep, m_prev, l_prev):
 
 
 def _attention(scores, v, keep, *, inv_scale):
-    """Masked attention, rounded to bf16 wherever the kernel stores."""
+    """Masked attention, rounded to bf16 wherever the kernel stores.
+
+    The running sum and output are float32, so only the result is rounded.
+    """
     scaled = scores.astype(np.float32) * np.float32(inv_scale)
     live = keep.any(axis=1)
     peak = np.where(live, np.where(keep, scaled, -np.inf).max(axis=1), 0)
@@ -116,10 +122,7 @@ def _attention(scores, v, keep, *, inv_scale):
     p = np.where(keep, p.astype(bfloat16).astype(np.float32), np.float32(0))
     y = p @ v.astype(np.float32)
     inv_l = np.float32(1.0) / np.where(live, p.sum(axis=1), np.float32(1))
-    return (
-        y.astype(bfloat16).astype(np.float32)
-        * inv_l.astype(bfloat16).astype(np.float32)[:, None]
-    ).astype(bfloat16)
+    return (y * inv_l[:, None]).astype(bfloat16)
 
 
 @jit
@@ -140,7 +143,7 @@ def softmax_blocks(
     The second block reads the state the first carried.
     """
     tile_ty = np.ndarray[(_B * _B,), BF]
-    scale_ty = np.ndarray[(4 * _B,), BF]
+    scale_ty = np.ndarray[(4 * _B,), F32]
     idx_ty = np.ndarray[(2,), I32]
 
     mha = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2)
@@ -203,44 +206,33 @@ def softmax_blocks(
 
 @jit
 def rescale_tile(o_in: In, scale_in: In, o_out: Out):
-    """``rescale_O`` on a copy of O, since it rescales in place."""
+    """``rescale_O``: the float32 O divided by the row sums into bf16."""
+    acc_ty = np.ndarray[(_B * _B,), F32]
     tile_ty = np.ndarray[(_B * _B,), BF]
-    scale_ty = np.ndarray[(4 * _B,), BF]
+    scale_ty = np.ndarray[(4 * _B,), F32]
     idx_ty = np.ndarray[(2,), I32]
 
     mha = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B)
     rescale = mha.object_file.bind(
-        "rescale_O", [tile_ty, scale_ty, np.int32, idx_ty]
-    )  # fmt: skip
-    copy = kernels.passthrough(_B * _B, np.int16).object_file.bind(
-        "passThroughLine", [tile_ty, tile_ty, np.int32]
+        "rescale_O", [acc_ty, tile_ty, scale_ty, np.int32, idx_ty]
     )
 
-    of_o_in = ObjectFifo(tile_ty, name="o_in", depth=2)
-    of_scale = ObjectFifo(scale_ty, name="scale", depth=2)
-    of_o_out = ObjectFifo(tile_ty, name="o_out", depth=2)
+    of_o_in = ObjectFifo(acc_ty, name="o_in", depth=1)
+    of_scale = ObjectFifo(scale_ty, name="scale", depth=1)
+    of_o_out = ObjectFifo(tile_ty, name="o_out", depth=1)
 
     # rescale_O never reads its idx_buffer.
     idx = Buffer(idx_ty, name="idx", initial_value=np.array([0, 0], np.int32))
 
-    def core(of_o_in, of_scale, of_o_out, rescale, copy, idx):
-        o = of_o_out.acquire(1)
-        copy(of_o_in.acquire(1), o, _B * _B)
+    def core(of_o_in, of_scale, of_o_out, rescale, idx):
+        rescale(of_o_in.acquire(1), of_o_out.acquire(1), of_scale.acquire(1), _B, idx)
         of_o_in.release(1)
-        rescale(o, of_scale.acquire(1), _B, idx)
         of_scale.release(1)
         of_o_out.release(1)
 
     worker = Worker(
         core,
-        fn_args=[
-            of_o_in.cons(),
-            of_scale.cons(),
-            of_o_out.prod(),
-            rescale,
-            copy,
-            idx,
-        ],
+        fn_args=[of_o_in.cons(), of_scale.cons(), of_o_out.prod(), rescale, idx],
         stack_size=mha.contract.stack_bytes,
     )
 
@@ -251,7 +243,7 @@ def rescale_tile(o_in: In, scale_in: In, o_out: Out):
 
     rt = Runtime(
         sequence,
-        [tile_ty, scale_ty, tile_ty, of_o_in.prod(), of_scale.prod(), of_o_out.cons()],
+        [acc_ty, scale_ty, tile_ty, of_o_in.prod(), of_scale.prod(), of_o_out.cons()],
     )
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
@@ -298,7 +290,7 @@ def test_partial_softmax_matches_masked_attention(
     )  # fmt: skip
 
     p_t = iron.zeros((2 * _B * _B,), dtype=bfloat16)
-    scale_t = iron.zeros((4 * _B,), dtype=bfloat16)
+    scale_t = iron.zeros((4 * _B,), dtype=np.float32)
     softmax_blocks(
         iron.tensor(np.concatenate([s.reshape(-1) for s in scores]), dtype=bfloat16),
         p_t,
@@ -311,7 +303,7 @@ def test_partial_softmax_matches_masked_attention(
         accurate_exp2=accurate_exp2,
     )
     got_p = p_t.numpy().astype(np.float32).reshape(2, _B, _B)
-    got_scale = scale_t.numpy().astype(np.float32)
+    got_scale = scale_t.numpy()
 
     m, l = np.full(_B, _LOWEST, np.float32), np.zeros(_B, np.float32)
     ref_p = []
@@ -321,14 +313,17 @@ def test_partial_softmax_matches_masked_attention(
 
     # The exp2 envelope with an absolute floor for weights near zero; padded
     # rows must be exact zeros. On aie2, the factory's bound (0.389% measured).
-    # The accurate exp2 is held to its factory's ulps.
+    # The accurate exp2 is held to one ulp, or to its flush to +0.
     aie2 = resolve_target_arch(iron.get_current_device()) == "aie2"
     tol = kernels.mha_softmax().contract.tolerance
     assert tol.rtol is not None and tol.atol is not None
     ulp = 2**-7
     if accurate_exp2:
-        accurate = kernels.mha_softmax(accurate_exp2=True).contract.tolerance
-        verdict = compare(p_t.numpy().reshape(2, _B, _B), np.stack(ref_p), accurate)
+        verdict = compare(
+            p_t.numpy().reshape(2, _B, _B),
+            np.stack(ref_p),
+            Tolerance.bf16_ulps(1, atol=2.0**-125),
+        )
         assert verdict, verdict.detail
     elif aie2:
         assert nearly_equal(got_p, np.stack(ref_p), rtol=tol.rtol, atol=tol.atol).all()
@@ -346,15 +341,9 @@ def test_partial_softmax_matches_masked_attention(
     )
     # A sum of weights shares their envelope. On aie2 it is c * l_prev + sum(P)
     # with c an exp2 too, so it gets two weights' allowance (0.54% measured).
-    # With the accurate exp2 it is a block's weights summed and stored, then
-    # rescaled by a rounded 2^x and stored again.
     got_l = got_scale[2 * _B : 3 * _B][live]
     if accurate_exp2:
-        verdict = compare(
-            scale_t.numpy()[2 * _B : 3 * _B][live],
-            l[live],
-            Tolerance.bf16_ulps(_L_ULPS_ACCURATE),
-        )
+        verdict = compare(got_l, l[live], Tolerance.relative(_L_RTOL_ACCURATE))
         assert verdict, verdict.detail
     elif aie2:
         assert nearly_equal(got_l, l[live], rtol=2 * tol.rtol, atol=tol.atol).all()
@@ -375,19 +364,19 @@ def test_partial_softmax_matches_masked_attention(
 )
 def test_rescale_o_divides_rows_by_their_sums(l_lo, l_hi):
     rng = np.random.default_rng(20260923 + int(l_hi))
-    o_blocked = _dyadic(rng, (_B * _B,), 0.5)
+    o_blocked = _dyadic(rng, (_B * _B,), 0.5).astype(np.float32)
     # Sums vary within each 8-row block, so a wrong-row broadcast shows.
-    l = np.exp2(rng.uniform(np.log2(l_lo), np.log2(l_hi), _B)).astype(bfloat16)
-    scale = np.zeros(4 * _B, bfloat16)
+    l = np.exp2(rng.uniform(np.log2(l_lo), np.log2(l_hi), _B)).astype(np.float32)
+    scale = np.zeros(4 * _B, np.float32)
     scale[2 * _B : 3 * _B] = l
 
     out_t = iron.zeros((_B * _B,), dtype=bfloat16)
     rescale_tile(
-        iron.tensor(o_blocked, dtype=bfloat16), iron.tensor(scale, dtype=bfloat16), out_t
+        iron.tensor(o_blocked, dtype=np.float32), iron.tensor(scale, dtype=np.float32), out_t
     )  # fmt: skip
     got = _unblock(out_t.numpy()).astype(np.float32)
 
-    ref = _unblock(o_blocked).astype(np.float32) / l.astype(np.float32)[:, None]
+    ref = _unblock(o_blocked) / l[:, None]
     ulp = 2**-7 * float(np.abs(ref).max())
     np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
 
@@ -411,8 +400,9 @@ def mha_round(
     The query block is ``b_q`` rows against the 64-row key block.
     """
     tile_ty = np.ndarray[(b_q * _B,), BF]
+    acc_ty = np.ndarray[(b_q * _B,), F32]
     v_ty = np.ndarray[(_B * _B,), BF]
-    scale_ty = np.ndarray[(4 * b_q,), BF]
+    scale_ty = np.ndarray[(4 * b_q,), F32]
     idx_ty = np.ndarray[(2,), I32]
 
     qkt = kernels.mha(dim_m=b_q, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2)
@@ -424,15 +414,13 @@ def mha_round(
     init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
     pv = obj.bind(
         "matmul_PV",
-        [tile_ty, v_ty, tile_ty, scale_ty, np.int32, np.int32, idx_ty, np.int32],
+        [tile_ty, v_ty, acc_ty, scale_ty, np.int32, np.int32, idx_ty, np.int32],
     )
-    rescale = obj.bind("rescale_O", [tile_ty, scale_ty, np.int32, idx_ty])
-    zero = kernels.zero(b_q * _B, bfloat16)
+    rescale = obj.bind("rescale_O", [acc_ty, tile_ty, scale_ty, np.int32, idx_ty])
 
     # S and V share one input channel, S in the first b_q rows of its slot; the
     # reblocked P takes the other.
     of_sv = ObjectFifo(v_ty, name="sv", depth=2)
-    # O is held as the accumulator for the whole round.
     of_o = ObjectFifo(tile_ty, name="o", depth=1)
     of_p = ObjectFifo(tile_ty, name="p", depth=1)
     # The row-major P is read back in the mmul's 8x8 block order.
@@ -441,14 +429,14 @@ def mha_round(
     )
 
     scale_buf = Buffer(scale_ty, name="scale")
+    # The first key block starts the accumulator.
+    acc = Buffer(acc_ty, name="acc")
     idx_bufs = [
         Buffer(idx_ty, name=f"idx{k}", initial_value=np.array([k, q_block], np.int32))
         for k in range(n_kv)
     ]
 
-    def core(of_sv, of_o, of_p, of_pb, softmax, init, pv, rescale, zero, scale, *idx):
-        o = of_o.acquire(1)
-        zero(o)
+    def core(of_sv, of_o, of_p, of_pb, softmax, init, pv, rescale, scale, acc, *idx):
         init(scale, b_q)
         for k in range(n_kv):
             softmax(
@@ -467,7 +455,7 @@ def mha_round(
             pv(
                 of_pb.acquire(1),
                 of_sv.acquire(1),
-                o,
+                acc,
                 scale,
                 b_q,
                 int(k > 0),
@@ -476,7 +464,7 @@ def mha_round(
             )
             of_pb.release(1)
             of_sv.release(1)
-        rescale(o, scale, b_q, idx[0])
+        rescale(acc, of_o.acquire(1), scale, b_q, idx[0])
         of_o.release(1)
 
     worker = Worker(
@@ -490,8 +478,8 @@ def mha_round(
             init,
             pv,
             rescale,
-            zero,
             scale_buf,
+            acc,
             *idx_bufs,
         ],
         stack_size=kernels.mha_softmax(accurate_exp2).contract.stack_bytes,
@@ -595,3 +583,165 @@ def test_mha_round_matches_masked_attention(
         np.float32
     )
     np.testing.assert_allclose(ref[live], exact[live], rtol=0, atol=1 * ulp)
+
+
+@jit
+def mha_long_round(
+    sv_in: In,
+    o_out: Out,
+    *,
+    n_kv: CompileTime[int] = 2,
+    accurate_exp2: CompileTime[bool] = False,
+):
+    """One query block over ``n_kv`` key blocks, the last its diagonal.
+
+    As ``mha_round``, but the key blocks go by in a loop over one
+    ``idx_buffer``, as an attention dataflow runs them, so the context can
+    be long.
+    """
+    tile_ty = np.ndarray[(_B * _B,), BF]
+    acc_ty = np.ndarray[(_B * _B,), F32]
+    scale_ty = np.ndarray[(4 * _B,), F32]
+    idx_ty = np.ndarray[(2,), I32]
+    s_eff = n_kv * _B
+
+    qkt = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2)
+    obj = qkt.object_file
+    softmax = obj.bind(
+        "partial_softmax",
+        [tile_ty, tile_ty, scale_ty, idx_ty, bfloat16, *([np.int32] * 4)],
+    )
+    init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
+    pv = obj.bind(
+        "matmul_PV",
+        [tile_ty, tile_ty, acc_ty, scale_ty, np.int32, np.int32, idx_ty, np.int32],
+    )
+    rescale = obj.bind("rescale_O", [acc_ty, tile_ty, scale_ty, np.int32, idx_ty])
+
+    of_sv = ObjectFifo(tile_ty, name="sv", depth=2)
+    of_o = ObjectFifo(tile_ty, name="o", depth=1)
+    of_p = ObjectFifo(tile_ty, name="p", depth=1)
+    of_pb = of_p.cons().forward(
+        to_stream=TensorAccessPattern.full((_B, _B)).tile((8, 8)), depth=1
+    )
+
+    scale_buf = Buffer(scale_ty, name="scale")
+    acc = Buffer(acc_ty, name="acc")
+    idx = Buffer(idx_ty, name="idx", initial_value=np.array([0, n_kv - 1], np.int32))
+
+    def core(of_sv, of_o, of_p, of_pb, softmax, init, pv, rescale, scale, acc, idx):
+        def block(first_iter):
+            softmax(
+                of_sv.acquire(1),
+                of_p.acquire(1),
+                scale,
+                idx,
+                _INV_SCALE,
+                _B,
+                _B,
+                s_eff,
+                s_eff,
+            )
+            of_p.release(1)
+            of_sv.release(1)
+            pv(
+                of_pb.acquire(1),
+                of_sv.acquire(1),
+                acc,
+                scale,
+                _B,
+                first_iter,
+                idx,
+                s_eff,
+            )
+            of_pb.release(1)
+            of_sv.release(1)
+            idx[0] += 1
+
+        init(scale, _B)
+        block(0)
+        for _ in range_(n_kv - 1):
+            block(1)
+        rescale(acc, of_o.acquire(1), scale, _B, idx)
+        of_o.release(1)
+
+    worker = Worker(
+        core,
+        fn_args=[
+            of_sv.cons(),
+            of_o.prod(),
+            of_p.prod(),
+            of_pb.cons(),
+            softmax,
+            init,
+            pv,
+            rescale,
+            scale_buf,
+            acc,
+            idx,
+        ],
+        stack_size=kernels.mha_softmax(accurate_exp2).contract.stack_bytes,
+    )
+
+    def sequence(sv_h, o_h, svf, of):
+        svf.fill(sv_h)
+        of.drain(o_h, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [np.ndarray[(2 * n_kv * _B * _B,), BF], tile_ty, of_sv.prod(), of_o.cons()],
+    )
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@pytest.mark.parametrize(
+    "accurate_exp2",
+    [False, pytest.param(True, marks=pytest.mark.supported_devices("npu2"))],
+)
+def test_a_long_context_keeps_the_running_state_accurate(accurate_exp2):
+    """The running sum and output gain a key block's worth at a time.
+
+    Rounded to bf16 between blocks, a block's share is lost the more the
+    larger the totals have grown. Every row's peak score is 0 and the rest
+    put 2^x near -1 and -2, where the exp2 interpolant is within 0.07%, so
+    the gate is the output's own rounding. V centred on 1 keeps the outputs
+    far from 0.
+    """
+    n_kv = 64
+    rng = np.random.default_rng(20261007)
+    # bf16 scores that the kernel's scale takes to within 0.0014 of 0, -1, -2.
+    levels = np.array([0, -5.53125, -11.0625], np.float32)
+    scores = levels[rng.integers(0, 3, size=(_B, n_kv * _B))]
+    scores[:, 0] = 0
+    scores = scores.astype(bfloat16)
+    v = (1 + _dyadic(rng, (n_kv * _B, _B), 0.25, mag=2).astype(np.float32)).astype(
+        bfloat16
+    )
+    keep = np.concatenate(
+        [_keep(n_kv - 1, kv, n_kv * _B, n_kv * _B) for kv in range(n_kv)], axis=1
+    )
+    sv_host = np.concatenate(
+        [
+            arr
+            for b in range(n_kv)
+            for arr in (
+                scores[:, b * _B : (b + 1) * _B].reshape(-1),
+                TensorAccessPattern.full((_B, _B))
+                .tile((8, 8))
+                .gather(v[b * _B : (b + 1) * _B]),
+            )
+        ]
+    )
+
+    o_t = iron.zeros((_B * _B,), dtype=bfloat16)
+    mha_long_round(
+        iron.tensor(sv_host, dtype=bfloat16),
+        o_t,
+        n_kv=n_kv,
+        accurate_exp2=accurate_exp2,
+    )
+    got = _unblock(o_t.numpy()).astype(np.float32)
+
+    ref = _attention(scores, v, keep, inv_scale=_INV_SCALE).astype(np.float32)
+    ulp = 2**-7 * float(np.abs(ref).max())
+    np.testing.assert_allclose(got, ref, rtol=0, atol=2 * ulp)

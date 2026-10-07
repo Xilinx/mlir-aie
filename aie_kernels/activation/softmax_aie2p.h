@@ -137,7 +137,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
 // (1/sqrt(d) folded with log2e) broadcast in place of the plain log2e.
 void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
                                 bfloat16 *restrict output_vector,
-                                bfloat16 *restrict scale_buffer,
+                                float *restrict scale_buffer,
                                 const int32_t vector_size,
                                 const int32_t row_idx, const int32_t num_rows,
                                 const bfloat16 scale) {
@@ -176,8 +176,8 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
   bfloat16 max_val = aie::reduce_max(max_accum_vec);
 
   // Compute m_{i}: max of this block and the carried-in running max.
-  max_val = aie::max(max_val, scale_buffer[row_idx]);
-  scale_buffer[num_rows + row_idx] = max_val;
+  max_val = aie::max(max_val, (bfloat16)scale_buffer[row_idx]);
+  scale_buffer[num_rows + row_idx] = (float)max_val;
 
   max_val_vec = aie::broadcast<bfloat16, SM_VEC_LEN>(max_val);
 
@@ -297,7 +297,7 @@ void softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
 }
 
 void partial_softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
-                          bfloat16 *restrict scale_buffer,
+                          float *restrict scale_buffer,
                           const int32_t input_size, const int32_t row_idx,
                           const int32_t num_rows, const bfloat16 scale) {
   // Not in partial_softmax_alias_bf16, so mha.cc can time a whole block.
