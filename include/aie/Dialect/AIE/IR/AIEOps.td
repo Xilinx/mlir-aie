@@ -351,8 +351,8 @@ def AIE_CoreOp
       Results<(outs Index)> {
   let arguments =
       (ins Index:$tile,
-          // Absent means "use this target's default"; read
-          // getEffectiveStackSize().
+          // Absent means "size it from measured_stack_size, or use this
+          // target's default"; read getEffectiveStackSize().
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
           // Where the stack starts, tile-relative. Absent means 0 unless
           // stack_bank requires the allocator to resolve it. The stack grows
@@ -366,8 +366,9 @@ def AIE_CoreOp
           // an address inside it and writes `stack_address`, the way it does
           // for a `mem_bank`-only aie.buffer.
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$stack_bank,
-          // Written by aiecc from the compiled core object and the call graph.
-          // Absent when aiecc cannot measure the core.
+          // Written by aiecc from the call graph of the core's probe link,
+          // before placement, and rewritten from its final link. Absent when
+          // aiecc cannot measure the core exactly.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
           // Bytes to set aside for the core's own .data, .rodata and .bss.
@@ -428,8 +429,10 @@ def AIE_CoreOp
     file.
 
     This op has an optional `stack_size` attribute, to control the amount of memory (in bytes)
-    reserved for the stack.  When absent the target's default is used
-    (`AIETargetModel::getDefaultCoreStackSize()`).  The stack (and other data allocations)
+    reserved for the stack.  When absent the reservation is the larger of the
+    target's default (`AIETargetModel::getDefaultCoreStackSize()`) and
+    `measured_stack_size` rounded up to the stack ABI alignment, or the default
+    alone when `measured_stack_size` is absent.  The stack (and other data allocations)
     are always stored in the local core memory, to avoid conflicts with static data
     allocations in other cores.
 
@@ -451,9 +454,11 @@ def AIE_CoreOp
 
     By default the stack sits directly below the buffers with no clearance, so a
     `stack_size` below the core's use overwrites those buffers. `aiecc` measures
-    the stack this core needs, writes it to the `measured_stack_size` attribute,
-    and fails the build
-    when `stack_size` is smaller. `aiecc` measures the whole live call chain. That
+    the stack this core needs from a probe link before placing buffers, and
+    writes it to the `measured_stack_size` attribute, so a core that leaves
+    `stack_size` absent gets the stack it needs. After the final link it
+    measures again, and fails the build when the reservation is smaller than
+    the requirement. `aiecc` measures the whole live call chain. That
     chain starts above the core body: the runtime enters at `__start` (crt0), which
     calls `_main_init` (crt1), which calls the core body, which calls its kernels.
     `_main_init` holds a frame that stays live across the whole chain. `aiecc`
@@ -530,7 +535,7 @@ def AIE_CoreOp
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     bool isEmpty();
     /// The stack reservation in bytes: the `stack_size` attribute when set,
-    /// otherwise this target's default.
+    /// otherwise this target's default grown to cover `measured_stack_size`.
     uint32_t getEffectiveStackSize();
     /// Where the stack sits in this tile's data memory. Absent `stack_address`
     /// means offset 0, which is where every core put it before the attribute

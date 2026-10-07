@@ -2932,7 +2932,8 @@ LogicalResult CoreOp::verify() {
   // more than one defect. Size and placement are separate faults: a stack can
   // fit the tile yet be placed so it runs off the end.
   if (stackRun.size >= localMem)
-    return emitOpError("stack_size ")
+    return emitOpError(getStackSize() ? "stack_size "
+                                      : "measured stack requirement ")
            << stackRun.size
            << " leaves no local memory for this tile's buffers (" << localMem
            << " bytes total)";
@@ -2961,8 +2962,15 @@ TileOp CoreOp::getTileOp() {
 }
 
 uint32_t CoreOp::getEffectiveStackSize() {
-  return getStackSize().value_or(
-      getTargetModel(*this).getDefaultCoreStackSize());
+  if (auto declared = getStackSize())
+    return *declared;
+  const auto &targetModel = getTargetModel(*this);
+  uint32_t fallback = targetModel.getDefaultCoreStackSize();
+  if (auto measured = getMeasuredStackSize())
+    return std::max<uint32_t>(
+        fallback,
+        llvm::alignTo(*measured, targetModel.getCoreStackAlignment()));
+  return fallback;
 }
 
 MemoryRun CoreOp::getStackRun() {

@@ -111,7 +111,12 @@ constexpr FallbackFrame fallbackFrames[] = {
     {2, llvm::StringLiteral("_main_init"), 32},
 };
 
-std::optional<int64_t> fallbackFrameFor(const Graph &graph, uint64_t addr) {
+// The frame `.stack_sizes` reports for `addr`, else its fallbackFrames entry.
+std::optional<int64_t> knownFrameSize(const Graph &graph, uint64_t addr) {
+  if (auto it = graph.nodes.find(addr);
+      it != graph.nodes.end() && it->second.frameSize >= 0) {
+    return it->second.frameSize;
+  }
   llvm::StringRef name = graph.nameOf(addr);
   for (const FallbackFrame &f : fallbackFrames) {
     if (f.elfFlags == graph.elfFlags && f.symbol == name) {
@@ -322,14 +327,11 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
   // A frame the ELF does not report falls back to fallbackFrames. It counts as
   // 0 when that misses too, which makes the total a lower bound. The walk
   // continues either way, so one such function costs only its own frame.
-  int64_t frameSize = 0;
-  if (nodeIt != graph.nodes.end() && nodeIt->second.frameSize >= 0) {
-    frameSize = nodeIt->second.frameSize;
-  } else if (auto fallback = fallbackFrameFor(graph, sym)) {
-    frameSize = *fallback;
-  } else {
+  std::optional<int64_t> known = knownFrameSize(graph, sym);
+  if (!known) {
     unmeasured.insert(sym);
   }
+  int64_t frameSize = known.value_or(0);
   static const Node emptyNode;
   const Node &node = nodeIt == graph.nodes.end() ? emptyNode : nodeIt->second;
 
@@ -373,6 +375,36 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
   return total;
 }
 
+// Where the deepest frame of a `claimed` function ends, over the paths that
+// leave `sym`, measured from the start of `sym`'s own frame; -1 when no path
+// reaches one. Runs only after maxPathFrom succeeds, so the graph below an
+// override is acyclic and every sum here is bounded by its result. An override
+// hides its subtree, so it counts as a single frame of the declared size.
+int64_t claimedFrameEndFrom(uint64_t sym, const Graph &graph,
+                            const llvm::DenseSet<uint64_t> &claimed,
+                            llvm::DenseMap<uint64_t, int64_t> &memo) {
+  bool isClaimed = claimed.contains(sym);
+  if (auto it = graph.overridesByAddr.find(sym);
+      it != graph.overridesByAddr.end()) {
+    return isClaimed ? it->second : -1;
+  }
+  if (auto it = memo.find(sym); it != memo.end()) {
+    return it->second;
+  }
+  int64_t frameSize = knownFrameSize(graph, sym).value_or(0);
+  int64_t deepest = isClaimed ? frameSize : -1;
+  if (auto it = graph.nodes.find(sym); it != graph.nodes.end()) {
+    for (uint64_t callee : it->second.callees) {
+      int64_t sub = claimedFrameEndFrom(callee, graph, claimed, memo);
+      if (sub >= 0) {
+        deepest = std::max(deepest, frameSize + sub);
+      }
+    }
+  }
+  memo[sym] = deepest;
+  return deepest;
+}
+
 StackRequirementResult
 fail(std::string error,
      StackRequirementFailure kind = StackRequirementFailure::Unmeasurable) {
@@ -382,7 +414,8 @@ fail(std::string error,
 } // namespace
 
 StackRequirementResult xilinx::aiecc::computeStackRequirement(
-    llvm::StringRef elfPath, const llvm::StringMap<int64_t> &overrides) {
+    llvm::StringRef elfPath, const llvm::StringMap<int64_t> &overrides,
+    const llvm::StringSet<> &claimed) {
   auto binOrErr = ObjectFile::createObjectFile(elfPath);
   if (!binOrErr) {
     llvm::consumeError(binOrErr.takeError());
@@ -440,6 +473,16 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
       symbol_iterator target = rel.getSymbol();
       if (target == obj.symbol_end()) {
         continue; // no symbol to attribute this relocation to
+      }
+      // A probe link leaves buffer symbols undefined, at address 0, where a
+      // function can start; they are never call targets.
+      auto targetFlags = target->getFlags();
+      if (!targetFlags) {
+        llvm::consumeError(targetFlags.takeError());
+        continue;
+      }
+      if (*targetFlags & SymbolRef::SF_Undefined) {
+        continue;
       }
       // A fully inlined entry point can survive the link as a zero-sized FUNC
       // symbol at another function's address. Only call-like relocations should
@@ -516,7 +559,52 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
     result.unmeasured.push_back(graph.nameOf(addr).str());
   }
   llvm::sort(result.unmeasured);
+
+  if (!claimed.empty()) {
+    llvm::DenseSet<uint64_t> claimedAddrs;
+    for (const SymbolRanges::Entry &e : graph.funcs.entries) {
+      if (claimed.contains(e.name)) {
+        claimedAddrs.insert(e.addr);
+      }
+    }
+    llvm::DenseMap<uint64_t, int64_t> claimedMemo;
+    int64_t end =
+        claimedFrameEndFrom(root->addr, graph, claimedAddrs, claimedMemo);
+    if (end >= 0) {
+      result.claimedFrameEnd = end;
+    }
+  }
   return result;
+}
+
+llvm::StringSet<>
+xilinx::aiecc::readDefinedFunctionNames(llvm::StringRef objectPath) {
+  llvm::StringSet<> names;
+  auto binary = llvm::object::createBinary(objectPath);
+  if (!binary) {
+    llvm::consumeError(binary.takeError());
+    return names;
+  }
+  auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
+  if (!obj) {
+    return names;
+  }
+  for (const SymbolRef &sym : obj->symbols()) {
+    auto name = sym.getName();
+    auto type = sym.getType();
+    auto flags = sym.getFlags();
+    if (!name || !type || !flags) {
+      llvm::consumeError(name.takeError());
+      llvm::consumeError(type.takeError());
+      llvm::consumeError(flags.takeError());
+      continue;
+    }
+    if (*type == SymbolRef::ST_Function &&
+        !(*flags & SymbolRef::SF_Undefined)) {
+      names.insert(*name);
+    }
+  }
+  return names;
 }
 
 std::optional<int64_t>

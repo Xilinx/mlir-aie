@@ -24,6 +24,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 
 #include <cstdint>
 #include <optional>
@@ -46,17 +47,26 @@ struct StackRequirementResult {
   // so `bytes` is a lower bound while this list is non-empty. A kernel
   // compiled without -fstack-size-section lands here.
   std::vector<std::string> unmeasured;
+  // How far from the stack's start the deepest frame of a `claimed` function
+  // ends. Absent when no path reaches one, or when no set was given.
+  std::optional<int64_t> claimedFrameEnd;
 };
 
 // Measures the stack that the linked core ELF at `elfPath` needs. `overrides`
 // maps a function name to a declared requirement for its whole subtree, and
-// the walk stops at such a function.
+// the walk stops at such a function. `claimed` names functions whose frames
+// must stay within some limit; see `claimedFrameEnd`.
 //
 // The link must keep the relocations (`-Wl,--emit-relocs`), which carry the
 // call edges.
 StackRequirementResult
 computeStackRequirement(llvm::StringRef elfPath,
-                        const llvm::StringMap<int64_t> &overrides);
+                        const llvm::StringMap<int64_t> &overrides,
+                        const llvm::StringSet<> &claimed = {});
+
+// Names of the functions the object at `objectPath` defines. Empty when it does
+// not parse as an object.
+llvm::StringSet<> readDefinedFunctionNames(llvm::StringRef objectPath);
 
 /// One allocatable section of a core ELF that competes for the tile's data
 /// memory: `.data`, `.rodata`, `.bss`, and the bank-pinned `.aie.bank<N>` or

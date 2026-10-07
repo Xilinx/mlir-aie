@@ -17,6 +17,16 @@ module @exceeds_local_memory {
 
 // -----
 
+// CHECK: error{{.*}}'aie.core' op measured stack requirement 65536 leaves no local memory for this tile's buffers (65536 bytes total)
+module @measured_exceeds_local_memory {
+  aie.device(npu2) {
+    %t = aie.tile(0, 2)
+    %core = aie.core(%t) { aie.end } {measured_stack_size = 65500 : i32}
+  }
+}
+
+// -----
+
 // CHECK: error{{.*}}'aie.core' op attribute 'stack_size' failed to satisfy constraint
 module @zero {
   aie.device(npu2) {

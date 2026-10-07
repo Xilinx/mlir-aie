@@ -1,21 +1,25 @@
-//===- stack_size_unified_insufficient_error.mlir -----------------*- MLIR -*-===//
+//===- stack_size_unified_measured.mlir ---------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// The scenario of stack_size_absent_insufficient_error.mlir, built --unified.
-// The per-core strategy and the unified strategy both link a core to
-// "elfs_<key>.elf" (see "keys match coreKey" in splitLoweredCores), so the
-// check measures that core under either strategy.
+// The scenario of stack_size_absent_measured.mlir, built --unified. The
+// per-core strategy and the unified strategy both key a core's probe and final
+// link by coreKey (see "keys match coreKey" in splitLoweredCores), so aiecc
+// sizes that core's stack under either strategy.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_max_not_sum_kernel.cc -o %t.d/stack_size_max_not_sum_kernel.o
-// RUN: cd %t.d && not %aiecc --unified --get-xclbin --xclbin-name=final.xclbin --output-dir=%t.out %s 2>&1 | FileCheck %s
+// RUN: cd %t.d && %aiecc --unified --get=input_with_addresses.mlir --output-dir=%t.out %s 2>&1 | FileCheck --allow-empty %s
+// RUN: FileCheck --check-prefix=PLACED %s < %t.out/input_with_addresses.mlir
 
-// CHECK: error: stack_size is absent, so this core uses the device default of 1024 bytes, but it needs {{[0-9]+}} bytes; set stack_size = {{[0-9]+}} (Worker(stack_size=...) in IRON), or pass --no-measure-stack-size to skip this check
+// CHECK-NOT: error
+
+// PLACED: aie.buffer(%{{.*}}tile_0_2) {address = {{4[0-9][0-9][0-9]}} : i32
+// PLACED: measured_stack_size = {{4[0-9][0-9][0-9]}} : i32
 
 module {
   aie.device(npu2) {
