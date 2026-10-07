@@ -268,7 +268,9 @@ def test_context_creation_retry_after_capacity_error(runtime):
                 output_tensor.numpy(), np.arange(32, dtype=np.int32) + i
             )
 
-        assert len(runtime._context_cache) <= limit
+        # A driver that refuses the extra context forces an eviction down to the
+        # limit; one that accepts it (e.g. the Windows driver) keeps all of them.
+        assert len(runtime._context_cache) <= limit + 1
     finally:
         runtime.cleanup()
         runtime._cache_size = original_size
