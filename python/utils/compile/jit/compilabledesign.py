@@ -49,6 +49,7 @@ from aie.utils.compile import (
     NPU_CACHE_HOME,
     compile_external_kernels,
     compile_mlir_module,
+    resolve_target_arch,
 )
 from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import (
@@ -155,7 +156,8 @@ class CompilableDesign:
             sequence to an instruction stream (``aiecc --get-npu-insts``),
             against an image built elsewhere: a foreign xclbin, or one
             configuration's image that many shapes share. No core is
-            compiled, so the kernels the design declares are not built.
+            compiled, but the kernels the design declares are, since buffer
+            placement reserves the banks their static data needs.
         full_elf: When ``True``, `compile` emits a single self-contained
             "full" ELF (PDIs + TXN control code) instead of an
             ``xclbin`` + ``insts.bin`` pair.  The ELF is loaded standalone by
@@ -629,7 +631,6 @@ class CompilableDesign:
                 mlir_module = self._generate_mlir(ExternalFunction)
 
                 from aie.utils import get_current_device
-                from aie.utils.compile import resolve_target_arch
 
                 device = get_current_device(probe_runtime=False)
                 target_arch = resolve_target_arch(device)
@@ -812,7 +813,6 @@ class CompilableDesign:
                 mlir_module = self._generate_mlir(ExternalFunction, full_elf=True)
 
                 from aie.utils import get_current_device
-                from aie.utils.compile import resolve_target_arch
 
                 device = get_current_device(probe_runtime=False)
                 target_arch = resolve_target_arch(device)
@@ -932,14 +932,36 @@ class CompilableDesign:
 
             try:
                 mlir_module = self._generate_mlir(ExternalFunction)
-                # No core is compiled here, so the kernels the design declared
-                # are not built; the registry is cleared so one process's
-                # designs do not collide on a kernel name.
+
+                # aie.utils imports this module before it defines this name.
+                from aie.utils import get_current_device
+
+                target_arch = resolve_target_arch(
+                    get_current_device(probe_runtime=False)
+                )
+
+                external_kernels = list(ExternalFunction._instances)
                 ExternalFunction._instances.clear()
+
+                # The stream addresses the buffers where the image's build
+                # placed them, and that placement reserves each bank's kernel
+                # data, which only the built objects show.
+                use_chess = self._resolve_use_chess(external_kernels)
+                compile_external_kernels(
+                    external_kernels,
+                    kernel_dir,
+                    target_arch,
+                    include_dirs=self.include_paths,
+                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
+                    object_cache=self._kernel_object_cache(),
+                )
+                _copy_object_files(self.object_files, kernel_dir)
+
                 compile_mlir_module(
                     mlir_module=mlir_module,
                     insts_path=inst_path,
                     work_dir=kernel_dir,
+                    use_chess=use_chess,
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
                     device_cache_dir=self._device_cache_dir(),
                 )
@@ -949,7 +971,12 @@ class CompilableDesign:
                         "succeed (exit code 0) but the expected output file was "
                         f"not created: {inst_path}"
                     )
-                _manifest.record(kernel_dir, [], self.source_files)
+                _manifest.record(
+                    kernel_dir,
+                    external_kernels,
+                    self.source_files,
+                    used_chess=use_chess,
+                )
                 if explicit_path:
                     self._record_explicit_outputs(
                         kernel_dir, build_key, {"insts": inst_path}
