@@ -21,7 +21,6 @@ from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports
     AIETileType,
 )
 from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
-from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.iron.kernel import ExternalFunction
 from aie.utils.config import cxx_header_path
@@ -118,10 +117,9 @@ def group2(
     # Core body: kernel writes its output via put_ms() inside group2.cc, so
     # we don't acquire/release of_dout here.
     def core_body(of_in, _of_out_unused, lut0, lut1, lut2, lut3, kernel):
-        for _ in range_(0x7FFFFFFF):
-            di = of_in.acquire(1)
-            kernel(di, lut0, lut1, lut2, lut3)
-            of_in.release(1)
+        di = of_in.acquire(1)
+        kernel(di, lut0, lut1, lut2, lut3)
+        of_in.release(1)
 
     worker = Worker(
         core_body,
@@ -135,7 +133,6 @@ def group2(
             group2_kernel,
         ],
         tile=compute_tile,
-        while_true=False,
         trace=1 if trace_size > 0 else 0,
     )
 
