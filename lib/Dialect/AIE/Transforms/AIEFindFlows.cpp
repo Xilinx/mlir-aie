@@ -882,31 +882,40 @@ static void findFlowsFromInterconnect(Operation *switchOp,
   for (Port p : sourcePorts) {
     Value srcTile;
     WireBundle srcBundle = p.bundle;
-    // Mid-chain: an upstream interconnect drives this port.
-    continue;
+    int srcChannel = p.channel;
+    if (auto upstream = analysis.upstreamOf(switchOp, p)) {
+      Operation *upstreamOp = upstream->op;
+      Port upstreamPort = upstream->port;
+      if (upstreamOp && upstreamOp->hasTrait<IsFlowEndPoint>()) {
+        if (upstreamPort.bundle == WireBundle::Core ||
+            upstreamPort.bundle == WireBundle::DMA) {
+          continue;
+        }
+        srcTile = resolveEndpointTile(upstreamOp);
+        srcBundle = upstreamPort.bundle;
+        srcChannel = upstreamPort.channel;
+      } else if (analysis.drivesPort(upstreamOp, upstreamPort)) {
+        continue;
+      } else {
+        srcTile = resolveEndpointTile(switchOp);
+      }
+    } else {
+      srcTile = resolveEndpointTile(switchOp);
+    }
+    if (!srcTile) {
+      continue;
+    }
+    std::vector<PacketConnection> tiles = exactPacketEndpoints(
+        analysis.getConnectedTilesFromInput(switchOp, p, keepPartialFlows),
+        idMask,
+        [&](MaskValue claim) {
+          return analysis.getConnectedTilesFromInput(switchOp, p,
+                                                     keepPartialFlows, claim);
+        },
+        emitVias);
+    emitFlows(rewriter, switchOp->getLoc(), srcTile, srcBundle, srcChannel,
+              tiles, emitVias, /*dropIntraTile=*/true, idMask, seen, lifted);
   }
-  else {
-    // Wire exists but nothing drives it: this input is a fabric entry.
-    srcTile = resolveEndpointTile(switchOp);
-  }
-}
-else {
-  // No upstream wire: this input is a fabric entry (array edge).
-  srcTile = resolveEndpointTile(switchOp);
-}
-if (!srcTile) {
-  continue;
-}
-std::vector<PacketConnection> tiles = exactPacketEndpoints(
-    analysis.getConnectedTilesFromInput(switchOp, p, keepPartialFlows), idMask,
-    [&](MaskValue claim) {
-      return analysis.getConnectedTilesFromInput(switchOp, p, keepPartialFlows,
-                                                 claim);
-    },
-    emitVias);
-emitFlows(rewriter, switchOp->getLoc(), srcTile, srcBundle, srcChannel, tiles,
-          emitVias, /*dropIntraTile=*/true, idMask, seen, lifted);
-}
 }
 
 struct AIEFindFlowsPass
