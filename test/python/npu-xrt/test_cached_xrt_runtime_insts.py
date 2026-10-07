@@ -10,10 +10,12 @@ import pytest
 import numpy as np
 import time
 import os
+import shutil
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out, ObjectFifo, Worker, Runtime, Program
 from aie.iron.controlflow import range_
 import aie.utils
+from aie.utils import NPUKernel
 from aie.utils.hostruntime.xrtruntime.hostruntime import (
     CachedXRTRuntime,
     XRTHostRuntime,
@@ -134,47 +136,37 @@ def test_insts_caching(runtime):
 def test_insts_initialization(runtime):
     """Test that insts_bo is initialized during load."""
 
+    design = transform.specialize(func=lambda x: x + 1, num_elements=32)
+    handle = runtime.load(NPUKernel(*design.compile()))
+
+    assert handle.insts_bo is not None
+
+
+def test_insts_cache_outlasts_context_limit(runtime, tmp_path):
+    """One xclbin's streams stay cached past the hardware-context limit."""
+
+    design = transform.specialize(func=lambda x: x + 1, num_elements=32)
+    xclbin_path, insts_path = design.compile()
     input_tensor = iron.arange(32, dtype=np.int32)
+    kernels = []
+    for i in range(runtime._cache_size + 2):
+        copy = tmp_path / f"insts_{i}.bin"
+        shutil.copyfile(insts_path, copy)
+        kernels.append(NPUKernel(xclbin_path, copy))
 
-    # Capture load calls to get paths
-    original_load = runtime.load
-    captured_kernels = []
+    entries = []
+    for _ in range(2):
+        for kernel in kernels:
+            output_tensor = iron.zeros(32, dtype=np.int32)
+            kernel(input_tensor, output_tensor)
+            np.testing.assert_array_equal(
+                output_tensor.numpy(), np.arange(32, dtype=np.int32) + 1
+            )
+        entries.append(list(runtime._insts_cache.values()))
 
-    def side_effect_load(npu_kernel):
-        captured_kernels.append(npu_kernel)
-        return original_load(npu_kernel)
-
-    runtime.load = side_effect_load
-
-    # Run once to generate artifacts
-    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
-
-    # Restore load
-    runtime.load = original_load
-
-    if not hasattr(runtime, "_context_cache"):
-        pytest.skip("CachedXRTRuntime does not have _context_cache")
-
-    # Manually load to get a strong reference
-    npu_kernel_captured = captured_kernels[0]
-    xclbin_path = npu_kernel_captured.xclbin_path
-    insts_path = npu_kernel_captured.insts_path
-
-    class MockNPUKernel:
-        def __init__(self, x, i):
-            self.xclbin_path = x
-            self.insts_path = i
-            self.kernel_name = "MLIR_AIE"
-
-    npu_kernel = MockNPUKernel(xclbin_path, insts_path)
-    handle = runtime.load(npu_kernel)
-
-    assert handle is not None
-    # Check if handle has insts_bo (after our changes)
-    if hasattr(handle, "insts_bo"):
-        assert handle.insts_bo is not None
-    else:
-        pytest.skip("XRTKernelHandle does not have insts_bo yet")
+    assert len(runtime._context_cache) == 1
+    assert len(entries[1]) == len(kernels)
+    assert all(a is b for a, b in zip(*entries))
 
 
 def test_insts_mtime_sensitivity(runtime):

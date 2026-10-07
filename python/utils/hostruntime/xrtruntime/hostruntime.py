@@ -517,6 +517,12 @@ class CachedXRTRuntime(XRTHostRuntime):
         "npu2": 16,
     }
 
+    # Instruction streams are not a driver-limited resource, and one xclbin
+    # can carry many (one per kernel or runtime sequence), so they are bounded
+    # apart from the contexts: at the context limit, a dispatch loop over more
+    # streams than that misses on every call.
+    INSTS_CACHE_SIZE = 256
+
     def __init__(self):
         """Initialize the CachedXRTRuntime."""
         super().__init__()
@@ -545,6 +551,9 @@ class CachedXRTRuntime(XRTHostRuntime):
         if cache_size is None:
             raise HostRuntimeError(f"No known cache size for {self.npu_str}")
         self._cache_size: int = cache_size
+        self._insts_cache_size: int = int(
+            os.environ.get("XRT_INSTS_CACHE_SIZE", self.INSTS_CACHE_SIZE)
+        )
 
         atexit.register(self.cleanup)
 
@@ -636,7 +645,7 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._insts_content_cache.move_to_end(key)
             return cached
         insts = self.read_insts(insts_path)
-        if len(self._insts_content_cache) >= self._cache_size:
+        if len(self._insts_content_cache) >= self._insts_cache_size:
             self._insts_content_cache.popitem(last=False)
         self._insts_content_cache[key] = insts
         return insts
@@ -961,7 +970,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                     self._insts_cache.move_to_end(insts_key)
                     insts_bo = insts_entry["insts_bo"]
                 else:
-                    if len(self._insts_cache) >= self._cache_size:
+                    if len(self._insts_cache) >= self._insts_cache_size:
                         self._evict_insts()
 
                     insts_bo = self._tensor_class(
