@@ -371,6 +371,10 @@ class MatrixKernel(_ZeroInitializedKernel):
         return StreamDimsABC(A=a.stream, B=b.stream, C=c.stream)
 
 
+class _MatMulKernel(MatrixKernel):
+    k_tail: Kernel
+
+
 class _CascadeMatrixKernel(MatrixKernel):
     get_only: MatrixKernel
     put_only: Kernel
@@ -507,12 +511,18 @@ def mm(
     use_chess: bool = False,
     emulate_bf16_mmul_with_bfp16: bool = False,
     round_conv_even: bool = False,
-) -> MatrixKernel:
+) -> _MatMulKernel:
     """Matrix-multiply kernel: C += A * B.
 
     ``.zero`` initializes the accumulator using the independent, reusable
     ``kernels.zero(dim_m * dim_n, output_dtype)`` kernel. The contract declares
     the same initializer for the generic harness.
+
+    ``.k_tail(A, B, k_valid)`` zeroes A's columns and B's rows from
+    ``k_valid`` (clamped to ``[0, dim_k]``) on, in the blocking this kernel
+    reads, so a call after it sums only the first ``k_valid`` of the tile's
+    K, whatever the rest holds: the last tile of a reduction whose length is
+    not a multiple of ``dim_k``.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -543,7 +553,8 @@ def mm(
             kernel always does this, so it is ignored there.
 
     Returns:
-        ExternalFunction configured for the matmul kernel.
+        ExternalFunction configured for the matmul kernel, with its ``.zero``
+        and ``.k_tail``.
 
     Raises:
         ValueError: When ``(input_dtype, output_dtype)`` is not a supported combination.
@@ -612,13 +623,13 @@ def mm(
             block=(r, t),
         ),
     )
-    return _make_extern(
+    extern = _make_extern(
         f"{prefix}_{suffix}",
         _kernel_source("linalg/mm.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=compile_flags,
         use_chess=use_chess,
-        cls=MatrixKernel,
+        cls=_MatMulKernel,
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
@@ -662,6 +673,10 @@ def mm(
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
+    extern.k_tail = extern.object_file.bind(
+        f"{prefix}_{suffix}_k_tail", [a_ty, b_ty, np.int32]
+    )
+    return extern
 
 
 mm.mac_dims = _MatMulFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
