@@ -538,6 +538,30 @@ CASES: list[Case] = [
         )
         for dim_k, n, chunk_k in ((256, 32, 128), (64, 16, 16), (128, 64, 64))
     ],
+    # The B^T epilogue rejoins each block's column halves: with an
+    # activation and a clamp, and at r = 4, where a half is one vector.
+    *[
+        check(
+            "fused_mm",
+            dict(
+                dim_m=32,
+                band_m=16,
+                dim_k=64,
+                dim_n=16,
+                chunk_k=16,
+                out_chunk=256,
+                mmul_shape=shape,
+                b_col_maj=True,
+                **epilogue,
+            ),
+            devices=("npu1",),
+            data_cases=("random", "zeros", "ones", "alternating"),
+        )
+        for shape, epilogue in (
+            ((8, 8, 8), dict(epilogue="silu", clamp=(-0.125, 0.75))),
+            ((4, 8, 8), dict(epilogue="gelu")),
+        )
+    ],
     Case(
         "fused_mm",
         dict(
