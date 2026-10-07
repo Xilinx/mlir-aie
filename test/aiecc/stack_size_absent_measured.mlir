@@ -1,4 +1,4 @@
-//===- stack_size_absent_insufficient_error.mlir ------------------*- MLIR -*-===//
+//===- stack_size_absent_measured.mlir ----------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -6,26 +6,33 @@
 //===----------------------------------------------------------------------===//
 
 // stack_size is absent, and the frame of entry_a exceeds the 1024-byte device
-// default that the buffer placement assumed. The build fails and names the
-// value to declare.
+// default. aiecc measures the requirement from the probe link before placement,
+// and the stack reservation grows to cover it.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_max_not_sum_kernel.cc -o %t.d/stack_size_max_not_sum_kernel.o
-// RUN: cd %t.d && not %aiecc --get-xclbin --xclbin-name=final.xclbin --output-dir=%t.out %s 2>&1 | FileCheck %s
+// RUN: cd %t.d && %aiecc --get=input_with_addresses.mlir --get=measured_stack_sizes.mlir --output-dir=%t.out --tmpdir=%t.prj %s 2>&1 | FileCheck --check-prefix=BUILD --allow-empty %s
+// RUN: FileCheck --check-prefix=PLACED %s < %t.out/input_with_addresses.mlir
+// RUN: FileCheck --check-prefix=LDSCRIPT %s < %t.prj/ldScripts_main_core_0_2.ld.script
 
-// CHECK: error: stack_size is absent, so this core uses the device default of 1024 bytes, but it needs {{[0-9]+}} bytes; set stack_size = {{[0-9]+}} (Worker(stack_size=...) in IRON), or pass --no-measure-stack-size to skip this check
+// BUILD-NOT: error
+// BUILD-NOT: warning
 
-// The check fails ahead of the xclbin edge, so a caller that ignores the exit
-// code finds no artifact.
-// RUN: not ls %t.out/final.xclbin
+// The 4096-byte buffer plus the call chain, aligned to aie2p's 64 bytes. The
+// first buffer starts where the stack ends.
+// PLACED: aie.buffer(%{{.*}}tile_0_2) {address = {{4[0-9][0-9][0-9]}} : i32
+// PLACED: measured_stack_size = {{4[0-9][0-9][0-9]}} : i32
+// LDSCRIPT: . += 0x10{{[0-9A-F]}}0; /* stack */
 
-// --no-measure-stack-size skips this check.
+// --no-measure-stack-size keeps the device default.
 // RUN: rm -rf %t.noauto.d && mkdir -p %t.noauto.d
 // RUN: cp %t.d/stack_size_max_not_sum_kernel.o %t.noauto.d/
-// RUN: cd %t.noauto.d && %aiecc --no-measure-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s
-
-// NOAUTO-NOT: stack_size is absent
+// RUN: cd %t.noauto.d && %aiecc --no-measure-stack-size --get=input_with_addresses.mlir --get-core-elfs --output-dir=%t.noauto.out --tmpdir=%t.noauto.prj %s
+// RUN: FileCheck --check-prefix=NOAUTO %s < %t.noauto.prj/ldScripts_main_core_0_2.ld.script
+// RUN: FileCheck --check-prefix=NOAUTO-ATTR %s < %t.noauto.out/input_with_addresses.mlir
+// NOAUTO: . += 0x400; /* stack */
+// NOAUTO-ATTR-NOT: measured_stack_size
 
 module {
   aie.device(npu2) {

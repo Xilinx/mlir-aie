@@ -858,40 +858,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       [](const Item<OpInModule<CoreOp>> &core,
          Item<std::string> &out) -> mlir::LogicalResult {
         CoreOp op(core.get().op);
-        auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
-        const auto &tm = getTargetModel(op);
-        int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
-        int64_t bankSize =
-            numBanks > 0 ? tm.getLocalMemorySize() / numBanks : 0;
-        // An address space names one bank, so it can only describe a stack that
-        // lies inside one. Claiming a bank for a stack that spans two would
-        // tell Peano's bank-conflict model that every stack access hits that
-        // bank when most do not, so say nothing instead.
-        //
-        // Measured across the stack's extent, not its size: a stack smaller
-        // than a bank still spans two when it starts part-way through one. A
-        // `stack_bank` core has no resolved address here -- placement runs
-        // after this -- but the verifier holds that case to a single bank.
-        xilinx::AIE::MemoryRun stackRun = op.getStackRun();
-        bool spansBanks =
-            !op.getStackBank() && bankSize > 0 &&
-            stackRun.start / bankSize != (stackRun.end() - 1) / bankSize;
-        if (spansBanks) {
+        std::optional<int> bank = stackAddressSpaceBank(op);
+        if (!bank) {
           out.value = "";
           return mlir::success();
         }
-        int bank = 0;
-        // Prefer the declared `stack_bank`. Codegen needs the bank, not the
-        // address, and the bank is an input attribute whereas the address is
-        // resolved later by the allocator: deriving it from `getStackRun()`
-        // would make this edge depend on buffer placement, which runs after the
-        // core is compiled.
-        if (auto stackBank = op.getStackBank()) {
-          bank = *stackBank;
-        } else if (bankSize > 0) {
-          bank = static_cast<int>(op.getStackRun().start / bankSize);
-        }
-        if (bank != 0) {
+        if (*bank != 0) {
           bool hasObjects = false;
           if (auto files = op.getLinkFiles())
             hasObjects = !files->empty();
@@ -907,7 +879,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
             return mlir::failure();
           }
         }
-        out.value = std::to_string(5 + bank);
+        out.value = std::to_string(5 + *bank);
         return mlir::success();
       });
 
@@ -1011,6 +983,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .arg(lldPath.empty() ? "-fuse-ld=lld" : "-fuse-ld=" + lldPath)
                   .input()
                   .arg("-Wl,--gc-sections")
+                  .arg("-Wl,--emit-relocs")
                   .arg("-Wl,--orphan-handling=error")
                   .arg("-Wl,--unresolved-symbols=ignore-all")
                   .arg("-Wl,--no-check-sections")
@@ -1031,18 +1004,24 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   bool useProbe = !xchesscc && !xbridge;
   auto &placementInput = useProbe ? probeElfs : objects;
   auto &physical =
-      bundle(placementInput.out, compileInput.out)
+      bundle(placementInput.out, objects.out, compileInput.out)
           .join<ModRef>(
               "input_with_addresses.mlir",
-              [&context, elfLookup, bankDemand, useProbe,
-               cache](const Node<Directory> &probes, const Node<ModRef> &modN,
-                      Item<ModRef> &out) -> mlir::LogicalResult {
+              [&context, elfLookup, bankDemand, useProbe, cache](
+                  const Node<Directory> &probes,
+                  const Node<Directory> &coreObjects, const Node<ModRef> &modN,
+                  Item<ModRef> &out) -> mlir::LogicalResult {
                 out.value = ModRef(modN.get().get().clone());
                 mlir::ModuleOp mod = out.value->get();
                 auto placeCompiled = [&]() -> mlir::LogicalResult {
                   if (useProbe) {
                     recordBankDemand(mod, elfLookup(probes), *bankDemand,
                                      !noMeasureDataSize.getValue());
+                    if (!noMeasureStackSize.getValue() &&
+                        mlir::failed(recordStackDemand(
+                            mod, elfLookup(probes), elfLookup(coreObjects)))) {
+                      return mlir::failure();
+                    }
                   }
                   // A prebaked core is never probed -- its ELF is used
                   // verbatim -- so read the extents it already holds straight
