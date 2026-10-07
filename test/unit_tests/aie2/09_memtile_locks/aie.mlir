@@ -8,31 +8,34 @@
 
 // REQUIRES: peano
 
-// RUN: %aiecc %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags -o test.elf -- %S/test.cpp
-// RUN: %run_on_board ./test.elf
+// RUN: %aiecc --get-sim %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags -o test.elf -- %S/test.cpp
+// RUN: env AIE_SIM_DEVICE=xcve2802 ./test.elf | FileCheck %s
 
-// CHECK: AIE2 ISS
 // CHECK: test start.
 // CHECK: after core start
+// CHECK: MemTileDMA [6, 1] AIE2 locks are: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+// CHECK: MemTileDMA [7, 1] AIE2 locks are: 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 // CHECK: BD 0 valid (Next BD: 1)
-// CHECK:    Transferring 2 32 bit words to/from byte address 000C90
-// CHECK:    Acquires lock 0 with value -1
-// CHECK:    Releases lock 1 with value 1
+// CHECK: Transferring 2 32 bit words to/from byte address 000000
+// CHECK: Acquires lock 64 with value -1
+// CHECK: Releases lock 65 with value 1
 // CHECK: BD 1 valid (Last BD)
-// CHECK:  * Current BD for mm2s channel 0
-// CHECK:    Transferring 2 32 bit words to/from byte address 000C00
-// CHECK:    Acquires lock 0 with value -1
-// CHECK:    Releases lock 1 with value 1
+// CHECK: Transferring 2 32 bit words to/from byte address 000010
+// CHECK: Acquires lock 64 with value -1
+// CHECK: Releases lock 65 with value 1
 // CHECK: BD 2 valid (Next BD: 3)
-// CHECK:    Transferring 2 32 bit words to/from byte address 000C00
-// CHECK:    Acquires lock 2 with value -1
-// CHECK:    Releases lock 3 with value 1
+// CHECK: Transferring 2 32 bit words to/from byte address 100020
+// CHECK: Acquires lock 66 with value -1
+// CHECK: Releases lock 67 with value 1
 // CHECK: BD 3 valid (Last BD)
-// CHECK:  * Current BD for s2mm channel 0
-// CHECK:    Transferring 2 32 bit words to/from byte address 000C00
-// CHECK:    Acquires lock 2 with value -1
-// CHECK:    Releases lock 3 with value 1
-// CHECK: Core [7, 3] AIE2 locks are: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+// CHECK: Transferring 2 32 bit words to/from byte address 100030
+// CHECK: Acquires lock 66 with value -1
+// CHECK: Releases lock 67 with value 1
+// CHECK: MemTileDMA [8, 1] AIE2 locks are: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+// CHECK: BD 0 valid (Last BD)
+// CHECK: Transferring 2 32 bit words to/from byte address 080000
+// CHECK: Acquires lock 3 with value -1
+// CHECK: Releases lock 2 with value 1
 // CHECK: PASS!
 
 module @test_chess_08_tile_locks {
