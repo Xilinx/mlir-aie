@@ -573,6 +573,12 @@ class CachedXRTRuntime(XRTHostRuntime):
         self._insts_cache_size: int = int(
             os.environ.get("XRT_INSTS_CACHE_SIZE", self.INSTS_CACHE_SIZE)
         )
+        for name, size in (
+            ("XRT_CONTEXT_CACHE_SIZE", self._cache_size),
+            ("XRT_INSTS_CACHE_SIZE", self._insts_cache_size),
+        ):
+            if size < 1:
+                raise HostRuntimeError(f"{name} must be at least 1, got {size}")
 
         atexit.register(self.cleanup)
 

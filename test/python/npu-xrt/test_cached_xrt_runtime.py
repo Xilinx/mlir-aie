@@ -425,6 +425,14 @@ def test_cache_size_limit(runtime):
     assert runtime._cache_size == expected_size
 
 
+@pytest.mark.parametrize("name", ["XRT_CONTEXT_CACHE_SIZE", "XRT_INSTS_CACHE_SIZE"])
+def test_cache_size_must_be_positive(monkeypatch, name):
+    """A cache that holds nothing is refused up front, not on the first load."""
+    monkeypatch.setenv(name, "0")
+    with pytest.raises(HostRuntimeError, match=name):
+        CachedXRTRuntime()
+
+
 def test_runtime_retry_disable(runtime):
     """Test that retry=False is accepted."""
     npu_kernel = NPUKernel(
