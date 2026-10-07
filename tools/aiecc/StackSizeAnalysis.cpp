@@ -97,11 +97,12 @@ struct Graph {
 // of the object that defines the symbol. `elfFlags` is the ELF header's
 // e_flags: 2 for aie2, 3 for aie2p.
 //
-// FIXME: Peano compiles aie2's crt1.o without -fstack-size-section. aie2p's
-// crt1.o carries the section. `_main_init` allocates 32 bytes on aie2
-// (`paddb [sp], #0x20`) and 64 on aie2p. Every npu1 core therefore needs 32
-// bytes that no `.stack_sizes` entry reports. Report this to llvm-aie, build
-// crt1.o with -fstack-size-section there, then delete this table.
+// FIXME: Peano compiles libclang_rt.builtins.a without -fstack-size-section,
+// so any core reaching a builtin such as `__divsf3` or `__modsi3` needs bytes
+// that no `.stack_sizes` entry reports. CompilerRtStackFrames.inc supplies
+// them. `_main_init` covers aie2 crt1.o from Peano builds that predate its
+// `.stack_sizes` section (`paddb [sp], #0x20`). Once llvm-aie builds the
+// builtins with -fstack-size-section, delete this table.
 struct FallbackFrame {
   unsigned elfFlags;
   llvm::StringLiteral symbol;
@@ -109,6 +110,7 @@ struct FallbackFrame {
 };
 constexpr FallbackFrame fallbackFrames[] = {
     {2, llvm::StringLiteral("_main_init"), 32},
+#include "CompilerRtStackFrames.inc"
 };
 
 // The frame `.stack_sizes` reports for `addr`, else its fallbackFrames entry.
