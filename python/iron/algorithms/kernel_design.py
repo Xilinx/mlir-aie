@@ -15,6 +15,7 @@ kernel-validation harness.
 
 from __future__ import annotations
 
+import tempfile
 from dataclasses import dataclass, field
 from operator import index
 from pathlib import Path
@@ -35,7 +36,11 @@ from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels._common import Param, _is_tensor_type
 from aie.utils import bfp, ensure_current_device, tensor
+from aie.utils.compile import NPU_CACHE_HOME, resolve_target_arch
 from aie.utils.compile.jit import CompileTime, In, InOut, Out
+from aie.utils.compile.jit._object_cache import KernelObjectCache
+from aie.utils.compile.jit.compilabledesign import _COMPILE_LOCK_TIMEOUT_SECONDS
+from aie.utils.compile.readobj import linked
 from aie.utils.jit import jit
 from aie.utils.trace import TraceConfig
 from aie.utils.trace.events import CoreEvent
@@ -132,6 +137,29 @@ def _poison_fill(words, use_chess):
         arg_types=[np.ndarray[(words,), np.dtype[np.int32]], np.int32],
         use_chess=use_chess,
     )
+
+
+def _kernel_stack_bytes(kernels, embed_bitcode):
+    """Return the deepest stack any of ``kernels`` adds below the core's frame.
+
+    A declared ``stack_size_override`` stands. An object-linked Peano kernel
+    is built through the shared object cache, which the design's own build
+    then hits, and read from its ``.stack_sizes``. Anything else, such as a
+    Chess or merge-mode kernel, counts as 0, as aiecc cannot measure it either.
+    """
+    cache = KernelObjectCache(NPU_CACHE_HOME / "objects", _COMPILE_LOCK_TIMEOUT_SECONDS)
+    arch = resolve_target_arch(_device())
+    deepest = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        for k in kernels:
+            if k.stack_size_override is not None:
+                deepest = max(deepest, k.stack_size_override)
+            elif k.link_with_mode is None and cache.fetch(
+                k, tmp, arch, (), embed_bitcode
+            ):
+                stack = linked(Path(tmp) / k.object_file_name, k.name).stack
+                deepest = max(deepest, stack or 0)
+    return deepest
 
 
 def _view(raw, arg_type, byte_shift):
@@ -285,8 +313,13 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
             _view(o, types[i], 0) if i in guarded else o for i, o in zip(outs, outputs)
         ]
 
+    words = {i: (nbytes(i) + GUARD_BYTES) // 4 for i in guarded}
+    fills = {n: _poison_fill(n, fn.use_chess) for n in words.values()}
+
     # Two sets of tiles (ping-pong) when they fit beside the parameters and
-    # the stack, one otherwise. aiecc reserves at least the default stack.
+    # the stack, one otherwise. aiecc reserves the larger of the default
+    # stack and main's frame plus the deepest kernel call; the default
+    # covers main's frame, so the kernels' frames go on top of it.
     tile_bytes = sum(nbytes(i) for i in [*ins, *outs]) + GUARD_BYTES * len(guarded)
     shifted = dict(arg_byte_offsets)
     fixed_bytes = (
@@ -295,6 +328,16 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
         + (stack_bytes or _device().default_core_stack_bytes)
     )
     core_bytes = _device().core_memory_bytes
+    if not stack_bytes and 2 * tile_bytes + fixed_bytes <= core_bytes:
+        fixed_bytes += _kernel_stack_bytes(
+            [
+                fn,
+                *(k for _, k in initializers),
+                *fills.values(),
+                *([setter] if setter else []),
+            ],
+            c.uses_lut and not fn.use_chess,
+        )
     depth = next(
         (d for d in (2, 1) if d * tile_bytes + fixed_bytes <= core_bytes), None
     )
@@ -342,8 +385,6 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
         if shifted
         else []
     )
-    words = {i: (nbytes(i) + GUARD_BYTES) // 4 for i in guarded}
-    fills = {n: _poison_fill(n, fn.use_chess) for n in words.values()}
     # The Worker's constants: the param buffers, the kernel, the
     # initializer kernels, the poison fills, the view shifts and the setup
     # callable.
@@ -496,7 +537,9 @@ def design(
 
     ``stack_bytes`` fixes the core stack. Leave it unset and aiecc sizes the
     stack from the linked core; set it where aiecc cannot measure, as for a
-    Chess build.
+    Chess build. Unset, choosing between one and two sets of tiles reads the
+    kernels' stack frames, so generating a design whose tiles could double
+    buffer compiles its kernels.
 
     With ``guard=True`` the core fills each output tile and ``GUARD_BYTES``
     after it with ``0x55`` before every call and drains the guard with the

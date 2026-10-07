@@ -28,6 +28,7 @@ import pytest
 from aie.iron import ExternalFunction, kernels
 from aie.utils import config
 from aie.utils.compile import remarks
+from aie.utils.compile.readobj import parse_readobj
 from aie.utils.compile.remarks import (
     StaticReport,
     compile_command,
@@ -325,7 +326,7 @@ READOBJ = {
 
 
 def test_the_entry_reaches_its_callees_and_their_runtime_calls():
-    reached = remarks.parse_readobj(READOBJ, "k")
+    reached = parse_readobj(READOBJ, "k")
     assert reached.functions == {"k", "helper"}
     assert reached.undefined == ["__divsf3"]
 
@@ -337,7 +338,7 @@ def _frames(**sizes):
 def test_the_stack_is_the_deepest_path_from_the_entry():
     # k (32) calls helper (64); unused's frame is never on the path.
     doc = dict(READOBJ, StackSizes=_frames(k=32, helper=64, unused=512))
-    assert remarks.parse_readobj(doc, "k").stack == 96
+    assert parse_readobj(doc, "k").stack == 96
 
 
 def test_recursion_leaves_the_stack_unbounded():
@@ -348,7 +349,7 @@ def test_recursion_leaves_the_stack_unbounded():
         Relocations=READOBJ["Relocations"] + [_relocs(8, 1)],
         StackSizes=_frames(k=32, helper=64),
     )
-    assert remarks.parse_readobj(doc, "k").stack is None
+    assert parse_readobj(doc, "k").stack is None
 
 
 def test_the_stack_row_names_the_kernel_frame_not_the_core(report):
