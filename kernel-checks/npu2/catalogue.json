@@ -1,9 +1,10 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "5d89fc5739b922162580f1bed4bce4fc97da66cd",
- "date": "2026-10-03T06:44:16.734985+00:00",
+ "commit": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
+ "date": "2026-10-07T00:05:02.666779+00:00",
  "swept": true,
+ "timing_refused": "power mode is default, required 'turbo'",
  "kernels": [
   {
    "factory": "set_rounding",
@@ -68,7 +69,7 @@
    ],
    "passed": 10,
    "failed": [],
-   "timed": 5,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "passthrough/128x4/int16/edge-tiny",
@@ -92,7 +93,7 @@
    ],
    "passed": 8,
    "failed": [],
-   "timed": 3,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "scale/1024x16/int32/edge-negfactor",
@@ -115,7 +116,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -132,7 +133,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "add_sized/1024x16/bfloat16",
@@ -152,7 +153,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -169,7 +170,7 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 4,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "mul_sized/1024x16/bfloat16",
@@ -189,7 +190,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -206,7 +207,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "rms_norm/1000x16/bfloat16/cols=1000/row-tail",
@@ -226,7 +227,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "q4nx_dequant/1536x2/uint8/ct_k=16/group=24/k_tile=48/m_tile=48",
@@ -282,7 +283,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "layer_norm/1008x16/bfloat16/cols=1008/row-tail",
@@ -302,7 +303,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "layer_norm_f32/1008x16/float32/cols=1008/row-tail",
@@ -322,7 +323,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "layer_norm_affine_cast/1008x16/float32_bfloat16/cols=1008/row-tail",
@@ -342,7 +343,7 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "rope/1008x16/bfloat16/cols=1008/row-tail",
@@ -364,7 +365,7 @@
    ],
    "passed": 16,
    "failed": [],
-   "timed": 4,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "mm_activation_epilogue/16x4/float32/gelu-one-vector",
@@ -394,7 +395,7 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -411,7 +412,7 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -557,7 +558,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -575,7 +576,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -593,7 +594,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -610,7 +611,7 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -627,7 +628,7 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -644,7 +645,7 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -681,7 +682,7 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -774,7 +775,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 3,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -791,7 +792,7 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -827,7 +828,7 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -844,7 +845,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "flm_gemma4_attn_kv_kvh2_core/8352x4/bfloat16_float32/kv_head1"
@@ -864,7 +865,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "flm_gemma4_swa_attn_kv_core/8352x4/bfloat16_float32/geometry=gemma4_e4b"
@@ -907,7 +908,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -966,7 +967,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "flm_gemma4_rms_residual_core/2560x4/bfloat16/geometry=gemma4_e4b"
@@ -1024,7 +1025,7 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -1080,7 +1081,7 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -1098,7 +1099,7 @@
    ],
    "passed": 8,
    "failed": [],
-   "timed": 4,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "reduce_add/1024x1/int32/edge-single",
@@ -1121,7 +1122,7 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 4,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "reduce_min/16x4/int32/edge-one-vector",
@@ -1142,7 +1143,7 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 4,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "reduce_max/16x4/int32/edge-one-vector",
@@ -1162,7 +1163,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -1179,7 +1180,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -1216,7 +1217,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "rgba2hue/1152x4/uint8/line_width=288/tail",
@@ -1239,7 +1240,7 @@
    ],
    "passed": 9,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "threshold/1920x16/int16",
@@ -1267,7 +1268,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "bitwise_or/64x4/uint8/line_width=64/edge-one-vector"
@@ -1288,7 +1289,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "bitwise_and/64x4/uint8/line_width=64/edge-one-vector"
@@ -1307,7 +1308,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "gray2rgba/112x4/uint8/line_width=112/short-row",
@@ -1328,7 +1329,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "rgba2gray/1152x4/uint8/line_width=288/tail",
@@ -1349,7 +1350,7 @@
    ],
    "passed": 5,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "filter2d/128x4/uint8/line_width=128/two-blocks",
@@ -1372,7 +1373,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "add_weighted/1920x16/int16/gamma",
@@ -1393,7 +1394,7 @@
    ],
    "passed": 5,
    "failed": [],
-   "timed": 3,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "softmax/160x4/bfloat16/min-pipelined",
@@ -1413,7 +1414,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -1452,7 +1453,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 3,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -1469,7 +1470,7 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "silu_sized/1024x16/bfloat16",
@@ -1491,7 +1492,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 3,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -1508,7 +1509,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -1525,7 +1526,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "exp2f_vec/48x4/float32/vector-tail"
@@ -1544,7 +1545,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 3,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "tanh/1056x4/bfloat16/tail"
@@ -1563,7 +1564,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 3,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "sigmoid/1056x4/bfloat16/tail"
@@ -1582,11 +1583,31 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "leaky_relu/1024x4/bfloat16/inexact-alpha",
     "leaky_relu/160x4/bfloat16/unroll-tail"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "affine_cast",
+   "family": "datamovement",
+   "summary": "Per-column affine transform narrowed to bf16: out = bfloat16(in * gamma + beta).",
+   "sources": [
+    "datamovement/affine_cast_f32_bf16.cc"
+   ],
+   "builds": [
+    "affine_cast"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "affine_cast/16x4/float32_bfloat16/cols=16/rows=1/edge-tiny",
+    "affine_cast/2048x4/float32_bfloat16/cols=256/rows=8/wide"
    ],
    "flaky": []
   },
@@ -1602,7 +1623,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "axpy/1024x4/bfloat16/inexact-a",
@@ -1622,7 +1643,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "convert_copy/272x4/float32_bfloat16/unroll-tail",
@@ -1642,7 +1663,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "expand/400x16/uint8_bfloat16/group_size=96/group-96",
@@ -1665,7 +1686,7 @@
    ],
    "passed": 5,
    "failed": [],
-   "timed": 5,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -1707,7 +1728,7 @@
    ],
    "passed": 22,
    "failed": [],
-   "timed": 7,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "mm/16x1008x16x4/int8_int32",
@@ -1740,7 +1761,7 @@
    ],
    "passed": 13,
    "failed": [],
-   "timed": 4,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)",
@@ -1787,7 +1808,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal-padded"
@@ -1806,7 +1827,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -1825,7 +1846,7 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "mm_bfp/32x24x48x4/bfp16ebs8/odd-k",
@@ -1847,7 +1868,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 4,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -1866,7 +1887,7 @@
    ],
    "passed": 15,
    "failed": [],
-   "timed": 6,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "mv/10x512x4/bfloat16/vec_size=64/edge-mac-loop",
@@ -1994,7 +2015,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "conv2dk1/4096x8/int8_uint8/input_width=64/two-blocks"
@@ -2014,7 +2035,7 @@
    ],
    "passed": 8,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "conv2dk3/2048x8/int8_uint8/bottom-row",
@@ -2038,7 +2059,7 @@
    ],
    "passed": 1,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -2055,7 +2076,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "dwconv1d_channels_first/1024x16/bfloat16/kernel_size=9/seq_len=1008/odd-block-count",
@@ -2076,7 +2097,7 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "dwconv1d_channels_last/256x16/bfloat16/channels=256/clamp=False/unclamped",
@@ -2100,7 +2121,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [],
    "flaky": []
@@ -2117,7 +2138,7 @@
    ],
    "passed": 2,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "conv2dk1_i8/4096x8/int8/input_width=64/two-blocks"
@@ -2136,7 +2157,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "conv2dk14/12544x4/uint8_int8/output_channels=24/three-groups",
@@ -2158,7 +2179,7 @@
    ],
    "passed": 3,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "conv2dk1_skip_init/256x8/uint8/input_channels=16/skip_input_channels=8/one-step"
@@ -2177,7 +2198,7 @@
    ],
    "passed": 10,
    "failed": [],
-   "timed": 8,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=120/arg1@16",
@@ -2197,7 +2218,7 @@
    ],
    "passed": 13,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "bn_conv2dk3/1024x8/int8_uint8/input_channels=16/input_width=64/output_channels=8/weight_output_channels=16/channel-offset",
@@ -2227,7 +2248,7 @@
    ],
    "passed": 7,
    "failed": [],
-   "timed": 5,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "bn_conv2dk1_i8/2352x8/uint8_int8/input_channels=336/input_width=7/output_channels=80/arg1@16",
@@ -2248,7 +2269,7 @@
    ],
    "passed": 10,
    "failed": [],
-   "timed": 8,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40/arg1@16",
@@ -2268,7 +2289,7 @@
    ],
    "passed": 39,
    "failed": [],
-   "timed": 8,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "bn_conv2dk3_dw/1024x8/uint8/input_channels=32/input_width=32/output_channels=32/top-row",
@@ -2317,7 +2338,7 @@
    ],
    "passed": 7,
    "failed": [],
-   "timed": 4,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/arg1@16",
@@ -2338,7 +2359,7 @@
    ],
    "passed": 6,
    "failed": [],
-   "timed": 2,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=16/two-blocks",
@@ -2400,7 +2421,7 @@
    ],
    "passed": 4,
    "failed": [],
-   "timed": 1,
+   "timed": 0,
    "timing_failed": [],
    "untimed": [
     "bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240/arg3@32",

@@ -1,8 +1,8 @@
 {
  "npu": "npu1",
  "arch": "aie2",
- "commit": "b15f3508006988ea0252300a1feac447990ce6ec",
- "date": "2026-10-05T06:55:16.773120+00:00",
+ "commit": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
+ "date": "2026-10-06T06:42:42.944529+00:00",
  "swept": true,
  "timing_refused": "power mode is default, required 'turbo'",
  "kernels": [
@@ -1358,6 +1358,26 @@
    "untimed": [
     "leaky_relu/1024x4/bfloat16/inexact-alpha",
     "leaky_relu/160x4/bfloat16/unroll-tail"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "affine_cast",
+   "family": "datamovement",
+   "summary": "Per-column affine transform narrowed to bf16: out = bfloat16(in * gamma + beta).",
+   "sources": [
+    "datamovement/affine_cast_f32_bf16.cc"
+   ],
+   "builds": [
+    "affine_cast"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "affine_cast/16x4/float32_bfloat16/cols=16/rows=1/edge-tiny",
+    "affine_cast/2048x4/float32_bfloat16/cols=256/rows=8/wide"
    ],
    "flaky": []
   },
