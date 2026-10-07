@@ -172,19 +172,14 @@ def test_insts_cache_outlasts_context_limit(runtime, tmp_path):
 def test_insts_mtime_sensitivity(runtime):
     """Test that updating the insts file causes a reload."""
 
+    xclbin_path, insts_path = transform.specialize(
+        func=lambda x: x + 1, num_elements=32
+    ).compile()
+    kernel = NPUKernel(xclbin_path, insts_path)
     input_tensor = iron.arange(32, dtype=np.int32)
 
-    # Load kernel
-    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
-
-    if not hasattr(runtime, "_insts_cache"):
-        pytest.skip("CachedXRTRuntime does not have _insts_cache yet")
-
+    kernel(input_tensor, input_tensor)
     assert len(runtime._insts_cache) == 1
-
-    # Get the insts path from the cache key
-    key = list(runtime._insts_cache.keys())[0]
-    insts_path = key[0]
 
     # Wait a bit to ensure mtime changes
     time.sleep(0.01)
@@ -192,12 +187,38 @@ def test_insts_mtime_sensitivity(runtime):
     # Touch the insts file
     os.utime(insts_path, None)
 
-    # Load again
-    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
+    kernel(input_tensor, input_tensor)
+    np.testing.assert_array_equal(
+        input_tensor.numpy(), np.arange(32, dtype=np.int32) + 2
+    )
 
     # Should have 2 entries now (old one and new one with new mtime)
     assert len(runtime._insts_cache) == 2
 
     keys = list(runtime._insts_cache.keys())
-    assert keys[0][0] == keys[1][0]  # Same path
-    assert keys[0][1] != keys[1][1]  # Different mtime
+    assert keys[0][:2] == keys[1][:2]  # Same file
+    assert keys[0][2] != keys[1][2]  # Different mtime
+
+
+def test_aliases_share_a_context(runtime, tmp_path):
+    """A design reached through symlinks reuses its context and stream."""
+
+    xclbin_path, insts_path = transform.specialize(
+        func=lambda x: x + 1, num_elements=32
+    ).compile()
+    (tmp_path / "final.xclbin").symlink_to(xclbin_path)
+    (tmp_path / "insts.bin").symlink_to(insts_path)
+    input_tensor = iron.arange(32, dtype=np.int32)
+
+    for kernel in (
+        NPUKernel(xclbin_path, insts_path),
+        NPUKernel(tmp_path / "final.xclbin", tmp_path / "insts.bin"),
+    ):
+        output_tensor = iron.zeros(32, dtype=np.int32)
+        kernel(input_tensor, output_tensor)
+        np.testing.assert_array_equal(
+            output_tensor.numpy(), np.arange(32, dtype=np.int32) + 1
+        )
+
+    assert len(runtime._context_cache) == 1
+    assert len(runtime._insts_cache) == 1

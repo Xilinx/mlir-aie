@@ -8,6 +8,7 @@ import gc
 import logging
 import os
 import re
+import stat
 import subprocess
 import time
 import weakref
@@ -485,7 +486,7 @@ class CachedXRTRuntime(XRTHostRuntime):
     """A cached version of XRTHostRuntime that caches up to n contexts.
 
     The number of cached contexts depends on the type of NPU. It reuses
-    contexts for the same xclbin (identified by path and mtime).
+    contexts for the same xclbin (identified by device, inode and mtime).
     """
 
     # I got these values through experimentation on two machines
@@ -529,7 +530,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         # We use OrderedDict so that we can use Fifo behavior for LRU eviction policies
         self._context_cache = OrderedDict()
         self._insts_cache = OrderedDict()
-        # Memoised read_insts() output keyed by (insts_path, insts_mtime).
+        # Memoised read_insts() output keyed by the file's _file_key.
         # Skips the file open+read on every load() call when content is
         # unchanged.  Cheap (insts files are ~hundreds of bytes); the win
         # shows up when NPU_CACHE_HOME lives on a slow/networked filesystem
@@ -572,9 +573,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         Ensures the next load rebuilds a fresh one keyed by the same xclbin.
         """
         try:
-            resolved = str(Path(xclbin_path).resolve())
-            mtime = Path(xclbin_path).stat().st_mtime
-            entry = self._context_cache.pop((resolved, mtime), None)
+            entry = self._context_cache.pop(self._file_key(xclbin_path, "xclbin"), None)
             if entry is not None:
                 self._cleanup_entry(entry)
         except Exception:
@@ -632,14 +631,39 @@ class CachedXRTRuntime(XRTHostRuntime):
         key, entry = self._insts_cache.popitem(last=False)
         self._cleanup_insts_entry(key, entry)
 
-    def _read_insts_cached(self, insts_path, insts_mtime):
-        """``read_insts(insts_path)`` memoised by ``(path, mtime)``.
+    @staticmethod
+    def _file_key(path, what: str) -> tuple[int, int, int]:
+        """The cache identity of the file at `path`: device, inode and mtime.
+
+        One stat and no path resolution, which walks every component of a
+        path (about 40 us on NFS, per file per dispatch). Aliases of a file
+        share its key, and a rebuild changes its mtime or inode.
+
+        Args:
+            path: The file.
+            what: What the file is, for the error.
+
+        Returns:
+            `(st_dev, st_ino, st_mtime_ns)` of the file.
+
+        Raises:
+            HostRuntimeError: If `path` is not a regular file.
+        """
+        try:
+            st = os.stat(path)
+        except OSError:
+            st = None
+        if st is None or not stat.S_ISREG(st.st_mode):
+            raise HostRuntimeError(f"{what} {path} does not exist or is not a file.")
+        return (st.st_dev, st.st_ino, st.st_mtime_ns)
+
+    def _read_insts_cached(self, insts_path, key):
+        """``read_insts(insts_path)`` memoised by the file's `_file_key`.
 
         See ``__init__`` comment: shaves ~280us per load() when insts.bin
         lives on a networked filesystem (e.g. ``$HOME`` on NFS).  Stale
         files are detected via mtime so the cache is correct across rebuilds.
         """
-        key = (str(insts_path), insts_mtime)
         cached = self._insts_content_cache.get(key)
         if cached is not None:
             self._insts_content_cache.move_to_end(key)
@@ -744,22 +768,15 @@ class CachedXRTRuntime(XRTHostRuntime):
     def _load_full_elf_cached(
         self, npu_kernel, retry: bool = True
     ) -> CachedXRTKernelHandle:
-        """Load a full ELF, reusing a cached hw_context keyed on ``(elf_path, mtime)``.
+        """Load a full ELF, reusing a cached hw_context keyed on the ELF's `_file_key`.
 
         Full ELFs carry their own PDIs + control code, so the context is built
         from ``pyxrt.elf`` (no xclbin, no instruction BO cache).  Context reuse
         follows the same LRU + Phoenix-drain policy as the xclbin path.
         """
-        elf_path = Path(npu_kernel.elf_path).resolve()
+        elf_path = Path(npu_kernel.elf_path)
         kernel_name = npu_kernel.kernel_name
-
-        if not elf_path.exists() or not elf_path.is_file():
-            raise HostRuntimeError(
-                f"full ELF {elf_path} does not exist or is not a file."
-            )
-
-        elf_mtime = elf_path.stat().st_mtime
-        context_key = (str(elf_path), elf_mtime)
+        context_key = self._file_key(elf_path, "full ELF")
 
         try:
             if context_key in self._context_cache:
@@ -847,23 +864,17 @@ class CachedXRTRuntime(XRTHostRuntime):
         if getattr(npu_kernel, "elf_path", None) is not None:
             return self._load_full_elf_cached(npu_kernel, retry=retry)
 
-        xclbin_path = Path(npu_kernel.xclbin_path).resolve()
+        xclbin_path = Path(npu_kernel.xclbin_path)
         # insts_path is None for a DispatchTime[T] design: its stream is
         # synthesized per call, so there is nothing to cache. Skip the
         # insts.bin read and always load a plain (non-ext) kernel below.
-        insts_path = self._resolve_insts_path(npu_kernel)
+        insts_path = Path(npu_kernel.insts_path) if npu_kernel.insts_path else None
         kernel_name = npu_kernel.kernel_name
 
-        if not xclbin_path.exists() or not xclbin_path.is_file():
-            raise HostRuntimeError(
-                f"xclbin {xclbin_path} does not exist or is not a file."
-            )
-
-        xclbin_mtime = xclbin_path.stat().st_mtime
-        insts_mtime = insts_path.stat().st_mtime if insts_path is not None else None
-
-        # Context Cache Lookup
-        context_key = (str(xclbin_path), xclbin_mtime)
+        context_key = self._file_key(xclbin_path, "xclbin")
+        insts_file = (
+            self._file_key(insts_path, "insts") if insts_path is not None else None
+        )
 
         try:
             if context_key in self._context_cache:
@@ -934,13 +945,13 @@ class CachedXRTRuntime(XRTHostRuntime):
                     )
 
             insts = (
-                self._read_insts_cached(insts_path, insts_mtime)
+                self._read_insts_cached(insts_path, insts_file)
                 if insts_path is not None
                 else None
             )
             insts_bo = None
             if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
-                ext_kernel_key = (kernel_name, str(insts_path), insts_mtime)
+                ext_kernel_key = (kernel_name, *insts_file)
                 if ext_kernel_key not in entry["kernels"]:
                     entry["kernels"][ext_kernel_key] = pyxrt.ext.kernel(
                         context, insts, kernel_name
@@ -963,7 +974,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                 # Magic number for RyzenAI group id that will be fixed in the future. See same code at XRT:
                 # https://github.com/Xilinx/XRT/blob/56222ed5cfd119dff0d5bd920735b87024e8c829/src/runtime_src/core/common/api/xrt_module.cpp#L1621
                 group_id = kernel.group_id(1)
-                insts_key = (str(insts_path), insts_mtime, group_id)
+                insts_key = (*insts_file, group_id)
 
                 if insts_key in self._insts_cache:
                     insts_entry = self._insts_cache[insts_key]

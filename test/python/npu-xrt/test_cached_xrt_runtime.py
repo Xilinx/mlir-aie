@@ -300,8 +300,8 @@ def test_runtime_mtime_sensitivity(runtime):
     assert len(runtime._context_cache) == 2
 
     keys = list(runtime._context_cache.keys())
-    assert keys[0][0] == keys[1][0]  # Same path
-    assert keys[0][1] != keys[1][1]  # Different mtime
+    assert keys[0][:2] == keys[1][:2]  # Same file
+    assert keys[0][2] != keys[1][2]  # Different mtime
 
 
 def test_runtime_handle_invalidation(runtime):
