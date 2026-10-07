@@ -15,7 +15,9 @@ add_mlir_dialect_library(
   AIEAssignCoreLinkFiles.cpp
   AIEAssignLockIDs.cpp
   AIEFindFlows.cpp
+  AIEStreamDependencyAnalysis.cpp
   AIEPathFinder.cpp
+  AIERoutingDiagnostics.cpp
   AIECreatePathFindFlows.cpp
   AIECoreToStandard.cpp
   AIECanonicalizeDevice.cpp

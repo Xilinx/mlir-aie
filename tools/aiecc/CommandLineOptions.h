@@ -68,6 +68,12 @@ inline cl::opt<bool> noEnforceDmaQueueDepth(
     cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
              "slot"));
 
+inline cl::opt<bool> allowDeadlockProneRouting(
+    "allow-deadlock-prone-routing",
+    cl::desc("Warn of, rather than fail on, flows the router finds can "
+             "deadlock however they are routed or through receivers packet "
+             "flows share"));
+
 // Out of BD ids, the compiler may take them back from a started task it can
 // prove finished by polling its channel. The poll hangs if that task's
 // completion depends on a push issued after it, which the compiler cannot see.

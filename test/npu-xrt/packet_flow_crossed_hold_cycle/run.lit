@@ -1,0 +1,11 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Two packet flows cross, and each passes the other's destination with only
+// one arbiter free there. A router that crosses them on it hangs the NPU.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: %aiecc --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
+// RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %run_on_npu2% ./test.exe
