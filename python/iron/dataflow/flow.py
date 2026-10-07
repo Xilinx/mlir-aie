@@ -44,6 +44,7 @@ from ...dialects.aie import (
 from ...dialects.aie import (
     shim_dma_allocation,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from ...helpers.sourceloc import SourceSite
 from ..device import Tile  # noqa: F401  (re-exported via package)
 from ..resolvable import NotResolvedError, Resolvable
 from ..runtime._context import active_sequence
@@ -124,7 +125,9 @@ class _Route(Resolvable):
             return f"{self._name}_src"
         return f"{self._name}_dst{end - 1}" if self._broadcast else f"{self._name}_dst"
 
-    def _emit_shim_dma_alloc(self) -> None:
+    def _emit_shim_dma_alloc(
+        self, loc: ir.Location | None, ip: ir.InsertionPoint | None
+    ) -> None:
         """Name the shim channel of a route that gives its channels."""
         end = self._shim_end()
         if end is None:
@@ -138,6 +141,8 @@ class _Route(Resolvable):
             self.all_tiles()[end].op,
             DMAChannelDir.MM2S if end == 0 else DMAChannelDir.S2MM,
             self._channels[end],
+            loc=loc,
+            ip=ip,
         )
 
     def _transfer(self, rt_data, direction, **kwargs):
@@ -275,6 +280,7 @@ class Flow(_Route):
                 ``{name}_dst`` (``{name}_dst{i}`` for a broadcast). A unique name
                 is generated if not provided.
         """
+        self._site = SourceSite.capture()
         self._broadcast = not isinstance(dst, Tile)
         self._dsts: list[Tile] = [dst] if isinstance(dst, Tile) else list(dst)
         if not self._dsts:
@@ -328,8 +334,9 @@ class Flow(_Route):
     ) -> None:
         if self._op is not None:
             return
+        loc = loc or self._site.location(self._name)
         if self._routed:
-            self._resolve_route()
+            self._resolve_route(loc, ip)
             return
         self._op = _flow_op(
             self._src.op,
@@ -338,11 +345,15 @@ class Flow(_Route):
             self._dsts[0].op,
             self._dst_port,
             self._channels[1],
+            loc=loc,
+            ip=ip,
         )
         if self._shim_symbol is not None or self._shim_used:
-            self._emit_shim_dma_alloc()
+            self._emit_shim_dma_alloc(loc, ip)
 
-    def _resolve_route(self) -> None:
+    def _resolve_route(
+        self, loc: ir.Location | None, ip: ir.InsertionPoint | None
+    ) -> None:
         """Emit one ``aie.route_endpoint`` per end and the ``aie.route`` joining them.
 
         The shim end carries ``fifoName``, which is what gives it the shim DMA
@@ -360,10 +371,14 @@ class Flow(_Route):
                 port,
                 channel_index=channel,
                 fifo_name=symbol if end == shim_end else None,
+                loc=loc,
+                ip=ip,
             )
         self._op = _route_op(
             self._end_symbol(0),
             [self._end_symbol(end) for end in range(1, len(self._channels))],
+            loc=loc,
+            ip=ip,
         )
 
 
@@ -434,6 +449,7 @@ class PacketFlow(_Route):
                 endpoint is a shim tile.
             name: Same meaning as on [`Flow`][iron.Flow].
         """
+        self._site = SourceSite.capture()
         self._pkt_id = pkt_id
         self._src = src
         self._dsts = [dst, *(d.tile for d in extra_dsts)]
@@ -475,6 +491,7 @@ class PacketFlow(_Route):
     ) -> None:
         if self._op is not None:
             return
+        loc = loc or self._site.location(self._name)
         dests = [
             {
                 "dest": self._dsts[0].op,
@@ -491,6 +508,8 @@ class PacketFlow(_Route):
             source_channel=self._channels[0],
             dests=dests,
             keep_pkt_header=self._keep_pkt_header,
+            loc=loc,
+            ip=ip,
         )
         if self._shim_symbol is not None or self._shim_used:
-            self._emit_shim_dma_alloc()
+            self._emit_shim_dma_alloc(loc, ip)

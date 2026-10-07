@@ -22,6 +22,7 @@ from ..dialects.aiex import (
     set_lock_value,
 )
 from ..helpers.dialects.scf import _for as range_
+from ..helpers.sourceloc import SourceSite, traced_body
 from ..helpers.util import flatten_fn_args
 from ..utils.compile.jit.markers import _DispatchParameter
 from .buffer import Buffer
@@ -79,6 +80,7 @@ class Worker(ObjectFifoEndpoint):
         Raises:
             ValueError: Parameters are validated.
         """
+        self._site = SourceSite.capture()
         for arg in flatten_fn_args(
             [
                 fn_args or [],
@@ -295,29 +297,30 @@ class Worker(ObjectFifoEndpoint):
         if not self._tile:
             raise ValueError("Must place Worker before it can be resolved.")
         my_tile = self._tile.op
+        with loc or self._site.location():
+            # Create the necessary locks for the core operation to synchronize with the runtime sequence
+            # and register them in the corresponding barriers.
+            for barrier in self._barriers:
+                barrier_lock = lock(my_tile)
+                barrier.worker_locks.append(barrier_lock)
 
-        # Create the necessary locks for the core operation to synchronize with the runtime sequence
-        # and register them in the corresponding barriers.
-        for barrier in self._barriers:
-            barrier_lock = lock(my_tile)
-            barrier.worker_locks.append(barrier_lock)
-
-        @core(
-            my_tile,
-            stack_size=self.stack_size,
-            data_size=self.data_size,
-            dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
-        )
-        def core_body():
-            # Always wrap in an scf.for so the lowered MLIR matches expectations
-            # downstream (the lower-level aie dialect uses the same pattern with
-            # bound=1 for single-shot workers). Using Python range(1) here would
-            # emit the body inline with no scf.for wrapper, which the dataflow
-            # lowerer treats differently and can cause runtime hangs.
-            for setup in self._setup_kernels:
-                setup()
-            for _ in range_(sys.maxsize if self._while_true else 1):
-                self.core_fn(*self.fn_args)
+            @core(
+                my_tile,
+                stack_size=self.stack_size,
+                data_size=self.data_size,
+                dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
+            )
+            def core_body():
+                # Always wrap in an scf.for so the lowered MLIR matches expectations
+                # downstream (the lower-level aie dialect uses the same pattern with
+                # bound=1 for single-shot workers). Using Python range(1) here would
+                # emit the body inline with no scf.for wrapper, which the dataflow
+                # lowerer treats differently and can cause runtime hangs.
+                for setup in self._setup_kernels:
+                    setup()
+                for _ in range_(sys.maxsize if self._while_true else 1):
+                    with traced_body(self.core_fn):
+                        self.core_fn(*self.fn_args)
 
 
 class WorkerRuntimeBarrier:
