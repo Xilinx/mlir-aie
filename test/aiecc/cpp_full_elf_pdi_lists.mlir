@@ -11,9 +11,11 @@
 
 // REQUIRES: peano
 
-// RUN: rm -rf %t && mkdir -p %t
-// RUN: cd %t && aiecc --get-full-elf --tmpdir=%t %s 2>&1
-// RUN: cat %t/full_elf_config.json | FileCheck %s
+// RUN: rm -rf %t && mkdir -p %t/all %t/other
+// RUN: cd %t/all && aiecc --get-full-elf --tmpdir=%t/all %s 2>&1
+// RUN: cat %t/all/full_elf_config.json | FileCheck %s
+// RUN: cd %t/other && aiecc --get-full-elf --sequence-name=other --tmpdir=%t/other %s 2>&1
+// RUN: cat %t/other/full_elf_config.json | FileCheck %s --check-prefix=OTHER
 
 // PDI IDs follow the devices' order: main=1, add_one=2, add_two=3.
 
@@ -53,6 +55,24 @@
 // CHECK-NEXT:     ],
 // CHECK:          "name": "add_two"
 
+// Only the selected sequence's loads count: @other configures add_two alone.
+
+// OTHER:      "xrt-kernels": [
+// OTHER-NEXT:   {
+// OTHER-NEXT:     "PDIs": [
+// OTHER-NEXT:       {
+// OTHER-NEXT:         "PDI_file": "{{.*}}main.pdi",
+// OTHER-NEXT:         "id": 1
+// OTHER-NEXT:       },
+// OTHER-NEXT:       {
+// OTHER-NEXT:         "PDI_file": "{{.*}}add_two.pdi",
+// OTHER-NEXT:         "id": 3
+// OTHER-NEXT:       }
+// OTHER-NEXT:     ],
+// OTHER:          "name": "main"
+// OTHER-NEXT:   }
+// OTHER-NEXT: ]
+
 module {
 
     aie.device(npu2) @main {
@@ -60,6 +80,11 @@ module {
             aiex.configure @add_one {
                 aiex.run @add_one_seq (%arg) : (memref<16xi32>)
             }
+            aiex.configure @add_two {
+                aiex.run @add_two_seq (%arg) : (memref<16xi32>)
+            }
+        }
+        aie.runtime_sequence @other(%arg : memref<16xi32>) {
             aiex.configure @add_two {
                 aiex.run @add_two_seq (%arg) : (memref<16xi32>)
             }

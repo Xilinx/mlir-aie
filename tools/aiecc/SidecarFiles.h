@@ -260,10 +260,10 @@ inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
 
 // Full-ELF config.json for aiebu's aie2_config assembler (in-process, or
 // `aiebu-asm -t aie2_config`). One xrt-kernel per device with ≥1 runtime
-// sequence. A kernel lists its own device's PDI and each PDI its sequences
-// `load_pdi`: aiebu emits a section per PDI per kernel, so listing every PDI
-// in every kernel grows quadratically with the devices and passes aiebu's
-// section limit at about 255 of them. Argument count is max(3, max
+// sequence. A kernel lists its own device's PDI and the PDIs its instantiated
+// sequences `load_pdi`: aiebu emits a section per PDI per kernel, so listing
+// every PDI in every kernel grows quadratically with the devices and passes
+// aiebu's section limit at about 255 of them. Argument count is max(3, max
 // runtime-seq arity). PDI IDs are read from `aiecc.pdi_id` on each DeviceOp
 // (stamped by `assignDevicePdiIds`, and onto each load_pdi by
 // `assignLoadPdiIds`).
@@ -310,6 +310,7 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
             {"offset", llvm::formatv("0x{0}", llvm::utohexstr(i * 8)).str()}});
 
     llvm::json::Array instances;
+    llvm::SmallDenseSet<int> loaded{devId(devOp)};
     devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
       // One `.bin` per runtime sequence, keyed "<device>_<sequence>". Only
       // sequences that were actually lowered to a control-code binary have an
@@ -332,14 +333,13 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
           patchIt != patchInfoPaths.end())
         inst["patch_info_file"] = patchIt->second;
       instances.push_back(std::move(inst));
+      seq.walk([&](xilinx::AIEX::NpuLoadPdiOp lp) {
+        loaded.insert(static_cast<int>(lp.getId()));
+      });
     });
     if (instances.empty())
       continue;
 
-    llvm::SmallDenseSet<int> loaded{devId(devOp)};
-    devOp.walk([&](xilinx::AIEX::NpuLoadPdiOp lp) {
-      loaded.insert(static_cast<int>(lp.getId()));
-    });
     llvm::json::Array pdis;
     for (const auto &[id, file] : allPdis)
       if (loaded.contains(id))
