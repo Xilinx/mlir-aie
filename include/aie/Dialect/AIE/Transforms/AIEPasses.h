@@ -59,6 +59,8 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEVectorTransferLoweringPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEHoistVectorTransferPointersPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIECoreIntRangeNarrowingPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options);

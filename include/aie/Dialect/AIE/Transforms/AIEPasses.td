@@ -462,6 +462,48 @@ def AIEHoistVectorTransferPointers
   let constructor = "xilinx::AIE::createAIEHoistVectorTransferPointersPass()";
 }
 
+def AIECoreIntRangeNarrowing
+    : Pass<"aie-core-int-range-narrowing", "DeviceOp"> {
+  let summary = "Narrow index loops and arithmetic in core code to 32 bits "
+                "where integer range analysis proves it safe";
+  let description = [{
+    `index` lowers to `i64` on the cores, which have 32-bit registers: every
+    `index` loop counter costs two registers and a carry, and every `index`
+    add or compare a multi-instruction sequence. This pass runs the upstream
+    `arith-int-range-narrowing` patterns over the body of each `aie.core` and
+    each `func.func` in the device. Where integer range analysis proves the
+    values fit, `scf.for` bounds, steps and induction variables become `i32`
+    and `index` arithmetic is done in `i32`, with casts back to `index` where
+    an op needs one (such as a `memref.load` index).
+
+    Only provably safe rewrites are made. A loop whose bounds do not fit, such
+    as a `0` to `INT64_MAX` "forever" loop, or whose bounds are unknown, keeps
+    its `index` counter.
+
+    Runtime sequences are left alone. Must run before SCF-to-CF lowering,
+    since loop bounds are only narrowed on `scf.for`.
+
+    Example:
+      Before:
+        scf.for %i = %c0 to %c32 step %c1 {
+          %v = memref.load %buf[%i] : memref<32xi32>
+        }
+
+      After:
+        scf.for %i = %c0_i32 to %c32_i32 step %c1_i32 : i32 {
+          %idx = arith.index_castui %i : i32 to index
+          %v = memref.load %buf[%idx] : memref<32xi32>
+        }
+  }];
+
+  let constructor = "xilinx::AIE::createAIECoreIntRangeNarrowingPass()";
+  let dependentDialects = ["mlir::arith::ArithDialect"];
+  let options = [ListOption<"bitwidthsSupported", "int-bitwidths-supported",
+                            "unsigned",
+                            "Integer bitwidths to narrow to, tried in order">,
+  ];
+}
+
 def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
   let summary = "Split objectFifos into pools and endpoints";
   let description = [{
