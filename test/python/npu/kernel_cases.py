@@ -453,6 +453,41 @@ CASES: list[Case] = [
         )
         for n in (16, 32)
     ],
+    # B stored transposed, as IRON's aie2 flm GEMM reads a checkpoint's
+    # (n, k) weights: its N64 k step, then two k chunks and two bands at
+    # N32, an N16 tile whose i and j loops unroll, and a CT_K below N.
+    Case(
+        "fused_mm",
+        dict(
+            dim_m=16,
+            band_m=16,
+            dim_k=128,
+            dim_n=64,
+            chunk_k=128,
+            out_chunk=512,
+            mmul_shape=(8, 8, 8),
+            b_col_maj=True,
+        ),
+        calls=4,
+        devices=("npu1",),
+    ),
+    *[
+        check(
+            "fused_mm",
+            dict(
+                dim_m=32,
+                band_m=16,
+                dim_k=dim_k,
+                dim_n=n,
+                chunk_k=chunk_k,
+                out_chunk=256,
+                mmul_shape=(8, 8, 8),
+                b_col_maj=True,
+            ),
+            devices=("npu1",),
+        )
+        for dim_k, n, chunk_k in ((256, 32, 128), (64, 16, 16), (128, 64, 64))
+    ],
     Case(
         "fused_mm",
         dict(
