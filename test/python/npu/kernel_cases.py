@@ -1816,6 +1816,25 @@ CASES += [
         tag="diagonal-padded",
         smoke=True,
     ),
+    Case(
+        "mha_softmax",
+        dict(accurate_exp2=True),
+        calls=4,
+        params=((0, 1),),
+        scalars=(128, 64),
+        tag="accurate",
+        devices=("npu2",),
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(accurate_exp2=True),
+        params=((0, 0),),
+        scalars=(37, 37),
+        tag="accurate-diagonal-padded",
+        devices=("npu2",),
+        smoke=True,
+    ),
     # The prefill toolkit's S*V accumulate, one case per geometry. Each
     # -DPREFILL_HEAD_DIM build is its own object with its own blocked V order;
     # the 512 one has a degenerate k-block term and so cannot tell a wrong V
