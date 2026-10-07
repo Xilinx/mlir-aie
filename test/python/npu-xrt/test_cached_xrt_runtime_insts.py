@@ -201,18 +201,22 @@ def test_insts_mtime_sensitivity(runtime):
 
 
 def test_aliases_share_a_context(runtime, tmp_path):
-    """A design reached through symlinks reuses its context and stream."""
+    """A design reached through symlinks reuses its context and stream.
+
+    The alias loads first, and without a suffix, so the stream is decoded by
+    its target's format rather than the alias's name.
+    """
 
     xclbin_path, insts_path = transform.specialize(
         func=lambda x: x + 1, num_elements=32
     ).compile()
     (tmp_path / "final.xclbin").symlink_to(xclbin_path)
-    (tmp_path / "insts.bin").symlink_to(insts_path)
+    (tmp_path / "instructions").symlink_to(insts_path)
     input_tensor = iron.arange(32, dtype=np.int32)
 
     for kernel in (
+        NPUKernel(tmp_path / "final.xclbin", tmp_path / "instructions"),
         NPUKernel(xclbin_path, insts_path),
-        NPUKernel(tmp_path / "final.xclbin", tmp_path / "insts.bin"),
     ):
         output_tensor = iron.zeros(32, dtype=np.int32)
         kernel(input_tensor, output_tensor)

@@ -692,7 +692,8 @@ class CachedXRTRuntime(XRTHostRuntime):
         if cached is not None:
             self._insts_content_cache.move_to_end(key)
             return cached
-        insts = self.read_insts(insts_path)
+        # read_insts() picks the format by suffix, so decode the target, not an alias.
+        insts = self.read_insts(insts_path.resolve())
         if len(self._insts_content_cache) >= self._insts_cache_size:
             self._insts_content_cache.popitem(last=False)
         self._insts_content_cache[key] = insts
