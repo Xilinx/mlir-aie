@@ -995,6 +995,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
             });
       });
 
+  // Whether the real link runs; see the end of this function, which decides it
+  // once the outputs are known.
+  auto realLinkFollows = std::make_shared<bool>(true);
+
   // The probe link. Same objects, same garbage collection and the same script
   // generator as the real link, but with every region offered whole, so the
   // sections that land in each bank are sized only by what the objects hold.
@@ -1017,10 +1021,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .input("-Wl,-T,")
                   .output("-o")
                   // A probe that cannot run costs placement quality, never
-                  // correctness: the core is placed as it was before any of
-                  // this, and whatever stopped the probe stops the real link
-                  // too, where it is reported properly.
-                  .optional())
+                  // correctness, when the real link runs: the core is placed
+                  // as it was before any of this, and whatever stopped the
+                  // probe stops the real link too, where it is reported
+                  // properly. Without one (an instruction stream alone),
+                  // nothing would, and the stream would address buffers
+                  // placed apart from the image's, so the probe must run.
+                  .optional(realLinkFollows))
           .threadSafe();
 
   // Compile before placement so the probe can reserve each bank's static data.
@@ -2281,6 +2288,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
     llvm::DenseSet<EdgeBase *> needed =
         reachableEdges(roots, {&sequencePlacement});
     *sequenceCoresOnly = !needed.count(&perCore) && !needed.count(&physical);
+  }
+
+  {
+    std::vector<EdgeBase *> roots = outputs;
+    roots.insert(roots.end(), cutEdges.begin(), cutEdges.end());
+    roots.insert(roots.end(), checkEdges.begin(), checkEdges.end());
+    *realLinkFollows = reachableEdges(roots).count(&peanoElfs);
   }
 
   // A cached device reaches the build only through the placed and the
