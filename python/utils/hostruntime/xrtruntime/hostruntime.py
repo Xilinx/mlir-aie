@@ -957,12 +957,12 @@ class CachedXRTRuntime(XRTHostRuntime):
 
             insts = (
                 self._read_insts_cached(insts_path, insts_file)
-                if insts_path is not None
+                if insts_file is not None
                 else None
             )
             insts_bo = None
             if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
-                ext_kernel_key = (kernel_name, *insts_file)
+                ext_kernel_key = (kernel_name, insts_file)
                 if ext_kernel_key not in entry["kernels"]:
                     entry["kernels"][ext_kernel_key] = pyxrt.ext.kernel(
                         context, insts, kernel_name
@@ -973,7 +973,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                     entry["kernels"][kernel_name] = pyxrt.kernel(context, kernel_name)
                 kernel = entry["kernels"][kernel_name]
 
-                if insts_path is None:
+                if insts_file is None:
                     # DispatchTime[T] design: no static insts to cache --
                     # run() allocates a per-call BO from dispatch_insts.
                     kernel_handle = CachedXRTKernelHandle(
