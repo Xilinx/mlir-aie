@@ -1097,8 +1097,10 @@ def mha(
     ``idx[0] <= idx[1]``) bound here to ``[0, 0]``. With ``pv`` it is the
     ``P*V`` product ``matmul_bf16_bf16_rowmaj``, mha.cc's own expansion of
     the native 8x8x8 micro-tile and ungated. ``matmul_PV`` is that same
-    product preceded by a row rescale, which needs the online softmax's
-    running state and so is exercised by ``test_mha_e2e.py`` instead.
+    product into a float32 ``O``, preceded by a row rescale, which needs the
+    online softmax's running state and so is exercised by
+    ``test_mha_e2e.py`` instead; ``rescale_O`` divides that ``O`` by the row
+    sums into a bf16 tile.
     ``mha.mac_dims(pv=...)`` answers either product's micro-tile without
     building a kernel, as ``mm.mac_dims`` does.
 
@@ -1203,13 +1205,23 @@ mha.mac_dims = _MhaFactory.mac_dims  # pyright: ignore[reportFunctionMemberAcces
 
 _MHA_BLOCK = 64  # partial_softmax's fast path needs 64 keys per block
 
-# P is 2^x rounded once; l is P summed, stored, and rescaled by a rounded 2^x.
-_MHA_SOFTMAX_ACCURATE_TOLERANCE = Tolerance.bf16_ulps(
-    1,
-    atol=2.0**-125,
-    note="exp2 within 2.8e-6 before its bf16 rounding (0.73 ulp measured on "
-    "npu2); atol admits 2^x flushed to +0 below -125.5",
-)
+
+def _mha_softmax_accurate_bound(a, idx, s_q_eff, s_kv_eff, *, scale):
+    """One bf16 ulp per stored value; l, P summed in float32, half of P's each.
+
+    exp2 is within 2.8e-6 before its bf16 rounding, and 2^x flushes to +0
+    below -125.5.
+    """
+    p, state = mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, scale=scale)
+    b = _MHA_BLOCK
+    p_ulp = np.where(
+        p == 0, 0, np.maximum(np.ldexp(1.0, np.frexp(p)[1] - 8), 2.0**-125)
+    )
+    state_bound = np.ldexp(1.0, np.frexp(state)[1] - 8) * (state != 0)
+    state_bound[:, 2 * b : 3 * b] = (
+        (p_ulp / 2 + 2.8e-6 * p).reshape(len(p), b, b).sum(axis=2)
+    )
+    return p_ulp, state_bound
 
 
 def mha_softmax(accurate_exp2: bool = False) -> ExternalFunction:
@@ -1218,10 +1230,10 @@ def mha_softmax(accurate_exp2: bool = False) -> ExternalFunction:
     Writes the block's unnormalized weights ``P = exp2(A * s - m)``, with
     ``s = log2(e) / 8`` and ``m`` each query row's running maximum, and
     updates the running state ``scale_buffer``: ``[m, m, l, exp2(m_prev -
-    m)]``, 64 rows each. The state is zeroed before every call, so each call
-    is a first key block against a running maximum of 0; the carry across
-    blocks is ``test_mha_e2e.py``'s. The kernel masks by overwriting
-    ``A``'s masked entries in place.
+    m)]``, 64 float32 rows each. The state is zeroed before every call, so
+    each call is a first key block against a running maximum of 0; the
+    carry across blocks is ``test_mha_e2e.py``'s. The kernel masks by
+    overwriting ``A``'s masked entries in place.
 
     Which block it is stays a runtime operand, as in the kernel: ``idx`` is
     ``(key block, query block)`` (equal on the causal diagonal, key block
@@ -1245,7 +1257,7 @@ def mha_softmax(accurate_exp2: bool = False) -> ExternalFunction:
         )
     b = _MHA_BLOCK
     tile = np.ndarray[(b * b,), np.dtype[bfloat16]]
-    state = np.ndarray[(4 * b,), np.dtype[bfloat16]]
+    state = np.ndarray[(4 * b,), np.dtype[np.float32]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
     scale = float(bfloat16(np.log2(np.e) / np.sqrt(b)))
     return _make_extern(
@@ -1273,7 +1285,11 @@ def mha_softmax(accurate_exp2: bool = False) -> ExternalFunction:
             # bf16 store on npu1 (0.37% of |a| + |b|), so its rtol is 0.4% of
             # |a| + |b| and its floor only admits the underflow to 0.
             tolerance=(
-                _MHA_SOFTMAX_ACCURATE_TOLERANCE
+                Tolerance.bounded(
+                    partial(_mha_softmax_accurate_bound, scale=scale),
+                    note="derived from exp2's 2.8e-6 and each store's "
+                    "rounding; P measured 0.73 ulp on npu2",
+                )
                 if accurate_exp2
                 else (
                     Tolerance.relative(
@@ -1308,7 +1324,7 @@ def mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, *, scale):
     if kv == q:
         keep &= cols <= rows
     if kv > q or not keep.any():
-        return np.zeros((len(a), b * b)), np.zeros((len(a), 4 * b))
+        return np.zeros((len(a), b * b)), np.zeros((len(a), 4 * b), np.float32)
     scaled = a.astype(np.float32).reshape(-1, b, b) * np.float32(scale)
     m = np.where(keep, scaled, -np.inf).max(axis=2)
     m = np.maximum(m.astype(bfloat16).astype(np.float32), 0)

@@ -109,7 +109,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [mm_bfp_mixed.cc](./linalg/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul (AIE2P only) | `bfp16` |
 | [mv_bf16.cc](./linalg/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV); `-DA_COL_MAJ` reads A column-major with partial sums carried across calls, bit-identical to row-major | `bfloat16` |
 | [mv_i16.cc](./linalg/mv_i16.cc) | AIE API | Matrix/Vector multiply, A word-transposed | `int16_t`→`int32_t` |
-| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention **decode** toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 16 rows; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16` |
+| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention **decode** toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 16 rows; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16`, running state and O `float32` |
 | [flash_attn_prefill.cc](./linalg/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 sliding-window | `bfloat16` |
 
 ## norm
