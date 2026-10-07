@@ -339,7 +339,7 @@ class WorkerRuntimeBarrier:
         self.initial_value = initial_value
         self.worker_locks = []
 
-    def wait_for_value(self, value: int):
+    def wait_for_value(self, value: int, *, greater_equal: bool = False):
         """Wait for the barrier to be set to `value`.
 
         Should be called from inside a core function. The wait leaves the
@@ -349,6 +349,7 @@ class WorkerRuntimeBarrier:
 
         Args:
             value (int): The value to wait for.
+            greater_equal (bool): Use a consuming greater-than-or-equal lock wait.
         """
         # Here this is assuming that the we are currently placing the last added lock
         # And therefore that wait_for_value operations are placed just after their corresponding Worker...
@@ -357,7 +358,10 @@ class WorkerRuntimeBarrier:
             raise ValueError(
                 "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
             )
-        use_lock(self.worker_locks[-1], LockAction.Acquire, value=value)
+        action = (
+            LockAction.AcquireGreaterEqual if greater_equal else LockAction.Acquire
+        )
+        use_lock(self.worker_locks[-1], action, value=value)
 
     def set(self, value: int):
         """Set the barrier to ``value`` from within a runtime sequence body.

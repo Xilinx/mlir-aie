@@ -20,10 +20,14 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING, Iterator
 
 if TYPE_CHECKING:
+    from ..configuration import Configuration
     from .runtime import ActiveSequence
 
 _active_sequence: ContextVar["ActiveSequence | None"] = ContextVar(
     "iron_active_sequence", default=None
+)
+_active_configuration: ContextVar["Configuration | None"] = ContextVar(
+    "iron_active_configuration", default=None
 )
 
 
@@ -53,3 +57,18 @@ def active_sequence_scope(seq: "ActiveSequence") -> Iterator["ActiveSequence"]:
         yield seq
     finally:
         _active_sequence.reset(token)
+
+
+def active_configuration() -> "Configuration | None":
+    return _active_configuration.get()
+
+
+@contextmanager
+def active_configuration_scope(
+    configuration: "Configuration",
+) -> Iterator["Configuration"]:
+    token = _active_configuration.set(configuration)
+    try:
+        yield configuration
+    finally:
+        _active_configuration.reset(token)

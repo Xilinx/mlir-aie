@@ -717,6 +717,17 @@ class CompilableDesign:
         )
         return xclbin_path, inst_path
 
+    @staticmethod
+    def _reject_multi_device_non_full_elf(module) -> None:
+        count_attr = module.operation.attributes.get("iron.configuration_count")
+        configuration_count = count_attr.value if count_attr is not None else 1
+        if configuration_count > 1:
+            raise NotImplementedError(
+                "Non-full-ELF compilation supports one Configuration; "
+                f"the Program contains {configuration_count} Configurations. "
+                "Use full_elf=True for a multi-configuration Program."
+            )
+
     def _compile_full_elf(
         self,
         ExternalFunction,
@@ -731,6 +742,7 @@ class CompilableDesign:
         """
         if not isinstance(self.mlir_generator, Path):
             self._bind_generation_device()
+        expected_kernel_name = self._iron_entry(full_elf=True)
 
         explicit_path = full_elf_path is not None
         cache_hash = None
@@ -753,7 +765,9 @@ class CompilableDesign:
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"full_elf": elf_path}
                 ):
-                    kernel_name = self._cached_full_elf_kernel_name(kernel_dir)
+                    kernel_name = self._cached_full_elf_kernel_name(
+                        kernel_dir, expected_kernel_name
+                    )
                     if kernel_name is not None:
                         self._record_artifacts(
                             kernel_dir, elf=elf_path, full_elf_kernel_name=kernel_name
@@ -773,7 +787,9 @@ class CompilableDesign:
                 _cleanup_failed_compilation(kernel_dir)
 
             if not explicit_path and self.use_cache and elf_path.exists():
-                kernel_name = self._cached_full_elf_kernel_name(kernel_dir)
+                kernel_name = self._cached_full_elf_kernel_name(
+                    kernel_dir, expected_kernel_name
+                )
                 if kernel_name is None:
                     _cleanup_failed_compilation(kernel_dir)
                 else:
@@ -827,7 +843,9 @@ class CompilableDesign:
         self._record_artifacts(
             kernel_dir,
             elf=elf_path,
-            full_elf_kernel_name=self._parse_full_elf_kernel_name(kernel_dir),
+            full_elf_kernel_name=self._parse_full_elf_kernel_name(
+                kernel_dir, expected_kernel_name
+            ),
         )
         return elf_path, None
 
@@ -944,7 +962,7 @@ class CompilableDesign:
         self._elf_path = elf
         self._dispatch_lib_path = dispatch_library
         self._full_elf_kernel_name = full_elf_kernel_name
-        self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
+        self._expected_tensor_sizes = parse_dma_sizes(kernel_dir, full_elf_kernel_name)
 
     def _generate_and_build_kernels(
         self, ExternalFunction, kernel_dir: Path, *, full_elf: bool = False
@@ -999,7 +1017,9 @@ class CompilableDesign:
         return chess_uses == {True}
 
     @staticmethod
-    def _parse_full_elf_kernel_name(kernel_dir: Path) -> str:
+    def _parse_full_elf_kernel_name(
+        kernel_dir: Path, expected: str | None = None
+    ) -> str:
         """Return the ``"<device>:<sequence>"`` XRT kernel name for the full ELF.
 
         The full-ELF runtime addresses the kernel by the device symbol name and
@@ -1009,23 +1029,41 @@ class CompilableDesign:
         """
         config_path = kernel_dir / "full_elf_config.json"
         config = json.loads(config_path.read_text())
+        available = []
         for kernel in config["xrt-kernels"]:
             for instance in kernel["instance"]:
-                return f"{kernel['name']}:{instance['id']}"
+                name = f"{kernel['name']}:{instance['id']}"
+                available.append(name)
+                if expected is None or name == expected:
+                    return name
+        if expected is not None:
+            raise RuntimeError(
+                f"{config_path} does not contain entry {expected!r}; "
+                f"found {available}."
+            )
         raise RuntimeError(f"{config_path} names no runtime sequence.")
 
     @classmethod
-    def _cached_full_elf_kernel_name(cls, kernel_dir: Path) -> str | None:
+    def _cached_full_elf_kernel_name(
+        cls, kernel_dir: Path, expected: str | None = None
+    ) -> str | None:
         """Return a cached full ELF's kernel name, or ``None`` to rebuild it.
 
         A cached ELF is only usable with its ``full_elf_config.json``; one that
         is missing or unreadable makes the hit a miss instead of an error.
         """
         try:
-            return cls._parse_full_elf_kernel_name(kernel_dir)
+            return cls._parse_full_elf_kernel_name(kernel_dir, expected)
         except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
             logger.debug("Rebuilding full ELF in %s: %s", kernel_dir, exc)
             return None
+
+    def _iron_entry(self, *, full_elf: bool) -> str | None:
+        mlir_text, _ = self._generated_for(full_elf=full_elf)
+        with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
+            module = _Module.parse(mlir_text)
+            entry = module.operation.attributes.get("iron.entry")
+            return entry.value if entry is not None else None
 
     def get_artifacts(self) -> tuple[Path, Path] | None:
         """Return cached artifact paths without recompiling, or ``None``."""
@@ -1712,7 +1750,10 @@ class CompilableDesign:
         mlir_text, external_kernels = self._generated_for(full_elf=full_elf)
         ExternalFunction._instances.update(external_kernels)
         with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
-            return _Module.parse(mlir_text)
+            module = _Module.parse(mlir_text)
+            if not full_elf:
+                self._reject_multi_device_non_full_elf(module)
+            return module
 
     def __hash__(self) -> int:
         # The cache hash includes the active target device. Do not use a

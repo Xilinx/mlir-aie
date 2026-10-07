@@ -45,7 +45,9 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
+def parse_dma_sizes(
+    kernel_dir: Path, entry: str | None = None
+) -> list[int] | None:
     """Return per-host-arg footprints, in bits, from ``input_with_addresses.mlir``.
 
     The returned list follows ``aie.runtime_sequence`` tensor argument
@@ -56,6 +58,8 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
 
     Args:
         kernel_dir: Directory aiecc wrote its lowered MLIR into.
+        entry: The ``"device:sequence"`` host entry to inspect. If omitted,
+            the parser infers a unique call-graph root.
 
     Returns:
         A list of per-tensor bit counts (scalar arguments are skipped),
@@ -100,6 +104,7 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         # Pass 1: collect every runtime_sequence + record aiex.run call edges.
         all_sequences: list = []
         named_sequences: dict = {}  # sym_name -> op  (anonymous ones omitted)
+        qualified_sequences: dict = {}
         called: set = set()
         for op in _walk(module.operation):
             if op.name == "aie.runtime_sequence":
@@ -107,6 +112,12 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
                 sym = _get_str_attr(op, "sym_name")
                 if sym is not None:
                     named_sequences[sym] = op
+                    parent = op.parent
+                    while parent is not None and parent.name != "aie.device":
+                        parent = parent.parent
+                    if parent is not None:
+                        device = _get_str_attr(parent, "sym_name") or "main"
+                        qualified_sequences[f"{device}:{sym}"] = op
             elif op.name == "aiex.run":
                 target = _get_str_attr(op, "runtime_sequence_symbol")
                 if target is not None:
@@ -116,7 +127,11 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
             return None
 
         # Pass 2: pick the entry point.
-        if len(all_sequences) == 1:
+        if entry is not None:
+            if entry not in qualified_sequences:
+                return None
+            entry = qualified_sequences[entry]
+        elif len(all_sequences) == 1:
             # Only one sequence in the module — trivially the root.  Works
             # whether or not it carries a sym_name.
             entry = all_sequences[0]

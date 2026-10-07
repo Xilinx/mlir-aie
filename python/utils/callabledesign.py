@@ -237,6 +237,8 @@ class CallableDesign:
             physical_mlir = compilable._kernel_dir / "input_with_addresses.mlir"
             if physical_mlir.exists():
                 trace_config.physical_mlir_path = str(physical_mlir)
+            if compilable._full_elf_kernel_name is not None:
+                trace_config.kernel = compilable._full_elf_kernel_name
         # The lowered runtime_sequence operand list is the true host-buffer
         # contract (one operand per host BO, including any trace/ctrl-packet
         # buffer the lowering appended). Its length is floor-independent, unlike

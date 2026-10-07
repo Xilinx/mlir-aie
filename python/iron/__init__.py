@@ -69,6 +69,7 @@ from aie.utils.jit import jit
 
 from . import algorithms, kernels
 from .buffer import Buffer
+from .configuration import Configuration
 from .dataflow import (
     Acquire,
     Bd,
@@ -97,6 +98,7 @@ from .worker import Worker, WorkerRuntimeBarrier
 __all__ = [
     # Core design abstractions
     "Buffer",
+    "Configuration",
     "ExternalFunction",
     "Kernel",
     "KernelObject",

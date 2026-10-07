@@ -18,6 +18,7 @@ from ..helpers.errors import design_error
 from ..helpers.sourceloc import SourceSite
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
+from .configuration import Configuration
 from .dataflow.objectfifo import ObjectFifoLink
 from .device import Device
 from .resolvable import Resolvable
@@ -59,19 +60,41 @@ class Program:
                 "Device, or ensure an NPU runtime is available for "
                 "iron.get_current_device()."
             )
-        self._device = device
-        self._rt = rt
-        self._workers = list(workers) if workers is not None else []
-        self._trace_size = None
-        self._trace_workers = None
-        self._reuse_output_buffer = False
-        self._egress_shim_col = 0
-        self._coretile_events = None
-        self._coremem_events = None
-        self._memtile_events = None
-        self._shimtile_events = None
+        configuration = Configuration(
+            "main", device, workers=workers or (), runtimes=[rt]
+        )
+        self._configurations = [configuration]
+        self._entry = rt
+        self._implicit_configuration = True
         self._site = SourceSite.capture()
-        self._core_trace_mode = TraceMode.EventTime
+
+    @classmethod
+    def compose(
+        cls,
+        configurations: "list[Configuration]",
+        *,
+        entry: Runtime,
+    ) -> "Program":
+        program = cls.__new__(cls)
+        program._configurations = list(configurations)
+        program._entry = entry
+        program._implicit_configuration = False
+        program._site = SourceSite.capture()
+        program._validate_composition()
+        return program
+
+    def _validate_composition(self) -> None:
+        if not self._configurations:
+            raise ValueError("Program requires at least one configuration.")
+        names = [configuration.name for configuration in self._configurations]
+        duplicates = sorted(name for name in set(names) if names.count(name) > 1)
+        if duplicates:
+            raise ValueError(f"Program has duplicate configuration names: {duplicates}.")
+        entry_configuration = self._entry.configuration
+        if entry_configuration not in self._configurations:
+            raise ValueError(
+                f"Entry runtime {self._entry.name!r} does not belong to this Program."
+            )
 
     def enable_trace(
         self,
@@ -116,15 +139,17 @@ class Program:
             core_trace_mode (TraceMode, optional): Trace mode for core tiles.
                 Defaults to Event-Time.
         """
-        self._trace_size = trace_size
-        self._trace_workers = workers
-        self._reuse_output_buffer = reuse_output_buffer
-        self._coretile_events = coretile_events
-        self._coremem_events = coremem_events
-        self._memtile_events = memtile_events
-        self._shimtile_events = shimtile_events
-        self._core_trace_mode = core_trace_mode
-        self._egress_shim_col = egress_shim_col
+        self._entry.configuration.enable_trace(
+            trace_size=trace_size,
+            workers=workers,
+            reuse_output_buffer=reuse_output_buffer,
+            coretile_events=coretile_events,
+            coremem_events=coremem_events,
+            memtile_events=memtile_events,
+            shimtile_events=shimtile_events,
+            egress_shim_col=egress_shim_col,
+            core_trace_mode=core_trace_mode,
+        )
 
     def resolve_program(self, device_name="main"):
         """Resolve the program components in order to generate MLIR.
@@ -145,34 +170,57 @@ class Program:
         with context, ir.Location.unknown():
             loc = self._site.location()
 
-        self._name_unnamed()
+        self._validate_composition()
+        for configuration in self._configurations:
+            self._name_unnamed(configuration)
         with mlir_mod_ctx(context=context, location=loc) as ctx:
-            # Create a fresh device instance of the same type to avoid stale MLIR operations
-            # This preserves the device configuration while ensuring clean state
-            device_type = type(self._device)
-            # For dynamically created device classes, the constructor takes no arguments
-            self._device = device_type()  # pyright: ignore[reportCallIssue]
+            for configuration in self._configurations:
+                for worker in configuration.workers:
+                    for arg in worker.flat_fn_args:
+                        if isinstance(arg, ScratchpadParameter):
+                            arg.resolve()
 
-            # Resolve parameters known up front (Worker fn_args) at module
-            # scope now. aiex.scratchpad_parameter ops are global across all
-            # devices because the scratchpad is a single hardware resource
-            # shared by all PDIs.
-            for w in self._workers:
-                for arg in w.flat_fn_args:
-                    if isinstance(arg, ScratchpadParameter):
-                        arg.resolve()
+            for configuration in self._configurations:
+                symbol = (
+                    device_name
+                    if self._implicit_configuration
+                    else configuration.name
+                )
+                self._resolve_configuration(configuration, symbol, loc)
 
-            @device(self._device.resolve(), sym_name=device_name, loc=loc)
-            def device_body():
+            if not self._implicit_configuration:
+                entry_configuration = self._entry.configuration
+                ctx.module.operation.attributes["iron.entry"] = ir.StringAttr.get(
+                    f"{entry_configuration.name}:{self._entry.name}"
+                )
+                ctx.module.operation.attributes["iron.configuration_count"] = (
+                    ir.IntegerAttr.get(
+                        ir.IntegerType.get_signless(32), len(self._configurations)
+                    )
+                )
+
+            self._print_verify(ctx)
+            return ctx.module
+
+    def _resolve_configuration(self, configuration, device_name, loc) -> None:
+        device_type = type(configuration.device)
+        configuration._device = device_type()  # pyright: ignore[reportCallIssue]
+        current_device = configuration.device
+        workers = configuration.workers
+        runtimes = configuration.runtimes
+
+        @device(current_device.resolve(), sym_name=device_name, loc=loc)
+        def device_body():
                 # Collect all fifos. Runtime-driven fifos already have their shim
                 # endpoints bound (Runtime registered its fn_args at construction),
                 # so they resolve here with both ends known -- the sequence body
-                # is emitted after workers (self._rt.resolve() below),
+                # is emitted after workers,
                 # so body verbs that read worker-side state (barrier locks, worker
                 # Buffer placement) see it resolved.
                 all_fifos = set()
-                all_fifos.update(self._rt.fifos)
-                for w in self._workers:
+                for runtime in runtimes:
+                    all_fifos.update(runtime.fifos)
+                for w in workers:
                     all_fifos.update(w.fifos)
 
                 # Sort fifos for deterministic resolve
@@ -182,7 +230,7 @@ class Program:
                 # tile (pinned or after placement) is caught by the aie.device
                 # verifier's one-core-per-tile check, so no Python-side guard.
                 all_tiles = []
-                for w in self._workers:
+                for w in workers:
                     all_tiles.append(w.tile)
                     # Generic: any user-side Resolvable in fn_args may declare
                     # additional tile dependencies via tiles(). Default is [].
@@ -198,16 +246,16 @@ class Program:
                         all_tiles.append(f._object_fifo._delegate_tile)
                 # Lower-level: explicit Flow / TileDma / Lock primitives
                 # contribute tiles too.
-                for fl in self._rt.flows:
+                for fl in configuration.flows:
                     all_tiles.extend(fl.all_tiles())
-                for td in self._rt.tile_dmas:
+                for td in configuration.tile_dmas:
                     all_tiles.extend(td.all_tiles())
-                for lk in self._rt.locks:
+                for lk in configuration.locks:
                     all_tiles.append(lk.tile)
 
                 # Resolve tiles
                 for t in all_tiles:
-                    self._device.resolve_tile(t)
+                    current_device.resolve_tile(t)
 
                 # Generate fifos
                 for f in all_fifos:
@@ -216,12 +264,12 @@ class Program:
                 # Generate explicit Locks (must come before TileDma + Worker
                 # bodies that reference them; Buffers attached to worker
                 # fn_args are still resolved in the worker loop below).
-                for lk in self._rt.locks:
+                for lk in configuration.locks:
                     lk.resolve()
 
                 # Resolve any Buffers and Locks referenced by explicit TileDma
                 # programs (those aren't reached via worker.fn_args).
-                for td in self._rt.tile_dmas:
+                for td in configuration.tile_dmas:
                     bufs, locks = td.all_buffers_and_locks()
                     for lk in locks:
                         lk.resolve()
@@ -230,30 +278,30 @@ class Program:
                         b.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
-                for w in self._workers:
+                for w in workers:
                     for arg in w.flat_fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
                         elif isinstance(arg, Resolvable):
                             if (
-                                arg not in self._rt.flows
-                                and arg not in self._rt.tile_dmas
+                                arg not in configuration.flows
+                                and arg not in configuration.tile_dmas
                             ):
                                 arg.resolve()
 
                 # Generate core programs
-                for w in self._workers:
+                for w in workers:
                     w.resolve()
 
                 # Emit aie.cascade_flow ops for each Worker's outgoing edges.
                 # Must run after worker.resolve() so both tiles are placed.
-                for w in self._workers:
+                for w in workers:
                     for cf in w._outgoing_cascades:
                         cf.resolve()
 
                 # Generate explicit per-tile DMA programs (lower-level peers
                 # of ObjectFifo, paired with Flow + Lock).
-                self._rt.resolve_tile_dmas()
+                configuration.resolve_tile_dmas()
 
                 # Generate trace routes
                 # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace
@@ -262,21 +310,24 @@ class Program:
 
                 # Scan workers and build list of tiles to trace
                 tiles_to_trace = []
-                if self._trace_workers is not None:
-                    for w in self._trace_workers:
+                if configuration._trace_workers is not None:
+                    for w in configuration._trace_workers:
                         tiles_to_trace.append(w.tile.op)
                 else:
-                    for w in self._workers:
+                    for w in workers:
                         if w.trace is not None:
                             tiles_to_trace.append(w.tile.op)
-                if self._trace_size is not None and self._trace_size > 0:
+                if (
+                    configuration._trace_size is not None
+                    and configuration._trace_size > 0
+                ):
                     trace_utils.configure_trace(
                         tiles_to_trace,
-                        coretile_events=self._coretile_events,
-                        coremem_events=self._coremem_events,
-                        memtile_events=self._memtile_events,
-                        shimtile_events=self._shimtile_events,
-                        core_trace_mode=self._core_trace_mode,
+                        coretile_events=configuration._coretile_events,
+                        coremem_events=configuration._coremem_events,
+                        memtile_events=configuration._memtile_events,
+                        shimtile_events=configuration._shimtile_events,
+                        core_trace_mode=configuration._core_trace_mode,
                     )
 
                 # Emit the runtime sequence body after workers, their locks, and
@@ -289,43 +340,42 @@ class Program:
                 # PDI (no xclbin configures the device), so pass the device
                 # symbol as the load_pdi reference. The flag is injected into
                 # the compile context by CompilableDesign.
-                load_pdi_device_ref = (
-                    device_name if get_compile_arg("_iron_full_elf") else None
-                )
-                self._rt.resolve(
-                    trace_size=self._trace_size,
-                    reuse_output_buffer=self._reuse_output_buffer,
-                    egress_shim_col=self._egress_shim_col,
-                    load_pdi_device_ref=load_pdi_device_ref,
-                    device=self._device,
-                )
+                for runtime in runtimes:
+                    load_pdi_device_ref = (
+                        device_name
+                        if runtime is self._entry
+                        and get_compile_arg("_iron_full_elf")
+                        else None
+                    )
+                    runtime.resolve(
+                        trace_size=configuration._trace_size,
+                        reuse_output_buffer=configuration._reuse_output_buffer,
+                        egress_shim_col=configuration._egress_shim_col,
+                        load_pdi_device_ref=load_pdi_device_ref,
+                        device=current_device,
+                    )
 
                 # Flow transfers name their allocations while the sequence runs.
                 # Resolve both at device scope using those symbol references.
-                for fl in self._rt.flows:
+                for fl in configuration.flows:
                     fl.resolve()
 
-            # Resolve parameters only discoverable once the sequence body has
-            # traced (offset_parameter=/length_parameter= passed directly to
-            # fill()/drain(), rather than declared up front via Worker
-            # fn_args). device_body's own insertion point is scoped to its
-            # @device region, so by now the ambient insertion point is back to
-            # module scope -- the same place the fn_args-declared parameters
-            # above were resolved.
-            for p in self._rt.scratchpad_parameters:
+        for runtime in runtimes:
+            for p in runtime.scratchpad_parameters:
                 p.resolve()
 
-            self._print_verify(ctx)
-            return ctx.module
-
-    def _name_unnamed(self) -> None:
+    def _name_unnamed(self, configuration: Configuration) -> None:
         """Name the ObjectFifos, and the Buffers the runtime writes, left unnamed.
 
         Ops refer to them by symbol, so they are numbered here in the order the
         design reaches them, independent of what else the process has built.
         """
-        fifos = [h._object_fifo for h in self._rt.fifos]
-        fifos += [h._object_fifo for w in self._workers for h in w.fifos]
+        fifos = [
+            h._object_fifo
+            for runtime in configuration.runtimes
+            for h in runtime.fifos
+        ]
+        fifos += [h._object_fifo for w in configuration.workers for h in w.fifos]
         fifos = list(dict.fromkeys(fifos))
         for of in fifos:
             for handle in [of._prod, *of._cons]:
@@ -333,7 +383,9 @@ class Program:
                 if isinstance(link, ObjectFifoLink):
                     reached = [h._object_fifo for h in [*link._srcs, *link._dsts]]
                     fifos += [f for f in reached if f not in fifos]
-        rtps = [b for w in self._workers for b in w.buffers if b._use_write_rtp]
+        rtps = [
+            b for w in configuration.workers for b in w.buffers if b._use_write_rtp
+        ]
         taken = {of.name for of in fifos} | {b._name for b in rtps}
 
         def fresh(prefix):

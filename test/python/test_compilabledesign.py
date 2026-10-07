@@ -20,17 +20,16 @@ import sys
 from pathlib import Path
 from types import CodeType
 
+import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 import numpy as np
 import pytest
-
-import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
 from aie.iron.algorithms import _pipeline
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
-from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 from aie.utils.compile.jit import _hash as _hash_mod
+from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 from aie.utils.compile.jit._hash import _compute_artifact_hash, _compute_recipe_hash
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
@@ -1742,9 +1741,9 @@ def test_specialized_dispatch_runtime_constant_preserves_dtype(
     dtype, boundary, npu2_device
 ):
     """Generate real IR for every scalar width, without a compiler or an NPU."""
+    from aie.helpers.util import np_dtype_to_mlir_type
     from aie.ir import IntegerAttr
     from aie.iron import Program, Runtime
-    from aie.helpers.util import np_dtype_to_mlir_type
 
     observed = {}
     literal = int(getattr(np.iinfo(dtype), boundary))
@@ -2028,6 +2027,23 @@ module {
     assert parse_dma_sizes(tmp_path) is None
 
 
+def test_parse_dma_sizes_selects_explicit_multi_device_entry(tmp_path):
+        sample_mlir = """\
+module {
+    aie.device(npu1) @first {
+        aie.runtime_sequence @run(%x: memref<1024xi32>) {
+    }
+    }
+    aie.device(npu2) @second {
+        aie.runtime_sequence @run(%y: memref<2048xi16>) {
+    }
+    }
+}
+"""
+        (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
+        assert parse_dma_sizes(tmp_path, entry="second:run") == [2048 * 16]
+
+
 def test_parse_dma_sizes_returns_none_for_dynamic_shape_arg(tmp_path):
     """A dynamic-dim memref arg means the kernel's host contract isn't a
     fixed element count — skip validation rather than guess."""
@@ -2069,8 +2085,6 @@ def test_compute_hash_changes_when_active_device_changes_arch():
     inline passthrough) hit cache collision until the hash started
     tracking the iron-active device.
     """
-    import aie.iron as iron
-
     gen = _gemm_gen()
     cd = CompilableDesign(gen, compile_kwargs={"M": 64, "K": 64, "N": 64})
 
@@ -2097,8 +2111,8 @@ def test_kernels_mm_mac_dims_per_arch():
     and silently produce garbage on AIE2P, which uses (4, 4, 8) for the
     same i16/i16 dtype combo.
     """
-    import numpy as np
     import aie.iron.kernels as kernels
+    import numpy as np
 
     set_current_device(NPU1Col1())
     mm_aie2 = kernels.mm(
@@ -2201,6 +2215,47 @@ def test_mlir_path_compile_forwards_include_paths_and_stages_objects(
         assert design.get_cache_entry().elf == (tmp_path / "design.elf").resolve()
 
     assert calls == [([], (include_path,))]
+
+
+def test_non_full_elf_allows_raw_multi_device_mlir(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module { aie.device(npu1) @a {} aie.device(npu1) @b {} }"
+    )
+
+    design = CompilableDesign(mlir_path)
+    design._generate_mlir(ExternalFunction)
+
+
+def test_non_full_elf_rejects_multi_configuration_program(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        'module attributes {iron.configuration_count = 2 : i32, '
+        'iron.entry = "main:sequence"} {}'
+    )
+
+    with pytest.raises(NotImplementedError, match="contains 2 Configurations"):
+        CompilableDesign(mlir_path)._generate_mlir(ExternalFunction)
+
+
+def test_full_elf_kernel_name_selects_explicit_entry(tmp_path):
+    (tmp_path / "full_elf_config.json").write_text(
+        json.dumps(
+            {
+                "xrt-kernels": [
+                    {"name": "first", "instance": [{"id": "run"}]},
+                    {"name": "entry", "instance": [{"id": "sequence"}]},
+                ]
+            }
+        )
+    )
+
+    assert (
+        CompilableDesign._parse_full_elf_kernel_name(tmp_path, "entry:sequence")
+        == "entry:sequence"
+    )
+    with pytest.raises(RuntimeError, match="does not contain entry"):
+        CompilableDesign._parse_full_elf_kernel_name(tmp_path, "missing:sequence")
 
 
 # ---------------------------------------------------------------------------
