@@ -1,0 +1,42 @@
+{
+ "schema": 1,
+ "target": "sa-placer-hw",
+ "metrics": [],
+ "runs": [
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "37584256420",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37584256420",
+   "date": "2026-10-07T06:55:46+00:00",
+   "commit": {
+    "id": "b541bba8ad114e3aa1316083f61c5170353f212d",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/b541bba8ad114e3aa1316083f61c5170353f212d",
+    "message": "[aie_kernels] Softmax over a row split into blocks (#3884)",
+    "timestamp": "2026-10-07T03:19:06Z"
+   },
+   "event": "schedule",
+   "pmode": "default",
+   "device": "Strix",
+   "device_raw": "NPU Strix",
+   "provenance": {
+    "commit": "b541bba8ad",
+    "peano": "22.0.0+94b320c0",
+    "kernels": "9a2551270d5e",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie9",
+    "device": "NPU Strix",
+    "pmode": "default"
+   },
+   "sane": null,
+   "published": false,
+   "n_rows": 0,
+   "exitstatus": 1,
+   "failed": [],
+   "truncated": [],
+   "refused": "power mode is default, required 'turbo'"
+  }
+ ]
+}
