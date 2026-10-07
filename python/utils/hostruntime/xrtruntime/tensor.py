@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import ctypes
 import math
 
 import numpy as np
@@ -34,7 +35,11 @@ class XrtTransport(Transport):
         self.xrt_device = xrt_device
         self.nbytes = nbytes
         self._bo = xrt.bo(xrt_device, nbytes, flags, group_id)
-        self._host = np.frombuffer(self._bo.map(), dtype=np.uint8)
+        mapped = np.frombuffer(self._bo.map(), dtype=np.uint8)
+        # A view of the map does not hold the bo, whose release unmaps it.
+        owner = (ctypes.c_uint8 * nbytes).from_address(mapped.ctypes.data)
+        owner.bo = self._bo
+        self._host = np.frombuffer(owner, dtype=np.uint8)
         self._handles = {}
 
     @property
