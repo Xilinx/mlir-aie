@@ -954,23 +954,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Walkthrough of Python source file (aie2.py)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#nightly-sa-placer-checks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Nightly SA placer checks
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -2218,10 +2201,6 @@
       
         
       
-        
-      
-        
-      
     
     
     
@@ -2481,62 +2460,6 @@
     
   
     Kernel Library
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Nightly Kernel Checks
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=components" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Nightly Component Checks
   
 
     
@@ -3687,23 +3610,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Walkthrough of Python source file (aie2.py)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#nightly-sa-placer-checks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Nightly SA placer checks
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -3866,38 +3772,24 @@ Finally we wrap everything in a <code>Program</code>, passing the Worker via <co
 <p>By default the <code>--aie-place-tiles</code> pass uses a sequential placer that assigns tiles in column-major order. For larger designs with memory or routing constraints, the simulated annealing (SA) placer can potentially find better placements by passing <code>--placer=sa_placer --sa-seed=&lt;N&gt;</code> through to <code>aiecc</code> (via the design's <code>aiecc_flags</code>):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>aiecc<span class="w"> </span>--placer<span class="o">=</span>sa_placer<span class="w"> </span>--sa-seed<span class="o">=</span><span class="m">3</span><span class="w"> </span>...
 </code></pre></div>
-<p>The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/vision/color_detect">color_detect</a> for an example that wires this up as <code>make use_sa_placer=1</code>.</p>
-<h3 id="nightly-sa-placer-checks">Nightly SA placer checks<a class="headerlink" href="#nightly-sa-placer-checks" title="Permanent link">&para;</a></h3>
-<p>Two nightly checks track the SA placer, and their results are in the <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=components">components view</a> of the Nightly Kernel Checks dashboard:</p>
-<ul>
-<li><strong>Seed sweep</strong> (<a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/sa_placer.py"><code>utils/component_checks/sa_placer.py</code></a>, no hardware): <code>aie-opt</code> places two fixtures, the 4-core design from <code>test/place-tiles/sa_placer/test_sa_effort.mlir</code> and MobileNet before placement, with seeds 1 to 20 at full effort. It records how many seeds failed to place, the SA placer's final cost (mean and max), and the CPU time and peak memory each placement took.</li>
-<li><strong>Hardware</strong> (<a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/sa_placer_hw.py"><code>utils/component_checks/sa_placer_hw.py</code></a>, NPU2): MobileNet is placed with seeds 3, 2 and 7, then compiled, run and verified at batch 1, 4, 16 and 64, every image checked. For each seed and batch it records whether the run passed, the compile time, and, from the minimum over 20 launches, the NPU time per image and the host's end-to-end time per image. Above batch 1 it also records the streaming time, <code>(T(N) − T(1)) / (N − 1)</code>: what one more image in a launch costs, with the launch's fixed cost taken out. For each seed it records the placement (a digest of the placed tiles and its SA cost).</li>
-</ul>
-<p>To reproduce one seed of the sweep:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>aie-opt<span class="w"> </span><span class="s1">&#39;--aie-place-tiles=placer=sa_placer sa-seed=N sa-effort=1.0&#39;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>--mlir-pass-statistics<span class="w"> </span>utils/component_checks/fixtures/mobilenet.mlir
-</code></pre></div>
-<p>and of the hardware check, from <code>programming_examples/ml</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python<span class="w"> </span>-m<span class="w"> </span>mobilenet.aie2_mobilenet_iron<span class="w"> </span>--sa-seed<span class="w"> </span>N<span class="w"> </span>--sa-effort<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--batch<span class="w"> </span>B
-</code></pre></div>
-<p>To rerun a whole check, run its script with <code>--out perf.json --meta meta.json</code> (the sweep also needs <code>--aie-opt "$(which aie-opt)"</code>; the hardware check takes <code>--seeds</code> and <code>--batches</code>). It prints a table with one row per seed, or per seed and batch.</p>
+<p>The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/vision/color_detect">color_detect</a> for an example that wires this up as <code>make use_sa_placer=1</code>. The SA placer's nightly checks are on the <a href="https://xilinx.github.io/mlir-aie/dashboard/#view=placement">maintainer dashboard</a>.</p>
 <h2 id="other-tile-types">Other Tile Types<a class="headerlink" href="#other-tile-types" title="Permanent link">&para;</a></h2>
 <p>Besides compute tiles, an AIE-array also contains data movers for accessing L3 memory (shim DMAs) and larger L2 scratchpads (mem tiles), which have been available since the AIE-ML generation — see <a href="../">the introduction of this programming guide</a>. Shim DMAs typically occupy row 0; mem tiles (when available) often reside on row 1. In IRON, you usually let the compiler place these, but you can also pin them explicitly. The following snippet shows pinned <code>Tile(col, row)</code> declarations covering all the tile types found in a single NPU column:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.device</span><span class="w"> </span><span class="kn">import</span> <span class="n">Tile</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">ShimTile</span>     <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">MemTile</span>      <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">ComputeTile1</span> <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">ComputeTile2</span> <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">ComputeTile3</span> <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">ComputeTile4</span> <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.device</span><span class="w"> </span><span class="kn">import</span> <span class="n">Tile</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">ShimTile</span>     <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">MemTile</span>      <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">ComputeTile1</span> <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">ComputeTile2</span> <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">ComputeTile3</span> <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="n">ComputeTile4</span> <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="inspecting-the-generated-mlir">Inspecting the generated MLIR<a class="headerlink" href="#inspecting-the-generated-mlir" title="Permanent link">&para;</a></h2>
 <p><code>@iron.jit</code> lowers your design through the AIE dialect on its way to a binary. To see the MLIR without running anything, pass <code>--dev &lt;target&gt; --emit-mlir</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>python3<span class="w"> </span>aie2.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python3<span class="w"> </span>aie2.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir
 </code></pre></div>
 <p>Redirect the output when you want to keep it for inspection:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>python3<span class="w"> </span>aie2.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir<span class="w"> </span>&gt;<span class="w"> </span>aie.mlir
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python3<span class="w"> </span>aie2.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir<span class="w"> </span>&gt;<span class="w"> </span>aie.mlir
 </code></pre></div>
 <h2 id="exercises"><u>Exercises</u><a class="headerlink" href="#exercises" title="Permanent link">&para;</a></h2>
 <ol>

@@ -2099,10 +2099,6 @@
       
         
       
-        
-      
-        
-      
     
     
     
@@ -2359,62 +2355,6 @@
     
   
     Kernel Library
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Nightly Kernel Checks
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=components" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Nightly Component Checks
   
 
     
@@ -4793,12 +4733,13 @@ covering the bytes its own .data, .rodata and .bss occupy. The pass places
 that buffer with the rest, and AIETargetLdScript emits its extent as the
 <code>data</code> MEMORY region of the core's linker script.</p>
 <h4 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>-placement-budget : Placements the search may try per tile before it gives up. A node count rather than a time limit, so a build stays reproducible; raise it for a tile that reports the budget was hit.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>-placement-budget : Placements each search, ranked then exhaustive, may try per tile before it gives up. A node count rather than a time limit, so a build stays reproducible; raise it for a tile that reports hitting it.
 </code></pre></div>
 <h4 id="statistics">Statistics<a class="headerlink" href="#statistics" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>tiles-needing-search : Tiles where the first ranked placement did not work out
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>backtracks           : Placements undone and retried
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>budget-exhausted     : Tiles abandoned at the placement budget
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>tiles-compacted      : Tiles only the exhaustive search could place
 </code></pre></div>
 <h3 id="-aie-assign-core-link-files"><code>-aie-assign-core-link-files</code><a class="headerlink" href="#-aie-assign-core-link-files" title="Permanent link">&para;</a></h3>
 <p><em>Infer per-core link_files/link_merge_files from func-level link_with</em></p>

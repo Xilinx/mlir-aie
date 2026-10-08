@@ -2112,10 +2112,6 @@
       
         
       
-        
-      
-        
-      
     
     
     
@@ -2561,62 +2557,6 @@
     
   
     Kernel Library
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Nightly Kernel Checks
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=components" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Nightly Component Checks
   
 
     
@@ -4334,10 +4274,17 @@ touches the fewest banks can strand the free run a later buffer needs. When a
 buffer has nowhere to go, the allocator undoes an earlier choice and tries that
 buffer's next-best address. It explores in rank order, so the first arrangement
 it tries is the one the ranking prefers and most designs never backtrack at all.</p>
-<p>The search is bounded at 20000 placements per tile — packing around fixed
-obstacles is NP-hard, and the bound is a count rather than a time limit so
-builds stay reproducible. Reaching it is reported (see the diagnostics below)
-rather than passed off as "no such layout exists".</p>
+<p>Backtracking only tries positions flush against what is already placed, so a
+layout where a buffer must sit against one placed after it is out of its reach.
+When the ranked search fails, an exhaustive one takes over: it slides every
+buffer down into address order and chooses which buffer comes next, which
+reaches every layout that exists. Most designs never get there, and those that
+do only need a legal layout, so it does not rank.</p>
+<p>Each search is bounded by the pass's <code>placement-budget</code> option, 100000
+placements per tile by default — packing around fixed obstacles is NP-hard, and
+the bound is a count rather than a time limit so builds stay reproducible.
+Within the bound, "no room" is a proof that no layout exists; reaching it is
+reported (see the diagnostics below) rather than passed off as one.</p>
 <ul>
 <li><strong><code>Buffer(mem_bank=...)</code></strong> pins a buffer to a bank. The pin is honored or the
   build fails; it is never silently dropped.</li>
@@ -4415,12 +4362,13 @@ sections (data_size)</code>, or <code>this core's static data pinned to bank B</
 may well exist while being too fragmented to use, so shrinking any extent can
 help, not only the one named. Lower <code>data_size</code>, shrink or move buffers, or
 lower <code>stack_size</code>.</p>
-<p><strong><code>the search hit its 20000-placement budget with arrangements still untried</code>
+<p><strong><code>the search hit its 100000-placement budget with arrangements still untried</code>
 (note, attached to the error above).</strong> The allocator gave up rather than proved
 the design infeasible, so a layout may exist that it did not reach. This is
-rare and worth reporting: please file an issue with the design. Pinning a
-buffer or two with <code>mem_bank</code> cuts the search down and often gets a build
-through in the meantime.</p>
+rare and worth reporting: please file an issue with the design. Raising
+<code>placement-budget</code> (<code>--aie-assign-buffer-addresses='placement-budget=N'</code>) lets
+the search go further, and pinning a buffer or two with <code>mem_bank</code> cuts it down;
+either often gets a build through in the meantime.</p>
 <p><strong><code>&lt;what&gt; requires N bytes, which cannot fit in bank B (C bytes total)</code>
 (error).</strong> A <code>mem_bank</code> pin, or a kernel's bank-pinned static data, asks for
 more than a whole bank holds. Nothing about the rest of the design can fix

@@ -2112,10 +2112,6 @@
       
         
       
-        
-      
-        
-      
     
     
     
@@ -2613,62 +2609,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Nightly Kernel Checks
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=components" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Nightly Component Checks
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -4599,20 +4539,8 @@ a limit; remaining truncation is flagged. Nightlies require <code>turbo</code>
 power mode, which the bench runners set at boot. PR and filtered dispatch
 runs may measure another mode, but comparisons require a known, matching
 mode.</p>
-<p>The <a href="https://xilinx.github.io/mlir-aie/kernel-checks/">Nightly Kernel Checks dashboard</a>
-shows run health, per-kernel correctness and timing, and metric histories,
-with warnings for truncated traces and toolchain, runtime or host changes.
-The dashboard and Peano-PR report share <code>utils/kernel_checks/thresholds.json</code>:
-2% for cycles and kernel object size; for <code>npu_us</code>, 10% and more than three
-times the larger MAD. Reports are informational, not PR gates.</p>
-<p><code>utils/kernel_checks/publish.py</code> writes <code>gh-pages:kernel-checks/&lt;npu&gt;/</code>:
-<code>runs/&lt;id&gt;.json</code>, <code>runs.json</code>, <code>latest.json</code> (the last published PR baseline),
-and <code>history/&lt;metric&gt;.json</code>; <code>catalogue.json</code> lists available kernels and
-case outcomes. Runs older than 90 days thin to weekly. Readers reject newer
-schema versions instead of interpreting them. The
-<a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=components">components view</a>
-reads the same format from <code>gh-pages:component-checks/&lt;check&gt;/</code>, written
-by <code>nightlyComponentChecks.yml</code>.</p>
+<p>Nightly results, and how the nightly runs and publishes these checks, are on the
+<a href="https://xilinx.github.io/mlir-aie/dashboard/#view=night">maintainer dashboard</a>.</p>
 <h3 id="static-checks">Static checks<a class="headerlink" href="#static-checks" title="Permanent link">&para;</a></h3>
 <p><code>aie.utils.compile.remarks</code> compiles every factory build (defaults plus
 each <code>.dtypes</code> entry) exactly as the JIT does, with Peano's
@@ -4635,10 +4563,8 @@ is no static-check CI workflow. When invoked in GitHub Actions, the tool
 emits a warning annotation for a dropped pragma and an error annotation
 for a kernel that fails to compile. With
 <code>MLIR_AIE_KERNEL_SOURCES</code> set to a checkout, the checkout's
-<code>aie_kernels/</code> is compiled against an installed wheel. The separate
-<code>nightlyKernelChecks.yml</code> workflow runs the hardware correctness and
-performance checks nightly and on Peano-pin pull requests; it does not run these
-static checks.</p>
+<code>aie_kernels/</code> is compiled against an installed wheel. The nightly
+hardware checks do not run these static checks.</p>
 <h3 id="kernels-the-generic-builder-cannot-run">Kernels the generic builder cannot run<a class="headerlink" href="#kernels-the-generic-builder-cannot-run" title="Permanent link">&para;</a></h3>
 <p>The builder runs one kernel on one Worker. A cascade pair is two: the PUT
 half of <code>cascade_mm</code> (<code>cascade_mm_put</code>) streams its product onto the cascade
