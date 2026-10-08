@@ -16,8 +16,6 @@ template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
              y_acc_dtype *__restrict pY, bool is_up);
 
-constexpr int v_prod_lock = FLM_GEMMA4_DECODE_ATTN_KV_KVH2_V_PROD_LOCK;
-constexpr int v_cons_lock = FLM_GEMMA4_DECODE_ATTN_KV_KVH2_V_CONS_LOCK;
 
 extern "C" {}
 
@@ -99,15 +97,12 @@ void attn_kv_s_begin(bf16 *s, float *y, float *l) {
 
 // Half a round: one of the two KV heads.
 void attn_kv_v_half(bf16 *s, bf16 *v_ping, bf16 *v_pong, float *y, int j) {
-  _lock_acquire(v_cons_lock);
   bf16 *v = v_pingpong.next(v_ping, v_pong);
   attn_fv<DH / 8, GQA_R, GQA_S, GQA_T>(s, v, y, j == 0);
-  _lock_release(v_prod_lock);
 }
 
 void attn_kv_finish(float *y, bf16 *o, float *l) {
-  attn_kv_finish_impl<8 * DH>(y, o,
-                                                                        l);
+  attn_kv_finish_impl<8 * DH>(y, o, l);
 }
 }
 
