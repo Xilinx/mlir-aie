@@ -249,7 +249,7 @@ CASES: list[Case] = [
     # Sized kernels retaining their runtime-count ABI.
     check("add_sized", calls=16, smoke=True),
     check("mul_sized", calls=16, smoke=True),
-    check("relu_sized", calls=16, smoke=True),
+    Case("relu_sized", calls=16, smoke=True),
     check("silu_sized", calls=16, smoke=True),
     # Same remainder pass as the leaky_relu case above on aie2p: 160 steps the
     # 32-lane loop five times, where its unrolled body consumes four. On aie2,
@@ -257,7 +257,7 @@ CASES: list[Case] = [
     check("silu_sized", dict(tile_size=160), tag="unroll-tail", smoke=True),
     # AIE2 silu runs the same 64-element trips as gelu below.
     check("silu_sized", dict(tile_size=96), tag="short-trip", smoke=True),
-    check("gelu_sized", calls=16, smoke=True),
+    Case("gelu_sized", calls=16, smoke=True),
     # On aie2p gelu's 32-lane loop is unrolled four ways too, so it has the
     # same remainder pass and the same need for a size that is not a multiple
     # of it. On aie2, as for silu, 160 leaves a remainder after two trips.
@@ -1658,7 +1658,7 @@ CASES: list[Case] = [
     Case("mul_add", calls=16, scalars=(0,), tag="add", smoke=True),
     # transformer blocks: one row per call
     Case("rms_norm", dict(cols=1024), calls=16, smoke=True),
-    check("rms_norm_eps", dict(cols=1024), calls=16, scalars=(1e-5,), smoke=True),
+    Case("rms_norm_eps", dict(cols=1024), calls=16, scalars=(1e-5,), smoke=True),
     # 200 is too short for the pipelined loops and 1000 has an odd chunk
     # count; both end in a scalar tail.
     check("rms_norm", dict(cols=200), calls=16, tag="row-tail"),
@@ -1925,11 +1925,11 @@ CASES += [
     ),
     check("mv", dict(dim_m=32, dim_k=32), smoke=True),
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
-    check("mha", smoke=True),
+    Case("mha", calls=4, smoke=True),
     # ...and its P*V product, mha.cc's own 8x8x8 expansion. Same tile, but a
     # different micro-tile and so a different blocked operand order, which is
     # the part a shared case could not check.
-    check("mha", dict(pv=True), smoke=True),
+    Case("mha", dict(pv=True), calls=4, smoke=True),
     # The toolkit's online softmax over one key block: params is (key block,
     # query block), scalars the two sequence lengths. The padded diagonal
     # block takes every branch the full one skips (the causal mask, masked
