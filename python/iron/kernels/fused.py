@@ -125,7 +125,7 @@ def fused_mm(
     arch = _detect_arch()
     if bfp16_b and not ARCH_TRAITS[arch].bfp16:
         raise ValueError("fused_mm: bfp16_b needs aie2p; bfp16ebs8 is an AIE2P type")
-    if b_col_maj and (arch != "aie2" or bfp16_b):
+    if b_col_maj and arch != "aie2":
         raise ValueError("fused_mm: b_col_maj is aie2's bf16 B form")
     if bfp16_b:
         r, s, t = 8, 8, 8
