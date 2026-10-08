@@ -84,7 +84,7 @@ from .context import compile_context
 # acquisition, so the bound has to exceed a full build rather than a handshake.
 # file_lock's own 60s default is well under the AIE compiles this guards -- CI
 # budgets individual tests 600-1200s for exactly that reason.
-_COMPILE_LOCK_TIMEOUT_SECONDS = 1800
+COMPILE_LOCK_TIMEOUT_SECONDS = 1800
 
 logger = logging.getLogger(__name__)
 
@@ -537,7 +537,7 @@ class CompilableDesign:
 
         dispatch_so_path = None
 
-        with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
+        with file_lock(lock_file_path, timeout_seconds=COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
             companion_path = (
@@ -767,7 +767,7 @@ class CompilableDesign:
             elf_path = kernel_dir / "design.elf"
         lock_file_path = kernel_dir / ".lock"
 
-        with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
+        with file_lock(lock_file_path, timeout_seconds=COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
@@ -896,7 +896,7 @@ class CompilableDesign:
             inst_path = kernel_dir / "insts.bin"
         lock_file_path = kernel_dir / ".lock"
 
-        with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
+        with file_lock(lock_file_path, timeout_seconds=COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
@@ -1552,14 +1552,14 @@ class CompilableDesign:
         if not self.use_cache:
             return None
         return KernelObjectCache(
-            NPU_CACHE_HOME / "objects", _COMPILE_LOCK_TIMEOUT_SECONDS
+            NPU_CACHE_HOME / "objects", COMPILE_LOCK_TIMEOUT_SECONDS
         )
 
     def _build_cache(self) -> BuildCache | None:
         """Share explicit-path builds across output paths unless caching is off."""
         if not self.use_cache:
             return None
-        return BuildCache(NPU_CACHE_HOME / "builds", _COMPILE_LOCK_TIMEOUT_SECONDS)
+        return BuildCache(NPU_CACHE_HOME / "builds", COMPILE_LOCK_TIMEOUT_SECONDS)
 
     def _device_cache_dir(self) -> Path | None:
         """Share each device's compiled cores across designs unless caching is off."""

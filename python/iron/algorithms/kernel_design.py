@@ -39,7 +39,7 @@ from aie.utils import bfp, ensure_current_device, tensor
 from aie.utils.compile import NPU_CACHE_HOME, resolve_target_arch
 from aie.utils.compile.jit import CompileTime, In, InOut, Out
 from aie.utils.compile.jit._object_cache import KernelObjectCache
-from aie.utils.compile.jit.compilabledesign import _COMPILE_LOCK_TIMEOUT_SECONDS
+from aie.utils.compile.jit.compilabledesign import COMPILE_LOCK_TIMEOUT_SECONDS
 from aie.utils.compile.readobj import linked
 from aie.utils.jit import jit
 from aie.utils.trace import TraceConfig
@@ -151,7 +151,7 @@ def _kernel_stack_bytes(kernels, embed_bitcode):
     the linked core and its allocator fails the build when the buffers no
     longer fit.
     """
-    cache = KernelObjectCache(NPU_CACHE_HOME / "objects", _COMPILE_LOCK_TIMEOUT_SECONDS)
+    cache = KernelObjectCache(NPU_CACHE_HOME / "objects", COMPILE_LOCK_TIMEOUT_SECONDS)
     arch = resolve_target_arch(_device())
     deepest = 0
     with tempfile.TemporaryDirectory() as tmp:
