@@ -175,7 +175,7 @@ static inline void epilogue_body(bfloat16 *__restrict y_out,
   // inputs round(clamp(f, lo, hi)) == clamp(round(f), round(lo), round(hi))
   // and the output is bit-identical to clamping in f32. aie2p has no native
   // f32 min/max.
-#ifdef MM_FUSED_B_COL_MAJ
+#ifdef MM_FUSED_C_HALVES
   // The k step leaves each r x t block as its left then right t/2 columns.
   // The conversion is lane-wise, so the halves are rejoined after it, and the
   // clamp, also lane-wise, runs on the rejoined vectors at full width.
@@ -191,7 +191,7 @@ static inline void epilogue_body(bfloat16 *__restrict y_out,
   bound.from_vector(aie::broadcast<float, W>(clamp_max));
   const aie::vector<bfloat16, W> hi = bound.template to_vector<bfloat16>();
 
-#ifdef MM_FUSED_B_COL_MAJ
+#ifdef MM_FUSED_C_HALVES
   AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / (R * T))
   for (int j = 0; j < CHUNK / (R * T); j++) {
     aie::vector<bfloat16, HALF> left, right;

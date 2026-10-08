@@ -14,10 +14,10 @@
 // accumulators live so each pair of A/B loads feeds four macs (load
 // amortization, not unrolling, so j and z step by two). A is one contiguous
 // buffer across z slices; B is column-major over blocks, block (i, j) at
-// (j * colA + i), except in the B^T form. One definition below per B storage
-// format: bfp16ebs8 (AIE2P only -- AIE2's aie_api has an empty placeholder
-// that won't compile), bf16 (AIE2), and bf16 B^T (AIE2), since none compiles
-// on both arches.
+// (j * colA + i), except in the B^T forms. One definition below per B storage
+// format and mac: bfp16ebs8 (AIE2P only -- AIE2's aie_api has an empty
+// placeholder that won't compile), bf16, bf16 B^T on bfp16 macs (AIE2P), and
+// bf16 B^T on bf16 macs.
 #ifdef MM_FUSED_BFP16_B
 using mm_fused_b_elem_t = bfp16ebs8;
 #else
@@ -203,11 +203,84 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
   }
 }
 
+#elif defined(AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16)
+
+// B arrives as B^T in bf16, laid out as in the form below, and the core
+// converts each block to bfp16ebs8 as aie_api's emulated bf16 mmul does.
+// mac_8x8_8x8T takes B transposed, so a B^T block converts as loaded, without
+// the transpose emulation spends on a row-major one: the same values, and
+// each shared exponent spans 8 consecutive k of one column.
+template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
+          unsigned t>
+__aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
+                                    const bfloat16 *__restrict pB,
+                                    float *__restrict pC) {
+  constexpr unsigned sizeA = r * s;
+  constexpr unsigned sizeB = s * t;
+  constexpr unsigned sizeC = r * t;
+  static_assert(sizeA == 64 && sizeB == 64 && sizeC == 64);
+  AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
+  AIE_LOOP_UNROLL(2)
+  for (unsigned z = 0; z < rowA; z += 2) {
+    float *__restrict pC1 = pC + (z * colB) * sizeC;
+    float *__restrict pC2 = pC + ((z + 1) * colB) * sizeC;
+    const bfloat16 *__restrict pA_cur = pA + (z >> 1) * (2 * r * colA * s);
+
+    AIE_LOOP_MAX_ITERATION_COUNT(colB / 2)
+    for (unsigned j = 0; j < colB; j += 2) {
+      const bfloat16 *__restrict pA1 = pA_cur;
+      const bfloat16 *__restrict pA2 = pA_cur + colA * sizeA;
+      const bfloat16 *__restrict pB1 = pB + j * sizeB;
+      const bfloat16 *__restrict pB2 = pB1 + sizeB;
+
+      aie::accum<accfloat, sizeC> C00(aie::load_v<sizeC>(pC1));
+      aie::accum<accfloat, sizeC> C01(aie::load_v<sizeC>(pC1 + sizeC));
+      aie::accum<accfloat, sizeC> C10(aie::load_v<sizeC>(pC2));
+      aie::accum<accfloat, sizeC> C11(aie::load_v<sizeC>(pC2 + sizeC));
+
+      const auto ones = concat(broadcast_one_to_v32bfloat16(),
+                               broadcast_one_to_v32bfloat16());
+      aie::accum<accfloat, sizeA> accA0;
+
+      // Rolled, for the bfp16 form's reason (llvm-aie#1066), and widened by
+      // its two routes for the same Peano abort.
+      AIE_LOOP_MAX_ITERATION_COUNT(colA)
+      for (unsigned i = 0; i < colA; i++) {
+        accA0 = aie::load_v<sizeA>(pA1);
+        pA1 += sizeA;
+        aie::accum<accfloat, sizeA> accA1 =
+            mul_elem_64(aie::load_v<sizeA>(pA2), ones);
+        pA2 += sizeA;
+        aie::accum<accfloat, sizeB> accB0 =
+            mul_elem_64(aie::load_v<sizeB>(pB1), ones);
+        pB1 += colB * sizeB;
+        aie::accum<accfloat, sizeB> accB1 =
+            mul_elem_64(aie::load_v<sizeB>(pB2), ones);
+        pB2 += colB * sizeB;
+
+        const auto A0 = accA0.template to_vector<bfp16ebs8>();
+        const auto A1 = accA1.template to_vector<bfp16ebs8>();
+        const auto B0 = accB0.template to_vector<bfp16ebs8>();
+        const auto B1 = accB1.template to_vector<bfp16ebs8>();
+        C00 = mac_8x8_8x8T(A0, B0, C00);
+        C01 = mac_8x8_8x8T(A0, B1, C01);
+        C10 = mac_8x8_8x8T(A1, B0, C10);
+        C11 = mac_8x8_8x8T(A1, B1, C11);
+      }
+      mm_fused_store_2x2<sizeC>(pC1, pC2, C00, C01, C10, C11);
+      pC1 += 2 * sizeC;
+      pC2 += 2 * sizeC;
+    }
+  }
+}
+
 #else
+
+#define MM_FUSED_C_HALVES 1
 
 // B arrives as B^T, the (n, k) storage a checkpoint's weights have, cut into
 // k panels a DMA can lay out without moving single elements: block (i, j) at
-// (i * colB + j), each t x s and n-major. aie2's mac takes B as s x t/2, so
+// (i * colB + j), each t x s and n-major. The bf16 mac takes B as s x t/2, so
 // each half block (t/2 rows of B^T) is transposed in one shuffle, and each C
 // block is held as its two t/2-column halves, in registers and in pC alike:
 // the epilogue rejoins them once per tile rather than every k step. The four

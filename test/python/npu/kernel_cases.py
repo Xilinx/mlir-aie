@@ -524,7 +524,8 @@ CASES: list[Case] = [
     ],
     # B stored transposed, as IRON's aie2 flm GEMM reads a checkpoint's
     # (n, k) weights: its N64 k step, then two k chunks and two bands at
-    # N32, an N16 tile whose i and j loops unroll, and a CT_K below N.
+    # N32, an N16 tile whose i and j loops unroll, and a CT_K below N. On
+    # aie2p these run on bf16 macs too.
     Case(
         "fused_mm",
         dict(
@@ -538,7 +539,7 @@ CASES: list[Case] = [
             b_col_maj=True,
         ),
         calls=4,
-        devices=("npu1",),
+        devices=("npu1", "npu2"),
     ),
     *[
         check(
@@ -553,12 +554,12 @@ CASES: list[Case] = [
                 mmul_shape=(8, 8, 8),
                 b_col_maj=True,
             ),
-            devices=("npu1",),
+            devices=("npu1", "npu2"),
         )
         for dim_k, n, chunk_k in ((256, 32, 128), (64, 16, 16), (128, 64, 64))
     ],
     # The B^T epilogue rejoins each block's column halves: with an
-    # activation and a clamp, and at r = 4, where a half is one vector.
+    # activation and a clamp, and at r = 4, where a half is one aie2 vector.
     *[
         check(
             "fused_mm",
@@ -573,14 +574,82 @@ CASES: list[Case] = [
                 b_col_maj=True,
                 **epilogue,
             ),
-            devices=("npu1",),
+            devices=devices,
             data_cases=("random", "zeros", "ones", "alternating"),
         )
-        for shape, epilogue in (
-            ((8, 8, 8), dict(epilogue="silu", clamp=(-0.125, 0.75))),
-            ((4, 8, 8), dict(epilogue="gelu")),
+        for shape, epilogue, devices in (
+            (
+                (8, 8, 8),
+                dict(epilogue="silu", clamp=(-0.125, 0.75)),
+                ("npu1", "npu2"),
+            ),
+            ((4, 8, 8), dict(epilogue="gelu"), ("npu1",)),
         )
     ],
+    # B^T on aie2p's bfp16 macs, converted on the core: IRON's two aie2p flm
+    # tiles, the walks above, and the overlay's every-mode floor tile. A bf16
+    # B is 16 KiB at N64/CT_K128, so those run 32 rows to fit L1's banks.
+    *[
+        Case(
+            "fused_mm",
+            dict(
+                dim_m=dim_m,
+                band_m=band_m,
+                dim_k=dim_k,
+                dim_n=n,
+                chunk_k=dim_k,
+                out_chunk=512,
+                b_col_maj=True,
+                emulate_bf16_mmul_with_bfp16=True,
+            ),
+            calls=4,
+            devices=("npu2",),
+        )
+        for dim_m, band_m, dim_k, n in ((32, 32, 128, 64), (64, 64, 32, 128))
+    ],
+    *[
+        check(
+            "fused_mm",
+            dict(
+                dim_m=32,
+                band_m=16,
+                dim_k=dim_k,
+                dim_n=n,
+                chunk_k=chunk_k,
+                out_chunk=256,
+                b_col_maj=True,
+                emulate_bf16_mmul_with_bfp16=True,
+            ),
+            devices=("npu2",),
+        )
+        for dim_k, n, chunk_k in ((256, 32, 128), (64, 16, 16), (128, 64, 64))
+    ],
+    check(
+        "fused_mm",
+        dict(
+            dim_m=32,
+            band_m=32,
+            dim_k=128,
+            dim_n=64,
+            chunk_k=128,
+            out_chunk=512,
+            epilogue="gelu",
+            epilogue_modes=("none", "gelu", "silu", "sigmoid"),
+            rounding="floor",
+            gelu="bf16_steps",
+            clamp=(-0.125, 0.75),
+            b_col_maj=True,
+            emulate_bf16_mmul_with_bfp16=True,
+        ),
+        devices=("npu2",),
+        data_cases=("random", "zeros", "ones", "alternating"),
+    ),
+    # Row-major B on the same emulated macs.
+    check(
+        "fused_mm",
+        dict(dim_k=48, emulate_bf16_mmul_with_bfp16=True),
+        devices=("npu2",),
+    ),
     Case(
         "fused_mm",
         dict(

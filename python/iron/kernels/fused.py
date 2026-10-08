@@ -62,6 +62,7 @@ def fused_mm(
     clamp=None,
     bfp16_b=False,
     b_col_maj=False,
+    emulate_bf16_mmul_with_bfp16=False,
     epilogue_modes=None,
     rounding="conv_even",
     gelu="fp32",
@@ -88,11 +89,18 @@ def fused_mm(
     ``rounding`` mode, as IRON's ``pack_b`` does, and the reference
     multiplies both operands as the core sees them.
 
-    ``b_col_maj`` (aie2, with an ``(r, 8, 8)`` mmul) takes B as stored
+    ``b_col_maj`` (with an ``(r, 8, 8)`` mmul, r 8 on aie2p) takes B as stored
     transposed, the ``(n, k)`` layout of a checkpoint's weights: each k chunk
     holds k panels of ``s`` rows, every n row of a panel ``s`` contiguous k,
-    a layout a DMA builds from ``(n, k)`` storage in 16-byte runs. The core
-    transposes each half block in one shuffle.
+    a layout a DMA builds from ``(n, k)`` storage in 16-byte runs. On bf16
+    macs the core transposes each half block in one shuffle; on bfp16 macs
+    it converts each block as loaded.
+
+    ``emulate_bf16_mmul_with_bfp16`` (aie2p) multiplies on bfp16 macs, as
+    aie_api's emulated bf16 mmul does: the core converts A and B to
+    bfp16ebs8, each shared exponent spanning 8 consecutive k, and the
+    reference multiplies both operands as the core sees them. The mmul
+    defaults to 8x8x8, which ``b_col_maj`` needs. ``bfp16_b`` implies it.
 
     ``epilogue_modes`` lists the activations compiled in, for a caller that
     selects one at run time through ``mm_fused_epilogue_chunk``'s mode
@@ -125,9 +133,12 @@ def fused_mm(
     arch = _detect_arch()
     if bfp16_b and not ARCH_TRAITS[arch].bfp16:
         raise ValueError("fused_mm: bfp16_b needs aie2p; bfp16ebs8 is an AIE2P type")
-    if b_col_maj and arch != "aie2":
-        raise ValueError("fused_mm: b_col_maj is aie2's bf16 B form")
-    if bfp16_b:
+    if emulate_bf16_mmul_with_bfp16 and not ARCH_TRAITS[arch].bfp16:
+        raise ValueError("fused_mm: emulate_bf16_mmul_with_bfp16 needs aie2p")
+    if b_col_maj and bfp16_b:
+        raise ValueError("fused_mm: b_col_maj reads a bf16 B; bfp16_b's is packed")
+    emulated = bfp16_b or emulate_bf16_mmul_with_bfp16
+    if emulated:
         r, s, t = 8, 8, 8
     else:
         r, s, t = (4, 8, 4) if arch == "aie2" else (4, 8, 8)
@@ -137,6 +148,8 @@ def fused_mm(
         r, s, t = mmul_shape
     if b_col_maj and (s, t) != (8, 8):
         raise ValueError("fused_mm: b_col_maj needs an (r, 8, 8) mmul_shape")
+    if b_col_maj and arch == "aie2p" and r != 8:
+        raise ValueError("fused_mm: b_col_maj on aie2p needs mmul (8, 8, 8)")
     dims = (dim_m, dim_k, dim_n, band_m, chunk_k, out_chunk, c_depth, r, s, t)
     if any(not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in dims):
         raise ValueError("fused_mm dimensions must be positive integers")
@@ -249,10 +262,12 @@ def fused_mm(
     def operands(a, b):
         a = a.reshape(-1, dim_m, dim_k).astype(np.float32)
         b = b.reshape(-1, dim_k, dim_n).astype(np.float32)
-        if bfp16_b:
-            # The core converts A itself; B is whatever the host packed.
+        if emulated:
             a = bfp.quantize(a, rounding=rounding)
+        if bfp16_b:
             b = unpack_b_bfp(pack_b_bfp(b))
+        elif emulated:
+            b = bfp.quantize(b.swapaxes(1, 2), rounding=rounding).swapaxes(1, 2)
         return a.astype(np.float64), b.astype(np.float64)
 
     # float64 throughout: in float32, 1 + tanh cancels for large negative
@@ -347,13 +362,10 @@ def fused_mm(
         *(f"-DMM_FUSED_{name}={value}" for name, value in flags.items()),
         *_portable_flags(),
     ]
+    if emulated:
+        compile_flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
     if bfp16_b:
-        # amd/IRON's pair: the first selects aie_api's bfp16-emulated bf16
-        # mmul, the second the prepacked B storage.
-        compile_flags += [
-            "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
-            "-DMM_FUSED_BFP16_B",
-        ]
+        compile_flags.append("-DMM_FUSED_BFP16_B")
     if b_col_maj:
         compile_flags.append("-DMM_FUSED_B_COL_MAJ")
     if gelu == "bf16_steps":

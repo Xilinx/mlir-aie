@@ -62,7 +62,47 @@ def test_b_col_maj_needs_an_8_by_8_b_block(npu1, kwargs):
         fused_mm(b_col_maj=True, **kwargs)
 
 
-@pytest.mark.parametrize("kwargs", [{}, {"bfp16_b": True}])
-def test_b_col_maj_is_aie2_only(npu2, kwargs):
+@pytest.mark.parametrize("emulate", [False, True])
+def test_b_col_maj_builds_on_aie2p(npu2, emulate):
+    fn = fused_mm(
+        b_col_maj=True, mmul_shape=(8, 8, 8), emulate_bf16_mmul_with_bfp16=emulate
+    )
+    assert "-DMM_FUSED_B_COL_MAJ" in fn.compile_flags
+    assert (
+        "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" in fn.compile_flags
+    ) == emulate
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"bfp16_b": True},
+        {"emulate_bf16_mmul_with_bfp16": True, "mmul_shape": (4, 8, 8)},
+        {"mmul_shape": (4, 8, 8)},
+    ],
+)
+def test_b_col_maj_refuses_packed_b_and_short_aie2p_mmuls(npu2, kwargs):
     with pytest.raises(ValueError, match="b_col_maj"):
-        fused_mm(b_col_maj=True, mmul_shape=(8, 8, 8), **kwargs)
+        fused_mm(b_col_maj=True, **kwargs)
+
+
+def test_bfp16_macs_are_aie2p_only(npu1):
+    with pytest.raises(ValueError, match="aie2p"):
+        fused_mm(emulate_bf16_mmul_with_bfp16=True)
+
+
+@pytest.mark.parametrize("b_col_maj", [False, True])
+def test_bfp16_macs_see_the_packed_blocks(npu2, b_col_maj):
+    # In floor mode the core's conversion and the host's packer agree, so a
+    # B the core converts is the B the packed form ships.
+    dims = dict(dim_m=16, band_m=16, dim_k=64, dim_n=32, chunk_k=32, rounding="floor")
+    rng = np.random.default_rng(0)
+    a = rng.standard_normal((16, 64)).astype(np.float32)
+    b = rng.standard_normal((64, 32)) * np.exp2(rng.integers(-12, 12, (1, 32)))
+    b = b.astype(np.float32)
+    converted = fused_mm(
+        **dims, b_col_maj=b_col_maj, emulate_bf16_mmul_with_bfp16=True
+    ).contract.reference(a, b)
+    packed = fused_mm(**dims, bfp16_b=True).contract.reference(a, b)
+    np.testing.assert_array_equal(converted, packed)
+    assert not np.array_equal(converted, a @ b)
