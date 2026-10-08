@@ -98,3 +98,47 @@ module {
     %tile_0_1 = aie.tile(0, 1)
   }
 }
+
+// -----
+
+// A load_pdi that names no device hides the loaded PDI's static BDs, so a task
+// after it cannot be given an id.
+
+module {
+  aie.device(npu2) {
+    %tile_0_1 = aie.tile(0, 1)
+    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    aie.runtime_sequence @main() {
+      // expected-note@+1 {{the PDI is loaded here}}
+      aiex.npu.load_pdi {id = 1 : i32}
+      %t0 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+        // expected-error@+1 {{needs a buffer descriptor ID, but the aiex.npu.load_pdi before it does not name a device in this module}}
+        aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256)
+        aie.end
+      }
+      aiex.dma_start_task(%t0)
+    }
+  }
+}
+
+// -----
+
+// An explicit bd_id needs no allocation, so it may follow such a load.
+
+// CHECK-LABEL: aie.runtime_sequence @main
+// CHECK: aiex.npu.load_pdi {id = 1 : i32}
+// CHECK: aie.dma_bd({{.*}}) {bd_id = 5 : i32}
+module {
+  aie.device(npu2) {
+    %tile_0_1 = aie.tile(0, 1)
+    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    aie.runtime_sequence @main() {
+      aiex.npu.load_pdi {id = 1 : i32}
+      %t0 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+        aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256) {bd_id = 5 : i32}
+        aie.end
+      }
+      aiex.dma_start_task(%t0)
+    }
+  }
+}

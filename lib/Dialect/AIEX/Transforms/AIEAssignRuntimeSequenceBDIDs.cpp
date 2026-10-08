@@ -142,6 +142,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // aie-materialize-runtime-sequences inlined runs on that device's static
   // DMAs, which stay in it rather than in the device that holds the sequence.
   AIE::DeviceOp loadedDevice;
+  // The latest aiex.npu.load_pdi, when it names no device in this module.
+  NpuLoadPdiOp opaqueLoad;
   // Configures from before the latest aiex.npu.load_pdi.
   llvm::SmallPtrSet<Operation *, 16> unloaded;
 
@@ -153,6 +155,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (Operation *parent = getOperation()->getParentOp())
         loadedDevice =
             SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(parent, ref);
+    opaqueLoad = loadedDevice ? NpuLoadPdiOp() : load;
     for (auto &[tile, tasks] : liveByTile)
       for (DMAConfigureTaskOp task : tasks)
         unloaded.insert(task);
@@ -304,6 +307,18 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     result = op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
       if (bd_op.getBdId().has_value())
         return WalkResult::advance();
+      if (opaqueLoad) {
+        bd_op.emitOpError(
+                 "needs a buffer descriptor ID, but the aiex.npu.load_pdi "
+                 "before it does not name a device in this module, so the "
+                 "compiler cannot tell which ids the loaded PDI's static "
+                 "DMAs use. Name the loaded device with device_ref = "
+                 "@<device>, or give this aie.dma_bd a bd_id that the PDI "
+                 "leaves free.")
+                .attachNote(opaqueLoad.getLoc())
+            << "the PDI is loaded here";
+        return WalkResult::interrupt();
+      }
       // channelIndex matters on a MemTile, where the AIE2 model partitions
       // BDs by channel parity (isBdChannelAccessible: an even channel can
       // only submit ids below 24, an odd channel only 24 and above).
@@ -750,6 +765,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     liveByTile.clear();
     freedInFlight.clear();
     loadedDevice = {};
+    opaqueLoad = {};
     unloaded.clear();
   }
 
