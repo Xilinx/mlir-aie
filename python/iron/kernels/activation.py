@@ -237,6 +237,32 @@ _GELU_VTANH_TOLERANCE = Tolerance.bounded(
 )
 
 
+_LOG_F32_TIE_RTOL = 2.0**-21
+
+
+def _log_f32_bound(x, offset=0.0):
+    """Bound on log_f32.cc's error at ``x``, against bf16 of the true log.
+
+    Zero, except one ulp where the float64 log lies within
+    ``_LOG_F32_TIE_RTOL`` (relative) of a bf16 rounding midpoint, so the
+    kernel's float32 error can round it either way.
+    """
+    z = np.asarray(x, dtype=np.float32) + np.float32(offset)
+    t = np.log(z.astype(np.float64))
+    b = t.astype(bfloat16).astype(np.float64)
+    tie = np.abs(0.5 * _bf16_ulp(t) - np.abs(t - b))
+    return np.where(tie <= _LOG_F32_TIE_RTOL * np.abs(t), _bf16_ulp(b), 0.0)
+
+
+# Correctly rounded away from ties: flooring instead of conv_even, or dropping
+# ln 2's low limb, stays within one ulp of bf16 and still fails this.
+_LOG_F32_TOLERANCE = Tolerance.bounded(
+    _log_f32_bound,
+    note="correctly rounded except within 2^-21 (relative) of a bf16 tie; "
+    "1 of 849,792 results on npu2 needed that slack",
+)
+
+
 def _gelu_tolerance() -> Tolerance:
     return _GELU_VTANH_TOLERANCE if _arch_traits().native_tanh else _GELU_TOLERANCE
 
@@ -664,6 +690,51 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
                 note="measured 9.2e-6 on aie2p and 8.9e-5 on aie2; clamping "
                 "[127.999, 128) costs up to 7.8e-4",
             ),
+        ),
+    )
+
+
+def log_f32(tile_size: int = 1024) -> ExternalFunction:
+    """``log(x + offset)`` of float32, rounded once to bf16.
+
+    Takes ``(x, y, size, offset)``: ``tile_size`` float32 in, as many bf16
+    out, and a float32 ``offset`` added to every element first, in float32
+    (a log-mel spectrogram's floor). Defined where ``x + offset`` is a
+    positive normal float32. Every product is of bf16 limbs, exact in the
+    float32 accumulator, so the log is float32-accurate before its one bf16
+    rounding.
+
+    The source sets ``conv_even`` itself and restores the core's mode on
+    exit, and builds for aie2 and aie2p.
+
+    Args:
+        tile_size: Float32 elements per call, a positive multiple of 32.
+
+    Returns:
+        ExternalFunction for ``log_f32_bf16``.
+
+    Raises:
+        ValueError: When ``tile_size`` is not a positive multiple of 32.
+    """
+    _require_vector_alignment("log_f32", tile_size, 32)
+    return _make_extern(
+        "log_f32_bf16",
+        _kernel_source("activation/log_f32.cc"),
+        [
+            np.ndarray[(tile_size,), np.dtype[np.float32]],
+            np.ndarray[(tile_size,), np.dtype[bfloat16]],
+            np.int32,
+            np.float32,
+        ],
+        compile_flags=[f"-DLOG_ELEMS={tile_size}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=log_f32_ref,
+            sample=lambda rng, calls: log_f32_sample(rng, calls, tile_size=tile_size),
+            tolerance=_LOG_F32_TOLERANCE,
+            ops_per_call=tile_size,
         ),
     )
 
@@ -1110,6 +1181,49 @@ def exp2f_vec_ref(x, min_x: float = -111.0):
     """
     xf = np.maximum(x.astype(np.float64), min_x)
     return np.exp2(xf).astype(x.dtype)
+
+
+def log_f32_ref(x, offset=0.0):
+    """Numpy reference for [`log_f32`][iron.kernels.activation.log_f32].
+
+    The kernel adds ``offset`` in float32, so the sum rounds as float32 here
+    too; its log is taken in float64 and rounded once to bf16.
+    """
+    z = np.asarray(x, dtype=np.float32) + np.float32(offset)
+    return np.log(z.astype(np.float64)).astype(bfloat16)
+
+
+def log_f32_sample(rng, calls: int, *, tile_size: int) -> list:
+    """Positive float32 over every binade, the first call led by edges.
+
+    The edges are one and its neighbours, the reduction's split point
+    ``sqrt(1/2)`` and ``sqrt(2)`` with theirs, ``e``, a log-mel floor
+    (``1e-3``), and the smallest normal and largest finite float32.
+    """
+    x = (10.0 ** rng.uniform(-37, 38, calls * tile_size)).astype(np.float32)
+    edges = np.array(
+        [
+            0x3F800000,
+            0x3F800001,
+            0x3F7FFFFF,
+            0x3F000000,
+            0x40000000,
+            0x3F3504F2,
+            0x3F3504F3,
+            0x3F3504F4,
+            0x3FB504F2,
+            0x3FB504F3,
+            0x3FB504F4,
+            0x402DF854,
+            0x3A83126F,
+            0x00800000,
+            0x7F7FFFFF,
+            0x7149F2CA,
+        ],
+        dtype=np.uint32,
+    ).view(np.float32)
+    x[: edges.size] = edges[: x.size]
+    return [x.reshape(calls, tile_size)]
 
 
 def softmax_ref(x, *, tile_size: int = 1024):

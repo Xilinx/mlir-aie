@@ -36,6 +36,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [softmax.cc](./activation/softmax.cc) | AIE API | Softmax; on AIE2P also `softmax_rows` (optionally causal), `partial_softmax` (flash-attn) and `mask` | `bfloat16` |
 | [bf16_exp.cc](./activation/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |
 | [exp2f_vec.cc](./activation/exp2f_vec.cc) | AIE API | Element-wise `2^x` (degree-5 minimax poly; higher accuracy on negatives) | `float32` |
+| [log_f32.cc](./activation/log_f32.cc) | AIE API | `log(x + offset)`, float32-accurate from bf16 limb products, rounded once (a log-mel floor) | `float32`→`bfloat16` |
 
 ## conv
 | Name | Coding style | Purpose | Datatypes |

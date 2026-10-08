@@ -455,6 +455,15 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=32), 0, (32,)),
         ],
     ),
+    KernelSpec(
+        name="log_f32",
+        factory=kernels.log_f32,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # f32 in, bf16 out, size, offset
+        expected_name="log_f32_bf16",
+        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+        shape_checks=[(dict(tile_size=128), 1, (128,))],
+    ),
     # ----- vision -----
     KernelSpec(
         name="rgba2hue",

@@ -291,6 +291,13 @@ CASES: list[Case] = [
     Case("limbs_f32", calls=256),
     Case("limbs_f32", dict(tile_size=160), calls=16),
     check("limbs_f32", dict(tile_size=32), tag="edge-one-vector"),
+    # activation, after the float32 split the log builds on. The offset is a
+    # log-mel spectrogram's floor; amd/IRON's audio front end adds 1e-3.
+    Case("log_f32", calls=16, scalars=(0.0,), smoke=True),
+    Case("log_f32", calls=256, scalars=(1e-3,)),
+    check("log_f32", scalars=(1e-3,), tag="mel-floor", smoke=True),
+    check("log_f32", dict(tile_size=128), scalars=(1e-3,), tag="mel-row"),
+    check("log_f32", dict(tile_size=32), scalars=(0.0,), tag="edge-one-vector"),
     # On AIE2 a row this short takes the loop that is not software-pipelined.
     *[
         check(name, dict(tile_size=64), tag="short-row", **kw)

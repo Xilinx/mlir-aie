@@ -11,7 +11,7 @@ Submodules:
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
-- `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
+- `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, log_f32, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
 - `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
@@ -61,6 +61,8 @@ from .activation import (
     gelu_sized,
     leaky_relu,
     leaky_relu_ref,
+    log_f32,
+    log_f32_ref,
     relu_ref,
     sigmoid,
     sigmoid_lut_ref,
@@ -431,6 +433,7 @@ __all__ = [
     "swiglu_ref",
     "bf16_exp",
     "exp2f_vec",
+    "log_f32",
     "tanh",
     "sigmoid",
     "leaky_relu",
@@ -468,6 +471,7 @@ __all__ = [
     "bf16_exp_lut_ref",
     "bf16_exp_ref",
     "exp2f_vec_ref",
+    "log_f32_ref",
     "softmax_ref",
     "sigmoid_lut_ref",
     "sigmoid_table_ref",
