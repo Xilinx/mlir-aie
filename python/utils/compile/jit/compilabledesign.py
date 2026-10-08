@@ -181,6 +181,7 @@ class CompilableDesign:
         self.mlir_generator = mlir_generator
         self.use_cache = use_cache
         self.full_elf = full_elf
+        self._inferred_full_elf = False
         self.insts_only = insts_only
         # Freeze all inputs so callers can't mutate config after construction
         # (which would silently invalidate the cache hash). MappingProxyType +
@@ -354,6 +355,8 @@ class CompilableDesign:
         config: dict[str, Any] = {}
         for name in config_param_names(type(self)):
             value = getattr(self, name)
+            if name == "full_elf" and self._inferred_full_elf:
+                value = False
             config[name] = list(value) if isinstance(value, tuple) else value
         return config
 
@@ -446,7 +449,48 @@ class CompilableDesign:
 
         has_dispatch = bool(self.dispatch_params)
 
+        requested_full_elf = (
+            self.full_elf and not self._inferred_full_elf
+        ) or full_elf_path is not None
+        if requested_full_elf and has_dispatch:
+            raise NotImplementedError(
+                "DispatchTime[T] + full_elf=True is not supported: a full ELF "
+                "bakes one static instruction stream into the ELF at compile "
+                "time, and XRT's full-ELF dispatch path has no instruction-"
+                "buffer argument to swap in a per-call one -- unlike the "
+                "xclbin + insts.bin path. Compile without full_elf for a "
+                "design with DispatchTime[T] parameters."
+            )
+        if self.insts_only and has_dispatch:
+            raise NotImplementedError(
+                "insts_only=True with DispatchTime[T] parameters: an "
+                "instructions-only design has no static stream to emit."
+            )
+        if has_dispatch and (inst_path is not None or elf_path is not None):
+            raise ValueError(
+                "compile(): DispatchTime[T] designs have no static instructions; "
+                "inst_path and elf_path must be None."
+            )
+        if not has_dispatch and (xclbin_path is None) != (inst_path is None):
+            raise ValueError(
+                "compile(): xclbin_path and inst_path must be set together "
+                "(both paths to write artifacts directly, or both None to use "
+                f"the JIT cache).  Got xclbin_path={xclbin_path!r}, "
+                f"inst_path={inst_path!r}."
+            )
+
+        inferred_full_elf = self._inferred_full_elf or (
+            not requested_full_elf and self._infer_full_elf()
+        )
         full_elf = self.full_elf or full_elf_path is not None
+        if inferred_full_elf and any(
+            path is not None for path in (xclbin_path, inst_path, elf_path, pdi_path)
+        ):
+            raise ValueError(
+                "A multi-configuration Program requires full-ELF compilation "
+                "and does not produce xclbin, instruction, wrapped-ELF, or "
+                "standalone-PDI outputs."
+            )
         if full_elf and has_dispatch:
             # Architectural boundary, not a TODO: full-ELF bakes one static TXN
             # into the ELF, and XRT's full-ELF dispatch path has no instruction-
@@ -462,11 +506,6 @@ class CompilableDesign:
         if full_elf:
             return self._compile_full_elf(ExternalFunction, full_elf_path)
         if self.insts_only:
-            if has_dispatch:
-                raise NotImplementedError(
-                    "insts_only=True with DispatchTime[T] parameters: an "
-                    "instructions-only design has no static stream to emit."
-                )
             if xclbin_path is not None or elf_path is not None or pdi_path is not None:
                 raise ValueError(
                     "compile(): an insts_only design takes inst_path alone "
@@ -474,18 +513,6 @@ class CompilableDesign:
                 )
             return self._compile_insts_only(ExternalFunction, inst_path)
 
-        if has_dispatch and (inst_path is not None or elf_path is not None):
-            raise ValueError(
-                "compile(): DispatchTime[T] designs have no static instructions; "
-                "inst_path and elf_path must be None."
-            )
-        if not has_dispatch and (xclbin_path is None) != (inst_path is None):
-            raise ValueError(
-                "compile(): xclbin_path and inst_path must be set together "
-                "(both paths to write artifacts directly, or both None to use "
-                f"the JIT cache).  Got xclbin_path={xclbin_path!r}, "
-                f"inst_path={inst_path!r}."
-            )
         explicit_paths = xclbin_path is not None
         cache_hash = None
         build_key = ""
@@ -718,15 +745,23 @@ class CompilableDesign:
         return xclbin_path, inst_path
 
     @staticmethod
-    def _reject_multi_device_non_full_elf(module) -> None:
+    def _configuration_count(module) -> int:
         count_attr = module.operation.attributes.get("iron.configuration_count")
-        configuration_count = count_attr.value if count_attr is not None else 1
-        if configuration_count > 1:
-            raise NotImplementedError(
-                "Non-full-ELF compilation supports one Configuration; "
-                f"the Program contains {configuration_count} Configurations. "
-                "Use full_elf=True for a multi-configuration Program."
-            )
+        return count_attr.value if count_attr is not None else 1
+
+    def _infer_full_elf(self) -> bool:
+        if self.full_elf:
+            return False
+        from aie.iron.kernel import ExternalFunction
+
+        module = self._generate_mlir(ExternalFunction)
+        if module is None:
+            return False
+        if self._configuration_count(module) <= 1:
+            return False
+        self.full_elf = True
+        self._inferred_full_elf = True
+        return True
 
     @staticmethod
     def _full_elf_reconfiguration_options(module) -> list[str]:
@@ -1284,6 +1319,7 @@ class CompilableDesign:
         """
         from aie.iron.kernel import ExternalFunction
 
+        self._infer_full_elf()
         return self._generate_mlir(ExternalFunction, full_elf=self.full_elf)
 
     def validate_tensor_args(
@@ -1762,8 +1798,6 @@ class CompilableDesign:
         ExternalFunction._instances.update(external_kernels)
         with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
             module = _Module.parse(mlir_text)
-            if not full_elf:
-                self._reject_multi_device_non_full_elf(module)
             return module
 
     def __hash__(self) -> int:

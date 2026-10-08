@@ -74,6 +74,7 @@ class Program:
         self._implicit_configuration = True
         self._expand_load_pdis = expand_load_pdis
         self._site = SourceSite.capture()
+        self._assign_names()
 
     @classmethod
     def compose(
@@ -89,13 +90,43 @@ class Program:
         program._implicit_configuration = False
         program._expand_load_pdis = expand_load_pdis
         program._site = SourceSite.capture()
+        program._assign_names()
         program._validate_composition()
         return program
+
+    def _assign_names(self) -> None:
+        def assign(items, base: str) -> None:
+            taken = {item.name for item in items if item.name is not None}
+            suffix = 0
+            for item in items:
+                if item.name is not None:
+                    continue
+                while True:
+                    name = base if suffix == 0 else f"{base}_{suffix}"
+                    suffix += 1
+                    if name not in taken:
+                        break
+                item._assign_name(name)
+                taken.add(name)
+
+        assign(self._configurations, "device")
+        assign(
+            [
+                runtime
+                for configuration in self._configurations
+                for runtime in configuration.runtimes
+            ],
+            "sequence",
+        )
 
     def _validate_composition(self) -> None:
         if not self._configurations:
             raise ValueError("Program requires at least one configuration.")
-        names = [configuration.name for configuration in self._configurations]
+        names = [
+            configuration.name
+            for configuration in self._configurations
+            if configuration.name is not None
+        ]
         duplicates = sorted(name for name in set(names) if names.count(name) > 1)
         if duplicates:
             raise ValueError(
@@ -203,6 +234,7 @@ class Program:
 
             owners = {}
             for configuration in self._configurations:
+                assert configuration.name is not None
                 symbol = (
                     device_name if self._implicit_configuration else configuration.name
                 )
@@ -223,6 +255,8 @@ class Program:
             if not self._implicit_configuration:
                 entry_configuration = self._entry.configuration
                 assert entry_configuration is not None
+                assert entry_configuration.name is not None
+                assert self._entry.name is not None
                 ctx.module.operation.attributes["iron.entry"] = ir.StringAttr.get(
                     f"{entry_configuration.name}:{self._entry.name}"
                 )

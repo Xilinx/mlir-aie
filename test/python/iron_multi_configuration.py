@@ -4,10 +4,10 @@
 # RUN: %python %s | FileCheck %s
 
 import numpy as np
-from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aiex import (
     npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from aie.extras.context import mlir_mod_ctx
 from aie.iron import DeviceConfiguration, Program, Runtime
 from aie.iron.device import NPU2Col1
 from aie.utils.compile.jit.context import compile_context
@@ -60,6 +60,27 @@ config_b = DeviceConfiguration("dev_b", NPU2Col1(), runtimes=[seq_b])
 entry = Runtime(coordinator, [Out8, np.int32])
 main = DeviceConfiguration("main", NPU2Col1(), runtimes=[entry])
 print(Program.compose([main, config_a, config_b], entry=entry).resolve_program())
+
+unnamed_a = Runtime(child_sequence, [Out4])
+unnamed_b = Runtime(child_sequence, [Out4])
+unnamed_config_a = DeviceConfiguration(NPU2Col1(), runtimes=[unnamed_a])
+unnamed_config_b = DeviceConfiguration(device=NPU2Col1(), runtimes=[unnamed_b])
+unnamed_program = Program.compose([unnamed_config_a, unnamed_config_b], entry=unnamed_a)
+assert [unnamed_config_a.name, unnamed_config_b.name] == ["device", "device_1"]
+assert [unnamed_a.name, unnamed_b.name] == ["sequence", "sequence_1"]
+unnamed_text = str(unnamed_program.resolve_program())
+assert 'iron.entry = "device:sequence"' in unnamed_text
+assert "aie.device(npu2_1col) @device" in unnamed_text
+assert "aie.device(npu2_1col) @device_1" in unnamed_text
+assert "aie.runtime_sequence @sequence_1(" in unnamed_text
+
+explicit_runtime = Runtime(child_sequence, [Out4], name="sequence")
+generated_runtime = Runtime(child_sequence, [Out4])
+explicit_config = DeviceConfiguration("device", NPU2Col1(), runtimes=[explicit_runtime])
+generated_config = DeviceConfiguration(NPU2Col1(), runtimes=[generated_runtime])
+Program.compose([explicit_config, generated_config], entry=explicit_runtime)
+assert generated_config.name == "device_1"
+assert generated_runtime.name == "sequence_1"
 
 for expand_load_pdis in (None, False, True):
     option_runtime = Runtime(lambda: None, [])

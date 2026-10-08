@@ -194,7 +194,7 @@ class Runtime(Resolvable):
         seq_fn: Callable,
         fn_args: "Sequence | None" = None,
         *,
-        name: str = "sequence",
+        name: str | None = None,
         strict_task_groups: bool = True,
         implicit_configure: bool = True,
     ) -> None:
@@ -233,13 +233,14 @@ class Runtime(Resolvable):
             seq_fn (Callable): The sequence body; params bound to ``fn_args`` in order.
             fn_args (Sequence | None): Types/ints (runtime inputs) and shared objects,
                 in the order ``seq_fn`` expects them. Defaults to None (empty list).
-            name (str): The runtime-sequence symbol name.
+            name (str | None): The runtime-sequence symbol name. Program assigns
+                a unique name when this value is None.
             strict_task_groups (bool): Disallow mixing the default and explicit task groups. Defaults to True.
             implicit_configure (bool): Configure the full-ELF entry sequence's
                 device when the body contains no ``aiex.configure`` or
                 ``aiex.npu.load_pdi`` operation. Defaults to True.
         """
-        if not name:
+        if name == "":
             raise ValueError("Runtime name must not be empty.")
         self._site = SourceSite.capture()
         self._name = name
@@ -323,8 +324,12 @@ class Runtime(Resolvable):
         self._task_group_index = itertools.count()
 
     @property
-    def name(self) -> str:
+    def name(self) -> str | None:
         return self._name
+
+    def _assign_name(self, name: str) -> None:
+        if self._name is None:
+            self._name = name
 
     @property
     def configuration(self) -> DeviceConfiguration | None:

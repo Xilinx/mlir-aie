@@ -24,10 +24,12 @@ import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 import numpy as np
 import pytest
 from aie.extras.context import mlir_mod_ctx
+from aie.iron import DeviceConfiguration, Program, Runtime, kernels
 from aie.iron.algorithms import _pipeline
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.jit import jit
 from aie.utils.compile.jit import _hash as _hash_mod
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 from aie.utils.compile.jit._hash import _compute_artifact_hash, _compute_recipe_hash
@@ -2225,15 +2227,77 @@ def test_non_full_elf_allows_raw_multi_device_mlir(tmp_path):
     design._generate_mlir(ExternalFunction)
 
 
-def test_non_full_elf_rejects_multi_configuration_program(tmp_path):
+def test_multi_configuration_program_implies_full_elf(tmp_path, monkeypatch):
     mlir_path = tmp_path / "design.mlir"
     mlir_path.write_text(
         "module attributes {iron.configuration_count = 2 : i32, "
         'iron.entry = "main:sequence"} {}'
     )
+    design = CompilableDesign(mlir_path)
+    elf_path = tmp_path / "design.elf"
 
-    with pytest.raises(NotImplementedError, match="contains 2 Configurations"):
-        CompilableDesign(mlir_path)._generate_mlir(ExternalFunction)
+    def compile_full_elf(_external_function, requested_path):
+        assert requested_path is None
+        return elf_path, None
+
+    monkeypatch.setattr(design, "_compile_full_elf", compile_full_elf)
+
+    assert design.compile() == (elf_path, None)
+    assert design.full_elf is True
+
+
+def test_multi_configuration_program_accepts_explicit_full_elf_path(
+    tmp_path, monkeypatch
+):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "main:sequence"} {}'
+    )
+    design = CompilableDesign(mlir_path)
+    elf_path = tmp_path / "design.elf"
+
+    monkeypatch.setattr(
+        design,
+        "_compile_full_elf",
+        lambda _external_function, requested_path: (Path(requested_path), None),
+    )
+
+    assert design.compile(full_elf_path=elf_path) == (elf_path, None)
+
+
+def test_inferred_full_elf_rejects_standard_paths_after_generation(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "main:sequence"} {}'
+    )
+    design = CompilableDesign(mlir_path)
+
+    design.generate_mlir()
+
+    with pytest.raises(ValueError, match="requires full-ELF compilation"):
+        design.compile(
+            xclbin_path=tmp_path / "design.xclbin",
+            inst_path=tmp_path / "insts.bin",
+        )
+
+
+def test_iron_jit_infers_full_elf_for_composed_program():
+    @jit
+    def generate():
+        runtime_a = Runtime(lambda: None, [])
+        runtime_b = Runtime(lambda: None, [])
+        configuration_a = DeviceConfiguration(NPU2Col1(), runtimes=[runtime_a])
+        configuration_b = DeviceConfiguration(NPU2Col1(), runtimes=[runtime_b])
+        return Program.compose(
+            [configuration_a, configuration_b], entry=runtime_a
+        ).resolve_program()
+
+    mlir = generate.as_mlir()
+
+    assert generate.compilable.full_elf is True
+    assert "iron.configuration_count = 2 : i32" in mlir
 
 
 @pytest.mark.parametrize(

@@ -365,6 +365,7 @@ class CallableDesign:
             runtime_args, scalar_runtime_kwargs
         )
         compilable = self._build_compilable(call_compile_kwargs, tensor_args)
+        compilable._infer_full_elf()
 
         generator = compilable.mlir_generator
         if callable(generator):
@@ -379,7 +380,7 @@ class CallableDesign:
             cache_fn,
             tuple(tensor_args),
             cache_compile_kwargs,
-            extra_key=compilable._generation_cache_key(),
+            extra_key=compilable._generation_cache_key(full_elf=compilable.full_elf),
         )
 
         # A traced call skips the in-process cache. Decoding a trace needs the

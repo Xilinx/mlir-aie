@@ -31,13 +31,20 @@ class DeviceConfiguration:
 
     def __init__(
         self,
-        name: str,
-        device: Device,
+        name: str | Device | None = None,
+        device: Device | None = None,
         *,
         workers: Sequence = (),
         runtimes: Sequence[Runtime] = (),
     ) -> None:
-        if not name:
+        if isinstance(name, Device):
+            if device is not None:
+                raise TypeError("DeviceConfiguration received two devices.")
+            device = name
+            name = None
+        if device is None:
+            raise TypeError("DeviceConfiguration requires a device.")
+        if name == "":
             raise ValueError("DeviceConfiguration name must not be empty.")
         self._name = name
         self._device = device
@@ -58,7 +65,9 @@ class DeviceConfiguration:
         self._core_trace_mode = TraceMode.EventTime
         self._owners = None
 
-        runtime_names = [runtime.name for runtime in self._runtimes]
+        runtime_names = [
+            runtime.name for runtime in self._runtimes if runtime.name is not None
+        ]
         duplicates = sorted(
             name for name in set(runtime_names) if runtime_names.count(name) > 1
         )
@@ -131,8 +140,12 @@ class DeviceConfiguration:
                         self._claim_fifo_graph(linked, owners, visited)
 
     @property
-    def name(self) -> str:
+    def name(self) -> str | None:
         return self._name
+
+    def _assign_name(self, name: str) -> None:
+        if self._name is None:
+            self._name = name
 
     @property
     def device(self) -> Device:
