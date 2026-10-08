@@ -286,6 +286,11 @@ CASES: list[Case] = [
     # 272 is a multiple of the kernel's 16-element step but not of the 128 its
     # unrolled loop consumes per pass, so the remainder pass runs.
     check("convert_copy", dict(tile_size=272), tag="unroll-tail", smoke=True),
+    # amd/IRON's limbs operator splits rows of 160 and 320.
+    Case("limbs_f32", calls=16, smoke=True),
+    Case("limbs_f32", calls=256),
+    Case("limbs_f32", dict(tile_size=160), calls=16),
+    check("limbs_f32", dict(tile_size=32), tag="edge-one-vector"),
     # On AIE2 a row this short takes the loop that is not software-pipelined.
     *[
         check(name, dict(tile_size=64), tag="short-row", **kw)

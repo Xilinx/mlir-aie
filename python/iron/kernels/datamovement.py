@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, row_addresses, transpose.
+"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, limbs_f32, row_addresses, transpose.
 
 Each wraps one source under ``aie_kernels/datamovement/`` — plain ``aie_api``
 vector code with no LUT dependency.  ``convert_copy`` binds
@@ -24,6 +24,7 @@ from ._common import (
     Trace,
     _kernel_source,
     _make_extern,
+    _require_vector_alignment,
     dtypes,
 )
 from .core import conv_even
@@ -204,6 +205,119 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
             tolerance=Tolerance.exact(
                 note="conv_even rounding matches ml_dtypes bit-for-bit (test_kernels_e2e)"
             ),
+        ),
+    )
+
+
+def limbs_f32_split(x):
+    """The bf16 limbs ``(hi, mid, lo)`` of float32 ``x``, summing to it exactly.
+
+    Each limb is its residual rounded half-to-even, as the kernel's
+    ``conv_even`` rounds: ``hi = bf16(x)``, ``mid = bf16(x - hi)`` and
+    ``lo = bf16(x - hi - mid)``, every subtraction exact in float32.
+    """
+    x = np.asarray(x, dtype=np.float32)
+    hi = x.astype(bfloat16)
+    r = x - hi.astype(np.float32)
+    mid = r.astype(bfloat16)
+    lo = (r - mid.astype(np.float32)).astype(bfloat16)
+    return hi, mid, lo
+
+
+def limbs_f32_ref(x):
+    """Numpy reference for [`limbs_f32`][iron.kernels.datamovement.limbs_f32].
+
+    The six planes ``(hi, mid, hi, lo, mid, hi)`` of each call's limbs,
+    concatenated along the last axis.
+    """
+    hi, mid, lo = limbs_f32_split(x)
+    return np.concatenate((hi, mid, hi, lo, mid, hi), axis=-1)
+
+
+def limbs_f32_sample(rng, calls: int, *, tile_size: int) -> list:
+    """Float32 of either sign over ``1e-30`` to ``1e38``, the first call led by edges.
+
+    The edges are signed zeros and ones, half-to-even ties in ``hi`` and in
+    ``mid``, the smallest magnitudes whose ``lo`` is still a normal bf16,
+    and the largest whose ``hi`` is still finite.
+    """
+    x = rng.choice([-1.0, 1.0], calls * tile_size) * 10.0 ** rng.uniform(
+        -30, 38, calls * tile_size
+    )
+    x = x.astype(np.float32)
+    edges = np.array(
+        [
+            0x00000000,
+            0x80000000,
+            0x3F800000,
+            0xBF800000,
+            0x3F800001,
+            0x3F808000,
+            0x3F818000,
+            0xBF80FFFF,
+            0x3F800181,
+            0x3F800183,
+            0x0C000101,
+            0x8C7F80FF,
+            0x7F7F7FFF,
+            0xFF7F7FFF,
+            0x3EAAAAAB,
+            0xBDCCCCCD,
+        ],
+        dtype=np.uint32,
+    ).view(np.float32)
+    x[: edges.size] = edges[: x.size]
+    return [x.reshape(calls, tile_size)]
+
+
+def limbs_f32(tile_size: int = 320) -> ExternalFunction:
+    """Float32 as six planes of its bf16 limbs, for a float32-accurate bf16 matmul.
+
+    Takes ``(x, y, size)``: ``tile_size`` float32 in, ``6 * tile_size`` bf16
+    out. Each element splits exactly into ``hi + mid + lo``
+    ([`limbs_f32_split`][iron.kernels.datamovement.limbs_f32_split]), and
+    ``y`` holds the planes ``(hi, mid, hi, lo, mid, hi)``, ``tile_size``
+    each. A bf16 matmul of those planes against a second operand's limbs
+    stacked ``(hi, hi, mid, hi, mid, lo)`` along K sums the six largest of a
+    float32 product's nine limb products, missing only ``mid * lo``,
+    ``lo * mid`` and ``lo * lo``. The split is exact for ``|x|`` from
+    ``2**-103``, where ``lo`` may be the smallest normal bf16 (the core
+    flushes a subnormal one), to below ``3.396e38``, where ``hi`` rounds to
+    inf.
+
+    The source sets ``conv_even`` itself and restores the core's mode on
+    exit, and builds for aie2 and aie2p.
+
+    Args:
+        tile_size: Float32 elements per call, a positive multiple of 32.
+
+    Returns:
+        ExternalFunction for ``limbs_f32``.
+
+    Raises:
+        ValueError: When ``tile_size`` is not a positive multiple of 32.
+    """
+    _require_vector_alignment("limbs_f32", tile_size, 32)
+    return _make_extern(
+        "limbs_f32",
+        _kernel_source("datamovement/limbs_f32.cc"),
+        [
+            np.ndarray[(tile_size,), np.dtype[np.float32]],
+            np.ndarray[(6 * tile_size,), np.dtype[bfloat16]],
+            np.int32,
+        ],
+        compile_flags=[f"-DLIMBS_ELEMS={tile_size}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=limbs_f32_ref,
+            sample=lambda rng, calls: limbs_f32_sample(rng, calls, tile_size=tile_size),
+            tolerance=Tolerance.exact(
+                note="each residual is exact in the accumulator, and so is each "
+                "limb of it"
+            ),
+            ops_per_call=tile_size,
         ),
     )
 

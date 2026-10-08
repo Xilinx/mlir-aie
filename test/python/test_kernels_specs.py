@@ -858,6 +858,15 @@ KERNEL_SPECS: list[KernelSpec] = [
         invalid_kwargs=[(dict(tile_size=1000), "multiple of 16")],
     ),
     KernelSpec(
+        name="limbs_f32",
+        factory=kernels.limbs_f32,
+        kwargs=dict(tile_size=320),
+        arg_count=3,  # f32 in, six bf16 planes out, size
+        expected_name="limbs_f32",
+        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+        shape_checks=[(dict(tile_size=160), 1, (960,))],
+    ),
+    KernelSpec(
         name="rope",
         factory=kernels.rope,
         kwargs=dict(tile_size=1024),
