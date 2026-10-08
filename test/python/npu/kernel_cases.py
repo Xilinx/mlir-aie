@@ -1045,6 +1045,54 @@ CASES: list[Case] = [
     # that is only the tail.
     check("rgba2hue", dict(line_width=288), tag="tail"),
     check("rgba2hue", dict(line_width=32), tag="one-vector"),
+    # A phone photo's width to EmbeddingGemma 2's image budget: a 19-tap
+    # window, 21 outputs to a chunk; core 11's chunks end in the partial 43rd.
+    Case("resample_peak", calls=2, scalars=(4032, 912, 11, 4), smoke=True),
+    # A 49-tap window on one core.
+    Case("resample_peak", dict(cores=1), calls=2, scalars=(8000, 672, 0, 80)),
+    # A patch's 16 outputs to a chunk, as amd/IRON's Resample reads them.
+    Case("resample_peak", dict(words=356, slots=16), scalars=(3024, 672, 5, 3)),
+    check("resample_peak", calls=2, scalars=(17, 1008, 4, 2), tag="upsample"),
+    # A peak of 0: a core past the outputs, too few chunks, no window fits.
+    check("resample_peak", calls=2, scalars=(1, 48, 15, 1), tag="idle-core"),
+    check("resample_peak", calls=2, scalars=(4032, 912, 0, 2), tag="too-few-chunks"),
+    check(
+        "resample_peak",
+        dict(slots=22),
+        calls=2,
+        scalars=(4032, 912, 0, 4),
+        tag="slots-past-fit",
+    ),
+    Case("resample_quantize", calls=4, scalars=(4032, 912, 11, 4), smoke=True),
+    # Every chunk of the 49-tap table: 74 full, a partial, 5 empty.
+    Case("resample_quantize", dict(cores=1), calls=80, scalars=(8000, 672, 0, 80)),
+    Case(
+        "resample_quantize",
+        dict(words=356, slots=16),
+        calls=3,
+        scalars=(3024, 672, 5, 3),
+    ),
+    # Upsampled: a 5-tap window, the partial 21st chunk second.
+    check("resample_quantize", calls=2, scalars=(17, 1008, 4, 2), tag="upsample"),
+    check(
+        "resample_quantize",
+        dict(cores=2),
+        calls=8,
+        scalars=(1, 48, 0, 8),
+        tag="one-sample",
+    ),
+    # Every header [-1, window, 0, 0].
+    check(
+        "resample_quantize", calls=2, scalars=(4032, 912, 0, 2), tag="too-few-chunks"
+    ),
+    check("resample_quantize", calls=2, scalars=(-5, 912, 0, 4), tag="negative"),
+    check(
+        "resample_quantize",
+        dict(slots=22),
+        calls=2,
+        scalars=(4032, 912, 0, 4),
+        tag="slots-past-fit",
+    ),
     # conv: full-range int8 data (the kernels saturate, so `input_limit` only
     # keeps the int32 accumulator safe); the shift puts random sums around
     # uint8's range (64 channels x 127^2 ~ 2**20 >> 12 for k1; 9x that >> 15

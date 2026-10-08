@@ -579,6 +579,32 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         shape_checks=[(dict(line_width=640, dtype=np.uint8), 0, (640,))],
     ),
+    KernelSpec(
+        name="resample_peak",
+        factory=kernels.resample_peak,
+        kwargs={},
+        arg_count=5,  # peak, in, out, core, chunks
+        expected_name="resample_peak",
+        invalid_kwargs=[
+            (dict(words=8), "words >= 9"),
+            (dict(cores=0), "cores >= 1"),
+            (dict(slots=0), "slots None or >= 1"),
+        ],
+        shape_checks=[(dict(), 0, (2,))],
+    ),
+    KernelSpec(
+        name="resample_quantize",
+        factory=kernels.resample_quantize,
+        kwargs={},
+        arg_count=7,  # peak, chunk, in, out, core, k, chunks
+        expected_name="resample_quantize",
+        invalid_kwargs=[
+            (dict(words=8), "words >= 9"),
+            (dict(cores=0), "cores >= 1"),
+            (dict(slots=0), "slots None or >= 1"),
+        ],
+        shape_checks=[(dict(words=356), 1, (356,))],
+    ),
     # ----- linalg -----
     KernelSpec(
         name="mm",

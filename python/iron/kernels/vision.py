@@ -3,7 +3,11 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Vision kernel factories: color conversion, threshold, filter2d, add_weighted."""
+"""Vision kernel factories: color conversion, threshold, filter2d, add_weighted,
+and the filter tables of torch's antialiased bicubic resize."""
+
+import math
+from dataclasses import dataclass
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
@@ -282,6 +286,131 @@ def add_weighted(
     )
 
 
+def _check_resample(owner: str, words: int, cores: int, slots: int | None) -> None:
+    if words < _RESAMPLE_HEADER + 5 or cores < 1 or (slots is not None and slots < 1):
+        raise ValueError(
+            f"{owner}() needs words >= {_RESAMPLE_HEADER + 5} (a header and one "
+            "slot of the smallest window), cores >= 1 and slots None or >= 1, "
+            f"got words={words}, cores={cores}, slots={slots}."
+        )
+
+
+def resample_peak(
+    words: int = 256, *, cores: int = 16, slots: int | None = None
+) -> ExternalFunction:
+    """The largest normalized weight of one core's share of a resample table.
+
+    One axis of torch's antialiased bicubic resize (``in`` samples to
+    ``out``) is a table of ``words``-int32 chunks, ``cores`` cores taking
+    chunks ``core, core + cores, ...``; see
+    [`resample_quantize`][iron.kernels.vision.resample_quantize].
+    ``resample_peak(peak, in, out, core, chunks)`` writes the largest
+    normalized weight over the outputs of the core's ``chunks`` chunks as
+    float64 bits in ``peak`` (two int32), 0 when the table cannot hold the
+    sizes. ``fn.resample_join(a, b, out)`` writes the larger of two peaks,
+    so a chain of cores reduces them to the table's precision. The weights
+    are float64 without contraction, as torch computes them on the CPU;
+    amd/IRON's ``ResampleTaps`` runs both for EmbeddingGemma 2's image
+    processor.
+
+    Args:
+        words: The int32 words of a chunk.
+        cores: The cores the chunks are dealt to.
+        slots: The outputs a chunk is fixed to, or ``None`` for as many as
+            the window lets fit.
+
+    Returns:
+        ExternalFunction for ``resample_peak``, with ``resample_join`` bound
+        on its object.
+
+    Raises:
+        ValueError: When ``words`` holds no slot, ``cores`` is below 1, or
+            ``slots`` is below 1.
+    """
+    _check_resample("resample_peak", words, cores, slots)
+    peak_ty = np.ndarray[(2,), np.dtype[np.int32]]
+    fn = _make_extern(
+        "resample_peak",
+        _kernel_source("vision/resample_peak.cc"),
+        [peak_ty] + [np.int32] * 4,
+        compile_flags=[f"-DWORDS={words}", f"-DCORES={cores}", f"-DPER={slots or 0}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(Out, Param, Param, Param, Param),
+            reference=lambda in_size, out_size, core, chunks: resample_peak_ref(
+                in_size, out_size, core, chunks, words=words, cores=cores, slots=slots
+            ),
+            tolerance=Tolerance.exact(note="IEEE float64, as torch on the CPU"),
+            ops_per_call=0,
+        ),
+    )
+    fn.resample_join = fn.object_file.bind("resample_join", [peak_ty] * 3)
+    return fn
+
+
+def resample_quantize(
+    words: int = 256, *, cores: int = 16, slots: int | None = None
+) -> ExternalFunction:
+    """One chunk of the int16 filter table torch resamples an axis with.
+
+    ``resample_quantize(peak, chunk, in, out, core, k, chunks)`` writes
+    chunk ``core + k * cores`` of the table of ``in`` samples to ``out``
+    whose ``cores`` cores each write ``chunks`` chunks. A chunk is ``words``
+    int32: a header ``[precision, window, first, outputs]``, then
+    ``outputs`` slots from output ``first`` on, each ``[start, count]`` and
+    the window's int16 weights two to a word, the rest zero. The precision
+    is the one the largest normalized weight ``peak`` (float64 bits, from
+    [`resample_peak`][iron.kernels.vision.resample_peak]) sets, as torch
+    picks it. A size the table cannot hold (a size below 1, a window no
+    slot of ``words`` holds, too few chunks) writes ``[-1, window, 0, 0]``.
+
+    Args:
+        words: The int32 words of a chunk.
+        cores: The cores the chunks are dealt to.
+        slots: The outputs a chunk is fixed to, or ``None`` for as many as
+            the window lets fit.
+
+    Returns:
+        ExternalFunction for ``resample_quantize``.
+
+    Raises:
+        ValueError: When ``words`` holds no slot, ``cores`` is below 1, or
+            ``slots`` is below 1.
+    """
+    _check_resample("resample_quantize", words, cores, slots)
+    return _make_extern(
+        "resample_quantize",
+        _kernel_source("vision/resample_quantize.cc"),
+        [
+            np.ndarray[(2,), np.dtype[np.int32]],
+            np.ndarray[(words,), np.dtype[np.int32]],
+        ]
+        + [np.int32] * 5,
+        compile_flags=[f"-DWORDS={words}", f"-DCORES={cores}", f"-DPER={slots or 0}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param, Param, Param, Param),
+            parameter_bindings=((5, 0),),
+            call_index=5,
+            sample=_resample_peaks,
+            reference=lambda peak, in_size, out_size, core, chunks: (
+                resample_quantize_ref(
+                    peak,
+                    in_size,
+                    out_size,
+                    core,
+                    chunks,
+                    words=words,
+                    cores=cores,
+                    slots=slots,
+                )
+            ),
+            tolerance=Tolerance.exact(note="IEEE float64, as torch on the CPU"),
+            ops_per_call=0,
+        ),
+    )
+
+
 # --------------------------------------------------------------------------
 # Numpy references. Each follows the *vector* path of its kernel (the one the
 # ``*Line`` entry points call), read off aie_kernels/vision/*.cc.
@@ -419,3 +548,161 @@ def filter2d_ref(line0, line1, line2, kernel):
         terms.append(left * k8[r, 0] + v * k8[r, 1] + right * k8[r, 2])
     acc = terms[0] + terms[1] + terms[2]
     return np.clip(acc >> 4, 0, 255).astype(np.uint8)
+
+
+# int32 words of a resample chunk's header (resample.h).
+_RESAMPLE_HEADER = 4
+
+
+def _bicubic(x: float) -> float:
+    a = -0.5
+    x = abs(x)
+    if x < 1.0:
+        return ((a + 2) * x - (a + 3)) * x * x + 1
+    if x < 2.0:
+        return ((a * x - 5 * a) * x + 8 * a) * x - 4 * a
+    return 0.0
+
+
+@dataclass(frozen=True)
+class _ResampleAxis:
+    """One axis as ``resample.h``'s ``axis()`` sees it, every step in float64."""
+
+    in_size: int
+    out_size: int
+    scale: float = 0.0
+    support: float = 0.0
+    invscale: float = 0.0
+    window: int = 0
+    slot: int = 0
+    per: int = 0
+    ok: bool = False
+
+    @classmethod
+    def of(cls, in_size, out_size, chunks, *, words, slots):
+        if in_size < 1 or out_size < 1:
+            return cls(in_size, out_size)
+        scale = in_size / out_size
+        support = 2.0 * scale if scale >= 1.0 else 2.0
+        window = 2 * math.ceil(support) + 1
+        slot = 2 + (window + 1) // 2
+        per = (words - _RESAMPLE_HEADER) // slot
+        if slots:
+            per = slots if slots <= per else 0
+        return cls(
+            in_size,
+            out_size,
+            scale,
+            support,
+            1.0 / scale if scale >= 1.0 else 1.0,
+            window,
+            slot,
+            per,
+            per >= 1 and per * chunks >= out_size,
+        )
+
+    def taps(self, i: int) -> tuple[int, list[float], float]:
+        """Output ``i``'s first sample, unnormalized weights and their sum."""
+        center = self.scale * (i + 0.5)
+        xmin = max(int(center - self.support + 0.5), 0)
+        hi = min(int(center + self.support + 0.5), self.in_size)
+        xsize = min(max(hi - xmin, 0), self.window)
+        weights = [
+            _bicubic((float(j + xmin) - center + 0.5) * self.invscale)
+            for j in range(xsize)
+        ]
+        # In order: Python's sum() of floats compensates.
+        total = 0.0
+        for v in weights:
+            total += v
+        return xmin, weights, total
+
+
+def _resample_peaks(rng, calls):
+    # Mostly a real peak's range; first no peak, then each side of the
+    # precision step at 2**-15 * 32767.5.
+    peaks = 2.0 ** rng.uniform(-6.0, 1.0, calls)
+    edges = [0.0, 32767.5 / 2**15, np.nextafter(32767.5 / 2**15, 0.0)]
+    peaks[: min(calls, len(edges))] = edges[:calls]
+    return [peaks.astype(np.float64).view(np.int32).reshape(calls, 2)]
+
+
+def resample_peak_ref(
+    in_size, out_size, core, chunks, *, words=256, cores=16, slots=None
+):
+    """Numpy reference for [`resample_peak`][iron.kernels.vision.resample_peak].
+
+    Args:
+        in_size: The input samples on the axis.
+        out_size: The output samples on the axis.
+        core: The core whose chunks ``core, core + cores, ...`` are read.
+        chunks: The chunks each core writes.
+        words: The int32 words of a chunk.
+        cores: The cores the chunks are dealt to.
+        slots: The outputs a chunk is fixed to, or ``None``.
+
+    Returns:
+        The peak's float64 bits as two int32.
+    """
+    axis = _ResampleAxis.of(in_size, out_size, chunks * cores, words=words, slots=slots)
+    m = 0.0
+    for k in range(chunks if axis.ok else 0):
+        first = (core + k * cores) * axis.per
+        for i in range(first, min(first + axis.per, out_size)):
+            _, weights, total = axis.taps(i)
+            if total == 0.0:
+                continue
+            e = weights[0]
+            for v in weights[1:]:
+                if (e < v) if total > 0.0 else (v < e):
+                    e = v
+            if m < e / total:
+                m = e / total
+    return np.array([m], np.float64).view(np.int32)
+
+
+def resample_quantize_ref(
+    peak, in_size, out_size, core, chunks, *, words=256, cores=16, slots=None
+):
+    """Numpy reference for [`resample_quantize`][iron.kernels.vision.resample_quantize].
+
+    Args:
+        peak: ``(calls, 2)`` int32, each call's peak as float64 bits; call
+            ``k`` writes chunk ``core + k * cores``.
+        in_size: The input samples on the axis.
+        out_size: The output samples on the axis.
+        core: The core whose chunks are written.
+        chunks: The chunks each core writes.
+        words: The int32 words of a chunk.
+        cores: The cores the chunks are dealt to.
+        slots: The outputs a chunk is fixed to, or ``None``.
+
+    Returns:
+        ``(calls, words)`` int32, a chunk per call. A weight past int16
+        wraps, as the kernel's store does.
+    """
+    peaks = np.ascontiguousarray(peak, np.int32).reshape(-1, 2).view(np.float64)
+    axis = _ResampleAxis.of(in_size, out_size, chunks * cores, words=words, slots=slots)
+    table = np.zeros((len(peaks), words), np.int32)
+    for k, chunk in enumerate(table):
+        if not axis.ok:
+            chunk[:2] = -1, axis.window
+            continue
+        wt_max = float(peaks[k, 0])
+        p = next(
+            (p for p in range(22) if int(0.5 + wt_max * (1 << (p + 1))) >= 1 << 15),
+            22,
+        )
+        first = (core + k * cores) * axis.per
+        n = min(max(out_size - first, 0), axis.per)
+        chunk[:_RESAMPLE_HEADER] = p, axis.window, first, n
+        for s in range(n):
+            xmin, weights, total = axis.taps(first + s)
+            at = _RESAMPLE_HEADER + s * axis.slot
+            chunk[at : at + 2] = xmin, len(weights)
+            q = np.zeros(2 * (axis.slot - 2), np.int64)
+            for j, v in enumerate(weights):
+                v = (v / total if total != 0.0 else v) * (1 << p)
+                q[j] = int(-0.5 + v) if v < 0 else int(0.5 + v)
+            chunk[at + 2 : at + axis.slot] = q.astype(np.int16).view(np.int32)
+    return table

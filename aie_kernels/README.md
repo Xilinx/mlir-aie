@@ -161,6 +161,8 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [addWeighted.cc](./vision/addWeighted.cc) | AIE API | Fixed point weighted sum of two tensors | `uint8_t` |
 | [threshold.cc](./vision/threshold.cc) | AIE API | Clipping | `uint8_t` |
 | [filter2d.cc](./vision/filter2d.cc) | AIE API | Fixed point 2D image processing filter | `uint8_t` |
+| [resample_peak.cc](./vision/resample_peak.cc) | Generic C | The largest normalized weight of one core's share of a resize axis's filter table (torch's antialiased bicubic, IEEE float64), and `resample_join`, the larger of two; shared with [resample.h](./vision/resample.h) | `int32_t` |
+| [resample_quantize.cc](./vision/resample_quantize.cc) | Generic C | One chunk of that table: each output's first sample, tap count and int16 weights at the precision the peak sets, bit for bit as torch on the CPU | `int32_t` |
 
 ## zero
 | Name | Coding style | Purpose | Datatypes |

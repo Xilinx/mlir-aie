@@ -10,7 +10,7 @@ Submodules:
 - `datamovement` — affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
-- `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
+- `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted, resample_peak, resample_quantize
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, log_f32, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
@@ -290,6 +290,10 @@ from .vision import (
     filter2d_ref,
     gray2rgba,
     gray2rgba_ref,
+    resample_peak,
+    resample_peak_ref,
+    resample_quantize,
+    resample_quantize_ref,
     rgba2gray,
     rgba2gray_ref,
     rgba2hue,
@@ -432,6 +436,10 @@ __all__ = [
     "filter2d_ref",
     "add_weighted",
     "add_weighted_ref",
+    "resample_peak",
+    "resample_peak_ref",
+    "resample_quantize",
+    "resample_quantize_ref",
     "softmax",
     "gelu",
     "gelu_sized",
