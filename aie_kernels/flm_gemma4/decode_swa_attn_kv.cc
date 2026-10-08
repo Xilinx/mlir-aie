@@ -16,8 +16,6 @@ void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
 
 constexpr int v_prod_lock = FLM_GEMMA4_DECODE_SWA_ATTN_KV_V_PROD_LOCK;
 constexpr int v_cons_lock = FLM_GEMMA4_DECODE_SWA_ATTN_KV_V_CONS_LOCK;
-constexpr int o_prod_lock = FLM_GEMMA4_DECODE_SWA_ATTN_KV_O_PROD_LOCK;
-constexpr int o_cons_lock = FLM_GEMMA4_DECODE_SWA_ATTN_KV_O_CONS_LOCK;
 
 extern "C" {
 
@@ -48,8 +46,7 @@ void swa_attn_kv_round(bf16 *s, bf16 *v_ping, bf16 *v_pong, float *y,
 }
 
 void swa_attn_kv_finish(float *y, bf16 *o, float *l) {
-  attn_kv_finish_impl<8 * SWA_DH, o_prod_lock, o_cons_lock, O_DOWN_REPEATS>(
-      y, o, l);
+  attn_kv_finish_impl<8 * SWA_DH>(y, o, l);
 }
 }
 

@@ -1178,7 +1178,7 @@ _DECODE_Q4NX_BLOCK_BYTES = _DECODE_Q4NX_ROWS * _DECODE_Q4NX_COLS * 5 // 8
 _DECODE_BF16_BLOCK = 32 * 256
 _DECODE_RTP = np.ndarray[(16,), np.dtype[np.int32]]
 _DECODE_KV_LOCKS = dict(
-    v_prod_lock=2, v_cons_lock=3, o_prod_lock=0, o_cons_lock=1
+    v_prod_lock=2, v_cons_lock=3
 )
 _DECODE_ROPE_LOCKS = dict(
     qkv_prod_lock=0,
@@ -1187,8 +1187,6 @@ _DECODE_ROPE_LOCKS = dict(
     k_cons_lock=5,
     v_prod_lock=6,
     v_cons_lock=7,
-    rope_prod_lock=8,
-    rope_cons_lock=9,
 )
 
 
@@ -1888,8 +1886,7 @@ def flm_gemma4_decode_rope(
         geometry: The model the kernel builds for.
         **locks: Core lock ids overriding the defaults ``qkv_prod_lock=0``,
             ``qkv_cons_lock=1``, ``k_prod_lock=4``, ``k_cons_lock=5``,
-            ``v_prod_lock=6``, ``v_cons_lock=7``, ``rope_prod_lock=8`` and
-            ``rope_cons_lock=9``.
+            ``v_prod_lock=6``, ``v_cons_lock=7``, ``v_cons_lock=7``.
     """
     dh = geometry.swa_dh if sliding_window else geometry.dh
     bf16 = np.dtype[bfloat16]
@@ -2084,8 +2081,7 @@ def flm_gemma4_decode_rms_residual(
 
     Args:
         geometry: The model the kernel builds for.
-        **locks: Core lock ids overriding the defaults ``w_prod_lock=0``,
-            ``w_cons_lock=1``, ``y_prod_lock=2``, ``y_cons_lock=3``,
+        **locks: Core lock ids overriding the defaults ``y_prod_lock=2``, ``y_cons_lock=3``,
             ``x_prod_lock=4``, ``x_cons_lock=5``,
             ``lm_head_out_prod_lock=7`` and ``lm_head_out_cons_lock=8``.
     """
@@ -2107,8 +2103,6 @@ def flm_gemma4_decode_rms_residual(
         ],
         (Out, In, In, Out, In, Out, Param, Param),
         dict(
-            w_prod_lock=0,
-            w_cons_lock=1,
             y_prod_lock=2,
             y_cons_lock=3,
             x_prod_lock=4,
@@ -2280,12 +2274,8 @@ def flm_gemma4_decode_per_layer_up(
         ],
         (InOut, In, In, Out),
         dict(
-            x_prod_lock=0,
-            x_cons_lock=1,
             proj_w_prod_lock=2,
             proj_w_cons_lock=3,
-            y_prod_lock=4,
-            y_cons_lock=5,
         ),
         locks,
         geometry,
@@ -2395,12 +2385,8 @@ def flm_gemma4_decode_proj_layer_embedding(
         ],
         (In, In, In, Out, Out, In, In),
         dict(
-            x0_per_layer_prod_lock=1,
-            xw_cons_lock=3,
             proj_w_prod_lock=4,
             proj_w_cons_lock=5,
-            y_prod_lock=6,
-            y_cons_lock=7,
         ),
         locks,
         geometry,
@@ -2445,8 +2431,6 @@ def flm_gemma4_decode_gate_layer_embedding(
         dict(
             proj_w_prod_lock=2,
             proj_w_cons_lock=3,
-            y_prod_lock=4,
-            y_cons_lock=5,
             final_x_prod_lock=7,
             final_x_cons_lock=8,
         ),

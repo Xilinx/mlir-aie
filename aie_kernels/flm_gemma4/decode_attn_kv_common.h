@@ -133,15 +133,12 @@ void attn_kv_begin_impl(float *y, float *l) {
 
 /// \brief Narrow the f32 accumulator in place, then scale by 1/l into o.
 ///
-/// The lock counts are O_REPEATS because the down projection reads o O_REPEATS
-/// times per dispatch; see decode_layout.h. The o locks guard `o`, so this
-/// function uses the pointer form.
-template <unsigned N, int o_prod_lock, int o_cons_lock, int O_REPEATS>
+/// The Worker holds the o locks across this call; see decode_layout.h for the
+/// O_REPEATS the down projection reads o with.
+template <unsigned N>
 void attn_kv_finish_impl(float *y, bf16 *o, float *l) {
   narrow_to_bf16<N>((bf16 *)y, y);
-  _lock_acquire_p(o, o_prod_lock, O_REPEATS);
   scale_div_aie<N>((bf16 *)y, o, l);
-  _lock_release_p(o, o_cons_lock, O_REPEATS);
 }
 
 #endif // AIE_KERNELS_FLM_GEMMA4_DECODE_ATTN_KV_COMMON_H

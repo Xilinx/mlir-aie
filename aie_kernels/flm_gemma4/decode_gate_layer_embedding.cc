@@ -28,10 +28,6 @@ void gate_layer_embedding(bf16 *x, bf16 *proj_w_ping, bf16 *proj_w_pong,
       FLM_GEMMA4_DECODE_GATE_LAYER_EMBEDDING_PROJ_W_PROD_LOCK;
   constexpr int proj_w_cons_lock =
       FLM_GEMMA4_DECODE_GATE_LAYER_EMBEDDING_PROJ_W_CONS_LOCK;
-  constexpr int y_prod_lock =
-      FLM_GEMMA4_DECODE_GATE_LAYER_EMBEDDING_Y_PROD_LOCK;
-  constexpr int y_cons_lock =
-      FLM_GEMMA4_DECODE_GATE_LAYER_EMBEDDING_Y_CONS_LOCK;
   constexpr int final_x_prod_lock =
       FLM_GEMMA4_DECODE_GATE_LAYER_EMBEDDING_FINAL_X_PROD_LOCK;
   constexpr int final_x_cons_lock =
@@ -40,7 +36,6 @@ void gate_layer_embedding(bf16 *x, bf16 *proj_w_ping, bf16 *proj_w_pong,
   static PingPong proj_w_pingpong;
   alignas(aie::vector_decl_align) float y_acc[BF16_PROJ_M_BLOCK];
   _left_lock_acquire_p(x, final_x_cons_lock);
-  _lock_acquire_p(y, y_prod_lock);
 
   copy_vectorized<bf16, MODEL_DIM>(y, x);
   _left_lock_release_p(x, final_x_prod_lock);
@@ -48,7 +43,5 @@ void gate_layer_embedding(bf16 *x, bf16 *proj_w_ping, bf16 *proj_w_pong,
                                 y_acc, proj_w_pingpong, proj_w_prod_lock,
                                 proj_w_cons_lock);
   _activate(y + MODEL_DIM);
-
-  _lock_release_p(y, y_cons_lock);
 }
 }

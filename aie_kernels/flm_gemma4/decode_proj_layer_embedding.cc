@@ -16,23 +16,13 @@ extern "C" {
 void proj_layer_embedding(bf16 *norm_w, bf16 *x0_per_layer, bf16 *x0,
                           bf16 *x_proj, bf16 *y, bf16 *proj_w_ping,
                           bf16 *proj_w_pong) {
-  constexpr int x0_per_layer_prod_lock =
-      FLM_GEMMA4_DECODE_PROJ_LAYER_EMBEDDING_X0_PER_LAYER_PROD_LOCK;
-  constexpr int xw_cons_lock =
-      FLM_GEMMA4_DECODE_PROJ_LAYER_EMBEDDING_XW_CONS_LOCK;
   constexpr int proj_w_prod_lock =
       FLM_GEMMA4_DECODE_PROJ_LAYER_EMBEDDING_PROJ_W_PROD_LOCK;
   constexpr int proj_w_cons_lock =
       FLM_GEMMA4_DECODE_PROJ_LAYER_EMBEDDING_PROJ_W_CONS_LOCK;
-  constexpr int y_prod_lock =
-      FLM_GEMMA4_DECODE_PROJ_LAYER_EMBEDDING_Y_PROD_LOCK;
-  constexpr int y_cons_lock =
-      FLM_GEMMA4_DECODE_PROJ_LAYER_EMBEDDING_Y_CONS_LOCK;
 
   static PingPong proj_w_pingpong;
   alignas(aie::vector_decl_align) float y_acc[BF16_PROJ_M_BLOCK];
-  _lock_acquire_p(x_proj, xw_cons_lock);
-  _lock_acquire_p(y, y_prod_lock);
 
   linear_proj<PLI_D, MODEL_DIM>(x_proj, proj_w_ping, proj_w_pong, x0, y_acc,
                                 proj_w_pingpong, proj_w_prod_lock,
@@ -45,7 +35,5 @@ void proj_layer_embedding(bf16 *norm_w, bf16 *x0_per_layer, bf16 *x0,
   scale_vectorized<PLI_D>(x_proj, (bf16)PER_LAYER_MODEL_PROJECTION_SCALE);
   copy_vectorized<bf16, PLI_D>(y + MODEL_DIM + 32, x_proj);
   copy_vectorized<bf16, MODEL_DIM + 32>(y, norm_w + PLI_D);
-  _lock_release_p(y, y_cons_lock);
-  _lock_release_p(x0_per_layer, x0_per_layer_prod_lock);
 }
 }
