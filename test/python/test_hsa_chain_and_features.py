@@ -962,26 +962,6 @@ def test_unbounded_wait_blocks_forever_by_default(monkeypatch):
     assert calls == [_HSA_WAIT_FOREVER]
 
 
-def test_load_and_run_rejects_trace_before_touching_args(monkeypatch):
-    """A trace_config must be rejected before base load_and_run mutates run_args."""
-    from aie.utils.hostruntime.hostruntime import HostRuntimeError
-    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
-
-    class _FakeCtx:
-        device_gen = "npu2"
-
-    monkeypatch.setattr(hrt.HSAContext, "get", classmethod(lambda cls: _FakeCtx()))
-    rt = hrt.CachedHSAHostRuntime()
-
-    class _K:
-        trace_config = object()
-
-    run_args = [1, 2, 3]
-    with pytest.raises(HostRuntimeError):
-        rt.load_and_run(_K(), run_args)
-    assert run_args == [1, 2, 3]  # untouched on the error path
-
-
 @pytest.mark.parametrize(
     "value,expected",
     [(None, 32), ("8", 8), ("0", 0), ("none", 32), ("", 32), ("1.5", 32)],

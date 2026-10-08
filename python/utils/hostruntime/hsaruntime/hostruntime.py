@@ -43,12 +43,6 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-_TRACE_UNSUPPORTED_MSG = (
-    "Trace capture is not supported on the HSA backend. Re-run without a "
-    "trace_config, or use the XRT backend (NPU_RUNTIME=xrt) for trace-enabled "
-    "designs."
-)
-
 _DEFAULT_EXE_CACHE_SIZE = 32
 
 # Executables a DispatchTime[T] handle keeps loaded, one per distinct per-call
@@ -370,8 +364,6 @@ class HSAHostRuntime(HostRuntime):
         cleanup, even if its owner is freed or evicted meanwhile.
         """
         assert isinstance(kernel_handle, HSAKernelHandle)
-        if trace_config is not None:
-            raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
         self._require_dispatch_insts(kernel_handle, dispatch_insts)
         self.check_device_consistency()
         self._reclaim_pending()
@@ -463,18 +455,6 @@ class HSAHostRuntime(HostRuntime):
 
         self._mark_device_resident(tensors)
         return HSAKernelResult(stop - start, success=True)
-
-    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
-        """Reject trace up front, then defer to the base load/run pipeline.
-
-        The base ``load_and_run`` mutates ``run_args`` (appends a trace buffer
-        via ``prepare_args_for_trace``) *before* calling ``run``. HSA cannot
-        honor trace, so fail here -- before touching the args -- keeping the
-        caller's ``run_args`` untouched on the error path (mirrors HRX).
-        """
-        if getattr(npu_kernel, "trace_config", None) is not None:
-            raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
-        return super().load_and_run(npu_kernel, run_args, dispatch_scalars, **kwargs)
 
     def device(self) -> "Device":
         from aie.iron.device import from_name
