@@ -21,7 +21,6 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bf16 *__restrict pY,
 
 constexpr int k_prod_lock = FLM_GEMMA4_DECODE_ATTN_QK_KVH2_K_PROD_LOCK;
 constexpr int k_cons_lock = FLM_GEMMA4_DECODE_ATTN_QK_KVH2_K_CONS_LOCK;
-constexpr int l_prod_lock = FLM_GEMMA4_DECODE_ATTN_QK_KVH2_L_PROD_LOCK;
 
 // Written for a head dim of 512.
 template <unsigned colQ, unsigned r, unsigned s, unsigned t>
@@ -94,13 +93,11 @@ static PingPong k_pingpong;
 
 extern "C" {
 
-// See attn_qk_begin in decode_attn_qk.cc. The kv tile waits for the
-// l_prod_lock release.
+// See attn_qk_begin in decode_attn_qk.cc.
 void attn_qk_begin(bf16 *m) {
   static const aie::vector<bf16, 16> neg_inf =
       aie::broadcast<bf16, 16>(-0x1.FEp127f);
   aie::store_v(m, neg_inf);
-  _lock_release(l_prod_lock);
 }
 
 // Half a round: one of the two KV heads. j selects which quarter of s/m/c_local
