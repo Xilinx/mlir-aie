@@ -723,27 +723,21 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   std::vector<EdgeBase *> outputs;
   auto &input = g.fileInput(inputFile, "input.mlir");
 
-  auto &traced =
-      input
-          .map<ModRef>(
-              "placed.mlir",
-              PassPipeline{getPlacementPipeline(
-                  &context, coresPerCol.getValue(), placerType.getValue(),
-                  saSeed.getValue(), saEffort.getValue())})
-          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
-
   // --default-stack-size stands in for the target's built-in default on any
   // core that leaves stack_size absent. It runs ahead of every reader of
-  // CoreOp::getEffectiveStackSize(): buffer placement, the stack-size check,
-  // and the core, BCF and ldscript emitters.
-  auto &withDefaultStackSize = traced.map<ModRef>(
+  // CoreOp::getEffectiveStackSize(): tile placement, buffer placement, the
+  // stack-size check, and the core, BCF and ldscript emitters.
+  auto &withDefaultStackSize = input.map<ModRef>(
       "default_stack_size.mlir",
-      [stackSize = defaultStackSize.getValue()](
-          const Item<ModRef> &in, Item<ModRef> &out) -> mlir::LogicalResult {
-        out.value =
-            stackSize > 0
-                ? ModRef(populateDefaultStackSize(in.get().get(), stackSize))
-                : ModRef(in.get().get().clone());
+      [stackSize = defaultStackSize.getValue(), ctx = &context](
+          const Item<File> &in, Item<ModRef> &out) -> mlir::LogicalResult {
+        out.value = asModule(in, ctx);
+        if (!out.value->get()) {
+          return mlir::failure();
+        }
+        if (stackSize > 0) {
+          populateDefaultStackSize(out.value->get(), stackSize);
+        }
         // A measurement carried in the input is an earlier build's; this one
         // measures its own or falls back to the default.
         out.value->get().walk(
@@ -751,10 +745,19 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return verifyStackSizeOverrides(out.value->get());
       });
 
+  auto &traced =
+      withDefaultStackSize
+          .map<ModRef>(
+              "placed.mlir",
+              PassPipeline{getPlacementPipeline(
+                  &context, coresPerCol.getValue(), placerType.getValue(),
+                  saSeed.getValue(), saEffort.getValue())})
+          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
+
   // Everything a core needs before it can be compiled: objectFifo lowering
   // (which creates buffers), lock and BD ids, and the core-body lowerings.
   // Buffer addresses are not among them; see the placement edge below.
-  auto &withSymbols = withDefaultStackSize.map<ModRef>(
+  auto &withSymbols = traced.map<ModRef>(
       "input_with_symbols.mlir",
       PassPipeline{
           &context,

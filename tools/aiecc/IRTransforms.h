@@ -176,17 +176,15 @@ collectCoreIRLinkFiles(xilinx::AIE::CoreOp coreOp, llvm::StringRef inputFile,
 
 // Sets `stack_size = defaultStackSize` on every CoreOp without an explicit
 // `stack_size`. A CoreOp with an explicit `stack_size` keeps it.
-inline mlir::OwningOpRef<mlir::ModuleOp>
-populateDefaultStackSize(mlir::ModuleOp src, int64_t defaultStackSize) {
-  mlir::OwningOpRef<mlir::ModuleOp> cloned = src.clone();
-  mlir::Builder b(cloned->getContext());
-  cloned->walk([&](xilinx::AIE::CoreOp coreOp) {
+inline void populateDefaultStackSize(mlir::ModuleOp module,
+                                     int64_t defaultStackSize) {
+  mlir::Builder b(module.getContext());
+  module.walk([&](xilinx::AIE::CoreOp coreOp) {
     if (!coreOp.getStackSizeAttr()) {
       coreOp.setStackSizeAttr(
           b.getI32IntegerAttr(static_cast<int32_t>(defaultStackSize)));
     }
   });
-  return cloned;
 }
 
 // Rejects a negative `stack_size_override`. This repeats the check in
