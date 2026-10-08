@@ -671,6 +671,36 @@ def test_call_rebuilds_removed_cached_artifacts(
     assert len(builds) == 2
 
 
+def test_call_reuses_kernel_after_inferred_full_elf(monkeypatch, tmp_path, npu2_device):
+    def gen(*, size: CompileTime[int]):
+        pass
+
+    class FakeKernel:
+        num_host_bos = 0
+        elf_path = tmp_path / "design.elf"
+
+        def __call__(self):
+            return "ran"
+
+    kernel = FakeKernel()
+    kernel.elf_path.touch()
+    builds = []
+    cd = CallableDesign(gen)
+
+    def fake_compile_and_build(self, compilable, cache_key, trace_config):
+        builds.append(compilable)
+        compilable.full_elf = True
+        return kernel
+
+    monkeypatch.setattr(
+        CallableDesign, "_compile_and_build_kernel", fake_compile_and_build
+    )
+
+    assert cd(size=4) == "ran"
+    assert cd(size=4) == "ran"
+    assert len(builds) == 1
+
+
 def test_function_cache_key_keeps_internal_identity_out_of_compile_kwargs():
     """User compile keys cannot collide with internal cache dimensions."""
     from aie.utils.compile.cache.utils import _create_function_cache_key

@@ -142,6 +142,7 @@ class CallableDesign:
             self._path_cache_fn = None
 
         self._kernel_cache: dict = {}
+        self._kernel_cache_aliases: dict = {}
 
         if (
             logger.isEnabledFor(logging.DEBUG)
@@ -272,8 +273,6 @@ class CallableDesign:
                 dispatch_params=compilable.dispatch_params,
                 dispatch_lib_path=compilable.get_dispatch_lib_path(),
             )
-        if compilable.use_cache and cache_key is not None:
-            self._kernel_cache[cache_key] = kernel
         return kernel
 
     def __call__(self, *runtime_args, **runtime_kwargs):
@@ -365,7 +364,6 @@ class CallableDesign:
             runtime_args, scalar_runtime_kwargs
         )
         compilable = self._build_compilable(call_compile_kwargs, tensor_args)
-        compilable._infer_full_elf()
 
         generator = compilable.mlir_generator
         if callable(generator):
@@ -389,9 +387,12 @@ class CallableDesign:
         # ever asking. The on-disk cache still serves the artifacts, so this
         # re-reads rather than rebuilds.
         use_kernel_cache = compilable.use_cache and trace_config is None
-        kernel = self._kernel_cache.get(cache_key) if use_kernel_cache else None
+        resolved_cache_key = self._kernel_cache_aliases.get(cache_key, cache_key)
+        kernel = (
+            self._kernel_cache.get(resolved_cache_key) if use_kernel_cache else None
+        )
         if kernel is not None:
-            if compilable.full_elf:
+            if getattr(kernel, "elf_path", None) is not None:
                 artifacts_present = Path(kernel.elf_path).is_file()
             elif compilable.dispatch_params:
                 # A dispatch design has no insts.bin at all -- the instruction
@@ -409,10 +410,24 @@ class CallableDesign:
                     and Path(kernel.insts_path).is_file()
                 )
             if not artifacts_present:
-                self._kernel_cache.pop(cache_key, None)
+                self._kernel_cache.pop(resolved_cache_key, None)
+                self._kernel_cache_aliases.pop(cache_key, None)
                 kernel = None
         if kernel is None:
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
+            final_cache_key = _create_function_cache_key(
+                cache_fn,
+                tuple(tensor_args),
+                cache_compile_kwargs,
+                extra_key=compilable._generation_cache_key(
+                    full_elf=compilable.full_elf
+                ),
+            )
+            if use_kernel_cache:
+                self._kernel_cache.pop(cache_key, None)
+                self._kernel_cache[final_cache_key] = kernel
+                if final_cache_key != cache_key:
+                    self._kernel_cache_aliases[cache_key] = final_cache_key
 
         # After compile(): validation reads _expected_tensor_sizes.
         implicit_tensor_count = 0
@@ -446,7 +461,8 @@ class CallableDesign:
                 msg,
             )
 
-            self._kernel_cache.pop(cache_key, None)
+            self._kernel_cache.pop(resolved_cache_key, None)
+            self._kernel_cache_aliases.pop(cache_key, None)
             # compile() returns the primary artifact path first (xclbin, or the
             # full ELF in full-ELF mode) -- the same path the context cache is
             # keyed on, so it is the correct eviction key either way.
@@ -459,6 +475,18 @@ class CallableDesign:
             if DefaultNPURuntime is not None:
                 DefaultNPURuntime.evict_context(primary_artifact)
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
+            if use_kernel_cache:
+                final_cache_key = _create_function_cache_key(
+                    cache_fn,
+                    tuple(tensor_args),
+                    cache_compile_kwargs,
+                    extra_key=compilable._generation_cache_key(
+                        full_elf=compilable.full_elf
+                    ),
+                )
+                self._kernel_cache[final_cache_key] = kernel
+                if final_cache_key != cache_key:
+                    self._kernel_cache_aliases[cache_key] = final_cache_key
             return kernel(*tensor_args, **remaining_scalars)
 
     def specialize(self, **overrides) -> "CallableDesign":
