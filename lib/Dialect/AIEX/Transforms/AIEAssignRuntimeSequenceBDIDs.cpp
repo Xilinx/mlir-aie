@@ -132,8 +132,34 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                                             device.getTargetModel())})
                .first;
       seedFromStaticBds(device, tile, it->second);
+      if (loadedDevice && loadedDevice != device)
+        seedFromStaticBds(loadedDevice, tile, it->second);
     }
     return it->second;
+  }
+
+  // The device the latest aiex.npu.load_pdi configured. A sequence that
+  // aie-materialize-runtime-sequences inlined runs on that device's static
+  // DMAs, which stay in it rather than in the device that holds the sequence.
+  AIE::DeviceOp loadedDevice;
+  // Configures from before the latest aiex.npu.load_pdi.
+  llvm::SmallPtrSet<Operation *, 16> unloaded;
+
+  // A PDI load reconfigures the array, so the tasks configured so far no
+  // longer hold ids and allocation restarts around the new static BDs.
+  void noteLoadPdi(NpuLoadPdiOp load) {
+    loadedDevice = {};
+    if (FlatSymbolRefAttr ref = load.getDeviceRefAttr())
+      if (Operation *parent = getOperation()->getParentOp())
+        loadedDevice =
+            SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(parent, ref);
+    for (auto &[tile, tasks] : liveByTile)
+      for (DMAConfigureTaskOp task : tasks)
+        unloaded.insert(task);
+    gens.clear();
+    liveByTile.clear();
+    pendingAwaitReleases.clear();
+    freedInFlight.clear();
   }
 
   // Reject control flow the static path cannot lower. Constant-trip scf.for is
@@ -500,7 +526,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pendingAwaitReleases.erase(task_op);
     // Those IDs may now belong to another configure. A redundant release must
     // not inspect or change the generator's current ownership.
-    if (awaitedConfigures.contains(task_op) || reclaimed.contains(task_op))
+    if (awaitedConfigures.contains(task_op) || reclaimed.contains(task_op) ||
+        unloaded.contains(task_op))
       return success();
     BdIdGenerator &gen = getGeneratorForTile(task_op.getTileOp());
     WalkResult result = task_op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd) {
@@ -722,6 +749,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     releasedTasks.clear();
     liveByTile.clear();
     freedInFlight.clear();
+    loadedDevice = {};
+    unloaded.clear();
   }
 
   void runOnOperation() override {
@@ -760,6 +789,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             return WalkResult::interrupt();
         } else if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
           if (DMAConfigureTaskOp cfg = start.getTaskOp()) {
+            if (unloaded.contains(cfg)) {
+              start.emitOpError(
+                  "starts a task configured before an aiex.npu.load_pdi, "
+                  "which reconfigured the array; its buffer descriptor ids "
+                  "may now belong to the loaded device's static DMAs. "
+                  "Configure the task after the load_pdi instead.");
+              return WalkResult::interrupt();
+            }
             // Only an explicit aiex.dma_free_task releases a task that is
             // started again (an await or a reclaim keeps the ids of one that
             // is), so this start would push ids that may already describe
@@ -776,6 +813,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             pollProven.erase(cfg);
             notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg));
           }
+        } else if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
+          noteLoadPdi(load);
         } else if (auto poll = dyn_cast<NpuMaskPollOp>(op)) {
           notePoll(poll);
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
