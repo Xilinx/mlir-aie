@@ -240,16 +240,22 @@ flm_gemma4_swa_prefill/16x4/bfloat16
 flm_gemma4_v_norm_core/512x4/bfloat16
 fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/mmul_shape=(8, 8, 8)/out_chunk=512
 fused_mm/16x64x16x4/bfloat16/band_m=16/bfp16_b=True/chunk_k=32/out_chunk=64
+fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/emulate_bf16_mmul_with_bfp16=True/out_chunk=256
 fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/mmul_shape=(8, 8, 8)/out_chunk=256
+fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=32/chunk_k=128/clamp=(-0.125, 0.75)/emulate_bf16_mmul_with_bfp16=True/epilogue=gelu/epilogue_modes=('none', 'gelu', 'silu', 'sigmoid')/gelu=bf16_steps/out_chunk=512/rounding=floor
+fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=32/chunk_k=128/emulate_bf16_mmul_with_bfp16=True/out_chunk=512
+fused_mm/32x256x32x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/emulate_bf16_mmul_with_bfp16=True/out_chunk=256
 fused_mm/32x256x32x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/mmul_shape=(8, 8, 8)/out_chunk=256
 fused_mm/32x32x16x4/bfloat16
 fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)
 fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)/epilogue=silu
+fused_mm/32x48x16x4/bfloat16/emulate_bf16_mmul_with_bfp16=True
 fused_mm/32x48x16x4/bfloat16/epilogue=gelu
 fused_mm/32x48x16x4/bfloat16/epilogue=gelu/gelu=bf16_steps/rounding=floor
 fused_mm/32x48x16x4/bfloat16/epilogue=sigmoid
 fused_mm/32x48x16x4/bfloat16/epilogue=silu
 fused_mm/32x48x16x4/bfloat16/rounding=floor
+fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/emulate_bf16_mmul_with_bfp16=True/out_chunk=256
 fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/mmul_shape=(8, 8, 8)/out_chunk=256
 fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/clamp=(-0.125, 0.75)/epilogue=silu/mmul_shape=(8, 8, 8)/out_chunk=256
 fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/epilogue=gelu/mmul_shape=(4, 8, 8)/out_chunk=256
@@ -258,6 +264,7 @@ fused_mm/64x128x32x4/bfloat16/band_m=64/chunk_k=32/mmul_shape=(8, 8, 8)/out_chun
 fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=silu/out_chunk=512
 fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=gelu/epilogue_modes=('none', 'gelu', 'silu', 'sigmoid')/gelu=bf16_steps/out_chunk=512/rounding=floor
 fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/out_chunk=512
+fused_mm/64x32x128x4/bfloat16/b_col_maj=True/band_m=64/chunk_k=32/emulate_bf16_mmul_with_bfp16=True/out_chunk=512
 fused_mm/64x32x128x4/bfloat16/band_m=64/bfp16_b=True/chunk_k=32/out_chunk=512
 gelu/1024x16/bfloat16
 gelu/1024x16/bfloat16/use_lut=True/lut
