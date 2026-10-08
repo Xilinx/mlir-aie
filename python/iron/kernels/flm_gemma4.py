@@ -1050,7 +1050,7 @@ def flm_gemma4_decode_glu(
         geometry: The model the kernel builds for.
         **locks: Core lock ids overriding the defaults ``x_prod_lock=0``,
             ``x_cons_lock=1``, ``y_prod_lock=2``, ``y_cons_lock=3`` and
-            ``rtp_lock=6``.
+            ``y_cons_lock=3``.
     """
     bf16 = np.dtype[bfloat16]
     hid = geometry.intermediate_size * (2 if geometry.double_wide_mlp else 1)
@@ -1068,7 +1068,7 @@ def flm_gemma4_decode_glu(
             np.ndarray[(16,), np.dtype[np.int32]],
         ],
         (Out, In, In, Out, Out, Param),
-        dict(x_prod_lock=0, x_cons_lock=1, y_prod_lock=2, y_cons_lock=3, rtp_lock=6),
+        dict(x_prod_lock=0, x_cons_lock=1, y_prod_lock=2, y_cons_lock=3),
         locks,
         geometry,
         lut=True,
@@ -1181,7 +1181,7 @@ _DECODE_Q4NX_BLOCK_BYTES = _DECODE_Q4NX_ROWS * _DECODE_Q4NX_COLS * 5 // 8
 _DECODE_BF16_BLOCK = 32 * 256
 _DECODE_RTP = np.ndarray[(16,), np.dtype[np.int32]]
 _DECODE_KV_LOCKS = dict(
-    v_prod_lock=2, v_cons_lock=3, o_prod_lock=0, o_cons_lock=1, l_cons_lock=8
+    v_prod_lock=2, v_cons_lock=3, o_prod_lock=0, o_cons_lock=1
 )
 _DECODE_ROPE_LOCKS = dict(
     qkv_prod_lock=0,
@@ -1273,9 +1273,7 @@ def flm_gemma4_decode_attn_kv(
     Args:
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 1.
         **locks: Core lock ids overriding the defaults ``v_prod_lock=2``,
-            ``v_cons_lock=3``, ``o_prod_lock=0``, ``o_cons_lock=1`` and
-            ``l_cons_lock=8``, which the runtime sequence sets after it
-            writes the RTPs.
+            ``v_cons_lock=3``, ``o_prod_lock=0`` and ``o_cons_lock=1``.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_kv", geometry, 1)
     t = _decode_attn_types(geometry, geometry.dh, geometry.dh)
@@ -1456,9 +1454,7 @@ def flm_gemma4_decode_attn_kv_kvh2(
     Args:
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 2.
         **locks: Core lock ids overriding the defaults ``v_prod_lock=2``,
-            ``v_cons_lock=3``, ``o_prod_lock=0``, ``o_cons_lock=1`` and
-            ``l_cons_lock=8``, which the runtime sequence sets after it
-            writes the RTPs.
+            ``v_cons_lock=3``, ``o_prod_lock=0`` and ``o_cons_lock=1``.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_kv_kvh2", geometry, 2)
     t = _decode_attn_types(geometry, geometry.dh, geometry.dh)
@@ -1543,7 +1539,7 @@ def flm_gemma4_decode_attn_qk(
         sliding_window: Build for the sliding-window layers' head dim.
         geometry: The model the kernel builds for; without ``sliding_window``
             ``num_kv_heads`` must be 1.
-        **locks: Core lock ids overriding the defaults ``k_prod_lock=2``,
+        **locks: Core lock ids overriding the defaults ``k_prod_lock=2`` and
             ``k_cons_lock=3``.
     """
     if not sliding_window:
@@ -1580,7 +1576,7 @@ def flm_gemma4_decode_attn_qk_kvh2(
 
     Args:
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 2.
-        **locks: Core lock ids overriding the defaults ``k_prod_lock=2``,
+        **locks: Core lock ids overriding the defaults ``k_prod_lock=2`` and
             ``k_cons_lock=3``.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_qk_kvh2", geometry, 2)
@@ -1813,9 +1809,7 @@ def flm_gemma4_decode_swa_attn_kv(
     Args:
         geometry: The model the kernel builds for.
         **locks: Core lock ids overriding the defaults ``v_prod_lock=2``,
-            ``v_cons_lock=3``, ``o_prod_lock=0``, ``o_cons_lock=1`` and
-            ``l_cons_lock=8``, which the runtime sequence sets after it
-            writes the RTPs.
+            ``v_cons_lock=3``, ``o_prod_lock=0`` and ``o_cons_lock=1``.
     """
     t = _decode_attn_types(
         geometry, geometry.swa_dh, geometry.num_kv_heads * geometry.swa_dh
@@ -2109,7 +2103,7 @@ def flm_gemma4_decode_rms_residual(
         geometry: The model the kernel builds for.
         **locks: Core lock ids overriding the defaults ``w_prod_lock=0``,
             ``w_cons_lock=1``, ``y_prod_lock=2``, ``y_cons_lock=3``,
-            ``x_prod_lock=4``, ``x_cons_lock=5``, ``rtp_available_lock=6``,
+            ``x_prod_lock=4``, ``x_cons_lock=5``,
             ``lm_head_out_prod_lock=7`` and ``lm_head_out_cons_lock=8``.
     """
     bf16 = np.dtype[bfloat16]
@@ -2136,7 +2130,6 @@ def flm_gemma4_decode_rms_residual(
             y_cons_lock=3,
             x_prod_lock=4,
             x_cons_lock=5,
-            rtp_available_lock=6,
             lm_head_out_prod_lock=7,
             lm_head_out_cons_lock=8,
         ),
@@ -2290,7 +2283,7 @@ def flm_gemma4_decode_proj_main(
         **locks: Core lock ids overriding the defaults ``x_prod_lock=0``,
             ``x_cons_lock=1``, ``w_prod_lock=2``, ``w_cons_lock=3``,
             ``y_prod_ping_lock=4``, ``y_prod_pong_lock=5``,
-            ``rtp_available_lock=6``, ``y_cons_ping_lock=7`` and
+            ``y_cons_ping_lock=7`` and
             ``y_cons_pong_lock=8``. When ``send_x_output`` is 0 the four
             ``y`` locks are those of the neighbour whose memory holds ``y``.
     """
@@ -2321,7 +2314,6 @@ def flm_gemma4_decode_proj_main(
             w_cons_lock=3,
             y_prod_ping_lock=4,
             y_prod_pong_lock=5,
-            rtp_available_lock=6,
             y_cons_ping_lock=7,
             y_cons_pong_lock=8,
         ),

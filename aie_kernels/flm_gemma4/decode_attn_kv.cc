@@ -18,7 +18,6 @@ constexpr int v_prod_lock = FLM_GEMMA4_DECODE_ATTN_KV_V_PROD_LOCK;
 constexpr int v_cons_lock = FLM_GEMMA4_DECODE_ATTN_KV_V_CONS_LOCK;
 constexpr int o_prod_lock = FLM_GEMMA4_DECODE_ATTN_KV_O_PROD_LOCK;
 constexpr int o_cons_lock = FLM_GEMMA4_DECODE_ATTN_KV_O_CONS_LOCK;
-constexpr int l_cons_lock = FLM_GEMMA4_DECODE_ATTN_KV_L_CONS_LOCK;
 
 extern "C" {}
 template <unsigned colQ, unsigned r, unsigned s, unsigned t>
@@ -111,7 +110,7 @@ static PingPong v_pingpong;
 extern "C" {
 
 void attn_kv_begin(float *y, float *l) {
-  attn_kv_begin_impl<8 * DH, l_cons_lock>(y, l);
+  attn_kv_begin_impl<8 * DH>(y, l);
 }
 
 // One round. s is the ObjectFifo object.

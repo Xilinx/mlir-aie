@@ -123,18 +123,15 @@ void scale_div_aie(bf16 *a, bf16 *o, float *l) {
 // template parameters because each kernel has its own lock contract with the
 // design.
 
-/// \brief Zero the y/l accumulators, then wait on l_cons_lock.
+/// \brief Zero the y/l accumulators.
 ///
-/// The runtime sequence sets l_cons_lock, a lock of this tile, after it
-/// writes the RTPs, so the Worker may read L only after this function
-/// returns. l_cons_lock guards no buffer, so this function uses the
-/// 2-argument lock form.
-template <unsigned N, int l_cons_lock>
+/// The Worker acquires the qk tile's handshake lock after this call, so it
+/// may read L only once that acquire returns.
+template <unsigned N>
 void attn_kv_begin_impl(float *y, float *l) {
   zero_256<float, N>(y);
   const aie::vector<float, 8> zero = aie::broadcast<float, 8>(0);
   aie::store_v(l, zero);
-  _lock_acquire(l_cons_lock);
 }
 
 /// \brief Narrow the f32 accumulator in place, then scale by 1/l into o.

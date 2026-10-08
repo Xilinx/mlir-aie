@@ -22,8 +22,6 @@ void rms_residual(bf16 *restrict y, bf16 *restrict x_ping,
   constexpr int y_cons_lock = FLM_GEMMA4_DECODE_RMS_RESIDUAL_Y_CONS_LOCK;
   constexpr int x_prod_lock = FLM_GEMMA4_DECODE_RMS_RESIDUAL_X_PROD_LOCK;
   constexpr int x_cons_lock = FLM_GEMMA4_DECODE_RMS_RESIDUAL_X_CONS_LOCK;
-  constexpr int rtp_available_lock =
-      FLM_GEMMA4_DECODE_RMS_RESIDUAL_RTP_AVAILABLE_LOCK;
   constexpr int lm_head_out_prod_lock =
       FLM_GEMMA4_DECODE_RMS_RESIDUAL_LM_HEAD_OUT_PROD_LOCK;
   constexpr int lm_head_out_cons_lock =
@@ -39,8 +37,6 @@ void rms_residual(bf16 *restrict y, bf16 *restrict x_ping,
 
   static PingPong x_pingpong;
 
-  _lock_acquire_p(IS_SWA, rtp_available_lock);
-  // core-local, so it may precede the lock acquire
   x = x_pingpong.next(x_ping, x_pong);
   _lock_acquire_p(x, x_cons_lock);
   _lock_acquire_p(w, w_cons_lock);
