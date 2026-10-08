@@ -217,6 +217,14 @@ collectStackSizeOverrides(xilinx::AIE::DeviceOp device) {
   return overrides;
 }
 
+// 0 for a tile without banks.
+inline int64_t stackBankSize(xilinx::AIE::CoreOp op) {
+  auto tile = op.getTileOp();
+  const auto &tm = xilinx::AIE::getTargetModel(op);
+  int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
+  return numBanks > 0 ? tm.getLocalMemorySize() / numBanks : 0;
+}
+
 // The bank the core's own code keeps its stack in, or nothing when the stack
 // spans banks: an address space names one bank, and claiming one for a stack
 // that spans two would tell Peano's bank-conflict model that every stack access
@@ -225,10 +233,7 @@ collectStackSizeOverrides(xilinx::AIE::DeviceOp device) {
 // `stack_bank` core has no resolved address before placement, but the verifier
 // holds that case to a single bank.
 inline std::optional<int> stackAddressSpaceBank(xilinx::AIE::CoreOp op) {
-  auto tile = mlir::cast<xilinx::AIE::TileOp>(op.getTile().getDefiningOp());
-  const auto &tm = xilinx::AIE::getTargetModel(op);
-  int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
-  int64_t bankSize = numBanks > 0 ? tm.getLocalMemorySize() / numBanks : 0;
+  int64_t bankSize = stackBankSize(op);
   // Prefer the declared `stack_bank`. Codegen needs the bank, not the address,
   // and the bank is an input attribute whereas the address is resolved later by
   // the allocator.
@@ -266,7 +271,6 @@ inline mlir::LogicalResult recordStackDemand(
       if (probe.empty() || coreOp.getStackSize()) {
         return;
       }
-      std::optional<int> bank = stackAddressSpaceBank(coreOp);
       llvm::StringSet<> claimed =
           xilinx::aiecc::readDefinedFunctionNames(objectForCore(coreOp));
       if (claimed.empty()) {
@@ -278,15 +282,21 @@ inline mlir::LogicalResult recordStackDemand(
           *stackRes.bytes > INT32_MAX) {
         return;
       }
-      auto tile =
-          mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
-      const auto &tm = xilinx::AIE::getTargetModel(coreOp);
-      int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
-      int64_t bankSize = numBanks > 0 ? tm.getLocalMemorySize() / numBanks : 0;
+      std::optional<int> bank = stackAddressSpaceBank(coreOp);
+      int64_t bankSize = stackBankSize(coreOp);
+      if (coreOp.getStackBank() && bankSize > 0 && *stackRes.bytes > bankSize) {
+        coreOp.emitError()
+            << "this core needs a " << *stackRes.bytes
+            << "-byte stack, but stack_bank pins it to memory bank "
+            << static_cast<char>('A' + *bank) << ", which holds " << bankSize
+            << " bytes. Omit stack_bank and stack_address so that the stack "
+               "can span banks";
+        result = mlir::failure();
+        return;
+      }
       if (bank && !coreOp.getStackBank() && bankSize > 0 &&
           stackRes.claimedFrameEnd) {
-        int64_t start = coreOp.getStackRun().start;
-        int64_t room = (start / bankSize + 1) * bankSize - start;
+        int64_t room = (*bank + 1) * bankSize - coreOp.getStackRun().start;
         if (*stackRes.claimedFrameEnd > room) {
           coreOp.emitError()
               << "this core needs a " << *stackRes.bytes
@@ -311,8 +321,9 @@ inline mlir::LogicalResult recordStackDemand(
 }
 
 // Measures each core's stack requirement from its linked ELF and writes it to
-// `measured_stack_size`. `elfForCore` returns the path of the linked core, or
-// an empty string for a core this run does not link.
+// `measured_stack_size` unless the probe link already did. `elfForCore` returns
+// the path of the linked core, or an empty string for a core this run does not
+// link.
 //
 // A core's call chain is `__start` (crt0) -> `_main_init` (crt1) -> the core
 // body -> its kernels. `_main_init`'s frame stays live across the whole call
@@ -370,18 +381,19 @@ inline mlir::LogicalResult checkStackSizeRequirements(
       }
 
       int64_t required = *stackRes.bytes;
-      // What placement reserved, which may have come from the probe's
-      // measurement; read before this one replaces it.
       uint32_t effective = coreOp.getEffectiveStackSize();
       bool sizedByProbe =
           !coreOp.getStackSizeAttr() && coreOp.getMeasuredStackSizeAttr();
       // An unmeasured frame counted as 0, so `required` is a lower bound. A
       // lower bound still catches a core that is short. The attribute carries
-      // the exact requirement, so only an exact result reaches it.
+      // the exact requirement, so only an exact result reaches it. A probe
+      // measurement stays: placement and the link laid the tile out from it.
       if (stackRes.unmeasured.empty()) {
-        coreOp.setMeasuredStackSizeAttr(
-            mlir::Builder(module.getContext())
-                .getI32IntegerAttr(static_cast<int32_t>(required)));
+        if (!sizedByProbe) {
+          coreOp.setMeasuredStackSizeAttr(
+              mlir::Builder(module.getContext())
+                  .getI32IntegerAttr(static_cast<int32_t>(required)));
+        }
       } else {
         auto diag = mlir::emitWarning(coreOp.getLoc())
                     << "no stack size information for "

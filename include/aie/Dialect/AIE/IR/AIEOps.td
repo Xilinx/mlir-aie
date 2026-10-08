@@ -367,8 +367,8 @@ def AIE_CoreOp
           // for a `mem_bank`-only aie.buffer.
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$stack_bank,
           // Written by aiecc from the call graph of the core's probe link,
-          // before placement, and rewritten from its final link. Absent when
-          // aiecc cannot measure the core exactly.
+          // before placement, or else from its final link. Absent when aiecc
+          // cannot measure the core exactly.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
           // Bytes to set aside for the core's own .data, .rodata and .bss.
