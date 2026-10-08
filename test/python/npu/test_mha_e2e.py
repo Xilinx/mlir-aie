@@ -584,7 +584,8 @@ def test_mha_round_matches_masked_attention(
 
 @jit
 def mha_long_round(
-    sv_in: In,
+    s_in: In,
+    v_in: In,
     o_out: Out,
     *,
     n_kv: CompileTime[int] = 2,
@@ -592,10 +593,12 @@ def mha_long_round(
 ):
     """One query block over ``n_kv`` key blocks, the last its diagonal.
 
-    As ``mha_round``, but the key blocks go by in a loop over one
-    ``idx_buffer``, as an attention dataflow runs them, so the context can
-    be long.
+    As ``mha_round``, but split over two cores as IRON's MHA runs it: one
+    takes the softmax and sends its running state with each ``P``, the other
+    accumulates ``P V``. The key blocks go by in loops over each core's
+    ``idx_buffer``, so the context can be long.
     """
+    assert n_kv >= 2, "the PV core's first and last blocks are separate calls"
     tile_ty = np.ndarray[(_B * _B,), BF]
     acc_ty = np.ndarray[(_B * _B,), F32]
     scale_ty = np.ndarray[(4 * _B,), F32]
@@ -614,36 +617,37 @@ def mha_long_round(
         [tile_ty, tile_ty, acc_ty, scale_ty, np.int32, np.int32, idx_ty, np.int32],
     )
     rescale = obj.bind("rescale_O", [acc_ty, tile_ty, scale_ty, np.int32, idx_ty])
+    copy_scale = kernels.passthrough(4 * _B, np.int32).object_file.bind(
+        "passThroughLine", [scale_ty, scale_ty, np.int32]
+    )
 
-    of_sv = ObjectFifo(tile_ty, name="sv", depth=2)
+    of_s = ObjectFifo(tile_ty, name="s", depth=2)
+    of_v = ObjectFifo(tile_ty, name="v", depth=2)
     of_o = ObjectFifo(tile_ty, name="o", depth=1)
     of_p = ObjectFifo(tile_ty, name="p", depth=1)
     of_pb = of_p.cons().forward(
         to_stream=TensorAccessPattern.full((_B, _B)).tile((8, 8)), depth=1
     )
+    of_scale = ObjectFifo(scale_ty, name="scale_out", depth=1)
 
-    scale_buf = Buffer(scale_ty, name="scale")
-    acc = Buffer(acc_ty, name="acc")
-    idx = Buffer(idx_ty, name="idx", initial_value=np.array([0, n_kv - 1], np.int32))
-
-    def core(of_sv, of_o, of_p, of_pb, softmax, init, pv, rescale, scale, acc, idx):
-        def block(first_iter):
-            softmax(
-                of_sv.acquire(1),
-                of_p.acquire(1),
-                scale,
-                idx,
-                _INV_SCALE,
-                _B,
-                _B,
-                s_eff,
-                s_eff,
-            )
+    def softmax_core(of_s, of_p, of_scale, softmax, init, copy_scale, scale, idx):
+        init(scale, _B)
+        for _ in range_(n_kv):
+            p = of_p.acquire(1)
+            sent = of_scale.acquire(1)
+            softmax(of_s.acquire(1), p, scale, idx, _INV_SCALE, _B, _B, s_eff, s_eff)
+            copy_scale(scale, sent, 4 * _B)
+            of_s.release(1)
             of_p.release(1)
-            of_sv.release(1)
+            of_scale.release(1)
+            idx[0] += 1
+
+    def pv_core(of_pb, of_v, of_scale, of_o, pv, rescale, acc, idx):
+        def block(first_iter, last=False):
+            scale = of_scale.acquire(1)
             pv(
                 of_pb.acquire(1),
-                of_sv.acquire(1),
+                of_v.acquire(1),
                 acc,
                 scale,
                 _B,
@@ -652,42 +656,66 @@ def mha_long_round(
                 s_eff,
             )
             of_pb.release(1)
-            of_sv.release(1)
+            of_v.release(1)
             idx[0] += 1
+            if last:
+                rescale(acc, of_o.acquire(1), scale, _B, idx)
+                of_o.release(1)
+            of_scale.release(1)
 
-        init(scale, _B)
         block(0)
-        for _ in range_(n_kv - 1):
+        for _ in range_(n_kv - 2):
             block(1)
-        rescale(acc, of_o.acquire(1), scale, _B, idx)
-        of_o.release(1)
+        block(1, last=True)
 
-    worker = Worker(
-        core,
-        fn_args=[
-            of_sv.cons(),
-            of_o.prod(),
-            of_p.prod(),
-            of_pb.cons(),
-            softmax,
-            init,
-            pv,
-            rescale,
-            scale_buf,
-            acc,
-            idx,
-        ],
-    )
+    workers = [
+        Worker(
+            softmax_core,
+            fn_args=[
+                of_s.cons(),
+                of_p.prod(),
+                of_scale.prod(),
+                softmax,
+                init,
+                copy_scale,
+                Buffer(scale_ty, name="scale"),
+                Buffer(
+                    idx_ty,
+                    name="idx_softmax",
+                    initial_value=np.array([0, n_kv - 1], np.int32),
+                ),
+            ],
+        ),
+        Worker(
+            pv_core,
+            fn_args=[
+                of_pb.cons(),
+                of_v.cons(),
+                of_scale.cons(),
+                of_o.prod(),
+                pv,
+                rescale,
+                Buffer(acc_ty, name="acc"),
+                Buffer(
+                    idx_ty,
+                    name="idx_pv",
+                    initial_value=np.array([0, n_kv - 1], np.int32),
+                ),
+            ],
+        ),
+    ]
 
-    def sequence(sv_h, o_h, svf, of):
-        svf.fill(sv_h)
+    def sequence(s_h, v_h, o_h, sf, vf, of):
+        sf.fill(s_h)
+        vf.fill(v_h)
         of.drain(o_h, wait=True)
 
+    blocks_ty = np.ndarray[(n_kv * _B * _B,), BF]
     rt = Runtime(
         sequence,
-        [np.ndarray[(2 * n_kv * _B * _B,), BF], tile_ty, of_sv.prod(), of_o.cons()],
+        [blocks_ty, blocks_ty, tile_ty, of_s.prod(), of_v.prod(), of_o.cons()],
     )
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 @pytest.mark.parametrize(
@@ -716,22 +744,22 @@ def test_a_long_context_keeps_the_running_state_accurate(accurate_exp2):
     keep = np.concatenate(
         [_keep(n_kv - 1, kv, n_kv * _B, n_kv * _B) for kv in range(n_kv)], axis=1
     )
-    sv_host = np.concatenate(
+    s_host = np.concatenate(
+        [scores[:, b * _B : (b + 1) * _B].reshape(-1) for b in range(n_kv)]
+    )
+    v_host = np.concatenate(
         [
-            arr
+            TensorAccessPattern.full((_B, _B))
+            .tile((8, 8))
+            .gather(v[b * _B : (b + 1) * _B])
             for b in range(n_kv)
-            for arr in (
-                scores[:, b * _B : (b + 1) * _B].reshape(-1),
-                TensorAccessPattern.full((_B, _B))
-                .tile((8, 8))
-                .gather(v[b * _B : (b + 1) * _B]),
-            )
         ]
     )
 
     o_t = iron.zeros((_B * _B,), dtype=bfloat16)
     mha_long_round(
-        iron.tensor(sv_host, dtype=bfloat16),
+        iron.tensor(s_host, dtype=bfloat16),
+        iron.tensor(v_host, dtype=bfloat16),
         o_t,
         n_kv=n_kv,
         accurate_exp2=accurate_exp2,
