@@ -143,8 +143,8 @@ static void scale_blocked_rows(const float *O, bfloat16 *out,
   }
 }
 
-// Scales O's rows by the running max's correction in place, which is exact in
-// bf16, so only O is split. Eight rows whose max held have factors of exactly 1.
+// Scales O's rows in place by the running max's correction, exact in bf16, so
+// only O is split. Eight rows whose max held have factors of exactly 1.
 static void rescale_running_O(float *O, const float *alpha, int32_t rows) {
   using Acc64 = aie::accum<accfloat, VECTOR_LENGTH>;
   const auto ones = aie::broadcast<float, 8>(1.0f);
