@@ -2376,8 +2376,8 @@ def flm_gemma4_decode_proj_layer_embedding(
 
     Args:
         geometry: The model the kernel builds for.
-        **locks: Core lock ids overriding the defaults ``norm_w_prod_lock=0``,
-            ``x0_per_layer_prod_lock=1``, ``x0_prod_lock=2``,
+        **locks: Core lock ids overriding the defaults
+            ``x0_per_layer_prod_lock=1``,
             ``xw_cons_lock=3``, ``proj_w_prod_lock=4``,
             ``proj_w_cons_lock=5``, ``y_prod_lock=6`` and ``y_cons_lock=7``.
     """
@@ -2400,9 +2400,7 @@ def flm_gemma4_decode_proj_layer_embedding(
         ],
         (In, In, In, Out, Out, In, In),
         dict(
-            norm_w_prod_lock=0,
             x0_per_layer_prod_lock=1,
-            x0_prod_lock=2,
             xw_cons_lock=3,
             proj_w_prod_lock=4,
             proj_w_cons_lock=5,
@@ -2431,11 +2429,10 @@ def flm_gemma4_decode_gate_layer_embedding(
 
     Args:
         geometry: The model the kernel builds for.
-        **locks: Core lock ids overriding the defaults ``x_prod_lock=0``,
-            ``x_cons_lock=1``, ``proj_w_prod_lock=2``, ``proj_w_cons_lock=3``,
-            ``y_prod_lock=4``, ``y_cons_lock=5``, ``final_x_prod_lock=7`` and
-            ``final_x_cons_lock=8`` (the last two locks of the tile to the
-            left).
+        **locks: Core lock ids overriding the defaults ``proj_w_prod_lock=2``,
+            ``proj_w_cons_lock=3``, ``y_prod_lock=4``, ``y_cons_lock=5``,
+            ``final_x_prod_lock=7`` and ``final_x_cons_lock=8`` (the last two
+            locks of the tile to the left).
     """
     bf16 = np.dtype[bfloat16]
     d = geometry.model_dim
@@ -2451,8 +2448,6 @@ def flm_gemma4_decode_gate_layer_embedding(
         ],
         (In, In, In, Out),
         dict(
-            x_prod_lock=0,
-            x_cons_lock=1,
             proj_w_prod_lock=2,
             proj_w_cons_lock=3,
             y_prod_lock=4,
