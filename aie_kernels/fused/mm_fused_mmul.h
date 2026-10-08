@@ -37,6 +37,17 @@ mm_fused_store_2x2(float *__restrict pC1, float *__restrict pC2, const Acc &C00,
   aie::store_v(pC2 + sizeC, C11.template to_vector<float>());
 }
 
+#if AIE_TUNED_AIE2
+// A pipelined loop of two or four trips is almost all prologue and epilogue.
+// Unrolling i and j instead leaves one straight block per z pair, in which
+// the next block's C loads overlap this one's macs. Only while a z pair's C
+// is at most 256 floats: 8x8 tiles four wide spill kilobytes of stack and
+// run slower than the rolled loop.
+template <unsigned colA, unsigned colB, unsigned r, unsigned t>
+constexpr bool mm_fused_unroll_ij =
+    colA <= 4 && colB <= 4 && 2 * colB * r * t <= 256;
+#endif
+
 #ifdef MM_FUSED_BFP16_B
 
 // B arrives already quantized to bfp16ebs8. The bf16 form below converts B
@@ -134,12 +145,7 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
   using MMUL = aie::mmul<r, s, t, bfloat16, bfloat16, accauto>;
   static_assert(r * s == MMUL::size_A);
 #if AIE_TUNED_AIE2
-  // A pipelined loop of two or four trips is almost all prologue and epilogue.
-  // Unrolling i and j instead leaves one straight block per z pair, in which
-  // the next block's C loads overlap this one's macs. Only while a z pair's C
-  // is at most 256 floats: 8x8 tiles four wide spill kilobytes of stack and
-  // run slower than the rolled loop.
-  constexpr bool unroll_ij = colA <= 4 && colB <= 4 && 2 * colB * r * t <= 256;
+  constexpr bool unroll_ij = mm_fused_unroll_ij<colA, colB, r, t>;
 #endif
   // Rolled, the z loop does not pipeline and each trip pays the j loop's
   // entry and exit; two trips per body let those overlap.
@@ -220,7 +226,7 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
   constexpr unsigned halfC = MMUL::size_C;
   static_assert(sizeA == MMUL::size_A && 2 * MMUL::size_C == sizeC);
 #if AIE_TUNED_AIE2
-  constexpr bool unroll_ij = colA <= 4 && colB <= 4 && 2 * colB * r * t <= 256;
+  constexpr bool unroll_ij = mm_fused_unroll_ij<colA, colB, r, t>;
 #endif
   AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
   AIE_LOOP_UNROLL(2)
