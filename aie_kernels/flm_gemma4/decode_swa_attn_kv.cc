@@ -18,7 +18,6 @@ constexpr int v_prod_lock = FLM_GEMMA4_DECODE_SWA_ATTN_KV_V_PROD_LOCK;
 constexpr int v_cons_lock = FLM_GEMMA4_DECODE_SWA_ATTN_KV_V_CONS_LOCK;
 constexpr int o_prod_lock = FLM_GEMMA4_DECODE_SWA_ATTN_KV_O_PROD_LOCK;
 constexpr int o_cons_lock = FLM_GEMMA4_DECODE_SWA_ATTN_KV_O_CONS_LOCK;
-constexpr int l_cons_lock = FLM_GEMMA4_DECODE_SWA_ATTN_KV_L_CONS_LOCK;
 
 extern "C" {
 
@@ -30,9 +29,8 @@ extern "C" {
 // displaces the RTP buffer.
 static PingPong v_pingpong;
 
-// The swa qk tile releases l_cons_lock.
 void swa_attn_kv_begin(float *y, float *l) {
-  attn_kv_begin_impl<8 * SWA_DH, l_cons_lock>(y, l);
+  attn_kv_begin_impl<8 * SWA_DH>(y, l);
 }
 
 void swa_attn_kv_round(bf16 *s, bf16 *v_ping, bf16 *v_pong, float *y,
