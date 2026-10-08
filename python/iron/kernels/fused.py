@@ -9,6 +9,7 @@ import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils import bfp
+from aie.utils.aie2p_emulation import round_bf16
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -26,7 +27,6 @@ from ._common import (
     _portable_flags,
 )
 from .activation import _bf16_ulp, _vtanh_error
-from .quant import _bf16_floor
 
 # Largest |d/dx| of each epilogue: x * sigmoid(kx) peaks at 1.0998.
 _SLOPE = {"none": 1.0, "sigmoid": 0.25, "silu": 1.1, "gelu": 1.1}
@@ -46,9 +46,7 @@ class _FusedMMKernel(ExternalFunction):
 
 def _bf16_round(x, rounding):
     """Narrow to bf16 as a core does in ``rounding``, returned as float64."""
-    x = np.asarray(x, np.float32)
-    narrowed = _bf16_floor(x) if rounding == "floor" else x.astype(bfloat16)
-    return narrowed.astype(np.float64)
+    return round_bf16(x, rounding).astype(np.float64)
 
 
 def fused_mm(

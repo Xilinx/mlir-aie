@@ -10,6 +10,7 @@ from functools import partial
 import numpy as np
 from aie.iron.kernel import ExternalFunction
 from aie.utils import bfp
+from aie.utils.aie2p_emulation import bf16_floor
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -20,6 +21,15 @@ from ._common import (
     _arch_traits,
     _kernel_source,
     _make_extern,
+)
+
+# FastFlowLM's q4nx block: Q4NX_M_TILE out-features by Q4NX_K_TILE
+# in-features, with a scale and a minimum per Q4NX_GROUP in-features.
+Q4NX_M_TILE = 32
+Q4NX_K_TILE = 256
+Q4NX_GROUP = 32
+Q4NX_BLOCK_BYTES = (
+    Q4NX_M_TILE * Q4NX_K_TILE // 2 + 4 * Q4NX_M_TILE * Q4NX_K_TILE // Q4NX_GROUP
 )
 
 
@@ -50,21 +60,53 @@ def _geometry(m_tile, k_tile, group, ct_k, s, t):
     return geometry
 
 
-def _bf16_floor(x):
-    """Narrow float32 toward minus infinity, not numpy's bf16 nearest-even."""
-    bits = np.ascontiguousarray(x, dtype=np.float32).view(np.uint32)
-    upper = bits >> 16
-    upper += ((bits >> 31 != 0) & (bits & 0xFFFF != 0)).astype(np.uint32)
-    return (upper << 16).view(np.float32)
+def q4nx_unpack(blocks, *, m_tile=Q4NX_M_TILE, k_tile=Q4NX_K_TILE, group=Q4NX_GROUP):
+    """Split q4nx blocks into their codes, scales and minima.
+
+    ``blocks`` is uint8 of shape ``(..., block_bytes)``, one block per row.
+    A block holds little-endian bf16 scales, then bf16 minima, both stored
+    ``[k // group, m]``. 4-bit codes follow, stored ``[m // 16, k, m % 16]``,
+    each byte low nibble first. A weight is ``min + scale * code``.
+
+    Returns ``(codes, scales, mins)``: ``codes`` is uint8 ``[..., m_tile,
+    k_tile]``, and ``scales`` and ``mins`` are float32 ``[..., m_tile, k_tile
+    // group]``.
+    """
+    groups = k_tile // group
+    param_bytes = 4 * m_tile * groups
+    block_bytes = m_tile * k_tile // 2 + param_bytes
+    blocks = np.ascontiguousarray(blocks, np.uint8)
+    if blocks.ndim == 0 or blocks.shape[-1] != block_bytes:
+        raise ValueError(f"q4nx_unpack: expected {block_bytes} bytes per block")
+    lead = blocks.shape[:-1]
+    params = np.ascontiguousarray(blocks[..., :param_bytes]).view("<u2")
+    params = (params.astype(np.uint32) << 16).view(np.float32)
+    params = np.swapaxes(params.reshape(*lead, 2, groups, m_tile), -1, -2)
+    scales, mins = np.moveaxis(params, -3, 0)
+    packed = blocks[..., param_bytes:]
+    codes = np.empty((*lead, m_tile * k_tile), np.uint8)
+    codes[..., 0::2], codes[..., 1::2] = packed & 15, packed >> 4
+    codes = codes.reshape(*lead, m_tile // 16, k_tile, 16)
+    codes = np.swapaxes(codes, -1, -2).reshape(*lead, m_tile, k_tile)
+    return codes, scales, mins
 
 
-def q4nx_dequant_ref(payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8, t=8):
+def q4nx_dequant_ref(
+    payload,
+    *,
+    m_tile=Q4NX_M_TILE,
+    k_tile=Q4NX_K_TILE,
+    group=Q4NX_GROUP,
+    ct_k=128,
+    s=8,
+    t=8,
+):
     """Dequantize packed q4nx to the kernel's bfp16ebs8 output bytes.
 
-    Input has shape ``(..., m_tile*k_tile//2 + 4*m_tile*k_tile//group)``.
-    It contains little-endian bf16 scales, then bf16 minima, both indexed
-    ``[k_group, n]``, followed by unsigned nibbles (low nibble first) indexed
-    ``[n//16, k, n%16]``. Values are ``min + scale * nibble``.
+    Input has shape ``(..., m_tile*k_tile//2 + 4*m_tile*k_tile//group)``,
+    one q4nx block per row in the layout
+    [`q4nx_unpack`][iron.kernels.quant.q4nx_unpack] reads. ``n`` below is
+    the out-feature, ``m`` there.
 
     Accumulator results narrow to bf16 with floor rounding before BFP
     conversion. Output is uint8 with the same leading dimensions, indexed
@@ -83,24 +125,17 @@ def q4nx_dequant_ref(payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8,
     data = payload.reshape(-1, input_bytes)
     if not len(data):
         return np.empty((*lead, m_tile * k_tile * 9 // 8), dtype=np.uint8)
-    params = np.ascontiguousarray(data[:, : 4 * scales_count]).view("<u2")
-    params = (params.astype(np.uint32) << 16).view(np.float32)
-    if not np.isfinite(params).all():
+    q, scales, mins = q4nx_unpack(data, m_tile=m_tile, k_tile=k_tile, group=group)
+    if not (np.isfinite(scales).all() and np.isfinite(mins).all()):
         raise ValueError("q4nx_dequant_ref: scales and minima must be finite")
-    scales, mins = params.reshape(-1, 2, k_tile // group, m_tile).transpose(1, 0, 2, 3)
-    packed = data[:, 4 * scales_count :]
-    q = np.empty((len(data), m_tile * k_tile), dtype=np.uint8)
-    q[:, 0::2], q[:, 1::2] = packed & 15, packed >> 4
-    q = q.reshape(-1, m_tile // 16, k_tile, 16).transpose(0, 2, 1, 3)
-    q = q.reshape(-1, k_tile, m_tile)
     # A bf16 scale times a four-bit integer is exact in float32. Float64
     # models the fused addition before its single float32 accumulator rounding.
     with np.errstate(over="ignore", invalid="ignore"):
         values = (
-            np.repeat(scales, group, axis=1).astype(np.float64) * q
-            + np.repeat(mins, group, axis=1).astype(np.float64)
+            np.repeat(scales, group, axis=-1).astype(np.float64) * q
+            + np.repeat(mins, group, axis=-1).astype(np.float64)
         ).astype(np.float32)
-        values = _bf16_floor(values)
+        values = bf16_floor(np.swapaxes(values, -1, -2))
     if not np.isfinite(values).all():
         raise ValueError("q4nx_dequant_ref: dequantized bf16 values must be finite")
     values = values.reshape(-1, k_tile // ct_k, ct_k // s, s, m_tile // t, t)
@@ -120,7 +155,13 @@ def _q4nx_sample(rng, calls, *, m_tile, k_tile, group, **_):
 
 
 def q4nx_dequant(
-    *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8, t=8
+    *,
+    m_tile=Q4NX_M_TILE,
+    k_tile=Q4NX_K_TILE,
+    group=Q4NX_GROUP,
+    ct_k=128,
+    s=8,
+    t=8,
 ) -> ExternalFunction:
     """AIE2P-only q4nx dequantization into GEMM B-operand BFP storage.
 

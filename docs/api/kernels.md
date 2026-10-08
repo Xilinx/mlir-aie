@@ -206,6 +206,27 @@ this module.
         - quantize
         - shuffle
 
+`aie.utils.aie2p_emulation` models AIE2P arithmetic in numpy: bf16 narrowing
+toward minus infinity, the bf16-limb fp32 product and the `getInvBf16` and
+`getGeluBf16` tables. References use it to reproduce device results bit for bit.
+
+::: utils.aie2p_emulation
+    options:
+      show_root_heading: false
+      members:
+        - bf16_floor_bits
+        - bf16_floor
+        - f32
+        - round_bf16_bits
+        - round_bf16
+        - fmul
+        - tree_sum
+        - fast_rsqrt
+        - INV_MANTISSA
+        - inv_bf16
+        - gelu_lut_segments
+        - gelu_bf16
+
 ::: utils.verify
     options:
       show_root_heading: false
