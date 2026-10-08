@@ -2485,7 +2485,7 @@ int main(int argc, char **argv) {
     llvm::SmallString<256> symbolizer(peanoInstallDir);
     llvm::sys::path::append(symbolizer, "bin", "llvm-symbolizer");
     if (llvm::sys::fs::can_execute(symbolizer))
-      ::setenv("LLVM_SYMBOLIZER_PATH", symbolizer.c_str(), /*overwrite=*/0);
+      ::setenv("LLVM_SYMBOLIZER_PATH", symbolizer.c_str(), 1);
   }
 #endif
   // discoverAietoolsDir has the same shape: it falls through to $AIETOOLS_ROOT
