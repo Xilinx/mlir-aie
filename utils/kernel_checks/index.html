@@ -3,9 +3,23 @@
 <!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 <!--
-  The Nightly Kernel Checks page, installed as kernel-checks/index.html on the
-  publication branch by publishKernelResults.yml. Per NPU it reads, from
-  kernel-checks/<npu>/ (written by utils/kernel_checks/publish.py):
+  The mlir-aie maintainer dashboard, installed as dashboard/index.html on the
+  publication branch by publishKernelResults.yml and nightlyComponentChecks.yml
+  (kernel-checks/index.html is a redirect here that keeps its #view= links).
+
+  Sections, each a tab: an overview of every section's latest night; CI
+  health (the other scheduled workflows, from ../ci-health/status.json, which
+  publishCiHealth.yml writes every six hours); Kernels
+  (the IRON kernel library); Placement (the SA placer); Design performance
+  (whole designs on hardware, MobileNet for now); Routing (nothing published
+  yet). A section other than Kernels is a list of bands in BANDS, each one
+  nightly check's latest record, and the trends of the metrics the section
+  names in SECTIONS; one check (sa-placer-hw) feeds both Placement and Design
+  performance. To add a section, add it to SECTIONS and its markup below, and
+  give its checks bands.
+
+  Kernels: per NPU it reads, from ../kernel-checks/<npu>/ (written by
+  utils/kernel_checks/publish.py):
 
     runs.json              one summary per run: the Actions run, commit, power
                            mode, provenance, sanity result, failures
@@ -18,9 +32,11 @@
     catalogue.json         every factory, its builds and how its cases fared
                            (utils/kernel_checks/catalogue.py)
 
-  Four views, all in the URL hash so a link reproduces one: the overview
-  (a verdict per NPU, what needs attention, a map of every kernel, what
-  moved), the kernels table (every case's cycles, npu1 beside npu2), one
+  The other sections read ../component-checks/<check>/ in the same format.
+
+  Every view is in the URL hash so a link reproduces one. Kernels has four:
+  last night (a verdict per NPU, what needs attention, a map of every kernel,
+  what moved), the kernels table (every case's cycles, npu1 beside npu2), one
   kernel's page, and trends. Cycles lead everywhere; object size follows;
   host time (npu_us) is noisy and kept to the kernel page and trends.
 
@@ -33,7 +49,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>Nightly kernel checks</title>
+  <title>mlir-aie maintainer dashboard</title>
   <style>
     :root {
       --paper: #f6f7f9; --surface: #ffffff; --ink: #1c2230; --muted: #5b6475; --faint: #8a93a3; --rule: #dde1e7;
@@ -98,7 +114,6 @@
 
     /* Verdicts: one band per NPU. The colored rule is the night's verdict. */
     #verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(520px, 100%), 1fr)); gap: 16px; margin-top: 20px; }
-    #component-verdicts { display: grid; gap: 16px; margin-top: 20px; }
     .verdict { background: var(--surface); border: 1px solid var(--rule); border-left: 6px solid var(--none); border-radius: 4px 10px 10px 4px; padding: 16px 20px 14px; }
     .verdict.ok { border-left-color: var(--ok); }
     .verdict.warn { border-left-color: var(--warn); }
@@ -108,6 +123,7 @@
     .npu-name strong { color: var(--ink); font-size: 15px; margin-right: 6px; }
     .headline { font-size: 21px; line-height: 1.3; font-weight: 650; margin: 6px 0 12px; letter-spacing: -0.015em; max-width: 34em; }
     .headline .quiet { color: var(--muted); font-weight: 500; }
+    .stale-line { margin: 8px 0 0; display: inline-block; font-size: 13px; font-weight: 650; color: var(--bad); background: var(--bad-soft); border-radius: 6px; padding: 2px 9px; }
     .figures { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0 0 12px; padding: 0; list-style: none; }
     .figures li { font-size: 13px; color: var(--muted); }
     .figures b { color: var(--ink); font-size: 16px; font-weight: 650; margin-right: 4px; }
@@ -275,11 +291,159 @@
     .empty { padding: 28px; text-align: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--rule); border-radius: 10px; }
     .empty button { background: none; border: 0; color: var(--link); cursor: pointer; padding: 0; }
 
-    details#about { margin-top: 48px; font-size: 13px; color: var(--muted); max-width: 80ch; }
-    details#about summary { cursor: pointer; color: var(--ink); font-weight: 600; }
-    details#about dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; }
-    details#about dt { font-family: var(--mono); color: var(--ink); }
-    details#about dd { margin: 0; }
+    /* A section's head: its name, what it checks, where the runs are, its
+       own views, and how its checks work. */
+    .section-head { margin: 22px 0 4px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; }
+    .section-head h2 { font-size: 22px; letter-spacing: -0.015em; }
+    .section-head p { margin: 0; color: var(--muted); font-size: 13px; max-width: 75ch; }
+    .section-head .runs { font-size: 13px; display: flex; gap: 14px; }
+    .subnav { display: flex; flex-wrap: wrap; gap: 4px; margin: 12px 0 0; border-bottom: 1px solid var(--rule); }
+    .subnav a { padding: 6px 12px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 550; font-size: 13px; }
+    .subnav a:hover { color: var(--ink); text-decoration: none; }
+    .subnav a.current { color: var(--ink); border-bottom-color: var(--ink); }
+    details.howto { margin: 10px 0 0; font-size: 13px; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 8px 14px; }
+    details.howto[open] { padding-bottom: 12px; }
+    details.howto > summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+    details.howto > div { max-width: 88ch; color: var(--ink); }
+    details.howto h3 { font-size: 14px; margin: 14px 0 4px; }
+    details.howto p, details.howto li { color: var(--muted); }
+    details.howto p { margin: 6px 0; }
+    details.howto ul { margin: 6px 0; padding-left: 20px; }
+    details.howto pre { margin: 6px 0; padding: 8px 10px; background: var(--none-soft); border-radius: 6px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+    details.howto dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; color: var(--muted); }
+    details.howto dt { font-family: var(--mono); color: var(--ink); }
+    details.howto dd { margin: 0; }
+    .band-list { display: grid; gap: 16px; margin-top: 20px; }
+    /* Grid items shrink to the column, so a wide table scrolls inside its band. */
+    .band-list > *, #verdicts > *, #overview-tiles > * { min-width: 0; }
+
+    /* Overview: a tile per section, its color the worst of its checks. */
+    .overview-intro { margin: 22px 0 0; color: var(--muted); max-width: 80ch; }
+    #overview-tiles { margin-top: 18px; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+    a.area { display: grid; grid-template-columns: 150px 130px minmax(0, 1fr) auto; gap: 4px 14px; align-items: baseline;
+             padding: 14px 18px 14px 14px; color: var(--ink); border-top: 1px solid var(--rule); border-left: 5px solid var(--none); }
+    a.area:first-child { border-top: 0; }
+    a.area:hover { text-decoration: none; background: var(--paper); }
+    a.area.ok { border-left-color: var(--ok); }
+    a.area.warn { border-left-color: var(--warn); }
+    a.area.bad { border-left-color: var(--bad); }
+    .area .area-name { font-size: 16px; font-weight: 650; }
+    .area .state { justify-self: start; font-size: 12px; font-weight: 650; padding: 1px 8px; border-radius: 10px; background: var(--none-soft); color: var(--muted); white-space: nowrap; }
+    .area.ok .state { background: var(--ok-soft); color: var(--ok); }
+    .area.warn .state { background: var(--warn-soft); color: var(--warn); }
+    .area.bad .state { background: var(--bad-soft); color: var(--bad); }
+    .area .area-what { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .area .area-when { font-size: 12px; color: var(--faint); white-space: nowrap; }
+    @media (max-width: 760px) {
+      a.area { grid-template-columns: 1fr auto; }
+      .area .area-what { grid-column: 1 / -1; white-space: normal; }
+      .area .area-when { grid-column: 1 / -1; }
+    }
+    /* One screen per tab: the answer and the problems first; everything
+       else behind one "Details" toggle, the explanations last. */
+    details.more { margin-top: 22px; border-top: 1px solid var(--rule); padding-top: 12px; }
+    details.more > summary { cursor: pointer; color: var(--link); font-weight: 600; font-size: 14px; padding: 4px 0; }
+    details.more[open] > summary { margin-bottom: 8px; }
+    details.band-more { margin: 4px 0 10px; }
+    details.band-more > summary { cursor: pointer; color: var(--link); font-size: 13px; font-weight: 600; padding: 2px 0; }
+    details.band-more[open] > summary { margin-bottom: 10px; }
+    details.howto { margin-top: 28px; }
+    .verdict .headline { margin-bottom: 8px; }
+
+    /* CI health: the verdict and its problems, the healthy in one line,
+       the merge figures; tiles and tables under Details. */
+    #ci-verdict { margin-top: 18px; }
+    ul.ci-problems { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+    ul.ci-problems li { display: grid; grid-template-columns: 10px 1fr; gap: 8px; align-items: baseline; font-size: 14px; }
+    ul.ci-problems .dot { width: 9px; height: 9px; border-radius: 50%; align-self: center; background: var(--none); }
+    ul.ci-problems li.bad .dot { background: var(--bad); }
+    ul.ci-problems li.warn .dot { background: var(--warn); }
+    ul.ci-problems b { margin-right: 6px; }
+    .ci-healthy { margin: 12px 0 0; font-size: 13.5px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
+    .ci-healthy::before { content: ''; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); align-self: center; }
+    .ci-healthy:empty { display: none; }
+    ul.ci-merge { margin: 10px 0 0; }
+    .ci-board-group { margin-top: 10px; }
+    .ci-board-group h3 { font-size: 13px; font-weight: 650; color: var(--muted); margin: 0 0 8px; }
+    .ci-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 8px; }
+    a.ci-tile { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; color: var(--ink); background: var(--surface);
+                border: 1px solid var(--rule); border-left: 5px solid var(--none); border-radius: 4px 8px 8px 4px; min-width: 0; }
+    a.ci-tile:hover { text-decoration: none; border-color: var(--ink); }
+    a.ci-tile.ok { border-left-color: var(--ok); }
+    a.ci-tile.warn { border-left-color: var(--warn); }
+    a.ci-tile.bad { border-left-color: var(--bad); }
+    .ci-tile .t-name { font-weight: 650; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ci-tile .t-state { font-size: 12.5px; color: var(--muted); }
+    .ci-tile.bad .t-state { color: var(--bad); font-weight: 600; }
+    .ci-tile.warn .t-state { color: var(--warn); font-weight: 600; }
+    .ci-group { margin-top: 22px; }
+    .ci-group h3 { font-size: 14px; font-weight: 650; margin: 0 0 8px; }
+    .ci-rows { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+    .ci-row { display: grid; grid-template-columns: 10px minmax(150px, 220px) minmax(0, 1fr) auto; gap: 10px; align-items: center;
+              padding: 7px 14px; border-top: 1px solid var(--rule); font-size: 13px; }
+    .ci-row:first-child { border-top: 0; }
+    .ci-row .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--none); }
+    .ci-row.ok .dot { background: var(--ok); }
+    .ci-row.warn .dot { background: var(--warn); }
+    .ci-row.bad .dot { background: var(--bad); }
+    .ci-row .wf-name { font-weight: 600; color: var(--ink); }
+    .ci-row .t-state { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ci-row.bad .t-state { color: var(--bad); }
+    .ci-row.warn .t-state { color: var(--warn); }
+    .ci-row .nights { gap: 2px; }
+    .ci-row .night { width: 7px; height: 16px; }
+    .ci-pick { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+    @media (max-width: 700px) {
+      .ci-row { grid-template-columns: 10px minmax(0, 1fr) auto; gap: 2px 10px; }
+      .ci-row .t-state { grid-column: 2 / -1; grid-row: 2; }
+    }
+    .pill.s-running { background: var(--none-soft); color: var(--muted); box-shadow: inset 0 0 0 1px var(--none); }
+    .night.running { background: var(--none-soft); border: 1px dashed var(--muted); }
+    .chart.trend { margin: 4px 0 10px; }
+    .chart.trend .trend-head { display: flex; justify-content: flex-end; }
+    .chart.trend .note { margin: 6px 0 4px; }
+    .chart.trend .canvas { height: 300px; }
+    .svg-chart { position: absolute; inset: 0; }
+    .svg-legend { display: flex; justify-content: flex-end; flex-wrap: wrap; margin: 2px 0 0; }
+    .svg-legend .key i { height: 3px; }
+    /* Kernels: one line per kernel, its state and trend per NPU. */
+    .k-list { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+    .k-head, a.k-row { display: grid; grid-template-columns: minmax(180px, 1.2fr) repeat(2, minmax(160px, 1fr)); gap: 12px; align-items: center; padding: 7px 14px; }
+    .k-row .k-npu { flex-wrap: wrap; }
+    .k-row .k-cycles { color: var(--ink); font-variant-numeric: tabular-nums; }
+    .k-row .k-moved { font-size: 12px; color: var(--faint); display: inline-flex; gap: 4px; }
+    td .sub { display: block; font-size: 11px; color: var(--faint); font-weight: 400; }
+    .k-head { font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--rule); }
+    .k-head .sub { font-weight: 400; color: var(--faint); }
+    a.k-row { color: var(--ink); border-top: 1px solid var(--rule); font-size: 13px; }
+    a.k-row:first-child { border-top: 0; }
+    a.k-row:hover { background: var(--paper); text-decoration: none; }
+    .k-row .k-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .k-row .k-npu { white-space: nowrap; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+    .k-row .k-npu b { font-weight: 600; font-size: 11.5px; color: var(--faint); }
+    .k-row .k-npu .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--none); flex: none; }
+    .k-row .k-ok .dot, .k-row .k-better .dot, .k-row .k-untimed .dot { background: var(--ok); }
+    .k-row .k-bad { color: var(--bad); font-weight: 600; }
+    .k-row .k-bad .dot { background: var(--bad); }
+    .k-row .k-warn { color: var(--warn); font-weight: 600; }
+    .k-row .k-warn .dot { background: var(--warn); }
+    .k-row .k-absent .dot { background: transparent; border: 1px dashed var(--none); }
+    .k-row .spark { display: block; height: 28px; }
+    .k-row .spark svg { height: 28px; }
+    @media (max-width: 700px) {
+      .k-head { display: none; }
+      a.k-row { grid-template-columns: 1fr 1fr; }
+      .k-row .k-name { grid-column: 1 / -1; }
+      .k-row .spark { display: none; }
+    }
+    table.changes td:first-child { width: 46%; min-width: 220px; }
+    table.changes td, table.changes th { white-space: nowrap; }
+    table.changes td:first-child { white-space: normal; }
+    table.changes td.quiet { color: var(--faint); }
+    table.changes td.quiet b { font-weight: 400; }
+    .placeholder { margin-top: 20px; padding: 28px; background: var(--surface); border: 1px dashed var(--rule); border-radius: 10px; color: var(--muted); }
+    .placeholder h3 { color: var(--ink); font-size: 15px; margin-bottom: 6px; }
+    .placeholder p { margin: 6px 0; max-width: 75ch; }
 
     @media (max-width: 700px) {
       .top-inner, main { padding-left: 12px; padding-right: 12px; }
@@ -297,123 +461,286 @@
 <body>
   <header class="top"><div class="top-inner">
     <div class="brand">
-      <h1>Nightly kernel checks</h1>
-      <p>The IRON kernel library on Ryzen AI NPUs</p>
+      <h1>mlir-aie maintainer dashboard</h1>
+      <p>Nightly checks of the kernels, the compiler and whole designs on Ryzen AI NPUs</p>
     </div>
-    <nav aria-label="views">
-      <a id="tab-dashboard" href="#view=dashboard">Overview</a>
-      <a id="tab-kernels" href="#view=kernels">Kernels</a>
-      <a id="tab-components" href="#view=components">Components</a>
-      <a id="tab-charts" href="#view=charts">Trends</a>
-      <a id="tab-kernel" href="#view=kernel" hidden>Kernel</a>
+    <nav aria-label="sections">
+      <a id="nav-overview" href="#view=overview">Overview</a>
+      <a id="nav-ci" href="#view=ci">CI health</a>
+      <a id="nav-kernels" href="#view=night">Kernels</a>
+      <a id="nav-performance" href="#view=performance">Performance</a>
+      <a id="nav-routing" href="#view=routing">Routing</a>
+      <a id="nav-placement" href="#view=placement">Placement</a>
     </nav>
     <div class="links">
-      <a href="https://xilinx.github.io/mlir-aie/dev/programming_guide/kernels_library/#testing-performance-and-static-checks">How the checks work</a>
-      <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyKernelChecks.yml">Actions runs</a>
-      <a href="https://github.com/Xilinx/mlir-aie/tree/main/aie_kernels">Kernel sources</a>
+      <a href="https://github.com/Xilinx/mlir-aie">Repository</a>
       <a href="https://xilinx.github.io/mlir-aie/">Docs</a>
       <button id="theme" type="button" aria-label="switch between light and dark theme">Dark</button>
     </div>
   </div></header>
   <main>
-    <div id="status" hidden></div>
-
-    <section id="dashboard">
-      <div id="verdicts"></div>
-
-      <section id="attention" class="block" hidden>
-        <div class="block-head"><h2>Needs attention</h2></div>
-        <ul id="attention-list"></ul>
-      </section>
-
-      <section class="block">
-        <div class="block-head">
-          <h2>Kernel map</h2>
-          <p>Every kernel in the library. The left half of each tile is npu1, the right half npu2.</p>
+    <section id="overview">
+      <p class="overview-intro">How each area did on its latest run. Open one for what went wrong and how to reproduce it.</p>
+      <div id="overview-tiles"></div>
+      <details class="howto">
+        <summary>About this dashboard</summary>
+        <div>
+          <p>One page, <a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/kernel_checks/index.html"><code>utils/kernel_checks/index.html</code></a>, with no build step:
+            the nightly workflows copy it to <code>gh-pages:dashboard/</code> each time they publish, and it reads the data they publish beside it.</p>
+          <h3>Where the data is</h3>
+          <dl>
+            <dt>kernel-checks/&lt;npu&gt;/</dt><dd>the kernel checks, per NPU, written by <code>nightlyKernelChecks.yml</code> through <code>publishKernelResults.yml</code></dd>
+            <dt>component-checks/&lt;check&gt;/</dt><dd>the performance and placement checks, per check (<code>sa-placer</code>, <code>sa-placer-hw</code>), written by <code>nightlyComponentChecks.yml</code></dd>
+            <dt>ci-health/</dt><dd><code>status.json</code>, the critical test workflows' figures, merge time and the scheduled workflows' recent runs, and <code>history.json</code>, a point a day of those figures; written every six hours by <code>publishCiHealth.yml</code> (<code>utils/kernel_checks/ci_health.py</code>)</dd>
+          </dl>
+          <p>Both are written by <a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/kernel_checks/publish.py"><code>utils/kernel_checks/publish.py</code></a> in one format:
+            <code>runs/&lt;id&gt;.json</code> (one run's record), <code>runs.json</code> (a summary per run), <code>latest.json</code> (the newest record that published numbers;
+            the kernel checks' pull-request report compares against it) and <code>history/&lt;metric&gt;.json</code> (every run's value of one metric per case).
+            A kernel NPU also has <code>catalogue.json</code>, every kernel factory and how its cases fared. Runs older than 90 days thin to weekly.
+            Files carry a schema number, and the page sets aside a newer one rather than misread it.</p>
+          <p>Every metric is smaller-is-better. A change counts once it passes the metric's threshold in
+            <a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/kernel_checks/thresholds.json"><code>utils/kernel_checks/thresholds.json</code></a>,
+            which the pull-request report reads too; a noisy timing also has to pass a multiple of its run-to-run spread.
+            Runs started by hand are charted but never compared against.</p>
+          <h3>Working on the page</h3>
+          <pre>python3 utils/kernel_checks/preview.py --fetch                 # the published data, this page
+python3 utils/kernel_checks/preview.py --scenario bad-night      # a synthetic failing night on top
+python3 utils/kernel_checks/preview.py --site components --scenario bad-night
+python3 -m pytest test/test_kernel_checks_page.py                # the page's code, under node</pre>
+          <p>To add a section (routing, say): publish its checks to <code>component-checks/&lt;check&gt;/</code> from a job in <code>nightlyComponentChecks.yml</code>
+            (add the check to <code>COMPONENTS</code> in <code>publish.py</code>), then add the section to <code>SECTIONS</code> and its checks to <code>BANDS</code> in the page.</p>
         </div>
-        <div id="map-legend" class="legend"></div>
-        <div id="map" style="margin-top: 10px"></div>
-      </section>
-
-      <section class="block" id="moved-block">
-        <div class="block-head">
-          <h2>What moved last night</h2>
-          <p id="moved-about"></p>
-        </div>
-        <div class="table-wrap" id="moved-wrap"><table>
-          <thead><tr><th>Case</th><th>NPU</th><th>Metric</th><th class="num">Before</th><th class="num">After</th><th class="num">Change</th><th class="wide">Recent nights</th></tr></thead>
-          <tbody id="moved"></tbody>
-        </table></div>
-        <div id="moved-empty" class="empty" hidden></div>
-      </section>
+      </details>
     </section>
 
-    <section id="kernels" hidden>
-      <div class="controls">
-        <label><input id="kernels-filter" type="search" placeholder="Filter by kernel, case or family" aria-label="filter kernels"></label>
-        <label>Family <select id="kernels-family"><option value="">All</option></select></label>
-        <label><input id="kernels-problems" type="checkbox"> Only kernels that need attention</label>
-        <label><input id="kernels-collapse" type="checkbox"> Hide cases</label>
-        <span id="kernels-status" class="dim"></span>
+    <section id="ci" hidden>
+      <div class="section-head">
+        <h2>CI health</h2>
+        <p>The tests that gate a merge, the other scheduled jobs, and how long merging takes.</p>
+        <span class="runs"><a href="https://github.com/Xilinx/mlir-aie/actions">Actions</a><a href="https://github.com/Xilinx/mlir-aie/queue/main">Merge queue</a></span>
       </div>
-      <div class="table-wrap"><table>
-        <thead id="kernels-head"></thead>
-        <tbody id="kernels-rows"></tbody>
-      </table></div>
+      <div id="ci-verdict"></div>
+      <p id="ci-healthy" class="ci-healthy"></p>
+      <ul class="figures ci-merge" id="ci-merge"></ul>
+
+      <details class="more" id="ci-more">
+        <summary>Details: every workflow, and how long its runs take</summary>
+        <div id="ci-board"></div>
+        <section class="ci-group">
+          <h3>Nightly and scheduled jobs</h3>
+          <div id="ci-nightly" class="ci-rows"></div>
+        </section>
+        <section class="ci-group">
+          <h3>Run time</h3>
+          <label class="ci-pick">Workflow <select id="ci-latency-pick" aria-label="workflow to chart"></select></label>
+          <div id="ci-latency"></div>
+        </section>
+      </details>
+      <details class="howto">
+        <summary>How this section works</summary>
+        <div>
+          <p><a href="https://github.com/Xilinx/mlir-aie/actions/workflows/publishCiHealth.yml"><code>publishCiHealth.yml</code></a> runs every six hours:
+            <a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/kernel_checks/ci_health.py"><code>utils/kernel_checks/ci_health.py</code></a> asks GitHub's API,
+            with the workflow's own token, for each workflow's recent scheduled runs on main and, for those on the NPU and bench machines, the jobs of the latest run,
+            and writes <code>ci-health/status.json</code> beside this page. Pull-request, merge-queue and hand-started runs are left out.</p>
+          <p>Every workflow is listed once, in one of two kinds. <b>Tests that gate a merge</b> are the workflows the merge queue runs, listed under
+            <code>critical</code> in the file below. They also run on main, after each push and nightly; each is judged on its latest run there,
+            names the jobs that failed in it, and is late when main has not run it for 36 hours. Over the last two weeks, main passing under 90%
+            of its runs, or one pull-request or merge-queue commit in ten needing a re-run to pass, also wants a look.</p>
+          <p><b>Nightly and scheduled jobs</b> are judged on their latest scheduled run on main, and are late when it started more than one and a half
+            of their periods ago (36 hours for a nightly). A job still queued after six hours almost always means no runner with its labels is online.</p>
+          <p><b>Run time</b> charts one workflow's finished runs, oldest first: how long each took, from its start to its last update, and how long it
+            waited to start. A failed run's point is red; hover a point for its commit, click it for the run.</p>
+          <p><b>Merging</b>: the pull requests merged in the last two weeks and how long each was open, drafts included; and those open now.</p>
+          <p>To list another workflow, add it to
+            <a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/kernel_checks/ci_workflows.json"><code>utils/kernel_checks/ci_workflows.json</code></a>.</p>
+        </div>
+      </details>
     </section>
 
-    <section id="kernel" hidden>
-      <div id="kernel-head"></div>
-      <section class="block">
-        <div class="block-head"><h2>Cases</h2><p id="kernel-cases-about"></p></div>
-        <div id="kernel-cases" class="glance"></div>
+    <div id="kernels-section" hidden>
+      <div class="section-head">
+        <h2>Kernels</h2>
+        <p>Every kernel in the library, checked and timed nightly on npu1 and npu2.</p>
+        <span class="runs">
+          <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyKernelChecks.yml">Actions runs</a>
+          <a href="https://github.com/Xilinx/mlir-aie/tree/main/aie_kernels">Kernel sources</a>
+        </span>
+      </div>
+      <nav class="subnav" aria-label="kernel views">
+        <a id="tab-night" href="#view=night">Summary</a>
+        <a id="tab-kernels" href="#view=kernels">All kernels</a>
+        <a id="tab-kernel" href="#view=kernel" hidden>Kernel</a>
+      </nav>
+
+      <section id="dashboard">
+        <div id="verdicts"></div>
+
+        <section id="attention" class="block" hidden>
+          <div class="block-head"><h2>Needs a look</h2></div>
+          <ul id="attention-list"></ul>
+        </section>
+
+        <section class="block">
+          <div class="block-head"><h2>Changed over recent nightlies</h2></div>
+          <p class="note" id="window-about"></p>
+          <div id="window-changes"><p class="dim">Reading the history…</p></div>
+        </section>
       </section>
-      <section class="block">
-        <div class="block-head"><h2>Full charts</h2><span id="kernel-metric" class="seg" role="group" aria-label="metric"></span></div>
-        <p class="note"><span class="key"><i class="n-npu1"></i>npu1</span><span class="key"><i class="n-npu2"></i>npu2</span>Hollow diamonds are runs started by hand. Dashed lines mark a change of Peano, host, runtime or driver; hover for which.</p>
-        <div id="kernel-charts" class="charts"></div>
-        <div id="kernel-charts-empty" class="empty" hidden>No history for this kernel yet.</div>
+
+      <section id="kernels" hidden>
+        <div class="controls">
+          <label><input id="kernels-filter" type="search" placeholder="Filter by kernel or family" aria-label="filter kernels"></label>
+          <label>Family <select id="kernels-family"><option value="">All</option></select></label>
+          <label><input id="kernels-problems" type="checkbox"> Only kernels that need a look</label>
+          <span id="kernels-status" class="dim"></span>
+        </div>
+        <div class="k-list">
+          <div id="kernels-head" class="k-head"></div>
+          <div id="kernel-list"></div>
+        </div>
       </section>
-    </section>
 
-    <section id="components" hidden>
-      <p class="note">Nightly checks on single compiler components, from
-        <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyComponentChecks.yml">nightlyComponentChecks.yml</a>.
-        A failed seed is listed with the command that runs it again.</p>
-      <div id="component-verdicts"></div>
-      <section class="block">
-        <div class="block-head"><h2>Trends</h2><span id="component-metric" class="seg" role="group" aria-label="metric"></span></div>
-        <p id="component-metric-about" class="note"></p>
-        <div id="component-charts" class="charts"></div>
-        <div id="component-charts-empty" class="empty" hidden>No history published yet.</div>
+      <section id="kernel" hidden>
+        <div id="kernel-head"></div>
+        <section class="block">
+          <div class="block-head"><h2>Over recent nightlies</h2><span id="kernel-npu" class="seg" role="group" aria-label="NPU"></span></div>
+          <div id="kernel-trend"></div>
+        </section>
+        <section class="block">
+          <div class="block-head"><h2>Cases</h2></div>
+          <div id="kernel-cases"></div>
+        </section>
       </section>
+
+      <details id="about" class="howto">
+        <summary>How these checks work</summary>
+        <div>
+          <p><a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyKernelChecks.yml"><code>nightlyKernelChecks.yml</code></a> runs at 06:00 UTC on an npu1 (AIE2) and an npu2 (AIE2P) bench runner,
+            on pull requests that bump the Peano pin, and on demand. Each run checks every case in
+            <a href="https://github.com/Xilinx/mlir-aie/blob/main/test/python/npu/kernel_cases.py"><code>test/python/npu/kernel_cases.py</code></a> for correctness
+            (<code>test_kernels_e2e.py -m extensive</code>: every case, every edge-data case, three random seeds), then times the cases that passed with
+            <code>test_kernels_perf.py -m perf</code>, and writes a catalogue of every factory and how its cases fared.</p>
+          <p>Only the nightly and an unfiltered dispatch on main publish, and only in the turbo power mode, which the bench runners set at boot: in any other mode
+            the timing step refuses rather than chart numbers taken at another clock. A failed preflight or <code>passthrough</code> sanity check publishes nothing
+            from that NPU; a failing case costs only its own series a point. A run that does not publish gets a report of its failures and of its changes against
+            the last nightly in its job summary (<code>utils/kernel_checks/pr_report.py</code>), kept as a comment on a Peano pull request.</p>
+          <h3>What each case records</h3>
+          <dl id="key-metrics"></dl>
+          <p>Cycles are the minimum over the traced calls of a kernel whose contract says <code>Trace.whole_call()</code>; their spread, and whether the trace
+            buffer held every call, are in the row's range. Cycles and object size are the numbers the checks gate on; host time moves with the machine,
+            so it only counts past three times its run-to-run spread. A dashed line on a chart marks a change of Peano, host, runtime or driver between nights.</p>
+          <h3>The views</h3>
+          <p><b>Summary</b>: a verdict per NPU; what needs a look (failures, the cases that got slower or bigger last night, and any of the timing
+            harness's own tests that failed); and every case whose cycles or object size moved past its threshold between its first and latest nightly
+            of the last 30, as the two numbers and their dates.
+            <b>All kernels</b>: a line per kernel with, per NPU, its state last night, its cases' cycles now, and how many got slower or faster since
+            the first nightly shown; those that need a look first.
+            A kernel's own page (<code>#view=kernel&amp;kernel=&lt;factory&gt;</code>) charts each of its cases' actual cycles (or size, or host time)
+            night by night, and tables each case's cycles now and then.</p>
+          <p>How to run the same checks locally, and to measure a kernel change against the code before it, is in the kernel library's
+            <a href="https://xilinx.github.io/mlir-aie/dev/programming_guide/kernels_library/#testing-performance-and-static-checks">testing section</a>.</p>
+        </div>
+      </details>
+    </div>
+
+    <section id="performance" hidden>
+      <div class="section-head">
+        <h2>Performance</h2>
+        <p>MobileNet, compiled, run and verified nightly on an NPU2.</p>
+        <span class="runs">
+          <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyComponentChecks.yml">Actions runs</a>
+          <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/mobilenet">MobileNet design</a>
+        </span>
+      </div>
+      <div id="performance-bands" class="band-list"></div>
+      <details class="howto">
+        <summary>How these checks work</summary>
+        <div>
+          <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/sa_placer_hw.py"><code>utils/component_checks/sa_placer_hw.py</code></a>
+            runs in <code>nightlyComponentChecks.yml</code> at 06:30 UTC on an NPU2 bench runner. The
+            <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/mobilenet">MobileNet</a> design is placed with the SA placer at seeds 3
+            (the design's default), 2 and 7, then compiled, run and verified at batch 1, 4, 16 and 64, every image checked. A publishing run refuses to time
+            unless the NPU is in turbo mode.</p>
+          <h3>What each seed and batch records</h3>
+          <dl id="performance-metrics"></dl>
+          <p>Per image and end-to-end are the fastest of 20 launches. Streaming, <code>(T(N) − T(1)) ÷ (N − 1)</code>, is what one more image in a launch costs
+            with the launch's fixed cost taken out, so it is recorded above batch 1 only. A seed whose batches placed differently is flagged on its card.</p>
+          <p>To run one seed at one batch, from <code>programming_examples/ml</code>:</p>
+          <pre>python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 1.0 --batch B</pre>
+          <p>and every seed and batch, as the nightly does:</p>
+          <pre>python utils/component_checks/sa_placer_hw.py --out perf.json --meta meta.json</pre>
+        </div>
+      </details>
     </section>
 
-    <section id="charts-view" hidden>
-      <form id="controls" class="controls" onsubmit="return false">
-        <span id="metric" class="seg" role="group" aria-label="metric"></span>
-        <label>Show <select id="show">
-          <option value="moved">What moved last night</option>
-          <option value="all">Everything</option>
-        </select></label>
-        <label><input id="kernel-filter" type="search" placeholder="Filter, e.g. softmax or /bfloat16" aria-label="filter cases"></label>
-        <fieldset id="npus"><legend>NPU</legend></fieldset>
-        <label><input id="all-modes" type="checkbox"> Include other power modes</label>
-      </form>
-      <p id="metric-about" class="note"></p>
-      <p class="note" id="charts-key"><span class="key"><i class="n-npu1"></i>npu1</span><span class="key"><i class="n-npu2"></i>npu2</span>Hollow diamonds are runs started by hand; the rest are nightlies. A dashed line marks a change of Peano, host, runtime or driver; hover it for which.</p>
-      <div id="charts"></div>
-      <div id="empty" class="empty" hidden></div>
+    <section id="routing" hidden>
+      <div class="section-head">
+        <h2>Routing</h2>
+        <p>The router: does every design still route, and what routing costs.</p>
+      </div>
+      <div id="routing-bands" class="band-list"></div>
+      <section class="block" id="routing-trends" hidden>
+        <div class="block-head"><span id="routing-metric" class="seg" role="group" aria-label="metric"></span></div>
+        <p id="routing-metric-about" class="note"></p>
+        <div id="routing-charts" class="charts"></div>
+        <div id="routing-charts-empty" class="empty" hidden>No history published yet.</div>
+      </section>
+      <details class="howto">
+        <summary>How to add a check here</summary>
+        <div>
+          <p>A routing check is a script in <code>utils/component_checks/</code> that writes <code>perf.json</code> and <code>meta.json</code> as
+            <code>sa_placer.py</code> does: rows of <code>{name, value, unit}</code> per case and metric, smaller is better.</p>
+          <p>Give it a job in <code>nightlyComponentChecks.yml</code> that uploads its results, add the check's name to <code>COMPONENTS</code> in
+            <code>utils/kernel_checks/publish.py</code> and to the publish job's loop, and add a band with <code>section: 'routing'</code> to <code>BANDS</code>
+            in this page (and its metrics to the section in <code>SECTIONS</code>). Its thresholds go in <code>thresholds.json</code>.</p>
+        </div>
+      </details>
     </section>
 
-    <details id="about">
-      <summary>About these numbers</summary>
-      <dl id="key-metrics"></dl>
-      <p>Every metric is smaller-is-better. A change counts once it passes the metric's threshold, the same one the pull-request report uses.
-        Cycles and object size are the numbers the checks gate on; host time moves with the machine, so it only counts past three times its run-to-run spread.</p>
-      <p>Only turbo-mode runs are compared: the nightly measures in turbo, and older runs in other modes are hidden unless you ask for them on Trends.
-        A dashed line on a chart marks a change of Peano, host, runtime or driver between nights.</p>
-    </details>
+    <section id="placement" hidden>
+      <div class="section-head">
+        <h2>Placement</h2>
+        <p>The SA tile placer: does every seed still place, and how good the placements are.</p>
+        <span class="runs">
+          <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyComponentChecks.yml">Actions runs</a>
+          <a href="https://github.com/Xilinx/mlir-aie/blob/main/lib/Dialect/AIE/Transforms/AIESAPlacer.cpp">Placer source</a>
+        </span>
+      </div>
+      <div id="placement-bands" class="band-list"></div>
+      <details class="more" id="placement-more">
+        <summary>Trends</summary>
+      <section class="block" id="placement-trends">
+        <div class="block-head"><span id="placement-metric" class="seg" role="group" aria-label="metric"></span></div>
+        <p id="placement-metric-about" class="note"></p>
+        <div id="placement-charts" class="charts"></div>
+        <div id="placement-charts-empty" class="empty" hidden>No history published yet.</div>
+      </section>
+      </details>
+      <details class="howto">
+        <summary>How these checks work</summary>
+        <div>
+          <p><a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyComponentChecks.yml"><code>nightlyComponentChecks.yml</code></a> runs at 06:30 UTC from main,
+            on pull requests that touch the placer or these checks (the seed sweep only), and on demand. The nightly and an unfiltered dispatch on main publish;
+            a check that fails still publishes what it measured, and its record lists the failed seeds and runs.</p>
+          <h3>Seed sweep (no hardware)</h3>
+          <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/sa_placer.py"><code>utils/component_checks/sa_placer.py</code></a>, on a hosted runner:
+            <code>aie-opt</code> places two fixtures, the 4-core design in <code>test/place-tiles/sa_placer/test_sa_effort.mlir</code> and MobileNet before placement
+            (<code>utils/component_checks/fixtures/mobilenet.mlir</code>), with seeds 1 to 20 at full effort. Per fixture it records how many seeds failed to place,
+            the SA placer's final cost (mean and worst), and the CPU time and peak memory of a placement.</p>
+          <pre>aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=N sa-effort=1.0' \
+    --mlir-pass-statistics utils/component_checks/fixtures/mobilenet.mlir</pre>
+          <h3>MobileNet placements on hardware (NPU2)</h3>
+          <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/sa_placer_hw.py"><code>utils/component_checks/sa_placer_hw.py</code></a>:
+            MobileNet is placed with seeds 3 (the design's default), 2 and 7, then compiled, run and verified at batch 1, 4, 16 and 64, every image checked.
+            For each seed it records the placement aiecc chose (a digest of the placed tiles) and its SA cost, replayed with <code>aie-opt</code>.
+            What the placed design then costs to run is under <a href="#view=performance">Performance</a>.</p>
+          <p>To rerun a whole check, run its script with <code>--out perf.json --meta meta.json</code> (the sweep also needs <code>--aie-opt "$(which aie-opt)"</code>;
+            the hardware check takes <code>--seeds</code> and <code>--batches</code>). It prints a table with a row per seed, or per seed and batch.</p>
+          <p>How to choose the placer and a seed for your own design is in <a href="https://xilinx.github.io/mlir-aie/dev/programming_guide/section-1/">section 1 of the programming guide</a>.</p>
+        </div>
+      </details>
+    </section>
   </main>
 
   <!-- The hash is of chart.umd.js in the chart.js 4.4.7 npm package, which the CDN
@@ -458,16 +785,41 @@
       cpu_ms_max: 'CPU time (max)', peak_rss_mb_max: 'Peak memory', us_per_image: 'Per image', streaming_us: 'Streaming',
       e2e_us_per_image: 'End-to-end / image', compile_s: 'Compile time', placement_cost: 'Placement cost',
     };
+    // Where the kernel checks and the component checks publish, beside this
+    // page's directory (dashboard/).
+    const KERNELS_DIR = '../kernel-checks';
     const COMPONENTS_DIR = '../component-checks';
-    const COMPONENT_DOCS_URL = 'https://xilinx.github.io/mlir-aie/dev/programming_guide/section-1/#nightly-sa-placer-checks';
+    const COMPONENT_DOCS_URL = 'https://xilinx.github.io/mlir-aie/dev/getting-started/';
     const SA_FIXTURES = { test_sa_effort: 'test/place-tiles/sa_placer/test_sa_effort.mlir', mobilenet: 'utils/component_checks/fixtures/mobilenet.mlir' };
-    // The nightly component checks. A failed id ("<fixture>/seed<N>" in the
-    // sweep, "mobilenet/seed=<S>/batch=<N>" on hardware) matches `failedId`,
-    // whose groups `repro` runs again (with none, any one) and `say` words;
-    // `passed` is the headline when nothing failed;
-    // `cards`, `charts` and `summary` show the latest record.
-    const COMPONENTS = [
-      { id: 'sa-placer', title: 'SA placer seed sweep', failure: 'seed', passed: 'Every seed placed.',
+    // The sections besides Kernels, in the order of their tabs: `metrics` are
+    // the ones their Trends offer, in order. One with no bands in BANDS says
+    // it has no checks yet.
+    const SECTIONS = {
+      performance: { title: 'Performance', about: 'MobileNet compiled, run and verified on an NPU2: time per image, streaming and compile time.',
+                     metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s'] },
+      routing: { title: 'Routing', about: 'The router. No routing checks publish yet.', metrics: [] },
+      placement: { title: 'Placement', about: 'The SA placer: every seed placed, the placements\' cost, CPU time and memory.',
+                   metrics: ['failed_seeds', 'final_cost_mean', 'final_cost_max', 'placement_cost', 'cpu_ms_mean', 'cpu_ms_max', 'peak_rss_mb_max'] },
+    };
+    // The view a component metric's trends are in.
+    const sectionOfMetric = metric => Object.keys(SECTIONS).find(s => SECTIONS[s].metrics.includes(metric)) || 'placement';
+    // How the hardware check's failures read and rerun, in either section.
+    const HW_RUNS = {
+      failure: 'run', script: 'utils/component_checks/sa_placer_hw.py',
+      whole: 'python utils/component_checks/sa_placer_hw.py --out perf.json --meta meta.json',
+      failedId: /^mobilenet\/seed=(\d+)\/batch=(\d+)$/,
+      repro: (seed = 'N', batch = 'B') => `cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed ${seed} --sa-effort 1.0 --batch ${batch}`,
+      say: (seed, batch) => `seed ${seed} at batch ${batch}`,
+    };
+    // A band is one nightly check's latest record in one section: `id` is
+    // its directory under component-checks/, which two bands may share. A
+    // failed id ("<fixture>/seed<N>" in the sweep, "mobilenet/seed=<S>/batch=<N>"
+    // on hardware) matches `failedId`, whose groups `repro` runs again (with
+    // none, any one) and `say` words; `passed` is the headline when nothing
+    // failed; `short` names it on the overview; `cards`, `charts` and
+    // `summary` show the latest record.
+    const BANDS = [
+      { id: 'sa-placer', section: 'placement', title: 'SA placer seed sweep', short: 'Seed sweep', failure: 'seed', passed: 'Every seed placed.',
         about: 'aie-opt places each fixture with seeds 1 to 20 at full effort, on a hosted runner, with no hardware.',
         script: 'utils/component_checks/sa_placer.py',
         whole: 'python utils/component_checks/sa_placer.py --aie-opt "$(which aie-opt)" --out perf.json --meta meta.json',
@@ -475,14 +827,13 @@
         repro: (fixture, seed = 'N') => `aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=${seed} sa-effort=1.0' --mlir-pass-statistics ${SA_FIXTURES[fixture] || '<fixture>'}`,
         say: (fixture, seed) => `${fixture}/seed${seed}`,
         cards: fixtureCards, charts: seedCharts, summary: sweepSummary },
-      { id: 'sa-placer-hw', title: 'SA placer on hardware', failure: 'run', passed: 'Every run passed.',
+      { id: 'sa-placer-hw', section: 'placement', title: 'MobileNet placements on hardware', short: 'MobileNet on NPU2', ...HW_RUNS,
+        passed: 'Every seed placed, compiled and verified.',
+        about: 'aiecc places mobilenet with seeds 3, 2 and 7 for an NPU2: the placement each seed chose, its SA cost, and whether the design then ran.',
+        cards: placementCards, charts: () => [], summary: placementSummary },
+      { id: 'sa-placer-hw', section: 'performance', title: 'MobileNet on NPU2', short: 'MobileNet', ...HW_RUNS, passed: 'Every run passed.',
         about: 'mobilenet placed with seeds 3, 2 and 7, then compiled, run and verified on an NPU2 at batch 1, 4, 16 and 64.',
-        script: 'utils/component_checks/sa_placer_hw.py',
-        whole: 'python utils/component_checks/sa_placer_hw.py --out perf.json --meta meta.json',
-        failedId: /^mobilenet\/seed=(\d+)\/batch=(\d+)$/,
-        repro: (seed = 'N', batch = 'B') => `cd programming_examples/ml && python -m mobilenet.aie2_mobilenet_iron --sa-seed ${seed} --sa-effort 1.0 --batch ${batch}`,
-        say: (seed, batch) => `seed ${seed} at batch ${batch}`,
-        cards: seedCards, charts: batchCharts, summary: hardwareSummary },
+        cards: seedCards, trend: true, charts: batchCharts, summary: hardwareSummary },
     ];
     const label = m => LABELS[m] || m;
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us'];
@@ -742,7 +1093,7 @@
       const out = [];
       if (run.newer) out.push({ level: 'bad', text: 'the results were published by a newer version of this page: reload it' });
       if (run.date === null) { out.push({ level: 'bad', text: `${npu}: no results have been published` }); return out; }
-      if (now - run.date > STALE_AFTER_MS) out.push({ level: 'bad', text: `no run since ${formatDate(run.date)}` });
+      if (now - run.date > STALE_AFTER_MS) out.push({ level: 'bad', text: `no run since ${formatDate(run.date)}`, stale: true });
       if (run.refused) out.push({ level: 'bad', text: `the run refused to measure: ${run.refused}` });
       else if (run.sane === false) out.push({ level: 'bad', text: 'the measurement sanity check failed: no numbers were published from this run' });
       else if (!run.published) out.push({ level: 'bad', text: run.recorded ? 'this run published no numbers' : 'no numbers have been published yet' });
@@ -793,7 +1144,6 @@
     const factoryUrl = (commit, family) => `${REPO}/blob/${commit || 'main'}/python/iron/kernels/${family}.py`;
     const casesUrl = commit => `${REPO}/blob/${commit || 'main'}/test/python/npu/kernel_cases.py`;
     const kernelLink = factory => hashFor({ view: 'kernel', kernel: factory });
-    const chartsLink = (kernel, metric) => hashFor({ view: 'charts', metric: metric || 'cycles', show: 'all', kernel });
 
     function formatValue(value, unit) {
       if (unit === 'bytes') return `${(value / 1024).toFixed(1)} KiB`;
@@ -834,6 +1184,20 @@
       return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}, ${d.toISOString().slice(11, 16)} UTC`;
     }
     const shortDate = ms => { const d = new Date(ms); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
+    // How long ago, roughly: "5 h", "1 day 12 h", "3 days".
+    function ago(ms, now) {
+      const min = Math.max(0, (now - ms) / 60000);
+      if (min < 59.5) return `${Math.max(1, Math.round(min))} min`;
+      const h = Math.round(min / 60);
+      if (h < 24) return `${h} h`;
+      const d = Math.floor(h / 24), r = h % 24;
+      return d >= 3 || !r ? plural(d, 'day') : `${plural(d, 'day')} ${r} h`;
+    }
+    // A run that is late: {text} for the line above a verdict, or null.
+    function staleness(date, now) {
+      if (!Number.isFinite(date) || now - date <= STALE_AFTER_MS) return null;
+      return { text: `No run for ${ago(date, now)}: the numbers below are from ${formatWhen(date)}.`, short: `No run for ${ago(date, now)}.` };
+    }
 
     // A case id, "factory/shape/dtype/params": the factory reads, the rest is detail.
     function caseName(kase, href) {
@@ -983,15 +1347,6 @@
       return { level: 'ok', text: '', title: pass };
     }
 
-    const STATE_LEGEND = [
-      ['ok', 'Passes, nothing moved'],
-      ['better', 'Faster or smaller'],
-      ['bad', 'Slower, bigger or failing'],
-      ['warn', 'Timing failed, passed only on a retry, or trace truncated'],
-      ['untimed', 'Passes; the night timed nothing'],
-      ['none', 'Not checked on hardware'],
-      ['absent', 'Not offered on this NPU'],
-    ];
 
     // A night on the strip: ok, warn (published, something failed), bad
     // (nothing published) or other (a power mode not compared).
@@ -1037,30 +1392,36 @@
       const gated = xs => (xs || []).filter(x => GATED.includes(x.series.metric));
       const worse = gated(moved && moved.regressed), better = gated(moved && moved.improved);
       const cases = (xs, m) => new Set(xs.filter(x => x.series.metric === m).map(x => x.series.kase)).size;
-      const hard = warnings.find(w => w.level === 'bad');
+      // Lateness is said above the verdict; the verdict is the run's own.
+      const stale = staleness(run.date, now);
+      const hard = warnings.find(w => w.level === 'bad' && !/^no run since /.test(w.text));
       if (run.date === null) return { level: 'none', headline: 'No results published yet.', quiet: '' };
-      const problems = [];
-      if (cases(worse, 'cycles')) problems.push(`${plural(cases(worse, 'cycles'), 'case')} slower`);
-      if (cases(worse, 'kernel_object_bytes')) problems.push(`${cases(worse, 'kernel_object_bytes')} bigger`);
-      if (counts.failing.length) problems.push(`${counts.failing.length} failing correctness`);
-      if (counts.timingFailed.length) problems.push(`${counts.timingFailed.length} failed timing`);
-      if (counts.flaky.length) problems.push(`${counts.flaky.length} passed on a retry`);
-      const gains = [];
-      if (cases(better, 'cycles')) gains.push(`${cases(better, 'cycles')} faster`);
-      if (cases(better, 'kernel_object_bytes')) gains.push(`${cases(better, 'kernel_object_bytes')} smaller`);
-      const quiet = gains.length ? ` ${gains.join(', ')}.` : '';
-      if (hard) return { level: 'bad', headline: `${hard.text[0].toUpperCase()}${hard.text.slice(1)}.`, quiet: '' };
-      const onlyTiming = !worse.length && !counts.failing.length;
-      const level = problems.length ? (onlyTiming ? 'warn' : 'bad')
-        : warnings.some(w => w.level === 'warn' && !/changed since the previous run/.test(w.text)) ? 'warn' : 'ok';
-      if (problems.length) {
-        const text = problems.join(', ');
-        return { level, headline: `${text[0].toUpperCase()}${text.slice(1)}.`, quiet };
+      const v = verdictOfRun();
+      return stale ? { ...v, level: 'bad', stale } : v;
+      function verdictOfRun() {
+        const problems = [];
+        if (cases(worse, 'cycles')) problems.push(`${plural(cases(worse, 'cycles'), 'case')} slower`);
+        if (cases(worse, 'kernel_object_bytes')) problems.push(`${cases(worse, 'kernel_object_bytes')} bigger`);
+        if (counts.failing.length) problems.push(`${counts.failing.length} failing correctness`);
+        if (counts.timingFailed.length) problems.push(`${counts.timingFailed.length} failed timing`);
+        if (counts.flaky.length) problems.push(`${counts.flaky.length} passed on a retry`);
+        const gains = [];
+        if (cases(better, 'cycles')) gains.push(`${cases(better, 'cycles')} faster`);
+        if (cases(better, 'kernel_object_bytes')) gains.push(`${cases(better, 'kernel_object_bytes')} smaller`);
+        const quiet = gains.length ? ` ${gains.join(', ')}.` : '';
+        if (hard) return { level: 'bad', headline: `${hard.text[0].toUpperCase()}${hard.text.slice(1)}.`, quiet: '' };
+        const onlyTiming = !worse.length && !counts.failing.length;
+        const level = problems.length ? (onlyTiming ? 'warn' : 'bad')
+          : warnings.some(w => w.level === 'warn' && !/changed since the previous run/.test(w.text)) ? 'warn' : 'ok';
+        if (problems.length) {
+          const text = problems.join(', ');
+          return { level, headline: `${text[0].toUpperCase()}${text.slice(1)}.`, quiet };
+        }
+        const timed = counts.known ? counts.timed : (night.latest.cases.size || 0);
+        const compared = moved && night.since ? ' Nothing got slower or bigger.' : ' No earlier nightly to compare with yet.';
+        if (!timed) return { level: 'warn', headline: `Nothing was timed.${compared}`, quiet };
+        return { level, headline: `All ${plural(timed, 'timed case')} ran.${compared}`, quiet };
       }
-      const timed = counts.known ? counts.timed : (night.latest.cases.size || 0);
-      const compared = moved && night.since ? ' Nothing got slower or bigger.' : ' No earlier nightly to compare with yet.';
-      if (!timed) return { level, headline: `Nothing was timed.${compared}`, quiet };
-      return { level, headline: `All ${plural(timed, 'timed case')} ran.${compared}`, quiet };
     }
 
     function verdictBand(night, now) {
@@ -1073,20 +1434,25 @@
           el('span', { title: run.deviceRaw && run.deviceRaw !== part ? `reported as ${run.deviceRaw}` : '' },
             [part, catalogue ? catalogue.arch : ''].filter(Boolean).join(', '))),
         nightStrip(night)));
+      if (v.stale) band.append(el('p', { className: 'stale-line' }, v.stale.text));
       band.append(el('p', { className: 'headline' }, v.headline, v.quiet ? el('span', { className: 'quiet' }, v.quiet) : ''));
       if (run.date === null) return band;
+      // The counts and the run's provenance are detail: the headline and
+      // Needs attention say what matters.
+      const more = el('details', { className: 'band-more' }, el('summary', {}, 'Run details'));
+      band.append(more);
       if (counts.known) {
         const fig = (n, text, cls) => el('li', { className: cls || '' }, el('b', {}, String(n)), text);
-        band.append(el('ul', { className: 'figures' },
+        more.append(el('ul', { className: 'figures' },
           fig(counts.timed, 'timed'),
           fig(counts.passed, 'pass correctness'),
           counts.failing.length ? fig(counts.failing.length, 'failing', 'bad') : '',
           counts.timingFailed.length ? fig(counts.timingFailed.length, 'timing failed', 'warn') : '',
           counts.flaky.length ? fig(counts.flaky.length, 'passed on a retry', 'warn') : '',
-          fig(counts.untimed, 'correctness only'),
-          fig(`${counts.checked}/${counts.offered}`, 'kernels on hardware')));
+          fig(counts.untimed, 'not timed, by design'),
+          fig(`${counts.checked} of ${counts.offered}`, 'kernels run on the NPU')));
       }
-      band.append(runMeta(run));
+      more.append(runMeta(run));
       return band;
     }
 
@@ -1161,8 +1527,9 @@
         return ul;
       };
       for (const w of warningsFor(npu, run, now)) {
-        // Failures and truncation get their own lines with the cases named.
-        if (/test.* failed in this run|truncated trace/.test(w.text)) continue;
+        // Failures and truncation get their own lines with the cases named;
+        // lateness and a refusal are on the NPU's verdict already.
+        if (/test.* failed in this run|truncated trace/.test(w.text) || w.stale || /^the run refused to measure/.test(w.text)) continue;
         const change = /^(\w+) changed since the previous run: (.*) → (.*)$/.exec(w.text);
         if (change) {
           // A field the earlier run did not record is not a change.
@@ -1180,15 +1547,29 @@
         failedIds.filter(id => id.includes(`::${test}[`) && names.includes(caseOfTest(id))), names, test);
       if (counts.failing.length) items.push({ level: 'bad', npu, body: [`${plural(counts.failing.length, 'case')} failed correctness and ${counts.failing.length === 1 ? 'was' : 'were'} not timed:`, cases(counts.failing), repro('test_kernel_extensive', counts.failing)].filter(Boolean) });
       const worse = ((moved && moved.regressed) || []).filter(x => GATED.includes(x.series.metric));
-      if (worse.length) items.push({ level: 'bad', npu, body: [`${plural(worse.length, 'series')} got worse past ${worse.length === 1 ? 'its' : 'their'} threshold. `, link('#moved-block', 'See what moved')] });
+      if (worse.length) {
+        // Each regression named, with how far it moved, its kernel a click away.
+        const ul = el('ul', { className: 'cases' });
+        worse.slice(0, LIST).forEach(x => ul.append(el('li', {}, caseName(x.series.kase, kernelLink(x.series.factory)), ' ',
+          el('span', { className: 'dim' }, label(x.series.metric).toLowerCase()), ' ', changeSpan(x.change, x.cls, true, x.series.metric))));
+        if (worse.length > LIST) ul.append(el('li', {}, link(hashFor({ view: 'kernels', problems: '1' }), `and ${worse.length - LIST} more`)));
+        items.push({ level: 'bad', npu, body: [`${plural(worse.length, 'case')} got slower or bigger past ${worse.length === 1 ? 'its' : 'their'} threshold:`, ul] });
+      }
       if (counts.timingFailed.length) items.push({ level: 'warn', npu, body: [`${plural(counts.timingFailed.length, 'case')} passed correctness but failed the timing run, so ${counts.timingFailed.length === 1 ? 'its chart has' : 'their charts have'} a gap:`, cases(counts.timingFailed), repro('test_kernel_perf', counts.timingFailed)].filter(Boolean) });
       if (counts.flaky.length) items.push({ level: 'warn', npu, body: [`${plural(counts.flaky.length, 'case')} failed, then passed when the runner retried ${counts.flaky.length === 1 ? 'it' : 'them'}; a soak would tell how often:`, cases(counts.flaky)] });
       // Failed tests the catalogue does not name: its night may be a later run.
-      // A run that refused to time fails every timing test; the refusal says so once.
+      // A run that refused to time fails every test of the timing step
+      // (test_kernels_perf.py); the refusal says so once.
       const named = new Set([...counts.failing, ...counts.timingFailed]);
-      const untimed = id => run.refused && /::(test_kernel_perf|test_measurement_is_sane)\b/.test(id);
+      const untimed = id => run.refused && /test_kernels_perf(\.py)?::/.test(id);
       const others = failedIds.filter(id => !named.has(caseOfTest(id)) && !untimed(id));
-      if (others.length) items.push({ level: 'warn', npu, body: [`${plural(others.length, 'test')} failed in this run:`, cases([...new Set(others.map(caseOfTest))]), reproBlock(npu, run, others)].filter(Boolean) });
+      // A test with no case in brackets tests the checks themselves (the
+      // timing harness), not a kernel: said apart, so it is not taken for one.
+      const own = others.filter(id => !/\[.*\]$/.test(id));
+      const rest = others.filter(id => !own.includes(id));
+      if (own.length) items.push({ level: 'warn', npu, body: [`${plural(own.length, 'test')} of the timing harness itself failed: ${own.length === 1 ? 'it tests' : 'they test'} the checks, not a kernel.`,
+        cases([...new Set(own.map(caseOfTest))]), reproBlock(npu, run, own)].filter(Boolean) });
+      if (rest.length) items.push({ level: 'warn', npu, body: [`${plural(rest.length, 'test')} failed in this run:`, cases([...new Set(rest.map(caseOfTest))]), reproBlock(npu, run, rest)].filter(Boolean) });
       const truncated = run.truncated || [];
       if (truncated.length) items.push({ level: 'warn', npu, body: [`${plural(truncated.length, 'case')} filled the trace buffer before every call; the cycle count is over the calls it held:`, cases(truncated)] });
       const rank = { bad: 0, warn: 1, info: 2 };
@@ -1206,11 +1587,6 @@
       return items;
     }
 
-    function renderLegend(target) {
-      target.replaceChildren(...STATE_LEGEND.map(([level, text]) =>
-        el('span', {}, el('span', { className: `sw s-${level}` }), text)));
-    }
-
     // Every factory of every catalogue, in a stable order: the map stays
     // where it was from night to night, so a change of color is the news.
     function allKernels(nights) {
@@ -1219,115 +1595,10 @@
       return [...rows.values()].sort((a, b) => a.family.localeCompare(b.family) || a.factory.localeCompare(b.factory));
     }
 
-    function renderMap(nights) {
-      const map = $('map');
-      const kernels = allKernels(nights);
-      const byNpu = new Map(nights.map(n => [n.npu, n]));
-      const families = new Map();
-      for (const k of kernels) {
-        if (!families.has(k.family)) families.set(k.family, []);
-        families.get(k.family).push(k);
-      }
-      map.replaceChildren();
-      for (const [family, ks] of families) {
-        const tiles = el('div', { className: 'tiles' });
-        for (const k of ks) {
-          const states = NPUS.map(npu => [npu, kernelState(byNpu.get(npu), k.factory)]);
-          const tile = link(kernelLink(k.factory), '', {
-            className: 'tile',
-            title: [k.factory, k.summary, ...states.map(([npu, s]) => `${npu}: ${s.title}`)].join('\n'),
-          });
-          tile.append(el('span', { className: 'name' }, k.factory),
-            el('span', { className: 'halves' }, ...states.map(([npu, s]) =>
-              el('span', { className: `half s-${s.level}`, textContent: s.text || ' ', ariaLabel: `${npu}: ${s.title}` }))));
-          tiles.append(tile);
-        }
-        map.append(el('div', { className: 'family' }, el('h3', {}, family), tiles));
-      }
-      if (!kernels.length) map.append(el('p', { className: 'dim' }, 'No catalogue has been published yet.'));
-      renderLegend($('map-legend'));
-    }
-
-    // A small line of a series' recent nights in the compared power mode.
-    function sparkline(values, cls) {
-      const canvas = el('canvas', { className: 'spark', width: 220, height: 52 });
-      const pts = values.filter(v => v !== null && v !== undefined);
-      canvas.values = pts;
-      if (pts.length < 2 || typeof canvas.getContext !== 'function') return canvas;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return canvas;
-      const [w, h, pad] = [220, 52, 6];
-      const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
-      const x = i => pad + (i * (w - 2 * pad)) / (pts.length - 1);
-      const y = v => h - pad - ((v - lo) * (h - 2 * pad)) / span;
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = cssVar('--faint', '#8a93a3');
-      ctx.beginPath();
-      pts.forEach((v, i) => (i ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(i), y(v))));
-      ctx.stroke();
-      ctx.fillStyle = cssVar(cls === 'worse' ? '--bad' : cls === 'better' ? '--ok' : '--ink', '#1c2230');
-      ctx.beginPath();
-      ctx.arc(x(pts.length - 1), y(pts[pts.length - 1]), 5, 0, 2 * Math.PI);
-      ctx.fill();
-      return canvas;
-    }
-
-    // One series' values over its recent nights in the compared power mode.
-    function recentValues(hist, npu, kase, metric, mode) {
-      const s = hist && hist.series.find(x => x.npu === npu && x.kase === kase && x.metric === metric);
-      const pts = s && s.byMode.get(mode || EXPECTED_PMODE);
-      return pts ? pts.slice(-NIGHTS_SHOWN).map(p => p.row.value) : [];
-    }
-
-    function movedRow(night, x, hist) {
-      const s = x.series;
-      return el('tr', {},
-        el('td', {}, caseName(s.kase, kernelLink(s.factory))),
-        el('td', {}, night.npu),
-        el('td', {}, label(s.metric)),
-        el('td', { className: 'num' }, formatNumber(x.before, s.unit)),
-        el('td', { className: 'num cyc' }, formatNumber(x.after, s.unit)),
-        el('td', { className: 'num' }, el('span', { className: `chg ${x.cls}` }, formatChange(x.change))),
-        el('td', { className: 'wide' }, link(chartsLink(s.kase, s.metric),
-          sparkline(recentValues(nightlies(hist), night.npu, s.kase, s.metric, night.latest.last && night.latest.last.mode), x.cls),
-          { title: 'open the chart' })));
-    }
-
-    function renderMoved(nights, hist) {
-      const gated = xs => xs.filter(x => GATED.includes(x.series.metric));
-      const worse = [], better = [];
-      let other = 0, compared = 0;
-      for (const n of nights) {
-        if (!n.moved) continue;
-        compared++;
-        worse.push(...gated(n.moved.regressed).map(x => [n, x]));
-        better.push(...gated(n.moved.improved).map(x => [n, x]));
-        other += n.moved.regressed.length + n.moved.improved.length - gated(n.moved.regressed).length - gated(n.moved.improved).length;
-      }
-      const body = $('moved');
-      body.replaceChildren(...worse.map(([n, x]) => movedRow(n, x, hist)));
-      if (better.length) {
-        if (worse.length) body.append(el('tr', { className: 'divider' }, el('td', { colSpan: 7 }, 'Faster or smaller')));
-        body.append(...better.map(([n, x]) => movedRow(n, x, hist)));
-      }
-      const hostLink = link(hashFor({ view: 'charts', metric: 'npu_us', show: 'moved' }), 'Trends');
-      $('moved-about').replaceChildren(
-        `Cycles and object size, the latest nightly against the one before; each counts past ${pct('cycles')}%. Runs started by hand are left out.`,
-        other ? el('span', {}, ` Host time moved on ${plural(other, 'series')}, which is noisy; see `, hostLink, '.') : '');
-      const empty = $('moved-empty');
-      empty.hidden = worse.length + better.length > 0;
-      $('moved-wrap').hidden = !empty.hidden;
-      empty.textContent = !compared ? 'Nothing to compare yet: the latest nightly has no earlier nightly in the same power mode, or published nothing.'
-        : 'Nothing moved past its threshold last night.';
-      return { worse: worse.length, better: better.length };
-    }
-
     function renderDashboard(npus, recent, catalogues, runsIndexes, now, hist) {
       const nights = npus.map(npu => nightOf(npu, runsIndexes.get(npu) || null, recent, catalogues.get(npu) || null));
       $('verdicts').replaceChildren(...nights.map(n => verdictBand(n, now)));
       renderAttention(nights, now);
-      renderMap(nights);
-      renderMoved(nights, hist);
       return nights;
     }
 
@@ -1358,132 +1629,6 @@
       return [...names].sort();
     }
 
-    // The cells of one metric of one case on one NPU: value, and change if asked.
-    function metricCells(c, metric, withChange, extra) {
-      const m = c && c.metrics.get(metric);
-      const cls = `num${extra ? ` ${extra}` : ''}`;
-      if (!m) return withChange ? [el('td', { className: cls }), el('td', { className: 'num' })] : [el('td', { className: cls })];
-      const value = el('td', { className: `${cls}${c.current ? '' : ' stale'}`, textContent: formatNumber(m.value, m.unit) });
-      value.title = c.current ? '' : 'not measured in the latest night; this is from an earlier one';
-      const spread = metric === 'cycles' ? cyclesSpread(m.range) : null;
-      if (spread) {
-        value.title = [`fastest ${m.value}, median ${spread.median}, slowest ${spread.max} over ${spread.n} calls`, value.title].filter(Boolean).join('\n');
-        if (spread.truncated) {
-          value.append(el('span', { className: 'note warn', textContent: ' trace', title: `the trace buffer filled after ${spread.n} calls; the min is over those` }));
-        }
-      }
-      // A size moves in place: its change in KiB beside it.
-      if (m.unit === 'bytes' && m.delta) {
-        const tone = toneOf(m.change, m.cls, c.current, metric);
-        value.append(' ', el('span', { className: `chg ${tone} delta`, title: `${formatChange(m.change)} since the previous nightly`,
-                                       textContent: formatBytesDelta(m.delta) }));
-      }
-      if (!withChange) return [value];
-      const change = el('td', { className: 'num' });
-      if (m.change !== null && m.change !== undefined) {
-        change.append(changeSpan(m.change, m.cls, c.current, metric));
-        change.title = `from ${formatNumber(m.value - m.delta, m.unit)}`;
-      }
-      return [value, change];
-    }
-
-    // A change column's header says what it compares with.
-    function changeHead(n) {
-      return el('th', { className: 'num', title: n.since
-          ? `each case against the previous nightly that measured it on ${n.npu}; for most, ${formatDate(n.since)}`
-          : `${n.npu} has no earlier nightly to compare with yet` },
-        'Change', el('span', { className: 'sub' }, n.since ? `vs ${shortDate(n.since)}` : 'none yet'));
-    }
-
-    function kernelsHead(nights) {
-      const head = $('kernels-head');
-      head.replaceChildren(
-        el('tr', { className: 'group' }, el('th', { rowSpan: 2 }, 'Kernel and case'),
-          ...nights.map(n => el('th', { colSpan: 3, className: 'npu-start' }, n.npu, el('span', { className: 'faint' }, n.run.device ? ` ${n.run.device}` : '')))),
-        el('tr', {}, ...nights.flatMap(n => [
-          el('th', { className: 'num npu-start' }, 'Cycles'), changeHead(n), el('th', { className: 'num wide' }, 'Object size')])));
-    }
-
-    // One row per factory, then one per case: cycles and their change, and
-    // object size, npu1 beside npu2.
-    function renderKernels(nights) {
-      const status = $('kernels-status');
-      const kernels = allKernels(nights);
-      if (!kernels.length) {
-        status.textContent = 'No catalogue has been published yet.';
-        return [];
-      }
-      kernelsHead(nights);
-      const families = [...new Set(kernels.map(k => k.family))];
-      $('kernels-family').append(...families.map(f => new Option(f, f)));
-      const groups = kernels.map(k => {
-        const states = nights.map(n => kernelState(n, k.factory));
-        const tr = el('tr', { className: 'kernel-row' },
-          el('td', {}, link(kernelLink(k.factory), k.factory, { className: 'kname' }), el('span', { className: 'tag' }, k.family),
-            el('span', { className: 'summary wide' }, k.summary)),
-          ...nights.map((n, i) => {
-            const s = states[i];
-            const kk = n.catalogue ? n.catalogue.kernels.find(x => x.factory === k.factory) : null;
-            const td = el('td', { colSpan: 3, className: 'npu-start', title: s.title });
-            const words = { ok: 'passes', better: `better ${s.text}`, bad: s.text.endsWith('fail') ? `${s.text.replace(' fail', '')} failing` : `worse ${s.text}`,
-                            warn: { trace: 'trace truncated', flaky: 'passed on a retry' }[s.text] || 'timing failed',
-                            untimed: 'passes, not timed', none: 'not checked', absent: 'not offered' };
-            td.append(el('span', { className: `pill s-${s.level}` }, words[s.level]));
-            if (kk && kk.builds && kk.builds.length && kk.passed) td.append(el('span', { className: 'note' }, `  ${kk.timed || 0} of ${plural(kk.passed + (kk.failed || []).length, 'case')} timed`));
-            return td;
-          }));
-        tr.search = `${k.family} ${k.factory} ${k.summary}`.toLowerCase();
-        tr.family = k.family;
-        tr.problem = states.some(s => s.level === 'bad' || s.level === 'warn');
-        const cases = casesOf(nights, k.factory).map(kase => {
-          const row = el('tr', { className: 'case-row' }, el('td', {}, caseName(kase, chartsLink(kase))));
-          for (const n of nights) {
-            const c = n.latest.cases.get(kase);
-            const why = caseVerdict(n, kase);
-            if (!c && why) {
-              row.append(el('td', { colSpan: 3, className: 'npu-start' }, el('span', { className: `note ${why.cls}`, title: why.title }, why.text)));
-            } else if (!c) {
-              row.append(el('td', { colSpan: 3, className: 'npu-start faint', title: 'not timed on this NPU' }, '—'));
-            } else {
-              const [value, change] = metricCells(c, 'cycles', true, 'cyc npu-start');
-              row.append(value, change, ...metricCells(c, 'kernel_object_bytes', false, 'wide'));
-            }
-          }
-          row.search = kase.toLowerCase();
-          return row;
-        });
-        return { tr, cases };
-      });
-      $('kernels-rows').replaceChildren(...groups.flatMap(g => [g.tr, ...g.cases]));
-      const apply = () => {
-        const q = ($('kernels-filter').value || '').trim().toLowerCase();
-        const family = $('kernels-family').value;
-        const problems = $('kernels-problems').checked;
-        const collapsed = $('kernels-collapse').checked;
-        let shown = 0;
-        for (const { tr, cases } of groups) {
-          const hits = q ? cases.filter(c => c.search.includes(q)) : cases;
-          const visible = (!family || tr.family === family) && (!problems || tr.problem) && (!q || tr.search.includes(q) || hits.length > 0);
-          tr.hidden = !visible;
-          const matchedKernel = !q || tr.search.includes(q);
-          for (const c of cases) c.hidden = !visible || collapsed || !(matchedKernel || hits.includes(c));
-          shown += visible ? 1 : 0;
-        }
-        status.textContent = `${plural(shown, 'kernel')} of ${groups.length}`;
-      };
-      for (const id of ['kernels-filter', 'kernels-family', 'kernels-problems', 'kernels-collapse']) {
-        $(id).addEventListener(id === 'kernels-filter' ? 'input' : 'change', apply);
-      }
-      applyKernelsFilter = () => {
-        const want = readHash();
-        if (want.problems) $('kernels-problems').checked = true;
-        if (want.family !== undefined && families.includes(want.family)) $('kernels-family').value = want.family;
-        apply();
-      };
-      applyKernelsFilter();
-      return groups;
-    }
-
     // One factory: what it is, where it comes from, each case's numbers per
     // NPU, and its history.
     function renderKernel(factory, nights) {
@@ -1493,9 +1638,6 @@
       const k = catalogues.map(c => c.kernels.find(x => x.factory === factory)).find(Boolean);
       if (!k) {
         head.append(el('h2', {}, factory), el('p', { className: 'dim' }, 'No kernel of that name is in the catalogue. ', link('#view=kernels', 'See all kernels.')));
-        $('kernel-cases-about').replaceChildren();
-        $('kernel-cases').replaceChildren();
-        kernelCards = [];
         return false;
       }
       const commit = catalogues.find(c => c.commit)?.commit || 'main';
@@ -1514,55 +1656,21 @@
         if (!kk || !kk.builds.length) li.append(el('span', { className: 'faint' }, 'not offered'));
         else {
           li.append(`${plural(kk.builds.length, 'build')}, ${plural(kk.passed, 'case')} pass, ${kk.timed || 0} timed`);
-          if (s.level !== 'ok') li.append(' ', el('span', { className: `pill s-${s.level}` }, s.text || s.level));
+          if (s.level !== 'ok') li.append(' ', el('span', { className: `pill s-${s.level}` }, stateWord(s)));
         }
         builds.append(li);
       }
       head.append(builds);
-
-      // Cases: a card each, the four metrics side by side; the trend lines
-      // fill in once the histories load (fillSparks).
-      const cards = casesOf(nights, factory).map(kase => glanceCard(kase, nights));
-      $('kernel-cases').replaceChildren(...cards);
-      kernelCards = cards;
-      const about = $('kernel-cases-about');
-      about.replaceChildren(...nights.map(n => el('span', { className: 'key' }, el('i', { className: `n-${n.npu}` }), n.npu)),
-        'Latest nightly per NPU, from the one before. Each line is that metric over recent nightlies, relative to the latest: ',
-        'up is worse, and the shaded band is the change that counts. Click a metric for its full chart.');
       return true;
     }
 
-    let kernelCards = [];
-
-    // One case's card: per metric, each NPU's before → after and change, and
-    // a holder for its trend line.
-    function glanceCard(kase, nights) {
-      const header = el('header', {}, caseTitle(kase));
-      for (const n of nights) {
-        const why = !n.latest.cases.get(kase) && caseVerdict(n, kase);
-        if (why) header.append(el('span', { className: `why note ${why.cls}`, title: why.title }, `${n.npu}: ${why.text}`));
-      }
-      const cyc = nights.map(n => { const c = n.latest.cases.get(kase); const m = c && c.metrics.get('cycles'); return m ? m.value : null; });
-      if (nights.length > 1 && cyc[0] && cyc[1]) {
-        header.append(el('span', { className: 'ratio', title: `${nights[1].npu} cycles over ${nights[0].npu} cycles` },
-          `${nights[1].npu} ÷ ${nights[0].npu} cycles ${(cyc[1] / cyc[0]).toFixed(2)}×`));
-      }
-      const card = glanceGrid(header, ALL_METRICS.map(metric => ({
-        metric, text: label(metric), href: chartsLink(kase, metric), title: `${METRICS[metric]}\nClick for the full chart.`,
-        lanes: nights.map(n => {
-          const c = n.latest.cases.get(kase);
-          return { name: n.npu, color: n.npu, key: `${n.npu}|${kase}|${metric}`, metric, m: c && c.metrics.get(metric), current: c && c.current };
-        }),
-      })));
-      card.kase = kase;
-      return card;
-    }
 
     // A card of metrics side by side, each a cell of lanes: per lane its
     // before → after and change, and a trend line per lane under them. A
     // lane is an NPU on a kernel's card, a batch or a statistic on a
     // component check's: {name, color (a --color), key (its series), metric,
     // m (latestCases' metric), current, missing (shown without an m), bad}.
+    // A cell with no metric is words alone, with no trend line.
     function glanceGrid(header, cells) {
       const grid = el('div', { className: 'glance-metrics' });
       const card = el('article', { className: 'glance-card' }, header, grid);
@@ -1574,26 +1682,29 @@
           if (lane.bad) values.className += ' worse';
           cell.append(el('span', { className: 'glance-row' }, el('span', { className: `npu n-${lane.color}` }, lane.name), values));
         }
+        grid.append(cell);
+        if (!metric) continue;
         const spark = el('span', { className: 'spark' });
         spark.lines = lanes.map(l => [l.color, l.key]);
         card.sparks.set(metric, spark);
         cell.append(spark);
-        grid.append(cell);
       }
       return card;
     }
 
-    // "before → after change", or the value alone with nothing to compare.
+    // "value change", or the value alone with nothing to compare. The value
+    // before is in the tooltip: the change is what reads.
     function glanceValues(m, metric, current) {
       const after = el('span', { className: `after${metric === 'cycles' ? ' cyc' : ''}${current === false ? ' stale' : ''}`,
                                  textContent: formatNumber(m.value, m.unit) });
       if (current === false) after.title = 'not measured in the latest nightly; this is from an earlier one';
       if (m.change === null || m.change === undefined) return el('span', { className: 'vals' }, after);
       const tone = toneOf(m.change, m.cls, current, metric);
+      const was = `was ${formatNumber(m.value - m.delta, m.unit)} the nightly before`;
       const change = m.unit === 'bytes'
-        ? el('span', { className: `chg ${tone}`, title: formatChange(m.change) }, formatBytesDelta(m.delta))
-        : el('span', { className: `chg ${tone}` }, formatChange(m.change));
-      return el('span', { className: 'vals' }, el('span', { className: 'before' }, `${formatNumber(m.value - m.delta, m.unit)} → `), after, ' ', change);
+        ? el('span', { className: `chg ${tone}`, title: `${formatChange(m.change)}; ${was}` }, formatBytesDelta(m.delta))
+        : el('span', { className: `chg ${tone}`, title: was }, formatChange(m.change));
+      return el('span', { className: 'vals', title: [after.title, was].filter(Boolean).join('\n') }, after, ' ', change);
     }
 
     // A trend line per lane, each relative to its own latest value, so npu1
@@ -1648,6 +1759,325 @@
 
 
     // ------------------------------------------------------------------
+    // Kernels over several nights
+    // ------------------------------------------------------------------
+
+    // How many nightlies the trends span.
+    const WINDOW_NIGHTS = 30;
+
+    // One NPU's nightlies of `metric` in turbo (of one factory, if given),
+    // oldest first, the last WINDOW_NIGHTS: [{id, date, commit, values:
+    // Map(case -> value), ranges: Map(case -> range)}]. Runs started by
+    // hand are left out.
+    function nightValues(db, npu, metric, factory) {
+      const data = nightlies(db);
+      if (!data) return [];
+      const order = new Map(data.order.map(o => [o.id, o]));
+      const runs = new Map();
+      for (const s of data.series) {
+        if (s.npu !== npu || s.metric !== metric || (factory && s.factory !== factory)) continue;
+        for (const p of s.byMode.get(EXPECTED_PMODE) || []) {
+          if (!runs.has(p.id)) runs.set(p.id, { id: p.id, date: p.date, commit: (order.get(p.id) || {}).commit || {}, values: new Map(), ranges: new Map() });
+          runs.get(p.id).values.set(s.kase, p.row.value);
+          if (p.row.range) runs.get(p.id).ranges.set(s.kase, p.row.range);
+        }
+      }
+      return [...runs.values()].sort((a, b) => a.date - b.date).slice(-WINDOW_NIGHTS);
+    }
+
+    // Each case's first and latest value in the window on one NPU, and the
+    // change between them: [{kase, factory, npu, metric, unit, then, thenDate,
+    // now, nowDate, change, cls}], the largest moves first. A case measured on
+    // one night only has nothing to compare and is left out.
+    function windowChanges(db, npu, metric, factory) {
+      const runs = nightValues(db, npu, metric, factory);
+      const unit = (db && (db.series.find(x => x.metric === metric) || {}).unit) || '';
+      const out = [];
+      for (const kase of new Set(runs.flatMap(r => [...r.values.keys()]))) {
+        const seen = runs.filter(r => r.values.has(kase));
+        if (seen.length < 2) continue;
+        const then = seen[0].values.get(kase), now = seen.at(-1).values.get(kase);
+        if (!then) continue;
+        const change = (now - then) / then;
+        out.push({ kase, factory: kase.split('/')[0], npu, metric, unit, then, thenDate: seen[0].date, now, nowDate: seen.at(-1).date,
+                   change, cls: changeClass(change, metric) });
+      }
+      return out.sort((x, y) => Math.abs(Math.log(y.now / y.then)) - Math.abs(Math.log(x.now / x.then)));
+    }
+
+    // The window's dates on these NPUs, for saying what is compared with what.
+    function windowDates(db, npus) {
+      const dates = npus.flatMap(n => GATED.flatMap(m => nightValues(db, n, m).map(r => r.date)));
+      return dates.length ? { first: Math.min(...dates), last: Math.max(...dates), nights: new Set(dates).size } : null;
+    }
+
+    // Summary: every case whose cycles or size moved past its threshold
+    // between its first and latest nightly in the window, as then and now.
+    function renderWindowChanges(db, npus) {
+      const target = $('window-changes');
+      if (!target) return [];
+      const span = windowDates(db, npus);
+      if (!span || span.nights < 2) {
+        $('window-about').textContent = 'Each case\'s first and latest nightly will be compared once there are two.';
+        target.replaceChildren();
+        return [];
+      }
+      $('window-about').textContent = `Each case's cycles and object size on its first nightly from ${shortDate(span.first)} against its latest, up to ` +
+        `${shortDate(span.last)}: ${span.nights} nightlies. A kernel is listed when any case moved past its threshold; each cell shows the case that moved most, a measure that did not move greyed. Hover a cell for every case.`;
+      // A row per kernel and NPU where any case moved past its threshold in
+      // cycles or in size; a column per measure, each "then → now (change)"
+      // over the kernel's cases, greyed when that measure did not move.
+      const order = [...GATED].sort((x, y) => (y === 'cycles') - (x === 'cycles'));
+      const rowsBy = new Map();
+      for (const npu of npus) {
+        for (const metric of order) {
+          for (const x of windowChanges(db, npu, metric)) {
+            const key = `${x.factory}|${npu}`;
+            if (!rowsBy.has(key)) rowsBy.set(key, { factory: x.factory, npu, by: new Map(order.map(m => [m, []])) });
+            rowsBy.get(key).by.get(metric).push(x);
+          }
+        }
+      }
+      const biggest = xs => xs.reduce((a, b) => Math.abs(Math.log(b.now / b.then)) > Math.abs(Math.log(a.now / a.then)) ? b : a);
+      const moved = xs => xs.filter(x => x.cls);
+      const groups = [...rowsBy.values()].filter(g => order.some(m => moved(g.by.get(m)).length));
+      // Slower first, then bigger, then faster, then smaller; the largest first.
+      const rank = g => {
+        for (const [i, [m, cls]] of [['cycles', 'worse'], ['kernel_object_bytes', 'worse'], ['cycles', 'better'], ['kernel_object_bytes', 'better']].entries()) {
+          const xs = (g.by.get(m) || []).filter(x => x.cls === cls);
+          if (xs.length) return [i, -Math.abs(Math.log(biggest(xs).now / biggest(xs).then))];
+        }
+        return [9, 0];
+      };
+      groups.sort((g, h) => { const [a, x] = rank(g), [b, y] = rank(h); return a - b || x - y; });
+      const cell = (xs, metric) => {
+        if (!xs.length) return el('td', { className: 'num faint' }, '—');
+        const shown = moved(xs).length ? biggest(moved(xs)) : biggest(xs);
+        const quiet = !moved(xs).length;
+        // The case that moved most, in plain numbers; how many moved under
+        // it when the kernel has more than one; every case on hover.
+        const td = el('td', { className: `num${quiet ? ' quiet' : ''}`, title: xs.map(x => `${x.kase}: ${formatNumber(x.then, x.unit)} → ${formatNumber(x.now, x.unit)} (${formatChange(x.change)})`).join('\n') },
+          `${formatNumber(shown.then, shown.unit)} → `, el('b', {}, formatNumber(shown.now, shown.unit)), ' (',
+          quiet ? formatChange(shown.change) : changeSpan(shown.change, shown.cls, true, metric), ')');
+        if (xs.length > 1) td.append(el('span', { className: 'sub' }, quiet ? `none of ${xs.length} cases moved` : `${moved(xs).length} of ${xs.length} cases moved`));
+        return td;
+      };
+      const LIST = 25;
+      const rows = groups.slice(0, LIST).map(g => {
+        const cases = [...new Set(order.flatMap(m => g.by.get(m).map(x => x.kase)))];
+        const name = cases.length === 1 ? caseName(cases[0], kernelLink(g.factory))
+          : el('span', { className: 'case-name', title: cases.join('\n') }, link(kernelLink(g.factory), g.factory), el('span', { className: 'rest' }, ` ${cases.length} cases`));
+        return el('tr', {}, el('td', {}, name), el('td', {}, g.npu), ...order.map(m => cell(g.by.get(m), m)));
+      });
+      if (!rows.length) {
+        target.replaceChildren(el('p', { className: 'empty' }, 'Nothing moved past its threshold over these nightlies.'));
+        return [];
+      }
+      const dates = `${shortDate(span.first)} → ${shortDate(span.last)}`;
+      target.replaceChildren(el('div', { className: 'table-wrap' }, el('table', { className: 'changes' },
+        el('thead', {}, el('tr', {}, el('th', {}, 'Case'), el('th', {}, 'NPU'),
+          ...order.map(m => el('th', { className: 'num' }, label(m), el('span', { className: 'sub' }, `${dates} (change)`))))),
+        el('tbody', {}, ...rows))),
+        groups.length > LIST ? el('p', { className: 'note' }, `And ${groups.length - LIST} more; `, link(hashFor({ view: 'kernels' }), 'see every kernel'), '.') : '');
+      return rows;
+    }
+
+    // A box with a measure switch over a chart drawn by `configOf(metric)`.
+    function switchChart(metrics, want, configOf, about, aria) {
+      let metric = metrics.includes(want) ? want : metrics[0], drawn = null;
+      const seg = el('span', { className: 'seg', role: 'group', ariaLabel: 'measure' });
+      const note = el('p', { className: 'note' });
+      const canvas = el('canvas', { ariaLabel: aria });
+      const box = el('div', { className: 'chart trend' }, el('div', { className: 'trend-head' }, seg), note, el('div', { className: 'canvas' }, canvas));
+      const draw = m => {
+        metric = m;
+        segment(seg, metrics, m, draw);
+        note.textContent = about(m);
+        if (drawn) drawn.destroy();
+        drawn = lineChart(canvas, configOf(m));
+        componentCharts.push(drawn);
+      };
+      segment(seg, metrics, metric, draw);
+      note.textContent = about(metric);
+      const seen = new IntersectionObserver(entries => {
+        if (!entries.some(e => e.isIntersecting)) return;
+        seen.disconnect();
+        draw(metric);
+      }, { rootMargin: '400px' });
+      seen.observe(box);
+      box.metric = () => metric;
+      box.redraw = () => draw(metric);
+      return box;
+    }
+
+    // ------------------------------------------------------------------
+    // One line per kernel
+    // ------------------------------------------------------------------
+
+    // A kernel's state on one NPU in a word or two, for its row.
+    function stateWord(s) {
+      return { ok: 'passes', better: `faster ${s.text}`, bad: s.text.endsWith('fail') ? `${s.text.replace(' fail', '')} failing` : `slower ${s.text}`,
+               warn: { trace: 'trace truncated', flaky: 'passed on a retry' }[s.text] || 'timing failed',
+               untimed: 'not timed', none: 'not run', absent: 'not offered' }[s.level] || s.level;
+    }
+
+    // One kernel on one NPU over the window: its cases' latest cycles, and
+    // how many got slower or faster past the threshold since the first
+    // nightly, or null when no nightly timed it.
+    function kernelWindow(db, npu, factory) {
+      const runs = nightValues(db, npu, 'cycles', factory);
+      if (!runs.length) return null;
+      const latest = new Map();
+      for (const r of runs) for (const [kase, v] of r.values) latest.set(kase, v);
+      const changes = windowChanges(db, npu, 'cycles', factory);
+      return { cycles: [...latest.values()].sort((x, y) => x - y), since: runs[0].date,
+               worse: changes.filter(x => x.cls === 'worse').length, better: changes.filter(x => x.cls === 'better').length };
+    }
+
+    // A kernel's cycles in a few words: "49 and 85 cycles", or the range.
+    function cyclesWords(values) {
+      const v = [...new Set(values)];
+      const f = x => formatNumber(x, 'cycles');
+      if (v.length === 1) return `${f(v[0])} cycles`;
+      if (v.length === 2) return `${f(v[0])} and ${f(v[1])} cycles`;
+      return `${f(v[0])} to ${f(v.at(-1))} cycles`;
+    }
+
+    // One row: the kernel, its family, and per NPU its state, its cases'
+    // cycles now, and how many moved since the first nightly shown.
+    function kernelRow(k, nights, db) {
+      const states = nights.map(n => kernelState(n, k.factory));
+      const row = link(kernelLink(k.factory), '', { className: `k-row ${worstLevel(states.map(s => s.level === 'better' || s.level === 'untimed' ? 'ok' : s.level))}`,
+        title: [k.factory, k.summary, ...nights.map((n, i) => `${n.npu}: ${states[i].title}`)].filter(Boolean).join('\n') });
+      row.append(el('span', { className: 'k-name' }, k.factory, el('span', { className: 'tag' }, k.family)));
+      nights.forEach((n, i) => {
+        const s = states[i], w = kernelWindow(db, n.npu, k.factory);
+        const cell = el('span', { className: `k-npu k-${s.level}` }, el('i', { className: 'dot' }), el('b', {}, n.npu), stateWord(s));
+        if (w) {
+          cell.append(el('span', { className: 'k-cycles' }, cyclesWords(w.cycles)));
+          const moved = [w.worse ? el('span', { className: 'chg worse' }, `${w.worse} slower`) : '', w.better ? el('span', { className: 'chg better' }, `${w.better} faster`) : ''].filter(Boolean);
+          if (moved.length) cell.append(el('span', { className: 'k-moved', title: `cases past the threshold since ${shortDate(w.since)}` }, ...moved, ` since ${shortDate(w.since)}`));
+        }
+        row.append(cell);
+      });
+      row.search = `${k.family} ${k.factory} ${k.summary || ''}`.toLowerCase();
+      row.family = k.family;
+      row.problem = states.some(s => s.level === 'bad' || s.level === 'warn');
+      row.factory = k.factory;
+      return row;
+    }
+
+    // Every kernel a row, those that need a look first, with the filters.
+    function renderKernelList(nights, db) {
+      const kernels = allKernels(nights);
+      const status = $('kernels-status');
+      if (!kernels.length) { status.textContent = 'No catalogue has been published yet.'; return []; }
+      const rows = kernels.map(k => kernelRow(k, nights, db))
+        .sort((a, b) => (b.problem - a.problem) || a.factory.localeCompare(b.factory));
+      $('kernels-head').replaceChildren(el('span', {}, 'Kernel'), ...nights.map(n => el('span', {}, n.npu,
+        el('span', { className: 'sub' }, ' last night, cycles now'))));
+      $('kernel-list').replaceChildren(...rows);
+      const families = [...new Set(kernels.map(k => k.family))].sort();
+      $('kernels-family').replaceChildren(new Option('All', ''), ...families.map(f => new Option(f, f)));
+      const apply = () => {
+        const q = ($('kernels-filter').value || '').trim().toLowerCase();
+        const family = $('kernels-family').value, problems = $('kernels-problems').checked;
+        let shown = 0;
+        for (const r of rows) {
+          r.hidden = Boolean((q && !r.search.includes(q)) || (family && r.family !== family) || (problems && !r.problem));
+          shown += r.hidden ? 0 : 1;
+        }
+        status.textContent = `${plural(shown, 'kernel')} of ${rows.length}`;
+      };
+      for (const id of ['kernels-filter', 'kernels-family', 'kernels-problems']) $(id).addEventListener(id === 'kernels-filter' ? 'input' : 'change', apply);
+      applyKernelsFilter = () => {
+        const want = readHash();
+        if (want.problems) $('kernels-problems').checked = true;
+        if (want.family !== undefined && families.includes(want.family)) $('kernels-family').value = want.family;
+        apply();
+      };
+      applyKernelsFilter();
+      return rows;
+    }
+
+    // ------------------------------------------------------------------
+    // One kernel's chart and cases
+    // ------------------------------------------------------------------
+
+    // One kernel on one NPU: a line per case, its actual value each nightly;
+    // a log axis when the cases differ more than ten times over, so each
+    // line's moves stay visible.
+    function kernelTrendConfig(db, npu, factory, metric) {
+      const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
+      const runs = nightValues(db, npu, metric, factory);
+      const cases = [...new Set(runs.flatMap(r => [...r.values.keys()]))].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+      const unit = (db.series.find(s => s.metric === metric) || {}).unit || '';
+      const datasets = cases.map((kase, i) => {
+        const color = cssVar(`--series-${i % 6 + 1}`, '#5b6475');
+        return { label: kase.slice(factory.length + 1) || kase, data: runs.map(r => r.values.has(kase) ? r.values.get(kase) : null),
+                 borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 2.5, tension: 0, spanGaps: true };
+      });
+      const all = datasets.flatMap(d => d.data).filter(v => v > 0);
+      const log = all.length && Math.max(...all) / Math.min(...all) > 10;
+      const commits = runs.map(r => r.commit || {});
+      const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
+      const tick = v => formatNumber(v, unit);
+      return { type: 'line', data: { labels: runs.map(r => shortDate(r.date)), datasets, commits, runs }, options: {
+        animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        onClick: (_event, elements) => {
+          const c = elements && elements.length ? commits[elements[0].index] : null;
+          if (c && (c.url || c.id)) window.open(c.url || `${REPO}/commit/${c.id}`, '_blank', 'noopener');
+        },
+        scales: {
+          x: { title: title('Nightly run'), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
+          y: { type: log ? 'logarithmic' : 'linear', title: title(AXIS_OF[metric] || label(metric)), grid: { color: grid },
+               ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
+        },
+        plugins: {
+          legend: { display: cases.length > 1, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 } } },
+          tooltip: { callbacks: {
+            title: items => items.length ? formatWhen(runs[items[0].dataIndex].date) : '',
+            afterTitle: items => items.length ? commitLine(commits[items[0].dataIndex]) : '',
+            label: item => `${item.dataset.label}: ${tick(item.raw)}`,
+            footer: () => 'Click for the commit',
+          } },
+        },
+      } };
+    }
+
+    // Each kernel metric's y axis, with its unit.
+    const AXIS_OF = { cycles: 'Cycles per call', cycles_per_kop: 'Cycles per 1,000 operations', kernel_object_bytes: 'Object size', npu_us: 'Host time per run (µs)' };
+
+    // Its cases: per NPU the cycles now, and on the first nightly shown
+    // with the change since; or why a case has none.
+    function kernelCaseTable(factory, nights, db) {
+      const cases = casesOf(nights, factory);
+      const per = nights.map(n => nightValues(db, n.npu, 'cycles', factory));
+      const head = el('tr', {}, el('th', {}, 'Case'), ...nights.flatMap((n, i) => [
+        el('th', { className: 'num npu-start' }, `${n.npu} now`, el('span', { className: 'sub' }, per[i].length ? `cycles, ${shortDate(per[i].at(-1).date)}` : 'cycles')),
+        el('th', { className: 'num' }, 'Then', el('span', { className: 'sub' }, per[i].length ? shortDate(per[i][0].date) : '—'))]));
+      const rows = cases.map(kase => el('tr', {}, el('td', {}, caseTitle(kase)), ...nights.flatMap((n, i) => {
+        const runs = per[i].filter(r => r.values.has(kase));
+        const why = caseVerdict(n, kase);
+        if (!runs.length) return [el('td', { colSpan: 2, className: `npu-start note ${why ? why.cls : ''}`, title: why ? why.title : '' }, why ? why.text : '—')];
+        const last = runs.at(-1).values.get(kase), first = runs[0].values.get(kase);
+        const change = (last - first) / first;
+        const stale = runs.at(-1) !== per[i].at(-1);
+        // The calls behind the fastest, and whether the trace held them all.
+        const spread = cyclesSpread(runs.at(-1).ranges.get(kase));
+        const title = [spread ? `fastest ${last}, median ${spread.median}, slowest ${spread.max} over ${spread.n} calls` : '',
+                       stale ? `not measured in the latest nightly; this is from ${shortDate(runs.at(-1).date)}` : ''].filter(Boolean).join('\n');
+        const value = el('td', { className: `num cyc npu-start${stale ? ' stale' : ''}`, title }, formatNumber(last, 'cycles'));
+        if (spread && spread.truncated) value.append(el('span', { className: 'note warn', title: `the trace buffer filled after ${spread.n} calls; the fastest is over those` }, ' trace'));
+        const then = el('td', { className: 'num', title: `on ${shortDate(runs[0].date)}` });
+        if (runs.length > 1) then.append(formatNumber(first, 'cycles'), ' ', changeSpan(change, changeClass(change, 'cycles'), !stale, 'cycles'));
+        else then.append(el('span', { className: 'faint' }, 'one nightly'));
+        return [value, then];
+      })));
+      return el('div', { className: 'table-wrap' }, el('table', {}, el('thead', {}, head), el('tbody', {}, ...rows)));
+    }
+
+    // ------------------------------------------------------------------
     // Charts
     // ------------------------------------------------------------------
 
@@ -1655,14 +2085,13 @@
     // latest and the previous run per NPU (run records); hist: the cycles and
     // size histories behind the sparklines.
     let db, recent, hist, nights = [], observer, charts = [];
-    let applyHash = () => {}, applyKernelsFilter = () => {};
-    let metricList = ALL_METRICS, updated = '';
+    let applyKernelsFilter = () => {};
     const historyCache = new Map();
 
     // The history files of `metrics` on `npus`, fetched once each.
     async function loadHistories(npus, metrics) {
       const files = await Promise.all(npus.flatMap(n => metrics.map(m => {
-        const url = `${n}/history/${m}.json`;
+        const url = `${KERNELS_DIR}/${n}/history/${m}.json`;
         if (!historyCache.has(url)) historyCache.set(url, fetchJson(url));
         return historyCache.get(url);
       })));
@@ -1704,7 +2133,10 @@
       const cycles = cyclesSpread(range);
       if (cycles) return [value, cycles.median];
       const median = /^median ([\d.]+), MAD/.exec(range);
-      return median ? [value, Number(median[1])] : null;
+      if (median) return [value, Number(median[1])];
+      // A mean over seeds: the band is the fastest and slowest seed.
+      const seeds = /^seeds ([\d.]+) to ([\d.]+)/.exec(range);
+      return seeds ? [Number(seeds[1]), Number(seeds[2])] : null;
     }
 
     // The lower edge, then the upper filled down to it.
@@ -1930,11 +2362,8 @@
       return best;
     }
 
-    // Chart boxes for `groups`, drawn as they scroll into view: a full sweep
-    // is hundreds. `grouped` puts them in one collapsible section per
-    // factory, open when there are few sections or the factory has a
-    // flagged move; a closed section's charts are drawn when it is opened.
-    function placeCharts(container, groups, modes, data, grouped) {
+    // Chart boxes for `groups`, each drawn as it scrolls into view.
+    function placeCharts(container, groups, modes, data) {
       observer && observer.disconnect();
       charts.forEach(c => c.destroy());
       charts = [];
@@ -1953,7 +2382,7 @@
         for (const [npu, m] of moves.get(g.key)) {
           chips.append(' ', el('span', { className: `chg ${m.cls || 'flat'}`, title: `${npu}, last night` }, `${npu} ${formatChange(m.change)}`));
         }
-        div.append(el('h3', {}, caseName(g.kase, grouped ? kernelLink(g.factory) : null), chips));
+        div.append(el('h3', {}, caseName(g.kase, null), chips));
         const holder = el('div', { className: 'canvas' });
         const canvas = el('canvas', { ariaLabel: `${label(g.metric)} of ${g.kase} over recent nights` });
         holder.append(canvas);
@@ -1962,43 +2391,12 @@
         div.canvas = canvas;
         return div;
       };
-      if (!grouped) {
-        for (const g of groups) {
-          const div = box(g);
-          container.append(div);
-          observer.observe(div);
-        }
-        return moves;
-      }
-      const byFactory = groupByFactory(groups);
-      for (const f of byFactory) {
-        const flagged = f.groups.flatMap(g => [...moves.get(g.key).values()]).filter(m => m.cls);
-        const worse = flagged.filter(m => m.cls === 'worse').length, better = flagged.length - worse;
-        const summary = el('summary', {}, el('span', { className: 'factory' }, f.factory), `  ${plural(f.groups.length, 'chart')}`);
-        if (worse) summary.append(', ', el('span', { className: 'worse' }, `${worse} worse`));
-        if (better) summary.append(', ', el('span', { className: 'better' }, `${better} better`));
-        summary.append('  ', link(kernelLink(f.factory), 'kernel page'));
-        const grid = el('div', { className: 'charts' });
-        const section = el('details', { className: 'group', open: byFactory.length <= 4 || flagged.length > 0 }, summary, grid);
-        for (const g of f.groups) {
-          const div = box(g);
-          grid.append(div);
-          observer.observe(div);
-        }
-        container.append(section);
+      for (const g of groups) {
+        const div = box(g);
+        container.append(div);
+        observer.observe(div);
       }
       return moves;
-    }
-
-    // Chart groups by factory, in the order of each factory's first group,
-    // so a sort by change puts the factory with the largest first.
-    function groupByFactory(groups) {
-      const out = new Map();
-      for (const g of groups) {
-        if (!out.has(g.factory)) out.set(g.factory, []);
-        out.get(g.factory).push(g);
-      }
-      return [...out].map(([factory, gs]) => ({ factory, groups: gs }));
     }
 
     // A row of buttons, one per metric, `current` pressed.
@@ -2011,93 +2409,40 @@
       }));
     }
 
-    function checked(fieldset) {
-      return [...fieldset.querySelectorAll('input:checked')].map(i => i.value);
-    }
-
-    function addBoxes(fieldset, values) {
-      for (const v of values) {
-        const box = el('input', { type: 'checkbox', value: v });
-        fieldset.append(el('label', {}, box, ' ', v));
-      }
-    }
-
     // ------------------------------------------------------------------
     // Trends
     // ------------------------------------------------------------------
 
-    let trendMetric = 'cycles';
-    let renderToken = 0;
 
     // The power modes the loaded runs were measured in.
     function modesOf(data) {
       return [...new Set(data.order.map(o => o.mode))].sort((a, b) => (a === EXPECTED_PMODE ? -1 : b === EXPECTED_PMODE ? 1 : a.localeCompare(b)));
     }
 
-    function writeHash() {
-      const p = { view: 'charts', metric: trendMetric, show: $('show').value };
-      const npus = checked($('npus'));
-      if (npus.length !== $('npus').querySelectorAll('input').length) p.npu = npus.join(',');
-      if ($('kernel-filter').value) p.kernel = $('kernel-filter').value;
-      if ($('all-modes').checked) p.modes = 'all';
-      history.replaceState(null, '', hashFor(p));
-    }
-
-    async function render() {
-      if (currentView() !== 'charts') return;
-      writeHash();
-      const token = ++renderToken;
-      const npus = checked($('npus')), show = $('show').value, metric = trendMetric;
-      const kernel = ($('kernel-filter').value || '').trim().toLowerCase();
-      segment($('metric'), metricList, metric, m => { trendMetric = m; render(); });
-      $('metric-about').textContent = METRICS[metric] ? `${label(metric)}: ${METRICS[metric]}. A change ${thresholdText(metric)}.` : '';
-      $('status').textContent = 'Loading…';
-      const data = await loadHistories(npus, [metric]);
-      // A later change of the controls has already drawn its own.
-      if (token !== renderToken || currentView() !== 'charts') return;
-      db = data;
-      const modes = $('all-modes').checked ? modesOf(data) : [EXPECTED_PMODE];
-      let groups = chartGroups(data.series.filter(s =>
-        npus.includes(s.npu) && s.metric === metric && s.kase.toLowerCase().includes(kernel) && modes.some(m => s.byMode.has(m))));
-      const ranks = new Map(groups.map(g => [g.key, rankOf(freshMoves(data, g, modes), metric)]));
-      if (show === 'moved') {
-        groups = groups.filter(g => ranks.get(g.key) !== 0);
-        // Worst first, best last.
-        groups.sort((a, b) => ranks.get(b.key) - ranks.get(a.key) || a.key.localeCompare(b.key));
-      } else {
-        groups.sort((a, b) => a.key.localeCompare(b.key));
-      }
-      const empty = $('empty');
-      empty.hidden = groups.length > 0;
-      if (!groups.length) {
-        const all = el('button', { type: 'button', textContent: 'Show every chart' });
-        all.addEventListener('click', () => { $('show').value = 'all'; render(); });
-        empty.replaceChildren(show === 'moved'
-          ? `No ${label(metric).toLowerCase()} moved past ${pct(metric)}% in the latest night${kernel ? ' among the cases that match' : ''}. `
-          : 'No history matches. ', show === 'moved' ? all : '');
-      }
-      placeCharts($('charts'), groups, modes, data, true);
-      const factories = new Set(groups.map(g => g.factory)).size;
-      $('status').textContent = `${plural(groups.length, 'chart')} in ${plural(factories, 'kernel')}. Last update ${updated}.`;
-      return groups;
-    }
-
     // ------------------------------------------------------------------
     // Components
     // ------------------------------------------------------------------
 
-    let componentsLoad = null, componentMetric = 'failed_seeds', componentToken = 0, componentCharts = [];
+    let componentsLoad = null, componentToken = 0, componentCharts = [];
+    // Each section's metric on its Trends.
+    const sectionMetric = {};
 
-    // Each check's runs.json, latest.json and the published nightly before
-    // that, fetched once.
+    // Per band, its check's runs.json, latest.json and the published nightly
+    // before that, each check's fetched once.
     function loadComponents() {
-      componentsLoad ||= Promise.all(COMPONENTS.map(async check => {
-        const dir = `${COMPONENTS_DIR}/${check.id}`;
-        const [index, latest] = await Promise.all([fetchJson(`${dir}/runs.json`), fetchJson(`${dir}/latest.json`).then(readable)]);
-        const p = latest && previousPublished(readable(index), latest);
-        const previous = p ? readable(await fetchJson(`${dir}/runs/${p.id}.json`)) : null;
-        return { check, index, latest, previous };
-      }));
+      if (componentsLoad) return componentsLoad;
+      const checks = new Map();
+      const load = id => {
+        if (!checks.has(id)) checks.set(id, (async () => {
+          const dir = `${COMPONENTS_DIR}/${id}`;
+          const [index, latest] = await Promise.all([fetchJson(`${dir}/runs.json`), fetchJson(`${dir}/latest.json`).then(readable)]);
+          const p = latest && previousPublished(readable(index), latest);
+          const previous = p ? readable(await fetchJson(`${dir}/runs/${p.id}.json`)) : null;
+          return { index, latest, previous };
+        })());
+        return checks.get(id);
+      };
+      componentsLoad = Promise.all(BANDS.map(async check => ({ check, ...(await load(check.id)) })));
       return componentsLoad;
     }
 
@@ -2108,9 +2453,11 @@
     }
 
     // `metric`'s history in every check that records it, each case under
-    // its check's name: both checks have a mobilenet case.
+    // its check's name: both checks have a mobilenet case. A check two bands
+    // show is read once.
     async function componentHistories(loaded, metric) {
-      const files = await Promise.all(loaded.map(({ check, index }) => {
+      const once = [...new Map(loaded.map(l => [l.check.id, l])).values()];
+      const files = await Promise.all(once.map(({ check, index }) => {
         const listed = readable(index) && index.metrics;
         if (listed && !listed.includes(metric)) return null;
         return componentHistory(check, metric).then(h => readable(h) && { ...h, target: check.id,
@@ -2127,25 +2474,92 @@
       return collect(files.map(readable).filter(Boolean).map(h => ({ ...h, target: check.id })));
     }
 
-    // A component metric's cell on a card: its trends one click away.
-    const componentCell = (metric, text, lanes) => ({ metric, text, lanes, href: hashFor({ view: 'components', metric }),
+    // A component metric's cell on a card: its trends, in whichever section
+    // charts it, one click away.
+    const componentCell = (metric, text, lanes) => ({ metric, text, lanes, href: hashFor({ view: sectionOfMetric(metric), metric }),
       title: `${COMPONENT_METRICS[metric] || ''}\nClick for its trends.` });
 
-    // The hardware check's cards, one per seed: its batches are the lanes of
-    // per image, streaming, end-to-end and compile time. The header names the
-    // placement, and any batch whose compile placed differently.
-    function seedCards(record, cases, target) {
+    // The hardware check's runs as seeds and batches: {seeds: Map(seed ->
+    // [batch]), failed: Set of run ids, every: every batch, sorted}.
+    function hardwareRuns(record) {
       const detail = record.detail || [];
       const failed = new Set([...(record.failed || []), ...detail.filter(d => !d.passed).map(d => `mobilenet/seed=${d.seed}/batch=${d.batch}`)]);
       const seeds = new Map();
-      const ids = [...detail.map(d => `mobilenet/seed=${d.seed}/batch=${d.batch}`), ...Object.keys(record.rows), ...failed];
+      const ids = [...detail.map(d => `mobilenet/seed=${d.seed}/batch=${d.batch}`), ...Object.keys(record.rows || {}), ...failed];
       for (const m of ids.map(id => /^mobilenet\/seed=(\d+)(?:\/batch=(\d+))?$/.exec(id)).filter(Boolean)) {
         if (!seeds.has(m[1])) seeds.set(m[1], new Set());
         if (m[2]) seeds.get(m[1]).add(Number(m[2]));
       }
-      const every = [...new Set([...seeds.values()].flatMap(s => [...s]))].sort((a, b) => a - b);
-      return [...seeds].map(([seed, set]) => {
-        const batches = [...set].sort((a, b) => a - b);
+      for (const [seed, set] of seeds) seeds.set(seed, [...set].sort((a, b) => a - b));
+      const every = [...new Set([...seeds.values()].flat())].sort((a, b) => a - b);
+      return { seeds, failed, every };
+    }
+
+    // The placement a seed's compiles chose (the first batch's), and the
+    // batches whose compile placed differently.
+    function placementOf(record, seed) {
+      const mine = (record.detail || []).filter(d => String(d.seed) === String(seed) && d.placement);
+      return { digest: mine.length ? mine[0].placement : null, first: mine.length ? mine[0].batch : null,
+               apart: mine.filter(d => d.placement !== mine[0].placement).map(d => d.batch) };
+    }
+
+    // The hardware check's placements, one card with a lane per seed: the
+    // placement's SA cost, which placement it was, how its runs fared, and
+    // the failed runs of the night.
+    function placementCards(record, cases, target) {
+      const { seeds, failed } = hardwareRuns(record);
+      if (!seeds.size) return [];
+      const order = [...seeds.keys()];
+      const color = seed => `series-${order.indexOf(seed) % 6 + 1}`;
+      const kase = seed => `mobilenet/seed=${seed}`;
+      const costs = order.map(seed => {
+        const c = cases.get(kase(seed));
+        return { name: `seed ${seed}`, color: color(seed), key: `${target}|${kase(seed)}|placement_cost`, metric: 'placement_cost',
+                 m: c && c.metrics.get('placement_cost'), current: c && c.current };
+      });
+      const placed = order.map(seed => {
+        const p = placementOf(record, seed);
+        const digest = p.digest || (/placement (\w+)/.exec(((cases.get(kase(seed)) || { metrics: new Map() }).metrics.get('placement_cost') || {}).range || '') || [])[1];
+        return { name: `seed ${seed}`, color: color(seed),
+                 missing: el('span', { className: 'vals' }, digest ? el('code', {}, digest) : el('span', { className: 'faint' }, '—'),
+                   p.apart.length ? el('span', { className: 'note warn', title: `placed as ${p.digest} at batch ${p.first}` }, ` apart at b${p.apart.join(', b')}`) : '') };
+      });
+      const runs = order.map(seed => {
+        const batches = seeds.get(seed);
+        const bad = batches.filter(b => failed.has(`mobilenet/seed=${seed}/batch=${b}`));
+        return { name: `seed ${seed}`, color: color(seed), bad: bad.length > 0,
+                 missing: el('span', { className: 'vals' }, !batches.length ? '—'
+                   : bad.length ? `failed at b${bad.join(', b')}` : `${batches.length} of ${batches.length} passed`) };
+      });
+      const c = cases.get('mobilenet');
+      const count = c && c.metrics.get('failed_seeds');
+      const header = el('header', {}, el('span', { className: 'case-title', title: 'mobilenet' },
+        el('span', { className: 'shape' }, 'mobilenet'), el('span', { className: 'params' }, `seeds ${order.join(', ')}; the design's default is 3`)));
+      const card = glanceGrid(header, [
+        componentCell('placement_cost', label('placement_cost'), costs),
+        { text: 'Placement', href: hashFor({ view: 'placement', metric: 'placement_cost' }), title: 'a digest of the placed tiles of the first batch\'s compile', lanes: placed },
+        { text: 'Runs', href: hashFor({ view: 'performance' }), title: 'whether the placed design compiled, ran and verified at each batch\nClick for its performance.', lanes: runs },
+        componentCell('failed_seeds', 'Failed runs', [{ name: 'all', color: 'series-5', key: `${target}|mobilenet|failed_seeds`, metric: 'failed_seeds',
+          m: count, current: c && c.current, bad: Boolean(count && count.value) }]),
+      ]);
+      card.kase = 'mobilenet';
+      return [card];
+    }
+
+    // The placements in a sentence: each seed's cost.
+    function placementSummary(rows) {
+      const costs = Object.keys(rows).map(k => [/^mobilenet\/seed=(\d+)$/.exec(k), rows[k].placement_cost]).filter(([m, c]) => m && c);
+      if (!costs.length) return '';
+      return ` Placement cost ${costs.map(([m, c]) => `${formatNumber(c.value, 'cost')} at seed ${m[1]}`).join(', ')}.`;
+    }
+
+    // The hardware check's cards, one per seed: its batches are the lanes of
+    // per image, streaming, end-to-end and compile time. The header names the
+    // placement (its cost is under Placement), and any batch whose compile
+    // placed differently.
+    function seedCards(record, cases, target) {
+      const { seeds, failed, every } = hardwareRuns(record);
+      return [...seeds].map(([seed, batches]) => {
         const kase = b => `mobilenet/seed=${seed}/batch=${b}`;
         const caseOf = b => !failed.has(kase(b)) && cases.get(kase(b));
         const lanes = metric => batches.filter(b => metric !== 'streaming_us' || b > 1).map(b => {
@@ -2158,17 +2572,15 @@
           el('span', { className: 'shape' }, `seed ${seed}`), seed === '3' ? el('span', { className: 'params' }, 'the design\'s default') : ''));
         const placed = cases.get(`mobilenet/seed=${seed}`);
         const cost = placed && placed.metrics.get('placement_cost');
-        if (cost) {
-          const digest = /placement (\w+)/.exec(cost.range || '');
-          header.append(el('span', { className: 'params', title: COMPONENT_METRICS.placement_cost },
-            `${digest ? `placement ${digest[1]} · ` : ''}cost ${formatNumber(cost.value, cost.unit)}`,
-            cost.change === null ? '' : ' ', cost.change === null ? '' : changeSpan(cost.change, cost.cls, placed.current, 'placement_cost')));
+        const p = placementOf(record, seed);
+        const digest = p.digest || (/placement (\w+)/.exec((cost && cost.range) || '') || [])[1];
+        if (digest) {
+          header.append(link(hashFor({ view: 'placement', metric: 'placement_cost' }), `placement ${digest}`,
+            { className: 'params', title: 'the placement this seed chose; its cost and history are under Placement' }));
         }
-        const mine = detail.filter(d => String(d.seed) === seed && d.placement);
-        const apart = mine.filter(d => d.placement !== mine[0].placement).map(d => d.batch);
-        if (apart.length) {
-          header.append(el('span', { className: 'why note warn', title: `placed as ${mine[0].placement} at batch ${mine[0].batch}` },
-            `placed differently at batch ${apart.join(', ')}`));
+        if (p.apart.length) {
+          header.append(el('span', { className: 'why note warn', title: `placed as ${p.digest} at batch ${p.first}` },
+            `placed differently at batch ${p.apart.join(', ')}`));
         }
         const [one, many] = [batches[0], batches[batches.length - 1]].map(b => caseOf(b) && caseOf(b).metrics.get('us_per_image'));
         if (batches.length > 1 && one && many) {
@@ -2184,6 +2596,242 @@
         card.kase = `mobilenet/seed=${seed}`;
         return card;
       });
+    }
+
+    // Collected hardware histories -> one series per batch and metric, each
+    // run's point the mean over the seeds measured in it, its range the
+    // fastest and slowest seed ("seeds LO to HI, n=N"), so a batch charts
+    // like a kernel's case. Series that are not per seed and batch pass through.
+    function seedMeans(db) {
+      const groups = new Map(), rest = [];
+      for (const s of db.series) {
+        const m = /^(.*)\/seed=\d+\/batch=(\d+)$/.exec(s.kase);
+        if (!m) { rest.push(s); continue; }
+        const key = `${s.npu}|${m[1]}/batch=${m[2]}|${s.metric}`;
+        if (!groups.has(key)) groups.set(key, { key, npu: s.npu, kase: `${m[1]}/batch=${m[2]}`, factory: m[1].split('/')[0], metric: s.metric, unit: s.unit, parts: [] });
+        groups.get(key).parts.push(s);
+      }
+      const series = [...groups.values()].map(g => {
+        const byMode = new Map();
+        for (const part of g.parts) {
+          for (const [mode, pts] of part.byMode) {
+            if (!byMode.has(mode)) byMode.set(mode, new Map());
+            const runs = byMode.get(mode);
+            for (const p of pts) {
+              if (!runs.has(p.id)) runs.set(p.id, { id: p.id, date: p.date, manual: p.manual, values: [] });
+              runs.get(p.id).values.push(p.row.value);
+            }
+          }
+        }
+        const out = new Map([...byMode].map(([mode, runs]) => [mode, [...runs.values()].sort((a, b) => a.date - b.date).map(r => {
+          const mean = r.values.reduce((a, b) => a + b, 0) / r.values.length;
+          const round2 = x => Math.round(x * 100) / 100;
+          const [lo, hi] = [Math.min(...r.values), Math.max(...r.values)];
+          return { id: r.id, date: r.date, manual: r.manual,
+                   row: { value: round2(mean), unit: g.unit, range: `seeds ${round2(lo)} to ${round2(hi)}, n=${r.values.length}` } };
+        })]));
+        const { parts, ...rest } = g;
+        return { ...rest, key: `${g.npu}|${g.kase}|${g.metric}`, byMode: out };
+      });
+      return { series: [...series, ...rest], order: db.order };
+    }
+
+    // A commit as one line: its short hash and its message's first line.
+    function commitLine(c) {
+      if (!c || !c.id) return '';
+      const msg = (c.message || '').split('\n')[0];
+      return `${c.id.slice(0, 7)}${msg ? ` ${msg.length > 72 ? `${msg.slice(0, 71)}…` : msg}` : ''}`;
+    }
+
+    // Each measure's y axis, with its unit.
+    const AXIS_TITLES = {
+      us_per_image: 'Time per image (µs)', streaming_us: 'Streaming time per image (µs)',
+      e2e_us_per_image: 'End-to-end time per image (µs)', compile_s: 'Compile time (s)',
+    };
+
+    // The hardware check's chart: a line per batch, each nightly's mean over
+    // the seeds of `metric`, the fastest-to-slowest seed shaded behind it,
+    // so every batch's trend reads on one chart. A Chart.js config.
+    function seedTrendConfig(data, metric) {
+      const means = seedMeans(data);
+      const series = means.series.filter(s => s.metric === metric && /\/batch=\d+$/.test(s.kase))
+        .sort((a, b) => a.kase.localeCompare(b.kase, 'en', { numeric: true }));
+      const mode = series.some(s => s.byMode.has(EXPECTED_PMODE)) ? EXPECTED_PMODE
+        : series.length ? [...series[0].byMode.keys()][0] : EXPECTED_PMODE;
+      const runs = [...new Map(series.flatMap(s => (s.byMode.get(mode) || []).map(p => [p.id, p]))).values()].sort((a, b) => a.date - b.date);
+      // Each run's commit, from the run it was measured in.
+      const observed = new Map((data.order || []).map(o => [o.id, o]));
+      const commits = runs.map(p => (observed.get(p.id) || {}).commit || {});
+      const at = new Map(runs.map((p, i) => [p.id, i]));
+      const unit = series.length ? series[0].unit : 'us';
+      const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
+      const datasets = [];
+      series.forEach((s, i) => {
+        const color = cssVar(`--series-${i % 6 + 1}`, '#5b6475');
+        const values = new Array(runs.length).fill(null), rows = new Array(runs.length).fill(null);
+        for (const p of s.byMode.get(mode) || []) { values[at.get(p.id)] = p.row.value; rows[at.get(p.id)] = p.row; }
+        datasets.push(...band(values, rows, color));
+        datasets.push({ label: `batch ${/batch=(\d+)$/.exec(s.kase)[1]}`, data: values, rows, borderColor: color, backgroundColor: color,
+                        borderWidth: 2, pointRadius: runs.map(p => p.manual ? 4 : 2.5), pointStyle: runs.map(p => p.manual ? 'rectRot' : 'circle'),
+                        tension: 0, spanGaps: true });
+      });
+      const tick = v => formatNumber(v, unit);
+      const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
+      return { type: 'line', data: { labels: runs.map(p => shortDate(p.date)), datasets, commits, runs }, options: {
+        animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        // A point opens its run's commit.
+        onClick: (_event, elements) => {
+          const c = elements && elements.length ? commits[elements[0].index] : null;
+          if (c && (c.url || c.id)) window.open(c.url || `${REPO}/commit/${c.id}`, '_blank', 'noopener');
+        },
+        scales: {
+          x: { title: title('Nightly run'), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
+          // Per-image times span batches 1 to 64: a log axis keeps each line's moves the same size.
+          y: { type: unit === 'us' ? 'logarithmic' : 'linear', grid: { color: grid }, title: title(AXIS_TITLES[metric] || label(metric)),
+               ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
+        },
+        plugins: {
+          legend: { display: true, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 12 }, filter: item => !datasets[item.datasetIndex].band } },
+          tooltip: { filter: item => !item.dataset.band, callbacks: {
+            title: items => items.length ? `${formatWhen(runs[items[0].dataIndex].date)}${runs[items[0].dataIndex].manual ? ', started by hand' : ''}` : '',
+            afterTitle: items => items.length ? commitLine(commits[items[0].dataIndex]) : '',
+            footer: items => items.length && (commits[items[0].dataIndex].url || commits[items[0].dataIndex].id) ? 'Click for the commit' : '',
+            label: item => {
+              const row = item.dataset.rows[item.dataIndex];
+              const m = /^seeds ([\d.]+) to ([\d.]+)/.exec((row && row.range) || '');
+              return `${item.dataset.label}: ${tick(item.raw)}${m ? ` (seeds ${tick(Number(m[1]))} to ${tick(Number(m[2]))})` : ''}`;
+            },
+          } },
+        },
+      } };
+    }
+
+    // A line chart's config drawn as plain SVG, for when Chart.js did not
+    // load (its CDN blocked, or offline): the lines, their shaded bands, a y
+    // axis with a few ticks, dates along the bottom and a legend, from the
+    // same config; no tooltips. Returns {destroy}, as a Chart does.
+    function svgChart(canvas, config) {
+      const holder = canvas.parentNode;
+      const { labels, datasets } = config.data;
+      const yOpt = config.options.scales.y || {};
+      const log = yOpt.type === 'logarithmic';
+      const tick = (yOpt.ticks && yOpt.ticks.callback) || (v => String(v));
+      const shown = v => v !== null && v !== undefined && Number.isFinite(v) && (!log || v > 0);
+      // Drawn at the box's own size, so the text is not stretched.
+      const W = Math.round(holder.clientWidth) || 640, H = Math.round(holder.clientHeight) || 270, L = 88, R = 14, T = 12, B = 46;
+      const titleOf = axis => { const t = (config.options.scales[axis] || {}).title; return t && t.display ? t.text : ''; };
+      const vals = datasets.flatMap(d => d.data).filter(shown);
+      const f = log ? Math.log10 : (v => v);
+      let lo = vals.length ? Math.min(...vals) : 0, hi = vals.length ? Math.max(...vals) : 1;
+      if (lo === hi) { lo = log ? lo / 1.1 : lo - 1; hi = log ? hi * 1.1 : hi + 1; }
+      // A little room above and below the lines.
+      const span = f(hi) - f(lo), flo = f(lo) - span * 0.06, fhi = f(hi) + span * 0.06;
+      const y = v => (T + (H - T - B) * (1 - (f(v) - flo) / (fhi - flo))).toFixed(1);
+      const x = i => (L + (labels.length > 1 ? (W - L - R) * i / (labels.length - 1) : (W - L - R) / 2)).toFixed(1);
+      const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      const parts = [];
+      for (const v of niceTicks(log ? 10 ** flo : flo, log ? 10 ** fhi : fhi, log)) {
+        parts.push(`<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--grid)"/>`,
+          `<text x="${L - 8}" y="${y(v)}" dy="4" text-anchor="end" style="fill:var(--muted);font-size:11px">${esc(tick(v))}</text>`);
+      }
+      const title = 'style="fill:var(--muted);font-size:12px;font-weight:600"';
+      if (titleOf('y')) parts.push(`<text transform="translate(16 ${((T + H - B) / 2).toFixed(1)}) rotate(-90)" text-anchor="middle" ${title}>${esc(titleOf('y'))}</text>`);
+      if (titleOf('x')) parts.push(`<text x="${((L + W - R) / 2).toFixed(1)}" y="${H - 4}" text-anchor="middle" ${title}>${esc(titleOf('x'))}</text>`);
+      const every = Math.max(1, Math.ceil(labels.length / 8));
+      labels.forEach((t, i) => {
+        if (i % every && i !== labels.length - 1) return;
+        parts.push(`<text x="${x(i)}" y="${H - 26}" text-anchor="middle" style="fill:var(--muted);font-size:11px">${esc(t)}</text>`);
+      });
+      // Each band is a dataset filled down to the one before it.
+      datasets.forEach((d, n) => {
+        if (!d.band || d.fill !== '-1' || n === 0) return;
+        const top = d.data, bottom = datasets[n - 1].data;
+        const idx = labels.map((_, i) => i).filter(i => shown(top[i]) && shown(bottom[i]));
+        if (idx.length < 2) return;
+        const pts = [...idx.map(i => `${x(i)},${y(top[i])}`), ...idx.reverse().map(i => `${x(i)},${y(bottom[i])}`)];
+        parts.push(`<polygon points="${pts.join(' ')}" style="fill:${d.backgroundColor}"/>`);
+      });
+      for (const d of datasets) {
+        if (d.band) continue;
+        const idx = labels.map((_, i) => i).filter(i => shown(d.data[i]));
+        if (idx.length > 1) parts.push(`<polyline points="${idx.map(i => `${x(i)},${y(d.data[i])}`).join(' ')}" fill="none" stroke="${d.borderColor}" stroke-width="2"/>`);
+        for (const i of idx) {
+          // Hover says when, which commit and the value; a click opens the commit.
+          const c = (config.data.commits || [])[i] || {};
+          const when = config.data.runs && config.data.runs[i] ? formatWhen(config.data.runs[i].date) : labels[i];
+          const hover = esc([when, commitLine(c), `${d.label}: ${tick(d.data[i])}`].filter(Boolean).join('\n'));
+          const fill = Array.isArray(d.pointBackgroundColor) ? d.pointBackgroundColor[i] : d.borderColor;
+          const dot = `<circle cx="${x(i)}" cy="${y(d.data[i])}" r="3.2" fill="${fill}"><title>${hover}</title></circle>`;
+          const href = c.url || (c.id ? `${REPO}/commit/${c.id}` : '');
+          parts.push(href ? `<a href="${esc(href)}" target="_blank" rel="noopener">${dot}</a>` : dot);
+        }
+      }
+      const legendFilter = config.options.plugins && config.options.plugins.legend && config.options.plugins.legend.labels && config.options.plugins.legend.labels.filter;
+      const keys = datasets.map((d, datasetIndex) => ({ d, datasetIndex })).filter(k => !k.d.band && (!legendFilter || legendFilter({ datasetIndex: k.datasetIndex })));
+      const legend = el('p', { className: 'note svg-legend' }, ...keys.map(k => {
+        const key = el('span', { className: 'key' });
+        key.innerHTML = `<i style="background:${k.d.borderColor}"></i>${esc(k.d.label)}`;
+        return key;
+      }));
+      const svg = el('div', { className: 'svg-chart' });
+      svg.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" role="img" aria-label="${esc(canvas.ariaLabel || 'chart')}">${parts.join('')}</svg>`;
+      canvas.hidden = true;
+      holder.append(svg);
+      holder.parentNode.insertBefore(legend, holder);
+      return { svg: parts, legend: keys.map(k => k.d.label), destroy() { svg.remove(); legend.remove(); canvas.hidden = false; } };
+    }
+
+    // Round values for an axis from lo to hi, four to six of them: 1, 2
+    // and 5 times a power of ten on a log axis, a round step on a linear one.
+    function niceTicks(lo, hi, log) {
+      if (!(hi > lo)) return [lo];
+      if (log) {
+        const out = [];
+        for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) {
+          for (const m of [1, 2, 5]) { const v = m * 10 ** e; if (v >= lo && v <= hi) out.push(v); }
+        }
+        if (out.length >= 3) return out;
+        // A narrow range: round steps instead, still on the log axis.
+      }
+      const raw = (hi - lo) / 4, mag = 10 ** Math.floor(Math.log10(raw));
+      const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(st => st >= raw);
+      const out = [];
+      for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) out.push(Number(v.toPrecision(12)));
+      return out;
+    }
+
+    // A Chart.js chart, or the SVG one when Chart.js is not there.
+    const lineChart = (canvas, config) => typeof Chart === 'function' ? new Chart(canvas, config) : svgChart(canvas, config);
+
+    // The chart's box: the measure to show, a line saying what it is, the
+    // chart, drawn once it is on screen and redrawn when the measure changes.
+    function seedTrendBox(data, want) {
+      const metrics = SECTIONS.performance.metrics.filter(m => data.series.some(s => s.metric === m));
+      if (!metrics.length) return el('p', { className: 'dim' }, 'No history published yet.');
+      let metric = metrics.includes(want) ? want : metrics[0], drawn = null;
+      const seg = el('span', { className: 'seg', role: 'group', ariaLabel: 'measure' });
+      const about = el('p', { className: 'note' });
+      const canvas = el('canvas', { ariaLabel: 'MobileNet over recent nightlies, a line per batch' });
+      const box = el('div', { className: 'chart trend' }, el('div', { className: 'trend-head' }, seg), about, el('div', { className: 'canvas' }, canvas));
+      const say = m => { about.textContent = `${label(m)}: ${COMPONENT_METRICS[m]}. A line per batch, the mean over the seeds; the shading runs from the fastest seed to the slowest.`; };
+      const draw = m => {
+        metric = m;
+        segment(seg, metrics, m, draw);
+        say(m);
+        if (drawn) drawn.destroy();
+        drawn = lineChart(canvas, seedTrendConfig(data, m));
+        componentCharts.push(drawn);
+      };
+      segment(seg, metrics, metric, draw);
+      say(metric);
+      const seen = new IntersectionObserver(entries => {
+        if (!entries.some(e => e.isIntersecting)) return;
+        seen.disconnect();
+        draw(metric);
+      }, { rootMargin: '400px' });
+      seen.observe(box);
+      box.metric = () => metric;
+      return box;
     }
 
     // The sweep's cards, one per fixture: failed seeds, the cost's mean and
@@ -2363,12 +3011,16 @@
     // One check's latest run: whether every seed (or run) passed, what
     // moved since the nightly before, a card per case, the check's chart,
     // and the command that runs a failure again.
-    function componentBand(check, index, latest, now, previous) {
+    // One band's verdict on its check's latest run: {run, level, headline,
+    // quiet, warnings, shown (the warning the headline already says), ids}.
+    function componentVerdict(check, index, latest, now) {
       const run = latestRun(check.id, index, null, null);
       const failed = run.failed || [];
       const warnings = warningsFor(check.title, { ...run, failed: [] }, now);
-      const hard = warnings.find(w => w.level === 'bad');
-      const level = run.date === null ? 'none' : hard || failed.length ? 'bad'
+      // Lateness is said above the verdict, as on the kernels'.
+      const stale = staleness(run.date, now);
+      const hard = warnings.find(w => w.level === 'bad' && !w.stale);
+      const level = run.date === null ? 'none' : stale || hard || failed.length ? 'bad'
         : warnings.some(w => w.level === 'warn' && !/changed since the previous run/.test(w.text)) ? 'warn' : 'ok';
       const shown = failed.length ? null : hard;
       const ids = failed.map(id => check.failedId.exec(id));
@@ -2378,15 +3030,27 @@
         : hard ? `${hard.text[0].toUpperCase()}${hard.text.slice(1)}.`
         : check.passed;
       const quiet = run.date !== null && !failed.length && !hard && latest && latest.rows ? check.summary(latest.rows) : '';
+      return { run, level, headline, quiet, warnings: warnings.filter(w => !w.stale), shown, ids, stale };
+    }
+
+    function componentBand(check, index, latest, now, previous) {
+      const { run, level, headline, quiet, warnings, shown, ids, stale } = componentVerdict(check, index, latest, now);
       const runs = (readable(index) && index.runs) || [];
+      // The moves of the metrics this band's section charts.
+      const ours = SECTIONS[check.section] ? SECTIONS[check.section].metrics : null;
+      const counted = x => !ours || !ours.length || ours.includes(x.series.metric);
       const band = el('article', { className: `verdict ${level}` });
       band.cards = [];
       band.append(el('div', { className: 'verdict-top' },
         el('div', { className: 'npu-name' }, el('strong', {}, check.title), link(`${REPO}/blob/main/${check.script}`, check.script)),
         nightStrip({ runs, run })));
+      if (stale) band.append(el('p', { className: 'stale-line' }, stale.text));
       band.append(el('p', { className: 'headline' }, headline, quiet ? el('span', { className: 'quiet' }, quiet) : ''));
-      band.append(el('p', { className: 'note' }, check.about));
-      if (run.date === null) return band;
+      // Shown: the verdict, what is wrong and how to act on it. Behind
+      // "Details": what the check does, every number, the charts, the run.
+      const more = el('details', { className: 'band-more' }, el('summary', {}, 'Details'));
+      more.append(el('p', { className: 'note' }, check.about));
+      if (run.date === null) { band.append(more); return band; }
       for (const w of warnings.filter(w => w !== shown && w.level !== 'info')) {
         band.append(el('p', { className: `note ${w.level}` }, `${w.text[0].toUpperCase()}${w.text.slice(1)}.`));
       }
@@ -2395,7 +3059,7 @@
         const own = recent.order.filter(o => o.npu === check.id);
         if (own.length > 1) {
           const { regressed, improved } = movedSeries(recent, check.id);
-          const moved = [...regressed, ...improved];
+          const moved = [...regressed, ...improved].filter(counted);
           const list = el('p', { className: 'moves' }, el('span', { className: 'dim' }, `Since ${shortDate(own[own.length - 2].date)}:`));
           if (!moved.length) list.append(el('span', { className: 'dim' }, 'nothing moved past its threshold.'));
           for (const x of moved.slice(0, 8)) {
@@ -2405,14 +3069,17 @@
               changeSpan(x.change, x.cls, true, x.series.metric)));
           }
           if (moved.length > 8) list.append(el('span', { className: 'dim' }, `and ${moved.length - 8} more`));
-          band.append(list);
+          // A move is news; "nothing moved" is detail.
+          (moved.length ? band : more).append(list);
         }
         band.cards = check.cards(latest, latestCases(recent, check.id).cases, check.id);
-        band.append(el('div', { className: 'glance' }, ...band.cards));
+        // The check's trend chart, drawn once its histories are read.
+        if (check.trend) band.append(band.trend = el('div', { className: 'trend-slot' }, el('p', { className: 'dim' }, 'Reading the history…')));
+        more.append(el('div', { className: 'glance' }, ...band.cards));
         const charts = check.charts(latest, previous);
-        if (charts.length) band.append(el('div', { className: 'charts' }, ...charts));
+        if (charts.length) more.append(el('div', { className: 'charts' }, ...charts));
         if (String(latest.id) !== String(run.id)) {
-          band.append(el('p', { className: 'note' }, `Numbers from the run of ${formatWhen(Date.parse(latest.date))}, the latest that published any.`));
+          more.append(el('p', { className: 'note' }, `Numbers from the run of ${formatWhen(Date.parse(latest.date))}, the latest that published any.`));
         }
       }
       const lines = run.commit ? [`git checkout ${run.commit.slice(0, 12)}`] : [];
@@ -2422,115 +3089,661 @@
       const intro = [];
       if (run.url) intro.push('Logs: ', link(run.url, `run ${run.id}`), `, artifact component-checks-${check.id}-${run.id}. `);
       intro.push('From a checkout with the environment set up (', link(COMPONENT_DOCS_URL, 'see the docs'), '):');
-      band.append(el('details', { className: 'repro', open: found.length > 0 },
+      // A failure's repro is how to act on it: beside the verdict, a click
+      // away. Otherwise, detail.
+      (found.length ? band : more).append(el('details', { className: 'repro' },
         el('summary', {}, found.length ? 'Logs and how to reproduce' : 'How to run it'),
         el('p', {}, ...intro), el('pre', {}, lines.join('\n'))));
-      band.append(runMeta(run));
+      more.append(runMeta(run));
+      band.append(more);
       return band;
     }
 
-    async function showComponents() {
+    // A section with no checks yet says so, and where they would come from.
+    function noChecks(section) {
+      return el('div', { className: 'placeholder' }, el('h3', {}, `No ${SECTIONS[section].title.toLowerCase()} checks yet`),
+        el('p', {}, 'Nothing publishes to this section yet. A nightly check that does shows here as the performance and placement checks do: ',
+          'a verdict on its latest run, a card per case against the nightly before, its trends, and the command that reproduces a failure.'),
+        el('p', {}, 'How to add one is under “How to add a check here” below.'));
+    }
+
+    // One section's bands and the trends of its metrics.
+    async function showSection(section) {
       const token = ++componentToken;
       const loaded = await loadComponents();
-      if (token !== componentToken || currentView() !== 'components') return null;
+      if (token !== componentToken || currentView() !== section) return null;
       const now = Date.now();
       componentCharts.forEach(c => c.destroy());
       componentCharts = [];
-      const bands = loaded.map(l => componentBand(l.check, l.index, l.latest, now, l.previous));
-      $('component-verdicts').replaceChildren(...bands);
-      loaded.forEach((l, i) => checkHistories(l).then(data => {
-        if (token === componentToken) fillSparks(bands[i].cards, data);
+      const mine = loaded.filter(l => l.check.section === section);
+      const bands = mine.map(l => componentBand(l.check, l.index, l.latest, now, l.previous));
+      $(`${section}-bands`).replaceChildren(...(bands.length ? bands : [noChecks(section)]));
+      mine.forEach((l, i) => checkHistories(l).then(data => {
+        if (token !== componentToken) return;
+        fillSparks(bands[i].cards, data);
+        if (bands[i].trend) bands[i].trend.replaceChildren(seedTrendBox(data, readHash().metric));
       }));
-      const listed = new Set(loaded.flatMap(l => (readable(l.index) && l.index.metrics) || []));
-      const metrics = Object.keys(COMPONENT_METRICS).filter(m => !listed.size || listed.has(m))
-        .concat([...listed].filter(m => !COMPONENT_METRICS[m]).sort());
+      const listed = new Set(mine.flatMap(l => (readable(l.index) && l.index.metrics) || []));
+      const metrics = SECTIONS[section].metrics.filter(m => !listed.size || listed.has(m));
+      // A section whose band charts its own trend has no Trends of its own.
+      if (!$(`${section}-trends`)) return [];
+      $(`${section}-trends`).hidden = !mine.length || !metrics.length;
+      if (!mine.length || !metrics.length) return [];
       const want = readHash().metric;
-      componentMetric = metrics.includes(want) ? want : metrics.includes(componentMetric) ? componentMetric : metrics[0];
       const pick = async metric => {
-        componentMetric = metric;
-        history.replaceState(null, '', hashFor({ view: 'components', metric }));
-        segment($('component-metric'), metrics, metric, pick);
-        $('component-metric-about').textContent = COMPONENT_METRICS[metric] ? `${label(metric)}: ${COMPONENT_METRICS[metric]}. A change ${thresholdText(metric)}.` : '';
-        const data = await componentHistories(loaded, metric);
-        if (token !== componentToken || componentMetric !== metric || currentView() !== 'components') return null;
+        sectionMetric[section] = metric;
+        history.replaceState(null, '', hashFor({ view: section, metric }));
+        segment($(`${section}-metric`), metrics, metric, pick);
+        $(`${section}-metric-about`).textContent = COMPONENT_METRICS[metric] ? `${label(metric)}: ${COMPONENT_METRICS[metric]}. A change ${thresholdText(metric)}.` : '';
+        const data = await componentHistories(mine, metric);
+        if (token !== componentToken || sectionMetric[section] !== metric || currentView() !== section) return null;
         // Seed and batch in numeric order: batch 4 before batch 16.
         const groups = chartGroups(data.series).sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true }));
-        $('component-charts-empty').hidden = groups.length > 0;
-        placeCharts($('component-charts'), groups, modesOf(data), data, false);
+        $(`${section}-charts-empty`).hidden = groups.length > 0;
+        placeCharts($(`${section}-charts`), groups, modesOf(data), data);
         return groups;
       };
-      return pick(componentMetric);
+      return pick(metrics.includes(want) ? want : metrics.includes(sectionMetric[section]) ? sectionMetric[section] : metrics[0]);
+    }
+
+    // ------------------------------------------------------------------
+    // CI health
+    // ------------------------------------------------------------------
+
+    // Where publishCiHealth.yml writes the scheduled workflows' recent runs
+    // (utils/kernel_checks/ci_health.py), every six hours.
+    const CI_DIR = '../ci-health';
+    const HOUR_MS = 3600 * 1000;
+    // The publisher runs every six hours: past this, it has missed a run
+    // and its answers are old news.
+    const CI_STALE_AFTER_MS = 13 * HOUR_MS;
+    // A job queued this long has almost certainly found no runner.
+    const CI_QUEUED_TOO_LONG_MS = 6 * HOUR_MS;
+
+    const startOf = r => Date.parse(r.run_started_at || r.started_at || r.created_at);
+
+    // One run's or job's state: {level, text}, level one of ok, bad, warn,
+    // running and none.
+    function ciRunLevel(r, now) {
+      if (r.status !== 'completed') {
+        const queued = ['queued', 'waiting', 'pending', 'requested'].includes(r.status);
+        if (queued && now - startOf(r) > CI_QUEUED_TOO_LONG_MS) return { level: 'warn', text: `waiting for a runner for ${ago(startOf(r), now)}` };
+        return { level: 'running', text: queued ? 'queued' : 'running' };
+      }
+      return {
+        success: { level: 'ok', text: 'passed' }, failure: { level: 'bad', text: 'failed' }, timed_out: { level: 'bad', text: 'timed out' },
+        startup_failure: { level: 'bad', text: 'failed to start' }, cancelled: { level: 'warn', text: 'cancelled' },
+        action_required: { level: 'warn', text: 'waiting for approval' },
+      }[r.conclusion] || { level: 'none', text: r.conclusion || 'no result' };
+    }
+
+    // The jobs of a run that did not pass, or have waited too long for a
+    // runner: [{name, url, level, text}].
+    function ciLegs(jobs, now) {
+      return (jobs || []).map(j => ({ name: j.name, url: j.url, ...ciRunLevel(j, now) }))
+        .filter(l => l.level === 'bad' || l.level === 'warn');
+    }
+
+    // A workflow's verdict on its scheduled runs: {level, headline, legs,
+    // latest, late}. A run still going is judged by the one before it.
+    function ciVerdict(wf, runs, jobs, now) {
+      runs = runs || [];
+      if (!runs.length) return { level: 'none', headline: 'No scheduled run on main on record.', legs: [], latest: null, late: false };
+      const latest = runs[0];
+      const state = ciRunLevel(latest, now);
+      const late = now - startOf(latest) > 1.5 * wf.every * HOUR_MS;
+      const legs = ciLegs(jobs, now);
+      let level = state.level, headline = `${state.text[0].toUpperCase()}${state.text.slice(1)}.`;
+      if (state.level === 'running') {
+        const before = runs.slice(1).map(r => ciRunLevel(r, now)).find(s => s.level !== 'running');
+        level = before ? before.level : 'none';
+        headline = `${headline.slice(0, -1)} now${before ? `; the run before ${before.text}` : ''}.`;
+      }
+      // A leg stuck or failed is worth a look whatever the run before did.
+      if (legs.some(l => l.level === 'bad') && level !== 'bad') level = 'bad';
+      if (legs.some(l => l.level === 'warn') && ['ok', 'running', 'none'].includes(level)) level = 'warn';
+      if (late) {
+        level = 'bad';
+        headline = `No scheduled run for ${ago(startOf(latest), now)}. Its last ${state.text}.`;
+      }
+      return { level, headline, legs, latest, late };
+    }
+
+    const CI_WORDS = { ok: 'passed', bad: 'failing', warn: 'warning', running: 'running', none: 'no result' };
+
+    // A workflow's recent runs as a strip, oldest first, the latest outlined;
+    // each mark links to its run.
+    function runStrip(runs, latest, now) {
+      const strip = el('span', { className: 'nights', title: 'recent runs, oldest first' });
+      for (const r of [...(runs || [])].reverse()) {
+        const s = ciRunLevel(r, now);
+        const title = `${formatWhen(startOf(r))}: ${s.text}${r.head_sha ? ` on ${r.head_sha.slice(0, 7)}` : ''}`;
+        strip.append(link(r.url, '', { className: `night ${s.level === 'none' ? 'other' : s.level}${r === latest ? ' latest' : ''}`, title, ariaLabel: title }));
+      }
+      return strip;
+    }
+
+    // A nightly or scheduled job's row: its state in a few words and its
+    // recent runs.
+    function nightlyRow(r, now) {
+      const t = scheduledTile(r, now);
+      const v = r.runs ? ciVerdict(r.wf, r.runs, r.jobs, now) : { latest: null };
+      const row = el('div', { className: `ci-row ${t.level}` }, el('span', { className: 'dot' }),
+        link(`${REPO}/actions/workflows/${r.wf.file}`, r.wf.title, { className: 'wf-name', title: r.wf.why || '' }),
+        el('span', { className: 't-state' }, t.text), r.runs ? runStrip(r.runs, v.latest, now) : '');
+      row.level = t.level;
+      return row;
+    }
+
+    // The published status, read once per page load: {status, results:
+    // [{wf, runs, jobs, error}]}, status null when there is none (or a newer
+    // format than this page reads).
+    let ciLoad = null;
+    function loadCi() {
+      ciLoad ||= Promise.all([fetchJson(`${CI_DIR}/status.json`), fetchJson(`${CI_DIR}/history.json`)]).then(([raw, hist]) => {
+        const status = readable(raw);
+        const results = ((status && status.workflows) || []).map(w => ({ wf: w, runs: w.runs, jobs: w.jobs, error: w.error }));
+        return { status, newer: Boolean(raw) && !status, results, critical: (status && status.critical) || [],
+                 merge: (status && status.merge_time) || null, history: readable(hist) };
+      });
+      return ciLoad;
+    }
+
+    // What the published file says about itself: {level, text}.
+    function ciStatus(loaded, now) {
+      const { status, newer, results } = loaded;
+      if (newer) return { level: 'bad', text: 'The CI health file was written by a newer version of this page: reload it.' };
+      if (!status) return { level: 'bad', text: 'Nothing published yet: publishCiHealth.yml writes ci-health/status.json every six hours.' };
+      const at = Date.parse(status.generated_at);
+      const errors = results.filter(r => r.error);
+      const parts = [];
+      if (now - at > CI_STALE_AFTER_MS) {
+        parts.push(`The CI health publisher last ran ${ago(at, now)} ago (${formatWhen(at)}); these are its last answers.`);
+      } else {
+        parts.push(`Read from GitHub ${formatWhen(at)} by publishCiHealth.yml, which runs every six hours.`);
+      }
+      if (errors.length) parts.push(`GitHub did not answer for ${plural(errors.length, 'workflow')}: ${errors.map(r => r.wf.title).join(', ')}.`);
+      return { level: now - at > CI_STALE_AFTER_MS || errors.length ? 'bad' : '', text: parts.join(' ') };
+    }
+
+    function renderCi(loaded, now) {
+      $('ci-verdict').replaceChildren(ciVerdictBand(loaded, now));
+      $('ci-healthy').textContent = ciHealthyLine(loaded, now);
+      return renderCiDetails(loaded, now);
+    }
+
+    // ------------------------------------------------------------------
+    // CI health: the critical test workflows and merging
+    // ------------------------------------------------------------------
+
+    // Main below this pass rate, or this share of commits flaky, wants a look.
+    const CI_MAIN_PASS_WARN = 0.9;
+    const CI_FLAKY_WARN = 0.1;
+
+    // Minutes as "42 min" or "1 h 23 min"; hours as "5.2 h" or "1.4 days".
+    function formatMinutes(m) {
+      if (m === null || m === undefined) return '—';
+      if (m < 60) return `${Math.round(m)} min`;
+      const h = Math.floor(m / 60), r = Math.round(m % 60);
+      return r ? `${h} h ${r} min` : `${h} h`;
+    }
+    function formatHours(h) {
+      if (h === null || h === undefined) return '—';
+      return h < 48 ? `${h.toFixed(1)} h` : `${(h / 24).toFixed(1)} days`;
+    }
+    const percent = r => r === null || r === undefined ? '—' : `${Math.round(100 * r)}%`;
+
+    // A critical workflow's verdict: {level, notes}, worst first. A failed
+    // latest run on main is bad; main passing under 90%, or one commit in
+    // ten needing a re-run, wants a look. Pull requests are not judged.
+    function criticalVerdict(w, now = Date.now()) {
+      if (w.error) return { level: 'none', notes: [`GitHub did not answer: ${w.error}`], failedJobs: [] };
+      const notes = [];
+      let level = 'ok';
+      const latest = w.latest_main && w.latest_main.status === 'completed' ? w.latest_main : null;
+      // The jobs that failed in it, by their own names.
+      const failedJobs = (w.latest_main_jobs || []).filter(j => FAILED_CONCLUSIONS.includes(j.conclusion)).map(j => jobName(j.name, w.title));
+      if (latest && FAILED_CONCLUSIONS.includes(latest.conclusion)) {
+        level = 'bad';
+        notes.push(`its latest run on main failed${failedJobs.length ? ` (${failedJobs.join(', ')})` : ''}`);
+      }
+      // Main runs it at least nightly: no run for 1.5 of that is a stopped nightly.
+      const newest = w.newest_main || w.latest_main;
+      const late = Boolean(newest && w.every && now - startOf(newest) > 1.5 * w.every * HOUR_MS);
+      if (late) { level = 'bad'; notes.unshift(`no run on main for ${ago(startOf(newest), now)}`); }
+      const main = w.main || {};
+      if (main.rate !== null && main.rate !== undefined && main.rate < CI_MAIN_PASS_WARN) {
+        if (level === 'ok') level = 'warn';
+        notes.push(`passed ${percent(main.rate)} of its runs on main`);
+      }
+      const f = w.flaky || {};
+      if (f.rate !== null && f.rate !== undefined && f.rate >= CI_FLAKY_WARN) {
+        if (level === 'ok') level = 'warn';
+        notes.push(`${f.flaky} of ${plural(f.commits, 'commit')} needed a re-run to pass`);
+      }
+      if (!latest && !(main.passed || main.failed)) { if (level === 'ok') level = 'none'; notes.push('no run on main in the window'); }
+      return { level, notes, failedJobs, late };
+    }
+    const FAILED_CONCLUSIONS = ['failure', 'timed_out', 'startup_failure'];
+
+    // Merging in three figures, the rest on hover.
+    function mergeFigures(merge) {
+      if (!merge) return [];
+      if (merge.error) return [el('li', { className: 'bad' }, `GitHub did not answer: ${merge.error}`)];
+      const fig = (n, text, cls, title) => el('li', { className: cls || '', title: title || '' }, el('b', {}, String(n)), text);
+      return [
+        fig(merge.merged, 'pull requests merged in two weeks'),
+        fig(formatHours(merge.hours_median), 'median to merge', '', `the slowest tenth took ${formatHours(merge.hours_p90)} or more`),
+        fig(merge.open, `open, ${merge.open_over_30_days} for over 30 days`, merge.open_over_30_days ? 'warn' : '',
+            merge.open_drafts ? `${merge.open_drafts} of them drafts` : ''),
+      ];
+    }
+
+    // How long a run took, and waited to start, in minutes.
+    const runMinutes = r => (Date.parse(r.updated_at) - Date.parse(r.run_started_at)) / 60000;
+    const waitMinutes = r => (Date.parse(r.run_started_at) - Date.parse(r.created_at)) / 60000;
+
+    // One workflow's runs as a chart: how long each took and how long it
+    // waited to start, oldest first, a failed run's point red. Hover names
+    // the commit; a click opens the run. A Chart.js config.
+    function latencyConfig(runs, axis) {
+      runs = [...(runs || [])].filter(r => r.status === 'completed' && r.updated_at && r.run_started_at).reverse();
+      const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
+      const bad = cssVar('--bad', '#c62f3a');
+      const failed = runs.map(r => FAILED_CONCLUSIONS.includes(r.conclusion));
+      const line = (label, data, i) => {
+        const color = cssVar(`--series-${i}`, '#5b6475');
+        return { label, data, borderColor: color, backgroundColor: color, borderWidth: 2, tension: 0, spanGaps: true,
+                 pointRadius: failed.map(f => f ? 4 : 2.5), pointBackgroundColor: failed.map(f => f ? bad : color) };
+      };
+      const datasets = [line('Run time', runs.map(r => Math.round(runMinutes(r) * 10) / 10), 1),
+                        line('Wait to start', runs.map(r => Math.round(waitMinutes(r) * 10) / 10), 4)];
+      const commits = runs.map(r => ({ id: r.head_sha, message: r.title, url: r.url }));
+      const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
+      return { type: 'line', data: { labels: runs.map(r => shortDate(startOf(r))), datasets, commits, runs: runs.map(r => ({ date: startOf(r) })) }, options: {
+        animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        onClick: (_event, elements) => {
+          const r = elements && elements.length ? runs[elements[0].index] : null;
+          if (r && r.url) window.open(r.url, '_blank', 'noopener');
+        },
+        scales: {
+          x: { title: title(axis), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
+          y: { type: 'linear', beginAtZero: true, title: title('Minutes'), grid: { color: grid },
+               ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: v => formatMinutes(v) } },
+        },
+        plugins: {
+          legend: { display: true, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 12 } } },
+          tooltip: { callbacks: {
+            title: items => items.length ? `${formatWhen(startOf(runs[items[0].dataIndex]))}, ${ciRunLevel(runs[items[0].dataIndex], Date.now()).text}` : '',
+            afterTitle: items => items.length ? commitLine(commits[items[0].dataIndex]) : '',
+            label: item => `${item.dataset.label}: ${formatMinutes(item.raw)}`,
+            footer: () => 'Click for the run',
+          } },
+        },
+      } };
+    }
+
+    // The workflows the chart can show, merge-gating first: [{title, runs, axis}].
+    function latencyChoices(loaded) {
+      return [
+        ...loaded.critical.filter(w => (w.main_runs || []).length).map(w => ({ title: w.title || w.file, runs: w.main_runs, axis: 'Run on main' })),
+        ...loaded.results.filter(r => (r.runs || []).length).map(r => ({ title: r.wf.title, runs: r.runs, axis: 'Scheduled run' })),
+      ];
+    }
+
+    let latencyChart = null;
+    function renderLatency(loaded) {
+      const choices = latencyChoices(loaded);
+      const pick = $('ci-latency-pick');
+      pick.replaceChildren(...choices.map((c, i) => new Option(c.title, String(i))));
+      const draw = () => {
+        const c = choices[Number(pick.value) || 0];
+        if (latencyChart) latencyChart.destroy();
+        latencyChart = null;
+        if (!c) { $('ci-latency').replaceChildren(el('p', { className: 'dim' }, 'Nothing published yet.')); return; }
+        const canvas = el('canvas', { ariaLabel: `${c.title}: run time and wait to start, run by run` });
+        const holder = el('div', { className: 'canvas' }, canvas);
+        $('ci-latency').replaceChildren(el('div', { className: 'chart trend' }, holder));
+        latencyChart = lineChart(canvas, latencyConfig(c.runs, c.axis));
+      };
+      pick.value = '0';
+      pick.onchange = draw;
+      // Drawn once Details is open: a chart in a closed toggle has no size.
+      const more = $('ci-more');
+      if (more && !more.open) more.addEventListener('toggle', function once() { if (more.open) { more.removeEventListener('toggle', once); draw(); } });
+      else draw();
+      return choices;
+    }
+
+    function renderCiDetails(loaded, now) {
+      $('ci-merge').replaceChildren(...mergeFigures(loaded.merge));
+      $('ci-board').replaceChildren(...ciBoard(loaded, now));
+      const rows = loaded.results.map(r => nightlyRow(r, now));
+      $('ci-nightly').replaceChildren(...rows);
+      renderLatency(loaded);
+      return rows;
+    }
+
+    let ciToken = 0;
+    async function showCi() {
+      const token = ++ciToken;
+      $('ci-board').replaceChildren(el('p', { className: 'dim' }, 'Reading the published CI health…'));
+      const loaded = await loadCi();
+      if (token !== ciToken || currentView() !== 'ci') return null;
+      const now = Date.now();
+      return renderCi(loaded, now);
+    }
+
+    const cap = text => text.replace(/^./, c => c.toUpperCase());
+    // A job's name without its workflow's: "Kernel checks (aie2p-8col)"
+    // under Kernel checks reads "aie2p-8col".
+    const jobName = (name, title) => {
+      const m = /^(.*) \((.*)\)$/.exec(name);
+      return m && title && m[1].toLowerCase() === title.toLowerCase() ? m[2] : name;
+    };
+
+    // What needs a look, worst first: the critical test workflows', then the
+    // scheduled ones that are failing, late or waiting. [{level, who, text,
+    // url}], and the counts behind "the rest".
+    function ciProblems(loaded, now) {
+      const { results, critical } = loaded;
+      const rank = { bad: 0, warn: 1 };
+      const crit = (critical || []).map(w => ({ w, v: criticalVerdict(w, now) }));
+      const sched = results.filter(r => r.runs).map(r => ({ wf: r.wf, v: ciVerdict(r.wf, r.runs, r.jobs, now) }));
+      const problems = [
+        ...crit.filter(x => x.v.level in rank).map(x => ({ level: x.v.level, who: x.w.title || x.w.file,
+          text: `${cap(x.v.notes.join('; '))}.`, url: x.w.latest_main ? x.w.latest_main.url : `${REPO}/actions/workflows/${x.w.file}` })),
+        ...sched.filter(x => x.v.level in rank).map(({ wf, v }) => ({ level: v.level, who: wf.title,
+          text: `${v.headline}${v.legs.length ? ` ${v.legs.map(l => `${jobName(l.name, wf.title)}: ${l.text}`).join('; ')}.` : ''}`,
+          url: v.latest ? v.latest.url : `${REPO}/actions/workflows/${wf.file}` })),
+      ].sort((a, b) => rank[a.level] - rank[b.level]);
+      return { problems, critical: crit.length, healthy: crit.filter(x => x.v.level === 'ok').length,
+               scheduled: sched.length, passed: sched.filter(x => x.v.level === 'ok').length };
+    }
+
+    // "4 of 5 critical workflows healthy; 14 of 15 scheduled ... ."
+    function ciRest(p) {
+      const parts = [];
+      if (p.critical) parts.push(`${p.healthy} of ${plural(p.critical, 'merge-gating test')} healthy`);
+      if (p.scheduled) parts.push(`${p.passed} of ${plural(p.scheduled, 'other scheduled job')} passed their last run`);
+      return parts.length ? `${parts.join('; ')}.` : '';
+    }
+
+    // The overview's lines for CI health: what needs a look, then the rest
+    // and how long merging takes.
+    function ciLines(loaded, now) {
+      const p = ciProblems(loaded, now);
+      const LIST = 3;
+      const lines = p.problems.slice(0, LIST).map(({ level, who, text }) => ({ level, who, text }));
+      if (p.problems.length > LIST) lines.push({ level: 'warn', who: 'And more', text: `${p.problems.length - LIST} more need a look.` });
+      if (p.critical || p.scheduled) lines.push({ level: p.problems.length ? 'none' : 'ok', who: p.problems.length ? 'The rest' : 'All workflows', text: ciRest(p) });
+      const merge = loaded.merge;
+      if (merge && !merge.error && merge.merged !== undefined) {
+        lines.push({ level: 'none', who: 'Merging', text: `Median ${formatHours(merge.hours_median)} to merge; ${merge.open} open.` });
+      }
+      return lines;
+    }
+
+    // CI health in one line, for the overview: who needs a look, or that
+    // nothing does.
+    function ciSummary(loaded, now) {
+      const p = ciProblems(loaded, now);
+      const names = p.problems.map(x => x.who);
+      if (!names.length) return `All clear. ${ciRest(p)}`;
+      const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
+      return `${names.length} need${names.length === 1 ? 's' : ''} a look: ${list}.`;
+    }
+
+    // The CI health tab's verdict: one sentence, every problem a line with
+    // its run linked, then how fresh the answers are.
+    function ciVerdictBand(loaded, now) {
+      const p = ciProblems(loaded, now);
+      const fresh = ciStatus(loaded, now);
+      const level = !loaded.status ? 'none' : p.problems.some(x => x.level === 'bad') ? 'bad' : p.problems.length ? 'warn' : fresh.level === 'bad' ? 'warn' : 'ok';
+      const band = el('article', { className: `verdict ${level}` });
+      const n = p.problems.length;
+      const headline = !loaded.status ? 'No CI health published yet.'
+        : n ? `${plural(n, 'workflow')} need${n === 1 ? 's' : ''} a look.` : 'All clear.';
+      band.append(el('p', { className: 'headline' }, headline, n || !loaded.status ? '' : el('span', { className: 'quiet' }, ` ${ciRest(p)}`)));
+      if (n) {
+        band.append(el('ul', { className: 'ci-problems' }, ...p.problems.map(x => el('li', { className: x.level },
+          el('span', { className: 'dot' }), el('span', {}, el('b', {}, x.url ? link(x.url, x.who) : x.who), x.text)))));
+      }
+      if (fresh.text) band.append(el('div', { className: 'meta' }, el('span', { className: fresh.level === 'bad' ? 'msg worse' : 'msg' }, fresh.text)));
+      band.level = level;
+      return band;
+    }
+
+    // Under a verdict with problems, the rest in one line: the healthy
+    // merge-gating tests by name, the other jobs by count. Empty when all
+    // is clear, which the verdict already says.
+    function ciHealthyLine(loaded, now) {
+      const p = ciProblems(loaded, now);
+      if (!p.problems.length) return '';
+      const names = loaded.critical.filter(w => criticalVerdict(w, now).level === 'ok').map(w => w.title || w.file);
+      const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names.join('');
+      const parts = [];
+      if (names.length) parts.push(`${list} ${names.length === 1 ? 'is' : 'are'} healthy`);
+      if (p.scheduled) parts.push(`${p.passed} of ${plural(p.scheduled, 'other scheduled job')} passed their last run`);
+      return parts.length ? `${cap(parts.join('; '))}.` : '';
+    }
+
+    // A tile's one state for a critical workflow: {level, title, text, url}.
+    function criticalTile(w, now) {
+      const v = criticalVerdict(w, now);
+      const latest = w.latest_main;
+      const main = w.main || {};
+      const text = w.error ? 'GitHub did not answer'
+        : v.late ? cap(v.notes[0])
+        : v.level === 'bad' ? `Failed on main ${ago(startOf(latest), now)} ago${v.failedJobs.length ? `: ${v.failedJobs.join(', ')}` : ''}`
+        : v.level === 'warn' ? cap(v.notes[0])
+        : v.level === 'none' ? 'No run on main lately'
+        : `Passing: ${percent(main.rate)} on main, ${formatMinutes(w.minutes_median)} a run`;
+      return { level: v.level, title: w.title || w.file, text, url: latest ? latest.url : `${REPO}/actions/workflows/${w.file}` };
+    }
+
+    // A tile's one state for a scheduled workflow.
+    function scheduledTile(r, now) {
+      const page = `${REPO}/actions/workflows/${r.wf.file}`;
+      if (!r.runs) return { level: 'none', title: r.wf.title, text: 'GitHub did not answer', url: page };
+      const v = ciVerdict(r.wf, r.runs, r.jobs, now);
+      if (!v.latest) return { level: 'none', title: r.wf.title, text: 'No scheduled run on record', url: page };
+      const at = startOf(v.latest);
+      const state = ciRunLevel(v.latest, now);
+      const waiting = v.legs.filter(l => /^waiting/.test(l.text));
+      const text = v.late ? `No run for ${ago(at, now)}`
+        : waiting.length ? `Waiting for a runner: ${waiting.map(l => jobName(l.name, r.wf.title)).join(', ')}`
+        : state.level === 'running' ? v.headline.replace(/\.$/, '')
+        : `${cap(state.text)} ${ago(at, now)} ago`;
+      return { level: v.level === 'running' ? 'none' : v.level, title: r.wf.title, text, url: v.latest.url || page };
+    }
+
+    function boardTile(t) {
+      const tile = link(t.url, '', { className: `ci-tile ${t.level}`, title: `${t.title}: ${t.text}` });
+      tile.append(el('span', { className: 't-name' }, t.title), el('span', { className: 't-state' }, t.text));
+      tile.level = t.level;
+      return tile;
+    }
+
+    // The board: a tile per test that gates a merge; the scheduled jobs are
+    // rows under it (nightlyRow).
+    function ciBoard(loaded, now) {
+      const groups = [];
+      if (loaded.critical.length) groups.push(['Tests that gate a merge', loaded.critical.map(w => criticalTile(w, now))]);
+      return groups.map(([title, tiles]) => el('section', { className: 'ci-board-group' }, el('h3', {}, title),
+        el('div', { className: 'ci-board' }, ...tiles.map(boardTile))));
+    }
+
+    // ------------------------------------------------------------------
+    // Overview
+    // ------------------------------------------------------------------
+
+    const LEVEL_RANK = { bad: 0, warn: 1, ok: 2, none: 3 };
+    const worstLevel = levels => levels.reduce((a, b) => (LEVEL_RANK[b] ?? 3) < (LEVEL_RANK[a] ?? 3) ? b : a, 'none');
+    const STATE_WORDS = { bad: 'Needs attention', warn: 'Warnings', ok: 'All passing', none: 'No results yet' };
+
+    // An area's row on the overview: its name, one status word, and one
+    // line saying what is wrong (or that nothing is), the whole of it on
+    // hover. `lines` are the area's {level, who, text}, worst first.
+    function sectionTile(view, title, about, lines, when, empty, summary) {
+      const level = worstLevel(lines.map(l => l.level));
+      const problems = lines.filter(l => l.level === 'bad' || l.level === 'warn');
+      const said = summary || (problems.length ? problems.map(l => `${l.who}: ${l.text.replace(/\.$/, '')}`).join('; ') + '.'
+        : lines.length ? lines[0].text : about);
+      const tile = link(hashFor({ view }), '', { className: `area ${level}`, title: [title, ...lines.map(l => `${l.who}: ${l.text}`), when].filter(Boolean).join('\n') });
+      tile.level = level;
+      tile.lines = lines;
+      tile.append(el('span', { className: 'area-name' }, title),
+        el('span', { className: 'state' }, empty || STATE_WORDS[level]),
+        el('span', { className: 'area-what' }, said),
+        el('span', { className: 'area-when' }, when || ''));
+      return tile;
+    }
+
+    const lastRunText = dates => {
+      const known = dates.filter(Number.isFinite);
+      return known.length ? `${ago(Math.max(...known), Date.now())} ago` : '';
+    };
+
+    // A tile per section, in the order of the tabs: CI health's workflows
+    // that need a look, the kernels' verdict per NPU, then each section's
+    // bands, each band's verdict. `ci` is null while GitHub is asked.
+    function overviewTiles(kernelNights, loaded, now, ci = null) {
+      const tiles = [];
+      const reached = Boolean(ci && ci.status);
+      const at = reached ? Date.parse(ci.status.generated_at) : NaN;
+      tiles.push(sectionTile('ci', 'CI health', 'The tests that gate a merge, the other scheduled jobs, and how long merging takes.',
+        reached ? ciLines(ci, now) : [], Number.isFinite(at) ? `read ${ago(at, now)} ago` : '', !ci ? 'Loading…' : reached ? '' : 'Not published yet',
+        reached ? ciSummary(ci, now) : ''));
+      const kernelLines = (kernelNights || []).map(n => {
+        const v = verdictOf(n, now);
+        return { level: v.level, who: n.npu, text: `${v.stale ? `${v.stale.short} ` : ''}${v.headline}` };
+      });
+      tiles.push(sectionTile('night', 'Kernels', 'The IRON kernel library on npu1 and npu2: correctness, cycles and object size per case.',
+        kernelLines, lastRunText((kernelNights || []).map(n => n.run.date)), kernelNights ? '' : 'Loading…',
+        kernelNights ? kernelSummary(kernelNights, now) : ''));
+      for (const [id, s] of Object.entries(SECTIONS)) {
+        const mine = (loaded || []).filter(l => l.check.section === id);
+        const verdicts = mine.map(l => componentVerdict(l.check, l.index, l.latest, now));
+        const lines = verdicts.map((v, i) => ({ level: v.level, who: mine[i].check.short || mine[i].check.title,
+                                                text: `${v.stale ? `${v.stale.short} ` : ''}${v.headline}` }));
+        const has = BANDS.some(b => b.section === id);
+        tiles.push(sectionTile(id, s.title, s.about, lines, lastRunText(verdicts.map(v => v.run.date)),
+          !has ? 'Not tracked yet' : loaded ? '' : 'Loading…'));
+      }
+      return tiles;
+    }
+
+    // The kernels in one line: per NPU, what is wrong in a few words.
+    function kernelSummary(kernelNights, now) {
+      const parts = kernelNights.map(n => {
+        const v = verdictOf(n, now);
+        const said = [];
+        if (v.stale) said.push(`no run for ${ago(n.run.date, now)}`);
+        if (n.run.refused) said.push(`${v.stale ? 'the last ' : ''}refused to time`);
+        if (!said.length) said.push(v.headline.replace(/\.$/, '').replace(/^./, c => c.toLowerCase()));
+        return `${n.npu}: ${said.join('; ')}`;
+      });
+      return `${parts.join('. ')}.`;
+    }
+
+    let overviewToken = 0;
+    async function renderOverview() {
+      const token = ++overviewToken;
+      const now = Date.now();
+      $('overview-tiles').replaceChildren(...overviewTiles(started ? nights : null, null, now));
+      // Each source redraws the tiles as it arrives: GitHub can be slow.
+      let loaded = null, ci = null;
+      const draw = () => {
+        if (token !== overviewToken || currentView() !== 'overview') return null;
+        const tiles = overviewTiles(started ? nights : null, loaded, now, ci);
+        $('overview-tiles').replaceChildren(...tiles);
+        return tiles;
+      };
+      await Promise.all([loadComponents().then(l => { loaded = l; draw(); }), loadCi().then(c => { ci = c; draw(); })]);
+      return draw();
     }
 
     // ------------------------------------------------------------------
     // Views and theme
     // ------------------------------------------------------------------
 
-    const VIEWS = ['dashboard', 'kernels', 'kernel', 'charts', 'components'];
+    // The kernels' views, then the other sections'.
+    const KERNEL_VIEWS = ['night', 'kernels', 'kernel'];
+    const VIEWS = ['overview', 'ci', ...KERNEL_VIEWS, ...Object.keys(SECTIONS)];
 
     function currentView() {
-      const want = readHash().view;
-      // "catalogue" was the kernels view's first name; old links keep working.
-      if (want === 'catalogue') return 'kernels';
-      return VIEWS.includes(want) ? want : 'dashboard';
+      const want = readHash();
+      // Old links keep working: "catalogue" was the kernels table's first
+      // name, "dashboard" the kernels' last night when this page was the
+      // kernel checks' alone, "components" the placer's checks, and
+      // "design" the performance section's first name.
+      if (want.view === 'catalogue') return 'kernels';
+      if (want.view === 'dashboard') return 'night';
+      if (want.view === 'components') return sectionOfMetric(want.metric) === 'performance' ? 'performance' : 'placement';
+      if (want.view === 'design') return 'performance';
+      // The kernels' Trends, a chart per case, became each kernel's page.
+      if (want.view === 'charts') return want.kernel ? 'kernel' : 'night';
+      return VIEWS.includes(want.view) ? want.view : 'overview';
     }
 
     function applyView() {
       const view = currentView();
-      $('dashboard').hidden = view !== 'dashboard';
+      const inKernels = KERNEL_VIEWS.includes(view);
+      $('overview').hidden = view !== 'overview';
+      $('ci').hidden = view !== 'ci';
+      $('kernels-section').hidden = !inKernels;
+      $('dashboard').hidden = view !== 'night';
       $('kernels').hidden = view !== 'kernels';
       $('kernel').hidden = view !== 'kernel';
-      $('charts-view').hidden = view !== 'charts';
-      $('components').hidden = view !== 'components';
-      $('status').hidden = view !== 'charts';
+      for (const s of Object.keys(SECTIONS)) $(s).hidden = view !== s;
       $('tab-kernel').hidden = view !== 'kernel';
-      for (const v of VIEWS) {
-        const tab = $(`tab-${v}`);
-        tab.className = v === view ? 'current' : '';
-        if (v === view) tab.ariaCurrent = 'page'; else tab.ariaCurrent = null;
-      }
+      const mark = (tab, on) => {
+        tab.className = on ? 'current' : '';
+        tab.ariaCurrent = on ? 'page' : null;
+      };
+      for (const v of KERNEL_VIEWS) mark($(`tab-${v}`), v === view);
+      mark($('nav-overview'), view === 'overview');
+      mark($('nav-ci'), view === 'ci');
+      mark($('nav-kernels'), inKernels);
+      for (const s of Object.keys(SECTIONS)) mark($(`nav-${s}`), view === s);
       return view;
     }
 
     // One factory's page, rebuilt when another is asked for (or the theme
     // changes, since its charts read their colors when drawn).
-    let currentKernel = null, kernelMetric = 'cycles';
+    let currentKernel = null, kernelNpu = null;
 
-    // One factory's charts of `metric`, one per case with a line per NPU,
-    // in turbo, or every mode when it has no turbo history.
-    function kernelCharts(factory, data, metric) {
-      const series = data.series.filter(s => s.factory === factory && s.metric === metric);
-      const turbo = series.some(s => s.byMode.has(EXPECTED_PMODE));
-      const modes = turbo ? [EXPECTED_PMODE] : modesOf(data);
-      const groups = chartGroups(series).sort((a, b) => a.kase.localeCompare(b.kase));
-      $('kernel-charts-empty').hidden = groups.length > 0;
-      placeCharts($('kernel-charts'), groups, modes, data, false);
-      return groups;
-    }
-
+    // One factory's page: what it is, a chart of its cases over recent
+    // nightlies on one NPU, and a table of its cases on every NPU.
     function showKernel(factory) {
       currentKernel = factory;
-      const want = readHash().metric;
-      kernelMetric = metricList.includes(want) ? want : 'cycles';
-      $('kernel-charts').replaceChildren();
       $('tab-kernel').textContent = factory || 'Kernel';
       const found = renderKernel(factory, nights);
-      if (!found) { $('kernel-metric').replaceChildren(); $('kernel-charts-empty').hidden = true; return; }
-      const cards = kernelCards;
-      loadHistories(nights.map(n => n.npu), ALL_METRICS).then(data => {
-        if (currentKernel === factory && kernelCards === cards) fillSparks(cards, data);
-      });
-      const pick = metric => {
-        kernelMetric = metric;
-        history.replaceState(null, '', hashFor({ view: 'kernel', kernel: factory, ...(metric === 'cycles' ? {} : { metric }) }));
-        segment($('kernel-metric'), metricList, metric, pick);
-        const npus = nights.map(n => n.npu);
-        loadHistories(npus, [metric]).then(data => {
-          if (currentKernel !== factory || kernelMetric !== metric || currentView() !== 'kernel') return;
-          kernelCharts(factory, data, metric);
+      if (!found) { for (const id of ['kernel-npu', 'kernel-trend', 'kernel-cases']) $(id).replaceChildren(); return; }
+      $('kernel-cases').replaceChildren(kernelCaseTable(factory, nights, hist));
+      // The NPUs that timed it, the one with the most nightlies first.
+      const npus = nights.map(n => n.npu).map(n => [n, nightValues(hist, n, 'cycles', factory).length]).filter(([, k]) => k)
+        .sort((a, b) => b[1] - a[1]).map(([n]) => n);
+      if (!npus.length) {
+        $('kernel-npu').replaceChildren();
+        $('kernel-trend').replaceChildren(el('p', { className: 'dim' }, 'No nightly has timed this kernel yet.'));
+        return;
+      }
+      const want = readHash();
+      const pickNpu = npu => {
+        kernelNpu = npu;
+        segment($('kernel-npu'), npus, npu, pickNpu);
+        history.replaceState(null, '', hashFor({ view: 'kernel', kernel: factory, npu }));
+        loadHistories([npu], ALL_METRICS).then(data => {
+          if (currentKernel !== factory || kernelNpu !== npu || currentView() !== 'kernel') return;
+          const metrics = ALL_METRICS.filter(m => nightValues(data, npu, m, factory).length);
+          $('kernel-trend').replaceChildren(switchChart(metrics, want.metric, m => kernelTrendConfig(data, npu, factory, m),
+            m => `${label(m)}: ${METRICS[m]}. A line per case; hover for its value, click for the commit.`,
+            `${factory} on ${npu} over recent nightlies, a line per case`));
         });
       };
-      pick(kernelMetric);
+      pickNpu(npus.includes(want.npu) ? want.npu : npus.includes(kernelNpu) ? kernelNpu : npus[0]);
     }
 
     function readTheme() {
@@ -2558,11 +3771,13 @@
 
     function showView() {
       const view = applyView();
-      // The components read their own files, not the kernels'.
-      if (view === 'components') showComponents();
+      // The other sections read their own files, not the kernels'; the
+      // overview reads both, and draws the kernels' once they are in.
+      if (SECTIONS[view]) showSection(view);
+      if (view === 'overview') renderOverview();
+      if (view === 'ci') showCi();
       if (!started) return view;
-      if (view === 'charts') { applyHash(); render(); }
-      if (view === 'kernel') showKernel(readHash().kernel || '');
+      if (view === 'kernel') showKernel((readHash().kernel || '').split('/')[0]);
       if (view === 'kernels') applyKernelsFilter();
       return view;
     }
@@ -2571,12 +3786,10 @@
       applyTheme(readTheme());
       $('theme').addEventListener('click', () => {
         applyTheme(isDark() ? 'light' : 'dark');
-        if (currentView() === 'components') showComponents();
+        if (SECTIONS[currentView()]) showSection(currentView());
         if (!started) return;
         // Canvases read their colors when drawn.
-        renderMoved(nights, hist);
-        if (currentView() === 'charts') render();
-        if (currentView() === 'kernel') showKernel(readHash().kernel || '');
+        if (currentView() === 'kernel') showKernel((readHash().kernel || '').split('/')[0]);
       });
       window.addEventListener('hashchange', showView);
       showView();
@@ -2584,10 +3797,13 @@
       for (const [m, about] of Object.entries(METRICS)) {
         $('key-metrics').append(el('dt', {}, label(m)), el('dd', {}, `${about}; ${thresholdText(m)}`));
       }
+      for (const m of SECTIONS.performance.metrics) {
+        $('performance-metrics').append(el('dt', {}, label(m)), el('dd', {}, `${COMPONENT_METRICS[m]}; ${thresholdText(m)}`));
+      }
       const [catalogues, indexes, latests] = await Promise.all([
-        Promise.all(NPUS.map(n => fetchJson(`${n}/catalogue.json`))),
-        Promise.all(NPUS.map(n => fetchJson(`${n}/runs.json`))),
-        Promise.all(NPUS.map(n => fetchJson(`${n}/latest.json`))),
+        Promise.all(NPUS.map(n => fetchJson(`${KERNELS_DIR}/${n}/catalogue.json`))),
+        Promise.all(NPUS.map(n => fetchJson(`${KERNELS_DIR}/${n}/runs.json`))),
+        Promise.all(NPUS.map(n => fetchJson(`${KERNELS_DIR}/${n}/latest.json`))),
       ]).then(([c, r, l]) => [c.filter(Boolean), new Map(NPUS.map((n, i) => [n, r[i]])), l.map(readable)]);
       const npus = NPUS.filter(n => catalogues.some(c => c.npu === n) || indexes.get(n));
       const shown = npus.length ? npus : NPUS;
@@ -2596,7 +3812,7 @@
       const [previous, histories] = await Promise.all([
         Promise.all(NPUS.map((n, i) => {
           const p = latests[i] && previousPublished(readable(indexes.get(n)), latests[i]);
-          return p ? fetchJson(`${n}/runs/${p.id}.json`).then(readable) : null;
+          return p ? fetchJson(`${KERNELS_DIR}/${n}/runs/${p.id}.json`).then(readable) : null;
         })),
         loadHistories(shown, GATED),
       ]);
@@ -2604,27 +3820,8 @@
       const published = NPUS.map((n, i) => [n, [previous[i], latests[i]].filter(Boolean)]).filter(([, r]) => r.length);
       recent = collect(published.flatMap(([n, records]) => historiesOf(n, records)));
       nights = renderDashboard(shown, published.length ? recent : null, new Map(catalogues.map(c => [c.npu, c])), indexes, Date.now(), hist);
-      renderKernels(nights);
-      const found = [...new Set(recent.series.map(s => s.metric))];
-      metricList = found.length
-        ? ALL_METRICS.filter(m => found.includes(m)).concat(found.filter(m => !ALL_METRICS.includes(m)).sort())
-        : ALL_METRICS;
-      const runs = [...indexes.values()].map(readable).flatMap(i => (i && i.runs) || []);
-      updated = runs.length ? formatDate(Math.max(...runs.map(r => Date.parse(r.date)))) : '';
-      addBoxes($('npus'), shown);
-      // The hash holds the filters, so a link reproduces the view.
-      applyHash = () => {
-        const want = readHash();
-        const on = want.npu !== undefined ? want.npu.split(',') : null;
-        for (const box of $('npus').querySelectorAll('input')) box.checked = !on || on.includes(box.value);
-        trendMetric = metricList.includes(want.metric) ? want.metric : 'cycles';
-        $('show').value = want.show === 'all' ? 'all' : 'moved';
-        $('kernel-filter').value = want.kernel || '';
-        $('all-modes').checked = want.modes === 'all';
-      };
-      $('controls').addEventListener('change', render);
-      let typing;
-      $('kernel-filter').addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(render, 200); });
+      renderWindowChanges(hist, shown);
+      renderKernelList(nights, hist);
       started = true;
       showView();
     }

@@ -489,21 +489,8 @@ power mode, which the bench runners set at boot. PR and filtered dispatch
 runs may measure another mode, but comparisons require a known, matching
 mode.
 
-The [Nightly Kernel Checks dashboard](https://xilinx.github.io/mlir-aie/kernel-checks/)
-shows run health, per-kernel correctness and timing, and metric histories,
-with warnings for truncated traces and toolchain, runtime or host changes.
-The dashboard and Peano-PR report share `utils/kernel_checks/thresholds.json`:
-2% for cycles and kernel object size; for `npu_us`, 10% and more than three
-times the larger MAD. Reports are informational, not PR gates.
-
-`utils/kernel_checks/publish.py` writes `gh-pages:kernel-checks/<npu>/`:
-`runs/<id>.json`, `runs.json`, `latest.json` (the last published PR baseline),
-and `history/<metric>.json`; `catalogue.json` lists available kernels and
-case outcomes. Runs older than 90 days thin to weekly. Readers reject newer
-schema versions instead of interpreting them. The
-[components view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=components)
-reads the same format from `gh-pages:component-checks/<check>/`, written
-by `nightlyComponentChecks.yml`.
+Nightly results, and how the nightly runs and publishes these checks, are on the
+[maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=night).
 
 ### Static checks
 
@@ -528,10 +515,8 @@ is no static-check CI workflow. When invoked in GitHub Actions, the tool
 emits a warning annotation for a dropped pragma and an error annotation
 for a kernel that fails to compile. With
 `MLIR_AIE_KERNEL_SOURCES` set to a checkout, the checkout's
-`aie_kernels/` is compiled against an installed wheel. The separate
-`nightlyKernelChecks.yml` workflow runs the hardware correctness and
-performance checks nightly and on Peano-pin pull requests; it does not run these
-static checks.
+`aie_kernels/` is compiled against an installed wheel. The nightly
+hardware checks do not run these static checks.
 
 ### Kernels the generic builder cannot run
 

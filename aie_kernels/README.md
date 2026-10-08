@@ -22,7 +22,7 @@ Kernels are grouped by family, and each family directory matches a module under 
 - When the two architectures need different code, the family holds `X_aie2.h` and `X_aie2p.h` and a small `X.cc` that includes the right one.
 - [`common/`](./common) holds helpers shared across families.
 
-The tables below describe the sources. Which kernels each NPU builds, and whether they passed the nightly hardware sweep, is in the [kernels view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels) of the Nightly Kernel Checks page, generated from `aie.iron.kernels` each night; each kernel's name there opens its own page with its cases' latest numbers and history.
+The tables below describe the sources. Which kernels each NPU builds, and whether they passed the nightly hardware sweep, is in the [Kernels section](https://xilinx.github.io/mlir-aie/dashboard/#view=kernels) of the maintainer dashboard, generated from `aie.iron.kernels` each night; each kernel's name there opens its own page with its cases' latest numbers and history.
 
 ## activation
 | Name | Coding style | Purpose | Datatypes |
