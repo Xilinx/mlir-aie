@@ -74,6 +74,7 @@ NOT_JUDGED = {
     "set_rounding": "sets core state and has no data output; the rounding-mode tests cover it",
     "sample_select": "a state machine across a position's select_streams * slice / chunk calls; test_sample_e2e.py judges it",
     "sample_combine": "reads sample_select's summaries, which the generic builder cannot draw; test_sample_e2e.py judges the pair",
+    "resize": "six entry points share one core's state, driven by counts they write; test_resize_e2e.py judges them",
     **{
         name: "one half of a MobileNet bottleneck cascade pair; test_bn_cascade_pairs.py builds and judges the pair"
         for name in (

@@ -13,6 +13,7 @@ import numpy as np
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
+from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
@@ -411,6 +412,107 @@ def resample_quantize(
     )
 
 
+def resize(
+    words: int = 356, *, chunk: int = 4096, patch_columns: int = 8, cores: int = 16
+) -> ExternalFunction:
+    """A uint8 RGB image resized as torch's antialiased bicubic resize, as patches.
+
+    The image is resized across, then down, each pass rounded to uint8 as
+    torch does it on the CPU, and written as 16x16 patches of ``u8 / 255``
+    in bf16, channels last. The filters are
+    [`resample_quantize`][iron.kernels.vision.resample_quantize] tables at
+    16 slots, one chunk a patch column (width) or a band of 16 rows
+    (height). ``cores`` cores receive every ``chunk``-byte image chunk, each
+    image row padded to whole chunks; core ``c`` owns patch columns ``c, c +
+    cores, ...``, at most ``patch_columns`` of them. Six entry points share
+    one core's state, and a core runs:
+
+    ```text
+    resize_setup(counts, rows, columns, out_rows, out_columns, c)
+    for k in range(counts[0]): resize_take(width chunk k, k)
+    for each of counts[1] bands:
+        resize_band(height chunk, counts)
+        for counts[2] image chunks: resize_consume(image chunk, height chunk)
+        for i in range(counts[3]): resize_emit(patch, i)
+    resize_finish(counts)
+    then counts[4] image chunks, unread
+    ```
+
+    ``counts`` is five int32. Band ``b``'s patch ``i`` is patch column ``c
+    + i * cores``, zeros past the image: a core writes ``out_columns // 16
+    // cores + 1`` patches a band, so the last patch column of every band is
+    zeros. The counts are the same on every core whatever the input, so the
+    broadcast streams stay in step; sizes or a table the kernel refuses
+    write zeros from there on, where
+    [`resize_ref`][iron.kernels.vision.resize_ref] says. amd/IRON's
+    ``Resample`` runs it for EmbeddingGemma 2's image processor.
+
+    Args:
+        words: The int32 words of a table chunk; a 16-slot chunk holds a
+            window of ``2 * ((words - 4) // 16 - 2) - 1`` taps.
+        chunk: The bytes of an image chunk.
+        patch_columns: The most patch columns one core holds.
+        cores: The cores the patch columns are dealt to.
+
+    Returns:
+        ExternalFunction for ``resize_consume(image_chunk, height_chunk)``,
+        with ``resize_setup``, ``resize_take``, ``resize_band``,
+        ``resize_emit`` and ``resize_finish`` bound on its object.
+
+    Raises:
+        ValueError: When ``words`` holds no window of 1 to 64 taps,
+            ``chunk`` is not a multiple of 4 from 4 to 98300, or
+            ``patch_columns`` or ``cores`` is below 1.
+    """
+    window = 2 * ((words - _RESAMPLE_HEADER) // _RESIZE_SIDE - 2) - 1
+    if not 1 <= window <= 64:
+        raise ValueError(
+            f"resize() needs words from 52 to 563 (a window of 1 to 64 taps), "
+            f"got words={words}."
+        )
+    if chunk % 4 or not 4 <= chunk < 98304:
+        raise ValueError(
+            f"resize() needs chunk a multiple of 4 from 4 to 98300, got chunk={chunk}."
+        )
+    if patch_columns < 1 or cores < 1:
+        raise ValueError(
+            "resize() needs patch_columns >= 1 and cores >= 1, got "
+            f"patch_columns={patch_columns}, cores={cores}."
+        )
+    counts_ty = np.ndarray[(5,), np.dtype[np.int32]]
+    taps_ty = np.ndarray[(words,), np.dtype[np.int32]]
+    fn = _make_extern(
+        "resize_consume",
+        _kernel_source("vision/resize.cc"),
+        [np.ndarray[(chunk,), np.dtype[np.uint8]], taps_ty],
+        compile_flags=[
+            f"-DWORDS={words}",
+            f"-DCHUNK={chunk}",
+            f"-DCOLS={patch_columns}",
+            f"-DCORES={cores}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In),
+            unsupported=(
+                "six entry points share one core's state, driven by counts "
+                "they write; test_resize_e2e.py drives and judges them"
+            ),
+            ops_per_call=0,
+        ),
+    )
+    lib = fn.object_file
+    fn.resize_setup = lib.bind("resize_setup", [counts_ty] + [np.int32] * 5)
+    fn.resize_take = lib.bind("resize_take", [taps_ty, np.int32])
+    fn.resize_band = lib.bind("resize_band", [taps_ty, counts_ty])
+    fn.resize_emit = lib.bind(
+        "resize_emit",
+        [np.ndarray[(_RESIZE_SIDE * _RESIZE_SIDE * 3,), np.dtype[bfloat16]], np.int32],
+    )
+    fn.resize_finish = lib.bind("resize_finish", [counts_ty])
+    return fn
+
+
 # --------------------------------------------------------------------------
 # Numpy references. Each follows the *vector* path of its kernel (the one the
 # ``*Line`` entry points call), read off aie_kernels/vision/*.cc.
@@ -706,3 +808,158 @@ def resample_quantize_ref(
                 q[j] = int(-0.5 + v) if v < 0 else int(0.5 + v)
             chunk[at + 2 : at + axis.slot] = q.astype(np.int16).view(np.int32)
     return table
+
+
+# A patch's pixels on each axis, and the outputs of a resize table chunk.
+_RESIZE_SIDE = 16
+
+# The bf16 of u8 / 255, computed in float32 and rounded to bf16 once.
+_RESIZE_PIXELS = (np.arange(256, dtype=np.float32) * np.float32(1 / 255)).astype(
+    bfloat16
+)
+
+
+def _resize_slots(chunk, win):
+    """A 16-slot table chunk's starts, counts and int16 weights (each slot's from its third word on)."""
+    slot = 2 + (win + 1) // 2
+    words = np.asarray(chunk, np.int32)
+    at = _RESAMPLE_HEADER + slot * np.arange(_RESIZE_SIDE)
+    return words[at], words[at + 1], [words[a + 2 :].view(np.int16) for a in at]
+
+
+def resize_ref(
+    image,
+    taps_w,
+    taps_h,
+    rows,
+    columns,
+    out_rows,
+    out_columns,
+    *,
+    words=356,
+    chunk=4096,
+    patch_columns=8,
+    cores=16,
+):
+    """Numpy reference for [`resize`][iron.kernels.vision.resize].
+
+    Args:
+        image: The image chunks, ``(n, chunk)`` uint8: row ``r``'s ``3 *
+            columns`` bytes start chunk ``r * ceil(3 * columns / chunk)``.
+        taps_w: ``(n, words)`` int32, the width table, chunk ``k`` patch
+            column ``k``.
+        taps_h: ``(n, words)`` int32, the height table, chunk ``b`` band
+            ``b``.
+        rows: The image's rows.
+        columns: The image's columns.
+        out_rows: The resized rows.
+        out_columns: The resized columns.
+        words: The int32 words of a table chunk.
+        chunk: The bytes of an image chunk.
+        patch_columns: The most patch columns one core holds.
+        cores: The cores the patch columns are dealt to.
+
+    Returns:
+        ``(bands * pad, 768)`` bf16: band ``b``'s patch column ``j`` is row
+        ``b * pad + j``, ``pad = (out_columns // 16 // cores + 1) * cores``,
+        and patch columns past the image are zeros. Sizes the kernel
+        refuses zero every patch, a width chunk a core refuses zeros that
+        core's patch columns, and a height chunk refused, or a band whose
+        rows read past the image's, zeros every patch from that band on.
+    """
+    side = _RESIZE_SIDE
+    win_cap = 2 * ((words - _RESAMPLE_HEADER) // side - 2) - 1
+    strips = out_columns // side if out_columns > 0 else 0
+    bands = out_rows // side if out_rows > 0 else 0
+    pad = (strips // cores + 1) * cores
+    out = np.zeros((bands, pad, side, side, 3), np.uint8)
+    sized = (
+        rows >= 1
+        and columns >= 1
+        and out_rows >= side
+        and out_columns >= side
+        and out_rows % side == 0
+        and out_columns % side == 0
+        and pad // cores <= patch_columns
+    )
+    if not sized:
+        return _RESIZE_PIXELS[out.reshape(bands * pad, -1)]
+
+    cpr = -(-3 * columns // chunk)
+    lines = np.asarray(image, np.uint8).reshape(-1)[: rows * cpr * chunk]
+    pixels = lines.reshape(rows, cpr * chunk)[:, : 3 * columns]
+    pixels = pixels.reshape(rows, columns, 3).astype(np.int64)
+
+    # Across: each core's patch columns at the precision and window of the
+    # last width chunk it takes.
+    ok = [True] * cores
+    mid = np.zeros((rows, strips, side, 3), np.int64)
+    for c in range(cores):
+        filters = []
+        for k in range(c, strips, cores):
+            t = np.asarray(taps_w[k], np.int32)
+            p, win = int(t[0]), int(t[1])
+            if not (1 <= p <= 22 and 1 <= win <= win_cap) or (
+                t[2] != k * side or t[3] != side
+            ):
+                ok[c] = False
+                break
+            start, count, weights = _resize_slots(t, win)
+            first, end = int(start[0]), int(start[-1] + count[-1])
+            if (
+                (start < first).any()
+                or (count < 0).any()
+                or (count > win).any()
+                or (start + count > end).any()
+                or first < 0
+                or end > columns
+                or end - first > 5 * win_cap + 8
+            ):
+                ok[c] = False
+                break
+            hweight = np.zeros((side, 64), np.int64)
+            for o in range(side):
+                hweight[o, : count[o]] = weights[o][: count[o]]
+            filters.append((k, start, hweight))
+            hp, taps = p, 64 if win > 32 else 32
+        if not ok[c]:
+            continue
+        for k, start, hweight in filters:
+            index = np.minimum(start[:, None] + np.arange(taps), columns - 1)
+            acc = np.einsum("rotc,ot->roc", pixels[:, index], hweight[:, :taps])
+            mid[:, k] = np.clip((acc + (1 << (hp - 1))) >> hp, 0, 255)
+
+    # Down: a band's output rows as their input rows arrive, every core alike.
+    arrived = 0
+    for b in range(bands):
+        vt = np.asarray(taps_h[b], np.int32)
+        p, win = int(vt[0]), int(vt[1])
+        if not (1 <= p <= 22 and 1 <= win <= win_cap) or (
+            vt[2] != b * side or vt[3] != side
+        ):
+            break
+        start, count, weights = _resize_slots(vt, win)
+        e = min(max(int(start[-1] + count[-1]), 0), rows)
+        hold = np.zeros((side, strips, side, 3), np.int64)
+        done, failed = 0, False
+        for now in range(arrived, max(arrived, e) + 1):
+            for o in range(done, side):
+                s, n = int(start[o]), int(count[o])
+                if s + n > now:
+                    break
+                if s < 0 or s < now - win_cap or n < 0 or n > win_cap:
+                    failed = True
+                    break
+                w = weights[o][:n].astype(np.int64)
+                acc = np.einsum("k,kjxc->jxc", w, mid[s : s + n])
+                hold[o] = np.clip((acc + (1 << (p - 1))) >> p, 0, 255)
+                done = o + 1
+            if failed:
+                break
+        arrived = max(arrived, e)
+        if failed or done < side:
+            break
+        for c in range(cores):
+            for k in range(c, strips, cores) if ok[c] else ():
+                out[b, k] = hold[:, k]
+    return _RESIZE_PIXELS[out.reshape(bands * pad, -1)]

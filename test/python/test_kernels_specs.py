@@ -605,6 +605,21 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         shape_checks=[(dict(words=356), 1, (356,))],
     ),
+    KernelSpec(
+        name="resize",
+        factory=kernels.resize,
+        kwargs={},
+        arg_count=2,  # image chunk, height chunk
+        expected_name="resize_consume",
+        invalid_kwargs=[
+            (dict(words=51), "words from 52 to 563"),
+            (dict(words=564), "words from 52 to 563"),
+            (dict(chunk=6), "chunk a multiple of 4"),
+            (dict(patch_columns=0), "patch_columns >= 1"),
+            (dict(cores=0), "cores >= 1"),
+        ],
+        shape_checks=[(dict(chunk=64), 0, (64,)), (dict(words=100), 1, (100,))],
+    ),
     # ----- linalg -----
     KernelSpec(
         name="mm",
