@@ -80,18 +80,32 @@ def test_hsa_context_get_is_thread_safe(monkeypatch):
     assert len({id(r) for r in results}) == 1, "threads saw >1 HSAContext instance"
 
 
+class _FakeExecutable:
+    """Stands in for an HSAExecutable, recording whether it was destroyed."""
+
+    def __init__(self, kernel_object, insts=b""):
+        self.kernel_object = kernel_object
+        self.insts = insts
+        self.destroyed = 0
+
+    def destroy(self):
+        self.destroyed += 1
+
+
 def _make_fake_ctx_cls(overflows):
     """Fake HSAContext whose dispatch reports `overflows` to free after the wait."""
     from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
 
     class _FakeCtx:
         device_gen = "npu2"
+        arch = "aie2p"
 
         def __init__(self, timeout_on_wait):
             self._timeout_on_wait = timeout_on_wait
             self.armed = []
             self.discard_calls = 0
             self.vmem_free_calls = []
+            self.dispatched = []
             # Mirrors the real context: set by ring (modelled here on dispatch),
             # cleared by arm. It is what tells a failure whether the device could
             # still decrement the signal.
@@ -112,10 +126,8 @@ def _make_fake_ctx_cls(overflows):
         def vmem_free(self, handle, va, size):
             self.vmem_free_calls.append((handle, va, size))
 
-        def free_dev(self, ptr):
-            pass
-
-        def dispatch(self, pdi_ptr, insts_ptr, insts_size, arg_pairs, signal):
+        def dispatch(self, kernel_object, arg_pairs, signal):
+            self.dispatched.append(kernel_object)
             self._in_flight = True  # the real one has rung the doorbell by here
             return list(overflows)
 
@@ -139,32 +151,29 @@ def _run_with_fake_ctx(monkeypatch, overflows, timeout_on_wait):
         hrt.HSAContext, "get", classmethod(lambda c: cls(timeout_on_wait))
     )
     rt = hrt.HSAHostRuntime()
-    handle = hrt.HSAKernelHandle(pdi_ptr=0x1, insts_ptr=0x2, insts_size=4)
+    handle = hrt.HSAKernelHandle(_FakeExecutable(0x1))
     return rt, handle
 
 
 def _dynamic_runtime(monkeypatch, runtime_type="HSAHostRuntime"):
-    import ctypes
+    """Build a runtime holding one DispatchTime[T] handle, with hsaco loading faked.
+
+    Returns (runtime, handle, loaded, completion, callbacks): `loaded` lists
+    every executable built for a per-call instruction sequence, and
+    `completion` the value the shared signal 42 is observed at.
+    """
     from types import SimpleNamespace
 
     from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
 
     ctx = _make_fake_ctx_cls([])(timeout_on_wait=False)
-    buffers, freed, callbacks = {}, [], []
+    loaded, callbacks = [], []
     completion = {42: 1}
 
-    def alloc(size):
-        buffer = ctypes.create_string_buffer(size)
-        ptr = ctypes.addressof(buffer)
-        buffers[ptr] = buffer
-        return ptr
+    def load_hsaco(self, kernel):
+        loaded.append(_FakeExecutable(0x100 + len(loaded), kernel["insts"]))
+        return loaded[-1]
 
-    def free(ptr):
-        freed.append(ptr)
-        buffers.pop(ptr, None)
-
-    monkeypatch.setattr(ctx, "alloc_dev", alloc, raising=False)
-    monkeypatch.setattr(ctx, "free_dev", free)
     monkeypatch.setattr(hrt.HSAContext, "get", classmethod(lambda cls: ctx))
     monkeypatch.setattr(
         hrt,
@@ -179,13 +188,43 @@ def _dynamic_runtime(monkeypatch, runtime_type="HSAHostRuntime"):
         "atexit",
         SimpleNamespace(register=callbacks.append, unregister=callbacks.remove),
     )
+    # Patched on the class: patching the instance would make monkeypatch hold a
+    # reference to the runtime, defeating the tests that watch it get collected.
+    monkeypatch.setattr(hrt.HSAHostRuntime, "_load_hsaco", load_hsaco)
     runtime = getattr(hrt, runtime_type)()
-    handle = hrt.HSAKernelHandle(pdi_ptr=1, insts_ptr=None, insts_size=0)
+    handle = hrt.HSAKernelHandle(
+        None, stream_kernel={"name": "MLIR_AIE", "pdi": b"\x01", "num_cols": 1}
+    )
     if isinstance(runtime, hrt.CachedHSAHostRuntime):
         runtime._exe_cache["kernel"] = handle
     else:
         runtime._handles.append(handle)
-    return runtime, handle, buffers, freed, completion, callbacks
+    return runtime, handle, loaded, completion, callbacks
+
+
+def test_dispatch_time_streams_are_loaded_once_and_evicted_lru(monkeypatch):
+    """Each distinct per-call sequence is one executable, reused while cached."""
+    import numpy as np
+
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    monkeypatch.setattr(hrt, "_MAX_CACHED_STREAMS", 2)
+    runtime, handle, loaded, _, _ = _dynamic_runtime(monkeypatch)
+    a, b, c = (np.array([i], dtype=np.uint32) for i in (1, 2, 3))
+
+    for words in (a, b, a):
+        runtime.run(handle, [], dispatch_insts=words)
+    assert [e.insts for e in loaded] == [a.tobytes(), b.tobytes()]
+    assert runtime._ctx.dispatched == [0x100, 0x101, 0x100]
+
+    # b is now the least recently used, so loading c evicts it.
+    runtime.run(handle, [], dispatch_insts=c)
+    assert [e.destroyed for e in loaded] == [0, 1, 0]
+    assert list(handle.streams) == [a.tobytes(), c.tobytes()]
+
+    runtime.cleanup()
+    assert [e.destroyed for e in loaded] == [1, 1, 1]
+    assert not handle.streams
 
 
 @pytest.mark.parametrize("runtime_type", ["HSAHostRuntime", "CachedHSAHostRuntime"])
@@ -195,7 +234,7 @@ def test_dynamic_instruction_failure_ownership(monkeypatch, runtime_type, failur
 
     from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
 
-    runtime, handle, buffers, freed, completion, callbacks = _dynamic_runtime(
+    runtime, handle, loaded, completion, callbacks = _dynamic_runtime(
         monkeypatch, runtime_type
     )
     words = np.array([1, 2, 3, 4], dtype=np.uint32)
@@ -214,37 +253,114 @@ def test_dynamic_instruction_failure_ownership(monkeypatch, runtime_type, failur
         with pytest.raises(error):
             runtime.run(handle, [], dispatch_insts=words)
 
+    (executable,) = loaded
+    assert executable.insts == words.tobytes()
     if failure == "before-publish":
-        assert len(freed) == 1 and not buffers
+        # Never reached the device, so the executable stays cached for reuse.
+        assert handle.streams == {words.tobytes(): executable}
+        assert executable.destroyed == 0
         assert runtime._ctx.discard_calls == 0
-        assert not getattr(runtime, "_pending_dispatch_insts", [])
-        assert not getattr(runtime, "_pending_cleanup_registered", False)
+        assert not runtime._in_flight
+        assert not runtime._pending_cleanup_registered
     else:
-        assert freed == []
-        assert len(buffers) == 1, "failed published instructions must retain an owner"
-        (ptr,) = buffers
-        assert bytes(buffers[ptr]) == words.tobytes()
+        # The device may still run it: still cached, and tracked as in flight.
+        assert handle.streams == {words.tobytes(): executable}
         assert runtime._ctx.discard_calls == 1
-        assert getattr(runtime, "_pending_dispatch_insts", []) == [(ptr, 42, handle)]
+        assert runtime._in_flight == [(executable, 42)]
         assert runtime._reclaim_at_exit in callbacks
+        # Cleanup frees the handle but defers destroying the executable.
         runtime.cleanup()
-        assert (
-            freed == []
-        ), "a nonzero completion signal must retain instructions and PDI"
-        if hasattr(runtime, "_exe_cache"):
-            assert runtime._exe_cache.pop("kernel") is handle
-        runtime._free_handle(handle)
-        assert freed == [], "eviction must not free an in-flight PDI"
+        assert not getattr(runtime, "_exe_cache", None) and not runtime._handles
+        assert runtime._released == [executable]
+        assert executable.destroyed == 0, "a nonzero completion signal must retain it"
         completion[42] = 0
         runtime.run_chain([])
-        assert freed == [ptr]
-        assert not buffers and not runtime._pending_dispatch_insts
+        assert executable.destroyed == 1
+        assert not runtime._in_flight and not runtime._released
         assert runtime._reclaim_at_exit not in callbacks
 
     runtime.cleanup()
-    assert len(freed) == 2 and freed[-1] == handle.pdi_ptr
+    assert executable.destroyed == 1
     runtime.cleanup()
-    assert len(freed) == 2
+    assert executable.destroyed == 1
+
+
+def _static_handles(runtime, count):
+    """Add ``count`` handles with a static executable each to ``runtime``."""
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    handles = [hrt.HSAKernelHandle(_FakeExecutable(0x200 + i)) for i in range(count)]
+    runtime._handles.extend(handles)
+    return handles
+
+
+def test_failed_static_dispatch_retains_executable(monkeypatch):
+    """A static kernel's executable outlives its freed handle while it may run."""
+    runtime, _, _, completion, _ = _dynamic_runtime(monkeypatch)
+    (handle,) = _static_handles(runtime, 1)
+    executable = handle.executable
+    runtime._ctx._timeout_on_wait = True
+    with pytest.raises(_bindings.HSATimeoutError):
+        runtime.run(handle, [])
+    assert runtime._in_flight == [(executable, 42)]
+
+    runtime.cleanup()
+    assert executable.destroyed == 0
+    completion[42] = 0
+    runtime.cleanup()
+    assert executable.destroyed == 1
+
+
+def test_completed_failure_leaves_owned_executable_alive(monkeypatch):
+    """Observing completion forgets the failure; the owner keeps its executable."""
+    runtime, _, _, completion, callbacks = _dynamic_runtime(monkeypatch)
+    (handle,) = _static_handles(runtime, 1)
+    runtime._ctx._timeout_on_wait = True
+    with pytest.raises(_bindings.HSATimeoutError):
+        runtime.run(handle, [])
+    runtime._ctx._timeout_on_wait = False
+    completion[42] = 0
+    assert runtime.run(handle, []).is_success()
+    assert not runtime._in_flight and handle.executable.destroyed == 0
+    assert runtime._reclaim_at_exit not in callbacks
+
+
+def test_failed_chain_retains_every_executable(monkeypatch):
+    """Every kernel of a failed chain stays loaded until the chain completes."""
+    runtime, _, _, completion, _ = _dynamic_runtime(monkeypatch)
+    handles = _static_handles(runtime, 2)
+    runtime._ctx._timeout_on_wait = True
+    with pytest.raises(_bindings.HSATimeoutError):
+        runtime.run_chain([(handles[0], []), (handles[1], [])])
+
+    runtime.cleanup()
+    assert [h.executable.destroyed for h in handles] == [0, 0]
+    completion[42] = 0
+    runtime.cleanup()
+    assert [h.executable.destroyed for h in handles] == [1, 1]
+
+
+def test_stream_evicted_in_flight_is_destroyed_on_completion(monkeypatch):
+    """Evicting a stream a failed dispatch may still run defers its destruction."""
+    import numpy as np
+
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    monkeypatch.setattr(hrt, "_MAX_CACHED_STREAMS", 1)
+    runtime, handle, loaded, completion, _ = _dynamic_runtime(monkeypatch)
+    runtime._ctx._timeout_on_wait = True
+    with pytest.raises(_bindings.HSATimeoutError):
+        runtime.run(handle, [], dispatch_insts=np.array([1], dtype=np.uint32))
+    runtime._ctx._timeout_on_wait = False
+
+    # A second sequence evicts the first, whose dispatch has not completed.
+    runtime.run(handle, [], dispatch_insts=np.array([2], dtype=np.uint32))
+    assert [e.destroyed for e in loaded] == [0, 0]
+    assert runtime._released == [loaded[0]]
+
+    completion[42] = 0
+    runtime.cleanup()
+    assert [e.destroyed for e in loaded] == [1, 1]
 
 
 @pytest.mark.parametrize("recover_by", ["cleanup", "exit"])
@@ -254,25 +370,23 @@ def test_failed_dispatch_retains_runtime_until_reclamation(monkeypatch, recover_
 
     import numpy as np
 
-    runtime, handle, buffers, freed, completion, callbacks = _dynamic_runtime(
-        monkeypatch
-    )
+    runtime, handle, loaded, completion, callbacks = _dynamic_runtime(monkeypatch)
     runtime._ctx._timeout_on_wait = True
     with pytest.raises(_bindings.HSATimeoutError):
         runtime.run(handle, [], dispatch_insts=np.array([1], dtype=np.uint32))
-    (ptr,) = buffers
+    (executable,) = loaded
     reference = weakref.ref(runtime)
     del runtime
     gc.collect()
-    assert reference() is not None and freed == []
+    assert reference() is not None and executable.destroyed == 0
     completion[42] = 0
     if recover_by == "exit":
         callbacks.pop()()
     else:
         reference().cleanup()
     gc.collect()
-    assert freed == [ptr, handle.pdi_ptr]
-    assert not callbacks and not buffers
+    assert executable.destroyed == 1
+    assert not callbacks
     assert reference() is None
 
 
@@ -327,7 +441,7 @@ def test_non_timeout_failure_also_replaces_the_shared_signal(monkeypatch):
         hrt.HSAContext, "get", classmethod(lambda c: _BoomCtx(timeout_on_wait=False))
     )
     rt = hrt.HSAHostRuntime()
-    handle = hrt.HSAKernelHandle(pdi_ptr=0x1, insts_ptr=0x2, insts_size=4)
+    handle = hrt.HSAKernelHandle(_FakeExecutable(0x1))
     with pytest.raises(HSAErrorForTest):
         rt.run(handle, [])
     assert rt._ctx.discard_calls == 1, "a non-timeout failure must not reuse the signal"
@@ -369,12 +483,15 @@ def test_cache_size_zero_disables_caching(monkeypatch):
     rt = hrt.CachedHSAHostRuntime()
     built = []
     monkeypatch.setattr(
-        rt, "_resolve_kernel", lambda k: (pathlib.Path(k), pathlib.Path(k), "MLIR_AIE")
+        rt,
+        "_resolve_kernel",
+        lambda k: (pathlib.Path(k), pathlib.Path(k), "MLIR_AIE", False),
     )
     monkeypatch.setattr(
         rt,
         "_build_handle",
-        lambda i, p: built.append(str(i)) or hrt.HSAKernelHandle(1, 2, 4),
+        lambda s, i, n, e: built.append(str(s))
+        or hrt.HSAKernelHandle(_FakeExecutable(1)),
     )
     monkeypatch.setattr(pathlib.Path, "stat", lambda self: _FakeStat())
     rt.load("a")
@@ -458,7 +575,7 @@ def test_enqueue_does_not_consume_an_index_it_cannot_fill(monkeypatch):
     # A non-integer argument address fails conversion; that must happen before
     # the write index is reserved.
     with pytest.raises((TypeError, ValueError)):
-        ctx.enqueue(0x1, 0x2, 4, [("not-an-address", 4096)], 42)
+        ctx.enqueue(0x1, [("not-an-address", 4096)], 42)
     assert reserved == [], "write index must not be consumed by a failed enqueue"
 
 
@@ -484,7 +601,7 @@ def test_dispatch_chain_flushes_pending_packets_on_failure():
     from aie.utils.hostruntime.hsaruntime import context as ctx_mod
 
     ctx, rings = _chain_ctx(_raise_at(3, HSAErrorForTest("packet build failed")))
-    items = [(0x1, 0x2, 4, []) for _ in range(10)]
+    items = [(0x1, []) for _ in range(10)]
     with pytest.raises(HSAErrorForTest):
         ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
     assert rings == [2], "the three packets written before the failure are rung"
@@ -497,7 +614,7 @@ def test_dispatch_chain_does_not_ring_a_wedged_queue():
     from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
 
     ctx, rings = _chain_ctx(_raise_at(3, HSATimeoutError("queue never drained")))
-    items = [(0x1, 0x2, 4, []) for _ in range(10)]
+    items = [(0x1, []) for _ in range(10)]
     with pytest.raises(HSATimeoutError):
         ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
     assert rings == [], "must not ring a queue the device is not draining"
@@ -508,7 +625,7 @@ def test_dispatch_chain_timeout_retires_the_context():
 
     The timeout path deliberately does not ring, so the write index is left ahead
     of everything ever submitted. A later, unrelated dispatch's doorbell would
-    sweep those stale packets up -- re-running old PDIs against reused kernarg
+    sweep those stale packets up -- re-running old kernels against reused kernarg
     slots and decrementing a signal that dispatch never armed. Retire the context
     instead of letting the next caller inherit the hazard.
     """
@@ -517,7 +634,7 @@ def test_dispatch_chain_timeout_retires_the_context():
 
     ctx, _ = _chain_ctx(_raise_at(3, HSATimeoutError("queue never drained")))
     ctx._poisoned = None
-    items = [(0x1, 0x2, 4, []) for _ in range(10)]
+    items = [(0x1, []) for _ in range(10)]
     with pytest.raises(HSATimeoutError):
         ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
     assert ctx._poisoned, "a chain that left un-rung packets must retire the context"
@@ -527,7 +644,7 @@ def test_dispatch_chain_timeout_retires_the_context():
     later = object.__new__(ctx_mod.HSAContext)
     later._poisoned = "a dispatch chain timed out leaving 3 un-rung packet(s)."
     with pytest.raises(HSAError, match="no longer usable"):
-        later.enqueue(0x1, 0x2, 4, [], 42)
+        later.enqueue(0x1, [], 42)
 
 
 def _chain_ctx(enqueue=None):
@@ -572,7 +689,7 @@ def test_dispatch_chain_rings_in_batches():
     ctx, rings = _chain_ctx()
     batch = ctx.doorbell_batch
     n = batch * 2 + 3  # two full batches and a partial remainder
-    items = [(0x1, 0x2, 4, []) for _ in range(n)]
+    items = [(0x1, []) for _ in range(n)]
     assert ctx_mod.HSAContext.dispatch_chain(ctx, items, 42) == []
 
     # Each ring carries the write index of the last packet in its group.
@@ -756,7 +873,7 @@ def test_enqueue_times_out_when_queue_never_drains(monkeypatch):
     ctx._poisoned = None  # a healthy context
 
     with pytest.raises(HSATimeoutError):
-        ctx.enqueue(0x1, 0x2, 4, [], 42)
+        ctx.enqueue(0x1, [], 42)
 
 
 def _bare_ctx_for_wait(monkeypatch, wait_returns):

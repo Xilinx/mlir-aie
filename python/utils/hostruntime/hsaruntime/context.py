@@ -7,8 +7,8 @@
 
 This is the mid-level layer between the raw C ABI (`._bindings`) and the
 IRON ``HostRuntime`` (`.hostruntime`): `HSAContext` owns the single
-AIE + CPU agents, the data and device-heap memory pools, and a dispatch queue, and
-issues/waits on AIE kernel-dispatch packets.
+AIE + CPU agents, the data memory pool, and a dispatch queue, loads hsacos as
+`HSAExecutable`s, and issues/waits on AIE kernel-dispatch packets.
 """
 
 import ctypes
@@ -33,8 +33,11 @@ from ._bindings import (
     HSA_AMD_MEMORY_POOL_INFO_SEGMENT,
     HSA_AMD_SEGMENT_GLOBAL,
     HSA_AMD_VMEM_ADDRESS_NO_REGISTER,
+    HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
     HSA_DEVICE_TYPE_AIE,
     HSA_DEVICE_TYPE_CPU,
+    HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT,
+    HSA_PROFILE_FULL,
     HSA_QUEUE_TYPE_SINGLE,
     HSA_SIGNAL_CONDITION_EQ,
     HSA_STATUS_INFO_BREAK,
@@ -53,6 +56,9 @@ from ._bindings import (
     hsa_agent_t,
     hsa_amd_memory_pool_t,
     hsa_amd_vmem_alloc_handle_t,
+    hsa_code_object_reader_t,
+    hsa_executable_symbol_t,
+    hsa_executable_t,
     hsa_signal_t,
     lib,
 )
@@ -115,10 +121,17 @@ class HSAContext:
         if self.cpu_agent == 0:
             raise HSAError("No HSA CPU agent found")
 
-        self.pool = self._find_pool(self.aie_agent, dev_heap=False)
-        self.dev_pool = self._find_pool(self.aie_agent, dev_heap=True)
+        self.pool = self._find_pool(self.aie_agent)
         # Fixed for the life of the singleton; query once instead of per vmem_alloc.
         self.pool_granule = self._pool_granule()
+        # ROCR loads the hsaco section named after the agent, so the agent name
+        # is the architecture every hsaco is packed for: aie2 or aie2p.
+        name = (ctypes.c_char * 64)()
+        _check(
+            lib.hsa_agent_get_info(self.aie_agent, HSA_AGENT_INFO_NAME, name),
+            "hsa_agent_get_info(NAME)",
+        )
+        self.arch = name.value.decode("utf-8", "replace")
         self.device_gen = self._detect_device_gen()
 
         min_size = ctypes.c_uint32()
@@ -208,16 +221,14 @@ class HSAContext:
             raise HSAError(f"hsa_iterate_agents failed (hsa status {status})")
         return found.value
 
-    def _find_pool(self, agent, dev_heap):
-        """Find the AIE agent's device heap (``dev_heap``) or data pool.
+    def _find_pool(self, agent):
+        """Find the AIE agent's data pool.
 
-        ROCR distinguishes the two by the recommended allocation granule: the
-        device heap is reported with a REC_GRANULE of 0, every ordinary pool
-        with a nonzero one (see ``AieAgent::InitRegionList``). Allocations out
-        of the device heap become ``AMDXDNA_BO_DEV`` buffer objects, which is
-        the only BO type the driver's ``aie2_config_cu`` accepts for a PDI;
-        anything else is an ``AMDXDNA_BO_SHARE`` and the submit ioctl fails
-        with EIO.
+        ROCR also exposes the device heap, which code objects are loaded into,
+        as a coarse-grained global pool. The two are told apart by the
+        recommended allocation granule: the device heap is reported with a
+        REC_GRANULE of 0, every ordinary pool with a nonzero one (see
+        ``AieAgent::InitRegionList``).
         """
         found = ctypes.c_uint64(0)
 
@@ -253,7 +264,7 @@ class HSAContext:
                 != HSA_STATUS_SUCCESS
             ):
                 return HSA_STATUS_SUCCESS
-            if (rec.value == 0) != dev_heap:
+            if rec.value == 0:
                 return HSA_STATUS_SUCCESS
             found.value = pool
             return HSA_STATUS_INFO_BREAK
@@ -264,8 +275,7 @@ class HSAContext:
                 f"hsa_amd_agent_iterate_memory_pools failed (hsa status {status})"
             )
         if found.value == 0:
-            kind = "device heap" if dev_heap else "data"
-            raise HSAError(f"No coarse-grained {kind} pool found on AIE agent")
+            raise HSAError("No coarse-grained data pool found on AIE agent")
         return found.value
 
     def _detect_device_gen(self):
@@ -293,11 +303,7 @@ class HSAContext:
                     f"expected npu1 or npu2."
                 )
             return env
-        name = (ctypes.c_char * 64)()
-        status = lib.hsa_agent_get_info(self.aie_agent, HSA_AGENT_INFO_NAME, name)
-        if status != HSA_STATUS_SUCCESS:
-            raise HSAError(f"hsa_agent_get_info(NAME) failed (hsa status {status})")
-        text = name.value.decode("utf-8", "replace").lower()
+        text = self.arch.lower()
         if "aie2p" in text or "strix" in text or "krackan" in text or "npu2" in text:
             return "npu2"
         if "aie2" in text or "phoenix" in text or "npu1" in text:
@@ -328,21 +334,14 @@ class HSAContext:
         )
         return gran.value
 
-    # -- device heap memory (PDI/insts) -----------------------------------
-    def alloc_dev(self, size):
-        """Allocate from the device heap, where PDI and insts must live."""
-        ptr = ctypes.c_void_p()
-        _check(
-            lib.hsa_amd_memory_pool_allocate(self.dev_pool, size, 0, ctypes.byref(ptr)),
-            "hsa_amd_memory_pool_allocate",
-        )
-        if not ptr.value:
-            raise HSAError("hsa_amd_memory_pool_allocate returned a null pointer")
-        return ptr.value
+    # -- code objects --------------------------------------------------------
+    def load_executable(self, hsaco, kernel_name):
+        """Load the hsaco bytes ``hsaco`` on the AIE agent.
 
-    def free_dev(self, ptr):
-        if ptr:
-            lib.hsa_amd_memory_pool_free(ctypes.c_void_p(ptr))
+        Returns an `HSAExecutable` whose ``kernel_object`` dispatches the
+        kernel named ``kernel_name``.
+        """
+        return HSAExecutable(self.aie_agent, hsaco, kernel_name)
 
     # -- vmem memory (I/O + kernargs) -------------------------------------
     def vmem_alloc(self, size):
@@ -508,20 +507,16 @@ class HSAContext:
             )
 
     # -- dispatch ----------------------------------------------------------
-    def _fill_packet(
-        self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
-    ):
+    def _fill_packet(self, kernel_object, kernarg_ptr, num_kernargs, signal):
         pkt = HsaAieKernelDispatchPacket()
         pkt.header = _DISPATCH_HEADER
         pkt.opcode = HSA_AMD_AIE_PACKET_OPCODE_KMQ
         pkt.count = 24
         pkt.completion_signal = signal
-        pkt.insts_addr_low = insts_ptr & 0xFFFFFFFF
-        pkt.insts_addr_high = insts_ptr >> 32
+        pkt.kernel_object_low = kernel_object & 0xFFFFFFFF
+        pkt.kernel_object_high = kernel_object >> 32
         pkt.num_kernargs = num_kernargs
         pkt.kernarg_address = kernarg_ptr
-        pkt.insts_size = insts_size
-        pkt.pdi_addr = pdi_ptr
         return pkt
 
     @staticmethod
@@ -538,9 +533,10 @@ class HSAContext:
             ka[i] = addrs[i]
             ka[n + i] = sizes[i]
 
-    def enqueue(self, pdi_ptr, insts_ptr, insts_size, args, signal):
+    def enqueue(self, kernel_object, args, signal):
         """Write one packet at the next queue slot (no doorbell).
 
+        ``kernel_object`` is the `HSAExecutable.kernel_object` to dispatch, and
         ``args`` is a sequence of ``(device_va, nbytes)`` pairs, one per tensor
         argument. Returns ``(wr_idx, overflow)``, where ``overflow`` is ``None``
         for the common pooled case, or the ``(handle, va, size)`` of a one-off
@@ -570,9 +566,7 @@ class HSAContext:
         n = len(args)
         addrs = [int(va) for va, _ in args]
         sizes = [int(nbytes) for _, nbytes in args]
-        pdi_ptr = int(pdi_ptr)
-        insts_ptr = int(insts_ptr)
-        insts_size = int(insts_size)
+        kernel_object = int(kernel_object)
         signal = int(signal)
 
         q = self.queue
@@ -614,7 +608,7 @@ class HSAContext:
         )
         self._write_kernargs(ka_va, addrs, sizes)
         self.queue_packets[slot] = self._fill_packet(
-            pdi_ptr, insts_ptr, insts_size, ka_va if n else None, n, signal
+            kernel_object, ka_va if n else None, n, signal
         )
         return wr_idx, overflow
 
@@ -626,21 +620,20 @@ class HSAContext:
         self._signal_published = True
         lib.hsa_signal_store_screlease(self.queue_doorbell, wr_idx)
 
-    def dispatch(self, pdi_ptr, insts_ptr, insts_size, args, signal):
+    def dispatch(self, kernel_object, args, signal):
         """Single dispatch: enqueue one packet and ring the doorbell.
 
         Returns the list of one-off kernarg allocations to free after the wait
         (empty in the common pooled case).
         """
-        wr_idx, overflow = self.enqueue(pdi_ptr, insts_ptr, insts_size, args, signal)
+        wr_idx, overflow = self.enqueue(kernel_object, args, signal)
         self.ring(wr_idx)
         return [overflow] if overflow is not None else []
 
     def dispatch_chain(self, items, signal):
         """Enqueue a sequence of dispatches sharing one completion signal.
 
-        ``items`` is a sequence of ``(pdi_ptr, insts_ptr, insts_size, args)``
-        tuples, where ``args`` is that dispatch's list of ``(device_va, nbytes)``
+        ``items`` is a sequence of ``(kernel_object, args)`` tuples, where ``args`` is that dispatch's list of ``(device_va, nbytes)``
         pairs. All packets carry the same ``signal`` (initialized by the caller to
         ``len(items)``); each completed packet decrements it, so a single
         ``wait(signal)`` covers the whole chain. Ordering is guaranteed by the
@@ -662,10 +655,8 @@ class HSAContext:
         pending = 0
         wr_idx = None
         try:
-            for pdi_ptr, insts_ptr, insts_size, args in items:
-                wr_idx, overflow = self.enqueue(
-                    pdi_ptr, insts_ptr, insts_size, args, signal
-                )
+            for kernel_object, args in items:
+                wr_idx, overflow = self.enqueue(kernel_object, args, signal)
                 if overflow is not None:
                     overflows.append(overflow)
                 pending += 1
@@ -681,7 +672,7 @@ class HSAContext:
             # synchronous submit, so leave the pending packets for whatever
             # recovers the device. They stay written but un-rung, which leaves the
             # write index ahead of everything ever submitted: a later, unrelated
-            # dispatch's doorbell would sweep them up and re-run stale PDIs
+            # dispatch's doorbell would sweep them up and re-run stale kernels
             # against stale kernarg slots, decrementing a signal that dispatch
             # never armed. Nothing can safely build on this queue again, so retire
             # the context instead of letting the next caller inherit the hazard.
@@ -755,3 +746,89 @@ class HSAContext:
                     f"cannot be cancelled and is still pending. Recover the device "
                     f"(e.g. reload the amdxdna driver) if this persists."
                 )
+
+
+class HSAExecutable:
+    """An hsaco loaded and frozen on the AIE agent, with one kernel to dispatch.
+
+    ROCR reads the code object in place for as long as its reader exists, so the
+    hsaco bytes are kept alive here until `destroy`. Destroying the executable
+    releases the device memory its kernel was loaded into, so it must outlive
+    every dispatch of ``kernel_object``.
+    """
+
+    def __init__(self, agent, hsaco, kernel_name):
+        # Held, not copied: ROCR reads these immutable bytes in place.
+        self._hsaco = hsaco
+        self._reader = 0
+        self._executable = 0
+        try:
+            reader = hsa_code_object_reader_t()
+            _check(
+                lib.hsa_code_object_reader_create_from_memory(
+                    hsaco, len(hsaco), ctypes.byref(reader)
+                ),
+                "hsa_code_object_reader_create_from_memory",
+            )
+            self._reader = reader.value
+            executable = hsa_executable_t()
+            _check(
+                lib.hsa_executable_create_alt(
+                    HSA_PROFILE_FULL,
+                    HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
+                    None,
+                    ctypes.byref(executable),
+                ),
+                "hsa_executable_create_alt",
+            )
+            self._executable = executable.value
+            # The usual failure here is a ROCR that cannot load AIE code objects
+            # at all, which reports nothing more specific than the status.
+            _check(
+                lib.hsa_executable_load_agent_code_object(
+                    self._executable, agent, self._reader, None, None
+                ),
+                "hsa_executable_load_agent_code_object (the ROCR in use must "
+                "support AIE hsacos)",
+            )
+            _check(
+                lib.hsa_executable_freeze(self._executable, None),
+                "hsa_executable_freeze",
+            )
+            symbol = hsa_executable_symbol_t()
+            _check(
+                lib.hsa_executable_get_symbol_by_name(
+                    self._executable,
+                    kernel_name.encode(),
+                    ctypes.byref(hsa_agent_t(agent)),
+                    ctypes.byref(symbol),
+                ),
+                f"hsa_executable_get_symbol_by_name({kernel_name!r})",
+            )
+            kernel_object = ctypes.c_uint64()
+            _check(
+                lib.hsa_executable_symbol_get_info(
+                    symbol.value,
+                    HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT,
+                    ctypes.byref(kernel_object),
+                ),
+                "hsa_executable_symbol_get_info(KERNEL_OBJECT)",
+            )
+        except BaseException:
+            self.destroy()
+            raise
+        self.kernel_object = kernel_object.value
+
+    def destroy(self):
+        """Unload the executable. Idempotent; statuses are logged, not raised."""
+        if self._executable:
+            HSAContext._log_if_error(
+                lib.hsa_executable_destroy(self._executable), "hsa_executable_destroy"
+            )
+            self._executable = 0
+        if self._reader:
+            HSAContext._log_if_error(
+                lib.hsa_code_object_reader_destroy(self._reader),
+                "hsa_code_object_reader_destroy",
+            )
+            self._reader = 0
