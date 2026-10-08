@@ -1,6 +1,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+# RUN: %python %s > /dev/null
+
 import numpy as np
 from aie.iron import (
     Buffer,
@@ -78,9 +80,7 @@ def make_event_configuration(name, event, counts, trace_size):
 
 def build_design(_out: Out, *, trace_size: CompileTime[int]):
     slice_size = trace_size // 6
-    dev_a, (seq_a1, seq_a2) = make_event_configuration(
-        "a", 0, (7000, 9000), slice_size
-    )
+    dev_a, (seq_a1, seq_a2) = make_event_configuration("a", 0, (7000, 9000), slice_size)
     dev_b, (seq_b1, seq_b2) = make_event_configuration(
         "b", 1, (8000, 10000), slice_size
     )
@@ -101,3 +101,7 @@ def build_design(_out: Out, *, trace_size: CompileTime[int]):
     entry = Runtime(coordinator, [Out24])
     main = DeviceConfiguration("main", NPU2Col1(), runtimes=[entry])
     return Program.compose([main, dev_a, dev_b], entry=entry).resolve_program()
+
+
+if __name__ == "__main__":
+    print(build_design(None, trace_size=3072))

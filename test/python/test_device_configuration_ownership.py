@@ -40,8 +40,12 @@ def runtime(name):
 def resolve_two(workers_a=(), workers_b=(), configure=None):
     rt_a = runtime("seq_a")
     rt_b = runtime("seq_b")
-    config_a = DeviceConfiguration("dev_a", NPU2Col1(), workers=workers_a, runtimes=[rt_a])
-    config_b = DeviceConfiguration("dev_b", NPU2Col1(), workers=workers_b, runtimes=[rt_b])
+    config_a = DeviceConfiguration(
+        "dev_a", NPU2Col1(), workers=workers_a, runtimes=[rt_a]
+    )
+    config_b = DeviceConfiguration(
+        "dev_b", NPU2Col1(), workers=workers_b, runtimes=[rt_b]
+    )
     if configure is not None:
         configure(config_a, config_b, rt_a, rt_b)
     return Program.compose([config_a, config_b], entry=rt_a).resolve_program()
@@ -100,7 +104,11 @@ def test_worker_resource_cannot_span_device_configurations(resource_factory):
 def test_flow_cannot_span_device_configurations(flow_type):
     source = Tile(0, 1, tile_type=AIETileType.MemTile)
     destination = Tile(0, 2, tile_type=AIETileType.CoreTile)
-    flow = flow_type(source, destination) if flow_type is Flow else flow_type(0, source, destination)
+    flow = (
+        flow_type(source, destination)
+        if flow_type is Flow
+        else flow_type(0, source, destination)
+    )
 
     def configure(config_a, config_b, rt_a, rt_b):
         rt_a.add_flow(flow)
@@ -199,6 +207,27 @@ def test_module_scoped_resolvables_can_span_device_configurations():
     assert text.count("aiex.scratchpad_parameter @shared_parameter") == 1
 
 
+def test_distinct_scratchpad_parameters_with_one_name_share_a_declaration():
+    parameter_a = ScratchpadParameter("shared_parameter", np.int32)
+    parameter_b = ScratchpadParameter("shared_parameter", np.int32)
+    worker_a = worker_with(parameter_a)
+    worker_b = worker_with(parameter_b)
+
+    text = str(resolve_two([worker_a], [worker_b]))
+
+    assert text.count("aiex.scratchpad_parameter @shared_parameter") == 1
+
+
+def test_distinct_scratchpad_parameters_reject_conflicting_dtypes():
+    parameter_a = ScratchpadParameter("shared_parameter", np.int32)
+    parameter_b = ScratchpadParameter("shared_parameter", np.int16)
+    worker_a = worker_with(parameter_a)
+    worker_b = worker_with(parameter_b)
+
+    with pytest.raises(ValueError, match="conflicting dtypes"):
+        resolve_two([worker_a], [worker_b])
+
+
 def test_device_descriptor_can_define_multiple_configurations():
     device = NPU2Col1()
     rt_a = runtime("seq_a")
@@ -230,12 +259,15 @@ def sequence_local_configuration(name):
         [Tensor, fifo.prod()],
         name=f"seq_{name}",
     )
-    return DeviceConfiguration(
-        f"dev_{name}",
-        NPU2Col1(),
-        workers=[worker],
-        runtimes=[runtime_instance],
-    ), runtime_instance
+    return (
+        DeviceConfiguration(
+            f"dev_{name}",
+            NPU2Col1(),
+            workers=[worker],
+            runtimes=[runtime_instance],
+        ),
+        runtime_instance,
+    )
 
 
 def test_sequence_local_resolvables_are_distinct_per_configuration():
@@ -274,7 +306,9 @@ def test_distinct_device_resources_resolve_in_distinct_configurations():
     ],
     ids=["lock", "structural-resolvable"],
 )
-def test_distinct_worker_resources_can_belong_to_distinct_configurations(resource_factory, expected):
+def test_distinct_worker_resources_can_belong_to_distinct_configurations(
+    resource_factory, expected
+):
     worker_a = worker_with(resource_factory("a"))
     worker_b = worker_with(resource_factory("b"))
 
@@ -287,7 +321,11 @@ def test_distinct_flows_can_belong_to_distinct_configurations(flow_type):
     for index in range(2):
         source = Tile(0, 1, tile_type=AIETileType.MemTile)
         destination = Tile(0, 2, tile_type=AIETileType.CoreTile)
-        flows.append(flow_type(source, destination, name=f"flow_{index}") if flow_type is Flow else flow_type(index, source, destination, name=f"flow_{index}"))
+        flows.append(
+            flow_type(source, destination, name=f"flow_{index}")
+            if flow_type is Flow
+            else flow_type(index, source, destination, name=f"flow_{index}")
+        )
 
     def configure(config_a, config_b, rt_a, rt_b):
         rt_a.add_flow(flows[0])
@@ -340,7 +378,9 @@ def linked_fifo_worker_pair(name):
     [(fifo_worker_pair, 2), (linked_fifo_worker_pair, 4)],
     ids=["object-fifo", "object-fifo-link"],
 )
-def test_distinct_fifo_graphs_can_belong_to_distinct_configurations(pair_factory, fifo_count):
+def test_distinct_fifo_graphs_can_belong_to_distinct_configurations(
+    pair_factory, fifo_count
+):
     workers_a = pair_factory("a")
     workers_b = pair_factory("b")
     text = str(resolve_two(workers_a, workers_b))

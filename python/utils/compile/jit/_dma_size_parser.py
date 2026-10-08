@@ -45,9 +45,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def parse_dma_sizes(
-    kernel_dir: Path, entry: str | None = None
-) -> list[int] | None:
+def parse_dma_sizes(kernel_dir: Path, entry: str | None = None) -> list[int] | None:
     """Return per-host-arg footprints, in bits, from ``input_with_addresses.mlir``.
 
     The returned list follows ``aie.runtime_sequence`` tensor argument
@@ -130,11 +128,11 @@ def parse_dma_sizes(
         if entry is not None:
             if entry not in qualified_sequences:
                 return None
-            entry = qualified_sequences[entry]
+            selected_sequence = qualified_sequences[entry]
         elif len(all_sequences) == 1:
             # Only one sequence in the module — trivially the root.  Works
             # whether or not it carries a sym_name.
-            entry = all_sequences[0]
+            selected_sequence = all_sequences[0]
         else:
             # Multiple sequences: each must be named so we can reason about
             # the call graph.  Entry point = the unique root (not called by
@@ -146,10 +144,10 @@ def parse_dma_sizes(
                 # 0 roots => cyclic; >1 roots => multi-device or multiple
                 # top-level entries — can't unambiguously map host tensors.
                 return None
-            entry = roots[0]
+            selected_sequence = roots[0]
 
         # Pass 3: read each arg's memref footprint, in bits.
-        seq_block = entry.regions[0].blocks[0]
+        seq_block = selected_sequence.regions[0].blocks[0]
         sizes: list[int] = []
         memref_type = ir.MemRefType  # pyright: ignore[reportAttributeAccessIssue]
         scalar_types = (

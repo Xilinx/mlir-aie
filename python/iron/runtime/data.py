@@ -83,7 +83,9 @@ class RuntimeData:
             raise ValueError("RuntimeData.window requires a one-dimensional source.")
         shape = tuple(shape)
         if not shape or any(size < 0 for size in shape):
-            raise ValueError(f"RuntimeData.window requires a non-empty static shape: {shape}.")
+            raise ValueError(
+                f"RuntimeData.window requires a non-empty static shape: {shape}."
+            )
         size = math.prod(shape)
         if offset < 0 or offset + size > self.shape[0]:
             raise ValueError(

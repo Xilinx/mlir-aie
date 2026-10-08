@@ -356,9 +356,7 @@ class WorkerRuntimeBarrier(PerDeviceConfiguration):
             raise ValueError(
                 "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
             )
-        action = (
-            LockAction.AcquireGreaterEqual if greater_equal else LockAction.Acquire
-        )
+        action = LockAction.AcquireGreaterEqual if greater_equal else LockAction.Acquire
         use_lock(self.worker_locks[-1], action, value=value)
 
     def set(self, value: int):

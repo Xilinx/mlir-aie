@@ -8,11 +8,15 @@ from collections.abc import Sequence
 from contextlib import contextmanager
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
-from ..dialects.aie import TraceMode, device
-from ..dialects.aiex import ConfigureOp
+from ..dialects.aie import (
+    TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
+    device,
+)
+from ..dialects.aiex import ConfigureOp  # pyright: ignore[reportAttributeAccessIssue]
 from ..helpers.dialects.func import FuncBase
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
+from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifoLink
 from .device import Device
 from .kernel import Kernel
@@ -65,6 +69,7 @@ class DeviceConfiguration:
         for runtime in self._runtimes:
             runtime._bind_configuration(self)
 
+    # Device-local resources may belong to only one configuration.
     def _claim(self, resource, owners: dict[int, "DeviceConfiguration"]) -> None:
         if isinstance(resource, (Kernel, ScratchpadParameter)):
             return
@@ -107,6 +112,10 @@ class DeviceConfiguration:
             if endpoint in self._workers:
                 pass
             elif candidate in runtime_handles:
+                pass
+            elif isinstance(endpoint, ObjectFifoEndpoint) and not isinstance(
+                endpoint, PerDeviceConfiguration
+            ):
                 pass
             elif not isinstance(endpoint, ObjectFifoLink):
                 raise ValueError(
@@ -222,10 +231,9 @@ class DeviceConfiguration:
         for program in self._resolved_tile_dmas:
             program.resolve()
 
+    # Unnamed device-local symbols share one namespace inside this configuration.
     def _name_unnamed(self) -> None:
-        fifos = [
-            h._object_fifo for runtime in self._runtimes for h in runtime.fifos
-        ]
+        fifos = [h._object_fifo for runtime in self._runtimes for h in runtime.fifos]
         fifos += [h._object_fifo for worker in self._workers for h in worker.fifos]
         fifos = list(dict.fromkeys(fifos))
         for fifo in fifos:
@@ -271,6 +279,7 @@ class DeviceConfiguration:
         owners: dict[int, "DeviceConfiguration"],
     ) -> None:
         """Emit this configuration as one ``aie.device`` operation."""
+        # The remaining emission order matches the dependencies between device ops.
         self._owners = owners
         self._name_unnamed()
         device_type = type(self._device)

@@ -23,7 +23,7 @@ class Program:
     """One compilation unit and host-visible execution graph.
 
     A Program emits one MLIR module. It composes one or more
-    [`DeviceConfiguration`][iron.DeviceConfiguration] images and selects the
+    [`DeviceConfiguration`][iron.configuration.DeviceConfiguration] images and selects the
     entry [`Runtime`][iron.Runtime] that orchestrates one run. Each device
     configuration owns the resources inside one ``aie.device`` operation;
     Program owns module creation, entry selection, and cross-configuration
@@ -90,7 +90,9 @@ class Program:
         names = [configuration.name for configuration in self._configurations]
         duplicates = sorted(name for name in set(names) if names.count(name) > 1)
         if duplicates:
-            raise ValueError(f"Program has duplicate configuration names: {duplicates}.")
+            raise ValueError(
+                f"Program has duplicate configuration names: {duplicates}."
+            )
         entry_configuration = self._entry.configuration
         if entry_configuration not in self._configurations:
             raise ValueError(
@@ -140,7 +142,9 @@ class Program:
             core_trace_mode (TraceMode, optional): Trace mode for core tiles.
                 Defaults to Event-Time.
         """
-        self._entry.configuration.enable_trace(
+        configuration = self._entry.configuration
+        assert configuration is not None
+        configuration.enable_trace(
             trace_size=trace_size,
             workers=workers,
             reuse_output_buffer=reuse_output_buffer,
@@ -173,28 +177,26 @@ class Program:
 
         self._validate_composition()
         with mlir_mod_ctx(context=context, location=loc) as ctx:
-            scratchpad_parameters = []
+            scratchpad_parameters: dict[str, ScratchpadParameter] = {}
             for configuration in self._configurations:
                 for worker in configuration.workers:
                     for arg in worker.flat_fn_args:
-                        if (
-                            isinstance(arg, ScratchpadParameter)
-                            and arg not in scratchpad_parameters
-                        ):
-                            scratchpad_parameters.append(arg)
+                        if isinstance(arg, ScratchpadParameter):
+                            self._register_scratchpad_parameter(
+                                scratchpad_parameters, arg
+                            )
                 for runtime in configuration.runtimes:
                     for parameter in runtime.scratchpad_parameters:
-                        if parameter not in scratchpad_parameters:
-                            scratchpad_parameters.append(parameter)
-            for parameter in scratchpad_parameters:
+                        self._register_scratchpad_parameter(
+                            scratchpad_parameters, parameter
+                        )
+            for parameter in scratchpad_parameters.values():
                 parameter.resolve()
 
             owners = {}
             for configuration in self._configurations:
                 symbol = (
-                    device_name
-                    if self._implicit_configuration
-                    else configuration.name
+                    device_name if self._implicit_configuration else configuration.name
                 )
                 configuration.resolve(
                     device_name=symbol,
@@ -206,10 +208,13 @@ class Program:
             for configuration in self._configurations:
                 for runtime in configuration.runtimes:
                     for parameter in runtime.scratchpad_parameters:
-                        parameter.resolve()
+                        self._register_scratchpad_parameter(
+                            scratchpad_parameters, parameter
+                        ).resolve()
 
             if not self._implicit_configuration:
                 entry_configuration = self._entry.configuration
+                assert entry_configuration is not None
                 ctx.module.operation.attributes["iron.entry"] = ir.StringAttr.get(
                     f"{entry_configuration.name}:{self._entry.name}"
                 )
@@ -221,6 +226,24 @@ class Program:
 
             self._print_verify(ctx)
             return ctx.module
+
+    @staticmethod
+    def _register_scratchpad_parameter(
+        parameters: dict[str, ScratchpadParameter],
+        parameter: ScratchpadParameter,
+    ) -> ScratchpadParameter:
+        declaration = parameters.get(parameter.name)
+        if declaration is None:
+            parameters[parameter.name] = parameter
+            return parameter
+        if declaration.dtype != parameter.dtype:
+            raise ValueError(
+                f"ScratchpadParameter {parameter.name!r} has conflicting dtypes "
+                f"{declaration.dtype} and {parameter.dtype}."
+            )
+        if parameter is not declaration:
+            parameter._resolved = True
+        return declaration
 
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()

@@ -5,6 +5,8 @@
 #
 """Structural protocol for objects that lower to MLIR operations."""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
@@ -48,8 +50,10 @@ class Resolvable(Protocol):
 class PerDeviceConfiguration:
     """An object that belongs to one ``aie.device`` image."""
 
-    def _bind_device_configuration(self, configuration: "DeviceConfiguration") -> None:
-        owner = getattr(self, "_device_configuration", None)
+    _device_configuration: DeviceConfiguration | None = None
+
+    def _bind_device_configuration(self, configuration: DeviceConfiguration) -> None:
+        owner = self._device_configuration
         if owner is not None and owner is not configuration:
             raise ValueError(
                 f"{type(self).__name__} already belongs to device configuration "

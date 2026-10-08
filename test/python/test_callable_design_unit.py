@@ -20,6 +20,8 @@ from aie.utils.callabledesign import CallableDesign
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
 from aie.utils.jit import _JIT_CONFIG_KEYS, jit
+from aie.utils.trace import TraceConfig
+from aie.utils.trace.parse import DEFAULT_KERNEL
 
 # ---------------------------------------------------------------------------
 # CallableDesign construction
@@ -456,6 +458,32 @@ def test_specialize_preserves_wrapper_trace_config_when_not_overridden():
     spec = cd.specialize(M=512)
 
     assert spec.trace_config is sentinel
+
+
+def test_compile_resets_reused_trace_config_kernel(monkeypatch, tmp_path):
+    physical_mlir = tmp_path / "input_with_addresses.mlir"
+    physical_mlir.write_text("module {}")
+    trace_config = TraceConfig(1024)
+    callable_design = CallableDesign(lambda: None)
+    compilable = MagicMock()
+    compilable.compile.return_value = (
+        tmp_path / "design.xclbin",
+        tmp_path / "insts.bin",
+    )
+    compilable._kernel_dir = tmp_path
+    compilable._expected_tensor_sizes = []
+    compilable.full_elf = False
+    compilable.use_cache = False
+    compilable.dispatch_params = []
+    compilable.get_dispatch_lib_path.return_value = None
+
+    compilable._full_elf_kernel_name = "device:sequence"
+    callable_design._compile_and_build_kernel(compilable, None, trace_config)
+    assert trace_config.kernel == "device:sequence"
+
+    compilable._full_elf_kernel_name = None
+    callable_design._compile_and_build_kernel(compilable, None, trace_config)
+    assert trace_config.kernel == DEFAULT_KERNEL
 
 
 # ---------------------------------------------------------------------------

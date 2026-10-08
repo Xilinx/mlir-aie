@@ -2028,7 +2028,7 @@ module {
 
 
 def test_parse_dma_sizes_selects_explicit_multi_device_entry(tmp_path):
-        sample_mlir = """\
+    sample_mlir = """\
 module {
     aie.device(npu1) @first {
         aie.runtime_sequence @run(%x: memref<1024xi32>) {
@@ -2040,8 +2040,8 @@ module {
     }
 }
 """
-        (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
-        assert parse_dma_sizes(tmp_path, entry="second:run") == [2048 * 16]
+    (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
+    assert parse_dma_sizes(tmp_path, entry="second:run") == [2048 * 16]
 
 
 def test_parse_dma_sizes_returns_none_for_dynamic_shape_arg(tmp_path):
@@ -2219,9 +2219,7 @@ def test_mlir_path_compile_forwards_include_paths_and_stages_objects(
 
 def test_non_full_elf_allows_raw_multi_device_mlir(tmp_path):
     mlir_path = tmp_path / "design.mlir"
-    mlir_path.write_text(
-        "module { aie.device(npu1) @a {} aie.device(npu1) @b {} }"
-    )
+    mlir_path.write_text("module { aie.device(npu1) @a {} aie.device(npu1) @b {} }")
 
     design = CompilableDesign(mlir_path)
     design._generate_mlir(ExternalFunction)
@@ -2230,7 +2228,7 @@ def test_non_full_elf_allows_raw_multi_device_mlir(tmp_path):
 def test_non_full_elf_rejects_multi_configuration_program(tmp_path):
     mlir_path = tmp_path / "design.mlir"
     mlir_path.write_text(
-        'module attributes {iron.configuration_count = 2 : i32, '
+        "module attributes {iron.configuration_count = 2 : i32, "
         'iron.entry = "main:sequence"} {}'
     )
 

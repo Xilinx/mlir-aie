@@ -22,15 +22,28 @@ config_a = DeviceConfiguration("dev_a", NPU2Col1(), runtimes=[seq_a])
 config_b = DeviceConfiguration("dev_b", NPU2Col1(), runtimes=[seq_b])
 
 
+# CHECK: module attributes {iron.configuration_count = 3 : i32, iron.entry = "main:sequence"}
+# CHECK: aie.device(npu2_1col) {
+# CHECK: aie.runtime_sequence(%[[OUT:.*]]: memref<8xi32>)
 def coordinator(out):
+    # CHECK: aiex.configure @dev_a
+    # CHECK: %[[A:.*]] = memref.reinterpret_cast
+    # CHECK: aiex.run @seq_a(%[[A]]) : (memref<4xi32>)
     with config_a.configure():
         seq_a.call(out.window(0, (4,)))
+    # CHECK: aiex.configure @dev_b
+    # CHECK: %[[B:.*]] = memref.reinterpret_cast
+    # CHECK: aiex.run @seq_b(%[[B]]) : (memref<4xi32>)
     with config_b.configure():
         seq_b.call(out.window(4, (4,)))
 
 
 entry = Runtime(coordinator, [Out8])
 main = DeviceConfiguration("main", NPU2Col1(), runtimes=[entry])
+# CHECK: aie.device(npu2_1col) @dev_a
+# CHECK: aie.runtime_sequence @seq_a(%{{.*}}: memref<4xi32>)
+# CHECK: aie.device(npu2_1col) @dev_b
+# CHECK: aie.runtime_sequence @seq_b(%{{.*}}: memref<4xi32>)
 print(Program.compose([main, config_a, config_b], entry=entry).resolve_program())
 
 flow_a = object()
@@ -45,6 +58,7 @@ assert config_b.flows == [flow_b]
 try:
     DeviceConfiguration("other", NPU2Col1(), runtimes=[seq_a])
 except ValueError as error:
+    # CHECK: owner: Runtime 'seq_a' already belongs to configuration 'dev_a'.
     print(f"owner: {error}")
 else:
     raise AssertionError("Runtime accepted two configurations")
@@ -54,6 +68,7 @@ with mlir_mod_ctx():
         with config_b.configure():
             seq_a.call()
     except ValueError as error:
+        # CHECK: scope: Runtime 'seq_a' belongs to configuration 'dev_a', not 'dev_b'.
         print(f"scope: {error}")
     else:
         raise AssertionError("Runtime accepted the wrong configuration scope")
@@ -63,23 +78,7 @@ with mlir_mod_ctx():
             with config_b.configure():
                 pass
     except RuntimeError as error:
+        # CHECK: nested: Nested configuration scopes are not supported.
         print(f"nested: {error}")
     else:
         raise AssertionError("Configuration scopes nested")
-
-# CHECK: module attributes {iron.configuration_count = 3 : i32, iron.entry = "main:sequence"}
-# CHECK: aie.device(npu2_1col) {
-# CHECK: aie.runtime_sequence(%[[OUT:.*]]: memref<8xi32>)
-# CHECK: aiex.configure @dev_a
-# CHECK: %[[A:.*]] = memref.reinterpret_cast
-# CHECK: aiex.run @seq_a(%[[A]]) : (memref<4xi32>)
-# CHECK: aiex.configure @dev_b
-# CHECK: %[[B:.*]] = memref.reinterpret_cast
-# CHECK: aiex.run @seq_b(%[[B]]) : (memref<4xi32>)
-# CHECK: aie.device(npu2_1col) @dev_a
-# CHECK: aie.runtime_sequence @seq_a(%{{.*}}: memref<4xi32>)
-# CHECK: aie.device(npu2_1col) @dev_b
-# CHECK: aie.runtime_sequence @seq_b(%{{.*}}: memref<4xi32>)
-# CHECK: owner: Runtime 'seq_a' already belongs to configuration 'dev_a'.
-# CHECK: scope: Runtime 'seq_a' belongs to configuration 'dev_a', not 'dev_b'.
-# CHECK: nested: Nested configuration scopes are not supported.

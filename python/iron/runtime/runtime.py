@@ -31,7 +31,7 @@ from ...dialects.aiex import (
     dma_await_task,
     dma_free_task,
     npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
-    run,
+    run,  # pyright: ignore[reportAttributeAccessIssue]
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
@@ -322,10 +322,10 @@ class Runtime(Resolvable):
         return self._name
 
     @property
-    def configuration(self) -> "DeviceConfiguration | None":
+    def configuration(self) -> DeviceConfiguration | None:
         return self._configuration
 
-    def _bind_configuration(self, configuration: "DeviceConfiguration") -> None:
+    def _bind_configuration(self, configuration: DeviceConfiguration) -> None:
         if self._configuration is not None:
             raise ValueError(
                 f"Runtime {self._name!r} already belongs to configuration "
@@ -346,7 +346,9 @@ class Runtime(Resolvable):
                 f"Runtime {self._name!r} must be called inside a configuration scope."
             )
         if configuration is not self._configuration:
-            owner = self._configuration.name if self._configuration is not None else None
+            owner = (
+                self._configuration.name if self._configuration is not None else None
+            )
             raise ValueError(
                 f"Runtime {self._name!r} belongs to configuration {owner!r}, "
                 f"not {configuration.name!r}."
