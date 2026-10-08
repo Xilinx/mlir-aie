@@ -8,22 +8,9 @@ import numpy as np
 import pytest
 from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
-from aie.iron.device import NPU2Col1
 from aie.iron.kernels import KernelContract, Trace
-from aie.utils import get_current_device
 from aie.utils.compile.jit import InOut
-from aie.utils.hostruntime import set_current_device
 from aie.utils.trace import TraceConfig
-
-
-@pytest.fixture
-def npu2_device():
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(NPU2Col1())
-    try:
-        yield
-    finally:
-        set_current_device(previous)
 
 
 def _kernel(name, contract, arg_types=()):

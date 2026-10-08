@@ -19,7 +19,7 @@ from ml_dtypes import bfloat16
 from aie.iron import kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.algorithms._transform import transform, transform_parallel
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.device import NPU1Col1
 from aie.utils import get_current_device
 from aie.utils.hostruntime import set_current_device
 
@@ -60,28 +60,21 @@ def test_kernel_design_leaves_the_stack_to_aiecc(npu1_device):
     assert "stack_size" not in mlir
 
 
-def test_kernel_design_budgets_the_kernel_frames():
+def test_kernel_design_budgets_the_kernel_frames(npu2_device):
     # IRON's N128/CT_K32 flm tile: two sets of tiles fit beside the default
     # stack but not beside its 32 KiB stack accumulator.
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(NPU2Col1())
-    try:
-        tile = dict(
-            dim_m=64,
-            band_m=64,
-            dim_k=32,
-            dim_n=128,
-            chunk_k=32,
-            out_chunk=512,
-            bfp16_b=True,
-        )
-        fn = kernels.fused_mm(**tile)
-        params = fn.param_values(kd.sample_inputs(fn, calls=4))
-        mlir = str(
-            kd.design(kernels.fused_mm, calls=4, params=params, **tile).as_mlir()
-        )
-    finally:
-        set_current_device(previous)
+    tile = dict(
+        dim_m=64,
+        band_m=64,
+        dim_k=32,
+        dim_n=128,
+        chunk_k=32,
+        out_chunk=512,
+        bfp16_b=True,
+    )
+    fn = kernels.fused_mm(**tile)
+    params = fn.param_values(kd.sample_inputs(fn, calls=4))
+    mlir = str(kd.design(kernels.fused_mm, calls=4, params=params, **tile).as_mlir())
     depths = re.findall(r"aie\.objectfifo @out0\([^)]*?(\d+) : i32\)", mlir)
     assert depths == ["1"]
 
