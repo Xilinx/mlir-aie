@@ -12,7 +12,7 @@
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
-// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_unmeasurable_kernel.cc -o %t.d/stack_size_unmeasurable_kernel.o
+// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_scratch_kernel.cc -o %t.d/stack_size_scratch_kernel.o
 // RUN: cd %t.d && %aiecc --get=input_with_addresses.mlir --get=measured_stack_sizes.mlir --output-dir=%t.out --tmpdir=%t.prj %s
 // RUN: FileCheck %s < %t.out/input_with_addresses.mlir
 // RUN: FileCheck %s --check-prefix=LDSCRIPT < %t.prj/ldScripts_main_core_0_2.ld.script
@@ -22,7 +22,7 @@
 // LDSCRIPT: . += 0x400; /* stack */
 
 // RUN: rm -rf %t.noauto.d && mkdir -p %t.noauto.d
-// RUN: cp %t.d/stack_size_unmeasurable_kernel.o %t.noauto.d/
+// RUN: cp %t.d/stack_size_scratch_kernel.o %t.noauto.d/
 // RUN: cd %t.noauto.d && %aiecc --no-measure-stack-size --get=input_with_addresses.mlir --get-core-elfs --output-dir=%t.noauto.out --tmpdir=%t.noauto.prj %s
 // RUN: FileCheck %s --check-prefix=NOAUTO < %t.noauto.out/input_with_addresses.mlir
 // RUN: FileCheck %s --check-prefix=LDSCRIPT < %t.noauto.prj/ldScripts_main_core_0_2.ld.script
@@ -37,7 +37,7 @@ module {
 
     aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<512xi8>>
 
-    func.func private @touch_scratch(memref<512xi8>) attributes {link_with = "stack_size_unmeasurable_kernel.o"}
+    func.func private @touch_scratch(memref<512xi8>) attributes {link_with = "stack_size_scratch_kernel.o"}
 
     %core_0_2 = aie.core(%tile_0_2) {
       %e = aie.objectfifo.acquire @of_out(Produce, 1) : memref<512xi8>
