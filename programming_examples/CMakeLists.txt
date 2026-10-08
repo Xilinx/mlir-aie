@@ -131,6 +131,6 @@ set(TEST_DEPENDS
 add_lit_testsuite(check-reference-designs "Running the aie reference designs"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${TEST_DEPENDS}
-  ARGS "-sv --timeout 600"
+  ARGS "-sv --timeout 600 --max-failures 1"
 )
 set_target_properties(check-reference-designs PROPERTIES FOLDER "Tutorials")
