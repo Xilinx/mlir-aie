@@ -352,6 +352,32 @@ def test_recursion_leaves_the_stack_unbounded():
     assert parse_readobj(doc, "k").stack is None
 
 
+def test_a_shared_callee_is_not_recursion_and_is_walked_once():
+    # k calls a0 and b0; each of a_i and b_i calls both a_{i+1} and b_{i+1}.
+    # 40 rungs is 2^40 paths, so walking each path would not finish.
+    rungs = 40
+    names = ["k"] + [f"{s}{i}" for i in range(rungs) for s in "ab"]
+    sym = {n: i + 1 for i, n in enumerate(names)}
+    rela = len(names) + 1
+    doc = {
+        "Sections": [_section(0, "", alloc=False)]
+        + [_section(sym[n], f".text.{n}") for n in names]
+        + [
+            _section(rela + i, f".rela.text.{n}", False, sym[n])
+            for i, n in enumerate(names[:-2])
+        ],
+        "Symbols": [_symbol("", 0, "None")] + [_symbol(n, sym[n]) for n in names],
+        "Relocations": [_relocs(rela, sym["a0"], sym["b0"])]
+        + [
+            _relocs(rela + sym[f"{s}{i}"] - 1, sym[f"a{i + 1}"], sym[f"b{i + 1}"])
+            for i in range(rungs - 1)
+            for s in "ab"
+        ],
+        "StackSizes": _frames(k=32, **{n: 16 for n in names[1:]}),
+    }
+    assert parse_readobj(doc, "k").stack == 32 + 16 * rungs
+
+
 def test_the_stack_row_names_the_kernel_frame_not_the_core(report):
     # dwconv1d_channels_last on AIE2P: 64 bytes here, 256 for its core,
     # whose main holds a frame of its own.

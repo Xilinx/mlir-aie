@@ -88,21 +88,26 @@ def parse_readobj(doc: dict, entry: str) -> Linked:
         for name in e["Entry"]["Functions"]
     }
 
-    def deepest(sec: int, path: frozenset) -> int | None:
-        if sec in path:
-            return None
+    depth: dict[int, int | None] = {}
+
+    def deepest(sec: int) -> int | None:
+        if sec in depth:
+            return depth[sec]
+        # None until the section finishes, so reaching it again is recursion.
+        depth[sec] = None
         below = 0
         # Only code sections: a jump table in .rodata points back at its
         # function and would read as recursion.
         for callee in edges.get(sec, set()) - {sec}:
             if callee in functions:
-                d = deepest(callee, path | {sec})
+                d = deepest(callee)
                 if d is None:
                     return None
                 below = max(below, d)
-        return (
+        depth[sec] = (
             max((frames.get(n, 0) for n in functions.get(sec, ())), default=0) + below
         )
+        return depth[sec]
 
     roots = [sec for sec, names in functions.items() if entry in names]
     todo = list(roots)
@@ -116,5 +121,5 @@ def parse_readobj(doc: dict, entry: str) -> Linked:
     return Linked(
         functions={n for sec in seen for n in functions.get(sec, ())},
         undefined=sorted({u for sec in seen for u in calls.get(sec, ())}),
-        stack=deepest(roots[0], frozenset()) if frames and roots else None,
+        stack=deepest(roots[0]) if frames and roots else None,
     )

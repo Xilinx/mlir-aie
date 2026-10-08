@@ -144,8 +144,12 @@ def _kernel_stack_bytes(kernels, embed_bitcode):
 
     A declared ``stack_size_override`` stands. An object-linked Peano kernel
     is built through the shared object cache, which the design's own build
-    then hits, and read from its ``.stack_sizes``. Anything else, such as a
+    then hits, and read from its ``.stack_sizes``. A function with no entry
+    there, such as a runtime-library routine, adds 0. Anything else, such as a
     Chess or merge-mode kernel, counts as 0, as aiecc cannot measure it either.
+    An undercount only picks too deep a buffering for the tile; aiecc measures
+    the linked core and its allocator fails the build when the buffers no
+    longer fit.
     """
     cache = KernelObjectCache(NPU_CACHE_HOME / "objects", _COMPILE_LOCK_TIMEOUT_SECONDS)
     arch = resolve_target_arch(_device())
