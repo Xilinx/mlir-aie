@@ -19,11 +19,22 @@ the same operator implementations. They also let developers study one operation
 at a time. However, they require quick reconfiguration. Slow device-image
 replacement can make the layer-by-layer approach impractical.
 
-This example compares three ways to run or reconfigure one NPU2 device image:
+This example compares four ways to run or reconfigure one NPU2 device image:
 
-- `separate-dispatch`: compile an xclbin and dispatch its worker runtime directly.
-- `load-pdi`: use a full ELF with direct PDI loads.
-- `expand-load-pdis`: expand PDI loads into register writes.
+- `separate-dispatch`: compile an xclbin and create one CPU-to-NPU dispatch for
+  each run.
+- `load-pdi`: use one full-ELF dispatch and load each device image as a PDI.
+- `expand-load-pdis`: use one full-ELF dispatch and expand each PDI into
+  register writes at compile time.
+- `control-packets`: use one full-ELF dispatch and expand each PDI into control
+  packets at compile time.
+
+`separate-dispatch` requires the CPU to create and submit every dispatch. This
+is the slowest path. Each full-ELF mode uses one dispatch. Its runtime sequence
+contains the reconfiguration commands, and the NPU command processor executes
+those commands. `load-pdi` makes the command processor load and parse a device
+image. The other full-ELF modes replace that work with register writes or
+control packets during compilation.
 
 `reconfiguration.py` contains one `@iron.jit` design. One
 `DeviceConfiguration` owns the workers and their runtime sequence. The xclbin
@@ -32,7 +43,11 @@ The full-ELF paths use the same configuration and add one coordinator runtime;
 the coordinator enters `configuration.configure()` and calls the worker runtime.
 
 The design accepts array dimensions, program-memory padding, switchbox padding,
-and the number of configure-and-run operations per full-ELF dispatch:
+and the number of configure-and-run operations per full-ELF dispatch.
+`event(0)` instructions increase core program-memory use without changing the
+result. Dummy bidirectional flows increase switchbox configuration-data size.
+These controls measure how each reconfiguration path scales with both forms of
+configuration data.
 
 ```bash
 python reconfiguration.py --mode expand-load-pdis --cols 4 --rows 2 \
@@ -49,3 +64,15 @@ into one CSV:
 ```bash
 ITERS=12 ./run_scaling.sh benchmark.csv
 ```
+
+After benchmarking with `run_scaling.sh`, generate plots like the ones below by
+selecting the X axis:
+
+```bash
+python plot.py --csv benchmark.csv --x nops --output progmem.png
+python plot.py --csv benchmark.csv --x switchboxes --output switchbox.png
+```
+
+![Reconfiguration time by program-memory padding](progmem.png)
+
+![Reconfiguration time by switchbox padding](switchbox.png)

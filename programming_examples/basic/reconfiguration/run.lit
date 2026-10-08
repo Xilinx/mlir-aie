@@ -6,4 +6,5 @@
 // RUN: %run_on_npu2% %python %S/reconfiguration.py --mode separate-dispatch --cols 2 --rows 2 --nops 8 --switchboxes 1 --warmup 0 --iters 2 | FileCheck %s
 // RUN: %run_on_npu2% %python %S/reconfiguration.py --mode load-pdi --cols 2 --rows 2 --nops 8 --switchboxes 1 --reconfigs 2 --warmup 0 --iters 2 | FileCheck %s
 // RUN: %run_on_npu2% %python %S/reconfiguration.py --mode expand-load-pdis --cols 2 --rows 2 --nops 8 --switchboxes 1 --reconfigs 2 --warmup 0 --iters 2 | FileCheck %s
+// RUN: %run_on_npu2% %python %S/reconfiguration.py --mode control-packets --cols 2 --rows 2 --nops 8 --switchboxes 1 --reconfigs 2 --warmup 0 --iters 2 | FileCheck %s
 // CHECK: PASS!

@@ -28,7 +28,12 @@ from aie.utils.benchmark import run_iters
 
 NPU2_COLUMNS = 8
 NPU2_CORE_ROWS = 4
-MODES = ("separate-dispatch", "load-pdi", "expand-load-pdis")
+MODES = (
+    "separate-dispatch",
+    "load-pdi",
+    "expand-load-pdis",
+    "control-packets",
+)
 
 
 @iron.jit
@@ -60,6 +65,7 @@ def reconfigure(
         element = output_fifo.acquire(1)
         element[0] = value
         output_fifo.release(1)
+        # event(0) acts as a no-op that pads core program memory for benchmarking.
         for _ in range(nops):
             event(0)
 
@@ -124,6 +130,7 @@ def reconfigure(
         raise ValueError(
             f"switchboxes must be in [0, {len(padding_tiles)}]; got {switchboxes}"
         )
+    # Dummy flows increase configuration-data size to measure reconfiguration scaling.
     for col, row in padding_tiles[:switchboxes]:
         tile = Tile(col, row, tile_type=AIETileType.CoreTile)
         for channel in range(4):
@@ -176,6 +183,9 @@ def main():
     output = iron.zeros(args.cols * args.rows, dtype=np.int32, device="npu")
     design = reconfigure.specialize(
         full_elf=args.mode != "separate-dispatch",
+        aiecc_flags=(
+            ["--load-pdi-to-ctrl-pkt"] if args.mode == "control-packets" else []
+        ),
         mode=args.mode,
         cols=args.cols,
         rows=args.rows,

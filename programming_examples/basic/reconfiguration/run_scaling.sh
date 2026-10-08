@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 
 output=${1:-benchmark.csv}
 iters=${ITERS:-10}
-modes=(separate-dispatch load-pdi expand-load-pdis)
+modes=(separate-dispatch load-pdi expand-load-pdis control-packets)
 
 echo 'case,mode,cols,rows,nops,switchboxes,reconfigs,iteration,scope,runtime_us' >"$output"
 
