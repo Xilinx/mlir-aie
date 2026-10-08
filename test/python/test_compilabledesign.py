@@ -2236,6 +2236,26 @@ def test_non_full_elf_rejects_multi_configuration_program(tmp_path):
         CompilableDesign(mlir_path)._generate_mlir(ExternalFunction)
 
 
+@pytest.mark.parametrize(
+    "mode,expected",
+    [
+        (None, []),
+        ("expand-load-pdis", ["--expand-load-pdis"]),
+        ("control-packets", ["--load-pdi-to-ctrl-pkt"]),
+    ],
+)
+def test_full_elf_reconfiguration_mode_options(tmp_path, mode, expected):
+    attributes = (
+        "" if mode is None else f' attributes {{iron.reconfiguration_mode = "{mode}"}}'
+    )
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(f"module{attributes} {{}}")
+    design = CompilableDesign(mlir_path)
+    module = design._generate_mlir(ExternalFunction, full_elf=True)
+
+    assert design._full_elf_reconfiguration_options(module) == expected
+
+
 def test_full_elf_kernel_name_selects_explicit_entry(tmp_path):
     (tmp_path / "full_elf_config.json").write_text(
         json.dumps(

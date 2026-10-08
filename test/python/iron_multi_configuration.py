@@ -61,6 +61,24 @@ main = DeviceConfiguration("main", NPU2Col1(), runtimes=[entry])
 # CHECK: aie.runtime_sequence @seq_b(%{{.*}}: memref<4xi32>)
 print(Program.compose([main, config_a, config_b], entry=entry).resolve_program())
 
+for mode in ("load-pdi", "expand-load-pdis", "control-packets"):
+    mode_runtime = Runtime(lambda: None, [], name=f"mode_{mode}")
+    mode_module = Program(
+        NPU2Col1(), mode_runtime, reconfiguration_mode=mode
+    ).resolve_program()
+    mode_attr = mode_module.operation.attributes.get("iron.reconfiguration_mode")
+    if mode == "load-pdi":
+        assert mode_attr is None
+    else:
+        assert mode_attr.value == mode
+
+try:
+    Program(NPU2Col1(), Runtime(lambda: None, []), reconfiguration_mode="invalid")
+except ValueError as error:
+    assert "Unsupported reconfiguration mode 'invalid'" in str(error)
+else:
+    raise AssertionError("Program accepted an unsupported reconfiguration mode")
+
 flow_a = object()
 flow_b = object()
 seq_a.add_flow(flow_a)

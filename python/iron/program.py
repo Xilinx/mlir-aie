@@ -5,6 +5,7 @@
 #
 
 import logging
+from typing import Literal
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import TraceMode  # pyright: ignore[reportAttributeAccessIssue]
@@ -17,6 +18,13 @@ from .runtime import Runtime
 from .scratchpad_parameter import ScratchpadParameter
 
 logger = logging.getLogger(__name__)
+
+ReconfigurationMode = Literal["load-pdi", "expand-load-pdis", "control-packets"]
+_RECONFIGURATION_MODES = {
+    "load-pdi",
+    "expand-load-pdis",
+    "control-packets",
+}
 
 
 class Program:
@@ -35,6 +43,8 @@ class Program:
         device: Device | None,
         rt: Runtime,
         workers: "list | None" = None,
+        *,
+        reconfiguration_mode: ReconfigurationMode = "load-pdi",
     ):
         """Construct a Program with all design information needed to run the design on a device.
 
@@ -51,6 +61,10 @@ class Program:
             workers (list[Worker] | None, optional): The Workers to run on the
                 device. Defaults to None (no workers). Workers are passed here
                 explicitly rather than started from within the runtime sequence.
+            reconfiguration_mode: How full-ELF compilation lowers configuration
+                changes. ``"load-pdi"`` emits PDI loads,
+                ``"expand-load-pdis"`` emits register writes, and
+                ``"control-packets"`` emits control packets.
 
         Raises:
             ValueError: If ``device`` is None (no NPU device was selected/detected).
@@ -67,6 +81,9 @@ class Program:
         self._configurations = [configuration]
         self._entry = rt
         self._implicit_configuration = True
+        self._reconfiguration_mode = self._validate_reconfiguration_mode(
+            reconfiguration_mode
+        )
         self._site = SourceSite.capture()
 
     @classmethod
@@ -75,14 +92,28 @@ class Program:
         configurations: "list[DeviceConfiguration]",
         *,
         entry: Runtime,
+        reconfiguration_mode: ReconfigurationMode = "load-pdi",
     ) -> "Program":
         program = cls.__new__(cls)
         program._configurations = list(configurations)
         program._entry = entry
         program._implicit_configuration = False
+        program._reconfiguration_mode = program._validate_reconfiguration_mode(
+            reconfiguration_mode
+        )
         program._site = SourceSite.capture()
         program._validate_composition()
         return program
+
+    @staticmethod
+    def _validate_reconfiguration_mode(mode: str) -> ReconfigurationMode:
+        if mode not in _RECONFIGURATION_MODES:
+            choices = ", ".join(sorted(_RECONFIGURATION_MODES))
+            raise ValueError(
+                f"Unsupported reconfiguration mode {mode!r}; expected one of: "
+                f"{choices}."
+            )
+        return mode
 
     def _validate_composition(self) -> None:
         if not self._configurations:
@@ -222,6 +253,11 @@ class Program:
                     ir.IntegerAttr.get(
                         ir.IntegerType.get_signless(32), len(self._configurations)
                     )
+                )
+
+            if self._reconfiguration_mode != "load-pdi":
+                ctx.module.operation.attributes["iron.reconfiguration_mode"] = (
+                    ir.StringAttr.get(self._reconfiguration_mode)
                 )
 
             self._print_verify(ctx)

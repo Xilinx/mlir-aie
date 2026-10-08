@@ -6,10 +6,12 @@
 
 import aie.iron as iron
 import numpy as np
+import pytest
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
 from aie.iron import (
     Bd,
     Buffer,
+    CompileTime,
     DeviceConfiguration,
     DmaChannel,
     Flow,
@@ -52,7 +54,7 @@ def memtile_configuration(name, initial_value=None):
 
 
 @iron.jit(full_elf=True)
-def persistent_memtile(data: Out):
+def persistent_memtile(data: Out, *, reconfiguration_mode: CompileTime[str]):
     initialized, initialized_sequence = memtile_configuration(
         "yield_const_memtile", VALUES
     )
@@ -69,14 +71,17 @@ def persistent_memtile(data: Out):
     entry = Runtime(coordinator, [Tensor])
     main = DeviceConfiguration("main", NPU2Col1(), runtimes=[entry])
     return Program.compose(
-        [main, initialized, uninitialized], entry=entry
+        [main, initialized, uninitialized],
+        entry=entry,
+        reconfiguration_mode=reconfiguration_mode,
     ).resolve_program()
 
 
-def test_persistent_memtile():
+@pytest.mark.parametrize("reconfiguration_mode", ["load-pdi", "expand-load-pdis"])
+def test_persistent_memtile(reconfiguration_mode):
     data = iron.zeros(8, dtype=np.int32, device="npu")
 
-    persistent_memtile(data)
+    persistent_memtile(data, reconfiguration_mode=reconfiguration_mode)
     data.to("cpu")
 
     np.testing.assert_array_equal(data.numpy(), np.tile(VALUES, 2))

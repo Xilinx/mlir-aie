@@ -728,6 +728,17 @@ class CompilableDesign:
                 "Use full_elf=True for a multi-configuration Program."
             )
 
+    @staticmethod
+    def _full_elf_reconfiguration_options(module) -> list[str]:
+        mode_attr = module.operation.attributes.get("iron.reconfiguration_mode")
+        if mode_attr is None or mode_attr.value == "load-pdi":
+            return []
+        if mode_attr.value == "expand-load-pdis":
+            return ["--expand-load-pdis"]
+        if mode_attr.value == "control-packets":
+            return ["--load-pdi-to-ctrl-pkt"]
+        raise ValueError(f"Unsupported reconfiguration mode {mode_attr.value!r}.")
+
     def _compile_full_elf(
         self,
         ExternalFunction,
@@ -809,13 +820,17 @@ class CompilableDesign:
                         ExternalFunction, kernel_dir, full_elf=True
                     )
                 )
+                aiecc_options = list(self.aiecc_flags)
+                aiecc_options.extend(
+                    self._full_elf_reconfiguration_options(mlir_module)
+                )
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
                     full_elf_path=elf_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
-                    options=list(self.aiecc_flags) if self.aiecc_flags else None,
+                    options=aiecc_options or None,
                     device_cache_dir=self._device_cache_dir(),
                 )
 
