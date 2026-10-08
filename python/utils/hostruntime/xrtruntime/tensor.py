@@ -38,7 +38,7 @@ class XrtTransport(Transport):
         mapped = np.frombuffer(self._bo.map(), dtype=np.uint8)
         # A view of the map does not hold the bo, whose release unmaps it.
         owner = (ctypes.c_uint8 * nbytes).from_address(mapped.ctypes.data)
-        owner.bo = self._bo
+        owner.bo = self._bo  # pyright: ignore[reportAttributeAccessIssue]
         self._host = np.frombuffer(owner, dtype=np.uint8)
         self._handles = {}
 
