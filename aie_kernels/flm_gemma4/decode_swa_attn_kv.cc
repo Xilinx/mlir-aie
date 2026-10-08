@@ -14,8 +14,6 @@ template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
              y_acc_dtype *__restrict pY);
 
-constexpr int v_prod_lock = FLM_GEMMA4_DECODE_SWA_ATTN_KV_V_PROD_LOCK;
-constexpr int v_cons_lock = FLM_GEMMA4_DECODE_SWA_ATTN_KV_V_CONS_LOCK;
 
 extern "C" {
 
@@ -33,7 +31,7 @@ void swa_attn_kv_begin(float *y, float *l) {
 
 void swa_attn_kv_round(bf16 *s, bf16 *v_ping, bf16 *v_pong, float *y,
                        float *l) {
-  bf16 *v = v_pingpong.acquire(v_ping, v_pong, v_cons_lock);
+  bf16 *v = v_pingpong.next(v_ping, v_pong);
 
   float *c = (float *)(s + Q_HEADS_PADDED_PER_CU * 16);
   calculate_l(s, c, l);
@@ -41,8 +39,6 @@ void swa_attn_kv_round(bf16 *s, bf16 *v_ping, bf16 *v_pong, float *y,
   // has more live state, and a 128-lane (512-byte) accumulator makes it spill.
   calculate_y<8 * SWA_DH, 64>(y, c);
   attn_fv<SWA_DH / 8, GQA_R, GQA_S, GQA_T>(s, v, y);
-
-  _lock_release_p(v, v_prod_lock);
 }
 
 void swa_attn_kv_finish(float *y, bf16 *o, float *l) {
