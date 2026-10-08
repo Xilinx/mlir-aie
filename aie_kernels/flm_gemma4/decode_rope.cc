@@ -69,10 +69,7 @@ void rope_body(bf16 *restrict q, bf16 *restrict k, bf16 *restrict v,
   constexpr int k_cons_lock = FLM_GEMMA4_DECODE_ROPE_K_CONS_LOCK;
   constexpr int v_prod_lock = FLM_GEMMA4_DECODE_ROPE_V_PROD_LOCK;
   constexpr int v_cons_lock = FLM_GEMMA4_DECODE_ROPE_V_CONS_LOCK;
-  constexpr int rope_prod_lock = FLM_GEMMA4_DECODE_ROPE_ROPE_PROD_LOCK;
-  constexpr int rope_cons_lock = FLM_GEMMA4_DECODE_ROPE_ROPE_CONS_LOCK;
   static PingPong qkv_pingpong;
-  _lock_acquire_p(rope_w, rope_cons_lock);
 
   for (int i = 0; i < Dq / Dh; i++) {
     bf16 *qkv_using = qkv_pingpong.acquire(qkv_ping, qkv_pong, qkv_cons_lock);
@@ -97,8 +94,6 @@ void rope_body(bf16 *restrict q, bf16 *restrict k, bf16 *restrict v,
     }
     _lock_release_p(v, v_cons_lock, 1);
   }
-
-  _lock_release_p(rope_w, rope_prod_lock);
 }
 
 #ifndef FLM_GEMMA4_DECODE_ROPE_SWA
