@@ -29,7 +29,7 @@ static const float log_q[10] = {1.0f,
                                 -0.07451186329126358f};
 
 // log(x + offset) of float32, rounded once to bf16, for x + offset a positive
-// normal float32. Every product is of bf16 limbs, exact in the accumulator.
+// normal float32. Multiplies as f32_split.h does.
 extern "C" void log_f32_bf16(float *restrict x, bfloat16 *restrict y, int32_t n,
                              float offset) {
   event0();

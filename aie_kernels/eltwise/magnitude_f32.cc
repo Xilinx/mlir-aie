@@ -14,8 +14,8 @@
 #define MAGNITUDE_ELEMS n
 #endif
 
-// sqrt(re^2 + im^2) of complex float32 held as [re | im], n of each. Every
-// product is of bf16 limbs, exact in the float32 accumulator.
+// sqrt(re^2 + im^2) of complex float32 held as [re | im], n of each.
+// Multiplies as f32_split.h does.
 extern "C" void magnitude_f32(float *restrict x, float *restrict out,
                               int32_t n) {
   event0();

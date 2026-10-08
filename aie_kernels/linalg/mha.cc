@@ -26,10 +26,7 @@
 
 #define ROUNDING_MODE aie::rounding_mode::conv_even
 
-// There is no f32 vector multiplier, so a float is multiplied as three bf16
-// limbs, high first, which hold all of its bits: each is the rest of x
-// rounded, taken off it exactly in the accumulator, and a product of two limbs
-// is exact.
+// A float multiplies as three bf16 limbs, as in common/f32_split.h.
 template <unsigned N>
 struct Limbs {
   aie::vector<bfloat16, N> hi, mid, lo;
