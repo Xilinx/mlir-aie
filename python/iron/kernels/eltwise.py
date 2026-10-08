@@ -377,7 +377,15 @@ def clamp(tile_size: int = 1024) -> ExternalFunction:
     The design passes ``(in, out, size, low, high)``, each bound as its bf16
     bits in an int32 (``int(np.array(b, bfloat16).view(np.uint16))``), the
     type a runtime parameter word holds, so the bounds stay runtime values.
-    Positive multiples of 32 elements are supported.
+
+    Args:
+        tile_size: Elements per call, a positive multiple of 32.
+
+    Returns:
+        ExternalFunction for ``clamp_bf16``.
+
+    Raises:
+        ValueError: When ``tile_size`` is not a positive multiple of 32.
     """
     _require_vector_alignment("clamp", tile_size, 32)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
