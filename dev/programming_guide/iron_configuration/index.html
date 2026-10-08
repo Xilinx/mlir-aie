@@ -4519,6 +4519,9 @@ from another checkout to compare the two.</p>
 <p>The <code>CachedXRTRuntime</code> caches XRT contexts to improve performance. The size of this cache can be configured using the <code>XRT_CONTEXT_CACHE_SIZE</code> environment variable. This is particularly useful in CI environments where multiple tests run in parallel and might exhaust the available NPU contexts.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">XRT_CONTEXT_CACHE_SIZE</span><span class="o">=</span><span class="m">1</span>
 </code></pre></div>
+<p>The instruction streams it has loaded are cached apart from the contexts, up to
+<code>XRT_INSTS_CACHE_SIZE</code> of them (256 by default). They hold no hardware context,
+and a stream is released with the context it was loaded into.</p>
 <h2 id="iron-hrx-runtime-cache-size">IRON HRX Runtime Cache Size<a class="headerlink" href="#iron-hrx-runtime-cache-size" title="Permanent link">&para;</a></h2>
 <p><code>HRX_EXE_CACHE_SIZE</code> bounds the loaded-executable cache in <code>CachedHRXRuntime</code>.
 The default is 6 on NPU1 and 16 on NPU2. Each executable holds a hardware
