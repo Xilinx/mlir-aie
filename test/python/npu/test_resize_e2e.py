@@ -214,6 +214,9 @@ def _image(rows, columns, out_rows, out_columns, tables, expect, **build):
         ([(37, 53, 100, 144, None, "none")], 2, 4096, 8),
         # 9 patch columns over 2 cores is 5 a core; a core holds 2.
         ([(37, 53, 96, 144, None, "none")], 2, 4096, 2),
+        # 9 patch columns over 4 cores, core 0 holding all 3 it can: a line
+        # of 3 patch columns is 144 bytes, no whole number of vectors.
+        ([(37, 53, 96, 144, None, "all")], 4, 4096, 3),
         # A width table for 56 columns: patch column 8 reads past 53, and
         # its core (0 of 4) writes zeros.
         ([(37, 53, 96, 144, (56, None), "some cores")], 4, 4096, 8),

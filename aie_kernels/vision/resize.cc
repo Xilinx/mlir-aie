@@ -40,7 +40,8 @@ static_assert(WIN <= 64, "a window is at most two vectors of taps");
 // WIN-tap window allows, and the 64 a window's vectors read past them.
 constexpr int SPAN = 5 * WIN + 8;
 constexpr int PLANE = (SPAN + 64 + 63) / 64 * 64;
-constexpr int LINE = COLS * SIDE * 3;
+// Whole 32-byte vectors, so every row of mid and hold is vector-aligned.
+constexpr int LINE = (COLS * SIDE * 3 + 31) / 32 * 32;
 
 // The bf16 bits of u8 / 255, computed in float32 and rounded to bf16 once.
 const uint16_t PIXEL[256] = {
