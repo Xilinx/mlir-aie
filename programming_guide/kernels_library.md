@@ -516,10 +516,10 @@ runtime-library routines it calls (`__divsf3`, `__mulsf3`, `__floatsisf`:
 on AIE2P, scalar float divide, multiply and int-to-float are software
 routines). `kernel_stack_bytes` is the deepest call path's frames from the
 entry, without those routines' own and without the core's `main`, which
-aiecc's measured stack also counts. aiecc sizes the core's stack from that
-measurement, so the row is for comparing builds. Each build prints its entry symbol and
-source file, and `--meta` names its object (kept with `--keep DIR`). The record shapes and the
-regression rules are documented on the module
+aiecc's measured stack also counts. aiecc sizes the core's stack from its own
+measurement of the linked core, so the row is for comparing builds. Each build
+prints its entry symbol and source file, and `--meta` names its object (kept
+with `--keep DIR`). The record shapes and the regression rules are documented on the module
 ([API](../api/kernels.md#static-checks)). These checks run on demand; there
 is no static-check CI workflow. When invoked in GitHub Actions, the tool
 emits a warning annotation for a dropped pragma and an error annotation

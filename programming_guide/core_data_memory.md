@@ -75,7 +75,10 @@ stack pointer, so its own frame counts as 0.
 against permissive regions, the same probe link that sizes the core's static
 data (see [`measured_data_size`](#measured_data_size)). An exact result goes to
 the `measured_stack_size` attribute on the `aie.core`, and a core without
-`stack_size` reserves it, rounded up to the stack alignment. The probe links
+`stack_size` reserves it, rounded up to the stack alignment. Tile placement
+runs before the probe, so `--placer=sa_placer` budgets the declared or default
+stack. When the measured stack then doesn't fit beside the tile's buffers,
+buffer placement fails and its memory map notes the measurement. The probe links
 the same objects with the same garbage collection as the final link. After the
 final link, `aiecc` walks again and checks the reservation against the result.
 Both links keep the relocations (`-Wl,--emit-relocs`) that the walk needs. You
