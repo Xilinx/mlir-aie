@@ -4,12 +4,11 @@
 # RUN: %python %s | FileCheck %s
 
 import numpy as np
-from typing import cast
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aiex import (
     npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from aie.iron import DeviceConfiguration, Program, ReconfigurationMode, Runtime
+from aie.iron import DeviceConfiguration, Program, Runtime
 from aie.iron.device import NPU2Col1
 from aie.utils.compile.jit.context import compile_context
 
@@ -30,8 +29,6 @@ seq_a_with_scalar = Runtime(
     child_sequence_with_scalar, [Out4, np.int32], name="seq_a_with_scalar"
 )
 seq_b = Runtime(child_sequence, [Out4], name="seq_b")
-config_a = DeviceConfiguration("dev_a", NPU2Col1(), runtimes=[seq_a, seq_a_with_scalar])
-config_b = DeviceConfiguration("dev_b", NPU2Col1(), runtimes=[seq_b])
 
 
 # CHECK: module attributes {iron.configuration_count = 3 : i32, iron.entry = "main:sequence"}
@@ -53,36 +50,27 @@ def coordinator(out, value):
         seq_b.call(out.window(4, (4,)))
 
 
-entry = Runtime(coordinator, [Out8, np.int32])
-main = DeviceConfiguration("main", NPU2Col1(), runtimes=[entry])
 # CHECK: aie.device(npu2_1col) @dev_a
 # CHECK: aie.runtime_sequence @seq_a(%{{.*}}: memref<4xi32>)
 # CHECK: aie.runtime_sequence @seq_a_with_scalar(%{{.*}}: memref<4xi32>, %{{.*}}: i32)
+config_a = DeviceConfiguration("dev_a", NPU2Col1(), runtimes=[seq_a, seq_a_with_scalar])
 # CHECK: aie.device(npu2_1col) @dev_b
 # CHECK: aie.runtime_sequence @seq_b(%{{.*}}: memref<4xi32>)
+config_b = DeviceConfiguration("dev_b", NPU2Col1(), runtimes=[seq_b])
+entry = Runtime(coordinator, [Out8, np.int32])
+main = DeviceConfiguration("main", NPU2Col1(), runtimes=[entry])
 print(Program.compose([main, config_a, config_b], entry=entry).resolve_program())
 
-for mode in ("load-pdi", "expand-load-pdis", "control-packets"):
-    mode_runtime = Runtime(lambda: None, [], name=f"mode_{mode}")
-    mode_module = Program(
-        NPU2Col1(), mode_runtime, reconfiguration_mode=mode
+for expand_load_pdis in (None, False, True):
+    option_runtime = Runtime(lambda: None, [])
+    option_module = Program(
+        NPU2Col1(), option_runtime, expand_load_pdis=expand_load_pdis
     ).resolve_program()
-    mode_attr = mode_module.operation.attributes.get("iron.reconfiguration_mode")
-    if mode == "load-pdi":
-        assert mode_attr is None
+    option_attr = option_module.operation.attributes.get("iron.expand_load_pdis")
+    if expand_load_pdis is None:
+        assert option_attr is None
     else:
-        assert mode_attr.value == mode
-
-try:
-    Program(
-        NPU2Col1(),
-        Runtime(lambda: None, []),
-        reconfiguration_mode=cast(ReconfigurationMode, "invalid"),
-    )
-except ValueError as error:
-    assert "Unsupported reconfiguration mode 'invalid'" in str(error)
-else:
-    raise AssertionError("Program accepted an unsupported reconfiguration mode")
+        assert option_attr.value == expand_load_pdis
 
 flow_a = object()
 flow_b = object()

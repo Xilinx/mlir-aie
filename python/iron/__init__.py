@@ -91,7 +91,7 @@ from .device import Device
 from .dtype import dtype_to_str, str_to_dtype
 from .kernel import ExternalFunction, Kernel, KernelObject, ObjectFile
 from .lock import Lock
-from .program import Program, ReconfigurationMode
+from .program import Program
 from .resolvable import PerDeviceConfigurationResolvable, Resolvable
 from .runtime import Runtime, RuntimeData, Task, TaskGroup, sync_parameters
 from .scratchpad_parameter import ScratchpadParameter
@@ -106,7 +106,6 @@ __all__ = [
     "KernelObject",
     "ObjectFile",
     "Program",
-    "ReconfigurationMode",
     "Resolvable",
     "PerDeviceConfigurationResolvable",
     "Device",

@@ -17,7 +17,6 @@ from aie.iron import (
     Flow,
     Out,
     Program,
-    ReconfigurationMode,
     Runtime,
     TileDma,
 )
@@ -55,9 +54,7 @@ def memtile_configuration(name, initial_value=None):
 
 
 @iron.jit(full_elf=True)
-def persistent_memtile(
-    data: Out, *, reconfiguration_mode: CompileTime[ReconfigurationMode]
-):
+def persistent_memtile(data: Out, *, expand_load_pdis: CompileTime[bool | None]):
     initialized, initialized_sequence = memtile_configuration(
         "yield_const_memtile", VALUES
     )
@@ -76,15 +73,15 @@ def persistent_memtile(
     return Program.compose(
         [main, initialized, uninitialized],
         entry=entry,
-        reconfiguration_mode=reconfiguration_mode,
+        expand_load_pdis=expand_load_pdis,
     ).resolve_program()
 
 
-@pytest.mark.parametrize("reconfiguration_mode", ["load-pdi", "expand-load-pdis"])
-def test_persistent_memtile(reconfiguration_mode):
+@pytest.mark.parametrize("expand_load_pdis", [None, False, True])
+def test_persistent_memtile(expand_load_pdis):
     data = iron.zeros(8, dtype=np.int32, device="npu")
 
-    persistent_memtile(data, reconfiguration_mode=reconfiguration_mode)
+    persistent_memtile(data, expand_load_pdis=expand_load_pdis)
     data.to("cpu")
 
     np.testing.assert_array_equal(data.numpy(), np.tile(VALUES, 2))

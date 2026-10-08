@@ -730,14 +730,10 @@ class CompilableDesign:
 
     @staticmethod
     def _full_elf_reconfiguration_options(module) -> list[str]:
-        mode_attr = module.operation.attributes.get("iron.reconfiguration_mode")
-        if mode_attr is None or mode_attr.value == "load-pdi":
+        expand_attr = module.operation.attributes.get("iron.expand_load_pdis")
+        if expand_attr is None:
             return []
-        if mode_attr.value == "expand-load-pdis":
-            return ["--expand-load-pdis"]
-        if mode_attr.value == "control-packets":
-            return ["--load-pdi-to-ctrl-pkt"]
-        raise ValueError(f"Unsupported reconfiguration mode {mode_attr.value!r}.")
+        return [f"--expand-load-pdis={'true' if expand_attr.value else 'false'}"]
 
     def _compile_full_elf(
         self,

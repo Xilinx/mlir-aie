@@ -2237,16 +2237,18 @@ def test_non_full_elf_rejects_multi_configuration_program(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "mode,expected",
+    "expand_load_pdis,expected",
     [
         (None, []),
-        ("expand-load-pdis", ["--expand-load-pdis"]),
-        ("control-packets", ["--load-pdi-to-ctrl-pkt"]),
+        (False, ["--expand-load-pdis=false"]),
+        (True, ["--expand-load-pdis=true"]),
     ],
 )
-def test_full_elf_reconfiguration_mode_options(tmp_path, mode, expected):
+def test_full_elf_reconfiguration_options(tmp_path, expand_load_pdis, expected):
     attributes = (
-        "" if mode is None else f' attributes {{iron.reconfiguration_mode = "{mode}"}}'
+        ""
+        if expand_load_pdis is None
+        else f" attributes {{iron.expand_load_pdis = {str(expand_load_pdis).lower()}}}"
     )
     mlir_path = tmp_path / "design.mlir"
     mlir_path.write_text(f"module{attributes} {{}}")

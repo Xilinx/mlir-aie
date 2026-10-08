@@ -13,7 +13,6 @@ from aie.iron import (
     InOut,
     ObjectFifo,
     Program,
-    ReconfigurationMode,
     Runtime,
     Worker,
 )
@@ -57,9 +56,7 @@ def add_configuration(name, value):
 
 
 @iron.jit(full_elf=True)
-def reconfigure_add(
-    data: InOut, *, reconfiguration_mode: CompileTime[ReconfigurationMode]
-):
+def reconfigure_add(data: InOut, *, expand_load_pdis: CompileTime[bool | None]):
     add_two, add_two_sequence = add_configuration("add_two", 2)
     add_three, add_three_sequence = add_configuration("add_three", 3)
 
@@ -76,18 +73,18 @@ def reconfigure_add(
     return Program.compose(
         [main, add_two, add_three],
         entry=entry,
-        reconfiguration_mode=reconfiguration_mode,
+        expand_load_pdis=expand_load_pdis,
     ).resolve_program()
 
 
 @pytest.mark.parametrize(
-    "reconfiguration_mode",
-    ["load-pdi", "expand-load-pdis", "control-packets"],
+    "expand_load_pdis",
+    [None, False, True],
 )
-def test_reconfigure_add(reconfiguration_mode):
+def test_reconfigure_add(expand_load_pdis):
     data = iron.arange(16, dtype=np.int32, device="npu")
 
-    reconfigure_add(data, reconfiguration_mode=reconfiguration_mode)
+    reconfigure_add(data, expand_load_pdis=expand_load_pdis)
     data.to("cpu")
 
     expected = np.arange(16, dtype=np.int32)
