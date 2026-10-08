@@ -629,8 +629,8 @@ def AIE_FlowOp : AIE_Op<"flow", []> {
     ingress and egress port (bundle and channel) the stream uses at that tile,
     so the intermediate switchbox configuration follows from the flow itself.  A
     flow with vias is equivalent to the disaggregated flows that meet on the via
-    ports, and `--aie-split-flow-vias` rewrites it into those segments plus the
-    pinned switchbox connections.
+    ports, and `--aie-split-flow-vias` rewrites it into those segments plus a
+    local flow for each pinned switchbox hop.
 
     Example:
     ```

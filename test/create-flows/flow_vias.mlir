@@ -14,26 +14,25 @@
 // ROUNDTRIP: %[[T03:.*]] = aie.tile(0, 3)
 // ROUNDTRIP: aie.flow(%[[T02]], DMA : 0, %[[T03]], DMA : 0) via (%[[T02]] : DMA : 0 -> North : 4, %[[T03]] : South : 4 -> DMA : 0)
 
-// --aie-split-flow-vias rewrites the via flow into a pinned switchbox at each
-// via tile.  The head/tail segments coincide with the flow's own source/dest
-// port and the hop between the two via tiles is a single inter-switchbox wire,
-// so every segment is elided and only the pinned connections remain.
+// --aie-split-flow-vias rewrites each pinned switchbox hop into a local flow.
+// The router assigns the switchbox resources for these local flows together
+// with the gaps between them.
 // CHECK: %[[T02:.*]] = aie.tile(0, 2)
-// CHECK: aie.switchbox(%[[T02]]) {
-// CHECK:   aie.connect<DMA : 0, North : 4>
-// CHECK: }
 // CHECK: %[[T03:.*]] = aie.tile(0, 3)
-// CHECK: aie.switchbox(%[[T03]]) {
-// CHECK:   aie.connect<South : 4, DMA : 0>
-// CHECK: }
-// CHECK-NOT: aie.flow
+// CHECK: %[[T05:.*]] = aie.tile(0, 5)
+// CHECK: aie.flow(%[[T02]], DMA : 0, %[[T02]], North : 4)
+// CHECK: aie.flow(%[[T03]], South : 4, %[[T03]], DMA : 0)
 // CHECK: aie.packet_flow(1) {
 // CHECK:   aie.packet_source<%[[T02]], DMA : 1>
 // CHECK:   aie.packet_dest<%[[T03]], South : 0>
 // CHECK: } {priority_route = true}
 // CHECK: aie.packet_flow(1) {
+// CHECK:   aie.packet_source<%[[T03]], South : 0>
+// CHECK:   aie.packet_dest<%[[T03]], North : 0>
+// CHECK: } {priority_route = true}
+// CHECK: aie.packet_flow(1) {
 // CHECK:   aie.packet_source<%[[T03]], North : 0>
-// CHECK:   aie.packet_dest<%[[T05:.*]], DMA : 0>
+// CHECK:   aie.packet_dest<%[[T05]], DMA : 0>
 // CHECK: } {keep_pkt_header = true, priority_route = true}
 module {
   aie.device(xcvc1902) {

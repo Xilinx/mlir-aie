@@ -393,15 +393,16 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
 }
 
 def AIESplitFlowVias : Pass<"aie-split-flow-vias", "DeviceOp"> {
-  let summary = "Split aie.flow operations that pin via ports into segments";
+  let summary = "Split flow operations that pin via ports into segments";
   let description = [{
-    Each `aie.flow` that carries a `via` list is rewritten into the
-    disaggregated flows that meet on the via ports, plus an `aie.switchbox`
-    connection at every via tile joining its pinned ingress and egress ports.
+    Each `aie.flow` or `aie.packet_flow` that carries a `via` list is rewritten into the
+    disaggregated flows that meet on the via ports, plus a local flow at every
+    via tile joining its pinned ingress and egress ports.
     A flow `A via (B : in -> eg) to C` becomes `aie.flow(A, B:in)`,
-    `aie.switchbox(B) { aie.connect<in, eg> }`, and `aie.flow(B:eg, C)`.  The
-    pass elides a segment whose source and destination coincide, which happens
-    when the flow already begins or ends on a via port.
+    `aie.flow(B:in, B:eg)`, and `aie.flow(B:eg, C)`. The pass elides a segment
+    whose source and destination coincide, which happens when the flow already
+    begins or ends on a via port. The router assigns switchbox resources to the
+    resulting flows.
   }];
 
   let constructor = "xilinx::AIE::createAIESplitFlowViasPass()";

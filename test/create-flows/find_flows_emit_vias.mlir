@@ -7,9 +7,8 @@
 
 // With emit-vias, --aie-find-flows recovers a routed design as grouped flows
 // that pin every switchbox hop and then drops the now-redundant switchboxes and
-// wires, so re-lowering with --aie-split-flow-vias needs no routing and cannot
-// collide with a leftover switchbox.  Route a flow, recover it with vias, split
-// it back, and re-route: the switchbox configuration is reproduced.
+// wires. Route a flow, recover it with vias, split each pinned hop into a local
+// flow, and re-route: the switchbox configuration is reproduced.
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | aie-opt --aie-find-flows=emit-vias=true | FileCheck %s --check-prefix=VIAS --implicit-check-not=aie.switchbox
 // RUN: aie-opt --aie-create-pathfinder-flows %s | aie-opt --aie-find-flows=emit-vias=true | aie-opt --aie-split-flow-vias --aie-create-pathfinder-flows | FileCheck %s --check-prefix=ROUTED
@@ -21,9 +20,9 @@
 // VIAS: aie.flow(%[[T02]], DMA : 0, %[[T03]], DMA : 0) via (%[[T02]] : DMA : 0 -> North : {{[0-9]+}}, %[[T03]] : South : {{[0-9]+}} -> DMA : 0)
 
 // ROUTED: %[[T02:.*]] = aie.tile(0, 2)
+// ROUTED: %[[T03:.*]] = aie.tile(0, 3)
 // ROUTED: aie.switchbox(%[[T02]]) {
 // ROUTED:   aie.connect<DMA : 0, North : {{[0-9]+}}>
-// ROUTED: %[[T03:.*]] = aie.tile(0, 3)
 // ROUTED: aie.switchbox(%[[T03]]) {
 // ROUTED:   aie.connect<South : {{[0-9]+}}, DMA : 0>
 module {
