@@ -377,6 +377,17 @@ CASES: list[Case] = [
         calls=2,
         tag="overlap",
     ),
+    # EmbeddingGemma 2's image budget: 42x57 patches in 10 blocks, padded.
+    Case("patch_positions", {}, calls=10, scalars=(10, 672, 912), smoke=True),
+    Case("patch_positions", dict(cores=8), calls=8, scalars=(8, 480, 1056)),
+    Case("patch_positions", dict(block=32), calls=4, scalars=(4, 96, 48)),
+    check("patch_positions", {}, calls=9, scalars=(9, 768, 768), tag="whole"),
+    # Every row padding: a size past the blocks, not whole patches, not whole
+    # windows, negative.
+    check("patch_positions", {}, calls=1, scalars=(1, 288, 288), tag="past-count"),
+    check("patch_positions", {}, calls=1, scalars=(1, 48, 40), tag="part-patch"),
+    check("patch_positions", {}, calls=1, scalars=(1, 64, 48), tag="part-window"),
+    check("patch_positions", {}, calls=1, scalars=(1, -48, 48), tag="negative"),
     Case("transpose", dict(subtile=4), calls=16, smoke=True),
     Case("transpose", dict(subtile=8), calls=16, smoke=True),
     Case("transpose", dict(subtile=4, dtype=np.uint8), calls=16, smoke=True),

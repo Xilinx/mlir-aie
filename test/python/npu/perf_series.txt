@@ -392,6 +392,14 @@ passthrough/4096x16/int16
 passthrough/4096x16/uint8
 passthrough/4096x4/int32
 passthrough/64x4/int32/edge-tiny
+patch_positions/1280x1/int32/negative
+patch_positions/1280x1/int32/part-patch
+patch_positions/1280x1/int32/part-window
+patch_positions/1280x1/int32/past-count
+patch_positions/1280x10/int32
+patch_positions/1280x8/int32/cores=8
+patch_positions/1280x9/int32/whole
+patch_positions/160x4/int32/block=32
 prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256
 prefill_fv/8x8x512x4/bfloat16_float32/head_dim=512
 q4nx_dequant/1536x2/uint8/ct_k=16/group=24/k_tile=48/m_tile=48

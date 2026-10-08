@@ -65,6 +65,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [rope.cc](./datamovement/rope.cc) | AIE API | RoPE — `rope` (interleaved / Llama) + `rope_two_halves` (HF) | `bfloat16` |
 | [row_addresses.cc](./datamovement/row_addresses.cc) | Generic C | Each id's table row as a shim buffer descriptor's address words, the id clipped to the table | `int32`→`uint32` |
 | [merge_rows.cc](./datamovement/merge_rows.cc) | Generic C | The table row each position of a token sequence takes: its own, or the next of a tower's rows for a placeholder, counted across calls | `int32` |
+| [patch_positions.cc](./datamovement/patch_positions.cc) | Generic C | Where each patch of a vision tower's image comes from, in pooling-window order: its x and y, its position-table rows and its row of a padded raster, counted across calls | `int32` |
 | [cast_f32_bf16.cc](./datamovement/cast_f32_bf16.cc) | AIE API | f32→bf16 narrowing cast (host-matching `conv_even` rounding) | `float32`→`bfloat16` |
 | [limbs_f32.cc](./datamovement/limbs_f32.cc) | AIE API | f32 as six planes of its exact bf16 limbs (`hi + mid + lo`), for an f32-accurate bf16 matmul | `float32`→`bfloat16` |
 | [affine_cast_f32_bf16.cc](./datamovement/affine_cast_f32_bf16.cc) | AIE API | Per-column affine `out = bf16(in*gamma + beta)`, gamma and beta packed in one buffer (`conv_even` rounding) | `float32`→`bfloat16` |

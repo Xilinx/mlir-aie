@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, row_addresses, transpose.
+"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, row_addresses, transpose.
 
 Each wraps one source under ``aie_kernels/datamovement/`` — plain ``aie_api``
 vector code with no LUT dependency.  ``convert_copy`` binds
@@ -535,6 +535,129 @@ def merge_rows(
                 audio_token=audio_token,
                 image_token=image_token,
             ),
+        ),
+    )
+
+
+def patch_positions_ref(
+    count, ho, wo, *, block: int, side: int, pool: int, positions: int, cores: int
+):
+    """Numpy reference for [`patch_positions`][iron.kernels.datamovement.patch_positions].
+
+    Returns ``(count, 5 * block)``, one record per block: ``xy`` (``2 * block``),
+    the x positions, the y positions plus ``positions``, and the raster rows.
+    """
+    count, ho, wo = int(count), int(ho), int(wo)
+    rows = count * block
+    bands, strips = max(ho, 0) // side, max(wo, 0) // side
+    pad = (strips // cores + 1) * cores
+    across = strips // pool
+    total = bands * strips
+    # The kernel's unsigned 64-bit bound, and n's truncation to int.
+    limit = (count % 2**64) * block % 2**64
+    ok = (
+        ho % side == 0
+        and wo % side == 0
+        and 0 < total <= limit
+        and bands % pool == 0
+        and strips % pool == 0
+    )
+    n = (total + 2**31) % 2**32 - 2**31 if ok else 0
+    k = np.arange(min(max(n, 0), rows), dtype=np.int64)
+    token, w = np.divmod(k, pool * pool)
+    ty, tx = np.divmod(token, across) if across else (token, token)
+    y, x = pool * ty + w // pool, pool * tx + w % pool
+    xy = np.full((rows, 2), positions, np.int64)
+    position_ids = np.full((2, rows), 2 * positions, np.int64)
+    order = np.full(rows, pad - 1, np.int64)
+    xy[: k.size, 0], xy[: k.size, 1] = x, y
+    position_ids[0, : k.size], position_ids[1, : k.size] = x, positions + y
+    order[: k.size] = y * pad + x
+    record = np.concatenate(
+        [
+            xy.reshape(count, 2 * block),
+            position_ids[0].reshape(count, block),
+            position_ids[1].reshape(count, block),
+            order.reshape(count, block),
+        ],
+        axis=1,
+    )
+    return record.astype(np.int32)
+
+
+def patch_positions(
+    block: int = 256,
+    *,
+    side: int = 16,
+    pool: int = 3,
+    positions: int = 10240,
+    cores: int = 16,
+) -> ExternalFunction:
+    """Patch-position kernel: where each patch of a vision tower's image comes from.
+
+    Takes ``(record, b, count, ho, wo)``: block ``b`` of ``count`` of the
+    patches of an ``ho`` by ``wo`` pixel image, cut into ``side``-pixel
+    patches, in pooling-window order (each soft token's ``pool ** 2``
+    patches consecutive and row-major within the window, the tokens
+    row-major over the image). The record, ``5 * block`` int32, holds each
+    patch's x and y side by side, then every patch's x, then every patch's
+    y plus ``positions``, then its row of a raster of the image padded past
+    a multiple of ``cores`` patch columns. Rows past the image, and every
+    row of an image that is not whole windows or that ``count`` blocks do
+    not hold, take ``positions``, ``2 * positions`` and the raster's last
+    row, the padding rows of the position tables and the raster. The state
+    carries from one call to the next and restarts at ``b = 0``, so one core
+    calls it for blocks 0 to ``count - 1`` in order. amd/IRON's
+    ``PatchPositions`` writes these for EmbeddingGemma 2's vision tower.
+
+    Args:
+        block: Patches per call.
+        side: Pixels on a patch's side.
+        pool: Patches on a pooling window's side.
+        positions: Rows of each axis's position table.
+        cores: The raster's columns are padded past a multiple of this.
+
+    Returns:
+        ExternalFunction for ``patch_positions``.
+
+    Raises:
+        ValueError: When ``block``, ``side``, ``pool`` or ``cores`` is below 1,
+            or ``positions`` is negative or ``2 * positions`` past int32.
+    """
+    if min(block, side, pool, cores) < 1 or not 0 <= 2 * positions < 2**31:
+        raise ValueError(
+            "patch_positions() needs block, side, pool and cores >= 1 and "
+            f"0 <= 2 * positions < 2**31, got block={block}, side={side}, "
+            f"pool={pool}, positions={positions}, cores={cores}."
+        )
+    return _make_extern(
+        "patch_positions",
+        _kernel_source("datamovement/patch_positions.cc"),
+        [np.ndarray[(5 * block,), np.dtype[np.int32]]] + [np.int32] * 4,
+        compile_flags=[
+            f"-DBLOCK={block}",
+            f"-DSIDE={side}",
+            f"-DPOOL={pool}",
+            f"-DPOSITIONS={positions}",
+            f"-DCORES={cores}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(Out, Param, Param, Param, Param),
+            parameter_bindings=((1, 0),),
+            call_index=1,
+            reference=lambda count, ho, wo: patch_positions_ref(
+                count,
+                ho,
+                wo,
+                block=block,
+                side=side,
+                pool=pool,
+                positions=positions,
+                cores=cores,
+            ),
+            tolerance=Tolerance.exact(note="integer index arithmetic"),
+            ops_per_call=0,
         ),
     )
 

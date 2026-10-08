@@ -883,6 +883,20 @@ KERNEL_SPECS: list[KernelSpec] = [
         shape_checks=[(dict(_MERGE, block=32), 1, (32,))],
     ),
     KernelSpec(
+        name="patch_positions",
+        factory=kernels.patch_positions,
+        kwargs={},
+        arg_count=5,  # record, block index, block count, height, width
+        expected_name="patch_positions",
+        invalid_kwargs=[
+            (dict(block=0), "block, side, pool and cores >= 1"),
+            (dict(pool=0), "block, side, pool and cores >= 1"),
+            (dict(positions=-1), "2 \\* positions < 2\\*\\*31"),
+            (dict(positions=2**30), "2 \\* positions < 2\\*\\*31"),
+        ],
+        shape_checks=[(dict(block=32), 0, (160,))],
+    ),
+    KernelSpec(
         name="convert_copy",
         factory=kernels.convert_copy,
         kwargs=dict(tile_size=1024),
