@@ -597,8 +597,15 @@ void matmul_PV(bfloat16 *Q, bfloat16 *K, float *out, float *scale_buffer,
   }
 
   int32_t valid_kv_rows = S_kv_eff - idx_buffer[0] * DIM_N;
+  // A block past every key: partial_softmax left the state, and its rescale
+  // factor is the previous block's.
+  if (valid_kv_rows <= 0) {
+    ::aie::set_rounding(saved_rounding);
+    event1();
+    return;
+  }
   if (valid_kv_rows < DIM_N) {
-    zero_rows_from(K, valid_kv_rows < 0 ? 0 : valid_kv_rows);
+    zero_rows_from(K, valid_kv_rows);
   }
 
   // O dims = [(B_q / 8, 8 * DIM_K), (DIM_K / 8, 64), (8, 8), (8, 1)]
