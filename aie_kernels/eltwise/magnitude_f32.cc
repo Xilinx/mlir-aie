@@ -24,17 +24,17 @@ extern "C" void magnitude_f32(float *restrict x, float *restrict out,
   const bf16_vec half = bf16_splat(0x3f00);
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < MAGNITUDE_ELEMS; i += f32_lanes) {
-    bf16_vec rh, rm, rl, ih, im, il;
-    split3(f32_acc(aie::load_v<f32_lanes>(x + i)), rh, rm, rl, one);
-    split3(f32_acc(aie::load_v<f32_lanes>(x + MAGNITUDE_ELEMS + i)), ih, im, il,
-           one);
-    f32_acc p = aie::mul(rm, rm);
-    p = aie::mac(p, im, im);
-    p = aie::mac(aie::mac(p, rh, rl), rh, rl);
-    p = aie::mac(aie::mac(p, ih, il), ih, il);
-    p = aie::mac(aie::mac(p, rh, rm), rh, rm);
-    p = aie::mac(aie::mac(p, ih, im), ih, im);
-    p = aie::mac(aie::mac(p, rh, rh), ih, ih);
+    bf16_vec re_hi, re_mid, re_lo, im_hi, im_mid, im_lo;
+    split3(f32_acc(aie::load_v<f32_lanes>(x + i)), re_hi, re_mid, re_lo, one);
+    split3(f32_acc(aie::load_v<f32_lanes>(x + MAGNITUDE_ELEMS + i)), im_hi,
+           im_mid, im_lo, one);
+    f32_acc p = aie::mul(re_mid, re_mid);
+    p = aie::mac(p, im_mid, im_mid);
+    p = aie::mac(aie::mac(p, re_hi, re_lo), re_hi, re_lo);
+    p = aie::mac(aie::mac(p, im_hi, im_lo), im_hi, im_lo);
+    p = aie::mac(aie::mac(p, re_hi, re_mid), re_hi, re_mid);
+    p = aie::mac(aie::mac(p, im_hi, im_mid), im_hi, im_mid);
+    p = aie::mac(aie::mac(p, re_hi, re_hi), im_hi, im_hi);
 
     // 1 / sqrt(p): the bit-trick estimate, 3.4e-2 off, then a Newton step to
     // about 4e-3. p = 0 gives a finite estimate, and s = 0.
