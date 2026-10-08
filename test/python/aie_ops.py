@@ -20,6 +20,7 @@ from aie.dialects.aie import (
     object_fifo_link,
     tile,
     cascade_flow,
+    flow,
     WireBundle,
     packetflow,
     get_target_model,
@@ -323,6 +324,50 @@ def packetPriorityFlowOp():
         source_channel=0,
         dests={"dest": t1, "port": WireBundle.DMA, "channel": 1},
         priority_route=True,
+    )
+
+
+# CHECK-LABEL: flowViaOp
+# CHECK: %[[SRC:.*]] = aie.tile(1, 3)
+# CHECK: %[[VIA:.*]] = aie.tile(1, 4)
+# CHECK: %[[DST:.*]] = aie.tile(1, 5)
+# CHECK: aie.flow(%[[SRC]], DMA : 0, %[[DST]], DMA : 1) via (%[[VIA]] : South : 2 -> North : 3)
+@construct_and_print_module
+def flowViaOp():
+    src = tile(col=1, row=3)
+    via = tile(col=1, row=4)
+    dst = tile(col=1, row=5)
+    flow(
+        src,
+        WireBundle.DMA,
+        0,
+        dst,
+        WireBundle.DMA,
+        1,
+        vias=[(via, WireBundle.South, 2, WireBundle.North, 3)],
+    )
+
+
+# CHECK-LABEL: packetFlowViaOp
+# CHECK: %[[SRC:.*]] = aie.tile(1, 3)
+# CHECK: %[[VIA:.*]] = aie.tile(1, 4)
+# CHECK: %[[DST:.*]] = aie.tile(1, 5)
+# CHECK: aie.packet_flow(3) {
+# CHECK:   aie.packet_source<%[[SRC]], DMA : 0>
+# CHECK:   aie.packet_dest<%[[DST]], DMA : 1>
+# CHECK: } via (%[[VIA]] : South : 2 -> North : 3)
+@construct_and_print_module
+def packetFlowViaOp():
+    src = tile(col=1, row=3)
+    via = tile(col=1, row=4)
+    dst = tile(col=1, row=5)
+    packetflow(
+        pkt_id=3,
+        source=src,
+        source_port=WireBundle.DMA,
+        source_channel=0,
+        dests={"dest": dst, "port": WireBundle.DMA, "channel": 1},
+        vias=[(via, WireBundle.South, 2, WireBundle.North, 3)],
     )
 
 

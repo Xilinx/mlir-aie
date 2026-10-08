@@ -806,6 +806,21 @@ class object_fifo_link(ObjectFifoLinkOp):
 
 
 # Create a packet flow between source and destination tile ports.
+def _unpack_vias(vias):
+    if not vias:
+        return [], [], [], [], []
+    tiles, ingress_bundles, ingress_channels, egress_bundles, egress_channels = zip(
+        *vias
+    )
+    return (
+        list(tiles),
+        list(ingress_bundles),
+        list(ingress_channels),
+        list(egress_bundles),
+        list(egress_channels),
+    )
+
+
 class packetflow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
 
@@ -818,15 +833,23 @@ class packetflow(PacketFlowOp):
         dests: Union[Dict, List[Dict]],
         keep_pkt_header: bool | None = None,
         priority_route: bool | None = None,
+        vias=None,
         *,
         loc=None,
         ip=None,
     ):
+        via_tiles, in_bundles, in_channels, out_bundles, out_channels = _unpack_vias(
+            vias
+        )
         super().__init__(
             ID=pkt_id,
             keep_pkt_header=keep_pkt_header,
             priority_route=priority_route,
-            vias=[],
+            vias=via_tiles,
+            via_ingress_bundles=in_bundles,
+            via_ingress_channels=in_channels,
+            via_egress_bundles=out_bundles,
+            via_egress_channels=out_channels,
             loc=loc,
             ip=ip,
         )
@@ -1145,6 +1168,7 @@ def flow(
     dest=None,
     dest_bundle=None,
     dest_channel=None,
+    vias=None,
     *,
     loc=None,
     ip=None,
@@ -1158,6 +1182,7 @@ def flow(
         dest_bundle = WireBundle.DMA
     if dest_channel is None:
         dest_channel = 0
+    via_tiles, in_bundles, in_channels, out_bundles, out_channels = _unpack_vias(vias)
     return FlowOp(
         source,
         source_bundle,
@@ -1165,7 +1190,11 @@ def flow(
         dest,
         dest_bundle,
         dest_channel,
-        vias=[],
+        vias=via_tiles,
+        via_ingress_bundles=in_bundles,
+        via_ingress_channels=in_channels,
+        via_egress_bundles=out_bundles,
+        via_egress_channels=out_channels,
         loc=loc,
         ip=ip,
     )

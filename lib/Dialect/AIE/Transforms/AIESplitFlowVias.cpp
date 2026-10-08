@@ -7,10 +7,9 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 
 #include "mlir/Pass/Pass.h"
-
-#include "llvm/ADT/DenseMap.h"
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIESPLITFLOWVIAS
@@ -62,20 +61,17 @@ static bool isDirectWire(Value srcTile, WireBundle srcBundle, int srcChannel,
   return false;
 }
 
-// Return the shim-mux for `tile`, reusing an existing one or creating an empty
-// one immediately after the tile so its operand dominates the connections.
-static ShimMuxOp getOrCreateShimMux(OpBuilder &builder, Value tile,
-                                    DenseMap<Value, ShimMuxOp> &cache) {
-  if (auto it = cache.find(tile); it != cache.end()) {
-    return it->second;
-  }
-  OpBuilder::InsertionGuard guard(builder);
-  builder.setInsertionPointAfterValue(tile);
-  auto shimMuxOp = ShimMuxOp::create(builder, tile.getLoc(), tile);
-  ShimMuxOp::ensureTerminator(shimMuxOp.getConnections(), builder,
-                              tile.getLoc());
-  cache[tile] = shimMuxOp;
-  return shimMuxOp;
+static bool isDirectShimMux(Value srcTile, WireBundle srcBundle, int srcChannel,
+                            Value dstTile, WireBundle dstBundle,
+                            int dstChannel) {
+  auto tile = srcTile.getDefiningOp<TileOp>();
+  if (srcTile != dstTile || !tile || !tile.isShimNOCorPLTile())
+    return false;
+  if (dstBundle == WireBundle::South)
+    return dstChannel == shimMuxChannelFrom({srcBundle, srcChannel});
+  if (srcBundle == WireBundle::South)
+    return srcChannel == shimMuxChannelTo({dstBundle, dstChannel});
+  return false;
 }
 
 static void emitPacketFlow(OpBuilder &builder, Location loc, Operation *anchor,
@@ -97,17 +93,18 @@ static void emitPacketFlow(OpBuilder &builder, Location loc, Operation *anchor,
 }
 
 // Emit the routable portion of a segment between two pinned ports, eliding the
-// parts the wires and vias already realize: a degenerate same-port segment, a
-// single inter-switchbox wire, or an intra-shim hop (realized through the
-// shim-mux, since the switchbox South:N port appears as mux North:N). Whatever
-// remains is a gap the router must fill and becomes a flow -- circuit when
-// `packetID` < 0, otherwise a packet_flow(packetID).
-static void emitRoutableSegment(
-    OpBuilder &builder, Location loc, Operation *anchor, Value srcTile,
-    WireBundle srcBundle, int srcChannel, Value dstTile, WireBundle dstBundle,
-    int dstChannel, int packetID, DenseMap<Value, ShimMuxOp> &shimMuxes,
-    mlir::IntegerAttr maskAttr = {}, mlir::BoolAttr keepPktHeaderAttr = {},
-    mlir::BoolAttr priorityRouteAttr = {}) {
+// parts the wires and vias already realize: a degenerate same-port segment or
+// a single inter-switchbox wire. Whatever remains is a gap the router must fill
+// and becomes a flow -- circuit when `packetID` < 0, otherwise a
+// packet_flow(packetID).
+static void emitRoutableSegment(OpBuilder &builder, Location loc,
+                                Operation *anchor, Value srcTile,
+                                WireBundle srcBundle, int srcChannel,
+                                Value dstTile, WireBundle dstBundle,
+                                int dstChannel, int packetID,
+                                mlir::IntegerAttr maskAttr = {},
+                                mlir::BoolAttr keepPktHeaderAttr = {},
+                                mlir::BoolAttr priorityRouteAttr = {}) {
   if (srcTile == dstTile && srcBundle == dstBundle &&
       srcChannel == dstChannel) {
     return;
@@ -115,20 +112,6 @@ static void emitRoutableSegment(
   if (isDirectWire(srcTile, srcBundle, srcChannel, dstTile, dstBundle,
                    dstChannel)) {
     return;
-  }
-  if (srcTile == dstTile) {
-    if (auto tileOp = srcTile.getDefiningOp<TileOp>();
-        tileOp && tileOp.isShimNOCorPLTile()) {
-      auto toMux = [](WireBundle b) {
-        return b == WireBundle::South ? WireBundle::North : b;
-      };
-      ShimMuxOp mux = getOrCreateShimMux(builder, srcTile, shimMuxes);
-      OpBuilder::InsertionGuard guard(builder);
-      builder.setInsertionPoint(mux.getConnections().front().getTerminator());
-      ConnectOp::create(builder, loc, toMux(srcBundle), srcChannel,
-                        toMux(dstBundle), dstChannel);
-      return;
-    }
   }
   OpBuilder::InsertionGuard guard(builder);
   builder.setInsertionPoint(anchor);
@@ -149,11 +132,6 @@ struct AIESplitFlowViasPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
     OpBuilder builder(device.getContext());
-
-    DenseMap<Value, ShimMuxOp> shimMuxes;
-    for (auto shimMuxOp : device.getOps<ShimMuxOp>()) {
-      shimMuxes[shimMuxOp.getTile()] = shimMuxOp;
-    }
 
     SmallVector<FlowOp> flowsWithVias;
     for (auto flow : device.getOps<FlowOp>()) {
@@ -181,8 +159,7 @@ struct AIESplitFlowViasPass
       auto emitSegment = [&](Value dstTile, WireBundle dstBundle,
                              int dstChannel) {
         emitRoutableSegment(builder, loc, flow, srcTile, srcBundle, srcChannel,
-                            dstTile, dstBundle, dstChannel, /*packetID=*/-1,
-                            shimMuxes);
+                            dstTile, dstBundle, dstChannel, /*packetID=*/-1);
       };
 
       for (size_t i = 0, e = flow.getVias().size(); i < e; i++) {
@@ -192,16 +169,35 @@ struct AIESplitFlowViasPass
         auto egressBundle = static_cast<WireBundle>(egressBundles[i]);
         int egressChannel = egressChannels[i];
 
-        emitSegment(viaTile, ingressBundle, ingressChannel);
+        bool foldIngress =
+            isDirectShimMux(srcTile, srcBundle, srcChannel, viaTile,
+                            ingressBundle, ingressChannel);
+        if (!foldIngress)
+          emitSegment(viaTile, ingressBundle, ingressChannel);
+
+        Value localSrcTile = foldIngress ? srcTile : viaTile;
+        WireBundle localSrcBundle = foldIngress ? srcBundle : ingressBundle;
+        int localSrcChannel = foldIngress ? srcChannel : ingressChannel;
+
+        Value nextTile = i + 1 < e ? flow.getVias()[i + 1] : flow.getDest();
+        WireBundle nextBundle =
+            i + 1 < e ? static_cast<WireBundle>(ingressBundles[i + 1])
+                      : flow.getDestBundle();
+        int nextChannel =
+            i + 1 < e ? ingressChannels[i + 1] : flow.getDestChannel();
+        bool foldEgress = isDirectShimMux(viaTile, egressBundle, egressChannel,
+                                          nextTile, nextBundle, nextChannel);
 
         OpBuilder::InsertionGuard guard(builder);
         builder.setInsertionPoint(flow);
-        FlowOp::create(builder, loc, viaTile, ingressBundle, ingressChannel,
-                       viaTile, egressBundle, egressChannel);
+        FlowOp::create(builder, loc, localSrcTile, localSrcBundle,
+                       localSrcChannel, foldEgress ? nextTile : viaTile,
+                       foldEgress ? nextBundle : egressBundle,
+                       foldEgress ? nextChannel : egressChannel);
 
-        srcTile = viaTile;
-        srcBundle = egressBundle;
-        srcChannel = egressChannel;
+        srcTile = foldEgress ? nextTile : viaTile;
+        srcBundle = foldEgress ? nextBundle : egressBundle;
+        srcChannel = foldEgress ? nextChannel : egressChannel;
       }
 
       emitSegment(flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
@@ -243,7 +239,7 @@ struct AIESplitFlowViasPass
       auto emitSegment = [&](Value dstTile, WireBundle dstBundle,
                              int dstChannel, BoolAttr keepPktHeader = {}) {
         emitRoutableSegment(builder, loc, pf, srcTile, srcBundle, srcChannel,
-                            dstTile, dstBundle, dstChannel, id, shimMuxes,
+                            dstTile, dstBundle, dstChannel, id,
                             pf.getMaskAttr(), keepPktHeader,
                             pf.getPriorityRouteAttr());
       };
@@ -255,19 +251,38 @@ struct AIESplitFlowViasPass
         auto egress = static_cast<WireBundle>(egB[i]);
         int egressChannel = egC[i];
 
-        emitSegment(viaTile, ingress, ingressChannel);
+        bool foldIngress = isDirectShimMux(srcTile, srcBundle, srcChannel,
+                                           viaTile, ingress, ingressChannel);
+        if (!foldIngress)
+          emitSegment(viaTile, ingress, ingressChannel);
+
+        Value localSrcTile = foldIngress ? srcTile : viaTile;
+        WireBundle localSrcBundle = foldIngress ? srcBundle : ingress;
+        int localSrcChannel = foldIngress ? srcChannel : ingressChannel;
+
+        Value nextTile = i + 1 < e ? pf.getVias()[i + 1] : dest.getTile();
+        WireBundle nextBundle =
+            i + 1 < e ? static_cast<WireBundle>(inB[i + 1]) : dest.getBundle();
+        int nextChannel = i + 1 < e ? inC[i + 1] : dest.getChannel();
+        bool foldEgress = isDirectShimMux(viaTile, egress, egressChannel,
+                                          nextTile, nextBundle, nextChannel);
 
         BoolAttr keepPktHeader;
-        if (viaTile == dest.getTile() && egress == dest.getBundle() &&
-            egressChannel == dest.getChannel())
+        if ((foldEgress && nextTile == dest.getTile() &&
+             nextBundle == dest.getBundle() &&
+             nextChannel == dest.getChannel()) ||
+            (viaTile == dest.getTile() && egress == dest.getBundle() &&
+             egressChannel == dest.getChannel()))
           keepPktHeader = pf.getKeepPktHeaderAttr();
-        emitPacketFlow(builder, loc, pf, viaTile, ingress, ingressChannel,
-                       viaTile, egress, egressChannel, id, pf.getMaskAttr(),
-                       keepPktHeader, pf.getPriorityRouteAttr());
+        emitPacketFlow(
+            builder, loc, pf, localSrcTile, localSrcBundle, localSrcChannel,
+            foldEgress ? nextTile : viaTile, foldEgress ? nextBundle : egress,
+            foldEgress ? nextChannel : egressChannel, id, pf.getMaskAttr(),
+            keepPktHeader, pf.getPriorityRouteAttr());
 
-        srcTile = viaTile;
-        srcBundle = egress;
-        srcChannel = egressChannel;
+        srcTile = foldEgress ? nextTile : viaTile;
+        srcBundle = foldEgress ? nextBundle : egress;
+        srcChannel = foldEgress ? nextChannel : egressChannel;
       }
 
       emitSegment(dest.getTile(), dest.getBundle(), dest.getChannel(),

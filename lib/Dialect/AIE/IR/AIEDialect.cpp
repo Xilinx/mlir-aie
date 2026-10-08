@@ -2282,7 +2282,49 @@ LogicalResult verifyNoSharedCircuitPorts(DeviceOp device) {
 }
 
 LogicalResult verifyNoSharedCircuitViaEgresses(DeviceOp device) {
-  std::map<PortKey, std::pair<FlowOp, size_t>> claimedEgresses;
+  enum class ClaimKind { FlowDest, PacketDest, Connect, MasterSet, Via };
+  struct Claim {
+    Operation *op;
+    ClaimKind kind;
+    size_t viaIndex = 0;
+  };
+  std::map<PortKey, Claim> claimedEgresses;
+
+  auto addInterconnectClaims = [&](auto interconnect) {
+    Value tile = interconnect.getTile();
+    for (ConnectOp connect :
+         interconnect.getConnections().template getOps<ConnectOp>()) {
+      Port dest = connect.destPort();
+      if (std::optional<PortKey> port =
+              tryGetPortKey(tile, dest.bundle, dest.channel))
+        claimedEgresses.try_emplace(*port, Claim{connect, ClaimKind::Connect});
+    }
+    for (MasterSetOp masterSet :
+         interconnect.getConnections().template getOps<MasterSetOp>()) {
+      Port dest = masterSet.destPort();
+      if (std::optional<PortKey> port =
+              tryGetPortKey(tile, dest.bundle, dest.channel))
+        claimedEgresses.try_emplace(*port,
+                                    Claim{masterSet, ClaimKind::MasterSet});
+    }
+  };
+  for (SwitchboxOp switchbox : device.getOps<SwitchboxOp>())
+    addInterconnectClaims(switchbox);
+  for (ShimMuxOp shimMux : device.getOps<ShimMuxOp>())
+    addInterconnectClaims(shimMux);
+  for (FlowOp flow : device.getOps<FlowOp>()) {
+    if (std::optional<PortKey> dest = tryGetPortKey(
+            flow.getDest(), flow.getDestBundle(), flow.getDestChannel()))
+      claimedEgresses.try_emplace(*dest, Claim{flow, ClaimKind::FlowDest});
+  }
+  for (PacketFlowOp packetFlow : device.getOps<PacketFlowOp>()) {
+    for (PacketDestOp dest : packetFlow.getPorts().getOps<PacketDestOp>()) {
+      if (std::optional<PortKey> port = tryGetPortKey(
+              dest.getTile(), dest.getBundle(), dest.getChannel()))
+        claimedEgresses.try_emplace(*port, Claim{dest, ClaimKind::PacketDest});
+    }
+  }
+
   WalkResult result = device.walk([&](FlowOp flow) {
     ArrayRef<int32_t> bundles =
         flow.getViaEgressBundlesAttr()
@@ -2302,16 +2344,38 @@ LogicalResult verifyNoSharedCircuitViaEgresses(DeviceOp device) {
       if (!egress) {
         continue;
       }
-      auto [it, inserted] = claimedEgresses.try_emplace(*egress, flow, index);
-      if (inserted) {
+      Claim viaClaim{flow, ClaimKind::Via, index};
+      auto [it, inserted] = claimedEgresses.try_emplace(*egress, viaClaim);
+      if (inserted)
+        continue;
+      if (index + 1 == flow.getVias().size() && it->second.op == flow &&
+          it->second.kind == ClaimKind::FlowDest) {
+        it->second = viaClaim;
         continue;
       }
       InFlightDiagnostic diag = flow.emitOpError()
                                 << "via " << index << " claims circuit egress "
                                 << to_string(*egress)
-                                << ", which another via already claims";
-      diag.attachNote(it->second.first.getLoc())
-          << "via " << it->second.second << " claims the same circuit egress";
+                                << ", which another operation already claims";
+      Diagnostic &note = diag.attachNote(it->second.op->getLoc());
+      switch (it->second.kind) {
+      case ClaimKind::FlowDest:
+        note << "a circuit flow ends at the same port";
+        break;
+      case ClaimKind::PacketDest:
+        note << "a packet flow ends at the same port";
+        break;
+      case ClaimKind::Connect:
+        note << "a fixed connect drives the same port";
+        break;
+      case ClaimKind::MasterSet:
+        note << "a fixed master set drives the same port";
+        break;
+      case ClaimKind::Via:
+        note << "via " << it->second.viaIndex
+             << " claims the same circuit egress";
+        break;
+      }
       return WalkResult::interrupt();
     }
     return WalkResult::advance();

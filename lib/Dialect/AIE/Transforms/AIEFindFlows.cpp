@@ -65,6 +65,7 @@ using PacketConnection = struct PacketConnection {
   llvm::SmallVector<Via, 4> vias;
   // Interconnect ops traversed on the way to this endpoint.
   llvm::SmallVector<Operation *, 8> usedOps;
+  bool isPacket = false;
 };
 
 struct CircuitFanoutSeed {
@@ -84,6 +85,8 @@ class ConnectivityAnalysis {
   mutable llvm::DenseSet<std::pair<Operation *, int>> fanoutIngresses;
   mutable llvm::DenseSet<std::pair<Operation *, int>> fanoutEgressSeeds;
   mutable llvm::SmallVector<CircuitFanoutSeed, 8> circuitFanoutSeeds;
+  mutable std::set<std::tuple<Operation *, int, int>> packetMergeEgresses;
+  mutable llvm::DenseSet<Operation *> packetMergeOps;
 
   static int encodePort(Port p) {
     return static_cast<int>(p.bundle) * 64 + p.channel;
@@ -92,9 +95,9 @@ class ConnectivityAnalysis {
 public:
   ConnectivityAnalysis(DeviceOp &d) : device(d) {}
 
-  // Enable fan-out splitting and precompute which interconnect input ports fan
-  // out (drive more than one output).
-  void enableFanoutSplitting() {
+  // Precompute the fan-out and packet merge boundaries between linear route
+  // sections.
+  void enableSectionSplitting() {
     splitFanouts = true;
     auto scan = [&](Operation *sw, Region &connections) {
       llvm::SmallVector<Port, 8> sources;
@@ -115,6 +118,46 @@ public:
           fanoutIngresses.insert({sw, encodePort(p)});
         }
       }
+
+      const int idMask = (1 << llvm::Log2_32_Ceil(
+                              device.getTargetModel().getMaxPacketId() + 1)) -
+                         1;
+      using MergeKey = std::pair<int, int>;
+      std::map<MergeKey, SmallVector<Port, 4>> mergeIngresses;
+      std::map<MergeKey, SmallVector<Operation *, 8>> mergeOps;
+      for (PacketRulesOp rules : b.getOps<PacketRulesOp>()) {
+        for (int id = 0; id <= idMask; ++id) {
+          PacketRuleOp selected;
+          for (PacketRuleOp rule :
+               rules.getRules().front().getOps<PacketRuleOp>()) {
+            if ((id & rule.maskInt()) == rule.valueInt()) {
+              selected = rule;
+              break;
+            }
+          }
+          if (!selected)
+            continue;
+          for (MasterSetOp masterSet : b.getOps<MasterSetOp>()) {
+            if (!llvm::is_contained(masterSet.getAmsels(), selected.getAmsel()))
+              continue;
+            MergeKey key{encodePort(masterSet.destPort()), id};
+            if (!llvm::is_contained(mergeIngresses[key], rules.sourcePort()))
+              mergeIngresses[key].push_back(rules.sourcePort());
+            for (Operation *op :
+                 {selected.getOperation(), masterSet.getOperation(),
+                  selected.getAmsel().getDefiningOp()})
+              if (!llvm::is_contained(mergeOps[key], op))
+                mergeOps[key].push_back(op);
+          }
+        }
+      }
+      for (const auto &[key, ingresses] : mergeIngresses) {
+        if (ingresses.size() < 2)
+          continue;
+        auto [egress, id] = key;
+        packetMergeEgresses.insert({sw, egress, id});
+        packetMergeOps.insert_range(mergeOps[key]);
+      }
     };
     for (auto switchOp : device.getOps<SwitchboxOp>()) {
       scan(switchOp, switchOp.getConnections());
@@ -127,6 +170,12 @@ public:
   }
   llvm::SmallVector<CircuitFanoutSeed, 8> &getCircuitFanoutSeeds() {
     return circuitFanoutSeeds;
+  }
+  const llvm::DenseSet<Operation *> &getPacketMergeOps() const {
+    return packetMergeOps;
+  }
+  std::set<std::tuple<Operation *, int, int>> &getPacketMergeEgresses() {
+    return packetMergeEgresses;
   }
   static Port decodePort(int e) {
     return {static_cast<WireBundle>(e / 64), e % 64};
@@ -208,7 +257,7 @@ private:
       Operation *switchOp, Port ingressPort, ArrayRef<Via> currentVias,
       ArrayRef<Operation *> currentUsedOps,
       const std::vector<PortMaskValue> &nextPortMaskValues, MaskValue maskValue,
-      bool keepPartialFlows,
+      bool currentIsPacket, bool keepPartialFlows,
       std::vector<PacketConnection> &partialEndpoints) const {
     std::vector<PacketConnection> worklist;
     // A slave port hands a packet to the first rule that matches its id, so
@@ -248,6 +297,24 @@ private:
       MaskValue newMaskValue = {maskValue.mask | nextMaskValue.mask,
                                 maskValue.value |
                                     (nextMaskValue.mask & nextMaskValue.value)};
+      bool reachesMerge = false;
+      int maxPacketId = device.getTargetModel().getMaxPacketId();
+      for (int id = 0; id <= maxPacketId; ++id) {
+        if ((id & newMaskValue.mask) != newMaskValue.value)
+          continue;
+        if (packetMergeEgresses.count({switchOp, encodePort(nextPort), id})) {
+          reachesMerge = true;
+          break;
+        }
+      }
+      if (reachesMerge) {
+        partialEndpoints.push_back({{switchOp, ingressPort},
+                                    newMaskValue,
+                                    llvm::to_vector(currentVias),
+                                    llvm::to_vector(currentUsedOps),
+                                    currentIsPacket || rule != nullptr});
+        continue;
+      }
       SmallVector<Via, 4> newVias(currentVias.begin(), currentVias.end());
       if (viaTile) {
         newVias.push_back({viaTile, ingressPort, nextPort});
@@ -263,13 +330,17 @@ private:
         // edge or an off-fabric consumer). Under partial recovery this output
         // port is itself the flow's endpoint.
         if (keepPartialFlows) {
-          partialEndpoints.push_back(
-              {{switchOp, nextPort}, newMaskValue, newVias, newUsedOps});
+          partialEndpoints.push_back({{switchOp, nextPort},
+                                      newMaskValue,
+                                      newVias,
+                                      newUsedOps,
+                                      currentIsPacket || rule != nullptr});
         }
         continue;
       }
 
-      worklist.push_back({*nextConnection, newMaskValue, newVias, newUsedOps});
+      worklist.push_back({*nextConnection, newMaskValue, newVias, newUsedOps,
+                          currentIsPacket || rule != nullptr});
     }
     return worklist;
   }
@@ -360,7 +431,7 @@ public:
       std::vector<PacketConnection> partialEndpoints;
       std::vector<PacketConnection> newWorkList = maskSwitchboxConnections(
           other, otherPort, t.vias, t.usedOps, nextPortMaskValues, maskValue,
-          keepPartialFlows, partialEndpoints);
+          t.isPacket, keepPartialFlows, partialEndpoints);
       worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
       connectedTiles.insert(connectedTiles.end(), partialEndpoints.begin(),
                             partialEndpoints.end());
@@ -392,7 +463,8 @@ public:
     if (!t) {
       return {};
     }
-    return traverse({PacketConnection{*t, claim, {}, {}}}, keepPartialFlows);
+    return traverse({PacketConnection{*t, claim, {}, {}, false}},
+                    keepPartialFlows);
   }
 
   std::vector<PacketConnection>
@@ -400,7 +472,8 @@ public:
                              bool keepPartialFlows,
                              MaskValue claim = {0, 0}) const {
     return traverse(
-        {PacketConnection{PortConnection{switchOp, inputPort}, claim, {}, {}}},
+        {PacketConnection{
+            PortConnection{switchOp, inputPort}, claim, {}, {}, false}},
         keepPartialFlows);
   }
 
@@ -409,12 +482,14 @@ public:
   // section.
   std::vector<PacketConnection>
   getConnectedTilesFromEgress(Operation *switchOp, Port egressPort,
-                              bool keepPartialFlows) const {
+                              bool keepPartialFlows,
+                              MaskValue claim = {0, 0}) const {
     auto t = getConnectionThroughWire(switchOp, egressPort);
     if (!t) {
       return {};
     }
-    return traverse({PacketConnection{*t, {0, 0}, {}, {}}}, keepPartialFlows);
+    return traverse({PacketConnection{*t, claim, {}, {}, true}},
+                    keepPartialFlows);
   }
 
   std::vector<PacketConnection>
@@ -429,7 +504,8 @@ public:
     PacketConnection branch{*connection,
                             {0, 0},
                             {{tile, seed.ingress, seed.egress}},
-                            std::move(usedOps)};
+                            std::move(usedOps),
+                            false};
     return traverse({std::move(branch)}, keepPartialFlows);
   }
 };
@@ -536,9 +612,7 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     }
     // A packet endpoint becomes a logical packet flow, and the pass erases
     // the lowered physical configuration.
-    bool isPacket = llvm::any_of(c.usedOps, [](Operation *op) {
-      return isa_and_nonnull<PacketRuleOp>(op);
-    });
+    bool isPacket = c.isPacket;
     // The same endpoint is reached twice when a broadcast splits and rejoins,
     // and the tile, switchbox and shim-mux seeds can each reach one route.
     // DeviceOp::verify rejects a flow declared twice.
@@ -674,11 +748,7 @@ static std::vector<PacketConnection> exactPacketEndpoints(
     std::vector<PacketConnection> endpoints, int idMask,
     llvm::function_ref<std::vector<PacketConnection>(MaskValue)> trace,
     bool emitVias) {
-  auto isPacket = [](const PacketConnection &c) {
-    return llvm::any_of(c.usedOps, [](Operation *op) {
-      return isa_and_nonnull<PacketRuleOp>(op);
-    });
-  };
+  auto isPacket = [](const PacketConnection &c) { return c.isPacket; };
   if (llvm::none_of(endpoints, isPacket)) {
     return endpoints;
   }
@@ -806,7 +876,7 @@ static std::vector<PacketConnection> exactPacketEndpoints(
           }
         }
         result.push_back(
-            {paths[path].portConnection, cube, paths[path].vias, ops});
+            {paths[path].portConnection, cube, paths[path].vias, ops, true});
       }
     }
   }
@@ -944,7 +1014,7 @@ struct AIEFindFlowsPass
     ConnectivityAnalysis analysis(d);
     d.getTargetModel().validate();
     if (clEmitVias) {
-      analysis.enableFanoutSplitting();
+      analysis.enableSectionSplitting();
     }
 
     // Widest mask the target's packet ids can carry.
@@ -952,6 +1022,7 @@ struct AIEFindFlowsPass
         (1 << llvm::Log2_32_Ceil(d.getTargetModel().getMaxPacketId() + 1)) - 1;
 
     LiftedOps lifted;
+    lifted.kept.insert_range(analysis.getPacketMergeOps());
     FlowKeySet seen;
     OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
     for (auto tile : d.getOps<TileOp>()) {
@@ -1016,6 +1087,20 @@ struct AIEFindFlowsPass
                     egress.channel, tiles, clEmitVias, /*dropIntraTile=*/true,
                     idMask, seen, lifted);
         }
+      }
+
+      for (const auto &[switchOp, encodedEgress, id] :
+           analysis.getPacketMergeEgresses()) {
+        Port egress = ConnectivityAnalysis::decodePort(encodedEgress);
+        Value srcTile = resolveEndpointTile(switchOp);
+        if (!srcTile)
+          continue;
+        std::vector<PacketConnection> tiles =
+            analysis.getConnectedTilesFromEgress(
+                switchOp, egress, clKeepPartialFlows, {idMask, id});
+        emitFlows(builder, switchOp->getLoc(), srcTile, egress.bundle,
+                  egress.channel, tiles, clEmitVias,
+                  /*dropIntraTile=*/true, idMask, seen, lifted);
       }
     }
 

@@ -27,13 +27,92 @@ module {
 module {
   aie.device(npu1_1col) {
     %src = aie.tile(0, 2)
+    %via_and_dst = aie.tile(0, 3)
+    %switchbox = aie.switchbox(%via_and_dst) {
+      // expected-note@+1 {{a fixed connect drives the same port}}
+      aie.connect<South : 1, North : 0>
+    }
+    // expected-error@+1 {{via 0 claims circuit egress (0, 3) North : 0, which another operation already claims}}
+    aie.flow(%src, DMA : 0, %via_and_dst, North : 0) via (%via_and_dst : South : 0 -> North : 0)
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu1_1col) {
+    %src = aie.tile(0, 2)
+    %via = aie.tile(0, 3)
+    %dst = aie.tile(0, 4)
+    %switchbox = aie.switchbox(%via) {
+      %amsel = aie.amsel<0> (0)
+      // expected-note@+1 {{a fixed master set drives the same port}}
+      %master = aie.masterset(North : 0, %amsel)
+    }
+    // expected-error@+1 {{via 0 claims circuit egress (0, 3) North : 0, which another operation already claims}}
+    aie.flow(%src, DMA : 0, %dst, DMA : 0) via (%via : South : 0 -> North : 0)
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu1_1col) {
+    %src = aie.tile(0, 2)
     %via = aie.tile(0, 3)
     %dst0 = aie.tile(0, 4)
     %dst1 = aie.tile(0, 5)
     // expected-note@+1 {{via 0 claims the same circuit egress}}
     aie.flow(%src, DMA : 0, %dst0, DMA : 0) via (%via : South : 0 -> North : 0)
-    // expected-error@+1 {{via 0 claims circuit egress (0, 3) North : 0, which another via already claims}}
+    // expected-error@+1 {{via 0 claims circuit egress (0, 3) North : 0, which another operation already claims}}
     aie.flow(%src, DMA : 0, %dst1, DMA : 0) via (%via : South : 0 -> North : 0)
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu1_1col) {
+    %src = aie.tile(0, 2)
+    %via = aie.tile(0, 3)
+    %dst = aie.tile(0, 4)
+    // expected-note@+1 {{a circuit flow ends at the same port}}
+    aie.flow(%src, DMA : 0, %via, North : 0)
+    // expected-error@+1 {{via 0 claims circuit egress (0, 3) North : 0, which another operation already claims}}
+    aie.flow(%src, DMA : 1, %dst, DMA : 0) via (%via : South : 0 -> North : 0)
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu1_1col) {
+    %src = aie.tile(0, 2)
+    %via = aie.tile(0, 3)
+    %dst = aie.tile(0, 4)
+    aie.packet_flow(1) {
+      aie.packet_source<%src, DMA : 0>
+      // expected-note@+1 {{a packet flow ends at the same port}}
+      aie.packet_dest<%via, North : 0>
+    }
+    // expected-error@+1 {{via 0 claims circuit egress (0, 3) North : 0, which another operation already claims}}
+    aie.flow(%src, DMA : 1, %dst, DMA : 0) via (%via : South : 0 -> North : 0)
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu1_1col) {
+    %src = aie.tile(0, 2)
+    %via = aie.tile(0, 3)
+    %dst = aie.tile(0, 4)
+    %switchbox = aie.switchbox(%via) {
+      // expected-note@+1 {{a fixed connect drives the same port}}
+      aie.connect<South : 1, North : 0>
+    }
+    // expected-error@+1 {{via 0 claims circuit egress (0, 3) North : 0, which another operation already claims}}
+    aie.flow(%src, DMA : 0, %dst, DMA : 0) via (%via : South : 0 -> North : 0)
   }
 }
 
