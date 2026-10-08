@@ -480,6 +480,7 @@ transpose/1024x16/uint8/subtile=4
 transpose/8192x16/bfloat16/subtile=8/llama-decode
 zero/12x3/bfp16ebs8/vector-tail
 zero/34x3/int16/vectorized=False
+zero/4096x4/int32
 zero/64x4/bfloat16
 zero/64x4/bfp16ebs8
 zero/64x4/int32

@@ -62,6 +62,8 @@ def check(factory: str, kwargs: dict | None = None, calls: int = 4, **opts) -> C
 CASES: list[Case] = [
     check("zero", dict(tile_size=64), smoke=True),
     check("zero", dict(tile_size=64, dtype=bfloat16), smoke=True),
+    # The 64-element tiles above are four vector stores, too few to time.
+    Case("zero", dict(tile_size=4096), calls=4),
     check("zero", dict(tile_size=64, dtype=v8bfp16ebs8), smoke=True, devices=("npu2",)),
     check("zero", dict(tile_size=68, dtype=np.uint8), calls=3, tag="vector-tail"),
     check(
