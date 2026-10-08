@@ -20,8 +20,17 @@ from aie.iron import kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.algorithms._transform import transform, transform_parallel
 from aie.iron.device import NPU1Col1
-from aie.utils import get_current_device
+from aie.utils import config, get_current_device
 from aie.utils.hostruntime import set_current_device
+
+try:
+    config.peano_cxx_path()
+    HAS_PEANO = True
+except RuntimeError:
+    HAS_PEANO = False
+needs_peano = pytest.mark.skipif(
+    not HAS_PEANO, reason="measures frames from compiled kernels"
+)
 
 
 @pytest.fixture
@@ -60,6 +69,7 @@ def test_kernel_design_leaves_the_stack_to_aiecc(npu1_device):
     assert "stack_size" not in mlir
 
 
+@needs_peano
 def test_kernel_design_budgets_the_kernel_frames(npu2_device):
     # IRON's N128/CT_K32 flm tile: two sets of tiles fit beside the default
     # stack but not beside its 32 KiB stack accumulator.
@@ -79,6 +89,7 @@ def test_kernel_design_budgets_the_kernel_frames(npu2_device):
     assert depths == ["1"]
 
 
+@needs_peano
 @pytest.mark.parametrize("use_cache", [True, False])
 def test_kernel_design_reads_frames_through_the_design_cache(tmp_path, use_cache):
     # NPU_CACHE_HOME is read at import, so generate in a fresh interpreter.

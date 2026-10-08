@@ -35,7 +35,7 @@ from aie.iron.buffer import Buffer
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels._common import Param, _is_tensor_type
-from aie.utils import bfp, ensure_current_device, tensor
+from aie.utils import bfp, config, ensure_current_device, tensor
 from aie.utils.compile import compile_external_kernel, resolve_target_arch
 from aie.utils.compile.jit import CompileTime, In, InOut, Out, get_compile_arg
 from aie.utils.compile.readobj import linked
@@ -145,20 +145,27 @@ def _kernel_stack_bytes(kernels, embed_bitcode):
     or in a scratch directory when caching is off, and read from its
     ``.stack_sizes``. A function with no entry there, such as a
     runtime-library routine, adds 0. Anything else, such as a Chess or
-    merge-mode kernel, counts as 0, as aiecc cannot measure it either. An
-    undercount only picks too deep a buffering for the tile; aiecc measures
-    the linked core and its allocator fails the build when the buffers no
-    longer fit.
+    merge-mode kernel, counts as 0, as aiecc cannot measure it either. So
+    does every kernel when no Peano is installed, where the design can be
+    lowered but not built. An undercount only picks too deep a buffering for
+    the tile; aiecc measures the linked core and its allocator fails the
+    build when the buffers no longer fit.
     """
     cache = get_compile_arg("_iron_object_cache")
     arch = resolve_target_arch(_device())
+    try:
+        config.peano_cxx_path()
+        has_peano = True
+    except RuntimeError:
+        has_peano = False
     deepest = 0
     with tempfile.TemporaryDirectory() as tmp:
         for k in kernels:
             if k.stack_size_override is not None:
                 deepest = max(deepest, k.stack_size_override)
             elif (
-                isinstance(k, ExternalFunction)
+                has_peano
+                and isinstance(k, ExternalFunction)
                 and k.link_with_mode is None
                 and not k.use_chess
             ):
