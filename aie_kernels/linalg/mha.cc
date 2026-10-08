@@ -84,8 +84,8 @@ static void matmul_rowmaj(bfloat16 *a_in, bfloat16 *b_in, C *c_out) {
       const bfloat16 *__restrict pB1 = b_in + j * MMUL::size_B;
       const bfloat16 *__restrict pB2 = b_in + (j + 1) * MMUL::size_B;
 
-      // Load partial results from C for accumulation in-place; zero.cc does
-      // the zeroing when a new accumulation starts.
+      // Accumulates onto C in place; callers zero it when a new accumulation
+      // starts.
       MMUL C00(aie::load_v<MMUL::size_C>(pC1));
       MMUL C01(aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C));
 
@@ -146,8 +146,8 @@ static void scale_blocked_rows(const float *O, bfloat16 *out,
   }
 }
 
-// O's rows by the running max's correction in place, which is exact in bf16,
-// so only O is split. Eight rows whose max held have factors of exactly 1.
+// Scales O's rows by the running max's correction in place, which is exact in
+// bf16, so only O is split. Eight rows whose max held have factors of exactly 1.
 static void rescale_running_O(float *O, const float *alpha, int32_t rows) {
   using Acc64 = aie::accum<accfloat, VECTOR_LENGTH>;
   const auto ones = aie::broadcast<float, 8>(1.0f);
