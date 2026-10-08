@@ -476,8 +476,8 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
       if (target == obj.symbol_end()) {
         continue; // no symbol to attribute this relocation to
       }
-      // A probe link leaves buffer symbols undefined, at address 0, where a
-      // function can start; they are never call targets.
+      // An undefined weak symbol resolves to address 0, where a function can
+      // start; it names no callee.
       auto targetFlags = target->getFlags();
       if (!targetFlags) {
         llvm::consumeError(targetFlags.takeError());

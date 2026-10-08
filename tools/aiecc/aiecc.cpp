@@ -987,9 +987,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // The probe link. Same objects, same garbage collection and the same script
   // generator as the real link, but with every region offered whole, so the
   // sections that land in each bank are sized only by what the objects hold.
-  // Buffer symbols are left undefined rather than placed: their addresses are
-  // not known yet, and reachability -- which is all garbage collection depends
-  // on -- does not care where they live.
+  // Buffer symbols stand at their memory's base rather than placed: their
+  // addresses are not known yet, and reachability -- which is all garbage
+  // collection depends on -- does not care where they live. Every other symbol
+  // must resolve, as in the real link: a call to a missing function would
+  // leave a frame out of the measured stack.
   EdgeWithTypedOutput<Directory> &probeElfs =
       bundle(perCoreArches.out, objects.out, probeScripts.out)
           .map<Directory>(
@@ -1002,7 +1004,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .arg("-Wl,--gc-sections")
                   .arg("-Wl,--emit-relocs")
                   .arg("-Wl,--orphan-handling=error")
-                  .arg("-Wl,--unresolved-symbols=ignore-all")
                   .arg("-Wl,--no-check-sections")
                   .input("-Wl,-T,")
                   .output("-o")
