@@ -8,7 +8,10 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType, WireBundle
+from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+    WireBundle,
+)
 from aie.dialects.aie import event  # pyright: ignore[reportAttributeAccessIssue]
 from aie.iron import (
     CompileTime,
@@ -25,11 +28,7 @@ from aie.utils.benchmark import run_iters
 
 NPU2_COLUMNS = 8
 NPU2_CORE_ROWS = 4
-RECONFIGURATION_MODES = (
-    "load-pdi",
-    "expand-load-pdis",
-    "control-packets",
-)
+MODES = ("separate-dispatch", "load-pdi", "expand-load-pdis")
 
 
 @iron.jit
@@ -47,7 +46,7 @@ def reconfigure(
         raise ValueError(f"cols must be in [1, {NPU2_COLUMNS}]; got {cols}")
     if not 1 <= rows <= NPU2_CORE_ROWS:
         raise ValueError(f"rows must be in [1, {NPU2_CORE_ROWS}]; got {rows}")
-    if mode != "separate-dispatch" and mode not in RECONFIGURATION_MODES:
+    if mode not in MODES:
         raise ValueError(f"unsupported mode: {mode}")
 
     element_type = np.ndarray[(1,), np.dtype[np.int32]]
@@ -155,7 +154,7 @@ def reconfigure(
     return Program.compose(
         [configuration],
         entry=entry,
-        reconfiguration_mode=mode if full_elf else "load-pdi",
+        expand_load_pdis=True if mode == "expand-load-pdis" else None,
     ).resolve_program()
 
 
@@ -163,7 +162,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode",
-        choices=["separate-dispatch", *RECONFIGURATION_MODES],
+        choices=MODES,
         default="load-pdi",
     )
     parser.add_argument("--cols", type=int, default=1)

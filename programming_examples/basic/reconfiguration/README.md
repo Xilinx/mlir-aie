@@ -8,12 +8,11 @@
 
 # Reconfiguration
 
-This example compares four ways to run or reconfigure one NPU2 device image:
+This example compares three ways to run or reconfigure one NPU2 device image:
 
 - `separate-dispatch`: compile an xclbin and dispatch its worker runtime directly.
 - `load-pdi`: use a full ELF with direct PDI loads.
 - `expand-load-pdis`: expand PDI loads into register writes.
-- `control-packets`: stream each configuration through control packets.
 
 `reconfiguration.py` contains one `@iron.jit` design. One
 `DeviceConfiguration` owns the workers and their runtime sequence. The xclbin
@@ -25,7 +24,7 @@ The design accepts array dimensions, program-memory padding, switchbox padding,
 and the number of configure-and-run operations per full-ELF dispatch:
 
 ```bash
-python reconfiguration.py --mode control-packets --cols 4 --rows 2 \
+python reconfiguration.py --mode expand-load-pdis --cols 4 --rows 2 \
   --nops 2000 --switchboxes 12 --reconfigs 4 --warmup 2 --iters 10
 ```
 
