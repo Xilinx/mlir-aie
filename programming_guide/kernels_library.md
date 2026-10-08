@@ -91,6 +91,13 @@ hardcoding for one NPU generation.  See
 [`iron_configuration.md`](./iron_configuration.md)
 §Arch-aware kernel introspection.
 
+`.k_tail(A, B, k_valid)`, a second symbol of the same object, zeroes A's
+columns and B's rows from `k_valid` (clamped to `[0, dim_k]`) on, in the
+blocking the matmul reads.
+Call it on the last K tile of a reduction whose length is not a multiple of
+`dim_k`: the matmul after it sums only the first `k_valid` of the tile's K,
+whatever the rest of the tile holds.
+
 ## Shared-buffer factory kwargs
 
 Some convolution factories accept an opt-in kwarg that decouples the
