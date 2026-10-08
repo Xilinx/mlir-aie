@@ -1,20 +1,17 @@
-//===- stack_size_aie2_runtime_entry_fallback.mlir ----------------*- MLIR -*-===//
+//===- stack_size_aie2_runtime_entry_frame.mlir -------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// Peano compiles aie2's crt1.o without -fstack-size-section, so a linked npu1
-// core reports no frame for `_main_init`. The fallbackFrames table in
-// StackSizeAnalysis.cpp supplies the 32 bytes that its prologue allocates
-// (`paddb [sp], #0x20`). aie2p's crt1.o carries the section, so npu2 never
-// reaches that table. No npu2 test covers it.
+// The npu1 counterpart of stack_size_counts_runtime_entry_frame.mlir, which
+// covers npu2. Peano must compile aie2's crt1.o with -fstack-size-section for
+// the linked core to report the frame of `_main_init`.
 //
 // This core calls no kernel and its body needs no frame, so 32 is the runtime
-// entry frame alone. Delete the table, change the e_flags that key it, or
-// rename the symbol it matches, and the requirement drops to 0. Every npu1
-// core would then undercount by 32 bytes.
+// entry frame alone. The requirement drops to 0 when the frame goes
+// unreported, and every npu1 core then undercounts by 32 bytes.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
