@@ -129,11 +129,6 @@ The single in-order AIE queue and its doorbell are **not** safe for concurrent
 dispatch from multiple threads; callers must serialize dispatches. This is the
 same constraint the HRX backend documents.
 
-## Limitations
-
-- **Trace capture is not supported.** A design carrying a `trace_config` is
-  rejected before anything is dispatched; use `NPU_RUNTIME=xrt` for trace.
-
 ## Troubleshooting
 
 | Symptom | Cause |

@@ -22,6 +22,7 @@ from aie.utils.hostruntime.hsaruntime.hostruntime import (
     HSAKernelHandle,
 )
 from aie.utils.npukernel import NPUKernel
+from aie.utils.trace import TraceConfig, parse_trace
 from test_dispatch_time_scalar import (
     MAX_TILES,
     TILE_SIZE,
@@ -30,6 +31,7 @@ from test_dispatch_time_scalar import (
     dyn_copy,
 )
 from test_iron_jit_e2e import add_const_jit as add_const
+from test_jit_trace import design as trace_design
 
 _N = 1024
 
@@ -241,3 +243,29 @@ def test_full_elf_and_xclbin_kernels_alternate():
         b = iron.zeros(_N, dtype=np.int32, device="npu")
         add_const.specialize(N=_N, add_value=3, full_elf=full_elf)(a, b)
         np.testing.assert_array_equal(b.numpy(), a.numpy() + 3)
+
+
+@pytest.mark.parametrize(
+    "full_elf,reuse_output_buffer",
+    [
+        pytest.param(True, False, marks=_needs_full_elf, id="full_elf"),
+        pytest.param(False, True, id="reuse_output_buffer"),
+    ],
+)
+def test_trace(full_elf, reuse_output_buffer):
+    """Trace a full ELF, or into the tail of the output buffer.
+
+    test_jit_trace covers the default mode: a dedicated buffer, xclbin + insts.
+    """
+    ref = np.arange(1024, dtype=np.int32)
+    a = iron.tensor(ref, dtype=np.int32)
+    c = iron.zeros(1024, dtype=np.int32)
+    config = TraceConfig(trace_size=8192, reuse_output_buffer=reuse_output_buffer)
+    trace_design.specialize(full_elf=full_elf)(a, c, trace_config=config)
+
+    # With reuse_output_buffer, HostRuntime.prepare_args_for_trace swaps the
+    # output for a larger tensor and never copies the result back into ``c``.
+    if not reuse_output_buffer:
+        np.testing.assert_array_equal(c.numpy(), ref)
+    with open(config.physical_mlir_path) as f:
+        assert len(parse_trace(config.read_trace(), f.read())) > 0
