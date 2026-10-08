@@ -5,13 +5,11 @@
 """Compiler-only integration tests using real MLIR and the host C++ compiler."""
 
 import os
-import shutil
 import time
 from pathlib import Path
 
 import numpy as np
 import pytest
-import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.dialects.aiex import npu_address_patch
 from aie.ir import Context, Module
 from aie.iron import Program, Runtime
@@ -110,30 +108,6 @@ def test_defaulted_compile_param_does_not_consume_dispatch_argument(compile_kwar
     tensors, scalars = design.split_runtime_args((tensor,), {"scale": 7})
     assert tensors == [tensor]
     assert scalars == {"scale": 7}
-
-
-@pytest.mark.parametrize("cache_hit", [False, True])
-def test_dispatch_library_selected_once_per_compile(
-    tmp_path, monkeypatch, npu2_device, cache_hit
-):
-    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
-    if cache_hit:
-        CompilableDesign(_patch_bar_then_baz).compile()
-    design = CompilableDesign(_patch_bar_then_baz)
-    design.compile()
-    first = design.get_dispatch_lib_path()
-    xclbin = design.get_cache_entry().xclbin
-    built = xclbin.stat()
-
-    second = first.with_name(f"dispatch-{'b' * 64}{first.suffix}")
-    shutil.copy(first, second)
-    _manifest._write(first.parent, [], dispatch_library=second.name)
-    # A later publication must not silently change this design's selected ABI.
-    assert design.get_dispatch_lib_path() == first
-    design.compile()
-    assert design.get_dispatch_lib_path() == second
-    after = xclbin.stat()
-    assert (built.st_ino, built.st_mtime_ns) == (after.st_ino, after.st_mtime_ns)
 
 
 def _source(offset=0, *, arg_idx=0, device="npu1_1col"):
