@@ -1,0 +1,52 @@
+{
+ "schema": 1,
+ "window_days": 14,
+ "points": [
+  {
+   "date": "2026-10-08",
+   "merge": {
+    "merged": 67,
+    "hours_median": 23.3,
+    "hours_p90": 209.7,
+    "open": 78
+   },
+   "critical": {
+    "buildAndTestRyzenAI.yml": {
+     "main": 0.833,
+     "pull_requests": 0.527,
+     "flaky": 0.066,
+     "minutes_median": 50.9,
+     "queued_median": 0.0
+    },
+    "buildAndTestRyzenAIWindows.yml": {
+     "main": 0.556,
+     "pull_requests": 0.349,
+     "flaky": 0.016,
+     "minutes_median": 52.5,
+     "queued_median": 0.0
+    },
+    "buildAndTestMulti.yml": {
+     "main": 1.0,
+     "pull_requests": 0.787,
+     "flaky": 0.133,
+     "minutes_median": 9.4,
+     "queued_median": 0.0
+    },
+    "buildAndTestPythons.yml": {
+     "main": 1.0,
+     "pull_requests": 0.824,
+     "flaky": 0.14,
+     "minutes_median": 8.8,
+     "queued_median": 0.0
+    },
+    "lintAndFormat.yml": {
+     "main": 1.0,
+     "pull_requests": 0.731,
+     "flaky": 0.136,
+     "minutes_median": 3.8,
+     "queued_median": 0.0
+    }
+   }
+  }
+ ]
+}
