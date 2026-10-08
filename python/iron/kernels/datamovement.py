@@ -462,10 +462,10 @@ def merge_rows_sample(
 def merge_rows(
     block: int = 64,
     *,
-    audio_token: int,
-    image_token: int,
-    audio_at: int,
-    vision_at: int,
+    audio_token: int = 258881,
+    image_token: int = 258880,
+    audio_at: int = 2048,
+    vision_at: int = 2816,
 ) -> ExternalFunction:
     """Merge-rows kernel: the row each position of a token sequence takes from a table.
 
@@ -477,7 +477,9 @@ def merge_rows(
     counts carry from one call to the next and restart at ``b = 0``, so one
     core calls it for blocks 0, 1, ... in order. That the placeholders are
     as many as the soft tokens is the caller's check. amd/IRON's ``Merge``
-    gathers a multimodal prompt's embeddings by these rows.
+    gathers a multimodal prompt's embeddings by these rows. The defaults
+    are EmbeddingGemma 2's placeholders at 2048 text rows and 768 audio
+    rows.
 
     Args:
         block: Ids per call.
