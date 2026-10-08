@@ -7,7 +7,7 @@
 
 Submodules:
 - `eltwise` — passthrough, scale, add, mul, relu, clamp, magnitude_f32
-- `datamovement` — affine_cast, axpy, convert_copy, expand, limbs_f32, rope, row_addresses, transpose
+- `datamovement` — affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, rope, row_addresses, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
@@ -128,6 +128,8 @@ from .datamovement import (
     expand_ref,
     limbs_f32,
     limbs_f32_ref,
+    merge_rows,
+    merge_rows_ref,
     rope,
     rope_ref,
     row_addresses,
@@ -446,6 +448,7 @@ __all__ = [
     "convert_copy",
     "expand",
     "limbs_f32",
+    "merge_rows",
     "row_addresses",
     "transpose",
     "add_ref",
@@ -459,6 +462,7 @@ __all__ = [
     "convert_copy_ref",
     "expand_ref",
     "limbs_f32_ref",
+    "merge_rows_ref",
     "row_addresses_ref",
     "transpose_ref",
     "mm_ref",

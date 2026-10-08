@@ -61,6 +61,8 @@ class KernelSpec:
     tile_size_checks: list[tuple[dict, int]] = field(default_factory=list)
 
 
+_MERGE = dict(audio_token=7, image_token=8, audio_at=100, vision_at=200)
+
 KERNEL_SPECS: list[KernelSpec] = [
     KernelSpec(
         name="zero",
@@ -866,6 +868,19 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(low_bits=31), "low_bits from 0 to 30"),
         ],
         shape_checks=[(dict(rows=3), 1, (6,))],
+    ),
+    KernelSpec(
+        name="merge_rows",
+        factory=kernels.merge_rows,
+        kwargs=_MERGE,
+        arg_count=3,  # ids, rows, block index
+        expected_name="merge_rows",
+        invalid_kwargs=[
+            (dict(_MERGE, block=0), "block >= 1"),
+            (dict(_MERGE, image_token=7), "distinct placeholders"),
+            (dict(_MERGE, vision_at=-1), "rows >= 0"),
+        ],
+        shape_checks=[(dict(_MERGE, block=32), 1, (32,))],
     ),
     KernelSpec(
         name="convert_copy",

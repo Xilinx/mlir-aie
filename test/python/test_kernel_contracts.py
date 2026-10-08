@@ -492,6 +492,15 @@ def test_contract_validates_argument_bindings():
     assert KernelContract(roles=(In, Out, Param)).reference_indices() == [0, 2]
     with pytest.raises(ValueError, match="initializers"):
         KernelContract(roles=(In, Out), initializers=((1, lambda fn: fn),))
+    with pytest.raises(ValueError, match="call_index"):
+        KernelContract(roles=(In, Out, Param), call_index=2)
+    with pytest.raises(ValueError, match="call_index"):
+        KernelContract(
+            roles=(In, Out, Param),
+            parameter_bindings=((2, 0),),
+            out_offset=(2, 64),
+            call_index=2,
+        )
 
 
 def test_multi_output_contract_drives_design_and_reference():

@@ -29,6 +29,9 @@ _bf16 = dict(dtype=bfloat16)
 _mm = dict(dim_m=64, dim_k=32, dim_n=64)
 _mm_bf16 = dict(**_mm, input_dtype=bfloat16, output_dtype=np.float32)
 _mm_bfp = dict(dim_m=64, dim_k=64, dim_n=64)  # the block_datatypes examples' tile
+_GEMMA_MERGE = dict(
+    audio_token=258881, image_token=258880, audio_at=2048, vision_at=2560
+)
 # The tile amd/IRON's mm operator builds: square, and B stored transposed.
 _mm_bf16_col_maj = dict(
     dim_m=64,
@@ -361,6 +364,18 @@ CASES: list[Case] = [
         dict(rows=16, table_rows=1 << 20, row_bytes=4100),
         scalars=(0x40, 0x12),
         tag="past-4-gib",
+    ),
+    # amd/IRON's Merge at EmbeddingGemma 2's placeholders and rows: a
+    # 2048-token prompt in blocks of 64, the counts carried across them.
+    Case("merge_rows", _GEMMA_MERGE, calls=32, smoke=True),
+    Case("merge_rows", dict(block=32, **_GEMMA_MERGE), calls=6),
+    check("merge_rows", _GEMMA_MERGE, calls=1, tag="one-block"),
+    # The towers' rows overlapping each other and the text's.
+    check(
+        "merge_rows",
+        dict(audio_token=0, image_token=1, audio_at=0, vision_at=40),
+        calls=2,
+        tag="overlap",
     ),
     Case("transpose", dict(subtile=4), calls=16, smoke=True),
     Case("transpose", dict(subtile=8), calls=16, smoke=True),

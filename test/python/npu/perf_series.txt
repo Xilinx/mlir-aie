@@ -296,6 +296,10 @@ log_f32/32x4/float32_bfloat16/edge-one-vector
 magnitude_f32/640x16/float32
 magnitude_f32/640x256/float32
 magnitude_f32/64x4/float32/edge-one-vector
+merge_rows/32x6/int32/audio_at=2048/audio_token=258881/block=32/image_token=258880/vision_at=2560
+merge_rows/64x1/int32/audio_at=2048/audio_token=258881/image_token=258880/vision_at=2560/one-block
+merge_rows/64x2/int32/audio_at=0/audio_token=0/image_token=1/vision_at=40/overlap
+merge_rows/64x32/int32/audio_at=2048/audio_token=258881/image_token=258880/vision_at=2560
 mha/64x64x64x4/bfloat16
 mha/64x64x64x4/bfloat16/pv=True
 mha_softmax/4096x4/bfloat16_bfloat16+float32

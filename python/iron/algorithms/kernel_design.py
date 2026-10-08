@@ -417,6 +417,8 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
         values.update(bound)
         if offset:
             values[offset[0]] = call * offset[1]
+        if c.call_index is not None:
+            values[c.call_index] = call
         for got, group in zip(acquired, groups):
             values.update(
                 (i, got if len(group) == 1 else got[j]) for j, i in enumerate(group)

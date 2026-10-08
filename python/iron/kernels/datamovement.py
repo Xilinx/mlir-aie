@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, limbs_f32, row_addresses, transpose.
+"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, row_addresses, transpose.
 
 Each wraps one source under ``aie_kernels/datamovement/`` — plain ``aie_api``
 vector code with no LUT dependency.  ``convert_copy`` binds
@@ -423,6 +423,117 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
             ops_per_call=tile_size,
             sample=lambda rng, calls: expand_sample(
                 rng, calls, tile_size=tile_size, group_size=group_size
+            ),
+        ),
+    )
+
+
+def merge_rows_ref(
+    ids, *, audio_token: int, image_token: int, audio_at: int, vision_at: int
+):
+    """Numpy reference for [`merge_rows`][iron.kernels.datamovement.merge_rows].
+
+    ``ids`` is ``(calls, block)``, block ``b`` of one sequence per call: the
+    j-th ``audio_token`` of the sequence takes row ``audio_at + j``, the j-th
+    ``image_token`` row ``vision_at + j``, and every other id its position.
+    """
+    ids = np.asarray(ids)
+    flat = ids.reshape(-1)
+    rows = np.arange(flat.size, dtype=np.int64)
+    for token, at in ((audio_token, audio_at), (image_token, vision_at)):
+        places = np.flatnonzero(flat == token)
+        rows[places] = at + np.arange(places.size)
+    return rows.astype(np.int32).reshape(ids.shape)
+
+
+def merge_rows_sample(
+    rng, calls: int, *, block: int, audio_token: int, image_token: int
+) -> list:
+    """A third placeholders, the rest any int32, led by the ids beside the placeholders."""
+    tokens = np.array([audio_token, image_token], np.int64)
+    ids = rng.integers(-(2**31), 2**31, size=calls * block, dtype=np.int64)
+    ids = np.where(rng.random(ids.size) < 1 / 3, rng.choice(tokens, ids.size), ids)
+    edges = [audio_token - 1, audio_token + 1, image_token - 1, image_token + 1]
+    edges = [e for e in edges if e not in tokens and -(2**31) <= e < 2**31]
+    ids[: len(edges)] = edges[: ids.size]
+    return [ids.reshape(calls, block).astype(np.int32)]
+
+
+def merge_rows(
+    block: int = 64,
+    *,
+    audio_token: int,
+    image_token: int,
+    audio_at: int,
+    vision_at: int,
+) -> ExternalFunction:
+    """Merge-rows kernel: the row each position of a token sequence takes from a table.
+
+    The table holds the text's embeddings followed by two towers' soft
+    tokens. Takes ``(ids, rows, b)``: block ``b`` of a sequence's int32 ids,
+    ``block`` of them, and the row each takes, int32. A position takes its
+    own row, except that the j-th ``audio_token`` of the sequence takes row
+    ``audio_at + j`` and the j-th ``image_token`` row ``vision_at + j``. The
+    counts carry from one call to the next and restart at ``b = 0``, so one
+    core calls it for blocks 0, 1, ... in order. That the placeholders are
+    as many as the soft tokens is the caller's check. amd/IRON's ``Merge``
+    gathers a multimodal prompt's embeddings by these rows.
+
+    Args:
+        block: Ids per call.
+        audio_token: The audio placeholder id.
+        image_token: The image placeholder id.
+        audio_at: The audio tower's first row.
+        vision_at: The vision tower's first row.
+
+    Returns:
+        ExternalFunction for ``merge_rows``.
+
+    Raises:
+        ValueError: When ``block`` is below 1, the placeholders are equal, or
+            a row is negative.
+    """
+    if block < 1 or audio_token == image_token or min(audio_at, vision_at) < 0:
+        raise ValueError(
+            "merge_rows() needs block >= 1, two distinct placeholders and rows "
+            f">= 0, got block={block}, audio_token={audio_token}, "
+            f"image_token={image_token}, audio_at={audio_at}, vision_at={vision_at}."
+        )
+    return _make_extern(
+        "merge_rows",
+        _kernel_source("datamovement/merge_rows.cc"),
+        [
+            np.ndarray[(block,), np.dtype[np.int32]],
+            np.ndarray[(block,), np.dtype[np.int32]],
+            np.int32,
+        ],
+        compile_flags=[
+            f"-DBLOCK={block}",
+            f"-DAUDIO_TOKEN={audio_token}",
+            f"-DIMAGE_TOKEN={image_token}",
+            f"-DAUDIO_AT={audio_at}",
+            f"-DVISION_AT={vision_at}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, 0),),
+            call_index=2,
+            reference=lambda ids: merge_rows_ref(
+                ids,
+                audio_token=audio_token,
+                image_token=image_token,
+                audio_at=audio_at,
+                vision_at=vision_at,
+            ),
+            tolerance=Tolerance.exact(note="integer row arithmetic"),
+            ops_per_call=0,
+            sample=lambda rng, calls: merge_rows_sample(
+                rng,
+                calls,
+                block=block,
+                audio_token=audio_token,
+                image_token=image_token,
             ),
         ),
     )

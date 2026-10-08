@@ -156,6 +156,10 @@ class KernelContract:
             every call the same output tile, passes ``call * step`` as the
             offset and drains the tile once, so the calls must fill it
             exactly. ``None``: each call writes a whole tile of its own.
+        call_index: The bound scalar ``Param`` the builder sets to each
+            call's index, 0 first, for a kernel whose state carries from one
+            call to the next and restarts at 0. The reference sees every
+            call at once, in order. ``None``: the bound value holds.
         trace: The ``Trace`` shape of the kernel's markers. Every
             library factory declares one; ``None`` (undeclared) is only for
             ad-hoc kernels, and ``cycles_per_call`` refuses it.
@@ -186,6 +190,7 @@ class KernelContract:
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
     out_offset: tuple[int, int] | None = None
+    call_index: int | None = None
     trace: Trace | None = None
     uses_lut: bool = False
     alignments: tuple[tuple[int, int], ...] = ()
@@ -227,6 +232,14 @@ class KernelContract:
                 )
             if step < 1:
                 raise ValueError(f"out_offset step must be >= 1, got {step}")
+        if self.call_index is not None and (
+            self.call_index not in bound
+            or self.out_offset is not None
+            and self.out_offset[0] == self.call_index
+        ):
+            raise ValueError(
+                "call_index needs a bound Param that out_offset does not set"
+            )
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
         if self.unsupported is not None and not self.unsupported:
