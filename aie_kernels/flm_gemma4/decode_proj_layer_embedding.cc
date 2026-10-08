@@ -16,12 +16,8 @@ extern "C" {
 void proj_layer_embedding(bf16 *norm_w, bf16 *x0_per_layer, bf16 *x0,
                           bf16 *x_proj, bf16 *y, bf16 *proj_w_ping,
                           bf16 *proj_w_pong) {
-  constexpr int norm_w_prod_lock =
-      FLM_GEMMA4_DECODE_PROJ_LAYER_EMBEDDING_NORM_W_PROD_LOCK;
   constexpr int x0_per_layer_prod_lock =
       FLM_GEMMA4_DECODE_PROJ_LAYER_EMBEDDING_X0_PER_LAYER_PROD_LOCK;
-  constexpr int x0_prod_lock =
-      FLM_GEMMA4_DECODE_PROJ_LAYER_EMBEDDING_X0_PROD_LOCK;
   constexpr int xw_cons_lock =
       FLM_GEMMA4_DECODE_PROJ_LAYER_EMBEDDING_XW_CONS_LOCK;
   constexpr int proj_w_prod_lock =
