@@ -196,6 +196,7 @@ class Runtime(Resolvable):
         *,
         name: str = "sequence",
         strict_task_groups: bool = True,
+        implicit_configure: bool = True,
     ) -> None:
         """Create a runtime from its sequence body and fn_args.
 
@@ -234,6 +235,9 @@ class Runtime(Resolvable):
                 in the order ``seq_fn`` expects them. Defaults to None (empty list).
             name (str): The runtime-sequence symbol name.
             strict_task_groups (bool): Disallow mixing the default and explicit task groups. Defaults to True.
+            implicit_configure (bool): Configure the full-ELF entry sequence's
+                device when the body contains no ``aiex.configure`` or
+                ``aiex.npu.load_pdi`` operation. Defaults to True.
         """
         if not name:
             raise ValueError("Runtime name must not be empty.")
@@ -315,6 +319,7 @@ class Runtime(Resolvable):
         self._resolved_tile_dmas = None
         self._scratchpad_parameters: list[ScratchpadParameter] = []
         self._strict_task_groups = strict_task_groups
+        self._implicit_configure = implicit_configure
         self._task_group_index = itertools.count()
 
     @property
@@ -480,7 +485,7 @@ class Runtime(Resolvable):
         trace_size: int | None = None,
         reuse_output_buffer: bool = False,
         egress_shim_col: int = 0,
-        load_pdi_device_ref: str | None = None,
+        implicit_configure_device_ref: str | None = None,
         device: Device | None = None,
     ) -> None:
         """Build the ``runtime_sequence`` op and run the sequence body inside it.
@@ -503,9 +508,8 @@ class Runtime(Resolvable):
             egress_shim_col: Forwarded from
                 [`Program.enable_trace`][iron.program.Program.enable_trace]; see
                 there.
-            load_pdi_device_ref: On the full-ELF path (no xclbin configures the
-                device), the device symbol to load via ``npu_load_pdi`` as the
-                first op in the sequence. ``None`` on the xclbin path.
+            implicit_configure_device_ref: The enclosing device symbol for an
+                implicit full-ELF ``aiex.npu.load_pdi``. ``None`` on the xclbin path.
             device: The [`Device`][iron.Device] that places tiles the body
                 reaches first, such as a buffer only a runtime task names.
         """
@@ -523,11 +527,6 @@ class Runtime(Resolvable):
             *rt_dtypes, arg_locs=[loc] * len(rt_dtypes)
         )
         with ir.InsertionPoint(entry_block), seq_op.location:
-            # Full-ELF designs configure the device themselves: no xclbin
-            # pre-loads the PDI, so the sequence must start by loading it.
-            if load_pdi_device_ref is not None:
-                npu_load_pdi(device_ref=load_pdi_device_ref)
-
             block_args = iter(entry_block.arguments)
             for rt_data in self._block_data:
                 if rt_data is not None:
@@ -592,6 +591,27 @@ class Runtime(Resolvable):
                 with traced_body(self._seq_fn):
                     self._seq_fn(*body_args)
                 active.finalize()
+
+        if implicit_configure_device_ref is not None and self._implicit_configure:
+
+            def contains_configuration(block: ir.Block) -> bool:
+                for operation in block.operations:
+                    if operation.name in ("aiex.configure", "aiex.npu.load_pdi"):
+                        return True
+                    for region in operation.regions:
+                        if any(
+                            contains_configuration(nested_block)
+                            for nested_block in region.blocks
+                        ):
+                            return True
+                return False
+
+            if not contains_configuration(entry_block):
+                operations = list(entry_block.operations)
+                with ir.InsertionPoint(entry_block):
+                    load_pdi = npu_load_pdi(device_ref=implicit_configure_device_ref)
+                if operations:
+                    load_pdi.operation.move_before(operations[0])
 
         self._dedup_runtime_consumers()
 

@@ -1592,8 +1592,8 @@ class CompilableDesign:
         """Return the identity that affects cached MLIR generation.
 
         Static ``.mlir`` files key on their path. Python generators key on the
-        explicitly bound device and the full-ELF flag (full-ELF generates
-        ``npu.load_pdi``; the standard path does not).
+        explicitly bound device and the full-ELF flag (full-ELF may generate
+        an implicit ``aiex.npu.load_pdi``; the standard path does not).
         """
         if isinstance(self.mlir_generator, Path):
             return ("path", str(self.mlir_generator))

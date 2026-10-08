@@ -388,7 +388,7 @@ class DeviceConfiguration:
                 )
 
             for runtime in self._runtimes:
-                load_pdi_device_ref = (
+                implicit_configure_device_ref = (
                     device_name
                     if runtime is entry and get_compile_arg("_iron_full_elf")
                     else None
@@ -397,7 +397,7 @@ class DeviceConfiguration:
                     trace_size=self._trace_size,
                     reuse_output_buffer=self._reuse_output_buffer,
                     egress_shim_col=self._egress_shim_col,
-                    load_pdi_device_ref=load_pdi_device_ref,
+                    implicit_configure_device_ref=implicit_configure_device_ref,
                     device=current_device,
                 )
 
