@@ -13,6 +13,7 @@ from aie.iron import (
     InOut,
     ObjectFifo,
     Program,
+    ReconfigurationMode,
     Runtime,
     Worker,
 )
@@ -56,7 +57,9 @@ def add_configuration(name, value):
 
 
 @iron.jit(full_elf=True)
-def reconfigure_add(data: InOut, *, reconfiguration_mode: CompileTime[str]):
+def reconfigure_add(
+    data: InOut, *, reconfiguration_mode: CompileTime[ReconfigurationMode]
+):
     add_two, add_two_sequence = add_configuration("add_two", 2)
     add_three, add_three_sequence = add_configuration("add_three", 3)
 

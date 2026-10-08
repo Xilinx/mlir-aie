@@ -17,6 +17,7 @@ from aie.iron import (
     Flow,
     Out,
     Program,
+    ReconfigurationMode,
     Runtime,
     TileDma,
 )
@@ -54,7 +55,9 @@ def memtile_configuration(name, initial_value=None):
 
 
 @iron.jit(full_elf=True)
-def persistent_memtile(data: Out, *, reconfiguration_mode: CompileTime[str]):
+def persistent_memtile(
+    data: Out, *, reconfiguration_mode: CompileTime[ReconfigurationMode]
+):
     initialized, initialized_sequence = memtile_configuration(
         "yield_const_memtile", VALUES
     )

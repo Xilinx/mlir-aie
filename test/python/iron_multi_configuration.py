@@ -4,11 +4,12 @@
 # RUN: %python %s | FileCheck %s
 
 import numpy as np
+from typing import cast
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aiex import (
     npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from aie.iron import DeviceConfiguration, Program, Runtime
+from aie.iron import DeviceConfiguration, Program, ReconfigurationMode, Runtime
 from aie.iron.device import NPU2Col1
 from aie.utils.compile.jit.context import compile_context
 
@@ -73,7 +74,11 @@ for mode in ("load-pdi", "expand-load-pdis", "control-packets"):
         assert mode_attr.value == mode
 
 try:
-    Program(NPU2Col1(), Runtime(lambda: None, []), reconfiguration_mode="invalid")
+    Program(
+        NPU2Col1(),
+        Runtime(lambda: None, []),
+        reconfiguration_mode=cast(ReconfigurationMode, "invalid"),
+    )
 except ValueError as error:
     assert "Unsupported reconfiguration mode 'invalid'" in str(error)
 else:

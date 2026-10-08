@@ -5,7 +5,7 @@
 #
 
 import logging
-from typing import Literal
+from typing import Literal, cast
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import TraceMode  # pyright: ignore[reportAttributeAccessIssue]
@@ -113,7 +113,7 @@ class Program:
                 f"Unsupported reconfiguration mode {mode!r}; expected one of: "
                 f"{choices}."
             )
-        return mode
+        return cast(ReconfigurationMode, mode)
 
     def _validate_composition(self) -> None:
         if not self._configurations:
