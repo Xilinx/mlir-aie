@@ -449,7 +449,7 @@ def merge_rows_ref(
 def merge_rows_sample(
     rng, calls: int, *, block: int, audio_token: int, image_token: int
 ) -> list:
-    """A third placeholders, the rest any int32, led by the ids beside the placeholders."""
+    """Return ids, a third of them placeholders and the rest any int32, led by the ids beside the placeholders."""
     tokens = np.array([audio_token, image_token], np.int64)
     ids = rng.integers(-(2**31), 2**31, size=calls * block, dtype=np.int64)
     ids = np.where(rng.random(ids.size) < 1 / 3, rng.choice(tokens, ids.size), ids)

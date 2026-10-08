@@ -3,8 +3,11 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Vision kernel factories: color conversion, threshold, filter2d, add_weighted,
-and the filter tables of torch's antialiased bicubic resize."""
+"""Vision kernel factories.
+
+Color conversion, threshold, filter2d, add_weighted, and the filter tables of
+torch's antialiased bicubic resize.
+"""
 
 import math
 from dataclasses import dataclass
@@ -311,7 +314,7 @@ class _ResizeKernel(ExternalFunction):
 def resample_peak(
     words: int = 256, *, cores: int = 16, slots: int | None = None
 ) -> _ResamplePeakKernel:
-    """The largest normalized weight of one core's share of a resample table.
+    """Return the largest normalized weight of one core's share of a resample table.
 
     One axis of torch's antialiased bicubic resize (``in`` samples to
     ``out``) is a table of ``words``-int32 chunks, ``cores`` cores taking
@@ -428,7 +431,7 @@ def resample_quantize(
 def resize(
     words: int = 356, *, chunk: int = 4096, patch_columns: int = 8, cores: int = 16
 ) -> _ResizeKernel:
-    """A uint8 RGB image resized as torch's antialiased bicubic resize, as patches.
+    """Resize a uint8 RGB image as torch's antialiased bicubic resize, as patches.
 
     The image is resized across, then down, each pass rounded to uint8 as
     torch does it on the CPU, and written as 16x16 patches of ``u8 / 255``
@@ -852,7 +855,7 @@ _RESIZE_PIXELS = (np.arange(256, dtype=np.float32) * np.float32(1 / 255)).astype
 
 
 def _resize_slots(chunk, win):
-    """A 16-slot table chunk's starts, counts and int16 weights (each slot's from its third word on)."""
+    """Return a 16-slot table chunk's starts, counts and int16 weights (each slot's from its third word on)."""
     slot = 2 + (win + 1) // 2
     words = np.asarray(chunk, np.int32)
     at = _RESAMPLE_HEADER + slot * np.arange(_RESIZE_SIDE)

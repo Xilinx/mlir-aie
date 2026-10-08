@@ -1219,7 +1219,7 @@ mha.mac_dims = _MhaFactory.mac_dims  # pyright: ignore[reportFunctionMemberAcces
 
 
 def _mha_band_flags(name, dim_m, dim_n, causal, window):
-    """The ``-D`` flags that select ``mha.cc``'s band, after checking it.
+    """Return the ``-D`` flags that select ``mha.cc``'s band, after checking it.
 
     Raises:
         ValueError: A negative ``window``, or a ``window`` that is not a
