@@ -8,6 +8,7 @@
 #ifndef AIE_KERNELS_COMMON_F32_SPLIT_H
 #define AIE_KERNELS_COMMON_F32_SPLIT_H
 
+#include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -34,7 +35,14 @@ split3(aie::accum<accfloat, N> a, aie::vector<bfloat16, N> &hi,
        aie::vector<bfloat16, N> &mid, aie::vector<bfloat16, N> &lo,
        aie::vector<bfloat16, N> one) {
   hi = a.template to_vector<bfloat16>();
+#if AIE_ARCH_AIE2
+  // AIE2's accumulator rounds a to hi's exponent when hi rounds up past a
+  // power of two; taking hi away in halves stays within a's.
+  const aie::vector<bfloat16, N> half = bf16_splat<N>(0x3f00);
+  aie::accum<accfloat, N> r = aie::msc(aie::msc(a, hi, half), hi, half);
+#else
   aie::accum<accfloat, N> r = aie::msc(a, hi, one);
+#endif
   mid = r.template to_vector<bfloat16>();
   lo = aie::msc(r, mid, one).template to_vector<bfloat16>();
 }

@@ -53,7 +53,14 @@ extern "C" void log_f32_bf16(float *restrict x, bfloat16 *restrict y, int32_t n,
     bf16_vec ef = aie::add(f32_acc(e_magic.cast_to<float>()), -12582912.0f)
                       .to_vector<bfloat16>();
     bf16_vec fh, fm, fl;
-    split3(aie::msc(f32_acc(m), one, one), fh, fm, fl, one);
+#if AIE_ARCH_AIE2
+    // As in split3: m - 1 in halves, so m < 1 is not rounded to 1's exponent.
+    const bf16_vec half = bf16_splat(0x3f00);
+    f32_acc f = aie::msc(aie::msc(f32_acc(m), one, half), one, half);
+#else
+    f32_acc f = aie::msc(f32_acc(m), one, one);
+#endif
+    split3(f, fh, fm, fl, one);
 
     f32_acc q =
         aie::add(f32_acc(aie::broadcast<float, f32_lanes>(0.0f)), log_q[9]);
