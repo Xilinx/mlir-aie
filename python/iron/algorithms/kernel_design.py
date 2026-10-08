@@ -36,10 +36,8 @@ from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels._common import Param, _is_tensor_type
 from aie.utils import bfp, ensure_current_device, tensor
-from aie.utils.compile import NPU_CACHE_HOME, resolve_target_arch
-from aie.utils.compile.jit import CompileTime, In, InOut, Out
-from aie.utils.compile.jit._object_cache import KernelObjectCache
-from aie.utils.compile.jit.compilabledesign import COMPILE_LOCK_TIMEOUT_SECONDS
+from aie.utils.compile import compile_external_kernel, resolve_target_arch
+from aie.utils.compile.jit import CompileTime, In, InOut, Out, get_compile_arg
 from aie.utils.compile.readobj import linked
 from aie.utils.jit import jit
 from aie.utils.trace import TraceConfig
@@ -143,24 +141,30 @@ def _kernel_stack_bytes(kernels, embed_bitcode):
     """Return the deepest stack any of ``kernels`` adds below the core's frame.
 
     A declared ``stack_size_override`` stands. An object-linked Peano kernel
-    is built through the shared object cache, which the design's own build
-    then hits, and read from its ``.stack_sizes``. A function with no entry
-    there, such as a runtime-library routine, adds 0. Anything else, such as a
-    Chess or merge-mode kernel, counts as 0, as aiecc cannot measure it either.
-    An undercount only picks too deep a buffering for the tile; aiecc measures
+    is built through the design's object cache, which its own build then hits,
+    or in a scratch directory when caching is off, and read from its
+    ``.stack_sizes``. A function with no entry there, such as a
+    runtime-library routine, adds 0. Anything else, such as a Chess or
+    merge-mode kernel, counts as 0, as aiecc cannot measure it either. An
+    undercount only picks too deep a buffering for the tile; aiecc measures
     the linked core and its allocator fails the build when the buffers no
     longer fit.
     """
-    cache = KernelObjectCache(NPU_CACHE_HOME / "objects", COMPILE_LOCK_TIMEOUT_SECONDS)
+    cache = get_compile_arg("_iron_object_cache")
     arch = resolve_target_arch(_device())
     deepest = 0
     with tempfile.TemporaryDirectory() as tmp:
         for k in kernels:
             if k.stack_size_override is not None:
                 deepest = max(deepest, k.stack_size_override)
-            elif k.link_with_mode is None and cache.fetch(
-                k, tmp, arch, (), embed_bitcode
+            elif (
+                isinstance(k, ExternalFunction)
+                and k.link_with_mode is None
+                and not k.use_chess
             ):
+                compile_external_kernel(
+                    k, tmp, arch, embed_bitcode=embed_bitcode, object_cache=cache
+                )
                 stack = linked(Path(tmp) / k.object_file_name, k.name).stack
                 deepest = max(deepest, stack or 0)
     return deepest

@@ -7,7 +7,10 @@
 # RUN: %pytest %s
 """Library designs leave the core stack to aiecc unless the caller fixes it."""
 
+import os
 import re
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -81,6 +84,26 @@ def test_kernel_design_budgets_the_kernel_frames():
         set_current_device(previous)
     depths = re.findall(r"aie\.objectfifo @out0\([^)]*?(\d+) : i32\)", mlir)
     assert depths == ["1"]
+
+
+@pytest.mark.parametrize("use_cache", [True, False])
+def test_kernel_design_reads_frames_through_the_design_cache(tmp_path, use_cache):
+    # NPU_CACHE_HOME is read at import, so generate in a fresh interpreter.
+    script = (
+        "from aie.iron import kernels\n"
+        "from aie.iron.algorithms import kernel_design as kd\n"
+        "from aie.iron.device import NPU2Col1\n"
+        "from aie.utils.hostruntime import set_current_device\n"
+        "set_current_device(NPU2Col1())\n"
+        "kd.design(kernels.gelu, tile_size=1024)"
+        f".specialize(use_cache={use_cache}).as_mlir()\n"
+    )
+    subprocess.run(
+        [sys.executable, "-c", script],
+        env={**os.environ, "NPU_CACHE_HOME": str(tmp_path)},
+        check=True,
+    )
+    assert any((tmp_path / "objects").rglob("*.o")) == use_cache
 
 
 def test_kernel_design_keeps_an_explicit_stack(npu1_device):

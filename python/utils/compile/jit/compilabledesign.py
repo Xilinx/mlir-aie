@@ -1697,7 +1697,11 @@ class CompilableDesign:
             if isinstance(_v, ExternalFunction):
                 ExternalFunction._instances.add(_v)
 
-        with compile_context(**self.compile_kwargs, _iron_full_elf=full_elf):
+        with compile_context(
+            **self.compile_kwargs,
+            _iron_full_elf=full_elf,
+            _iron_object_cache=self._kernel_object_cache(),
+        ):
             with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
                 bound = inspect.BoundArguments(sig, OrderedDict(_gen_call_kwargs))
                 bound.apply_defaults()
