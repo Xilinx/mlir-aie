@@ -19,8 +19,6 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bf16 *__restrict pY,
               bf16 *__restrict m, float *__restrict c, aie::mask<16> &mask,
               bool &is_first, bool &is_up);
 
-constexpr int k_prod_lock = FLM_GEMMA4_DECODE_ATTN_QK_KVH2_K_PROD_LOCK;
-constexpr int k_cons_lock = FLM_GEMMA4_DECODE_ATTN_QK_KVH2_K_CONS_LOCK;
 
 // Written for a head dim of 512.
 template <unsigned colQ, unsigned r, unsigned s, unsigned t>
@@ -106,17 +104,13 @@ void attn_qk_half(bf16 *q, bf16 *k_ping, bf16 *k_pong, bf16 *s, bf16 *m,
                   float *c_local, int j, int iter, int L0) {
   static const aie::vector<int, 16> idx = aie::vector<int, 16>(
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
-  _lock_acquire(k_cons_lock);
   bf16 *k = k_pingpong.next(k_ping, k_pong);
-
   int i = L0 - 16 * iter;
   bool is_first = (iter == 0);
   aie::mask<16> mask = aie::le(idx, (i < 16) ? i : 16);
   bool is_up = (j == 0);
   _attn_qk<DH / 8, GQA_R, GQA_S, GQA_T>(q, k, s + j * 4 * 16, m + j * 4,
                                         c_local + j * 4, mask, is_first, is_up);
-
-  _lock_release(k_prod_lock);
 }
 
 // Both halves done: publish c into the tail of the s object.
