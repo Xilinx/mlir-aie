@@ -1,8 +1,8 @@
 {
  "npu": "npu1",
  "arch": "aie2",
- "commit": "b541bba8ad114e3aa1316083f61c5170353f212d",
- "date": "2026-10-07T06:45:10.209610+00:00",
+ "commit": "4476461cfdc26f34d208b69794d7f9fdd6bdf49f",
+ "date": "2026-10-08T07:01:07.000036+00:00",
  "swept": true,
  "timing_refused": "power mode is default, required 'turbo'",
  "kernels": [
@@ -1539,7 +1539,7 @@
     "mm/input_dtype=bfloat16/output_dtype=bfloat16",
     "mm/input_dtype=bfloat16/output_dtype=float32"
    ],
-   "passed": 14,
+   "passed": 22,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
@@ -1552,7 +1552,15 @@
     "mm/64x32x64x4/bfloat16_float32/c_col_maj=True",
     "mm/64x32x64x4/int16_int32",
     "mm/64x32x64x4/int16_int32/c_col_maj=True",
-    "mm/64x32x64x4/int8_int32/c_col_maj=True"
+    "mm/64x32x64x4/int8_int32/c_col_maj=True",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[bf16_f32]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[bf16_f32_b_col]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[i16_i32]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[i16_i32_b_col]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[i8_i32]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[scalar_bf16_f32]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[scalar_bf16_f32_b_col]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[scalar_i16_i32]"
    ],
    "flaky": []
   },
@@ -2109,7 +2117,9 @@
     "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/ic-tail",
     "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/short"
    ],
-   "flaky": []
+   "flaky": [
+    "bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/fc1"
+   ]
   },
   {
    "factory": "bn_conv2dk1_partial_put_i8",
