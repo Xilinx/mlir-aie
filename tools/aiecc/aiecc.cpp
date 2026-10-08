@@ -738,10 +738,16 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         if (stackSize > 0) {
           populateDefaultStackSize(out.value->get(), stackSize);
         }
-        // A measurement carried in the input is an earlier build's; this one
-        // measures its own or falls back to the default.
-        out.value->get().walk(
-            [](CoreOp core) { core.removeMeasuredStackSizeAttr(); });
+        // Measurements carried in the input are an earlier build's; this one
+        // takes its own or goes without.
+        out.value->get().walk([](CoreOp core) {
+          core.removeMeasuredStackSizeAttr();
+          core.removeMeasuredDataSizeAttr();
+          core.removeMeasuredDataAlignmentAttr();
+          core.removeMeasuredBankSizesAttr();
+          core.removeMeasuredBankAlignmentsAttr();
+          core.removeMeasuredDataRangesAttr();
+        });
         return verifyStackSizeOverrides(out.value->get());
       });
 
