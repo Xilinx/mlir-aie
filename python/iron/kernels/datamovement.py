@@ -210,7 +210,7 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
 
 
 def limbs_f32_split(x):
-    """The bf16 limbs ``(hi, mid, lo)`` of float32 ``x``, summing to it exactly.
+    """Split float32 ``x`` into bf16 limbs ``(hi, mid, lo)`` that sum to it exactly.
 
     Each limb is its residual rounded half-to-even, as the kernel's
     ``conv_even`` rounds: ``hi = bf16(x)``, ``mid = bf16(x - hi)`` and
