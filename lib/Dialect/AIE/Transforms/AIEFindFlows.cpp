@@ -77,10 +77,6 @@ struct CircuitFanoutSeed {
 
 class ConnectivityAnalysis {
   DeviceOp &device;
-  // Fan-out splitting: when enabled, a linear traversal stops at any switchbox
-  // input port that drives more than one output (a fan-out), leaving the
-  // fan-out switchbox explicit and recording its output ports as new section
-  // sources.
   bool splitFanouts = false;
   mutable llvm::DenseSet<std::pair<Operation *, int>> fanoutIngresses;
   mutable llvm::DenseSet<std::pair<Operation *, int>> fanoutEgressSeeds;
@@ -1044,9 +1040,6 @@ struct AIEFindFlowsPass
       }
     }
 
-    // Each output of a fan-out node starts a new linear section; drain those
-    // seeds to a fixpoint (a branch may reach further fan-outs).  The fan-out
-    // nodes themselves stay explicit.
     if (clEmitVias) {
       builder.setInsertionPoint(d.getBody()->getTerminator());
       for (size_t i = 0; i < analysis.getCircuitFanoutSeeds().size(); ++i) {
