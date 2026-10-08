@@ -283,7 +283,11 @@ def test_harness_lowers_a_design_to_mlir(case_id):
     factory = _factory(case_id)
     fn = factory(**fkw)
     ins = kd.sample_inputs(fn, calls=opts.get("calls", 1), shape=opts.get("shape"))
-    d = kd.design(factory, params=fn.param_values(ins), **opts, **fkw)
+    # A fixed stack lowers without compiling each kernel to read its frame.
+    stack = get_current_device().default_core_stack_bytes
+    d = kd.design(
+        factory, params=fn.param_values(ins), stack_bytes=stack, **opts, **fkw
+    )
     ref = fn.expected(ins, scalars=opts.get("scalars", ()))
     mlir = d.as_mlir()
     assert "func.call" in str(mlir) or "aie.core" in str(mlir)

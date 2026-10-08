@@ -75,6 +75,8 @@ def _generate(case):
         params=fn.param_values(kd.sample_inputs(fn, calls=case.calls)),
         calls=case.calls,
         scalars=case.scalars,
+        # A fixed stack lowers without compiling each kernel to read its frame.
+        stack_bytes=get_current_device().default_core_stack_bytes,
         **case.kwargs,
     ).compilable
     ExternalFunction._instances.clear()
