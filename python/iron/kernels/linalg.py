@@ -1083,6 +1083,8 @@ def mha(
     b_col_maj: bool = False,
     emulate_bf16_mmul_with_bfp16: bool = False,
     accurate_exp2: bool = False,
+    causal: bool = True,
+    window: int = 0,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1093,8 +1095,9 @@ def mha(
     [`MatrixKernel`][iron.kernels.linalg.MatrixKernel] judged like
     [`mm`][iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
     ``matmul_bf16_bf16_wrapper``, ``mm_aie2p.h``'s bf16 product on its 4x8x8
-    micro-tile behind an ``idx_buffer`` gate (the call runs when
-    ``idx[0] <= idx[1]``) bound here to ``[0, 0]``. With ``pv`` it is the
+    micro-tile behind an ``idx_buffer`` gate (the call runs when key block
+    ``idx[0]`` holds a key some row of query block ``idx[1]`` keeps) bound
+    here to ``[0, 0]``. With ``pv`` it is the
     ``P*V`` product ``matmul_bf16_bf16_rowmaj``, mha.cc's own expansion of
     the native 8x8x8 micro-tile and ungated. ``matmul_PV`` is that same
     product into a float32 ``O``, preceded by a row rescale, which needs the
@@ -1125,10 +1128,21 @@ def mha(
         accurate_exp2: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]:
             ``partial_softmax`` and the running-state update take 2^x from a
             polynomial rather than AIE2P's exp2 instruction.
+        causal: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: a
+            query keeps no key past its own position.
+        window: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: a
+            query keeps no key more than ``window`` positions from it; 0 is
+            no window.
+
+    Returns:
+        MatrixKernel for ``matmul_bf16_bf16_wrapper``, or with ``pv``
+        ``matmul_bf16_bf16_rowmaj``.
 
     Raises:
         NotImplementedError: ``accurate_exp2`` without the exp2 instruction
             it replaces (AIE2).
+        ValueError: A tile dimension that is not a positive multiple, or a
+            window the band cannot hold (see ``mha_softmax``).
     """
     if accurate_exp2 and not _arch_traits().native_exp2:
         raise NotImplementedError(
@@ -1159,6 +1173,7 @@ def mha(
         flags.append("-DB_COL_MAJ")
     if accurate_exp2:
         flags.append("-DEXP2_BF16_ACCURATE=1")
+    flags += _mha_band_flags("mha", dim_m, dim_n, causal, window)
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
@@ -1203,79 +1218,134 @@ def mha(
 mha.mac_dims = _MhaFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
 
 
-_MHA_BLOCK = 64  # partial_softmax's fast path needs 64 keys per block
+def _mha_band_flags(name, dim_m, dim_n, causal, window):
+    """The ``-D`` flags that select ``mha.cc``'s band, after checking it.
+
+    Raises:
+        ValueError: A negative ``window``, or a ``window`` that is not a
+            multiple of ``dim_m`` or with a ``dim_n`` that ``dim_m`` does
+            not divide.
+    """
+    if window < 0:
+        raise ValueError(f"{name}: window must be 0 (none) or positive, got {window}")
+    # A row whose band misses a key block another row of its query block
+    # keeps, with no key of its own before it, would weigh its masked keys 1;
+    # whole query blocks per window and per key block rule that row out.
+    if window and (window % dim_m or dim_n % dim_m):
+        raise ValueError(
+            f"{name}: a window needs window and dim_n multiples of dim_m, "
+            f"got window={window}, dim_m={dim_m}, dim_n={dim_n}"
+        )
+    return [
+        *([] if causal else ["-DMHA_CAUSAL=0"]),
+        *([f"-DMHA_WINDOW={window}"] if window else []),
+    ]
 
 
-def _mha_softmax_accurate_bound(a, idx, s_q_eff, s_kv_eff, *, scale):
+def _mha_softmax_accurate_bound(a, idx, s_q_eff, s_kv_eff, *, scale, **band):
     """One bf16 ulp per stored value; l, P summed in float32, half of P's each.
 
     exp2 is within 2.8e-6 before its bf16 rounding, and 2^x flushes to +0
     below -125.5.
     """
-    p, state = mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, scale=scale)
-    b = _MHA_BLOCK
+    p, state = mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, scale=scale, **band)
+    m, n = band["dim_m"], band["dim_n"]
     p_ulp = np.where(
         p == 0, 0, np.maximum(np.ldexp(1.0, np.frexp(p)[1] - 8), 2.0**-125)
     )
     state_bound = np.ldexp(1.0, np.frexp(state)[1] - 8) * (state != 0)
-    state_bound[:, 2 * b : 3 * b] = (
-        (p_ulp / 2 + 2.8e-6 * p).reshape(len(p), b, b).sum(axis=2)
+    state_bound[:, 2 * m : 3 * m] = (
+        (p_ulp / 2 + 2.8e-6 * p).reshape(len(p), m, n).sum(axis=2)
     )
     return p_ulp, state_bound
 
 
-def mha_softmax(accurate_exp2: bool = False) -> ExternalFunction:
-    """One 64x64 block of ``mha.cc``'s online softmax, ``partial_softmax``.
+def mha_softmax(
+    accurate_exp2: bool = False,
+    dim_m: int = 64,
+    dim_n: int = 64,
+    causal: bool = True,
+    window: int = 0,
+    scale: float = np.log2(np.e) / 8,
+) -> ExternalFunction:
+    """One block of ``mha.cc``'s online softmax, ``partial_softmax``.
 
     Writes the block's unnormalized weights ``P = exp2(A * s - m)``, with
-    ``s = log2(e) / 8`` and ``m`` each query row's running maximum, and
+    ``s`` the bf16 ``scale`` and ``m`` each query row's running maximum, and
     updates the running state ``scale_buffer``: ``[m, m, l, exp2(m_prev -
-    m)]``, 64 float32 rows each. The state is zeroed before every call, so
-    each call is a first key block against a running maximum of 0; the
-    carry across blocks is ``test_mha_e2e.py``'s. The kernel masks by
+    m)]``, ``dim_m`` float32 rows each. The state is zeroed before every
+    call, so each call is a first key block against a running maximum of 0;
+    the carry across blocks is ``test_mha_e2e.py``'s. The kernel masks by
     overwriting ``A``'s masked entries in place.
 
     Which block it is stays a runtime operand, as in the kernel: ``idx`` is
-    ``(key block, query block)`` (equal on the causal diagonal, key block
-    past query block skipped), and ``S_q_eff``/``S_kv_eff`` are the
-    sequence lengths whose tails pad the block.
+    ``(key block, query block)``, a block no query row keeps a key of is
+    skipped, and ``S_q_eff``/``S_kv_eff`` are the sequence lengths whose
+    tails pad the block. A 64-key block of a multiple of 8 rows, at least
+    16, takes the kernel's row-group path; any other shape the per-row one.
 
     Args:
         accurate_exp2: Take 2^x from a polynomial within 2.8e-6 before its
             bf16 rounding (``-DEXP2_BF16_ACCURATE``), in place of AIE2P's
             exp2 instruction, which is off by up to 6.15%. ``s`` stays the
             bf16 scalar the kernel takes, 1.8e-3 from log2(e) / 8.
+        dim_m: Query rows of the block (``B_q``), a multiple of 16.
+        dim_n: Keys of the block (``B_kv``), a multiple of 16.
+        causal: A query keeps no key past its own position.
+        window: A query keeps no key more than ``window`` positions before
+            it, nor, when not causal, after it; 0 is no window. A multiple of
+            ``dim_m``, as ``dim_n`` must then be, and for self-attention,
+            where every query row keeps its own position.
+        scale: The log2-domain factor ``s``, rounded to bf16: ``log2(e)``
+            over the square root of the head dimension. Positive and finite,
+            so a masked score, ``A``'s lowest times ``s``, stays below every
+            kept one.
+
+    Returns:
+        ExternalFunction for ``partial_softmax``.
 
     Raises:
         NotImplementedError: ``accurate_exp2`` without the exp2 instruction
             it replaces (AIE2).
+        ValueError: A block dimension that is not a positive multiple of
+            16, a ``scale`` that is not positive and finite, or a window
+            the band cannot hold.
     """
     if accurate_exp2 and not _arch_traits().native_exp2:
         raise NotImplementedError(
             "mha_softmax: accurate_exp2 replaces AIE2P's exp2 instruction; "
             "select an NPU2 device"
         )
-    b = _MHA_BLOCK
-    tile = np.ndarray[(b * b,), np.dtype[bfloat16]]
-    state = np.ndarray[(4 * b,), np.dtype[np.float32]]
+    for name, v in (("dim_m", dim_m), ("dim_n", dim_n)):
+        if v <= 0 or v % 16:
+            raise ValueError(
+                f"mha_softmax: {name} must be a positive multiple of 16, got {v}"
+            )
+    scale = float(bfloat16(scale))
+    if not 0 < scale < np.inf:
+        raise ValueError(f"mha_softmax: scale must be positive and finite, got {scale}")
+    band_flags = _mha_band_flags("mha_softmax", dim_m, dim_n, causal, window)
+    band = dict(dim_m=dim_m, dim_n=dim_n, causal=causal, window=window)
+    tile = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
+    state = np.ndarray[(4 * dim_m,), np.dtype[np.float32]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
-    scale = float(bfloat16(np.log2(np.e) / np.sqrt(b)))
     return _make_extern(
         "partial_softmax",
         _kernel_source("linalg/mha.cc"),
         [tile, tile, state, idx, bfloat16, *([np.int32] * 4)],
         compile_flags=[
-            f"-DDIM_M={b}",
-            f"-DDIM_K={b}",
-            f"-DDIM_N={b}",
+            f"-DDIM_M={dim_m}",
+            "-DDIM_K=64",
+            f"-DDIM_N={dim_n}",
             *(["-DEXP2_BF16_ACCURATE=1"] if accurate_exp2 else []),
+            *band_flags,
         ],
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, Out, InOut, *([Param] * 6)),
-            parameter_bindings=((4, scale), (5, b), (6, b)),
+            parameter_bindings=((4, scale), (5, dim_m), (6, dim_n)),
             initializers=((2, _zero_output),),
-            reference=partial(mha_softmax_ref, scale=scale),
+            reference=partial(mha_softmax_ref, scale=scale, **band),
             # aie::exp2<bfloat16> interpolates 2**frac linearly, overshooting
             # by up to 6.15%, and two bf16 roundings bring it to 6.98%
             # (test_mha_e2e.py's _RTOL_EXP2). This form's rtol multiplies
@@ -1286,7 +1356,7 @@ def mha_softmax(accurate_exp2: bool = False) -> ExternalFunction:
             # |a| + |b| and its floor only admits the underflow to 0.
             tolerance=(
                 Tolerance.bounded(
-                    partial(_mha_softmax_accurate_bound, scale=scale),
+                    partial(_mha_softmax_accurate_bound, scale=scale, **band),
                     note="derived from exp2's 2.8e-6 and each store's "
                     "rounding; P measured 0.73 ulp on npu2",
                 )
@@ -1309,7 +1379,9 @@ def mha_softmax(accurate_exp2: bool = False) -> ExternalFunction:
     )
 
 
-def mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, *, scale):
+def mha_softmax_ref(
+    a, idx, s_q_eff, s_kv_eff, *, scale, dim_m=64, dim_n=64, causal=True, window=0
+):
     """Numpy reference for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: ``(P, scale_buffer)``.
 
     True ``exp2`` rather than the device's interpolant, from a zeroed
@@ -1317,15 +1389,19 @@ def mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, *, scale):
     kernel stores it. A padded row keeps ``m = l = 0``; a skipped or wholly
     padded block leaves the state untouched.
     """
-    b = _MHA_BLOCK
     kv, q = (int(i) for i in np.asarray(idx).ravel())
-    rows, cols = np.indices((b, b))
-    keep = (rows < s_q_eff - q * b) & (cols < s_kv_eff - kv * b)
-    if kv == q:
-        keep &= cols <= rows
-    if kv > q or not keep.any():
-        return np.zeros((len(a), b * b)), np.zeros((len(a), 4 * b), np.float32)
-    scaled = a.astype(np.float32).reshape(-1, b, b) * np.float32(scale)
+    rows, cols = np.indices((dim_m, dim_n))
+    key = kv * dim_n + cols - (q * dim_m + rows)
+    keep = (rows < s_q_eff - q * dim_m) & (cols < s_kv_eff - kv * dim_n)
+    if causal or window:
+        keep &= key <= (0 if causal else window)
+    if window:
+        keep &= key >= -window
+    if not keep.any():
+        return np.zeros((len(a), dim_m * dim_n)), np.zeros(
+            (len(a), 4 * dim_m), np.float32
+        )
+    scaled = a.astype(np.float32).reshape(-1, dim_m, dim_n) * np.float32(scale)
     m = np.where(keep, scaled, -np.inf).max(axis=2)
     m = np.maximum(m.astype(bfloat16).astype(np.float32), 0)
     p = np.exp2(np.where(keep, scaled - m[..., None], -np.inf))

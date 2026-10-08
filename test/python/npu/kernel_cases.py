@@ -2135,6 +2135,52 @@ CASES += [
         devices=("npu2",),
         smoke=True,
     ),
+    # The band. A 32-row query block on the row-group path masks partway
+    # into its key block; past the diagonal a bidirectional block is kept,
+    # with its padded keys masked; a window drops each row's oldest keys.
+    check(
+        "mha_softmax",
+        dict(dim_m=32),
+        params=((0, 1),),
+        scalars=(64, 64),
+        tag="half-block-diagonal",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(causal=False),
+        params=((1, 0),),
+        scalars=(100, 100),
+        tag="bidirectional-padded",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(causal=False, window=64),
+        params=((1, 2),),
+        scalars=(192, 192),
+        tag="window",
+        smoke=True,
+    ),
+    # 16- and 32-key blocks take the per-row path, a row read a block wide.
+    check(
+        "mha_softmax",
+        dict(dim_m=16, dim_n=16),
+        params=((0, 0),),
+        scalars=(13, 13),
+        tag="diagonal-padded",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(dim_m=16, dim_n=32, causal=False, window=32),
+        params=((0, 2),),
+        scalars=(45, 45),
+        tag="window-padded",
+        smoke=True,
+    ),
+    # P*V's product at a head dimension past the key block.
+    check("mha", dict(dim_m=16, dim_k=256, dim_n=64, pv=True), smoke=True),
     # The prefill toolkit's S*V accumulate, one case per geometry. Each
     # -DPREFILL_HEAD_DIM build is its own object with its own blocked V order;
     # the 512 one has a degenerate k-block term and so cannot tell a wrong V

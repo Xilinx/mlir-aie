@@ -1219,6 +1219,50 @@ def test_mha_binds_its_translation_unit_as_one_object():
         kernels.mha(dim_m=17)
 
 
+def test_mha_band_reaches_the_kernel_and_its_reference():
+    """causal and window are -D flags only off their defaults, and mha_softmax_ref keeps the band."""
+    assert not any("MHA_" in f for f in kernels.mha().compile_flags)
+    assert not any("MHA_" in f for f in kernels.mha_softmax().compile_flags)
+    flags = kernels.mha(dim_k=256, causal=False, window=128).compile_flags
+    assert {"-DMHA_CAUSAL=0", "-DMHA_WINDOW=128", "-DDIM_K=256"} <= set(flags)
+    fn = kernels.mha_softmax(dim_m=16, dim_n=32, causal=False, window=32)
+    assert [v for i, v in fn.contract.parameter_bindings if i in (5, 6)] == [16, 32]
+    for bad in (
+        dict(window=48),
+        dict(dim_m=32, dim_n=16, window=64),
+        dict(window=-64),
+        dict(scale=0.0),
+        dict(dim_n=24),
+    ):
+        with pytest.raises(ValueError):
+            kernels.mha_softmax(**bad)
+
+    # A zero score gives a kept key the weight 1 against m = 0, a masked one 0.
+    for causal, window in ((True, 0), (False, 0), (True, 32), (False, 32)):
+        for kv, q in ((0, 0), (0, 1), (1, 0), (2, 1), (3, 0)):
+            p, _ = kernels.mha_softmax_ref(
+                np.zeros((1, 16 * 32)),
+                (kv, q),
+                40,
+                90,
+                scale=1.0,
+                dim_m=16,
+                dim_n=32,
+                causal=causal,
+                window=window,
+            )
+            want = np.zeros((16, 32))
+            for r in range(16):
+                for c in range(32):
+                    qi, ki = q * 16 + r, kv * 32 + c
+                    if qi >= 40 or ki >= 90 or (causal and ki > qi):
+                        continue
+                    if window and abs(ki - qi) > window:
+                        continue
+                    want[r, c] = 1
+            assert np.array_equal(p.reshape(16, 32), want), (causal, window, kv, q)
+
+
 @pytest.mark.parametrize("emulate", [False, True])
 @pytest.mark.parametrize("pv", [False, True])
 @pytest.mark.parametrize("b_col_maj", [False, True])

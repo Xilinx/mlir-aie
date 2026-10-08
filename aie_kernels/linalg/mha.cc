@@ -26,6 +26,28 @@
 
 #define ROUNDING_MODE aie::rounding_mode::conv_even
 
+// The query at position q keeps the keys k with q - MHA_WINDOW <= k <= q +
+// AHEAD: a causal build bounds k by q, a windowed one by the window on either
+// side it is not causal on, and one that is neither keeps every key. A window
+// of 0 is none.
+#ifndef MHA_CAUSAL
+#define MHA_CAUSAL 1
+#endif
+#ifndef MHA_WINDOW
+#define MHA_WINDOW 0
+#endif
+static constexpr bool BAND_AHEAD = MHA_CAUSAL || MHA_WINDOW > 0;
+static constexpr int32_t AHEAD = MHA_CAUSAL ? 0 : MHA_WINDOW;
+static constexpr bool BAND_BEHIND = MHA_WINDOW > 0;
+
+// Whether a query block keeps any key of a key block, diagonal being the
+// position of the query block's first row less that of the key block's.
+static inline __attribute__((always_inline)) bool
+block_live(int32_t diagonal, int32_t B_q, int32_t B_kv) {
+  return (!BAND_AHEAD || diagonal + B_q + AHEAD > 0) &&
+         (!BAND_BEHIND || diagonal < MHA_WINDOW + B_kv);
+}
+
 // A float multiplies as three bf16 limbs, as in common/f32_split.h.
 template <unsigned N>
 struct Limbs {
@@ -63,15 +85,16 @@ broadcast_by_row(const float *s) {
 // Expanded along n only: mm_aie2p.h's 2x2 expansion keeps four 64-float
 // accumulators plus two A and two B tiles live, which does not fit the
 // registers. The mac order per output tile, and so the result, is the same.
-template <typename C>
+// The product is (M, K) by (K, N).
+template <typename C, unsigned M, unsigned K, unsigned N>
 static void matmul_rowmaj(bfloat16 *a_in, bfloat16 *b_in, C *c_out) {
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
   constexpr unsigned r = 8, s = 8, t = 8;
-  constexpr unsigned rowA = DIM_M / r, colA = DIM_K / s, colB = DIM_N / t;
-  static_assert(DIM_M % r == 0);
-  static_assert(DIM_K % s == 0);
-  static_assert(DIM_N % (2 * t) == 0);
+  constexpr unsigned rowA = M / r, colA = K / s, colB = N / t;
+  static_assert(M % r == 0);
+  static_assert(K % s == 0);
+  static_assert(N % (2 * t) == 0);
   using MMUL = aie::mmul<r, s, t, bfloat16, bfloat16, accauto>;
 
   for (unsigned z = 0; z < rowA; z++) {
@@ -111,24 +134,24 @@ extern "C" {
 
 void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
   event0();
-  matmul_rowmaj(a_in, b_in, c_out);
+  matmul_rowmaj<bfloat16, DIM_M, DIM_K, DIM_N>(a_in, b_in, c_out);
   event1();
 }
 
 } // extern "C" (row-major wrappers)
 
-// O is the r=t=8 blocked GEMM output: element (row, col) of the tile sits at
-// (row / 8) * 512 + (col / 8) * 64 + (row % 8) * 8 + col % 8. Both O and the
-// scale are three limbs; the products under 2^-16 of the leading one are
-// dropped.
+// O is matmul_PV's r=t=8 blocked output, B_q rows of the head dimension
+// DIM_K: element (row, col) sits at (row / 8) * 8 * DIM_K + (col / 8) * 64 +
+// (row % 8) * 8 + col % 8. Both O and the scale are three limbs; the products
+// under 2^-16 of the leading one are dropped.
 static void scale_blocked_rows(const float *O, bfloat16 *out,
                                const float *scale, int32_t rows) {
   using Acc64 = aie::accum<accfloat, VECTOR_LENGTH>;
   for (int32_t l = 0; l < rows / 8; l++) {
     const Limbs<VECTOR_LENGTH> sl = bf16_limbs(broadcast_by_row(scale + l * 8));
-    const float *row = O + l * 512;
-    bfloat16 *dst = out + l * 512;
-    for (int32_t j = 0; j < 8; j++) {
+    const float *row = O + l * 8 * DIM_K;
+    bfloat16 *dst = out + l * 8 * DIM_K;
+    for (int32_t j = 0; j < DIM_K / 8; j++) {
       Acc64 o_acc;
       o_acc.from_vector(aie::load_v<VECTOR_LENGTH>(row + j * VECTOR_LENGTH));
       const Limbs<VECTOR_LENGTH> ol = bf16_limbs(o_acc);
@@ -153,9 +176,9 @@ static void rescale_running_O(float *O, const float *alpha, int32_t rows) {
       continue;
     const aie::vector<bfloat16, VECTOR_LENGTH> s =
         broadcast_by_row(alpha + l * 8).template to_vector<bfloat16>();
-    float *__restrict row = O + l * 512;
+    float *__restrict row = O + l * 8 * DIM_K;
     AIE_LOOP_UNROLL(4)
-    for (int32_t j = 0; j < 8; j++) {
+    for (int32_t j = 0; j < DIM_K / 8; j++) {
       Acc64 o_acc;
       o_acc.from_vector(aie::load_v<VECTOR_LENGTH>(row));
       const Limbs<VECTOR_LENGTH> ol = bf16_limbs(o_acc);
@@ -177,23 +200,30 @@ static void rescale_running_O(float *O, const float *alpha, int32_t rows) {
 static constexpr int32_t SM_ROWS = 8;
 static constexpr int32_t SM_LANES = 16;
 
-// Lane numbers, compared against a row's first masked column, build the
-// suffix mask in one vector compare.
+// Lane numbers, compared against the ends of a row's band, build its mask in a
+// vector compare or two.
 alignas(64) static const int16_t sm_lane_idx[VECTOR_LENGTH] = {
     0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
     16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
     32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
     48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63};
 
-// Row i keeps the columns before i + diagonal + 1, so a diagonal of
-// VECTOR_LENGTH or more keeps them all.
-static inline __attribute__((always_inline)) aie::mask<VECTOR_LENGTH>
-suffix_mask(aie::vector<int16_t, VECTOR_LENGTH> lane, int32_t i,
-            int32_t valid_cols, int32_t diagonal) {
-  int32_t start = valid_cols;
-  if (i + diagonal + 1 < start)
-    start = i + diagonal + 1;
-  return aie::ge(lane, aie::broadcast<int16_t, VECTOR_LENGTH>(start));
+// The lanes row i discards: it keeps the columns from i + diagonal -
+// MHA_WINDOW to i + diagonal + AHEAD that are before valid_cols.
+template <unsigned W>
+static inline __attribute__((always_inline)) aie::mask<W>
+band_mask(aie::vector<int16_t, W> lane, int32_t i, int32_t valid_cols,
+          int32_t diagonal) {
+  int32_t end = valid_cols;
+  if (BAND_AHEAD && i + diagonal + AHEAD + 1 < end)
+    end = i + diagonal + AHEAD + 1;
+  aie::mask<W> drop = aie::ge(lane, aie::broadcast<int16_t, W>(end));
+  if constexpr (BAND_BEHIND) {
+    const int32_t start = i + diagonal - MHA_WINDOW;
+    drop =
+        drop | aie::lt(lane, aie::broadcast<int16_t, W>(start < 0 ? 0 : start));
+  }
+  return drop;
 }
 
 // at(r) is row r narrowed to W lanes, and lane r of the result is row r.
@@ -278,14 +308,15 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
   const int32_t group_rows = (rows + SM_ROWS - 1) & ~(SM_ROWS - 1);
 
   // Lanes a row discards hold lowest from here on.
-  if (diagonal < VECTOR_LENGTH - 1 || valid_cols < VECTOR_LENGTH) {
+  if ((BAND_AHEAD && diagonal + AHEAD < VECTOR_LENGTH - 1) ||
+      valid_cols < VECTOR_LENGTH ||
+      (BAND_BEHIND && group_rows - 1 + diagonal > MHA_WINDOW)) {
     bfloat16 *__restrict row = A;
     AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
     AIE_LOOP_UNROLL(4)
     for (int32_t i = 0; i < group_rows; i++) {
-      aie::store_v(row,
-                   aie::select(aie::load_v<VECTOR_LENGTH>(row), lowest_vec,
-                               suffix_mask(lane, i, valid_cols, diagonal)));
+      aie::store_v(row, aie::select(aie::load_v<VECTOR_LENGTH>(row), lowest_vec,
+                                    band_mask(lane, i, valid_cols, diagonal)));
       row += VECTOR_LENGTH;
     }
   }
@@ -419,10 +450,11 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
 // in P are 0, but the product still reads the rows, whatever the buffer held.
 // Emulated through bfp16 it shares one exponent over eight rows of the
 // reduction, so a stale row changes the valid rows beside it, and 0 * NaN is
-// NaN. V is blocked as matmul_bf16_bf16_rowmaj reads it: one vector is an 8x8
-// tile, row-major, and a band of DIM_N / 8 tiles is eight rows.
+// NaN. V is DIM_N keys of the head dimension DIM_K, blocked as matmul_PV reads
+// it: one vector is an 8x8 tile, row-major, and a band of DIM_K / 8 tiles is
+// eight rows.
 static void zero_rows_from(bfloat16 *V, int32_t row) {
-  constexpr int32_t band = DIM_N / 8;
+  constexpr int32_t band = DIM_K / 8;
   const auto zeros = aie::zeros<bfloat16, VECTOR_LENGTH>();
   bfloat16 *__restrict p = V + (row / 8) * band * VECTOR_LENGTH;
   if (row % 8) {
@@ -433,7 +465,7 @@ static void zero_rows_from(bfloat16 *V, int32_t row) {
       aie::store_v(p, aie::select(aie::load_v<VECTOR_LENGTH>(p), zeros, stale));
     }
   }
-  for (; p < V + DIM_K * DIM_N; p += VECTOR_LENGTH) {
+  for (; p < V + DIM_N * DIM_K; p += VECTOR_LENGTH) {
     aie::store_v(p, zeros);
   }
 }
@@ -501,7 +533,7 @@ template <int W>
 static inline void invert_sums_w(float *scale_buffer, int32_t B_q) {
   // A row past S_q attended over nothing: its sum is 0 and its O row is 0,
   // and 0 * (1 / 0) would make it NaN. It is scaled by 0 instead. Every other
-  // row attends at least its diagonal, so its sum is positive.
+  // row keeps a key, so its sum is positive.
   const auto zeros = aie::zeros<float, W>();
   for (int32_t i = 0; i < B_q; i += W) {
     aie::vector<float, W> l_vec = aie::load_v<W>(scale_buffer + 2 * B_q + i);
@@ -522,7 +554,9 @@ void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out,
                               int32_t *idx_buffer) {
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
-  if (idx_buffer[0] > idx_buffer[1]) {
+  // idx_buffer is (key block, query block).
+  if (!block_live(idx_buffer[1] * DIM_M - idx_buffer[0] * DIM_N, DIM_M,
+                  DIM_N)) {
     // matmul_bf16_bf16 brackets itself; an empty pair keeps a masked call to
     // one interval too, so every call can be timed.
     event0();
@@ -542,7 +576,9 @@ void matmul_bf16_bf16_wrapper_scalar(bfloat16 *a_in, bfloat16 *b_in,
   ::aie::set_rounding(saved_rounding);
 }
 
-// out is the float accumulator O, which the first key block starts.
+// out is the float accumulator O, which the first key block starts: P, a
+// B_q by DIM_N block of weights, times V, DIM_N keys by the head dimension
+// DIM_K.
 void matmul_PV(bfloat16 *Q, bfloat16 *K, float *out, float *scale_buffer,
                const int32_t B_q, int32_t first_iter, int32_t *idx_buffer,
                int32_t S_kv_eff) {
@@ -550,28 +586,27 @@ void matmul_PV(bfloat16 *Q, bfloat16 *K, float *out, float *scale_buffer,
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
   if (first_iter == 0) {
-    zero_vectorized<float, DIM_M, DIM_N, false>(out);
+    zero_vectorized<float, DIM_M, DIM_K, false>(out);
   }
 
-  // The key block is DIM_K wide; skip it where it lies above the causal
-  // diagonal for every row of the query block, as partial_softmax does.
-  if (idx_buffer[1] * B_q + B_q <= idx_buffer[0] * DIM_K) {
+  // Skip a key block no row of the query block keeps, as partial_softmax does.
+  if (!block_live(idx_buffer[1] * B_q - idx_buffer[0] * DIM_N, B_q, DIM_N)) {
     ::aie::set_rounding(saved_rounding);
     event1();
     return;
   }
 
-  int32_t valid_kv_rows = S_kv_eff - idx_buffer[0] * DIM_K;
-  if (valid_kv_rows < DIM_K) {
+  int32_t valid_kv_rows = S_kv_eff - idx_buffer[0] * DIM_N;
+  if (valid_kv_rows < DIM_N) {
     zero_rows_from(K, valid_kv_rows < 0 ? 0 : valid_kv_rows);
   }
 
-  // 64 emul: O dims = [(8, 512), (8, 8), (8, 64), (8, 1)]
+  // O dims = [(B_q / 8, 8 * DIM_K), (DIM_K / 8, 64), (8, 8), (8, 1)]
   // O_{i-1} is scaled by exp2(m_{i-1} - m_i); on the first block O is zero.
   if (first_iter != 0) {
     rescale_running_O(out, scale_buffer + 3 * B_q, B_q);
   }
-  matmul_rowmaj(Q, K, out);
+  matmul_rowmaj<float, DIM_M, DIM_N, DIM_K>(Q, K, out);
   ::aie::set_rounding(saved_rounding);
   event1();
 }
@@ -603,11 +638,12 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, float *scale_buffer,
   int32_t q_block_idx = idx_buffer[1];
   int32_t kv_block_idx = idx_buffer[0];
 
-  // Causal diagonal in global positions: query row i keeps the key columns
-  // before i + diagonal + 1, so a query block narrower than the key block masks
-  // at the right column. Skip a block above the diagonal for every row.
+  // The band in global positions: query row i keeps the key columns from
+  // i + diagonal - MHA_WINDOW to i + diagonal + AHEAD, so a query block
+  // narrower than the key block masks at the right column. Skip a block no
+  // row keeps a key of.
   const int32_t diagonal = q_block_idx * B_q - kv_block_idx * B_kv;
-  if (diagonal + B_q <= 0) {
+  if (!block_live(diagonal, B_q, B_kv)) {
     zero_vectorized<bfloat16, DIM_M, DIM_N>(P);
     ::aie::set_rounding(saved_rounding);
     return;
@@ -637,14 +673,18 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, float *scale_buffer,
   // timed by its own pair and every call still emits exactly one.
   event0();
 
-  using Vec64bf16 = aie::vector<bfloat16, VECTOR_LENGTH>;
-  Vec64bf16 lowest_vec = aie::broadcast<bfloat16, VECTOR_LENGTH>(
-      std::numeric_limits<bfloat16>::lowest());
+  // A row's columns are walked a key block's width at a time, up to a vector,
+  // so a row of 16 or 32 keys is not read or written past.
+  constexpr unsigned MW = DIM_N % VECTOR_LENGTH == 0 ? VECTOR_LENGTH
+                          : DIM_N % SM_VEC_LEN == 0  ? SM_VEC_LEN
+                                                     : SM_LANES;
+  const auto lowest =
+      aie::broadcast<bfloat16, MW>(std::numeric_limits<bfloat16>::lowest());
 
   // Tail mask: invalidate padded Q rows.  They are the end of A, so the walk
   // over (row, vector) is one linear fill.
-  for (int32_t n = valid_q_rows * B_kv; n < B_q * B_kv; n += VECTOR_LENGTH) {
-    aie::store_v(A + n, lowest_vec);
+  for (int32_t n = valid_q_rows * B_kv; n < B_q * B_kv; n += MW) {
+    aie::store_v(A + n, lowest);
   }
 
   // partial_softmax_rows scales a row's maximum instead of every element,
@@ -656,33 +696,17 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, float *scale_buffer,
                          scale_buffer + 3 * B_q, valid_q_rows, valid_kv_cols,
                          diagonal, inv_scale);
   } else {
-    // Everything a valid row discards is a suffix of that row: the columns from
-    // valid_kv_cols on, and on the diagonal block the columns past the
-    // diagonal, so the earlier start covers both. A lane mask covers a suffix
-    // that starts mid-vector; its bits are built directly because mask's own
-    // runtime shift is a loop.
-    if (valid_kv_cols < B_kv || diagonal < B_kv - 1) {
+    constexpr unsigned SW = MW < SM_VEC_LEN ? MW : SM_VEC_LEN;
+    if ((BAND_AHEAD && diagonal + AHEAD < B_kv - 1) || valid_kv_cols < B_kv ||
+        (BAND_BEHIND && valid_q_rows - 1 + diagonal > MHA_WINDOW)) {
+      const auto lane = aie::load_v<MW>(sm_lane_idx);
       for (int32_t i = 0; i < valid_q_rows; i++) {
-        int32_t start = valid_kv_cols;
-        if (i + diagonal + 1 < start) {
-          start = i + diagonal + 1;
-        }
-        // A row the diagonal leaves no key of is masked whole.
-        if (start < 0) {
-          start = 0;
-        }
-        int32_t base = start & ~(VECTOR_LENGTH - 1);
-        if (base < B_kv) {
-          bfloat16 *row = A + i * B_kv;
-          aie::mask<VECTOR_LENGTH> above =
-              aie::mask<VECTOR_LENGTH>::from_uint64(~uint64_t(0)
-                                                    << (start - base));
-          aie::store_v(row + base,
-                       aie::select(aie::load_v<VECTOR_LENGTH>(row + base),
-                                   lowest_vec, above));
-          for (int32_t c = base + VECTOR_LENGTH; c < B_kv; c += VECTOR_LENGTH) {
-            aie::store_v(row + c, lowest_vec);
-          }
+        bfloat16 *row = A + i * B_kv;
+        for (int32_t c = 0; c < B_kv; c += MW) {
+          aie::store_v(row + c,
+                       aie::select(aie::load_v<MW>(row + c), lowest,
+                                   band_mask<MW>(lane, i, valid_kv_cols - c,
+                                                 diagonal - c)));
         }
       }
     }
@@ -691,25 +715,24 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, float *scale_buffer,
     // each row with markers of its own.
     int32_t i = 0;
     for (; i + 4 <= valid_q_rows; i += 4) {
-      partial_softmax_alias_bf16(A + B_kv * i, P + B_kv * i, scale_buffer, B_kv,
-                                 i, B_q, inv_scale);
-      partial_softmax_alias_bf16(A + B_kv * (i + 1), P + B_kv * (i + 1),
-                                 scale_buffer, B_kv, i + 1, B_q, inv_scale);
-      partial_softmax_alias_bf16(A + B_kv * (i + 2), P + B_kv * (i + 2),
-                                 scale_buffer, B_kv, i + 2, B_q, inv_scale);
-      partial_softmax_alias_bf16(A + B_kv * (i + 3), P + B_kv * (i + 3),
-                                 scale_buffer, B_kv, i + 3, B_q, inv_scale);
+      partial_softmax_alias_bf16<SW>(A + B_kv * i, P + B_kv * i, scale_buffer,
+                                     B_kv, i, B_q, inv_scale);
+      partial_softmax_alias_bf16<SW>(A + B_kv * (i + 1), P + B_kv * (i + 1),
+                                     scale_buffer, B_kv, i + 1, B_q, inv_scale);
+      partial_softmax_alias_bf16<SW>(A + B_kv * (i + 2), P + B_kv * (i + 2),
+                                     scale_buffer, B_kv, i + 2, B_q, inv_scale);
+      partial_softmax_alias_bf16<SW>(A + B_kv * (i + 3), P + B_kv * (i + 3),
+                                     scale_buffer, B_kv, i + 3, B_q, inv_scale);
     }
     for (; i < valid_q_rows; i++) {
-      partial_softmax_alias_bf16(A + B_kv * i, P + B_kv * i, scale_buffer, B_kv,
-                                 i, B_q, inv_scale);
+      partial_softmax_alias_bf16<SW>(A + B_kv * i, P + B_kv * i, scale_buffer,
+                                     B_kv, i, B_q, inv_scale);
     }
   }
   // Zero out P rows corresponding to padded Q rows, which are again a suffix
   // and so one linear fill.
-  Vec64bf16 zeros_vec = aie::broadcast<bfloat16, VECTOR_LENGTH>(0.0f);
-  for (int32_t n = valid_q_rows * B_kv; n < B_q * B_kv; n += VECTOR_LENGTH) {
-    aie::store_v(P + n, zeros_vec);
+  for (int32_t n = valid_q_rows * B_kv; n < B_q * B_kv; n += MW) {
+    aie::store_v(P + n, aie::zeros<bfloat16, MW>());
   }
 
   for_state_width(B_q, [&](auto w) {
