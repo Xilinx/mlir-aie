@@ -24,10 +24,6 @@ extern "C" {
 
 void gate_layer_embedding(bf16 *x, bf16 *proj_w_ping, bf16 *proj_w_pong,
                           bf16 *y) {
-  constexpr int x_prod_lock =
-      FLM_GEMMA4_DECODE_GATE_LAYER_EMBEDDING_X_PROD_LOCK;
-  constexpr int x_cons_lock =
-      FLM_GEMMA4_DECODE_GATE_LAYER_EMBEDDING_X_CONS_LOCK;
   constexpr int proj_w_prod_lock =
       FLM_GEMMA4_DECODE_GATE_LAYER_EMBEDDING_PROJ_W_PROD_LOCK;
   constexpr int proj_w_cons_lock =
