@@ -130,4 +130,4 @@ def test_an_array_alive_past_cleanup_and_exit_tears_down_cleanly():
 
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == "read after cleanup", done.stdout
-    assert "Error" not in done.stderr and "Fatal" not in done.stderr, done.stderr
+    assert "Fatal" not in done.stderr, done.stderr

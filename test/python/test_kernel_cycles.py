@@ -10,9 +10,20 @@ from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU2Col1
 from aie.iron.kernels import KernelContract, Trace
+from aie.utils import get_current_device
 from aie.utils.compile.jit import InOut
 from aie.utils.hostruntime import set_current_device
 from aie.utils.trace import TraceConfig
+
+
+@pytest.fixture
+def npu2_device():
+    previous = get_current_device(probe_runtime=False)
+    set_current_device(NPU2Col1())
+    try:
+        yield
+    finally:
+        set_current_device(previous)
 
 
 def _kernel(name, contract, arg_types=()):
@@ -64,15 +75,11 @@ def test_a_traced_initializer_is_one_more_interval_per_call():
     )
 
 
-def test_the_library_mm_is_zeroed_then_timed_each_call():
+def test_the_library_mm_is_zeroed_then_timed_each_call(npu2_device):
     # zero's markers bracket its call, so every mm call emits two intervals;
     # set_rounding, the eltwise setup, emits none.
-    set_current_device(NPU2Col1())
-    try:
-        assert kd.traced_intervals(kernels.mm(), calls=4) == 8
-        assert kd.traced_intervals(kernels.add(), calls=4) == 4
-    finally:
-        set_current_device(None)
+    assert kd.traced_intervals(kernels.mm(), calls=4) == 8
+    assert kd.traced_intervals(kernels.add(), calls=4) == 4
 
 
 def test_a_partial_initializer_cannot_be_split_off(tmp_path):
@@ -146,21 +153,17 @@ def test_two_pairs_per_call_are_not_flushes():
         )
 
 
-def test_an_inputless_kernel_waits_for_the_trace(tmp_path):
+def test_an_inputless_kernel_waits_for_the_trace(tmp_path, npu2_device):
     # Without the barrier zero's first calls run before the sequence starts
     # the trace, and the flush pairs are read as calls.
-    set_current_device(NPU2Col1())
-    try:
-        design = kd.design(kernels.zero, tile_size=64, calls=4)
-        traced = design.as_mlir(
-            None,
-            trace_config=TraceConfig(
-                trace_size=1024, trace_file=str(tmp_path / "trace.txt")
-            ),
-        )
-        untraced = design.as_mlir(None)
-    finally:
-        set_current_device(None)
+    design = kd.design(kernels.zero, tile_size=64, calls=4)
+    traced = design.as_mlir(
+        None,
+        trace_config=TraceConfig(
+            trace_size=1024, trace_file=str(tmp_path / "trace.txt")
+        ),
+    )
+    untraced = design.as_mlir(None)
     sequence = traced[traced.index("aie.runtime_sequence") :]
     assert sequence.index("aie.trace.start_config") < sequence.index("aiex.set_lock")
     assert "aie.use_lock" in traced
