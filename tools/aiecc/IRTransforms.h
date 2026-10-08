@@ -268,10 +268,7 @@ inline mlir::LogicalResult recordStackDemand(
       if (probe.empty() || coreOp.getStackSize()) {
         return;
       }
-      // Read before the stale measurement goes: it is what the core's own
-      // compile saw.
       std::optional<int> bank = stackAddressSpaceBank(coreOp);
-      coreOp.removeMeasuredStackSizeAttr();
       llvm::StringSet<> claimed =
           xilinx::aiecc::readDefinedFunctionNames(objectForCore(coreOp));
       if (claimed.empty()) {

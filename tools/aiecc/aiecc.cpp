@@ -744,6 +744,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
             stackSize > 0
                 ? ModRef(populateDefaultStackSize(in.get().get(), stackSize))
                 : ModRef(in.get().get().clone());
+        // A measurement carried in the input is an earlier build's; this one
+        // measures its own or falls back to the default.
+        out.value->get().walk(
+            [](CoreOp core) { core.removeMeasuredStackSizeAttr(); });
         return verifyStackSizeOverrides(out.value->get());
       });
 

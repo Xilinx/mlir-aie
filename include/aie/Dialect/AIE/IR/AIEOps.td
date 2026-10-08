@@ -463,7 +463,8 @@ def AIE_CoreOp
     calls `_main_init` (crt1), which calls the core body, which calls its kernels.
     `_main_init` holds a frame that stays live across the whole chain. `aiecc`
     measures the linked core, so the chain covers crt0 and crt1 too.
-    `measured_stack_size` stays absent when `aiecc` cannot measure the core. The
+    `aiecc` drops any `measured_stack_size` its input carries, so the attribute
+    stays absent when `aiecc` cannot measure the core. The
     measurement reads the relocations of the linked core, which the Peano link
     keeps and the chess/BCF link drops, so a `--xbridge` build leaves every core
     unmeasured. See `programming_guide/core_data_memory.md` for the mechanism, the
