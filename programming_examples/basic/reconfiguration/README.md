@@ -8,6 +8,17 @@
 
 # Reconfiguration
 
+Many workloads, including large language models, execute a sequence of different
+operations. A dataflow mapping can implement the whole workload as one design,
+but such a design requires substantial integration work. A layer-by-layer
+mapping implements each meaningful operation as a standalone operator and
+dispatches the operators in sequence at run time.
+
+Layer-by-layer mappings improve modularity because multiple workloads can reuse
+the same operator implementations. They also let developers study one operation
+at a time. However, they require quick reconfiguration. Slow device-image
+replacement can make the layer-by-layer approach impractical.
+
 This example compares three ways to run or reconfigure one NPU2 device image:
 
 - `separate-dispatch`: compile an xclbin and dispatch its worker runtime directly.
