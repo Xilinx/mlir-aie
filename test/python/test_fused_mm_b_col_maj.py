@@ -68,9 +68,7 @@ def test_b_col_maj_builds_on_aie2p(npu2, emulate):
         b_col_maj=True, mmul_shape=(8, 8, 8), emulate_bf16_mmul_with_bfp16=emulate
     )
     assert "-DMM_FUSED_B_COL_MAJ" in fn.compile_flags
-    assert (
-        "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" in fn.compile_flags
-    ) == emulate
+    assert ("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" in fn.compile_flags) == emulate
 
 
 @pytest.mark.parametrize(
