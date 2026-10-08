@@ -28,7 +28,6 @@ constexpr int x_prod_lock = FLM_GEMMA4_DECODE_GLU_X_PROD_LOCK;
 constexpr int x_cons_lock = FLM_GEMMA4_DECODE_GLU_X_CONS_LOCK;
 constexpr int y_prod_lock = FLM_GEMMA4_DECODE_GLU_Y_PROD_LOCK;
 constexpr int y_cons_lock = FLM_GEMMA4_DECODE_GLU_Y_CONS_LOCK;
-constexpr int rtp_lock = FLM_GEMMA4_DECODE_GLU_RTP_LOCK;
 extern "C" {
 static bool is_x_ping = false;
 static bool is_y_ping = false;
@@ -39,8 +38,6 @@ void glu(bf16 *y, const bf16 *x_ping, const bf16 *x_pong, bf16 *y_ping,
   constexpr int chunks =
       2 * INTERMEDIATE_SIZE /
       GLU_SLICE; // number of chunks in one GLU, each chunk is GLU_SLICE in size
-
-  _lock_acquire(rtp_lock);
 
   if (SKIP_KV[0] == 0) {
     bf16 *y_it = y;
