@@ -91,7 +91,6 @@ def reconfigure(
     worker_runtime = Runtime(
         worker_sequence,
         [tensor_type, *column_handles],
-        name="worker_sequence",
         implicit_configure=False,
     )
 
@@ -106,12 +105,10 @@ def reconfigure(
     fused_runtime = Runtime(
         fused_sequence,
         [tensor_type],
-        name="fused_sequence",
         implicit_configure=False,
     )
     entry = fused_runtime if full_elf else worker_runtime
     configuration = DeviceConfiguration(
-        "worker",
         NPU2(),
         workers=workers,
         runtimes=[worker_runtime, fused_runtime] if full_elf else [worker_runtime],
