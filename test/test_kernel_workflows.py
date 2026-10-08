@@ -80,7 +80,7 @@ def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path
 
 @pytest.mark.parametrize("soak", [{}, {"ITERS": "5000"}, {"SEEDS": "50"}])
 def test_a_soak_does_not_retry_a_failure(soak, tmp_path):
-    """The runner retries a failed NPU test once, which hides a failure that
+    """The runner retries a failed NPU test, which hides a failure that
     comes and goes: the kind a soak is run to find."""
     steps = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
     run = next(step["run"] for step in steps if step.get("id") == "perf")
