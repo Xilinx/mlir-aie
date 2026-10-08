@@ -862,6 +862,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         invalid_kwargs=[
             (dict(rows=0), "positive multiple of 4"),
             (dict(row_bytes=6), "positive multiple of 4"),
+            (dict(low_bits=-1), "low_bits from 0 to 30"),
+            (dict(low_bits=31), "low_bits from 0 to 30"),
         ],
         shape_checks=[(dict(rows=3), 1, (6,))],
     ),

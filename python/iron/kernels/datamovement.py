@@ -532,7 +532,7 @@ def row_addresses(
         rows: Ids per call.
         table_rows: Rows of the table.
         row_bytes: Bytes per row (a positive multiple of 4).
-        low_bits: Bits of the address ``lo`` holds.
+        low_bits: Bits of the address ``lo`` holds, from 0 to 30.
         aperture: Added to every address; the default is the offset a DDR
             address carries in a shim buffer descriptor (kDDRAIEAddrOffset).
 
@@ -540,14 +540,19 @@ def row_addresses(
         ExternalFunction for ``row_addresses``.
 
     Raises:
-        ValueError: When ``rows`` or ``table_rows`` is below 1, or
-            ``row_bytes`` is not a positive multiple of 4.
+        ValueError: When ``rows`` or ``table_rows`` is below 1, ``row_bytes``
+            is not a positive multiple of 4, or ``low_bits`` is outside 0 to 30.
     """
     if rows < 1 or table_rows < 1 or row_bytes < 4 or row_bytes % 4:
         raise ValueError(
             "row_addresses() needs rows and table_rows >= 1 and row_bytes a "
             f"positive multiple of 4, got rows={rows}, table_rows={table_rows}, "
             f"row_bytes={row_bytes}."
+        )
+    if not 0 <= low_bits <= 30:
+        raise ValueError(
+            "row_addresses() needs low_bits from 0 to 30, since lo must fit the "
+            f"30 bits a core reads of a runtime value, got low_bits={low_bits}."
         )
     return _make_extern(
         "row_addresses",
