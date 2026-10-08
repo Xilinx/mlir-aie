@@ -10,7 +10,7 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
-from aie.iron.kernel import ExternalFunction
+from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -296,9 +296,21 @@ def _check_resample(owner: str, words: int, cores: int, slots: int | None) -> No
         )
 
 
+class _ResamplePeakKernel(ExternalFunction):
+    resample_join: Kernel
+
+
+class _ResizeKernel(ExternalFunction):
+    resize_setup: Kernel
+    resize_take: Kernel
+    resize_band: Kernel
+    resize_emit: Kernel
+    resize_finish: Kernel
+
+
 def resample_peak(
     words: int = 256, *, cores: int = 16, slots: int | None = None
-) -> ExternalFunction:
+) -> _ResamplePeakKernel:
     """The largest normalized weight of one core's share of a resample table.
 
     One axis of torch's antialiased bicubic resize (``in`` samples to
@@ -344,8 +356,9 @@ def resample_peak(
             tolerance=Tolerance.exact(note="IEEE float64, as torch on the CPU"),
             ops_per_call=0,
         ),
+        cls=_ResamplePeakKernel,
     )
-    fn.resample_join = fn.object_file.bind("resample_join", [peak_ty] * 3)
+    fn.resample_join = fn.object_file.bind("resample_join", [peak_ty, peak_ty, peak_ty])
     return fn
 
 
@@ -414,7 +427,7 @@ def resample_quantize(
 
 def resize(
     words: int = 356, *, chunk: int = 4096, patch_columns: int = 8, cores: int = 16
-) -> ExternalFunction:
+) -> _ResizeKernel:
     """A uint8 RGB image resized as torch's antialiased bicubic resize, as patches.
 
     The image is resized across, then down, each pass rounded to uint8 as
@@ -500,9 +513,13 @@ def resize(
             ),
             ops_per_call=0,
         ),
+        cls=_ResizeKernel,
     )
     lib = fn.object_file
-    fn.resize_setup = lib.bind("resize_setup", [counts_ty] + [np.int32] * 5)
+    fn.resize_setup = lib.bind(
+        "resize_setup",
+        [counts_ty, np.int32, np.int32, np.int32, np.int32, np.int32],
+    )
     fn.resize_take = lib.bind("resize_take", [taps_ty, np.int32])
     fn.resize_band = lib.bind("resize_band", [taps_ty, counts_ty])
     fn.resize_emit = lib.bind(
@@ -730,8 +747,15 @@ def _resample_peaks(rng, calls):
 
 
 def resample_peak_ref(
-    in_size, out_size, core, chunks, *, words=256, cores=16, slots=None
-):
+    in_size: int,
+    out_size: int,
+    core: int,
+    chunks: int,
+    *,
+    words: int = 256,
+    cores: int = 16,
+    slots: int | None = None,
+) -> np.ndarray:
     """Numpy reference for [`resample_peak`][iron.kernels.vision.resample_peak].
 
     Args:
@@ -764,8 +788,16 @@ def resample_peak_ref(
 
 
 def resample_quantize_ref(
-    peak, in_size, out_size, core, chunks, *, words=256, cores=16, slots=None
-):
+    peak: np.ndarray,
+    in_size: int,
+    out_size: int,
+    core: int,
+    chunks: int,
+    *,
+    words: int = 256,
+    cores: int = 16,
+    slots: int | None = None,
+) -> np.ndarray:
     """Numpy reference for [`resample_quantize`][iron.kernels.vision.resample_quantize].
 
     Args:
@@ -828,19 +860,19 @@ def _resize_slots(chunk, win):
 
 
 def resize_ref(
-    image,
-    taps_w,
-    taps_h,
-    rows,
-    columns,
-    out_rows,
-    out_columns,
+    image: np.ndarray,
+    taps_w: np.ndarray,
+    taps_h: np.ndarray,
+    rows: int,
+    columns: int,
+    out_rows: int,
+    out_columns: int,
     *,
-    words=356,
-    chunk=4096,
-    patch_columns=8,
-    cores=16,
-):
+    words: int = 356,
+    chunk: int = 4096,
+    patch_columns: int = 8,
+    cores: int = 16,
+) -> np.ndarray:
     """Numpy reference for [`resize`][iron.kernels.vision.resize].
 
     Args:
@@ -920,11 +952,12 @@ def resize_ref(
             hweight = np.zeros((side, 64), np.int64)
             for o in range(side):
                 hweight[o, : count[o]] = weights[o][: count[o]]
-            filters.append((k, start, hweight))
-            hp, taps = p, 64 if win > 32 else 32
-        if not ok[c]:
+            filters.append((k, start, hweight, p, win))
+        if not ok[c] or not filters:
             continue
-        for k, start, hweight in filters:
+        _, _, _, hp, win = filters[-1]
+        taps = 64 if win > 32 else 32
+        for k, start, hweight, _, _ in filters:
             index = np.minimum(start[:, None] + np.arange(taps), columns - 1)
             acc = np.einsum("rotc,ot->roc", pixels[:, index], hweight[:, :taps])
             mid[:, k] = np.clip((acc + (1 << (hp - 1))) >> hp, 0, 255)
