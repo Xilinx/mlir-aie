@@ -15,6 +15,7 @@ reservation, which keeps the comparison from passing vacuously.
 import numpy as np
 import pytest
 
+import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.iron import Buffer, ExternalFunction, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2Col1
@@ -81,3 +82,21 @@ def test_insts_only_matches_the_full_build(tmp_path):
     expected = (full / "insts.bin").read_bytes()
     assert (unmeasured / "insts.bin").read_bytes() != expected
     assert only.read_bytes() == expected
+
+
+def test_insts_only_lowers_the_sequence_into_its_own_cache_entry(tmp_path, monkeypatch):
+    only = CompilableDesign(design, insts_only=True)
+    assert only._compute_cache_hash() != CompilableDesign(design)._compute_cache_hash()
+    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
+
+    image, insts = only.compile()
+    assert image is None and insts.parent.parent == tmp_path
+    entry = only.get_cache_entry()
+    assert entry.insts == insts and entry.xclbin is None and entry.elf is None
+
+    built = insts.stat()
+    assert CompilableDesign(design, insts_only=True).compile() == (None, insts)
+    after = insts.stat()
+    assert (built.st_ino, built.st_mtime_ns) == (after.st_ino, after.st_mtime_ns)
+    with pytest.raises(ValueError, match="inst_path alone"):
+        only.compile(xclbin_path=tmp_path / "x.xclbin", inst_path=insts)

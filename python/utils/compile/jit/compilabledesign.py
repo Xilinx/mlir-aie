@@ -628,31 +628,9 @@ class CompilableDesign:
                 )
 
             try:
-                mlir_module = self._generate_mlir(ExternalFunction)
-
-                from aie.utils import get_current_device
-
-                device = get_current_device(probe_runtime=False)
-                target_arch = resolve_target_arch(device)
-
-                external_kernels = list(ExternalFunction._instances)
-                ExternalFunction._instances.clear()
-
-                use_chess = self._resolve_use_chess(external_kernels)
-
-                compile_external_kernels(
-                    external_kernels,
-                    kernel_dir,
-                    target_arch,
-                    include_dirs=self.include_paths,
-                    # aiecc's LUT bank check reads IR that only the kernel
-                    # compile can preserve, so asking for the check is what
-                    # turns it on. Deriving it here keeps the two from
-                    # disagreeing, and aiecc_flags is already in the cache key.
-                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
-                    object_cache=self._kernel_object_cache(),
+                mlir_module, external_kernels, use_chess = (
+                    self._generate_and_build_kernels(ExternalFunction, kernel_dir)
                 )
-                _copy_object_files(self.object_files, kernel_dir)
 
                 compiler_options = list(self.aiecc_flags)
                 if has_dispatch:
@@ -810,30 +788,11 @@ class CompilableDesign:
                     return elf_path, None
 
             try:
-                mlir_module = self._generate_mlir(ExternalFunction, full_elf=True)
-
-                from aie.utils import get_current_device
-
-                device = get_current_device(probe_runtime=False)
-                target_arch = resolve_target_arch(device)
-
-                external_kernels = list(ExternalFunction._instances)
-                ExternalFunction._instances.clear()
-
-                use_chess = self._resolve_use_chess(external_kernels)
-                compile_external_kernels(
-                    external_kernels,
-                    kernel_dir,
-                    target_arch,
-                    include_dirs=self.include_paths,
-                    # aiecc's LUT bank check reads IR that only the kernel
-                    # compile can preserve, so asking for the check is what
-                    # turns it on. Deriving it here keeps the two from
-                    # disagreeing, and aiecc_flags is already in the cache key.
-                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
-                    object_cache=self._kernel_object_cache(),
+                mlir_module, external_kernels, use_chess = (
+                    self._generate_and_build_kernels(
+                        ExternalFunction, kernel_dir, full_elf=True
+                    )
                 )
-                _copy_object_files(self.object_files, kernel_dir)
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
@@ -931,31 +890,12 @@ class CompilableDesign:
                 return None, inst_path
 
             try:
-                mlir_module = self._generate_mlir(ExternalFunction)
-
-                # aie.utils imports this module before it defines this name.
-                from aie.utils import get_current_device
-
-                target_arch = resolve_target_arch(
-                    get_current_device(probe_runtime=False)
-                )
-
-                external_kernels = list(ExternalFunction._instances)
-                ExternalFunction._instances.clear()
-
                 # The stream addresses the buffers where the image's build
                 # placed them, and that placement reserves each bank's kernel
                 # data, which only the built objects show.
-                use_chess = self._resolve_use_chess(external_kernels)
-                compile_external_kernels(
-                    external_kernels,
-                    kernel_dir,
-                    target_arch,
-                    include_dirs=self.include_paths,
-                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
-                    object_cache=self._kernel_object_cache(),
+                mlir_module, external_kernels, use_chess = (
+                    self._generate_and_build_kernels(ExternalFunction, kernel_dir)
                 )
-                _copy_object_files(self.object_files, kernel_dir)
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
@@ -1005,6 +945,39 @@ class CompilableDesign:
         self._dispatch_lib_path = dispatch_library
         self._full_elf_kernel_name = full_elf_kernel_name
         self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
+
+    def _generate_and_build_kernels(
+        self, ExternalFunction, kernel_dir: Path, *, full_elf: bool = False
+    ) -> tuple[Any, list, bool]:
+        """Generate the design and build its kernels' objects into ``kernel_dir``.
+
+        Returns:
+            The MLIR module, the design's ``ExternalFunction`` kernels, and
+            whether aiecc drives Chess for them.
+        """
+        mlir_module = self._generate_mlir(ExternalFunction, full_elf=full_elf)
+
+        # aie.utils imports this module before it defines this name.
+        from aie.utils import get_current_device
+
+        target_arch = resolve_target_arch(get_current_device(probe_runtime=False))
+        external_kernels = list(ExternalFunction._instances)
+        ExternalFunction._instances.clear()
+        use_chess = self._resolve_use_chess(external_kernels)
+        compile_external_kernels(
+            external_kernels,
+            kernel_dir,
+            target_arch,
+            include_dirs=self.include_paths,
+            # aiecc's LUT bank check reads IR that only the kernel compile can
+            # preserve, so asking for the check is what turns it on. Deriving
+            # it here keeps the two from disagreeing, and aiecc_flags is
+            # already in the cache key.
+            embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
+            object_cache=self._kernel_object_cache(),
+        )
+        _copy_object_files(self.object_files, kernel_dir)
+        return mlir_module, external_kernels, use_chess
 
     def _resolve_use_chess(self, external_kernels: list) -> bool:
         """Return whether to drive aiecc with the Chess front-end.

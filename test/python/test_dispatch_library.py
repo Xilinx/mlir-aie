@@ -5,12 +5,17 @@
 """Compiler-only integration tests using real MLIR and the host C++ compiler."""
 
 import os
+import shutil
 import time
 from pathlib import Path
 
 import numpy as np
 import pytest
+import aie.utils.compile.jit.compilabledesign as compilabledesign_module
+from aie.dialects.aiex import npu_address_patch
 from aie.ir import Context, Module
+from aie.iron import Program, Runtime
+from aie.iron.device import NPU2Col1
 from aie.utils.compile import utils as compile_utils
 from aie.utils.compile.jit import _manifest
 from aie.utils.compile.jit._dispatch_bridge import DispatchBridge
@@ -60,22 +65,21 @@ def test_compile_mlir_module_requests_cpp_with_device_outputs(
     assert "--fold-ddr-addr-offset=false" in args
 
 
+def _patch_bar_then_baz(
+    *, bar: DispatchTime[np.int32] = 3, baz: DispatchTime[np.int32] = 7
+):
+    def sequence(baz_value, bar_value):
+        npu_address_patch(addr=119300, arg_idx=0, arg_plus=bar_value)
+        npu_address_patch(addr=119304, arg_idx=0, arg_plus=baz_value)
+
+    return Program(NPU2Col1(), Runtime(sequence, [baz, bar])).resolve_program()
+
+
 @pytest.mark.parametrize("bound", [{}, {"bar": 3}, {"baz": 7}])
 def test_reordered_parameters_reach_generated_instructions(
     tmp_path, npu2_device, bound
 ):
-    from aie.dialects.aiex import npu_address_patch
-    from aie.iron import Program, Runtime
-    from aie.iron.device import NPU2Col1
-
-    def generator(*, bar: DispatchTime[np.int32] = 3, baz: DispatchTime[np.int32] = 7):
-        def sequence(baz_value, bar_value):
-            npu_address_patch(addr=119300, arg_idx=0, arg_plus=bar_value)
-            npu_address_patch(addr=119304, arg_idx=0, arg_plus=baz_value)
-
-        return Program(NPU2Col1(), Runtime(sequence, [baz, bar])).resolve_program()
-
-    design = CompilableDesign(generator).specialize(**bound)
+    design = CompilableDesign(_patch_bar_then_baz).specialize(**bound)
     _generate_cpp(tmp_path, str(design.generate_mlir()), fold=False)
     library = compile_dispatch_bridge(
         tmp_path, design.dispatch_params, design.dispatch_param_types
@@ -106,6 +110,30 @@ def test_defaulted_compile_param_does_not_consume_dispatch_argument(compile_kwar
     tensors, scalars = design.split_runtime_args((tensor,), {"scale": 7})
     assert tensors == [tensor]
     assert scalars == {"scale": 7}
+
+
+@pytest.mark.parametrize("cache_hit", [False, True])
+def test_dispatch_library_selected_once_per_compile(
+    tmp_path, monkeypatch, npu2_device, cache_hit
+):
+    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
+    if cache_hit:
+        CompilableDesign(_patch_bar_then_baz).compile()
+    design = CompilableDesign(_patch_bar_then_baz)
+    design.compile()
+    first = design.get_dispatch_lib_path()
+    xclbin = design.get_cache_entry().xclbin
+    built = xclbin.stat()
+
+    second = first.with_name(f"dispatch-{'b' * 64}{first.suffix}")
+    shutil.copy(first, second)
+    _manifest._write(first.parent, [], dispatch_library=second.name)
+    # A later publication must not silently change this design's selected ABI.
+    assert design.get_dispatch_lib_path() == first
+    design.compile()
+    assert design.get_dispatch_lib_path() == second
+    after = xclbin.stat()
+    assert (built.st_ino, built.st_mtime_ns) == (after.st_ino, after.st_mtime_ns)
 
 
 def _source(offset=0, *, arg_idx=0, device="npu1_1col"):
