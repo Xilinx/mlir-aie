@@ -298,6 +298,11 @@ CASES: list[Case] = [
     check("log_f32", scalars=(1e-3,), tag="mel-floor", smoke=True),
     check("log_f32", dict(tile_size=128), scalars=(1e-3,), tag="mel-row"),
     check("log_f32", dict(tile_size=32), scalars=(0.0,), tag="edge-one-vector"),
+    # eltwise, the spectrum's magnitude the log-mel starts from; amd/IRON's
+    # frames hold 320 bins.
+    Case("magnitude_f32", calls=16, smoke=True),
+    Case("magnitude_f32", calls=256),
+    check("magnitude_f32", dict(tile_size=32), tag="edge-one-vector"),
     # On AIE2 a row this short takes the loop that is not software-pipelined.
     *[
         check(name, dict(tile_size=64), tag="short-row", **kw)

@@ -179,6 +179,15 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="clamp_bf16",
         invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
     ),
+    KernelSpec(
+        name="magnitude_f32",
+        factory=kernels.magnitude_f32,
+        kwargs=dict(tile_size=320),
+        arg_count=3,  # [re | im] in, magnitudes out, size
+        expected_name="magnitude_f32",
+        invalid_kwargs=[(dict(tile_size=48), "not a multiple of")],
+        shape_checks=[(dict(tile_size=64), 0, (128,)), (dict(tile_size=64), 1, (64,))],
+    ),
     # ----- reduce -----
     KernelSpec(
         name="reduce_add",
