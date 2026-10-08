@@ -246,7 +246,7 @@ getOrClone(PatternRewriter &rewriter, Operation *op, IRMapping &argMap,
     it = clonedDefs.try_emplace(op, clone).first;
     insertPoint = rewriter.saveInsertionPoint();
   }
-  argMap.map(op->getResult(0), it->second->getResult(0));
+  argMap.map(op->getResults(), it->second->getResults());
   return it->second;
 }
 
@@ -365,66 +365,61 @@ static LogicalResult inlineReferencedSymbolDefinitions(
     llvm::DenseMap<Operation *, Operation *> &clonedDefs,
     mlir::OpBuilder::InsertPoint &clonedDefOpsInsertionPoint,
     llvm::SetVector<SymbolRefAttr> &allSymbolNames) {
-  MLIRContext *ctx = op->getContext();
   for (NamedAttribute namedAttr : op->getAttrs()) {
     Attribute attr = namedAttr.getValue();
     auto newAttr = attr.replace([&](SymbolRefAttr oldSymbolRef) {
-      SymbolRefAttr newSymbolRef;
-      if (!previouslyInlinedSymbolMap.count(oldSymbolRef)) {
-        llvm::StringRef oldName = oldSymbolRef.getRootReference().getValue();
-        std::string uniqueName = uniqueSymbolName(ctx, oldName, allSymbolNames);
-        newSymbolRef = SymbolRefAttr::get(ctx, uniqueName);
-        previouslyInlinedSymbolMap[oldSymbolRef] = newSymbolRef;
+      auto inlined = previouslyInlinedSymbolMap.find(oldSymbolRef);
+      if (inlined != previouslyInlinedSymbolMap.end())
+        return std::make_pair(inlined->second, WalkResult::advance());
 
-        // Add the new symbol definition
-        // First try to look up from the lookupFrom operation (e.g., within the
-        // callee device). If not found, try looking up from the module level
-        // (for cross-device references).
-        Operation *symbolDefOp =
-            SymbolTable::lookupNearestSymbolFrom(lookupFrom, oldSymbolRef);
-        if (!symbolDefOp && oldSymbolRef.getNestedReferences().empty()) {
-          symbolDefOp =
-              AIE::lookupNamedOp(lookupFrom, oldSymbolRef.getRootReference());
+      // Add the new symbol definition
+      // First try to look up from the lookupFrom operation (e.g., within the
+      // callee device). If not found, try looking up from the module level
+      // (for cross-device references).
+      Operation *symbolDefOp =
+          SymbolTable::lookupNearestSymbolFrom(lookupFrom, oldSymbolRef);
+      if (!symbolDefOp && oldSymbolRef.getNestedReferences().empty()) {
+        symbolDefOp =
+            AIE::lookupNamedOp(lookupFrom, oldSymbolRef.getRootReference());
+      }
+      if (!symbolDefOp) {
+        if (ModuleOp moduleOp = lookupFrom->getParentOfType<ModuleOp>()) {
+          symbolDefOp = SymbolTable::lookupSymbolIn(moduleOp, oldSymbolRef);
         }
-        if (!symbolDefOp) {
-          if (ModuleOp moduleOp = lookupFrom->getParentOfType<ModuleOp>()) {
-            symbolDefOp = SymbolTable::lookupSymbolIn(moduleOp, oldSymbolRef);
-          }
-        }
-        if (!symbolDefOp) {
-          return std::make_pair(newSymbolRef, WalkResult::interrupt());
-        }
-
-        // If the symbol is a device, don't clone it - keep the original
-        // reference. Device ops must stay at module level.
-        if (llvm::isa<AIE::DeviceOp>(symbolDefOp)) {
-          return std::make_pair(oldSymbolRef, WalkResult::advance());
-        }
-
-        // Collect SSA values referenced by the symbol definition operation
-        llvm::SetVector<Value> symbolReferencedValues;
-        collectReferencedSSAValues(symbolDefOp, argMap, symbolReferencedValues);
-
-        // Copy SSA values referenced by the symbol definition
-        // This updates clonedDefOpsInsertionPoint to be after the copied SSA
-        // values
-        if (failed(copyReferencedSSAValues(
-                rewriter, symbolReferencedValues, callerDevice, argMap,
-                clonedDefs, clonedDefOpsInsertionPoint, allSymbolNames, op))) {
-          return std::make_pair(newSymbolRef, WalkResult::interrupt());
-        }
-
-        // Insert the cloned symbol at the device level, after its SSA
-        // dependencies
-        rewriter.restoreInsertionPoint(clonedDefOpsInsertionPoint);
-        Operation *clonedSymbolDefOp = rewriter.clone(*symbolDefOp, argMap);
-        clonedSymbolDefOp->setAttr(SymbolTable::getSymbolAttrName(),
-                                   StringAttr::get(ctx, uniqueName));
-        clonedDefOpsInsertionPoint = rewriter.saveInsertionPoint();
-      } else {
-        newSymbolRef = previouslyInlinedSymbolMap[oldSymbolRef];
+      }
+      if (!symbolDefOp) {
+        return std::make_pair(oldSymbolRef, WalkResult::interrupt());
       }
 
+      // If the symbol is a device, don't clone it - keep the original
+      // reference. Device ops must stay at module level.
+      if (llvm::isa<AIE::DeviceOp>(symbolDefOp)) {
+        previouslyInlinedSymbolMap[oldSymbolRef] = oldSymbolRef;
+        return std::make_pair(oldSymbolRef, WalkResult::advance());
+      }
+
+      // Collect SSA values referenced by the symbol definition operation
+      llvm::SetVector<Value> symbolReferencedValues;
+      collectReferencedSSAValues(symbolDefOp, argMap, symbolReferencedValues);
+
+      // Copy SSA values referenced by the symbol definition
+      // This updates clonedDefOpsInsertionPoint to be after the copied SSA
+      // values
+      if (failed(copyReferencedSSAValues(
+              rewriter, symbolReferencedValues, callerDevice, argMap,
+              clonedDefs, clonedDefOpsInsertionPoint, allSymbolNames, op))) {
+        return std::make_pair(oldSymbolRef, WalkResult::interrupt());
+      }
+
+      // Insert the cloned symbol at the device level, after its SSA
+      // dependencies. A definition also named by SSA shares that clone.
+      Operation *clonedSymbolDefOp =
+          getOrClone(rewriter, symbolDefOp, argMap, clonedDefs,
+                     clonedDefOpsInsertionPoint, allSymbolNames);
+      SymbolRefAttr newSymbolRef =
+          FlatSymbolRefAttr::get(clonedSymbolDefOp->getAttrOfType<StringAttr>(
+              SymbolTable::getSymbolAttrName()));
+      previouslyInlinedSymbolMap[oldSymbolRef] = newSymbolRef;
       return std::make_pair(newSymbolRef, WalkResult::advance());
     });
     if (!newAttr) {

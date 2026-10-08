@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-materialize-runtime-sequences %s | FileCheck %s
-// RUN: aie-opt --aie-materialize-runtime-sequences %s | FileCheck %s --check-prefix=NAMES
+// RUN: aie-opt --aie-materialize-runtime-sequences --split-input-file %s | FileCheck %s
+// RUN: aie-opt --aie-materialize-runtime-sequences --split-input-file %s | FileCheck %s --check-prefix=NAMES
 
 // A DMA task that names an aie.buffer inlines a clone of that buffer, keeping
 // its address. Each definition is cloned once however often it is run, and a
@@ -74,6 +74,40 @@ module {
         %c1 = arith.constant 1 : i32
         aie.use_lock(%lock, AcquireGreaterEqual, %c1)
         aie.dma_bd(%buf : memref<128xi32> len = 128)
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A buffer named both by symbol and by SSA is cloned once.
+
+// CHECK-LABEL: aie.device(npu2) {
+// CHECK: %[[MT:.*]] = aie.tile(0, 1)
+// CHECK-NEXT: %[[BUF:.*]] = aie.buffer(%[[MT]]) {address = 0 : i32, sym_name = "b_mt"} : memref<256xi32>
+// CHECK-NOT: aie.buffer
+// CHECK: aiex.npu.rtp_write(@b_mt, 0,
+// CHECK: aie.dma_bd(%[[BUF]] : memref<256xi32>
+module {
+  aie.device(npu2) {
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      aiex.configure @a {
+        aiex.run @sequence(%arg0) : (memref<64xi32>)
+      }
+    }
+  }
+
+  aie.device(npu2) @a {
+    %mt = aie.tile(0, 1)
+    %buf = aie.buffer(%mt) {address = 0 : i32, sym_name = "b_mt"} : memref<256xi32>
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %c7 = arith.constant 7 : i32
+      aiex.npu.rtp_write(@b_mt, 0, %c7) : i32
+      %t = aiex.dma_configure_task(%mt, MM2S, 0) {
+        aie.dma_bd(%buf : memref<256xi32> len = 256)
         aie.end
       }
       aiex.dma_start_task(%t)
