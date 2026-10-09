@@ -4249,6 +4249,8 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
     uniquePattern.push_back(*patternIt);
     patternIt++;
   }
+  if (patternIt == reachable.end())
+    return failure();
 
   unsigned idx = 0;
   while (patternIt != reachable.end()) {
@@ -4262,7 +4264,9 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
   // Repeating BD chains detected. Erasing repetitions.
   auto lastBDTerm = cast<NextBDOp>(reachable.back()->getTerminator());
   auto lastUniqueBDTerm = cast<NextBDOp>(uniquePattern.back()->getTerminator());
-  lastUniqueBDTerm.setSuccessor(lastBDTerm.getSuccessor());
+  rewriter.modifyOpInPlace(lastUniqueBDTerm, [&] {
+    lastUniqueBDTerm.setSuccessor(lastBDTerm.getSuccessor());
+  });
 
   return success();
 }
