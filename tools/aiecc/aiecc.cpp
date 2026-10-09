@@ -1164,25 +1164,28 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       bundle(perCoreArches.out, objects.out, probeScripts.out)
           .map<Directory>(
               "probeElfs_{0}.elf",
-              ShellCommand{"clang"}
-                  .arg("-O" + std::to_string(optLevel))
-                  .value("--target=", "-none-unknown-elf")
-                  .arg(lldPath.empty() ? "-fuse-ld=lld" : "-fuse-ld=" + lldPath)
-                  .input()
-                  .arg("-Wl,--gc-sections")
-                  .arg("-Wl,--emit-relocs")
-                  .arg("-Wl,--orphan-handling=error")
-                  .arg("-Wl,--no-check-sections")
-                  .input("-Wl,-T,")
-                  .output("-o")
-                  // A probe that cannot run costs placement quality, never
-                  // correctness, when the real link runs: the core is placed
-                  // as it was before any of this, and whatever stopped the
-                  // probe stops the real link too, where it is reported
-                  // properly. Without one (an instruction stream alone),
-                  // nothing would, and the stream would address buffers
-                  // placed apart from the image's, so the probe must run.
-                  .optional(realLinkFollows))
+              ExpandedLink{
+                  ShellCommand{"clang"}
+                      .arg("-O" + std::to_string(optLevel))
+                      .value("--target=", "-none-unknown-elf")
+                      .arg(lldPath.empty() ? "-fuse-ld=lld"
+                                           : "-fuse-ld=" + lldPath)
+                      .input()
+                      .arg("-Wl,--gc-sections")
+                      .arg("-Wl,--emit-relocs")
+                      .arg("-Wl,--orphan-handling=error")
+                      .arg("-Wl,--no-check-sections")
+                      .input("-Wl,-T,")
+                      .output("-o")
+                      // A probe that cannot run costs placement quality, never
+                      // correctness, when the real link runs: the core is
+                      // placed as it was before any of this, and whatever
+                      // stopped the probe stops the real link too, where it is
+                      // reported properly. Without one (an instruction stream
+                      // alone), nothing would, and the stream would address
+                      // buffers placed apart from the image's, so the probe
+                      // must run.
+                      .optional(realLinkFollows)})
           .threadSafe();
 
   // Compile before placement so the probe can reserve each bank's static data.
@@ -1364,85 +1367,99 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       bundle(perCoreArches.out, objects.out, ldScripts.out)
           .map<Directory>(
               "elfs_{0}.elf",
-              ShellCommand{"clang"}
-                  .arg("-O" + std::to_string(optLevel))
-                  .value("--target=", "-none-unknown-elf")
-                  .arg(lldPath.empty() ? "-fuse-ld=lld" : "-fuse-ld=" + lldPath)
-                  .input()
-                  .arg("-Wl,--gc-sections")
-                  // The relocations carry the call graph that the stack-size
-                  // check walks. They are non-alloc, so they use no tile
-                  // memory.
-                  .arg("-Wl,--emit-relocs")
-                  .arg("-Wl,--orphan-handling=error")
-                  .input("-Wl,-T,")
-                  .output("-o")
-                  .explainFailure([dataRegionBytes](llvm::StringRef log,
-                                                    llvm::StringRef key) {
-                    // Bank sections can shrink the default data region at link
-                    // time, so the original region plus overflow is an upper
-                    // bound on the reservation needed, not an exact measure.
-                    std::optional<int64_t> over =
-                        parseLinkOverflowBytes(log, "data");
-                    if (over) {
-                      int64_t granted = 0;
-                      {
-                        std::lock_guard<std::mutex> guard(
-                            dataRegionBytes->mutex);
-                        auto it = dataRegionBytes->size.find(key);
-                        if (it != dataRegionBytes->size.end()) {
-                          granted = it->second;
+              ExpandedLink{
+                  ShellCommand{"clang"}
+                      .arg("-O" + std::to_string(optLevel))
+                      .value("--target=", "-none-unknown-elf")
+                      .arg(lldPath.empty() ? "-fuse-ld=lld"
+                                           : "-fuse-ld=" + lldPath)
+                      .input()
+                      .arg("-Wl,--gc-sections")
+                      // The relocations carry the call graph that the
+                      // stack-size check walks. They are non-alloc, so they use
+                      // no tile memory.
+                      .arg("-Wl,--emit-relocs")
+                      .arg("-Wl,--orphan-handling=error")
+                      .input("-Wl,-T,")
+                      .output("-o")
+                      .explainFailure([dataRegionBytes](llvm::StringRef log,
+                                                        llvm::StringRef key) {
+                        // Bank sections can shrink the default data region at
+                        // link time, so the original region plus overflow is an
+                        // upper bound on the reservation needed, not an exact
+                        // measure.
+                        std::optional<int64_t> over =
+                            parseLinkOverflowBytes(log, "data");
+                        if (over) {
+                          int64_t granted = 0;
+                          {
+                            std::lock_guard<std::mutex> guard(
+                                dataRegionBytes->mutex);
+                            auto it = dataRegionBytes->size.find(key);
+                            if (it != dataRegionBytes->size.end()) {
+                              granted = it->second;
+                            }
+                          }
+                          int64_t need = granted + *over;
+                          llvm::errs()
+                              << "aiecc: core " << key
+                              << " needs space for up to " << need
+                              << " bytes of static data (constant arrays such "
+                                 "as "
+                                 "lookup tables and strings). That does not "
+                                 "fit in "
+                                 "the space left after buffer allocation, but "
+                                 "it "
+                                 "may fit if you reserve it explicitly. Set "
+                                 "data_size on the core: aie.core(%tile) { ... "
+                                 "} "
+                                 "{ data_size = "
+                              << need
+                              << " : i32 }, or Worker(..., data_size=" << need
+                              << ") in IRON.\n";
                         }
-                      }
-                      int64_t need = granted + *over;
-                      llvm::errs()
-                          << "aiecc: core " << key << " needs space for up to "
-                          << need
-                          << " bytes of static data (constant arrays such as "
-                             "lookup tables and strings). That does not fit in "
-                             "the space left after buffer allocation, but it "
-                             "may fit if you reserve it explicitly. Set "
-                             "data_size on the core: aie.core(%tile) { ... } "
-                             "{ data_size = "
-                          << need
-                          << " : i32 }, or Worker(..., data_size=" << need
-                          << ") in IRON.\n";
-                    }
-                    if (size_t at = log.find("will not fit in region 'bank");
-                        at != llvm::StringRef::npos) {
-                      llvm::StringRef bank =
-                          log.substr(at + strlen("will not fit in region '"))
-                              .take_while([](char c) { return c != '\''; });
-                      std::optional<int64_t> bankOver =
-                          parseLinkOverflowBytes(log, bank);
-                      llvm::errs()
-                          << "aiecc: core " << key << ": a static pinned to "
-                          << bank << " does not fit there";
-                      if (bankOver) {
-                        llvm::errs() << ", by " << *bankOver << " bytes";
-                      }
-                      // Reaching here means the reservation was wrong rather
-                      // than absent: placement measures each core's objects and
-                      // holds room for them, so the usual causes are a probe
-                      // that could not run and a Chess build, which has no
-                      // reservations to make.
-                      llvm::errs()
-                          << ". Placement reserves what a core's objects "
-                             "measure, so either that measurement was "
-                             "unavailable for this core, or something outside "
-                             "it grew afterwards.\n";
-                    }
-                    if (log.contains("will not fit in region 'program'")) {
-                      llvm::errs()
-                          << "aiecc: core " << key
-                          << ": its code exceeds the tile's program memory. "
-                             "That region covers all of the program memory, so "
-                             "only the code itself can shrink. Split the work "
-                             "across more cores, remove unused kernels from "
-                             "link_files, or build the core at a lower "
-                             "optimization level.\n";
-                    }
-                  }))
+                        if (size_t at =
+                                log.find("will not fit in region 'bank");
+                            at != llvm::StringRef::npos) {
+                          llvm::StringRef bank =
+                              log.substr(at +
+                                         strlen("will not fit in region '"))
+                                  .take_while([](char c) { return c != '\''; });
+                          std::optional<int64_t> bankOver =
+                              parseLinkOverflowBytes(log, bank);
+                          llvm::errs() << "aiecc: core " << key
+                                       << ": a static pinned to " << bank
+                                       << " does not fit there";
+                          if (bankOver) {
+                            llvm::errs() << ", by " << *bankOver << " bytes";
+                          }
+                          // Reaching here means the reservation was wrong
+                          // rather than absent: placement measures each core's
+                          // objects and holds room for them, so the usual
+                          // causes are a probe that could not run and a Chess
+                          // build, which has no reservations to make.
+                          llvm::errs()
+                              << ". Placement reserves what a core's objects "
+                                 "measure, so either that measurement was "
+                                 "unavailable for this core, or something "
+                                 "outside "
+                                 "it grew afterwards.\n";
+                        }
+                        if (log.contains("will not fit in region 'program'")) {
+                          llvm::errs()
+                              << "aiecc: core " << key
+                              << ": its code exceeds the tile's program "
+                                 "memory. "
+                                 "That region covers all of the program "
+                                 "memory, so "
+                                 "only the code itself can shrink. Split the "
+                                 "work "
+                                 "across more cores, remove unused kernels "
+                                 "from "
+                                 "link_files, or build the core at a lower "
+                                 "optimization level.\n";
+                        }
+                      })})
           .threadSafe();
 
   // Fresh per-core ELFs (Chess/xbridge or Peano). Cores that already carry an
