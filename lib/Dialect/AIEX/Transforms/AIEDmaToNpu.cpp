@@ -930,7 +930,11 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
           target.isIllegal(op))
         illegal.push_back(op);
     });
-    if (failed(applyPartialConversion(illegal, target, std::move(patterns)))) {
+    ConversionConfig config;
+    config.foldingMode = DialectConversionFoldingMode::Never;
+    config.allowPatternRollback = false;
+    if (failed(applyPartialConversion(illegal, target, std::move(patterns),
+                                      config))) {
       signalPassFailure();
       return;
     }
@@ -942,7 +946,8 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     pushPatterns.insert<PushQueuetoWrite32Pattern>(&getContext());
     SmallVector<Operation *> pushes;
     device.walk([&](NpuPushQueueOp op) { pushes.push_back(op); });
-    if (failed(applyPartialConversion(pushes, target, std::move(pushPatterns))))
+    if (failed(applyPartialConversion(pushes, target, std::move(pushPatterns),
+                                      config)))
       signalPassFailure();
 
     eraseDeadArith(device);
