@@ -26,6 +26,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
@@ -278,12 +279,21 @@ static AIE::DeviceOp getOrCreateEmptyDevice(ModuleOp moduleOp,
 // The device reloaded, the device holding the reload and the expand mode.
 using ConfigKey = std::tuple<Operation *, Operation *, AIEX::ExpandMode>;
 
+// The constants and payload globals of a sequence's reloads, made once at the
+// head of its body: a device reloaded hundreds of times would otherwise repeat
+// each one per reload. Keyed by the constant's value or the global's name.
+struct ConstantPool {
+  Operation *last = nullptr;
+  llvm::DenseMap<Attribute, Value> values;
+};
+
 // Helper to transform a single load_pdi operation
 static LogicalResult transformLoadPdi(
     NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
     AIEX::ExpandMode defaultMode,
     llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> &blockwriteData,
-    llvm::DenseMap<ConfigKey, std::unique_ptr<Block>> &configs) {
+    llvm::DenseMap<ConfigKey, std::unique_ptr<Block>> &configs,
+    llvm::DenseMap<Operation *, ConstantPool> &pools) {
   OpBuilder builder(loadPdiOp);
 
   // Only process load_pdi ops that reference a device
@@ -380,9 +390,31 @@ static LogicalResult transformLoadPdi(
     }
     config = std::move(generated);
   }
+  auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
+  ConstantPool *pool = seq ? &pools[seq] : nullptr;
   IRMapping mapping;
-  for (Operation &op : *config)
-    builder.clone(op, mapping);
+  for (Operation &op : *config) {
+    Attribute key;
+    if (auto constant = dyn_cast<arith::ConstantOp>(op))
+      key = constant.getValue();
+    else if (auto global = dyn_cast<memref::GetGlobalOp>(op))
+      key = global.getNameAttr();
+    if (!pool || !key) {
+      builder.clone(op, mapping);
+      continue;
+    }
+    Value &pooled = pool->values[key];
+    if (!pooled) {
+      OpBuilder::InsertionGuard guard(builder);
+      if (pool->last)
+        builder.setInsertionPointAfter(pool->last);
+      else
+        builder.setInsertionPointToStart(&seq.getBody().front());
+      pool->last = builder.clone(op);
+      pooled = pool->last->getResult(0);
+    }
+    mapping.map(op.getResult(0), pooled);
+  }
   if (ctrlPkt &&
       failed(verifyOverlayReachesTiles(
           loadPdiOp, overlay,
@@ -460,10 +492,11 @@ struct AIEExpandLoadPdiPass
     // each.
     llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> blockwriteData;
     llvm::DenseMap<ConfigKey, std::unique_ptr<Block>> configs;
+    llvm::DenseMap<Operation *, ConstantPool> pools;
     unsigned idx = 0;
     for (auto loadPdiOp : loadPdiOps) {
       if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode,
-                                  blockwriteData, configs))) {
+                                  blockwriteData, configs, pools))) {
         signalPassFailure();
         return;
       }
