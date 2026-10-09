@@ -1092,9 +1092,8 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
 
   NpuCreateScratchpadOp firstSeen;
   runtimeSeq.walk([&](NpuCreateScratchpadOp op) {
-    if (!firstSeen) {
-      firstSeen = op;
-    }
+    firstSeen = op;
+    return WalkResult::interrupt();
   });
   if (firstSeen != *this) {
     InFlightDiagnostic diag =
