@@ -517,9 +517,9 @@ k1_skip_rows(const uint8_t *input, const int8_t *kernels, const TS *skip,
     }
   }
 #endif
-#if AIE_TUNED_AIE2 && defined(CONV_INPUT_WIDTH)
+#if AIE_TUNED_AIE2 && defined(K1W_WIDTH)
   if constexpr (!Aligned && K1_WIN) {
-    if (input_width == CONV_INPUT_WIDTH && input_channels >= 16 * K1W_U &&
+    if (input_width == K1W_WIDTH && input_channels >= 16 * K1W_U &&
         ((uintptr_t)input & 31) == 0) {
       const aie::vector<int8, 32> ones = aie::broadcast<int8, 32>(1);
       const auto epi = [&](auto &acc, const TS *s) {

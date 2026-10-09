@@ -1701,6 +1701,11 @@ void fused_conv2dk1_xy_pool_i8_large_scalar(
 // #endif
 
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
+#if AIE_TUNED_AIE2 && defined(CONV_XYPOOL_FUSED_LARGE_PADDED)
+// One build serves every shape; MobileNet's 7-pixel head takes the window
+// walker.
+#define K1W_WIDTH 7
+#endif
 #include "bn_conv2dk1_aie2.h"
 
 // Rounds half to even and saturates like the scalar.

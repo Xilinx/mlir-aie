@@ -156,16 +156,21 @@ k1_chunks(const TI *__restrict in, const int8_t *__restrict wts,
   }
 }
 
-#if AIE_TUNED_AIE2 && defined(CONV_INPUT_WIDTH)
+// A kernel built without dimensions may define K1W_WIDTH, the one width its
+// window walker serves, before including this header.
+#if AIE_TUNED_AIE2 && defined(CONV_INPUT_WIDTH) && !defined(K1W_WIDTH)
+#define K1W_WIDTH CONV_INPUT_WIDTH
+#endif
+
+#if AIE_TUNED_AIE2 && defined(K1W_WIDTH)
 // AIE2 rows that 4-pixel chunks do not tile: K1W_U rows span whole 32-byte
 // windows, so one step loads those once and shifts each chunk out of them.
 // More chunks, or a 5-pixel row, spill.
-constexpr int K1W_ROW = CONV_INPUT_WIDTH * 8;
-constexpr int K1W_U = CONV_INPUT_WIDTH % 2 ? 4 : 2;
+constexpr int K1W_ROW = K1W_WIDTH * 8;
+constexpr int K1W_U = K1W_WIDTH % 2 ? 4 : 2;
 constexpr int K1W_WINDOWS = K1W_U * K1W_ROW / 32;
-constexpr int K1W_CHUNKS = (CONV_INPUT_WIDTH + 3) / 4;
-constexpr bool K1_WIN =
-    CONV_INPUT_WIDTH % 4 != 0 && CONV_INPUT_WIDTH >= 6 && K1W_CHUNKS <= 6;
+constexpr int K1W_CHUNKS = (K1W_WIDTH + 3) / 4;
+constexpr bool K1_WIN = K1W_WIDTH % 4 != 0 && K1W_WIDTH >= 6 && K1W_CHUNKS <= 6;
 
 constexpr int k1w_x(int j) {
   return j < K1W_CHUNKS - 1 ? 32 * j : K1W_ROW - 32;
@@ -265,9 +270,9 @@ static void k1_rows(const TI *input, const int8_t *kernels, TO *output,
     }
   }
 #endif
-#if AIE_TUNED_AIE2 && defined(CONV_INPUT_WIDTH)
+#if AIE_TUNED_AIE2 && defined(K1W_WIDTH)
   if constexpr (!Aligned && K1_WIN) {
-    if (input_width == CONV_INPUT_WIDTH && input_channels >= 16 * K1W_U &&
+    if (input_width == K1W_WIDTH && input_channels >= 16 * K1W_U &&
         ((uintptr_t)input & 31) == 0) {
       k1_rows_win(input, kernels, output, input_channels / 8,
                   output_channels / 8, epi, side...);
