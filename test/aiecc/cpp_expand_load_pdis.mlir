@@ -33,6 +33,13 @@
 // CHECK-DAG: full_elf_config.json
 // CHECK-DAG: aie.elf
 
+// The three splits of the expanded module read it in place. Resumed from a
+// checkpoint at those splits, each reads its own copy, and the ELF is
+// unchanged.
+// RUN: cd %t && aiecc --get-full-elf --expand-load-pdis --tmpdir=%t/ckpt.prj --full-elf-name=%t/ckpt.elf --cut='perDevice_{0}.mlir,perDeviceNPULowered_{0}.mlir,npu_seq_{0}.mlir' --checkpoint=%t/ckpt %s
+// RUN: aiecc --resume=%t/ckpt/manifest.json
+// RUN: cmp %t/aie.elf %t/ckpt.elf
+
 module {
 
     aie.device(npu2) @main {

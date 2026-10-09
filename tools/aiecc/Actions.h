@@ -159,8 +159,8 @@ struct PassPipeline {
 
 // SplitIRAction — walks a ModuleOp for KeyOp instances and produces one item
 // per match, each focused on its own op. Use `.filter` downstream to skip
-// matches. The items share one clone of the design (see SharedModule); the
-// clone keeps a split's output isolated from its input.
+// matches. The items view the source item's module rather than a copy of it
+// (see SharedModule): items live as long as the graph.
 template <typename KeyOp>
 struct SplitIRAction {
   using KeyFn = std::function<std::string(KeyOp)>;
@@ -170,25 +170,11 @@ struct SplitIRAction {
 
   mlir::FailureOr<std::vector<std::pair<std::string, OpInModule<KeyOp>>>>
   operator()(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &item) const {
-    std::vector<std::string> keys;
-    item.get().get().walk([&](KeyOp op) { keys.push_back(keyFn(op)); });
-
-    SharedModule shared{
-        mlir::OwningOpRef<mlir::ModuleOp>(item.get().get().clone())};
-    std::vector<KeyOp> ops;
-    ops.reserve(keys.size());
-    shared.get().walk([&](KeyOp op) { ops.push_back(op); });
-    if (ops.size() != keys.size()) {
-      llvm::errs() << "aiecc: split found " << ops.size() << " ops in the "
-                   << "cloned module but " << keys.size() << " in its source\n";
-      return mlir::failure();
-    }
-
+    SharedModule shared{item.get().get()};
     std::vector<std::pair<std::string, OpInModule<KeyOp>>> out;
-    out.reserve(keys.size());
-    for (size_t i = 0; i < keys.size(); ++i) {
-      out.emplace_back(std::move(keys[i]), OpInModule<KeyOp>{shared, ops[i]});
-    }
+    shared.get().walk([&](KeyOp op) {
+      out.emplace_back(keyFn(op), OpInModule<KeyOp>{shared, op});
+    });
     return out;
   }
 };
