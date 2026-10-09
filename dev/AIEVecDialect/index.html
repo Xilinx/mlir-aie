@@ -9680,7 +9680,7 @@ The vector sizes are at least 512 bits.
 <code>$result =</code>$lhs * $rhs<code>.
 Currently, the following are the supported type combinations:
     lhs                | rhs                | Accumulator
-  :------------------:|:------------------:|:-----------------:</code>vector&lt;32xi8&gt;<code>|</code>vector&lt;32xi8&gt;<code>|</code>vector&lt;32xi32&gt;<code></code>vector&lt;32xi16&gt;<code>|</code>vector&lt;32xi16&gt;<code>|</code>vector&lt;32xi32&gt;<code></code>vector&lt;16xi32&gt;<code>|</code>vector&lt;16xi32&gt;<code>|</code>vector&lt;16xi64&gt;<code></code>vector&lt;16xbf16&gt;<code>|</code>vector&lt;16xbf16&gt;<code>|</code>vector&lt;16xf32&gt;<code></code>vector&lt;16xf32&gt;<code>|</code>vector&lt;16xf32&gt;<code>|</code>vector&lt;16xf32&gt;`'</p>
+  :------------------:|:------------------:|:-----------------:</code>vector&lt;32xi8&gt;<code>|</code>vector&lt;32xi8&gt;<code>|</code>vector&lt;32xi32&gt;<code></code>vector&lt;32xi16&gt;<code>|</code>vector&lt;32xi16&gt;<code>|</code>vector&lt;32xi32&gt;<code></code>vector&lt;32xbf16&gt;<code>|</code>vector&lt;32xbf16&gt;<code>|</code>vector&lt;32xf32&gt;<code>(AIE2P)</code>vector&lt;64xbf16&gt;<code>|</code>vector&lt;64xbf16&gt;<code>|</code>vector&lt;64xf32&gt;<code>(AIE2P)</code>vector&lt;16xi32&gt;<code>|</code>vector&lt;16xi32&gt;<code>|</code>vector&lt;16xi64&gt;<code></code>vector&lt;16xbf16&gt;<code>|</code>vector&lt;16xbf16&gt;<code>|</code>vector&lt;16xf32&gt;<code></code>vector&lt;16xf32&gt;<code>|</code>vector&lt;16xf32&gt;<code>|</code>vector&lt;16xf32&gt;`'</p>
 <p>Traits: <code>AlwaysSpeculatableImplTrait</code>, <code>SameOperandsAndResultShape</code>, <code>SameOperandsShape</code>, <code>SameTypeOperands</code></p>
 <p>Interfaces: <code>ConditionallySpeculatable</code>, <code>NoMemoryEffect (MemoryEffectOpInterface)</code></p>
 <p>Effects: <code>MemoryEffects::Effect{}</code></p>
@@ -9695,11 +9695,11 @@ Currently, the following are the supported type combinations:
 <tbody>
 <tr>
 <td style="text-align: center;"><code>lhs</code></td>
-<td>vector of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type or 32-bit float values of length 16/32</td>
+<td>vector of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type or 32-bit float values of length 16/32/64</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>rhs</code></td>
-<td>vector of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type or 32-bit float values of length 16/32</td>
+<td>vector of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type or 32-bit float values of length 16/32/64</td>
 </tr>
 </tbody>
 </table>
@@ -9714,7 +9714,7 @@ Currently, the following are the supported type combinations:
 <tbody>
 <tr>
 <td style="text-align: center;"><code>result</code></td>
-<td>vector of 32-bit signless integer or 64-bit signless integer or 32-bit float values of length 16/32</td>
+<td>vector of 32-bit signless integer or 64-bit signless integer or 32-bit float values of length 16/32/64</td>
 </tr>
 </tbody>
 </table>
