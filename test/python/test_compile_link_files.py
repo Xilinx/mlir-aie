@@ -8,21 +8,24 @@
 The objects its cores link are written into the build directory only once
 aiecc is running, so what aiecc builds must match a build whose objects were
 there from the start, and a kernel that fails to compile must stop aiecc and
-report its own error.
+report its own error. That holds for a CompilableDesign and for
+compile_mlir_module's device=.
 """
 
+import logging
 import subprocess
 
 import numpy as np
 import pytest
 
+import aie.utils.compile.utils as compile_utils
 import aie.utils.config as config
 from aie.iron import ExternalFunction, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2Col1
 from aie.utils import set_current_device
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
-from aie.utils.compile.utils import compile_mlir_module
+from aie.utils.compile.utils import compile_external_kernels, compile_mlir_module
 
 TILE = 64
 tile_ty = np.ndarray[(TILE,), np.dtype[np.int32]]
@@ -161,3 +164,68 @@ def test_kernels_build_with_the_designs_include_paths(tmp_path):
     design = CompilableDesign(generator, include_paths=[include], use_cache=False)
     design.compile(full_elf_path=tmp_path / "out" / "design.elf")
     assert (tmp_path / "out" / "design.elf").stat().st_size > 0
+
+
+def test_device_builds_kernels_while_aiecc_lowers(tmp_path, caplog):
+    source = tmp_path / "fill_seven.cc"
+    source.write_text(
+        'extern "C" void fill_seven(int *out) {\n'
+        f"  for (int i = 0; i < {TILE}; i++) out[i] = 7;\n"
+        "}\n"
+    )
+    kernel = ExternalFunction(
+        "fill_seven", source_file=str(source), arg_types=[tile_ty]
+    )
+    text = str(fill(kernel))
+
+    overlapped = tmp_path / "overlapped"
+    overlapped.mkdir()
+    with caplog.at_level(logging.DEBUG, logger=compile_utils.__name__):
+        compile_mlir_module(
+            text,
+            work_dir=overlapped,
+            full_elf_path=overlapped / "design.elf",
+            device=NPU2Col1(),
+        )
+    assert any("--await-link-files" in record.getMessage() for record in caplog.records)
+
+    serial = tmp_path / "serial"
+    serial.mkdir()
+    compile_external_kernels([kernel], str(serial), "aie2p")
+    compile_mlir_module(text, work_dir=serial, full_elf_path=serial / "design.elf")
+
+    assert (overlapped / "design.elf").read_bytes() == (
+        serial / "design.elf"
+    ).read_bytes()
+
+
+def test_device_kernel_error_stops_aiecc(tmp_path):
+    source = tmp_path / "fill_broken.cc"
+    source.write_text('#error "fill_broken does not compile"\n')
+    text = str(
+        fill(
+            ExternalFunction(
+                "fill_broken", source_file=str(source), arg_types=[tile_ty]
+            )
+        )
+    )
+    build = tmp_path / "build"
+    build.mkdir()
+    with pytest.raises(Exception, match="fill_broken does not compile") as raised:
+        compile_mlir_module(
+            text,
+            work_dir=build,
+            full_elf_path=build / "design.elf",
+            device=NPU2Col1(),
+        )
+    assert "stdin closed" not in str(raised.value)
+
+
+def test_device_and_build_link_files_are_one_or_the_other(tmp_path):
+    with pytest.raises(ValueError, match="pass one of them"):
+        compile_mlir_module(
+            "module {}",
+            work_dir=tmp_path,
+            device=NPU2Col1(),
+            build_link_files=lambda: None,
+        )

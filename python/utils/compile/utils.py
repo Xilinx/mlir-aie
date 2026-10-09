@@ -8,6 +8,7 @@
 import concurrent.futures
 import contextlib
 import filecmp
+import functools
 import hashlib
 import json
 import logging
@@ -751,8 +752,9 @@ def compile_mlir_module(
             the target architecture (aie2 vs aie2p) for any
             `aie.iron.kernel.ExternalFunction` instances that have
             a ``source_file=`` and haven't been compiled yet.  When set
-            and ``work_dir`` is provided, those externals are auto-built
-            into ``work_dir`` before aiecc runs (matching the @iron.jit
+            and ``work_dir`` is provided, those externals are built into
+            ``work_dir`` while aiecc lowers the module, as
+            ``build_link_files`` would build them (matching the @iron.jit
             behavior).  Without this, low-level designs going through
             ``compile_mlir_module`` directly (e.g. ``basic/packet_switch``)
             still need a Makefile-side ``.o`` rule.
@@ -768,8 +770,17 @@ def compile_mlir_module(
             ``work_dir``. aiecc lowers the module meanwhile and reads none of
             them until this returns (``--await-link-files``); if it raises,
             aiecc is stopped and the exception propagates. Requires
-            ``work_dir``.
+            ``work_dir``, and is given by ``device`` when that is set.
+
+    Raises:
+        ValueError: Both ``device`` and ``build_link_files`` are given, or
+            ``build_link_files`` without ``work_dir``.
     """
+    if device is not None and build_link_files is not None:
+        raise ValueError(
+            "device= builds the module's kernels as its build_link_files; "
+            "pass one of them."
+        )
     if work_dir:
         work_dir = os.path.abspath(work_dir)
     # --unified lowers each device once and carves out every core, where the
@@ -842,16 +853,18 @@ def compile_mlir_module(
         # uses, so the module's declarations scope this compile: an instance
         # left over from an earlier, unrelated design in the same process is
         # neither built nor checked against this design's arch.
-        target_arch = resolve_target_arch(device)
-        compile_external_kernels(
-            _select_declared_kernels(
-                [f for f in ExternalFunction._instances if f.source_file],
-                _declared_objects(mlir_module),
-            ),
-            str(work_dir),
-            target_arch,
-            embed_bitcode=_check_lut_banks_enabled(options or []),
+        kernels = _select_declared_kernels(
+            [f for f in ExternalFunction._instances if f.source_file],
+            _declared_objects(mlir_module),
         )
+        if kernels:
+            build_link_files = functools.partial(
+                compile_external_kernels,
+                kernels,
+                str(work_dir),
+                resolve_target_arch(device),
+                embed_bitcode=_check_lut_banks_enabled(options or []),
+            )
 
     # When work_dir is provided, invoke the aiecc binary as a subprocess so
     # that it resolves relative link_with paths (e.g. "add_one.o") against the
