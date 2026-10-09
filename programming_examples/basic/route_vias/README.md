@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Route Vias</ins>
+# Route Vias
 
 An `aie.flow` can name the exact stream-switch ports that its route must use at
 selected tiles. These vias provide reproducible routes, steer critical flows
@@ -35,44 +35,48 @@ Generate the logical design without running it:
 python3 route_vias.py --dev npu2 --emit-mlir > route_vias.mlir
 ```
 
-Place the tiles, split each pinned hop into routable flow segments, and route
-all segments:
+Use `aiecc` to place and route the design, and retain the physical MLIR:
 
 ```bash
-aie-opt route_vias.mlir \
-  --aie-place-tiles \
-  --aie-split-flow-vias \
-  --aie-create-pathfinder-flows \
-  -o routed.mlir
+aiecc -j2 \
+  --get=input_physical.mlir \
+  --output-dir=build \
+  route_vias.mlir
 ```
 
-`routed.mlir` contains the pinned return path. The router assigns the
-switchbox ports for the regular input flow.
+`build/input_physical.mlir` contains the pinned return path and the route that
+the router assigned to the regular input flow.
 
-Run the pass-through on an NPU:
+## Lift, edit, and rebuild the route
+
+Recover the routed switchbox configuration as logical flows. Each recovered
+flow records its switchbox hops as vias:
 
 ```bash
-python3 route_vias.py --dev npu2
+aie-opt build/input_physical.mlir \
+  --aie-find-flows=emit-vias=true \
+  -o lifted.mlir
 ```
 
-## Lift and replay a routed design
+Edit `lifted.mlir` to remove the constraints that the router may reassign. For
+example, remove the compute-tile hop from the return flow:
 
-`--aie-find-flows=emit-vias=true` replaces routed switchbox configuration with
-logical flows that record every switchbox hop as a via:
+```mlir
+aie.flow(%core, DMA : 0, %shim, DMA : 0)
+  via (%mem : North : 0 -> South : 0,
+       %shim : North : 0 -> South : 2)
+```
+
+Save the result as `edited.mlir`, then compile it into runnable artifacts:
 
 ```bash
-aie-opt routed.mlir --aie-find-flows=emit-vias=true -o lifted.mlir
+aiecc -j2 \
+  --get-xclbin \
+  --get-npu-insts \
+  --output-dir=edited-build \
+  edited.mlir
 ```
 
-The lifted file is suitable for inspection, comparison, and storage as a
-known route. Split and route it to reproduce the switchbox configuration:
-
-```bash
-aie-opt lifted.mlir \
-  --aie-split-flow-vias \
-  --aie-create-pathfinder-flows \
-  -o replayed.mlir
-```
-
-Delete selected entries from a lifted flow's `via` list to retain only the
-constraints that matter. The router assigns each resulting gap.
+This command produces `edited-build/aie.xclbin` and
+`edited-build/insts_main_sequence.bin`. During compilation, the router assigns
+the gap created by the deleted via and retains the remaining constraints.

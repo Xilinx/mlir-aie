@@ -9,7 +9,6 @@ import argparse
 import aie.iron as iron
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType, WireBundle
-from aie.dialects._aie_ops_gen import FlowOp
 from aie.iron import (
     Buffer,
     Flow,
@@ -26,38 +25,6 @@ from aie.utils.verify import assert_pass
 N = 1024
 
 
-class ViaFlow(Flow):
-    def __init__(self, *args, vias, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._vias = vias
-
-    def all_tiles(self):
-        tiles = super().all_tiles()
-        return [*tiles, *[tile for tile, _, _ in self._vias if tile not in tiles]]
-
-    def resolve(self, loc=None, ip=None):
-        if self._op is not None:
-            return
-        loc = loc or self._site.location(self._name)
-        self._op = FlowOp(
-            self._src.op,
-            self._src_port,
-            self._channels[0],
-            self._dsts[0].op,
-            self._dst_port,
-            self._channels[1],
-            [tile.op for tile, _, _ in self._vias],
-            via_ingress_bundles=[ingress[0].value for _, ingress, _ in self._vias],
-            via_ingress_channels=[ingress[1] for _, ingress, _ in self._vias],
-            via_egress_bundles=[egress[0].value for _, _, egress in self._vias],
-            via_egress_channels=[egress[1] for _, _, egress in self._vias],
-            loc=loc,
-            ip=ip,
-        )
-        if self._shim_symbol is not None or self._shim_used:
-            self._emit_shim_dma_alloc(loc, ip)
-
-
 @iron.jit
 def route_vias(a_in: In, c_out: Out):
     vector_ty = np.ndarray[(N,), np.dtype[np.int32]]
@@ -67,7 +34,7 @@ def route_vias(a_in: In, c_out: Out):
     core = Tile(col=0, row=2, tile_type=AIETileType.CoreTile)
 
     into = Flow(shim, core, src_channel=0, dst_channel=0, name="into")
-    out = ViaFlow(
+    out = Flow(
         core,
         shim,
         src_channel=0,
