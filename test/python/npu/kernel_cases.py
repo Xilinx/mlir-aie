@@ -225,14 +225,12 @@ CASES: list[Case] = [
         dict(accurate_exp2=True),
         calls=16,
         tag="accurate",
-        devices=("npu2",),
         smoke=True,
     ),
     check(
         "softmax",
         dict(tile_size=32, accurate_exp2=True),
         tag="accurate-short",
-        devices=("npu2",),
         smoke=True,
     ),
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
@@ -2123,7 +2121,6 @@ CASES += [
         params=((0, 1),),
         scalars=(128, 64),
         tag="accurate",
-        devices=("npu2",),
         smoke=True,
     ),
     check(
@@ -2132,7 +2129,6 @@ CASES += [
         params=((0, 0),),
         scalars=(37, 37),
         tag="accurate-diagonal-padded",
-        devices=("npu2",),
         smoke=True,
     ),
     # The band. A 32-row query block on the row-group path masks partway
@@ -2169,6 +2165,14 @@ CASES += [
         params=((0, 0),),
         scalars=(13, 13),
         tag="diagonal-padded",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(dim_m=16, dim_n=16, accurate_exp2=True),
+        params=((0, 0),),
+        scalars=(13, 13),
+        tag="accurate-diagonal-padded",
         smoke=True,
     ),
     check(

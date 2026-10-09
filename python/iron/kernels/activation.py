@@ -402,8 +402,9 @@ _SOFTMAX_ACCURATE_TOLERANCE = Tolerance.bf16_ulps(
     2,
     atol=2.0**-125,
     note="exp2 within 2.8e-6 before its bf16 rounding, then 1 / sum and the "
-    "product each rounded to bf16 (1.76 ulp measured on npu2); atol admits "
-    "2^x flushed to +0 below -125.5",
+    "product each rounded to bf16 (1.76 ulp from the exact value measured on "
+    "npu2, 2.08 on npu1, which is two steps from the correctly rounded one); "
+    "atol admits 2^x flushed to +0 below -125.5",
 )
 
 
@@ -415,23 +416,14 @@ def softmax(tile_size: int = 1024, accurate_exp2: bool = False) -> ExternalFunct
             positive multiple of 32, the kernel's vector step.
         accurate_exp2: Scale by log2(e) to f32 and take 2^x with a polynomial
             within 2.8e-6 (`-DEXP2_BF16_ACCURATE`), in place of bf16(log2(e))
-            and AIE2P's exp2 instruction. The block entry points
-            (`softmax_sum_bf16`, `softmax_scale_bf16`) bound from this
-            object follow it too.
+            and AIE2P's exp2 instruction, or AIE2's exp lookup table. The
+            block entry points (`softmax_sum_bf16`, `softmax_scale_bf16`)
+            bound from this object follow it too.
 
     Returns:
         ExternalFunction configured for the softmax kernel.
-
-    Raises:
-        NotImplementedError: `accurate_exp2` on an architecture without the
-            exp2 instruction it replaces.
     """
     _require_vector_alignment("softmax", tile_size, _RUNTIME_VECTOR_WIDTH)
-    if accurate_exp2 and not _arch_traits().native_exp2:
-        raise NotImplementedError(
-            "softmax: accurate_exp2 replaces AIE2P's exp2 instruction; "
-            "select an NPU2 device"
-        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "softmax_bf16",
@@ -460,7 +452,9 @@ def softmax(tile_size: int = 1024, accurate_exp2: bool = False) -> ExternalFunct
                 )
             ),
             # softmax_aie2p.h sets conv_even itself; the aie2 LUT path does not.
-            setup=conv_even if _tuned_arch() == "aie2" else None,
+            setup=(
+                conv_even if _tuned_arch() == "aie2" and not accurate_exp2 else None
+            ),
         ),
     )
 
