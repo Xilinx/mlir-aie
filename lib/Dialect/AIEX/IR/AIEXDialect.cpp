@@ -991,11 +991,12 @@ getAbsoluteAddress(T *op, uint32_t addressOffset,
   return address;
 }
 
-std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
+std::optional<uint32_t>
+AIEX::NpuWrite32Op::getAbsoluteAddress(const AIE::NamedOpTable *names) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset, nullptr);
+  return ::getAbsoluteAddress(this, *addressOffset, names);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1111,22 +1112,24 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
 // NpuMaskWrite32Op
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
+std::optional<uint32_t>
+AIEX::NpuMaskWrite32Op::getAbsoluteAddress(const AIE::NamedOpTable *names) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset, nullptr);
+  return ::getAbsoluteAddress(this, *addressOffset, names);
 }
 
 //===----------------------------------------------------------------------===//
 // NpuMaskPollOp
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::NpuMaskPollOp::getAbsoluteAddress() {
+std::optional<uint32_t>
+AIEX::NpuMaskPollOp::getAbsoluteAddress(const AIE::NamedOpTable *names) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset, nullptr);
+  return ::getAbsoluteAddress(this, *addressOffset, names);
 }
 
 //===----------------------------------------------------------------------===//

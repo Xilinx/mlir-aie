@@ -36,8 +36,10 @@ namespace {
 struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
 
-  Write32SymToAddr(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  Write32SymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuWrite32Op op, OpAdaptor adaptor,
@@ -46,7 +48,7 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> address = op.getAbsoluteAddress();
+    std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
     if (!address.has_value()) {
       return failure();
     }
@@ -61,8 +63,10 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
 struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  BlockWriteSymToAddr(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  BlockWriteSymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuBlockWriteOp op, OpAdaptor adaptor,
@@ -71,7 +75,7 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> address = op.getAbsoluteAddress();
+    std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
     if (!address.has_value()) {
       return failure();
     }
@@ -84,8 +88,10 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
 struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
 
-  MaskWrite32SymToAddr(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  MaskWrite32SymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuMaskWrite32Op op, OpAdaptor adaptor,
@@ -94,7 +100,7 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress();
+    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress(&names);
     if (!absoluteAddress.has_value()) {
       return failure();
     }
@@ -111,13 +117,18 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
 struct MaskPollSymToAddr : OpConversionPattern<NpuMaskPollOp> {
   using OpConversionPattern::OpConversionPattern;
 
+  MaskPollSymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
+
   LogicalResult
   matchAndRewrite(NpuMaskPollOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress();
+    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress(&names);
     if (!absoluteAddress)
       return failure();
 
@@ -133,16 +144,16 @@ struct MaskPollSymToAddr : OpConversionPattern<NpuMaskPollOp> {
 struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  RtpToWrite32Pattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  RtpToWrite32Pattern(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuWriteRTPOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    auto device = op->getParentOfType<AIE::DeviceOp>();
-
-    auto buffer = AIE::lookupNamedOpIn<AIE::BufferOp>(device, op.getBuffer());
+    auto buffer = names.lookup<AIE::BufferOp>(op.getBufferAttr().getAttr());
     if (!buffer) {
       op->emitError("buffer '" + op.getBuffer() + "' not found in device");
       return failure();
@@ -897,18 +908,29 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
         [&](NpuMaskPollOp op) { return !op.getBuffer(); });
 
     BlockwriteData blockwriteData(device, "blockwrite_data_");
+    AIE::NamedOpTable names(device);
 
     RewritePatternSet patterns(&getContext());
-    patterns.insert<BlockWriteSymToAddr>(&getContext());
+    patterns.insert<BlockWriteSymToAddr>(&getContext(), names);
     patterns.insert<DmaToNpuPattern>(&getContext());
     patterns.insert<DmaWaitToSyncPattern>(&getContext());
-    patterns.insert<MaskWrite32SymToAddr>(&getContext());
-    patterns.insert<MaskPollSymToAddr>(&getContext());
-    patterns.insert<RtpToWrite32Pattern>(&getContext());
-    patterns.insert<Write32SymToAddr>(&getContext());
+    patterns.insert<MaskWrite32SymToAddr>(&getContext(), names);
+    patterns.insert<MaskPollSymToAddr>(&getContext(), names);
+    patterns.insert<RtpToWrite32Pattern>(&getContext(), names);
+    patterns.insert<Write32SymToAddr>(&getContext(), names);
     patterns.insert<WriteBdToBlockWritePattern>(&getContext(), blockwriteData);
 
-    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+    // The driver converts the illegal ops alone; started from the device, it
+    // would visit every op of the runtime sequences.
+    SmallVector<Operation *> illegal;
+    device.walk([&](Operation *op) {
+      if (isa<NpuDmaMemcpyNdOp, NpuDmaWaitOp, NpuWriteRTPOp, NpuWriteBdOp,
+              NpuWrite32Op, NpuBlockWriteOp, NpuMaskWrite32Op, NpuMaskPollOp>(
+              op) &&
+          target.isIllegal(op))
+        illegal.push_back(op);
+    });
+    if (failed(applyPartialConversion(illegal, target, std::move(patterns)))) {
       signalPassFailure();
       return;
     }
@@ -918,7 +940,9 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addIllegalOp<NpuPushQueueOp>();
     RewritePatternSet pushPatterns(&getContext());
     pushPatterns.insert<PushQueuetoWrite32Pattern>(&getContext());
-    if (failed(applyPartialConversion(device, target, std::move(pushPatterns))))
+    SmallVector<Operation *> pushes;
+    device.walk([&](NpuPushQueueOp op) { pushes.push_back(op); });
+    if (failed(applyPartialConversion(pushes, target, std::move(pushPatterns))))
       signalPassFailure();
 
     eraseDeadArith(device);

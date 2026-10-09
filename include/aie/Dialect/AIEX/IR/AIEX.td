@@ -868,7 +868,8 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
 }
 
@@ -901,7 +902,8 @@ def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
 }
 
@@ -930,7 +932,8 @@ def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
 }
 
