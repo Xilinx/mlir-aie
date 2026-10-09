@@ -1816,3 +1816,54 @@ LogicalResult AIEX::NpuLoadPdiOp::canonicalize(AIEX::NpuLoadPdiOp op,
 
   return failure();
 }
+
+//===----------------------------------------------------------------------===//
+// NpuWriteConfigOp
+//===----------------------------------------------------------------------===//
+
+static AIEX::NpuLoadPdiOp precedingLoadPdi(Operation *op) {
+  for (Operation *prev = op->getPrevNode(); prev; prev = prev->getPrevNode())
+    if (auto load = dyn_cast<AIEX::NpuLoadPdiOp>(prev))
+      return load;
+  return {};
+}
+
+LogicalResult AIEX::NpuWriteConfigOp::verify() {
+  AIEX::NpuLoadPdiOp reset = precedingLoadPdi(*this);
+  if (!reset)
+    return emitOpError("must follow the load_pdi that resets the array");
+  // The load the firmware ran before the reset; ahead of the sequence's first,
+  // that is its last, as the host runs the sequence again on each dispatch.
+  AIEX::NpuLoadPdiOp before = precedingLoadPdi(reset);
+  if (!before)
+    for (Operation &op : llvm::reverse(*reset->getBlock()))
+      if ((before = dyn_cast<AIEX::NpuLoadPdiOp>(op)))
+        break;
+  if (before.getDeviceRefAttr() == reset.getDeviceRefAttr() &&
+      before.getId() == reset.getId() && before.getSize() == reset.getSize() &&
+      before.getAddress() == reset.getAddress()) {
+    InFlightDiagnostic diag = emitOpError(
+        "follows a load_pdi the firmware skips, as it loads the PDI loaded "
+        "just before it, so the array is not reset");
+    diag.attachNote(before.getLoc()) << "the PDI is loaded here";
+    return diag;
+  }
+  return success();
+}
+
+LogicalResult
+AIEX::NpuWriteConfigOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
+  if (!isa_and_present<AIE::DeviceOp>(
+          symbolTable.lookupSymbolIn(scope, getDeviceRefAttr())))
+    return emitOpError() << getDeviceRefAttr() << " is not a device";
+  AIEX::NpuLoadPdiOp reset = precedingLoadPdi(*this);
+  FlatSymbolRefAttr resetRef = reset ? reset.getDeviceRefAttr() : nullptr;
+  auto empty = resetRef ? dyn_cast_or_null<AIE::DeviceOp>(
+                              symbolTable.lookupSymbolIn(scope, resetRef))
+                        : nullptr;
+  if (reset && (!empty || !empty.getBody()->without_terminator().empty()))
+    return emitOpError("must follow a load_pdi of an empty device, which "
+                       "resets the array");
+  return success();
+}

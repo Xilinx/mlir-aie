@@ -11,7 +11,8 @@
 // 1. Default (ctrl-pkt=false): replaces each `load_pdi @device` with
 //    a. an empty device PDI load (`load_pdi @empty_N`), which causes the
 //       firmware to reset the device, and
-//    b. explicit `aiex.npu.write32`/`aiex.npu.blockwrite` configuration ops.
+//    b. an `aiex.npu.write_config @device`, whose register writes the NPU
+//       translation emits (or, with inline-config, those writes as ops).
 // 2. With ctrl-pkt=true: replaces each `load_pdi @device` with
 //    a. a `load_pdi @ctrl_pkt_overlay`, which configures the NPU to stream
 //       further configuration as control packets, and
@@ -28,7 +29,6 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -276,24 +276,20 @@ static AIE::DeviceOp getOrCreateEmptyDevice(ModuleOp moduleOp,
   return emptyDevice;
 }
 
-// The device reloaded, the device holding the reload and the expand mode.
-using ConfigKey = std::tuple<Operation *, Operation *, AIEX::ExpandMode>;
-
-// The constants and payload globals of a sequence's reloads, made once at the
-// head of its body: a device reloaded hundreds of times would otherwise repeat
-// each one per reload. Keyed by the constant's value or the global's name.
-struct ConstantPool {
-  Operation *last = nullptr;
-  llvm::DenseMap<Attribute, Value> values;
+// A control-packet reload: the load_pdi it replaces, the device it streams,
+// and the overlay load ahead of it.
+struct CtrlPktReload {
+  NpuLoadPdiOp load;
+  AIE::DeviceOp device;
+  NpuLoadPdiOp preload;
+  AIE::DeviceOp overlay;
 };
 
 // Helper to transform a single load_pdi operation
-static LogicalResult transformLoadPdi(
-    NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
-    AIEX::ExpandMode defaultMode,
-    llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> &blockwriteData,
-    llvm::DenseMap<ConfigKey, std::unique_ptr<Block>> &configs,
-    llvm::DenseMap<Operation *, ConstantPool> &pools) {
+static LogicalResult
+transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
+                 AIEX::ExpandMode defaultMode,
+                 SmallVectorImpl<CtrlPktReload> &ctrlPktReloads) {
   OpBuilder builder(loadPdiOp);
 
   // Only process load_pdi ops that reference a device
@@ -351,79 +347,26 @@ static LogicalResult transformLoadPdi(
   builder.setInsertionPoint(loadPdiOp);
 
   // Emit the preload load_pdi (either empty-device reset or ctrl_pkt_overlay).
-  NpuLoadPdiOp preload;
   if (ctrlPkt) {
-    preload =
+    NpuLoadPdiOp preload =
         NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
                              /*id=*/nullptr, /*size=*/nullptr,
                              /*address=*/nullptr,
                              /*expand_mode=*/
                              AIEX::ExpandModeAttr::get(builder.getContext(),
                                                        AIEX::ExpandMode::none));
-  } else {
-    NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
-                         loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
-                         loadPdiOp.getAddressAttr(),
-                         /*expand_mode=*/
-                         AIEX::ExpandModeAttr::get(builder.getContext(),
-                                                   AIEX::ExpandMode::none));
+    // The control packets go in once every reload is known, so that a
+    // sequence's reloads share their constants.
+    ctrlPktReloads.push_back({loadPdiOp, referencedDevice, preload, overlay});
+    return success();
   }
-
-  // Step 2: generate the configuration ops once per device, and copy them in.
-  auto device = loadPdiOp->getParentOfType<AIE::DeviceOp>();
-  if (!device)
-    return loadPdiOp.emitError("expected to be nested under an aie.device op");
-  std::unique_ptr<Block> &config = configs[{referencedDevice, device, mode}];
-  if (!config) {
-    auto outputType = ctrlPkt ? AIEToConfigurationOutputType::ControlPacket
-                              : AIEToConfigurationOutputType::Transaction;
-    AIEX::BlockwriteData &payloads =
-        blockwriteData.try_emplace(device, device, "loadpdi_").first->second;
-    auto generated = std::make_unique<Block>();
-    OpBuilder configBuilder(loadPdiOp.getContext());
-    configBuilder.setInsertionPointToEnd(generated.get());
-    if (failed(xilinx::AIE::generateAndInsertConfigOps(
-            configBuilder, referencedDevice, payloads, /*clElfDir=*/"",
-            outputType, /*skipCtrlPktOverlay=*/ctrlPkt))) {
-      loadPdiOp.emitError("Failed to generate configuration operations");
-      return failure();
-    }
-    config = std::move(generated);
-  }
-  auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
-  ConstantPool *pool = seq ? &pools[seq] : nullptr;
-  IRMapping mapping;
-  for (Operation &op : *config) {
-    Attribute key;
-    if (auto constant = dyn_cast<arith::ConstantOp>(op))
-      key = constant.getValue();
-    else if (auto global = dyn_cast<memref::GetGlobalOp>(op))
-      key = global.getNameAttr();
-    if (!pool || !key) {
-      builder.clone(op, mapping);
-      continue;
-    }
-    Value &pooled = pool->values[key];
-    if (!pooled) {
-      OpBuilder::InsertionGuard guard(builder);
-      if (pool->last)
-        builder.setInsertionPointAfter(pool->last);
-      else
-        builder.setInsertionPointToStart(&seq.getBody().front());
-      pool->last = builder.clone(op);
-      pooled = pool->last->getResult(0);
-    }
-    mapping.map(op.getResult(0), pooled);
-  }
-  if (ctrlPkt &&
-      failed(verifyOverlayReachesTiles(
-          loadPdiOp, overlay,
-          {std::next(preload->getIterator()), loadPdiOp->getIterator()})))
-    return failure();
-
-  // Erase the original load_pdi operation
+  NpuLoadPdiOp::create(
+      builder, loadPdiOp.getLoc(), preloadRef, loadPdiOp.getIdAttr(),
+      loadPdiOp.getSizeAttr(), loadPdiOp.getAddressAttr(),
+      /*expand_mode=*/
+      AIEX::ExpandModeAttr::get(builder.getContext(), AIEX::ExpandMode::none));
+  NpuWriteConfigOp::create(builder, loadPdiOp.getLoc(), deviceRefAttr);
   loadPdiOp.erase();
-
   return success();
 }
 
@@ -432,8 +375,8 @@ struct AIEExpandLoadPdiPass
   using AIEExpandLoadPdiBase::AIEExpandLoadPdiBase;
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry
-        .insert<memref::MemRefDialect, AIE::AIEDialect, AIEX::AIEXDialect>();
+    registry.insert<arith::ArithDialect, memref::MemRefDialect, AIE::AIEDialect,
+                    AIEX::AIEXDialect>();
   }
 
   void runOnOperation() override {
@@ -487,20 +430,34 @@ struct AIEExpandLoadPdiPass
     AIEX::ExpandMode defaultMode =
         clCtrlPkt ? AIEX::ExpandMode::ctrlpkt : AIEX::ExpandMode::write32;
 
-    // Transform load_pdi ops. Every reload of a device writes the same
-    // configuration, so it is generated once and its payloads share one global
-    // each.
-    llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> blockwriteData;
-    llvm::DenseMap<ConfigKey, std::unique_ptr<Block>> configs;
-    llvm::DenseMap<Operation *, ConstantPool> pools;
+    SmallVector<CtrlPktReload> ctrlPktReloads;
     unsigned idx = 0;
     for (auto loadPdiOp : loadPdiOps) {
       if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode,
-                                  blockwriteData, configs, pools))) {
+                                  ctrlPktReloads))) {
         signalPassFailure();
         return;
       }
       idx++;
+    }
+
+    SmallVector<std::pair<Operation *, AIE::DeviceOp>> ctrlPktSites;
+    for (CtrlPktReload &reload : ctrlPktReloads)
+      ctrlPktSites.emplace_back(reload.load, reload.device);
+    if (failed(AIE::insertConfigOps(
+            ctrlPktSites, AIEToConfigurationOutputType::ControlPacket))) {
+      signalPassFailure();
+      return;
+    }
+    for (CtrlPktReload &reload : ctrlPktReloads) {
+      if (failed(verifyOverlayReachesTiles(
+              reload.load, reload.overlay,
+              {std::next(reload.preload->getIterator()),
+               reload.load->getIterator()}))) {
+        signalPassFailure();
+        return;
+      }
+      reload.load.erase();
     }
 
     // The `index % 2` alternation above keeps two consecutive resets on
@@ -534,6 +491,9 @@ struct AIEExpandLoadPdiPass
           /*expand_mode=*/
           AIEX::ExpandModeAttr::get(seq.getContext(), AIEX::ExpandMode::none));
     }
+
+    if (clInlineConfig && failed(AIE::inlineWriteConfigs(module)))
+      signalPassFailure();
   }
 };
 

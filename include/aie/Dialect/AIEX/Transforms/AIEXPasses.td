@@ -646,8 +646,10 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     By default (`ctrl-pkt = false`), each op is replaced with:
     1. A `load_pdi { device_ref = @empty_N }` op (loading an empty device,
        which causes a device reset).
-    2. A sequence of `aiex.npu.write32`/`aiex.npu.blockwrite` ops that
-       configure the device.
+    2. An `aiex.npu.write_config @device` op, whose register writes the NPU
+       translation emits from the device, generating them once however many
+       times the device is reloaded. With `inline-config = true`, the
+       `aiex.npu.write32`/`aiex.npu.blockwrite` ops of those writes instead.
 
     With `ctrl-pkt = true`, each op is replaced with:
     1. A `load_pdi { device_ref = @ctrl_pkt_overlay }` op, which loads the
@@ -665,7 +667,8 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIEExpandLoadPdiPass()";
-  let dependentDialects = ["mlir::memref::MemRefDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -674,6 +677,9 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
               "If true, lower each load_pdi to an @ctrl_pkt_overlay load_pdi "
               "followed by aiex.npu.control_packet ops instead of write32/"
               "blockwrite ops with an empty-device reset.">,
+       Option<"clInlineConfig", "inline-config", "bool", /*default=*/"false",
+              "If true, write each reloaded device's configuration as "
+              "write32/blockwrite ops rather than an aiex.npu.write_config.">,
   ];
 }
 

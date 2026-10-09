@@ -1299,6 +1299,36 @@ def AIE_NpuLoadPdiOp : AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
+def AIE_NpuWriteConfigOp
+    : AIEX_Op<"npu.write_config", [HasParent<"AIE::RuntimeSequenceOp">,
+                                   DeclareOpInterfaceMethods<
+                                       SymbolUserOpInterface>]> {
+  let summary = "Write a device's configuration as register writes";
+  let description = [{
+    Writes the configuration of `device_ref` (its cores' programs and its
+    switch, lock and DMA settings) as the register writes that load it, without
+    resetting the array first. The NPU translation emits the writes, generating
+    them once per device however many times the sequence writes it.
+    `aie-expand-load-pdi` places one after the reset it inserts for each
+    `load_pdi` it expands to writes.
+
+    The firmware resets the array when it loads an empty device's PDI, unless
+    that PDI is the one it loaded last. So the `load_pdi` before this op must
+    be of an empty device, and differ from the `load_pdi` before it. For the
+    sequence's first `load_pdi`, that is its last one: the host runs the
+    sequence again on each dispatch.
+
+    Example:
+    ```
+      aiex.npu.load_pdi {device_ref = @empty_0}
+      aiex.npu.write_config @dev
+    ```
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$device_ref);
+  let assemblyFormat = [{ $device_ref attr-dict }];
+  let hasVerifier = 1;
+}
+
 def AIE_DMAConfigureTaskOp
     : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">,
                                      TileElement, DMAConfigureTaskLike]>,

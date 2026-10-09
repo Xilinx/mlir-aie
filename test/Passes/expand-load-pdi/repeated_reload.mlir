@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-expand-load-pdi %s | FileCheck %s
+// RUN: aie-opt --aie-expand-load-pdi="inline-config=true" %s | FileCheck %s
 
 // Every reload of a device writes the same configuration, in each sequence and
 // each enclosing device, and names the payload global of the device it is in.

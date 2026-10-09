@@ -14,6 +14,8 @@
 #include "aie/Targets/AIERT.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/IRMapping.h"
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
@@ -826,6 +828,86 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     return failure();
   }
 
+  return success();
+}
+
+LogicalResult
+xilinx::AIE::insertConfigOps(ArrayRef<std::pair<Operation *, DeviceOp>> sites,
+                             AIE::AIEToConfigurationOutputType outputType) {
+  bool ctrlPkt = outputType == AIE::AIEToConfigurationOutputType::ControlPacket;
+  llvm::DenseMap<DeviceOp, AIEX::BlockwriteData> blockwriteData;
+  llvm::DenseMap<std::pair<Operation *, Operation *>, std::unique_ptr<Block>>
+      configs;
+  struct ConstantPool {
+    Operation *last = nullptr;
+    llvm::DenseMap<Attribute, Value> values;
+  };
+  llvm::DenseMap<Operation *, ConstantPool> pools;
+  for (auto [at, configured] : sites) {
+    auto device = at->getParentOfType<DeviceOp>();
+    if (!device)
+      return at->emitError("expected to be nested under an aie.device op");
+    std::unique_ptr<Block> &config = configs[{configured, device}];
+    if (!config) {
+      AIEX::BlockwriteData &payloads =
+          blockwriteData.try_emplace(device, device, "loadpdi_").first->second;
+      auto generated = std::make_unique<Block>();
+      OpBuilder configBuilder(at->getContext());
+      configBuilder.setInsertionPointToEnd(generated.get());
+      if (failed(generateAndInsertConfigOps(configBuilder, configured, payloads,
+                                            /*clElfDir=*/"", outputType,
+                                            /*skipCtrlPktOverlay=*/ctrlPkt)))
+        return at->emitError("Failed to generate configuration operations");
+      config = std::move(generated);
+    }
+    auto seq = at->getParentOfType<RuntimeSequenceOp>();
+    ConstantPool *pool = seq ? &pools[seq] : nullptr;
+    OpBuilder builder(at);
+    IRMapping mapping;
+    for (Operation &op : *config) {
+      Attribute key;
+      if (auto constant = dyn_cast<arith::ConstantOp>(op))
+        key = constant.getValue();
+      else if (auto global = dyn_cast<memref::GetGlobalOp>(op))
+        key = global.getNameAttr();
+      if (!pool || !key) {
+        builder.clone(op, mapping);
+        continue;
+      }
+      Value &pooled = pool->values[key];
+      if (!pooled) {
+        OpBuilder::InsertionGuard guard(builder);
+        if (pool->last)
+          builder.setInsertionPointAfter(pool->last);
+        else
+          builder.setInsertionPointToStart(&seq.getBody().front());
+        pool->last = builder.clone(op);
+        pooled = pool->last->getResult(0);
+      }
+      mapping.map(op.getResult(0), pooled);
+    }
+  }
+  return success();
+}
+
+LogicalResult xilinx::AIE::inlineWriteConfigs(ModuleOp module) {
+  module.getContext()->getOrLoadDialect<arith::ArithDialect>();
+  module.getContext()->getOrLoadDialect<memref::MemRefDialect>();
+  SmallVector<std::pair<Operation *, DeviceOp>> sites;
+  WalkResult walk = module.walk([&](AIEX::NpuWriteConfigOp write) {
+    auto configured = module.lookupSymbol<DeviceOp>(write.getDeviceRefAttr());
+    if (!configured) {
+      write.emitOpError() << write.getDeviceRefAttr() << " is not a device";
+      return WalkResult::interrupt();
+    }
+    sites.emplace_back(write, configured);
+    return WalkResult::advance();
+  });
+  if (walk.wasInterrupted() ||
+      failed(insertConfigOps(sites, AIEToConfigurationOutputType::Transaction)))
+    return failure();
+  for (auto [write, configured] : sites)
+    write->erase();
   return success();
 }
 

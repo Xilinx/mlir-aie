@@ -50,6 +50,19 @@ mlir::LogicalResult generateAndInsertConfigOps(
         AIEToConfigurationOutputType::Transaction,
     bool skipCtrlPktOverlay = false);
 
+// Inserts, before each site in a runtime sequence, the configuration ops of
+// its device. They are generated once per device and sequence-holding device,
+// and a sequence's constants and payload globals are made once, at its head:
+// a device reloaded hundreds of times would otherwise repeat each per reload.
+// Control-packet output skips what is marked is_ctrl_pkt_overlay.
+mlir::LogicalResult insertConfigOps(
+    llvm::ArrayRef<std::pair<mlir::Operation *, xilinx::AIE::DeviceOp>> sites,
+    AIEToConfigurationOutputType outputType);
+
+// Replaces each aiex.npu.write_config in `module` with the configuration ops
+// the NPU translation writes for it.
+mlir::LogicalResult inlineWriteConfigs(mlir::ModuleOp module);
+
 // --------------------------------------------------------------------------
 // Device reset
 // --------------------------------------------------------------------------

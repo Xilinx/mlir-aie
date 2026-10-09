@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-expand-load-pdi %s | FileCheck %s
+// RUN: aie-opt --aie-expand-load-pdi="inline-config=true" %s | FileCheck %s
 
 // Every reload of a device writes the same payloads, so the reloads share one
 // global for each, and a sequence's reloads one get_global of it. Its name is

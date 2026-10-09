@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-expand-load-pdi %s | FileCheck %s
+// RUN: aie-opt --aie-expand-load-pdi="inline-config=true" %s | FileCheck %s
 
 // This tests how multiple load_pdi instructions are expanded. There should be
 // empty load_pdi instructions generated between configurations for the device

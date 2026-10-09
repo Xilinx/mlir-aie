@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-expand-load-pdi %s | FileCheck %s
+// RUN: aie-opt --aie-expand-load-pdi="inline-config=true" %s | FileCheck %s
 
 // This tests how some configuration register writes are expanded from a
 // load_pdi instructions. The expand-load-pdi pass for this file should generate
