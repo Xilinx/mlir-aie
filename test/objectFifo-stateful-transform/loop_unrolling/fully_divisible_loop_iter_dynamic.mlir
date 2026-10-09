@@ -23,12 +23,16 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %{{.*}} = aie.core(%[[T12]]) {
-// CHECK:             %[[C4:.*]] = arith.constant 4 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C0I:.*]] = arith.constant 0 : i32
-// CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
-// CHECK:             %[[C2I:.*]] = arith.constant 2 : i32
+// CHECK-DAG:         %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C0I:.*]] = arith.constant 0 : i32
+// CHECK-DAG:         %[[C1I:.*]] = arith.constant 1 : i32
+// CHECK-DAG:         %[[C2I:.*]] = arith.constant 2 : i32
+// CHECK:             %[[S0:.*]] = memref.alloca() : memref<memref<16xi32>>
+// CHECK:             memref.store %[[B0]], %[[S0]][] : memref<memref<16xi32>>
+// CHECK:             %[[S1:.*]] = memref.alloca() : memref<memref<16xi32>>
+// CHECK:             memref.store %[[B1]], %[[S1]][] : memref<memref<16xi32>>
 // CHECK:             %{{.*}} = scf.for %[[IV:.*]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[IDX:.*]] = %[[C0I]]) -> (i32) {
 // CHECK:               %[[LC0:.*]] = arith.index_cast %[[IDX]] : i32 to index
 // CHECK:               %[[LSEL:.*]] = scf.index_switch %[[LC0]] -> index
@@ -42,17 +46,7 @@
 // CHECK:                 scf.yield %[[L0]] : index
 // CHECK:               }
 // CHECK:               aie.use_lock(%[[LSEL]], Acquire, %[[C0I]])
-// CHECK:               %[[BC:.*]] = arith.index_cast %[[IDX]] : i32 to index
-// CHECK:               %[[BSEL:.*]] = scf.index_switch %[[BC]] -> memref<16xi32>
-// CHECK:               case 0 {
-// CHECK:                 scf.yield %[[B0]] : memref<16xi32>
-// CHECK:               }
-// CHECK:               case 1 {
-// CHECK:                 scf.yield %[[B1]] : memref<16xi32>
-// CHECK:               }
-// CHECK:               default {
-// CHECK:                 scf.yield %[[B0]] : memref<16xi32>
-// CHECK:               }
+// CHECK:               %[[BSEL:.*]] = memref.load %[[S0]][] : memref<memref<16xi32>>
 // CHECK:               func.call @some_work(%[[BSEL]], %[[IV]]) : (memref<16xi32>, index) -> ()
 // CHECK:               %[[LC1:.*]] = arith.index_cast %[[IDX]] : i32 to index
 // CHECK:               %[[RSEL:.*]] = scf.index_switch %[[LC1]] -> index
@@ -69,6 +63,10 @@
 // CHECK:               %[[NX:.*]] = arith.addi %[[IDX]], %[[C1I]] : i32
 // CHECK:               %[[CMP:.*]] = arith.cmpi sge, %[[NX]], %[[C2I]] : i32
 // CHECK:               %[[SEL:.*]] = arith.select %[[CMP]], %[[C0I]], %[[NX]] : i32
+// CHECK:               %[[X:.*]] = memref.load %[[S0]][] : memref<memref<16xi32>>
+// CHECK:               %[[Y:.*]] = memref.load %[[S1]][] : memref<memref<16xi32>>
+// CHECK:               memref.store %[[Y]], %[[S0]][] : memref<memref<16xi32>>
+// CHECK:               memref.store %[[X]], %[[S1]][] : memref<memref<16xi32>>
 // CHECK:               scf.yield %[[SEL]] : i32
 // CHECK:             }
 // CHECK:             aie.end

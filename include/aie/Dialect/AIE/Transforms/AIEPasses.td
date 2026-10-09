@@ -611,9 +611,10 @@ def AIEObjectFifoLowerCores : Pass<"aie-objectfifo-lower-cores", "DeviceOp"> {
   let summary = "Turn core acquires and releases into lock operations";
   let description = [{
     Replace each core's `aie.objectfifo.acquire` and `aie.objectfifo.release`
-    with the locks its endpoint guards and the objects its rotating index
-    selects. Loops carrying accesses are annotated with the unroll factor that
-    folds those indices to constants.
+    with the locks its endpoint guards and the objects at the front of its
+    rotation, kept in rank-0 slots that each release rotates. Loops carrying
+    accesses are annotated with the unroll factor over which those rotations
+    fold to constants.
 
     Consumes `aie.objectfifo.core_endpoint`.
   }];

@@ -35,7 +35,9 @@ namespace {
 // Marks the `memref.alloca`s emitted here for bookkeeping only (objects held,
 // current object index). Memrefs thread through control flow more easily than
 // SSA values; mem2reg turns them back into SSA at the end of the pass, and the
-// marker keeps that sweep off allocas this pass did not create.
+// marker keeps that sweep off allocas this pass did not create. The slots
+// holding the objects themselves carry kObjectFifoObjectSlotAttrName instead
+// and are left in memory.
 constexpr llvm::StringLiteral kBookkeepingSlotAttrName =
     "aie.objectfifo.bookkeeping_slot";
 
@@ -63,6 +65,26 @@ Value buildRotatingSwitch(OpBuilder &builder, Location loc, Value idx,
   }
   builder.setInsertionPointAfter(switchOp);
   return switchOp.getResult(0);
+}
+
+/// Rotate the objects in `slots` left by `released`, so that the first slot
+/// again holds the next object to acquire.
+void emitRotateObjects(OpBuilder &builder, Location loc,
+                       ArrayRef<memref::AllocaOp> slots, int released) {
+  if (slots.empty() || released % static_cast<int>(slots.size()) == 0) {
+    return;
+  }
+  SmallVector<Value> objects;
+  for (memref::AllocaOp slot : slots) {
+    objects.push_back(
+        memref::LoadOp::create(builder, loc, slot.getResult(), ValueRange{}));
+  }
+  for (size_t k = 0; k < slots.size(); ++k) {
+    memref::AllocaOp slot = slots[k];
+    memref::StoreOp::create(builder, loc,
+                            objects[(k + released) % objects.size()], slot,
+                            ValueRange{});
+  }
 }
 
 /// Advance a rotating object-index counter in its slot:
@@ -110,9 +132,15 @@ segmentLocksFor(ObjectFifoCoreEndpointOp endpoint, LockAction action) {
 struct LoweringContext {
   DeviceOp device;
   bool usesSemaphoreLocks;
-  /// Per-(core, endpoint) runtime bookkeeping: the rotating object index and,
-  /// where locks count, the number of objects currently held.
+  /// Per-(core, endpoint) runtime bookkeeping: the rotating object index (which
+  /// selects binary locks), the objects in rotation order, starting with the
+  /// next one to acquire, and, where locks count, the number of objects
+  /// currently held. The object of a single-object pool never moves, so it is
+  /// handed over directly instead.
   DenseMap<std::pair<Operation *, Operation *>, memref::AllocaOp> objectIndex{};
+  DenseMap<std::pair<Operation *, Operation *>, SmallVector<memref::AllocaOp>>
+      objectSlots{};
+  DenseMap<std::pair<Operation *, Operation *>, Value> soleObject{};
   DenseMap<std::pair<Operation *, Operation *>, memref::AllocaOp> heldCount{};
   bool sawError = false;
 
@@ -209,6 +237,10 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
       emitAdvanceObjectIndex(rewriter, loc, index.getResult(), pool.getDepth(),
                              releaseOp.getSize());
     }
+    auto slots = ctx.objectSlots.find(key);
+    if (slots != ctx.objectSlots.end()) {
+      emitRotateObjects(rewriter, loc, slots->second, releaseOp.getSize());
+    }
     return success();
   }
 };
@@ -229,6 +261,12 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
     auto key = std::make_pair(core.getOperation(), endpoint.getOperation());
 
     int wanted = acquireOp.acqNumber();
+    if (wanted > pool.getDepth()) {
+      acquireOp->emitOpError("acquires ")
+          << wanted << " objects from a pool of " << pool.getDepth();
+      ctx.sawError = true;
+      return failure();
+    }
     int repeat = pool.getRepeatCount().value_or(1);
     rewriter.setInsertionPointAfter(acquireOp);
     Location loc = acquireOp.getLoc();
@@ -244,7 +282,7 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
       emitBinaryUseLocks(rewriter, loc, locks, pool.getDepth(),
                          endpoint.drains(), index.getResult(), wanted * repeat,
                          LockAction::Acquire);
-      return replaceWithObjects(acquireOp, endpoint, key, rewriter);
+      return replaceWithObjects(acquireOp, key, rewriter);
     }
 
     // An acquire names every object the core wants to hold, so only the ones
@@ -273,48 +311,27 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
     Value next = arith::AddIOp::create(rewriter, loc, current, delta);
     memref::StoreOp::create(rewriter, loc, next, held.getResult(),
                             ValueRange{});
-    return replaceWithObjects(acquireOp, endpoint, key, rewriter);
+    return replaceWithObjects(acquireOp, key, rewriter);
   }
 
-  /// Hand back the objects the rotating index selects, one per result.
+  /// Hand back the objects at the front of the rotation, one per result.
   LogicalResult replaceWithObjects(ObjectFifoAcquireOp acquireOp,
-                                   ObjectFifoCoreEndpointOp endpoint,
                                    std::pair<Operation *, Operation *> key,
                                    PatternRewriter &rewriter) const {
-    ObjectFifoPoolOp pool = endpoint.getPoolOp();
-    SmallVector<Value> buffers;
-    for (BufferLike buffer : pool.getBufferOps()) {
-      buffers.push_back(buffer.getBuffer());
-    }
-    if (buffers.empty()) {
+    if (Value object = ctx.soleObject.lookup(key)) {
+      for (Value result : acquireOp.getObjects()) {
+        rewriter.replaceAllUsesWith(result, object);
+      }
       return success();
     }
-    memref::AllocaOp index = ctx.objectIndex.lookup(key);
-    assert(index && "a rotation counter is created for every acquire");
-
-    Location loc = acquireOp.getLoc();
-
-    // An endpoint holding one side of a join or distribute reaches only its
-    // own run of each object.
-    MemRefType accessType = endpoint.getAccessType();
-    if (accessType != pool.getElemType()) {
-      auto [offset, size] = endpoint.getExtent();
-      for (Value &buffer : buffers) {
-        buffer = memref::SubViewOp::create(
-            rewriter, loc, accessType, buffer,
-            ArrayRef<OpFoldResult>{rewriter.getIndexAttr(offset)},
-            {rewriter.getIndexAttr(size)}, {rewriter.getIndexAttr(1)});
-      }
+    auto slots = ctx.objectSlots.find(key);
+    if (slots == ctx.objectSlots.end() || slots->second.empty()) {
+      return success();
     }
-    Value counter =
-        memref::LoadOp::create(rewriter, loc, index.getResult(), ValueRange{});
-    Value idx = arith::IndexCastOp::create(rewriter, loc,
-                                           rewriter.getIndexType(), counter);
-    int depth = pool.getDepth();
-    for (auto [base, result] : llvm::enumerate(acquireOp.getObjects())) {
-      Value object = buildRotatingSwitch(
-          rewriter, loc, idx, buffers[0].getType(), depth,
-          [&, base = base](int c) { return buffers[(base + c) % depth]; });
+    for (auto [k, result] : llvm::enumerate(acquireOp.getObjects())) {
+      Value object =
+          memref::LoadOp::create(rewriter, acquireOp.getLoc(),
+                                 slots->second[k].getResult(), ValueRange{});
       rewriter.replaceAllUsesWith(result, object);
     }
     return success();
@@ -325,21 +342,75 @@ struct AIEObjectFifoLowerCoresPass
     : public xilinx::AIE::impl::AIEObjectFifoLowerCoresBase<
           AIEObjectFifoLowerCoresPass> {
 
-  /// A rank-0 `memref.alloca` initialized to 0, which mem2reg later threads
-  /// through the enclosing loops as an iter_arg.
-  memref::AllocaOp makeSlot(OpBuilder &builder, Location loc, Value zero) {
-    auto scalarTy =
-        MemRefType::get(SmallVector<int64_t>{}, builder.getI32Type());
-    auto slot = memref::AllocaOp::create(builder, loc, scalarTy);
-    slot->setAttr(kBookkeepingSlotAttrName, builder.getUnitAttr());
-    memref::StoreOp::create(builder, loc, zero, slot.getResult(), ValueRange{});
+  /// A rank-0 `memref.alloca` initialized to `initial` and tagged `marker`.
+  /// mem2reg later threads a bookkeeping slot through the enclosing loops as an
+  /// iter_arg.
+  memref::AllocaOp makeSlot(OpBuilder &builder, Location loc, Value initial,
+                            StringRef marker = kBookkeepingSlotAttrName) {
+    auto slotTy = MemRefType::get(SmallVector<int64_t>{}, initial.getType());
+    auto slot = memref::AllocaOp::create(builder, loc, slotTy);
+    slot->setAttr(marker, builder.getUnitAttr());
+    memref::StoreOp::create(builder, loc, initial, slot.getResult(),
+                            ValueRange{});
     return slot;
+  }
+
+  /// One slot per object of the pool, in rotation order from `start`, or the
+  /// object itself if the pool has only one. The slots are not promoted here;
+  /// see kObjectFifoObjectSlotAttrName.
+  LogicalResult trackObjects(OpBuilder &builder, Location loc,
+                             ObjectFifoCoreEndpointOp endpoint, int64_t start,
+                             std::pair<Operation *, Operation *> key,
+                             LoweringContext &ctx) {
+    ObjectFifoPoolOp pool = endpoint.getPoolOp();
+    SmallVector<Value> buffers;
+    for (BufferLike buffer : pool.getBufferOps()) {
+      buffers.push_back(buffer.getBuffer());
+    }
+    if (static_cast<int64_t>(buffers.size()) != pool.getDepth()) {
+      return pool.emitOpError("expects every one of its 'depth' buffers to "
+                              "resolve");
+    }
+    // An endpoint holding one side of a join or distribute reaches only its
+    // own run of each object.
+    MemRefType accessType = endpoint.getAccessType();
+    if (accessType != pool.getElemType()) {
+      auto [offset, size] = endpoint.getExtent();
+      for (Value &buffer : buffers) {
+        buffer = memref::SubViewOp::create(
+            builder, loc, accessType, buffer,
+            ArrayRef<OpFoldResult>{builder.getIndexAttr(offset)},
+            {builder.getIndexAttr(size)}, {builder.getIndexAttr(1)});
+      }
+    }
+    if (buffers.size() == 1) {
+      ctx.soleObject[key] = buffers.front();
+      return success();
+    }
+    SmallVector<memref::AllocaOp> &slots = ctx.objectSlots[key];
+    for (size_t k = 0; k < buffers.size(); ++k) {
+      slots.push_back(makeSlot(builder, loc,
+                               buffers[(start + k) % buffers.size()],
+                               kObjectFifoObjectSlotAttrName));
+    }
+    return success();
   }
 
   void emitCounters(CoreOp coreOp, LoweringContext &ctx, OpBuilder &builder) {
     builder.setInsertionPointToStart(&coreOp.getBody().front());
     Operation *core = coreOp.getOperation();
     Value zero;
+
+    // A pool whose initial contents fill only its first objects is next
+    // written at the first object they leave empty.
+    auto firstObject = [](ObjectFifoCoreEndpointOp endpoint) -> int64_t {
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      auto initValues = pool.getInitValues();
+      if (endpoint.drains() || !initValues || pool.getDepth() <= 0) {
+        return 0;
+      }
+      return static_cast<int64_t>(initValues->size()) % pool.getDepth();
+    };
 
     auto record = [&](DenseMap<std::pair<Operation *, Operation *>,
                                memref::AllocaOp> &slots,
@@ -352,16 +423,7 @@ struct AIEObjectFifoLowerCoresPass
       if (slots.count(key)) {
         return;
       }
-      // A pool whose initial contents fill only its first objects is next
-      // written at the first object they leave empty.
-      int64_t start = 0;
-      if (rotating && !endpoint.drains()) {
-        ObjectFifoPoolOp pool = endpoint.getPoolOp();
-        if (auto initValues = pool.getInitValues();
-            initValues && pool.getDepth() > 0) {
-          start = static_cast<int64_t>(initValues->size()) % pool.getDepth();
-        }
-      }
+      int64_t start = rotating ? firstObject(endpoint) : 0;
       Value initial;
       if (start != 0) {
         initial = arith::ConstantOp::create(builder, coreOp.getLoc(),
@@ -376,10 +438,24 @@ struct AIEObjectFifoLowerCoresPass
       slots[key] = makeSlot(builder, coreOp.getLoc(), initial);
     };
 
+    // Objects are only tracked where the core uses one.
     coreOp.walk([&](ObjectFifoAcquireOp a) {
-      record(ctx.objectIndex, a.getObjFifoName(), /*rotating=*/true);
+      auto endpoint = ctx.endpointOf(coreOp, a.getObjFifoName());
+      if (!endpoint || a->use_empty()) {
+        return;
+      }
+      auto key = std::make_pair(core, endpoint.getOperation());
+      if (!ctx.objectSlots.count(key) && !ctx.soleObject.count(key) &&
+          failed(trackObjects(builder, coreOp.getLoc(), endpoint,
+                              firstObject(endpoint), key, ctx))) {
+        ctx.sawError = true;
+      }
     });
     if (!ctx.usesSemaphoreLocks) {
+      // Binary locks travel with their objects, so they rotate by index.
+      coreOp.walk([&](ObjectFifoAcquireOp a) {
+        record(ctx.objectIndex, a.getObjFifoName(), /*rotating=*/true);
+      });
       return;
     }
     coreOp.walk([&](ObjectFifoAcquireOp a) {
@@ -463,6 +539,9 @@ struct AIEObjectFifoLowerCoresPass
     annotateUnrollHints(device, ctx, builder);
     for (auto coreOp : device.getOps<CoreOp>()) {
       emitCounters(coreOp, ctx, builder);
+    }
+    if (ctx.sawError) {
+      return signalPassFailure();
     }
 
     RewritePatternSet patterns(device.getContext());

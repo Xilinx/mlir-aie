@@ -364,18 +364,31 @@ for each buffer b in pool.buffers:
 ### 5. `--aie-objectfifo-lower-cores`
 
 Turns `acquire` and `release` operations in AIE core code into `use_lock`
-and a rotating buffer selection.
+and a rotation of the pool's objects. The core keeps its objects in rotation
+order in rank-0 slots: an acquire reads the front ones, and a release rotates
+the released objects to the back.
 
 ```mlir
 %0 = arith.subi %c1_i32, %c0_i32 : i32   // acquire(N) is absolute:
 %1 = arith.maxsi %0, %c0_i32_0 : i32     // delta = max(N - held, 0)
 aie.use_lock(%of1_prod_lock_0, AcquireGreaterEqual, %1)
-%4 = scf.index_switch %3 -> memref<16xi32>
-case 0 { scf.yield %of1_buff_0 : memref<16xi32> }
-case 1 { scf.yield %of1_buff_1 : memref<16xi32> }
+%obj = memref.load %front[] : memref<memref<16xi32>>
+...
+aie.use_lock(%of1_cons_lock_0, Release, %c1_i32)
+%a = memref.load %front[] : memref<memref<16xi32>>   // release(1) rotates
+%b = memref.load %back[] : memref<memref<16xi32>>    // the objects by one
+memref.store %b, %front[] : memref<memref<16xi32>>
+memref.store %a, %back[] : memref<memref<16xi32>>
 ```
 
-The `index_switch` folds to a concrete buffer once the loops unroll.
+`--aie-objectFifo-unroll` promotes the slots to SSA wherever each object then
+folds to a concrete buffer: on the cores it unrolls, and on dynamic cores that
+reach the slots only from straight-line code. A core whose objects would still
+be picked at run time, such as a dynamic core's loop or an unrolled loop whose
+trip count is not a multiple of the depth, keeps them in memory instead, where
+LLVM's SROA turns them into loop-carried buffer pointers. A pool with a single
+object hands that object out directly. AIE1 binary locks travel with their
+objects, so they are still selected by a rotating index.
 
 ### 6. `--aie-objectfifo-erase-pools`
 

@@ -36,18 +36,14 @@
 // CHECK:             %[[INIT:.*]] = arith.constant 0 : i32
 // CHECK:             %[[TWO:.*]] = arith.constant 2 : i32
 // CHECK:             %[[ONE:.*]] = arith.constant 1 : i32
-// CHECK:             %[[THREE:.*]] = arith.constant 3 : i32
-// CHECK:             %{{.*}}:2 = scf.for %{{.*}} = %[[C0]] to %[[C14]] step %[[C1]] iter_args(%[[IDX:.*]] = %[[INIT]], %[[HELD:.*]] = %[[INIT]]) -> (i32, i32) {
+// CHECK:             %{{.*}} = scf.for %{{.*}} = %[[C0]] to %[[C14]] step %[[C1]] iter_args(%[[HELD:.*]] = %[[INIT]]) -> (i32) {
 // CHECK:               %[[DELTA:.*]] = arith.subi %[[TWO]], %[[HELD]] : i32
 // CHECK:               %[[ACQ:.*]] = arith.maxsi %[[DELTA]], %[[INIT]] : i32
 // CHECK:               aie.use_lock(%[[CCONS]], AcquireGreaterEqual, %[[ACQ]])
 // CHECK:               %[[HELDACQ:.*]] = arith.addi %[[HELD]], %[[ACQ]] : i32
 // CHECK:               aie.use_lock(%[[CPROD]], Release, %[[ONE]])
 // CHECK:               %[[HELDREL:.*]] = arith.subi %[[HELDACQ]], %[[ONE]] : i32
-// CHECK:               %[[NX:.*]] = arith.addi %[[IDX]], %[[ONE]] : i32
-// CHECK:               %[[CMP:.*]] = arith.cmpi sge, %[[NX]], %[[THREE]] : i32
-// CHECK:               %[[SEL:.*]] = arith.select %[[CMP]], %[[INIT]], %[[NX]] : i32
-// CHECK:               scf.yield %[[SEL]], %[[HELDREL]] : i32, i32
+// CHECK:               scf.yield %[[HELDREL]] : i32
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }

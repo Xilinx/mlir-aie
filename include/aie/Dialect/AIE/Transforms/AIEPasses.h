@@ -25,6 +25,15 @@ namespace xilinx::AIE {
 inline constexpr llvm::StringLiteral kObjectFifoUnrollHintAttrName =
     "aie.unroll_hint";
 
+/// Discardable attribute set by `--aie-objectfifo-lower-cores` on the rank-0
+/// `memref.alloca`s that hold a core's objects of an objectFifo in rotation
+/// order. The `AIEObjectFifoUnroll` pass promotes them to SSA on each core
+/// where every object then folds to its buffer. Otherwise they stay in memory,
+/// so that LLVM's SROA carries only the buffer pointer around the loop rather
+/// than the whole memref descriptor.
+inline constexpr llvm::StringLiteral kObjectFifoObjectSlotAttrName =
+    "aie.objectfifo.object_slot";
+
 #define GEN_PASS_DECL
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
