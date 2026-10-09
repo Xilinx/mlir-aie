@@ -21,21 +21,31 @@ void zero_scalar(T *__restrict c) {
   }
 }
 
-// Narrowest vector covering `rem` elements, never below one 128-bit register.
+// Zeroes p[0, n) for n under one 128-bit register, from a 4-byte aligned p:
+// whole 32-bit words, then elements. store_unaligned_v would be shorter, but
+// it rewrites the 64 bytes around its address, past the end of p.
 template <typename T>
-constexpr int zero_tail_width(int rem) {
-  int w = 16 / sizeof(T);
-  while (w < rem)
-    w *= 2;
-  return w;
+inline void zero_sub_vector(T *__restrict p, int n) {
+  if constexpr (sizeof(T) < 4) {
+    using word = int32_t __attribute__((may_alias));
+    constexpr int per_word = 4 / sizeof(T);
+    word *__restrict w = (word *)p;
+    for (int i = 0; i < n / per_word; ++i)
+      w[i] = 0;
+    p += n / per_word * per_word;
+    n %= per_word;
+  }
+#pragma clang loop unroll(disable)
+  for (int i = 0; i < n; ++i)
+    p[i] = 0;
 }
 
 // `markers = false` leaves the bracketing to a caller that times a larger call.
 template <typename T, int M, int N, bool markers = true>
 void zero_vectorized(T *__restrict c) {
   constexpr int r = aie::native_vector_length_v<T>;
+  constexpr int q = 16 / sizeof(T);
   constexpr int n = M * N;
-  constexpr int w = zero_tail_width<T>(n % r);
   // Unroll only small tiles, where the loop's bookkeeping outweighs the stores.
   constexpr int unroll = (n / r >= 1 && n / r <= 16) ? n / r : 1;
   const aie::vector<T, r> zeros = aie::zeros<T, r>();
@@ -47,17 +57,10 @@ void zero_vectorized(T *__restrict c) {
   for (int i = 0; i < n / r; ++i, p += r) {
     aie::store_v(p, zeros);
   }
-  if constexpr (n % r != 0) {
-    if constexpr (n >= w) {
-      // Overlap elements the body already wrote rather than a scalar loop; a
-      // zero stored twice is still zero.
-      aie::store_unaligned_v(c + n - w, aie::zeros<T, w>());
-    } else {
-      for (int i = (n / r) * r; i < n; ++i) {
-        c[i] = 0;
-      }
-    }
+  for (int i = 0; i < n % r / q; ++i, p += q) {
+    aie::store_v(p, aie::zeros<T, q>());
   }
+  zero_sub_vector(p, n % q);
   if constexpr (markers)
     event1();
 }
