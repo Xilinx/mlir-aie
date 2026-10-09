@@ -15,7 +15,7 @@
 // COMPILE-SAME: -stack-size-section
 // COMPILE: clang -### {{.*}}--target=aie2-none-unknown-elf
 // COMPILE-SAME: -Wl,--gc-sections
-// COMPILE: ld.lld {{.*}}--gc-sections {{.*}}-L{{.*}}aie2-none-unknown-elf
+// COMPILE: ld.lld {{.*}}--threads=1 {{.*}}--gc-sections {{.*}}-L{{.*}}aie2-none-unknown-elf
 
 // A one-bank reservation must fail, proving the frame wasn't optimized away.
 // RUN: sed 's/stack_size = 20480/stack_size = 16384/' %S/large_stack.mlir > %t.d/small.mlir

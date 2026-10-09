@@ -1172,6 +1172,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                       .arg(lldPath.empty() ? "-fuse-ld=lld"
                                            : "-fuse-ld=" + lldPath)
                       .input()
+                      // aiecc runs the links in parallel; lld would also start
+                      // a thread per CPU for each.
+                      .arg("-Wl,--threads=1")
                       .arg("-Wl,--gc-sections")
                       .arg("-Wl,--emit-relocs")
                       .arg("-Wl,--orphan-handling=error")
@@ -1375,6 +1378,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                       .arg(lldPath.empty() ? "-fuse-ld=lld"
                                            : "-fuse-ld=" + lldPath)
                       .input()
+                      // aiecc runs the links in parallel; lld would also start
+                      // a thread per CPU for each.
+                      .arg("-Wl,--threads=1")
                       .arg("-Wl,--gc-sections")
                       // The relocations carry the call graph that the
                       // stack-size check walks. They are non-alloc, so they use
