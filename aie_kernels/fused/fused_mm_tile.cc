@@ -14,14 +14,11 @@
 #include "lut_based_ops.cpp"
 #endif
 
-// B's k chunks are CT_K * N elements apart. Prepacked bfp16ebs8 B stores 8
-// elements in 9 bytes, and pointer arithmetic on it counts bytes
-// (llvm-aie#1232), so the stride is stepped in bytes for either storage.
+// B's k chunks are CT_K * N elements apart; a bfp16ebs8 holds a block of 8.
 #ifdef MM_FUSED_BFP16_B
-constexpr int b_chunk_bytes = MM_FUSED_CT_K * MM_FUSED_TILE_N / 8 * 9;
+constexpr int b_chunk = MM_FUSED_CT_K * MM_FUSED_TILE_N / 8;
 #else
-constexpr int b_chunk_bytes =
-    MM_FUSED_CT_K * MM_FUSED_TILE_N * sizeof(bfloat16);
+constexpr int b_chunk = MM_FUSED_CT_K * MM_FUSED_TILE_N;
 #endif
 
 // mode and the clamp bounds reach the epilogue as runtime words, so one
@@ -40,9 +37,7 @@ extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c,
     for (int band = 0; band < MM_FUSED_TILE_M / MM_FUSED_TILE_MA; ++band)
       mm_fused_k_step(
           a + (k * MM_FUSED_TILE_M + band * MM_FUSED_TILE_MA) * MM_FUSED_CT_K,
-          reinterpret_cast<mm_fused_b_elem_t *>(reinterpret_cast<uint8_t *>(b) +
-                                                k * b_chunk_bytes),
-          acc, band);
+          reinterpret_cast<mm_fused_b_elem_t *>(b) + k * b_chunk, acc, band);
   for (int outer = 0; outer < MM_FUSED_TILE_M * MM_FUSED_TILE_N /
                                   (MM_FUSED_C_DEPTH * MM_FUSED_OUT_CHUNK);
        ++outer)

@@ -55,9 +55,7 @@ constexpr bool mm_fused_unroll_ij =
 // happened) rounding to the host once, and makes B 9 bytes per 8 elements
 // instead of 16 -- the point, as the operator is data-movement bound.
 //
-// B is streamed, not pointer-indexed: a block_vector cannot be aie::load_v'd,
-// and bfp16ebs8 pointer arithmetic counts bytes not blocks. TODO: index
-// directly once llvm-aie#1232 (sizeof(bfp16ebs8) == 1, not 9) is fixed.
+// B is streamed, not pointer-indexed: a block_vector cannot be aie::load_v'd.
 template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
           unsigned t>
 __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
