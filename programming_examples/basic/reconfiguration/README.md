@@ -21,26 +21,27 @@ replacement can make the layer-by-layer approach impractical.
 
 This example compares four ways to run or reconfigure one NPU2 device image:
 
-- `separate-dispatch`: compile an xclbin and create one CPU-to-NPU dispatch for
-  each run.
+- `separate-dispatch`: compile xclbins and create one CPU-to-NPU dispatch for
+  each device image.
 - `load-pdi`: use one full-ELF dispatch and load each device image as a PDI.
 - `expand-load-pdis`: use one full-ELF dispatch and expand each PDI into
   register writes at compile time.
 - `control-packets`: use one full-ELF dispatch and expand each PDI into control
   packets at compile time.
 
-`separate-dispatch` requires the CPU to create and submit every dispatch. This
-is the slowest path. Each full-ELF mode uses one dispatch. Its runtime sequence
-contains the reconfiguration commands, and the NPU command processor executes
-those commands. `load-pdi` makes the command processor load and parse a device
-image. The other full-ELF modes replace that work with register writes or
-control packets during compilation.
+Each benchmark iteration configures an empty design before it configures and
+runs the measured design. `separate-dispatch` requires the CPU to create and
+submit both dispatches. Each full-ELF mode uses one dispatch. Its runtime
+sequence contains both reconfiguration commands, and the NPU command processor
+executes those commands. `load-pdi` makes the command processor load and parse
+each device image. The other full-ELF modes replace that work with register
+writes or control packets during compilation.
 
-`reconfiguration.py` contains one `@iron.jit` design. One
+`reconfiguration.py` contains measured and empty `@iron.jit` designs. One
 `DeviceConfiguration` owns the workers and their runtime sequence. The xclbin
-path wraps that configuration in a `Program` whose entry is the worker runtime.
-The full-ELF paths use the same configuration and add one coordinator runtime;
-the coordinator enters `configuration.configure()` and calls the worker runtime.
+path dispatches the empty design and then the measured design. The full-ELF
+paths compose both configurations and add one coordinator runtime; the
+coordinator enters each `configure()` scope and calls the worker runtime.
 
 The design accepts array dimensions, program-memory padding, switchbox padding,
 and the number of configure-and-run operations per full-ELF dispatch.

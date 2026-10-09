@@ -36,6 +36,11 @@ MODES = (
 )
 
 
+class CombinedKernelResult:
+    def __init__(self, *results):
+        self.npu_time = sum(result[1].npu_time for result in results)
+
+
 def padding_flows(cols, rows, switchboxes):
     padding_tiles = [
         (col, row)
@@ -73,6 +78,15 @@ def padding_flows(cols, rows, switchboxes):
                 ]
             )
     return flows
+
+
+@iron.jit
+def empty_design():
+    def sequence():
+        pass
+
+    runtime = Runtime(sequence, [])
+    return Program(NPU2(), runtime).resolve_program()
 
 
 @iron.jit
@@ -213,8 +227,15 @@ def main():
         switchboxes=args.switchboxes,
         reconfigs=args.reconfigs,
     )
+
+    def separate_dispatches(tensor):
+        empty_result = empty_design()
+        design_result = design(tensor)
+        return design_result[0], CombinedKernelResult(empty_result, design_result)
+
+    benchmark_call = separate_dispatches if args.mode == "separate-dispatch" else design
     benchmark = run_iters(
-        design,
+        benchmark_call,
         output,
         warmup=args.warmup,
         iters=args.iters,
