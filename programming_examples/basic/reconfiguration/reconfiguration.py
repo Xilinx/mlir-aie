@@ -36,6 +36,45 @@ MODES = (
 )
 
 
+def padding_flows(cols, rows, switchboxes):
+    padding_tiles = [
+        (col, row)
+        for col in range(1, NPU2_COLUMNS - 1)
+        for row in range(2, 2 + NPU2_CORE_ROWS)
+        if col >= cols or row >= 2 + rows
+    ]
+    if not 0 <= switchboxes <= len(padding_tiles):
+        raise ValueError(
+            f"switchboxes must be in [0, {len(padding_tiles)}]; got {switchboxes}"
+        )
+
+    flows = []
+    for col, row in padding_tiles[:switchboxes]:
+        tile = Tile(col, row, tile_type=AIETileType.CoreTile)
+        for channel in range(4):
+            flows.extend(
+                [
+                    Flow(
+                        tile,
+                        tile,
+                        src_port=WireBundle.West,
+                        src_channel=channel,
+                        dst_port=WireBundle.East,
+                        dst_channel=channel,
+                    ),
+                    Flow(
+                        tile,
+                        tile,
+                        src_port=WireBundle.East,
+                        src_channel=channel,
+                        dst_port=WireBundle.West,
+                        dst_channel=channel,
+                    ),
+                ]
+            )
+    return flows
+
+
 @iron.jit
 def reconfigure(
     output: Out,
@@ -88,6 +127,8 @@ def reconfigure(
             )
 
     column_handles = [fifo.cons() for fifo in column_fifos]
+    flows = padding_flows(cols, rows, switchboxes)
+    configuration = None
 
     def worker_sequence(tensor, *handles):
         for col, handle in enumerate(handles):
@@ -100,60 +141,31 @@ def reconfigure(
         implicit_configure=False,
     )
 
-    configuration = None
-
-    def fused_sequence(tensor):
+    def coordinator_sequence(tensor):
         assert configuration is not None
         for _ in range(reconfigs):
             with configuration.configure():
                 worker_runtime.call(tensor)
 
-    fused_runtime = Runtime(
-        fused_sequence,
+    coordinator_runtime = Runtime(
+        coordinator_sequence,
         [tensor_type],
         implicit_configure=False,
     )
-    entry = fused_runtime if full_elf else worker_runtime
+
+    # The single-design worker runtime sequence is the entry for separate
+    # dispatch only. Full-ELF flows use the coordinator runtime sequence because
+    # they require explicit configuration instructions in the runtime sequence.
+    entry = coordinator_runtime if full_elf else worker_runtime
     configuration = DeviceConfiguration(
         NPU2(),
         workers=workers,
-        runtimes=[worker_runtime, fused_runtime] if full_elf else [worker_runtime],
+        runtimes=(
+            [worker_runtime, coordinator_runtime] if full_elf else [worker_runtime]
+        ),
     )
-
-    padding_tiles = [
-        (col, row)
-        for col in range(1, NPU2_COLUMNS - 1)
-        for row in range(2, 2 + NPU2_CORE_ROWS)
-        if col >= cols or row >= 2 + rows
-    ]
-    if not 0 <= switchboxes <= len(padding_tiles):
-        raise ValueError(
-            f"switchboxes must be in [0, {len(padding_tiles)}]; got {switchboxes}"
-        )
-    # Dummy flows increase configuration-data size to measure reconfiguration scaling.
-    for col, row in padding_tiles[:switchboxes]:
-        tile = Tile(col, row, tile_type=AIETileType.CoreTile)
-        for channel in range(4):
-            configuration.add_flow(
-                Flow(
-                    tile,
-                    tile,
-                    src_port=WireBundle.West,
-                    src_channel=channel,
-                    dst_port=WireBundle.East,
-                    dst_channel=channel,
-                )
-            )
-            configuration.add_flow(
-                Flow(
-                    tile,
-                    tile,
-                    src_port=WireBundle.East,
-                    src_channel=channel,
-                    dst_port=WireBundle.West,
-                    dst_channel=channel,
-                )
-            )
+    for flow in flows:
+        configuration.add_flow(flow)
 
     return Program.compose(
         [configuration],
