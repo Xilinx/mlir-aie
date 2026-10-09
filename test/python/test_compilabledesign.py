@@ -23,7 +23,8 @@ from types import CodeType
 import numpy as np
 import pytest
 
-import aie.utils.compile.jit.compilabledesign as compilabledesign_module
+import aie.utils.config as config
+import aie.utils.configure as configure
 from aie.extras.context import mlir_mod_ctx
 from aie.iron.algorithms import _pipeline
 from aie.iron.algorithms import kernel_design as kd
@@ -498,9 +499,7 @@ def test_hash_works_when_peano_install_dir_is_invalid(monkeypatch):
     to the "absent" sentinel rather than letting the ``RuntimeError`` raised
     by ``peano_cxx_path`` / ``peano_install_dir`` escape.
     """
-    import aie.utils.configure as _aiecc_configure
-
-    monkeypatch.setattr(_aiecc_configure, "peano_install_dir", "peano_not_found")
+    monkeypatch.setattr(configure, "peano_install_dir", "peano_not_found")
 
     gen = _gemm_gen()
     d1 = CompilableDesign(gen, compile_kwargs={"M": 512})
@@ -673,18 +672,15 @@ def test_dispatch_keyword_only_specialization_generates_constant():
     assert design.split_runtime_args(("tensor",), {}) == (["tensor"], {})
 
 
-def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch):
+def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch, tmp_path):
     """``hash(design)`` must not require the dispatch toolchain to be installed.
 
     A host C++ compiler is needed to *compile* a DispatchTime[T] design, but
     hashing it must still work without one.
     """
-    import aie.utils.config as _config
-
-    def _raise(*_a, **_kw):
-        raise RuntimeError("not found")
-
-    monkeypatch.setattr(_config, "host_cxx_path", _raise)
+    monkeypatch.setenv("CXX", str(tmp_path / "missing-c++"))
+    with pytest.raises(RuntimeError, match="CXX is set"):
+        config.host_cxx_path()
 
     gen = _dispatch_gen()
     d1 = CompilableDesign(gen, compile_kwargs={"N": 512})
@@ -699,14 +695,30 @@ def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch):
 def test_artifact_hash_tracks_active_compilers(
     monkeypatch, tmp_path, dynamic, generator_kind, tool, change
 ):
-    import os
+    exe = ".exe" if os.name == "nt" else ""
+    name = {"aiecc": "aiecc", "peano_cxx": "clang++", "host_cxx": "c++"}[tool]
 
-    from aie.utils import config
-    from aie.utils.compile.jit._hash import _compute_artifact_hash
+    def use(compiler):
+        if tool == "aiecc":
+            monkeypatch.setenv("AIECC_PATH", str(compiler))
+        elif tool == "host_cxx":
+            monkeypatch.setenv("CXX", str(compiler))
+        else:
+            monkeypatch.setattr(
+                configure, "peano_install_dir", str(compiler.parents[1])
+            )
+        resolve = {
+            "aiecc": config.aiecc_path,
+            "peano_cxx": config.peano_cxx_path,
+            "host_cxx": config.host_cxx_path,
+        }[tool]
+        assert resolve() == str(compiler)
 
-    compiler = tmp_path / tool
+    compiler = tmp_path / "first" / "bin" / f"{name}{exe}"
+    compiler.parent.mkdir(parents=True)
     compiler.write_text("compiler")
-    monkeypatch.setattr(config, f"{tool}_path", lambda: str(compiler))
+    compiler.chmod(0o755)
+    use(compiler)
     generator = (
         _gemm_gen() if generator_kind == "callable" else tmp_path / "design.mlir"
     )
@@ -722,10 +734,12 @@ def test_artifact_hash_tracks_active_compilers(
         compiler.write_text("different compiler")
         os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns))
     else:
-        replacement = tmp_path / f"other_{tool}"
+        replacement = tmp_path / "other" / "bin" / compiler.name
+        replacement.parent.mkdir(parents=True)
         replacement.write_bytes(compiler.read_bytes())
+        replacement.chmod(0o755)
         os.utime(replacement, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        compiler = replacement
+        use(replacement)
     after = _compute_artifact_hash(generator, [], [], True, dynamic)
 
     assert (before != after) == (
@@ -878,19 +892,15 @@ def test_hash_changes_when_content_changes_under_a_preserved_mtime(tmp_path):
     assert hash(CompilableDesign(_gemm_gen(), source_files=[src])) != h1
 
 
-def test_hash_keys_on_the_aiecc_the_compile_uses(monkeypatch):
+def test_hash_keys_on_the_aiecc_the_compile_uses(monkeypatch, tmp_path):
     """aiecc must be resolved as compilation resolves it, not via PATH."""
-    import aie.utils.config as config
-
-    seen = []
-
-    def fake_aiecc_path():
-        seen.append(True)
-        return config.__file__  # any real file; only its mtime is consumed
-
-    monkeypatch.setattr(config, "aiecc_path", fake_aiecc_path)
-    CompilableDesign(_gemm_gen())._compute_cache_hash()
-    assert seen, "artifact hash did not consult config.aiecc_path()"
+    hashes = []
+    for build in ("first", "second"):
+        aiecc = tmp_path / build
+        aiecc.write_text(build)
+        monkeypatch.setenv("AIECC_PATH", str(aiecc))
+        hashes.append(CompilableDesign(_gemm_gen())._compute_cache_hash())
+    assert hashes[0] != hashes[1]
 
 
 def test_content_digest_streams_a_large_file(tmp_path):
@@ -2280,61 +2290,6 @@ def test_get_cache_entry_names_what_the_directory_holds(tmp_path):
     assert entry.lowered_mlir == tmp_path / "input_with_addresses.mlir"
     assert entry.objects == (tmp_path / "op0_kernel.o",)
     assert entry.manifest is None
-
-
-def test_compile_mode_switch_replaces_artifact_state(
-    tmp_path, monkeypatch, npu2_device
-):
-    mlir_path = tmp_path / "design.mlir"
-    mlir_path.write_text("module {}")
-
-    def fake_compile_mlir_module(**kwargs):
-        for name in ("xclbin_path", "insts_path", "full_elf_path"):
-            if path := kwargs.get(name):
-                Path(path).touch()
-
-    monkeypatch.setattr(
-        compilabledesign_module,
-        "compile_external_kernels",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(
-        compilabledesign_module, "compile_mlir_module", fake_compile_mlir_module
-    )
-    monkeypatch.setattr(
-        compilabledesign_module._manifest, "record", lambda *args, **kwargs: None
-    )
-    monkeypatch.setattr(compilabledesign_module, "parse_dma_sizes", lambda *args: [])
-
-    design = CompilableDesign(mlir_path)
-    design.compile(
-        xclbin_path=tmp_path / "design.xclbin",
-        inst_path=tmp_path / "insts.bin",
-    )
-    assert design.get_artifacts() is not None
-
-    monkeypatch.setattr(
-        design, "_parse_full_elf_kernel_name", lambda *args: "main:sequence"
-    )
-    design.compile(full_elf_path=tmp_path / "design.elf")
-
-    entry = design.get_cache_entry()
-    assert entry is not None
-    assert entry.elf == (tmp_path / "design.elf").resolve()
-    assert entry.xclbin is None and entry.insts is None
-    assert design.get_artifacts() is None
-
-    design.compile(
-        xclbin_path=tmp_path / "design.xclbin",
-        inst_path=tmp_path / "insts.bin",
-    )
-
-    entry = design.get_cache_entry()
-    assert entry is not None
-    assert entry.xclbin == (tmp_path / "design.xclbin").resolve()
-    assert entry.insts == (tmp_path / "insts.bin").resolve()
-    assert entry.elf is None
-    assert design._full_elf_kernel_name is None
 
 
 # ---------------------------------------------------------------------------

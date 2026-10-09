@@ -217,25 +217,20 @@ def test_identical_rebuild_does_not_replace_mapped_generation(tmp_path):
 
 
 def test_failed_compile_cleans_linker_companions(tmp_path, monkeypatch):
-    import subprocess
-
-    from aie.utils.compile.jit import _dispatch_compile
-
     path = _compile(tmp_path)
     before = path.read_bytes()
 
-    def fail_compile(command, **kwargs):
-        staging = Path(command[command.index("-o") + 1])
-        for suffix in (".dll", ".lib", ".exp"):
-            staging.with_suffix(suffix).write_bytes(b"partial link")
-        raise subprocess.CalledProcessError(1, command, stderr="link failed")
-
-    monkeypatch.setattr(
-        _dispatch_compile,
-        "host_shared_lib_cmd",
-        lambda src, out, **kwargs: ["compiler", str(src), "-o", str(out)],
+    linker = tmp_path / "partial-linker"
+    linker.write_text(
+        f"#!{sys.executable}\n"
+        "import pathlib, sys\n"
+        "staging = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])\n"
+        "for suffix in ('.dll', '.lib', '.exp'):\n"
+        "    staging.with_suffix(suffix).write_bytes(b'partial link')\n"
+        "sys.exit('link failed')\n"
     )
-    monkeypatch.setattr(_dispatch_compile.subprocess, "run", fail_compile)
+    linker.chmod(0o755)
+    monkeypatch.setenv("CXX", str(linker))
     with pytest.raises(DispatchCompileError, match="link failed"):
         compile_dispatch_bridge(tmp_path, ["param", "n"], [np.int32, np.uintp])
     assert path.read_bytes() == before

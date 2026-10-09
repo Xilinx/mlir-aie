@@ -101,6 +101,32 @@ def test_static_mlir_compile_does_not_bind_a_device(tmp_path):
     assert get_current_device(probe_runtime=False) is None
 
 
+@needs_xclbinutil
+def test_compile_mode_switch_replaces_artifact_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path / "cache")
+    set_current_device(NPU2Col1())
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(CompilableDesign(copy)._generated[0])
+    out = tmp_path / "out"
+
+    design = CompilableDesign(mlir_path)
+    design.compile(xclbin_path=out / "design.xclbin", inst_path=out / "insts.bin")
+    assert design.get_artifacts() is not None
+
+    design.compile(full_elf_path=out / "design.elf")
+    entry = design.get_cache_entry()
+    assert entry.elf == (out / "design.elf").resolve()
+    assert entry.xclbin is None and entry.insts is None
+    assert design.get_artifacts() is None
+
+    design.compile(xclbin_path=out / "design.xclbin", inst_path=out / "insts.bin")
+    entry = design.get_cache_entry()
+    assert entry.xclbin == (out / "design.xclbin").resolve()
+    assert entry.insts == (out / "insts.bin").resolve()
+    assert entry.elf is None
+    assert design._full_elf_kernel_name is None
+
+
 def patch_bar_then_baz(
     *, bar: DispatchTime[np.int32] = 3, baz: DispatchTime[np.int32] = 7
 ):
