@@ -1392,7 +1392,14 @@ def bn_conv2dk1_relu_xy_pool_padded(
         "conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8",
         _kernel_source("conv/bn_conv2dk1_relu.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(8)],
-        compile_flags=["-DSCALAR", "-DCONV_XYPOOL_FUSED_LARGE_PADDED", "-DINT8_ACT"],
+        # The conv runs one 8-channel block per call; AIE2P's walkers that
+        # read the dimensions would take the full output_channels.
+        compile_flags=["-DSCALAR", "-DCONV_XYPOOL_FUSED_LARGE_PADDED", "-DINT8_ACT"]
+        + (
+            _conv_dimensions(input_width, input_channels, 8)
+            if _tuned_arch() == "aie2"
+            else []
+        ),
         contract=KernelContract(
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
