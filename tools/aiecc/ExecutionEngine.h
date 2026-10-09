@@ -305,10 +305,13 @@ struct Engine {
     struct EdgeCost {
       std::string name;
       int64_t ms = 0;
+      int64_t endMs = 0; // since the scheduler started
       uint64_t rssAfter = 0;
       uint64_t peakAfter = 0;
     };
     std::vector<EdgeCost> edgeTimings;
+    std::chrono::steady_clock::time_point schedulerStart =
+        std::chrono::steady_clock::now();
 
     std::mutex mtx;
     std::condition_variable cv;
@@ -619,10 +622,14 @@ struct Engine {
           if (opts.verbose)
             logEdgeFinished(s);
           if (opts.profile) {
+            auto now = std::chrono::steady_clock::now();
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now() - s.startTime)
+                          now - s.startTime)
                           .count();
-            edgeTimings.push_back({displayName(s.edge).str(), ms,
+            auto endMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             now - schedulerStart)
+                             .count();
+            edgeTimings.push_back({displayName(s.edge).str(), ms, endMs,
                                    processRSSBytes(), processPeakRSSBytes()});
           }
           if (!recordPaths(task.edge))
@@ -824,8 +831,9 @@ struct Engine {
       int64_t total = 0;
       uint64_t peak = 0, prevRSS = baselineRSS;
       llvm::errs() << "aiecc: profile (per-edge time and resident memory):\n";
-      llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  {3}\n", "ms",
-                                    "dRSS MiB", "peak MiB", "edge");
+      llvm::errs() << llvm::formatv("  {0,8}  {1,8}  {2,10}  {3,10}  {4}\n",
+                                    "ms", "end ms", "dRSS MiB", "peak MiB",
+                                    "edge");
       for (const Scheduler::EdgeCost &e : edgeTimings) {
         total += e.ms;
         peak = std::max(peak, e.peakAfter);
@@ -835,12 +843,13 @@ struct Engine {
                 : llvm::formatv("{0:F1}", (int64_t)(e.rssAfter - prevRSS) /
                                               (1024.0 * 1024.0))
                       .str();
-        llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  {3}\n", e.ms,
-                                      delta, formatMiB(e.peakAfter), e.name);
+        llvm::errs() << llvm::formatv("  {0,8}  {1,8}  {2,10}  {3,10}  {4}\n",
+                                      e.ms, e.endMs, delta,
+                                      formatMiB(e.peakAfter), e.name);
         prevRSS = e.rssAfter;
       }
-      llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  total\n", total,
-                                    "", formatMiB(peak));
+      llvm::errs() << llvm::formatv("  {0,8}  {1,8}  {2,10}  {3,10}  total\n",
+                                    total, "", "", formatMiB(peak));
     }
     return mlir::success();
   }
