@@ -34,6 +34,7 @@ import logging
 import operator
 import os
 import sys
+import threading
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
@@ -85,6 +86,10 @@ from .context import compile_context
 # file_lock's own 60s default is well under the AIE compiles this guards -- CI
 # budgets individual tests 600-1200s for exactly that reason.
 COMPILE_LOCK_TIMEOUT_SECONDS = 1800
+# Generators register their kernels in the process-wide
+# ExternalFunction._instances, so one generates at a time; the builds after it
+# run concurrently.
+_GENERATION_LOCK = threading.RLock()
 
 logger = logging.getLogger(__name__)
 
@@ -1563,13 +1568,14 @@ class CompilableDesign:
 
     def _generated_for(self, *, full_elf: bool) -> tuple[str, list]:
         """Return cached ``(mlir_text, external_kernels)`` for the given mode."""
-        self._bind_generation_device()
-        key = self._generation_cache_key(full_elf=full_elf)
-        generated = self._generated_cache.get(key)
-        if generated is None:
-            generated = self._generate_uncached(full_elf=full_elf)
-            self._generated_cache[key] = generated
-        return generated
+        with _GENERATION_LOCK:
+            self._bind_generation_device()
+            key = self._generation_cache_key(full_elf=full_elf)
+            generated = self._generated_cache.get(key)
+            if generated is None:
+                generated = self._generate_uncached(full_elf=full_elf)
+                self._generated_cache[key] = generated
+            return generated
 
     @property
     def _generated(self) -> tuple[str, list]:
