@@ -72,6 +72,12 @@ CASES: list[Case] = [
     # Three 128-bit stores and four bytes past the last full vector.
     check("zero", dict(tile_size=116, dtype=np.uint8), calls=3, tag="vector-tail"),
     check("zero", dict(tile_size=20, dtype=np.float32), calls=3, tag="vector-tail"),
+    # A runtime window per call, from starts of every alignment up through
+    # elements, words and 128-bit stores to the native-width body.
+    *[
+        check("zero", dict(tile_size=4 * w, dtype=dt, window=w), calls=4, tag="window")
+        for dt, w in ((np.uint8, 101), (np.int16, 51), (np.float32, 21))
+    ],
     check(
         "zero",
         dict(tile_size=34, dtype=np.int16, vectorized=False),

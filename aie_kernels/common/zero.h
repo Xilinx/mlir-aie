@@ -29,11 +29,12 @@ inline void zero_sub_vector(T *__restrict p, int n) {
   if constexpr (sizeof(T) < 4) {
     using word = int32_t __attribute__((may_alias));
     constexpr int per_word = 4 / sizeof(T);
+    const int words = n / per_word;
     word *__restrict w = (word *)p;
-    for (int i = 0; i < n / per_word; ++i)
+    for (int i = 0; i < words; ++i)
       w[i] = 0;
-    p += n / per_word * per_word;
-    n %= per_word;
+    p += words * per_word;
+    n -= words * per_word;
   }
 #pragma clang loop unroll(disable)
   for (int i = 0; i < n; ++i)
@@ -64,6 +65,41 @@ void zero_vectorized(T *__restrict c) {
   zero_sub_vector(p, n % q);
   if constexpr (markers)
     event1();
+}
+
+// Zeroes c[0, n) for a runtime n from any element-aligned c, stepping up to
+// the native store's alignment through elements, words and 128-bit stores.
+// Bounds are pointers, not counts: Peano calls __modsi3 for a runtime %.
+template <typename T>
+void zero_vectorized(T *__restrict c, int32_t n) {
+  constexpr int r = aie::native_vector_length_v<T>;
+  constexpr int q = 16 / sizeof(T);
+  constexpr uintptr_t align = aie::vector_ldst_align_v<T, r>;
+  // An empty fill would otherwise pay every alignment guard below.
+  if (n <= 0)
+    return;
+  const aie::vector<T, r> zeros = aie::zeros<T, r>();
+  T *const end = c + n;
+  T *__restrict p = c;
+  if constexpr (sizeof(T) < 4) {
+    using word = int32_t __attribute__((may_alias));
+    constexpr int per_word = 4 / sizeof(T);
+#pragma clang loop unroll(disable)
+    for (; p < end && (uintptr_t)p % 4; ++p)
+      *p = 0;
+    for (; end - p >= per_word && (uintptr_t)p % 16; p += per_word)
+      *(word *)p = 0;
+  } else {
+    for (; p < end && (uintptr_t)p % 16; ++p)
+      *p = 0;
+  }
+  for (; end - p >= q && (uintptr_t)p % align; p += q)
+    aie::store_v(p, zeros.template extract<q>(0));
+  for (; end - p >= r; p += r)
+    aie::store_v(p, zeros);
+  for (; end - p >= q; p += q)
+    aie::store_v(p, zeros.template extract<q>(0));
+  zero_sub_vector(p, end - p);
 }
 
 #endif
