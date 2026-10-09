@@ -13,9 +13,6 @@
 
 template <typename T, int M, int N>
 void zero_scalar(T *__restrict c) {
-  // Unrolled, Peano reuses the incremented address and skips every other
-  // 16-bit store (the int16 tile_size=34 case).
-#pragma clang loop unroll(disable)
   for (int i = 0; i < M * N; i++) {
     c[i] = 0;
   }
