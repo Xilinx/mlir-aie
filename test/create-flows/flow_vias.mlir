@@ -9,6 +9,7 @@
 
 // RUN: aie-opt %s | aie-opt | FileCheck %s --check-prefix=ROUNDTRIP
 // RUN: aie-opt --aie-split-flow-vias %s | FileCheck %s
+// RUN: aie-opt --aie-split-flow-vias --aie-create-pathfinder-flows %s | FileCheck %s --check-prefix=ROUTED
 
 // ROUNDTRIP: %[[T02:.*]] = aie.tile(0, 2)
 // ROUNDTRIP: %[[T03:.*]] = aie.tile(0, 3)
@@ -24,7 +25,7 @@
 // CHECK: aie.flow(%[[T03]], South : 4, %[[T03]], DMA : 0)
 // CHECK: aie.packet_flow(1) {
 // CHECK:   aie.packet_source<%[[T02]], DMA : 1>
-// CHECK:   aie.packet_dest<%[[T03]], South : 0>
+// CHECK:   aie.packet_dest<%[[T02]], North : 0>
 // CHECK: } {priority_route = true}
 // CHECK: aie.packet_flow(1) {
 // CHECK:   aie.packet_source<%[[T03]], South : 0>
@@ -34,6 +35,15 @@
 // CHECK:   aie.packet_source<%[[T03]], North : 0>
 // CHECK:   aie.packet_dest<%[[T05]], DMA : 0>
 // CHECK: } {keep_pkt_header = true, priority_route = true}
+
+// A gap before a via ends at the adjacent switchbox output. The wire carries
+// the stream from that output to the via's ingress.
+// ROUTED: %[[T02:.*]] = aie.tile(0, 2)
+// ROUTED: %[[T03:.*]] = aie.tile(0, 3)
+// ROUTED: aie.switchbox(%[[T02]]) {
+// ROUTED:   aie.connect<DMA : 0, North : 4>
+// ROUTED: aie.switchbox(%[[T03]]) {
+// ROUTED:   aie.connect<South : 4, DMA : 0>
 module {
   aie.device(xcvc1902) {
     %t02 = aie.tile(0, 2)

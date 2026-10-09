@@ -80,3 +80,15 @@ aiecc -j2 \
 This command produces `edited-build/aie.xclbin` and
 `edited-build/insts_main_sequence.bin`. During compilation, the router assigns
 the gap created by the deleted via and retains the remaining constraints.
+
+Run the rerouted design on an NPU2 and verify that its output matches its
+input:
+
+```bash
+python3 route_vias.py --dev npu2 \
+  --run-xclbin edited-build/aie.xclbin \
+  --run-insts edited-build/insts_main_sequence.bin
+```
+
+These options load the supplied artifacts directly. They do not compile the
+`route_vias` function again.

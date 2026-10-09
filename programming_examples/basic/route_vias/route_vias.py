@@ -8,7 +8,10 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType, WireBundle
+from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+    WireBundle,
+)
 from aie.iron import (
     Buffer,
     Flow,
@@ -18,6 +21,7 @@ from aie.iron import (
     Runtime,
 )
 from aie.iron.device import Tile
+from aie.utils import NPUKernel
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -66,18 +70,36 @@ def route_vias(a_in: In, c_out: Out):
 def _make_argparser():
     parser = argparse.ArgumentParser(prog="AIE Route Vias")
     add_compile_args(parser, dev_choices=("npu2",), with_emit_mlir=True)
+    parser.add_argument(
+        "--run-xclbin",
+        type=str,
+        help="load and run this xclbin (pairs with --run-insts)",
+    )
+    parser.add_argument(
+        "--run-insts",
+        type=str,
+        help="run this instruction binary (pairs with --run-xclbin)",
+    )
     return parser
 
 
-def _run_and_verify(_opts):
+def _run_and_verify(opts):
     input_tensor = iron.arange(N, dtype=np.int32, device="npu")
     output_tensor = iron.zeros_like(input_tensor)
-    route_vias(input_tensor, output_tensor)
+    if opts.run_xclbin:
+        NPUKernel(opts.run_xclbin, opts.run_insts)(input_tensor, output_tensor)
+    else:
+        route_vias(input_tensor, output_tensor)
     assert_pass(output_tensor.numpy(), input_tensor.numpy())
 
 
 def _compile_kwargs(_opts):
     return {}
+
+
+def _validate(opts):
+    if bool(opts.run_xclbin) != bool(opts.run_insts):
+        raise SystemExit("--run-xclbin and --run-insts must be set together")
 
 
 if __name__ == "__main__":
@@ -88,4 +110,5 @@ if __name__ == "__main__":
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
         device=device_from_args,
+        validate=_validate,
     )

@@ -74,6 +74,40 @@ static bool isDirectShimMux(Value srcTile, WireBundle srcBundle, int srcChannel,
   return false;
 }
 
+static std::pair<Value, WireBundle> wireSourceOfIngress(DeviceOp device,
+                                                        OpBuilder &builder,
+                                                        Value tileValue,
+                                                        WireBundle ingress) {
+  auto tile = cast<TileOp>(tileValue.getDefiningOp());
+  int col = tile.colIndex();
+  int row = tile.rowIndex();
+  switch (ingress) {
+  case WireBundle::North:
+    row++;
+    break;
+  case WireBundle::South:
+    row--;
+    break;
+  case WireBundle::East:
+    col++;
+    break;
+  case WireBundle::West:
+    col--;
+    break;
+  default:
+    return {tileValue, ingress};
+  }
+
+  for (TileOp candidate : device.getOps<TileOp>())
+    if (candidate.colIndex() == col && candidate.rowIndex() == row)
+      return {candidate, getConnectingBundle(ingress)};
+
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPoint(tile);
+  return {TileOp::create(builder, tile.getLoc(), col, row),
+          getConnectingBundle(ingress)};
+}
+
 static void emitPacketFlow(OpBuilder &builder, Location loc, Operation *anchor,
                            Value srcTile, WireBundle srcBundle, int srcChannel,
                            Value dstTile, WireBundle dstBundle, int dstChannel,
@@ -172,8 +206,11 @@ struct AIESplitFlowViasPass
         bool foldIngress =
             isDirectShimMux(srcTile, srcBundle, srcChannel, viaTile,
                             ingressBundle, ingressChannel);
-        if (!foldIngress)
-          emitSegment(viaTile, ingressBundle, ingressChannel);
+        if (!foldIngress) {
+          auto [wireTile, wireBundle] =
+              wireSourceOfIngress(device, builder, viaTile, ingressBundle);
+          emitSegment(wireTile, wireBundle, ingressChannel);
+        }
 
         Value localSrcTile = foldIngress ? srcTile : viaTile;
         WireBundle localSrcBundle = foldIngress ? srcBundle : ingressBundle;
@@ -253,8 +290,11 @@ struct AIESplitFlowViasPass
 
         bool foldIngress = isDirectShimMux(srcTile, srcBundle, srcChannel,
                                            viaTile, ingress, ingressChannel);
-        if (!foldIngress)
-          emitSegment(viaTile, ingress, ingressChannel);
+        if (!foldIngress) {
+          auto [wireTile, wireBundle] =
+              wireSourceOfIngress(device, builder, viaTile, ingress);
+          emitSegment(wireTile, wireBundle, ingressChannel);
+        }
 
         Value localSrcTile = foldIngress ? srcTile : viaTile;
         WireBundle localSrcBundle = foldIngress ? srcBundle : ingress;

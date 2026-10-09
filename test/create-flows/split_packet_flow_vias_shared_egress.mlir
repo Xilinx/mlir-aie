@@ -15,7 +15,7 @@
 // SPLIT: %[[VIA:.*]] = aie.tile(0, 3)
 // SPLIT: aie.packet_flow(1) {
 // SPLIT:   aie.packet_source<%[[SRC]], DMA : 0>
-// SPLIT:   aie.packet_dest<%[[VIA]], South : 0>
+// SPLIT:   aie.packet_dest<%[[SRC]], North : 0>
 // SPLIT: }
 // SPLIT: aie.packet_flow(1) {
 // SPLIT:   aie.packet_source<%[[VIA]], South : 0>
@@ -23,7 +23,7 @@
 // SPLIT: }
 // SPLIT: aie.packet_flow(2) {
 // SPLIT:   aie.packet_source<%[[SRC]], DMA : 1>
-// SPLIT:   aie.packet_dest<%[[VIA]], South : 1>
+// SPLIT:   aie.packet_dest<%[[SRC]], North : 1>
 // SPLIT: }
 // SPLIT: aie.packet_flow(2) {
 // SPLIT:   aie.packet_source<%[[VIA]], South : 1>

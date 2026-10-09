@@ -10,8 +10,9 @@
 // RUN: FileCheck %s --check-prefix=LIFTED < %t.lifted.mlir
 // RUN: sed 's/%%tile_0_2 : DMA : 0 -> South : 0, //' %t.lifted.mlir > %t.edited.mlir
 // RUN: FileCheck %s --check-prefix=EDITED < %t.edited.mlir
-// RUN: aiecc -j2 --get=input_physical.mlir --output-dir=%t.edited %t.edited.mlir
+// RUN: aiecc -j2 --get=input_physical.mlir --get-xclbin --get-npu-insts --output-dir=%t.edited %t.edited.mlir
 // RUN: FileCheck %s --check-prefix=RELOWERED < %t.edited/input_physical.mlir
+// RUN: %run_on_npu2% %python %S/route_vias.py --dev npu2 --run-xclbin %t.edited/aie.xclbin --run-insts %t.edited/insts_main_sequence.bin
 
 // LOGICAL: aie.flow({{.*}}, DMA : 0, {{.*}}, DMA : 0)
 // LOGICAL-NEXT: aie.shim_dma_allocation
