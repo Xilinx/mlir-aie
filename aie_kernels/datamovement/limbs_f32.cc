@@ -15,7 +15,8 @@
 #define LIMBS_ELEMS n
 #endif
 
-// AIE2 at 32 lanes trips Peano assertions (ISel, peephole) here.
+// AIE2 at 32 lanes trips Peano assertions (ISel, peephole) here
+// (llvm-aie#1372).
 constexpr int limbs_lanes = AIE_BF16_LANES;
 using limbs_vec = aie::vector<bfloat16, limbs_lanes>;
 
