@@ -1,9 +1,0 @@
-<map id="include/aie/Dialect/AIEX/Utils/DmaDecomposition.h" name="include/aie/Dialect/AIEX/Utils/DmaDecomposition.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="143,5,377,45"/>
-<area shape="rect" id="Node000002" href="$AIEXDialect_8cpp.html" title=" " alt="" coords="5,93,144,133"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="208,54,116,96,114,91,206,49"/>
-<area shape="rect" id="Node000003" href="$DmaDecomposition_8cpp.html" title=" " alt="" coords="169,93,351,133"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="263,59,263,93,257,93,257,59"/>
-<area shape="rect" id="Node000004" href="$AIEDecomposeLargeDmaBd_8cpp.html" title=" " alt="" coords="376,93,611,133"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="325,48,443,91,441,96,323,53"/>
-</map>
