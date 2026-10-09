@@ -9,13 +9,14 @@
 
 #include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Targets/AIERT.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 
 #include "llvm/ADT/APInt.h"
-#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Debug.h"
 
 extern "C" {
@@ -676,67 +677,28 @@ static LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
 
 // Take transaction operations and insert them at the _current_ insertion point
 // of the supplied builder.
-static LogicalResult convertTransactionOpsToMLIR(
-    OpBuilder builder, AIE::AIEToConfigurationOutputType outputType,
-    std::vector<TransactionBinaryOperation> &operations,
-    const std::string &blockwrite_prefix = "config_blockwrite_data_") {
+static LogicalResult
+convertTransactionOpsToMLIR(OpBuilder builder,
+                            AIE::AIEToConfigurationOutputType outputType,
+                            std::vector<TransactionBinaryOperation> &operations,
+                            AIEX::BlockwriteData &blockwriteData) {
 
-  // for each blockwrite in the binary, create a GlobalOp with the data at the
-  // device level
+  // for each blockwrite in the binary, find or create a GlobalOp with the data
+  // at the device level
   std::vector<memref::GlobalOp> global_data;
-  Operation *parentOp = builder.getBlock()->getParentOp();
-  DeviceOp device = llvm::dyn_cast<DeviceOp>(parentOp);
-  if (!device) {
-    device = parentOp->getParentOfType<DeviceOp>();
-  }
-  if (!device) {
-    parentOp->emitError(
-        "expected insertion point to be nested under an aie.device op");
-    return failure();
-  }
+  DeviceOp device = blockwriteData.getDevice();
   Location loc = device.getLoc();
   {
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(device.getBody());
-    // O(n^2)->O(n): collect the existing <blockwrite_prefix><n> indices once,
-    // then below pick names by advancing a monotonic counter past any taken
-    // index. This reproduces generateUniqueSymbolName's exact selection (a
-    // persistent counter from 0 that skips occupied slots and uses the first
-    // free one) without its per-blockwrite O(n) SymbolTable probe, which made
-    // this loop O(n^2) (AIEExpandLoadPdiPass calls it once per blockwrite — the
-    // dominant cost of large multi-column with-PDI builds).
-    llvm::DenseSet<unsigned> takenIds;
-    for (auto g : device.getOps<memref::GlobalOp>()) {
-      StringRef suffix = g.getSymName();
-      if (suffix.consume_front(blockwrite_prefix)) {
-        unsigned idx;
-        if (!suffix.getAsInteger(10, idx))
-          takenIds.insert(idx);
-      }
-    }
-    unsigned id = 0;
     for (auto &op : operations) {
       if (op.cmd.Opcode != XAIE_IO_BLOCKWRITE) {
         global_data.emplace_back(nullptr);
         continue;
       }
-      uint32_t size = op.cmd.Size / 4;
       const uint32_t *d = reinterpret_cast<const uint32_t *>(op.cmd.DataPtr);
-      std::vector<uint32_t> data32(d, d + size);
-
-      // First free slot at/above the running counter (matches the old
-      // generateUniqueSymbolName probe); amortized O(1) across the loop.
-      while (takenIds.contains(id))
-        ++id;
-      std::string name = (blockwrite_prefix + llvm::Twine(id++)).str();
-
-      MemRefType memrefType = MemRefType::get({size}, builder.getI32Type());
-      TensorType tensorType =
-          RankedTensorType::get({size}, builder.getI32Type());
-      auto global = memref::GlobalOp::create(
-          builder, loc, name, builder.getStringAttr("private"), memrefType,
-          DenseElementsAttr::get<uint32_t>(tensorType, data32), true, nullptr);
-      global_data.push_back(global);
+      global_data.push_back(blockwriteData.getOrCreate(
+          builder, loc, ArrayRef<uint32_t>(d, op.cmd.Size / 4)));
     }
   }
 
@@ -796,17 +758,19 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   builder.setInsertionPointToStart(device.getBody());
 
   // convert the parsed ops to MLIR
+  AIEX::BlockwriteData blockwriteData(device, "config_blockwrite_data_");
   if (failed(convertTransactionOpsToMLIR(
-          builder, AIE::AIEToConfigurationOutputType::Transaction, operations)))
+          builder, AIE::AIEToConfigurationOutputType::Transaction, operations,
+          blockwriteData)))
     return std::nullopt;
 
   return module;
 }
 
 LogicalResult xilinx::AIE::generateAndInsertConfigOps(
-    OpBuilder &builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir,
-    AIE::AIEToConfigurationOutputType outputType,
-    const std::string &blockwrite_prefix, bool skipCtrlPktOverlay) {
+    OpBuilder &builder, xilinx::AIE::DeviceOp device,
+    AIEX::BlockwriteData &blockwriteData, llvm::StringRef clElfDir,
+    AIE::AIEToConfigurationOutputType outputType, bool skipCtrlPktOverlay) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
 
@@ -858,7 +822,7 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
       operations[i].sourceLoc = opLocs[i];
 
   if (failed(convertTransactionOpsToMLIR(builder, outputType, operations,
-                                         blockwrite_prefix))) {
+                                         blockwriteData))) {
     return failure();
   }
 
@@ -895,7 +859,9 @@ convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
   }
 
   // convert the parsed ops to MLIR
-  if (failed(generateAndInsertConfigOps(builder, device, clElfDir, outputType)))
+  AIEX::BlockwriteData blockwriteData(device, "config_blockwrite_data_");
+  if (failed(generateAndInsertConfigOps(builder, device, blockwriteData,
+                                        clElfDir, outputType)))
     return failure();
 
   // If we chose the first aiex.configure as insertion point, erase it

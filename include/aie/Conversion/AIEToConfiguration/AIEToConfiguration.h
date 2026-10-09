@@ -12,6 +12,10 @@
 #include "mlir/Pass/Pass.h"
 #include <memory>
 
+namespace xilinx::AIEX {
+class BlockwriteData;
+} // namespace xilinx::AIEX
+
 namespace xilinx::AIE {
 
 class DeviceOp;
@@ -37,13 +41,13 @@ convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
                                std::vector<uint8_t> &binary);
 
 // Generate transaction binary and insert configuration operations at the
-// current insertion point
+// current insertion point, their blockwrite payloads in `blockwriteData`'s
+// device.
 mlir::LogicalResult generateAndInsertConfigOps(
     mlir::OpBuilder &builder, xilinx::AIE::DeviceOp device,
-    llvm::StringRef clElfDir = "",
+    xilinx::AIEX::BlockwriteData &blockwriteData, llvm::StringRef clElfDir = "",
     AIEToConfigurationOutputType outputType =
         AIEToConfigurationOutputType::Transaction,
-    const std::string &blockwrite_prefix = "config_blockwrite_data_",
     bool skipCtrlPktOverlay = false);
 
 // --------------------------------------------------------------------------

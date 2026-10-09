@@ -19,23 +19,27 @@ using namespace mlir;
 namespace xilinx {
 namespace AIEX {
 
-// Find (or create) a private constant `memref.global` in `dev` holding `words`.
-//
-// `dedupCache`/`nextId`, when provided, make repeated calls O(1): without them,
-// each call rescans every existing global for dedup and probes the symbol table
-// for a free name, which is O(n) per call. Callers lowering many BDs (e.g. NPU
-// DMA lowering of a large multi-column program) should pass both, seeded once
-// from the device's existing globals. `dedupCache` maps each initial-value to
-// its global; `*nextId` is the next free "blockwrite_data_<n>" index (one past
-// the max already present), which the helper post-increments per created
-// global. Seeding past the max guarantees unique names by construction (no
-// symbol-table probe). Both are scoped to one device's lowering and hold raw op
-// handles; discard them afterward.
-memref::GlobalOp getOrCreateDataMemref(
-    OpBuilder &builder, AIE::DeviceOp dev, mlir::Location loc,
-    ArrayRef<uint32_t> words,
-    llvm::DenseMap<mlir::Attribute, memref::GlobalOp> *dedupCache = nullptr,
-    unsigned *nextId = nullptr);
+// The private constant `memref.global`s holding a device's blockwrite payloads:
+// one per distinct payload, each new one named `<prefix><n>` past every symbol
+// of that form the device held when the table was made. It holds op handles,
+// so it lives no longer than one rewrite of the device.
+class BlockwriteData {
+public:
+  BlockwriteData(AIE::DeviceOp dev, llvm::StringRef prefix);
+
+  // The global holding `words`, created at `builder`'s insertion point if the
+  // device has none.
+  memref::GlobalOp getOrCreate(OpBuilder &builder, mlir::Location loc,
+                               ArrayRef<uint32_t> words);
+
+  AIE::DeviceOp getDevice() const { return dev; }
+
+private:
+  AIE::DeviceOp dev;
+  std::string prefix;
+  llvm::DenseMap<mlir::Attribute, memref::GlobalOp> byValue;
+  unsigned nextId = 0;
+};
 
 // Result of tracing through supported view/cast operations to a block argument
 // for traceSubviewToBlockArgument function.

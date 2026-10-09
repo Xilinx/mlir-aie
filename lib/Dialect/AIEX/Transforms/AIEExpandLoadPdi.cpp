@@ -22,12 +22,14 @@
 
 #include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -273,10 +275,10 @@ static AIE::DeviceOp getOrCreateEmptyDevice(ModuleOp moduleOp,
 }
 
 // Helper to transform a single load_pdi operation
-static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
-                                      unsigned index,
-                                      AIEX::ExpandMode defaultMode) {
-  static unsigned long i = 0;
+static LogicalResult transformLoadPdi(
+    NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
+    AIEX::ExpandMode defaultMode,
+    llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> &blockwriteData) {
   OpBuilder builder(loadPdiOp);
 
   // Only process load_pdi ops that reference a device
@@ -355,10 +357,13 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
   // Step 2: generate and insert configuration ops.
   auto outputType = ctrlPkt ? AIEToConfigurationOutputType::ControlPacket
                             : AIEToConfigurationOutputType::Transaction;
-  std::string prefix = ctrlPkt ? ("loadpdi_ctrlpkt_" + std::to_string(i) + "_")
-                               : ("loadpdi_" + std::to_string(i));
+  auto device = loadPdiOp->getParentOfType<AIE::DeviceOp>();
+  if (!device)
+    return loadPdiOp.emitError("expected to be nested under an aie.device op");
+  AIEX::BlockwriteData &payloads =
+      blockwriteData.try_emplace(device, device, "loadpdi_").first->second;
   if (failed(xilinx::AIE::generateAndInsertConfigOps(
-          builder, referencedDevice, /*clElfDir=*/"", outputType, prefix,
+          builder, referencedDevice, payloads, /*clElfDir=*/"", outputType,
           /*skipCtrlPktOverlay=*/ctrlPkt))) {
     loadPdiOp.emitError("Failed to generate configuration operations");
     return failure();
@@ -371,8 +376,6 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
 
   // Erase the original load_pdi operation
   loadPdiOp.erase();
-
-  i++;
 
   return success();
 }
@@ -437,10 +440,13 @@ struct AIEExpandLoadPdiPass
     AIEX::ExpandMode defaultMode =
         clCtrlPkt ? AIEX::ExpandMode::ctrlpkt : AIEX::ExpandMode::write32;
 
-    // Transform load_pdi ops
+    // Transform load_pdi ops. Every reload of a device writes the same
+    // payloads, so they share one global each.
+    llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> blockwriteData;
     unsigned idx = 0;
     for (auto loadPdiOp : loadPdiOps) {
-      if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode))) {
+      if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode,
+                                  blockwriteData))) {
         signalPassFailure();
         return;
       }
