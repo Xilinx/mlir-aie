@@ -17,6 +17,7 @@
 
 #include "../aie_arch.h"
 #include "../aie_kernel_utils.h"
+#include "../common/store.h"
 #include <aie_api/aie.hpp>
 
 #define REL_WRITE 0
@@ -568,6 +569,15 @@ static inline void dw8_put(uint8_t *p, dw_v v) {
     aie::store_unaligned_v(p, v, 8);
 }
 
+// `end` marks a store that ends an output buffer.
+template <bool Aligned>
+static inline void dw8_put(uint8_t *p, dw_v v, bool end) {
+  if constexpr (Aligned)
+    aie::store_v(p, v);
+  else
+    store_unaligned_bounded(p, v, end);
+}
+
 template <bool Aligned>
 static inline void dw8_store(uint8_t *p, dw8_v v) {
   dw8_put<Aligned>(p, v.extract<32>(0));
@@ -628,12 +638,12 @@ static inline aie::vector<uint8, 128> dw8_window(const uint8_t *row,
 // One channel block, 8 * (Chunks - 1) < input_width <= 8 * Chunks: chunks at
 // pixels 0, 8, ... and the last one ending at the row end. keep[0..2] are the
 // filter rows' taps (none for a row `check` drops), keep[3] the pixels of a
-// single chunk.
+// single chunk. `last` marks the block that ends an output buffer.
 template <int Chunks, bool Aligned>
-static inline void dw8_block(const uint8_t *line0, const uint8_t *line1,
-                             const uint8_t *line2, const int8_t *wts,
-                             const aie::mask<64> *keep, uint8_t *__restrict out,
-                             const int32_t input_width, const int scale) {
+static inline void
+dw8_block(const uint8_t *line0, const uint8_t *line1, const uint8_t *line2,
+          const int8_t *wts, const aie::mask<64> *keep, uint8_t *__restrict out,
+          const int32_t input_width, const int scale, const bool last) {
   const uint8_t *in[3] = {line0, line1, line2};
   const int32_t end = input_width * 8;
   dw8_w w[3];
@@ -653,11 +663,16 @@ static inline void dw8_block(const uint8_t *line0, const uint8_t *line1,
     const dw8_v v = dw8_out(acc, scale);
     if constexpr (Chunks == 1) {
       dw8_put<Aligned>(out, v.extract<32>(0));
-      dw8_put<Aligned>(out + end - 32, aie::shuffle_down_fill(
-                                           v, aie::zeros<uint8, 64>(), end - 32)
-                                           .extract<32>(0));
+      dw8_put<Aligned>(
+          out + end - 32,
+          aie::shuffle_down_fill(v, aie::zeros<uint8, 64>(), end - 32)
+              .extract<32>(0),
+          last);
+    } else if (k == Chunks - 1) {
+      dw8_put<Aligned>(out + end - 64, v.extract<32>(0));
+      dw8_put<Aligned>(out + end - 32, v.extract<32>(1), last);
     } else {
-      dw8_store<Aligned>(k == Chunks - 1 ? out + end - 64 : out + k * 64, v);
+      dw8_store<Aligned>(out + k * 64, v);
     }
   }
 }
@@ -677,7 +692,7 @@ dw8_rows(const uint8_t *__restrict line0, const uint8_t *__restrict line1,
   AIE_LOOP_MIN_ITERATION_COUNT(DW8_MIN_BLOCKS)
   for (int cd = 0; cd < blocks; cd++) {
     dw8_block<Chunks, Aligned>(line0, line1, line2, wts, keep, out, input_width,
-                               scale);
+                               scale, cd + 1 == split || cd + 1 == blocks);
     line0 += step;
     line1 += step;
     line2 += step;
@@ -729,7 +744,7 @@ dw8_stream(const uint8_t *__restrict line0, const uint8_t *__restrict line1,
   aie::store_v(out + (at & ~31),
                aie::shuffle_up_fill(tail, tail, at & 31).extract<32>(0));
   dw8_block<1, false>(line0, line1, line2, wts, keep, out + at, input_width,
-                      scale);
+                      scale, true);
 }
 
 // Stride 1, input_width <= 32 only.
@@ -990,8 +1005,12 @@ static void dw8_s2_narrow_rows(const uint8_t *line0, const uint8_t *line1,
       for (int i = 1; i < 3; i++)
         acc = dw8_conv::mac(
             acc, w[i], 0, dw8_window<Chunks, false>(in[i], k, end, keep[3]), 0);
-      dw8_put<false>(k == Chunks - 1 ? out + out_end - 32 : out + k * 32,
-                     aie::filter_even(dw8_out(acc, scale), 8));
+      const dw_v v = aie::filter_even(dw8_out(acc, scale), 8);
+      if (k == Chunks - 1)
+        dw8_put<false>(out + out_end - 32, v,
+                       cd + 1 == split || cd + 1 == blocks);
+      else
+        dw8_put<false>(out + k * 32, v);
     }
   };
   if (blocks >= DW8_MIN_BLOCKS) {
