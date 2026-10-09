@@ -359,7 +359,7 @@ static LogicalResult copyReferencedSSAValues(
 // Also copies in SSA values referenced by the inlined symbol definitions.
 static LogicalResult inlineReferencedSymbolDefinitions(
     PatternRewriter &rewriter, Operation *op, Operation *lookupFrom,
-    IRMapping argMap,
+    IRMapping &argMap,
     llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap,
     AIE::DeviceOp callerDevice,
     llvm::DenseMap<Operation *, Operation *> &clonedDefs,
