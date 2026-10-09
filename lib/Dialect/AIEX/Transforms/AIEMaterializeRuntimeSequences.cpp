@@ -363,6 +363,7 @@ static LogicalResult inlineReferencedSymbolDefinitions(
     llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap,
     AIE::DeviceOp callerDevice,
     llvm::DenseMap<Operation *, Operation *> &clonedDefs,
+    llvm::DenseMap<Operation *, AIE::NamedOpTable> &calleeNames,
     mlir::OpBuilder::InsertPoint &clonedDefOpsInsertionPoint,
     llvm::SetVector<SymbolRefAttr> &allSymbolNames) {
   for (NamedAttribute namedAttr : op->getAttrs()) {
@@ -376,11 +377,23 @@ static LogicalResult inlineReferencedSymbolDefinitions(
       // First try to look up from the lookupFrom operation (e.g., within the
       // callee device). If not found, try looking up from the module level
       // (for cross-device references).
-      Operation *symbolDefOp =
-          SymbolTable::lookupNearestSymbolFrom(lookupFrom, oldSymbolRef);
-      if (!symbolDefOp && oldSymbolRef.getNestedReferences().empty()) {
+      // The caller device gains clones as calls are inlined; a callee device
+      // keeps its names while the caller's calls are inlined, so it is indexed
+      // once.
+      Operation *symbolDefOp = nullptr;
+      Operation *calleeTable = SymbolTable::getNearestSymbolTable(lookupFrom);
+      if (calleeTable && calleeTable != callerDevice &&
+          oldSymbolRef.getNestedReferences().empty()) {
         symbolDefOp =
-            AIE::lookupNamedOp(lookupFrom, oldSymbolRef.getRootReference());
+            calleeNames.try_emplace(calleeTable, calleeTable)
+                .first->second.lookup(oldSymbolRef.getRootReference());
+      } else {
+        symbolDefOp =
+            SymbolTable::lookupNearestSymbolFrom(lookupFrom, oldSymbolRef);
+        if (!symbolDefOp && oldSymbolRef.getNestedReferences().empty()) {
+          symbolDefOp =
+              AIE::lookupNamedOp(lookupFrom, oldSymbolRef.getRootReference());
+        }
       }
       if (!symbolDefOp) {
         if (ModuleOp moduleOp = lookupFrom->getParentOfType<ModuleOp>()) {
@@ -436,16 +449,19 @@ struct InlineRuntimeCallsPattern : RewritePattern {
   mlir::OpBuilder::InsertPoint &symbolDefInsertPoint;
   llvm::SetVector<SymbolRefAttr> &allSymbolNames;
   llvm::DenseMap<Operation *, Operation *> &clonedDefs;
+  llvm::DenseMap<Operation *, AIE::NamedOpTable> &calleeNames;
 
   InlineRuntimeCallsPattern(
       MLIRContext *ctx, mlir::OpBuilder::InsertPoint &ssaDefInsertPoint,
       mlir::OpBuilder::InsertPoint &symbolDefInsertPoint,
       llvm::SetVector<SymbolRefAttr> &allSymbolNames,
-      llvm::DenseMap<Operation *, Operation *> &clonedDefs)
+      llvm::DenseMap<Operation *, Operation *> &clonedDefs,
+      llvm::DenseMap<Operation *, AIE::NamedOpTable> &calleeNames)
       : RewritePattern(RunOp::getOperationName(), PatternBenefit(1), ctx),
         ssaDefInsertPoint(ssaDefInsertPoint),
         symbolDefInsertPoint(symbolDefInsertPoint),
-        allSymbolNames(allSymbolNames), clonedDefs(clonedDefs) {}
+        allSymbolNames(allSymbolNames), clonedDefs(clonedDefs),
+        calleeNames(calleeNames) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -549,7 +565,7 @@ struct InlineRuntimeCallsPattern : RewritePattern {
         if (failed(inlineReferencedSymbolDefinitions(
                 rewriter, nestedOp, calleeRuntimeSequence.getOperation(),
                 argMap, previouslyInlinedSymbolMap, callerDevice, clonedDefs,
-                symbolDefInsertPoint, allSymbolNames))) {
+                calleeNames, symbolDefInsertPoint, allSymbolNames))) {
           return WalkResult::interrupt();
         }
         return WalkResult::advance();
@@ -731,9 +747,10 @@ struct AIEMaterializeRuntimeSequencesPass
 
       RewritePatternSet patterns_0(ctx);
       llvm::DenseMap<Operation *, Operation *> clonedDefs;
-      patterns_0.insert<InlineRuntimeCallsPattern>(ctx, ssaDefInsertPoint,
-                                                   symbolDefInsertPoint,
-                                                   allSymbolNames, clonedDefs);
+      llvm::DenseMap<Operation *, AIE::NamedOpTable> calleeNames;
+      patterns_0.insert<InlineRuntimeCallsPattern>(
+          ctx, ssaDefInsertPoint, symbolDefInsertPoint, allSymbolNames,
+          clonedDefs, calleeNames);
       if (failed(applyPatternsGreedily(deviceOp, std::move(patterns_0),
                                        rewriter_config))) {
         return signalPassFailure();
