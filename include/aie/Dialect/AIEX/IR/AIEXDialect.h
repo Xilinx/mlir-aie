@@ -46,6 +46,7 @@ void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
                              llvm::SmallVector<int64_t, 4> &strides);
 mlir::LogicalResult
 verifyStridesWraps(mlir::Operation *forOp,
+                   llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
                    mlir::BaseMemRefType referencedBufType, int tileCol,
                    int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
                    llvm::SmallVector<int64_t, 4> inputStrides,

@@ -926,9 +926,10 @@ struct AIEDMATasksToNPUPass
       getHardwareStridesWraps(target_model, bd_op, buffer_type, input_sizes,
                               input_strides, sizes, strides);
 
-      if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),
-                                    tile.getRow(), input_sizes, input_strides,
-                                    sizes, strides, treatAsLinear))) {
+      if (failed(verifyStridesWraps(
+              bd_op, [&] { return bd_op->emitOpError(); }, buffer_type,
+              tile.getCol(), tile.getRow(), input_sizes, input_strides, sizes,
+              strides, treatAsLinear))) {
         return failure();
       }
 

@@ -407,12 +407,13 @@ bool AIEX::patternPassesVerification(Operation *forOp,
   getHardwareStridesWraps(tm, forOp, referencedBufType, pattern.sizes,
                           pattern.strides, hwSizes, hwStrides);
 
+  // Location-only: an op diagnostic prints the whole enclosing sequence.
   ScopedDiagnosticHandler handler(forOp->getContext(),
                                   [](Diagnostic &) { return success(); });
-  return succeeded(verifyStridesWraps(forOp, referencedBufType, tileCol,
-                                      tileRow, pattern.sizes, pattern.strides,
-                                      hwSizes, hwStrides,
-                                      /*skipTransformationChecks=*/false));
+  return succeeded(verifyStridesWraps(
+      forOp, [&] { return mlir::emitError(forOp->getLoc()); },
+      referencedBufType, tileCol, tileRow, pattern.sizes, pattern.strides,
+      hwSizes, hwStrides, /*skipTransformationChecks=*/false));
 }
 
 bool AIEX::isDecomposableNdDmaPattern(Operation *forOp,

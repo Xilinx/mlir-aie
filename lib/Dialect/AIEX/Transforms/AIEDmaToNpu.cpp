@@ -395,8 +395,9 @@ public:
     // row
     row = IntegerAttr::get(i32ty, tileRow);
 
-    if (failed(verifyStridesWraps(op, bufferType, tileCol, tileRow, inputSizes,
-                                  inputStrides, sizes, strides, isLinear))) {
+    if (failed(verifyStridesWraps(
+            op, [&] { return op->emitOpError(); }, bufferType, tileCol, tileRow,
+            inputSizes, inputStrides, sizes, strides, isLinear))) {
       return failure();
     }
 
