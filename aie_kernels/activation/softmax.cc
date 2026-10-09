@@ -7,7 +7,8 @@
 
 #include "../aie_arch.h"
 
-#if AIE_TUNED_AIE2
+// The accurate exp2 is a 32-lane polynomial, which softmax_aie2p.h's walk fits.
+#if AIE_TUNED_AIE2 && !defined(EXP2_BF16_ACCURATE)
 #include "softmax_aie2.h"
 #else
 #include "softmax_aie2p.h"

@@ -1127,7 +1127,7 @@ def mha(
             micro-tile becomes (8, 8, 8).  Ignored on AIE2.
         accurate_exp2: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]:
             ``partial_softmax`` and the running-state update take 2^x from a
-            polynomial rather than AIE2P's exp2 instruction.
+            polynomial rather than AIE2P's exp2 instruction or AIE2's cubic.
         causal: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: a
             query keeps no key past its own position.
         window: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: a
@@ -1139,16 +1139,9 @@ def mha(
         ``matmul_bf16_bf16_rowmaj``.
 
     Raises:
-        NotImplementedError: ``accurate_exp2`` without the exp2 instruction
-            it replaces (AIE2).
         ValueError: A tile dimension that is not a positive multiple, or a
             window the band cannot hold (see ``mha_softmax``).
     """
-    if accurate_exp2 and not _arch_traits().native_exp2:
-        raise NotImplementedError(
-            "mha: accurate_exp2 replaces AIE2P's exp2 instruction; "
-            "select an NPU2 device"
-        )
     for name, v, mult in (
         ("dim_m", dim_m, 16),
         ("dim_k", dim_k, 8),
@@ -1287,8 +1280,9 @@ def mha_softmax(
     Args:
         accurate_exp2: Take 2^x from a polynomial within 2.8e-6 before its
             bf16 rounding (``-DEXP2_BF16_ACCURATE``), in place of AIE2P's
-            exp2 instruction, which is off by up to 6.15%. ``s`` stays the
-            bf16 scalar the kernel takes, 1.8e-3 from log2(e) / 8.
+            exp2 instruction, which is off by up to 6.15%, or AIE2's cubic,
+            0.74% with the bf16 store. ``s`` stays the bf16 scalar the
+            kernel takes, 1.8e-3 from log2(e) / 8.
         dim_m: Query rows of the block (``B_q``), a multiple of 16.
         dim_n: Keys of the block (``B_kv``), a multiple of 16.
         causal: A query keeps no key past its own position.
@@ -1305,17 +1299,10 @@ def mha_softmax(
         ExternalFunction for ``partial_softmax``.
 
     Raises:
-        NotImplementedError: ``accurate_exp2`` without the exp2 instruction
-            it replaces (AIE2).
         ValueError: A block dimension that is not a positive multiple of
             16, a ``scale`` that is not positive and finite, or a window
             the band cannot hold.
     """
-    if accurate_exp2 and not _arch_traits().native_exp2:
-        raise NotImplementedError(
-            "mha_softmax: accurate_exp2 replaces AIE2P's exp2 instruction; "
-            "select an NPU2 device"
-        )
     for name, v in (("dim_m", dim_m), ("dim_n", dim_n)):
         if v <= 0 or v % 16:
             raise ValueError(
