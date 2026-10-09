@@ -2080,13 +2080,13 @@ std::string to_string(const PortKey &key) {
 // broadcast to the same endpoint twice.
 LogicalResult verifyNoDuplicateFlows(DeviceOp device) {
   std::map<std::pair<PortKey, PortKey>, FlowOp> flowSeen;
-  WalkResult result = device.walk([&](FlowOp flow) {
+  for (FlowOp flow : device.getOps<FlowOp>()) {
     std::optional<PortKey> src = tryGetPortKey(
         flow.getSource(), flow.getSourceBundle(), flow.getSourceChannel());
     std::optional<PortKey> dst = tryGetPortKey(
         flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
     if (!src || !dst)
-      return WalkResult::advance();
+      continue;
     auto [it, inserted] = flowSeen.try_emplace({*src, *dst}, flow);
     if (!inserted) {
       InFlightDiagnostic diag = flow.emitOpError()
@@ -2094,11 +2094,10 @@ LogicalResult verifyNoDuplicateFlows(DeviceOp device) {
                                 << to_string(*src) << " -> " << to_string(*dst)
                                 << " is already declared";
       diag.attachNote(it->second.getLoc()) << "the other flow is here";
-      return WalkResult::interrupt();
+      return failure();
     }
-    return WalkResult::advance();
-  });
-  return failure(result.wasInterrupted());
+  }
+  return success();
 }
 
 // Rejects two aie.packet_flow ops that carry the same ID between the same set
@@ -2110,13 +2109,14 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
   using PacketFlowKey =
       std::tuple<int, int, std::vector<PortKey>, std::vector<PortKey>>;
   std::map<PacketFlowKey, PacketFlowOp> packetFlowSeen;
-  WalkResult result = device.walk([&](PacketFlowOp packetFlow) {
+  for (PacketFlowOp packetFlow : device.getOps<PacketFlowOp>()) {
     Region &body = packetFlow.getPorts();
     if (body.empty())
-      return WalkResult::advance();
+      continue;
     // Sources and destinations are unordered within a packet flow, so sort
     // both to give permutations of the same flow the same key.
     std::vector<PortKey> sources, dests;
+    bool comparable = true;
     for (Operation &op : body.front()) {
       std::vector<PortKey> *endpoints = nullptr;
       std::optional<PortKey> port;
@@ -2132,12 +2132,14 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
         continue;
       }
       // One unplaced endpoint makes the whole flow incomparable.
-      if (!port)
-        return WalkResult::advance();
+      if (!port) {
+        comparable = false;
+        break;
+      }
       endpoints->push_back(*port);
     }
-    if (sources.empty() || dests.empty())
-      return WalkResult::advance();
+    if (!comparable || sources.empty() || dests.empty())
+      continue;
     llvm::sort(sources);
     llvm::sort(dests);
     int idBits =
@@ -2153,11 +2155,10 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
           << " under mask 0x" << llvm::utohexstr(mask)
           << " is already declared between the same sources and destinations";
       diag.attachNote(it->second.getLoc()) << "the other packet flow is here";
-      return WalkResult::interrupt();
+      return failure();
     }
-    return WalkResult::advance();
-  });
-  return failure(result.wasInterrupted());
+  }
+  return success();
 }
 
 // Rejects two aie.flows into one port and a packet flow sharing an endpoint
@@ -2165,33 +2166,29 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
 // included, and its destination takes words from nothing else.
 LogicalResult verifyNoSharedCircuitPorts(DeviceOp device) {
   std::map<PortKey, FlowOp> circuitSources, circuitDests;
-  WalkResult result =
-      device.walk([&](FlowOp flow) {
-        std::optional<PortKey> src = tryGetPortKey(
-            flow.getSource(), flow.getSourceBundle(), flow.getSourceChannel());
-        std::optional<PortKey> dst = tryGetPortKey(
-            flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
-        if (src)
-          circuitSources.try_emplace(*src, flow);
-        if (!dst)
-          return WalkResult::advance();
-        auto [it, inserted] = circuitDests.try_emplace(*dst, flow);
-        if (inserted)
-          return WalkResult::advance();
-        InFlightDiagnostic diag =
-            flow.emitOpError()
-            << "ends at " << to_string(*dst)
-            << ", where another circuit flow ends; a port takes one circuit";
-        diag.attachNote(it->second.getLoc())
-            << "the other circuit flow is here";
-        return WalkResult::interrupt();
-      });
-  if (result.wasInterrupted())
+  for (FlowOp flow : device.getOps<FlowOp>()) {
+    std::optional<PortKey> src = tryGetPortKey(
+        flow.getSource(), flow.getSourceBundle(), flow.getSourceChannel());
+    std::optional<PortKey> dst = tryGetPortKey(
+        flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
+    if (src)
+      circuitSources.try_emplace(*src, flow);
+    if (!dst)
+      continue;
+    auto [it, inserted] = circuitDests.try_emplace(*dst, flow);
+    if (inserted)
+      continue;
+    InFlightDiagnostic diag =
+        flow.emitOpError()
+        << "ends at " << to_string(*dst)
+        << ", where another circuit flow ends; a port takes one circuit";
+    diag.attachNote(it->second.getLoc()) << "the other circuit flow is here";
     return failure();
-  result = device.walk([&](PacketFlowOp packetFlow) {
+  }
+  for (PacketFlowOp packetFlow : device.getOps<PacketFlowOp>()) {
     Region &body = packetFlow.getPorts();
     if (body.empty())
-      return WalkResult::advance();
+      continue;
     for (Operation &op : body.front()) {
       std::optional<PortKey> port;
       std::map<PortKey, FlowOp> *circuits = nullptr;
@@ -2217,11 +2214,10 @@ LogicalResult verifyNoSharedCircuitPorts(DeviceOp device) {
           << role << " at " << to_string(*port) << ", where a circuit flow "
           << role << "; a port carries either one circuit or packets";
       diag.attachNote(it->second.getLoc()) << "the circuit flow is here";
-      return WalkResult::interrupt();
+      return failure();
     }
-    return WalkResult::advance();
-  });
-  return failure(result.wasInterrupted());
+  }
+  return success();
 }
 
 // `mlir::detail::verifySymbolTable` compares names carried by `Symbol` ops.
@@ -2261,21 +2257,24 @@ LogicalResult verifyNoDuplicateNames(Operation *symbolTableOp) {
 } // namespace
 
 LogicalResult DeviceOp::verify() {
+  // Cores and flows are the device's own ops, as the router and the CDO read
+  // them; a walk would also visit every op of the runtime sequences.
+  //
   // A compute tile has exactly one core in hardware, so at most one aie.core
   // may resolve to any given (col, row). Cores whose tile is a logical_tile
   // with unspecified coordinates are skipped here — they cannot collide until
   // --aie-place-tiles assigns them a position, at which point this same check
   // runs again on the resulting aie.tile coordinates.
   DenseMap<TileID, CoreOp> coreAtTile;
-  WalkResult result = walk([&](CoreOp core) {
+  for (CoreOp core : getOps<CoreOp>()) {
     auto tile =
         llvm::dyn_cast_or_null<TileLike>(core.getTile().getDefiningOp());
     if (!tile)
-      return WalkResult::advance();
+      continue;
     std::optional<int> col = tile.tryGetCol();
     std::optional<int> row = tile.tryGetRow();
     if (!col || !row)
-      return WalkResult::advance();
+      continue;
     TileID id{*col, *row};
     auto [it, inserted] = coreAtTile.try_emplace(id, core);
     if (!inserted) {
@@ -2284,12 +2283,9 @@ LogicalResult DeviceOp::verify() {
           << "tile (" << *col << ", " << *row
           << ") already has a core; each compute tile can host only one core";
       diag.attachNote(it->second.getLoc()) << "the other core is here";
-      return WalkResult::interrupt();
+      return failure();
     }
-    return WalkResult::advance();
-  });
-  if (result.wasInterrupted())
-    return failure();
+  }
 
   // A flow declared twice is always a mistake, and one that is otherwise only
   // noticed (if at all) as unexplained routing pressure much later on.
