@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "b541bba8ad114e3aa1316083f61c5170353f212d",
- "date": "2026-10-07T07:23:18.000236+00:00",
+ "commit": "35fa6b1667f7e5cd6f3b61d8134f5d2f72575e19",
+ "date": "2026-10-09T07:29:18.292263+00:00",
  "swept": true,
  "timing_refused": "power mode is default, required 'turbo'",
  "kernels": [
@@ -43,7 +43,7 @@
     "zero/dtype=bfloat16",
     "zero/dtype=bfp16ebs8"
    ],
-   "passed": 6,
+   "passed": 7,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
@@ -1243,8 +1243,47 @@
    "timed": 0,
    "timing_failed": [],
    "untimed": [
-    "relu_sized/1024x16/bfloat16",
     "relu_sized/32x4/bfloat16/edge-tiny"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "clamp",
+   "family": "eltwise",
+   "summary": "Element-wise bf16 clamp to [low, high], with a compiled-in element count.",
+   "sources": [
+    "eltwise/clamp.cc"
+   ],
+   "builds": [
+    "clamp"
+   ],
+   "passed": 5,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "clamp/1024x4/bfloat16/one-point",
+    "clamp/1024x4/bfloat16/one-sign",
+    "clamp/32x4/bfloat16/edge-one-vector"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "magnitude_f32",
+   "family": "eltwise",
+   "summary": "sqrt(re^2 + im^2) of complex float32, float32-accurate.",
+   "sources": [
+    "eltwise/magnitude_f32.cc"
+   ],
+   "builds": [
+    "magnitude_f32"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "magnitude_f32/64x4/float32/edge-one-vector"
    ],
    "flaky": []
   },
@@ -1426,6 +1465,69 @@
    "flaky": []
   },
   {
+   "factory": "resample_peak",
+   "family": "vision",
+   "summary": "Return the largest normalized weight of one core's share of a resample table.",
+   "sources": [
+    "vision/resample_peak.cc"
+   ],
+   "builds": [
+    "resample_peak"
+   ],
+   "passed": 7,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "resample_peak/2x2/int32/idle-core",
+    "resample_peak/2x2/int32/slots=22/slots-past-fit",
+    "resample_peak/2x2/int32/too-few-chunks",
+    "resample_peak/2x2/int32/upsample"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "resample_quantize",
+   "family": "vision",
+   "summary": "One chunk of the int16 filter table torch resamples an axis with.",
+   "sources": [
+    "vision/resample_quantize.cc"
+   ],
+   "builds": [
+    "resample_quantize"
+   ],
+   "passed": 8,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "resample_quantize/2x2/int32/negative",
+    "resample_quantize/2x2/int32/slots=22/slots-past-fit",
+    "resample_quantize/2x2/int32/too-few-chunks",
+    "resample_quantize/2x2/int32/upsample",
+    "resample_quantize/2x8/int32/cores=2/one-sample"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "resize",
+   "family": "vision",
+   "summary": "Resize a uint8 RGB image as torch's antialiased bicubic resize, as patches.",
+   "sources": [
+    "vision/resize.cc"
+   ],
+   "builds": [
+    "resize"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "six entry points share one core's state, driven by counts they write; test_resize_e2e.py drives and judges them"
+  },
+  {
    "factory": "softmax",
    "family": "activation",
    "summary": "Softmax activation kernel for bf16 tiles.",
@@ -1478,7 +1580,6 @@
    "timed": 0,
    "timing_failed": [],
    "untimed": [
-    "gelu_sized/1024x16/bfloat16",
     "gelu_sized/160x4/bfloat16/unroll-tail",
     "gelu_sized/160x4/bfloat16/use_lut=True/lut-unroll-tail",
     "gelu_sized/32x4/bfloat16/edge-tiny",
@@ -1575,6 +1676,27 @@
    "timing_failed": [],
    "untimed": [
     "exp2f_vec/48x4/float32/vector-tail"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "log_f32",
+   "family": "activation",
+   "summary": "log(x + offset) of float32, rounded once to bf16.",
+   "sources": [
+    "activation/log_f32.cc"
+   ],
+   "builds": [
+    "log_f32"
+   ],
+   "passed": 5,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "log_f32/1024x4/float32_bfloat16/mel-floor",
+    "log_f32/128x4/float32_bfloat16/mel-row",
+    "log_f32/32x4/float32_bfloat16/edge-one-vector"
    ],
    "flaky": []
   },
@@ -1717,6 +1839,90 @@
    "flaky": []
   },
   {
+   "factory": "limbs_f32",
+   "family": "datamovement",
+   "summary": "Float32 as six planes of its bf16 limbs, for a float32-accurate bf16 matmul.",
+   "sources": [
+    "datamovement/limbs_f32.cc"
+   ],
+   "builds": [
+    "limbs_f32"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "limbs_f32/32x4/float32_bfloat16/edge-one-vector"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "merge_rows",
+   "family": "datamovement",
+   "summary": "Merge-rows kernel: the row each position of a token sequence takes from a table.",
+   "sources": [
+    "datamovement/merge_rows.cc"
+   ],
+   "builds": [
+    "merge_rows"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "merge_rows/64x1/int32/audio_at=2048/audio_token=258881/image_token=258880/vision_at=2560/one-block",
+    "merge_rows/64x2/int32/audio_at=0/audio_token=0/image_token=1/vision_at=40/overlap"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "patch_positions",
+   "family": "datamovement",
+   "summary": "Patch-position kernel: where each patch of a vision tower's image comes from.",
+   "sources": [
+    "datamovement/patch_positions.cc"
+   ],
+   "builds": [
+    "patch_positions"
+   ],
+   "passed": 8,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "patch_positions/1280x1/int32/negative",
+    "patch_positions/1280x1/int32/part-patch",
+    "patch_positions/1280x1/int32/part-window",
+    "patch_positions/1280x1/int32/past-count",
+    "patch_positions/1280x9/int32/whole"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "row_addresses",
+   "family": "datamovement",
+   "summary": "Row-address kernel: each id's table row as a shim buffer descriptor's address words.",
+   "sources": [
+    "datamovement/row_addresses.cc"
+   ],
+   "builds": [
+    "row_addresses"
+   ],
+   "passed": 6,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [
+    "row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/bit-48",
+    "row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/carry",
+    "row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/unsigned-words",
+    "row_addresses/16x4/int32_uint32/row_bytes=4100/rows=16/table_rows=1048576/past-4-gib"
+   ],
+   "flaky": []
+  },
+  {
    "factory": "transpose",
    "family": "datamovement",
    "summary": "Blocked transpose through aie::transpose.",
@@ -1750,9 +1956,7 @@
    "failed": [],
    "timed": 0,
    "timing_failed": [],
-   "untimed": [
-    "rms_norm_eps/1024x16/bfloat16/cols=1024"
-   ],
+   "untimed": [],
    "flaky": []
   },
   {
@@ -1771,7 +1975,7 @@
     "mm/input_dtype=bfloat16/output_dtype=bfloat16",
     "mm/input_dtype=bfloat16/output_dtype=float32"
    ],
-   "passed": 22,
+   "passed": 32,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
@@ -1790,7 +1994,17 @@
     "mm/64x32x64x4/bfloat16_float32/c_col_maj=True",
     "mm/64x32x64x4/int16_int32",
     "mm/64x32x64x4/int16_int32/c_col_maj=True",
-    "mm/64x32x64x4/int8_int32/c_col_maj=True"
+    "mm/64x32x64x4/int8_int32/c_col_maj=True",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[bf16_f32]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[bf16_f32_b_col]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[bf16_f32_emulated]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[bf16_f32_emulated_b_col]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[i16_i32]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[i16_i32_b_col]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[i8_i32]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[scalar_bf16_f32]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[scalar_bf16_f32_b_col]",
+    "mm/test_mm_k_tail_zeroes_each_operand_past_k_valid[scalar_i16_i32]"
    ],
    "flaky": []
   },
@@ -1804,18 +2018,27 @@
    "builds": [
     "fused_mm"
    ],
-   "passed": 13,
+   "passed": 25,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
    "untimed": [
+    "fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/emulate_bf16_mmul_with_bfp16=True/out_chunk=256",
+    "fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/mmul_shape=(8, 8, 8)/out_chunk=256",
+    "fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=32/chunk_k=128/clamp=(-0.125, 0.75)/emulate_bf16_mmul_with_bfp16=True/epilogue=gelu/epilogue_modes=('none', 'gelu', 'silu', 'sigmoid')/gelu=bf16_steps/out_chunk=512/rounding=floor",
+    "fused_mm/32x256x32x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/emulate_bf16_mmul_with_bfp16=True/out_chunk=256",
+    "fused_mm/32x256x32x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/mmul_shape=(8, 8, 8)/out_chunk=256",
     "fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)",
     "fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)/epilogue=silu",
+    "fused_mm/32x48x16x4/bfloat16/emulate_bf16_mmul_with_bfp16=True",
     "fused_mm/32x48x16x4/bfloat16/epilogue=gelu",
     "fused_mm/32x48x16x4/bfloat16/epilogue=gelu/gelu=bf16_steps/rounding=floor",
     "fused_mm/32x48x16x4/bfloat16/epilogue=sigmoid",
     "fused_mm/32x48x16x4/bfloat16/epilogue=silu",
     "fused_mm/32x48x16x4/bfloat16/rounding=floor",
+    "fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/clamp=(-0.125, 0.75)/epilogue=silu/mmul_shape=(8, 8, 8)/out_chunk=256",
+    "fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/emulate_bf16_mmul_with_bfp16=True/out_chunk=256",
+    "fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/mmul_shape=(8, 8, 8)/out_chunk=256",
     "fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=gelu/epilogue_modes=('none', 'gelu', 'silu', 'sigmoid')/gelu=bf16_steps/out_chunk=512/rounding=floor",
     "fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=silu/out_chunk=512"
    ],
@@ -1831,33 +2054,37 @@
    "builds": [
     "mha"
    ],
-   "passed": 2,
+   "passed": 3,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
    "untimed": [
-    "mha/64x64x64x4/bfloat16",
-    "mha/64x64x64x4/bfloat16/pv=True"
+    "mha/16x256x64x4/bfloat16/pv=True"
    ],
    "flaky": []
   },
   {
    "factory": "mha_softmax",
    "family": "linalg",
-   "summary": "One 64x64 block of mha.cc's online softmax, partial_softmax.",
+   "summary": "One block of mha.cc's online softmax, partial_softmax.",
    "sources": [
     "linalg/mha.cc"
    ],
    "builds": [
     "mha_softmax"
    ],
-   "passed": 5,
+   "passed": 10,
    "failed": [],
    "timed": 0,
    "timing_failed": [],
    "untimed": [
-    "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/accurate_exp2=True/accurate-diagonal-padded",
-    "mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal-padded"
+    "mha_softmax/2048x4/bfloat16_bfloat16+float32/half-block-diagonal",
+    "mha_softmax/256x4/bfloat16_bfloat16+float32/diagonal-padded",
+    "mha_softmax/4096x4/bfloat16_bfloat16+float32/accurate_exp2=True/accurate-diagonal-padded",
+    "mha_softmax/4096x4/bfloat16_bfloat16+float32/causal=False/bidirectional-padded",
+    "mha_softmax/4096x4/bfloat16_bfloat16+float32/causal=False/window=64/window",
+    "mha_softmax/4096x4/bfloat16_bfloat16+float32/diagonal-padded",
+    "mha_softmax/512x4/bfloat16_bfloat16+float32/causal=False/window=32/window-padded"
    ],
    "flaky": []
   },
