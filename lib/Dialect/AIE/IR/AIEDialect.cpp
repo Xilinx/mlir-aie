@@ -3630,18 +3630,28 @@ LogicalResult DMABDOp::verifyMixedSizesAndStrides() {
 
 std::optional<llvm::SmallVector<BDDimLayoutAttr>> DMABDOp::getFoldedDimensions(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError) {
-  llvm::SmallVector<mlir::OpFoldResult> sizes = getMixedSizes();
-  llvm::SmallVector<mlir::OpFoldResult> strides = getMixedStrides();
+  llvm::ArrayRef<int64_t> sizes =
+      getStaticSizes().value_or(llvm::ArrayRef<int64_t>{});
+  llvm::ArrayRef<int64_t> strides =
+      getStaticStrides().value_or(llvm::ArrayRef<int64_t>{});
   if (sizes.size() != strides.size()) {
     emitError() << "expected the same number of sizes (" << sizes.size()
                 << ") and strides (" << strides.size() << ")";
     return std::nullopt;
   }
+  mlir::OperandRange dynSizes = getSizes(), dynStrides = getStrides();
+  unsigned nextSize = 0, nextStride = 0;
   llvm::SmallVector<BDDimLayoutAttr> dims;
   dims.reserve(sizes.size());
   for (auto [s, t] : llvm::zip(sizes, strides)) {
-    std::optional<int64_t> sc = mlir::getConstantIntValue(s);
-    std::optional<int64_t> tc = mlir::getConstantIntValue(t);
+    std::optional<int64_t> sc =
+        ShapedType::isDynamic(s)
+            ? mlir::getConstantIntValue(dynSizes[nextSize++])
+            : s;
+    std::optional<int64_t> tc =
+        ShapedType::isDynamic(t)
+            ? mlir::getConstantIntValue(dynStrides[nextStride++])
+            : t;
     if (!sc || !tc) {
       emitError() << "buffer descriptor size/stride is a runtime value; a "
                      "compile-time constant is required on this path";
@@ -4266,6 +4276,9 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
 
   mlir::LogicalResult
   matchAndRewrite(DMABDOp op, mlir::PatternRewriter &rewriter) const override {
+    if (!op.getStaticSizes() || op.getStaticSizes()->empty())
+      return mlir::failure();
+
     // Only fire for shim DMA BDs: ExternalBufferOp buffer
     // (dma_configure_task_for stage), parent TileElement is shim
     // (dma_configure_task stage), or inside ShimDMAOp (after full lowering).
@@ -4279,17 +4292,15 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     if (!bufferIsExternal && !parentIsShim && !inShimDMA)
       return mlir::failure();
 
-    // Only ND dimensions that are present and all-constant can be linearized;
-    // decline silently on runtime-valued sizes/strides so valid dynamic IR
-    // doesn't get a spurious diagnostic.
-    if (op.getMixedSizes().empty())
+    // Only ND dimensions that are all-constant can be linearized; decline
+    // silently on runtime-valued sizes/strides so valid dynamic IR doesn't get
+    // a spurious diagnostic.
+    auto isConstant = [](mlir::Value v) {
+      return mlir::getConstantIntValue(v).has_value();
+    };
+    if (!llvm::all_of(op.getSizes(), isConstant) ||
+        !llvm::all_of(op.getStrides(), isConstant))
       return mlir::failure();
-    for (mlir::OpFoldResult s : op.getMixedSizes())
-      if (!mlir::getConstantIntValue(s))
-        return mlir::failure();
-    for (mlir::OpFoldResult s : op.getMixedStrides())
-      if (!mlir::getConstantIntValue(s))
-        return mlir::failure();
     std::optional<llvm::SmallVector<BDDimLayoutAttr>> dims =
         op.getFoldedDimensions([&]() { return op.emitError(); });
     if (!dims.has_value() || dims->empty())
@@ -4338,6 +4349,9 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
 
   mlir::LogicalResult
   matchAndRewrite(DMABDOp op, mlir::PatternRewriter &rewriter) const override {
+    if (op.getSizes().empty() && op.getStrides().empty() && !op.getOffset() &&
+        !op.getLen())
+      return mlir::failure();
     llvm::SmallVector<mlir::OpFoldResult> sizes = op.getMixedSizes();
     llvm::SmallVector<mlir::OpFoldResult> strides = op.getMixedStrides();
     // foldDynamicIndexList returns success() only if it replaced a dynamic
