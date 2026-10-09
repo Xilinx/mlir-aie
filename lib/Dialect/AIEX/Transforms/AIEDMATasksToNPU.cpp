@@ -1294,8 +1294,14 @@ struct AIEDMATasksToNPUPass
     patterns.insert<DMAStartTaskOpPattern>(&getContext(), onlyPushedOnce);
     patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
     // A start or await left unlowered still uses its configure, so lowering
-    // the configures would only add errors.
-    if (failed(applyPartialConversion(device, target, std::move(patterns))))
+    // the configures would only add errors. Rooted at the starts and awaits
+    // alone, the driver skips the rest of the runtime sequences.
+    SmallVector<Operation *> roots;
+    device.walk([&](Operation *op) {
+      if (isa<DMAStartTaskOp, DMAAwaitTaskOp>(op))
+        roots.push_back(op);
+    });
+    if (failed(applyPartialConversion(roots, target, std::move(patterns))))
       return signalPassFailure();
 
     // Drop the now-dead task-index carries the awaits held, so the branch-local
