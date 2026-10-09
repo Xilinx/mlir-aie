@@ -113,15 +113,24 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return std::nullopt;
   }
 
+  // The BD ids each device's static DMAs take, by tile. Generators restart
+  // at every PDI load, so this is read once per tile per load.
+  llvm::DenseMap<Operation *,
+                 llvm::DenseMap<AIE::TileID, SmallVector<uint32_t>>>
+      staticBdIds;
+
   // Mark every BD id a static DMA already took on `tile`, so this allocator
   // doesn't hand the same id to a runtime-sequence task.
-  static void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
-                                BdIdGenerator &gen) {
-    for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
-      if (program.getTileID() == tile.getTileID())
-        for (uint32_t id : AIE::getAssignedBdIds(program))
-          if (!gen.bdIdAlreadyAssigned(id))
-            gen.assignBdId(id);
+  void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
+                         BdIdGenerator &gen) {
+    auto [it, inserted] = staticBdIds.try_emplace(device);
+    if (inserted)
+      for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
+        llvm::append_range(it->second[program.getTileID()],
+                           AIE::getAssignedBdIds(program));
+    for (uint32_t id : it->second.lookup(tile.getTileID()))
+      if (!gen.bdIdAlreadyAssigned(id))
+        gen.assignBdId(id);
   }
 
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile) {
@@ -781,6 +790,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
+    staticBdIds.clear();
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
       // Skip sequences already handled by the dynamic free-list pool path
