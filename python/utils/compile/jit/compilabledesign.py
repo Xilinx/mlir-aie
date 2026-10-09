@@ -631,9 +631,8 @@ class CompilableDesign:
                 )
 
             try:
-                mlir_text, external_kernels, use_chess = (
-                    self._generate_and_build_kernels(kernel_dir)
-                )
+                mlir_text, external_kernels = self._generated_for(full_elf=False)
+                use_chess = self._resolve_use_chess(external_kernels)
 
                 compiler_options = list(self.aiecc_flags)
                 if has_dispatch:
@@ -653,6 +652,9 @@ class CompilableDesign:
                     ),
                     npu_cpp_emit_dispatch_shim=has_dispatch,
                     device_cache_dir=self._device_cache_dir(),
+                    build_link_files=functools.partial(
+                        self._build_kernels, kernel_dir, external_kernels
+                    ),
                 )
 
                 # aiecc may exit 0 even when xclbin generation fails silently
@@ -787,9 +789,8 @@ class CompilableDesign:
                     return elf_path, None
 
             try:
-                mlir_text, external_kernels, use_chess = (
-                    self._generate_and_build_kernels(kernel_dir, full_elf=True)
-                )
+                mlir_text, external_kernels = self._generated_for(full_elf=True)
+                use_chess = self._resolve_use_chess(external_kernels)
 
                 compile_mlir_module(
                     mlir_module=mlir_text,
@@ -798,6 +799,9 @@ class CompilableDesign:
                     use_chess=use_chess,
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
                     device_cache_dir=self._device_cache_dir(),
+                    build_link_files=functools.partial(
+                        self._build_kernels, kernel_dir, external_kernels
+                    ),
                 )
 
                 if not elf_path.exists():
@@ -885,12 +889,8 @@ class CompilableDesign:
                 return None, inst_path
 
             try:
-                # The stream addresses the buffers where the image's build
-                # placed them, and that placement reserves each bank's kernel
-                # data, which only the built objects show.
-                mlir_text, external_kernels, use_chess = (
-                    self._generate_and_build_kernels(kernel_dir)
-                )
+                mlir_text, external_kernels = self._generated_for(full_elf=False)
+                use_chess = self._resolve_use_chess(external_kernels)
 
                 compile_mlir_module(
                     mlir_module=mlir_text,
@@ -899,6 +899,12 @@ class CompilableDesign:
                     use_chess=use_chess,
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
                     device_cache_dir=self._device_cache_dir(),
+                    # The stream addresses the buffers where the image's build
+                    # placed them, and that placement reserves each bank's
+                    # kernel data, which only the built objects show.
+                    build_link_files=functools.partial(
+                        self._build_kernels, kernel_dir, external_kernels
+                    ),
                 )
                 if not inst_path.exists():
                     raise RuntimeError(
@@ -954,22 +960,17 @@ class CompilableDesign:
             return None
         return parse_dma_sizes(self._kernel_dir)
 
-    def _generate_and_build_kernels(
-        self, kernel_dir: Path, *, full_elf: bool = False
-    ) -> tuple[str, list, bool]:
-        """Generate the design and build its kernels' objects into ``kernel_dir``.
+    def _build_kernels(self, kernel_dir: Path, external_kernels: list) -> None:
+        """Build the design's kernels' objects into `kernel_dir`.
 
-        Returns:
-            The MLIR text, the design's ``ExternalFunction`` kernels, and
-            whether aiecc drives Chess for them.
+        Args:
+            kernel_dir: The directory aiecc links the objects from.
+            external_kernels: The design's `ExternalFunction` kernels.
         """
-        mlir_text, external_kernels = self._generated_for(full_elf=full_elf)
-
         # aie.utils imports this module before it defines this name.
         from aie.utils import get_current_device
 
         target_arch = resolve_target_arch(get_current_device(probe_runtime=False))
-        use_chess = self._resolve_use_chess(external_kernels)
         compile_external_kernels(
             external_kernels,
             kernel_dir,
@@ -983,7 +984,6 @@ class CompilableDesign:
             object_cache=self._kernel_object_cache(),
         )
         _copy_object_files(self.object_files, kernel_dir)
-        return mlir_text, external_kernels, use_chess
 
     def _resolve_use_chess(self, external_kernels: list) -> bool:
         """Return whether to drive aiecc with the Chess front-end.

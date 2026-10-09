@@ -4,7 +4,9 @@
 # RUN: %pytest %s
 """Compiler-only integration tests using real MLIR and the host C++ compiler."""
 
+import json
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -31,15 +33,15 @@ from aie.utils.compile.utils import _run_aiecc
 def test_compile_mlir_module_requests_cpp_with_device_outputs(
     tmp_path, monkeypatch, emit_shim
 ):
-    calls = []
-    monkeypatch.setattr(
-        compile_utils.config, "peano_install_dir", lambda: tmp_path / "peano"
+    argv = tmp_path / "argv.json"
+    stand_in = tmp_path / "aiecc"
+    stand_in.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        f"json.dump([os.getcwd(), sys.argv[1:]], open({str(argv)!r}, 'w'))\n"
     )
-    monkeypatch.setattr(
-        compile_utils,
-        "_run_aiecc",
-        lambda path, args, *, cwd: calls.append((path, args, cwd)),
-    )
+    stand_in.chmod(0o755)
+    monkeypatch.setenv("AIECC_PATH", str(stand_in))
     cpp = tmp_path / "dispatch_gen.cpp"
     xclbin = tmp_path / "design.xclbin"
     compile_utils.compile_mlir_module(
@@ -51,8 +53,7 @@ def test_compile_mlir_module_requests_cpp_with_device_outputs(
         fold_ddr_addr_offset=False,
         options=["--get=npu_lowered.mlir"],
     )
-    assert len(calls) == 1
-    _, args, cwd = calls[0]
+    cwd, args = json.loads(argv.read_text())
     assert Path(cwd) == tmp_path
     assert "--get-xclbin" in args
     assert f"--xclbin-name={xclbin}" in args

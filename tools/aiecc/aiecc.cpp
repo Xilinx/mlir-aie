@@ -76,6 +76,7 @@
 
 #include <cstdlib>
 #include <future>
+#include <iostream>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -956,8 +957,31 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return txt;
       });
 
-  auto &unplaced = withSymbols.map<ModRef>(
+  auto &routed = withSymbols.map<ModRef>(
       "input_physical.mlir", PassPipeline{getRoutingPipeline(&context)});
+
+  // The device cache's key and every compile or link of a core read the files
+  // the cores link; all of them are downstream of this view.
+  auto linkFilesReady = std::make_shared<bool>(false);
+  auto &unplaced =
+      awaitLinkFiles
+          ? static_cast<EdgeWithTypedOutput<ModRef> &>(routed.filter(
+                "awaitLinkFiles",
+                [linkFilesReady](const ModRef &) -> mlir::FailureOr<bool> {
+                  if (*linkFilesReady)
+                    return true;
+                  if (verbose)
+                    llvm::errs() << "aiecc: awaiting the link files\n";
+                  std::string line;
+                  if (!std::getline(std::cin, line)) {
+                    llvm::errs() << "aiecc: stdin closed before the link "
+                                    "files were ready\n";
+                    return mlir::failure();
+                  }
+                  *linkFilesReady = true;
+                  return true;
+                }))
+          : routed;
 
   // Everything that compiles or places a core reads the routed module through
   // this view, so the device cache's lookup runs before any of it.

@@ -883,7 +883,8 @@ struct SplitEdge : Edge<In, Out> {
 
 // FilterEdge — produce a view of a Node<T> containing only items whose payload
 // satisfies `fn`. Output items alias the source items (Item::aliasSource)
-// rather than owning a payload, so no cloning happens.
+// rather than owning a payload, so no cloning happens. A predicate returning
+// FailureOr<bool> may fail the build.
 template <typename T, typename FilterFn>
 struct FilterEdge : Edge<T, T> {
   FilterFn fn;
@@ -895,13 +896,24 @@ struct FilterEdge : Edge<T, T> {
 
   mlir::LogicalResult execute() override {
     this->out.items.clear();
-    for (const auto &src : this->in.items)
-      if (fn(src.get())) {
+    for (const auto &src : this->in.items) {
+      bool keep;
+      if constexpr (std::is_same_v<std::invoke_result_t<FilterFn, const T &>,
+                                   mlir::FailureOr<bool>>) {
+        mlir::FailureOr<bool> kept = fn(src.get());
+        if (mlir::failed(kept))
+          return mlir::failure();
+        keep = *kept;
+      } else {
+        keep = fn(src.get());
+      }
+      if (keep) {
         Item<T> view;
         view.key = src.key;
         view.aliasSource = &src;
         this->out.items.push_back(std::move(view));
       }
+    }
     return mlir::success();
   }
 };

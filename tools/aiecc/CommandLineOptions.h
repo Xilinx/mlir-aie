@@ -544,6 +544,11 @@ inline cl::opt<std::string> deviceCacheDir(
              "earlier build stored in this dir, and store the ones this build "
              "compiles (Peano only)"),
     cl::value_desc("dir"), cl::init(""));
+inline cl::opt<bool> awaitLinkFiles(
+    "await-link-files",
+    cl::desc("Lower the design, but read no file a core links (link_with, "
+             "link_files) until a line arrives on stdin, so a caller can build "
+             "them meanwhile; stdin closing first fails the build"));
 // Graph cut / checkpoint & resume. `--checkpoint=<dir>` dumps the artifacts
 // selected by `--cut` plus a `manifest.json` describing them into <dir> after a
 // successful run — a "prefix" of the build. `--resume=<manifest.json>` rebuilds

@@ -1,0 +1,21 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# --await-link-files lowers the design before the object it links exists, and
+# reads the object only once a line arrives on stdin; the build matches one
+# whose object was there from the start.
+
+# REQUIRES: peano, system-linux
+# RUN: rm -rf %t.d && mkdir -p %t.d/cold %t.d/await %t.d/closed
+# RUN: cp %S/device_cache.mlir %t.d/design.mlir
+# RUN: clang++ --target=aie2p-none-unknown-elf -O2 -DBUMP=1 -c %S/device_cache_kernel.cc -o %t.d/built.o
+# RUN: cp %t.d/built.o %t.d/device_cache_kernel.o
+# RUN: cd %t.d/cold && aiecc --get-pdi %t.d/design.mlir
+# RUN: rm %t.d/device_cache_kernel.o
+# RUN: cd %t.d/await && %PYTHON %S/Inputs/await_link_files.py --aiecc aiecc --design %t.d/design.mlir --built %t.d/built.o --linked %t.d/device_cache_kernel.o --device-cache %t.d/cache
+# RUN: cmp %t.d/cold/a.pdi %t.d/await/a.pdi
+# RUN: cmp %t.d/cold/b.pdi %t.d/await/b.pdi
+
+# Stdin closing before the line fails the build.
+# RUN: cd %t.d/closed && not aiecc --await-link-files --get-pdi %t.d/design.mlir < /dev/null 2>&1 | FileCheck %s
+# CHECK: aiecc: stdin closed before the link files were ready
