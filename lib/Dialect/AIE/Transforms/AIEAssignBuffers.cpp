@@ -995,6 +995,7 @@ struct PlacementStats {
   int64_t backtracks = 0; // placements undone because a later buffer had none
   int64_t tilesSearched = 0; // tiles needing more than the ranked first try
   int64_t budgetExhausted = 0;
+  int64_t tilesCompacted = 0; // placed only by the exhaustive search
 };
 } // namespace
 
@@ -1122,6 +1123,169 @@ private:
 };
 } // namespace
 
+// Exhaustive placement, for when the ranked search fails. The ranked search
+// only tries positions flush against what is already placed, so a buffer that
+// must sit against one placed after it is out of its reach in any order.
+//
+// Any layout can be slid down, one buffer at a time in address order, until
+// each buffer sits at the lowest address its alignment and banks allow above
+// the one before it. Walking the free runs upward and choosing which buffer
+// comes next therefore reaches every layout that exists, and a tile this
+// rejects within budget has none. What can follow an address depends only on
+// the address and the buffers left, so a failed pair is never tried twice,
+// which collapses the orders of one set of buffers into a single visit.
+namespace {
+struct CompactionSearch {
+  ArrayRef<BufferOp> order;
+  const BankAwareContext &ctx;
+  SmallVector<MemoryRun> gaps;
+  // Per buffer in `order`: size, alignment, the ranges it may lie in, and a
+  // class shared with every buffer it could swap with.
+  SmallVector<int64_t> sizes, aligns;
+  SmallVector<SmallVector<MemoryRun, 2>> ranges;
+  SmallVector<unsigned> classes;
+  SmallVector<int64_t> addrs;
+  // Free bytes and the largest run from each gap to the top of the tile.
+  SmallVector<int64_t> freeAbove, runAbove;
+  llvm::DenseSet<std::pair<int64_t, llvm::BitVector>> failed;
+  int64_t budget;
+  bool exhausted = false;
+
+  CompactionSearch(ArrayRef<BufferOp> order, const BankAwareContext &ctx,
+                   const RequiredBanks &requiredBanks,
+                   const MemoryOccupancy &occupancy, int64_t budget)
+      : order(order), ctx(ctx),
+        gaps(occupancy.gapsIn(0, ctx.maxDataMemorySize)),
+        addrs(order.size(), -1), budget(budget) {
+    for (size_t i = 0; i < order.size(); ++i) {
+      BufferOp buffer = order[i];
+      sizes.push_back(buffer.getAllocationSize());
+      aligns.push_back(getBufferAlignBytes(buffer, ctx.tileAlignBitWidth,
+                                           ctx.maxVecAlignBits));
+      SmallVector<MemoryRun, 2> allowed;
+      auto required = requiredBanks.find(buffer);
+      if (required == requiredBanks.end()) {
+        allowed.push_back({0, ctx.maxDataMemorySize});
+      } else {
+        auto &banks = required->second;
+        for (int bank : banks)
+          allowed.push_back(ctx.bankLimits[bank]);
+        if (banks.size() == 2 && banks.back() == banks.front() + 1)
+          allowed = {{ctx.bankLimits[banks.front()].start,
+                      ctx.bankLimits[banks.front()].size +
+                          ctx.bankLimits[banks.back()].size}};
+      }
+      // An initialized buffer must dodge the guarded bytes at the foot of
+      // the tile, the same restriction rankedPlacements enforces (see the
+      // npu2 column-0 memtile comment in allocateTile). Clamping the ranges
+      // here, before the equivalence classes below are computed, keeps a
+      // guarded buffer out of any class an unguarded one of the same size
+      // could also join.
+      if (ctx.initGuardBytes > 0 && buffer.getInitialValue().has_value()) {
+        SmallVector<MemoryRun, 2> clamped;
+        for (MemoryRun range : allowed) {
+          int64_t start = std::max(range.start, ctx.initGuardBytes);
+          if (start < range.end())
+            clamped.push_back({start, range.end() - start});
+        }
+        allowed = std::move(clamped);
+      }
+      ranges.push_back(allowed);
+      unsigned cls = i;
+      for (size_t j = 0; j < i; ++j) {
+        if (sizes[j] == sizes[i] && aligns[j] == aligns[i] &&
+            llvm::equal(ranges[j], ranges[i], [](MemoryRun a, MemoryRun b) {
+              return a.start == b.start && a.size == b.size;
+            })) {
+          cls = classes[j];
+          break;
+        }
+      }
+      classes.push_back(cls);
+    }
+    freeAbove.assign(gaps.size() + 1, 0);
+    runAbove.assign(gaps.size() + 1, 0);
+    for (size_t g = gaps.size(); g-- > 0;) {
+      freeAbove[g] = freeAbove[g + 1] + gaps[g].size;
+      runAbove[g] = std::max(runAbove[g + 1], gaps[g].size);
+    }
+  }
+
+  // Lowest address at or above `from` in gap `g` where buffer `i` fits.
+  std::optional<int64_t> lowest(size_t i, size_t g, int64_t from) const {
+    std::optional<int64_t> best;
+    for (MemoryRun range : ranges[i]) {
+      int64_t at = llvm::alignTo(std::max(from, range.start), aligns[i]);
+      if (at + sizes[i] <= std::min(gaps[g].end(), range.end()) &&
+          getBankContaining(at, ctx.numBanks, ctx.bankLimits) >= 0 &&
+          (!best || at < *best))
+        best = at;
+    }
+    return best;
+  }
+
+  bool run() {
+    llvm::BitVector left(order.size());
+    int64_t bytes = 0;
+    for (size_t i = 0; i < order.size(); ++i) {
+      if (sizes[i] == 0) {
+        // Covers no byte, so it goes in the first gap its banks reach.
+        for (size_t g = 0; g < gaps.size() && addrs[i] < 0; ++g)
+          if (auto at = lowest(i, g, gaps[g].start))
+            addrs[i] = *at;
+        if (addrs[i] < 0)
+          addrs[i] = ranges[i].front().start;
+        continue;
+      }
+      left.set(i);
+      bytes += sizes[i];
+    }
+    return gaps.empty() ? left.none()
+                        : place(0, gaps.front().start, left, bytes);
+  }
+
+private:
+  bool place(size_t g, int64_t from, llvm::BitVector &left, int64_t bytes) {
+    if (left.none())
+      return true;
+    int64_t largest = 0;
+    for (int i : left.set_bits())
+      largest = std::max(largest, sizes[i]);
+    int64_t here = gaps[g].end() - from;
+    if (bytes > here + freeAbove[g + 1] ||
+        largest > std::max(here, runAbove[g + 1]) ||
+        failed.contains({from, left}))
+      return false;
+    SmallVector<unsigned> tried;
+    for (int i : left.set_bits()) {
+      if (llvm::is_contained(tried, classes[i]))
+        continue;
+      tried.push_back(classes[i]);
+      std::optional<int64_t> at = lowest(i, g, from);
+      if (!at)
+        continue;
+      if (budget-- <= 0) {
+        exhausted = true;
+        return false;
+      }
+      addrs[i] = *at;
+      left.reset(i);
+      bool done = place(g, *at + sizes[i], left, bytes - sizes[i]);
+      left.set(i);
+      if (done)
+        return true;
+      if (exhausted)
+        return false;
+    }
+    if (g + 1 < gaps.size() && place(g + 1, gaps[g + 1].start, left, bytes))
+      return true;
+    if (!exhausted)
+      failed.insert({from, left});
+    return false;
+  }
+};
+} // namespace
+
 // Places every buffer in `buffersToAlloc`. Returns the buffer that could not be
 // placed, or nullptr when they all were; `placed` collects what was assigned so
 // a failed attempt can be rolled back.
@@ -1144,9 +1308,23 @@ placeFreeBuffers(ArrayRef<BufferOp> buffersToAlloc, const BankAwareContext &ctx,
   if (solved) {
     return nullptr;
   }
+  // The ranked search unwinds everything it tried, so the tile is back to its
+  // pinned buffers alone.
+  CompactionSearch complete(buffersToAlloc, ctx, requiredBanks, occupancy,
+                            budget);
+  if (complete.run()) {
+    ++stats.tilesCompacted;
+    for (auto [buffer, addr] : llvm::zip(buffersToAlloc, complete.addrs)) {
+      placeBuffer(buffer, addr,
+                  getBankContaining(addr, ctx.numBanks, ctx.bankLimits),
+                  occupancy);
+      placed.push_back(buffer);
+    }
+    return nullptr;
+  }
   search.restoreDeepest();
-  exhausted = search.exhausted;
-  if (search.exhausted) {
+  exhausted = complete.exhausted;
+  if (complete.exhausted) {
     ++stats.budgetExhausted;
   }
   return search.deepest;
@@ -1451,14 +1629,16 @@ struct AIEAssignBufferAddressesPass
     // from one scheme to the other. Placement now either finds a layout or says
     // why it could not.
     PlacementStats stats;
-    for (auto tile : device.getOps<TileOp>()) {
-      if (failed(allocateTile(tile, budget, stats))) {
-        return signalPassFailure();
-      }
-    }
+    bool ok = llvm::all_of(device.getOps<TileOp>(), [&](TileOp tile) {
+      return succeeded(allocateTile(tile, budget, stats));
+    });
+    // Recorded on failure too, where budget-exhausted is the one that matters.
     numTilesSearched += stats.tilesSearched;
     numBacktracks += stats.backtracks;
     numBudgetExhausted += stats.budgetExhausted;
+    numTilesCompacted += stats.tilesCompacted;
+    if (!ok)
+      signalPassFailure();
   }
 };
 } // namespace

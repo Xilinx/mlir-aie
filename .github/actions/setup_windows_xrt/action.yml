@@ -22,7 +22,7 @@ runs:
         set "XRT_SDK_SHA256=ccc244c2c423588972ade76142cdc01049477aaa39a35be97e782b97eb7c5295"
         if exist "xrt_sdk_download" rmdir /s /q "xrt_sdk_download"
         mkdir xrt_sdk_download
-        curl.exe --fail --location --connect-timeout 15 --max-time 300 --retry 3 --retry-all-errors --retry-delay 5 -o "xrt_sdk_download\xrt_windows_sdk.zip" "https://github.com/Xilinx/XRT/releases/download/%XRT_SDK_VERSION%/xrt_windows_sdk.zip"
+        curl.exe --fail --location --connect-timeout 15 --speed-limit 102400 --speed-time 60 --retry 5 --retry-all-errors --retry-delay 5 -C - -o "xrt_sdk_download\xrt_windows_sdk.zip" "https://github.com/Xilinx/XRT/releases/download/%XRT_SDK_VERSION%/xrt_windows_sdk.zip"
         if errorlevel 1 exit /b 1
 
         python -c "import hashlib,sys; h = hashlib.sha256(open(r'xrt_sdk_download\xrt_windows_sdk.zip', 'rb').read()).hexdigest(); sys.exit(0 if h == '%XRT_SDK_SHA256%' else 1)"

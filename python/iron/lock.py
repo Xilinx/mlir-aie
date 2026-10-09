@@ -20,6 +20,7 @@ from ..dialects.aie import (
     use_lock as _use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..dialects.aiex import set_lock_value as _set_lock_value
+from ..helpers.sourceloc import SourceSite
 from .device import Tile
 from .resolvable import NotResolvedError, Resolvable
 
@@ -45,6 +46,7 @@ class Lock(Resolvable):
             name (str | None): Symbol name for the lock. Defaults to None
                 (unnamed).
         """
+        self._site = SourceSite.capture()
         self._tile = tile
         self._lock_id = lock_id
         self._init = init
@@ -78,6 +80,8 @@ class Lock(Resolvable):
                 lock_id=self._lock_id,
                 init=self._init,
                 sym_name=self._name,
+                loc=loc or self._site.location(self._name),
+                ip=ip,
             )
 
     # ------------------------------------------------------------------

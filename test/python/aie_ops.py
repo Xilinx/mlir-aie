@@ -305,6 +305,27 @@ def packetMultiFlowOp():
     )
 
 
+# CHECK-LABEL: packetPriorityFlowOp
+# CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
+# CHECK: %[[VAL_1:.*]] = aie.tile(2, 4)
+# CHECK: aie.packet_flow(3) {
+# CHECK:   aie.packet_source<%[[VAL_0]], DMA : 0>
+# CHECK:   aie.packet_dest<%[[VAL_1]], DMA : 1>
+# CHECK: } {priority_route = true}
+@construct_and_print_module
+def packetPriorityFlowOp():
+    t0 = tile(col=1, row=3)
+    t1 = tile(col=2, row=4)
+    packetflow(
+        pkt_id=3,
+        source=t0,
+        source_port=WireBundle.DMA,
+        source_channel=0,
+        dests={"dest": t1, "port": WireBundle.DMA, "channel": 1},
+        priority_route=True,
+    )
+
+
 # CHECK-LABEL: dmaBDOp
 # CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
 # CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>

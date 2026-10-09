@@ -48,6 +48,12 @@ def AIE_DeviceOp
     The design itself is described using a region of code contained by the device
     operation.
 
+    The optional `has_ctrl_pkt_overlay` attribute marks a design that a
+    control-packet reload (`aiecc --load-pdi-to-ctrl-pkt`) installs. The reload
+    configures the `@ctrl_pkt_overlay` device first and the rest of the design
+    through it, so the router keeps the switch settings the overlay's flows
+    take on their own. `aie-generate-column-control-overlay` sets it.
+
     Example:
     ```
     aie.device(xcvc1902) {
@@ -58,7 +64,8 @@ def AIE_DeviceOp
   }];
 
   let arguments = (ins AIEDevice:$device,
-      DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name);
+      DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name,
+      DefaultValuedOptionalAttr<BoolAttr, "false">:$has_ctrl_pkt_overlay);
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
     `(` $device `)` ($sym_name^)? regions attr-dict
@@ -629,6 +636,7 @@ def AIE_FlowOp : AIE_Op<"flow", []> {
     int sourceIndex() { return getSourceChannel(); }
     int destIndex() { return getDestChannel(); }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_AMSelOp
@@ -718,6 +726,7 @@ def AIE_MasterSetOp
   let extraClassDeclaration = [{
     int destIndex() { return getDestChannel(); }
     Port destPort() { return {getDestBundle(), destIndex()}; }
+    bool keepsPktHeader();
   }];
 
   let hasVerifier = 1;
@@ -817,10 +826,11 @@ def AIE_PacketFlowOp
 
     The optional attribute keep_pkt_header indicates whether each
     data packet's packet header gets preserved at the flow's
-    destination. The optional attribute priority_route indicates
-    whether the packet flow is routed in priority over other flows,
-    so that they always get allocated with the same master, slave
-    ports, arbiters and master selects (msel).
+    destination. The optional attribute priority_route routes the flow
+    first, on its own, and the other flows route around it. If the design
+    cannot route that way, the flow routes with the others. In a device
+    with `has_ctrl_pkt_overlay`, the control overlay's flows (those to or
+    from a TileControl port) always keep the route they take on their own.
 
     The optional attribute mask, written after the ID in the parentheses,
     states the packet-rule mask of the flow. A slave port accepts a packet
@@ -892,6 +902,7 @@ def AIE_PacketSourceOp : AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return getChannel(); }
     Port port() { return {getBundle(), channelIndex()}; }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_PacketDestOp : AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
@@ -914,6 +925,7 @@ def AIE_PacketDestOp : AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return getChannel(); }
     Port port() { return {getBundle(), channelIndex()}; }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_DMABDPACKETOp : AIE_Op<"dma_bd_packet", []> {

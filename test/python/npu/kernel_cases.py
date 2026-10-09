@@ -22,7 +22,7 @@ marks kernels whose source exists only for AIE2P.
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron.kernels import FLM_GEMMA4_E4B_DECODE
-from cases import Case
+from cases import FLOAT_BASE, Case
 from ml_dtypes import bfloat16
 
 _bf16 = dict(dtype=bfloat16)
@@ -129,9 +129,44 @@ CASES: list[Case] = [
     Case("reduce_max", _bf16, calls=256),
     check("reduce_max", dict(tile_size=16), tag="edge-one-vector"),
     check("reduce_max", dict(tile_size=32, dtype=bfloat16), tag="edge-one-vector"),
+    Case("argmax", calls=16, scalars=(0,), smoke=True),
+    Case("argmax", calls=256, scalars=(0,)),
+    Case(
+        "argmax",
+        _bf16,
+        calls=16,
+        scalars=(0,),
+        data_cases=(*FLOAT_BASE, "min", "nan_inf"),
+        smoke=True,
+    ),
+    Case("argmax", _bf16, calls=256, scalars=(0,)),
+    check("argmax", scalars=(4096,), tag="offset", smoke=True),
+    check("argmax", dict(vectorized=False), scalars=(0,), tag="scalar"),
+    check("argmax", dict(tile_size=16), scalars=(0,), tag="edge-one-vector"),
+    check("argmax", dict(tile_size=1000), scalars=(0,), tag="edge-tail", smoke=True),
+    check("argmax", dict(tile_size=5), scalars=(0,), tag="edge-under-one-vector"),
+    check(
+        "argmax",
+        dict(tile_size=1000, dtype=bfloat16),
+        scalars=(0,),
+        tag="edge-tail",
+        smoke=True,
+    ),
+    check(
+        "argmax",
+        dict(tile_size=32, dtype=bfloat16),
+        scalars=(0,),
+        tag="edge-one-vector",
+    ),
+    Case("argmax_combine", calls=16, smoke=True),
+    # The records are int32 either way, so the name needs the value dtype.
+    Case("argmax_combine", _bf16, calls=16, tag="bfloat16-values", smoke=True),
     # activation
     Case("gelu", calls=16, smoke=True),
     Case("gelu", calls=256),
+    Case(
+        "gelu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
+    ),
     Case("silu", calls=16, smoke=True),
     Case(
         "silu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
@@ -174,6 +209,21 @@ CASES: list[Case] = [
     # the pipelined path.
     check("softmax", dict(tile_size=32), tag="short-trip", smoke=True),
     check("softmax", dict(tile_size=160), tag="min-pipelined", smoke=True),
+    Case(
+        "softmax",
+        dict(accurate_exp2=True),
+        calls=16,
+        tag="accurate",
+        devices=("npu2",),
+        smoke=True,
+    ),
+    check(
+        "softmax",
+        dict(tile_size=32, accurate_exp2=True),
+        tag="accurate-short",
+        devices=("npu2",),
+        smoke=True,
+    ),
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     # 160 is a multiple of the kernel's 32-element step but not of the 128 its
@@ -207,6 +257,13 @@ CASES: list[Case] = [
     # AIE2 gelu takes 64 elements per trip and loads the next trip's input
     # ahead: 96 runs a single trip, reloading its own input, then the remainder.
     check("gelu_sized", dict(tile_size=96), tag="short-trip", smoke=True),
+    check(
+        "gelu_sized",
+        dict(tile_size=160, use_lut=True),
+        tag="lut-unroll-tail",
+        devices=("npu2",),
+        smoke=True,
+    ),
     *[
         check(name, dict(tile_size=32), tag="edge-tiny", smoke=True)
         for name in ("add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized")
@@ -1767,6 +1824,25 @@ CASES += [
         params=((0, 0),),
         scalars=(37, 37),
         tag="diagonal-padded",
+        smoke=True,
+    ),
+    Case(
+        "mha_softmax",
+        dict(accurate_exp2=True),
+        calls=4,
+        params=((0, 1),),
+        scalars=(128, 64),
+        tag="accurate",
+        devices=("npu2",),
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(accurate_exp2=True),
+        params=((0, 0),),
+        scalars=(37, 37),
+        tag="accurate-diagonal-padded",
+        devices=("npu2",),
         smoke=True,
     ),
     # The prefill toolkit's S*V accumulate, one case per geometry. Each

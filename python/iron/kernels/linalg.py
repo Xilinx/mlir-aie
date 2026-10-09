@@ -371,6 +371,10 @@ class MatrixKernel(_ZeroInitializedKernel):
         return StreamDimsABC(A=a.stream, B=b.stream, C=c.stream)
 
 
+class _MatMulKernel(MatrixKernel):
+    k_tail: Kernel
+
+
 class _CascadeMatrixKernel(MatrixKernel):
     get_only: MatrixKernel
     put_only: Kernel
@@ -507,12 +511,18 @@ def mm(
     use_chess: bool = False,
     emulate_bf16_mmul_with_bfp16: bool = False,
     round_conv_even: bool = False,
-) -> MatrixKernel:
+) -> _MatMulKernel:
     """Matrix-multiply kernel: C += A * B.
 
     ``.zero`` initializes the accumulator using the independent, reusable
     ``kernels.zero(dim_m * dim_n, output_dtype)`` kernel. The contract declares
     the same initializer for the generic harness.
+
+    ``.k_tail(A, B, k_valid)`` zeroes A's columns and B's rows from
+    ``k_valid`` (clamped to ``[0, dim_k]``) on, in the blocking this kernel
+    reads, so a call after it sums only the first ``k_valid`` of the tile's
+    K, whatever the rest holds: the last tile of a reduction whose length is
+    not a multiple of ``dim_k``.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -543,7 +553,8 @@ def mm(
             kernel always does this, so it is ignored there.
 
     Returns:
-        ExternalFunction configured for the matmul kernel.
+        ExternalFunction configured for the matmul kernel, with its ``.zero``
+        and ``.k_tail``.
 
     Raises:
         ValueError: When ``(input_dtype, output_dtype)`` is not a supported combination.
@@ -612,13 +623,13 @@ def mm(
             block=(r, t),
         ),
     )
-    return _make_extern(
+    extern = _make_extern(
         f"{prefix}_{suffix}",
         _kernel_source("linalg/mm.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=compile_flags,
         use_chess=use_chess,
-        cls=MatrixKernel,
+        cls=_MatMulKernel,
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
@@ -662,6 +673,10 @@ def mm(
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
+    extern.k_tail = extern.object_file.bind(
+        f"{prefix}_{suffix}_k_tail", [a_ty, b_ty, np.int32]
+    )
+    return extern
 
 
 mm.mac_dims = _MatMulFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
@@ -1090,6 +1105,7 @@ def mha(
     pv: bool = False,
     b_col_maj: bool = False,
     emulate_bf16_mmul_with_bfp16: bool = False,
+    accurate_exp2: bool = False,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1127,7 +1143,19 @@ def mha(
         emulate_bf16_mmul_with_bfp16: As for [`mm`][iron.kernels.linalg.mm]:
             both products use BFP16-based emulation, and ``QK^T``'s
             micro-tile becomes (8, 8, 8).  Ignored on AIE2.
+        accurate_exp2: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]:
+            ``partial_softmax`` and the running-state update take 2^x from a
+            polynomial rather than AIE2P's exp2 instruction.
+
+    Raises:
+        NotImplementedError: ``accurate_exp2`` without the exp2 instruction
+            it replaces (AIE2).
     """
+    if accurate_exp2 and not _arch_traits().native_exp2:
+        raise NotImplementedError(
+            "mha: accurate_exp2 replaces AIE2P's exp2 instruction; "
+            "select an NPU2 device"
+        )
     for name, v, mult in (
         ("dim_m", dim_m, 16),
         ("dim_k", dim_k, 8),
@@ -1150,6 +1178,8 @@ def mha(
     ]
     if b_col_maj:
         flags.append("-DB_COL_MAJ")
+    if accurate_exp2:
+        flags.append("-DEXP2_BF16_ACCURATE=1")
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
@@ -1196,8 +1226,16 @@ mha.mac_dims = _MhaFactory.mac_dims  # pyright: ignore[reportFunctionMemberAcces
 
 _MHA_BLOCK = 64  # partial_softmax's fast path needs 64 keys per block
 
+# P is 2^x rounded once; l is P summed, stored, and rescaled by a rounded 2^x.
+_MHA_SOFTMAX_ACCURATE_TOLERANCE = Tolerance.bf16_ulps(
+    1,
+    atol=2.0**-125,
+    note="exp2 within 2.8e-6 before its bf16 rounding (0.73 ulp measured on "
+    "npu2); atol admits 2^x flushed to +0 below -125.5",
+)
 
-def mha_softmax() -> ExternalFunction:
+
+def mha_softmax(accurate_exp2: bool = False) -> ExternalFunction:
     """One 64x64 block of ``mha.cc``'s online softmax, ``partial_softmax``.
 
     Writes the block's unnormalized weights ``P = exp2(A * s - m)``, with
@@ -1212,7 +1250,22 @@ def mha_softmax() -> ExternalFunction:
     ``(key block, query block)`` (equal on the causal diagonal, key block
     past query block skipped), and ``S_q_eff``/``S_kv_eff`` are the
     sequence lengths whose tails pad the block.
+
+    Args:
+        accurate_exp2: Take 2^x from a polynomial within 2.8e-6 before its
+            bf16 rounding (``-DEXP2_BF16_ACCURATE``), in place of AIE2P's
+            exp2 instruction, which is off by up to 6.15%. ``s`` stays the
+            bf16 scalar the kernel takes, 1.8e-3 from log2(e) / 8.
+
+    Raises:
+        NotImplementedError: ``accurate_exp2`` without the exp2 instruction
+            it replaces (AIE2).
     """
+    if accurate_exp2 and not _arch_traits().native_exp2:
+        raise NotImplementedError(
+            "mha_softmax: accurate_exp2 replaces AIE2P's exp2 instruction; "
+            "select an NPU2 device"
+        )
     b = _MHA_BLOCK
     tile = np.ndarray[(b * b,), np.dtype[bfloat16]]
     state = np.ndarray[(4 * b,), np.dtype[bfloat16]]
@@ -1222,7 +1275,12 @@ def mha_softmax() -> ExternalFunction:
         "partial_softmax",
         _kernel_source("linalg/mha.cc"),
         [tile, tile, state, idx, bfloat16, *([np.int32] * 4)],
-        compile_flags=[f"-DDIM_M={b}", f"-DDIM_K={b}", f"-DDIM_N={b}"],
+        compile_flags=[
+            f"-DDIM_M={b}",
+            f"-DDIM_K={b}",
+            f"-DDIM_N={b}",
+            *(["-DEXP2_BF16_ACCURATE=1"] if accurate_exp2 else []),
+        ],
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, Out, InOut, *([Param] * 6)),
@@ -1230,11 +1288,16 @@ def mha_softmax() -> ExternalFunction:
             initializers=((2, _zero_output),),
             reference=partial(mha_softmax_ref, scale=scale),
             # The untuned loop on aie2, where a whole 64-lane row spills; the
-            # tuned one fits the default.
+            # tuned one fits the default. The polynomial exp2's constants
+            # spill; 3712 is aiecc's measure under IRON's MHA Worker.
             stack_bytes=(
-                1376
-                if _detect_arch() == "aie2" and _tuned_arch() == "portable"
-                else None
+                3712
+                if accurate_exp2
+                else (
+                    1376
+                    if _detect_arch() == "aie2" and _tuned_arch() == "portable"
+                    else None
+                )
             ),
             # aie::exp2<bfloat16> interpolates 2**frac linearly, overshooting
             # by up to 6.15%, and two bf16 roundings bring it to 6.98%
@@ -1245,16 +1308,20 @@ def mha_softmax() -> ExternalFunction:
             # bf16 store on npu1 (0.37% of |a| + |b|), so its rtol is 0.4% of
             # |a| + |b| and its floor only admits the underflow to 0.
             tolerance=(
-                Tolerance.relative(
-                    0.004,
-                    2.0**-120,
-                    note="exp2_bf16.h cubic, 0.74% worst element on npu1",
-                )
-                if not _arch_traits().native_exp2
-                else Tolerance.relative(
-                    0.035,
-                    4 * 2.0**-7,
-                    note="aie::exp2 interpolant envelope, 6.98% (test_mha_e2e.py)",
+                _MHA_SOFTMAX_ACCURATE_TOLERANCE
+                if accurate_exp2
+                else (
+                    Tolerance.relative(
+                        0.004,
+                        2.0**-120,
+                        note="exp2_bf16.h cubic, 0.74% worst element on npu1",
+                    )
+                    if not _arch_traits().native_exp2
+                    else Tolerance.relative(
+                        0.035,
+                        4 * 2.0**-7,
+                        note="aie::exp2 interpolant envelope, 6.98% (test_mha_e2e.py)",
+                    )
                 )
             ),
         ),

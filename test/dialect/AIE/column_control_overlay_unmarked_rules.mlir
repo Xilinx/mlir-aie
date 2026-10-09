@@ -22,7 +22,7 @@ aie.device(npu1_1col) {
     %user = aie.amsel<0> (0)
     %ctrl = aie.amsel<5> (0)
     %m0 = aie.masterset(North : 0, %user)
-    %m1 = aie.masterset(South : 0, %ctrl) {is_ctrl_pkt_overlay}
+    %m1 = aie.masterset(South : 0, %ctrl) {aie.is_ctrl_pkt_overlay}
     aie.packet_rules(TileControl : 0) {
       aie.rule(31, 2, %user)
       aie.rule(31, 15, %ctrl)

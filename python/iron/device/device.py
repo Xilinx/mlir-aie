@@ -218,7 +218,7 @@ class Device(Resolvable):
             tile_type,
             col=tile.col,
             row=tile.row,
-            loc=loc,
+            loc=loc or tile._site.location(),
             ip=ip,
             packet_type=tile.packet_type,
             packet_id=tile.packet_id,

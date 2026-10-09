@@ -80,12 +80,14 @@ config.substitutions.append(
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # Show only failures
+# --maxfail=1 is scoped to lit: the kernel-check sweep runs the same wrapper and
+# must reach every case before it publishes.
 config.substitutions.append(
     (
         "%pytest",
         f"{_python_with_test_cache} "
         f"{LitConfigHelper._quote_lit_arg(config.python_executable)} "
-        f"{LitConfigHelper._quote_lit_arg(_pytest_wrapper)} -rA",
+        f"{LitConfigHelper._quote_lit_arg(_pytest_wrapper)} -rA --maxfail=1",
     )
 )
 
@@ -223,6 +225,9 @@ lit_config.parallelism_groups["concurrency"] = 1
 
 # NPU XRT tests should run serially to avoid resource contention
 lit_config.parallelism_groups["npu-xrt"] = 1
+
+if config.enable_assertions:
+    config.available_features.add("asserts")
 
 # shutil.which picks up the platform's executable suffix (.exe on Windows
 # via PATHEXT) so the feature gate fires correctly on every OS.

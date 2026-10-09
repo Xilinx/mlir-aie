@@ -1296,6 +1296,12 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   if (optLevel >= 3) {
     dpm2.addPass(createAIEVectorToPointerLoopsPass());
   }
+  // `index` lowers to i64, so narrow core loops and index math to i32 where
+  // that is provably safe. Needs scf.for loops, and runs after the passes
+  // above, which expect `index` induction variables.
+  if (optLevel >= 1) {
+    dpm2.addPass(createAIECoreIntRangeNarrowingPass());
+  }
   pm->addPass(xilinx::AIEX::createAIESCFToControlFlowPass());
   return pm;
 }
@@ -1465,8 +1471,10 @@ getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx,
 inline std::unique_ptr<mlir::PassManager>
 getRoutingPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
+  xilinx::AIE::AIERoutePathfinderFlowsOptions options;
+  options.clAllowDeadlockProne = cli::allowDeadlockProneRouting;
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
-      xilinx::AIE::createAIEPathfinderPass());
+      xilinx::AIE::createAIEPathfinderPass(options));
   return pm;
 }
 

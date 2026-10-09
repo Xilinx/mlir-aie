@@ -24,6 +24,7 @@ from pathlib import Path
 import aie.utils.config as config
 from aie import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from aie.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
+from aie.helpers.errors import attach_tool_location
 
 logger = logging.getLogger(__name__)
 
@@ -648,10 +649,12 @@ def _run_aiecc(mlir_file: str, args: list[str], cwd: str | Path | None = None):
         # Lead with the diagnostics so a truncated traceback still names the
         # fix; keep the whole log after them for everything they leave out.
         detail = f"{summary}\n\n--- full aiecc log ---\n{error_msg}"
-        raise RuntimeError(
+        exc = RuntimeError(
             f"[aiecc] Compilation failed with exit code {result.returncode}:\n"
             f"{detail if summary else error_msg}"
         )
+        attach_tool_location(exc, error_msg)
+        raise exc
 
 
 def compile_mlir_module(
@@ -768,7 +771,11 @@ def compile_mlir_module(
         args.append("--verbose")
     if options:
         args.extend(options)
-    mlir_text = mlir_module if isinstance(mlir_module, str) else str(mlir_module)
+    mlir_text = (
+        mlir_module
+        if isinstance(mlir_module, str)
+        else mlir_module.operation.get_asm(enable_debug_info=True)
+    )
 
     # Auto-build any source-bearing ExternalFunction kernels into work_dir
     # so aiecc's linker can find the .o referenced by link_with.  Mirrors

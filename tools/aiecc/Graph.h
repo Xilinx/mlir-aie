@@ -81,6 +81,23 @@ inline std::mutex &logMutex() {
   return m;
 }
 
+// The --progress line has no trailing newline. `endProgressLine` returns with
+// `logMutex()` held; keep the lock until the diagnostic is written.
+inline bool &progressLineOpen() {
+  static bool open = false;
+  return open;
+}
+
+inline std::unique_lock<std::mutex> endProgressLine() {
+  std::unique_lock<std::mutex> log(logMutex());
+  if (!progressLineOpen())
+    return log;
+  progressLineOpen() = false;
+  llvm::errs() << '\n';
+  llvm::errs().flush();
+  return log;
+}
+
 //===----------------------------------------------------------------------===//
 // Items
 //===----------------------------------------------------------------------===//
