@@ -126,22 +126,31 @@ class Program:
         self._core_trace_mode = core_trace_mode
         self._egress_shim_col = egress_shim_col
 
-    def resolve_program(self, device_name="main"):
+    def resolve_program(
+        self, device_name="main", context: ir.Context | None = None
+    ) -> ir.Module:
         """Resolve the program components in order to generate MLIR.
 
         Tiles are emitted as aie.logical_tile ops. The --aie-place-tiles pass
         in the compilation pipeline converts them to aie.tile ops.
 
+        Args:
+            device_name: The symbol of the generated ``aie.device``.
+            context: The context to build the module in, so a caller combining
+                several programs' devices can move them rather than print and
+                parse them; a new one when None.
+
         Returns:
-            module (Module): The module containing the MLIR context information.
+            The module holding the design's ``aie.device``.
         """
         try:
-            return self._resolve_program(device_name)
+            return self._resolve_program(device_name, context)
         except Exception as exc:
             raise design_error(exc)
 
-    def _resolve_program(self, device_name):
-        context = ir.Context()
+    def _resolve_program(self, device_name, context):
+        if context is None:
+            context = ir.Context()
         with context, ir.Location.unknown():
             loc = self._site.location()
 
