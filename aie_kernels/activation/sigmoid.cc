@@ -38,7 +38,7 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
   aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
   aie::accum<accfloat, 16> half;
   half.from_vector(register_0_5);
-  lut_map_bf16<4, false>(
+  lut_map_bf16(
       input_vector, output_vector, num_elems, [&](aie::vector<bfloat16, 16> x) {
         return aie::vector<bfloat16, 16>(
             aie::mac(half, tanh_bf16_v16(aie::mul(x, register_0_5)),
