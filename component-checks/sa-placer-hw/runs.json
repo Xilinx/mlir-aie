@@ -1,0 +1,48 @@
+{
+ "schema": 1,
+ "target": "sa-placer-hw",
+ "metrics": [
+  "compile_s",
+  "e2e_us_per_image",
+  "failed_seeds",
+  "placement_cost",
+  "streaming_us",
+  "us_per_image"
+ ],
+ "runs": [
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "37896369306",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37896369306",
+   "date": "2026-10-09T06:58:18+00:00",
+   "commit": {
+    "id": "35fa6b1667f7e5cd6f3b61d8134f5d2f72575e19",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/35fa6b1667f7e5cd6f3b61d8134f5d2f72575e19",
+    "message": "build(deps): bump the github-actions-minor-patch group across 1 directory with 2 updates (#3902)",
+    "timestamp": "2026-10-09T02:31:01Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "35fa6b1667",
+    "peano": "22.0.0+94b320c0",
+    "kernels": "551cad0eacb8",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 49,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
+  }
+ ]
+}
