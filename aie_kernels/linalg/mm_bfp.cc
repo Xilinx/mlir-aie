@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "../aie_kernel_utils.h"
+#include "../common/store.h"
 #include <aie_api/aie.hpp>
 
 // bfp16ebs8 stores 8 mantissa bytes plus one shared exponent byte per 8
@@ -83,7 +84,10 @@ inline void copyRun(const uint8_t *__restrict src, size_t srcStride,
 
 // The same run, but ending at the end of the destination buffer: `groups`
 // triples then `singles` single blocks leave exactly one block, which is copied
-// at its own width so that nothing is written past `dst`.
+// at its own width so that nothing is written past it. An unaligned store
+// rewrites the two 32-byte words from the one it starts in, and for a single
+// the second can lie past the buffer, so the singles take the two ending with
+// their last byte.
 inline void copyRunAtEnd(const uint8_t *__restrict src, size_t srcStride,
                          uint8_t *__restrict dst, size_t groups,
                          size_t singles) {
@@ -93,7 +97,7 @@ inline void copyRunAtEnd(const uint8_t *__restrict src, size_t srcStride,
     dst += 3 * kBlockBytes;
   }
   for (size_t s = 0; s < singles; ++s) {
-    storeOne(src, dst);
+    store_unaligned_bounded(dst, aie::load_unaligned_v<16>(src), true);
     src += srcStride;
     dst += kBlockBytes;
   }
