@@ -9,12 +9,12 @@
 
 module @bad_dims_to_stream {
  aie.device(xcve2302) {
-    %tile12 = aie.tile(1, 2) 
+    %tile12 = aie.tile(1, 2)
     %tile33 = aie.tile(3, 3)
 
     // expected-error@+1 {{`dimensionsToStream` data layout transformations are unavailable on stream end}}
     aie.objectfifo @of_stream (%tile12 dimensionsToStream [<size = 16, stride = 1>],
-                               {%tile33}, 2 : i32) {prod_port = #aie.end_port<Core : 0>} 
+                               {%tile33}, 2 : i32) {prod_port = #aie.end_port<Core : 0>}
                                : !aie.objectfifo<memref<16xi32>>
   }
 }
