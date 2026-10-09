@@ -9,7 +9,7 @@
 
 module @bad_allocate {
  aie.device(xcve2302) {
-    %tile12 = aie.tile(1, 2) 
+    %tile12 = aie.tile(1, 2)
     %tile13 = aie.tile(1, 3)
 
     aie.objectfifo @of_stream (%tile12, {%tile13}, 1 : i32)

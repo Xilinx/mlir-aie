@@ -9,7 +9,7 @@
 
 module @bad_dims_from_stream {
  aie.device(xcve2302) {
-    %tile12 = aie.tile(1, 2) 
+    %tile12 = aie.tile(1, 2)
     %tile33 = aie.tile(3, 3)
 
     // expected-error@+1 {{`repeat_count` unavailable on stream end}}

@@ -9,7 +9,7 @@
 
 module @bad_shim_tile_output {
  aie.device(xcve2302) {
-    %tile10 = aie.tile(1, 0) 
+    %tile10 = aie.tile(1, 0)
     %tile33 = aie.tile(3, 3)
 
     // expected-error@+1 {{a Core stream port end is not available for shim and mem tiles}}
