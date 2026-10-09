@@ -181,8 +181,10 @@ struct SplitIRAction {
   operator()(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &item) const {
     SharedModule shared{item.get().get()};
     std::vector<std::pair<std::string, OpInModule<KeyOp>>> out;
-    shared.get().walk([&](KeyOp op) {
+    // A key op never nests another, so the walk does not enter one.
+    shared.get()->walk<mlir::WalkOrder::PreOrder>([&](KeyOp op) {
       out.emplace_back(keyFn(op), OpInModule<KeyOp>{shared, op});
+      return mlir::WalkResult::skip();
     });
     return out;
   }
