@@ -23,6 +23,7 @@ import aie.utils.config as config
 import numpy as np
 import pytest
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.jit import _manifest
 from aie.utils.compile.jit._object_cache import KernelObjectCache
 
@@ -433,3 +434,183 @@ def test_one_source_compiled_per_architecture(tmp_path, source, cache):
     assert objects["aie2"] != objects["aie2p"]
     # Each design links the object built for its own target: ELF32 e_flags differ.
     assert objects["aie2"][36:40] != objects["aie2p"][36:40]
+
+
+_LIBRARY_KERNEL = """
+#include <aie_api/aie.hpp>
+extern "C" void fill(bfloat16 *out) {
+  ::aie::store_v(out, ::aie::broadcast<bfloat16, 32>(1.0f));
+}
+"""
+
+
+@pytest.fixture
+def library(tmp_path, monkeypatch):
+    """A kernel library checkout of its own, as ``MLIR_AIE_KERNEL_SOURCES`` names one."""
+    root = tmp_path / "library"
+    (root / "aie_kernels").mkdir(parents=True)
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(root))
+    return root / "aie_kernels"
+
+
+def _library_kernel(library, text=_LIBRARY_KERNEL, **kwargs):
+    path = library / "fill.cc"
+    path.write_text(text)
+    return ExternalFunction("fill", source_file=str(path), **kwargs)
+
+
+def _with_and_without_cache(tmp_path, cache, kernel):
+    """The object the cache links into a design, and the same compile made plainly."""
+    cached = _design_dir(tmp_path, "cached")
+    compile_utils.compile_external_kernels(
+        [kernel], cached, "aie2p", object_cache=cache
+    )
+    plain = _design_dir(tmp_path, "plain")
+    compile_utils.compile_external_kernels([kernel], plain, "aie2p")
+    name = kernel.object_file_name
+    assert (cached / name).read_bytes() == (plain / name).read_bytes()
+    return (cached / f"{name}.d").read_text()
+
+
+def test_library_kernel_compiles_against_precompiled_aie_api(tmp_path, library, cache):
+    depfile = _with_and_without_cache(tmp_path, cache, _library_kernel(library))
+    assert "aie_api.hpp" in depfile
+    assert len(list((cache.root / "pch").iterdir())) == 1
+
+
+def test_kernels_compiled_together_share_the_header_one_of_them_builds(
+    tmp_path, library, cache
+):
+    ones = library / "ones.cc"
+    ones.write_text(_LIBRARY_KERNEL.replace("fill", "ones"))
+    kernels = [
+        _library_kernel(library),
+        ExternalFunction("ones", source_file=str(ones)),
+    ]
+    design = _design_dir(tmp_path, "design")
+    compile_utils.compile_external_kernels(kernels, design, "aie2p", object_cache=cache)
+    for kernel in kernels:
+        assert "aie_api.hpp" in (design / f"{kernel.object_file_name}.d").read_text()
+    assert len(list((cache.root / "pch").iterdir())) == 1
+
+
+def test_kernel_compiles_plainly_when_another_process_holds_the_header_too_long(
+    tmp_path, library
+):
+    kernel = _library_kernel(library)
+    built = KernelObjectCache(tmp_path / "built", lock_timeout_seconds=600)
+    (tmp_path / "first").mkdir()
+    _with_and_without_cache(tmp_path / "first", built, kernel)
+    (name,) = os.listdir(built.root / "pch")
+    cache = KernelObjectCache(tmp_path / "building", lock_timeout_seconds=1)
+    with file_lock(cache.root / "pch" / name / ".lock"):
+        depfile = _with_and_without_cache(tmp_path, cache, kernel)
+    assert "aie_api.hpp" not in depfile
+    assert not (cache.root / "pch" / name / "aie_api.pch").exists()
+
+
+def test_macro_aie_api_reads_gets_a_header_of_its_own(tmp_path, library, cache):
+    emulated = "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16"
+    for i, flags in enumerate(([], [emulated], [emulated, "-DUNRELATED=1"])):
+        kernel = _library_kernel(library, compile_flags=flags)
+        (tmp_path / str(i)).mkdir()
+        depfile = _with_and_without_cache(tmp_path / str(i), cache, kernel)
+        assert "aie_api.hpp" in depfile
+    assert len(list((cache.root / "pch").iterdir())) == 2
+
+
+@pytest.mark.parametrize(
+    "prologue",
+    [
+        "#define AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16 1\n",
+        "#pragma clang fp contract(off)\n",
+        '_Pragma("clang fp contract(off)")\n',
+        "#define PRAGMA(x) _Pragma(#x)\nPRAGMA(clang fp contract(off))\n",
+        "#ifdef __AIE_API_AIE__HPP__\n#error read before the header\n#endif\n",
+        "",
+    ],
+    ids=[
+        "defines-a-macro-it-reads",
+        "file-pragma",
+        "file-pragma-operator",
+        "forwarded-file-pragma",
+        "tests-its-guard",
+        "no-aie-api",
+    ],
+)
+def test_kernel_that_reaches_aie_api_compiles_plainly(
+    tmp_path, library, cache, prologue
+):
+    text = prologue + (_LIBRARY_KERNEL if prologue else 'extern "C" void fill() {}\n')
+    kernel = _library_kernel(library, text)
+    assert "aie_api.hpp" not in _with_and_without_cache(tmp_path, cache, kernel)
+
+
+def test_loop_pragmas_through_macros_keep_the_precompiled_header(
+    tmp_path, library, cache
+):
+    text = (
+        "#define PRAGMA(x) _Pragma(#x)\n"
+        "#define UNROLL(n) PRAGMA(clang loop unroll_count(n))\n"
+        "#include <aie_api/aie.hpp>\n"
+        'extern "C" void fill(bfloat16 *out) {\n'
+        "  UNROLL(2)\n"
+        "  for (int i = 0; i < 4; ++i)\n"
+        "    ::aie::store_v(out + 32 * i, ::aie::broadcast<bfloat16, 32>(1.0f));\n"
+        "}\n"
+    )
+    depfile = _with_and_without_cache(tmp_path, cache, _library_kernel(library, text))
+    assert "aie_api.hpp" in depfile
+
+
+def test_include_flag_shares_the_precompiled_header(tmp_path, library, cache):
+    helpers = tmp_path / "helpers"
+    helpers.mkdir()
+    (helpers / "fill_helpers.h").write_text("")
+    for i, flags in enumerate(([], [f"-I{helpers}"])):
+        kernel = _library_kernel(library, compile_flags=flags)
+        (tmp_path / str(i)).mkdir()
+        assert "aie_api.hpp" in _with_and_without_cache(
+            tmp_path / str(i), cache, kernel
+        )
+    assert len(list((cache.root / "pch").iterdir())) == 1
+
+
+@pytest.mark.parametrize(
+    "name, text",
+    [
+        ("cstdint", "#define SHADOWED 1\n#include_next <cstdint>\n"),
+        # libc++ includes it if __has_include finds one, and has none of its own.
+        ("picolibc.h", "#define SHADOWED 1\n"),
+    ],
+    ids=["read", "probed"],
+)
+@pytest.mark.parametrize("given_as", ["include_dirs", "compile_flags"])
+def test_include_dir_shadowing_a_header_aie_api_reaches_compiles_plainly(
+    tmp_path, library, cache, name, text, given_as
+):
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    (shadow / name).write_text(text)
+    value = [str(shadow)] if given_as == "include_dirs" else [f"-I{shadow}"]
+    kernel = _library_kernel(library, **{given_as: value})
+    depfile = _with_and_without_cache(tmp_path, cache, kernel)
+    assert "aie_api.hpp" not in depfile
+    assert str(shadow / name) in depfile
+
+
+@pytest.mark.parametrize("given_as", ["include_dirs", "compile_flags"])
+def test_include_dir_naming_the_headers_own_dir_keeps_the_precompiled_header(
+    tmp_path, library, cache, given_as
+):
+    header_dir = str(config.cxx_header_path())
+    value = [header_dir] if given_as == "include_dirs" else [f"-I{header_dir}"]
+    kernel = _library_kernel(library, **{given_as: value})
+    assert "aie_api.hpp" in _with_and_without_cache(tmp_path, cache, kernel)
+
+
+def test_kernel_outside_the_library_gets_no_precompiled_header(
+    tmp_path, library, source, cache
+):
+    _with_and_without_cache(tmp_path, cache, _kernel(source))
+    assert not (cache.root / "pch").exists()

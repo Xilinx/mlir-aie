@@ -345,6 +345,7 @@ def cxx_core_compile_command(
     compile_args: list[str] | None = None,
     use_chess: bool = False,
     inline: bool = False,
+    precompiled_header: str | None = None,
 ) -> list[str]:
     """Return the compiler command line that ``compile_cxx_core_function`` runs.
 
@@ -427,6 +428,8 @@ def cxx_core_compile_command(
     # Add additional compile arguments
     if compile_args:
         cmd.extend(compile_args)
+    if precompiled_header is not None:
+        cmd.extend(["-include-pch", precompiled_header])
     return cmd
 
 
@@ -441,6 +444,7 @@ def compile_cxx_core_function(
     inline: bool = False,
     symbol_name: str | None = None,
     embed_bitcode: bool = False,
+    precompiled_header: str | None = None,
 ):
     """Compile a C++ core function via either Peano or the Chess compiler.
 
@@ -471,7 +475,11 @@ def compile_cxx_core_function(
         embed_bitcode (bool): Preserve Peano LLVM IR in the object's ``.llvmbc``
             section for ``--check-lut-banks``. Inline kernels already retain IR.
             Not supported with Chess.
+        precompiled_header (str, optional): A Peano PCH read before the source
+            (``-include-pch``), built with the flags this compile passes.
     """
+    if precompiled_header is not None and use_chess:
+        raise ValueError("precompiled_header requires the Peano toolchain")
     if inline and use_chess:
         raise ValueError(
             "inline=True requires the Peano toolchain and cannot be combined "
@@ -503,6 +511,7 @@ def compile_cxx_core_function(
         compile_args=compile_args,
         use_chess=use_chess,
         inline=inline,
+        precompiled_header=precompiled_header,
     )
 
     logger.debug("Compiling with: %s", " ".join(cmd))
@@ -1410,7 +1419,12 @@ def compile_external_kernel(
 
 
 def _compile_external_kernel(
-    func, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
+    func,
+    kernel_dir,
+    target_arch,
+    include_dirs=None,
+    embed_bitcode=False,
+    precompiled_header=None,
 ):
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
     # prefixed func._name, but an inline kernel is emitted as a textual .ll whose
@@ -1469,6 +1483,7 @@ def _compile_external_kernel(
             inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
             embed_bitcode=embed_bitcode,
+            precompiled_header=precompiled_header,
         )
 
     elif func._source_file is not None:
@@ -1508,6 +1523,7 @@ def _compile_external_kernel(
             inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
             embed_bitcode=embed_bitcode,
+            precompiled_header=precompiled_header,
         )
     else:
         raise ValueError("Neither source_string nor source_file is provided")
