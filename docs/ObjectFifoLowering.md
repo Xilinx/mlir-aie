@@ -181,7 +181,20 @@ and every end moves one object of the same size, since a packet is one pass of
 its sender's chain and a shorter one would leave two senders in one object.
 The one header is stamped by every source and the destination's chain is the
 ordinary ring. A consumer that must know the source is a different design:
-one route per source into its own pool. An endpoint is named by one route.
+one route per source into its own pool. An endpoint is named by one route,
+except a dispatching one.
+
+A draining DMA endpoint with `dispatch` takes turns between destinations over
+one channel: its k-th object goes to `dispatch[k mod n]`. It is the source of
+one packet-switched route per listed destination, each carrying its own header,
+and allocation records the headers in `dispatchPackets`. The chain runs
+lcm(depth, n) objects, so every object meets every turn before it repeats.
+
+```mlir
+aie.objectfifo.dma_endpoint @hub(%mem) drains @y {dispatch = [@a_in, @b_in]}
+aie.route from @hub to [@a_in] {packet = #aie.packet_info<>}
+aie.route from @hub to [@b_in] {packet = #aie.packet_info<>}
+```
 
 A flow carrying a `packet` header becomes an `aie.packet_flow` and shares the
 stream; circuit flows reserve theirs. Both kinds coexist in one device. The
@@ -459,7 +472,9 @@ Flows and core accesses:
 - each segment has one filling and one draining endpoint. A filler may be absent
   when lock initializers mark the objects as starting full, and a pool over
   external buffers has a host-side actor with no op
-- every DMA and route endpoint appears in exactly one route
+- every DMA and route endpoint appears in exactly one route, except that a
+  dispatching endpoint is the source of one packet-switched route per
+  destination it lists, and of nothing else
 - no loop body releases more than it acquires
 - no core must release more objects through an endpoint than the pool's DMA
   endpoint, bounded by an `iterCount`, will move (`iterCount` times depth).

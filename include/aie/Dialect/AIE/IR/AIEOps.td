@@ -2846,9 +2846,19 @@ def AIE_ObjectFifoDmaEndpointOp
     follows its role. Leaving it out lets `--aie-objectfifo-allocate` pick one,
     and writing it down pins it.
 
+    A draining endpoint with `dispatch` takes turns between destinations: its
+    k-th object goes to `dispatch[k mod n]`. Each listed destination is reached
+    by one packet-switched `aie.route` from this endpoint, and every object
+    carries that route's header, so one channel feeds several consumers in a
+    fixed order. `--aie-objectfifo-allocate` records the headers in
+    `dispatchPackets`, one per entry of `dispatch`.
+
     Example:
     ```
       aie.objectfifo.dma_endpoint @out(%tile) drains @pool {channelIndex = 0}
+      aie.objectfifo.dma_endpoint @hub(%mem) drains @y {dispatch = [@a_in, @b_in]}
+      aie.route from @hub to [@a_in] {packet = #aie.packet_info<>}
+      aie.route from @hub to [@b_in] {packet = #aie.packet_info<>}
     ```
   }];
 
@@ -2865,7 +2875,9 @@ def AIE_ObjectFifoDmaEndpointOp
       // in that many fewer cycles than the receiver opposite it.
       OptionalAttr<AIEI32Attr>:$iterCount, OptionalAttr<PacketInfoAttr>:$packet,
       // ObjectFifo name used by runtime records.
-      OptionalAttr<StrAttr>:$fifoName);
+      OptionalAttr<StrAttr>:$fifoName,
+      OptionalAttr<FlatSymbolRefArrayAttr>:$dispatch,
+      OptionalAttr<PacketInfoArrayAttr>:$dispatchPackets);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict
@@ -2891,9 +2903,12 @@ def AIE_ObjectFifoDmaEndpointOp
     /// Whether the channel's own repeat count replays the chain, which it can
     /// only for a single descriptor, rather than copies of it.
     bool repeatsInHardware();
+    /// Passes over the pool before a dispatching endpoint's turns line up
+    /// with its objects again: lcm(depth, turns) / depth, and 1 otherwise.
+    int64_t getDispatchPasses();
     /// Buffer descriptors `--aie-objectfifo-lower-dmas` emits for this
     /// endpoint: the pass's descriptors, copied per repeat unless the
-    /// repeat runs in hardware.
+    /// repeat runs in hardware, for every dispatch pass.
     int64_t getNumBDs();
   }];
 }

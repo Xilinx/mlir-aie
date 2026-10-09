@@ -29,6 +29,7 @@
 
 #include <limits>
 #include <map>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -1009,8 +1010,18 @@ bool ObjectFifoDmaEndpointOp::repeatsInHardware() {
   return getRepeat() > 1 && getNumDescriptors() == 1 && !getIterCount();
 }
 
+int64_t ObjectFifoDmaEndpointOp::getDispatchPasses() {
+  ObjectFifoPoolOp pool = getPoolOp();
+  std::optional<ArrayAttr> turns = getDispatch();
+  if (!pool || !turns || turns->empty())
+    return 1;
+  int64_t depth = std::max<int64_t>(pool.getDepth(), 1);
+  return std::lcm(depth, static_cast<int64_t>(turns->size())) / depth;
+}
+
 int64_t ObjectFifoDmaEndpointOp::getNumBDs() {
-  return getNumDescriptors() * (repeatsInHardware() ? 1 : getRepeat());
+  return getNumDescriptors() * (repeatsInHardware() ? 1 : getRepeat()) *
+         getDispatchPasses();
 }
 
 DMAChannelDir ObjectFifoDmaEndpointOp::getRouteDirection() {
@@ -1038,6 +1049,31 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
   }
   if (failed(verifyAssignedPacket(*this, getPacketAttr()))) {
     return failure();
+  }
+
+  if (std::optional<ArrayAttr> turns = getDispatch()) {
+    if (!drains())
+      return emitOpError("only a draining endpoint can dispatch");
+    if (turns->empty())
+      return emitOpError("dispatch names no destination");
+    if (getPacketAttr())
+      return emitOpError("a dispatching endpoint carries a header per turn in "
+                         "`dispatchPackets`, not one `packet`");
+    if (pool.getRepeatCount().value_or(1) > 1)
+      return emitOpError("cannot dispatch a pool that repeats its objects");
+    if (std::optional<int32_t> iterCount = getIterCount();
+        iterCount && *iterCount % std::max<int64_t>(getDispatchPasses(), 1))
+      return emitOpError("iterCount ")
+             << *iterCount << " is not a whole number of dispatch rounds ("
+             << getDispatchPasses() << " passes over the pool)";
+  }
+  if (std::optional<ArrayAttr> headers = getDispatchPackets()) {
+    std::optional<ArrayAttr> turns = getDispatch();
+    if (!turns || turns->size() != headers->size())
+      return emitOpError("dispatchPackets needs one header per dispatch turn");
+    for (auto header : headers->getAsRange<PacketInfoAttr>())
+      if (failed(verifyAssignedPacket(*this, header, "dispatchPackets")))
+        return failure();
   }
 
   std::optional<ArrayAttr> segmentNames = getSegments();

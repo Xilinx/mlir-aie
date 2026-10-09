@@ -10,6 +10,7 @@
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/SetVector.h"
 
 #include <limits>
 #include <optional>
@@ -134,6 +135,12 @@ struct AIEObjectFifoVerifyPass
       if (count == 0) {
         return endpoint->emitOpError("is not connected by any flow");
       }
+      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(*endpoint);
+          dma && dma.getDispatch()) {
+        if (failed(verifyDispatch(device, dma)))
+          return failure();
+        continue;
+      }
       if (count > 1) {
         return endpoint->emitOpError(
                    "drives one channel, so at most one flow may name it, but "
@@ -141,6 +148,45 @@ struct AIEObjectFifoVerifyPass
                << count << " times";
       }
     }
+    return success();
+  }
+
+  /// A dispatching endpoint is the one source of one packet-switched route per
+  /// destination it takes turns between, and of nothing else. A second route to
+  /// the same destination is refused there, by the count every endpoint gets.
+  LogicalResult verifyDispatch(DeviceOp device,
+                               ObjectFifoDmaEndpointOp endpoint) {
+    StringRef name = endpoint.getSymName();
+    llvm::SmallSetVector<StringRef, 4> turns;
+    for (StringRef dest :
+         endpoint.getDispatchAttr().getAsValueRange<FlatSymbolRefAttr>())
+      turns.insert(dest);
+    llvm::SmallDenseSet<StringRef, 4> reached;
+    for (auto flow : device.getOps<RouteOp>()) {
+      if (flow.namesAsDestination(name))
+        return flow.emitOpError("names dispatching endpoint @")
+               << name << " as a destination";
+      if (!flow.namesAsSource(name))
+        continue;
+      if (flow.getSources().size() != 1 || flow.getDestinations().size() != 1)
+        return flow.emitOpError("leaves dispatching endpoint @")
+               << name
+               << " for one destination, so it has one source and "
+                  "one destination";
+      if (!flow.getPacket())
+        return flow.emitOpError("leaves dispatching endpoint @")
+               << name << " and needs a packet header to tell its turns apart";
+      StringRef dest = *flow.getDestinationNames().begin();
+      if (!turns.contains(dest))
+        return flow.emitOpError("reaches @")
+               << dest << ", which dispatching endpoint @" << name
+               << " never takes a turn for";
+      reached.insert(dest);
+    }
+    for (StringRef dest : turns)
+      if (!reached.contains(dest))
+        return endpoint.emitOpError("dispatches to @")
+               << dest << ", but no route from it reaches there";
     return success();
   }
 

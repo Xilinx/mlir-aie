@@ -232,6 +232,9 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   }];
 }
 
+def PacketInfoArrayAttr
+    : TypedArrayAttrBase<PacketInfoAttr, "array of packet headers">;
+
 def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {
   let mnemonic = "bd_iteration";
   let summary = [{

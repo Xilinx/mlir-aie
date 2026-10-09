@@ -14,6 +14,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringMap.h"
 
 #include <set>
@@ -45,6 +46,8 @@ struct AIEObjectFifoAllocatePass
   /// Flows already lowered. A route endpoint reads its direction off the
   /// flow naming it, so these outlive the walk that replaces them.
   SmallVector<Operation *> loweredFlows;
+  llvm::MapVector<ObjectFifoDmaEndpointOp, llvm::StringMap<PacketInfoAttr>>
+      dispatchHeaders;
   DenseMap<Value, SmallVector<int64_t>> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
@@ -1038,6 +1041,12 @@ struct AIEObjectFifoAllocatePass
                                 PacketInfoAttr header) {
     int packetID = header.assignedId();
     for (RouteEndpoint source : sources) {
+      // Written out in turn order after the last route.
+      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(*source);
+          dma && dma.getDispatch()) {
+        dispatchHeaders[dma][*flow.getDestinationNames().begin()] = header;
+        continue;
+      }
       source.setRoutePacket(header);
     }
 
@@ -1108,6 +1117,13 @@ struct AIEObjectFifoAllocatePass
                        source.getRouteBundle(), sourceChannel, dest.getTile(),
                        dest.getRouteBundle(), channelOf(dest));
       }
+    }
+    for (auto &[endpoint, byDest] : dispatchHeaders) {
+      SmallVector<Attribute> headers;
+      for (StringRef dest :
+           endpoint.getDispatchAttr().getAsValueRange<FlatSymbolRefAttr>())
+        headers.push_back(byDest.lookup(dest));
+      endpoint.setDispatchPacketsAttr(builder.getArrayAttr(headers));
     }
     return success();
   }
