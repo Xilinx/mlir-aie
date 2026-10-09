@@ -54,7 +54,8 @@ static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
 // block entry. That keeps the very first acquire of each unrolled loop body
 // (which legitimately re-establishes the window across the back-edge) while
 // dropping the intra-body re-acquires of locks whose element is still held.
-static void removeRedundantBinaryAcquires(DeviceOp device) {
+static bool removeRedundantBinaryAcquires(DeviceOp device) {
+  bool erased = false;
   device.walk([&](Block *block) {
     llvm::DenseSet<Value> held;
     SmallVector<UseLockOp> toErase;
@@ -76,7 +77,9 @@ static void removeRedundantBinaryAcquires(DeviceOp device) {
     for (UseLockOp op : toErase) {
       op.erase();
     }
+    erased |= !toErase.empty();
   });
+  return erased;
 }
 
 // Marks a loop already offered to the peeling trial below, so that neither the
@@ -301,9 +304,12 @@ struct AIEObjectFifoUnrollPass
     }
 
     // With the window acquires now folded to concrete per-lock `Acquire` ops,
-    // drop the ones that re-acquire an already-held AIE1 binary lock, then run
-    // a final canonicalize to delete the constants they leave dead.
-    removeRedundantBinaryAcquires(device);
+    // drop the ones that re-acquire an already-held AIE1 binary lock. Only a
+    // drop leaves dead constants for a final canonicalize; the fold left the
+    // device canonical otherwise.
+    if (!removeRedundantBinaryAcquires(device)) {
+      return;
+    }
     OpPassManager cleanupPipeline(DeviceOp::getOperationName());
     cleanupPipeline.addPass(mlir::createCanonicalizerPass());
     if (failed(runPipeline(cleanupPipeline, device))) {
