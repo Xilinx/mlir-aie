@@ -129,6 +129,9 @@ def reconfigure(
     column_handles = [fifo.cons() for fifo in column_fifos]
     flows = padding_flows(cols, rows, switchboxes)
     configuration = None
+    # This empty device forces each iteration to switch away from the measured
+    # design, so firmware cannot skip its next configuration as already active.
+    empty_configuration = DeviceConfiguration("empty_configuration", NPU2())
 
     def worker_sequence(tensor, *handles):
         for col, handle in enumerate(handles):
@@ -144,6 +147,8 @@ def reconfigure(
     def coordinator_sequence(tensor):
         assert configuration is not None
         for _ in range(reconfigs):
+            with empty_configuration.configure():
+                pass
             with configuration.configure():
                 worker_runtime.call(tensor)
 
@@ -167,8 +172,11 @@ def reconfigure(
     for flow in flows:
         configuration.add_flow(flow)
 
+    configurations = (
+        [configuration, empty_configuration] if full_elf else [configuration]
+    )
     return Program.compose(
-        [configuration],
+        configurations,
         entry=entry,
         expand_load_pdis=True if mode == "expand-load-pdis" else None,
     ).resolve_program()
