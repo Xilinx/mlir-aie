@@ -620,12 +620,12 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
 
 
 def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
-    """Software f32 ``2**x`` kernel: a minimax poly, not a LUT.
+    """Software f32 ``2**x`` kernel: a polynomial, not a LUT.
 
     A float32-output alternative to [`bf16_exp`]
     [iron.kernels.activation.bf16_exp] with a separately configurable
     input domain. See ``aie_kernels/activation/exp2f_vec.cc`` for the
-    accuracy rationale: 9.2e-6 relative error on aie2p, 8.9e-5 on aie2.
+    accuracy rationale: 9.2e-6 relative error on aie2p, 7.4e-6 on aie2.
 
     The same source builds for aie2.
 
@@ -633,8 +633,8 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         tile_size: Number of elements per tile; must be a multiple of 16
             (the kernel's vector width).
         min_x: Input is clamped to this before evaluation. -126 is the
-            hard floor (one f32 exponent field); on aie2p the kernel holds
-            its accuracy down to it.
+            hard floor (one f32 exponent field); the kernel holds its
+            accuracy down to it.
 
     Returns:
         ExternalFunction configured for the exp2f_vec kernel.
@@ -662,15 +662,15 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # The aie2p branch sets conv_even itself.
-            setup=None if _tuned_arch() == "aie2p" else conv_even,
+            # The tuned branches set conv_even themselves.
+            setup=conv_even if _tuned_arch() == "portable" else None,
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
             reference=lambda x: exp2f_vec_ref(x, min_x=min_x),
             acc_dtype=np.float32,
             tolerance=Tolerance.relative(
                 1e-3,
-                note="measured 9.2e-6 on aie2p and 8.9e-5 on aie2; clamping "
+                note="measured 9.2e-6 on aie2p and 7.4e-6 on aie2; clamping "
                 "[127.999, 128) costs up to 7.8e-4",
             ),
         ),
