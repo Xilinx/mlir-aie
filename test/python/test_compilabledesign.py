@@ -158,7 +158,7 @@ def test_variadic_tensor_list_takes_the_remaining_positionals():
         "tensors[0]",
         "tensors[1]",
     ]
-    d._expected_tensor_sizes = [32, 32, 32]
+    d.expected_tensor_sizes = [32, 32, 32]
     ok, bad = np.zeros(1, np.int32), np.zeros(2, np.int32)
     d.validate_tensor_args([ok, ok, ok])
     with pytest.raises(RuntimeError, match=r"'tensors\[1\]' covers 8 bytes"):
@@ -198,7 +198,7 @@ def test_runtime_tensor_count_matches_compiled_signature(
     assert sizes == [128] * 3 + [8192] * implicit_count
     design = CompilableDesign(_variadic_gen(), compile_kwargs={"N": 4})
     if not cache_hit:
-        design._expected_tensor_sizes = sizes
+        design.expected_tensor_sizes = sizes
     tensors = [np.zeros(4, np.int32) for _ in range(actual_count)]
     kwargs = dict(num_host_bos=len(sizes), implicit_tensor_count=implicit_count)
     if actual_count == 3:
@@ -214,7 +214,7 @@ def test_runtime_tensor_count_distinguishes_empty_and_unavailable_signature():
     design = CompilableDesign(_variadic_gen(), compile_kwargs={"N": 0})
     tensor = np.zeros(1, np.int32)
     design.validate_tensor_args([tensor])
-    design._expected_tensor_sizes = []
+    design.expected_tensor_sizes = []
     design.validate_tensor_args([])
     with pytest.raises(RuntimeError, match="expects 0 tensor argument"):
         design.validate_tensor_args([tensor])

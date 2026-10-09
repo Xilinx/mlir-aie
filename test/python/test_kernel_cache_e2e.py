@@ -100,7 +100,7 @@ _DESIGN = textwrap.dedent("""
     print(json.dumps({
         "dir": str(compilable._kernel_dir),
         "kernel": compilable._full_elf_kernel_name,
-        "sizes": compilable._expected_tensor_sizes,
+        "sizes": compilable.expected_tensor_sizes,
         **lookups,
     }))
     """)

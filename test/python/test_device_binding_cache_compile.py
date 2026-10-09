@@ -68,9 +68,19 @@ def test_cache_hit_refreshes_tensor_metadata_for_the_selected_artifact():
     for device in (NPU1Col1(), NPU2Col1(), NPU1Col1()):
         set_current_device(device)
         cd.compile()
-        sizes.setdefault(type(device), cd._expected_tensor_sizes)
-        assert cd._expected_tensor_sizes == sizes[type(device)]
+        sizes.setdefault(type(device), cd.expected_tensor_sizes)
+        assert cd.expected_tensor_sizes == sizes[type(device)]
     assert sizes == {NPU1Col1: [16 * 32] * 2, NPU2Col1: [32 * 32] * 2}
+
+
+@needs_xclbinutil
+def test_tensor_sizes_are_read_when_asked():
+    """A compile leaves the lowered module unparsed until a caller asks."""
+    set_current_device(NPU2Col1())
+    cd = CompilableDesign(copy)
+    cd.compile()
+    assert "expected_tensor_sizes" not in vars(cd)
+    assert cd.expected_tensor_sizes == [32 * 32] * 2
 
 
 @needs_xclbinutil

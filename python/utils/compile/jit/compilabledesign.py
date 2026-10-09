@@ -28,6 +28,7 @@ current target.
 
 from __future__ import annotations
 
+import functools
 import inspect
 import json
 import logging
@@ -213,7 +214,6 @@ class CompilableDesign:
         self._elf_path: Path | None = None
         self._full_elf_kernel_name: str | None = None
         self._kernel_dir: Path | None = None
-        self._expected_tensor_sizes: list[int] | None = None
         self._generated_cache: dict[tuple, tuple[str, list]] = {}
 
         # Introspect generator signature to split param categories.  Cache
@@ -939,7 +939,20 @@ class CompilableDesign:
         self._elf_path = elf
         self._dispatch_lib_path = dispatch_library
         self._full_elf_kernel_name = full_elf_kernel_name
-        self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
+        vars(self).pop("expected_tensor_sizes", None)
+
+    @functools.cached_property
+    def expected_tensor_sizes(self) -> list[int] | None:
+        """Each host tensor's footprint in bits, in ``aie.runtime_sequence``
+        order, from the compiled design; None before ``compile()`` or where
+        ``parse_dma_sizes`` cannot tell.
+
+        Read when first asked, not at every compile or cache hit: parsing the
+        lowered module costs more than the hit.
+        """
+        if self._kernel_dir is None:
+            return None
+        return parse_dma_sizes(self._kernel_dir)
 
     def _generate_and_build_kernels(
         self, kernel_dir: Path, *, full_elf: bool = False
@@ -1262,8 +1275,8 @@ class CompilableDesign:
         or when ``input_with_addresses.mlir`` was not produced), unless
         ``num_host_bos`` is known.
         """
-        if num_host_bos is None and self._expected_tensor_sizes is not None:
-            num_host_bos = len(self._expected_tensor_sizes)
+        if num_host_bos is None and self.expected_tensor_sizes is not None:
+            num_host_bos = len(self.expected_tensor_sizes)
         if num_host_bos is not None:
             expected_count = num_host_bos - implicit_tensor_count
             if len(tensor_args) != expected_count:
@@ -1272,12 +1285,12 @@ class CompilableDesign:
                     f"tensor argument(s), but received {len(tensor_args)} "
                     f"({implicit_tensor_count} buffer(s) supplied by the runtime)."
                 )
-        if self._expected_tensor_sizes is None:
+        if self.expected_tensor_sizes is None:
             return
         import numpy as np
 
         for i, (tensor, expected) in enumerate(
-            zip(tensor_args, self._expected_tensor_sizes)
+            zip(tensor_args, self.expected_tensor_sizes)
         ):
             if expected == 0:
                 continue
