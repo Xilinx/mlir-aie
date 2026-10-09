@@ -17,7 +17,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<8192xi32>) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error @+1 {{Cannot give more than 3 dimensions for step sizes and wraps on this tile when the iteration attribute is also set (got 4 dimensions)}}
+        // expected-error @+1 {{Cannot give more than 3 dimensions for step sizes and wraps alongside the iteration attribute on this tile (got 4 dimensions)}}
         aie.dma_bd(%arg0 : memref<8192xi32> offset = 0 len = 1024 sizes = [1, 4, 8, 32] strides = [4096, 512, 32, 1]) {bd_id = 5 : i32, iteration = #aie.bd_iteration<size = 4, stride = 16, current = 2>}
         aie.end
       } {issue_token = true}
