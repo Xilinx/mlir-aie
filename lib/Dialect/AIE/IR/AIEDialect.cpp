@@ -1342,6 +1342,76 @@ static void printObjectFifoConsumerElemType(OpAsmPrinter &p,
     p << " -> " << consumerElemType;
 }
 
+ParseResult xilinx::AIE::parseFlowVias(
+    OpAsmParser &parser, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &vias,
+    DenseI32ArrayAttr &ingressBundles, DenseI32ArrayAttr &ingressChannels,
+    DenseI32ArrayAttr &egressBundles, DenseI32ArrayAttr &egressChannels) {
+  SmallVector<int32_t> inBundles, inChannels, egBundles, egChannels;
+  auto parseBundle = [&](SmallVectorImpl<int32_t> &out) -> ParseResult {
+    StringRef kw;
+    if (parser.parseKeyword(&kw)) {
+      return failure();
+    }
+    auto bundle = symbolizeWireBundle(kw);
+    if (!bundle) {
+      return parser.emitError(parser.getCurrentLocation(),
+                              "invalid wire bundle '" + kw + "'");
+    }
+    out.push_back(static_cast<int32_t>(*bundle));
+    return success();
+  };
+  // via ( %tile : <ingress bundle> : <ch> -> <egress bundle> : <ch>, ... )
+  if (succeeded(parser.parseOptionalKeyword("via"))) {
+    auto parseOne = [&]() -> ParseResult {
+      int32_t inChan, egChan;
+      if (parser.parseOperand(vias.emplace_back()) || parser.parseColon() ||
+          parseBundle(inBundles) || parser.parseColon() ||
+          parser.parseInteger(inChan) || parser.parseArrow() ||
+          parseBundle(egBundles) || parser.parseColon() ||
+          parser.parseInteger(egChan)) {
+        return failure();
+      }
+      inChannels.push_back(inChan);
+      egChannels.push_back(egChan);
+      return success();
+    };
+    if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseOne)) {
+      return failure();
+    }
+  }
+  if (!vias.empty()) {
+    MLIRContext *ctx = parser.getContext();
+    ingressBundles = DenseI32ArrayAttr::get(ctx, inBundles);
+    ingressChannels = DenseI32ArrayAttr::get(ctx, inChannels);
+    egressBundles = DenseI32ArrayAttr::get(ctx, egBundles);
+    egressChannels = DenseI32ArrayAttr::get(ctx, egChannels);
+  }
+  return success();
+}
+
+void xilinx::AIE::printFlowVias(OpAsmPrinter &printer, Operation *op,
+                                OperandRange vias,
+                                DenseI32ArrayAttr ingressBundles,
+                                DenseI32ArrayAttr ingressChannels,
+                                DenseI32ArrayAttr egressBundles,
+                                DenseI32ArrayAttr egressChannels) {
+  if (vias.empty()) {
+    return;
+  }
+  printer << "via (";
+  for (size_t i = 0; i < vias.size(); i++) {
+    if (i) {
+      printer << ", ";
+    }
+    printer << vias[i] << " : "
+            << stringifyWireBundle(static_cast<WireBundle>(ingressBundles[i]))
+            << " : " << ingressChannels[i] << " -> "
+            << stringifyWireBundle(static_cast<WireBundle>(egressBundles[i]))
+            << " : " << egressChannels[i];
+  }
+  printer << ")";
+}
+
 static ParseResult parseObjectFifoConsumerElemType(OpAsmParser &parser,
                                                    TypeAttr &consumerElemType) {
   if (failed(parser.parseOptionalArrow()))
@@ -2211,6 +2281,108 @@ LogicalResult verifyNoSharedCircuitPorts(DeviceOp device) {
   return failure(result.wasInterrupted());
 }
 
+LogicalResult verifyNoSharedCircuitViaEgresses(DeviceOp device) {
+  enum class ClaimKind { FlowDest, PacketDest, Connect, MasterSet, Via };
+  struct Claim {
+    Operation *op;
+    ClaimKind kind;
+    size_t viaIndex = 0;
+  };
+  std::map<PortKey, Claim> claimedEgresses;
+
+  auto addInterconnectClaims = [&](auto interconnect) {
+    Value tile = interconnect.getTile();
+    for (ConnectOp connect :
+         interconnect.getConnections().template getOps<ConnectOp>()) {
+      Port dest = connect.destPort();
+      if (std::optional<PortKey> port =
+              tryGetPortKey(tile, dest.bundle, dest.channel))
+        claimedEgresses.try_emplace(*port, Claim{connect, ClaimKind::Connect});
+    }
+    for (MasterSetOp masterSet :
+         interconnect.getConnections().template getOps<MasterSetOp>()) {
+      Port dest = masterSet.destPort();
+      if (std::optional<PortKey> port =
+              tryGetPortKey(tile, dest.bundle, dest.channel))
+        claimedEgresses.try_emplace(*port,
+                                    Claim{masterSet, ClaimKind::MasterSet});
+    }
+  };
+  for (SwitchboxOp switchbox : device.getOps<SwitchboxOp>())
+    addInterconnectClaims(switchbox);
+  for (ShimMuxOp shimMux : device.getOps<ShimMuxOp>())
+    addInterconnectClaims(shimMux);
+  for (FlowOp flow : device.getOps<FlowOp>()) {
+    if (std::optional<PortKey> dest = tryGetPortKey(
+            flow.getDest(), flow.getDestBundle(), flow.getDestChannel()))
+      claimedEgresses.try_emplace(*dest, Claim{flow, ClaimKind::FlowDest});
+  }
+  for (PacketFlowOp packetFlow : device.getOps<PacketFlowOp>()) {
+    for (PacketDestOp dest : packetFlow.getPorts().getOps<PacketDestOp>()) {
+      if (std::optional<PortKey> port = tryGetPortKey(
+              dest.getTile(), dest.getBundle(), dest.getChannel()))
+        claimedEgresses.try_emplace(*port, Claim{dest, ClaimKind::PacketDest});
+    }
+  }
+
+  WalkResult result = device.walk([&](FlowOp flow) {
+    ArrayRef<int32_t> bundles =
+        flow.getViaEgressBundlesAttr()
+            ? flow.getViaEgressBundlesAttr().asArrayRef()
+            : ArrayRef<int32_t>();
+    ArrayRef<int32_t> channels =
+        flow.getViaEgressChannelsAttr()
+            ? flow.getViaEgressChannelsAttr().asArrayRef()
+            : ArrayRef<int32_t>();
+    if (bundles.size() != flow.getVias().size() ||
+        channels.size() != flow.getVias().size()) {
+      return WalkResult::advance();
+    }
+    for (auto [index, via] : llvm::enumerate(flow.getVias())) {
+      std::optional<PortKey> egress = tryGetPortKey(
+          via, static_cast<WireBundle>(bundles[index]), channels[index]);
+      if (!egress) {
+        continue;
+      }
+      Claim viaClaim{flow, ClaimKind::Via, index};
+      auto [it, inserted] = claimedEgresses.try_emplace(*egress, viaClaim);
+      if (inserted)
+        continue;
+      if (index + 1 == flow.getVias().size() && it->second.op == flow &&
+          it->second.kind == ClaimKind::FlowDest) {
+        it->second = viaClaim;
+        continue;
+      }
+      InFlightDiagnostic diag = flow.emitOpError()
+                                << "via " << index << " claims circuit egress "
+                                << to_string(*egress)
+                                << ", which another operation already claims";
+      Diagnostic &note = diag.attachNote(it->second.op->getLoc());
+      switch (it->second.kind) {
+      case ClaimKind::FlowDest:
+        note << "a circuit flow ends at the same port";
+        break;
+      case ClaimKind::PacketDest:
+        note << "a packet flow ends at the same port";
+        break;
+      case ClaimKind::Connect:
+        note << "a fixed connect drives the same port";
+        break;
+      case ClaimKind::MasterSet:
+        note << "a fixed master set drives the same port";
+        break;
+      case ClaimKind::Via:
+        note << "via " << it->second.viaIndex
+             << " claims the same circuit egress";
+        break;
+      }
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
+}
+
 // `mlir::detail::verifySymbolTable` compares names carried by `Symbol` ops.
 // `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` name themselves
 // with `sym_name` but define an SSA value, so they are not `Symbol` ops and
@@ -2286,6 +2458,9 @@ LogicalResult DeviceOp::verify() {
     return failure();
   if (failed(verifyNoSharedCircuitPorts(*this)))
     return failure();
+  if (failed(verifyNoSharedCircuitViaEgresses(*this))) {
+    return failure();
+  }
 
   if (failed(verifyNoDuplicateNames(*this))) {
     return failure();
@@ -2783,12 +2958,74 @@ static LogicalResult verifyFlowEndpoint(Operation *op, Value tile, Port port,
                            << " its stream switch";
 }
 
+static LogicalResult verifyFlowVias(Operation *op, OperandRange vias,
+                                    DenseI32ArrayAttr ingressBundles,
+                                    DenseI32ArrayAttr ingressChannels,
+                                    DenseI32ArrayAttr egressBundles,
+                                    DenseI32ArrayAttr egressChannels) {
+  size_t numVias = vias.size();
+  DenseI32ArrayAttr arrays[] = {ingressBundles, ingressChannels, egressBundles,
+                                egressChannels};
+  for (DenseI32ArrayAttr array : arrays) {
+    size_t size = array ? array.size() : 0;
+    if (size != numVias) {
+      return op->emitOpError("has ")
+             << numVias << " via tile(s) but a via port array of size " << size;
+    }
+  }
+  if (numVias == 0) {
+    return success();
+  }
+
+  for (auto [index, via] : llvm::enumerate(vias)) {
+    if (!isa_and_nonnull<TileLike>(via.getDefiningOp())) {
+      return op->emitOpError("has via operand at index ")
+             << index << " that is not defined by a tile-like operation";
+    }
+  }
+
+  auto verifyBundles = [&](DenseI32ArrayAttr bundles,
+                           StringRef direction) -> LogicalResult {
+    for (auto [index, bundle] : llvm::enumerate(bundles.asArrayRef())) {
+      if (bundle < 0 ||
+          bundle > static_cast<int32_t>(getMaxEnumValForWireBundle())) {
+        return op->emitOpError("has invalid via ")
+               << direction << " bundle " << bundle << " at index " << index;
+      }
+    }
+    return success();
+  };
+  auto verifyChannels = [&](DenseI32ArrayAttr channels,
+                            StringRef direction) -> LogicalResult {
+    for (auto [index, channel] : llvm::enumerate(channels.asArrayRef())) {
+      if (channel < 0) {
+        return op->emitOpError("has negative via ")
+               << direction << " channel " << channel << " at index " << index;
+      }
+    }
+    return success();
+  };
+  if (failed(verifyBundles(ingressBundles, "ingress")) ||
+      failed(verifyChannels(ingressChannels, "ingress")) ||
+      failed(verifyBundles(egressBundles, "egress")) ||
+      failed(verifyChannels(egressChannels, "egress"))) {
+    return failure();
+  }
+  return success();
+}
+
 LogicalResult FlowOp::verify() {
   if (failed(verifyFlowEndpoint(*this, getSource(),
                                 {getSourceBundle(), sourceIndex()}, true)))
     return failure();
-  return verifyFlowEndpoint(*this, getDest(), {getDestBundle(), destIndex()},
-                            false);
+  if (failed(verifyFlowEndpoint(*this, getDest(),
+                                {getDestBundle(), destIndex()}, false))) {
+    return failure();
+  }
+
+  return verifyFlowVias(*this, getVias(), getViaIngressBundlesAttr(),
+                        getViaIngressChannelsAttr(), getViaEgressBundlesAttr(),
+                        getViaEgressChannelsAttr());
 }
 
 LogicalResult PacketSourceOp::verify() {
@@ -2818,6 +3055,14 @@ LogicalResult PacketFlowOp::verify() {
     return emitOpError("must have at least one aie.packet_source");
   if (numDests < 1)
     return emitOpError("must have at least one aie.packet_dest");
+  if (!getVias().empty() && numSources != 1) {
+    return emitOpError(
+        "with via waypoints must have exactly one aie.packet_source");
+  }
+  if (!getVias().empty() && numDests != 1) {
+    return emitOpError(
+        "with via waypoints must have exactly one aie.packet_dest");
+  }
 
   // A slave port accepts a packet when `incoming & mask == ID`, so a bit set
   // in ID and clear in the mask rejects every packet.
@@ -2830,7 +3075,9 @@ LogicalResult PacketFlowOp::verify() {
     }
   }
 
-  return success();
+  return verifyFlowVias(*this, getVias(), getViaIngressBundlesAttr(),
+                        getViaIngressChannelsAttr(), getViaEgressBundlesAttr(),
+                        getViaEgressChannelsAttr());
 }
 
 //===----------------------------------------------------------------------===//
@@ -4850,6 +5097,30 @@ WireBundle xilinx::AIE::getConnectingBundle(WireBundle dir) {
   default:
     return dir;
   }
+}
+
+std::optional<std::pair<TileID, Port>>
+xilinx::AIE::getConnectingWireEndpoint(const AIETargetModel &targetModel,
+                                       TileID tile, Port port) {
+  switch (port.bundle) {
+  case WireBundle::North:
+    tile.row++;
+    break;
+  case WireBundle::South:
+    tile.row--;
+    break;
+  case WireBundle::East:
+    tile.col++;
+    break;
+  case WireBundle::West:
+    tile.col--;
+    break;
+  default:
+    return std::nullopt;
+  }
+  if (!targetModel.isValidTile(tile))
+    return std::nullopt;
+  return std::pair(tile, Port{getConnectingBundle(port.bundle), port.channel});
 }
 
 //===----------------------------------------------------------------------===//

@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s | aie-opt --aie-find-flows=emit-vias=true | aie-opt --aie-split-flow-vias | aie-opt --aie-create-pathfinder-flows | FileCheck %s
 
 // Companion to test/create-flows/same_id_shared_link.mlir, on npu1 and in the
 // co-terminal (fan-in) form rather than the divergent form.

@@ -47,3 +47,31 @@ module {
     aie.flow(%t10, DMA : 0, %t12, DMA : 0)
   }
 }
+
+// -----
+
+// A directional shim source belongs to the stream switch. Only the DMA
+// destination passes through the shim mux. Packet DMA 0 may therefore use
+// switchbox input South:3 while the circuit exits through South:2.
+
+// CHECK-LABEL: module
+// CHECK:         aie.switchbox(%shim_noc_tile_1_0) {
+// CHECK-DAG:       aie.connect<East : 3, South : 2>
+// CHECK-DAG:       aie.packet_rules(South : 3) {
+// CHECK:         }
+// CHECK:         aie.shim_mux(%shim_noc_tile_1_0) {
+// CHECK-DAG:       aie.connect<DMA : 0, North : 3>
+// CHECK-DAG:       aie.connect<North : 2, DMA : 0>
+// CHECK:         }
+
+module {
+  aie.device(npu2_3col) {
+    %t10 = aie.tile(1, 0)
+    %t11 = aie.tile(1, 1)
+    aie.flow(%t10, East : 3, %t10, DMA : 0)
+    aie.packet_flow(1) {
+      aie.packet_source<%t10, DMA : 0>
+      aie.packet_dest<%t11, DMA : 0>
+    }
+  }
+}

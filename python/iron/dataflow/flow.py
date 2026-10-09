@@ -29,6 +29,9 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     DMAChannelDir,
     WireBundle,
 )
+from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
+    FlowOp as _FlowOp,
+)
 from ...dialects.aie import (
     flow as _flow_op,
 )
@@ -69,9 +72,12 @@ class _Route(Resolvable):
     _channels: list[int | None]
     _endpoints: "dict[int, FlowEndpoint]"
 
+    def _endpoint_tiles(self):
+        return [self._src, *self._dsts]
+
     def all_tiles(self):
         """Return the tiles this route touches — Program uses this to resolve them."""
-        return [self._src, *self._dsts]
+        return self._endpoint_tiles()
 
     @property
     def name(self) -> str:
@@ -97,7 +103,7 @@ class _Route(Resolvable):
         [`task`][iron.dataflow.tile_dma.DmaEndpoint.task]. Its channel is the
         one given to the route, or else the one the compiler assigns.
         """
-        ends = [i for i, t in enumerate(self.all_tiles()) if t == tile]
+        ends = [i for i, t in enumerate(self._endpoint_tiles()) if t == tile]
         if len(ends) != 1:
             raise ValueError(
                 f"{tile} is {'not an end' if not ends else 'more than one end'} "
@@ -138,7 +144,7 @@ class _Route(Resolvable):
             )
         shim_dma_allocation(
             self._end_symbol(end),
-            self.all_tiles()[end].op,
+            self._endpoint_tiles()[end].op,
             DMAChannelDir.MM2S if end == 0 else DMAChannelDir.S2MM,
             self._channels[end],
             loc=loc,
@@ -207,7 +213,7 @@ class FlowEndpoint(DmaEndpoint):
 
     def __init__(self, flow: _Route, end: int):
         super().__init__(
-            flow.all_tiles()[end],
+            flow._endpoint_tiles()[end],
             DMAChannelDir.MM2S if end == 0 else DMAChannelDir.S2MM,
             flow._channels[end],
         )
@@ -255,6 +261,13 @@ class Flow(_Route):
         src_channel: int | None = None,
         dst_port: WireBundle = WireBundle.DMA,
         dst_channel: int | None = None,
+        vias: Sequence[
+            tuple[
+                Tile,
+                tuple[WireBundle, int],
+                tuple[WireBundle, int],
+            ]
+        ] = (),
         shim_symbol: str | None = None,
         name: str | None = None,
     ):
@@ -270,6 +283,9 @@ class Flow(_Route):
             dst_port (WireBundle): The destination port bundle.  Defaults to DMA.
             dst_channel (int | None): The channel at every destination. ``None``
                 (default) lets the compiler assign each a DMA channel.
+            vias: Exact ``(tile, ingress, egress)`` switchbox hops. Each port is
+                a ``(WireBundle, channel)`` tuple. Vias require one destination
+                and explicit source and destination channels.
             shim_symbol (str | None): Name the runtime sequence reaches the
                 shim end by, in place of the one built from ``name``. Only
                 needed to refer to the channel from elsewhere (e.g. a raw
@@ -285,6 +301,14 @@ class Flow(_Route):
         self._dsts: list[Tile] = [dst] if isinstance(dst, Tile) else list(dst)
         if not self._dsts:
             raise ValueError("Flow needs at least one destination.")
+        self._vias = list(vias)
+        if self._vias and (
+            self._broadcast or src_channel is None or dst_channel is None
+        ):
+            raise ValueError(
+                "Flow vias require one destination and explicit source and "
+                "destination channels."
+            )
         for port, channel, end in (
             (src_port, src_channel, "src"),
             (dst_port, dst_channel, "dst"),
@@ -317,6 +341,13 @@ class Flow(_Route):
         """Whether this Flow lowers to route endpoints rather than `aie.flow`."""
         return self._broadcast or None in self._channels
 
+    def all_tiles(self):
+        tiles = self._endpoint_tiles()
+        return [
+            *tiles,
+            *[tile for tile, _, _ in self._vias if tile not in tiles],
+        ]
+
     def fill(self, source, **kwargs):
         """Send data from the ``source`` runtime buffer into this route.
 
@@ -338,16 +369,33 @@ class Flow(_Route):
         if self._routed:
             self._resolve_route(loc, ip)
             return
-        self._op = _flow_op(
-            self._src.op,
-            self._src_port,
-            self._channels[0],
-            self._dsts[0].op,
-            self._dst_port,
-            self._channels[1],
-            loc=loc,
-            ip=ip,
-        )
+        if self._vias:
+            self._op = _FlowOp(
+                self._src.op,
+                self._src_port,
+                self._channels[0],
+                self._dsts[0].op,
+                self._dst_port,
+                self._channels[1],
+                [tile.op for tile, _, _ in self._vias],
+                via_ingress_bundles=[ingress[0].value for _, ingress, _ in self._vias],
+                via_ingress_channels=[ingress[1] for _, ingress, _ in self._vias],
+                via_egress_bundles=[egress[0].value for _, _, egress in self._vias],
+                via_egress_channels=[egress[1] for _, _, egress in self._vias],
+                loc=loc,
+                ip=ip,
+            )
+        else:
+            self._op = _flow_op(
+                self._src.op,
+                self._src_port,
+                self._channels[0],
+                self._dsts[0].op,
+                self._dst_port,
+                self._channels[1],
+                loc=loc,
+                ip=ip,
+            )
         if self._shim_symbol is not None or self._shim_used:
             self._emit_shim_dma_alloc(loc, ip)
 
@@ -362,7 +410,7 @@ class Flow(_Route):
         shim_end = self._shim_end()
         ports = [self._src_port] + [self._dst_port] * len(self._dsts)
         for end, (tile, port, channel) in enumerate(
-            zip(self.all_tiles(), ports, self._channels)
+            zip(self._endpoint_tiles(), ports, self._channels)
         ):
             symbol = self._end_symbol(end)
             _route_endpoint_op(

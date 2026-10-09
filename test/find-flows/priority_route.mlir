@@ -21,11 +21,11 @@
 // CHECK:     aie.packet_flow(9) {
 // CHECK-NEXT:  aie.packet_source<%{{.*}}, DMA : 1>
 // CHECK-NEXT:  aie.packet_dest<%{{.*}}tile_0_2, DMA : 1>
-// CHECK-NEXT: }{{$}}
+// CHECK-NEXT: }
 // CHECK:     aie.packet_flow(5) {
 // CHECK-NEXT:  aie.packet_source<%{{.*}}tile_0_2, DMA : 0>
 // CHECK-NEXT:  aie.packet_dest<%{{.*}}mem_tile_0_1, DMA : 0>
-// CHECK-NEXT: }{{$}}
+// CHECK-NEXT: }
 // CHECK-NOT: aie.switchbox
 
 module {

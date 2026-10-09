@@ -571,25 +571,11 @@ struct AIEGenerateColumnControlOverlayPass
             return true;
           continue;
         }
-        TileID next = tileID;
-        switch (dest.bundle) {
-        case WireBundle::North:
-          next.row++;
-          break;
-        case WireBundle::South:
-          next.row--;
-          break;
-        case WireBundle::East:
-          next.col++;
-          break;
-        case WireBundle::West:
-          next.col--;
-          break;
-        default:
+        auto next =
+            getConnectingWireEndpoint(device.getTargetModel(), tileID, dest);
+        if (!next)
           continue;
-        }
-        worklist.push_back(
-            {next, Port{getConnectingBundle(dest.bundle), dest.channel}});
+        worklist.push_back(*next);
       }
     }
     return false;

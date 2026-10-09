@@ -218,7 +218,10 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
       bool isShim = analyzer.getTile(rewriter, tileId).isShimNOCorPLTile();
 
       // TODO: must reserve N3, N7, S2, S3 for DMA connections
-      if (isShim && tileId == srcSbId) {
+      bool srcUsesShimMux = srcBundle == WireBundle::DMA ||
+                            srcBundle == WireBundle::PLIO ||
+                            srcBundle == WireBundle::NOC;
+      if (isShim && tileId == srcSbId && srcUsesShimMux) {
 
         shimCh = shimMuxChannelFrom(srcPort);
         ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, col);
@@ -231,7 +234,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         Port dest = setting.dsts[i];
 
         // A flow can start and end at one shim (see shimMuxChannelFrom).
-        if (isShim && tileId == srcSbId && src == srcPort)
+        if (isShim && tileId == srcSbId && srcUsesShimMux && src == srcPort)
           src = {WireBundle::South, shimCh};
         if (isShim && (dest.bundle == WireBundle::DMA ||
                        dest.bundle == WireBundle::PLIO ||
@@ -248,8 +251,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                       src.bundle, src.channel, dest.bundle, dest.channel);
       }
 
-      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | "
-                              << "\n");
+      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | " << "\n");
     }
 
     LLVM_DEBUG(llvm::dbgs()
@@ -3318,6 +3320,24 @@ void AIEPathfinderPass::runOnOperation() {
     });
     signalPassFailure();
     return;
+  }
+  for (auto flowOp : d.getOps<FlowOp>()) {
+    if (!flowOp.getVias().empty()) {
+      flowOp.emitOpError("cannot be routed while it carries via waypoints; run "
+                         "--aie-split-flow-vias first to lower the vias into "
+                         "switchbox connections");
+      signalPassFailure();
+      return;
+    }
+  }
+  for (auto flowOp : d.getOps<PacketFlowOp>()) {
+    if (!flowOp.getVias().empty()) {
+      flowOp.emitOpError("cannot be routed while it carries via waypoints; run "
+                         "--aie-split-flow-vias first to lower the vias into "
+                         "switchbox connections");
+      signalPassFailure();
+      return;
+    }
   }
 
   if (clRouteCircuit && failed(runOnFlow(d, analyzer))) {
