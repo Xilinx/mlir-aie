@@ -99,6 +99,19 @@ static int64_t countRuntimeLockValues(Operation *op) {
   return count;
 }
 
+// Canonicalize, SCCP, canonicalize. The fold needs the folding patterns only:
+// region simplification walks every region of the device, runtime sequences
+// included, and the canonicalizes after this pass still run it.
+static OpPassManager buildFoldPipeline() {
+  GreedyRewriteConfig config;
+  config.setRegionSimplificationLevel(GreedySimplifyRegionLevel::Disabled);
+  OpPassManager pipeline(DeviceOp::getOperationName());
+  pipeline.addPass(mlir::createCanonicalizerPass(config));
+  pipeline.addPass(mlir::createSCCPPass());
+  pipeline.addPass(mlir::createCanonicalizerPass(config));
+  return pipeline;
+}
+
 struct AIEObjectFifoUnrollPass
     : xilinx::AIE::impl::AIEObjectFifoUnrollBase<AIEObjectFifoUnrollPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -124,10 +137,7 @@ struct AIEObjectFifoUnrollPass
   /// never unmarked while draining, so the number of rounds is bounded by the
   /// most objectFifo loops in any one core.
   LogicalResult peelObjectFifoLoops(DeviceOp device) {
-    OpPassManager foldPipeline(DeviceOp::getOperationName());
-    foldPipeline.addPass(mlir::createCanonicalizerPass());
-    foldPipeline.addPass(mlir::createSCCPPass());
-    foldPipeline.addPass(mlir::createCanonicalizerPass());
+    OpPassManager foldPipeline = buildFoldPipeline();
 
     IRRewriter rewriter(device.getContext());
     struct Trial {
@@ -291,10 +301,7 @@ struct AIEObjectFifoUnrollPass
     // exposes the constants, SCCP propagates them across any remainder loop
     // that survives a partial unroll, and a final canonicalize deletes the
     // now-dead counter arithmetic and iter_args.
-    OpPassManager foldPipeline(DeviceOp::getOperationName());
-    foldPipeline.addPass(mlir::createCanonicalizerPass());
-    foldPipeline.addPass(mlir::createSCCPPass());
-    foldPipeline.addPass(mlir::createCanonicalizerPass());
+    OpPassManager foldPipeline = buildFoldPipeline();
     if (failed(runPipeline(foldPipeline, device))) {
       return signalPassFailure();
     }
