@@ -1139,19 +1139,19 @@ private:
 
     // This pass runs before objectFifo lowering, so an objectFifo that ends
     // at a shim has no flow yet. Claim what its lowering will: every
-    // cons_dma_channels pin first, then the lowest free S2MM channel for
-    // each unpinned consumer.
+    // consumer pin first, then the lowest free S2MM channel for each
+    // unpinned consumer.
     SmallVector<TileOp> unpinned;
     device.walk([&](ObjectFifoCreateOp fifo) {
       if (fifo.getPlio())
         return;
-      auto pins = fifo.getConsDmaChannels();
       for (auto [i, consumer] : llvm::enumerate(fifo.getConsumerTiles())) {
         auto tile = dyn_cast_or_null<TileOp>(consumer.getDefiningOp());
         if (!tile || !tile.isShimTile())
           continue;
-        if (pins && i < pins->size() && (*pins)[i] >= 0)
-          used[tile.getCol()].insert((*pins)[i]);
+        ObjectFifoEndPortAttr port = fifo.getConsumerPort(i);
+        if (std::optional<int> pin = port ? port.channelIndex() : std::nullopt)
+          used[tile.getCol()].insert(*pin);
         else
           unpinned.push_back(tile);
       }

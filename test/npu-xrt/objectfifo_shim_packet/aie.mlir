@@ -15,8 +15,8 @@ module {
     %t02 = aie.tile(0, 2)
     %t03 = aie.tile(0, 3)
 
-    aie.objectfifo @in_a(%t00, {%t02}, 2 : i32) {packet} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @in_b(%t00, {%t03}, 2 : i32) {packet} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_a(%t00, {%t02}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<>>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_b(%t00, {%t03}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<>>} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_a(%t02, {%t00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_b(%t03, {%t00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 

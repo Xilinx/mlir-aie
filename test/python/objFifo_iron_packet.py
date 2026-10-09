@@ -4,19 +4,19 @@
 # RUN: %python %s | FileCheck %s
 
 # Pins down the IRON-side contract for choosing a routing style per ObjectFifo:
-# `packet=True` asks for an aie.packet_flow, `packet_id` pins the 5-bit header
-# for designs that route on it, and a fifo that asks for neither keeps a
-# circuit. One design may carry both kinds.
+# a `Packet` on the transport asks for an aie.packet_flow, `Packet(id=7)` pins
+# the 5-bit header for designs that route on it, and a fifo that asks for
+# neither keeps a circuit. One design may carry both kinds.
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Packet, Program, Runtime, Transport, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU1Col1, Tile
 
 
-# CHECK-DAG: aie.objectfifo @of_auto({{[^)]*}}) {packet} : !aie.objectfifo<memref<16xi32>>
-# CHECK-DAG: aie.objectfifo @of_pinned({{[^)]*}}) {packet, packet_id = 7 : i8} : !aie.objectfifo<memref<16xi32>>
+# CHECK-DAG: aie.objectfifo @of_auto({{[^)]*}}) {transport = #aie.transport<dma, packet = #aie.packet_info<>>} : !aie.objectfifo<memref<16xi32>>
+# CHECK-DAG: aie.objectfifo @of_pinned({{[^)]*}}) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 7>>} : !aie.objectfifo<memref<16xi32>>
 # CHECK-DAG: aie.objectfifo @of_circuit({{[^)]*}}) : !aie.objectfifo<memref<16xi32>>
 def test_packet_switching_is_per_fifo():
     """Each fifo stamps only the routing attributes it asked for."""
@@ -24,8 +24,12 @@ def test_packet_switching_is_per_fifo():
     dev = NPU1Col1()
     tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
 
-    of_auto = ObjectFifo(tile_ty, depth=2, name="of_auto", packet=True)
-    of_pinned = ObjectFifo(tile_ty, depth=2, name="of_pinned", packet=True, packet_id=7)
+    of_auto = ObjectFifo(
+        tile_ty, depth=2, name="of_auto", transport=Transport.dma(packet=Packet())
+    )
+    of_pinned = ObjectFifo(
+        tile_ty, depth=2, name="of_pinned", transport=Transport.dma(packet=Packet(id=7))
+    )
     of_circuit = ObjectFifo(tile_ty, depth=2, name="of_circuit")
 
     def prod_body(a, b, c):

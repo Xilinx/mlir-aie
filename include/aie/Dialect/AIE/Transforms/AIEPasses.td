@@ -516,7 +516,9 @@ def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
     a DMA has to carry out, becomes a single pool with a core endpoint at each
     end. Reshaping the data on the way -- a layout transformation on either
     side, a link, a repeat count, an asymmetric consumer type -- puts it back
-    on DMAs, as does the explicit `via_DMA` switch. Any other fifo becomes one pool per tile, a DMA
+    on DMAs, as does an explicit `#aie.transport<dma>`; an explicit
+    `#aie.transport<shared_mem>` that cannot be had is an error. Any other fifo
+    becomes one pool per tile, a DMA
     endpoint alongside each core endpoint, and an `aie.route`
     connecting the two DMA ends. A link's participants meet on one pool, one
     segment per participant.

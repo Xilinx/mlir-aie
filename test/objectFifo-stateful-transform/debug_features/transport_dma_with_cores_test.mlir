@@ -1,4 +1,4 @@
-//===- via_DMA_with_cores_test.mlir -------------------------*- MLIR -*-===//
+//===- transport_dma_with_cores_test.mlir -------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -7,13 +7,13 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll --split-input-file %s | FileCheck %s
 
-// Neighbouring tiles reach each other through shared memory, and `via_DMA`
-// overrides that. Both fifos below run between the same pair, so the cores
+// Neighbouring tiles reach each other through shared memory, and a dma
+// transport overrides that. Both fifos below run between the same pair, so the cores
 // acquire on one fifo that stays in shared memory and one that is pushed onto
 // the DMAs, and the difference has to show up in the locks the cores take.
 
 // @of_shared stays in shared memory: its objects live only on the producer.
-// CHECK-LABEL: @viaDMAWithCores
+// CHECK-LABEL: @dmaTransportWithCores
 // CHECK-DAG:     aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_shared_buff_0"}
 // CHECK-DAG:     aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_shared_buff_1"}
 // CHECK-NOT:     of_shared_cons_buff
@@ -31,16 +31,16 @@
 // CHECK:           aie.dma_start(S2MM, 0
 // CHECK:           aie.dma_bd(%{{.*}}of_stream_cons_buff_0
 
-// CHECK-LABEL: @viaDMACrossColumn
+// CHECK-LABEL: @dmaTransportCrossColumn
 // CHECK:         aie.flow(%{{.*}}tile_0_2, DMA : 0, %{{.*}}tile_2_3, DMA : 0)
 
-module @viaDMAWithCores {
+module @dmaTransportWithCores {
  aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
     %tile13 = aie.tile(1, 3)
 
     aie.objectfifo @of_shared (%tile12, {%tile13}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of_stream (%tile12, {%tile13}, 2 : i32) {via_DMA = true} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_stream (%tile12, {%tile13}, 2 : i32) {transport = #aie.transport<dma>} : !aie.objectfifo<memref<16xi32>>
 
     %core12 = aie.core(%tile12) {
       %c0 = arith.constant 0 : index
@@ -70,14 +70,14 @@ module @viaDMAWithCores {
 // -----
 
 // Tiles in different columns are never neighbours, so the DMA path is the only
-// one on offer and `via_DMA` asks for what would happen anyway.
+// one on offer and a dma transport asks for what would happen anyway.
 
-module @viaDMACrossColumn {
+module @dmaTransportCrossColumn {
  aie.device(xcve2302) {
     %tile02 = aie.tile(0, 2)
     %tile23 = aie.tile(2, 3)
 
-    aie.objectfifo @of (%tile02, {%tile23}, 2 : i32) {via_DMA = true} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of (%tile02, {%tile23}, 2 : i32) {transport = #aie.transport<dma>} : !aie.objectfifo<memref<16xi32>>
 
     %core02 = aie.core(%tile02) {
       %c0 = arith.constant 0 : index

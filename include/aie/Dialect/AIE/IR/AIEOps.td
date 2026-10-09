@@ -2389,6 +2389,19 @@ def AIE_ObjectFifoCreateOp
     through all of its buffers. The total number of objects transferred is
     `iter_count * elemNumber * repeat_count`, which for `repeat_count == 1`
     simplifies to `iter_count * elemNumber`.
+
+    #### Transport and end ports
+
+    `transport` names the path the objects take (`#aie.transport`), and
+    `prod_port` and `cons_ports` name what drives each end (`#aie.end_port`):
+    a DMA channel, pinned or left to allocation, or a core stream port.
+
+    ```
+      aie.objectfifo @of5 (%tile12, {%tile33}, 2 : i32)
+          {transport = #aie.transport<dma, packet = #aie.packet_info<>>,
+           prod_port = #aie.end_port<DMA : 1>}
+          : !aie.objectfifo<memref<16xi32>>
+    ```
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$producerTile,
@@ -2401,37 +2414,26 @@ def AIE_ObjectFifoCreateOp
       OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
       BDDimLayoutArrayAttr:$dimensionsToStream,
       BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
-      DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
+      // Which hardware path carries the objects. Absent means auto: the
+      // lowering uses shared memory when both ends reach one memory module and
+      // nothing else about the fifo forces DMAs.
+      OptionalAttr<ObjectFifoTransportAttr>:$transport,
       DefaultValuedAttr<BoolAttr, "false">:$plio,
       // disable_synchronization==true will skip lock generation for
       // objectfifo synchronous accesses
       DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
       // repeat_count==1 means "do it once"
       OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
-      // aie_stream==0 means enable aie stream port on producer tile
-      // aie_stream==1 means enable aie stream port on consumer tile
-      // aie_stream==2 means enable aie stream ports on producer and consumer
-      // tiles
-      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
-                                             IntMaxValue<2>]>>:$aie_stream,
-      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
-                                             IntMaxValue<1>]>>:$aie_stream_port,
-      // Pin the DMA channel for an endpoint instead of first-free assignment.
-      // prod_dma_channel pins the producer endpoint's channel;
-      // cons_dma_channels holds one entry per consumer (-1 = auto-assign that
-      // consumer).
-      OptionalAttr<ConfinedAttr<
-          AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
-      OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
+      // What drives each end: a DMA channel (pinned or left to allocation) or
+      // a core stream port. Absent means a DMA channel allocation picks;
+      // cons_ports holds one entry per consumer.
+      OptionalAttr<ObjectFifoEndPortAttr>:$prod_port,
+      OptionalAttr<ObjectFifoEndPortArrayAttr>:$cons_ports,
       InitValuesArrayAttr:$initValues,
       OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
       // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
-      OptionalAttr<AIEI32Attr>:$iter_count,
-      // packet selects packet-switched routing. packet_id pins the header;
-      // allocation chooses an unused id when it is absent.
-      UnitAttr:$packet,
-      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
+      OptionalAttr<AIEI32Attr>:$iter_count);
 
   let assemblyFormat = [{
     $sym_name
@@ -2467,6 +2469,57 @@ def AIE_ObjectFifoCreateOp
     }
 
     AIE::BDDimLayoutArrayAttr getDimensionsFromStream(mlir::Value consumerTile);
+
+    /// The path this fifo asks for. An absent `transport` attribute is auto.
+    ObjectFifoTransportMode getTransportMode() {
+      if (ObjectFifoTransportAttr t = getTransportAttr())
+        return t.getMode();
+      return ObjectFifoTransportMode::Auto;
+    }
+
+    bool forcesDMA() {
+      return getTransportMode() == ObjectFifoTransportMode::DMA;
+    }
+
+    bool forcesSharedMemory() {
+      return getTransportMode() == ObjectFifoTransportMode::SharedMem;
+    }
+
+    /// What drives consumer `index`'s end, or null for a DMA channel
+    /// allocation picks.
+    ObjectFifoEndPortAttr getConsumerPort(unsigned index) {
+      if (mlir::ArrayAttr ports = getConsPortsAttr())
+        return llvm::cast<ObjectFifoEndPortAttr>(ports[index]);
+      return nullptr;
+    }
+
+    bool streamsFromProducer() {
+      ObjectFifoEndPortAttr port = getProdPortAttr();
+      return port && port.isCore();
+    }
+
+    bool streamsToConsumer(unsigned index) {
+      ObjectFifoEndPortAttr port = getConsumerPort(index);
+      return port && port.isCore();
+    }
+
+    /// Whether either end is wired to a core stream port.
+    bool usesStream() {
+      if (streamsFromProducer())
+        return true;
+      for (unsigned i = 0, e = getConsumerTiles().size(); i < e; ++i)
+        if (streamsToConsumer(i))
+          return true;
+      return false;
+    }
+
+    /// The packet header this fifo asks its route to carry, or null for a
+    /// circuit-switched connection.
+    PacketInfoAttr packetHeader() {
+      if (ObjectFifoTransportAttr t = getTransportAttr())
+        return t.getPacket();
+      return nullptr;
+    }
 
     /// Returns the consumer element type if set, otherwise the producer type.
     mlir::Type getConsumerElemTypeOrDefault() {

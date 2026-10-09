@@ -16,6 +16,6 @@ module @bad_channel_out_of_range {
     %tile12 = aie.tile(1, 2)
     %tile33 = aie.tile(3, 3)
 
-    aie.objectfifo @of (%tile12, {%tile33}, 2 : i32) {prod_dma_channel = 99 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of (%tile12, {%tile33}, 2 : i32) {prod_port = #aie.end_port<DMA : 99>} : !aie.objectfifo<memref<16xi32>>
   }
 }

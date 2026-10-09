@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // Switching is chosen per fifo, so circuit- and packet-switched connections
-// coexist. A pinned packet_id is honoured; the rest are assigned around it and
+// coexist. A pinned pkt_id is honoured; the rest are assigned around it and
 // around packet flows the design already declares.
 
 // RUN: aie-opt --aie-objectfifo-split %s | FileCheck %s --check-prefix=SPLIT
@@ -20,8 +20,8 @@ module @mixed {
     %d = aie.tile(3, 3)
 
     aie.objectfifo @plain (%a, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @auto (%c, {%d}, 2 : i32) {packet} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @pinned (%b, {%c}, 2 : i32) {packet, packet_id = 7 : i8} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @auto (%c, {%d}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<>>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @pinned (%b, {%c}, 2 : i32) {transport = #aie.transport<auto, packet = #aie.packet_info<pkt_id = 7>>} : !aie.objectfifo<memref<16xi32>>
   }
 }
 

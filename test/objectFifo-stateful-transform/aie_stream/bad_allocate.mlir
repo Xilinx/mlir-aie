@@ -13,7 +13,7 @@ module @bad_allocate {
     %tile13 = aie.tile(1, 3)
 
     aie.objectfifo @of_stream (%tile12, {%tile13}, 1 : i32)
-                              {aie_stream = 0 : i32, aie_stream_port = 0 : i32}
+                              {prod_port = #aie.end_port<Core : 0>}
                               : !aie.objectfifo<memref<3xi32>>
     // expected-error@+1 {{cannot allocate a shared memory module to objectfifo using stream port}}
     aie.objectfifo.allocate @of_stream (%tile13)

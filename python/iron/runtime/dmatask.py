@@ -53,10 +53,11 @@ class DMATask(RuntimeTask):
                 length_parameter, a multiple of 16 bytes. Defaults to the
                 elements one pass of ``tap`` moves.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
-                BD with a packet header `(pkt_type, pkt_id)`. Pairs with
-                downstream packet-switched routing (e.g. an
-                [`ObjectFifo`][iron.ObjectFifo] built with ``packet=True`` or
-                an explicit [`PacketFlow`][iron.PacketFlow]). Defaults to None.
+                BD with a packet header `(pkt_type, pkt_id)`. A packet-switched
+                [`ObjectFifo`][iron.ObjectFifo] needs none, since the transfer
+                takes the header its shim allocation was assigned; this is for
+                an explicit [`PacketFlow`][iron.PacketFlow] or to override that
+                header. Defaults to None.
         """
         self._alloc = alloc
         self._rt_data = rt_data

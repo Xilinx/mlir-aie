@@ -18,7 +18,7 @@ module @bad_channel_collision {
     %tile32 = aie.tile(3, 2)
     %tile33 = aie.tile(3, 3)
 
-    aie.objectfifo @of1 (%tile12, {%tile32}, 2 : i32) {prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of2 (%tile12, {%tile33}, 2 : i32) {prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of1 (%tile12, {%tile32}, 2 : i32) {prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of2 (%tile12, {%tile33}, 2 : i32) {prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
   }
 }

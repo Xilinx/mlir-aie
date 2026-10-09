@@ -18,7 +18,7 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
 from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
     ObjectFifoCreateOp,
 )
-from ...dialects.aie import object_fifo, object_fifo_link
+from ...dialects.aie import Port, Transport, object_fifo, object_fifo_link
 from ...helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
@@ -113,12 +113,9 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         disable_synchronization: bool = False,
         repeat_count: int | None = None,
         delegate_tile: Tile | None = None,
-        via_DMA: bool = False,
+        transport: Transport | str | None = None,
         init_values: list[np.ndarray] | None = None,
         consumer_obj_type: type[np.ndarray] | None = None,
-        aie_stream: tuple[int, int] | None = None,
-        packet: bool = False,
-        packet_id: int | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -156,10 +153,17 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 location, not a producer- or consumer-side concept; the underlying op verifier
                 rejects this if either endpoint cannot share memory with the delegate.
                 Defaults to None.
-            via_DMA (bool, optional): When True, force the ObjectFifo to route through DMA
-                even when producer and consumer share memory (where a lock-only path would
-                otherwise be used). Lowers to the ``via_DMA`` attribute on the underlying
-                ``aie.objectfifo`` op. Defaults to False.
+            transport (Transport | str | None, optional): Which hardware path carries the
+                objects. ``Transport.dma()`` forces the DMAs even when producer and consumer
+                share memory, and ``Transport.shared_mem()`` insists on shared memory.
+                ``Transport.dma(packet=Packet())`` routes the fifo as an
+                ``aie.packet_flow`` sharing the stream with other packet flows, and
+                ``Packet(id=7)`` pins the 5-bit header for designs that route on it. None
+                leaves the choice to the lowering, which is the same as ``Transport.auto()``.
+                What drives each end, a DMA channel or a core stream port, is the ``port``
+                of [`prod`][iron.ObjectFifo.prod] and [`cons`][iron.ObjectFifo.cons].
+                Lowers to the ``transport`` attribute on the underlying ``aie.objectfifo`` op.
+                Defaults to None.
             init_values (list[np.ndarray] | None, optional): Per-buffer static initial values
                 for the producer endpoint. One ndarray per producer-side buffer; the producer
                 tile must be able to hold static data at design startup (e.g. a MemTile).
@@ -170,19 +174,6 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 transfers and the consumer receives consumer_obj_type-sized transfers.
                 Producer element count must be an integer multiple of consumer element count.
                 Defaults to None.
-            aie_stream (tuple[int, int] | None, optional): Mark the fifo as a direct
-                AIE-stream connection by stamping the ``aie_stream`` / ``aie_stream_port``
-                attributes ``(end, port)`` on the underlying ``aie.objectfifo`` op. Use with
-                kernels that emit on the wire via ``put_ms()`` instead of going through an L1
-                buffer. Defaults to None.
-            packet (bool, optional): Route this ObjectFifo as an ``aie.packet_flow``, sharing
-                the stream with other packet flows instead of reserving a circuit for it.
-                Decided per fifo, so a design may mix packet- and circuit-switched fifos.
-                Defaults to False.
-            packet_id (int | None, optional): Pin the 5-bit header the source stamps, for
-                designs that route on the id (e.g. a MemTile dispatching to one of several
-                cores). Requires ``packet``; when absent, allocation picks an id no other
-                flow is using. Defaults to None.
 
         Raises:
             TypeError: If a stream walk is not a ``TensorAccessPattern``.
@@ -215,11 +206,8 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         # Must be resolved before resolve() runs; DeviceConfiguration finds it via
         # ObjectFifo._delegate_tile when collecting tiles to assign MLIR ops to.
         self._delegate_tile: Tile | None = delegate_tile
-        self._via_DMA: bool = via_DMA
+        self._transport: Transport | None = Transport.coerce(transport)
         self._init_values: list[np.ndarray] | None = init_values
-        self._aie_stream: tuple[int, int] | None = aie_stream
-        self._packet: bool = packet
-        self._packet_id: int | None = packet_id
 
     @property
     def depth(self) -> int | None:
@@ -293,7 +281,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
     def prod(
         self,
         depth: int | None = None,
-        channel: int | None = None,
+        port: Port | None = None,
         tile: Tile | None = None,
     ) -> ObjectFifoHandle:
         """Return an ObjectFifoHandle of type producer.
@@ -303,7 +291,9 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to the producer handle. Defaults to None.
-            channel (int | None, optional): Pin the producer endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
+            port (Port | None, optional): What drives the producer end:
+                ``Port.dma(1)`` pins DMA channel 1, and ``Port.stream(0)`` wires it to
+                the core's stream port 0. Defaults to None (a DMA channel allocation picks).
             tile (Tile | None, optional): When this handle drives an ObjectFifo
                 from the runtime (passed in ``Runtime`` ``fn_args``), the shim tile
                 its host-side DMA binds to. Defaults to None (any available shim tile).
@@ -323,10 +313,10 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                     depth = self._depth
             elif depth < 1:
                 raise ValueError(f"Depth must be > 1, but got {depth}")
-            if channel is not None and self._prod.channel != channel:
+            if port is not None and self._prod.port != port:
                 raise ValueError(
-                    f"Producer handle for {self.name} already pinned to channel "
-                    f"{self._prod.channel}, cannot re-pin to {channel}."
+                    f"Producer handle for {self.name} already pinned to "
+                    f"{self._prod.port}, cannot re-pin to {port}."
                 )
             if tile is not None and not _same_shim_pin(self._prod._shim_tile, tile):
                 raise ValueError(
@@ -334,14 +324,14 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                     f"{self._prod._shim_tile}, cannot re-pin to {tile}."
                 )
         else:
-            self._prod = ObjectFifoHandle(self, True, depth, channel=channel, tile=tile)
+            self._prod = ObjectFifoHandle(self, True, depth, port=port, tile=tile)
         return self._prod
 
     def cons(
         self,
         depth: int | None = None,
         from_stream: TensorAccessPattern | None = None,
-        channel: int | None = None,
+        port: Port | None = None,
         tile: Tile | None = None,
     ) -> ObjectFifoHandle:
         """Return an ObjectFifoHandle of type consumer.
@@ -353,7 +343,9 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
             from_stream (TensorAccessPattern | None, optional): How this consumer's DMA writes
                 the stream into its object (see ``from_stream_per_cons``). Defaults to None.
-            channel (int | None, optional): Pin this consumer endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
+            port (Port | None, optional): What drives this consumer end:
+                ``Port.dma(1)`` pins DMA channel 1, and ``Port.stream(0)`` wires it to
+                the core's stream port 0. Defaults to None (a DMA channel allocation picks).
             tile (Tile | None, optional): When this handle drains an ObjectFifo to
                 the runtime (passed in ``Runtime`` ``fn_args``), the shim tile its
                 host-side DMA binds to. Defaults to None (any available shim tile).
@@ -376,7 +368,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 is_prod=False,
                 depth=depth,
                 from_stream=from_stream,
-                channel=channel,
+                port=port,
                 tile=tile,
             )
         )
@@ -514,11 +506,9 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 ),
                 iter_count=self._iter_count,
                 disable_synchronization=self._disable_synchronization or None,
-                via_DMA=self._via_DMA or None,
+                transport=self._transport,
                 initValues=self._init_values,
                 consumer_datatype=consumer_datatype,
-                packet=self._packet or None,
-                packet_id=self._packet_id,
                 loc=ir.Location.name(self.name, childLoc=loc or self._site.location()),
                 ip=ip,
             )
@@ -527,19 +517,11 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
             if self._repeat_count is not None:
                 op.set_repeat_count(self._repeat_count)
 
-            if self._aie_stream is not None:
-                op.set_aie_stream(*self._aie_stream)
-
-            # Pin DMA channels requested on the handles. The producer channel
-            # and one channel per consumer (-1 = auto-assign that consumer) are
-            # stamped onto the op for the stateful-transform pass to honor.
-            if self._prod is not None and self._prod.channel is not None:
-                op.set_prod_dma_channel(self._prod.channel)
-            cons_channels = [con.channel for con in self._cons]
-            if any(ch is not None for ch in cons_channels):
-                op.set_cons_dma_channels(
-                    [-1 if ch is None else ch for ch in cons_channels]
-                )
+            if self._prod is not None and self._prod.port is not None:
+                op.set_prod_port(self._prod.port)
+            cons_ports = [con.port for con in self._cons]
+            if any(p is not None for p in cons_ports):
+                op.set_cons_ports(cons_ports)
 
             # Shared-memory delegate: redirect the fifo's buffer pool to a tile
             # whose memory module is shared with both prod and cons. See the
@@ -590,7 +572,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         is_prod: bool,
         depth: int | None = None,
         from_stream: TensorAccessPattern | None = None,
-        channel: int | None = None,
+        port: Port | None = None,
         tile: Tile | None = None,
     ):
         """Construct an ObjectFifoHandle.
@@ -600,7 +582,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             is_prod (bool): Whether the handle should be producer or consumer handle.
             depth (int | None, optional): The depth of the ObjectFifo at this endpoint. Defaults to None.
             from_stream (TensorAccessPattern | None, optional): This consumer's own walk into its object. Only valid for consumer handles. Defaults to None.
-            channel (int | None, optional): Pin this endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
+            port (Port | None, optional): What drives this end (see prod()/cons()). Defaults to None.
             tile (Tile | None, optional): Shim tile for a runtime-driven endpoint (see prod()/cons()). Defaults to None.
 
         Raises:
@@ -615,7 +597,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
                 )
         if depth < 1:
             raise ValueError(f"Depth must be > 0 but is {depth}")
-        self._port: ObjectFifoPort = (
+        self._fifo_port: ObjectFifoPort = (
             ObjectFifoPort.Produce if is_prod else ObjectFifoPort.Consume
         )
         from_stream = _object_walk(from_stream, "from_stream")
@@ -627,7 +609,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         self._is_prod = is_prod
         self._object_fifo = of
         self._depth = depth
-        self._channel = channel
+        self._end_port = port
         self._shim_tile = tile
         self._endpoint = None
         self._from_stream = from_stream
@@ -653,7 +635,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             raise ValueError(
                 f"Number of elements to acquire {num_elem} must be smaller than depth {self._depth}"
             )
-        return self._object_fifo._acquire(self._port, num_elem)
+        return self._object_fifo._acquire(self._fifo_port, num_elem)
 
     def release(
         self,
@@ -671,7 +653,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             raise ValueError(
                 f"Number of elements to release {num_elem} must be smaller than depth {self._depth}"
             )
-        self._object_fifo._release(self._port, num_elem)
+        self._object_fifo._release(self._fifo_port, num_elem)
 
     @property
     def name(self) -> str | None:
@@ -683,9 +665,9 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         return None if name is None else name + suffix
 
     @property
-    def channel(self) -> int | None:
-        """The pinned DMA channel for this handle's endpoint, or None to auto-assign."""
-        return self._channel
+    def port(self) -> Port | None:
+        """What drives this handle's end, or None for a DMA channel allocation picks."""
+        return self._end_port
 
     @property
     def op(self) -> ObjectFifoCreateOp:
@@ -971,7 +953,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         plio: bool = False,
         repeat_counts: Sequence[int | None] | None = None,
         pad_value: list[int] | None = None,
-        channels: Sequence[int | None] | None = None,
+        ports: Sequence[Port | None] | None = None,
     ) -> list[ObjectFifo]:
         """Split the data from an ObjectFifoConsumer handle by sending it to producers in N newly constructed ObjectFifos.
 
@@ -993,8 +975,8 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             repeat_counts (Sequence[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
             pad_value (list[int] | None, optional): Per-sub-fifo per-element pad fill value (see ObjectFifo.pad_value). Defaults to None.
 
-            channels (Sequence[int | None] | None, optional): Pin the hardware DMA
-                channel each output ObjectFifo produces on, one per output.
+            ports (Sequence[Port | None] | None, optional): What drives each output
+                ObjectFifo's producer end, one per output, such as ``Port.dma(1)``.
                 split() builds those producer handles itself, so this is the
                 only place to say it. Defaults to None (all compiler-assigned).
 
@@ -1063,17 +1045,17 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             )
 
         # Create link and set it as endpoints
-        pinned: list[int | None] = (
-            [None] * len(subfifos) if channels is None else list(channels)
+        pinned: list[Port | None] = (
+            [None] * len(subfifos) if ports is None else list(ports)
         )
         if len(pinned) != len(subfifos):
             raise ValueError(
-                f"split() got {len(pinned)} channels for {len(subfifos)} "
+                f"split() got {len(pinned)} ports for {len(subfifos)} "
                 "outputs; give one per output or none at all."
             )
         # A subfifo's producer handle is built here, so a caller wanting its
-        # channel pinned has nowhere else to say it -- prod() refuses to re-pin.
-        subfifo_prods = [s.prod(channel=c) for s, c in zip(subfifos, pinned)]
+        # port pinned has nowhere else to say it -- prod() refuses to re-pin.
+        subfifo_prods = [s.prod(port=p) for s, p in zip(subfifos, pinned)]
         _ = ObjectFifoLink(self, subfifo_prods, tile, [], offsets)
         return subfifos
 
@@ -1088,7 +1070,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         plio: bool = False,
         repeat_count: int | None = None,
         pad_value: int = 0,
-        channel: int | None = None,
+        port: Port | None = None,
     ) -> ObjectFifo:
         """Forward an ObjectFifoHandle of type consumer to a newly-constructed ObjectFifo.
 
@@ -1109,8 +1091,8 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             repeat_count (int | None, optional): MemTile DMA repeat count for the new ObjectFifo (see ObjectFifo.repeat_count). Defaults to None.
             pad_value (int, optional): Per-element constant fill value for a padded
                 ``to_stream`` (see ObjectFifo.pad_value). Defaults to 0.
-            channel (int | None, optional): Pin the hardware DMA channel the
-                forwarded ObjectFifo produces on. forward() builds that
+            port (Port | None, optional): What drives the forwarded ObjectFifo's
+                producer end, such as ``Port.dma(1)``. forward() builds that
                 producer handle itself, so this is the only place to say it.
                 Defaults to None (assigned by the compiler).
 
@@ -1139,7 +1121,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             plio=plio,
             repeat_counts=[repeat_count] if repeat_count is not None else None,
             pad_value=[pad_value] if pad_value else None,
-            channels=[channel] if channel is not None else None,
+            ports=[port] if port is not None else None,
         )
         return forward_fifo[0]
 

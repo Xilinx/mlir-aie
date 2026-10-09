@@ -38,8 +38,8 @@ module @packetLinkDistribute {
     %tile33 = aie.tile(3, 3)
 
     aie.objectfifo @of_in (%tile10, {%tile11}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo @of_a (%tile11, {%tile12}, 2 : i32) {packet} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of_b (%tile11, {%tile33}, 2 : i32) {packet, packet_id = 5 : i8} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_a (%tile11, {%tile12}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<>>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_b (%tile11, {%tile33}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 5>>} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo.link [@of_in] -> [@of_a, @of_b] ([] [0, 16])
 
     %core12 = aie.core(%tile12) {

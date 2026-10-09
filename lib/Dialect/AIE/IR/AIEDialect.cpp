@@ -520,10 +520,64 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ObjectFifoTransportAttr
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+ObjectFifoTransportAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                                ObjectFifoTransportMode mode,
+                                PacketInfoAttr packet) {
+  // A packet header rides a stream-switch connection the DMAs drive, so only
+  // the paths that may use the DMAs can honour one.
+  if (packet && mode == ObjectFifoTransportMode::SharedMem)
+    return emitError() << "`packet` belongs to a dma or auto transport, not "
+                       << stringifyObjectFifoTransportMode(mode);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ObjectFifoEndPortAttr
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+ObjectFifoEndPortAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                              WireBundle bundle,
+                              std::optional<uint32_t> channel) {
+  if (bundle != WireBundle::DMA && bundle != WireBundle::Core)
+    return emitError() << "an objectFifo end is driven by a DMA channel or a "
+                          "Core stream port, not "
+                       << stringifyWireBundle(bundle);
+  if (bundle == WireBundle::Core && !channel)
+    return emitError() << "a Core end needs its stream port";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ObjectFifoCreateOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoCreateOp::verify() {
+  // MLIR carries an attribute it does not know about rather than rejecting it,
+  // so IR written against the switches these replaced would keep parsing and
+  // quietly take the default path instead. Name them to fail that loudly.
+  static constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
+      replaced[] = {
+          {"via_DMA", "transport = #aie.transport<dma>"},
+          {"packet", "transport = #aie.transport<dma, packet = "
+                     "#aie.packet_info<>>"},
+          {"packet_id", "transport = #aie.transport<dma, packet = "
+                        "#aie.packet_info<pkt_id = 3>>"},
+          {"aie_stream", "prod_port = #aie.end_port<Core : 0> or cons_ports "
+                         "= [#aie.end_port<Core : 0>]"},
+          {"aie_stream_port", "prod_port = #aie.end_port<Core : 0> or "
+                              "cons_ports = [#aie.end_port<Core : 0>]"},
+          {"prod_dma_channel", "prod_port = #aie.end_port<DMA : 1>"},
+          {"cons_dma_channels", "cons_ports = [#aie.end_port<DMA : 1>]"}};
+  for (auto [gone, replacement] : replaced)
+    if ((*this)->hasAttr(gone))
+      return emitOpError("`")
+             << gone << "` has been replaced; write " << replacement;
+
   if (isa<ArrayAttr>(getElemNumber())) {
     if (size_t numDepths = dyn_cast<ArrayAttr>(getElemNumber()).size();
         numDepths != getConsumerTiles().size() + 1) // +1 for producer depth
@@ -531,15 +585,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "and for each consumer.");
   }
 
-  if (getAieStream() && (getProdDmaChannel() || getConsDmaChannels())) {
-    return emitOpError(
-        "cannot pin a DMA channel on an objectfifo that also uses aie_stream "
-        "(stream ports bypass DMA channels)");
-  }
-
-  if (getPacketId() && !getPacket()) {
-    return emitOpError("packet_id is only meaningful on a packet objectfifo");
-  }
+  if (ArrayAttr consPorts = getConsPortsAttr();
+      consPorts && consPorts.size() != getConsumerTiles().size())
+    return emitOpError("`cons_ports` has ")
+           << consPorts.size() << " entries for " << getConsumerTiles().size()
+           << " consumers";
 
   // Helper to get tile interface from Value
   auto getTileLikeFromValue = [](Value v) -> TileLike {
@@ -581,23 +631,19 @@ LogicalResult ObjectFifoCreateOp::verify() {
                        "unavailable on this target");
   }
 
-  if (getAieStreamPort().has_value()) {
-    if (!getAieStream().has_value())
-      return emitError("`aie_stream` must be defined");
-  }
-
-  if (auto aieStream = getAieStream()) {
-    int aieStreamVal = *aieStream;
+  if (usesStream()) {
     if (getConsumerTiles().size() > 1)
-      return emitError("`aie_stream` can only be used in 1-to-1 object FIFOs");
+      return emitError("a Core stream port end can only be used in 1-to-1 "
+                       "object FIFOs");
 
-    if (!getAieStreamPort().has_value())
-      return emitError("`aie_stream_port` must be defined");
+    if (forcesSharedMemory())
+      return emitError("a Core stream port end sends over the stream, not "
+                       "through shared memory");
 
-    if (aieStreamVal == 0 || aieStreamVal == 2) {
+    if (streamsFromProducer()) {
       if (producerTile.isShimTile() || producerTile.isMemTile())
         return emitError(
-            "`aie_stream` is not available for shim and mem tiles");
+            "a Core stream port end is not available for shim and mem tiles");
 
       if (getRepeatCount().has_value())
         return emitError("`repeat_count` unavailable on stream end");
@@ -613,11 +659,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "unavailable on stream end");
     }
 
-    if (aieStreamVal == 1 || aieStreamVal == 2) {
+    if (streamsToConsumer(0)) {
       TileLike consTile = getTileLikeFromValue(getConsumerTiles()[0]);
       if (consTile && (consTile.isShimTile() || consTile.isMemTile()))
         return emitError(
-            "`aie_stream` is not available for shim and mem tiles");
+            "a Core stream port end is not available for shim and mem tiles");
     }
 
     if (!getDimensionsFromStreamPerConsumer()[0].empty())
@@ -1441,16 +1487,16 @@ LogicalResult ObjectFifoAllocateOp::verify() {
     return emitError("cannot retrieve associated object FIFO");
   if (objFifo.getConsumerTiles().size() != 1)
     return emitError("can only be used in 1-to-1 object FIFOs");
-  if (objFifo.getVia_DMA())
+  if (objFifo.forcesDMA())
     return emitError("cannot allocate a shared memory module to objectfifo "
-                     "with set `via_DMA` attribute");
+                     "that asks for a dma transport");
   if (objFifo.getRepeatCount().has_value())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set `repeat_count` attribute");
   if (!objFifo.getDimensionsToStream().empty())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set dimensions attribute");
-  if (objFifo.getAieStream().has_value())
+  if (objFifo.usesStream())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "using stream port");
   for (Operation *op = (*this)->getPrevNode(); op; op = op->getPrevNode())
