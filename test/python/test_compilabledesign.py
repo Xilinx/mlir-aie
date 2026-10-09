@@ -405,6 +405,24 @@ def test_cache_key_covers_the_sources_the_generator_reaches(
     assert key() != before
 
 
+def test_cache_key_covers_kernel_flags_mutated_in_place(scale_design):
+    """Kernel flags read through a mutable module global move the key when mutated.
+
+    Nothing on disk changes when a list the generator reads is edited in
+    place, and the walk dropped containers entirely, so an entry cached
+    before the edit was silently reused -- with the old kernel flags.
+    """
+    _, gen = scale_design
+    flags = sys.modules["scale_flags"]
+
+    def key():
+        return CompilableDesign(gen, compile_kwargs={"N": 64})._compute_cache_hash()
+
+    before = key()
+    flags.FLAGS.append("-O2")
+    assert key() != before
+
+
 def test_cache_key_does_not_generate_the_design():
     def scale(a: In, *, N: CompileTime[int]):
         raise AssertionError("the key generated the design")
