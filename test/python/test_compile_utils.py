@@ -12,7 +12,6 @@ import os
 from pathlib import Path
 import sys
 import time
-import types
 
 import pytest
 
@@ -303,9 +302,18 @@ def test_declared_link_with_picks_among_kernels_sharing_a_symbol(compile_utils):
     An inline kernel keeps its bare symbol on every arch. A symbol no instance
     matches keeps them all, so the arch check can still report it.
     """
-    aie2 = types.SimpleNamespace(name="setup", object_file_name="setup_aaaa.ll")
-    aie2p = types.SimpleNamespace(name="setup", object_file_name="setup_bbbb.ll")
-    other = types.SimpleNamespace(name="kernel", object_file_name="kernel.o")
+    setup = 'extern "C" void setup() {}'
+    aie2 = ExternalFunction(
+        "setup", source_string=setup, object_file_name="setup_aaaa.ll"
+    )
+    aie2p = ExternalFunction(
+        "setup", source_string=setup, object_file_name="setup_bbbb.ll"
+    )
+    other = ExternalFunction(
+        "kernel",
+        source_string='extern "C" void kernel(int) {}',
+        object_file_name="kernel.o",
+    )
 
     def select(funcs, text):
         declared = compile_utils._declared_objects(text)
