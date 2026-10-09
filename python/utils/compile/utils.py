@@ -539,7 +539,10 @@ def compile_cxx_core_function(
             if cwd is not None and not failed_output.is_absolute():
                 failed_output = Path(cwd) / failed_output
             failed_output.unlink(missing_ok=True)
-            Path(f"{failed_output}.bc").unlink(missing_ok=True)
+            # The sidecar is never trusted, so one that cannot be removed must
+            # not hide why the compile failed.
+            with contextlib.suppress(OSError):
+                Path(f"{failed_output}.bc").unlink(missing_ok=True)
             raise
 
     if inline:
