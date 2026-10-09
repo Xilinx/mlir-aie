@@ -76,12 +76,10 @@ def vector_exp2f(
             a_in.release(1)
             c_out.release(1)
 
-    # The aie2 build needs more than the default 1024-byte stack.
     workers = [
         Worker(
             core_fn,
             fn_args=[a_fifos[i].cons(), c_fifos[i].prod(), exp2f_fn],
-            stack_size=exp2f_fn.contract.stack_bytes,
         )
         for i in range(n_cores)
     ]

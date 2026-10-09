@@ -143,10 +143,6 @@ class KernelContract:
             the rounding mode a bf16 store needs); ``None`` when the source
             sets its own mode or narrows nothing. A Worker handed the kernel
             calls it before its loop.
-        stack_bytes: Core stack a Worker calling this kernel needs, when
-            more than the target's default. Say where the number came from;
-            a note that gives only bytes per build means aiecc's
-            measured_stack_size.
         unsupported: Why the builder cannot run this kernel, or ``None``. A
             kernel with no output argument (a cascade PUT half) says so here.
         layouts: A ``TensorLayout`` per argument; ``None`` is identity.
@@ -160,6 +156,10 @@ class KernelContract:
             every call the same output tile, passes ``call * step`` as the
             offset and drains the tile once, so the calls must fill it
             exactly. ``None``: each call writes a whole tile of its own.
+        call_index: The bound scalar ``Param`` the builder sets to each
+            call's index, 0 first, for a kernel whose state carries from one
+            call to the next and restarts at 0. The reference sees every
+            call at once, in order. ``None``: the bound value holds.
         trace: The ``Trace`` shape of the kernel's markers. Every
             library factory declares one; ``None`` (undeclared) is only for
             ad-hoc kernels, and ``cycles_per_call`` refuses it.
@@ -185,12 +185,12 @@ class KernelContract:
     acc_dtype: type | None = None
     reduction: int | None = None
     setup: Callable[[], object] | None = None
-    stack_bytes: int | None = None
     unsupported: str | None = None
     layouts: tuple[TensorLayout | None, ...] = ()
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
     out_offset: tuple[int, int] | None = None
+    call_index: int | None = None
     trace: Trace | None = None
     uses_lut: bool = False
     alignments: tuple[tuple[int, int], ...] = ()
@@ -232,10 +232,16 @@ class KernelContract:
                 )
             if step < 1:
                 raise ValueError(f"out_offset step must be >= 1, got {step}")
+        if self.call_index is not None and (
+            self.call_index not in bound
+            or self.out_offset is not None
+            and self.out_offset[0] == self.call_index
+        ):
+            raise ValueError(
+                "call_index needs a bound Param that out_offset does not set"
+            )
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
-        if self.stack_bytes is not None and self.stack_bytes < 1:
-            raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
         if self.unsupported is not None and not self.unsupported:
             raise ValueError("unsupported must be a reason, or None")
         if any(
@@ -395,8 +401,8 @@ def _arch_traits() -> ArchTraits:
 def _tuned_arch() -> str:
     """Return the arch whose ``AIE_TUNED_*`` code is built, or ``"portable"``.
 
-    A factory choice that follows the code of one branch -- a stack size, a
-    tolerance, a reference model -- keys on this rather than on
+    A factory choice that follows the code of one branch -- a tolerance, a
+    reference model -- keys on this rather than on
     ``_detect_arch``, so that it pairs with the branch built when
     ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch.
     """

@@ -49,6 +49,7 @@ from aie.utils.compile import (
     NPU_CACHE_HOME,
     compile_external_kernels,
     compile_mlir_module,
+    resolve_target_arch,
 )
 from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import (
@@ -83,7 +84,7 @@ from .context import compile_context
 # acquisition, so the bound has to exceed a full build rather than a handshake.
 # file_lock's own 60s default is well under the AIE compiles this guards -- CI
 # budgets individual tests 600-1200s for exactly that reason.
-_COMPILE_LOCK_TIMEOUT_SECONDS = 1800
+COMPILE_LOCK_TIMEOUT_SECONDS = 1800
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +156,8 @@ class CompilableDesign:
             sequence to an instruction stream (``aiecc --get-npu-insts``),
             against an image built elsewhere: a foreign xclbin, or one
             configuration's image that many shapes share. No core is
-            compiled, so the kernels the design declares are not built.
+            compiled, but the kernels the design declares are, since buffer
+            placement reserves the banks their static data needs.
         full_elf: When ``True``, `compile` emits a single self-contained
             "full" ELF (PDIs + TXN control code) instead of an
             ``xclbin`` + ``insts.bin`` pair.  The ELF is loaded standalone by
@@ -535,7 +537,7 @@ class CompilableDesign:
 
         dispatch_so_path = None
 
-        with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
+        with file_lock(lock_file_path, timeout_seconds=COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
             companion_path = (
@@ -626,32 +628,9 @@ class CompilableDesign:
                 )
 
             try:
-                mlir_module = self._generate_mlir(ExternalFunction)
-
-                from aie.utils import get_current_device
-                from aie.utils.compile import resolve_target_arch
-
-                device = get_current_device(probe_runtime=False)
-                target_arch = resolve_target_arch(device)
-
-                external_kernels = list(ExternalFunction._instances)
-                ExternalFunction._instances.clear()
-
-                use_chess = self._resolve_use_chess(external_kernels)
-
-                compile_external_kernels(
-                    external_kernels,
-                    kernel_dir,
-                    target_arch,
-                    include_dirs=self.include_paths,
-                    # aiecc's LUT bank check reads IR that only the kernel
-                    # compile can preserve, so asking for the check is what
-                    # turns it on. Deriving it here keeps the two from
-                    # disagreeing, and aiecc_flags is already in the cache key.
-                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
-                    object_cache=self._kernel_object_cache(),
+                mlir_module, external_kernels, use_chess = (
+                    self._generate_and_build_kernels(ExternalFunction, kernel_dir)
                 )
-                _copy_object_files(self.object_files, kernel_dir)
 
                 compiler_options = list(self.aiecc_flags)
                 if has_dispatch:
@@ -766,7 +745,7 @@ class CompilableDesign:
             elf_path = kernel_dir / "design.elf"
         lock_file_path = kernel_dir / ".lock"
 
-        with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
+        with file_lock(lock_file_path, timeout_seconds=COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
@@ -809,31 +788,11 @@ class CompilableDesign:
                     return elf_path, None
 
             try:
-                mlir_module = self._generate_mlir(ExternalFunction, full_elf=True)
-
-                from aie.utils import get_current_device
-                from aie.utils.compile import resolve_target_arch
-
-                device = get_current_device(probe_runtime=False)
-                target_arch = resolve_target_arch(device)
-
-                external_kernels = list(ExternalFunction._instances)
-                ExternalFunction._instances.clear()
-
-                use_chess = self._resolve_use_chess(external_kernels)
-                compile_external_kernels(
-                    external_kernels,
-                    kernel_dir,
-                    target_arch,
-                    include_dirs=self.include_paths,
-                    # aiecc's LUT bank check reads IR that only the kernel
-                    # compile can preserve, so asking for the check is what
-                    # turns it on. Deriving it here keeps the two from
-                    # disagreeing, and aiecc_flags is already in the cache key.
-                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
-                    object_cache=self._kernel_object_cache(),
+                mlir_module, external_kernels, use_chess = (
+                    self._generate_and_build_kernels(
+                        ExternalFunction, kernel_dir, full_elf=True
+                    )
                 )
-                _copy_object_files(self.object_files, kernel_dir)
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
@@ -896,7 +855,7 @@ class CompilableDesign:
             inst_path = kernel_dir / "insts.bin"
         lock_file_path = kernel_dir / ".lock"
 
-        with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
+        with file_lock(lock_file_path, timeout_seconds=COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
@@ -931,15 +890,18 @@ class CompilableDesign:
                 return None, inst_path
 
             try:
-                mlir_module = self._generate_mlir(ExternalFunction)
-                # No core is compiled here, so the kernels the design declared
-                # are not built; the registry is cleared so one process's
-                # designs do not collide on a kernel name.
-                ExternalFunction._instances.clear()
+                # The stream addresses the buffers where the image's build
+                # placed them, and that placement reserves each bank's kernel
+                # data, which only the built objects show.
+                mlir_module, external_kernels, use_chess = (
+                    self._generate_and_build_kernels(ExternalFunction, kernel_dir)
+                )
+
                 compile_mlir_module(
                     mlir_module=mlir_module,
                     insts_path=inst_path,
                     work_dir=kernel_dir,
+                    use_chess=use_chess,
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
                     device_cache_dir=self._device_cache_dir(),
                 )
@@ -949,7 +911,12 @@ class CompilableDesign:
                         "succeed (exit code 0) but the expected output file was "
                         f"not created: {inst_path}"
                     )
-                _manifest.record(kernel_dir, [], self.source_files)
+                _manifest.record(
+                    kernel_dir,
+                    external_kernels,
+                    self.source_files,
+                    used_chess=use_chess,
+                )
                 if explicit_path:
                     self._record_explicit_outputs(
                         kernel_dir, build_key, {"insts": inst_path}
@@ -978,6 +945,39 @@ class CompilableDesign:
         self._dispatch_lib_path = dispatch_library
         self._full_elf_kernel_name = full_elf_kernel_name
         self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
+
+    def _generate_and_build_kernels(
+        self, ExternalFunction, kernel_dir: Path, *, full_elf: bool = False
+    ) -> tuple[Any, list, bool]:
+        """Generate the design and build its kernels' objects into ``kernel_dir``.
+
+        Returns:
+            The MLIR module, the design's ``ExternalFunction`` kernels, and
+            whether aiecc drives Chess for them.
+        """
+        mlir_module = self._generate_mlir(ExternalFunction, full_elf=full_elf)
+
+        # aie.utils imports this module before it defines this name.
+        from aie.utils import get_current_device
+
+        target_arch = resolve_target_arch(get_current_device(probe_runtime=False))
+        external_kernels = list(ExternalFunction._instances)
+        ExternalFunction._instances.clear()
+        use_chess = self._resolve_use_chess(external_kernels)
+        compile_external_kernels(
+            external_kernels,
+            kernel_dir,
+            target_arch,
+            include_dirs=self.include_paths,
+            # aiecc's LUT bank check reads IR that only the kernel compile can
+            # preserve, so asking for the check is what turns it on. Deriving
+            # it here keeps the two from disagreeing, and aiecc_flags is
+            # already in the cache key.
+            embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
+            object_cache=self._kernel_object_cache(),
+        )
+        _copy_object_files(self.object_files, kernel_dir)
+        return mlir_module, external_kernels, use_chess
 
     def _resolve_use_chess(self, external_kernels: list) -> bool:
         """Return whether to drive aiecc with the Chess front-end.
@@ -1525,14 +1525,14 @@ class CompilableDesign:
         if not self.use_cache:
             return None
         return KernelObjectCache(
-            NPU_CACHE_HOME / "objects", _COMPILE_LOCK_TIMEOUT_SECONDS
+            NPU_CACHE_HOME / "objects", COMPILE_LOCK_TIMEOUT_SECONDS
         )
 
     def _build_cache(self) -> BuildCache | None:
         """Share explicit-path builds across output paths unless caching is off."""
         if not self.use_cache:
             return None
-        return BuildCache(NPU_CACHE_HOME / "builds", _COMPILE_LOCK_TIMEOUT_SECONDS)
+        return BuildCache(NPU_CACHE_HOME / "builds", COMPILE_LOCK_TIMEOUT_SECONDS)
 
     def _device_cache_dir(self) -> Path | None:
         """Share each device's compiled cores across designs unless caching is off."""
@@ -1670,7 +1670,11 @@ class CompilableDesign:
             if isinstance(_v, ExternalFunction):
                 ExternalFunction._instances.add(_v)
 
-        with compile_context(**self.compile_kwargs, _iron_full_elf=full_elf):
+        with compile_context(
+            **self.compile_kwargs,
+            _iron_full_elf=full_elf,
+            _iron_object_cache=self._kernel_object_cache(),
+        ):
             with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
                 bound = inspect.BoundArguments(sig, OrderedDict(_gen_call_kwargs))
                 bound.apply_defaults()

@@ -941,9 +941,9 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
     symbols = _defined_symbols(object_path)
 
     objcopy = config.objcopy_path()
-    with tempfile.TemporaryDirectory(
-        prefix="aie-symbol-map-", dir=os.path.dirname(os.path.abspath(object_path))
-    ) as tmpdir:
+    # Not beside the object: on NFS, a file deleted while its asynchronous
+    # close is in flight leaves a .nfs file that fails the cleanup.
+    with tempfile.TemporaryDirectory(prefix="aie-symbol-map-") as tmpdir:
         map_file = os.path.join(tmpdir, "symbols.map")
         with open(map_file, "w") as f:
             for symbol in symbols:

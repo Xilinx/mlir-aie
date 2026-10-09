@@ -6,12 +6,12 @@
 """Factory functions for AIE kernel ExternalFunctions.
 
 Submodules:
-- `eltwise` — passthrough, scale, add, mul, relu
-- `datamovement` — affine_cast, axpy, convert_copy, expand, rope, transpose
+- `eltwise` — passthrough, scale, add, mul, relu, clamp, magnitude_f32
+- `datamovement` — affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
-- `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
-- `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
+- `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted, resample_peak, resample_quantize, resize
+- `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, log_f32, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
 - `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
@@ -61,6 +61,8 @@ from .activation import (
     gelu_sized,
     leaky_relu,
     leaky_relu_ref,
+    log_f32,
+    log_f32_ref,
     relu_ref,
     sigmoid,
     sigmoid_lut_ref,
@@ -124,8 +126,16 @@ from .datamovement import (
     convert_copy_ref,
     expand,
     expand_ref,
+    limbs_f32,
+    limbs_f32_ref,
+    merge_rows,
+    merge_rows_ref,
+    patch_positions,
+    patch_positions_ref,
     rope,
     rope_ref,
+    row_addresses,
+    row_addresses_ref,
     transpose,
     transpose_ref,
 )
@@ -133,6 +143,10 @@ from .eltwise import (
     add,
     add_ref,
     add_sized,
+    clamp,
+    clamp_ref,
+    magnitude_f32,
+    magnitude_f32_ref,
     mul,
     mul_add,
     mul_add_ref,
@@ -276,6 +290,12 @@ from .vision import (
     filter2d_ref,
     gray2rgba,
     gray2rgba_ref,
+    resample_peak,
+    resample_peak_ref,
+    resample_quantize,
+    resample_quantize_ref,
+    resize,
+    resize_ref,
     rgba2gray,
     rgba2gray_ref,
     rgba2hue,
@@ -398,6 +418,10 @@ __all__ = [
     "argmax_combine_ref",
     "relu",
     "relu_sized",
+    "clamp",
+    "clamp_ref",
+    "magnitude_f32",
+    "magnitude_f32_ref",
     "rgba2hue",
     "rgba2hue_ref",
     "threshold",
@@ -414,6 +438,12 @@ __all__ = [
     "filter2d_ref",
     "add_weighted",
     "add_weighted_ref",
+    "resample_peak",
+    "resample_peak_ref",
+    "resample_quantize",
+    "resample_quantize_ref",
+    "resize",
+    "resize_ref",
     "softmax",
     "gelu",
     "gelu_sized",
@@ -423,6 +453,7 @@ __all__ = [
     "swiglu_ref",
     "bf16_exp",
     "exp2f_vec",
+    "log_f32",
     "tanh",
     "sigmoid",
     "leaky_relu",
@@ -430,6 +461,10 @@ __all__ = [
     "axpy",
     "convert_copy",
     "expand",
+    "limbs_f32",
+    "merge_rows",
+    "patch_positions",
+    "row_addresses",
     "transpose",
     "add_ref",
     "mul_ref",
@@ -441,6 +476,10 @@ __all__ = [
     "axpy_ref",
     "convert_copy_ref",
     "expand_ref",
+    "limbs_f32_ref",
+    "merge_rows_ref",
+    "patch_positions_ref",
+    "row_addresses_ref",
     "transpose_ref",
     "mm_ref",
     "mm_tile_ref",
@@ -456,6 +495,7 @@ __all__ = [
     "bf16_exp_lut_ref",
     "bf16_exp_ref",
     "exp2f_vec_ref",
+    "log_f32_ref",
     "softmax_ref",
     "sigmoid_lut_ref",
     "sigmoid_table_ref",

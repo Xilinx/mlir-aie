@@ -140,6 +140,11 @@ bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/arg1@16
 bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/fc1
 bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/ic-tail
 bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/short
+clamp/1024x16/bfloat16
+clamp/1024x256/bfloat16
+clamp/1024x4/bfloat16/one-point
+clamp/1024x4/bfloat16/one-sign
+clamp/32x4/bfloat16/edge-one-vector
 compute_max/1x16/int32
 compute_max/2x16/bfloat16
 conv2dk1/2048x8/int8_uint8
@@ -233,18 +238,33 @@ flm_gemma4_swa_attn_kv_core/4256x4/bfloat16_float32
 flm_gemma4_swa_attn_kv_core/8352x4/bfloat16_float32/geometry=gemma4_e4b
 flm_gemma4_swa_prefill/16x4/bfloat16
 flm_gemma4_v_norm_core/512x4/bfloat16
+fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/mmul_shape=(8, 8, 8)/out_chunk=512
 fused_mm/16x64x16x4/bfloat16/band_m=16/bfp16_b=True/chunk_k=32/out_chunk=64
+fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/emulate_bf16_mmul_with_bfp16=True/out_chunk=256
+fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/mmul_shape=(8, 8, 8)/out_chunk=256
+fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=32/chunk_k=128/clamp=(-0.125, 0.75)/emulate_bf16_mmul_with_bfp16=True/epilogue=gelu/epilogue_modes=('none', 'gelu', 'silu', 'sigmoid')/gelu=bf16_steps/out_chunk=512/rounding=floor
+fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=32/chunk_k=128/emulate_bf16_mmul_with_bfp16=True/out_chunk=512
+fused_mm/32x256x32x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/emulate_bf16_mmul_with_bfp16=True/out_chunk=256
+fused_mm/32x256x32x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/mmul_shape=(8, 8, 8)/out_chunk=256
 fused_mm/32x32x16x4/bfloat16
 fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)
 fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)/epilogue=silu
+fused_mm/32x48x16x4/bfloat16/emulate_bf16_mmul_with_bfp16=True
 fused_mm/32x48x16x4/bfloat16/epilogue=gelu
 fused_mm/32x48x16x4/bfloat16/epilogue=gelu/gelu=bf16_steps/rounding=floor
 fused_mm/32x48x16x4/bfloat16/epilogue=sigmoid
 fused_mm/32x48x16x4/bfloat16/epilogue=silu
 fused_mm/32x48x16x4/bfloat16/rounding=floor
+fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/emulate_bf16_mmul_with_bfp16=True/out_chunk=256
+fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/mmul_shape=(8, 8, 8)/out_chunk=256
+fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/clamp=(-0.125, 0.75)/epilogue=silu/mmul_shape=(8, 8, 8)/out_chunk=256
+fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/epilogue=gelu/mmul_shape=(4, 8, 8)/out_chunk=256
+fused_mm/64x128x16x4/bfloat16/band_m=64/chunk_k=16/mmul_shape=(8, 8, 8)/out_chunk=512
+fused_mm/64x128x32x4/bfloat16/band_m=64/chunk_k=32/mmul_shape=(8, 8, 8)/out_chunk=512
 fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=silu/out_chunk=512
 fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=gelu/epilogue_modes=('none', 'gelu', 'silu', 'sigmoid')/gelu=bf16_steps/out_chunk=512/rounding=floor
 fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/out_chunk=512
+fused_mm/64x32x128x4/bfloat16/b_col_maj=True/band_m=64/chunk_k=32/emulate_bf16_mmul_with_bfp16=True/out_chunk=512
 fused_mm/64x32x128x4/bfloat16/band_m=64/bfp16_b=True/chunk_k=32/out_chunk=512
 gelu/1024x16/bfloat16
 gelu/1024x16/bfloat16/use_lut=True/lut
@@ -271,13 +291,35 @@ leaky_relu/1024x16/bfloat16
 leaky_relu/1024x256/bfloat16
 leaky_relu/1024x4/bfloat16/inexact-alpha
 leaky_relu/160x4/bfloat16/unroll-tail
+limbs_f32/160x16/float32_bfloat16
+limbs_f32/320x16/float32_bfloat16
+limbs_f32/320x256/float32_bfloat16
+limbs_f32/32x4/float32_bfloat16/edge-one-vector
+log_f32/1024x16/float32_bfloat16
+log_f32/1024x256/float32_bfloat16
+log_f32/1024x4/float32_bfloat16/mel-floor
+log_f32/128x4/float32_bfloat16/mel-row
+log_f32/32x4/float32_bfloat16/edge-one-vector
+magnitude_f32/640x16/float32
+magnitude_f32/640x256/float32
+magnitude_f32/64x4/float32/edge-one-vector
+merge_rows/32x6/int32/audio_at=2048/audio_token=258881/block=32/image_token=258880/vision_at=2560
+merge_rows/64x1/int32/audio_at=2048/audio_token=258881/image_token=258880/vision_at=2560/one-block
+merge_rows/64x2/int32/audio_at=0/audio_token=0/image_token=1/vision_at=40/overlap
+merge_rows/64x32/int32/audio_at=2048/audio_token=258881/image_token=258880/vision_at=2560
+mha/16x256x64x4/bfloat16/pv=True
 mha/64x64x64x4/bfloat16
 mha/64x64x64x4/bfloat16/pv=True
-mha_softmax/4096x4/bfloat16_bfloat16+bfloat16
-mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/accurate_exp2=True/accurate
-mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/accurate_exp2=True/accurate-diagonal-padded
-mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal
-mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal-padded
+mha_softmax/2048x4/bfloat16_bfloat16+float32/half-block-diagonal
+mha_softmax/256x4/bfloat16_bfloat16+float32/diagonal-padded
+mha_softmax/4096x4/bfloat16_bfloat16+float32
+mha_softmax/4096x4/bfloat16_bfloat16+float32/accurate_exp2=True/accurate
+mha_softmax/4096x4/bfloat16_bfloat16+float32/accurate_exp2=True/accurate-diagonal-padded
+mha_softmax/4096x4/bfloat16_bfloat16+float32/causal=False/bidirectional-padded
+mha_softmax/4096x4/bfloat16_bfloat16+float32/causal=False/window=64/window
+mha_softmax/4096x4/bfloat16_bfloat16+float32/diagonal
+mha_softmax/4096x4/bfloat16_bfloat16+float32/diagonal-padded
+mha_softmax/512x4/bfloat16_bfloat16+float32/causal=False/window=32/window-padded
 mm/16x1008x16x4/int8_int32
 mm/16x512x32x4/int8_int32
 mm/16x512x32x4/int8_int32/b_col_maj=True
@@ -363,6 +405,14 @@ passthrough/4096x16/int16
 passthrough/4096x16/uint8
 passthrough/4096x4/int32
 passthrough/64x4/int32/edge-tiny
+patch_positions/1280x1/int32/negative
+patch_positions/1280x1/int32/part-patch
+patch_positions/1280x1/int32/part-window
+patch_positions/1280x1/int32/past-count
+patch_positions/1280x10/int32
+patch_positions/1280x8/int32/cores=8
+patch_positions/1280x9/int32/whole
+patch_positions/160x4/int32/block=32
 prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256
 prefill_fv/8x8x512x4/bfloat16_float32/head_dim=512
 q4nx_dequant/1536x2/uint8/ct_k=16/group=24/k_tile=48/m_tile=48
@@ -392,6 +442,21 @@ relu/1024x16/bfloat16
 relu/1024x256/bfloat16
 relu_sized/1024x16/bfloat16
 relu_sized/32x4/bfloat16/edge-tiny
+resample_peak/2x1/int32/slots=16/words=356
+resample_peak/2x2/int32
+resample_peak/2x2/int32/cores=1
+resample_peak/2x2/int32/idle-core
+resample_peak/2x2/int32/slots=22/slots-past-fit
+resample_peak/2x2/int32/too-few-chunks
+resample_peak/2x2/int32/upsample
+resample_quantize/2x2/int32/negative
+resample_quantize/2x2/int32/slots=22/slots-past-fit
+resample_quantize/2x2/int32/too-few-chunks
+resample_quantize/2x2/int32/upsample
+resample_quantize/2x3/int32/slots=16/words=356
+resample_quantize/2x4/int32
+resample_quantize/2x8/int32/cores=2/one-sample
+resample_quantize/2x80/int32/cores=1
 rgba2gray/1152x4/uint8/line_width=288/tail
 rgba2gray/128x4/uint8/line_width=32/one-vector
 rgba2gray/640x4/uint8/line_width=160/short-row
@@ -410,6 +475,12 @@ rope/1024x16/bfloat16/cols=1024/two_halves=True
 rope/112x16/bfloat16/cols=112/row-tail
 rope/64x16/bfloat16/cols=64/two_halves=True/llama
 rope/96x16/bfloat16/cols=96/two_halves=True/row-tail
+row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/bit-48
+row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/carry
+row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/unsigned-words
+row_addresses/16x4/int32_uint32/row_bytes=4100/rows=16/table_rows=1048576/past-4-gib
+row_addresses/1x16/int32_uint32/row_bytes=4096/rows=1/table_rows=128256
+row_addresses/64x16/int32_uint32/row_bytes=260/rows=64/table_rows=1000
 scale/1024x16/int16
 scale/1024x16/int32
 scale/1024x16/int32/edge-negfactor
@@ -461,6 +532,7 @@ transpose/1024x16/uint8/subtile=4
 transpose/8192x16/bfloat16/subtile=8/llama-decode
 zero/12x3/bfp16ebs8/vector-tail
 zero/34x3/int16/vectorized=False
+zero/4096x4/int32
 zero/64x4/bfloat16
 zero/64x4/bfp16ebs8
 zero/64x4/int32

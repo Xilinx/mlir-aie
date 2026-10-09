@@ -21,6 +21,21 @@
 // RUN: cd %t.d && not aiecc --get=measured_stack_sizes.mlir --output-dir=%t.small --tmpdir=%t.small.prj small.mlir 2>&1 | FileCheck %s --check-prefix=SMALL
 // SMALL: error: stack_size = 16384 is insufficient: this core needs {{[0-9]+}} bytes
 
+// With stack_size absent, aiecc sizes the stack past bank A. The core's own
+// frames still fit in bank A, so its object keeps the bank claim; the kernel,
+// compiled separately, never had one.
+// RUN: sed 's/ {stack_size = 20480 : i32}//' %S/large_stack.mlir > %t.d/absent.mlir
+// RUN: cd %t.d && aiecc --get=input_with_addresses.mlir --output-dir=%t.absent --tmpdir=%t.absent.prj -v absent.mlir 2>&1 | FileCheck %s --check-prefix=ABSENT
+// RUN: FileCheck %s --check-prefix=ABSENT-PLACED < %t.absent/input_with_addresses.mlir
+// ABSENT: llc {{.*}}-aie-stack-addrspace=5
+// ABSENT-PLACED: aie.buffer(%{{.*}}) {address = {{1[89][0-9][0-9][0-9]}} : i32
+// ABSENT-PLACED: measured_stack_size = {{1[89][0-9][0-9][0-9]}} : i32
+
+// stack_bank holds the stack to one bank, which the measured stack outgrows.
+// RUN: sed 's/ {stack_size = 20480 : i32}/ {stack_bank = 0 : i32}/' %S/large_stack.mlir > %t.d/banked.mlir
+// RUN: cd %t.d && not aiecc --output-dir=%t.banked --tmpdir=%t.banked.prj banked.mlir 2>&1 | FileCheck %s --check-prefix=BANKED
+// BANKED: error: this core needs a {{1[89][0-9][0-9][0-9]}}-byte stack, but stack_bank pins it to memory bank A, which holds 16384 bytes. Omit stack_bank and stack_address
+
 // A bare build writes the core ELFs, not the module the checks ran on.
 // RUN: rm -rf %t.bare && mkdir -p %t.bare && cp %t.d/large_stack_kernel.o %t.bare
 // RUN: cd %t.bare && not aiecc --tmpdir=%t.bare.small.prj %t.d/small.mlir 2>&1 | FileCheck %s --check-prefix=SMALL

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+# RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
 # RUN: %run_on_npu2_hrx% %pytest %s
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
@@ -39,8 +40,6 @@ from aie.iron import (
 from aie.iron.controlflow import range_
 from aie.iron.kernels import sample
 from ml_dtypes import bfloat16
-
-pytestmark = pytest.mark.supported_devices("npu2")
 
 I32 = np.dtype[np.int32]
 
@@ -132,7 +131,6 @@ def sample_positions(
                 of_record.prod(),
                 combine,
             ],
-            stack_size=combine.contract.stack_bytes,
         )
     )
 

@@ -264,11 +264,18 @@ SECTIONS
       auto doBuffer = [&](std::optional<TileID> tile, int offset,
                           const std::string &dir) {
         if (tile) {
-          // A probe has no addresses to write; --defsym stands the symbols up
-          // so the link resolves without claiming where anything lives.
-          if (tiles.count(*tile) && !probe) {
+          // A probe has no addresses yet. Each symbol stands at its memory's
+          // base, a data address no function starts at, so the probe resolves
+          // exactly the symbols the real link does.
+          if (tiles.count(*tile)) {
             for (auto buf : buffers[tiles[*tile]]) {
-              if (!buf.getCoreData()) {
+              if (buf.getCoreData()) {
+                continue;
+              }
+              if (probe) {
+                output << buf.name().getValue() << " = 0x"
+                       << llvm::utohexstr(offset) << ";\n";
+              } else {
                 writeLDScriptMap(output, buf, offset);
               }
             }

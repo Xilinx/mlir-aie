@@ -36,6 +36,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [softmax.cc](./activation/softmax.cc) | AIE API | Softmax; on AIE2P also `softmax_rows` (optionally causal), `partial_softmax` (flash-attn) and `mask` | `bfloat16` |
 | [bf16_exp.cc](./activation/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |
 | [exp2f_vec.cc](./activation/exp2f_vec.cc) | AIE API | Element-wise `2^x` (degree-5 minimax poly; higher accuracy on negatives) | `float32` |
+| [log_f32.cc](./activation/log_f32.cc) | AIE API | `log(x + offset)`, float32-accurate from bf16 limb products, rounded once (a log-mel floor) | `float32`→`bfloat16` |
 
 ## conv
 | Name | Coding style | Purpose | Datatypes |
@@ -62,7 +63,11 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [expand.cc](./datamovement/expand.cc) | AIE API | uint4→bf16 dequant with per-group scale factors (zero-extended, no zero point) | `uint4`→`bfloat16` |
 | [axpy.cc](./datamovement/axpy.cc) | AIE API | `z = a*x + y` (SAXPY) | `bfloat16` |
 | [rope.cc](./datamovement/rope.cc) | AIE API | RoPE — `rope` (interleaved / Llama) + `rope_two_halves` (HF) | `bfloat16` |
+| [row_addresses.cc](./datamovement/row_addresses.cc) | Generic C | Each id's table row as a shim buffer descriptor's address words, the id clipped to the table | `int32`→`uint32` |
+| [merge_rows.cc](./datamovement/merge_rows.cc) | Generic C | The table row each position of a token sequence takes: its own, or the next of a tower's rows for a placeholder, counted across calls | `int32` |
+| [patch_positions.cc](./datamovement/patch_positions.cc) | Generic C | Where each patch of a vision tower's image comes from, in pooling-window order: its x and y, its position-table rows and its row of a padded raster, counted across calls | `int32` |
 | [cast_f32_bf16.cc](./datamovement/cast_f32_bf16.cc) | AIE API | f32→bf16 narrowing cast (host-matching `conv_even` rounding) | `float32`→`bfloat16` |
+| [limbs_f32.cc](./datamovement/limbs_f32.cc) | AIE API | f32 as six planes of its exact bf16 limbs (`hi + mid + lo`), for an f32-accurate bf16 matmul | `float32`→`bfloat16` |
 | [affine_cast_f32_bf16.cc](./datamovement/affine_cast_f32_bf16.cc) | AIE API | Per-column affine `out = bf16(in*gamma + beta)`, gamma and beta packed in one buffer (`conv_even` rounding) | `float32`→`bfloat16` |
 
 ## eltwise
@@ -74,6 +79,8 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [scale.cc](./eltwise/scale.cc) | AIE API | Scale all elements of a tensor with a scale factor | `int32_t` |
 | [scale_shift.cc](./eltwise/scale_shift.cc) | AIE API | Scale-and-shift | `int32_t` |
 | [relu.cc](./eltwise/relu.cc) | Intrinsics | ReLU activation | `bfloat16` |
+| [clamp.cc](./eltwise/clamp.cc) | AIE API | Clamp to runtime bounds, each passed as its bf16 bits | `bfloat16` |
+| [magnitude_f32.cc](./eltwise/magnitude_f32.cc) | AIE API | `sqrt(re^2 + im^2)` of `[re \| im]`, float32-accurate from bf16 limb products | `float32` |
 
 ## fused
 | Name | Coding style | Purpose | Datatypes |
@@ -109,7 +116,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [mm_bfp_mixed.cc](./linalg/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul (AIE2P only) | `bfp16` |
 | [mv_bf16.cc](./linalg/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV); `-DA_COL_MAJ` reads A column-major with partial sums carried across calls, bit-identical to row-major | `bfloat16` |
 | [mv_i16.cc](./linalg/mv_i16.cc) | AIE API | Matrix/Vector multiply, A word-transposed | `int16_t`→`int32_t` |
-| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention **decode** toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 16 rows; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16` |
+| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …) for query and key blocks a multiple of 16 rows and a head dimension a multiple of 8; `-DMHA_CAUSAL=0` and `-DMHA_WINDOW=w` select a bidirectional or sliding-window band in place of the causal one; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16`, running state and O `float32` |
 | [flash_attn_prefill.cc](./linalg/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 sliding-window | `bfloat16` |
 
 ## norm
@@ -154,6 +161,9 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [addWeighted.cc](./vision/addWeighted.cc) | AIE API | Fixed point weighted sum of two tensors | `uint8_t` |
 | [threshold.cc](./vision/threshold.cc) | AIE API | Clipping | `uint8_t` |
 | [filter2d.cc](./vision/filter2d.cc) | AIE API | Fixed point 2D image processing filter | `uint8_t` |
+| [resample_peak.cc](./vision/resample_peak.cc) | Generic C | The largest normalized weight of one core's share of a resize axis's filter table (torch's antialiased bicubic, IEEE float64), and `resample_join`, the larger of two; shared with [resample.h](./vision/resample.h) | `int32_t` |
+| [resample_quantize.cc](./vision/resample_quantize.cc) | Generic C | One chunk of that table: each output's first sample, tap count and int16 weights at the precision the peak sets, bit for bit as torch on the CPU | `int32_t` |
+| [resize.cc](./vision/resize.cc) | AIE API | A uint8 RGB image resized with those tables, across then down, each pass rounded to uint8 as torch on the CPU, and written as 16x16 patches of `u8 / 255`; six entry points share one core's state | `uint8_t` → `bfloat16` |
 
 ## zero
 | Name | Coding style | Purpose | Datatypes |

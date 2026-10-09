@@ -10,7 +10,10 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from aie.dialects.aiex import npu_address_patch
 from aie.ir import Context, Module
+from aie.iron import Program, Runtime
+from aie.iron.device import NPU2Col1
 from aie.utils.compile import utils as compile_utils
 from aie.utils.compile.jit import _manifest
 from aie.utils.compile.jit._dispatch_bridge import DispatchBridge
@@ -60,22 +63,21 @@ def test_compile_mlir_module_requests_cpp_with_device_outputs(
     assert "--fold-ddr-addr-offset=false" in args
 
 
+def _patch_bar_then_baz(
+    *, bar: DispatchTime[np.int32] = 3, baz: DispatchTime[np.int32] = 7
+):
+    def sequence(baz_value, bar_value):
+        npu_address_patch(addr=119300, arg_idx=0, arg_plus=bar_value)
+        npu_address_patch(addr=119304, arg_idx=0, arg_plus=baz_value)
+
+    return Program(NPU2Col1(), Runtime(sequence, [baz, bar])).resolve_program()
+
+
 @pytest.mark.parametrize("bound", [{}, {"bar": 3}, {"baz": 7}])
 def test_reordered_parameters_reach_generated_instructions(
     tmp_path, npu2_device, bound
 ):
-    from aie.dialects.aiex import npu_address_patch
-    from aie.iron import Program, Runtime
-    from aie.iron.device import NPU2Col1
-
-    def generator(*, bar: DispatchTime[np.int32] = 3, baz: DispatchTime[np.int32] = 7):
-        def sequence(baz_value, bar_value):
-            npu_address_patch(addr=119300, arg_idx=0, arg_plus=bar_value)
-            npu_address_patch(addr=119304, arg_idx=0, arg_plus=baz_value)
-
-        return Program(NPU2Col1(), Runtime(sequence, [baz, bar])).resolve_program()
-
-    design = CompilableDesign(generator).specialize(**bound)
+    design = CompilableDesign(_patch_bar_then_baz).specialize(**bound)
     _generate_cpp(tmp_path, str(design.generate_mlir()), fold=False)
     library = compile_dispatch_bridge(
         tmp_path, design.dispatch_params, design.dispatch_param_types

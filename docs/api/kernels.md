@@ -182,12 +182,17 @@ lit on every PR, through `trace_markers` below.
         - compile_command
         - analyze
         - kernel_builds
-        - Linked
-        - linked
-        - parse_readobj
         - trace_markers
         - trace_shape
         - entry_symbol
+
+::: utils.compile.readobj
+    options:
+      show_root_heading: false
+      members:
+        - Linked
+        - linked
+        - parse_readobj
 
 ## Host-side helpers
 

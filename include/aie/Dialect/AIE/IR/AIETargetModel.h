@@ -355,10 +355,11 @@ public:
   /// there.
   virtual uint32_t getCoreDataAddressSpaceSize() const = 0;
 
-  /// Return the default stack reservation (in bytes) for a core, used when a
-  /// design does not state one. The linker script places the stack directly
-  /// below the objectFIFO buffers with no clearance, so a design whose frames
-  /// exceed this corrupts them instead of faulting.
+  /// Return the default stack reservation (in bytes) for a core that does not
+  /// state one. It is also the floor when aiecc sizes the stack from its
+  /// measurement. The linker script places the stack directly below the
+  /// objectFIFO buffers with no clearance, so a design whose frames exceed its
+  /// reservation corrupts them instead of faulting.
   virtual uint32_t getDefaultCoreStackSize() const { return 0x400; }
 
   /// Stack-pointer alignment in bytes, matching Peano's AIE frame lowering:

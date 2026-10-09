@@ -251,8 +251,6 @@ A contract also declares the dtype facts an `arg_types` list leaves out:
   see [Rounding mode](#rounding-mode) below. The rounding setter is compiled
   as always-inline LLVM IR and merged into the core, avoiding an external
   function call; the setter therefore uses Peano, not Chess.
-- `stack_bytes`: the core stack a Worker calling this kernel needs, when
-  that is more than the target's default.
 - `unsupported`: why the generic builder cannot run this kernel, when it
   cannot; the reference still says what the kernel computes.
 
@@ -505,11 +503,10 @@ runtime-library routines it calls (`__divsf3`, `__mulsf3`, `__floatsisf`:
 on AIE2P, scalar float divide, multiply and int-to-float are software
 routines). `kernel_stack_bytes` is the deepest call path's frames from the
 entry, without those routines' own and without the core's `main`, which
-aiecc's measured stack also counts; above the contract's `stack_bytes`
-(else the target default) it prints a warning, since an overflow corrupts
-the neighbouring memory silently. Each build prints its entry symbol and
-source file, and `--meta` names its object (kept with `--keep DIR`). The record shapes and the
-regression rules are documented on the module
+aiecc's measured stack also counts. aiecc sizes the core's stack from its own
+measurement of the linked core, so the row is for comparing builds. Each build
+prints its entry symbol and source file, and `--meta` names its object (kept
+with `--keep DIR`). The record shapes and the regression rules are documented on the module
 ([API](../api/kernels.md#static-checks)). These checks run on demand; there
 is no static-check CI workflow. When invoked in GitHub Actions, the tool
 emits a warning annotation for a dropped pragma and an error annotation

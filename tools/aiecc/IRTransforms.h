@@ -176,17 +176,15 @@ collectCoreIRLinkFiles(xilinx::AIE::CoreOp coreOp, llvm::StringRef inputFile,
 
 // Sets `stack_size = defaultStackSize` on every CoreOp without an explicit
 // `stack_size`. A CoreOp with an explicit `stack_size` keeps it.
-inline mlir::OwningOpRef<mlir::ModuleOp>
-populateDefaultStackSize(mlir::ModuleOp src, int64_t defaultStackSize) {
-  mlir::OwningOpRef<mlir::ModuleOp> cloned = src.clone();
-  mlir::Builder b(cloned->getContext());
-  cloned->walk([&](xilinx::AIE::CoreOp coreOp) {
+inline void populateDefaultStackSize(mlir::ModuleOp module,
+                                     int64_t defaultStackSize) {
+  mlir::Builder b(module.getContext());
+  module.walk([&](xilinx::AIE::CoreOp coreOp) {
     if (!coreOp.getStackSizeAttr()) {
       coreOp.setStackSizeAttr(
           b.getI32IntegerAttr(static_cast<int32_t>(defaultStackSize)));
     }
   });
-  return cloned;
 }
 
 // Rejects a negative `stack_size_override`. This repeats the check in
@@ -205,32 +203,143 @@ inline mlir::LogicalResult verifyStackSizeOverrides(mlir::ModuleOp module) {
   return result;
 }
 
+// Collected per device, because each DeviceOp is its own symbol table, and a
+// sibling device can bind one name to a different override.
+inline llvm::StringMap<int64_t>
+collectStackSizeOverrides(xilinx::AIE::DeviceOp device) {
+  llvm::StringMap<int64_t> overrides;
+  device.walk([&](mlir::func::FuncOp funcOp) {
+    if (auto attr =
+            funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override")) {
+      overrides[funcOp.getName()] = attr.getInt();
+    }
+  });
+  return overrides;
+}
+
+// 0 for a tile without banks.
+inline int64_t stackBankSize(xilinx::AIE::CoreOp op) {
+  auto tile = op.getTileOp();
+  const auto &tm = xilinx::AIE::getTargetModel(op);
+  int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
+  return numBanks > 0 ? tm.getLocalMemorySize() / numBanks : 0;
+}
+
+// The bank the core's own code keeps its stack in, or nothing when the stack
+// spans banks: an address space names one bank, and claiming one for a stack
+// that spans two would tell Peano's bank-conflict model that every stack access
+// hits it. Measured across the stack's extent, not its size, since a stack
+// smaller than a bank still spans two when it starts part-way through one. A
+// `stack_bank` core has no resolved address before placement, but the verifier
+// holds that case to a single bank.
+inline std::optional<int> stackAddressSpaceBank(xilinx::AIE::CoreOp op) {
+  int64_t bankSize = stackBankSize(op);
+  // Prefer the declared `stack_bank`. Codegen needs the bank, not the address,
+  // and the bank is an input attribute whereas the address is resolved later by
+  // the allocator.
+  if (auto stackBank = op.getStackBank()) {
+    return static_cast<int>(*stackBank);
+  }
+  if (bankSize <= 0) {
+    return 0;
+  }
+  xilinx::AIE::MemoryRun stackRun = op.getStackRun();
+  if (stackRun.start / bankSize != (stackRun.end() - 1) / bankSize) {
+    return std::nullopt;
+  }
+  return static_cast<int>(stackRun.start / bankSize);
+}
+
+// Measures each core's stack requirement from its probe link, ahead of
+// placement, and writes it to `measured_stack_size`, which sizes the stack of a
+// core that leaves `stack_size` absent. Only an exact measurement is written;
+// checkStackSizeRequirements reports the rest once the real link exists.
+//
+// The core's own object was compiled for the stack bank stackAddressSpaceBank
+// chose from the default size. Kernels in `link_files` were compiled without
+// that claim, so a stack that grows past the bank is still sound while every
+// frame of a function the core object defines ends inside it.
+inline mlir::LogicalResult recordStackDemand(
+    mlir::ModuleOp module,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> probeForCore,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> objectForCore) {
+  mlir::LogicalResult result = mlir::success();
+  for (xilinx::AIE::DeviceOp device : module.getOps<xilinx::AIE::DeviceOp>()) {
+    llvm::StringMap<int64_t> overrides = collectStackSizeOverrides(device);
+    device.walk([&](xilinx::AIE::CoreOp coreOp) {
+      std::string probe = probeForCore(coreOp);
+      if (probe.empty() || coreOp.getStackSize()) {
+        return;
+      }
+      llvm::StringSet<> claimed =
+          xilinx::aiecc::readDefinedFunctionNames(objectForCore(coreOp));
+      if (claimed.empty()) {
+        return;
+      }
+      auto stackRes =
+          xilinx::aiecc::computeStackRequirement(probe, overrides, claimed);
+      if (!stackRes.bytes || !stackRes.unmeasured.empty() ||
+          *stackRes.bytes > INT32_MAX) {
+        return;
+      }
+      std::optional<int> bank = stackAddressSpaceBank(coreOp);
+      int64_t bankSize = stackBankSize(coreOp);
+      if (coreOp.getStackBank() && bankSize > 0 && *stackRes.bytes > bankSize) {
+        coreOp.emitError()
+            << "this core needs a " << *stackRes.bytes
+            << "-byte stack, but stack_bank pins it to memory bank "
+            << static_cast<char>('A' + *bank) << ", which holds " << bankSize
+            << " bytes. Omit stack_bank and stack_address so that the stack "
+               "can span banks";
+        result = mlir::failure();
+        return;
+      }
+      if (bank && !coreOp.getStackBank() && bankSize > 0 &&
+          stackRes.claimedFrameEnd) {
+        int64_t room = (*bank + 1) * bankSize - coreOp.getStackRun().start;
+        if (*stackRes.claimedFrameEnd > room) {
+          coreOp.emitError()
+              << "this core needs a " << *stackRes.bytes
+              << "-byte stack. Its own code was compiled to keep its stack "
+                 "frames in memory bank "
+              << static_cast<char>('A' + *bank) << ", but those frames reach "
+              << *stackRes.claimedFrameEnd << " bytes into the stack, past the "
+              << room << " bytes left in that bank. Set stack_size = "
+              << *stackRes.bytes
+              << " (Worker(stack_size=...) in IRON) so that the core is "
+                 "compiled for a stack that spans banks";
+          result = mlir::failure();
+          return;
+        }
+      }
+      coreOp.setMeasuredStackSizeAttr(
+          mlir::Builder(module.getContext())
+              .getI32IntegerAttr(static_cast<int32_t>(*stackRes.bytes)));
+    });
+  }
+  return result;
+}
+
 // Measures each core's stack requirement from its linked ELF and writes it to
-// `measured_stack_size`. `elfForCore` returns the path of the linked core, or
-// an empty string for a core this run does not link.
+// `measured_stack_size` unless the probe link already did. `elfForCore` returns
+// the path of the linked core, or an empty string for a core this run does not
+// link.
 //
 // A core's call chain is `__start` (crt0) -> `_main_init` (crt1) -> the core
 // body -> its kernels. `_main_init`'s frame stays live across the whole call
 // to the core body. The linker supplies crt1, so the linked core holds that
 // frame too.
 //
-// A requirement above `stack_size` fails the build, as does a cycle in the
-// call graph. An unmeasurable core warns and writes no attribute.
+// A requirement above the reservation placement made fails the build, as does
+// a cycle in the call graph. An unmeasurable core warns and writes no
+// attribute.
 inline mlir::LogicalResult checkStackSizeRequirements(
     mlir::ModuleOp module,
     llvm::function_ref<std::string(xilinx::AIE::CoreOp)> elfForCore) {
   mlir::LogicalResult result = mlir::success();
 
   for (xilinx::AIE::DeviceOp device : module.getOps<xilinx::AIE::DeviceOp>()) {
-    // Collected per device, because each DeviceOp is its own symbol table, and
-    // a sibling device can bind one name to a different override.
-    llvm::StringMap<int64_t> overrides;
-    device.walk([&](mlir::func::FuncOp funcOp) {
-      if (auto attr =
-              funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override")) {
-        overrides[funcOp.getName()] = attr.getInt();
-      }
-    });
+    llvm::StringMap<int64_t> overrides = collectStackSizeOverrides(device);
 
     device.walk([&](xilinx::AIE::CoreOp coreOp) {
       std::string elf = elfForCore(coreOp);
@@ -272,13 +381,19 @@ inline mlir::LogicalResult checkStackSizeRequirements(
       }
 
       int64_t required = *stackRes.bytes;
+      uint32_t effective = coreOp.getEffectiveStackSize();
+      bool sizedByProbe =
+          !coreOp.getStackSizeAttr() && coreOp.getMeasuredStackSizeAttr();
       // An unmeasured frame counted as 0, so `required` is a lower bound. A
       // lower bound still catches a core that is short. The attribute carries
-      // the exact requirement, so only an exact result reaches it.
+      // the exact requirement, so only an exact result reaches it. A probe
+      // measurement stays: placement and the link laid the tile out from it.
       if (stackRes.unmeasured.empty()) {
-        coreOp.setMeasuredStackSizeAttr(
-            mlir::Builder(module.getContext())
-                .getI32IntegerAttr(static_cast<int32_t>(required)));
+        if (!sizedByProbe) {
+          coreOp.setMeasuredStackSizeAttr(
+              mlir::Builder(module.getContext())
+                  .getI32IntegerAttr(static_cast<int32_t>(required)));
+        }
       } else {
         auto diag = mlir::emitWarning(coreOp.getLoc())
                     << "no stack size information for "
@@ -296,9 +411,16 @@ inline mlir::LogicalResult checkStackSizeRequirements(
         }
       }
 
-      uint32_t effective = coreOp.getEffectiveStackSize();
       if (static_cast<int64_t>(effective) < required) {
-        if (coreOp.getStackSizeAttr()) {
+        if (sizedByProbe) {
+          coreOp.emitError()
+              << "internal error: placement reserved " << effective
+              << " bytes of stack from this core's probe link, but its final "
+                 "link needs "
+              << required
+              << " bytes; please report this. Setting stack_size = " << required
+              << " (Worker(stack_size=...) in IRON) works around it";
+        } else if (coreOp.getStackSizeAttr()) {
           coreOp.emitError() << "stack_size = " << effective
                              << " is insufficient: this core needs " << required
                              << " bytes; increase stack_size to " << required
@@ -306,9 +428,10 @@ inline mlir::LogicalResult checkStackSizeRequirements(
                                 "--no-measure-stack-size to skip this check";
         } else {
           coreOp.emitError()
-              << "stack_size is absent, so this core uses the device default "
-                 "of "
-              << effective << " bytes, but it needs " << required
+              << "stack_size is absent and this core's stack could not be "
+                 "measured exactly before placement, so it uses the device "
+                 "default of "
+              << effective << " bytes, but it needs at least " << required
               << " bytes; set stack_size = " << required
               << " (Worker(stack_size=...) in IRON), or pass "
                  "--no-measure-stack-size to skip this check";

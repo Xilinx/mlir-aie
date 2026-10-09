@@ -135,56 +135,89 @@ gelu_bf16_steps_vec(aie::vector<bfloat16, W> x) {
   return aie::mul(x, sig).template to_vector<bfloat16>();
 }
 
+// One vector of the output: the activation and the conversion.
+template <int MODE>
+static inline aie::vector<bfloat16, V> epilogue_vec(aie::vector<float, V> f) {
+  aie::vector<bfloat16, V> v;
+  if constexpr (MODE == 1 && gelu_bf16_steps) {
+    aie::accum<accfloat, V> acc;
+    acc.from_vector(f);
+    v = gelu_bf16_steps_vec<V>(acc.template to_vector<bfloat16>());
+  } else {
+    // The accumulator stays f32 through the activation and is converted to
+    // bf16 exactly once. Converting first would round twice and let the
+    // activation's slope amplify the first rounding -- see activations.h.
+    if constexpr (MODE == 1)
+      f = gelu_vec<V>(f);
+    else if constexpr (MODE == 2)
+      f = silu_vec<V>(f);
+    else if constexpr (MODE == 3)
+      f = sigmoid_vec<V>(f);
+    aie::accum<accfloat, V> out;
+    out.from_vector(f);
+    v = out.template to_vector<bfloat16>();
+  }
+  return v;
+}
+
 // One activation's inner loop. Templated so each mode compiles branch-free;
 // mm_fused_epilogue_chunk selects between them once per chunk.
-//
-// The clamp is unconditional. An unclamped caller sends (-inf, +inf), which
-// leaves every finite value bit-identical, so there is no unclamped
-// instantiation to compile and no clamped-versus-not fork in the build.
 template <int MODE>
 static inline void epilogue_body(bfloat16 *__restrict y_out,
                                  const float *__restrict src, float clamp_min,
                                  float clamp_max) {
+  // The clamp is unconditional. An unclamped caller sends (-inf, +inf), which
+  // leaves every finite value bit-identical, so there is no unclamped
+  // instantiation to compile and no clamped-versus-not fork in the build.
+  //
   // The clamp runs on the bf16 result, against bounds rounded the same way.
   // Rounding is monotone and fixes representable values, so for finite
   // inputs round(clamp(f, lo, hi)) == clamp(round(f), round(lo), round(hi))
   // and the output is bit-identical to clamping in f32. aie2p has no native
   // f32 min/max.
-  aie::accum<accfloat, V> bound;
-  bound.from_vector(aie::broadcast<float, V>(clamp_min));
-  const aie::vector<bfloat16, V> lo = bound.template to_vector<bfloat16>();
-  bound.from_vector(aie::broadcast<float, V>(clamp_max));
-  const aie::vector<bfloat16, V> hi = bound.template to_vector<bfloat16>();
+#ifdef MM_FUSED_C_HALVES
+  // The k step leaves each r x t block as its left then right t/2 columns.
+  // The conversion is lane-wise, so the halves are rejoined after it, and the
+  // clamp, also lane-wise, runs on the rejoined vectors at full width.
+  constexpr int HALF = R * T / 2;
+  static_assert(CHUNK % (R * T) == 0 && HALF % V == 0);
+  constexpr int W = HALF;
+#else
+  constexpr int W = V;
+#endif
+  aie::accum<accfloat, W> bound;
+  bound.from_vector(aie::broadcast<float, W>(clamp_min));
+  const aie::vector<bfloat16, W> lo = bound.template to_vector<bfloat16>();
+  bound.from_vector(aie::broadcast<float, W>(clamp_max));
+  const aie::vector<bfloat16, W> hi = bound.template to_vector<bfloat16>();
 
+#ifdef MM_FUSED_C_HALVES
+  AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / (R * T))
+  for (int j = 0; j < CHUNK / (R * T); j++) {
+    aie::vector<bfloat16, HALF> left, right;
+    for (int p = 0; p < HALF / V; p++) {
+      left.insert(p, epilogue_vec<MODE>(aie::load_v<V>(src + p * V)));
+      right.insert(p, epilogue_vec<MODE>(aie::load_v<V>(src + HALF + p * V)));
+    }
+    src += R * T;
+    auto [top, bottom] = aie::interleave_zip(left, right, T / 2);
+    aie::store_v(y_out, aie::max(aie::min(top, hi), lo));
+    aie::store_v(y_out + HALF, aie::max(aie::min(bottom, hi), lo));
+    y_out += R * T;
+  }
+#else
   // Walking cursors rather than src + j * V, which Peano recomputes each
   // trip.
   AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / V)
   AIE_LOOP_UNROLL(2)
   for (int j = 0; j < CHUNK / V; j++) {
-    aie::vector<float, V> f = aie::load_v<V>(src);
+    aie::store_v(
+        y_out,
+        aie::max(aie::min(epilogue_vec<MODE>(aie::load_v<V>(src)), hi), lo));
     src += V;
-    aie::vector<bfloat16, V> v;
-    if constexpr (MODE == 1 && gelu_bf16_steps) {
-      aie::accum<accfloat, V> acc;
-      acc.from_vector(f);
-      v = gelu_bf16_steps_vec<V>(acc.template to_vector<bfloat16>());
-    } else {
-      // The accumulator stays f32 through the activation and is converted to
-      // bf16 exactly once. Converting first would round twice and let the
-      // activation's slope amplify the first rounding -- see activations.h.
-      if constexpr (MODE == 1)
-        f = gelu_vec<V>(f);
-      else if constexpr (MODE == 2)
-        f = silu_vec<V>(f);
-      else if constexpr (MODE == 3)
-        f = sigmoid_vec<V>(f);
-      aie::accum<accfloat, V> out;
-      out.from_vector(f);
-      v = out.template to_vector<bfloat16>();
-    }
-    aie::store_v(y_out, aie::max(aie::min(v, hi), lo));
     y_out += V;
   }
+#endif
 }
 } // namespace
 

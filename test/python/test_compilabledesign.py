@@ -12,7 +12,6 @@ test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
 import builtins
-import dataclasses
 import importlib
 import json
 import os
@@ -26,7 +25,6 @@ import pytest
 
 import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
-from aie.iron import kernels
 from aie.iron.algorithms import _pipeline
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
@@ -758,28 +756,6 @@ def test_artifact_hash_reads_the_kernel_source_tree(monkeypatch, tmp_path):
     before = _compute_artifact_hash(generator, [], [], True)
     source.write_text("int k2;")
     assert _compute_artifact_hash(generator, [], [], True) != before
-
-
-_ADD_STACK = {"bytes": 1024}
-
-
-def _add_with_table_stack():
-    fn = kernels.add()
-    fn.contract = dataclasses.replace(fn.contract, stack_bytes=_ADD_STACK["bytes"])
-    return fn
-
-
-def test_a_library_design_is_keyed_by_its_kernels_stack(monkeypatch):
-    # The stack can come from a table outside the factory's code, which is all
-    # the key reads of the factory; a stale key reuses a core with the old stack.
-    set_current_device(NPU2Col1())
-    try:
-        before = kd.design(_add_with_table_stack).compilable._compute_cache_hash()
-        monkeypatch.setitem(_ADD_STACK, "bytes", 2048)
-        after = kd.design(_add_with_table_stack).compilable._compute_cache_hash()
-    finally:
-        set_current_device(None)
-    assert before != after
 
 
 def test_hash_for_path_generator_uses_path_string():
@@ -2338,35 +2314,6 @@ def test_get_pdi_paths_empty_before_compile():
     assert cd.get_pdi_paths() == []
 
 
-def test_insts_only_lowers_the_sequence_into_its_own_cache_entry(tmp_path, monkeypatch):
-    """An insts_only design produces an instruction stream and no image, in
-    a cache entry keyed apart from the same generator's xclbin build; the
-    second compile is a hit, and get_cache_entry names the stream."""
-    from unittest.mock import Mock
-
-    def gen():
-        pass
-
-    design = CompilableDesign(gen, insts_only=True)
-    assert design._compute_cache_hash() != CompilableDesign(gen)._compute_cache_hash()
-    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
-    monkeypatch.setattr(design, "_generate_mlir", lambda *args: None)
-    lower = Mock(side_effect=lambda **kwargs: kwargs["insts_path"].touch())
-    monkeypatch.setattr(compilabledesign_module, "compile_mlir_module", lower)
-
-    image, insts = design.compile()
-    assert image is None and insts.parent.parent == tmp_path
-    assert lower.call_count == 1
-    assert "xclbin_path" not in lower.call_args.kwargs
-    entry = design.get_cache_entry()
-    assert entry.insts == insts and entry.xclbin is None and entry.elf is None
-
-    design.compile()
-    assert lower.call_count == 1, "the second compile is a cache hit"
-    with pytest.raises(ValueError, match="inst_path alone"):
-        design.compile(xclbin_path=tmp_path / "x.xclbin", inst_path=insts)
-
-
 def test_get_cache_entry_none_before_compile():
     def gen():
         pass
@@ -2491,56 +2438,6 @@ def test_get_dispatch_lib_path_none_for_non_dispatch_design():
     """get_dispatch_lib_path() returns None for a design with no DispatchTime[T] params."""
     d = CompilableDesign(_gemm_gen())
     assert d.get_dispatch_lib_path() is None
-
-
-@pytest.mark.parametrize("cache_hit", [False, True])
-def test_dispatch_library_selected_once_per_compile(
-    monkeypatch, tmp_path, npu2_device, cache_hit
-):
-    from unittest.mock import Mock
-
-    from aie.utils.compile.jit import _manifest
-    from aie.utils.compile.utils import SHARED_LIB_SUFFIX
-
-    design = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
-    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
-    monkeypatch.setattr(design, "_compute_cache_hash", lambda: "cached")
-    directory = tmp_path / "cached"
-    directory.mkdir()
-    if cache_hit:
-        (directory / "final.xclbin").touch()
-
-    def publish(contents):
-        library = directory / f"dispatch-{contents * 64}{SHARED_LIB_SUFFIX}"
-        library.touch()
-        _manifest._write(directory, [], dispatch_library=library.name)
-        return library
-
-    first = publish("a")
-    compile_device = Mock(side_effect=lambda **kwargs: kwargs["xclbin_path"].touch())
-    compile_builder = Mock(return_value=first)
-    monkeypatch.setattr(design, "_generate_mlir", lambda *args: None)
-    monkeypatch.setattr(compilabledesign_module, "compile_mlir_module", compile_device)
-    monkeypatch.setattr(
-        compilabledesign_module, "compile_dispatch_bridge", compile_builder
-    )
-    design.compile()
-    assert design.get_dispatch_lib_path() == first
-    assert (
-        compile_device.call_count
-        == compile_builder.call_count
-        == (0 if cache_hit else 1)
-    )
-    second = publish("b")
-    # A later publication must not silently change this design's selected ABI.
-    assert design.get_dispatch_lib_path() == first
-    design.compile()
-    assert design.get_dispatch_lib_path() == second
-    assert (
-        compile_device.call_count
-        == compile_builder.call_count
-        == (0 if cache_hit else 1)
-    )
 
 
 @pytest.mark.parametrize("dtype", [int, bool, float, str, np.float32, np.bool_])

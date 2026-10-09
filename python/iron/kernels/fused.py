@@ -20,7 +20,6 @@ from ._common import (
     TensorLayout,
     Trace,
     _detect_arch,
-    _device,
     _include_dirs,
     _kernel_source,
     _portable_flags,
@@ -62,6 +61,8 @@ def fused_mm(
     epilogue="none",
     clamp=None,
     bfp16_b=False,
+    b_col_maj=False,
+    emulate_bf16_mmul_with_bfp16=False,
     epilogue_modes=None,
     rounding="conv_even",
     gelu="fp32",
@@ -88,10 +89,25 @@ def fused_mm(
     ``rounding`` mode, as IRON's ``pack_b`` does, and the reference
     multiplies both operands as the core sees them.
 
+    ``b_col_maj`` (with an ``(r, 8, 8)`` mmul, r 8 on aie2p) takes B as stored
+    transposed, the ``(n, k)`` layout of a checkpoint's weights: each k chunk
+    holds k panels of ``s`` rows, every n row of a panel ``s`` contiguous k,
+    a layout a DMA builds from ``(n, k)`` storage in 16-byte runs. On bf16
+    macs the core transposes each half block in one shuffle; on bfp16 macs
+    it converts each block as loaded.
+
+    ``emulate_bf16_mmul_with_bfp16`` (aie2p) multiplies on bfp16 macs, as
+    aie_api's emulated bf16 mmul does: the core converts A and B to
+    bfp16ebs8, each shared exponent spanning 8 consecutive k, and the
+    reference multiplies both operands as the core sees them. The mmul
+    defaults to 8x8x8, which ``b_col_maj`` needs. ``bfp16_b`` implies it.
+
     ``epilogue_modes`` lists the activations compiled in, for a caller that
     selects one at run time through ``mm_fused_epilogue_chunk``'s mode
     argument. It defaults to ``(epilogue,)``. ``epilogue`` is the mode
-    ``fused_mm_tile`` and the reference use, and must be in the list.
+    ``fused_mm_tile`` and the reference use, and must be in the list. On
+    aie2 an activation links the tanh tables, 5 KB of L1; ``("none",)``
+    links none.
 
     ``rounding`` is the core's rounding mode for every f32 -> bf16 and
     bf16 -> bfp16 conversion: ``conv_even`` or ``floor``, the mode a core
@@ -115,10 +131,14 @@ def fused_mm(
     ``fn.fused_mm_tile`` (``fn`` itself).
     """
     arch = _detect_arch()
-    device = _device()
     if bfp16_b and not ARCH_TRAITS[arch].bfp16:
         raise ValueError("fused_mm: bfp16_b needs aie2p; bfp16ebs8 is an AIE2P type")
-    if bfp16_b:
+    if emulate_bf16_mmul_with_bfp16 and not ARCH_TRAITS[arch].bfp16:
+        raise ValueError("fused_mm: emulate_bf16_mmul_with_bfp16 needs aie2p")
+    if b_col_maj and bfp16_b:
+        raise ValueError("fused_mm: b_col_maj reads a bf16 B; bfp16_b's is packed")
+    emulated = bfp16_b or emulate_bf16_mmul_with_bfp16
+    if emulated:
         r, s, t = 8, 8, 8
     else:
         r, s, t = (4, 8, 4) if arch == "aie2" else (4, 8, 8)
@@ -126,6 +146,10 @@ def fused_mm(
         if bfp16_b and tuple(mmul_shape) != (8, 8, 8):
             raise ValueError("fused_mm: bfp16_b needs mmul_shape (8, 8, 8)")
         r, s, t = mmul_shape
+    if b_col_maj and (s, t) != (8, 8):
+        raise ValueError("fused_mm: b_col_maj needs an (r, 8, 8) mmul_shape")
+    if b_col_maj and arch == "aie2p" and r != 8:
+        raise ValueError("fused_mm: b_col_maj on aie2p needs mmul (8, 8, 8)")
     dims = (dim_m, dim_k, dim_n, band_m, chunk_k, out_chunk, c_depth, r, s, t)
     if any(not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in dims):
         raise ValueError("fused_mm dimensions must be positive integers")
@@ -186,6 +210,21 @@ def fused_mm(
             .reshape(-1, dim_k, dim_n)
         )
 
+    # Block (i, j) of a k chunk at (i * colB + j), each B^T: n-major.
+    def pack_b_t(b):
+        return (
+            b.reshape(-1, dim_k // chunk_k, chunk_k // s, s, dim_n // t, t)
+            .transpose(0, 1, 2, 4, 5, 3)
+            .reshape(len(b), -1)
+        )
+
+    def unpack_b_t(b):
+        return (
+            b.reshape(-1, dim_k // chunk_k, chunk_k // s, dim_n // t, t, s)
+            .transpose(0, 1, 2, 5, 3, 4)
+            .reshape(-1, dim_k, dim_n)
+        )
+
     # The bfp16 blocks are t-major (block (i, j) holds B^T), because
     # mac_8x8_8x8T takes B transposed; that also makes each shared exponent
     # span 8 consecutive k of one column, the grouping the mac expects. The
@@ -223,10 +262,12 @@ def fused_mm(
     def operands(a, b):
         a = a.reshape(-1, dim_m, dim_k).astype(np.float32)
         b = b.reshape(-1, dim_k, dim_n).astype(np.float32)
-        if bfp16_b:
-            # The core converts A itself; B is whatever the host packed.
+        if emulated:
             a = bfp.quantize(a, rounding=rounding)
+        if bfp16_b:
             b = unpack_b_bfp(pack_b_bfp(b))
+        elif emulated:
+            b = bfp.quantize(b.swapaxes(1, 2), rounding=rounding).swapaxes(1, 2)
         return a.astype(np.float64), b.astype(np.float64)
 
     # float64 throughout: in float32, 1 + tanh cancels for large negative
@@ -321,13 +362,12 @@ def fused_mm(
         *(f"-DMM_FUSED_{name}={value}" for name, value in flags.items()),
         *_portable_flags(),
     ]
+    if emulated:
+        compile_flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
     if bfp16_b:
-        # amd/IRON's pair: the first selects aie_api's bfp16-emulated bf16
-        # mmul, the second the prepacked B storage.
-        compile_flags += [
-            "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
-            "-DMM_FUSED_BFP16_B",
-        ]
+        compile_flags.append("-DMM_FUSED_BFP16_B")
+    if b_col_maj:
+        compile_flags.append("-DMM_FUSED_B_COL_MAJ")
     if gelu == "bf16_steps":
         compile_flags.append("-DMM_FUSED_GELU_BF16_STEPS")
     if step_markers:
@@ -353,7 +393,6 @@ def fused_mm(
         tuple(compile_flags),
         False,
         arch,
-        device.default_core_stack_bytes,
         # The clamp is no longer a compile flag, so two clamps of the same
         # kernel share compile_flags. They still need their own bindings,
         # reference and tolerance, so the bounds belong in the key.
@@ -364,6 +403,12 @@ def fused_mm(
     if len(set(epilogue_modes)) > 1:
         key += (modes[epilogue],)
     prefix = hashlib.sha256(repr(key).encode()).hexdigest()[:16]
+    if bfp16_b:
+        b_codec = (pack_b_bfp, unpack_b_bfp)
+    elif b_col_maj:
+        b_codec = (pack_b_t, unpack_b_t)
+    else:
+        b_codec = (pack_b, unpack_b)
     contract = KernelContract(
         trace=(
             Trace.partial("markers bracket each init, k step and drain chunk")
@@ -375,11 +420,7 @@ def fused_mm(
         # streamed transformed, the host packs them (block, no stream).
         layouts=(
             TensorLayout((dim_m, dim_k), pack_a, unpack_a, block=(r, s)),
-            (
-                TensorLayout((dim_k, dim_n), pack_b_bfp, unpack_b_bfp, block=(s, t))
-                if bfp16_b
-                else TensorLayout((dim_k, dim_n), pack_b, unpack_b, block=(s, t))
-            ),
+            TensorLayout((dim_k, dim_n), *b_codec, block=(s, t)),
             TensorLayout((dim_m, dim_n), pack_c, unpack_c, block=(r, t)),
             None,
             None,
@@ -418,13 +459,9 @@ def fused_mm(
         acc_dtype=np.float32,
         reduction=dim_k,
         ops_per_call=2 * dim_m * dim_k * dim_n,
-        # The aie2 epilogue reaches getTanhBf16; aie2p has no table.
-        uses_lut=True,
-        # Reserve the f32 accumulator plus call frames and epilogue spills:
-        # AIE2P SiLU with clamp needs 1600 bytes beyond the accumulator.
-        # aiecc still checks the measured linked stack.
-        stack_bytes=np.dtype(np.float32).itemsize * dim_m * dim_n
-        + max(device.default_core_stack_bytes, 2048),
+        # An aie2 activation reaches getTanhBf16; aie2p has no table, and
+        # without an activation the source links none.
+        uses_lut=any(m != "none" for m in epilogue_modes),
     )
     fn = _FusedMMKernel(
         "fused_mm_tile",
