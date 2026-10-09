@@ -71,6 +71,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/xxhash.h"
 
 #include <cstdlib>
@@ -2663,7 +2664,11 @@ int main(int argc, char **argv) {
   mlir::registerAllExtensions(registry);
   xilinx::aievec::registerTransformDialectExtension(registry);
   registerLLVMIRTranslations(registry);
-  mlir::MLIRContext context(registry);
+  // -j bounds the threads that run the per-device pass pipelines as well.
+  llvm::DefaultThreadPool mlirThreads(llvm::hardware_concurrency(numThreads));
+  mlir::MLIRContext context(registry, mlir::MLIRContext::Threading::DISABLED);
+  if (numThreads != 1)
+    context.setThreadPool(mlirThreads);
   context.loadAllAvailableDialects();
 
   llvm::SourceMgr sourceMgr;
