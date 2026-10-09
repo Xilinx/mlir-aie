@@ -61,13 +61,21 @@
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ObjCopy/ConfigManager.h"
+#include "llvm/ObjCopy/ObjCopy.h"
+#include "llvm/Object/Binary.h"
+#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Support/BuryPointer.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/xxhash.h"
 
 #include <cstdlib>
+#include <future>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -311,6 +319,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                 return mlir::success();
               })
           .threadSafe();
+  // Per core only for --check-lut-banks, which reads each core's own names.
   auto &opted = peanoLinked.map<File>("opted_{0}.ll", optCmd).threadSafe();
   ShellCommand llcCmd{"llc"};
   llcCmd.input()
@@ -321,9 +330,166 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .value("-aie-stack-addrspace=", "", /*omitIfEmpty=*/true)
       .arg("--filetype=obj")
       .output("-o");
+  // Cores that run one program over different buffers compile it once. The
+  // first core of each canonical module (canonicalizeCoreIR) runs opt and llc
+  // on it; every core then takes that object with the canonical symbols, and
+  // the sections named after them, renamed back to its own.
+  struct SharedObjects {
+    std::mutex mutex;
+    // Canonical module, arch and stack space -> the object; empty on failure.
+    std::map<std::string, std::shared_future<std::string>> objects;
+  };
+  auto shared = std::make_shared<SharedObjects>();
   EdgeWithTypedOutput<Directory> &peanoObject =
-      bundle(opted.out, arches.out, stackSpaces.out)
-          .map<Directory>(objName, llcCmd)
+      bundle(peanoLinked.out, arches.out, stackSpaces.out)
+          .map<Directory>(
+              objName,
+              [optCmd, llcCmd, shared](
+                  const Item<std::string> &ir, const Item<std::string> &arch,
+                  const Item<std::string> &stack,
+                  Item<Directory> &out) -> mlir::LogicalResult {
+                std::string workDir =
+                    llvm::sys::path::parent_path(out.filePath).str();
+                auto compile = [&](const Item<std::string> &input,
+                                   llvm::StringRef stem,
+                                   Item<Directory> &object) {
+                  Item<File> optimized;
+                  optimized.key = object.key;
+                  optimized.filePath =
+                      (workDir + "/peano-opted_" + stem + ".ll").str();
+                  if (mlir::failed(optCmd(input, optimized))) {
+                    return mlir::failure();
+                  }
+                  return llcCmd(optimized, arch, stack, object);
+                };
+                if (ShellCommand::dryRun) {
+                  return compile(ir, out.key, out);
+                }
+                // The core's own module stays on disk to inspect.
+                ir.asFile();
+                std::optional<CanonicalCoreIR> canonical =
+                    canonicalizeCoreIR(ir.asString());
+                if (!canonical) {
+                  return compile(ir, out.key, out);
+                }
+                std::string key = canonical->text + '\0' + arch.asString() +
+                                  '\0' + stack.asString();
+                std::promise<std::string> promise;
+                std::shared_future<std::string> object;
+                bool first;
+                {
+                  std::lock_guard<std::mutex> lock(shared->mutex);
+                  auto [it, inserted] = shared->objects.try_emplace(key);
+                  if (inserted) {
+                    it->second = promise.get_future().share();
+                  }
+                  object = it->second;
+                  first = inserted;
+                }
+                if (first) {
+                  std::string stem =
+                      "canonical_" + llvm::utohexstr(llvm::xxh3_64bits(key));
+                  Item<std::string> input;
+                  input.key = out.key;
+                  input.filePath = workDir + "/" + stem + ".ll";
+                  input.value = std::move(canonical->text);
+                  Item<Directory> compiled;
+                  compiled.key = out.key;
+                  compiled.filePath = workDir + "/" + stem + ".o";
+                  promise.set_value(
+                      mlir::succeeded(compile(input, stem, compiled))
+                          ? compiled.filePath
+                          : std::string());
+                }
+                const std::string &path = object.get();
+                if (path.empty()) {
+                  return mlir::failure();
+                }
+
+                auto binary = llvm::object::createBinary(path);
+                if (!binary) {
+                  llvm::errs()
+                      << "aiecc: cannot read '" << path
+                      << "': " << llvm::toString(binary.takeError()) << "\n";
+                  return mlir::failure();
+                }
+                auto *elf = llvm::dyn_cast<llvm::object::ELFObjectFileBase>(
+                    binary->getBinary());
+                if (!elf) {
+                  llvm::errs() << "aiecc: '" << path << "' is not ELF\n";
+                  return mlir::failure();
+                }
+                llvm::objcopy::ConfigManager config;
+                config.Common.InputFilename = path;
+                for (size_t i = 0; i < canonical->names.size(); ++i) {
+                  config.Common
+                      .SymbolsToRename[(canonicalGlobalPrefix + llvm::Twine(i))
+                                           .str()] = canonical->names[i];
+                }
+                // A relocation section follows the section it relocates.
+                std::vector<std::pair<llvm::StringRef, std::string>> sections;
+                for (llvm::object::ELFSectionRef section : elf->sections()) {
+                  llvm::Expected<llvm::StringRef> name = section.getName();
+                  if (!name) {
+                    llvm::consumeError(name.takeError());
+                    continue;
+                  }
+                  unsigned type = section.getType();
+                  size_t at = name->rfind(("." + canonicalGlobalPrefix).str());
+                  size_t index;
+                  if (type == llvm::ELF::SHT_REL ||
+                      type == llvm::ELF::SHT_RELA ||
+                      at == llvm::StringRef::npos ||
+                      name->substr(at + 1 + canonicalGlobalPrefix.size())
+                          .getAsInteger(10, index) ||
+                      index >= canonical->names.size()) {
+                    continue;
+                  }
+                  sections.emplace_back(*name,
+                                        (llvm::Twine(name->take_front(at + 1)) +
+                                         canonical->names[index])
+                                            .str());
+                }
+                for (const auto &[from, to] : sections) {
+                  config.Common.SectionsToRename.try_emplace(
+                      from,
+                      llvm::objcopy::SectionRename{from, to, std::nullopt});
+                }
+
+                llvm::SmallString<256> dir(workDir);
+                llvm::sys::path::append(dir,
+                                        llvm::sys::path::stem(out.filePath));
+                if (std::error_code ec =
+                        llvm::sys::fs::create_directories(dir)) {
+                  llvm::errs() << "aiecc: cannot create '" << dir
+                               << "': " << ec.message() << "\n";
+                  return mlir::failure();
+                }
+                std::string file =
+                    (dir + "/" + llvm::sys::path::filename(out.filePath)).str();
+                std::error_code ec;
+                llvm::raw_fd_ostream os(file, ec);
+                if (ec) {
+                  llvm::errs() << "aiecc: cannot write '" << file
+                               << "': " << ec.message() << "\n";
+                  return mlir::failure();
+                }
+                if (llvm::Error err = llvm::objcopy::executeObjcopyOnBinary(
+                        config, *binary->getBinary(), os)) {
+                  llvm::errs()
+                      << "aiecc: cannot rename '" << path << "' to '" << file
+                      << "': " << llvm::toString(std::move(err)) << "\n";
+                  return mlir::failure();
+                }
+                if (ShellCommand::verbose) {
+                  std::lock_guard<std::mutex> lock(logMutex());
+                  llvm::outs() << "aiecc: " << out.key << ": " << path
+                               << " renamed to " << file << "\n";
+                }
+                out.filePath = file;
+                out.value = Directory{std::string(dir)};
+                return mlir::success();
+              })
           .threadSafe();
 
   return {xchesscc ? chessObject : peanoObject, opted};
@@ -2241,11 +2407,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // (chess vs peano "elfs_{0}.elf", per-core vs unified "objects_{0}.o").
   // Exactly one of each pair is live in any given build, so disambiguate by
   // keeping only edges reachable from the selected terminals (`compiledElfs` /
-  // `objects`) plus whatever this run already produces.
+  // `objects` / `optimizedIR`) plus whatever this run already produces.
   if (!getOutputs.empty() || !cutOutputs.empty()) {
     std::vector<EdgeBase *> liveRoots = outputs;
     liveRoots.push_back(&compiledElfs);
     liveRoots.push_back(&objects);
+    liveRoots.push_back(&optimizedIR);
     llvm::DenseSet<EdgeBase *> live = reachableEdges(liveRoots);
 
     // resolveLiveEdges does the name->edge resolution (with chess/peano
