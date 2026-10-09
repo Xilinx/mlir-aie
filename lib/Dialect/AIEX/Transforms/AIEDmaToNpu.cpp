@@ -429,7 +429,8 @@ public:
     buffer_offset = IntegerAttr::get(i32ty, 0);
 
     // enable_packet
-    if (auto packetInfo = op.getPacket()) {
+    if (auto packetInfo =
+            op.getPacket() ? op.getPacket() : infoOp.getPacket()) {
       enable_packet = IntegerAttr::get(i32ty, 1);
       packet_type = IntegerAttr::get(i32ty, packetInfo->getPktType());
       packet_id = IntegerAttr::get(i32ty, packetInfo->assignedId());
@@ -674,7 +675,8 @@ public:
     auto column = IntegerAttr::get(i32ty, tileCol);
     auto row = IntegerAttr::get(i32ty, tileRow);
     BdTemplateFields fields;
-    if (auto packetInfo = op.getPacket()) {
+    if (auto packetInfo =
+            op.getPacket() ? op.getPacket() : infoOp.getPacket()) {
       fields.enable_packet = 1;
       fields.packet_type = packetInfo->getPktType();
       fields.packet_id = packetInfo->assignedId();
