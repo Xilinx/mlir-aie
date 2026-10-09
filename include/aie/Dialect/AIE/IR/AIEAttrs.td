@@ -318,6 +318,18 @@ def ObjectFifoRole
   let cppNamespace = "xilinx::AIE";
 }
 
+def ObjectFifoLinkMode
+    : I32EnumAttr<"ObjectFifoLinkMode",
+                  "How an objectFifo link's participants share its objects",
+                  [I32EnumAttrCase<"Space", 0, "space">,
+                   I32EnumAttrCase<"Time", 1, "time">]> {
+  let cppNamespace = "xilinx::AIE";
+  let genSpecializedAttr = 0;
+}
+
+def ObjectFifoLinkModeAttr
+    : EnumAttr<AIE_Dialect, ObjectFifoLinkMode, "link_mode">;
+
 //===----------------------------------------------------------------------===//
 // ObjectFifo transport
 //===----------------------------------------------------------------------===//

@@ -2621,11 +2621,24 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
 
     Join and distribute hand each participant its own slice of the shared object, so the link point must have a memory module
     to hold that object and the device must have counting locks to guard the slices independently.
+
+    `mode = #aie.link_mode<time>` shares the objects in time instead: the participants take turns with whole objects. Several
+    inputs are a merge, one fan-in route into the link point's one filling channel, whose objects arrive in whatever order the
+    producers send them. Several outputs are a dispatch, the link point's one draining channel handing object k to output
+    k mod n. The turns are told apart by packet headers, so the shared side is packet-switched. Every participant carries
+    the same object type and offsets are not given.
+
+    ```
+      aie.objectfifo.link [@from_a, @from_b] -> [@x] ([] []) {mode = #aie.link_mode<time>}
+      aie.objectfifo.link [@y] -> [@to_a, @to_b] ([] []) {mode = #aie.link_mode<time>}
+    ```
   }];
 
   let arguments = (ins SymbolRefArrayAttr:$fifoIns,
       SymbolRefArrayAttr:$fifoOuts, I64ArrayAttr:$src_offsets,
-      I64ArrayAttr:$dst_offsets);
+      I64ArrayAttr:$dst_offsets,
+      DefaultValuedAttr<ObjectFifoLinkModeAttr,
+                        "::xilinx::AIE::ObjectFifoLinkMode::Space">:$mode);
 
   let hasCustomAssemblyFormat = 1;
 
@@ -2638,8 +2651,13 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let extraClassDeclaration = [{
     std::vector<ObjectFifoCreateOp> getInputObjectFifos();
     std::vector<ObjectFifoCreateOp> getOutputObjectFifos();
-    bool isJoin() { return getFifoIns().size() > 1; }
-    bool isDistribute() { return getFifoOuts().size() > 1; }
+    bool isTime() { return getMode() == ObjectFifoLinkMode::Time; }
+    bool isJoin() { return !isTime() && getFifoIns().size() > 1; }
+    bool isDistribute() { return !isTime() && getFifoOuts().size() > 1; }
+    /// Several inputs taking turns into one channel.
+    bool isMerge() { return isTime() && getFifoIns().size() > 1; }
+    /// One channel taking turns between several outputs.
+    bool isDispatch() { return isTime() && getFifoOuts().size() > 1; }
     std::optional<mlir::Value> getOptionalSharedTile();
     std::optional<int> getRepeatCount();
     std::vector<int> getJoinTransferLengths();

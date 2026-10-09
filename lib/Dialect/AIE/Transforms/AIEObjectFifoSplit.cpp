@@ -471,6 +471,21 @@ struct AIEObjectFifoSplitPass
   /// Shim endpoint each fifo is driven through, where it has one.
   DenseMap<Operation *, std::string> shimEndpointName;
 
+  /// The time link each merging input or dispatched output takes turns in.
+  DenseMap<Operation *, ObjectFifoLinkOp> timeLinkOf;
+  /// A time link's one shared endpoint on the link point.
+  DenseMap<Operation *, ObjectFifoDmaEndpointOp> timeLinkEndpoint;
+  /// What each time link gathers while its participants are split: a merge's
+  /// sources, and a dispatch's destination per output.
+  DenseMap<Operation *, SmallVector<Attribute>> mergeSources;
+  DenseMap<Operation *, DenseMap<Operation *, Attribute>> dispatchTurns;
+
+  /// The endpoint a time link's turns share, made by whichever participant
+  /// reaches it first.
+  ObjectFifoDmaEndpointOp timeLinkEndpointFor(ObjectFifoLinkOp link,
+                                              Location loc, PoolRef ref,
+                                              std::optional<int> channel);
+  void createTimeLinkRoutes();
   void createLinkPools();
 };
 
@@ -489,8 +504,16 @@ void AIEObjectFifoSplitPass::createLinkPools() {
     bool isJoin = linkOp.isJoin();
     bool isDistribute = linkOp.isDistribute();
 
-    ObjectFifoCreateOp owner = isJoin ? outs[0] : ins[0];
-    if (!isJoin && !isDistribute) {
+    ObjectFifoCreateOp owner = isJoin || linkOp.isMerge() ? outs[0] : ins[0];
+    if (linkOp.isMerge()) {
+      for (ObjectFifoCreateOp in : ins)
+        timeLinkOf[in] = linkOp;
+    }
+    if (linkOp.isDispatch()) {
+      for (ObjectFifoCreateOp out : outs)
+        timeLinkOf[out] = linkOp;
+    }
+    if (!isJoin && !isDistribute && !linkOp.isTime()) {
       auto inType = cast<MemRefType>(
           cast<AIEObjectFifoType>(ins[0].getElemType()).getElementType());
       auto outType = cast<MemRefType>(
@@ -569,6 +592,55 @@ void AIEObjectFifoSplitPass::createLinkPools() {
           pool, isDistribute ? SmallVector<int32_t>{static_cast<int32_t>(index)}
                              : allSegments};
     }
+  }
+}
+
+ObjectFifoDmaEndpointOp
+AIEObjectFifoSplitPass::timeLinkEndpointFor(ObjectFifoLinkOp link, Location loc,
+                                            PoolRef ref,
+                                            std::optional<int> channel) {
+  ObjectFifoDmaEndpointOp &endpoint = timeLinkEndpoint[link];
+  if (!endpoint) {
+    ObjectFifoCreateOp owner = link.isMerge() ? link.getOutputObjectFifos()[0]
+                                              : link.getInputObjectFifos()[0];
+    endpoint = createDmaEndpoint(
+        loc,
+        (owner.name().getValue() +
+         (link.isMerge() ? "_merge_dma" : "_dispatch_dma"))
+            .str(),
+        ref.pool.getTile(), ref,
+        link.isMerge() ? ObjectFifoRole::Fill : ObjectFifoRole::Drain, owner,
+        BDDimLayoutArrayAttr(), channel);
+  }
+  return endpoint;
+}
+
+/// A merge becomes one fan-in route into its shared endpoint; a dispatch
+/// names its turns on its shared endpoint in the link's output order.
+void AIEObjectFifoSplitPass::createTimeLinkRoutes() {
+  for (auto link : device.getOps<ObjectFifoLinkOp>()) {
+    ObjectFifoDmaEndpointOp endpoint = timeLinkEndpoint.lookup(link);
+    if (!endpoint)
+      continue;
+    MLIRContext *ctx = builder.getContext();
+    if (link.isMerge()) {
+      PacketInfoAttr header = PacketInfoAttr::get(ctx, 0, std::nullopt);
+      for (ObjectFifoCreateOp in : link.getInputObjectFifos())
+        if (PacketInfoAttr pinned = in.packetHeader();
+            pinned && pinned.isAssigned())
+          header = pinned;
+      builder.setInsertionPoint(link);
+      RouteOp::create(builder, link.getLoc(),
+                      builder.getArrayAttr(mergeSources[link]),
+                      builder.getArrayAttr(
+                          {FlatSymbolRefAttr::get(ctx, endpoint.getSymName())}),
+                      header);
+      continue;
+    }
+    SmallVector<Attribute> turns;
+    for (ObjectFifoCreateOp out : link.getOutputObjectFifos())
+      turns.push_back(dispatchTurns[link].lookup(out));
+    endpoint.setDispatchAttr(builder.getArrayAttr(turns));
   }
 }
 
@@ -695,7 +767,11 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     }
 
     std::string prodDmaName = (fifoName + "_prod_dma").str();
-    if (prodRef) {
+    ObjectFifoLinkOp timeLink = timeLinkOf.lookup(fifo);
+    if (timeLink && timeLink.isDispatch()) {
+      prodDmaName = timeLinkEndpointFor(timeLink, loc, *prodRef, prodChannel)
+                        .getSymName();
+    } else if (prodRef) {
       createDmaEndpoint(loc, prodDmaName, prodTile, *prodRef,
                         ObjectFifoRole::Drain, fifo,
                         fifo.getDimensionsToStreamAttr(), prodChannel);
@@ -756,7 +832,10 @@ void AIEObjectFifoSplitPass::runOnOperation() {
           consPort ? consPort.channelIndex() : std::nullopt;
 
       std::string consDmaName = (fifoName + suffix + "_dma").str();
-      if (consRef) {
+      if (timeLink && timeLink.isMerge()) {
+        consDmaName = timeLinkEndpointFor(timeLink, loc, *consRef, consChannel)
+                          .getSymName();
+      } else if (consRef) {
         createDmaEndpoint(loc, consDmaName, consumerTile, *consRef,
                           ObjectFifoRole::Fill, fifo,
                           consumerDims.empty() ? BDDimLayoutArrayAttr()
@@ -778,13 +857,26 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       consumerIndex++;
     }
 
+    FlatSymbolRefAttr source =
+        FlatSymbolRefAttr::get(builder.getContext(), prodDmaName);
+    if (timeLink && timeLink.isMerge()) {
+      mergeSources[timeLink].push_back(source);
+      continue;
+    }
     // The fifo's packet request rides on the route as written; allocation
-    // assigns the id unless the fifo pinned one.
-    RouteOp::create(builder, loc,
-                    builder.getArrayAttr({FlatSymbolRefAttr::get(
-                        builder.getContext(), prodDmaName)}),
-                    builder.getArrayAttr(destinations), fifo.packetHeader());
+    // assigns the id unless the fifo pinned one. A dispatch tells its turns
+    // apart by header, so each of its routes carries one.
+    PacketInfoAttr header = fifo.packetHeader();
+    if (timeLink && timeLink.isDispatch()) {
+      dispatchTurns[timeLink][fifo] = destinations.front();
+      if (!header)
+        header = PacketInfoAttr::get(builder.getContext(), 0, std::nullopt);
+    }
+    RouteOp::create(builder, loc, builder.getArrayAttr({source}),
+                    builder.getArrayAttr(destinations), header);
   }
+
+  createTimeLinkRoutes();
 
   SmallVector<Operation *> toErase;
   for (ObjectFifoCreateOp fifo : fifos) {

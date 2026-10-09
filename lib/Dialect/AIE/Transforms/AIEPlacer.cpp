@@ -797,11 +797,11 @@ SequentialPlacer::buildChannelRequirements(
     if (!linkTileOp)
       continue;
 
-    // Link tile needs:
-    // - Input channels = number of source ObjectFifos
-    // - Output channels = number of dest ObjectFifos
-    int numInputChannels = linkOp.getFifoIns().size();
-    int numOutputChannels = linkOp.getFifoOuts().size();
+    // Link tile needs one input channel per source ObjectFifo and one output
+    // channel per dest ObjectFifo, except that a time link's turns share one.
+    int numInputChannels = linkOp.isMerge() ? 1 : linkOp.getFifoIns().size();
+    int numOutputChannels =
+        linkOp.isDispatch() ? 1 : linkOp.getFifoOuts().size();
 
     channelRequirements[linkTileOp].first += numInputChannels;
     channelRequirements[linkTileOp].second += numOutputChannels;
