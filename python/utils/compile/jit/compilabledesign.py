@@ -212,7 +212,7 @@ class CompilableDesign:
         self._generated_cache: dict[tuple, tuple[str, list]] = {}
 
         # Introspect generator signature to split param categories.  Cache
-        # hints+sig on self so split_runtime_args / _generate_mlir reuse the
+        # hints+sig on self so split_runtime_args / _generate_uncached reuse the
         # same memoised intro instead of re-running typing.get_type_hints
         # and inspect.signature on every call.
         if callable(mlir_generator):
@@ -442,8 +442,6 @@ class CompilableDesign:
 
         Instructions-only designs return ``(None, inst_path)``.
         """
-        from aie.iron.kernel import ExternalFunction
-
         has_dispatch = bool(self.dispatch_params)
 
         full_elf = self.full_elf or full_elf_path is not None
@@ -460,7 +458,7 @@ class CompilableDesign:
                 "design with DispatchTime[T] parameters."
             )
         if full_elf:
-            return self._compile_full_elf(ExternalFunction, full_elf_path)
+            return self._compile_full_elf(full_elf_path)
         if self.insts_only:
             if has_dispatch:
                 raise NotImplementedError(
@@ -472,7 +470,7 @@ class CompilableDesign:
                     "compile(): an insts_only design takes inst_path alone "
                     "(or nothing, for the JIT cache); it builds no image."
                 )
-            return self._compile_insts_only(ExternalFunction, inst_path)
+            return self._compile_insts_only(inst_path)
 
         if has_dispatch and (inst_path is not None or elf_path is not None):
             raise ValueError(
@@ -628,15 +626,15 @@ class CompilableDesign:
                 )
 
             try:
-                mlir_module, external_kernels, use_chess = (
-                    self._generate_and_build_kernels(ExternalFunction, kernel_dir)
+                mlir_text, external_kernels, use_chess = (
+                    self._generate_and_build_kernels(kernel_dir)
                 )
 
                 compiler_options = list(self.aiecc_flags)
                 if has_dispatch:
                     compiler_options.append("--get=npu_lowered.mlir")
                 compile_mlir_module(
-                    mlir_module=mlir_module,
+                    mlir_module=mlir_text,
                     insts_path=inst_path,
                     xclbin_path=xclbin_path,
                     elf_path=elf_path,
@@ -717,11 +715,7 @@ class CompilableDesign:
         )
         return xclbin_path, inst_path
 
-    def _compile_full_elf(
-        self,
-        ExternalFunction,
-        full_elf_path: Path | str | None,
-    ) -> tuple[Path, None]:
+    def _compile_full_elf(self, full_elf_path: Path | str | None) -> tuple[Path, None]:
         """Compile to a single self-contained full ELF (PDIs + TXN control code).
 
         With ``full_elf_path`` the ELF is written there, and rebuilt only when
@@ -788,14 +782,12 @@ class CompilableDesign:
                     return elf_path, None
 
             try:
-                mlir_module, external_kernels, use_chess = (
-                    self._generate_and_build_kernels(
-                        ExternalFunction, kernel_dir, full_elf=True
-                    )
+                mlir_text, external_kernels, use_chess = (
+                    self._generate_and_build_kernels(kernel_dir, full_elf=True)
                 )
 
                 compile_mlir_module(
-                    mlir_module=mlir_module,
+                    mlir_module=mlir_text,
                     full_elf_path=elf_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
@@ -831,9 +823,7 @@ class CompilableDesign:
         )
         return elf_path, None
 
-    def _compile_insts_only(
-        self, ExternalFunction, inst_path: Path | str | None
-    ) -> tuple[None, Path]:
+    def _compile_insts_only(self, inst_path: Path | str | None) -> tuple[None, Path]:
         """Lower the runtime sequence alone to an instruction stream.
 
         With ``inst_path`` the stream is written there, and rebuilt only when
@@ -893,12 +883,12 @@ class CompilableDesign:
                 # The stream addresses the buffers where the image's build
                 # placed them, and that placement reserves each bank's kernel
                 # data, which only the built objects show.
-                mlir_module, external_kernels, use_chess = (
-                    self._generate_and_build_kernels(ExternalFunction, kernel_dir)
+                mlir_text, external_kernels, use_chess = (
+                    self._generate_and_build_kernels(kernel_dir)
                 )
 
                 compile_mlir_module(
-                    mlir_module=mlir_module,
+                    mlir_module=mlir_text,
                     insts_path=inst_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
@@ -947,22 +937,20 @@ class CompilableDesign:
         self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
 
     def _generate_and_build_kernels(
-        self, ExternalFunction, kernel_dir: Path, *, full_elf: bool = False
-    ) -> tuple[Any, list, bool]:
+        self, kernel_dir: Path, *, full_elf: bool = False
+    ) -> tuple[str, list, bool]:
         """Generate the design and build its kernels' objects into ``kernel_dir``.
 
         Returns:
-            The MLIR module, the design's ``ExternalFunction`` kernels, and
+            The MLIR text, the design's ``ExternalFunction`` kernels, and
             whether aiecc drives Chess for them.
         """
-        mlir_module = self._generate_mlir(ExternalFunction, full_elf=full_elf)
+        mlir_text, external_kernels = self._generated_for(full_elf=full_elf)
 
         # aie.utils imports this module before it defines this name.
         from aie.utils import get_current_device
 
         target_arch = resolve_target_arch(get_current_device(probe_runtime=False))
-        external_kernels = list(ExternalFunction._instances)
-        ExternalFunction._instances.clear()
         use_chess = self._resolve_use_chess(external_kernels)
         compile_external_kernels(
             external_kernels,
@@ -977,7 +965,7 @@ class CompilableDesign:
             object_cache=self._kernel_object_cache(),
         )
         _copy_object_files(self.object_files, kernel_dir)
-        return mlir_module, external_kernels, use_chess
+        return mlir_text, external_kernels, use_chess
 
     def _resolve_use_chess(self, external_kernels: list) -> bool:
         """Return whether to drive aiecc with the Chess front-end.
@@ -1235,7 +1223,11 @@ class CompilableDesign:
         """
         from aie.iron.kernel import ExternalFunction
 
-        return self._generate_mlir(ExternalFunction, full_elf=self.full_elf)
+        mlir_text, external_kernels = self._generated
+        # Registered as a build would find them, for compile_mlir_module(device=).
+        ExternalFunction._instances.update(external_kernels)
+        with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
+            return _Module.parse(mlir_text)
 
     def validate_tensor_args(
         self,
@@ -1701,18 +1693,6 @@ class CompilableDesign:
         external_kernels = list(ExternalFunction._instances)
         ExternalFunction._instances.clear()
         return mlir_text, external_kernels
-
-    def _generate_mlir(self, ExternalFunction, *, full_elf: bool = False):
-        """Return an MLIR ``Module`` bound to a fresh Context.
-
-        Thin wrapper over `_generated_for`: parse the cached MLIR text
-        into a new ``mlir_mod_ctx()`` and re-register the cached
-        ``ExternalFunction`` instances so ``compile()`` can collect them.
-        """
-        mlir_text, external_kernels = self._generated_for(full_elf=full_elf)
-        ExternalFunction._instances.update(external_kernels)
-        with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
-            return _Module.parse(mlir_text)
 
     def __hash__(self) -> int:
         # The cache hash includes the active target device. Do not use a

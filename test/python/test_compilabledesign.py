@@ -1589,7 +1589,7 @@ def test_from_json_compile_kwargs_round_trip_typed():
 
 
 # ---------------------------------------------------------------------------
-# _generate_mlir: compile param validation (no MLIR generation needed)
+# generate_mlir: compile param validation (no MLIR generation needed)
 # ---------------------------------------------------------------------------
 
 
@@ -1602,7 +1602,7 @@ def test_generate_mlir_raises_type_error_for_missing_compile_param():
     d = CompilableDesign(gen, compile_kwargs={"M": 512})  # K missing
 
     with pytest.raises(TypeError, match="compile_kwargs do not match"):
-        d._generate_mlir(ExternalFunction)
+        d.generate_mlir()
 
 
 def test_generate_mlir_type_error_message_includes_generator_name():
@@ -1613,7 +1613,7 @@ def test_generate_mlir_type_error_message_includes_generator_name():
     d = CompilableDesign(my_special_gen, compile_kwargs={})  # M missing
 
     with pytest.raises(TypeError, match="my_special_gen"):
-        d._generate_mlir(ExternalFunction)
+        d.generate_mlir()
 
 
 def test_generate_mlir_injects_compile_context():
@@ -1631,7 +1631,7 @@ def test_generate_mlir_injects_compile_context():
         return ctx.module
 
     d = CompilableDesign(gen, compile_kwargs={"M": 256, "K": 64})
-    d._generate_mlir(ExternalFunction)
+    d.generate_mlir()
 
     assert observed["M"] == 256
     assert observed["K"] == 64
@@ -1652,11 +1652,11 @@ def test_generate_mlir_clears_external_function_instances_before_call():
         return ctx.module
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
-    d._generate_mlir(ExternalFunction)
+    d.generate_mlir()
 
 
 def test_generate_mlir_unplaced_style_uses_return_value():
-    """When generator returns a module object, _generate_mlir must use it (not ctx.module).
+    """When generator returns a module object, generate_mlir must use it (not ctx.module).
 
     Option B memoization re-parses the cached MLIR text into a fresh Module
     per call, so identity is not preserved — content equivalence is the
@@ -1672,12 +1672,12 @@ def test_generate_mlir_unplaced_style_uses_return_value():
         return real_module  # unplaced style
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
-    result = d._generate_mlir(ExternalFunction)
+    result = d.generate_mlir()
     assert str(result) == expected_text
 
 
 # ---------------------------------------------------------------------------
-# _generate_mlir: Guard 2-A and 2-B validation
+# generate_mlir: Guard 2-A and 2-B validation
 # ---------------------------------------------------------------------------
 
 
@@ -1704,7 +1704,7 @@ def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1, "NOSUCHPARAM": 99})
     with pytest.raises(TypeError, match="not in the generator signature"):
-        d._generate_mlir(ExternalFunction)
+        d.generate_mlir()
 
 
 def test_generate_mlir_dispatch_param_receives_identity(npu2_device):
@@ -1721,14 +1721,14 @@ def test_generate_mlir_dispatch_param_receives_identity(npu2_device):
         ).resolve_program()
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
-    d._generate_mlir(ExternalFunction)
+    d.generate_mlir()
 
     assert isinstance(observed["scale"], _DispatchParameter)
     assert observed["scale"].name == "scale"
     assert observed["scale"].scalar_type is np.int32
 
     static = d.specialize(scale=5)
-    static._generate_mlir(ExternalFunction)
+    static.generate_mlir()
     assert observed["scale"] == 5
     assert type(observed["scale"]) is np.int32
 
@@ -1794,18 +1794,19 @@ def test_dispatch_default_remains_dynamic_during_generation(npu2_device):
 
 
 def test_generate_mlir_raises_on_verification_failure():
-    """RuntimeError must be raised when the generated MLIR module fails verify()."""
-    from unittest.mock import MagicMock
-
-    bad_module = MagicMock()
-    bad_module.operation.verify.return_value = False
+    """A generated module that fails verify() is reported, not built."""
+    from aie.ir import IntegerType, MLIRError, Operation
 
     def gen(*, M: CompileTime[int]):
-        return bad_module  # unplaced style — returns a module directly
+        with mlir_mod_ctx() as ctx:
+            Operation.create(
+                "arith.addi", results=[IntegerType.get_signless(32)], operands=[]
+            )
+        return ctx.module
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
-    with pytest.raises(RuntimeError, match="MLIR verification failed"):
-        d._generate_mlir(ExternalFunction)
+    with pytest.raises(MLIRError, match="expected 2 operands"):
+        d.generate_mlir()
 
 
 def test_split_runtime_args_path_generator_filters_kernel_objects():
