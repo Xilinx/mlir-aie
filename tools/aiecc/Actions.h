@@ -67,11 +67,21 @@ auto emitBinary(Fill fill) {
 
 // Materialize an MLIR module from an item whose payload carries IR. Overloaded
 // per module-bearing payload type: ModRef and OpInModule clone their in-memory
-// module; File re-parses its .mlir text into `ctx`.
+// module; File re-parses its .mlir text into `ctx`. A ModRef item handed over
+// as an rvalue (by an edge that owns its input) gives up its module instead.
 inline mlir::OwningOpRef<mlir::ModuleOp>
 asModule(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &in,
          mlir::MLIRContext * /*ctx*/) {
   return mlir::OwningOpRef<mlir::ModuleOp>(in.get().get().clone());
+}
+
+inline mlir::OwningOpRef<mlir::ModuleOp>
+asModule(Item<mlir::OwningOpRef<mlir::ModuleOp>> &&in,
+         mlir::MLIRContext * /*ctx*/) {
+  assert(!in.aliasSource && in.value && "only an owned payload can be taken");
+  mlir::OwningOpRef<mlir::ModuleOp> mod = std::move(*in.value);
+  in.value.reset();
+  return mod;
 }
 
 template <typename KeyOp>
@@ -130,11 +140,10 @@ struct PassPipeline {
   explicit PassPipeline(std::unique_ptr<mlir::PassManager> pm)
       : ctx(pm->getContext()), prebuilt(std::move(pm)) {}
 
-  template <typename T>
+  template <typename InItem>
   mlir::LogicalResult
-  operator()(const Item<T> &in,
-             Item<mlir::OwningOpRef<mlir::ModuleOp>> &out) const {
-    auto mod = asModule(in, ctx);
+  operator()(InItem &&in, Item<mlir::OwningOpRef<mlir::ModuleOp>> &out) const {
+    auto mod = asModule(std::forward<InItem>(in), ctx);
     if (!mod) {
       llvm::errs() << "aiecc: PassPipeline could not obtain input module\n";
       return mlir::failure();

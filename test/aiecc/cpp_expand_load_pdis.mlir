@@ -16,8 +16,9 @@
 // REQUIRES: peano
 
 // RUN: rm -rf %t && mkdir -p %t
-// RUN: cd %t && aiecc --get-full-elf --expand-load-pdis --tmpdir=%t %s 2>&1
+// RUN: cd %t && aiecc --get-full-elf --expand-load-pdis --tmpdir=%t --verbose %s > %t/aiecc.log 2>&1
 // RUN: ls %t | FileCheck %s
+// RUN: FileCheck %s --check-prefix=OWN < %t/aiecc.log
 
 // Empty reset device gets its own CDO and PDI (empties first in module order).
 // CHECK-DAG: cdo_empty_0
@@ -39,6 +40,17 @@
 // RUN: cd %t && aiecc --get-full-elf --expand-load-pdis --tmpdir=%t/ckpt.prj --full-elf-name=%t/ckpt.elf --cut='perDevice_{0}.mlir,perDeviceNPULowered_{0}.mlir,npu_seq_{0}.mlir' --checkpoint=%t/ckpt %s
 // RUN: aiecc --resume=%t/ckpt/manifest.json
 // RUN: cmp %t/aie.elf %t/ckpt.elf
+
+// Each step of the NPU chain is the one reader of the module before it, so it
+// lowers that module in place rather than a copy. A kept intermediate is
+// never taken, and the ELF is unchanged.
+// OWN-DAG: edge 'npu_materialized.mlir' takes its input
+// OWN-DAG: edge 'npu_dma_lowered.mlir' takes its input
+// OWN-DAG: edge 'npu_expanded.mlir' takes its input
+// OWN-DAG: edge 'npu_lowered.mlir' takes its input
+// RUN: cd %t && aiecc --get-full-elf --expand-load-pdis --tmpdir=%t/dump.prj --full-elf-name=%t/dump.elf --dump-intermediates --verbose %s 2>&1 | FileCheck %s --check-prefix=DUMP
+// DUMP-NOT: takes its input
+// RUN: cmp %t/aie.elf %t/dump.elf
 
 module {
 

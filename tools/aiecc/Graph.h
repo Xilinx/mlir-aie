@@ -489,6 +489,11 @@ struct EdgeBase {
   // EdgeWithTypedOutput::threadSafe().
   bool isThreadSafe = false;
 
+  // takesInput() asks to take the input payloads rather than copy them; the
+  // engine grants `ownsInput` only where nothing else reads them.
+  bool mayTakeInput = false;
+  bool ownsInput = false;
+
   EdgeBase(Graph &g, std::string n) : graph(g), name(std::move(n)) {}
   virtual ~EdgeBase() = default;
 
@@ -642,6 +647,11 @@ struct EdgeWithTypedOutput : EdgeBase {
   // for chaining onto a map/split/filter/join call.
   EdgeWithTypedOutput &threadSafe() {
     isThreadSafe = true;
+    return *this;
+  }
+
+  EdgeWithTypedOutput &takesInput() {
+    mayTakeInput = true;
     return *this;
   }
 
@@ -806,8 +816,17 @@ struct MapEdge : Edge<In, Out> {
     return this->out.items[i].key;
   }
 
+  // An owned item reaches `fn` as an rvalue; an aliased one is never owned.
   mlir::LogicalResult executeForItem(size_t i) override {
-    if (mlir::failed(fn(this->in.items[i], this->out.items[i]))) {
+    Item<In> &src = this->in.items[i];
+    mlir::LogicalResult result = mlir::failure();
+    if constexpr (std::is_invocable_v<MapFn &, Item<In> &&, Item<Out> &>)
+      result = this->ownsInput && !src.aliasSource
+                   ? fn(std::move(src), this->out.items[i])
+                   : fn(std::as_const(src), this->out.items[i]);
+    else
+      result = fn(std::as_const(src), this->out.items[i]);
+    if (mlir::failed(result)) {
       this->recordFailedKey(this->in.items[i].key);
       return mlir::failure();
     }

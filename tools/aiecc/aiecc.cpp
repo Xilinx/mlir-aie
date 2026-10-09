@@ -1418,9 +1418,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       noMaterialize.getValue()
           ? npuLoweringInput
           : static_cast<EdgeWithTypedOutput<ModRef> &>(
-                npuLoweringInput.map<ModRef>(
-                    "npu_materialized.mlir",
-                    PassPipeline{getMaterializeRuntimeSeqPipeline(&context)}));
+                npuLoweringInput
+                    .map<ModRef>("npu_materialized.mlir",
+                                 PassPipeline{getMaterializeRuntimeSeqPipeline(
+                                     &context)})
+                    .takesInput());
 
   // For --load-pdi-to-ctrl-pkt this edge holds the control-packet ops before
   // DMA lowering: the extraction point for the control-packet binary.
@@ -1428,12 +1430,14 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto expandPipeline =
       [&context, ctrlPkt](
           EdgeWithTypedOutput<ModRef> &src) -> EdgeWithTypedOutput<ModRef> & {
-    return src.map<ModRef>(
-        "npu_expanded.mlir",
-        PassPipeline{&context,
-                     [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
-                       return getExpandLoadPdiPipeline(ctx, ctrlPkt);
-                     }});
+    return src
+        .map<ModRef>(
+            "npu_expanded.mlir",
+            PassPipeline{&context,
+                         [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
+                           return getExpandLoadPdiPipeline(ctx, ctrlPkt);
+                         }})
+        .takesInput();
   };
 
   // --load-pdi-to-ctrl-pkt expands first: its tail consumes the control-packet
@@ -1457,9 +1461,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 .map<ModRef>(
                     "ctrlpkt_npu_lowered.mlir",
                     PassPipeline{getPerDeviceDmaLoweringPipeline(&context)})
-          : npuMaterialized.map<ModRef>(
-                "npu_dma_lowered.mlir",
-                PassPipeline{getNpuDmaLoweringPipeline(&context)});
+          : npuMaterialized
+                .map<ModRef>("npu_dma_lowered.mlir",
+                             PassPipeline{getNpuDmaLoweringPipeline(&context)})
+                .takesInput();
 
   // The control-packet extraction point: the ctrl-pkt flow reads its data off
   // the expanded module before the DMA lowering rewrites it (see
@@ -1475,15 +1480,19 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   EdgeWithTypedOutput<ModRef> &npuSequence =
       ctrlPkt ? npuDmaLowered : npuExpanded;
 
-  auto &npuLowered = npuSequence.map<ModRef>(
-      "npu_lowered.mlir",
-      [](const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
-        ModRef clone = item.get().get().clone();
-        assignDevicePdiIds(*clone);
-        assignLoadPdiIds(*clone);
-        out.value = std::move(clone);
-        return mlir::success();
-      });
+  auto &npuLowered =
+      npuSequence
+          .map<ModRef>("npu_lowered.mlir",
+                       [&context](auto &&item,
+                                  Item<ModRef> &out) -> mlir::LogicalResult {
+                         ModRef mod = asModule(
+                             std::forward<decltype(item)>(item), &context);
+                         assignDevicePdiIds(*mod);
+                         assignLoadPdiIds(*mod);
+                         out.value = std::move(mod);
+                         return mlir::success();
+                       })
+          .takesInput();
 
   // Root of the static configuration branch; contains compiled cores, etc., to
   // produce xclbins, or feed into the full ELF. Usually, this is completely
@@ -2628,7 +2637,8 @@ int main(int argc, char **argv) {
   // (line-per-edge logging) takes precedence over the single-line display.
   bool showProgress = !noProgress && !verbose;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
-                 keepIntermediates, numThreads, profile});
+                 keepIntermediates, numThreads, profile,
+                 enableRepeaterScripts && !disableRepeaterScripts});
   // --cut stops the build at the cut point: only the prefix up to the cut
   // edges is produced (as work-dir intermediates) and snapshotted by
   // --checkpoint; the requested final artifacts are NOT built here (the

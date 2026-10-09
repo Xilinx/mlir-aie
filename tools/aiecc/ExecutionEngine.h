@@ -239,6 +239,8 @@ struct Engine {
     bool keepIntermediates = false;
     unsigned numThreads = 1; // 0 = auto-detect; 1 = sequential
     bool profile = false; // print a per-edge execution-time summary at the end
+    // No edge owns its input: the on-failure reproducer reads intermediates.
+    bool keepInputs = false;
   };
 
   Options opts;
@@ -752,6 +754,27 @@ struct Engine {
     auto isOutput = [&](EdgeBase *e) {
       return std::find(outputs.begin(), outputs.end(), e) != outputs.end();
     };
+
+    // An edge may take its input only as that node's one reader, and only if
+    // nothing writes the node out after the run: not an output, a `buildAlso`
+    // root (a --cut frontier is captured afterwards) or a kept intermediate.
+    llvm::DenseMap<NodeBase *, unsigned> readers;
+    for (EdgeBase *e : reachable)
+      if (!satisfied.count(e))
+        for (NodeBase *n : e->inputNodes())
+          ++readers[n];
+    for (auto &e : g.edges) {
+      std::vector<NodeBase *> ins = e->inputNodes();
+      NodeBase *src = ins.size() == 1 ? ins.front() : nullptr;
+      e->ownsInput = e->mayTakeInput && reachable.count(e.get()) &&
+                     !opts.keepIntermediates && !opts.keepInputs && src &&
+                     src->producer && readers.lookup(src) == 1 &&
+                     !isOutput(src->producer) &&
+                     !llvm::is_contained(buildAlso, src->producer);
+      if (opts.verbose && e->ownsInput)
+        llvm::errs() << "aiecc: edge '" << llvm::sys::path::filename(e->name)
+                     << "' takes its input\n";
+    }
 
     for (auto &e : g.edges) {
       bool out = isOutput(e.get());
