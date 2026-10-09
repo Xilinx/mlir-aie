@@ -7,7 +7,8 @@
 
 import contextlib
 import inspect
-import sys
+import itertools
+import os
 from pathlib import Path
 from types import FunctionType
 
@@ -15,11 +16,12 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 
 # Unresolved, like co_filename: a dev build symlinks build/python/aie to source.
 AIE_ROOT = Path(__file__).parent.parent
+_AIE_PREFIX = f"{AIE_ROOT}{os.sep}"
 
 
 def is_internal_file(filename: str) -> bool:
     """Whether `filename` is part of the `aie` package rather than user code."""
-    return Path(filename).is_relative_to(AIE_ROOT)
+    return filename.startswith(_AIE_PREFIX)
 
 
 class SourceSite:
@@ -47,10 +49,11 @@ class SourceSite:
             frame = frame.f_back
         if frame is None:
             return cls(None)
-        col = 0
-        if sys.version_info >= (3, 11):
-            positions = inspect.getframeinfo(frame, 0).positions
-            col = (positions and positions.col_offset) or 0
+        # f_lasti counts bytes; co_positions has an entry per 2-byte unit.
+        positions = itertools.islice(
+            frame.f_code.co_positions(), frame.f_lasti // 2, None
+        )
+        col = next(positions)[2] or 0
         return cls(frame.f_code.co_filename, frame.f_lineno, col)
 
     def location(self, name: str | None = None) -> "ir.Location":
@@ -66,6 +69,20 @@ class SourceSite:
             return ir.Location.current
         loc = ir.Location.file(self.filename, self.line, self.col)
         return ir.Location.name(name, childLoc=loc) if name else loc
+
+
+def user_code_location() -> "ir.Location | None":
+    """Return the innermost statement outside the `aie` package as a location.
+
+    Returns:
+        Its file location in the current Context, or None, so that an op
+        takes the ambient location, outside a Context or when the whole stack
+        is internal.
+    """
+    if ir.Context.current is None:
+        return None
+    site = SourceSite.capture()
+    return site.location() if site.filename else None
 
 
 def traced_body(fn) -> contextlib.AbstractContextManager:

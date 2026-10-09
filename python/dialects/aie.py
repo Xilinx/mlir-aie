@@ -52,10 +52,9 @@ from ..extras.util import (
     _get_sym_name,
     find_ops,
     find_parent_of_type,
-    get_user_code_loc,
     region_adder,
 )
-from ..helpers.sourceloc import AIE_ROOT
+from ..helpers.sourceloc import AIE_ROOT, user_code_location
 from ..helpers.taplib import TensorAccessPattern
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
@@ -543,7 +542,7 @@ class buffer(BufferOp):
         return self.result.owner
 
     def __getitem__(self, idx: tuple | ScalarValue) -> MemRefValue:
-        loc = get_user_code_loc()
+        loc = user_code_location()
 
         if not self.has_rank():
             raise ValueError("only ranked memref slicing/indexing supported")
@@ -568,7 +567,7 @@ class buffer(BufferOp):
             raise ValueError("Buffer slicing not supported, only indexing supported")
 
     def __setitem__(self, idx, source):
-        loc = get_user_code_loc()
+        loc = user_code_location()
 
         if not self.has_rank():
             raise ValueError("only ranked memref slicing/indexing supported")
@@ -1092,7 +1091,7 @@ class NextBDOp(NextBDOp):
         if dest is None:
             dest = InsertionPoint.current.block
         if loc is None:
-            loc = get_user_code_loc()
+            loc = user_code_location()
         super().__init__(dest, loc=loc, ip=ip)
 
     @property
