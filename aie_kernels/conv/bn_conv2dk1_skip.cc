@@ -501,6 +501,22 @@ k1_skip_rows(const uint8_t *input, const int8_t *kernels, const TS *skip,
              int8_t *output, const int32_t input_width,
              const int32_t input_channels, const int32_t output_channels,
              const int scale, const int skip_scale) {
+#if AIE_TUNED_AIE2 && defined(CONV_INPUT_WIDTH)
+  if constexpr (!Aligned && K1_WIN) {
+    if (input_width == CONV_INPUT_WIDTH && input_channels >= 16 * K1W_U &&
+        ((uintptr_t)input & 31) == 0) {
+      const aie::vector<int8, 32> ones = aie::broadcast<int8, 32>(1);
+      const auto epi = [&](auto &acc, const TS *s) {
+        aie::accum<acc32, 32> t = aie::mul(k1_load<false>(s), ones);
+        t = aie::mac(t, acc.template to_vector<int8>(scale), ones);
+        return t.template to_vector<int8>(skip_scale);
+      };
+      k1_rows_win(input, kernels, output, input_channels / 8,
+                  output_channels / 8, epi, skip);
+      return;
+    }
+  }
+#endif
   constexpr int N = 4;
   constexpr int E = 8 * P;
   const int32_t row = input_width * 8;
