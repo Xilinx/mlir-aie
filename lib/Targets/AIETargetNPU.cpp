@@ -161,6 +161,11 @@ static DenseIntElementsAttr cachedBlockWriteData(
   auto getGlobal = op.getData().getDefiningOp<mlir::memref::GetGlobalOp>();
   if (!getGlobal)
     return op.getDataWords();
+  // A hit already passed the width check: get_global's type is its global's.
+  mlir::StringAttr key = getGlobal.getNameAttr().getRootReference();
+  auto it = cache.find(key);
+  if (it != cache.end())
+    return it->second;
   // Honor getDataWords()'s 32-bit-element contract exactly: a non-32-bit memref
   // must take the canonical path (which emits "Only 32-bit data type is
   // supported" + returns nullptr), not the cached fast path.
@@ -169,10 +174,6 @@ static DenseIntElementsAttr cachedBlockWriteData(
           mlir::cast<mlir::MemRefType>(op.getData().getType())
               .getElementType()) != 32)
     return op.getDataWords();
-  mlir::StringAttr key = getGlobal.getNameAttr().getRootReference();
-  auto it = cache.find(key);
-  if (it != cache.end())
-    return it->second;
   DenseIntElementsAttr data;
   if (auto global =
           dyn_cast_if_present<mlir::memref::GlobalOp>(symTab.lookup(key)))
@@ -186,9 +187,8 @@ static DenseIntElementsAttr cachedBlockWriteData(
 
 LogicalResult appendBlockWrite(
     std::vector<uint32_t> &instructions, NpuBlockWriteOp op,
-    mlir::SymbolTable &symTab, const NamedOpTable &names,
+    std::optional<uint32_t> address, mlir::SymbolTable &symTab,
     llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> &dataCache) {
-  std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
   if (!address)
     return op.emitOpError(
         "Cannot translate blockwrite with unresolved address to a static TXN "
@@ -199,8 +199,11 @@ LogicalResult appendBlockWrite(
   // the encoder which owns the word layout.
   std::vector<uint32_t> payload;
   payload.reserve(data.size());
-  for (auto d : data)
-    payload.push_back(d.getZExtValue());
+  if (auto words = data.tryGetValues<uint32_t>(); succeeded(words))
+    payload.assign(words->begin(), words->end());
+  else
+    for (auto d : data)
+      payload.push_back(d.getZExtValue());
 
   // The col/row word is only populated when BOTH are present (matching the
   // historical behavior); otherwise it stays 0 (a flat address).
@@ -436,12 +439,13 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           .Case<NpuBlockWriteOp>([&](auto op) {
             count++;
             uint32_t before = byteOffset();
-            uint64_t addr = op.getAbsoluteAddress(&names).value_or(0);
-            if (failed(appendBlockWrite(instructions, op, symTab, names,
+            std::optional<uint32_t> addr = op.getAbsoluteAddress(&names);
+            if (failed(appendBlockWrite(instructions, op, addr, symTab,
                                         blockWriteDataCache)))
               result = failure();
             pushLocEntry(locmap, before, byteOffset(), "BLOCKWRITE",
-                         op->getName().getStringRef(), addr, op, tm);
+                         op->getName().getStringRef(), addr.value_or(0), op,
+                         tm);
           })
           .Case<NpuBlockWriteValuesOp>([&](auto op) {
             // A runtime-computed blockwrite payload has no static encoding;
