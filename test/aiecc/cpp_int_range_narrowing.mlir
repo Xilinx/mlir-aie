@@ -5,9 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// -O1 and up run aie-core-int-range-narrowing, so a core loop with constant
-// bounds reaches LLVM with an i32 induction variable instead of i64, for both
-// per-core and unified lowering. The INT64_MAX loop keeps i64 at every level.
+// -O1 and up run aie-core-forever-loops and aie-core-int-range-narrowing, so
+// the INT64_MAX loop loses its counter and the loop with constant bounds
+// reaches LLVM with an i32 induction variable instead of i64, for both
+// per-core and unified lowering. At -O0 both counters stay i64.
 // Only IR outputs are requested, so no core compiler is needed.
 
 // RUN: %aiecc -O0 --get=input_with_symbols.mlir --get='perCoreArches_{0}.txt' --get='llvmIR_{0}.ll' --tmpdir=%t.o0 --output-dir=%t.o0 %s
@@ -15,11 +16,11 @@
 // RUN: FileCheck %s --check-prefix=O0-LL --input-file=%t.o0/llvmIR_main_core_0_2.ll
 
 // RUN: %aiecc --get=input_with_symbols.mlir --get='perCoreArches_{0}.txt' --get='llvmIR_{0}.ll' --tmpdir=%t.default --output-dir=%t.default %s
-// RUN: FileCheck %s --check-prefix=NARROW-IR --input-file=%t.default/input_with_symbols.mlir
-// RUN: FileCheck %s --check-prefix=NARROW-LL --input-file=%t.default/llvmIR_main_core_0_2.ll
+// RUN: FileCheck %s --implicit-check-not=9223372036854775807 --check-prefix=NARROW-IR --input-file=%t.default/input_with_symbols.mlir
+// RUN: FileCheck %s --implicit-check-not=9223372036854775807 --check-prefix=NARROW-LL --input-file=%t.default/llvmIR_main_core_0_2.ll
 
 // RUN: %aiecc --unified --get='perCoreArches_{0}.txt' --get='llvmIR_{0}.ll' --tmpdir=%t.unified --output-dir=%t.unified %s
-// RUN: FileCheck %s --check-prefix=NARROW-LL --input-file=%t.unified/llvmIR_main_core_0_2.ll
+// RUN: FileCheck %s --implicit-check-not=9223372036854775807 --check-prefix=NARROW-LL --input-file=%t.unified/llvmIR_main_core_0_2.ll
 
 // O0-IR-LABEL: aie.core
 // O0-IR-NOT: index_castui
@@ -31,14 +32,15 @@
 // O0-LL: icmp slt i64 %{{.*}}, 32
 
 // NARROW-IR-LABEL: aie.core
-// NARROW-IR: arith.cmpi slt, %{{.*}}, %c9223372036854775807 : index
 // NARROW-IR: arith.cmpi slt, %[[I:.*]], %c32_i32 : i32
 // NARROW-IR: arith.index_castui %[[I]] : i32 to index
 
-// NARROW-LL: phi i64
-// NARROW-LL: icmp slt i64 %{{.*}}, 9223372036854775807
+// NARROW-LL-LABEL: define void @core_0_2()
+// NARROW-LL-NOT: phi i64
 // NARROW-LL: phi i32
 // NARROW-LL: icmp slt i32 %{{.*}}, 32
+// NARROW-LL-NOT: phi i64
+// NARROW-LL: {{^}}}
 
 module {
   aie.device(npu2) {

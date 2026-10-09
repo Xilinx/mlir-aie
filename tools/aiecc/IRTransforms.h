@@ -1296,10 +1296,12 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   if (optLevel >= 3) {
     dpm2.addPass(createAIEVectorToPointerLoopsPass());
   }
-  // `index` lowers to i64, so narrow core loops and index math to i32 where
-  // that is provably safe. Needs scf.for loops, and runs after the passes
-  // above, which expect `index` induction variables.
+  // `index` lowers to i64, so drop the counter of forever loops, then narrow
+  // the remaining core loops and index math to i32 where that is provably safe.
+  // Both need scf.for loops, and run after the passes above, which expect
+  // `index` induction variables.
   if (optLevel >= 1) {
+    dpm2.addPass(createAIECoreForeverLoopsPass());
     dpm2.addPass(createAIECoreIntRangeNarrowingPass());
   }
   pm->addPass(xilinx::AIEX::createAIESCFToControlFlowPass());
