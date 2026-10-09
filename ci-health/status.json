@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-09T13:02:30+00:00",
+ "generated_at": "2026-10-09T18:57:10+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 686,
+   "runs": 680,
    "main": {
     "passed": 10,
     "failed": 2,
@@ -245,21 +245,21 @@
     }
    ],
    "pull_requests": {
-    "passed": 173,
+    "passed": 171,
     "failed": 154,
-    "rate": 0.529
+    "rate": 0.526
    },
    "merge_queue": {
     "passed": 65,
-    "failed": 50,
-    "rate": 0.565
+    "failed": 49,
+    "rate": 0.57
    },
    "flaky": {
-    "commits": 666,
+    "commits": 661,
     "flaky": 44,
-    "rate": 0.066
+    "rate": 0.067
    },
-   "minutes_median": 52.3,
+   "minutes_median": 52.9,
    "minutes_p90": 152.5,
    "queued_median": 0.0
   },
@@ -269,7 +269,7 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 686,
+   "runs": 680,
    "main": {
     "passed": 6,
     "failed": 4,
@@ -480,22 +480,22 @@
     }
    ],
    "pull_requests": {
-    "passed": 72,
-    "failed": 118,
-    "rate": 0.379
+    "passed": 76,
+    "failed": 117,
+    "rate": 0.394
    },
    "merge_queue": {
-    "passed": 37,
-    "failed": 33,
-    "rate": 0.529
+    "passed": 38,
+    "failed": 31,
+    "rate": 0.551
    },
    "flaky": {
-    "commits": 665,
-    "flaky": 12,
-    "rate": 0.018
+    "commits": 660,
+    "flaky": 13,
+    "rate": 0.02
    },
-   "minutes_median": 57.2,
-   "minutes_p90": 103.2,
+   "minutes_median": 58.7,
+   "minutes_p90": 101.9,
    "queued_median": 0.0
   },
   {
@@ -504,38 +504,50 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 750,
+   "runs": 744,
    "main": {
     "passed": 77,
     "failed": 0,
     "rate": 1.0
    },
    "latest_main": {
-    "id": 37879681840,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37879681840",
+    "id": 37954690379,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37954690379",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-09T03:31:38Z",
-    "run_started_at": "2026-10-09T03:31:38Z",
-    "updated_at": "2026-10-09T03:40:42Z",
-    "head_sha": "35fa6b1667f7e5cd6f3b61d8134f5d2f72575e19",
-    "title": "build(deps): bump the github-actions-minor-patch group across 1 direc\u2026",
+    "created_at": "2026-10-09T15:50:21Z",
+    "run_started_at": "2026-10-09T15:50:21Z",
+    "updated_at": "2026-10-09T15:59:11Z",
+    "head_sha": "4d131d29be806b8f991ff275bb1870ac319e1d87",
+    "title": "Fix allocator and router nightly build install paths (#3907)",
     "attempt": 1
    },
    "newest_main": {
-    "id": 37879681840,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37879681840",
+    "id": 37954690379,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37954690379",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-09T03:31:38Z",
-    "run_started_at": "2026-10-09T03:31:38Z",
-    "updated_at": "2026-10-09T03:40:42Z",
-    "head_sha": "35fa6b1667f7e5cd6f3b61d8134f5d2f72575e19",
-    "title": "build(deps): bump the github-actions-minor-patch group across 1 direc\u2026",
+    "created_at": "2026-10-09T15:50:21Z",
+    "run_started_at": "2026-10-09T15:50:21Z",
+    "updated_at": "2026-10-09T15:59:11Z",
+    "head_sha": "4d131d29be806b8f991ff275bb1870ac319e1d87",
+    "title": "Fix allocator and router nightly build install paths (#3907)",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 37954690379,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37954690379",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T15:50:21Z",
+     "run_started_at": "2026-10-09T15:50:21Z",
+     "updated_at": "2026-10-09T15:59:11Z",
+     "head_sha": "4d131d29be806b8f991ff275bb1870ac319e1d87",
+     "title": "Fix allocator and router nightly build install paths (#3907)",
+     "attempt": 1
+    },
     {
      "id": 37879681840,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37879681840",
@@ -1003,37 +1015,25 @@
      "head_sha": "2030d7617f8070bf88fe1ea646bd624bbec28215",
      "title": "Kernel quality: mha empty-row NaN, AIE2 minsize sample_combine, dedic\u2026",
      "attempt": 1
-    },
-    {
-     "id": 37084163469,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37084163469",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-03T00:57:01Z",
-     "run_started_at": "2026-10-03T00:57:01Z",
-     "updated_at": "2026-10-03T01:06:01Z",
-     "head_sha": "8b34047065f5569e3d4813a3f7d28fb0a4cc1a6b",
-     "title": "test/run_pytest: make crashed-item rerun test deterministic (#3860)",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 360,
-    "failed": 91,
-    "rate": 0.798
+    "passed": 361,
+    "failed": 90,
+    "rate": 0.8
    },
    "merge_queue": {
-    "passed": 108,
+    "passed": 107,
     "failed": 6,
     "rate": 0.947
    },
    "flaky": {
-    "commits": 666,
+    "commits": 661,
     "flaky": 88,
-    "rate": 0.132
+    "rate": 0.133
    },
    "minutes_median": 9.4,
-   "minutes_p90": 21.7,
+   "minutes_p90": 21.4,
    "queued_median": 0.0
   },
   {
@@ -1042,38 +1042,50 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 750,
+   "runs": 745,
    "main": {
     "passed": 78,
     "failed": 0,
     "rate": 1.0
    },
    "latest_main": {
-    "id": 37879681882,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37879681882",
+    "id": 37954690365,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37954690365",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-09T03:31:38Z",
-    "run_started_at": "2026-10-09T03:31:38Z",
-    "updated_at": "2026-10-09T03:40:20Z",
-    "head_sha": "35fa6b1667f7e5cd6f3b61d8134f5d2f72575e19",
-    "title": "build(deps): bump the github-actions-minor-patch group across 1 direc\u2026",
+    "created_at": "2026-10-09T15:50:21Z",
+    "run_started_at": "2026-10-09T15:50:21Z",
+    "updated_at": "2026-10-09T15:58:28Z",
+    "head_sha": "4d131d29be806b8f991ff275bb1870ac319e1d87",
+    "title": "Fix allocator and router nightly build install paths (#3907)",
     "attempt": 1
    },
    "newest_main": {
-    "id": 37879681882,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37879681882",
+    "id": 37954690365,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37954690365",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-09T03:31:38Z",
-    "run_started_at": "2026-10-09T03:31:38Z",
-    "updated_at": "2026-10-09T03:40:20Z",
-    "head_sha": "35fa6b1667f7e5cd6f3b61d8134f5d2f72575e19",
-    "title": "build(deps): bump the github-actions-minor-patch group across 1 direc\u2026",
+    "created_at": "2026-10-09T15:50:21Z",
+    "run_started_at": "2026-10-09T15:50:21Z",
+    "updated_at": "2026-10-09T15:58:28Z",
+    "head_sha": "4d131d29be806b8f991ff275bb1870ac319e1d87",
+    "title": "Fix allocator and router nightly build install paths (#3907)",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 37954690365,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37954690365",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T15:50:21Z",
+     "run_started_at": "2026-10-09T15:50:21Z",
+     "updated_at": "2026-10-09T15:58:28Z",
+     "head_sha": "4d131d29be806b8f991ff275bb1870ac319e1d87",
+     "title": "Fix allocator and router nightly build install paths (#3907)",
+     "attempt": 1
+    },
     {
      "id": 37879681882,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37879681882",
@@ -1541,34 +1553,22 @@
      "head_sha": "2030d7617f8070bf88fe1ea646bd624bbec28215",
      "title": "Kernel quality: mha empty-row NaN, AIE2 minsize sample_combine, dedic\u2026",
      "attempt": 1
-    },
-    {
-     "id": 37084163501,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37084163501",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-03T00:57:01Z",
-     "run_started_at": "2026-10-03T00:57:01Z",
-     "updated_at": "2026-10-03T01:05:08Z",
-     "head_sha": "8b34047065f5569e3d4813a3f7d28fb0a4cc1a6b",
-     "title": "test/run_pytest: make crashed-item rerun test deterministic (#3860)",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 389,
-    "failed": 79,
-    "rate": 0.831
+    "passed": 391,
+    "failed": 78,
+    "rate": 0.834
    },
    "merge_queue": {
-    "passed": 110,
+    "passed": 109,
     "failed": 5,
-    "rate": 0.957
+    "rate": 0.956
    },
    "flaky": {
-    "commits": 666,
+    "commits": 661,
     "flaky": 93,
-    "rate": 0.14
+    "rate": 0.141
    },
    "minutes_median": 8.9,
    "minutes_p90": 16.8,
@@ -1580,7 +1580,7 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 686,
+   "runs": 681,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -1783,30 +1783,30 @@
    ],
    "pull_requests": {
     "passed": 363,
-    "failed": 131,
-    "rate": 0.735
+    "failed": 130,
+    "rate": 0.736
    },
    "merge_queue": {
-    "passed": 112,
+    "passed": 111,
     "failed": 3,
     "rate": 0.974
    },
    "flaky": {
-    "commits": 667,
-    "flaky": 90,
+    "commits": 661,
+    "flaky": 89,
     "rate": 0.135
    },
-   "minutes_median": 3.9,
+   "minutes_median": 3.8,
    "minutes_p90": 7.2,
    "queued_median": 0.0
   }
  ],
  "merge_time": {
   "merged": 68,
-  "hours_median": 23.3,
+  "hours_median": 23.2,
   "hours_p90": 209.7,
   "open": 75,
-  "open_drafts": 25,
+  "open_drafts": 24,
   "open_over_30_days": 44
  },
  "workflows": [
@@ -2544,6 +2544,18 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 37958070997,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37958070997",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-09T16:17:45Z",
+     "run_started_at": "2026-10-09T16:17:45Z",
+     "updated_at": "2026-10-09T16:42:59Z",
+     "head_sha": "4d131d29be806b8f991ff275bb1870ac319e1d87",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 37929847508,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37929847508",
      "status": "completed",
@@ -2672,18 +2684,6 @@
      "run_started_at": "2026-10-07T20:18:35Z",
      "updated_at": "2026-10-08T00:12:53Z",
      "head_sha": "c5e495fb22c96b123f0e000758d6654bcbda43d4",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 37651107561,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37651107561",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-07T16:19:20Z",
-     "run_started_at": "2026-10-07T16:19:20Z",
-     "updated_at": "2026-10-07T20:42:15Z",
-     "head_sha": "3ed4754620507be1e17085066d2e61a9adedc751",
      "title": "MLIR Distro",
      "attempt": 1
     }
