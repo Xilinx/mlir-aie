@@ -1235,22 +1235,32 @@ def _mha_band_flags(name, dim_m, dim_n, causal, window):
     ]
 
 
-def _mha_softmax_accurate_bound(a, idx, s_q_eff, s_kv_eff, *, scale, **band):
+def _mha_softmax_accurate_bound(
+    a, idx, s_q_eff, s_kv_eff, *, scale, half_ulp_p, **band
+):
     """One bf16 ulp per stored value; l, P summed in float32, half of P's each.
 
-    exp2 is within 2.8e-6 before its bf16 rounding, and 2^x flushes to +0
-    below -125.5.
+    exp2's fit is within 2.8e-6 of 2^f, but an f32 f reaches it as two bf16
+    limbs, 2^-19 short, and the Horner limbs round: P measured 6.2e-6 past
+    half an ulp on npu1, held here to 1e-5. 2^x flushes to +0 below -125.5.
+    With `half_ulp_p`, P is held to half an ulp plus that of the unrounded P,
+    so the bound adds back the judged reference's own rounding to bf16.
     """
     p, state = mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, scale=scale, **band)
     m, n = band["dim_m"], band["dim_n"]
     p_ulp = np.where(
         p == 0, 0, np.maximum(np.ldexp(1.0, np.frexp(p)[1] - 8), 2.0**-125)
     )
-    state_bound = np.ldexp(1.0, np.frexp(state)[1] - 8) * (state != 0)
-    state_bound[:, 2 * m : 3 * m] = (
-        (p_ulp / 2 + 2.8e-6 * p).reshape(len(p), m, n).sum(axis=2)
+    p_err = p_ulp / 2 + 1e-5 * p
+    p_rounding = np.abs(p.astype(bfloat16).astype(np.float64) - p)
+    p_bound = (
+        np.where(p == 0, 0, np.maximum(p_rounding + p_err, 2.0**-125))
+        if half_ulp_p
+        else p_ulp
     )
-    return p_ulp, state_bound
+    state_bound = np.ldexp(1.0, np.frexp(state)[1] - 8) * (state != 0)
+    state_bound[:, 2 * m : 3 * m] = p_err.reshape(len(p), m, n).sum(axis=2)
+    return p_bound, state_bound
 
 
 def mha_softmax(
@@ -1343,9 +1353,16 @@ def mha_softmax(
             # |a| + |b| and its floor only admits the underflow to 0.
             tolerance=(
                 Tolerance.bounded(
-                    partial(_mha_softmax_accurate_bound, scale=scale, **band),
-                    note="derived from exp2's 2.8e-6 and each store's "
-                    "rounding; P measured 0.73 ulp on npu2",
+                    partial(
+                        _mha_softmax_accurate_bound,
+                        scale=scale,
+                        # npu1 measured P within 0.5012 ulp, and 0.63 with
+                        # exp2's f_lo term dropped; npu2 measured 0.73.
+                        half_ulp_p=_detect_arch() == "aie2",
+                        **band,
+                    ),
+                    note="exp2 1e-5 past half an ulp, then each store's "
+                    "rounding; P measured 0.5012 ulp on npu1, 0.73 on npu2",
                 )
                 if accurate_exp2
                 else (
