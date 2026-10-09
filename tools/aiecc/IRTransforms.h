@@ -2041,6 +2041,9 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIEDmaToNpuPass(dmaToNpuOpts));
   dpm.addPass(X::createAIELowerSetLockPass());
   dpm.addPass(X::createAIELowerCoreResetPass());
+  // The lowerings give each write its own constants; shared, the sequence
+  // carries about half the ops into every later edge.
+  dpm.addPass(mlir::createCSEPass());
   return pm;
 }
 
