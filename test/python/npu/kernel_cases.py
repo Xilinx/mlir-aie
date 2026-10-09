@@ -69,6 +69,8 @@ CASES: list[Case] = [
     Case("zero", dict(tile_size=4096), calls=4),
     check("zero", dict(tile_size=64, dtype=v8bfp16ebs8), smoke=True, devices=("npu2",)),
     check("zero", dict(tile_size=68, dtype=np.uint8), calls=3, tag="vector-tail"),
+    # Three 128-bit stores and four bytes past the last full vector.
+    check("zero", dict(tile_size=116, dtype=np.uint8), calls=3, tag="vector-tail"),
     check(
         "zero",
         dict(tile_size=34, dtype=np.int16, vectorized=False),
