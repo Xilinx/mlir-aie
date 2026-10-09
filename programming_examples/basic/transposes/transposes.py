@@ -23,8 +23,9 @@ mechanism has its own (dtype, size) support envelope:
                       exact ``(dtype, M, K) = (uint8, 16, 16)``.
   * ``combined``    — hybrid: shim DMA does the outer-block reshuffle
                       (L3→L2→L1 TAP chain), and a VSHUFFLE kernel
-                      (``transpose_4x4`` or ``transpose_8x8`` in
-                      ``aie_kernels/transpose.cc``) transposes each
+                      (``kernels.transpose``, i.e. ``transpose_4x4`` or
+                      ``transpose_8x8`` in the library's
+                      ``aie_kernels/datamovement/transpose.cc``) transposes each
                       inner ``s x s`` sub-tile.  Supports
                       ``i8`` / ``i16`` / ``i32`` and any sizes with
                       ``m | M``, ``n | N``, ``s | m``, ``s | n``.
@@ -40,8 +41,9 @@ import argparse
 from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyComputeTile
@@ -52,10 +54,8 @@ from aie.utils.verify import assert_pass
 
 _KERNELS_DIR = Path(__file__).parent / "aie_kernels"
 _SHUFFLE_SRC = str(_KERNELS_DIR / "shuffle_16x16.cc")
-_COMBINED_SRC = str(_KERNELS_DIR / "transpose.cc")
 
 _BYTES_TO_DTYPE = {1: np.uint8, 2: np.uint16, 4: np.uint32}
-_COMBINED_DTYPE_MACRO = {1: "DTYPE_i8", 2: "DTYPE_i16", 4: "DTYPE_i32"}
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +79,7 @@ def _transpose_dma(
         )
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     tensor_ty = np.ndarray[(M, K), np.dtype[dtype]]
-    tap_in = TensorTiler2D.simple_tiler((M, K), tile_col_major=True)[0]
+    tap_in = TensorAccessPattern.full((M, K)).T
     of_in = ObjectFifo(tensor_ty)
     of_out = of_in.cons().forward(AnyComputeTile)
 
@@ -110,7 +110,7 @@ def _transpose_dma_packet(
         )
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     tensor_ty = np.ndarray[(M, K), np.dtype[dtype]]
-    tap_in = TensorTiler2D.simple_tiler((M, K), tile_col_major=True)[0]
+    tap_in = TensorAccessPattern.full((M, K)).T
     of_in = ObjectFifo(tensor_ty, name="in")
     of_out = of_in.cons().forward()
 
@@ -205,51 +205,29 @@ def _transpose_combined(
             f"combined requires m | M, n | K, s | m, s | n; got "
             f"M={M}, K={K}, m={m}, n={n}, s={s}."
         )
-    if s == 8 and (m < 32 or n < 32):
-        # The s=8 kernel uses an interleave_unzip(32) stage internally, so
-        # it needs min(m, n) >= 32 — m,n > 8 compiles but silently produces
-        # wrong output.  The matching static_assert lives in
-        # aie_kernels/transpose.cc:transpose_8x8.
-        raise ValueError("s=8 requires m, n >= 32 (kernel constraint)")
-
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     matrix_ty = np.ndarray[(M, K), np.dtype[dtype]]
     tile_ty = np.ndarray[(m, n), np.dtype[dtype]]
 
-    kernel_func = ExternalFunction(
-        f"transpose_{s}x{s}",
-        source_file=_COMBINED_SRC,
-        arg_types=[tile_ty, tile_ty],
-        compile_flags=[
-            f"-DDIM_m={m}",
-            f"-DDIM_n={n}",
-            f"-D{_COMBINED_DTYPE_MACRO[dtype_bytes]}",
-        ],
-    )
+    # The library's blocked transpose (aie_kernels/datamovement/transpose.cc), which
+    # takes any 1-, 2- or 4-byte element type.
+    kernel_func = kernels.transpose(dim_m=m, dim_n=n, subtile=s, dtype=dtype)
 
-    tap_in_L3L2 = TensorAccessPattern(
-        tensor_dims=(M, K),
-        offset=0,
-        sizes=[M // m, K // n, m, n],
-        strides=[m * K, n, K, 1],
-    )
-    tap_in_L2L1 = TensorAccessPattern(
-        tensor_dims=(M, K),
-        offset=0,
-        sizes=[m // s, s, n // s, s],
-        strides=[s, m, s * m, 1],
-    )
-    tap_out_L1L3 = TensorAccessPattern(
-        tensor_dims=(K, M),
-        offset=0,
-        sizes=[M // m, K // n, n, m],
-        strides=[m, n * M, M, 1],
-    )
+    # A is read one (m, n) tile at a time, row-major over the tile grid.
+    tap_in_L3L2 = TensorAccessPattern.full((M, K)).tile((m, n))
+    # The memtile hands each tile to the core as (s, s) sub-tiles in the
+    # order that leaves only an in-place s x s transpose for the kernel:
+    # sub-tile columns outermost, then rows within a sub-tile, then sub-tile
+    # rows, then columns within it.
+    tap_in_L2L1 = TensorAccessPattern.full((n, m)).tile((s, s)).permute((1, 2, 0, 3))
+    # The transposed (n, m) tiles land in C column-major over the tile grid,
+    # so tile (i, j) of A becomes tile (j, i) of C.
+    tap_out_L1L3 = TensorAccessPattern.full((K, M)).tile((n, m)).permute((1, 0, 2, 3))
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")
-    in_L2L1_fifo = in_L3L2_fifo.cons(
-        dims_from_stream=list(tap_in_L2L1.transformation_dims)
-    ).forward(obj_type=tile_ty, name="in_L2L1_fifo")
+    in_L2L1_fifo = in_L3L2_fifo.cons(from_stream=tap_in_L2L1).forward(
+        obj_type=tile_ty, name="in_L2L1_fifo"
+    )
     out_fifo = ObjectFifo(tile_ty, name="out_fifo")
 
     def core_fn(in_fifo, out_fifo, kernel_func):

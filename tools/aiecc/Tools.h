@@ -9,10 +9,10 @@
 // library in-process or locates/configures an external toolchain. Two flavors
 // live here:
 //
-//   * In-process tool-library invocations — assembleElf (aiebu ELF assembler)
-//     and assemblePdi (bootgen PDI generator) — the in-memory counterparts to
-//     the declarative `ShellCommand` edges, used when the corresponding library
-//     is linked so no subprocess is spawned.
+//   * In-process tool-library invocations — assembleElf and assembleFullElf
+//     (aiebu ELF assembler) and assemblePdi (bootgen PDI generator) — the
+//     in-memory counterparts to the declarative `ShellCommand` edges, used
+//     when the corresponding library is linked so no subprocess is spawned.
 //   * Toolchain path / configuration resolution — Chess toolchain locations,
 //     the host `__AIEARCH__` define, and the host runtime libraries.
 //
@@ -41,6 +41,12 @@
 #include <aiebu/aiebu.h>
 #endif
 
+#ifdef AIECC_HAS_AIEBU_CONFIG_ELF
+#include "AiebuConfigElf.h"
+
+#include <utility>
+#endif
+
 #ifdef AIECC_HAS_BOOTGEN_LIBRARY
 #include <bootgen_c_api.h>
 #endif
@@ -63,8 +69,7 @@ namespace xilinx::aiecc {
 inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
                                        llvm::ArrayRef<char> buffer2,
                                        llvm::StringRef patchJson,
-                                       Item<File> &out, bool verbose,
-                                       bool progress) {
+                                       Item<File> &out, bool verbose) {
   void *elfBuf = nullptr;
   int result;
   std::string captured;
@@ -84,6 +89,7 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
     llvm::raw_fd_ostream os(out.filePath, ec);
     if (ec) {
       free(elfBuf);
+      auto log = endProgressLine();
       llvm::errs() << "aiecc: cannot write ELF '" << out.filePath
                    << "': " << ec.message() << "\n";
       return mlir::failure();
@@ -95,16 +101,57 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
   }
   if (elfBuf)
     free(elfBuf);
-  if (!captured.empty()) {
-    if (progress)
-      llvm::errs() << '\n';
+  auto log = endProgressLine();
+  if (!captured.empty())
     llvm::errs() << captured;
-  }
   llvm::errs() << "aiecc: aiebu_assembler_get_elf failed (code " << result
                << ")\n";
   return mlir::failure();
 }
 #endif // AIECC_HAS_AIEBU_LIBRARY
+
+#ifdef AIECC_HAS_AIEBU_CONFIG_ELF
+// Assemble the full ELF in-memory from its aie2_config JSON via aiebu's
+// file_artifact API, avoiding the `aiebu-asm -t aie2_config` subprocess.
+// `files` supplies in-memory contents for files the config names, keyed by the
+// name used there; aiebu reads any other from disk. The ELF bytes are written
+// to `out.filePath`. Only compiled when the linked aiebu has that API;
+// otherwise a declarative `aiebu-asm` ShellCommand edge is used (see the
+// `fullElf` edge).
+inline mlir::LogicalResult assembleFullElf(
+    const std::string &configJson,
+    const std::vector<std::pair<std::string, std::vector<char>>> &files,
+    Item<File> &out, bool verbose) {
+  std::vector<char> elf;
+  std::string error;
+  std::string captured;
+  {
+    // Same chatter capture as assembleElf.
+    CaptureStdio cap(!verbose, captured);
+    error = assembleAie2ConfigElf(configJson, files, elf);
+  }
+  if (error.empty() && elf.empty())
+    error = "empty ELF";
+  if (!error.empty()) {
+    auto log = endProgressLine();
+    if (!captured.empty())
+      llvm::errs() << captured;
+    llvm::errs() << "aiecc: aiebu full-ELF assembly failed: " << error << "\n";
+    return mlir::failure();
+  }
+  std::error_code ec;
+  llvm::raw_fd_ostream os(out.filePath, ec);
+  if (ec) {
+    auto log = endProgressLine();
+    llvm::errs() << "aiecc: cannot write ELF '" << out.filePath
+                 << "': " << ec.message() << "\n";
+    return mlir::failure();
+  }
+  os.write(elf.data(), elf.size());
+  out.value = File{};
+  return mlir::success();
+}
+#endif // AIECC_HAS_AIEBU_CONFIG_ELF
 
 #ifdef AIECC_HAS_BOOTGEN_LIBRARY
 // Assemble a device's PDI from its BIF using the in-process bootgen C API
@@ -114,8 +161,7 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
 // Only compiled when the bootgen library is linked; otherwise a declarative
 // `bootgen` ShellCommand edge is used (see the `pdi` edge).
 inline mlir::LogicalResult assemblePdi(const Item<std::string> &bifItem,
-                                       Item<File> &out, bool verbose,
-                                       bool progress) {
+                                       Item<File> &out, bool verbose) {
   char errMsg[1024] = {0};
   int rc;
   std::string captured;
@@ -129,11 +175,9 @@ inline mlir::LogicalResult assemblePdi(const Item<std::string> &bifItem,
                               sizeof(errMsg));
   }
   if (rc != BOOTGEN_SUCCESS) {
-    if (!captured.empty()) {
-      if (progress)
-        llvm::errs() << '\n';
+    auto log = endProgressLine();
+    if (!captured.empty())
       llvm::errs() << captured;
-    }
     llvm::errs() << "aiecc: bootgen_generate_pdi failed (code " << rc << ")";
     if (errMsg[0] != '\0')
       llvm::errs() << ": " << errMsg;

@@ -1,0 +1,117 @@
+{
+ "_comment": "The workflows the dashboard's CI health shows, each once, read by utils/kernel_checks/ci_health.py. critical: the tests that gate a merge (they run in the merge queue): judged on their latest run on main, any event, and measured over the last days; every is how often main runs them (hours; late past 1.5 of it), legs also records that run's jobs. workflows: the other scheduled jobs, judged on their latest scheduled run; every is the cron period in hours.",
+ "critical": [
+  {
+   "file": "buildAndTestRyzenAI.yml",
+   "title": "Linux hardware tests",
+   "every": 24,
+   "legs": true,
+   "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main"
+  },
+  {
+   "file": "buildAndTestRyzenAIWindows.yml",
+   "title": "Windows hardware tests",
+   "every": 24,
+   "legs": true,
+   "why": "the same on a Windows Strix Halo machine"
+  },
+  {
+   "file": "buildAndTestMulti.yml",
+   "title": "Compile across platforms",
+   "every": 24,
+   "legs": false,
+   "why": "compilers, assertions and RTTI on Linux and Windows"
+  },
+  {
+   "file": "buildAndTestPythons.yml",
+   "title": "Python versions",
+   "every": 24,
+   "legs": false,
+   "why": "the tests on each supported Python"
+  },
+  {
+   "file": "lintAndFormat.yml",
+   "title": "Lint and format",
+   "every": 24,
+   "legs": false,
+   "why": "clang-tidy, pyright and the docs checks"
+  }
+ ],
+ "workflows": [
+  {
+   "file": "nightlyKernelChecks.yml",
+   "title": "Kernel checks",
+   "every": 24,
+   "legs": true,
+   "why": "the Kernels section's numbers; a leg that found no runner publishes nothing"
+  },
+  {
+   "file": "nightlyComponentChecks.yml",
+   "title": "Placement and performance checks",
+   "every": 24,
+   "legs": true,
+   "why": "the Performance and Placement sections' numbers"
+  },
+  {
+   "file": "routerNightlyTests.yml",
+   "title": "Router model-based tests",
+   "every": 24,
+   "why": "the packet router against its model over a large corpus, plus mutation testing of both"
+  },
+  {
+   "file": "modelBasedTests.yml",
+   "title": "Allocator model-based tests",
+   "every": 24,
+   "why": "buffer placement against its model over a corpus many times check-aie's"
+  },
+  {
+   "file": "buildRyzenWheels.yml",
+   "title": "Ryzen AI wheels",
+   "every": 24,
+   "legs": true,
+   "why": "refreshes the latest-wheels releases users install from"
+  },
+  {
+   "file": "mlirDistro.yml",
+   "title": "MLIR distro from LLVM head",
+   "every": 4,
+   "why": "early warning that upstream LLVM broke the build"
+  },
+  {
+   "file": "pruneReleaseAssets.yml",
+   "title": "Prune release assets",
+   "every": 24,
+   "why": "keeps dev-wheels under 1,000 assets; when it stops, PR wheel uploads fail"
+  },
+  {
+   "file": "buildAndTestRyzenAISw.yml",
+   "title": "Ryzen AI Software build",
+   "every": 24,
+   "why": "the Docker build against Ryzen AI Software"
+  },
+  {
+   "file": "codeCoverage.yml",
+   "title": "Code coverage",
+   "every": 24,
+   "why": "the coverage report, as an artifact"
+  },
+  {
+   "file": "update-llvm.yml",
+   "title": "LLVM bump",
+   "every": 384,
+   "why": "opens the LLVM bump pull request on the 1st and 15th"
+  },
+  {
+   "file": "update-peano.yml",
+   "title": "Peano bump",
+   "every": 168,
+   "why": "opens the Peano bump pull request each Monday"
+  },
+  {
+   "file": "scorecard.yml",
+   "title": "OpenSSF Scorecard",
+   "every": 168,
+   "why": "the supply-chain scan, to the Security tab"
+  }
+ ]
+}

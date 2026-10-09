@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows=remove-lifted=false %s -o %t.opt
 // RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
 // RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
 
@@ -29,16 +29,16 @@
 // CHECK1: %[[T82:.*]] = aie.tile(8, 2)
 // CHECK1: %[[T83:.*]] = aie.tile(8, 3)
 //
-// CHECK1: aie.flow(%[[T20]], DMA : 0, %[[T82]], DMA : 0)
-// CHECK1: aie.flow(%[[T20]], DMA : 0, %[[T71]], DMA : 0)
-// CHECK1: aie.flow(%[[T20]], DMA : 0, %[[T31]], DMA : 0)
-// CHECK1: aie.flow(%[[T20]], DMA : 0, %[[T13]], DMA : 0)
-// CHECK1: aie.flow(%[[T60]], DMA : 0, %[[T83]], DMA : 1)
-// CHECK1: aie.flow(%[[T60]], DMA : 0, %[[T31]], DMA : 1)
-// CHECK1: aie.flow(%[[T60]], DMA : 0, %[[T22]], DMA : 1)
-// CHECK1: aie.flow(%[[T60]], DMA : 0, %[[T02]], DMA : 1)
+// CHECK1-DAG: aie.flow(%[[T20]], DMA : 0, %[[T82]], DMA : 0)
+// CHECK1-DAG: aie.flow(%[[T20]], DMA : 0, %[[T71]], DMA : 0)
+// CHECK1-DAG: aie.flow(%[[T20]], DMA : 0, %[[T31]], DMA : 0)
+// CHECK1-DAG: aie.flow(%[[T20]], DMA : 0, %[[T13]], DMA : 0)
+// CHECK1-DAG: aie.flow(%[[T60]], DMA : 0, %[[T83]], DMA : 1)
+// CHECK1-DAG: aie.flow(%[[T60]], DMA : 0, %[[T31]], DMA : 1)
+// CHECK1-DAG: aie.flow(%[[T60]], DMA : 0, %[[T22]], DMA : 1)
+// CHECK1-DAG: aie.flow(%[[T60]], DMA : 0, %[[T02]], DMA : 1)
 
-// CHECK2: "total_path_length": 26
+// CHECK2: "total_path_length": 25
 
 module {
     aie.device(xcvc1902) {
@@ -72,4 +72,3 @@ module {
         aie.flow(%t60, DMA : 0, %t31, DMA : 1)
     }
 }
-

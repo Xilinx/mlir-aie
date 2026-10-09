@@ -8,11 +8,11 @@
 Demonstrates ``kernels.exp2f_vec``, the software-poly ``2**x`` kernel: the
 accuracy alternative to the LUT-based ``kernels.bf16_exp`` that
 ``basic/vector_exp`` demonstrates, at ~8.9e-5 relative error across its
-domain. aie2p only. Each of 4 cores runs the kernel on its own 1024-element
-tile; the runtime splits and joins the work.
+domain. Runs on NPU1 (aie2) and NPU2 (aie2p). Each of 4 cores runs the kernel
+on its own 1024-element tile; the runtime splits and joins the work.
 
 Input covers the kernel's domain contract (see
-``aie_kernels/aie2p/exp2f_vec.cc``) in four blocks: a dense grid and a random
+``aie_kernels/activation/exp2f_vec.cc``) in four blocks: a dense grid and a random
 sample over [-111, 0]; a block below -111, where the kernel clamps; and a
 positive block, half a dense grid over [0, 127] and half explicit values
 straddling 128, where 2**x first exceeds FLT_MAX.
@@ -77,7 +77,10 @@ def vector_exp2f(
             c_out.release(1)
 
     workers = [
-        Worker(core_fn, fn_args=[a_fifos[i].cons(), c_fifos[i].prod(), exp2f_fn])
+        Worker(
+            core_fn,
+            fn_args=[a_fifos[i].cons(), c_fifos[i].prod(), exp2f_fn],
+        )
         for i in range(n_cores)
     ]
 

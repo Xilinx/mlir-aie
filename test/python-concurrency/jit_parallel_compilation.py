@@ -15,28 +15,44 @@ import sys
 def test_parallel_compilation_subprocess():
     """
     Test parallel JIT compilation using subprocesses.
-    This test spawns multiple processes that compile the same kernel concurrently
-    to ensure the file locking mechanism works correctly.
+    This test spawns multiple processes that compile the same external kernel
+    concurrently to ensure cache locking and kernel source materialization work
+    correctly across platforms.
     """
 
     # Create a temporary cache directory for this test
     with tempfile.TemporaryDirectory() as temp_cache_dir:
+        kernel_path = os.path.join(temp_cache_dir, "kernel.cc")
+        with open(kernel_path, "w") as f:
+            f.write("""extern "C" {
+void copy_with_bias(int *input, int *output, int tile_size) {
+  for (int i = 0; i < tile_size; ++i) {
+    output[i] = input[i] + 7;
+  }
+}
+}
+""")
+
         # Create a simple test script that does JIT compilation.
         # Uses In/Out + CompileTime[T] (the post-unify-compilation-workflow API);
-        # an unannotated def simple_add(input0, input1, output) would trip
+        # an unannotated def simple_extern(input0, output) would trip
         # Guard 1-A / TypeError at compile time because tensor params would
         # be classified as scalar_params and never forwarded to the generator.
         test_script = """
+import os
 import sys
 import numpy as np
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.iron.kernel import ExternalFunction
 
 from aie.iron.controlflow import range_
 
+KERNEL_CC = os.path.join(os.path.dirname(__file__), "kernel.cc")
+
 @iron.jit
-def simple_add(
-    input0: In, input1: In, output: Out,
+def simple_extern(
+    input0: In, output: Out,
     *, num_elements: CompileTime[int], dtype: CompileTime[type],
 ):
     n = 16
@@ -48,36 +64,37 @@ def simple_add(
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     tile_ty = np.ndarray[(n,), np.dtype[dtype]]
 
+    ext = ExternalFunction(
+        "copy_with_bias",
+        source_file=KERNEL_CC,
+        arg_types=[tile_ty, tile_ty, np.int32],
+    )
+
     # AIE-array data movement with object fifos
-    of_in1 = ObjectFifo(tile_ty, name="in1")
-    of_in2 = ObjectFifo(tile_ty, name="in2")
+    of_in = ObjectFifo(tile_ty, name="in")
     of_out = ObjectFifo(tile_ty, name="out")
 
     # Define a task that will run on a compute tile
-    def core_body(of_in1, of_in2, of_out):
+    def core_body(of_in, of_out, ext):
         # Number of sub-vector "tile" iterations
         for _ in range_(N_div_n):
-            elem_in1 = of_in1.acquire(1)
-            elem_in2 = of_in2.acquire(1)
+            elem_in = of_in.acquire(1)
             elem_out = of_out.acquire(1)
-            for i in range_(n):
-                elem_out[i] = elem_in1[i] + elem_in2[i]
-            of_in1.release(1)
-            of_in2.release(1)
+            ext(elem_in, elem_out, n)
+            of_in.release(1)
             of_out.release(1)
 
     # Create a worker to run the task on a compute tile
-    worker = Worker(core_body, fn_args=[of_in1.cons(), of_in2.cons(), of_out.prod()])
+    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), ext])
 
     # Runtime operations to move data to/from the AIE-array
-    def sequence(A, B, C, in1_h, in2_h, out_h):
-        in1_h.fill(A)
-        in2_h.fill(B)
+    def sequence(A, C, in_h, out_h):
+        in_h.fill(A)
         out_h.drain(C, wait=True)
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty, tensor_ty, of_in1.prod(), of_in2.prod(), of_out.cons()],
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
     )
 
     # Place program components (assign them resources on the device) and generate an MLIR module
@@ -88,18 +105,17 @@ try:
     num_elements = 16
     dtype = np.int32
     input0 = iron.randint(1, 100, (num_elements,), dtype=dtype, device="npu")
-    input1 = iron.randint(1, 100, (num_elements,), dtype=dtype, device="npu")
     output = iron.zeros_like(input0)
 
-    if input0.shape != input1.shape or input0.shape != output.shape:
-        raise ValueError("All three tensors must share the same shape.")
-    if input0.dtype != input1.dtype or input0.dtype != output.dtype:
-        raise ValueError("All three tensors must share the same dtype.")
+    if input0.shape != output.shape:
+        raise ValueError("Both tensors must share the same shape.")
+    if input0.dtype != output.dtype:
+        raise ValueError("Both tensors must share the same dtype.")
     if len(input0.shape) != 1:
         raise ValueError("Function only supports vectors.")
 
     # This should trigger JIT compilation and cache access.
-    simple_add(input0, input1, output, num_elements=num_elements, dtype=dtype)
+    simple_extern(input0, output, num_elements=num_elements, dtype=dtype)
     print("SUCCESS")
 except Exception as e:
     print(f"ERROR: {type(e).__name__}: {str(e)}")
@@ -167,3 +183,10 @@ except Exception as e:
                     error_msg += f"  STDERR: {stderr.strip()}\n"
 
             pytest.fail(error_msg)
+
+        leftovers = []
+        for root, _, files in os.walk(temp_cache_dir):
+            for name in files:
+                if name.startswith("kernel.cc.") and name.endswith(".tmp"):
+                    leftovers.append(os.path.join(root, name))
+        assert not leftovers, f"orphaned staged kernel sources left behind: {leftovers}"

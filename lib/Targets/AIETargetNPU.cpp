@@ -13,14 +13,17 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Runtime/TxnEncoding.h"
 
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "llvm/ADT/DenseMap.h"
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
@@ -37,13 +40,6 @@ using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
 namespace {
-
-// Device generation ID written into the TXN header. Centralized here so adding
-// a new device family is a single edit instead of an inline ternary at the call
-// site.
-uint8_t txnDeviceGen(const AIETargetModel &tm) {
-  return llvm::isa<AIE::BaseNPU2TargetModel>(tm) ? 4 : 3;
-}
 
 // Example:
 // - instructions = {3,4,5}
@@ -108,24 +104,24 @@ LogicalResult appendMaskWrite32(std::vector<uint32_t> &instructions,
   return success();
 }
 
+LogicalResult appendMaskPoll(std::vector<uint32_t> &instructions,
+                             NpuMaskPollOp op) {
+  if (op.getBuffer())
+    return op.emitOpError("Cannot translate symbolic address");
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  std::optional<uint32_t> value = AIEX::getConstantIntOperand(op.getValue());
+  std::optional<uint32_t> mask = AIEX::getConstantIntOperand(op.getMask());
+  if (!address || !value || !mask)
+    return op.emitOpError("Cannot translate maskpoll with non-constant "
+                          "address, value, or mask to a static TXN binary");
+  aie_runtime::txn_append_maskpoll32(instructions, *address, *value, *mask);
+  return success();
+}
+
 void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
   aie_runtime::txn_append_loadpdi(instructions, op.getId(), op.getSize(),
                                   op.getAddress());
 }
-
-// The "instruction buffer" runtime (xclbin + insts.bin, launched as
-// kernel(opcode, insts_bo, ninsts, host_bo0, ...)) has the NPU firmware
-// pre-translate host buffer addresses into the AIE address space by adding this
-// offset, but only for the first `kNumFirmwareTranslatedArgs` host arguments.
-// Host arguments beyond that keep their raw host address, so the DDR patch must
-// fold the same offset into arg_plus to land at the correct AIE address.
-//
-// The full-ELF runtime (xrt.elf + xrt.ext.kernel) instead assigns NPU-space
-// device addresses to ALL host arguments, so folding the offset there would
-// double-translate the 6th+ buffer. `foldDDRAddrOffset` (see
-// AIETranslateNpuToBinary) selects between the two runtimes.
-static constexpr uint32_t kDDRAIEAddrOffset = 0x80000000;
-static constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
 
 LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
                                  NpuAddressPatchOp op, bool foldDDRAddrOffset) {
@@ -139,16 +135,12 @@ LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
   if (!argPlus)
     return op.emitOpError("Cannot translate address_patch with non-constant "
                           "arg_plus to a static TXN binary");
-  std::optional<uint32_t> argIdxAttr = op.getArgIdx();
-  if (!argIdxAttr)
+  std::optional<uint32_t> argIdx = op.getArgIdx();
+  if (!argIdx)
     return op.emitOpError("address_patch still names its host buffer by SSA "
                           "value; run -aie-resolve-address-patch-buffers");
-  uint32_t argIdx = *argIdxAttr;
-  uint64_t patchedArgPlus = *argPlus;
-  if (foldDDRAddrOffset && argIdx >= kNumFirmwareTranslatedArgs)
-    patchedArgPlus += kDDRAIEAddrOffset;
-  aie_runtime::txn_append_address_patch(instructions, op.getAddr(), argIdx,
-                                        patchedArgPlus);
+  aie_runtime::txn_append_arg_patch(instructions, op.getAddr(), *argIdx,
+                                    *argPlus, foldDDRAddrOffset);
   return success();
 }
 
@@ -374,11 +366,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   // txn_prepend_header once all instructions are appended.
   aie_runtime::txn_init(instructions);
 
-  aie_runtime::TxnDeviceInfo devInfo;
-  devInfo.devGen = txnDeviceGen(tm);
-  devInfo.numRows = tm.rows();
-  devInfo.numCols = tm.columns();
-  devInfo.numMemTileRows = tm.getNumMemTileRows();
+  aie_runtime::TxnDeviceInfo devInfo = aie_runtime::txn_device_info(
+      txnDeviceGen(tm), tm.rows(), tm.columns(), tm.getNumMemTileRows());
   uint32_t count = 0;
 
   AIE::RuntimeSequenceOp seq =
@@ -408,6 +397,23 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   for (Block &block : seq.getBody()) {
     for (Operation &o : block) {
       llvm::TypeSwitch<Operation *>(&o)
+          .Case<cf::AssertOp>([&](auto op) {
+            // A static sequence only ever carries a constant-true guard
+            // (canonicalization erases it); a constant-false one failed at
+            // compile time, and anything unresolved means a runtime value
+            // reached the binary path.
+            auto c = getConstantIntValue(op.getArg());
+            if (c && *c == 0) {
+              op.emitOpError("is violated at compile time: ") << op.getMsg();
+              result = failure();
+            } else if (!c) {
+              op.emitOpError("runtime check cannot be encoded in a static TXN "
+                             "binary; use the C++ builder (--aie-npu-to-cpp) "
+                             "or specialize the value: ")
+                  << op.getMsg();
+              result = failure();
+            }
+          })
           .Case<NpuSyncOp>([&](auto op) {
             count++;
             uint32_t before = byteOffset();
@@ -453,6 +459,15 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
             pushLocEntry(locmap, before, byteOffset(), "MASKWRITE",
                          op->getName().getStringRef(), addr, op, tm);
           })
+          .Case<NpuMaskPollOp>([&](auto op) {
+            count++;
+            uint32_t before = byteOffset();
+            uint64_t addr = op.getAbsoluteAddress().value_or(0);
+            if (failed(appendMaskPoll(instructions, op)))
+              result = failure();
+            pushLocEntry(locmap, before, byteOffset(), "MASKPOLL",
+                         op->getName().getStringRef(), addr, op, tm);
+          })
           .Case<NpuLoadPdiOp>([&](auto op) {
             count++;
             uint32_t before = byteOffset();
@@ -489,6 +504,17 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
               result = failure();
             pushLocEntry(locmap, before, byteOffset(), "UPDATE_FROM_SCRATCHPAD",
                          op->getName().getStringRef(), std::nullopt, op, tm);
+          })
+          .Default([&](Operation *op) {
+            // Pure values (constants, the operands above) need no encoding;
+            // control packets have their own translation. Anything else would
+            // be dropped from the binary without a trace.
+            if (isMemoryEffectFree(op) ||
+                op->hasTrait<OpTrait::IsTerminator>() ||
+                isa<NpuControlPacketOp>(op))
+              return;
+            op->emitOpError("has no static TXN encoding");
+            result = failure();
           });
     }
   }

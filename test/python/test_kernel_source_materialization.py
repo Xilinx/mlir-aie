@@ -14,6 +14,7 @@ import aie.utils.compile.utils as compile_utils
 import pytest
 from aie.utils.compile.utils import (
     _copy_source,
+    _replace_staged_source,
     _write_source,
     compile_external_kernels,
 )
@@ -39,6 +40,7 @@ def _stub_func(name, source_file):
         _use_chess=False,
         _compiled=False,
         object_file_name=f"{name}.o",
+        check_target_arch=lambda target_arch: None,
     )
 
 
@@ -83,8 +85,8 @@ def test_shared_source_kernels_do_not_clobber_each_other(tmp_path, stub_compiler
     kernel_dir.mkdir()
     dest = kernel_dir / "shared.cc"
 
-    # The copy is named after the .cc but the grouping key is the kernel name,
-    # so these two are not ordered against each other despite sharing a path.
+    # Distinct objects still stage their source at the same basename. Each
+    # replacement must leave existing readers attached to their original file.
     put, get = (_stub_func(n, upstream) for n in ("kernel_put", "kernel_get"))
 
     compile_external_kernels([put], str(kernel_dir), "aie2p")
@@ -194,3 +196,38 @@ def test_failed_write_leaves_no_temp_files(tmp_path):
         _copy_source(str(dest), str(tmp_path / "missing.cc"))
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_windows_sharing_violation_tolerates_identical_staged_source(tmp_path):
+    dest = tmp_path / "kernel.cc"
+    dest.write_text(SOURCE)
+    tmp = tmp_path / "kernel.cc.same.tmp"
+    tmp.write_text(SOURCE)
+
+    def sharing_violation(*_args):
+        raise PermissionError("sharing violation")
+
+    _replace_staged_source(
+        str(tmp), str(dest), replace=sharing_violation, is_windows=True
+    )
+
+    assert dest.read_text() == SOURCE
+    assert not tmp.exists()
+
+
+def test_windows_sharing_violation_raises_for_mismatched_staged_source(tmp_path):
+    dest = tmp_path / "kernel.cc"
+    dest.write_text(SOURCE)
+    tmp = tmp_path / "kernel.cc.diff.tmp"
+    tmp.write_text("// different kernel\n")
+
+    def sharing_violation(*_args):
+        raise PermissionError("sharing violation")
+
+    with pytest.raises(PermissionError):
+        _replace_staged_source(
+            str(tmp), str(dest), replace=sharing_violation, is_windows=True
+        )
+
+    assert dest.read_text() == SOURCE
+    assert tmp.read_text() == "// different kernel\n"

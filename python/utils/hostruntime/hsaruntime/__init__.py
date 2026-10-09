@@ -7,17 +7,17 @@
 
 The package is split into focused modules:
 
-* :mod:`.discovery`  -- locate ``libhsa-runtime64.so`` (no ctypes / no dlopen);
+* `.discovery`  -- locate ``libhsa-runtime64.so`` (no ctypes / no dlopen);
   the cheap capability probe used by ``aie.utils.has_hsa``.
-* :mod:`._bindings`  -- the C ABI layer: enum/flag constants, ``ctypes`` struct
+* `._bindings`  -- the C ABI layer: enum/flag constants, ``ctypes`` struct
   mirrors, library ``dlopen``, and the bound ``hsa_*`` entry points.
-* :mod:`.context`    -- :class:`~.context.HSAContext`, the process-wide device +
+* `.context`    -- `.context.HSAContext`, the process-wide device +
   dispatch-queue singleton (region/vmem memory, signals, dispatch, chains).
-* :mod:`.tensor`     -- :class:`~.tensor.HSATensor`, a zero-copy vmem buffer.
-* :mod:`.hostruntime`-- the IRON ``HostRuntime`` implementations.
+* `.tensor`     -- `.tensor.HSATensor`, a zero-copy vmem buffer.
+* `.hostruntime`-- the IRON ``HostRuntime`` implementations.
 
 Importing this package is side-effect-free (no ``dlopen``, no device init); the
-library is bound lazily on first :class:`~.context.HSAContext` creation.
+library is bound lazily on first `.context.HSAContext` creation.
 """
 
 from ._bindings import HSAError, HSATimeoutError

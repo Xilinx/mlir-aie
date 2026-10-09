@@ -7,7 +7,7 @@
 
 Same shape as ``transform_binary.py`` but distributes the work across
 all available NPU columns.  The design body delegates to
-:func:`aie.iron.algorithms.transform_parallel_binary`.
+``aie.iron.algorithms.transform_parallel_binary``.
 """
 
 import argparse

@@ -1,0 +1,369 @@
+//===- mm_fused_mmul.h ------------------------------------------*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+#ifndef __MM_FUSED_MMUL_H__
+#define __MM_FUSED_MMUL_H__
+#include "../aie_kernel_utils.h"
+
+#include <aie_api/aie.hpp>
+
+// The 2x2 blocked mmul at the heart of mm_fused.h: the j loop keeps four
+// accumulators live so each pair of A/B loads feeds four macs (load
+// amortization, not unrolling, so j and z step by two). A is one contiguous
+// buffer across z slices; B is column-major over blocks, block (i, j) at
+// (j * colA + i), except in the B^T forms. One definition below per B storage
+// format and mac: bfp16ebs8 (AIE2P only -- AIE2's aie_api has an empty
+// placeholder that won't compile), bf16, bf16 B^T on bfp16 macs (AIE2P), and
+// bf16 B^T on bf16 macs.
+#ifdef MM_FUSED_BFP16_B
+using mm_fused_b_elem_t = bfp16ebs8;
+#else
+using mm_fused_b_elem_t = bfloat16;
+#endif
+
+// Write one 2x2 block of accumulators back to C. Templated on the accumulator
+// type because the two forms hold it differently -- aie::mmul in one,
+// aie::accum in the other -- while presenting the same to_vector.
+template <unsigned sizeC, typename Acc>
+__aie_inline void
+mm_fused_store_2x2(float *__restrict pC1, float *__restrict pC2, const Acc &C00,
+                   const Acc &C01, const Acc &C10, const Acc &C11) {
+  aie::store_v(pC1, C00.template to_vector<float>());
+  aie::store_v(pC1 + sizeC, C01.template to_vector<float>());
+  aie::store_v(pC2, C10.template to_vector<float>());
+  aie::store_v(pC2 + sizeC, C11.template to_vector<float>());
+}
+
+#if AIE_TUNED_AIE2
+// A pipelined loop of two or four trips is almost all prologue and epilogue.
+// Unrolling i and j instead leaves one straight block per z pair, in which
+// the next block's C loads overlap this one's macs. Only while a z pair's C
+// is at most 256 floats: 8x8 tiles four wide spill kilobytes of stack and
+// run slower than the rolled loop.
+template <unsigned colA, unsigned colB, unsigned r, unsigned t>
+constexpr bool mm_fused_unroll_ij =
+    colA <= 4 && colB <= 4 && 2 * colB * r * t <= 256;
+#endif
+
+#ifdef MM_FUSED_BFP16_B
+
+// B arrives already quantized to bfp16ebs8. The bf16 form below converts B
+// inside every mac; since B is static weights, pack_B hoists that (already-
+// happened) rounding to the host once, and makes B 9 bytes per 8 elements
+// instead of 16 -- the point, as the operator is data-movement bound.
+//
+// B is streamed, not pointer-indexed: a block_vector cannot be aie::load_v'd,
+// and bfp16ebs8 pointer arithmetic counts bytes not blocks. TODO: index
+// directly once llvm-aie#1232 (sizeof(bfp16ebs8) == 1, not 9) is fixed.
+template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
+          unsigned t>
+__aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
+                                    const bfp16ebs8 *__restrict pB,
+                                    float *__restrict pC) {
+  constexpr unsigned sizeA = r * s;
+  constexpr unsigned sizeB = s * t;
+  constexpr unsigned sizeC = r * t;
+  // Unrolling z lets one row pair's last C stores overlap the next pair's
+  // first C loads. Leave j rolled: unrolling it costs short i loops more than
+  // it saves long ones.
+  AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
+  AIE_LOOP_UNROLL(2)
+  for (unsigned z = 0; z < rowA; z += 2) {
+    float *__restrict pC1 = pC + (z * colB) * sizeC;
+    float *__restrict pC2 = pC + ((z + 1) * colB) * sizeC;
+    const bfloat16 *__restrict pA_cur = pA + (z >> 1) * (2 * r * colA * s);
+
+    AIE_LOOP_MAX_ITERATION_COUNT(colB / 2)
+    for (unsigned j = 0; j < colB; j += 2) {
+      const bfloat16 *__restrict pA1 = pA_cur;
+      const bfloat16 *__restrict pA2 = pA_cur + colA * sizeA;
+
+      aie::block_vector_input_buffer_stream<bfp16ebs8, sizeB> pB1(pB);
+      aie::block_vector_input_buffer_stream<bfp16ebs8, sizeB> pB2(pB);
+      pB1.seek(j * colA);
+      pB2.seek((j + 1) * colA);
+
+      aie::accum<accfloat, sizeC> C00(aie::load_v<sizeC>(pC1));
+      aie::accum<accfloat, sizeC> C01(aie::load_v<sizeC>(pC1 + sizeC));
+      aie::accum<accfloat, sizeC> C10(aie::load_v<sizeC>(pC2));
+      aie::accum<accfloat, sizeC> C11(aie::load_v<sizeC>(pC2 + sizeC));
+
+      aie::vector<bfloat16, sizeA> A0;
+      aie::vector<bfloat16, sizeA> A1;
+      aie::accum<accfloat, sizeA> accA0;
+      aie::accum<accfloat, sizeA> accA1;
+
+      // Keep this loop rolled and its body minimal. Extra live state across it
+      // costs more than it saves, because Peano's register allocator runs
+      // before the post-RA pipeliner and manufactures false loop-carried
+      // anti-dependences. TODO: re-measure a hand-unroll once llvm-aie#1066 is
+      // fixed; open as of 2026-09-10.
+      AIE_LOOP_MAX_ITERATION_COUNT(colA)
+      for (unsigned i = 0; i < colA; i++) {
+        // One conversion per A operand per i, reused by both j accumulators,
+        // rather than one inside each of the four macs. Same values.
+        //
+        // The two operands are widened by different routes, as mlir-aie's
+        // mm_bfp_mixed.cc also does: widening both by assignment makes Peano's
+        // AIE2P backend abort with "Use not jointly dominated by defs".
+        // mul_elem_64 by one is the same arithmetic and does codegen.
+        A0 = aie::load_v<sizeA>(pA1);
+        pA1 += sizeA;
+        A1 = aie::load_v<sizeA>(pA2);
+        pA2 += sizeA;
+        accA0 = A0;
+        accA1 = mul_elem_64(A1, concat(broadcast_one_to_v32bfloat16(),
+                                       broadcast_one_to_v32bfloat16()));
+
+        aie::block_vector<bfp16ebs8, sizeB> B0 = pB1.pop();
+        aie::block_vector<bfp16ebs8, sizeB> B1 = pB2.pop();
+
+        C00 = mac_8x8_8x8T(accA0.template to_vector<bfp16ebs8>(), B0, C00);
+        C01 = mac_8x8_8x8T(accA0.template to_vector<bfp16ebs8>(), B1, C01);
+        C10 = mac_8x8_8x8T(accA1.template to_vector<bfp16ebs8>(), B0, C10);
+        C11 = mac_8x8_8x8T(accA1.template to_vector<bfp16ebs8>(), B1, C11);
+      }
+      mm_fused_store_2x2<sizeC>(pC1, pC2, C00, C01, C10, C11);
+      pC1 += 2 * sizeC;
+      pC2 += 2 * sizeC;
+    }
+  }
+}
+
+#elif !defined(MM_FUSED_B_COL_MAJ)
+
+// B arrives as plain bf16, in row-major s x t blocks. Used on AIE2, which has
+// no bfp16 hardware and composes this shape from four native 4x8x4 macs.
+template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
+          unsigned t>
+__aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
+                                    const bfloat16 *__restrict pB,
+                                    float *__restrict pC) {
+  using MMUL = aie::mmul<r, s, t, bfloat16, bfloat16, accauto>;
+  static_assert(r * s == MMUL::size_A);
+#if AIE_TUNED_AIE2
+  constexpr bool unroll_ij = mm_fused_unroll_ij<colA, colB, r, t>;
+#endif
+  // Rolled, the z loop does not pipeline and each trip pays the j loop's
+  // entry and exit; two trips per body let those overlap.
+  AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
+  AIE_LOOP_UNROLL(2)
+  for (unsigned z = 0; z < rowA; z += 2) {
+    float *__restrict pC1 = pC + (z * colB) * MMUL::size_C;
+    float *__restrict pC2 = pC + ((z + 1) * colB) * MMUL::size_C;
+    const bfloat16 *__restrict pA_cur = pA + (z >> 1) * (2 * r * colA * s);
+
+    aie::vector<bfloat16, MMUL::size_A> A0;
+    aie::vector<bfloat16, MMUL::size_A> A1;
+    aie::vector<bfloat16, MMUL::size_B> B0;
+    aie::vector<bfloat16, MMUL::size_B> B1;
+
+    AIE_LOOP_MAX_ITERATION_COUNT(colB / 2)
+#if AIE_TUNED_AIE2
+    AIE_LOOP_UNROLL(unroll_ij ? colB / 2 : 1)
+#endif
+    for (unsigned j = 0; j < colB; j += 2) {
+      const bfloat16 *__restrict pA1 = pA_cur;
+      const bfloat16 *__restrict pA2 = pA_cur + colA * MMUL::size_A;
+      const bfloat16 *__restrict pB1 = pB + (j * colA) * MMUL::size_B;
+      const bfloat16 *__restrict pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
+
+      MMUL C00(aie::load_v<MMUL::size_C>(pC1));
+      MMUL C01(aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C));
+      MMUL C10(aie::load_v<MMUL::size_C>(pC2));
+      MMUL C11(aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C));
+
+      // Rolled, for the same reason as the bfp16 form above (llvm-aie#1066).
+      AIE_LOOP_MAX_ITERATION_COUNT(colA)
+#if AIE_TUNED_AIE2
+      AIE_LOOP_UNROLL(unroll_ij ? colA : 1)
+#endif
+      for (unsigned i = 0; i < colA; i++) {
+        A0 = aie::load_v<MMUL::size_A>(pA1);
+        pA1 += MMUL::size_A;
+        A1 = aie::load_v<MMUL::size_A>(pA2);
+        pA2 += MMUL::size_A;
+        B0 = aie::load_v<MMUL::size_B>(pB1);
+        pB1 += MMUL::size_B;
+        B1 = aie::load_v<MMUL::size_B>(pB2);
+        pB2 += MMUL::size_B;
+
+        C00.mac(A0, B0);
+        C01.mac(A0, B1);
+        C10.mac(A1, B0);
+        C11.mac(A1, B1);
+      }
+      mm_fused_store_2x2<MMUL::size_C>(pC1, pC2, C00, C01, C10, C11);
+      pC1 += 2 * MMUL::size_C;
+      pC2 += 2 * MMUL::size_C;
+    }
+  }
+}
+
+#elif defined(AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16)
+
+// B arrives as B^T in bf16, laid out as in the form below, and the core
+// converts each block to bfp16ebs8 as aie_api's emulated bf16 mmul does.
+// mac_8x8_8x8T takes B transposed, so a B^T block converts as loaded, without
+// the transpose emulation spends on a row-major one: the same values, and
+// each shared exponent spans 8 consecutive k of one column.
+template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
+          unsigned t>
+__aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
+                                    const bfloat16 *__restrict pB,
+                                    float *__restrict pC) {
+  constexpr unsigned sizeA = r * s;
+  constexpr unsigned sizeB = s * t;
+  constexpr unsigned sizeC = r * t;
+  static_assert(sizeA == 64 && sizeB == 64 && sizeC == 64);
+  AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
+  AIE_LOOP_UNROLL(2)
+  for (unsigned z = 0; z < rowA; z += 2) {
+    float *__restrict pC1 = pC + (z * colB) * sizeC;
+    float *__restrict pC2 = pC + ((z + 1) * colB) * sizeC;
+    const bfloat16 *__restrict pA_cur = pA + (z >> 1) * (2 * r * colA * s);
+
+    AIE_LOOP_MAX_ITERATION_COUNT(colB / 2)
+    for (unsigned j = 0; j < colB; j += 2) {
+      const bfloat16 *__restrict pA1 = pA_cur;
+      const bfloat16 *__restrict pA2 = pA_cur + colA * sizeA;
+      const bfloat16 *__restrict pB1 = pB + j * sizeB;
+      const bfloat16 *__restrict pB2 = pB1 + sizeB;
+
+      aie::accum<accfloat, sizeC> C00(aie::load_v<sizeC>(pC1));
+      aie::accum<accfloat, sizeC> C01(aie::load_v<sizeC>(pC1 + sizeC));
+      aie::accum<accfloat, sizeC> C10(aie::load_v<sizeC>(pC2));
+      aie::accum<accfloat, sizeC> C11(aie::load_v<sizeC>(pC2 + sizeC));
+
+      const auto ones = concat(broadcast_one_to_v32bfloat16(),
+                               broadcast_one_to_v32bfloat16());
+      aie::accum<accfloat, sizeA> accA0;
+
+      // Rolled, for the bfp16 form's reason (llvm-aie#1066), and widened by
+      // its two routes for the same Peano abort.
+      AIE_LOOP_MAX_ITERATION_COUNT(colA)
+      for (unsigned i = 0; i < colA; i++) {
+        accA0 = aie::load_v<sizeA>(pA1);
+        pA1 += sizeA;
+        aie::accum<accfloat, sizeA> accA1 =
+            mul_elem_64(aie::load_v<sizeA>(pA2), ones);
+        pA2 += sizeA;
+        aie::accum<accfloat, sizeB> accB0 =
+            mul_elem_64(aie::load_v<sizeB>(pB1), ones);
+        pB1 += colB * sizeB;
+        aie::accum<accfloat, sizeB> accB1 =
+            mul_elem_64(aie::load_v<sizeB>(pB2), ones);
+        pB2 += colB * sizeB;
+
+        const auto A0 = accA0.template to_vector<bfp16ebs8>();
+        const auto A1 = accA1.template to_vector<bfp16ebs8>();
+        const auto B0 = accB0.template to_vector<bfp16ebs8>();
+        const auto B1 = accB1.template to_vector<bfp16ebs8>();
+        C00 = mac_8x8_8x8T(A0, B0, C00);
+        C01 = mac_8x8_8x8T(A0, B1, C01);
+        C10 = mac_8x8_8x8T(A1, B0, C10);
+        C11 = mac_8x8_8x8T(A1, B1, C11);
+      }
+      mm_fused_store_2x2<sizeC>(pC1, pC2, C00, C01, C10, C11);
+      pC1 += 2 * sizeC;
+      pC2 += 2 * sizeC;
+    }
+  }
+}
+
+#else
+
+#define MM_FUSED_C_HALVES 1
+
+// B arrives as B^T, the (n, k) storage a checkpoint's weights have, cut into
+// k panels a DMA can lay out without moving single elements: block (i, j) at
+// (i * colB + j), each t x s and n-major. The bf16 mac takes B as s x t/2, so
+// each half block (t/2 rows of B^T) is transposed in one shuffle, and each C
+// block is held as its two t/2-column halves, in registers and in pC alike:
+// the epilogue rejoins them once per tile rather than every k step. The four
+// shuffles per i are the ones aie::mmul<r, s, t> spends unzipping a row-major
+// B block.
+template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
+          unsigned t>
+__aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
+                                    const bfloat16 *__restrict pB,
+                                    float *__restrict pC) {
+  using MMUL = aie::mmul<r, s, t / 2, bfloat16, bfloat16, accauto>;
+  constexpr unsigned sizeA = r * s;
+  constexpr unsigned sizeB = s * t;
+  constexpr unsigned sizeC = r * t;
+  constexpr unsigned half = MMUL::size_B;
+  constexpr unsigned halfC = MMUL::size_C;
+  static_assert(sizeA == MMUL::size_A && 2 * MMUL::size_C == sizeC);
+#if AIE_TUNED_AIE2
+  constexpr bool unroll_ij = mm_fused_unroll_ij<colA, colB, r, t>;
+#endif
+  AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
+  AIE_LOOP_UNROLL(2)
+  for (unsigned z = 0; z < rowA; z += 2) {
+    float *__restrict pC1 = pC + (z * colB) * sizeC;
+    float *__restrict pC2 = pC + ((z + 1) * colB) * sizeC;
+    const bfloat16 *__restrict pA_cur = pA + (z >> 1) * (2 * r * colA * s);
+
+    AIE_LOOP_MAX_ITERATION_COUNT(colB / 2)
+#if AIE_TUNED_AIE2
+    AIE_LOOP_UNROLL(unroll_ij ? colB / 2 : 1)
+#endif
+    for (unsigned j = 0; j < colB; j += 2) {
+      const bfloat16 *__restrict pA1 = pA_cur;
+      const bfloat16 *__restrict pA2 = pA_cur + colA * sizeA;
+      const bfloat16 *__restrict pB1 = pB + j * sizeB;
+      const bfloat16 *__restrict pB2 = pB1 + sizeB;
+
+      MMUL C00(aie::load_v<halfC>(pC1));
+      MMUL C00h(aie::load_v<halfC>(pC1 + halfC));
+      MMUL C01(aie::load_v<halfC>(pC1 + sizeC));
+      MMUL C01h(aie::load_v<halfC>(pC1 + sizeC + halfC));
+      MMUL C10(aie::load_v<halfC>(pC2));
+      MMUL C10h(aie::load_v<halfC>(pC2 + halfC));
+      MMUL C11(aie::load_v<halfC>(pC2 + sizeC));
+      MMUL C11h(aie::load_v<halfC>(pC2 + sizeC + halfC));
+
+      AIE_LOOP_MAX_ITERATION_COUNT(colA)
+#if AIE_TUNED_AIE2
+      AIE_LOOP_UNROLL(unroll_ij ? colA : 1)
+#endif
+      for (unsigned i = 0; i < colA; i++) {
+        aie::vector<bfloat16, sizeA> A0 = aie::load_v<sizeA>(pA1);
+        pA1 += sizeA;
+        aie::vector<bfloat16, sizeA> A1 = aie::load_v<sizeA>(pA2);
+        pA2 += sizeA;
+        aie::vector<bfloat16, half> B0 =
+            aie::transpose(aie::load_v<half>(pB1), t / 2, s);
+        aie::vector<bfloat16, half> B0h =
+            aie::transpose(aie::load_v<half>(pB1 + half), t / 2, s);
+        pB1 += colB * sizeB;
+        aie::vector<bfloat16, half> B1 =
+            aie::transpose(aie::load_v<half>(pB2), t / 2, s);
+        aie::vector<bfloat16, half> B1h =
+            aie::transpose(aie::load_v<half>(pB2 + half), t / 2, s);
+        pB2 += colB * sizeB;
+
+        C00.mac(A0, B0);
+        C00h.mac(A0, B0h);
+        C01.mac(A0, B1);
+        C01h.mac(A0, B1h);
+        C10.mac(A1, B0);
+        C10h.mac(A1, B0h);
+        C11.mac(A1, B1);
+        C11h.mac(A1, B1h);
+      }
+      mm_fused_store_2x2<halfC>(pC1, pC1 + sizeC, C00, C00h, C01, C01h);
+      mm_fused_store_2x2<halfC>(pC2, pC2 + sizeC, C10, C10h, C11, C11h);
+      pC1 += 2 * sizeC;
+      pC2 += 2 * sizeC;
+    }
+  }
+}
+
+#endif // MM_FUSED_BFP16_B
+
+#endif // __MM_FUSED_MMUL_H__

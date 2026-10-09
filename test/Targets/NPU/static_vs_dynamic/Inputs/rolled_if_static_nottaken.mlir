@@ -14,6 +14,6 @@
 
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
-  aie.runtime_sequence @static_nottaken(%arg0: memref<1024xi32>) {
+  aie.runtime_sequence @static_nottaken(%arg0: memref<8192xi32>) {
   }
 }

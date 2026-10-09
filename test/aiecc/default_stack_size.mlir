@@ -7,14 +7,15 @@
 
 // --default-stack-size stands in for the target's built-in default on any core
 // that leaves stack_size absent. The rest of the build treats that value as an
-// explicit stack_size.
+// explicit stack_size, so aiecc no longer sizes the stack from its measurement.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_max_not_sum_kernel.cc -o %t.d/stack_size_max_not_sum_kernel.o
 
-// RUN: cd %t.d && not %aiecc %s 2>&1 | FileCheck --check-prefix=ABSENT %s
-// ABSENT: stack_size is absent, so this core uses the device default of 1024 bytes
+// Without the flag, the measured requirement sizes the stack.
+// RUN: cd %t.d && %aiecc %s 2>&1 | FileCheck --check-prefix=ABSENT --allow-empty %s
+// ABSENT-NOT: error
 
 // RUN: cd %t.d && not %aiecc --default-stack-size=2048 %s 2>&1 | FileCheck --check-prefix=TOOSMALL %s
 // TOOSMALL: stack_size = 2048 is insufficient

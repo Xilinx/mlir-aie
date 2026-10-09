@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import Callable, Sequence, get_origin
+from typing import TYPE_CHECKING, Callable, Sequence, get_origin
 
 import numpy as np
 
@@ -34,13 +34,15 @@ from ...dialects.aiex import (
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
+from ...helpers.sourceloc import SourceSite, traced_body
 from ...helpers.util import (
     flatten_fn_args,
     np_dtype_to_mlir_type,
     try_convert_np_type_to_mlir_type,
 )
 from ...utils import trace as trace_utils
-from ..dataflow import ObjectFifoHandle
+from ...utils.compile.jit.markers import _DispatchParameter
+from ..dataflow.objectfifo import ObjectFifoHandle
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_sequence, active_sequence_scope
@@ -48,6 +50,9 @@ from .data import RuntimeData
 from .dmatask import DMATask
 from .endpoint import RuntimeEndpoint
 from .taskgroup import TaskGroup
+
+if TYPE_CHECKING:
+    from ..device import Device
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +76,10 @@ class ActiveSequence:
     and cores afterward, with every runtime endpoint already bound.
     """
 
-    def __init__(self, runtime: "Runtime"):
+    def __init__(self, runtime: "Runtime", seq_op: RuntimeSequenceOp, device=None):
         self._runtime = runtime
+        self._seq_op = seq_op
+        self._device = device
         # The implicit group for fill/drain calls that pass no explicit group.
         self._default_task_group = TaskGroup(next(runtime._task_group_index))
         self._open_task_groups: list[TaskGroup] = []
@@ -81,7 +88,18 @@ class ActiveSequence:
 
     def note_fifo(self, handle: ObjectFifoHandle) -> None:
         """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
-        self._runtime._fifos.add(handle)
+        self._runtime._fifos[handle] = None
+
+    def resolve_in_device(self, resolvable) -> None:
+        """Resolve a Buffer or Lock the body reaches first, ahead of the sequence.
+
+        Program resolves the objects it can find before the body runs; one only
+        a runtime task names is placed here, at device scope.
+        """
+        with ir.InsertionPoint(self._seq_op):
+            if self._device is not None:
+                self._device.resolve_tile(resolvable.tile)
+            resolvable.resolve()
 
     def register_task_group(self, tg: TaskGroup) -> None:
         self._open_task_groups.append(tg)
@@ -109,7 +127,8 @@ class ActiveSequence:
                 f"Unknown action type detected: {','.join(str(a) for a in unknown)}"
             )
         for fn, a in wait_tasks + free_tasks:
-            fn(*a)
+            with a[0].location:
+                fn(*a)
         tg._actions = []
 
     def emit_transfer(self, task: DMATask, task_group: TaskGroup | None) -> None:
@@ -185,16 +204,20 @@ class Runtime(Resolvable):
 
         Each ``fn_args`` entry is one of:
 
+        * an unbound **DispatchTime parameter**: replaced with its live SSA
+          scalar. Forward each parameter once, in any order; parameter identity
+          determines the host binding, not its position in ``fn_args``.
         * a **type** (a tensor type or a scalar type like ``np.int32``): declares
           a runtime input and is replaced with a live SSA value bound to a new
           ``runtime_sequence`` block arg -- a tensor type becomes a
           ``RuntimeData`` (``fill``/``drain`` target), a scalar type becomes the
           bare SSA value (``scf`` survives to the dynamic EmitC path).
-        * a concrete **int value**: also declares a runtime input, but is folded
-          into an ``arith.constant`` instead of a block arg (constant-bound
+        * a concrete **int or NumPy integer value**: also declares a runtime input,
+          but is folded into a constant instead of a block arg (constant-bound
           ``range_``/``if_`` unrolls to the static binary path). One body thus
           serves both lowerings depending on whether the caller passes a type or
-          an int here.
+          an integer here. NumPy integers retain their scalar dtype; plain Python
+          integers use i32 for compatibility with the common ``np.int32`` path.
         * any other object (ObjectFifoHandle, Buffer, Kernel, ScratchpadParameter,
           WorkerRuntimeBarrier, ...): passed through to the body unchanged, as
           with ``Worker.fn_args``.
@@ -205,8 +228,28 @@ class Runtime(Resolvable):
                 in the order ``seq_fn`` expects them. Defaults to None (empty list).
             strict_task_groups (bool): Disallow mixing the default and explicit task groups. Defaults to True.
         """
+        self._site = SourceSite.capture()
         self._seq_fn: Callable = seq_fn
         self._fn_args = list(fn_args) if fn_args is not None else []
+        self._dispatch_binding = object()
+        dispatch_args = [
+            arg for arg in self._fn_args if isinstance(arg, _DispatchParameter)
+        ]
+        if len({id(arg) for arg in dispatch_args}) != len(dispatch_args):
+            raise TypeError(
+                "Forward each DispatchTime parameter exactly once to Runtime."
+            )
+        if len({id(arg.owner) for arg in dispatch_args}) > 1:
+            raise TypeError(
+                "Runtime cannot mix DispatchTime parameters from different designs."
+            )
+        for container in self._fn_args:
+            if isinstance(container, (list, tuple)):
+                for arg in flatten_fn_args(container):
+                    if isinstance(arg, _DispatchParameter):
+                        raise TypeError(
+                            f"DispatchTime parameter {arg.name!r} must be a direct Runtime fn_args entry."
+                        )
         # A concrete int entry is a folded constant; a type/generic-alias entry
         # is a runtime input; anything else passes through as an object fn_arg.
         self._const_inputs: list[int | np.integer | None] = [
@@ -215,14 +258,42 @@ class Runtime(Resolvable):
         ]
         self._rt_data: list["RuntimeData | None"] = [
             (
-                RuntimeData(arg)
+                RuntimeData(
+                    arg.scalar_type if isinstance(arg, _DispatchParameter) else arg
+                )
                 if c is None
-                and (isinstance(arg, type) or get_origin(arg) is np.ndarray)
+                and (
+                    isinstance(arg, (type, _DispatchParameter))
+                    or get_origin(arg) is np.ndarray
+                )
                 else None
             )
             for c, arg in zip(self._const_inputs, self._fn_args)
         ]
-        self._fifos: set[ObjectFifoHandle] = set()
+        # Keep the host scalar ABI in signature order, while the callback and
+        # tensor arguments retain fn_args order. Only dispatch slots move.
+        dispatch_data = iter(
+            data
+            for _, data in sorted(
+                (
+                    (arg.position, data)
+                    for arg, data in zip(self._fn_args, self._rt_data)
+                    if isinstance(arg, _DispatchParameter)
+                ),
+                key=lambda item: item[0],
+            )
+        )
+        self._block_data = []
+        for arg, data in zip(self._fn_args, self._rt_data):
+            if isinstance(arg, _DispatchParameter):
+                self._block_data.append(next(dispatch_data))
+            elif data is not None:
+                if dispatch_args and data.is_scalar:
+                    raise TypeError(
+                        "Runtime cannot mix bare scalar types with DispatchTime parameters."
+                    )
+                self._block_data.append(data)
+        self._fifos: dict[ObjectFifoHandle, None] = {}
         self._register_fn_args()
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
@@ -230,6 +301,7 @@ class Runtime(Resolvable):
         self._flows = []
         self._locks = []
         self._tile_dmas = []
+        self._resolved_tile_dmas = None
         self._scratchpad_parameters: list[ScratchpadParameter] = []
         self._strict_task_groups = strict_task_groups
         self._task_group_index = itertools.count()
@@ -250,7 +322,7 @@ class Runtime(Resolvable):
             if isinstance(arg, ObjectFifoHandle):
                 if arg.endpoint is None:
                     arg.endpoint = RuntimeEndpoint(arg._shim_tile)
-                self._fifos.add(arg)
+                self._fifos[arg] = None
 
     def add_flow(self, flow) -> None:
         """Register an explicit flow so the Program resolves it alongside the ObjectFifos.
@@ -260,15 +332,46 @@ class Runtime(Resolvable):
         self._flows.append(flow)
 
     def add_lock(self, lock) -> None:
-        """Register an explicit [`Lock`][iron.Lock] shared between a Worker and a TileDma.
+        """Register an explicit [`Lock`][iron.Lock] no TileDma, task or Worker reaches.
 
-        See [`TileDma`][iron.TileDma].
+        Locks a [`TileDma`][iron.TileDma]'s or a task's Bds use are found
+        from them, and a Worker's from its ``fn_args``.
         """
         self._locks.append(lock)
 
     def add_tile_dma(self, tile_dma) -> None:
-        """Register an explicit [`TileDma`][iron.TileDma] program."""
+        """Register a TileDma; channels sharing a Tile are combined at resolution."""
+        if self._resolved_tile_dmas is not None:
+            raise IronRuntimeError("Cannot register TileDma after DMA resolution.")
         self._tile_dmas.append(tile_dma)
+
+    def resolve_tile_dmas(self) -> None:
+        """Validate and emit one DMA region per Tile without changing registrations."""
+        from ..dataflow.tile_dma import TileDma
+
+        if self._resolved_tile_dmas is None:
+            programs = {}
+            coordinates = {}
+            for tile_dma in self._tile_dmas:
+                tile = tile_dma.tile
+                if tile.col is not None and tile.row is not None:
+                    key = (tile.col, tile.row)
+                    if key in coordinates and coordinates[key] is not tile:
+                        raise IronRuntimeError(
+                            f"Two TileDma programs name {tile}, via different "
+                            "Tile objects. Share one Tile object for their channels."
+                        )
+                    coordinates[key] = tile
+                if tile in programs:
+                    programs[tile] = TileDma(
+                        tile, [*programs[tile].channels, *tile_dma.channels]
+                    )
+                else:
+                    programs[tile] = tile_dma
+            self._resolved_tile_dmas = list(programs.values())
+        # Placement coalesces tile ops, not their DMA regions or channel chains.
+        for program in self._resolved_tile_dmas:
+            program.resolve()
 
     @property
     def flows(self):
@@ -287,6 +390,27 @@ class Runtime(Resolvable):
         """The ObjectFifoHandles driven from the runtime by fill()/drain()."""
         return list(self._fifos)
 
+    def register_parameter(self, param: ScratchpadParameter | str | None) -> str | None:
+        """Record a ScratchpadParameter a transfer uses, for the Program to declare.
+
+        Args:
+            param: The parameter, the name of one the Program declares anyway
+                (e.g. from a Worker's `fn_args`), or None.
+
+        Returns:
+            The parameter's name, or None for None.
+        """
+        if isinstance(param, ScratchpadParameter):
+            if param not in self._scratchpad_parameters:
+                self._scratchpad_parameters.append(param)
+            return param.name
+        return param
+
+    @property
+    def scratchpad_parameters(self) -> list[ScratchpadParameter]:
+        """The ScratchpadParameters the sequence's transfers registered."""
+        return list(self._scratchpad_parameters)
+
     def resolve(
         self,
         loc: ir.Location | None = None,
@@ -296,6 +420,7 @@ class Runtime(Resolvable):
         reuse_output_buffer: bool = False,
         egress_shim_col: int = 0,
         load_pdi_device_ref: str | None = None,
+        device: Device | None = None,
     ) -> None:
         """Build the ``runtime_sequence`` op and run the sequence body inside it.
 
@@ -320,28 +445,35 @@ class Runtime(Resolvable):
             load_pdi_device_ref: On the full-ELF path (no xclbin configures the
                 device), the device symbol to load via ``npu_load_pdi`` as the
                 first op in the sequence. ``None`` on the xclbin path.
+            device: The [`Device`][iron.Device] that places tiles the body
+                reaches first, such as a buffer only a runtime task names.
         """
         # A runtime_sequence block arg per runtime (type) input; folded-constant
         # inputs contribute no block arg.
         rt_dtypes = [
             try_convert_np_type_to_mlir_type(rt_data.arr_type)
-            for rt_data in self._rt_data
+            for rt_data in self._block_data
             if rt_data is not None
         ]
-        active = ActiveSequence(self)
-
-        seq_op = RuntimeSequenceOp(sym_name="sequence")
-        entry_block = seq_op.body.blocks.append(*rt_dtypes)
-        with ir.InsertionPoint(entry_block):
+        loc = loc or self._site.location()
+        seq_op = RuntimeSequenceOp(sym_name="sequence", loc=loc, ip=ip)
+        active = ActiveSequence(self, seq_op, device)
+        entry_block = seq_op.body.blocks.append(
+            *rt_dtypes, arg_locs=[loc] * len(rt_dtypes)
+        )
+        with ir.InsertionPoint(entry_block), seq_op.location:
             # Full-ELF designs configure the device themselves: no xclbin
             # pre-loads the PDI, so the sequence must start by loading it.
             if load_pdi_device_ref is not None:
                 npu_load_pdi(device_ref=load_pdi_device_ref)
 
             block_args = iter(entry_block.arguments)
-            for rt_data in self._rt_data:
+            for rt_data in self._block_data:
                 if rt_data is not None:
                     rt_data.op = next(block_args)
+            for arg in self._fn_args:
+                if isinstance(arg, _DispatchParameter):
+                    arg._bind(self._dispatch_binding)
 
             if trace_size is not None and trace_size > 0:
                 trace_utils.start_trace(
@@ -362,18 +494,42 @@ class Runtime(Resolvable):
                 self._fn_args, self._const_inputs, self._rt_data
             ):
                 if const_val is not None:
-                    # i32 to mirror the dynamic np.int32 scalar path, so the same
-                    # body's arithmetic (extsi to i64, etc.) lowers identically.
-                    body_args.append(
-                        constant(int(const_val), np_dtype_to_mlir_type(np.int32))
+                    dtype = (
+                        type(const_val)
+                        if isinstance(const_val, np.integer)
+                        else np.int32
                     )
+                    scalar_type = np_dtype_to_mlir_type(dtype)
+                    value = int(const_val)
+                    # IntegerAttr's C API accepts int64_t, including the bit
+                    # pattern of a uint64/index value above INT64_MAX.
+                    if value > np.iinfo(np.int64).max:
+                        value -= 1 << 64
+                    if (
+                        isinstance(scalar_type, ir.IntegerType)
+                        and ir.IntegerType(scalar_type).is_unsigned
+                    ):
+                        # arith.constant requires signless integers. EmitC's
+                        # ConstantLike op preserves unsigned types and folds.
+                        from ...dialects.emitc import (  # pyright: ignore[reportMissingImports]
+                            ConstantOp,
+                        )
+
+                        body_args.append(
+                            ConstantOp(
+                                scalar_type, ir.IntegerAttr.get(scalar_type, value)
+                            ).result
+                        )
+                    else:
+                        body_args.append(constant(value, scalar_type))
                 elif rt_data is not None:
                     body_args.append(rt_data.op if rt_data.is_scalar else rt_data)
                 else:
                     body_args.append(arg)
 
             with active_sequence_scope(active):
-                self._seq_fn(*body_args)
+                with traced_body(self._seq_fn):
+                    self._seq_fn(*body_args)
                 active.finalize()
 
         self._dedup_runtime_consumers()
@@ -397,7 +553,7 @@ class Runtime(Resolvable):
                         runtime_cons = c
                     elif (
                         c.depth == runtime_cons.depth
-                        and c.dims_from_stream == runtime_cons.dims_from_stream
+                        and c.from_stream == runtime_cons.from_stream
                     ):
                         to_remove.append(c)
                     else:

@@ -11,12 +11,12 @@ import numpy as np
 from ...extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
     MemRefValue,
 )
-from ...helpers.taplib import TensorAccessPattern, TensorTiler2D
-from ...helpers.util import (
+from ...helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
+from ...helpers.taplib import TensorAccessPattern
 
 
 class RuntimeData:
@@ -37,7 +37,7 @@ class RuntimeData:
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property
-    def dtype(self) -> NpuDType:
+    def dtype(self) -> type[NpuDType]:
         """Return the per-element datatype of the buffer."""
         return np_ndarray_type_get_dtype(self._arr_type)
 
@@ -61,8 +61,18 @@ class RuntimeData:
 
     def default_tap(self) -> TensorAccessPattern:
         """Return a default access pattern for a linear transfer of the buffer."""
-        # TODO: what if not two dimensional?
-        return TensorTiler2D.simple_tiler(self.shape)[0]
+        return TensorAccessPattern.full(self.shape)
+
+    def __getitem__(self, key) -> TensorAccessPattern:
+        """Return the access pattern for a numpy-style slice of this buffer.
+
+        For example, ``flow.fill(a, tap=a[0::2, 1::2, ...])`` selects a transfer
+        region. ``TensorAccessPattern.full(shape)[key]`` computes element
+        offsets, sizes and strides directly from the shape and key, assuming C-order.
+        This returns metadata, not a numpy view or runtime values; indexing
+        cannot read the buffer's contents.
+        """
+        return TensorAccessPattern.full(self.shape)[key]
 
     @property
     def op(self) -> MemRefValue:

@@ -1,4 +1,5 @@
 // RUN: aie-opt --aie-objectfifo-lower-dmas %s | FileCheck %s
+// RUN: aie-opt --aie-objectfifo-lower-dmas --mlir-print-debuginfo %s | FileCheck %s --check-prefix=LOC --implicit-check-not='loc(unknown)'
 // RUN: aie-opt --aie-objectfifo-lower-dmas %s -o %t1.mlir
 // RUN: aie-opt --aie-objectfifo-lower-dmas %t1.mlir -o %t2.mlir
 // RUN: diff %t1.mlir %t2.mlir
@@ -26,7 +27,7 @@ module @chain {
     }
     aie.objectfifo.dma_endpoint @prod_dma(%tile12) drains @prod_pool {
       channelIndex = 0 : i32
-    }
+    } loc("fifo_user.py":30:2)
 
     %c0 = aie.buffer(%tile33) {sym_name = "c0"} : memref<16xi32>
     %cfree = aie.lock(%tile33) {init = 1 : i32, sym_name = "cfree"}
@@ -39,7 +40,7 @@ module @chain {
     }
     aie.objectfifo.dma_endpoint @cons_dma(%tile33) fills @cons_pool {
       channelIndex = 1 : i32
-    }
+    } loc("fifo_user.py":40:2)
   }
 }
 
@@ -64,3 +65,14 @@ module @chain {
 // CHECK:     aie.use_lock(%cfull, Release, %{{.*}})
 
 // CHECK-NOT: aie.objectfifo.dma_endpoint
+
+// Distinct endpoints must retain distinct origins throughout their BD chains.
+// LOC-DAG: aie.dma_start(MM2S, {{.*}}) loc(#[[PROD:loc[0-9]*]])
+// LOC-DAG: aie.use_lock(%full, AcquireGreaterEqual, {{.*}}) loc(#[[PROD]])
+// LOC-DAG: aie.dma_bd(%b0 : {{.*}}) loc(#[[PROD]])
+// LOC-DAG: aie.dma_bd(%b1 : {{.*}}) loc(#[[PROD]])
+// LOC-DAG: aie.next_bd {{.*}} loc(#[[PROD]])
+// LOC-DAG: aie.dma_start(S2MM, {{.*}}) loc(#[[CONS:loc[0-9]*]])
+// LOC-DAG: aie.dma_bd(%c0 : {{.*}}) loc(#[[CONS]])
+// LOC-DAG: #[[PROD]] = loc("fifo_user.py":30:2)
+// LOC-DAG: #[[CONS]] = loc("fifo_user.py":40:2)

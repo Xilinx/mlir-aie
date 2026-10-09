@@ -21,6 +21,20 @@ if(NOT PROJECT_NAME)
 endif()
 
 # -----------------------------------------------------------------------------
+# MSVC conformance flag
+# -----------------------------------------------------------------------------
+# Without /Zc:__cplusplus MSVC reports __cplusplus as 199711L regardless of
+# /std:, which breaks headers that feature-test on it. It has to be added here
+# rather than in mlir_aie_init_example(): that macro runs before project(), so
+# MSVC is still undefined there, and adding the flag unconditionally breaks a
+# native-Windows build whose compiler is a GNU-style clang (llvm-aie's, when it
+# is on PATH) -- that driver rejects /Zc:__cplusplus as a missing input file.
+# Mirrors programming_examples/common.cmake.
+if(MSVC)
+  add_compile_options(/Zc:__cplusplus)
+endif()
+
+# -----------------------------------------------------------------------------
 # Resolve MLIR-AIE root directory
 # -----------------------------------------------------------------------------
 # In WSL, CMake runs on Windows via `powershell.exe cmake`. Therefore, we must
@@ -71,8 +85,9 @@ if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
 
     # Fall back to legacy/default paths if still unset
     if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
-        find_program(WSL NAMES powershell.exe)
-        if(NOT WSL)
+        # See programming_examples/mlir_aie_init.cmake for why this is
+        # CMAKE_HOST_WIN32 and not a powershell.exe probe.
+        if(NOT CMAKE_HOST_WIN32)
             if(NOT DEFINED XRT_INC_DIR)
                 set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT headers")
             endif()
@@ -136,3 +151,13 @@ function(target_link_test_utils target_name)
 
   target_link_libraries(${target_name} PUBLIC test_utils)
 endfunction()
+
+# -----------------------------------------------------------------------------
+# AIE_BUILD_DESIGN
+# -----------------------------------------------------------------------------
+# makefile-common's build_host_exe passes -DAIE_BUILD_DESIGN=OFF to every
+# example it configures, including the guide sections. The guide has no
+# CMake-side JIT to suppress, but declaring the option keeps CMake from warning
+# "Manually-specified variables were not used by the project" on every build.
+# See programming_examples/common.cmake for what it actually gates.
+option(AIE_BUILD_DESIGN "Build the example's AIE design (unused here; see programming_examples/common.cmake)" ON)

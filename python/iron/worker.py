@@ -22,11 +22,14 @@ from ..dialects.aiex import (
     set_lock_value,
 )
 from ..helpers.dialects.scf import _for as range_
+from ..helpers.sourceloc import SourceSite, traced_body
 from ..helpers.util import flatten_fn_args
+from ..utils.compile.jit.markers import _DispatchParameter
 from .buffer import Buffer
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
 from .device import AnyComputeTile, Tile
+from .kernel import Kernel
 from .resolvable import Resolvable
 from .scratchpad_parameter import ScratchpadParameter
 
@@ -47,7 +50,6 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
         stack_size: int | None = None,
         data_size: int | None = None,
-        allocation_scheme: str | None = None,
         trace: int | None = None,
         trace_events: list | None = None,
         dynamic_objfifo_lowering: bool | None = None,
@@ -59,15 +61,16 @@ class Worker(ObjectFifoEndpoint):
             fn_args (list | None, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to None (empty list).
             tile (Tile, optional): The compute tile for the Worker. Also accepts None (treated as AnyComputeTile). Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
-            stack_size (int, optional): The stack_size in bytes for the worker. Defaults to AIETargetModel::getDefaultCoreStackSize() (currently 1024 bytes).
+            stack_size (int, optional): The stack_size in bytes for the worker.
+                None lets aiecc reserve the core's measured stack requirement, never
+                less than AIETargetModel::getDefaultCoreStackSize() (currently 1024
+                bytes). Set it where aiecc cannot measure the core, as in a Chess
+                build. Defaults to None.
             data_size (int, optional): Bytes of data memory to reserve for this
                 core's compiled sections (.data/.rodata/.bss), beyond the stack. The
                 buffer allocator packs the tile's buffers around the reservation. None
                 leaves the core whatever contiguous run the buffers leave.
                 Defaults to None.
-            allocation_scheme (str, optional): The memory allocation scheme to use for the
-                Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
-                Will override any allocation scheme set on the tile.
             trace (int, optional): If >0, enable tracing for this worker.
             trace_events (list | None, optional): Custom list of trace events for this worker. Defaults to None.
             dynamic_objfifo_lowering (bool | None, optional): Per-core override for the
@@ -81,6 +84,21 @@ class Worker(ObjectFifoEndpoint):
         Raises:
             ValueError: Parameters are validated.
         """
+        self._site = SourceSite.capture()
+        for arg in flatten_fn_args(
+            [
+                fn_args or [],
+                tile,
+                while_true,
+                stack_size,
+                data_size,
+                trace,
+                trace_events,
+                dynamic_objfifo_lowering,
+            ]
+        ):
+            if isinstance(arg, _DispatchParameter):
+                arg._misuse()
         if tile is None:
             tile = AnyComputeTile
         if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
@@ -107,26 +125,18 @@ class Worker(ObjectFifoEndpoint):
                 raise ValueError(
                     f"Worker data_size must be >= 0, but got " f"{data_size}"
                 )
-        # Store the user's Tile directly when it is already typed as CoreTile
-        # and no allocation_scheme override is needed. This preserves Python
-        # object identity so a Buffer and a Worker that share the same Tile
-        # object resolve to a single LogicalTileOp. When we need a fresh copy
-        # (untyped tile, singleton default, or allocation_scheme override) use
+        # Store the user's Tile directly when it is already typed as CoreTile.
+        # This preserves Python object identity so a Buffer and a Worker that
+        # share the same Tile object resolve to a single LogicalTileOp. When a
+        # fresh copy is needed (untyped tile or the singleton default) use
         # with_type() — it always returns a new object.
-        if (
-            tile.tile_type == AIETileType.CoreTile
-            and allocation_scheme is None
-            and tile is not AnyComputeTile
-        ):
+        if tile.tile_type == AIETileType.CoreTile and tile is not AnyComputeTile:
             self._tile = tile
         else:
-            self._tile = tile.with_type(
-                AIETileType.CoreTile, allocation_scheme=allocation_scheme
-            )
+            self._tile = tile.with_type(AIETileType.CoreTile)
         self._while_true = while_true
         self.stack_size = stack_size
         self.data_size = data_size
-        self.allocation_scheme = allocation_scheme
         self._dynamic_objfifo_lowering = dynamic_objfifo_lowering
         self.trace = trace
         self.trace_events = trace_events
@@ -171,7 +181,7 @@ class Worker(ObjectFifoEndpoint):
                 if arg._owner_worker is not None and arg._owner_worker is not self:
                     if not arg._explicit_tile:
                         raise ValueError(
-                            f"Buffer '{arg._name}' has no explicit tile and is shared "
+                            f"Buffer {arg._name or arg._arr_type} has no explicit tile and is shared "
                             f"across Workers; pin it to a tile (Buffer(tile=...)) so "
                             f"placement is unambiguous."
                         )
@@ -185,8 +195,7 @@ class Worker(ObjectFifoEndpoint):
                     # tile (AIE compute tiles can read N/S/E/W neighbors' L1
                     # directly), honor that placement — Program.resolve discovers
                     # the neighbor tile via Buffer.tiles().
-                    if arg._tile is None:
-                        arg._tile = self._tile
+                    arg.place(self._tile)
             elif isinstance(arg, ScratchpadParameter):
                 pass  # ScratchpadParameters are device-level symbols; no tile placement needed
             elif isinstance(arg, ObjectFifo):
@@ -203,6 +212,21 @@ class Worker(ObjectFifoEndpoint):
             # func.func declaration. Other unrecognized args are assumed to be
             # metaprogramming values (Python scalars, etc.).
 
+        # A library kernel's contract may name a setup kernel, such as the
+        # rounding mode its bf16 stores assume; a fresh core boots in floor.
+        # Run each once before the loop, unless fn_args already hands it over
+        # for core_fn to call.
+        kernels = [a for a in flatten_fn_args(self.fn_args) if isinstance(a, Kernel)]
+        handed = {k.name for k in kernels}
+        self._setup_kernels = []
+        for k in kernels:
+            if k.contract is None or k.contract.setup is None:
+                continue
+            setup = k.contract.setup()
+            if setup.name not in handed:
+                handed.add(setup.name)
+                self._setup_kernels.append(setup)
+
     @staticmethod
     def grid(
         rows: int,
@@ -211,15 +235,19 @@ class Worker(ObjectFifoEndpoint):
     ) -> list[list["Worker"]]:
         """Build a 2D grid of Workers; ``factory(r, c)`` returns one Worker.
 
-        Replaces the common pattern::
+        Replaces the common pattern:
 
-            ws = [Worker(...) for i in range(R) for j in range(C)]
-            ws[i * C + j]  # 1-D index arithmetic
+        ```python
+        ws = [Worker(...) for i in range(R) for j in range(C)]
+        ws[i * C + j]  # 1-D index arithmetic
+        ```
 
-        with::
+        with:
 
-            ws = Worker.grid(R, C, lambda r, c: Worker(...))
-            ws[i][j]       # natural 2-D access
+        ```python
+        ws = Worker.grid(R, C, lambda r, c: Worker(...))
+        ws[i][j]       # natural 2-D access
+        ```
 
         Args:
             rows: Outer-dimension count (e.g. column index).
@@ -242,9 +270,10 @@ class Worker(ObjectFifoEndpoint):
         """fn_args with any nested lists/tuples flattened to their leaves.
 
         Use this (not ``fn_args``) when iterating to register/resolve individual
-        arguments; ``fn_args`` keeps its structure for the core_fn call.
+        arguments; ``fn_args`` keeps its structure for the core_fn call. The
+        setup kernels the Worker runs for its kernels' contracts come last.
         """
-        return list(flatten_fn_args(self.fn_args))
+        return list(flatten_fn_args(self.fn_args)) + self._setup_kernels
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
@@ -272,27 +301,30 @@ class Worker(ObjectFifoEndpoint):
         if not self._tile:
             raise ValueError("Must place Worker before it can be resolved.")
         my_tile = self._tile.op
+        with loc or self._site.location():
+            # Create the necessary locks for the core operation to synchronize with the runtime sequence
+            # and register them in the corresponding barriers.
+            for barrier in self._barriers:
+                barrier_lock = lock(my_tile)
+                barrier.worker_locks.append(barrier_lock)
 
-        # Create the necessary locks for the core operation to synchronize with the runtime sequence
-        # and register them in the corresponding barriers.
-        for barrier in self._barriers:
-            barrier_lock = lock(my_tile)
-            barrier._add_worker_lock(barrier_lock)
-
-        @core(
-            my_tile,
-            stack_size=self.stack_size,
-            data_size=self.data_size,
-            dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
-        )
-        def core_body():
-            # Always wrap in an scf.for so the lowered MLIR matches expectations
-            # downstream (the lower-level aie dialect uses the same pattern with
-            # bound=1 for single-shot workers). Using Python range(1) here would
-            # emit the body inline with no scf.for wrapper, which the dataflow
-            # lowerer treats differently and can cause runtime hangs.
-            for _ in range_(sys.maxsize if self._while_true else 1):
-                self.core_fn(*self.fn_args)
+            @core(
+                my_tile,
+                stack_size=self.stack_size,
+                data_size=self.data_size,
+                dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
+            )
+            def core_body():
+                # Always wrap in an scf.for so the lowered MLIR matches expectations
+                # downstream (the lower-level aie dialect uses the same pattern with
+                # bound=1 for single-shot workers). Using Python range(1) here would
+                # emit the body inline with no scf.for wrapper, which the dataflow
+                # lowerer treats differently and can cause runtime hangs.
+                for setup in self._setup_kernels:
+                    setup()
+                for _ in range_(sys.maxsize if self._while_true else 1):
+                    with traced_body(self.core_fn):
+                        self.core_fn(*self.fn_args)
 
 
 class WorkerRuntimeBarrier:
@@ -310,7 +342,10 @@ class WorkerRuntimeBarrier:
     def wait_for_value(self, value: int):
         """Wait for the barrier to be set to `value`.
 
-        Should be called from inside a core function.
+        Should be called from inside a core function. The wait leaves the
+        barrier at ``value``; a worker that loops over dispatches calls
+        ``release_with_value`` after reading its runtime parameters so the
+        next iteration waits for the next ``set``.
 
         Args:
             value (int): The value to wait for.
@@ -332,20 +367,16 @@ class WorkerRuntimeBarrier:
         """
         _BarrierSetOp(self, value).resolve()
 
-    def _add_worker_lock(self, lock):
-        """Register an additional lock in the barrier."""
-        self.worker_locks.append(lock)
-
     def _set_barrier_value(self, value: int):
         """Set the value of the barrier."""
         for worker_lock in self.worker_locks:
             set_lock_value(worker_lock, value)
 
     def release_with_value(self, value: int):
-        """Release and decrement the barrier by `value` inside the core.
+        """Release the barrier, adding ``value`` to it, inside the core.
 
         Args:
-            value (int): The value to decrement by in Release.
+            value (int): The value to add.
         """
         if len(self.worker_locks) == 0:
             raise ValueError(

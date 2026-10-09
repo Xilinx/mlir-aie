@@ -82,9 +82,11 @@ safe.
 
 Two hashes drop out of the frozen recipe:
 
-- **`recipe_hash`** — function of generator + `compile_kwargs` +
-  compile/aiecc flags. Same across machines. Used as the cache key
-  for "have I built this design before?"
+- **`recipe_hash`** — function of generator + the Python sources it
+  reaches (its module, the modules it imports from, and mlir-aie's own)
+  + `compile_kwargs` + compile/aiecc flags. Computed without running the
+  generator. Used as the cache key for "have I built this design
+  before?"
 - **`artifact_hash`** — function of source-file mtimes, object-file
   mtimes, tool-binary mtimes, and target architecture. Different
   across machines / builds. Used to decide "are the cached artifacts
@@ -100,7 +102,9 @@ even across many `.compile()` / `__call__` / `.as_mlir()` invocations.
 The first call:
 
 1. Opens a fresh MLIR `Context` and `Location` via `mlir_mod_ctx()`.
-2. Builds tensor placeholders for the `In`/`Out`/`InOut` parameters.
+2. Builds tensor placeholders for the `In`/`Out`/`InOut` parameters (a
+   variadic `*tensors: In` gets an empty tuple: the generator decides how
+   many tensors the design takes from its `CompileTime[T]` parameters).
 3. Calls the generator with `(**placeholders, **compile_kwargs)`.
 4. Captures the resulting `Module` (either the generator's return
    value, or `ctx.module` if it returned `None` — "placed" vs
@@ -449,6 +453,14 @@ baked in:
 A defaulted *and* call-time-overridden `CompileTime[T]` recompiles for the
 new value; the cache key includes the resolved value, not the source
 default.
+
+A generator whose tensor count follows from its compile-time parameters
+declares them as one variadic list, `def design(*tensors: In, *, N:
+CompileTime[int])`: every positional argument of a call is a tensor of
+that list, in the order the lowered `aie.runtime_sequence` takes them, and
+the runtime checks the count against the compiled design. Only a tensor
+parameter may be variadic; the generator body cannot read the list (it is
+empty at generation) any more than it can read a named placeholder.
 
 ## Related reading
 

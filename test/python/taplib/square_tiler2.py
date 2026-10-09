@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -12,7 +11,7 @@ from util import construct_test
 # CHECK-LABEL: square_tiler2
 @construct_test
 def square_tiler2():
-    tiler = TensorTiler2D.simple_tiler((32, 32), (8, 8))
+    tiler = TensorAccessPattern.full((32, 32)).tile((8, 8))
     access_order, access_count = tiler.accesses()
     reference_access = np.array(
         # fmt: off
@@ -94,9 +93,9 @@ def square_tiler2():
         # fmt: on
     )
 
-    tile_access_order = tiler[3].access_order()
+    tile_access_order = tiler[0, 3].access_order()
     assert (tile_access_order == tile1_reference_order).all()
-    assert len(tiler) == (32 // 8) * (32 // 8)
+    assert tiler.sizes[:2] == (32 // 8, 32 // 8)
 
     # CHECK: Pass!
     print("Pass!")

@@ -18,27 +18,62 @@ namespace xilinx::AIE {
 /// Which DMA channels of each tile are already spoken for, so that a channel is
 /// handed out at most once across everything that programs one.
 class DMAChannelAnalysis {
-  /// A channel or stream port is either spoken for or free, so membership is
-  /// the whole state.
-  mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> usedChannels;
-  mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> usedStreams;
+  /// Fully resolved tile aliases name the same hardware resources. Unresolved
+  /// tiles retain their SSA identity until placement establishes co-location.
+  mlir::DenseMap<std::pair<int, int>, mlir::Value> tilesByCoordinate;
+  mlir::Value getTileKey(mlir::Value tile);
+
+  /// Keep the reserving operation so diagnostics retain its MLIR location.
+  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
+      usedChannels;
+  /// DMA channels an explicit flow routes. First-free assignment skips them;
+  /// a pinned request may still claim one.
+  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
+      streamedChannels;
+  /// The first claimant of a core stream port, and whether only packets use
+  /// it; circuit occupancy is exclusive.
+  struct StreamClaim {
+    mlir::Operation *owner;
+    bool packet;
+  };
+  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, StreamClaim>
+      usedStreams;
 
 public:
   DMAChannelAnalysis(DeviceOp &device);
 
+  /// Exclusive upper bound on channel indices eligible for this transfer.
+  static int getDMAChannelLimit(TileLike tile, DMAChannelDir dir,
+                                bool requiresAdjacentTileAccessChannels);
+
   /// Next free channel of `tile` in `dir`, or -1 when the tile has none left.
-  /// A channel reaching an adjacent MemTile's memory must come from the lower
-  /// half of the range, which only a placed tile can bound.
+  /// A channel an explicit flow routes is not free.
+  /// A channel reaching an adjacent MemTile's memory must come from the
+  /// target's restricted range at every compatible physical position.
   int getDMAChannelIndex(TileLike tile, DMAChannelDir dir,
-                         bool requiresAdjacentTileAccessChannels);
+                         bool requiresAdjacentTileAccessChannels,
+                         mlir::Operation *owner = nullptr);
+
+  /// Whether first-free assignment could hand out `channel`: nothing reserves
+  /// it and no explicit flow routes it.
+  bool isChannelFree(TileLike tile, DMAChannelDir dir, int channel);
 
   /// Claim `channel` for (`tile`, `dir`) so first-free assignment cannot take
   /// it. Returns the channel, or -1 when it is out of range or already
   /// claimed; the caller reports, since it knows which endpoint asked.
-  int reservePinnedChannel(TileLike tile, DMAChannelDir dir, int channel);
+  int reservePinnedChannel(TileLike tile, DMAChannelDir dir, int channel,
+                           mlir::Operation *owner = nullptr);
 
-  /// Claim a raw stream port, reporting on `tile` when it is already taken.
-  void checkAIEStreamIndex(TileLike tile, DMAChannel chan);
+  /// Operation reserving this channel, or else the flow routing it; null if
+  /// neither.
+  mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
+                                      int channel);
+
+  /// Claim a raw stream port for `user`, reporting on it when the port is
+  /// taken; packet users may share it with other packets.
+  mlir::LogicalResult checkAIEStreamIndex(TileLike tile, DMAChannel chan,
+                                          mlir::Operation *user,
+                                          bool packet = false);
 };
 
 } // namespace xilinx::AIE

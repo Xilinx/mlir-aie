@@ -4,16 +4,21 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import itertools
 import logging
 
+from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import (
     TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
     device,
 )
 from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import FuncBase
+from ..helpers.errors import design_error
+from ..helpers.sourceloc import SourceSite
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
+from .dataflow.objectfifo import ObjectFifoLink
 from .device import Device
 from .resolvable import Resolvable
 from .runtime import Runtime
@@ -65,6 +70,7 @@ class Program:
         self._coremem_events = None
         self._memtile_events = None
         self._shimtile_events = None
+        self._site = SourceSite.capture()
         self._core_trace_mode = TraceMode.EventTime
 
     def enable_trace(
@@ -129,7 +135,18 @@ class Program:
         Returns:
             module (Module): The module containing the MLIR context information.
         """
-        with mlir_mod_ctx() as ctx:
+        try:
+            return self._resolve_program(device_name)
+        except Exception as exc:
+            raise design_error(exc)
+
+    def _resolve_program(self, device_name):
+        context = ir.Context()
+        with context, ir.Location.unknown():
+            loc = self._site.location()
+
+        self._name_unnamed()
+        with mlir_mod_ctx(context=context, location=loc) as ctx:
             # Create a fresh device instance of the same type to avoid stale MLIR operations
             # This preserves the device configuration while ensuring clean state
             device_type = type(self._device)
@@ -145,12 +162,12 @@ class Program:
                     if isinstance(arg, ScratchpadParameter):
                         arg.resolve()
 
-            @device(self._device.resolve(), sym_name=device_name)
+            @device(self._device.resolve(), sym_name=device_name, loc=loc)
             def device_body():
                 # Collect all fifos. Runtime-driven fifos already have their shim
                 # endpoints bound (Runtime registered its fn_args at construction),
                 # so they resolve here with both ends known -- the sequence body
-                # itself is emitted LAST (self._rt.resolve() below), after workers,
+                # is emitted after workers (self._rt.resolve() below),
                 # so body verbs that read worker-side state (barrier locks, worker
                 # Buffer placement) see it resolved.
                 all_fifos = set()
@@ -196,23 +213,20 @@ class Program:
                 for f in all_fifos:
                     f.resolve()
 
-                # Generate explicit Flows (peers of ObjectFifo)
-                for fl in self._rt.flows:
-                    fl.resolve()
-
                 # Generate explicit Locks (must come before TileDma + Worker
                 # bodies that reference them; Buffers attached to worker
                 # fn_args are still resolved in the worker loop below).
                 for lk in self._rt.locks:
                     lk.resolve()
 
-                # Resolve any Buffers referenced by explicit TileDma programs
-                # (those aren't reached via worker.fn_args).
+                # Resolve any Buffers and Locks referenced by explicit TileDma
+                # programs (those aren't reached via worker.fn_args).
                 for td in self._rt.tile_dmas:
-                    bufs, _ = td.all_buffers_and_locks()
+                    bufs, locks = td.all_buffers_and_locks()
+                    for lk in locks:
+                        lk.resolve()
                     for b in bufs:
-                        if b.tile is None:
-                            b._tile = td.tile
+                        b.place(td.tile)
                         b.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
@@ -221,7 +235,11 @@ class Program:
                         if isinstance(arg, FuncBase):
                             arg.emit()
                         elif isinstance(arg, Resolvable):
-                            arg.resolve()
+                            if (
+                                arg not in self._rt.flows
+                                and arg not in self._rt.tile_dmas
+                            ):
+                                arg.resolve()
 
                 # Generate core programs
                 for w in self._workers:
@@ -235,8 +253,7 @@ class Program:
 
                 # Generate explicit per-tile DMA programs (lower-level peers
                 # of ObjectFifo, paired with Flow + Lock).
-                for td in self._rt.tile_dmas:
-                    td.resolve()
+                self._rt.resolve_tile_dmas()
 
                 # Generate trace routes
                 # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace
@@ -262,8 +279,8 @@ class Program:
                         core_trace_mode=self._core_trace_mode,
                     )
 
-                # Emit the runtime sequence body LAST: workers, their locks, and
-                # worker Buffers are now resolved, so body verbs that read that
+                # Emit the runtime sequence body after workers, their locks, and
+                # worker Buffers are resolved, so body verbs that read that
                 # state (barrier.set, inline_ops over a worker Buffer) are valid.
                 # Its shim DMAs reference fifos by symbol name (forward ref), so
                 # emitting after the fifo ops is fine.
@@ -280,19 +297,58 @@ class Program:
                     reuse_output_buffer=self._reuse_output_buffer,
                     egress_shim_col=self._egress_shim_col,
                     load_pdi_device_ref=load_pdi_device_ref,
+                    device=self._device,
                 )
 
+                # Flow transfers name their allocations while the sequence runs.
+                # Resolve both at device scope using those symbol references.
+                for fl in self._rt.flows:
+                    fl.resolve()
+
             # Resolve parameters only discoverable once the sequence body has
-            # traced (offset_parameter= passed directly to fill()/drain(),
-            # rather than declared up front via Worker fn_args). device_body's
-            # own insertion point is scoped to its @device region, so by now
-            # the ambient insertion point is back to module scope -- the same
-            # place the fn_args-declared parameters above were resolved.
-            for p in self._rt._scratchpad_parameters:
+            # traced (offset_parameter=/length_parameter= passed directly to
+            # fill()/drain(), rather than declared up front via Worker
+            # fn_args). device_body's own insertion point is scoped to its
+            # @device region, so by now the ambient insertion point is back to
+            # module scope -- the same place the fn_args-declared parameters
+            # above were resolved.
+            for p in self._rt.scratchpad_parameters:
                 p.resolve()
 
             self._print_verify(ctx)
             return ctx.module
+
+    def _name_unnamed(self) -> None:
+        """Name the ObjectFifos, and the Buffers the runtime writes, left unnamed.
+
+        Ops refer to them by symbol, so they are numbered here in the order the
+        design reaches them, independent of what else the process has built.
+        """
+        fifos = [h._object_fifo for h in self._rt.fifos]
+        fifos += [h._object_fifo for w in self._workers for h in w.fifos]
+        fifos = list(dict.fromkeys(fifos))
+        for of in fifos:
+            for handle in [of._prod, *of._cons]:
+                link = handle.endpoint if handle is not None else None
+                if isinstance(link, ObjectFifoLink):
+                    reached = [h._object_fifo for h in [*link._srcs, *link._dsts]]
+                    fifos += [f for f in reached if f not in fifos]
+        rtps = [b for w in self._workers for b in w.buffers if b._use_write_rtp]
+        taken = {of.name for of in fifos} | {b._name for b in rtps}
+
+        def fresh(prefix):
+            name = next(
+                n for i in itertools.count() if (n := f"{prefix}{i}") not in taken
+            )
+            taken.add(name)
+            return name
+
+        for of in fifos:
+            if of.name is None:
+                of.name = fresh("of")
+        for b in rtps:
+            if b._name is None:
+                b._name = fresh("rtp")
 
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()

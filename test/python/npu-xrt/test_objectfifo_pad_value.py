@@ -9,7 +9,7 @@
 
 """On-device test of DMA constant padding through the IRON ObjectFifo API.
 
-A memtile-staged output ObjectFifo (created via forward()) pads a 13-element
+A memtile-staged output ObjectFifo (created via forward()) pads an 8-element
 int8 transfer up to 16 (4 before, 4 after) and fills the padded region with
 pad_value = 42. Pure DMA passthrough (no core), so the read-back directly
 exposes the pad fill. Exercises the ObjectFifo pad_value routing end-to-end on
@@ -18,6 +18,7 @@ hardware.
 
 import aie.iron as iron
 import numpy as np
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import In, ObjectFifo, Out, Program, Runtime
 
 REAL = 8
@@ -34,8 +35,7 @@ def objectfifo_pad(a: In, c: Out):
     of_in = ObjectFifo(small, name="in0")
     of_out = of_in.cons().forward(
         obj_type=big,
-        dims_to_stream=[(REAL, 1)],
-        pad_dimensions=[(PAD_BEFORE, PAD_AFTER)],
+        to_stream=TensorAccessPattern.full((REAL,)).pad([(PAD_BEFORE, PAD_AFTER)]),
         pad_value=PAD_VALUE,
         name="out0",
     )
@@ -49,7 +49,7 @@ def objectfifo_pad(a: In, c: Out):
 
 
 def test_objectfifo_pad_value():
-    a = iron.arange(REAL, dtype=np.int8)  # 0..12
+    a = iron.arange(REAL, dtype=np.int8)  # 0..7
     c = iron.zeros(REGION, dtype=np.int8, device="npu")
     objectfifo_pad(a, c)
     c.to("cpu")

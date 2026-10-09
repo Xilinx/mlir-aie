@@ -15,7 +15,7 @@
 // reservation large enough to govern the layout, and a small reservation, which
 // leaves the buffers free to spread across banks.
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // With no reservation the three buffers pack head to tail, which leaves 52224
 // contiguous bytes above them. A spread over banks 0-2 would leave one bank's

@@ -76,7 +76,7 @@ module {
 
 // Test 3: LOWER — end-to-end through BD-ID assignment and tasks-to-npu.
 //
-// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-split-long-repeats,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=LOWER
 
 // LOWER-LABEL: @lower_task_bd
@@ -200,6 +200,181 @@ module {
   }
 }
 
+
+// -----
+
+// Test 7: REPEAT_LEN — factoring an overlong innermost run adds a dimension,
+// which pushes the outermost one into the fourth (repeat) slot. Two things then
+// have to follow the shape:
+//   * len describes a single BD invocation, so it must shrink to the innermost
+//     three dimensions; at the full extent aie-dma-tasks-to-npu rejects the BD.
+//   * the queue-push repeat count must grow by the same factor. The BD's
+//     iteration state only advances once per execution, so a BD left at one
+//     execution moves 1/8th of the data here and the consumer hangs waiting for
+//     the rest -- a silent, hardware-only failure, hence the check below.
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=REPEAT-LEN
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-split-long-repeats,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=REPEAT-LOWER
+
+// The 4096-element innermost run needs two dimensions, so the outermost 8 moves
+// into the repeat slot and len drops from 262144 to one invocation's 32768.
+// REPEAT-LEN-LABEL: @repeat_len_task_bd
+// REPEAT-LEN:         aie.dma_bd
+// REPEAT-LEN-SAME:        len = 32768
+
+// The same 32768 elements, expressed as 8192 four-byte words, and 8 executions
+// of it -- iteration_size and the queue-push repeat agree, both 0-based.
+// REPEAT-LOWER-LABEL: @repeat_len_task_bd
+// REPEAT-LOWER-NOT:     Buffer descriptor length does not match
+// REPEAT-LOWER:         aiex.npu.writebd
+// REPEAT-LOWER-SAME:        buffer_length = 8192
+// REPEAT-LOWER-SAME:        iteration_size = 7
+// REPEAT-LOWER:         %[[REPEAT:.*]] = arith.constant 7 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[REPEAT]]
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @repeat_len_task_bd(%in: memref<16x16x4096xi8>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<16x16x4096xi8> offset = 4096 len = 262144 sizes = [1, 8, 8, 4096] strides = [0, 131072, 8192, 1])
+          {burst_length = 0 : i32}
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// Scaling 32 executions by 8 reaches the target's maximum repeat count.
+// REPEAT-LEN-LABEL: @max_repeat_task_bd
+// REPEAT-LEN:         aie.dma_bd
+// REPEAT-LEN-SAME:        len = 32768
+// REPEAT-LEN:         repeat_count = 255 : i32
+// REPEAT-LOWER-LABEL: @max_repeat_task_bd
+// REPEAT-LOWER:         %[[MAX_REPEAT:.*]] = arith.constant 255 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[MAX_REPEAT]]
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @max_repeat_task_bd(%in: memref<16x16x4096xi8>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<16x16x4096xi8> offset = 4096 len = 262144 sizes = [1, 8, 8, 4096] strides = [0, 131072, 8192, 1])
+          {burst_length = 0 : i32}
+        aie.end
+      } {issue_token = true, repeat_count = 31 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// Scaling 201 executions by 8 gives 1608 runs, past one push's 256. That is
+// no longer an error: aie-split-long-repeats issues it as six full pushes and
+// a 72-run remainder, and only the last push carries the token. A start that
+// overrides the count repeats the same BD, so decomposition scales it too:
+// 2 runs become 16.
+// REPEAT-LEN-LABEL: @split_repeat_task_bd
+// REPEAT-LEN:         aie.dma_bd
+// REPEAT-LEN-SAME:        len = 32768
+// REPEAT-LEN:         repeat_count = 1607 : i32
+// REPEAT-LEN:         aiex.dma_start_task(%{{.*}}) {repeat_count = 15 : i32}
+// REPEAT-LOWER-LABEL: @split_repeat_task_bd
+// REPEAT-LOWER:         %[[FULL:.*]] = arith.constant 255 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[FULL]] {issue_token = false}
+// REPEAT-LOWER-COUNT-5: repeat %c255_i32_{{[0-9]+}} {issue_token = false}
+// REPEAT-LOWER:         %[[REST:.*]] = arith.constant 71 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[REST]] {issue_token = true}
+// REPEAT-LOWER:         %[[OVERRIDE:.*]] = arith.constant 15 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[OVERRIDE]] {issue_token = true}
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @split_repeat_task_bd(%in: memref<16x16x4096xi8>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<16x16x4096xi8> offset = 4096 len = 262144 sizes = [1, 8, 8, 4096] strides = [0, 131072, 8192, 1])
+          {burst_length = 0 : i32}
+        aie.end
+      } {issue_token = true, repeat_count = 200 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+      aiex.dma_start_task(%tk) {repeat_count = 1 : i32}
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+
+// -----
+
+// Test 8: FACTOR_DEEP — a row too long for d0, repeated with a stride. The row
+// factors twice into a single BD; the first factoring alone would only become
+// legal by slicing the row into a thousand pieces.
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=FACTOR-DEEP
+
+// FACTOR-DEEP-LABEL: @factor_deep_task_bd
+// FACTOR-DEEP:         aiex.dma_configure_task_for @a
+// FACTOR-DEEP-NEXT:      aie.dma_bd(%{{.*}} offset = 32064 len = 32064 sizes = [64, 2, 8, 2004] strides = [128256, 16032, 2004, 1])
+// FACTOR-DEEP-NEXT:      aie.end
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @factor_deep_task_bd(%in: memref<8208384xbf16>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<8208384xbf16> offset = 32064 len = 2052096 sizes = [1, 1, 64, 32064] strides = [0, 0, 128256, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// Test 9: MERGE — 72 iterations exceed the 64-iteration slot, but d2 continues
+// d1 contiguously (221184 = 96 * 2304). Merging them frees the slot, so the BD
+// keeps one invocation per run and the 72 runs the queue pushed shrink to 1.
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=MERGE
+
+// MERGE-LABEL: @merge_task_bd
+// MERGE:         aiex.dma_configure_task_for @a {
+// MERGE:           aie.dma_bd
+// MERGE-SAME:          len = 1769472 sizes = [1, 72, 768, 32] strides = [0, 32, 2304, 1]
+// MERGE:         } {issue_token = true}
+module {
+  aie.device(npu2) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @merge_task_bd(%in: memref<1769472xf32>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<1769472xf32> offset = 0 len = 24576 sizes = [72, 8, 96, 32] strides = [32, 221184, 2304, 1])
+        aie.end
+      } {issue_token = true, repeat_count = 71 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
 
 // -----
 
