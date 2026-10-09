@@ -3953,18 +3953,23 @@ core's own sections want is measured first and reserved. See
 <p>This page covers the <strong>stack</strong> and the <strong>core's own sections</strong>: sizing,
 bank placement, the attributes and flags that control them, and what to do
 when a diagnostic fires.</p>
-<p>One rule governs both checks: <em>the compiler measures and reports, you declare
-and rebuild.</em> <code>aiecc</code> never writes <code>stack_size</code> or <code>data_size</code>. A value you set
-explicitly stays as you wrote it (<code>data_size = 0</code> is legal; <code>stack_size</code> must
-be positive). When the measured requirement exceeds the declared value, the
-build reports the number to set and stops.</p>
+<p>One rule governs both: <em>declared wins, measured stands in.</em> <code>aiecc</code> never
+writes <code>stack_size</code> or <code>data_size</code>. A value you set explicitly stays as you
+wrote it (<code>data_size = 0</code> is legal; <code>stack_size</code> must be positive), and when the
+measured requirement exceeds it, the build reports the number to set and stops.
+When the attribute is absent, <code>aiecc</code> measures the core before placement and
+reserves what it found.</p>
 <h2 id="the-stack-stack_size">The stack: <code>stack_size</code><a class="headerlink" href="#the-stack-stack_size" title="Permanent link">&para;</a></h2>
-<p><code>stack_size</code> is a per-core attribute on <code>aie.core</code>. A core that leaves it
-absent uses the target default from
-<code>AIETargetModel::getDefaultCoreStackSize()</code>, currently 1024 bytes, which IRON
-reads as <code>dev.default_core_stack_bytes</code>. IRON spells it on the <code>Worker</code>:</p>
+<p><code>stack_size</code> is a per-core attribute on <code>aie.core</code>. Most cores leave it absent,
+and <code>aiecc</code> then reserves the core's measured stack requirement, never less
+than the target default from <code>AIETargetModel::getDefaultCoreStackSize()</code>
+(currently 1024 bytes, which IRON reads as <code>dev.default_core_stack_bytes</code>). A
+core that fits the default keeps the layout it would have had anyway. To fix
+the size yourself, IRON spells it on the <code>Worker</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">Worker</span><span class="p">(</span><span class="n">core_fn</span><span class="p">,</span> <span class="p">[</span><span class="n">args</span><span class="p">],</span> <span class="n">stack_size</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
 </code></pre></div>
+<p>Set it where <code>aiecc</code> cannot measure the core, as in a Chess build, or to hold
+headroom above the measurement.</p>
 <p>The stack grows upward from its assigned address. A core whose frames exceed
 the reservation can overwrite buffers or static data beyond it. <code>aiecc</code>
 therefore measures each core's stack requirement and checks <code>stack_size</code>
@@ -3979,15 +3984,40 @@ differs: all of it coexists, whatever the control flow.</p>
 calls the core body, which calls its kernels. <code>_main_init</code> holds a frame that
 stays live across the whole chain, so it counts. <code>__start</code> establishes the
 stack pointer, so its own frame counts as 0.</p>
-<p>The check runs once, after each core is linked, and the Peano link keeps the
-relocations (<code>-Wl,--emit-relocs</code>) that the walk needs. <code>aiecc</code> writes the
-result to the <code>measured_stack_size</code> attribute on the <code>aie.core</code>, so you can
-inspect it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aie.core(%tile_0_2) { ... } {stack_size = 8192 : i32, measured_stack_size = 4128 : i32}
+<p><code>aiecc</code> walks the call graph twice. Before placement, it links each core once
+against permissive regions, the same probe link that sizes the core's static
+data (see <a href="#measured_data_size"><code>measured_data_size</code></a>). An exact result goes to
+the <code>measured_stack_size</code> attribute on the <code>aie.core</code>, and a core without
+<code>stack_size</code> reserves it, rounded up to the stack alignment. Tile placement
+runs before the probe, so <code>--placer=sa_placer</code> budgets the declared or default
+stack. When the measured stack then doesn't fit beside the tile's buffers,
+buffer placement fails and its memory map notes the measurement. The probe links
+the same objects with the same garbage collection as the final link. After the
+final link, <code>aiecc</code> walks again and checks the reservation against the result.
+Both links keep the relocations (<code>-Wl,--emit-relocs</code>) that the walk needs. You
+can inspect the result:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aie.core(%tile_0_2) { ... } {measured_stack_size = 4128 : i32}
 </code></pre></div>
 <p>Pass <code>--get=measured_stack_sizes.mlir</code> to dump that module. A <code>stack_size</code>
-below <code>measured_stack_size</code> fails the build. <code>measured_stack_size</code> stays absent
-when <code>aiecc</code> cannot measure the core; see the stack-contribution overrides below.</p>
+below <code>measured_stack_size</code> fails the build.</p>
+<p>A core without <code>stack_size</code> keeps the target default, guarded by the post-link
+check, when there is no exact measurement before placement:</p>
+<ul>
+<li>the build uses Chess (<code>--xchesscc</code>/<code>--xbridge</code>), whose link carries no
+  <code>.stack_sizes</code>;</li>
+<li>the core comes prebuilt (<code>elf_file</code>);</li>
+<li><code>--no-measure-stack-size</code> or <code>--default-stack-size</code> is passed;</li>
+<li>the call graph has a cycle, or reaches a function with no <code>.stack_sizes</code>
+  entry, so the walk yields at best a lower bound (see the stack-contribution
+  overrides below);</li>
+<li>the probe link fails.</li>
+</ul>
+<p>Peano currently builds its compiler-rt builtins (<code>__divsf3</code>, <code>__modsi3</code> and the
+like) without <code>.stack_sizes</code>. <code>aiecc</code> carries their frames per architecture in
+a table generated from the pinned Peano
+(<code>utils/generate_compiler_rt_stack_frames.py</code>), so a kernel that calls them
+still measures exactly. A lit test fails when a Peano update changes a frame.
+Peano's libc and libm are not in the table.</p>
 <h3 id="stack-placement-stack_bank-and-stack_address">Stack placement: <code>stack_bank</code> and <code>stack_address</code><a class="headerlink" href="#stack-placement-stack_bank-and-stack_address" title="Permanent link">&para;</a></h3>
 <p>These optional attributes on <code>aie.core</code> control placement, independently of
 <code>stack_size</code>:</p>
@@ -4012,6 +4042,15 @@ so aiecc leaves it at Peano's unrestricted default rather than promise the
 bank-conflict model something untrue. <code>stack_bank</code> is the attribute that names
 a bank, and it must hold the whole stack -- a <code>stack_bank</code> whose stack runs
 past it is an error, because the two would disagree.</p>
+<p>The legacy stack at offset zero claims bank A when it fits there. Peano
+compiles the core's own object (the core body, MLIR-lowered functions and
+<code>link_with_mode = "merge"</code> kernels) with <code>-aie-stack-addrspace</code> naming bank A,
+and that happens before a measured size exists. Kernels in <code>link_files</code> are
+compiled separately and never carry the claim. A measured stack may therefore
+grow past bank A, provided every frame of the core's own object ends inside
+the bank. When one does not, as with a deep merged kernel, the build fails and
+names the <code>stack_size</code> to declare. A declared size is known before compile, so
+a stack that spans banks is then compiled without the claim.</p>
 <p>Moving within bank A works with both Peano and Chess. Moving to banks B–D
 through <code>aiecc</code> requires Peano compilation and linking, with no separately
 linked kernel inputs (<code>link_files</code>). Use LLVM IR kernels with
@@ -4230,7 +4269,8 @@ that core gets a <code>data</code> region like any other.</p>
 has to skip them:</p>
 <ul>
 <li><strong><code>--no-measure-stack-size</code></strong> drops the stack measurement and its check, so no
-  <code>measured_stack_size</code> reaches the IR.</li>
+  <code>measured_stack_size</code> reaches the IR and a core without <code>stack_size</code> gets the
+  target default.</li>
 <li><strong><code>--no-measure-data-size</code></strong> drops ordinary static-data measurement before
   placement and after linking, including its <code>data_size</code> check. Per-bank
   measurements and reservations remain enabled. Explicit <code>data_size</code>
@@ -4245,8 +4285,9 @@ has to skip them:</p>
 <li><strong><code>--default-stack-size=&lt;bytes&gt;</code></strong> assumes this many bytes in place of
   <code>AIETargetModel::getDefaultCoreStackSize()</code> for any core without an explicit
   <code>stack_size</code>. The rest of the build then treats that core as if it declared
-  <code>stack_size</code> explicitly, and the diagnostics call the value assumed. A core
-  with an explicit <code>stack_size</code> keeps it.</li>
+  <code>stack_size</code> explicitly, and the diagnostics call the value assumed, so
+  <code>aiecc</code> sizes none of those stacks from the measurement. A core with an
+  explicit <code>stack_size</code> keeps it.</li>
 </ul>
 <h2 id="how-placement-chooses-addresses">How placement chooses addresses<a class="headerlink" href="#how-placement-chooses-addresses" title="Permanent link">&para;</a></h2>
 <p>One allocator places every extent on a tile: the stack, each buffer, the core's
@@ -4309,12 +4350,27 @@ graph is unavailable. The chess/BCF link produces such an ELF, so a
 requirement is at least M bytes and may be higher</code> (warning).</strong> The linked core
 carries no <code>.stack_sizes</code> entry for the functions the diagnostic names, and
 their frames count as 0. <code>M</code> is therefore a lower bound: <code>aiecc</code> still fails a
-core that declares less than <code>M</code>, and writes no <code>measured_stack_size</code>. Compile
-the named source with <code>-fstack-size-section</code>, or set <code>stack_size_override</code> on
-the affected kernel.</p>
-<p><strong><code>stack_size is absent, so this core uses the device default of M bytes, but
-it needs N bytes</code> (error).</strong> Set <code>stack_size = N</code>, or <code>Worker(stack_size=N)</code>,
-and rebuild.</p>
+core that declares less than <code>M</code>, and writes no <code>measured_stack_size</code>; a core
+without <code>stack_size</code> keeps the device default. Compile the named source with
+<code>-fstack-size-section</code>, or set <code>stack_size_override</code> on the affected kernel.</p>
+<p><strong><code>stack_size is absent and this core's stack could not be measured exactly
+before placement, so it uses the device default of M bytes, but it needs at
+least N bytes</code> (error).</strong> One of the fallback cases under
+<a href="#the-stack-stack_size">The stack</a> applied, and the post-link check caught the
+shortfall. Set <code>stack_size = N</code>, or <code>Worker(stack_size=N)</code>, and rebuild, or
+remove the cause, for example by compiling a named source with
+<code>-fstack-size-section</code>.</p>
+<p><strong><code>this core needs a N-byte stack. Its own code was compiled to keep its stack
+frames in memory bank A, but those frames reach F bytes into the stack, past
+the R bytes left in that bank</code> (error).</strong> A measured stack outgrew the bank
+claim described under
+<a href="#stack-placement-stack_bank-and-stack_address">Stack placement</a>. Set
+<code>stack_size = N</code> and rebuild, so that the core is compiled for a stack that
+spans banks.</p>
+<p><strong><code>internal error: placement reserved M bytes of stack from this core's probe
+link, but its final link needs N bytes</code> (error).</strong> The probe and the final link
+disagree, which they should not. Please file an issue with the design.
+Setting <code>stack_size = N</code> works around it.</p>
 <p><strong><code>stack_size = M is insufficient: this core needs N bytes</code> (error).</strong> The same
 case, with <code>stack_size</code> already set explicitly to a value below the
 requirement. Increase it to <code>N</code> and rebuild.</p>

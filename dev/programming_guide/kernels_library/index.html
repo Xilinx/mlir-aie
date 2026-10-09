@@ -4288,8 +4288,6 @@ float32, <code>1e-2</code> for float16 and the canonical <code>0.128</code> for 
   see <a href="#rounding-mode">Rounding mode</a> below. The rounding setter is compiled
   as always-inline LLVM IR and merged into the core, avoiding an external
   function call; the setter therefore uses Peano, not Chess.</li>
-<li><code>stack_bytes</code>: the core stack a Worker calling this kernel needs, when
-  that is more than the target's default.</li>
 <li><code>unsupported</code>: why the generic builder cannot run this kernel, when it
   cannot; the reference still says what the kernel computes.</li>
 </ul>
@@ -4553,11 +4551,10 @@ runtime-library routines it calls (<code>__divsf3</code>, <code>__mulsf3</code>,
 on AIE2P, scalar float divide, multiply and int-to-float are software
 routines). <code>kernel_stack_bytes</code> is the deepest call path's frames from the
 entry, without those routines' own and without the core's <code>main</code>, which
-aiecc's measured stack also counts; above the contract's <code>stack_bytes</code>
-(else the target default) it prints a warning, since an overflow corrupts
-the neighbouring memory silently. Each build prints its entry symbol and
-source file, and <code>--meta</code> names its object (kept with <code>--keep DIR</code>). The record shapes and the
-regression rules are documented on the module
+aiecc's measured stack also counts. aiecc sizes the core's stack from its own
+measurement of the linked core, so the row is for comparing builds. Each build
+prints its entry symbol and source file, and <code>--meta</code> names its object (kept
+with <code>--keep DIR</code>). The record shapes and the regression rules are documented on the module
 (<a href="../../api/kernels/#static-checks">API</a>). These checks run on demand; there
 is no static-check CI workflow. When invoked in GitHub Actions, the tool
 emits a warning annotation for a dropped pragma and an error annotation

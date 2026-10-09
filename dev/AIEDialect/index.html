@@ -11554,8 +11554,10 @@ present in the core; in that case, the binary file linked dictates what
 will run in the core. The path specified should is relative to the MLIR
 file.</p>
 <p>This op has an optional <code>stack_size</code> attribute, to control the amount of memory (in bytes)
-reserved for the stack.  When absent the target's default is used
-(<code>AIETargetModel::getDefaultCoreStackSize()</code>).  The stack (and other data allocations)
+reserved for the stack.  When absent the reservation is the larger of the
+target's default (<code>AIETargetModel::getDefaultCoreStackSize()</code>) and
+<code>measured_stack_size</code> rounded up to the stack ABI alignment, or the default
+alone when <code>measured_stack_size</code> is absent.  The stack (and other data allocations)
 are always stored in the local core memory, to avoid conflicts with static data
 allocations in other cores.</p>
 <p>Optional <code>stack_address</code> sets the tile-relative byte offset of the stack.
@@ -11574,14 +11576,17 @@ or deprecated core <code>link_with</code> inputs. LLVM IR merged through
 <code>link_merge_files</code> can instead be compiled with the core's stack model.</p>
 <p>By default the stack sits directly below the buffers with no clearance, so a
 <code>stack_size</code> below the core's use overwrites those buffers. <code>aiecc</code> measures
-the stack this core needs, writes it to the <code>measured_stack_size</code> attribute,
-and fails the build
-when <code>stack_size</code> is smaller. <code>aiecc</code> measures the whole live call chain. That
+the stack this core needs from a probe link before placing buffers, and
+writes it to the <code>measured_stack_size</code> attribute, so a core that leaves
+<code>stack_size</code> absent gets the stack it needs. After the final link it
+measures again, and fails the build when the reservation is smaller than
+the requirement. <code>aiecc</code> measures the whole live call chain. That
 chain starts above the core body: the runtime enters at <code>__start</code> (crt0), which
 calls <code>_main_init</code> (crt1), which calls the core body, which calls its kernels.
 <code>_main_init</code> holds a frame that stays live across the whole chain. <code>aiecc</code>
 measures the linked core, so the chain covers crt0 and crt1 too.
-<code>measured_stack_size</code> stays absent when <code>aiecc</code> cannot measure the core. The
+<code>aiecc</code> drops any <code>measured_stack_size</code> its input carries, so the attribute
+stays absent when <code>aiecc</code> cannot measure the core. The
 measurement reads the relocations of the linked core, which the Peano link
 keeps and the chess/BCF link drops, so a <code>--xbridge</code> build leaves every core
 unmeasured. See <code>programming_guide/core_data_memory.md</code> for the mechanism, the
