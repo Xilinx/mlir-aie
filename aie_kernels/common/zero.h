@@ -57,8 +57,9 @@ void zero_vectorized(T *__restrict c) {
   for (int i = 0; i < n / r; ++i, p += r) {
     aie::store_v(p, zeros);
   }
+  // A slice of the native zeros: llvm-aie never defines AIE2's undef_v4float.
   for (int i = 0; i < n % r / q; ++i, p += q) {
-    aie::store_v(p, aie::zeros<T, q>());
+    aie::store_v(p, zeros.template extract<q>(0));
   }
   zero_sub_vector(p, n % q);
   if constexpr (markers)

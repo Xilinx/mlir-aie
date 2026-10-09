@@ -71,6 +71,7 @@ CASES: list[Case] = [
     check("zero", dict(tile_size=68, dtype=np.uint8), calls=3, tag="vector-tail"),
     # Three 128-bit stores and four bytes past the last full vector.
     check("zero", dict(tile_size=116, dtype=np.uint8), calls=3, tag="vector-tail"),
+    check("zero", dict(tile_size=20, dtype=np.float32), calls=3, tag="vector-tail"),
     check(
         "zero",
         dict(tile_size=34, dtype=np.int16, vectorized=False),
