@@ -18,6 +18,15 @@
 // CHECK: ({{[0-9]+}}/{{[0-9]+}}) test_full.elf
 // CHECK: wrote edge 'test_full.elf'
 
+// The insts.bin beside a full ELF keeps its locmap, though the full ELF's
+// own translation builds none.
+// RUN: aiecc --get-full-elf --get-npu-insts --get-locmap --full-elf-name=with_locmap.elf --npu-insts-name=with_locmap.bin %s
+// RUN: test -s with_locmap.elf
+// RUN: FileCheck %s --check-prefix=LOCMAP < with_locmap.bin.locmap.json
+// LOCMAP: "binary": "with_locmap.bin"
+// LOCMAP: "opcode": "BLOCKWRITE"
+// LOCMAP: "source_op": "aiex.npu.blockwrite"
+
 module {
   aie.device(npu1_1col) {
     %tile_0_0 = aie.tile(0, 0)

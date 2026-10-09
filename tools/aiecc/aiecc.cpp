@@ -598,8 +598,8 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
 }
 
 // Translate each runtime sequence into its NPU program: one NpuProgram item
-// (the transaction instruction binary + its source-location map) per sequence,
-// keyed "<device>_<sequence>".
+// (the transaction instruction binary + its source-location map, if
+// `withLocmap`) per sequence, keyed "<device>_<sequence>".
 //
 // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
 // the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
@@ -607,12 +607,12 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
 // flag when unfolding is requested.
 EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
     EdgeWithTypedOutput<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &perSeq,
-    std::string programName, bool foldDDRAddrOffset) {
+    std::string programName, bool foldDDRAddrOffset, bool withLocmap) {
   auto &npuProgram = perSeq.map<NpuProgram>(
       std::move(programName),
-      [foldDDRAddrOffset](
-          const Item<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &item,
-          Item<NpuProgram> &out) -> mlir::LogicalResult {
+      [foldDDRAddrOffset,
+       withLocmap](const Item<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &item,
+                   Item<NpuProgram> &out) -> mlir::LogicalResult {
         xilinx::AIE::RuntimeSequenceOp seq = item.get().op;
         DeviceOp devOp = seq->getParentOfType<DeviceOp>();
         NpuProgram prog;
@@ -620,7 +620,8 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
         std::vector<uint32_t> insts;
         if (mlir::failed(xilinx::AIE::AIETranslateNpuToBinary(
                 item.get().module.get(), insts, devOp.getSymName(),
-                seq.getSymName(), &prog.locmap, foldDDRAddrOffset))) {
+                seq.getSymName(), withLocmap ? &prog.locmap : nullptr,
+                foldDDRAddrOffset))) {
           return mlir::failure();
         }
         prog.insts = wordsToBytes(insts);
@@ -1882,7 +1883,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // flag when unfolding is requested.
   auto &npuProgram = buildNpuProgramSubgraph(
       perSeq, "npu_program_{0}.bin",
-      /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue());
+      /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue(),
+      /*withLocmap=*/true);
 
   auto &npuInsts = npuProgram.map<std::vector<char>>(
       npuInstsName.getValue(), [](const NpuProgram &p) { return p.insts; });
@@ -1933,7 +1935,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // offset for every arg itself. cl::opt defaults to true, so only pass the
   // flag when unfolding is requested.
   auto &npuProgramFullElf = buildNpuProgramSubgraph(
-      perSeq, "npu_program_full_elf_{0}.bin", /*foldDDRAddrOffset=*/false);
+      perSeq, "npu_program_full_elf_{0}.bin", /*foldDDRAddrOffset=*/false,
+      /*withLocmap=*/false);
   auto &npuInstsFullElf = npuProgramFullElf.map<std::vector<char>>(
       "npu_insts_full_elf_{0}.bin",
       [](const NpuProgram &p) { return p.insts; });
