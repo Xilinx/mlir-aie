@@ -74,7 +74,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
+import stat
 from pathlib import Path
 
 from aie.utils.compile.utils import _is_dispatch_library_name, _staged
@@ -101,13 +103,31 @@ def _digest(path: Path) -> str:
     return h.hexdigest()
 
 
-def _entry(path: Path) -> dict:
-    st = path.stat()
+# Every kernel of a design reads the same few hundred headers. A write moves
+# ctime, which no caller can set back, so a matching stat names bytes digested.
+_DIGESTS: dict[tuple, str] = {}
+
+
+def _entry(path: Path, st: os.stat_result) -> dict:
+    key = (str(path), st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+    sha256 = _DIGESTS.get(key)
+    if sha256 is None:
+        sha256 = _digest(path)
+        after = path.stat()
+        # A file written while it was read is recorded, not remembered.
+        if key[1:] == (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ):
+            _DIGESTS[key] = sha256
     return {
         "path": str(path),
         "size": st.st_size,
         "mtime": st.st_mtime,
-        "sha256": _digest(path),
+        "sha256": sha256,
     }
 
 
@@ -166,20 +186,21 @@ def record(
             "an incomplete manifest, inputs will not be checked",
             len(compiled),
         )
-        _write(kernel_dir, [], complete=False, dispatch_library=dispatch_library)
+        _write(kernel_dir, {}, complete=False, dispatch_library=dispatch_library)
         return
 
-    found: set[Path] = set()
+    found: dict[Path, os.stat_result] = {}
     for dep in depfiles:
         try:
             # Peano runs with cwd=kernel_dir, so that is what a relative token means.
             read = {_absolute(kernel_dir, p) for p in _parse_depfile(dep)}
+            found.update((p, p.stat()) for p in read - found.keys())
         except OSError:
             read = None
         # The compiler opened every entry, so one that is not a file now cannot
         # be checked: it has gone since, or was renamed in the writing -- clang
         # writes a backslash in a path as a slash.
-        if read is None or not all(p.is_file() for p in read):
+        if read is None or not all(stat.S_ISREG(found[p].st_mode) for p in read):
             # Unknowable, as for Chess. Writing nothing would instead read as a
             # miss, and the caller answers a miss by discarding the entry.
             logger.debug(
@@ -188,35 +209,46 @@ def record(
                 "be checked",
                 dep,
             )
-            _write(kernel_dir, [], complete=False, dispatch_library=dispatch_library)
+            _write(kernel_dir, {}, complete=False, dispatch_library=dispatch_library)
             return
-        found |= read
 
     # Declared paths are the caller's, read where the caller stands -- the same
     # reading compile_external_kernel gives them. A missing one is already in
     # the cache key, so it is left out rather than making the set incomplete.
     cwd = Path.cwd()
-    for f in compiled:
-        if getattr(f, "_source_file", None):
-            found.add(_absolute(cwd, Path(f._source_file)))
-    found.update(_absolute(cwd, Path(sf)) for sf in source_files)
+    declared = [
+        _absolute(cwd, Path(f._source_file))
+        for f in compiled
+        if getattr(f, "_source_file", None)
+    ]
+    declared += [_absolute(cwd, Path(sf)) for sf in source_files]
+    for path in declared:
+        if path not in found:
+            try:
+                found[path] = path.stat()
+            except OSError:
+                pass
     _write(
         kernel_dir,
-        sorted({p for p in found if p.is_file()}, key=str),
+        {
+            path: st
+            for path, st in sorted(found.items(), key=lambda item: str(item[0]))
+            if stat.S_ISREG(st.st_mode)
+        },
         dispatch_library=dispatch_library,
     )
 
 
 def _write(
     kernel_dir: Path,
-    inputs: list[Path],
+    inputs: dict[Path, os.stat_result],
     complete: bool = True,
     dispatch_library: str | None = None,
 ) -> None:
     entries: list[dict] = []
-    for path in inputs:
+    for path, st in inputs.items():
         try:
-            entries.append(_entry(path))
+            entries.append(_entry(path, st))
         except OSError:
             # Unverifiable, but not uncacheable: mark it incomplete rather than
             # writing nothing and costing the entry on every later lookup.
@@ -235,7 +267,7 @@ def _write(
 
 def write_for_test(kernel_dir, inputs) -> None:
     """Write a manifest directly. For tests that fabricate a cache entry."""
-    _write(Path(kernel_dir), [Path(i) for i in inputs])
+    _write(Path(kernel_dir), {Path(i): Path(i).stat() for i in inputs})
 
 
 def resolve_dispatch_library(kernel_dir: Path) -> Path | None:

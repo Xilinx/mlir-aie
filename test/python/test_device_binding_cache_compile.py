@@ -117,7 +117,7 @@ def test_dispatch_library_selected_once_per_compile(
 
     second = first.with_name(f"dispatch-{'b' * 64}{first.suffix}")
     shutil.copy(first, second)
-    _manifest._write(first.parent, [], dispatch_library=second.name)
+    _manifest._write(first.parent, {}, dispatch_library=second.name)
     # A later publication must not silently change this design's selected ABI.
     assert design.get_dispatch_lib_path() == first
     design.compile()

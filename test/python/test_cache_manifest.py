@@ -7,6 +7,7 @@
 # RUN: %pytest %s
 """Unit tests for the JIT cache's recorded dependency manifest -- no NPU required."""
 
+import hashlib
 import json
 import os
 import time
@@ -160,6 +161,52 @@ def test_record_captures_depfile_contents(tmp_path):
     assert not _manifest.is_valid(tmp_path)
 
 
+def _recorded_digests(kernel_dir):
+    return {
+        i["path"]: i["sha256"]
+        for i in json.loads((kernel_dir / _manifest.MANIFEST_NAME).read_text())[
+            "inputs"
+        ]
+    }
+
+
+def test_header_shared_by_two_kernels_is_recorded_alike(tmp_path):
+    """Kernels of one design read the same headers; each records the header."""
+    header = tmp_path / "hdr.h"
+    header.write_text("// h")
+    entries = [tmp_path / "a", tmp_path / "b"]
+    for entry in entries:
+        entry.mkdir()
+        _depfile(entry, "k.o", [header])
+        _manifest.record(entry, [_Kernel(source_string="// k")], ())
+    expected = {str(header): hashlib.sha256(b"// h").hexdigest()}
+    assert [_recorded_digests(e) for e in entries] == [expected, expected]
+
+
+def test_same_size_edit_with_its_mtime_restored_is_recorded_anew(tmp_path):
+    """A header rewritten between two kernels' records, at the same size and
+    with its mtime set back, must be recorded with its new digest: the edit
+    moved its ctime, which no caller can set."""
+    header = tmp_path / "hdr.h"
+    header.write_text("aaaa")
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    _depfile(first, "k.o", [header])
+    _manifest.record(first, [_Kernel(source_string="// k")], ())
+
+    before = header.stat()
+    time.sleep(0.01)
+    header.write_text("bbbb")
+    os.utime(header, ns=(before.st_atime_ns, before.st_mtime_ns))
+    second.mkdir()
+    _depfile(second, "k.o", [header])
+    _manifest.record(second, [_Kernel(source_string="// k")], ())
+
+    assert _recorded_digests(second) == {
+        str(header): hashlib.sha256(b"bbbb").hexdigest()
+    }
+
+
 def test_chess_build_records_an_incomplete_manifest(tmp_path):
     """Chess reports no inputs, so the entry says so instead of claiming a check.
 
@@ -250,28 +297,21 @@ def test_unreadable_depfile_records_an_incomplete_manifest(tmp_path):
     assert _manifest.is_valid(tmp_path)
 
 
-def test_unreadable_input_records_an_incomplete_manifest(tmp_path, monkeypatch):
+@pytest.mark.skipif(
+    not os.path.exists("/proc/self/mem"), reason="needs Linux's /proc/self/mem"
+)
+def test_unreadable_input_records_an_incomplete_manifest(tmp_path):
     """An input that cannot be digested is unverifiable, not uncacheable.
 
-    _write only digests paths that already passed is_file(), so the branch under
-    test is the narrow one where the read fails anyway: the file goes away, or
-    the I/O errors, between the two calls. Raising it directly is also what
-    survives running as root, where chmod(0o000) is not a read barrier.
+    _write only digests regular files, so the branch under test is a regular
+    file whose read fails anyway. ``/proc/self/mem`` is one: address 0 is never
+    mapped, so its first read errors, even as root, where chmod(0o000) is not a
+    read barrier.
     """
     shim = tmp_path / "shim.cc"
     shim.write_text("// k")
-    secret = tmp_path / "secret.h"
-    secret.write_text("// h")
-    _depfile(tmp_path, "k.o", [shim, secret])
+    _depfile(tmp_path, "k.o", [shim, "/proc/self/mem"])
 
-    entry = _manifest._entry
-
-    def unreadable_secret(path):
-        if path.name == "secret.h":
-            raise OSError("input vanished under us")
-        return entry(path)
-
-    monkeypatch.setattr(_manifest, "_entry", unreadable_secret)
     _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
