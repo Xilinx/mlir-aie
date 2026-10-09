@@ -120,30 +120,25 @@ void scale_div_aie(bf16 *a, bf16 *o, float *l) {
 // template parameters because each kernel has its own lock contract with the
 // design.
 
-/// \brief Zero the y/l accumulators, then wait on l_cons_lock.
+/// \brief Zero the y/l accumulators.
 ///
-/// The qk tile releases l_cons_lock after the host writes the RTPs, so the
-/// Worker may read L only after this function returns. l_cons_lock guards no
-/// buffer, so this function uses the 2-argument lock form.
-template <unsigned N, int l_cons_lock>
+/// The Worker acquires the qk tile's handshake lock after this call, so it
+/// may read L only once that acquire returns.
+template <unsigned N>
 void attn_kv_begin_impl(float *y, float *l) {
   zero_256<float, N>(y);
   const aie::vector<float, 8> zero = aie::broadcast<float, 8>(0);
   aie::store_v(l, zero);
-  _down_lock_acquire(l_cons_lock);
 }
 
 /// \brief Narrow the f32 accumulator in place, then scale by 1/l into o.
 ///
-/// The lock counts are O_REPEATS because the down projection reads o O_REPEATS
-/// times per dispatch; see decode_layout.h. The o locks guard `o`, so this
-/// function uses the pointer form.
-template <unsigned N, int o_prod_lock, int o_cons_lock, int O_REPEATS>
+/// The Worker holds the o locks across this call; see decode_layout.h for the
+/// O_REPEATS the down projection reads o with.
+template <unsigned N>
 void attn_kv_finish_impl(float *y, bf16 *o, float *l) {
   narrow_to_bf16<N>((bf16 *)y, y);
-  _lock_acquire_p(o, o_prod_lock, O_REPEATS);
   scale_div_aie<N>((bf16 *)y, o, l);
-  _lock_release_p(o, o_cons_lock, O_REPEATS);
 }
 
 #endif // AIE_KERNELS_FLM_GEMMA4_DECODE_ATTN_KV_COMMON_H

@@ -26,9 +26,6 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bf16 *__restrict pY,
               bf16 *__restrict m, float *__restrict c, aie::mask<16> &mask,
               bool &is_first);
 
-constexpr int k_prod_lock = FLM_GEMMA4_DECODE_ATTN_QK_K_PROD_LOCK;
-constexpr int k_cons_lock = FLM_GEMMA4_DECODE_ATTN_QK_K_CONS_LOCK;
-constexpr int l_cons_lock = FLM_GEMMA4_DECODE_ATTN_QK_L_CONS_LOCK;
 
 // ---------------------------------------------------------------------------
 // Entry points. See decode_attn_kv.cc; k has the role of v there. q arrives
@@ -41,20 +38,19 @@ extern "C" {
 
 // Primes the running max. The Worker acquires q before this call, and q
 // arrives only after the host writes the RTPs, so the Worker may read L only
-// after this function returns. The kv tile waits for the l_cons_lock release.
+// after this function returns.
 void attn_qk_begin(bf16 *m) {
   // Peano miscompiles a function-local `static const aie::vector`, so a loop
   // fills m.
   for (int _z = 0; _z < 16; _z++)
     m[_z] = (bf16)(-0x1.FEp127f);
-  _lock_release_p(m, l_cons_lock);
 }
 
 // One round. iter is the round index and sets the causal mask. s is the
 // ObjectFifo object.
 void attn_qk_round(bf16 *q, bf16 *k_ping, bf16 *k_pong, bf16 *s, bf16 *m,
                    float *c_local, int iter, int L0) {
-  bf16 *k = k_pingpong.acquire(k_ping, k_pong, k_cons_lock);
+  bf16 *k = k_pingpong.next(k_ping, k_pong);
 
   int i = L0 - 16 * iter;
   float *c = (float *)(s + Q_HEADS_PADDED_PER_CU * 16);
@@ -70,8 +66,6 @@ void attn_qk_round(bf16 *q, bf16 *k_ping, bf16 *k_pong, bf16 *s, bf16 *m,
   // c goes in the tail of the s object, after the scores.
   aie::vector<float, 8> c_vec = aie::load_v<8>(c_local);
   aie::store_v(c, c_vec);
-
-  _lock_release_p(k, k_prod_lock);
 }
 }
 

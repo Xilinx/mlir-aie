@@ -14,11 +14,6 @@ template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
              y_acc_dtype *__restrict pY, float *__restrict c);
 
-constexpr int v_prod_lock = FLM_GEMMA4_DECODE_ATTN_KV_V_PROD_LOCK;
-constexpr int v_cons_lock = FLM_GEMMA4_DECODE_ATTN_KV_V_CONS_LOCK;
-constexpr int o_prod_lock = FLM_GEMMA4_DECODE_ATTN_KV_O_PROD_LOCK;
-constexpr int o_cons_lock = FLM_GEMMA4_DECODE_ATTN_KV_O_CONS_LOCK;
-constexpr int l_cons_lock = FLM_GEMMA4_DECODE_ATTN_KV_L_CONS_LOCK;
 
 extern "C" {}
 template <unsigned colQ, unsigned r, unsigned s, unsigned t>
@@ -111,22 +106,20 @@ static PingPong v_pingpong;
 extern "C" {
 
 void attn_kv_begin(float *y, float *l) {
-  attn_kv_begin_impl<8 * DH, l_cons_lock>(y, l);
+  attn_kv_begin_impl<8 * DH>(y, l);
 }
 
 // One round. s is the ObjectFifo object.
 void attn_kv_round(bf16 *s, bf16 *v_ping, bf16 *v_pong, float *y, float *l) {
-  bf16 *v = v_pingpong.acquire(v_ping, v_pong, v_cons_lock);
+  bf16 *v = v_pingpong.next(v_ping, v_pong);
 
   float *c = (float *)(s + Q_HEADS_PADDED_PER_CU * 16);
   calculate_l(s, c, l);
   attn_fv<DH / 8, GQA_R, GQA_S, GQA_T>(s, v, y, c);
-
-  _lock_release_p(v, v_prod_lock);
 }
 
 void attn_kv_finish(float *y, bf16 *o, float *l) {
-  attn_kv_finish_impl<8 * DH, o_prod_lock, o_cons_lock, O_DOWN_REPEATS>(y, o,
+  attn_kv_finish_impl<8 * DH>(y, o,
                                                                         l);
 }
 }
