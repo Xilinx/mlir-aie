@@ -127,8 +127,8 @@ static inline bool k1_fits(const int32_t input_width, const int8_t *kernels,
 // N chunks of one output channel block. Chunk j is at byte offset 8 * P * j
 // from in, except the last at last_off; epi(acc, side + offset...) gives the
 // vector stored at out + offset.
-template <bool Aligned, int P, int N, typename TI, typename TO, typename Epi,
-          typename... S>
+template <bool Aligned, int P, int N, int Trips = 1, typename TI, typename TO,
+          typename Epi, typename... S>
 static inline void
 k1_chunks(const TI *__restrict in, const int8_t *__restrict wts,
           TO *__restrict out, const int32_t row, const int32_t ic_blocks,
@@ -140,7 +140,7 @@ k1_chunks(const TI *__restrict in, const int8_t *__restrict wts,
   K1_UNROLL_CHUNKS
   for (int j = 0; j < N; j++)
     acc[j].mul(k1_load<Aligned, E>(in + (j == N - 1 ? last_off : E * j)), b);
-#pragma clang loop min_iteration_count(1)
+  AIE_LOOP_MIN_ITERATION_COUNT(Trips)
   for (int ic = 1; ic < ic_blocks; ic++) {
     in += row;
     wts += 64;
@@ -243,11 +243,28 @@ static void k1_rows_win(const TI *__restrict input,
 
 // Walks the whole [OC/8][W][8] output; side buffers share its layout.
 // Needs input_width >= P.
-template <bool Aligned, int P = 4, typename TI, typename TO, typename Epi,
-          typename... S>
+template <bool Aligned, int P = 4, int Trips = 1, int Blocks = 0, typename TI,
+          typename TO, typename Epi, typename... S>
 static void k1_rows(const TI *input, const int8_t *kernels, TO *output,
                     const int32_t input_width, const int32_t input_channels,
                     const int32_t output_channels, Epi epi, const S *...side) {
+#if AIE_TUNED_AIE2
+  // Peano makes the aligned reduction loop zero-overhead only when told it
+  // runs at least twice. Two blocks get an exact instance, because range
+  // analysis otherwise reshapes the fallback's short loop into slower code.
+  if constexpr (Aligned && Trips == 1 && Blocks == 0) {
+    if (input_channels >= 24) {
+      k1_rows<Aligned, P, 2>(input, kernels, output, input_width,
+                             input_channels, output_channels, epi, side...);
+      return;
+    }
+    if (input_channels / 8 == 2) {
+      k1_rows<Aligned, P, 1, 2>(input, kernels, output, input_width,
+                                input_channels, output_channels, epi, side...);
+      return;
+    }
+  }
+#endif
 #if AIE_TUNED_AIE2 && defined(CONV_INPUT_WIDTH)
   if constexpr (!Aligned && K1_WIN) {
     if (input_width == CONV_INPUT_WIDTH && input_channels >= 16 * K1W_U &&
@@ -261,7 +278,7 @@ static void k1_rows(const TI *input, const int8_t *kernels, TO *output,
   constexpr int N = 4;
   constexpr int E = 8 * P;
   const int32_t row = input_width * 8;
-  const int32_t ic_blocks = input_channels / 8;
+  const int32_t ic_blocks = Blocks ? Blocks : input_channels / 8;
   const int32_t chunks = (input_width + P - 1) / P;
   const int32_t groups = chunks / N;
   const int32_t rem = chunks % N;
@@ -273,22 +290,22 @@ static void k1_rows(const TI *input, const int8_t *kernels, TO *output,
       const int32_t x = g * N * E;
       const int32_t last =
           (rem == 0 && g == groups - 1) ? tail - x : E * (N - 1);
-      k1_chunks<Aligned, P, N>(input + x, wts, out + x, row, ic_blocks, last,
-                               epi, (side + oc * row + x)...);
+      k1_chunks<Aligned, P, N, Trips>(input + x, wts, out + x, row, ic_blocks,
+                                      last, epi, (side + oc * row + x)...);
     }
     const int32_t x = groups * N * E;
     switch (rem) {
     case 1:
-      k1_chunks<Aligned, P, 1>(input + x, wts, out + x, row, ic_blocks,
-                               tail - x, epi, (side + oc * row + x)...);
+      k1_chunks<Aligned, P, 1, Trips>(input + x, wts, out + x, row, ic_blocks,
+                                      tail - x, epi, (side + oc * row + x)...);
       break;
     case 2:
-      k1_chunks<Aligned, P, 2>(input + x, wts, out + x, row, ic_blocks,
-                               tail - x, epi, (side + oc * row + x)...);
+      k1_chunks<Aligned, P, 2, Trips>(input + x, wts, out + x, row, ic_blocks,
+                                      tail - x, epi, (side + oc * row + x)...);
       break;
     case 3:
-      k1_chunks<Aligned, P, 3>(input + x, wts, out + x, row, ic_blocks,
-                               tail - x, epi, (side + oc * row + x)...);
+      k1_chunks<Aligned, P, 3, Trips>(input + x, wts, out + x, row, ic_blocks,
+                                      tail - x, epi, (side + oc * row + x)...);
       break;
     }
   }

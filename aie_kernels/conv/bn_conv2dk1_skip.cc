@@ -463,7 +463,7 @@ static void conv2dk1_skip_ui8_i8_i8_scalar(
 // See k1_chunks in bn_conv2dk1_aie2.h; skip is offset like in and out. The
 // requantized conv and the skip are added in 32-bit lanes and requantized by
 // skip_scale.
-template <bool Aligned, int P, int N, typename TS>
+template <bool Aligned, int P, int N, int Trips, typename TS>
 static inline void
 k1_skip_chunks(const uint8_t *__restrict in, const int8_t *__restrict wts,
                const TS *__restrict skip, int8_t *__restrict out,
@@ -476,7 +476,7 @@ k1_skip_chunks(const uint8_t *__restrict in, const int8_t *__restrict wts,
   K1_UNROLL_CHUNKS
   for (int j = 0; j < N; j++)
     acc[j].mul(k1_load<Aligned, E>(in + (j == N - 1 ? last_off : E * j)), b);
-#pragma clang loop min_iteration_count(1)
+  AIE_LOOP_MIN_ITERATION_COUNT(Trips)
   for (int ic = 1; ic < ic_blocks; ic++) {
     in += row;
     wts += 64;
@@ -495,12 +495,28 @@ k1_skip_chunks(const uint8_t *__restrict in, const int8_t *__restrict wts,
   }
 }
 
-template <bool Aligned, int P, typename TS>
+template <bool Aligned, int P, int Trips = 1, int Blocks = 0, typename TS>
 static void
 k1_skip_rows(const uint8_t *input, const int8_t *kernels, const TS *skip,
              int8_t *output, const int32_t input_width,
              const int32_t input_channels, const int32_t output_channels,
              const int scale, const int skip_scale) {
+#if AIE_TUNED_AIE2
+  if constexpr (Aligned && Trips == 1 && Blocks == 0) {
+    if (input_channels >= 24) {
+      k1_skip_rows<Aligned, P, 2>(input, kernels, skip, output, input_width,
+                                  input_channels, output_channels, scale,
+                                  skip_scale);
+      return;
+    }
+    if (input_channels / 8 == 2) {
+      k1_skip_rows<Aligned, P, 1, 2>(input, kernels, skip, output, input_width,
+                                     input_channels, output_channels, scale,
+                                     skip_scale);
+      return;
+    }
+  }
+#endif
 #if AIE_TUNED_AIE2 && defined(CONV_INPUT_WIDTH)
   if constexpr (!Aligned && K1_WIN) {
     if (input_width == CONV_INPUT_WIDTH && input_channels >= 16 * K1W_U &&
@@ -520,7 +536,7 @@ k1_skip_rows(const uint8_t *input, const int8_t *kernels, const TS *skip,
   constexpr int N = 4;
   constexpr int E = 8 * P;
   const int32_t row = input_width * 8;
-  const int32_t ic_blocks = input_channels / 8;
+  const int32_t ic_blocks = Blocks ? Blocks : input_channels / 8;
   const int32_t chunks = (input_width + P - 1) / P;
   const int32_t groups = chunks / N;
   const int32_t rem = chunks % N;
@@ -533,22 +549,25 @@ k1_skip_rows(const uint8_t *input, const int8_t *kernels, const TS *skip,
       const int32_t x = g * N * E;
       const int32_t last =
           (rem == 0 && g == groups - 1) ? tail - x : E * (N - 1);
-      k1_skip_chunks<Aligned, P, N>(input + x, wts, s + x, out + x, row,
-                                    ic_blocks, last, scale, skip_scale);
+      k1_skip_chunks<Aligned, P, N, Trips>(input + x, wts, s + x, out + x, row,
+                                           ic_blocks, last, scale, skip_scale);
     }
     const int32_t x = groups * N * E;
     switch (rem) {
     case 1:
-      k1_skip_chunks<Aligned, P, 1>(input + x, wts, s + x, out + x, row,
-                                    ic_blocks, tail - x, scale, skip_scale);
+      k1_skip_chunks<Aligned, P, 1, Trips>(input + x, wts, s + x, out + x, row,
+                                           ic_blocks, tail - x, scale,
+                                           skip_scale);
       break;
     case 2:
-      k1_skip_chunks<Aligned, P, 2>(input + x, wts, s + x, out + x, row,
-                                    ic_blocks, tail - x, scale, skip_scale);
+      k1_skip_chunks<Aligned, P, 2, Trips>(input + x, wts, s + x, out + x, row,
+                                           ic_blocks, tail - x, scale,
+                                           skip_scale);
       break;
     case 3:
-      k1_skip_chunks<Aligned, P, 3>(input + x, wts, s + x, out + x, row,
-                                    ic_blocks, tail - x, scale, skip_scale);
+      k1_skip_chunks<Aligned, P, 3, Trips>(input + x, wts, s + x, out + x, row,
+                                           ic_blocks, tail - x, scale,
+                                           skip_scale);
       break;
     }
   }
