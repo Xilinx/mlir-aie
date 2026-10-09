@@ -27,6 +27,7 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -274,11 +275,15 @@ static AIE::DeviceOp getOrCreateEmptyDevice(ModuleOp moduleOp,
   return emptyDevice;
 }
 
+// The device reloaded, the device holding the reload and the expand mode.
+using ConfigKey = std::tuple<Operation *, Operation *, AIEX::ExpandMode>;
+
 // Helper to transform a single load_pdi operation
 static LogicalResult transformLoadPdi(
     NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
     AIEX::ExpandMode defaultMode,
-    llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> &blockwriteData) {
+    llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> &blockwriteData,
+    llvm::DenseMap<ConfigKey, std::unique_ptr<Block>> &configs) {
   OpBuilder builder(loadPdiOp);
 
   // Only process load_pdi ops that reference a device
@@ -354,20 +359,30 @@ static LogicalResult transformLoadPdi(
                                                    AIEX::ExpandMode::none));
   }
 
-  // Step 2: generate and insert configuration ops.
-  auto outputType = ctrlPkt ? AIEToConfigurationOutputType::ControlPacket
-                            : AIEToConfigurationOutputType::Transaction;
+  // Step 2: generate the configuration ops once per device, and copy them in.
   auto device = loadPdiOp->getParentOfType<AIE::DeviceOp>();
   if (!device)
     return loadPdiOp.emitError("expected to be nested under an aie.device op");
-  AIEX::BlockwriteData &payloads =
-      blockwriteData.try_emplace(device, device, "loadpdi_").first->second;
-  if (failed(xilinx::AIE::generateAndInsertConfigOps(
-          builder, referencedDevice, payloads, /*clElfDir=*/"", outputType,
-          /*skipCtrlPktOverlay=*/ctrlPkt))) {
-    loadPdiOp.emitError("Failed to generate configuration operations");
-    return failure();
+  std::unique_ptr<Block> &config = configs[{referencedDevice, device, mode}];
+  if (!config) {
+    auto outputType = ctrlPkt ? AIEToConfigurationOutputType::ControlPacket
+                              : AIEToConfigurationOutputType::Transaction;
+    AIEX::BlockwriteData &payloads =
+        blockwriteData.try_emplace(device, device, "loadpdi_").first->second;
+    auto generated = std::make_unique<Block>();
+    OpBuilder configBuilder(loadPdiOp.getContext());
+    configBuilder.setInsertionPointToEnd(generated.get());
+    if (failed(xilinx::AIE::generateAndInsertConfigOps(
+            configBuilder, referencedDevice, payloads, /*clElfDir=*/"",
+            outputType, /*skipCtrlPktOverlay=*/ctrlPkt))) {
+      loadPdiOp.emitError("Failed to generate configuration operations");
+      return failure();
+    }
+    config = std::move(generated);
   }
+  IRMapping mapping;
+  for (Operation &op : *config)
+    builder.clone(op, mapping);
   if (ctrlPkt &&
       failed(verifyOverlayReachesTiles(
           loadPdiOp, overlay,
@@ -441,12 +456,14 @@ struct AIEExpandLoadPdiPass
         clCtrlPkt ? AIEX::ExpandMode::ctrlpkt : AIEX::ExpandMode::write32;
 
     // Transform load_pdi ops. Every reload of a device writes the same
-    // payloads, so they share one global each.
+    // configuration, so it is generated once and its payloads share one global
+    // each.
     llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> blockwriteData;
+    llvm::DenseMap<ConfigKey, std::unique_ptr<Block>> configs;
     unsigned idx = 0;
     for (auto loadPdiOp : loadPdiOps) {
       if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode,
-                                  blockwriteData))) {
+                                  blockwriteData, configs))) {
         signalPassFailure();
         return;
       }
