@@ -297,11 +297,10 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
     xilinx::AIE::DeviceOp devOp = item.get().op;
 
     int argCount = 3;
-    devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
+    for (auto seq : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>())
       if (!seq.getBody().empty())
         argCount =
             std::max<int>(argCount, seq.getBody().front().getNumArguments());
-    });
     llvm::json::Array arguments;
     for (int i = 0; i < argCount; ++i)
       arguments.push_back(
@@ -311,7 +310,7 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
 
     llvm::json::Array instances;
     llvm::SmallDenseSet<int> loaded{devId(devOp)};
-    devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
+    for (auto seq : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
       // One `.bin` per runtime sequence, keyed "<device>_<sequence>". Only
       // sequences that were actually lowered to a control-code binary have an
       // entry in `instsPaths`; skip the rest (e.g. filtered out via
@@ -320,7 +319,7 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
       std::string seqKey = npuSeqKey(devName, seq.getSymName());
       auto instsIt = instsPaths.find(seqKey);
       if (instsIt == instsPaths.end())
-        return;
+        continue;
       O inst{{"id", seq.getSymName().str()},
              {"TXN_ctrl_code_file", instsIt->second}};
       // Control-packet data and its buffer relocation are per runtime sequence:
@@ -336,7 +335,7 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
       seq.walk([&](xilinx::AIEX::NpuLoadPdiOp lp) {
         loaded.insert(static_cast<int>(lp.getId()));
       });
-    });
+    }
     if (instances.empty())
       continue;
 

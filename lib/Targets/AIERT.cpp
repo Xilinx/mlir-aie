@@ -684,8 +684,13 @@ LogicalResult xilinx::AIE::AIERTControl::initLocks(DeviceOp &targetOp) {
     }
   }
 
-  // Set locks with explicit initializers
-  targetOp.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
+  // Set locks with explicit initializers. The runtime sequences hold none.
+  targetOp.walk<WalkOrder::PreOrder>([&](Operation *op) {
+    if (isa<RuntimeSequenceOp>(op))
+      return WalkResult::skip();
+    auto lockOp = dyn_cast<LockOp>(op);
+    if (!lockOp)
+      return WalkResult::advance();
     if (lockOp.getLockID() && lockOp.getInit()) {
       TxnLocBracket bracket(*this, lockOp.getLoc());
       auto tileLoc = XAie_TileLoc(lockOp.getTileOp().colIndex(),
@@ -696,32 +701,39 @@ LogicalResult xilinx::AIE::AIERTControl::initLocks(DeviceOp &targetOp) {
     } else
       LLVM_DEBUG(llvm::dbgs()
                  << "lock op missing either id or init" << lockOp << "\n");
+    return WalkResult::advance();
   });
   return success();
 }
 
 LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
-  // Set buffers with explicit initializers
-  targetOp.walk<WalkOrder::PreOrder>([&](BufferOp bufferOp) {
+  // Set buffers with explicit initializers. The runtime sequences hold none.
+  targetOp.walk<WalkOrder::PreOrder>([&](Operation *op) {
+    if (isa<RuntimeSequenceOp>(op))
+      return WalkResult::skip();
+    auto bufferOp = dyn_cast<BufferOp>(op);
+    if (!bufferOp)
+      return WalkResult::advance();
     auto initialValue = bufferOp.getInitialValue();
     if (!initialValue)
-      return;
+      return WalkResult::advance();
     TxnLocBracket bracket(*this, bufferOp.getLoc());
     mlir::DenseElementsAttr denseInit =
         dyn_cast<mlir::DenseElementsAttr>(initialValue.value());
     if (!denseInit)
-      return;
+      return WalkResult::advance();
     auto tileLoc = XAie_TileLoc(bufferOp.getTileOp().colIndex(),
                                 bufferOp.getTileOp().rowIndex());
     std::optional<std::vector<char>> byteVec = denseAttrToBytes(denseInit);
     if (!byteVec) {
       llvm::outs() << "buffer op type not supported for initialization "
                    << bufferOp << "\n";
-      return;
+      return WalkResult::advance();
     }
     TRY_XAIE_API_FATAL_ERROR(XAie_DataMemBlockWrite, &aiert->devInst, tileLoc,
                              bufferOp.getAddress().value(), byteVec->data(),
                              byteVec->size());
+    return WalkResult::advance();
   });
   return success();
 }
