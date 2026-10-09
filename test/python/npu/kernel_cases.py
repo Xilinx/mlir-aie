@@ -69,6 +69,15 @@ CASES: list[Case] = [
     Case("zero", dict(tile_size=4096), calls=4),
     check("zero", dict(tile_size=64, dtype=v8bfp16ebs8), smoke=True, devices=("npu2",)),
     check("zero", dict(tile_size=68, dtype=np.uint8), calls=3, tag="vector-tail"),
+    # Three 128-bit stores and four bytes past the last full vector.
+    check("zero", dict(tile_size=116, dtype=np.uint8), calls=3, tag="vector-tail"),
+    check("zero", dict(tile_size=20, dtype=np.float32), calls=3, tag="vector-tail"),
+    # A runtime window per call, from starts of every alignment up through
+    # elements, words and 128-bit stores to the native-width body.
+    *[
+        check("zero", dict(tile_size=4 * w, dtype=dt, window=w), calls=4, tag="window")
+        for dt, w in ((np.uint8, 101), (np.int16, 51), (np.float32, 21))
+    ],
     check(
         "zero",
         dict(tile_size=34, dtype=np.int16, vectorized=False),
@@ -225,14 +234,12 @@ CASES: list[Case] = [
         dict(accurate_exp2=True),
         calls=16,
         tag="accurate",
-        devices=("npu2",),
         smoke=True,
     ),
     check(
         "softmax",
         dict(tile_size=32, accurate_exp2=True),
         tag="accurate-short",
-        devices=("npu2",),
         smoke=True,
     ),
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
@@ -409,7 +416,8 @@ CASES: list[Case] = [
         calls=16,
     ),
     # Peano miscompiles the fully unrolled int8 -> int32 K loop from K = 416,
-    # so mm_aie2p.h rolls K up there; the 16x16 tile still unrolls.
+    # so mm_aie2p.h rolls K up there; the 16x16 tile still unrolls. The same
+    # long-K shapes cover mm_aie2.h.
     *[
         check(
             "mm",
@@ -421,7 +429,6 @@ CASES: list[Case] = [
                 input_dtype=np.int8,
                 output_dtype=np.int32,
             ),
-            devices=("npu2",),
         )
         for m, k, n, layout in (
             (16, 512, 32, {}),
@@ -567,6 +574,27 @@ CASES: list[Case] = [
         calls=4,
         devices=("npu1", "npu2"),
     ),
+    # The same tile with the FFN activations fused into its drain.
+    *[
+        Case(
+            "fused_mm",
+            dict(
+                dim_m=16,
+                band_m=16,
+                dim_k=128,
+                dim_n=64,
+                chunk_k=128,
+                out_chunk=512,
+                mmul_shape=(8, 8, 8),
+                b_col_maj=True,
+                epilogue=mode,
+            ),
+            calls=4,
+            devices=("npu1", "npu2"),
+            data_cases=("random", "zeros", "ones", "alternating"),
+        )
+        for mode in ("silu", "gelu")
+    ],
     *[
         check(
             "fused_mm",
@@ -736,13 +764,13 @@ CASES: list[Case] = [
         devices=("npu2",),
         tag="i3",
     ),
-    check("flm_gemma4_prefill_finalize", devices=("npu2",), smoke=True),
-    check("flm_gemma4_prefill_finalize", dict(head_dim=256), devices=("npu2",)),
+    Case("flm_gemma4_prefill_finalize", calls=4, devices=("npu2",), smoke=True),
+    Case("flm_gemma4_prefill_finalize", dict(head_dim=256), calls=4, devices=("npu2",)),
     Case("flm_gemma4_glu_core", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_pli_gelu_core", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_rope_core", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_rope_core", dict(sliding_window=True), calls=4, devices=("npu2",)),
-    check("flm_gemma4_v_norm_core", devices=("npu2",), smoke=True),
+    Case("flm_gemma4_v_norm_core", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_rms_residual_core", calls=4, devices=("npu2",), smoke=True),
     check(
         "flm_gemma4_rms_residual_core",
@@ -799,8 +827,13 @@ CASES: list[Case] = [
         dict(geometry=FLM_GEMMA4_E4B_DECODE),
         devices=("npu2",),
     ),
-    check("flm_gemma4_prefill_round_begin", devices=("npu2",), smoke=True),
-    check("flm_gemma4_prefill_round_begin", dict(head_dim=256), devices=("npu2",)),
+    Case("flm_gemma4_prefill_round_begin", calls=4, devices=("npu2",), smoke=True),
+    Case(
+        "flm_gemma4_prefill_round_begin",
+        dict(head_dim=256),
+        calls=4,
+        devices=("npu2",),
+    ),
     # Mask positions (inner_k, inner_q, inner_k_current): the global build's
     # chunk crosses the causal edge; the sliding-window one, with a window of
     # 8, crosses both edges.
@@ -997,7 +1030,7 @@ CASES: list[Case] = [
     Case("threshold", calls=16, scalars=(100, 255, 0), smoke=True),
     check("threshold", calls=16, scalars=(100, 255, 2), tag="trunc"),
     check("threshold", calls=16, scalars=(100, 255, 4), tag="tozero-inv"),
-    check("threshold", dict(dtype=np.int16), calls=16, scalars=(100, 255, 1)),
+    Case("threshold", dict(dtype=np.int16), calls=16, scalars=(100, 255, 1)),
     Case("bitwise_or", calls=16, smoke=True),
     Case("bitwise_and", calls=16, smoke=True),
     check("bitwise_or", dict(line_width=64), tag="edge-one-vector"),
@@ -1396,7 +1429,7 @@ CASES: list[Case] = [
         scalars=(56, 16, 24, 3, 3, 2, 9, 0),
         tag="bottom-row",
     ),
-    check(
+    Case(
         "bn_conv2dk3",
         dict(input_width=112, input_channels=32, output_channels=16),
         calls=8,
@@ -2123,7 +2156,6 @@ CASES += [
         params=((0, 1),),
         scalars=(128, 64),
         tag="accurate",
-        devices=("npu2",),
         smoke=True,
     ),
     check(
@@ -2132,7 +2164,6 @@ CASES += [
         params=((0, 0),),
         scalars=(37, 37),
         tag="accurate-diagonal-padded",
-        devices=("npu2",),
         smoke=True,
     ),
     # The band. A 32-row query block on the row-group path masks partway
@@ -2169,6 +2200,14 @@ CASES += [
         params=((0, 0),),
         scalars=(13, 13),
         tag="diagonal-padded",
+        smoke=True,
+    ),
+    check(
+        "mha_softmax",
+        dict(dim_m=16, dim_n=16, accurate_exp2=True),
+        params=((0, 0),),
+        scalars=(13, 13),
+        tag="accurate-diagonal-padded",
         smoke=True,
     ),
     check(

@@ -446,7 +446,7 @@ def test_exp_factory_can_include_shared_clamp_header(arch):
 
 @pytest.mark.parametrize(
     "device,reference",
-    [(NPU1Col1, kernels.swiglu_lut_ref), (NPU2Col1, kernels.swiglu_ref)],
+    [(NPU1Col1, kernels.swiglu_table_ref), (NPU2Col1, kernels.swiglu_ref)],
 )
 def test_swiglu_default_reference_matches_architecture(device, reference):
     set_current_device(device())
