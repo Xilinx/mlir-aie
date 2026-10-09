@@ -22,8 +22,8 @@ void zero_scalar(T *__restrict c) {
 }
 
 // Zeroes p[0, n) for n under one 128-bit register, from a 4-byte aligned p:
-// whole 32-bit words, then elements. store_unaligned_v would be shorter, but
-// it rewrites the 64 bytes around its address, past the end of p.
+// whole 32-bit words, then elements. store_unaligned_v would write past p's
+// end; see common/store.h.
 template <typename T>
 inline void zero_sub_vector(T *__restrict p, int n) {
   if constexpr (sizeof(T) < 4) {

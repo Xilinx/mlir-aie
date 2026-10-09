@@ -84,10 +84,8 @@ inline void copyRun(const uint8_t *__restrict src, size_t srcStride,
 
 // The same run, but ending at the end of the destination buffer: `groups`
 // triples then `singles` single blocks leave exactly one block, which is copied
-// at its own width so that nothing is written past it. An unaligned store
-// rewrites the two 32-byte words from the one it starts in, and for a single
-// the second can lie past the buffer, so the singles take the two ending with
-// their last byte.
+// at its own width so that nothing is written past it. The singles' stores
+// are end-anchored; see common/store.h.
 inline void copyRunAtEnd(const uint8_t *__restrict src, size_t srcStride,
                          uint8_t *__restrict dst, size_t groups,
                          size_t singles) {
