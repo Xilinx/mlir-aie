@@ -1311,6 +1311,8 @@ def test_sized_factory_contracts(name, kernel_arch):
     assert fn.contract.tolerance.note
     inputs = [np.ones(1024, dtype=bfloat16)] * (2 if binary else 1)
     reference_name = name.replace("_sized", "_ref")
+    if name == "silu_sized" and kernel_arch == "aie2":
+        reference_name = "silu_table_ref"
     expected = getattr(kernels, reference_name)(*inputs)
     np.testing.assert_array_equal(fn.contract.reference(*inputs), expected)
     with pytest.raises(ValueError):
