@@ -62,6 +62,7 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/BuryPointer.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
@@ -2548,7 +2549,8 @@ int main(int argc, char **argv) {
   //--------------------------------------------------------------------------//
   // All edge declarations live in buildMainGraph; main just builds the graph
   // and then either visualizes it (--emit-dot) or runs it through the engine.
-  Graph g;
+  auto graph = std::make_unique<Graph>();
+  Graph &g = *graph;
   std::vector<EdgeBase *>
       cutEdges; // the --cut points, captured by --checkpoint
   std::vector<EdgeBase *> checkEdges;
@@ -2698,5 +2700,8 @@ int main(int argc, char **argv) {
     }
   }
 
+  // The graph still holds every module it built; freeing them op by op takes
+  // over a second on a large design, and the process is about to exit.
+  llvm::BuryPointer(std::move(graph));
   return 0;
 }
