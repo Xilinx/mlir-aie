@@ -1615,6 +1615,48 @@ LogicalResult ObjectFifoLinkOp::verify() {
     return emitError("ObjectFifoLinkOp does not support 'join' and "
                      "'distribute' at the same time");
 
+  if (isTime()) {
+    if (isMerge() && isDispatch())
+      return emitOpError("a time link merges or dispatches, not both");
+    if (!isMerge() && !isDispatch())
+      return emitOpError("a time link takes turns, so it needs several inputs "
+                         "or several outputs");
+    if (!getSrcOffsets().empty() || !getDstOffsets().empty())
+      return emitOpError("a time link moves whole objects and takes no "
+                         "offsets");
+    std::vector<ObjectFifoCreateOp> fifos = getInputObjectFifos();
+    std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+    fifos.insert(fifos.end(), outs.begin(), outs.end());
+    for (ObjectFifoCreateOp fifo : fifos) {
+      if (fifo.getElemType() != fifos.front().getElemType())
+        return emitOpError("a time link's participants carry one object "
+                           "type, but '")
+               << fifo.name().getValue() << "' carries " << fifo.getElemType()
+               << " and '" << fifos.front().name().getValue() << "' carries "
+               << fifos.front().getElemType();
+    }
+    if (isDispatch()) {
+      for (ObjectFifoCreateOp out : outs)
+        if (out.getConsumerTiles().size() != 1)
+          return emitOpError("each turn of a dispatch reaches one consumer, "
+                             "but '")
+                 << out.name().getValue() << "' has "
+                 << out.getConsumerTiles().size();
+    }
+    if (isMerge()) {
+      PacketInfoAttr pinned;
+      for (ObjectFifoCreateOp in : getInputObjectFifos()) {
+        PacketInfoAttr header = in.packetHeader();
+        if (!header || !header.isAssigned())
+          continue;
+        if (pinned && pinned != header)
+          return emitOpError("a merge is one route with one header, but its "
+                             "inputs pin different ones");
+        pinned = header;
+      }
+    }
+  }
+
   auto participants = [](ObjectFifoLinkOp link) {
     std::vector<ObjectFifoCreateOp> all = link.getInputObjectFifos();
     std::vector<ObjectFifoCreateOp> outs = link.getOutputObjectFifos();
@@ -1659,6 +1701,9 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return emitError("ObjectFifoLinkOp join and distribute require "
                        "semaphore locks, which this device lacks");
   }
+  if (isTime() && tile.isShimTile())
+    return emitOpError("a time link holds its objects on the link point, which "
+                       "a shim tile has no memory for");
 
   if (isJoin()) {
     if (getFifoIns().size() != getSrcOffsets().size())

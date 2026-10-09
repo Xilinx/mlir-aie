@@ -22,7 +22,7 @@ intermediate levels useful.
 | Operation | What it holds |
 | --- | --- |
 | `aie.objectfifo` | A data movement pipe between producer and consumer tiles, with the capacity to buffer `depth` objects of the given element type. |
-| `aie.objectfifo.link` | A connection between two or more fifos meeting on one tile; multiple input or output fifos describe a join or distribute, respectively. |
+| `aie.objectfifo.link` | A connection between two or more fifos meeting on one tile; multiple input or output fifos describe a join or distribute, respectively, each taking a slice of every object. With `mode = #aie.link_mode<time>` they take turns with whole objects instead: a merge (one fan-in route into one channel) or a dispatch (one channel taking turns between the outputs). |
 | `aie.objectfifo.acquire` / `.release` | A core taking objects out of a fifo and giving them back. |
 | `aie.objectfifo.allocate` | An (optional) manual allocation indicating on which tile the objects of the fifo should be held. |
 | `aie.objectfifo.register_external_buffers` | DDR buffers backing a shim end. |
