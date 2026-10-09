@@ -20,6 +20,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -301,18 +302,54 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
   for (const auto &[key, channel] : queue.state())
     if (depthOf(key) != 0)
       keys.insert(key);
+  llvm::DenseMap<mlir::Operation *, QueueEffect> effects;
   body.walk([&](mlir::Operation *op) {
     QueueEffect e = effectOf(op);
-    if (e.kind != QueueEffect::Kind::Ignore && depthOf(e.key) != 0)
+    if (e.kind != QueueEffect::Kind::Ignore && depthOf(e.key) != 0) {
       keys.insert(e.key);
+      effects[op] = e;
+    }
   });
+
+  // Each channel's analysis visits only its own pushes, awaits and polls and
+  // the ops enclosing them, in block order, rather than the whole sequence.
+  std::map<uint32_t, DmaQueueModel::ChannelKey> keyByStatus;
+  for (const auto &key : keys)
+    if (auto status = tm.getDmaStatusAddress(
+            key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2])))
+      keyByStatus[*status] = key;
+  using Visits =
+      llvm::DenseMap<mlir::Block *, llvm::SmallVector<mlir::Operation *>>;
+  std::map<DmaQueueModel::ChannelKey, Visits> visits;
+  auto visit = [&](mlir::Operation *op, const DmaQueueModel::ChannelKey &key) {
+    Visits &blocks = visits[key];
+    for (mlir::Operation *at = op; at != body.getParentOp();
+         at = at->getParentOp()) {
+      auto &ops = blocks[at->getBlock()];
+      if (!ops.empty() && ops.back() == at)
+        break;
+      ops.push_back(at);
+    }
+  };
+  body.walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
+    if (auto it = effects.find(op); it != effects.end()) {
+      visit(op, it->second.key);
+    } else if (auto poll = mlir::dyn_cast<NpuMaskPollOp>(op)) {
+      if (auto address = poll.getAbsoluteAddress())
+        if (auto it = keyByStatus.find(*address); it != keyByStatus.end())
+          visit(op, it->second);
+    }
+  });
+
   DmaQueueModel::State entry = queue.state();
   DmaQueueModel::State merged = entry;
   for (const auto &key : keys) {
     uint32_t depth = depthOf(key);
+    const Visits &channelVisits = visits[key];
     auto channelEffectOf = [&](mlir::Operation *op) {
-      QueueEffect e = effectOf(op);
-      return e.key == key ? e : QueueEffect{};
+      auto it = effects.find(op);
+      return it != effects.end() && it->second.key == key ? it->second
+                                                          : QueueEffect{};
     };
     llvm::SetVector<mlir::Operation *> overflowing;
     std::map<mlir::Operation *, DmaQueueModel::State> witnesses;
@@ -364,7 +401,11 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
     analyze = [&](mlir::Region &region, States states) -> States {
       if (!region.hasOneBlock())
         return unknownRegion(region, std::move(states));
-      for (mlir::Operation &op : region.front()) {
+      auto blockVisits = channelVisits.find(&region.front());
+      if (blockVisits == channelVisits.end())
+        return states;
+      for (mlir::Operation *visited : blockVisits->second) {
+        mlir::Operation &op = *visited;
         if (auto loop = mlir::dyn_cast<mlir::scf::ForOp>(&op)) {
           auto lb = mlir::getConstantIntValue(loop.getLowerBound());
           auto ub = mlir::getConstantIntValue(loop.getUpperBound());
