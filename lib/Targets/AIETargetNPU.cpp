@@ -186,9 +186,9 @@ static DenseIntElementsAttr cachedBlockWriteData(
 
 LogicalResult appendBlockWrite(
     std::vector<uint32_t> &instructions, NpuBlockWriteOp op,
-    mlir::SymbolTable &symTab,
+    mlir::SymbolTable &symTab, const NamedOpTable &names,
     llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> &dataCache) {
-  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
   if (!address)
     return op.emitOpError(
         "Cannot translate blockwrite with unresolved address to a static TXN "
@@ -241,8 +241,9 @@ void appendCreateScratchpad(std::vector<uint32_t> &instructions,
 }
 
 LogicalResult appendUpdateRegFromScratchpad(std::vector<uint32_t> &instructions,
-                                            NpuUpdateFromScratchpadOp op) {
-  std::optional<uint32_t> address = op.getAbsoluteAddress();
+                                            NpuUpdateFromScratchpadOp op,
+                                            const NamedOpTable &names) {
+  std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
   if (!address)
     return op.emitOpError("Cannot translate update_from_scratchpad with "
                           "unresolved address to a static TXN binary");
@@ -386,6 +387,7 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   // symbol scan (cachedBlockWriteData). ~47% of this function on a B=128
   // sequence.
   mlir::SymbolTable symTab(deviceOp.getOperation());
+  NamedOpTable names(deviceOp.getOperation());
   llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> blockWriteDataCache;
 
   // Accumulates failure from the per-op append helpers (e.g. a non-constant
@@ -434,8 +436,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           .Case<NpuBlockWriteOp>([&](auto op) {
             count++;
             uint32_t before = byteOffset();
-            uint64_t addr = op.getAbsoluteAddress().value_or(0);
-            if (failed(appendBlockWrite(instructions, op, symTab,
+            uint64_t addr = op.getAbsoluteAddress(&names).value_or(0);
+            if (failed(appendBlockWrite(instructions, op, symTab, names,
                                         blockWriteDataCache)))
               result = failure();
             pushLocEntry(locmap, before, byteOffset(), "BLOCKWRITE",
@@ -500,7 +502,7 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           .Case<NpuUpdateFromScratchpadOp>([&](auto op) {
             count++;
             uint32_t before = byteOffset();
-            if (failed(appendUpdateRegFromScratchpad(instructions, op)))
+            if (failed(appendUpdateRegFromScratchpad(instructions, op, names)))
               result = failure();
             pushLocEntry(locmap, before, byteOffset(), "UPDATE_FROM_SCRATCHPAD",
                          op->getName().getStringRef(), std::nullopt, op, tm);

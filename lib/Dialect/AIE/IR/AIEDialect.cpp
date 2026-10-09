@@ -167,6 +167,19 @@ Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
   return nullptr;
 }
 
+xilinx::AIE::NamedOpTable::NamedOpTable(Operation *symbolTableOp) {
+  if (!symbolTableOp->hasTrait<mlir::OpTrait::SymbolTable>() ||
+      symbolTableOp->getRegion(0).empty()) {
+    return;
+  }
+  for (Operation &op : symbolTableOp->getRegion(0).front()) {
+    if (auto name = op.getAttrOfType<StringAttr>(
+            mlir::SymbolTable::getSymbolAttrName())) {
+      ops.try_emplace(name, &op);
+    }
+  }
+}
+
 Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
                                         StringRef name) {
   return lookupNamedOpIn(symbolTableOp,

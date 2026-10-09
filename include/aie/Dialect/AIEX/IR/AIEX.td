@@ -954,7 +954,9 @@ def AIE_NpuBlockWriteOp : AIEX_Op<"npu.blockwrite", []> {
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
   let extraClassDeclaration = [{
-    std::optional<uint32_t> getAbsoluteAddress();
+    // `names` resolves a referenced buffer without a scan of the device.
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
     mlir::DenseIntElementsAttr getDataWords();
   }];
 }
@@ -1200,7 +1202,9 @@ def AIE_NpuUpdateFromScratchpadOp : AIEX_Op<"npu.update_from_scratchpad", []> {
 
   }];
   let extraClassDeclaration = [{
-    std::optional<uint32_t> getAbsoluteAddress();
+    // `names` resolves a referenced buffer without a scan of the device.
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
   let hasVerifier = 1;
 }

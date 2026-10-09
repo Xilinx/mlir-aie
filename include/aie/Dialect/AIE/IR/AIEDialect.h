@@ -144,6 +144,24 @@ OpTy lookupNamedOp(mlir::Operation *from, NameT name) {
   return llvm::dyn_cast_if_present<OpTy>(lookupNamedOp(from, name));
 }
 
+// `lookupNamedOpIn` indexed once, for resolving many names in a symbol table
+// whose named ops do not change meanwhile.
+class NamedOpTable {
+public:
+  explicit NamedOpTable(mlir::Operation *symbolTableOp);
+
+  mlir::Operation *lookup(mlir::StringAttr name) const {
+    return ops.lookup(name);
+  }
+  template <typename OpTy>
+  OpTy lookup(mlir::StringAttr name) const {
+    return llvm::dyn_cast_if_present<OpTy>(lookup(name));
+  }
+
+private:
+  llvm::DenseMap<mlir::StringAttr, mlir::Operation *> ops;
+};
+
 // Generate a symbol name guaranteed to be unique within the symbol table of
 // `symbolTableOp`. Names are formed as "<prefix><n>" for increasing n; the
 // counter is advanced past the chosen value so repeated calls with the same
