@@ -39,16 +39,16 @@
 // what lut_kernel.cc exists to do.
 #include "lut_based_ops.h"
 
-#if AIE_TUNED_AIE2P
-// AIE2P's getTanhBf16 written out, the accumulator kept for a caller to narrow
-// where it likes: 32 segments of 0.25 over [-4, 4), each offset + slope * x.
-// getTanhBf16 builds an aie::linear_approx on every call, and its scratchpad
-// member escapes, so each call stored the whole object to the stack and read
-// the input back through it. x is clamped to the table's range first; the end
-// segments are the constants -1 and 1, so no finite result changes and +-inf
-// no longer makes 0 * inf. The tables' centring offset goes on the index, not
-// the pointers: a table pointer offset from the array loses the reads' memory
-// operands, and every load and store around them is then kept in order.
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
+// getTanhBf16 written out, the accumulator kept for a caller to narrow where
+// it likes: 32 segments of 0.25 over [-4, 4), each offset + slope * x.
+// AIE2P's getTanhBf16 builds an aie::linear_approx on every call, and its
+// scratchpad member escapes, so each call stored the whole object to the stack
+// and read the input back through it. x is clamped to the table's range first;
+// the end segments are the constants -1 and 1, so no finite result changes and
+// +-inf no longer makes 0 * inf. The tables' centring offset goes on the index,
+// not the pointers: a table pointer offset from the array loses the reads'
+// memory operands, and every load and store around them is then kept in order.
 //
 // Any table laid out as tanh_lut_ab/cd reads the same way (sigmoid_lut.h's
 // too); shift sets the segment width 2^(4 - shift), range +-2^(8 - shift).
@@ -64,6 +64,12 @@ lut_segments_acc(const float *ab, const float *cd,
       aie::add(aie::vector<int32, 16>(bfloat16_to_int(xc, shift)), bias_bytes);
   v32bfloat16 coeff0, coeff1;
   load_lut_2x_float(ab, cd, index, coeff0, coeff1);
+#if AIE_TUNED_AIE2
+  // Lanes 0-15 of the slopes are their zero low halves, so x goes in twice.
+  return mac_elem_16_2(::shuffle(coeff0, coeff1, T16_16x4_lo),
+                       aie::concat(xc, xc),
+                       (v16accfloat)::shuffle(coeff0, coeff1, T32_16x2_hi));
+#else
   aie::accum<accfloat, 32> offset;
   offset.insert(1, aie::accum<accfloat, 16>(
                        (v16accfloat)::shuffle(coeff0, coeff1, T32_16x2_hi)));
@@ -72,7 +78,11 @@ lut_segments_acc(const float *ab, const float *cd,
   aie::accum<accfloat, 32> result =
       mac_elem_32(::shuffle(coeff0, coeff1, T16_16x4_lo), xx, offset);
   return result.extract<16>(1);
+#endif
 }
+#endif
+
+#if AIE_TUNED_AIE2P
 
 // The same over 32 lanes: both halves' table reads, then one mac with every
 // lane live. A loop of the 16-lane form, called twice a trip, runs wrong from

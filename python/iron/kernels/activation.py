@@ -494,7 +494,7 @@ def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             silu_ref,
             count=False,
             use_lut=use_lut,
-            elementwise=silu_table_ref if _tuned_arch() == "aie2p" else silu_lut_ref,
+            elementwise=silu_table_ref,
             tolerance=_vtanh_family_tolerance("silu"),
         ),
         use_lut_tanh=use_lut,
@@ -517,7 +517,10 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DSILU_ELEMS={tile_size}"],
         contract=_unary_lut_contract(
-            silu_ref, count=tile_size, tolerance=_vtanh_family_tolerance("silu")
+            silu_ref,
+            count=tile_size,
+            elementwise=silu_table_ref,
+            tolerance=_vtanh_family_tolerance("silu"),
         ),
     )
 
@@ -569,11 +572,7 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, In, Out),
-            reference=(
-                swiglu_ref
-                if not use_lut_model
-                else swiglu_table_ref if _tuned_arch() == "aie2p" else swiglu_lut_ref
-            ),
+            reference=(swiglu_table_ref if use_lut_model else swiglu_ref),
             acc_dtype=bfloat16,
             tolerance=(
                 _LUT_MODEL_TOLERANCE
@@ -773,9 +772,7 @@ def sigmoid(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             sigmoid_ref,
             count=tile_size,
             use_lut=use_lut,
-            elementwise=(
-                sigmoid_table_ref if _tuned_arch() == "aie2p" else sigmoid_lut_ref
-            ),
+            elementwise=sigmoid_table_ref,
             tolerance=_vtanh_family_tolerance("sigmoid"),
         ),
         use_lut_tanh=use_lut,
@@ -972,32 +969,14 @@ def _bf16_ftz(v):
     return _bf16(np.where(np.abs(v) < 2.0**-126, np.copysign(np.float32(0), v), v))
 
 
-def sigmoid_lut_ref(x):
-    """Model of [`sigmoid`][iron.kernels.activation.sigmoid]'s LUT build on aie2.
-
-    AIE2P's reads a table of its own; see
-    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref]. This
-    follows activation/sigmoid.cc's aie2 branch step for step: ``x/2`` is
-    exact (0.5 is a power of two), the accumulator overload of ``tanh_bf16_v16`` narrows to bf16
-    before the table, and the ``+1`` and ``*0.5`` stay in the accumulator so
-    there is a single store rounding at the end.
-    """
-    xf = np.asarray(x).astype(np.float32)
-    t = np.asarray(tanh_lut_ref(_bf16(xf * 0.5)), np.float32)
-    return _bf16((t + 1.0) * 0.5).astype(np.asarray(x).dtype)
-
-
 def sigmoid_table_ref(x):
-    """Model of AIE2P's [`sigmoid`][iron.kernels.activation.sigmoid] built with ``use_lut=True``.
+    """Model of [`sigmoid`][iron.kernels.activation.sigmoid]'s LUT build.
 
-    activation/sigmoid.cc reads its own table there: getTanhBf16's segments
+    activation/sigmoid.cc reads its own table: getTanhBf16's segments
     rewritten for ``0.5 + 0.5 * tanh(x/2)``, so segment ``e`` has slope
     ``slope[e] / 4`` and offset ``0.5 + 0.5 * offset[e]`` and covers 0.5 of x.
     x is clamped to ``[-8, 8 - 1/32]``; the one rounding is the store to bf16,
     as in [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref].
-    [`sigmoid_lut_ref`][iron.kernels.activation.sigmoid_lut_ref] also rounds
-    ``tanh`` to bf16 before ``0.5 * (1 + t)``, which makes it 0 over
-    ``[-7.5, -6.9]``, where this is not.
     """
     xf = np.clip(np.asarray(x).astype(np.float32), -8.0, 8.0 - 1.0 / 32)
     e = np.clip(np.floor(xf * 2.0).astype(np.int64), -16, 15) + 16
@@ -1006,57 +985,32 @@ def sigmoid_table_ref(x):
     return (slope * xf + offset).astype(bfloat16).astype(np.asarray(x).dtype)
 
 
-def silu_lut_ref(x):
-    """Model of [`silu`][iron.kernels.activation.silu]'s LUT build on aie2.
-
-    AIE2P's multiplies by its sigmoid table instead; see
-    [`silu_table_ref`][iron.kernels.activation.silu_table_ref].
-    activation/silu.cc narrows the sigmoid factor to bf16 before the final
-    multiply, so that rounding is modelled too, not folded away. The sigmoid
-    is exactly 0 from x = -8 down, and x is clamped there before the multiply,
-    so -inf gives 0 rather than NaN. A subnormal product is flushed to zero.
-    """
-    xf = np.asarray(x).astype(np.float32)
-    sig = np.asarray(sigmoid_lut_ref(xf), np.float32)
-    return _bf16_ftz(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
-
-
 def silu_table_ref(x):
-    """Model of AIE2P's [`silu`][iron.kernels.activation.silu] built with ``use_lut=True``.
+    """Model of [`silu`][iron.kernels.activation.silu]'s LUT build.
 
-    [`silu_lut_ref`][iron.kernels.activation.silu_lut_ref] with AIE2P's
-    sigmoid table,
-    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref], as the
-    bf16 factor.
+    activation/silu.cc multiplies x by the bf16 sigmoid of
+    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref], so that
+    rounding is modelled too, not folded away. The sigmoid is exactly 0 from
+    x = -8 down, and x is clamped there before the multiply, so -inf gives 0
+    rather than NaN. A subnormal product is flushed to zero.
     """
     xf = np.asarray(x).astype(np.float32)
     sig = np.asarray(sigmoid_table_ref(xf), np.float32)
     return _bf16_ftz(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
 
 
-def swiglu_lut_ref(x, w1, w2):
-    """Model of [`swiglu`][iron.kernels.activation.swiglu]'s LUT build on aie2.
-
-    AIE2P's reads its sigmoid table instead; see
-    [`swiglu_table_ref`][iron.kernels.activation.swiglu_table_ref].
-    activation/swiglu.cc narrows after every multiply -- ``x*w1``, ``x*w2``, the
-    sigmoid factor and the silu product each land in a bf16 register before
-    the next step -- which is what this reproduces. ``x*w2`` is clamped at -8
-    before its multiply, as in silu_lut_ref, and where the silu product is 0
-    the output is 0, so an overflowed ``x*w1`` does not make ``inf * 0``.
-    Each subnormal product is flushed to zero, so a subnormal ``x*w2`` zeroes
-    the output through the gate.
-    """
-    return _swiglu_model(x, w1, w2, sigmoid_lut_ref)
-
-
 def swiglu_table_ref(x, w1, w2):
-    """Model of AIE2P's [`swiglu`][iron.kernels.activation.swiglu] built with ``use_lut=True``.
+    """Model of [`swiglu`][iron.kernels.activation.swiglu]'s LUT build.
 
-    [`swiglu_lut_ref`][iron.kernels.activation.swiglu_lut_ref] with AIE2P's
-    sigmoid table,
-    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref], as the
-    bf16 factor.
+    activation/swiglu.cc narrows after every multiply -- ``x*w1``, ``x*w2``, the
+    sigmoid factor of
+    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref] and the
+    silu product each land in a bf16 register before the next step -- which
+    is what this reproduces. ``x*w2`` is clamped at -8 before its multiply, as
+    in silu_table_ref, and where the silu product is 0 the output is 0, so an
+    overflowed ``x*w1`` does not make ``inf * 0``. Each subnormal product is
+    flushed to zero, so a subnormal ``x*w2`` zeroes the output through the
+    gate.
     """
     return _swiglu_model(x, w1, w2, sigmoid_table_ref)
 
@@ -1135,7 +1089,7 @@ def swiglu_ref(x, w1, w2):
     float64; LUT-approximation territory, pair with ``rtol=0.128``.
 
     Where silu is 0 (``x * w2`` is -inf, or low enough to underflow) the
-    output is 0, as swiglu_lut_ref's is, even where ``x * w1`` overflowed:
+    output is 0, as swiglu_table_ref's is, even where ``x * w1`` overflowed:
     0 is the limit as x goes to -inf, and ``inf * 0`` would be NaN.
     """
     xf = _f64(x)

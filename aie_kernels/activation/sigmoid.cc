@@ -20,9 +20,8 @@ using namespace aie;
 
 // sigmoid(x) = 0.5 * (1 + tanh(x/2)), 32 bf16 elements per iteration, with
 // tanh(x/2) on the two 16-lane halves both tanh paths work in. Passing the
-// multiply's accumulator straight in keeps x/2 in f32 on AIE2P; AIE2's LUT
-// narrows it, which is the accuracy difference between the two architectures.
-// AIE2P's LUT build reads the table above instead.
+// multiply's accumulator straight in keeps x/2 in f32 for AIE2P's vtanh.
+// AIE2, and AIE2P's LUT build, read the table above instead.
 //
 // 0.5 * (1 + t) is one mac, t * 0.5 onto an accumulator holding 0.5, rather
 // than an add and a multiply. Scaling by 0.5 is exact, so the result is the
@@ -34,17 +33,10 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
 
   const int num_elems = SIGMOID_ELEMS;
 #if AIE_TUNED_AIE2
-  // AIE2's tanh reads a table; lut_map_bf16 lays the loop out around the reads.
-  aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
-  aie::accum<accfloat, 16> half;
-  half.from_vector(register_0_5);
-  lut_map_bf16(
-      input_vector, output_vector, num_elems, [&](aie::vector<bfloat16, 16> x) {
-        return aie::vector<bfloat16, 16>(
-            aie::mac(half, tanh_bf16_v16(aie::mul(x, register_0_5)),
-                     register_0_5)
-                .to_vector<bfloat16>());
-      });
+  // lut_map_bf16 lays the loop out around the table reads.
+  lut_map_bf16<2>(
+      input_vector, output_vector, num_elems,
+      [](aie::vector<bfloat16, 16> x) { return sigmoid_lut_bf16(x); });
 #elif AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
   // The loop of tanh_lut_map, whose comment has why 16 is asked for.
   auto it_in = aie::begin_vector<32>(input_vector);
