@@ -10,13 +10,15 @@ import inspect
 import itertools
 import os
 from pathlib import Path
-from types import FunctionType
+from types import CodeType, FunctionType
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 # Unresolved, like co_filename: a dev build symlinks build/python/aie to source.
 AIE_ROOT = Path(__file__).parent.parent
 _AIE_PREFIX = f"{AIE_ROOT}{os.sep}"
+# A statement's column, by its code and instruction: finding one walks the code.
+_COLUMNS: dict[tuple[CodeType, int], int] = {}
 
 
 def is_internal_file(filename: str) -> bool:
@@ -49,11 +51,14 @@ class SourceSite:
             frame = frame.f_back
         if frame is None:
             return cls(None)
-        # f_lasti counts bytes; co_positions has an entry per 2-byte unit.
-        positions = itertools.islice(
-            frame.f_code.co_positions(), frame.f_lasti // 2, None
-        )
-        col = next(positions)[2] or 0
+        key = (frame.f_code, frame.f_lasti)
+        col = _COLUMNS.get(key)
+        if col is None:
+            # f_lasti counts bytes; co_positions has an entry per 2-byte unit.
+            positions = itertools.islice(
+                frame.f_code.co_positions(), frame.f_lasti // 2, None
+            )
+            col = _COLUMNS[key] = next(positions)[2] or 0
         return cls(frame.f_code.co_filename, frame.f_lineno, col)
 
     def location(self, name: str | None = None) -> "ir.Location":
