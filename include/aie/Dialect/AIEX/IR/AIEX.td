@@ -638,6 +638,7 @@ def AIE_NpuDmaMemcpyNdOp
     The optional `packet` attribute defines the packet header and packet type that gets issued per DMA BD.
     If the attribute is set, then every time the DMA BD gets issued, a packet header is generated prior to the transmission of data.
     The packet header is used to guide arbitration throughout a packet-routed data flow, where each switch box arbitrates the data packet to stream to a successor based on the packet header.
+    Without the attribute, a transfer on a packet-switched `aie.shim_dma_allocation` stamps the header allocation assigned to it.
 
     #### Runtime Length
 
