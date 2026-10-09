@@ -156,6 +156,91 @@ k1_chunks(const TI *__restrict in, const int8_t *__restrict wts,
   }
 }
 
+#if AIE_TUNED_AIE2 && defined(CONV_INPUT_WIDTH)
+// AIE2 rows that 4-pixel chunks do not tile: K1W_U rows span whole 32-byte
+// windows, so one step loads those once and shifts each chunk out of them.
+// More chunks, or a 5-pixel row, spill.
+constexpr int K1W_ROW = CONV_INPUT_WIDTH * 8;
+constexpr int K1W_U = CONV_INPUT_WIDTH % 2 ? 4 : 2;
+constexpr int K1W_WINDOWS = K1W_U * K1W_ROW / 32;
+constexpr int K1W_CHUNKS = (CONV_INPUT_WIDTH + 3) / 4;
+constexpr bool K1_WIN =
+    CONV_INPUT_WIDTH % 4 != 0 && CONV_INPUT_WIDTH >= 6 && K1W_CHUNKS <= 6;
+
+constexpr int k1w_x(int j) {
+  return j < K1W_CHUNKS - 1 ? 32 * j : K1W_ROW - 32;
+}
+
+// The 32 bytes at offset s of the windows w.
+template <typename T>
+static inline aie::vector<T, 32> k1w_chunk(const aie::vector<T, 32> *w,
+                                           const int s) {
+  const int i = s / 32, f = s % 32;
+  if (f == 0)
+    return w[i];
+  const aie::vector<T, 64> p = aie::concat(w[i], w[i + 1]);
+  return aie::vector<T, 64>(::shift_bytes(p, p, f)).template extract<32>(0);
+}
+
+// The last ic_blocks % K1W_U input rows go after the loop, each chunk loading
+// only the windows it covers. Needs ic_blocks >= 2 * K1W_U.
+template <typename TI, typename TO, typename Epi, typename... S>
+static void k1_rows_win(const TI *__restrict input,
+                        const int8_t *__restrict kernels, TO *__restrict output,
+                        const int32_t ic_blocks, const int32_t oc_blocks,
+                        Epi epi, const S *__restrict... side) {
+  constexpr int N = K1W_CHUNKS;
+  using MMUL = aie::mmul<4, 8, 8, TI, int8>;
+  const int32_t groups = ic_blocks / K1W_U;
+  const int32_t rem = ic_blocks % K1W_U;
+  for (int oc = 0; oc < oc_blocks; oc++) {
+    MMUL acc[N];
+    AIE_LOOP_UNROLL_FULL
+    for (int j = 0; j < N; j++)
+      acc[j] = MMUL(aie::zeros<acc32, MMUL::size_C>());
+    const TI *__restrict in = input;
+    const int8_t *__restrict wts = kernels + oc * ic_blocks * 64;
+    AIE_LOOP_MIN_ITERATION_COUNT(2)
+    for (int g = 0; g < groups; g++) {
+      aie::vector<TI, 32> w[K1W_WINDOWS];
+      AIE_LOOP_UNROLL_FULL
+      for (int i = 0; i < K1W_WINDOWS; i++)
+        w[i] = aie::load_v<32>(in + 32 * i);
+      AIE_LOOP_UNROLL_FULL
+      for (int u = 0; u < K1W_U; u++) {
+        const aie::vector<int8, 64> b = aie::load_v<64>(wts + 64 * u);
+        AIE_LOOP_UNROLL_FULL
+        for (int j = 0; j < N; j++)
+          acc[j].mac(k1w_chunk(w, u * K1W_ROW + k1w_x(j)), b);
+      }
+      in += K1W_U * K1W_ROW;
+      wts += K1W_U * 64;
+    }
+    AIE_LOOP_UNROLL_FULL
+    for (int u = 0; u < K1W_U - 1; u++) {
+      if (u < rem) {
+        const aie::vector<int8, 64> b = aie::load_v<64>(wts + 64 * u);
+        AIE_LOOP_UNROLL_FULL
+        for (int j = 0; j < N; j++) {
+          const int s = u * K1W_ROW + k1w_x(j);
+          aie::vector<TI, 32> w[2];
+          w[0] = aie::load_v<32>(in + s / 32 * 32);
+          if (s % 32)
+            w[1] = aie::load_v<32>(in + s / 32 * 32 + 32);
+          acc[j].mac(k1w_chunk(w, s % 32), b);
+        }
+      }
+    }
+    TO *__restrict out = output + oc * K1W_ROW;
+    AIE_LOOP_UNROLL_FULL
+    for (int j = 0; j < N; j++) {
+      const int32_t o = oc * K1W_ROW + k1w_x(j);
+      k1_store<false>(out + k1w_x(j), epi(acc[j], (side + o)...));
+    }
+  }
+}
+#endif
+
 // Walks the whole [OC/8][W][8] output; side buffers share its layout.
 // Needs input_width >= P.
 template <bool Aligned, int P = 4, typename TI, typename TO, typename Epi,
@@ -163,6 +248,16 @@ template <bool Aligned, int P = 4, typename TI, typename TO, typename Epi,
 static void k1_rows(const TI *input, const int8_t *kernels, TO *output,
                     const int32_t input_width, const int32_t input_channels,
                     const int32_t output_channels, Epi epi, const S *...side) {
+#if AIE_TUNED_AIE2 && defined(CONV_INPUT_WIDTH)
+  if constexpr (!Aligned && K1_WIN) {
+    if (input_width == CONV_INPUT_WIDTH && input_channels >= 16 * K1W_U &&
+        ((uintptr_t)input & 31) == 0) {
+      k1_rows_win(input, kernels, output, input_channels / 8,
+                  output_channels / 8, epi, side...);
+      return;
+    }
+  }
+#endif
   constexpr int N = 4;
   constexpr int E = 8 * P;
   const int32_t row = input_width * 8;
