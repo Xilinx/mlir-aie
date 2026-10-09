@@ -185,8 +185,10 @@ aie.route from @d1 to [@d2] {packet = #aie.packet_info<>}
 aie.route from @d1 to [@d2] {packet = #aie.packet_info<pkt_id = 7>}
 ```
 
-At the frontend this is chosen per fifo, with `packet` and `packet_id` on
-`aie.objectfifo`, or `ObjectFifo(..., packet=True, packet_id=7)` in IRON.
+At the frontend this is chosen per fifo through its transport,
+`transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 7>>` on
+`aie.objectfifo` or `ObjectFifo(..., transport=Transport.dma(packet=Packet(id=7)))`
+in IRON. The same header rides on the route unchanged.
 
 ## Examples
 
@@ -307,6 +309,18 @@ Pool depth covers the largest acquire a core on that tile makes, plus one so the
 core can hold an object while the next arrives. A tile no core touches gets the
 fifo's declared size.
 
+The fifo's `transport` names the path. Absent (`auto`), split uses shared
+memory when both ends reach one memory module and nothing forces DMAs.
+`#aie.transport<dma>` forces the DMAs, and `#aie.transport<shared_mem>` fails
+split with the reason when shared memory cannot be had (the ends share no
+memory module, an end reshapes the data, `repeat_count`, a link, and so on).
+
+Each end names what drives it, `prod_port` and one `cons_ports` entry per
+consumer. `#aie.end_port<DMA : 1>` pins that end's DMA endpoint to channel 1.
+`#aie.end_port<Core : 0>` wires the end to the core's stream port 0: it becomes
+an `aie.route_endpoint` with a `Core` bundle and holds no objects, so a core
+cannot acquire or release on it.
+
 ### 2. `--aie-objectfifo-verify`
 
 Checks the completeness rules listed below. Designs that supply an endpoint by
@@ -411,7 +425,6 @@ Endpoints:
 Flows and core accesses:
 
 - a flow has at least one destination, and its source and destinations are endpoints
-- `packet_id` requires a packet flow
 - `acquire` and `release` sit inside a core, and `acquire` takes at least one object of the pool's element type
 
 ### By `--aie-objectfifo-verify`

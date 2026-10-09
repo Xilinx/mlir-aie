@@ -12,7 +12,7 @@ module @bad_acquire {
     %tile12 = aie.tile(1, 2)
     %tile33 = aie.tile(3, 3)
 
-    aie.objectfifo @of_stream (%tile12, {%tile33}, 2 : i32) {aie_stream = 0 : i32, aie_stream_port = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_stream (%tile12, {%tile33}, 2 : i32) {prod_port = #aie.end_port<Core : 0>} : !aie.objectfifo<memref<16xi32>>
 
     %core12 = aie.core(%tile12) {
       // expected-error@+1 {{'aie.objectfifo.acquire' op cannot acquire from objectfifo stream port}}

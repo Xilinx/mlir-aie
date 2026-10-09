@@ -14,7 +14,7 @@ module @bad_dims_to_stream {
 
     // expected-error@+1 {{`dimensionsToStream` data layout transformations are unavailable on stream end}}
     aie.objectfifo @of_stream (%tile12 dimensionsToStream [<size = 16, stride = 1>],
-                               {%tile33}, 2 : i32) {aie_stream = 0 : i32, aie_stream_port = 0 : i32} 
+                               {%tile33}, 2 : i32) {prod_port = #aie.end_port<Core : 0>} 
                                : !aie.objectfifo<memref<16xi32>>
   }
 }

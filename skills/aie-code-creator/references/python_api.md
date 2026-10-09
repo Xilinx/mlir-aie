@@ -113,10 +113,11 @@ wts = ObjectFifo(prod_ty, depth=1, name="wts",
                  consumer_obj_type=cons_ty)   # 4:1 — one fill, four consumer acquires
 ```
 
-**`aie_stream=(end, port)` — direct AIE-stream, no L1 buffer.** Marks the producer side as wire-only; the consumer reads straight off the stream. Pair with a kernel that writes per-element via `aie::stream::put_ms(value)` — the core body never acquires/releases the producer handle.
+**`port=Port.stream(n)` — direct AIE-stream end, no L1 buffer.** On a handle, wires that end to the core's stream port `n`; the other end reads straight off the stream. Pair a stream producer with a kernel that writes per-element via `aie::stream::put_ms(value)` — the core body never acquires/releases the producer handle. `Port.dma(n)` on a handle pins a DMA channel instead.
 
 ```python
-of_out = ObjectFifo(dout_ty, name="out", depth=2, aie_stream=(0, 0))
+of_out = ObjectFifo(dout_ty, name="out", depth=2)
+w = Worker(body, fn_args=[of_in.cons(), of_out.prod(port=Port.stream(0))])
 ```
 
 ## Worker

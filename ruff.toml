@@ -73,9 +73,9 @@ extend-exclude = [
 #     python-bindings type-namespace convention (`T` used 30+ times).
 #   N803/N806: matrix/tensor-dimension math notation (N_div_n, ml.py's W/A/D
 #     following the referenced Pytorch_BN_Fold algorithm's own variable
-#     names), true local constants (_RGBA, _ACC_FACTOR), an MLIR attribute
-#     name mirrored verbatim (via_DMA -- literally `via_DMA` in the IR, see
-#     aie_ops.py FileCheck tests), a public API parameter used externally
+#     names), true local constants (_RGBA, _ACC_FACTOR), MLIR attribute
+#     names mirrored verbatim (dimensionsToStream, initValues), a public API
+#     parameter used externally
 #     (hasElse), and dynamically-fetched dialect op/enum classes bound via
 #     getattr (regdb.py/parse.py) because pyright can't see attributes on the
 #     compiled bindings module -- renaming those to lowercase would make

@@ -34,7 +34,7 @@ module @shim_to_stream_AIE2 {
     %tile20 = aie.tile(2, 0)
     %tile33 = aie.tile(3, 3)
 
-    aie.objectfifo @of_stream (%tile20, {%tile33}, 2 : i32) {aie_stream = 1 : i32, aie_stream_port = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_stream (%tile20, {%tile33}, 2 : i32) {cons_ports = [#aie.end_port<Core : 0>]} : !aie.objectfifo<memref<16xi32>>
 
     %ext_buffer_in = aie.external_buffer {sym_name = "ext_buffer_in"}: memref<16xi32>
     aie.objectfifo.register_external_buffers @of_stream (%tile20, {%ext_buffer_in}) : (memref<16xi32>)

@@ -12,7 +12,7 @@ module @bad_shim_tile_output {
     %tile10 = aie.tile(1, 0) 
     %tile33 = aie.tile(3, 3)
 
-    // expected-error@+1 {{`aie_stream` is not available for shim and mem tiles}}
-    aie.objectfifo @of_stream (%tile10, {%tile33}, 2 : i32) {aie_stream = 0 : i32, aie_stream_port = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    // expected-error@+1 {{a Core stream port end is not available for shim and mem tiles}}
+    aie.objectfifo @of_stream (%tile10, {%tile33}, 2 : i32) {prod_port = #aie.end_port<Core : 0>} : !aie.objectfifo<memref<16xi32>>
   }
 }

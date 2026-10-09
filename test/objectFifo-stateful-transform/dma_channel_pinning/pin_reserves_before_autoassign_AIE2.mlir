@@ -31,6 +31,6 @@ module @dma_channel_pinning_reserve {
     %tile33 = aie.tile(3, 3)
 
     aie.objectfifo @of_auto (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of_pinned (%tile12, {%tile33}, 2 : i32) {prod_dma_channel = 0 : i32, cons_dma_channels = array<i32: 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_pinned (%tile12, {%tile33}, 2 : i32) {prod_port = #aie.end_port<DMA : 0>, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
   }
 }

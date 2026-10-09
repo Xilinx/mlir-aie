@@ -55,7 +55,7 @@ module @stream_to_link_AIE2 {
     %tile11 = aie.tile(1, 1)
     %tile33 = aie.tile(3, 3)
 
-    aie.objectfifo @of_stream (%tile33, {%tile11}, 2 : i32) {aie_stream = 0 : i32, aie_stream_port = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_stream (%tile33, {%tile11}, 2 : i32) {prod_port = #aie.end_port<Core : 0>} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @of_out (%tile11, {%tile10}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo.link [@of_stream] -> [@of_out] ([] [])
   }

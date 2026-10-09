@@ -316,6 +316,106 @@ def ObjectFifoRole
 }
 
 //===----------------------------------------------------------------------===//
+// ObjectFifo transport
+//===----------------------------------------------------------------------===//
+
+def ObjectFifoTransportMode
+    : I32EnumAttr<"ObjectFifoTransportMode",
+                  "The hardware path an objectFifo's objects travel over",
+                  [I32EnumAttrCase<"Auto", 0, "auto">,
+                   I32EnumAttrCase<"SharedMem", 1, "shared_mem">,
+                   I32EnumAttrCase<"DMA", 2, "dma">]> {
+  let cppNamespace = "xilinx::AIE";
+}
+
+// Spelled in full, `#aie.packet_info<...>`, as on `aie.route`.
+def PacketInfoField : OptionalParameter<"PacketInfoAttr"> {
+  let parser = [{ [&]() -> ::mlir::FailureOr<PacketInfoAttr> {
+    PacketInfoAttr packet;
+    if (::mlir::failed($_parser.parseAttribute(packet)))
+      return ::mlir::failure();
+    return packet;
+  }() }];
+  let printer = "$_printer.printAttribute($_self)";
+}
+
+def ObjectFifoTransportAttr : AttrDef<AIE_Dialect, "ObjectFifoTransport", []> {
+  let mnemonic = "transport";
+  let summary = "Which hardware path carries an objectFifo's objects";
+  let description = [{
+    `auto` leaves the choice to `--aie-objectfifo-split`, which uses shared
+    memory when both ends reach one memory module and nothing about the fifo
+    forces DMAs. `shared_mem` and `dma` name a path, and split fails when it
+    cannot be had.
+
+    `packet` asks for the DMA path's stream connection to be packet-switched,
+    sharing the stream with other packet flows rather than reserving a circuit.
+    It is the same `#aie.packet_info` header the route and, after allocation,
+    the endpoints and buffer descriptors carry: `#aie.packet_info<>` lets
+    allocation pick the id, `#aie.packet_info<pkt_id = 3>` pins it. It belongs
+    to `auto` and `dma`; on `auto` it only matters when the DMAs are used.
+
+    What drives each end (a DMA channel or a core stream port) is not part of
+    the path; see `#aie.end_port`.
+
+    Example:
+    ```
+      transport = #aie.transport<dma>
+      transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>
+    ```
+  }];
+
+  let parameters = (ins EnumParameter<ObjectFifoTransportMode>:$mode,
+      PacketInfoField:$packet);
+
+  let assemblyFormat = "`<` $mode (`,` struct($packet)^)? `>`";
+
+  let genVerifyDecl = 1;
+}
+
+def ObjectFifoEndPortAttr : AttrDef<AIE_Dialect, "ObjectFifoEndPort", []> {
+  let mnemonic = "end_port";
+  let summary = "What drives one end of an objectFifo";
+  let description = [{
+    The port on the end's tile that the end uses, in the vocabulary of
+    `aie.route_endpoint`: a `DMA` channel, or a `Core` stream port the core
+    reads or writes directly.
+
+    `DMA` without a channel leaves the channel to `--aie-objectfifo-allocate`;
+    with one it pins it. A `Core` end names its stream port (0 or 1), holds no
+    objects, and is only possible on a compute tile.
+
+    Example:
+    ```
+      prod_port = #aie.end_port<DMA : 1>
+      cons_ports = [#aie.end_port<Core : 0>, #aie.end_port<DMA>]
+    ```
+  }];
+
+  let parameters = (ins EnumParameter<WireBundle>:$bundle,
+      OptionalParameter<"std::optional<uint32_t>">:$channel);
+
+  let assemblyFormat = "`<` $bundle (`:` $channel^)? `>`";
+
+  let genVerifyDecl = 1;
+
+  let extraClassDeclaration = [{
+    bool isCore() const { return getBundle() == WireBundle::Core; }
+
+    /// The pinned DMA channel or the stream port, as a channel index.
+    std::optional<int> channelIndex() const {
+      if (std::optional<uint32_t> channel = getChannel())
+        return static_cast<int>(*channel);
+      return std::nullopt;
+    }
+  }];
+}
+
+def ObjectFifoEndPortArrayAttr
+    : TypedArrayAttrBase<ObjectFifoEndPortAttr,
+                         "one #aie.end_port per consumer">;
+
+//===----------------------------------------------------------------------===//
 // Generated AIE event enumerations
 //===----------------------------------------------------------------------===//
 

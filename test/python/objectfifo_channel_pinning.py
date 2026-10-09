@@ -5,8 +5,8 @@
 
 """Test pinning every hardware DMA channel an ObjectFifo pair uses.
 
-prod()/cons() take a channel, but forward() builds the forwarded fifo's
-producer handle itself -- so without a channel of its own that one endpoint is
+prod()/cons() take a port, but forward() builds the forwarded fifo's
+producer handle itself -- so without a port of its own that one endpoint is
 left to the compiler while the other three are pinned. This checks all four
 land where they were asked to.
 
@@ -17,7 +17,7 @@ placed tile contradicts what the Device infers from its row.
 
 import aie.iron as iron
 import numpy as np
-from aie.iron import ObjectFifo, Program, Runtime
+from aie.iron import ObjectFifo, Port, Program, Runtime
 from aie.iron.device import NPU2Col1, Tile
 
 chunk = np.ndarray[(512,), np.dtype[np.int8]]
@@ -28,7 +28,7 @@ def pinned():
     shim = Tile(0, 0)
 
     into = ObjectFifo(chunk, depth=2, name="into")
-    out = into.cons(channel=1).forward(tile=tile, channel=1, name="out")
+    out = into.cons(port=Port.dma(1)).forward(tile=tile, port=Port.dma(1), name="out")
 
     def sequence(a, c, fill_from, drain_to):
         fill_from.fill(a)
@@ -39,8 +39,8 @@ def pinned():
         [
             np.ndarray[(4096,), np.dtype[np.int8]],
             np.ndarray[(4096,), np.dtype[np.int8]],
-            into.prod(tile=shim, channel=1),
-            out.cons(tile=shim, channel=1),
+            into.prod(tile=shim, port=Port.dma(1)),
+            out.cons(tile=shim, port=Port.dma(1)),
         ],
     )
     return Program(NPU2Col1(), rt).resolve_program()

@@ -64,7 +64,6 @@ from ..ir import (
     Block,
     BlockList,
     DenseElementsAttr,
-    DenseI32ArrayAttr,
     DictAttr,
     FlatSymbolRefAttr,
     FunctionType,
@@ -635,6 +634,115 @@ class external_buffer(MemRefValue):
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
+@dataclass(frozen=True)
+class Packet:
+    """A packet-switched stream connection's header, ``#aie.packet_info``.
+
+    ``Packet()`` asks for packet switching and lets allocation pick the 5-bit
+    id; ``Packet(id=3)`` pins it, for designs that route on the id. The same
+    header ends up on the route, the endpoints and the buffer descriptors.
+    """
+
+    id: int | None = None
+    type: int = 0
+
+    def __str__(self) -> str:
+        fields = []
+        if self.type:
+            fields.append(f"pkt_type = {self.type}")
+        if self.id is not None:
+            fields.append(f"pkt_id = {self.id}")
+        return f"#aie.packet_info<{', '.join(fields)}>"
+
+
+@dataclass(frozen=True)
+class Transport:
+    """Which hardware path carries an ObjectFifo's objects.
+
+    Lowers to the ``transport`` attribute on ``aie.objectfifo``. Build one with
+    `auto`, `shared_mem` or `dma`, for example ``Transport.dma()`` or
+    ``Transport.dma(packet=Packet(id=3))``.
+    """
+
+    mode: str
+    packet: Packet | None = None
+
+    @staticmethod
+    def auto(packet: Packet | None = None) -> "Transport":
+        """Leave the path to the lowering.
+
+        It uses shared memory when both ends reach one memory module and
+        nothing else forces DMAs. A packet header only matters if the DMAs end
+        up carrying the fifo.
+        """
+        return Transport("auto", packet)
+
+    @staticmethod
+    def shared_mem() -> "Transport":
+        """Shared memory between the ends; the lowering fails if it cannot."""
+        return Transport("shared_mem")
+
+    @staticmethod
+    def dma(packet: Packet | None = None) -> "Transport":
+        """The DMAs, packet-switched when given a `Packet`."""
+        return Transport("dma", packet)
+
+    def __str__(self) -> str:
+        fields = [self.mode]
+        if self.packet is not None:
+            fields.append(f"packet = {self.packet}")
+        return f"#aie.transport<{', '.join(fields)}>"
+
+    def to_attr(self) -> Attribute:
+        return Attribute.parse(str(self))
+
+    @staticmethod
+    def coerce(value) -> "Transport | None":
+        """Accept a Transport, a bare mode name, or None."""
+        if value is None or isinstance(value, Transport):
+            return value
+        if isinstance(value, str):
+            if value not in ("auto", "shared_mem", "dma"):
+                raise ValueError(f"transport is auto, shared_mem or dma, got {value!r}")
+            return Transport(value)
+        raise TypeError(f"expected a Transport or a mode name, got {value!r}")
+
+
+@dataclass(frozen=True)
+class Port:
+    """What drives one end of an ObjectFifo, ``#aie.end_port``.
+
+    ``Port.dma()`` is a DMA channel allocation picks, ``Port.dma(1)`` pins
+    channel 1, and ``Port.stream(0)`` wires the end to the core's stream port
+    0, where the core reads or writes the stream itself and holds no objects.
+    """
+
+    bundle: str
+    channel: int | None = None
+
+    @staticmethod
+    def dma(channel: int | None = None) -> "Port":
+        """A DMA channel, pinned when `channel` is given."""
+        if channel is not None and channel < 0:
+            raise ValueError(f"DMA channel must be >= 0, got {channel}")
+        return Port("DMA", channel)
+
+    @staticmethod
+    def stream(port: int) -> "Port":
+        """The core's stream port `port` (0 or 1)."""
+        if port not in (0, 1):
+            raise ValueError(f"stream port is 0 or 1, got {port!r}")
+        return Port("Core", port)
+
+    def __str__(self) -> str:
+        if self.channel is None:
+            return f"#aie.end_port<{self.bundle}>"
+        return f"#aie.end_port<{self.bundle} : {self.channel}>"
+
+    def to_attr(self) -> Attribute:
+        return Attribute.parse(str(self))
+
+
 class object_fifo(ObjectFifoCreateOp):
     @staticmethod
     def stream_dims(dims, what, can_pad=False):
@@ -673,15 +781,13 @@ class object_fifo(ObjectFifoCreateOp):
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         initValues=None,
-        via_DMA=None,
+        transport=None,
         plio=None,
         padDimensions=None,
         padValue=None,
         disable_synchronization=None,
         iter_count=None,
         consumer_datatype=None,
-        packet=None,
-        packet_id=None,
         loc=None,
         ip=None,
     ):
@@ -733,15 +839,15 @@ class object_fifo(ObjectFifoCreateOp):
             elemType=of_Ty,
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
-            via_DMA=via_DMA,
             plio=plio,
             padDimensions=padDimensions,
             padValue=padValue,
             disable_synchronization=disable_synchronization,
             initValues=initValues,
             iter_count=iter_count,
-            packet=packet,
-            packet_id=packet_id,
+            transport=(
+                Transport.coerce(transport).to_attr() if transport is not None else None
+            ),
             loc=loc,
             ip=ip,
         )
@@ -773,17 +879,17 @@ class object_fifo(ObjectFifoCreateOp):
         int_num = IntegerAttr.get(T.i32(), num)
         self.attributes["repeat_count"] = int_num
 
-    def set_aie_stream(self, stream_end, stream_port):
-        int_stream_end = IntegerAttr.get(T.i32(), stream_end)
-        int_stream_port = IntegerAttr.get(T.i32(), stream_port)
-        self.attributes["aie_stream"] = int_stream_end
-        self.attributes["aie_stream_port"] = int_stream_port
+    def set_transport(self, transport):
+        self.attributes["transport"] = Transport.coerce(transport).to_attr()
 
-    def set_prod_dma_channel(self, channel):
-        self.attributes["prod_dma_channel"] = IntegerAttr.get(T.i32(), channel)
+    def set_prod_port(self, port: Port):
+        self.attributes["prod_port"] = port.to_attr()
 
-    def set_cons_dma_channels(self, channels):
-        self.attributes["cons_dma_channels"] = DenseI32ArrayAttr.get(list(channels))
+    def set_cons_ports(self, ports: list[Port | None]):
+        """One entry per consumer; None is a DMA channel allocation picks."""
+        self.attributes["cons_ports"] = _arrayAttr(
+            [(Port.dma() if p is None else p).to_attr() for p in ports], None
+        )
 
 
 # Create an aie objectFifo_link between input and output objectFifos.

@@ -14,7 +14,7 @@ module @bad_dims_from_stream {
 
     // expected-error@+1 {{`repeat_count` unavailable on stream end}}
     aie.objectfifo @of_stream (%tile12, {%tile33}, 1 : i32)
-                              {aie_stream = 0 : i32, aie_stream_port = 0 : i32, repeat_count = 2 : i32}
+                              {prod_port = #aie.end_port<Core : 0>, repeat_count = 2 : i32}
                               : !aie.objectfifo<memref<3xi32>>
   }
 }
