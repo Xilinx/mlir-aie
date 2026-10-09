@@ -85,8 +85,8 @@ NOT_JUDGED = {
         )
     },
     **{
-        name: "blocks on core locks its design releases; codegen-identical to "
-        "FastFlowLM's kernel, which runs in its engine"
+        name: "one stage of FastFlowLM's fused decode layer: its design drives "
+        "the call sequence and the core locks the stage still takes"
         for name in kernels.factories()
         if name.startswith("flm_gemma4_decode_")
     },
