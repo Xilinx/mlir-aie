@@ -2571,6 +2571,19 @@ def test_compile_dispatch_time_rejects_full_elf_path_kwarg():
         d.compile(full_elf_path="foo.elf")
 
 
+def test_compile_insts_only_accepts_inst_path(monkeypatch, tmp_path):
+    inst_path = tmp_path / "insts.bin"
+    design = CompilableDesign(_gemm_gen(), insts_only=True)
+    monkeypatch.setattr(design, "_infer_full_elf", lambda: False)
+    monkeypatch.setattr(
+        design,
+        "_compile_insts_only",
+        lambda ExternalFunction, path: (None, Path(path)),
+    )
+
+    assert design.compile(inst_path=inst_path) == (None, inst_path)
+
+
 @pytest.mark.parametrize("extra", [{"inst_path": "foo.bin"}, {"elf_path": "foo.elf"}])
 def test_compile_dispatch_time_rejects_static_instruction_paths(extra):
     d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})

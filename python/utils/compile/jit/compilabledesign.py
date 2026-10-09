@@ -549,14 +549,6 @@ class CompilableDesign:
                 "compile(): DispatchTime[T] designs have no static instructions; "
                 "inst_path and elf_path must be None."
             )
-        if not has_dispatch and (xclbin_path is None) != (inst_path is None):
-            raise ValueError(
-                "compile(): xclbin_path and inst_path must be set together "
-                "(both paths to write artifacts directly, or both None to use "
-                f"the JIT cache).  Got xclbin_path={xclbin_path!r}, "
-                f"inst_path={inst_path!r}."
-            )
-
         inferred_full_elf = self._inferred_full_elf or (
             not requested_full_elf and self._infer_full_elf()
         )
@@ -590,6 +582,14 @@ class CompilableDesign:
                     "(or nothing, for the JIT cache); it builds no image."
                 )
             return self._compile_insts_only(ExternalFunction, inst_path)
+
+        if not has_dispatch and (xclbin_path is None) != (inst_path is None):
+            raise ValueError(
+                "compile(): xclbin_path and inst_path must be set together "
+                "(both paths to write artifacts directly, or both None to use "
+                f"the JIT cache).  Got xclbin_path={xclbin_path!r}, "
+                f"inst_path={inst_path!r}."
+            )
 
         explicit_paths = xclbin_path is not None
         cache_hash = None
