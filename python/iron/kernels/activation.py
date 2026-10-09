@@ -164,17 +164,6 @@ _EXP_LUT_TOLERANCE = Tolerance.bf16_ulps(
 )
 
 
-# gelu's tanh approximation is its own, and split per architecture; it is not
-# the sigmoid-identity family above. gelu(x) goes to zero for negative x, so
-# this is one of the bounds that needs the floor.
-_GELU_TOLERANCE = Tolerance.relative(
-    0.05,
-    0.020,
-    note="gelu tanh approximation, measured on npu2: 1.56e-2 abs at a "
-    "near-zero expected value",
-)
-
-
 # What AIE2P's vtanh returns, measured on npu2 through gelu over every finite
 # bf16 input and through fused_mm's sigmoid over 262144 f32 arguments: u
 # itself up to |u| = 0.5, then a ramp that meets tanh by 0.8, and exactly
@@ -261,10 +250,6 @@ _LOG_F32_TOLERANCE = Tolerance.bounded(
     note="correctly rounded except within 2^-21 (relative) of a bf16 tie; "
     "1 of 849,792 results on npu2 needed that slack",
 )
-
-
-def _gelu_tolerance() -> Tolerance:
-    return _GELU_VTANH_TOLERANCE if _arch_traits().native_tanh else _GELU_TOLERANCE
 
 
 def _vtanh_family_tolerance(name: str) -> Tolerance:
@@ -468,7 +453,8 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             vtanh instruction, which returns its argument up to 0.5, and be
             judged against an exact model of the kernel,
             [`gelu_lut_ref`][iron.kernels.activation.gelu_lut_ref]. Moot on
-            aie2.
+            aie2, which always takes the LUT and is judged against
+            [`gelu_aie2_lut_ref`][iron.kernels.activation.gelu_aie2_lut_ref].
     """
     return _bf16_lut_factory(
         "gelu",
@@ -479,9 +465,11 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
         contract=_unary_lut_contract(
             gelu_ref,
             count=False,
-            tolerance=_gelu_tolerance(),
+            tolerance=_GELU_VTANH_TOLERANCE,
             use_lut=use_lut,
-            elementwise=gelu_lut_ref if _tuned_arch() == "aie2p" else None,
+            elementwise=(
+                gelu_lut_ref if _tuned_arch() == "aie2p" else gelu_aie2_lut_ref
+            ),
         ),
         use_lut_tanh=use_lut,
     )
@@ -555,9 +543,11 @@ def gelu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction
         contract=_unary_lut_contract(
             gelu_ref,
             count=tile_size,
-            tolerance=_gelu_tolerance(),
+            tolerance=_GELU_VTANH_TOLERANCE,
             use_lut=use_lut,
-            elementwise=gelu_lut_ref if _tuned_arch() == "aie2p" else None,
+            elementwise=(
+                gelu_lut_ref if _tuned_arch() == "aie2p" else gelu_aie2_lut_ref
+            ),
         ),
         use_lut_tanh=use_lut,
     )
@@ -914,6 +904,29 @@ def gelu_lut_ref(x):
         t = np.asarray(tanh_lut_ref(_bf16(xf * s + sbeta_x * x2)), np.float32)
     half_x = np.maximum(xf, -8.0) * np.float32(0.5)
     return _bf16_ftz(half_x + t * half_x).astype(np.asarray(x).dtype)
+
+
+def gelu_aie2_lut_ref(x):
+    """Model of AIE2's [`gelu`][iron.kernels.activation.gelu].
+
+    gelu_aie2.h step for step: x is clamped at -8 first, where ``1 + t`` is
+    already 0, then ``x*x``, ``c + d*x^2`` (one f32 mac with c in f32) and
+    ``x * (c + d*x^2)`` are each stored to bf16, and the last is the
+    argument of [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref].
+    ``x/2 + t * bf16(x/2)`` is one f32 mac, rounded once to bf16. Each store
+    flushes a subnormal to zero, and a zero result is +0, as on npu1, even
+    for x = -0.
+    """
+    xl = np.maximum(np.asarray(x).astype(np.float32), np.float32(-8.0))
+    c = np.float32(0.79788456)
+    d = np.float32(bfloat16(c * np.float32(0.044715)))
+    with np.errstate(over="ignore", invalid="ignore"):
+        x2 = _bf16_ftz(xl * xl)
+        p = _bf16_ftz(c + x2 * d)
+        t = np.asarray(tanh_lut_ref(_bf16_ftz(xl * p)), np.float32)
+        half_x = xl * np.float32(0.5)
+        out = _bf16_ftz(half_x + t * _bf16_ftz(half_x)) + np.float32(0)
+    return out.astype(np.asarray(x).dtype)
 
 
 def bf16_exp_lut_ref(x):
