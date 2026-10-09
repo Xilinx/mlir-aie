@@ -899,14 +899,18 @@ uint32_t AIEX::NpuWriteBdOp::getAxcacheOrDefault() {
 }
 
 std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
-  mlir::APInt cst;
-  if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
-    return std::nullopt;
-  return static_cast<uint32_t>(cst.getZExtValue());
+  if (std::optional<uint64_t> cst = getConstantInt64Operand(v))
+    return static_cast<uint32_t>(*cst);
+  return std::nullopt;
 }
 
 // Widthwise counterpart of getConstantIntOperand; see createConstantArgPlus.
 std::optional<uint64_t> AIEX::getConstantInt64Operand(mlir::Value v) {
+  // An arith.constant is read in place: the generic match folds the op, which
+  // dominates translating a sequence of a million writes.
+  if (auto constant = v.getDefiningOp<arith::ConstantOp>())
+    if (auto attr = dyn_cast<IntegerAttr>(constant.getValue()))
+      return attr.getValue().getZExtValue();
   mlir::APInt cst;
   if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
     return std::nullopt;
