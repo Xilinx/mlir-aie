@@ -846,12 +846,6 @@ def _mv_bf16(
     else:
         prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
         symbol = f"{prefix}_bf16_bf16"
-        if not use_chess:
-            # Peano's outer-loop pointer optimizer turns three of the second
-            # row group's offset loads into post-modify loads from the
-            # unoffset base, so rows 4-6 come out wrong. Drop the flag once
-            # llvm-aie fixes the pass.
-            flags += ["-mllvm", "--aie-enable-outer-loop-pointer-opt=false"]
         arg_types = [
             np.int32,
             np.int32,
