@@ -1,8 +1,0 @@
-<map id="xilinx::AIE::DmaBdLayout" name="xilinx::AIE::DmaBdLayout">
-<area shape="rect" id="Node000001" title="The register layout of one tile type&#39;s DMA buffer descriptor." alt="" coords="5,357,192,383"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="65,5,132,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="99,44,93,123,94,260,100,357,95,357,89,260,88,123,94,44"/>
-<area shape="rect" id="Node000003" href="$structxilinx_1_1AIE_1_1DmaBdField.html" title="Bits [shift, shift + width) of register word in a buffer descriptor&#39;s register block." alt="" coords="175,123,350,148"/>
-<area shape="poly" id="edge3_Node000003_Node000002" title=" " alt="" coords="128,36,248,120,245,125,125,41"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="249,161,109,359,105,356,244,158"/>
-</map>
