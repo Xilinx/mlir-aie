@@ -35,7 +35,7 @@ import operator
 import os
 import sys
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, get_origin
@@ -130,6 +130,18 @@ class CacheEntry:
     dispatch_library: Path | None
 
 
+@dataclass(frozen=True)
+class _CompileConfig:
+    use_cache: bool
+    compile_flags: tuple[str, ...]
+    source_files: tuple[Path, ...]
+    include_paths: tuple[Path, ...]
+    aiecc_flags: tuple[str, ...]
+    object_files: tuple[Path, ...]
+    full_elf: bool
+    insts_only: bool
+
+
 class CompilableDesign:
     """Bundles an MLIR generator with compile-time parameters.
 
@@ -179,26 +191,24 @@ class CompilableDesign:
         insts_only: bool = False,
     ):
         self.mlir_generator = mlir_generator
-        self.use_cache = use_cache
-        self.full_elf = full_elf
         self._inferred_full_elf = False
-        self.insts_only = insts_only
         # Freeze all inputs so callers can't mutate config after construction
         # (which would silently invalidate the cache hash). MappingProxyType +
         # tuples are read-only views; equality with plain dict/list still works.
         self.compile_kwargs: Mapping[str, Any] = MappingProxyType(
             dict(compile_kwargs or {})
         )
-        self.compile_flags: tuple[str, ...] = tuple(compile_flags or ())
-        self.source_files: tuple[Path, ...] = tuple(
-            Path(sf) for sf in (source_files or ())
-        )
-        self.include_paths: tuple[Path, ...] = tuple(
-            Path(p).absolute() for p in (include_paths or ())
-        )
-        self.aiecc_flags: tuple[str, ...] = tuple(aiecc_flags or ())
-        self.object_files: tuple[Path, ...] = tuple(
-            Path(of) for of in (object_files or ())
+        self._compile_config = _CompileConfig(
+            use_cache=use_cache,
+            compile_flags=tuple(compile_flags or ()),
+            source_files=tuple(Path(path) for path in (source_files or ())),
+            include_paths=tuple(
+                Path(path).absolute() for path in (include_paths or ())
+            ),
+            aiecc_flags=tuple(aiecc_flags or ()),
+            object_files=tuple(Path(path) for path in (object_files or ())),
+            full_elf=full_elf,
+            insts_only=insts_only,
         )
 
         # Cached artifact paths (set after compile()).
@@ -344,21 +354,89 @@ class CompilableDesign:
     # Public API
     # ------------------------------------------------------------------
 
+    @property
+    def use_cache(self) -> bool:
+        return self._compile_config.use_cache
+
+    @use_cache.setter
+    def use_cache(self, value: bool) -> None:
+        self._compile_config = replace(self._compile_config, use_cache=value)
+
+    @property
+    def compile_flags(self) -> tuple[str, ...]:
+        return self._compile_config.compile_flags
+
+    @compile_flags.setter
+    def compile_flags(self, value) -> None:
+        self._compile_config = replace(self._compile_config, compile_flags=tuple(value))
+
+    @property
+    def source_files(self) -> tuple[Path, ...]:
+        return self._compile_config.source_files
+
+    @source_files.setter
+    def source_files(self, value) -> None:
+        self._compile_config = replace(
+            self._compile_config, source_files=tuple(Path(path) for path in value)
+        )
+
+    @property
+    def include_paths(self) -> tuple[Path, ...]:
+        return self._compile_config.include_paths
+
+    @include_paths.setter
+    def include_paths(self, value) -> None:
+        self._compile_config = replace(
+            self._compile_config,
+            include_paths=tuple(Path(path).absolute() for path in value),
+        )
+
+    @property
+    def aiecc_flags(self) -> tuple[str, ...]:
+        return self._compile_config.aiecc_flags
+
+    @aiecc_flags.setter
+    def aiecc_flags(self, value) -> None:
+        self._compile_config = replace(self._compile_config, aiecc_flags=tuple(value))
+
+    @property
+    def object_files(self) -> tuple[Path, ...]:
+        return self._compile_config.object_files
+
+    @object_files.setter
+    def object_files(self, value) -> None:
+        self._compile_config = replace(
+            self._compile_config, object_files=tuple(Path(path) for path in value)
+        )
+
+    @property
+    def full_elf(self) -> bool:
+        return self._compile_config.full_elf
+
+    @full_elf.setter
+    def full_elf(self, value: bool) -> None:
+        self._compile_config = replace(self._compile_config, full_elf=value)
+
+    @property
+    def insts_only(self) -> bool:
+        return self._compile_config.insts_only
+
+    @insts_only.setter
+    def insts_only(self, value: bool) -> None:
+        self._compile_config = replace(self._compile_config, insts_only=value)
+
     def _config(self) -> dict[str, Any]:
         """Return the current values of every configuration parameter, keyed by name.
 
-        Read back from the stored attributes (which share the constructor
-        parameter names), so a new config parameter is carried by ``specialize``
-        automatically.  List-typed configs are copied to keep the new design
-        independent of this one.
+        Mutable public mode fields override their construction-time values.
+        Inferred full-ELF mode remains an implementation detail and does not
+        become an explicit specialization.
         """
-        config: dict[str, Any] = {}
-        for name in config_param_names(type(self)):
-            value = getattr(self, name)
-            if name == "full_elf" and self._inferred_full_elf:
-                value = False
-            config[name] = list(value) if isinstance(value, tuple) else value
-        return config
+        config = replace(
+            self._compile_config,
+            full_elf=False if self._inferred_full_elf else self.full_elf,
+        )
+        return asdict(config)
 
     def specialize(self, **overrides) -> "CompilableDesign":
         """Return a new ``CompilableDesign`` with overrides applied.
@@ -380,7 +458,7 @@ class CompilableDesign:
         alone remain dispatch-time.
         """
         config = self._config()
-        config_keys = config_param_names(type(self))
+        config_keys = config.keys()
         compile_kwargs = dict(self.compile_kwargs)
         for name, value in overrides.items():
             if name in config_keys:

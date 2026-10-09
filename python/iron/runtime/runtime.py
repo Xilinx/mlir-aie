@@ -44,7 +44,7 @@ from ...helpers.util import (
 from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
 from ..dataflow.objectfifo import ObjectFifoHandle
-from ..resolvable import Resolvable
+from ..resolvable import DeviceResources, Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_configuration, active_sequence, active_sequence_scope
 from .data import RuntimeData
@@ -179,7 +179,7 @@ class ActiveSequence:
             self.finish_task_group(self._default_task_group)
 
 
-class Runtime(Resolvable):
+class Runtime(DeviceResources, Resolvable):
     """The host-side sequence of data-movement operations that execute an IRON design.
 
     A Runtime describes what the host does at runtime: filling input
@@ -240,6 +240,7 @@ class Runtime(Resolvable):
                 device when the body contains no ``aiex.configure`` or
                 ``aiex.npu.load_pdi`` operation. Defaults to True.
         """
+        super().__init__()
         if name == "":
             raise ValueError("Runtime name must not be empty.")
         self._site = SourceSite.capture()
@@ -314,10 +315,6 @@ class Runtime(Resolvable):
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
         # ObjectFifo manage them).
-        self._flows = []
-        self._locks = []
-        self._tile_dmas = []
-        self._resolved_tile_dmas = None
         self._scratchpad_parameters: list[ScratchpadParameter] = []
         self._strict_task_groups = strict_task_groups
         self._implicit_configure = implicit_configure
@@ -389,8 +386,7 @@ class Runtime(Resolvable):
 
         Accepts a [`Flow`][iron.Flow] or [`PacketFlow`][iron.PacketFlow].
         """
-        if flow not in self._flows:
-            self._flows.append(flow)
+        super().add_flow(flow)
         if self._configuration is not None:
             self._configuration.add_flow(flow)
 
@@ -400,8 +396,7 @@ class Runtime(Resolvable):
         Locks a [`TileDma`][iron.TileDma]'s or a task's Bds use are found
         from them, and a Worker's from its ``fn_args``.
         """
-        if lock not in self._locks:
-            self._locks.append(lock)
+        super().add_lock(lock)
         if self._configuration is not None:
             self._configuration.add_lock(lock)
 
@@ -409,52 +404,14 @@ class Runtime(Resolvable):
         """Register a TileDma; channels sharing a Tile are combined at resolution."""
         if self._configuration is not None:
             self._configuration.add_tile_dma(tile_dma)
-        if self._resolved_tile_dmas is not None:
-            raise IronRuntimeError("Cannot register TileDma after DMA resolution.")
-        self._tile_dmas.append(tile_dma)
+        super().add_tile_dma(tile_dma)
 
     def resolve_tile_dmas(self) -> None:
         """Validate and emit one DMA region per Tile without changing registrations."""
         if self._configuration is not None:
             self._configuration.resolve_tile_dmas()
             return
-        from ..dataflow.tile_dma import TileDma
-
-        if self._resolved_tile_dmas is None:
-            programs = {}
-            coordinates = {}
-            for tile_dma in self._tile_dmas:
-                tile = tile_dma.tile
-                if tile.col is not None and tile.row is not None:
-                    key = (tile.col, tile.row)
-                    if key in coordinates and coordinates[key] is not tile:
-                        raise IronRuntimeError(
-                            f"Two TileDma programs name {tile}, via different "
-                            "Tile objects. Share one Tile object for their channels."
-                        )
-                    coordinates[key] = tile
-                if tile in programs:
-                    programs[tile] = TileDma(
-                        tile, [*programs[tile].channels, *tile_dma.channels]
-                    )
-                else:
-                    programs[tile] = tile_dma
-            self._resolved_tile_dmas = list(programs.values())
-        # Placement coalesces tile ops, not their DMA regions or channel chains.
-        for program in self._resolved_tile_dmas:
-            program.resolve()
-
-    @property
-    def flows(self):
-        return list(self._flows)
-
-    @property
-    def locks(self):
-        return list(self._locks)
-
-    @property
-    def tile_dmas(self):
-        return list(self._tile_dmas)
+        super().resolve_tile_dmas()
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:

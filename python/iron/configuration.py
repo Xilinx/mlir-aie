@@ -20,13 +20,13 @@ from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifoLink
 from .device import Device
 from .kernel import Kernel
-from .resolvable import PerDeviceConfiguration, Resolvable
+from .resolvable import DeviceResources, PerDeviceConfiguration, Resolvable
 from .runtime import Runtime
 from .runtime._context import active_configuration, active_configuration_scope
 from .scratchpad_parameter import ScratchpadParameter
 
 
-class DeviceConfiguration:
+class DeviceConfiguration(DeviceResources):
     """A device image and the runtime sequences that use it."""
 
     def __init__(
@@ -37,6 +37,7 @@ class DeviceConfiguration:
         workers: Sequence = (),
         runtimes: Sequence[Runtime] = (),
     ) -> None:
+        super().__init__()
         if isinstance(name, Device):
             if device is not None:
                 raise TypeError("DeviceConfiguration received two devices.")
@@ -50,10 +51,6 @@ class DeviceConfiguration:
         self._device = device
         self._workers = list(workers)
         self._runtimes = list(runtimes)
-        self._flows = []
-        self._locks = []
-        self._tile_dmas = []
-        self._resolved_tile_dmas = None
         self._trace_size = None
         self._trace_workers = None
         self._reuse_output_buffer = False
@@ -189,60 +186,6 @@ class DeviceConfiguration:
         self._shimtile_events = shimtile_events
         self._core_trace_mode = core_trace_mode
         self._egress_shim_col = egress_shim_col
-
-    def add_flow(self, flow) -> None:
-        if flow not in self._flows:
-            self._flows.append(flow)
-
-    def add_lock(self, lock) -> None:
-        if lock not in self._locks:
-            self._locks.append(lock)
-
-    def add_tile_dma(self, tile_dma) -> None:
-        from .runtime.runtime import IronRuntimeError
-
-        if self._resolved_tile_dmas is not None:
-            raise IronRuntimeError("Cannot register TileDma after DMA resolution.")
-        self._tile_dmas.append(tile_dma)
-
-    @property
-    def flows(self) -> list:
-        return list(self._flows)
-
-    @property
-    def locks(self) -> list:
-        return list(self._locks)
-
-    @property
-    def tile_dmas(self) -> list:
-        return list(self._tile_dmas)
-
-    def resolve_tile_dmas(self) -> None:
-        from .dataflow.tile_dma import TileDma
-        from .runtime.runtime import IronRuntimeError
-
-        if self._resolved_tile_dmas is None:
-            programs = {}
-            coordinates = {}
-            for tile_dma in self._tile_dmas:
-                tile = tile_dma.tile
-                if tile.col is not None and tile.row is not None:
-                    key = (tile.col, tile.row)
-                    if key in coordinates and coordinates[key] is not tile:
-                        raise IronRuntimeError(
-                            f"Two TileDma programs name {tile}, via different "
-                            "Tile objects. Share one Tile object for their channels."
-                        )
-                    coordinates[key] = tile
-                if tile in programs:
-                    programs[tile] = TileDma(
-                        tile, [*programs[tile].channels, *tile_dma.channels]
-                    )
-                else:
-                    programs[tile] = tile_dma
-            self._resolved_tile_dmas = list(programs.values())
-        for program in self._resolved_tile_dmas:
-            program.resolve()
 
     # Unnamed device-local symbols share one namespace inside this configuration.
     def _name_unnamed(self) -> None:

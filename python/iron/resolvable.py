@@ -71,6 +71,70 @@ class PerDeviceConfigurationResolvable(PerDeviceConfiguration, Resolvable):
     """
 
 
+class DeviceResources:
+    """Flows, locks, and tile DMA programs owned by one device image."""
+
+    def __init__(self) -> None:
+        self._flows = []
+        self._locks = []
+        self._tile_dmas = []
+        self._resolved_tile_dmas = None
+
+    def add_flow(self, flow) -> None:
+        if flow not in self._flows:
+            self._flows.append(flow)
+
+    def add_lock(self, lock) -> None:
+        if lock not in self._locks:
+            self._locks.append(lock)
+
+    def add_tile_dma(self, tile_dma) -> None:
+        from .runtime.runtime import IronRuntimeError
+
+        if self._resolved_tile_dmas is not None:
+            raise IronRuntimeError("Cannot register TileDma after DMA resolution.")
+        self._tile_dmas.append(tile_dma)
+
+    def resolve_tile_dmas(self) -> None:
+        from .dataflow.tile_dma import TileDma
+        from .runtime.runtime import IronRuntimeError
+
+        if self._resolved_tile_dmas is None:
+            programs = {}
+            coordinates = {}
+            for tile_dma in self._tile_dmas:
+                tile = tile_dma.tile
+                if tile.col is not None and tile.row is not None:
+                    key = (tile.col, tile.row)
+                    if key in coordinates and coordinates[key] is not tile:
+                        raise IronRuntimeError(
+                            f"Two TileDma programs name {tile}, via different "
+                            "Tile objects. Share one Tile object for their channels."
+                        )
+                    coordinates[key] = tile
+                if tile in programs:
+                    programs[tile] = TileDma(
+                        tile, [*programs[tile].channels, *tile_dma.channels]
+                    )
+                else:
+                    programs[tile] = tile_dma
+            self._resolved_tile_dmas = list(programs.values())
+        for program in self._resolved_tile_dmas:
+            program.resolve()
+
+    @property
+    def flows(self) -> list:
+        return list(self._flows)
+
+    @property
+    def locks(self) -> list:
+        return list(self._locks)
+
+    @property
+    def tile_dmas(self) -> list:
+        return list(self._tile_dmas)
+
+
 class NotResolvedError(Exception):
     """Raised when a property or operation is accessed on a `Resolvable` object before `resolve` has been called."""
 

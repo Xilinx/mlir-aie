@@ -2392,6 +2392,17 @@ def test_specialize_preserves_other_config():
     assert s.compile_kwargs == {"M": 512}
 
 
+def test_specialize_preserves_updated_public_config():
+    d = CompilableDesign(_gemm_gen())
+    d.use_cache = False
+    d.aiecc_flags = ("--verbose",)
+
+    s = d.specialize(M=512)
+
+    assert s.use_cache is False
+    assert s.aiecc_flags == ("--verbose",)
+
+
 def test_specialize_mixes_config_and_compile_kwargs():
     """A single call can override config and bind CompileTime[T] together."""
     d = CompilableDesign(_gemm_gen(), compile_kwargs={"M": 1})

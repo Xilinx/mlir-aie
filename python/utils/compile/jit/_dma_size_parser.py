@@ -86,6 +86,8 @@ def parse_dma_sizes(kernel_dir: Path, entry: str | None = None) -> list[int] | N
         )
         from aie.dialects import aie as _aie  # noqa: F401
         from aie.dialects import aiex as _aiex  # noqa: F401
+        from aie.dialects._aie_ops_gen import DeviceOp, RuntimeSequenceOp
+        from aie.dialects._aiex_ops_gen import RunOp
 
         ir_context = ir.Context  # pyright: ignore[reportAttributeAccessIssue]
         ir_location = ir.Location  # pyright: ignore[reportAttributeAccessIssue]
@@ -105,21 +107,27 @@ def parse_dma_sizes(kernel_dir: Path, entry: str | None = None) -> list[int] | N
         qualified_sequences: dict = {}
         called: set = set()
         for op in _walk(module.operation):
-            if op.name == "aie.runtime_sequence":
-                all_sequences.append(op)
-                sym = _get_str_attr(op, "sym_name")
-                if sym is not None:
-                    named_sequences[sym] = op
-                    parent = op.parent
-                    while parent is not None and parent.name != "aie.device":
-                        parent = parent.parent
-                    if parent is not None:
-                        device = _get_str_attr(parent, "sym_name") or "main"
-                        qualified_sequences[f"{device}:{sym}"] = op
-            elif op.name == "aiex.run":
-                target = _get_str_attr(op, "runtime_sequence_symbol")
-                if target is not None:
-                    called.add(target)
+            op_view = op.opview
+            if isinstance(op_view, RuntimeSequenceOp):
+                all_sequences.append(op_view)
+                try:
+                    sym = op_view.sym_name.value
+                except KeyError:
+                    continue
+                named_sequences[sym] = op_view
+                parent = op.parent
+                while parent is not None and not isinstance(parent.opview, DeviceOp):
+                    parent = parent.parent
+                if parent is not None:
+                    device_op = parent.opview
+                    device = (
+                        device_op.sym_name.value
+                        if device_op.sym_name is not None
+                        else "main"
+                    )
+                    qualified_sequences[f"{device}:{sym}"] = op_view
+            elif isinstance(op_view, RunOp):
+                called.add(op_view.runtime_sequence_symbol.value)
 
         if not all_sequences:
             return None
@@ -147,7 +155,7 @@ def parse_dma_sizes(kernel_dir: Path, entry: str | None = None) -> list[int] | N
             selected_sequence = roots[0]
 
         # Pass 3: read each arg's memref footprint, in bits.
-        seq_block = selected_sequence.regions[0].blocks[0]
+        seq_block = selected_sequence.operation.regions[0].blocks[0]
         sizes: list[int] = []
         memref_type = ir.MemRefType  # pyright: ignore[reportAttributeAccessIssue]
         scalar_types = (
@@ -193,16 +201,3 @@ def _walk(op):
         for block in region.blocks:
             for sub in block.operations:
                 yield from _walk(sub.operation)
-
-
-def _get_str_attr(op, name: str) -> str | None:
-    """Return the string value of attribute *name* on *op*, or ``None``.
-
-    Handles both ``StringAttr`` (``sym_name``) and ``FlatSymbolRefAttr``
-    (``aiex.run.runtime_sequence_symbol``); both expose the symbol as
-    ``.value``.
-    """
-    try:
-        return op.attributes[name].value
-    except (KeyError, AttributeError):
-        return None
