@@ -86,8 +86,12 @@ def parse_dma_sizes(kernel_dir: Path, entry: str | None = None) -> list[int] | N
         )
         from aie.dialects import aie as _aie  # noqa: F401
         from aie.dialects import aiex as _aiex  # noqa: F401
-        from aie.dialects._aie_ops_gen import DeviceOp, RuntimeSequenceOp
-        from aie.dialects._aiex_ops_gen import RunOp
+
+        device_op_type = _aie.DeviceOp  # pyright: ignore[reportAttributeAccessIssue]
+        run_op_type = _aiex.RunOp  # pyright: ignore[reportAttributeAccessIssue]
+        runtime_sequence_op_type = (
+            _aie.RuntimeSequenceOp  # pyright: ignore[reportAttributeAccessIssue]
+        )
 
         ir_context = ir.Context  # pyright: ignore[reportAttributeAccessIssue]
         ir_location = ir.Location  # pyright: ignore[reportAttributeAccessIssue]
@@ -108,7 +112,7 @@ def parse_dma_sizes(kernel_dir: Path, entry: str | None = None) -> list[int] | N
         called: set = set()
         for op in _walk(module.operation):
             op_view = op.opview
-            if isinstance(op_view, RuntimeSequenceOp):
+            if isinstance(op_view, runtime_sequence_op_type):
                 all_sequences.append(op_view)
                 try:
                     sym = op_view.sym_name.value
@@ -116,7 +120,9 @@ def parse_dma_sizes(kernel_dir: Path, entry: str | None = None) -> list[int] | N
                     continue
                 named_sequences[sym] = op_view
                 parent = op.parent
-                while parent is not None and not isinstance(parent.opview, DeviceOp):
+                while parent is not None and not isinstance(
+                    parent.opview, device_op_type
+                ):
                     parent = parent.parent
                 if parent is not None:
                     device_op = parent.opview
@@ -126,7 +132,7 @@ def parse_dma_sizes(kernel_dir: Path, entry: str | None = None) -> list[int] | N
                         else "main"
                     )
                     qualified_sequences[f"{device}:{sym}"] = op_view
-            elif isinstance(op_view, RunOp):
+            elif isinstance(op_view, run_op_type):
                 called.add(op_view.runtime_sequence_symbol.value)
 
         if not all_sequences:
