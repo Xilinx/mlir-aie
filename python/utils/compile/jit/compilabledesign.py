@@ -35,7 +35,7 @@ import operator
 import os
 import sys
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, get_origin
@@ -130,6 +130,18 @@ class CacheEntry:
     dispatch_library: Path | None
 
 
+@dataclass(frozen=True)
+class _CompileConfig:
+    use_cache: bool
+    compile_flags: tuple[str, ...]
+    source_files: tuple[Path, ...]
+    include_paths: tuple[Path, ...]
+    aiecc_flags: tuple[str, ...]
+    object_files: tuple[Path, ...]
+    full_elf: bool
+    insts_only: bool
+
+
 class CompilableDesign:
     """Bundles an MLIR generator with compile-time parameters.
 
@@ -179,25 +191,24 @@ class CompilableDesign:
         insts_only: bool = False,
     ):
         self.mlir_generator = mlir_generator
-        self.use_cache = use_cache
-        self.full_elf = full_elf
-        self.insts_only = insts_only
+        self._inferred_full_elf = False
         # Freeze all inputs so callers can't mutate config after construction
         # (which would silently invalidate the cache hash). MappingProxyType +
         # tuples are read-only views; equality with plain dict/list still works.
         self.compile_kwargs: Mapping[str, Any] = MappingProxyType(
             dict(compile_kwargs or {})
         )
-        self.compile_flags: tuple[str, ...] = tuple(compile_flags or ())
-        self.source_files: tuple[Path, ...] = tuple(
-            Path(sf) for sf in (source_files or ())
-        )
-        self.include_paths: tuple[Path, ...] = tuple(
-            Path(p).absolute() for p in (include_paths or ())
-        )
-        self.aiecc_flags: tuple[str, ...] = tuple(aiecc_flags or ())
-        self.object_files: tuple[Path, ...] = tuple(
-            Path(of) for of in (object_files or ())
+        self._compile_config = _CompileConfig(
+            use_cache=use_cache,
+            compile_flags=tuple(compile_flags or ()),
+            source_files=tuple(Path(path) for path in (source_files or ())),
+            include_paths=tuple(
+                Path(path).absolute() for path in (include_paths or ())
+            ),
+            aiecc_flags=tuple(aiecc_flags or ()),
+            object_files=tuple(Path(path) for path in (object_files or ())),
+            full_elf=full_elf,
+            insts_only=insts_only,
         )
 
         # Cached artifact paths (set after compile()).
@@ -343,19 +354,89 @@ class CompilableDesign:
     # Public API
     # ------------------------------------------------------------------
 
+    @property
+    def use_cache(self) -> bool:
+        return self._compile_config.use_cache
+
+    @use_cache.setter
+    def use_cache(self, value: bool) -> None:
+        self._compile_config = replace(self._compile_config, use_cache=value)
+
+    @property
+    def compile_flags(self) -> tuple[str, ...]:
+        return self._compile_config.compile_flags
+
+    @compile_flags.setter
+    def compile_flags(self, value) -> None:
+        self._compile_config = replace(self._compile_config, compile_flags=tuple(value))
+
+    @property
+    def source_files(self) -> tuple[Path, ...]:
+        return self._compile_config.source_files
+
+    @source_files.setter
+    def source_files(self, value) -> None:
+        self._compile_config = replace(
+            self._compile_config, source_files=tuple(Path(path) for path in value)
+        )
+
+    @property
+    def include_paths(self) -> tuple[Path, ...]:
+        return self._compile_config.include_paths
+
+    @include_paths.setter
+    def include_paths(self, value) -> None:
+        self._compile_config = replace(
+            self._compile_config,
+            include_paths=tuple(Path(path).absolute() for path in value),
+        )
+
+    @property
+    def aiecc_flags(self) -> tuple[str, ...]:
+        return self._compile_config.aiecc_flags
+
+    @aiecc_flags.setter
+    def aiecc_flags(self, value) -> None:
+        self._compile_config = replace(self._compile_config, aiecc_flags=tuple(value))
+
+    @property
+    def object_files(self) -> tuple[Path, ...]:
+        return self._compile_config.object_files
+
+    @object_files.setter
+    def object_files(self, value) -> None:
+        self._compile_config = replace(
+            self._compile_config, object_files=tuple(Path(path) for path in value)
+        )
+
+    @property
+    def full_elf(self) -> bool:
+        return self._compile_config.full_elf
+
+    @full_elf.setter
+    def full_elf(self, value: bool) -> None:
+        self._compile_config = replace(self._compile_config, full_elf=value)
+
+    @property
+    def insts_only(self) -> bool:
+        return self._compile_config.insts_only
+
+    @insts_only.setter
+    def insts_only(self, value: bool) -> None:
+        self._compile_config = replace(self._compile_config, insts_only=value)
+
     def _config(self) -> dict[str, Any]:
         """Return the current values of every configuration parameter, keyed by name.
 
-        Read back from the stored attributes (which share the constructor
-        parameter names), so a new config parameter is carried by ``specialize``
-        automatically.  List-typed configs are copied to keep the new design
-        independent of this one.
+        Mutable public mode fields override their construction-time values.
+        Inferred full-ELF mode remains an implementation detail and does not
+        become an explicit specialization.
         """
-        config: dict[str, Any] = {}
-        for name in config_param_names(type(self)):
-            value = getattr(self, name)
-            config[name] = list(value) if isinstance(value, tuple) else value
-        return config
+        config = replace(
+            self._compile_config,
+            full_elf=False if self._inferred_full_elf else self.full_elf,
+        )
+        return asdict(config)
 
     def specialize(self, **overrides) -> "CompilableDesign":
         """Return a new ``CompilableDesign`` with overrides applied.
@@ -377,7 +458,7 @@ class CompilableDesign:
         alone remain dispatch-time.
         """
         config = self._config()
-        config_keys = config_param_names(type(self))
+        config_keys = config.keys()
         compile_kwargs = dict(self.compile_kwargs)
         for name, value in overrides.items():
             if name in config_keys:
@@ -446,7 +527,40 @@ class CompilableDesign:
 
         has_dispatch = bool(self.dispatch_params)
 
+        requested_full_elf = (
+            self.full_elf and not self._inferred_full_elf
+        ) or full_elf_path is not None
+        if requested_full_elf and has_dispatch:
+            raise NotImplementedError(
+                "DispatchTime[T] + full_elf=True is not supported: a full ELF "
+                "bakes one static instruction stream into the ELF at compile "
+                "time, and XRT's full-ELF dispatch path has no instruction-"
+                "buffer argument to swap in a per-call one -- unlike the "
+                "xclbin + insts.bin path. Compile without full_elf for a "
+                "design with DispatchTime[T] parameters."
+            )
+        if self.insts_only and has_dispatch:
+            raise NotImplementedError(
+                "insts_only=True with DispatchTime[T] parameters: an "
+                "instructions-only design has no static stream to emit."
+            )
+        if has_dispatch and (inst_path is not None or elf_path is not None):
+            raise ValueError(
+                "compile(): DispatchTime[T] designs have no static instructions; "
+                "inst_path and elf_path must be None."
+            )
+        inferred_full_elf = self._inferred_full_elf or (
+            not requested_full_elf and self._infer_full_elf()
+        )
         full_elf = self.full_elf or full_elf_path is not None
+        if inferred_full_elf and any(
+            path is not None for path in (xclbin_path, inst_path, elf_path, pdi_path)
+        ):
+            raise ValueError(
+                "A multi-configuration Program requires full-ELF compilation "
+                "and does not produce xclbin, instruction, wrapped-ELF, or "
+                "standalone-PDI outputs."
+            )
         if full_elf and has_dispatch:
             # Architectural boundary, not a TODO: full-ELF bakes one static TXN
             # into the ELF, and XRT's full-ELF dispatch path has no instruction-
@@ -462,11 +576,6 @@ class CompilableDesign:
         if full_elf:
             return self._compile_full_elf(ExternalFunction, full_elf_path)
         if self.insts_only:
-            if has_dispatch:
-                raise NotImplementedError(
-                    "insts_only=True with DispatchTime[T] parameters: an "
-                    "instructions-only design has no static stream to emit."
-                )
             if xclbin_path is not None or elf_path is not None or pdi_path is not None:
                 raise ValueError(
                     "compile(): an insts_only design takes inst_path alone "
@@ -474,11 +583,6 @@ class CompilableDesign:
                 )
             return self._compile_insts_only(ExternalFunction, inst_path)
 
-        if has_dispatch and (inst_path is not None or elf_path is not None):
-            raise ValueError(
-                "compile(): DispatchTime[T] designs have no static instructions; "
-                "inst_path and elf_path must be None."
-            )
         if not has_dispatch and (xclbin_path is None) != (inst_path is None):
             raise ValueError(
                 "compile(): xclbin_path and inst_path must be set together "
@@ -486,6 +590,7 @@ class CompilableDesign:
                 f"the JIT cache).  Got xclbin_path={xclbin_path!r}, "
                 f"inst_path={inst_path!r}."
             )
+
         explicit_paths = xclbin_path is not None
         cache_hash = None
         build_key = ""
@@ -717,6 +822,32 @@ class CompilableDesign:
         )
         return xclbin_path, inst_path
 
+    @staticmethod
+    def _configuration_count(module) -> int:
+        count_attr = module.operation.attributes.get("iron.configuration_count")
+        return count_attr.value if count_attr is not None else 1
+
+    def _infer_full_elf(self) -> bool:
+        if self.full_elf:
+            return False
+        from aie.iron.kernel import ExternalFunction
+
+        module = self._generate_mlir(ExternalFunction)
+        if module is None:
+            return False
+        if self._configuration_count(module) <= 1:
+            return False
+        self.full_elf = True
+        self._inferred_full_elf = True
+        return True
+
+    @staticmethod
+    def _full_elf_reconfiguration_options(module) -> list[str]:
+        expand_attr = module.operation.attributes.get("iron.expand_load_pdis")
+        if expand_attr is None:
+            return []
+        return [f"--expand-load-pdis={'true' if expand_attr.value else 'false'}"]
+
     def _compile_full_elf(
         self,
         ExternalFunction,
@@ -731,6 +862,7 @@ class CompilableDesign:
         """
         if not isinstance(self.mlir_generator, Path):
             self._bind_generation_device()
+        expected_kernel_name = self._iron_entry(full_elf=True)
 
         explicit_path = full_elf_path is not None
         cache_hash = None
@@ -753,7 +885,9 @@ class CompilableDesign:
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"full_elf": elf_path}
                 ):
-                    kernel_name = self._cached_full_elf_kernel_name(kernel_dir)
+                    kernel_name = self._cached_full_elf_kernel_name(
+                        kernel_dir, expected_kernel_name
+                    )
                     if kernel_name is not None:
                         self._record_artifacts(
                             kernel_dir, elf=elf_path, full_elf_kernel_name=kernel_name
@@ -773,7 +907,9 @@ class CompilableDesign:
                 _cleanup_failed_compilation(kernel_dir)
 
             if not explicit_path and self.use_cache and elf_path.exists():
-                kernel_name = self._cached_full_elf_kernel_name(kernel_dir)
+                kernel_name = self._cached_full_elf_kernel_name(
+                    kernel_dir, expected_kernel_name
+                )
                 if kernel_name is None:
                     _cleanup_failed_compilation(kernel_dir)
                 else:
@@ -793,13 +929,17 @@ class CompilableDesign:
                         ExternalFunction, kernel_dir, full_elf=True
                     )
                 )
+                aiecc_options = list(self.aiecc_flags)
+                aiecc_options.extend(
+                    self._full_elf_reconfiguration_options(mlir_module)
+                )
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
                     full_elf_path=elf_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
-                    options=list(self.aiecc_flags) if self.aiecc_flags else None,
+                    options=aiecc_options or None,
                     device_cache_dir=self._device_cache_dir(),
                 )
 
@@ -827,7 +967,9 @@ class CompilableDesign:
         self._record_artifacts(
             kernel_dir,
             elf=elf_path,
-            full_elf_kernel_name=self._parse_full_elf_kernel_name(kernel_dir),
+            full_elf_kernel_name=self._parse_full_elf_kernel_name(
+                kernel_dir, expected_kernel_name
+            ),
         )
         return elf_path, None
 
@@ -944,7 +1086,7 @@ class CompilableDesign:
         self._elf_path = elf
         self._dispatch_lib_path = dispatch_library
         self._full_elf_kernel_name = full_elf_kernel_name
-        self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
+        self._expected_tensor_sizes = parse_dma_sizes(kernel_dir, full_elf_kernel_name)
 
     def _generate_and_build_kernels(
         self, ExternalFunction, kernel_dir: Path, *, full_elf: bool = False
@@ -999,7 +1141,9 @@ class CompilableDesign:
         return chess_uses == {True}
 
     @staticmethod
-    def _parse_full_elf_kernel_name(kernel_dir: Path) -> str:
+    def _parse_full_elf_kernel_name(
+        kernel_dir: Path, expected: str | None = None
+    ) -> str:
         """Return the ``"<device>:<sequence>"`` XRT kernel name for the full ELF.
 
         The full-ELF runtime addresses the kernel by the device symbol name and
@@ -1009,23 +1153,41 @@ class CompilableDesign:
         """
         config_path = kernel_dir / "full_elf_config.json"
         config = json.loads(config_path.read_text())
+        available = []
         for kernel in config["xrt-kernels"]:
             for instance in kernel["instance"]:
-                return f"{kernel['name']}:{instance['id']}"
+                name = f"{kernel['name']}:{instance['id']}"
+                available.append(name)
+                if expected is None or name == expected:
+                    return name
+        if expected is not None:
+            raise RuntimeError(
+                f"{config_path} does not contain entry {expected!r}; "
+                f"found {available}."
+            )
         raise RuntimeError(f"{config_path} names no runtime sequence.")
 
     @classmethod
-    def _cached_full_elf_kernel_name(cls, kernel_dir: Path) -> str | None:
+    def _cached_full_elf_kernel_name(
+        cls, kernel_dir: Path, expected: str | None = None
+    ) -> str | None:
         """Return a cached full ELF's kernel name, or ``None`` to rebuild it.
 
         A cached ELF is only usable with its ``full_elf_config.json``; one that
         is missing or unreadable makes the hit a miss instead of an error.
         """
         try:
-            return cls._parse_full_elf_kernel_name(kernel_dir)
+            return cls._parse_full_elf_kernel_name(kernel_dir, expected)
         except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
             logger.debug("Rebuilding full ELF in %s: %s", kernel_dir, exc)
             return None
+
+    def _iron_entry(self, *, full_elf: bool) -> str | None:
+        mlir_text, _ = self._generated_for(full_elf=full_elf)
+        with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
+            module = _Module.parse(mlir_text)
+            entry = module.operation.attributes.get("iron.entry")
+            return entry.value if entry is not None else None
 
     def get_artifacts(self) -> tuple[Path, Path] | None:
         """Return cached artifact paths without recompiling, or ``None``."""
@@ -1235,6 +1397,7 @@ class CompilableDesign:
         """
         from aie.iron.kernel import ExternalFunction
 
+        self._infer_full_elf()
         return self._generate_mlir(ExternalFunction, full_elf=self.full_elf)
 
     def validate_tensor_args(
@@ -1554,8 +1717,8 @@ class CompilableDesign:
         """Return the identity that affects cached MLIR generation.
 
         Static ``.mlir`` files key on their path. Python generators key on the
-        explicitly bound device and the full-ELF flag (full-ELF generates
-        ``npu.load_pdi``; the standard path does not).
+        explicitly bound device and the full-ELF flag (full-ELF may generate
+        an implicit ``aiex.npu.load_pdi``; the standard path does not).
         """
         if isinstance(self.mlir_generator, Path):
             return ("path", str(self.mlir_generator))
@@ -1712,7 +1875,8 @@ class CompilableDesign:
         mlir_text, external_kernels = self._generated_for(full_elf=full_elf)
         ExternalFunction._instances.update(external_kernels)
         with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
-            return _Module.parse(mlir_text)
+            module = _Module.parse(mlir_text)
+            return module
 
     def __hash__(self) -> int:
         # The cache hash includes the active target device. Do not use a

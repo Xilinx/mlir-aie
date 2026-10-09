@@ -45,7 +45,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
+def parse_dma_sizes(kernel_dir: Path, entry: str | None = None) -> list[int] | None:
     """Return per-host-arg footprints, in bits, from ``input_with_addresses.mlir``.
 
     The returned list follows ``aie.runtime_sequence`` tensor argument
@@ -56,6 +56,8 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
 
     Args:
         kernel_dir: Directory aiecc wrote its lowered MLIR into.
+        entry: The ``"device:sequence"`` host entry to inspect. If omitted,
+            the parser infers a unique call-graph root.
 
     Returns:
         A list of per-tensor bit counts (scalar arguments are skipped),
@@ -85,6 +87,12 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         from aie.dialects import aie as _aie  # noqa: F401
         from aie.dialects import aiex as _aiex  # noqa: F401
 
+        device_op_type = _aie.DeviceOp  # pyright: ignore[reportAttributeAccessIssue]
+        run_op_type = _aiex.RunOp  # pyright: ignore[reportAttributeAccessIssue]
+        runtime_sequence_op_type = (
+            _aie.RuntimeSequenceOp  # pyright: ignore[reportAttributeAccessIssue]
+        )
+
         ir_context = ir.Context  # pyright: ignore[reportAttributeAccessIssue]
         ir_location = ir.Location  # pyright: ignore[reportAttributeAccessIssue]
         ir_module = ir.Module  # pyright: ignore[reportAttributeAccessIssue]
@@ -100,26 +108,45 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         # Pass 1: collect every runtime_sequence + record aiex.run call edges.
         all_sequences: list = []
         named_sequences: dict = {}  # sym_name -> op  (anonymous ones omitted)
+        qualified_sequences: dict = {}
         called: set = set()
         for op in _walk(module.operation):
-            if op.name == "aie.runtime_sequence":
-                all_sequences.append(op)
-                sym = _get_str_attr(op, "sym_name")
-                if sym is not None:
-                    named_sequences[sym] = op
-            elif op.name == "aiex.run":
-                target = _get_str_attr(op, "runtime_sequence_symbol")
-                if target is not None:
-                    called.add(target)
+            op_view = op.opview
+            if isinstance(op_view, runtime_sequence_op_type):
+                all_sequences.append(op_view)
+                try:
+                    sym = op_view.sym_name.value
+                except KeyError:
+                    continue
+                named_sequences[sym] = op_view
+                parent = op.parent
+                while parent is not None and not isinstance(
+                    parent.opview, device_op_type
+                ):
+                    parent = parent.parent
+                if parent is not None:
+                    device_op = parent.opview
+                    device = (
+                        device_op.sym_name.value
+                        if device_op.sym_name is not None
+                        else "main"
+                    )
+                    qualified_sequences[f"{device}:{sym}"] = op_view
+            elif isinstance(op_view, run_op_type):
+                called.add(op_view.runtime_sequence_symbol.value)
 
         if not all_sequences:
             return None
 
         # Pass 2: pick the entry point.
-        if len(all_sequences) == 1:
+        if entry is not None:
+            if entry not in qualified_sequences:
+                return None
+            selected_sequence = qualified_sequences[entry]
+        elif len(all_sequences) == 1:
             # Only one sequence in the module — trivially the root.  Works
             # whether or not it carries a sym_name.
-            entry = all_sequences[0]
+            selected_sequence = all_sequences[0]
         else:
             # Multiple sequences: each must be named so we can reason about
             # the call graph.  Entry point = the unique root (not called by
@@ -131,10 +158,10 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
                 # 0 roots => cyclic; >1 roots => multi-device or multiple
                 # top-level entries — can't unambiguously map host tensors.
                 return None
-            entry = roots[0]
+            selected_sequence = roots[0]
 
         # Pass 3: read each arg's memref footprint, in bits.
-        seq_block = entry.regions[0].blocks[0]
+        seq_block = selected_sequence.operation.regions[0].blocks[0]
         sizes: list[int] = []
         memref_type = ir.MemRefType  # pyright: ignore[reportAttributeAccessIssue]
         scalar_types = (
@@ -180,16 +207,3 @@ def _walk(op):
         for block in region.blocks:
             for sub in block.operations:
                 yield from _walk(sub.operation)
-
-
-def _get_str_attr(op, name: str) -> str | None:
-    """Return the string value of attribute *name* on *op*, or ``None``.
-
-    Handles both ``StringAttr`` (``sym_name``) and ``FlatSymbolRefAttr``
-    (``aiex.run.runtime_sequence_symbol``); both expose the symbol as
-    ``.value``.
-    """
-    try:
-        return op.attributes[name].value
-    except (KeyError, AttributeError):
-        return None

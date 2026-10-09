@@ -30,11 +30,11 @@ from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
 from .device import AnyComputeTile, Tile
 from .kernel import Kernel
-from .resolvable import Resolvable
+from .resolvable import PerDeviceConfiguration, Resolvable
 from .scratchpad_parameter import ScratchpadParameter
 
 
-class Worker(ObjectFifoEndpoint):
+class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
     """A task to be run on an AIE compute core.
 
     A Worker takes a ``core_fn`` callable and the arguments it needs (ObjectFIFO handles,
@@ -155,9 +155,7 @@ class Worker(ObjectFifoEndpoint):
         self._fifos = []
         self._buffers = []
         self._barriers = []
-        # CascadeFlow objects whose source is this Worker. Populated by
-        # CascadeFlow(src, dst).__init__ and consumed by Program.resolve()
-        # to emit aie.cascade_flow ops after worker placement.
+        # CascadeFlow registers each outgoing edge here for configuration discovery.
         self._outgoing_cascades: list = []
 
         # Check arguments to the core. Some information is saved for resolution.
@@ -193,7 +191,7 @@ class Worker(ObjectFifoEndpoint):
                     # If the Buffer has no tile, pin it to the Worker's tile as a
                     # convenience.  If the user pinned it explicitly to a neighbor
                     # tile (AIE compute tiles can read N/S/E/W neighbors' L1
-                    # directly), honor that placement — Program.resolve discovers
+                    # directly), honor that placement. DeviceConfiguration discovers
                     # the neighbor tile via Buffer.tiles().
                     arg.place(self._tile)
             elif isinstance(arg, ScratchpadParameter):
@@ -327,7 +325,7 @@ class Worker(ObjectFifoEndpoint):
                         self.core_fn(*self.fn_args)
 
 
-class WorkerRuntimeBarrier:
+class WorkerRuntimeBarrier(PerDeviceConfiguration):
     """A barrier allowing individual workers to synchronize with the runtime sequence."""
 
     def __init__(self, initial_value: int = 0):
@@ -339,7 +337,7 @@ class WorkerRuntimeBarrier:
         self.initial_value = initial_value
         self.worker_locks = []
 
-    def wait_for_value(self, value: int):
+    def wait_for_value(self, value: int, *, greater_equal: bool = False):
         """Wait for the barrier to be set to `value`.
 
         Should be called from inside a core function. The wait leaves the
@@ -349,6 +347,7 @@ class WorkerRuntimeBarrier:
 
         Args:
             value (int): The value to wait for.
+            greater_equal (bool): Use a consuming greater-than-or-equal lock wait.
         """
         # Here this is assuming that the we are currently placing the last added lock
         # And therefore that wait_for_value operations are placed just after their corresponding Worker...
@@ -357,7 +356,8 @@ class WorkerRuntimeBarrier:
             raise ValueError(
                 "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
             )
-        use_lock(self.worker_locks[-1], LockAction.Acquire, value=value)
+        action = LockAction.AcquireGreaterEqual if greater_equal else LockAction.Acquire
+        use_lock(self.worker_locks[-1], action, value=value)
 
     def set(self, value: int):
         """Set the barrier to ``value`` from within a runtime sequence body.

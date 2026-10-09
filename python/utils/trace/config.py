@@ -36,6 +36,7 @@ class TraceConfig:
         self.last_tensor_dtype = last_tensor_dtype
         # Path to physical MLIR with lowered trace ops (set by NPUKernel)
         self.physical_mlir_path = None
+        self.kernel = DEFAULT_KERNEL
 
     def __repr__(self) -> str:
         # Eval-faithful: only constructor kwargs.  ``eval(repr(cfg))``
@@ -94,7 +95,7 @@ class TraceConfig:
         mlir_file: str,
         output_name: str = "trace.json",
         colshift=None,
-        kernel: str = DEFAULT_KERNEL,
+        kernel: str | None = None,
     ) -> list[str]:
         """Write the trace in ``trace_file`` as trace-event JSON for Perfetto.
 
@@ -119,6 +120,7 @@ class TraceConfig:
         Returns:
             The paths written, in buffer order.
         """
+        kernel = kernel or self.kernel
         trace_buffer = self.read_trace()
 
         with open(mlir_file, "r") as f:

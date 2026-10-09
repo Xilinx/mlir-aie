@@ -9,7 +9,8 @@ Provides the primary abstractions for describing NPU designs:
 - [`CascadeFlow`][iron.CascadeFlow] — directed cascade stream connection between two Workers
 - [`Worker`][iron.Worker] — a task running on an AIE compute core
 - [`Runtime`][iron.Runtime] — host-side orchestration of data movement and worker execution
-- [`Program`][iron.Program] — top-level container that compiles a design to MLIR
+- [`DeviceConfiguration`][iron.DeviceConfiguration] — one ``aie.device`` image
+- [`Program`][iron.Program] — module-level composition and compilation unit
 - [`Kernel`][iron.Kernel] / [`ExternalFunction`][iron.ExternalFunction] — pre-compiled or C++ kernel functions
 - [`KernelObject`][iron.KernelObject] — shared link artifact and compilation ownership
 - [`ObjectFile`][iron.ObjectFile] — prebuilt object-file bindings with a symbol namespace
@@ -69,6 +70,7 @@ from aie.utils.jit import jit
 
 from . import algorithms, kernels
 from .buffer import Buffer
+from .configuration import DeviceConfiguration
 from .dataflow import (
     Acquire,
     Bd,
@@ -90,6 +92,7 @@ from .dtype import dtype_to_str, str_to_dtype
 from .kernel import ExternalFunction, Kernel, KernelObject, ObjectFile
 from .lock import Lock
 from .program import Program
+from .resolvable import PerDeviceConfigurationResolvable, Resolvable
 from .runtime import Runtime, RuntimeData, Task, TaskGroup, sync_parameters
 from .scratchpad_parameter import ScratchpadParameter
 from .worker import Worker, WorkerRuntimeBarrier
@@ -97,11 +100,14 @@ from .worker import Worker, WorkerRuntimeBarrier
 __all__ = [
     # Core design abstractions
     "Buffer",
+    "DeviceConfiguration",
     "ExternalFunction",
     "Kernel",
     "KernelObject",
     "ObjectFile",
     "Program",
+    "Resolvable",
+    "PerDeviceConfigurationResolvable",
     "Device",
     "Worker",
     "WorkerRuntimeBarrier",
