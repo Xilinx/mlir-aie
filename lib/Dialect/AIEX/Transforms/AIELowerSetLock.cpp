@@ -89,7 +89,11 @@ struct AIELowerSetLockPass
     RewritePatternSet patterns(&getContext());
     patterns.add<SetLockToWrite32Pattern>(&getContext());
 
-    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+    // Rooted at the SetLockOps alone, the driver skips the rest of the runtime
+    // sequences.
+    SmallVector<Operation *> roots;
+    device.walk([&](SetLockOp op) { roots.push_back(op); });
+    if (failed(applyPartialConversion(roots, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
