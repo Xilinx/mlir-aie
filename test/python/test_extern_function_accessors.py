@@ -5,19 +5,17 @@
 #
 
 # RUN: %pytest %s
+# REQUIRES: peano
 """Unit tests for ExternalFunction's compile-recipe accessors (no NPU required).
 
-Also covers ``cxx_core_compile_command``, the factored Peano command builder;
-no compiler is invoked, only the argument list is inspected.
+Also covers ``cxx_core_compile_command``, the factored Peano command builder,
+and prefixing a Peano-compiled object's symbols.
 """
-
-from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import patch
 
 import numpy as np
 import pytest
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.compile import utils
 from aie.utils.compile.utils import cxx_core_compile_command
 
 # ---------------------------------------------------------------------------
@@ -72,17 +70,6 @@ def test_accessors_return_copies(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def _no_peano_needed(monkeypatch):
-    """Stub the Peano and header paths so no Peano install is needed.
-
-    Building the command resolves both through ``aie.utils.config``; a pure
-    host test must not depend on the llvm-aie wheel being present.
-    """
-    monkeypatch.setattr("aie.utils.config.peano_cxx_path", lambda: "/peano/bin/clang++")
-    monkeypatch.setattr("aie.utils.config.cxx_header_path", lambda: "/mlir_aie/include")
-
-
 def _cmd(**kw):
     return cxx_core_compile_command("k.cc", "aie2p", "k.o", **kw)
 
@@ -116,8 +103,8 @@ def test_command_carries_the_library_defaults():
         assert flag in cmd
 
 
-def test_chess_path_needs_the_wrapper_on_path(monkeypatch):
-    monkeypatch.setattr("shutil.which", lambda name: None)
+def test_chess_path_needs_the_wrapper_on_path(tmp_path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path))
     with pytest.raises(RuntimeError, match="xchesscc_wrapper"):
         _cmd(use_chess=True)
 
@@ -127,53 +114,34 @@ def test_chess_path_needs_the_wrapper_on_path(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_prefixing_renames_every_defined_symbol(tmp_path, monkeypatch):
+def test_prefixing_renames_every_defined_symbol(tmp_path):
     """A prefix covers the object's siblings, not just the declared symbol.
 
     Leaving additional entry points bare makes parameterizations collide at
-    link. Uses a stub object so the test needs no Peano.
+    link.
     """
-    from aie.utils.compile import utils
-
-    monkeypatch.setattr(utils.config, "nm_path", lambda: "nm")
-    monkeypatch.setattr(utils.config, "objcopy_path", lambda: "objcopy")
-    monkeypatch.setattr(utils, "_object_has_bitcode", lambda _: False)
-
+    src = tmp_path / "k.cc"
+    src.write_text(
+        'extern "C" void matmul_i16_i16() {}\n'
+        'extern "C" void matmul_scalar_i16_i16() {}\n'
+        'extern "C" void zero_i16() {}\n'
+    )
     obj = tmp_path / "k.o"
-    obj.write_bytes(b"")
-    calls = []
+    utils.compile_cxx_core_function(str(src), "aie2p", str(obj))
 
-    def fake_run(cmd, **kwargs):
-        calls.append(cmd)
-        if "--defined-only" in cmd:  # llvm-nm
-            listed = "\n".join(
-                f"00000000 T {s}" for s in getattr(fake_run, "symbols", [])
-            )
-            return SimpleNamespace(returncode=0, stdout=listed.encode(), stderr=b"")
-        redefines = [a for a in cmd if a.startswith("--redefine-syms=")]
-        assert redefines, cmd
-        mapping = dict(
-            line.split()
-            for line in Path(redefines[0].split("=", 1)[1]).read_text().splitlines()
-        )
-        fake_run.symbols = [mapping.get(s, s) for s in fake_run.symbols]
-        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
-
-    fake_run.symbols = ["matmul_i16_i16", "matmul_scalar_i16_i16", "zero_i16"]
-    with patch("subprocess.run", fake_run):
-        utils.prefix_symbols_in_object(str(obj), "d00d_")
-        assert fake_run.symbols == [
-            "d00d_matmul_i16_i16",
-            "d00d_matmul_scalar_i16_i16",
-            "d00d_zero_i16",
-        ]
-        # Prefixing is literal; compile_external_kernel tracks cache state.
-        utils.prefix_symbols_in_object(str(obj), "d00d_")
-        assert fake_run.symbols == [
-            "d00d_d00d_matmul_i16_i16",
-            "d00d_d00d_matmul_scalar_i16_i16",
-            "d00d_d00d_zero_i16",
-        ]
+    utils.prefix_symbols_in_object(str(obj), "d00d_")
+    assert sorted(utils._defined_symbols(str(obj))) == [
+        "d00d_matmul_i16_i16",
+        "d00d_matmul_scalar_i16_i16",
+        "d00d_zero_i16",
+    ]
+    # Prefixing is literal; compile_external_kernel tracks cache state.
+    utils.prefix_symbols_in_object(str(obj), "d00d_")
+    assert sorted(utils._defined_symbols(str(obj))) == [
+        "d00d_d00d_matmul_i16_i16",
+        "d00d_d00d_matmul_scalar_i16_i16",
+        "d00d_d00d_zero_i16",
+    ]
 
 
 def test_bind_other_symbols_from_the_same_object():
