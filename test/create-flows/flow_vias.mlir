@@ -18,9 +18,10 @@
 // --aie-split-flow-vias rewrites each pinned switchbox hop into a local flow.
 // The router assigns the switchbox resources for these local flows together
 // with the gaps between them.
-// CHECK: %[[T02:.*]] = aie.tile(0, 2)
-// CHECK: %[[T03:.*]] = aie.tile(0, 3)
-// CHECK: %[[T05:.*]] = aie.tile(0, 5)
+// CHECK-DAG: %[[T02:.*]] = aie.tile(0, 2)
+// CHECK-DAG: %[[T03:.*]] = aie.tile(0, 3)
+// CHECK-DAG: %[[T04:.*]] = aie.tile(0, 4)
+// CHECK-DAG: %[[T05:.*]] = aie.tile(0, 5)
 // CHECK: aie.flow(%[[T02]], DMA : 0, %[[T02]], North : 4)
 // CHECK: aie.flow(%[[T03]], South : 4, %[[T03]], DMA : 0)
 // CHECK: aie.packet_flow(1) {
@@ -32,7 +33,7 @@
 // CHECK:   aie.packet_dest<%[[T03]], North : 0>
 // CHECK: } {priority_route = true}
 // CHECK: aie.packet_flow(1) {
-// CHECK:   aie.packet_source<%[[T03]], North : 0>
+// CHECK:   aie.packet_source<%[[T04]], South : 0>
 // CHECK:   aie.packet_dest<%[[T05]], DMA : 0>
 // CHECK: } {keep_pkt_header = true, priority_route = true}
 

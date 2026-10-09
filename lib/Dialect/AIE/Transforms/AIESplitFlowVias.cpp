@@ -74,38 +74,33 @@ static bool isDirectShimMux(Value srcTile, WireBundle srcBundle, int srcChannel,
   return false;
 }
 
-static std::pair<Value, WireBundle> wireSourceOfIngress(DeviceOp device,
-                                                        OpBuilder &builder,
-                                                        Value tileValue,
-                                                        WireBundle ingress) {
+static FailureOr<std::pair<Value, WireBundle>> wireEndpoint(DeviceOp device,
+                                                            OpBuilder &builder,
+                                                            Value tileValue,
+                                                            WireBundle bundle) {
   auto tile = cast<TileOp>(tileValue.getDefiningOp());
-  int col = tile.colIndex();
-  int row = tile.rowIndex();
-  switch (ingress) {
-  case WireBundle::North:
-    row++;
-    break;
-  case WireBundle::South:
-    row--;
-    break;
-  case WireBundle::East:
-    col++;
-    break;
-  case WireBundle::West:
-    col--;
-    break;
-  default:
-    return {tileValue, ingress};
-  }
+  if (!llvm::is_contained({WireBundle::North, WireBundle::South,
+                           WireBundle::East, WireBundle::West},
+                          bundle))
+    return std::make_pair(tileValue, bundle);
+
+  auto endpoint = getConnectingWireEndpoint(device.getTargetModel(),
+                                            tile.getTileID(), Port{bundle, 0});
+  if (!endpoint)
+    return failure();
+  TileID neighbor = endpoint->first;
 
   for (TileOp candidate : device.getOps<TileOp>())
-    if (candidate.colIndex() == col && candidate.rowIndex() == row)
-      return {candidate, getConnectingBundle(ingress)};
+    if (candidate.getTileID() == neighbor)
+      return std::pair<Value, WireBundle>(candidate.getResult(),
+                                          endpoint->second.bundle);
 
   OpBuilder::InsertionGuard guard(builder);
   builder.setInsertionPoint(tile);
-  return {TileOp::create(builder, tile.getLoc(), col, row),
-          getConnectingBundle(ingress)};
+  return std::pair<Value, WireBundle>(
+      TileOp::create(builder, tile.getLoc(), neighbor.col, neighbor.row)
+          .getResult(),
+      endpoint->second.bundle);
 }
 
 static void emitPacketFlow(OpBuilder &builder, Location loc, Operation *anchor,
@@ -207,8 +202,27 @@ struct AIESplitFlowViasPass
             isDirectShimMux(srcTile, srcBundle, srcChannel, viaTile,
                             ingressBundle, ingressChannel);
         if (!foldIngress) {
-          auto [wireTile, wireBundle] =
-              wireSourceOfIngress(device, builder, viaTile, ingressBundle);
+          bool directWire =
+              isDirectWire(srcTile, srcBundle, srcChannel, viaTile,
+                           ingressBundle, ingressChannel);
+          auto segmentSource = std::make_pair(srcTile, srcBundle);
+          if (i > 0 && !directWire) {
+            auto endpoint = wireEndpoint(device, builder, srcTile, srcBundle);
+            if (failed(endpoint)) {
+              flow.emitOpError("via egress has no neighboring tile");
+              return signalPassFailure();
+            }
+            segmentSource = *endpoint;
+          }
+          auto wireSource =
+              wireEndpoint(device, builder, viaTile, ingressBundle);
+          if (failed(wireSource)) {
+            flow.emitOpError("via ingress has no neighboring tile");
+            return signalPassFailure();
+          }
+          auto [wireTile, wireBundle] = *wireSource;
+          srcTile = segmentSource.first;
+          srcBundle = segmentSource.second;
           emitSegment(wireTile, wireBundle, ingressChannel);
         }
 
@@ -237,6 +251,15 @@ struct AIESplitFlowViasPass
         srcChannel = foldEgress ? nextChannel : egressChannel;
       }
 
+      if (srcTile != flow.getDest() || srcBundle != flow.getDestBundle() ||
+          srcChannel != flow.getDestChannel()) {
+        auto endpoint = wireEndpoint(device, builder, srcTile, srcBundle);
+        if (failed(endpoint)) {
+          flow.emitOpError("via egress has no neighboring tile");
+          return signalPassFailure();
+        }
+        std::tie(srcTile, srcBundle) = *endpoint;
+      }
       emitSegment(flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
       flow.erase();
     }
@@ -291,8 +314,25 @@ struct AIESplitFlowViasPass
         bool foldIngress = isDirectShimMux(srcTile, srcBundle, srcChannel,
                                            viaTile, ingress, ingressChannel);
         if (!foldIngress) {
-          auto [wireTile, wireBundle] =
-              wireSourceOfIngress(device, builder, viaTile, ingress);
+          bool directWire = isDirectWire(srcTile, srcBundle, srcChannel,
+                                         viaTile, ingress, ingressChannel);
+          auto segmentSource = std::make_pair(srcTile, srcBundle);
+          if (i > 0 && !directWire) {
+            auto endpoint = wireEndpoint(device, builder, srcTile, srcBundle);
+            if (failed(endpoint)) {
+              pf.emitOpError("via egress has no neighboring tile");
+              return signalPassFailure();
+            }
+            segmentSource = *endpoint;
+          }
+          auto wireSource = wireEndpoint(device, builder, viaTile, ingress);
+          if (failed(wireSource)) {
+            pf.emitOpError("via ingress has no neighboring tile");
+            return signalPassFailure();
+          }
+          auto [wireTile, wireBundle] = *wireSource;
+          srcTile = segmentSource.first;
+          srcBundle = segmentSource.second;
           emitSegment(wireTile, wireBundle, ingressChannel);
         }
 
@@ -325,6 +365,15 @@ struct AIESplitFlowViasPass
         srcChannel = foldEgress ? nextChannel : egressChannel;
       }
 
+      if (srcTile != dest.getTile() || srcBundle != dest.getBundle() ||
+          srcChannel != dest.getChannel()) {
+        auto endpoint = wireEndpoint(device, builder, srcTile, srcBundle);
+        if (failed(endpoint)) {
+          pf.emitOpError("via egress has no neighboring tile");
+          return signalPassFailure();
+        }
+        std::tie(srcTile, srcBundle) = *endpoint;
+      }
       emitSegment(dest.getTile(), dest.getBundle(), dest.getChannel(),
                   pf.getKeepPktHeaderAttr());
       pf.erase();

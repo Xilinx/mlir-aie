@@ -262,6 +262,10 @@ using Port = struct Port {
   }
 };
 
+std::optional<std::pair<TileID, Port>>
+getConnectingWireEndpoint(const AIETargetModel &targetModel, TileID tile,
+                          Port port);
+
 using Connect = struct Connect {
   Port src;
   Port dst;
