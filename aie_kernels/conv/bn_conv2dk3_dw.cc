@@ -392,7 +392,15 @@ conv2dk3_ui8_scalar(uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts,
 // channels. A row dropped by `check` gets zero weights, so its line contents
 // never reach the sum.
 using dw_v = aie::vector<uint8, 32>;
+#if AIE_TUNED_AIE2
+// AIE2's elementwise multiply sums lanes i and i + 32, so one op takes two
+// taps: w[t / 2] holds tap t in half t % 2.
+using dw_w = aie::vector<int8, 64>;
+constexpr int DW_W = 5;
+#else
 using dw_w = aie::vector<int8, 32>;
+constexpr int DW_W = 9;
+#endif
 
 static inline void dw_taps(const int8_t *wts, int32_t check, dw_w *w) {
   BN3_UNROLL_FULL
@@ -405,13 +413,28 @@ static inline void dw_taps(const int8_t *wts, int32_t check, dw_w *w) {
       aie::vector<int32, 8> pair = aie::select(
           aie::broadcast<int32, 8>(p[0] & m),
           aie::broadcast<int32, 8>(p[1] & m), aie::mask<8>::from_uint32(0xaa));
+#if AIE_TUNED_AIE2
+      w[(r * 3 + ki) / 2].insert((r * 3 + ki) % 2,
+                                 aie::vector_cast<int8>(pair));
+#else
       w[r * 3 + ki] = aie::vector_cast<int8>(pair);
+#endif
     }
   }
+#if AIE_TUNED_AIE2
+  w[4].insert(1, aie::zeros<int8, 32>());
+#endif
 }
 
 static inline aie::accum<acc32, 32> dw_sum(const dw_v *l, const dw_v *c,
                                            const dw_v *r, const dw_w *w) {
+#if AIE_TUNED_AIE2
+  const dw_v d[9] = {l[0], c[0], r[0], l[1], c[1], r[1], l[2], c[2], r[2]};
+  aie::accum<acc32, 32> acc(::mul_elem_32_2(aie::concat(d[0], d[1]), w[0]));
+  for (int i = 1; i < 4; i++)
+    acc = ::mac_elem_32_2(aie::concat(d[2 * i], d[2 * i + 1]), w[i], acc);
+  return ::mac_elem_32_2(d[8].grow<64>(), w[4], acc);
+#else
   aie::accum<acc32, 32> acc = aie::mul(l[0], w[0]);
   acc = aie::mac(acc, c[0], w[1]);
   acc = aie::mac(acc, r[0], w[2]);
@@ -422,6 +445,7 @@ static inline aie::accum<acc32, 32> dw_sum(const dw_v *l, const dw_v *c,
     acc = aie::mac(acc, r[i], w[3 * i + 2]);
   }
   return acc;
+#endif
 }
 
 template <bool Aligned, unsigned N>
@@ -1432,7 +1456,7 @@ static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 #else
   const int32_t first = 0;
 #endif
-  dw_w w[9];
+  dw_w w[DW_W];
   for (int cd = first; cd < channels / 8; cd++) {
     const int32_t in_off = cd * input_width * 8;
     uint8_t *out = cd < split ? output1 + cd * output_width * 8
