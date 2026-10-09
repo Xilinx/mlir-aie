@@ -99,11 +99,12 @@ jobs:
       - name: Build
         id: build
         run: |
-          mkdir -p build_release
+          mkdir -p build_release/install
           cd build_release
           cmake .. \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
