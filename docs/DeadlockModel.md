@@ -95,6 +95,17 @@ finished. A task with `issue_token` sends its completion token when its last
 BD's transfer is done; **to confirm:** for an S2MM, whether that is when the
 last word is written to memory.
 
+A shim MM2S task's token does **not** mean its words have entered the
+stream. Measured on npu2 (Strix, 2026-10-10): with the host waiting on
+`to_a`'s token before it issues `to_b` on another channel, `to_a` finishes
+with up to 1588 words its receiver cannot yet take, and hangs from 1594 on,
+repeatably. Of those, 8 sit at the receiving end (see
+[Buffering](#buffering)); the rest are still in the shim channel, which
+reports the task complete once it has read them. So the model treats a
+shim MM2S channel as reading into a buffer of about 1580 words and sending
+from it, its token marking the end of the read. **To confirm:** the exact
+size, whether it depends on the transfer's shape, and npu1.
+
 ### The host
 
 The runtime sequence runs in order:
