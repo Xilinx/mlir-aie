@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-10T12:58:09+00:00",
+ "generated_at": "2026-10-10T18:54:55+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -2592,6 +2592,18 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 38067054668,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38067054668",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-10T16:17:26Z",
+     "run_started_at": "2026-10-10T16:17:26Z",
+     "updated_at": "2026-10-10T17:26:20Z",
+     "head_sha": "58484c8cfbadbd81e6e0a892c2d94517e615a22d",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 38051803192,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38051803192",
      "status": "completed",
@@ -2720,18 +2732,6 @@
      "run_started_at": "2026-10-08T20:17:51Z",
      "updated_at": "2026-10-09T00:44:30Z",
      "head_sha": "dff2bb056fa2431d67bb370bf51defbf941ed248",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 37808006612,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37808006612",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-08T16:20:26Z",
-     "run_started_at": "2026-10-08T16:20:26Z",
-     "updated_at": "2026-10-08T19:35:31Z",
-     "head_sha": "369f6613c342b6d5387a9d0c15347a92d058364f",
      "title": "MLIR Distro",
      "attempt": 1
     }
