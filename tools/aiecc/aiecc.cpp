@@ -2099,8 +2099,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
             *clone, os, cppFoldDDRAddrOffset, emitShim);
       });
 
-  // Translate each sequence exactly once into its NPU program (the .bin bytes
-  // and the locmap). Two variants are built from the same per-sequence input.
+  // Translate each sequence exactly once into its NPU program (the .bin bytes,
+  // and with --get-locmap the locmap). Two variants are built from the same
+  // per-sequence input.
   // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
   // the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
   // offset for every arg itself. cl::opt defaults to true, so only pass the
@@ -2108,7 +2109,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto &npuProgram = buildNpuProgramSubgraph(
       perSeq, "npu_program_{0}.bin",
       /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue(),
-      /*withLocmap=*/true);
+      /*withLocmap=*/keepLoc);
 
   auto &npuInsts = npuProgram.map<std::vector<char>>(
       npuInstsName.getValue(), [](const NpuProgram &p) { return p.insts; });
