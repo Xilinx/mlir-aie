@@ -401,17 +401,17 @@ be dispatched twice in a row. Within one sequence, one end's transfers must be
 awaited or freed (`aiex.dma_free_task`) before the other's first is issued, and
 an end used inside a loop counts as in flight for the whole loop. An end no
 runtime sequence names is never shared. Only as many ends share as the tile
-needs. The routes of ends sharing a channel become packet-switched, each with
-its own id, and each end keeps its own `aie.shim_dma_allocation`, so every
-transfer stamps its own header. A design that fits without sharing is lowered
-exactly as before.
+needs. The routes of ends sharing a channel become packet-switched, with ids
+that differ from one another; other shared channels reuse the same ids, as the
+router keeps flows with one id apart wherever their destinations differ. Each
+end keeps its own `aie.shim_dma_allocation`, so every transfer stamps its own
+header. A design that fits without sharing is lowered exactly as before.
 
 `--aie-place-tiles` counts shim channels by the same rule (`ShimTransferSpans`):
 logical shim tiles are placed one channel per end as before, and only when no
 shim tile has room does it count the ends that can take turns once, so a pack
 whose members together need more shim channels than the device has can still
-be placed. Every id comes from one device-wide space of 32, so the number of
-ends that can share is bounded by it.
+be placed.
 
 ### 5. `--aie-objectfifo-lower-dmas`
 

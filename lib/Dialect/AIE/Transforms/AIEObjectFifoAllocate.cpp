@@ -984,27 +984,53 @@ struct AIEObjectFifoAllocatePass
   }
 
   /// A route reaching or leaving a shared shim channel carries a packet
-  /// header; one that has none gets a free id.
+  /// header, its id distinct from those of the routes it shares the channel
+  /// with. Other shared channels reuse the same ids: the router keeps flows
+  /// with one id apart wherever their destinations differ.
   LogicalResult headShimSharingRoutes() {
-    DenseSet<Operation *> sharing;
+    DenseMap<Operation *, Operation *> channelOf;
     for (auto [sharer, owner] : shimChannelSharers) {
-      sharing.insert(sharer);
-      sharing.insert(owner);
+      channelOf[sharer] = owner;
+      channelOf[owner] = owner;
     }
-    auto shares = [&](StringRef name) {
-      auto endpoint = lookupEndpoint(name);
-      return endpoint && sharing.contains(endpoint.getOperation());
+    auto channelsOf = [&](RouteOp route) {
+      SmallVector<Operation *> channels;
+      auto note = [&](StringRef name) {
+        if (auto endpoint = lookupEndpoint(name);
+            endpoint && channelOf.count(endpoint.getOperation()))
+          channels.push_back(channelOf.lookup(endpoint.getOperation()));
+      };
+      llvm::for_each(route.getSourceNames(), note);
+      llvm::for_each(route.getDestinationNames(), note);
+      return channels;
     };
+    DenseMap<Operation *, DenseSet<int>> idsOn;
+    for (auto route : device.getOps<RouteOp>())
+      if (PacketInfoAttr packet = route.getPacketAttr();
+          packet && packet.isAssigned())
+        for (Operation *channel : channelsOf(route))
+          idsOn[channel].insert(packet.assignedId());
     PacketIdSpace ids(device);
+    SmallVector<int> reused;
     for (auto route : device.getOps<RouteOp>()) {
-      if (route.getPacket() ||
-          (llvm::none_of(route.getSourceNames(), shares) &&
-           llvm::none_of(route.getDestinationNames(), shares)))
+      SmallVector<Operation *> channels = channelsOf(route);
+      if (route.getPacket() || channels.empty())
         continue;
-      std::optional<int> id = ids.takeLowestFrom();
-      if (!id)
+      auto freeOnAll = [&](int id) {
+        return llvm::none_of(channels, [&](Operation *channel) {
+          return idsOn[channel].contains(id);
+        });
+      };
+      std::optional<int> id;
+      if (auto *it = llvm::find_if(reused, freeOnAll); it != reused.end())
+        id = *it;
+      else if ((id = ids.takeLowestFrom()))
+        reused.push_back(*id);
+      else
         return route.emitOpError("shares a shim channel, but no packet id is "
                                  "left to tell its transfers apart");
+      for (Operation *channel : channels)
+        idsOn[channel].insert(*id);
       route.setPacketAttr(PacketInfoAttr::get(builder.getContext(), 0,
                                               static_cast<uint16_t>(*id)));
     }
