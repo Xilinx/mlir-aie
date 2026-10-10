@@ -924,10 +924,7 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     // would visit every op of the runtime sequences.
     SmallVector<Operation *> illegal;
     device.walk([&](Operation *op) {
-      if (isa<NpuDmaMemcpyNdOp, NpuDmaWaitOp, NpuWriteRTPOp, NpuWriteBdOp,
-              NpuWrite32Op, NpuBlockWriteOp, NpuMaskWrite32Op, NpuMaskPollOp>(
-              op) &&
-          target.isIllegal(op))
+      if (target.isIllegal(op))
         illegal.push_back(op);
     });
     ConversionConfig config;
