@@ -25,10 +25,10 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/Transforms/WalkPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -53,17 +53,16 @@ static LogicalResult emitUnplacedTileError(Operation *op,
   return err;
 }
 
-struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
+struct DMAStartTaskOpPattern : OpRewritePattern<DMAStartTaskOp> {
   DMAStartTaskOpPattern(MLIRContext *context,
                         llvm::DenseMap<Operation *, bool> &onlyPushedOnce)
-      : OpConversionPattern(context), onlyPushedOnce(onlyPushedOnce) {}
+      : OpRewritePattern(context), onlyPushedOnce(onlyPushedOnce) {}
 
   // Whether every start of a configure pushes a constant repeat count of 0.
   llvm::DenseMap<Operation *, bool> &onlyPushedOnce;
 
-  LogicalResult
-  matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(DMAStartTaskOp op,
+                                PatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
     if (!task_op && !op.getTask().getDefiningOp<DMAConfigureTaskForOp>()) {
       // A task carried through runtime control flow. The push names one head
@@ -135,12 +134,11 @@ static DMAConfigureTaskOp resolveConfigureThroughCF(Value task) {
   return configures.empty() ? nullptr : configures.front();
 }
 
-struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
-  using OpConversionPattern::OpConversionPattern;
+struct DMAAwaitTaskOpPattern : OpRewritePattern<DMAAwaitTaskOp> {
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult
-  matchAndRewrite(DMAAwaitTaskOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(DMAAwaitTaskOp op,
+                                PatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
     if (!task_op) {
       // The awaited task threads through runtime control flow (an scf result),
@@ -1282,26 +1280,24 @@ struct AIEDMATasksToNPUPass
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
-    // Convert DMAStartBD and DMAAwaitBD ops
-    ConversionTarget target(getContext());
-    target.addLegalDialect<AIEXDialect>();
-    target.addLegalDialect<arith::ArithDialect>();
-    target.addLegalOp<cf::AssertOp>();
-    target.addIllegalOp<DMAStartTaskOp>();
-    target.addIllegalOp<DMAAwaitTaskOp>();
+    // Lower the starts and awaits. Each rewrites one op into ops that need no
+    // further lowering, so one walk does it.
     RewritePatternSet patterns(&getContext());
     llvm::DenseMap<Operation *, bool> onlyPushedOnce;
     patterns.insert<DMAStartTaskOpPattern>(&getContext(), onlyPushedOnce);
     patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
+    walkAndApplyPatterns(device, std::move(patterns));
     // A start or await left unlowered still uses its configure, so lowering
-    // the configures would only add errors. Rooted at the starts and awaits
-    // alone, the driver skips the rest of the runtime sequences.
-    SmallVector<Operation *> roots;
+    // the configures would only add errors.
+    bool unlowered = false;
     device.walk([&](Operation *op) {
-      if (isa<DMAStartTaskOp, DMAAwaitTaskOp>(op))
-        roots.push_back(op);
+      if (isa<DMAStartTaskOp, DMAAwaitTaskOp>(op)) {
+        op->emitError() << "failed to legalize operation '" << op->getName()
+                        << "'";
+        unlowered = true;
+      }
     });
-    if (failed(applyPartialConversion(roots, target, std::move(patterns))))
+    if (unlowered)
       return signalPassFailure();
 
     // Drop the now-dead task-index carries the awaits held, so the branch-local
