@@ -18,6 +18,13 @@
 // RUN: llvm-readelf -s %t/elfs_main_core_1_2/elfs_main_core_1_2.elf | FileCheck %s --check-prefix=CORE12 --implicit-check-not=__aiecc_canon_
 // RUN: llvm-readelf -s %t/elfs_main_core_2_2/elfs_main_core_2_2.elf | FileCheck %s --check-prefix=CORE22 --implicit-check-not=__aiecc_canon_
 
+// Each core's ELF is the one it links when compiled on its own.
+// RUN: mkdir -p %t/own && cd %t/own && aiecc --no-share-core-objects --tmpdir %t/own %s
+// RUN: not ls %t/own/canonical_*.ll
+// RUN: cmp %t/elfs_main_core_0_2/elfs_main_core_0_2.elf %t/own/elfs_main_core_0_2/elfs_main_core_0_2.elf
+// RUN: cmp %t/elfs_main_core_1_2/elfs_main_core_1_2.elf %t/own/elfs_main_core_1_2/elfs_main_core_1_2.elf
+// RUN: cmp %t/elfs_main_core_2_2/elfs_main_core_2_2.elf %t/own/elfs_main_core_2_2/elfs_main_core_2_2.elf
+
 // LOG-DAG: aiecc: main_core_0_2: {{.*}}canonical_{{[0-9A-F]+}}.o renamed to {{.*}}objects_main_core_0_2.o
 // LOG-DAG: aiecc: main_core_1_2: {{.*}}canonical_{{[0-9A-F]+}}.o renamed to {{.*}}objects_main_core_1_2.o
 // LOG-DAG: aiecc: main_core_2_2: {{.*}}canonical_{{[0-9A-F]+}}.o renamed to {{.*}}objects_main_core_2_2.o

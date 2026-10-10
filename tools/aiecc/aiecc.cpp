@@ -343,11 +343,12 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
     std::set<std::string> stems;
   };
   auto shared = std::make_shared<SharedObjects>();
+  bool share = !noShareCoreObjects;
   EdgeWithTypedOutput<Directory> &peanoObject =
       bundle(peanoLinked.out, arches.out, stackSpaces.out)
           .map<Directory>(
               objName,
-              [optCmd, llcCmd, shared](
+              [optCmd, llcCmd, shared, share](
                   const Item<std::string> &ir, const Item<std::string> &arch,
                   const Item<std::string> &stack,
                   Item<Directory> &out) -> mlir::LogicalResult {
@@ -365,7 +366,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                   }
                   return llcCmd(optimized, arch, stack, object);
                 };
-                if (ShellCommand::dryRun) {
+                if (ShellCommand::dryRun || !share) {
                   return compile(ir, out.key, out);
                 }
                 // The core's own module stays on disk to inspect.

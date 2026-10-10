@@ -544,6 +544,10 @@ inline cl::opt<std::string> deviceCacheDir(
              "earlier build stored in this dir, and store the ones this build "
              "compiles (Peano only)"),
     cl::value_desc("dir"), cl::init(""));
+inline cl::opt<bool> noShareCoreObjects(
+    "no-share-core-objects",
+    cl::desc("Compile each core's program on its own, even where other cores "
+             "run the same program over their own buffers"));
 inline cl::opt<bool> awaitLinkFiles(
     "await-link-files",
     cl::desc("Lower the design, but read no file a core links (link_with, "
