@@ -1683,6 +1683,8 @@ class WaitGraph:
 
     def __init__(self, d, streams, volumes):
         self.agents, self.edges, self.ids, self.modeled = [], [], {}, set()
+        # Stream edges from a sender to its receiver, and the reverse.
+        self.sends, self.receives = set(), set()
         never_full = {
             (*s.dst[:2], s.dst[3])
             for s in streams
@@ -1741,6 +1743,8 @@ class WaitGraph:
                 continue
             self.add_edge(a, b, self.STREAM)
             self.add_edge(b, a, self.STREAM)
+            self.sends.add((a, b))
+            self.receives.add((b, a))
 
         def by_symbol(sym):
             a = d.allocs.get(sym)
@@ -1892,25 +1896,49 @@ class WaitGraph:
         return [b for b, kind in self.edges[a] if kind != self.STREAM]
 
     def wait_chain(self, frm, targets, avoid):
-        parent = {a: None for a in avoid}
+        # A state is an agent and whether the chain reached it as a receiver
+        # taking a sender's data, where its other DMA senders are no wait of
+        # its: a DMA channel sends a packet whole once it starts.
+        parent = {}
+        for a in avoid:
+            parent[(a, False)] = None
+            parent[(a, True)] = None
         work = deque()
         for a in frm:
-            if a not in parent:
-                parent[a] = None
-                work.append(a)
+            if (a, False) not in parent:
+                parent[(a, False)] = None
+                work.append((a, False))
         while work:
-            a = work.popleft()
+            state = work.popleft()
+            a, taking = state
             if a in targets:
                 chain = []
-                at = a
+                at = state
                 while at is not None:
-                    chain.append(at)
+                    chain.append(at[0])
                     at = parent[at]
                 return chain[::-1]
-            for b, _ in self.edges[a]:
-                if b not in parent:
-                    parent[b] = a
-                    work.append(b)
+            if taking and (a, False) in parent:
+                continue
+            on_chain = set()
+            at = state
+            while at is not None:
+                on_chain.add(at[0])
+                at = parent[at]
+            for b, kind in self.edges[a]:
+                if (
+                    taking
+                    and (a, b) in self.receives
+                    and (a, b) not in self.sends
+                    and self.agents[b][2] == self.CHANNEL
+                ):
+                    continue
+                if (b, False) in parent or b in on_chain:
+                    continue
+                nxt = (b, kind == self.STREAM and (a, b) in self.sends)
+                if nxt not in parent:
+                    parent[nxt] = state
+                    work.append(nxt)
         return []
 
     def describe(self, a):
