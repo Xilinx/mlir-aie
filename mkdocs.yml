@@ -272,6 +272,7 @@ nav:
     - MLIR / C++:
       - ObjectFifo Lowering: ObjectFifoLowering.md
       - Deadlock Model: DeadlockModel.md
+      - Deadlock Model Plan: DeadlockModelPlan.md
       - AIE Dialect: AIEDialect.md
       - AIEX Dialect: AIEXDialect.md
       - AIEVec Dialect: AIEVecDialect.md

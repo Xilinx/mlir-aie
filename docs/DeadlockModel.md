@@ -10,7 +10,8 @@ lowering). It is not in aiecc's pipeline yet. Its Python oracle
 (`test/create-packet-flows/nightly/aiemodel/program.py`) tries every order on
 small designs, and `test/deadlock-model/engine_vs_oracle.py` holds the two to
 the same answers. Entries marked **to confirm** are stated as the model
-treats them until a hardware case settles them.
+treats them until a hardware case settles them. The milestones, decisions
+and progress are in [DeadlockModelPlan.md](DeadlockModelPlan.md).
 
 ## What the model decides
 
