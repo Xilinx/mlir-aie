@@ -165,7 +165,9 @@ class _GeneratedDesign:
     expand_load_pdis: bool | None
 
     @classmethod
-    def read(cls, module, mlir_text: str, external_kernels: list) -> "_GeneratedDesign":
+    def from_module(
+        cls, module, mlir_text: str, external_kernels: list
+    ) -> "_GeneratedDesign":
         """Record `mlir_text` with the IRON attributes of `module`, its parse."""
         attributes = module.operation.attributes
         entry = attributes.get("iron.entry")
@@ -469,6 +471,12 @@ class CompilableDesign:
     def insts_only(self, value: bool) -> None:
         self._compile_config = replace(self._compile_config, insts_only=value)
 
+    @property
+    def full_elf_requested(self) -> bool:
+        """Whether the caller asked for a full ELF, rather than the design
+        taking one because its Program composes several configurations."""
+        return self.full_elf and not self._inferred_full_elf
+
     def _config(self) -> dict[str, Any]:
         """Return the current values of every configuration parameter, keyed by name.
 
@@ -476,10 +484,7 @@ class CompilableDesign:
         Inferred full-ELF mode remains an implementation detail and does not
         become an explicit specialization.
         """
-        config = replace(
-            self._compile_config,
-            full_elf=False if self._inferred_full_elf else self.full_elf,
-        )
+        config = replace(self._compile_config, full_elf=self.full_elf_requested)
         return asdict(config)
 
     def specialize(self, **overrides) -> "CompilableDesign":
@@ -569,9 +574,7 @@ class CompilableDesign:
         """
         has_dispatch = bool(self.dispatch_params)
 
-        requested_full_elf = (
-            self.full_elf and not self._inferred_full_elf
-        ) or full_elf_path is not None
+        requested_full_elf = self.full_elf_requested or full_elf_path is not None
         if requested_full_elf and has_dispatch:
             raise NotImplementedError(
                 "DispatchTime[T] + full_elf=True is not supported: a full ELF "
@@ -1655,11 +1658,7 @@ class CompilableDesign:
             self.object_files,
             self.aiecc_flags,
             self.compile_flags,
-            (
-                self.full_elf and not self._inferred_full_elf
-                if full_elf is None
-                else full_elf
-            ),
+            self.full_elf_requested if full_elf is None else full_elf,
             self._resolve_fold_ddr_addr_offset(),
             bool(self.dispatch_params),
             self.include_paths,
@@ -1803,7 +1802,9 @@ class CompilableDesign:
             # Static .mlir file: text already on disk; no kernels to collect.
             mlir_text = self.mlir_generator.read_text()
             with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
-                return _GeneratedDesign.read(_Module.parse(mlir_text), mlir_text, [])
+                return _GeneratedDesign.from_module(
+                    _Module.parse(mlir_text), mlir_text, []
+                )
 
         # Guard 2-B is checked here, not in __init__: an unknown key cannot
         # generate at all, and leaving it be keeps to_json() able to round-trip
@@ -1908,7 +1909,7 @@ class CompilableDesign:
                     raise RuntimeError(
                         f"MLIR verification failed for '{self.generator_name}'"
                     )
-                generated = _GeneratedDesign.read(
+                generated = _GeneratedDesign.from_module(
                     module,
                     # str() drops locations, and aiecc reports against this text.
                     module.operation.get_asm(enable_debug_info=True),

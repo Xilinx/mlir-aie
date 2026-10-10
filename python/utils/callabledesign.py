@@ -378,7 +378,7 @@ class CallableDesign:
             tuple(tensor_args),
             cache_compile_kwargs,
             extra_key=compilable._generation_cache_key(
-                full_elf=compilable.full_elf and not compilable._inferred_full_elf
+                full_elf=compilable.full_elf_requested
             ),
         )
 
