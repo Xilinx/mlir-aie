@@ -9,7 +9,7 @@
 
 // This tests how some configuration register writes are expanded from a
 // load_pdi instructions. The expand-load-pdi pass for this file should generate
-// an empty load_pdi instruction (for resetting the device) followed by 
+// an empty load_pdi instruction (for resetting the device) followed by
 // register writes that configure the switchbox connections specified.
 
 

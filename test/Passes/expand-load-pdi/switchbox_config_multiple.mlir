@@ -10,7 +10,7 @@
 // This tests how multiple load_pdi instructions are expanded. There should be
 // empty load_pdi instructions generated between configurations for the device
 // reset. Since the firmware 'optimizes' away multiple load_pdi instructions
-// with the same address, these should be different empty devices so they 
+// with the same address, these should be different empty devices so they
 // don't get skipped.
 
 
