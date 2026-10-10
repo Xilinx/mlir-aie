@@ -18,6 +18,7 @@ from ._aiex_ops_gen import (
 from ._aie_ops_gen import ObjectFifoCreateOp, EndOp, RuntimeSequenceOp
 from . import aie
 from .aie import (
+    BdIteration,
     DMAChannelDir,
     LockAction,
     Neighbors,
@@ -323,6 +324,7 @@ def shim_dma_bd(
     offset_parameter: str | None = None,
     length_parameter: str | None = None,
     length_unit: int | None = None,
+    iteration: BdIteration | None = None,
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -357,6 +359,7 @@ def shim_dma_bd(
         offset_parameter=offset_parameter,
         length_parameter=length_parameter,
         length_unit=length_unit,
+        iteration=iteration,
     )
 
 
@@ -375,6 +378,7 @@ def shim_dma_single_bd_task(
     offset_parameter: str | None = None,
     length_parameter: str | None = None,
     length_unit: int | None = None,
+    iteration: BdIteration | None = None,
 ):
     """_summary_
     Enables data transfers between the AIE Engine array and external memory.
@@ -400,6 +404,7 @@ def shim_dma_single_bd_task(
         length_unit (optional): Elements added per unit of length_parameter; a
             multiple of 16 bytes. Defaults to the elements one pass of the
             innermost three `sizes` moves.
+        iteration (optional): The BD iteration state as a BdIteration(size, stride, current).
 
     Example:
         out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, 1, N], issue_token=True)
@@ -416,40 +421,51 @@ def shim_dma_single_bd_task(
     if tap:
         offset, sizes, strides = _shim_dims(tap)
 
-    # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration
-    # dimension. The repeat_count below hoists sizes[0] into that iteration
-    # dimension, but the transferred extent is prod(sizes[-3:]) (see shim_dma_bd),
-    # so sizes[0] is left out of it only when there are 4 dimensions. With fewer
-    # than 4 dims and sizes[0] > 1, sizes[0] is counted both as a real access dim
-    # (in transfer_len and in the BD dimensions) and as repeat_count, so the shim
-    # re-issues the whole transfer sizes[0] times, waits on the objectfifo for that
-    # many objects, and dma_await_task never returns. Normalize to the canonical
-    # 4-dim form (left-pad with unit dims) so sizes[0] is only ever the iteration
-    # dimension. Past 4 dims, every dim before the last three iterates, and
-    # aie-decompose-large-dma-bd splits the ones a BD cannot hold into separate
-    # tasks, which it can only do for constant sizes and strides.
-    if sizes is not None:
-        while len(sizes) < 4:
-            sizes = [1] + list(sizes)
-            if strides is not None:
-                strides = [0] + list(strides)
-
-    # The outer dimensions become the queue-push repeat_count. Constants fold to
-    # the repeat_count attribute; a runtime sizes[0] (4 dims at most) flows into
-    # the repeat_count_val operand so a dynamic tile count is supported.
+    # The iteration attribute (when set) claims the shim's single iteration/repeat
+    # slot, so the BD carries ONLY its access dimensions (<=3) and does NOT also
+    # hoist an outer dimension.
     repeat_count = 0
     repeat_count_val = None
-    if sizes:
-        outer = sizes[:-3]
-        if all(isinstance(v, (int, np.integer)) for v in outer):
-            runs = int(np.prod([int(v) for v in outer]))
-            if runs > 1:
-                repeat_count = runs - 1
-        else:
-            # Runtime: a zero sizes[0] wraps to a huge count, which the
-            # queue-push lowering refuses along with any other one past the
-            # target's maximum.
-            repeat_count_val = sizes[0] - 1
+    if iteration is not None:
+        if sizes is not None and len(sizes) > 3:
+            raise ValueError(
+                "shim_dma_single_bd_task: iteration= supports at most 3 access "
+                "dimensions (the iteration attribute claims the 4th/iteration "
+                f"slot); got {len(sizes)}."
+            )
+    else:
+        # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration
+        # dimension. The repeat_count below hoists sizes[0] into that iteration
+        # dimension, but the transferred extent is prod(sizes[-3:]) (see shim_dma_bd),
+        # so sizes[0] is left out of it only when there are 4 dimensions. With fewer
+        # than 4 dims and sizes[0] > 1, sizes[0] is counted both as a real access dim
+        # (in transfer_len and in the BD dimensions) and as repeat_count, so the shim
+        # re-issues the whole transfer sizes[0] times, waits on the objectfifo for that
+        # many objects, and dma_await_task never returns. Normalize to the canonical
+        # 4-dim form (left-pad with unit dims) so sizes[0] is only ever the iteration
+        # dimension. Past 4 dims, every dim before the last three iterates, and
+        # aie-decompose-large-dma-bd splits the ones a BD cannot hold into separate
+        # tasks, which it can only do for constant sizes and strides.
+        if sizes is not None:
+            while len(sizes) < 4:
+                sizes = [1] + list(sizes)
+                if strides is not None:
+                    strides = [0] + list(strides)
+
+        # The outer dimensions become the queue-push repeat_count. Constants fold to
+        # the repeat_count attribute; a runtime sizes[0] (4 dims at most) flows into
+        # the repeat_count_val operand so a dynamic tile count is supported.
+        if sizes:
+            outer = sizes[:-3]
+            if all(isinstance(v, (int, np.integer)) for v in outer):
+                runs = int(np.prod([int(v) for v in outer]))
+                if runs > 1:
+                    repeat_count = runs - 1
+            else:
+                # Runtime: a zero sizes[0] wraps to a huge count, which the
+                # queue-push lowering refuses along with any other one past the
+                # target's maximum.
+                repeat_count_val = sizes[0] - 1
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,
@@ -470,6 +486,7 @@ def shim_dma_single_bd_task(
                 offset_parameter=offset_parameter,
                 length_parameter=length_parameter,
                 length_unit=length_unit,
+                iteration=iteration,
             )
             EndOp()
     return task

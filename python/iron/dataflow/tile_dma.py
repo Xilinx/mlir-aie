@@ -36,6 +36,7 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     LockAction,
 )
 from ...dialects.aie import (
+    BdIteration,  # pyright: ignore[reportAttributeAccessIssue]
     EndOp,  # pyright: ignore[reportAttributeAccessIssue]
     dma_bd,  # pyright: ignore[reportAttributeAccessIssue]
     dma_start,
@@ -93,24 +94,6 @@ class Release:
 
     def emit(self) -> None:
         use_lock(self.lock.op, LockAction.Release, value=si32(self.value))
-
-
-@dataclass
-class BdIteration:
-    """Iteration state of a buffer descriptor for aie.dma_bd.
-
-    Lets one BD cover ``size`` sub-buffers over ``size`` executions instead of an
-    N-deep chain. Values are true/element: the base advances by ``stride``
-    elements each execution and wraps after ``size`` executions; ``current`` is
-    the starting step (default 0). The lowering applies the hardware ``-1`` bias
-    and element->word scaling. NOTE: the identically-named ``iteration_*`` family
-    on the runtime-sequence path uses RAW register values instead -- do not copy
-    numbers between them.
-    """
-
-    size: int
-    stride: int
-    current: int = 0
 
 
 @dataclass
@@ -177,8 +160,7 @@ class Bd:
             if "sizes" not in bd_kwargs or not sym_any(tap.padded_sizes):
                 bd_kwargs["transfer_len"] = sprod(tap.padded_sizes)
         if self.iteration is not None:
-            it = self.iteration
-            bd_kwargs["iteration"] = (it.size, it.stride, it.current)
+            bd_kwargs["iteration"] = self.iteration
         if bd_id is not None:
             bd_kwargs["bd_id"] = bd_id
         if self.out_of_order_id is not None:
