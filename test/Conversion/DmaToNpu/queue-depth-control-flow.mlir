@@ -257,3 +257,31 @@ aie.device(npu2) {
     aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
   }
 }
+
+// -----
+
+// Two independent channels each overflow once, guarded together in one pass
+// (not one walk per channel): each gets its own poll, at its own push, and
+// neither channel's guard leaks into the other's queue state.
+// CHECK-LABEL: @two_channels_both_overflow
+// CHECK-COUNT-4: aiex.npu.write32
+// CHECK: aiex.npu.maskpoll
+// CHECK: aiex.npu.write32
+// CHECK-COUNT-4: aiex.npu.write32
+// CHECK: aiex.npu.maskpoll
+// CHECK: aiex.npu.write32
+aie.device(npu2) {
+  aie.runtime_sequence @two_channels_both_overflow() {
+    %c0 = arith.constant 0 : i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:1) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:1) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:1) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:1) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:1) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+  }
+}
