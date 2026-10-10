@@ -221,7 +221,10 @@ def AIENpuToCert : Pass<"aie-npu-to-cert", "mlir::ModuleOp"> {
                         "removed after absorption)">];
 
   let constructor = "xilinx::AIEX::createAIENpuToCertPass()";
-  let dependentDialects = ["mlir::func::FuncDialect", "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::func::FuncDialect",
+                           "mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
 }

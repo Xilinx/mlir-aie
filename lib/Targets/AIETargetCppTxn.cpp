@@ -13,7 +13,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Conversion/AIEXToEmitC/AIEXToEmitC.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Targets/AIETargets.h"
@@ -31,9 +30,6 @@ LogicalResult xilinx::AIE::AIETranslateNpuToCpp(ModuleOp module,
                                                 raw_ostream &output,
                                                 bool foldDDRAddrOffset,
                                                 bool emitDispatchShim) {
-  if (failed(inlineWriteConfigs(module)))
-    return failure();
-
   // A staged sequence repeats the same guard arithmetic at every use of a
   // scalar (each tap re-derives and re-checks its shape). CSE merges the
   // duplicated arithmetic and folding drops the guards that became constant.

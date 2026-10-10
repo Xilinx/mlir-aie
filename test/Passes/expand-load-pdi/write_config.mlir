@@ -19,6 +19,19 @@
 // RUN: aie-translate --aie-npu-to-binary --aie-output-binary --aie-device-name=main --aie-sequence-name=second %t.inline.mlir -o %t.inline.second.bin
 // RUN: cmp %t.lazy.second.bin %t.inline.second.bin
 
+// The cert and C++ TXN lowerings write the same ops for a write_config.
+// RUN: aie-opt --aie-npu-to-cert %t.lazy.mlir -o %t.lazy.cert.mlir
+// RUN: aie-opt --aie-npu-to-cert %t.inline.mlir -o %t.inline.cert.mlir
+// RUN: diff %t.lazy.cert.mlir %t.inline.cert.mlir
+// RUN: FileCheck %s --check-prefix=CERT < %t.lazy.cert.mlir
+// RUN: aie-opt --convert-aiex-to-emitc %t.lazy.mlir -o %t.lazy.cpp.mlir
+// RUN: aie-opt --convert-aiex-to-emitc %t.inline.mlir -o %t.inline.cpp.mlir
+// RUN: diff %t.lazy.cpp.mlir %t.inline.cpp.mlir
+
+// CERT-NOT: write_config
+// CERT: aiex.cert.
+// CERT-NOT: write_config
+
 // CHECK-LABEL: aie.runtime_sequence @first
 // CHECK-NEXT: aiex.npu.load_pdi {device_ref = @empty_0
 // CHECK-NEXT: aiex.npu.write_config @init

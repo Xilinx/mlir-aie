@@ -60,7 +60,8 @@ mlir::LogicalResult insertConfigOps(
     AIEToConfigurationOutputType outputType);
 
 // Replaces each aiex.npu.write_config in `module` with the configuration ops
-// the NPU translation writes for it.
+// the NPU translation writes for it. The arith and memref dialects must be
+// loaded.
 mlir::LogicalResult inlineWriteConfigs(mlir::ModuleOp module);
 
 // --------------------------------------------------------------------------

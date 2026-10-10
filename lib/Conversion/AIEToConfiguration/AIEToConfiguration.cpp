@@ -891,8 +891,6 @@ xilinx::AIE::insertConfigOps(ArrayRef<std::pair<Operation *, DeviceOp>> sites,
 }
 
 LogicalResult xilinx::AIE::inlineWriteConfigs(ModuleOp module) {
-  module.getContext()->getOrLoadDialect<arith::ArithDialect>();
-  module.getContext()->getOrLoadDialect<memref::MemRefDialect>();
   SmallVector<std::pair<Operation *, DeviceOp>> sites;
   WalkResult walk = module.walk([&](AIEX::NpuWriteConfigOp write) {
     auto configured = module.lookupSymbol<DeviceOp>(write.getDeviceRefAttr());
