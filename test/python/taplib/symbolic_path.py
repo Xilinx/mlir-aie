@@ -200,6 +200,6 @@ def shim_form_stage():
         assert ctx.module.operation.verify()
         print(ctx.module)
     # CHECK: runtime_sequence
-    # CHECK: aie.dma_bd({{.*}} sizes = [1, 1, 32, 32] strides = [0, 0, %{{.*}}, 1])
-    # CHECK: aie.dma_bd({{.*}} sizes = [3, 1, 1, %{{.*}}] strides = [0, 0, 0, 1])
+    # CHECK: aie.dma_bd({{.*}} sizes = [1, 32, 32] strides = [0, %{{.*}}, 1])
+    # CHECK: aie.dma_bd({{.*}} sizes = [1, 1, %{{.*}}] strides = [0, 0, 1])
     # CHECK: repeat_count = 2

@@ -1216,9 +1216,8 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 }
 
 // Enforce the per-BD ND access-pattern limit for BDs nested inside a
-// runtime-sequence DMA task. The AIE::DMABDOp verifier skips these BDs (their
-// parent is a DMA task op, not a *DMAOp), so this is the only check of the BD
-// dimension count on the runtime-sequence path.
+// runtime-sequence DMA task. DMABDOp's verifier skips task-nested BDs, so this
+// is the only dimension check on the runtime-sequence path.
 //
 // Every AIE2/AIE2P DMA BD register file carries getBDMaxDims ND address
 // dimensions (D0..) plus one separate iteration/repeat dimension: a core/shim
@@ -1241,13 +1240,8 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 static LogicalResult
 verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
                        Region &body) {
-  size_t maxNDims = targetModel.getBDMaxDims(col, row);
-  if (!targetModel.isMemTile(col, row))
-    ++maxNDims; // leading dim is hoisted into the iteration/repeat register
   LogicalResult result = success();
   body.walk([&](AIE::DMABDOp bd) {
-    // The BD's own verifier skips it here, so nothing has yet established that
-    // its mixed sizes/strides lists are safe to read.
     if (failed(bd.verifyMixedSizesAndStrides())) {
       result = failure();
       return;
@@ -1257,6 +1251,25 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
       result = failure();
       return;
     }
+    // Runtime iteration SSA operands: hardware range checks cannot be applied
+    // statically, but the BD must have at most getBDMaxDims inner access dims
+    // (the iteration dimension is carried separately).
+    if (bd.getIterationSizeVal()) {
+      size_t maxNDims = targetModel.getBDMaxDims(col, row);
+      size_t numDims = bd.getMixedSizes().size();
+      if (numDims > maxNDims) {
+        bd.emitOpError()
+            << "Cannot give more than " << std::to_string(maxNDims)
+            << " inner dimensions for step sizes and wraps on this tile "
+               "when iteration_size_val is set (got "
+            << std::to_string(numDims) << " dimensions).";
+        result = failure();
+      }
+      return;
+    }
+    size_t maxNDims = targetModel.getBDMaxDims(col, row);
+    if (!targetModel.isMemTile(col, row))
+      ++maxNDims; // leading dim is hoisted into the iteration/repeat register
     size_t numDims = bd.getMixedSizes().size();
     if (bd.getIteration()) {
       if (numDims + 1 > maxNDims) {
@@ -1651,7 +1664,7 @@ AIEX::BlockFloatType::getBlockFormat(StringRef blockType) {
       blockFormatsMap = {
           {"v8bfp16ebs8", {8, 8, 8, 0}},
           {"v16bfp16ebs16", {16, 8, 8, 0}},
-  };
+      };
 
   auto it = blockFormatsMap.find(blockType);
   if (it != blockFormatsMap.end()) {

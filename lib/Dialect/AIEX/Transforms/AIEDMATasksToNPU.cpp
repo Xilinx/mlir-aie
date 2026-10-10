@@ -622,10 +622,23 @@ struct AIEDMATasksToNPUPass
     // like the static path.
     SmallVector<OpFoldResult> sizes(bd_op.getMixedSizes());
     SmallVector<OpFoldResult> strides(bd_op.getMixedStrides());
-    if (sizes.size() > 4 || strides.size() > 4)
-      return bd_op->emitOpError(
-          "At most four data layout transformation dimensions may be "
-          "provided; aie-decompose-large-dma-bd splits a longer one.");
+
+    // When runtime iteration operands or a compile-time BDIterationAttr are
+    // present, the BD carries only the 3 inner access dimensions; the outermost
+    // (iteration) slot is filled from those values below.  Without them the BD
+    // may carry up to 4 dims.
+    Value iterSizeVal = bd_op.getIterationSizeVal();
+    Value iterStrideVal = bd_op.getIterationStrideVal();
+    std::optional<AIE::BDIterationAttr> iterAttr = bd_op.getIteration();
+    size_t maxBdDims = (iterSizeVal || iterAttr) ? 3u : 4u;
+    if (sizes.size() > maxBdDims || strides.size() > maxBdDims)
+      return bd_op->emitOpError("At most ")
+             << maxBdDims
+             << " data layout transformation dimensions may be provided"
+             << ((iterSizeVal || iterAttr) ? " when the iteration slot is used"
+                                           : "")
+             << ".";
+
     OpFoldResult one = builder.getI64IntegerAttr(1);
     OpFoldResult zeroOfr = builder.getI64IntegerAttr(0);
     SmallVector<OpFoldResult, 4> sizes4(4, one), strides4(4, zeroOfr);
@@ -635,12 +648,26 @@ struct AIEDMATasksToNPUPass
       sizes4[4 - sizes.size() + i] = sizes[i];
       strides4[4 - strides.size() + i] = strides[i];
     }
-    // The iteration attribute takes the outermost (iteration) slot, which
-    // verifyTaskBDDimensions has kept free of sizes/strides.
-    if (std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration()) {
-      sizes4.front() = builder.getI64IntegerAttr(iter->getSize());
-      strides4.front() = builder.getI64IntegerAttr(iter->getStride());
+
+    // Override the outermost (iteration) slot:
+    //  - runtime SSA values (iteration_size_val/stride_val) take priority;
+    //  - a compile-time BDIterationAttr fills the slot with i64 constants so
+    //    buildBdWords applies the same -1 bias and granule scaling as for the
+    //    runtime case via encodeHardwareStridesWraps.
+    // The hardware word[6] encoder uses sizesRev[3]/stridesRev[3]
+    // (i.e. sizes4[0]/strides4[0] after outermost-first reversal).
+    if (iterSizeVal) {
+      // Cast i32 → i64 to match the I64 type expected by buildShimBdWords.
+      auto i64ty = builder.getIntegerType(64);
+      sizes4[0] =
+          arith::ExtSIOp::create(builder, loc, i64ty, iterSizeVal).getResult();
+      strides4[0] = arith::ExtSIOp::create(builder, loc, i64ty, iterStrideVal)
+                        .getResult();
+    } else if (iterAttr) {
+      sizes4[0] = builder.getI64IntegerAttr(iterAttr->getSize());
+      strides4[0] = builder.getI64IntegerAttr(iterAttr->getStride());
     }
+
     // len as OpFoldResult: the runtime operand if present, else the static_len
     // attr (a constant BD with runtime sizes/strides still reaches here). With
     // runtime dims and no len, the transfer is their d0*d1*d2 extent; with
@@ -767,8 +794,10 @@ struct AIEDMATasksToNPUPass
         llvm::any_of(block.getOps<AIE::UseLockOp>(), [](AIE::UseLockOp op) {
           return !getConstantIntValue(op.getValue());
         });
+    // Runtime iteration SSA values also require the dynamic BD-word path.
+    bool runtimeIteration = bd_op.getIterationSizeVal() != nullptr;
     if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId ||
-        runtimeNextBd || runtimeLock) {
+        runtimeNextBd || runtimeLock || runtimeIteration) {
       // The verifier leaves a runtime offset, bd_id, next_bd or lock value as
       // the only ways here. An offset that depends on a runtime-sequence loop
       // is constant by now if the loop was unrolled.
@@ -864,6 +893,7 @@ struct AIEDMATasksToNPUPass
     auto d2stride = 0;
     auto iteration_size = 0;
     auto iteration_stride = 0;
+    auto iteration_current = 0;
 
     if (dims && !dims->empty()) {
       llvm::SmallVector<int64_t, 4> input_sizes =
@@ -932,35 +962,43 @@ struct AIEDMATasksToNPUPass
         return failure();
       }
 
-      iteration_size = sizes[3];
-      iteration_stride = strides[3];
+      // See AIEOps.td ## BD iteration; encoding matches
+      // encodeHardwareStridesWraps.
+      if (auto iter = bd_op.getIteration()) {
+        uint32_t elemWidthInBytes = bd_op.getBufferElementTypeWidthInBytes();
+        uint32_t gran = target_model.getAddressGenGranularity();
+        if (iter->getSize() > 1) {
+          iteration_size = iter->getSize() - 1;
+          if (iter->getStride() > 0) {
+            iteration_stride =
+                (iter->getStride() * elemWidthInBytes * 8 / gran) - 1;
+          }
+          iteration_current = iter->getCurrent();
+        }
+      } else {
+        // Implicit path: outermost dim hoisted; getHardwareStridesWraps has
+        // already applied the -1 bias and word-scaling.
+        iteration_size = sizes[3];
+        iteration_stride = strides[3];
+        if (input_sizes[3] > 1 && input_strides[3] == 0) {
+          // stride-0 encodes a pure repeat_count; zero out so NpuPushQueueOp
+          // carries the count instead.
+          iteration_size = 0;
+          iteration_stride = 0;
+        }
+      }
 
       if (!treatAsLinear) {
-        // d0_size, d0_stride
         d0size = sizes[0];
         d0stride = strides[0];
-
-        // d1_size, d1_stride
         d1size = sizes[1];
         d1stride = strides[1];
-
-        // d2_stride
         d2stride = strides[2];
-
-        // TODO: d2_size is a dead field; AIEDmaToNpu.cpp memtile word-packing
-        // never writes it (see its `// TODO: D2Size`); the real D2 repeat
-        // count is carried entirely by buffer_length, same as on shim tiles.
+        // d2_size is a dead field on shim tiles (buffer_length carries the
+        // repeat count); set it only for MemTiles.
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
                      ? sizes[2]
                      : 0;
-      }
-      if (input_sizes[3] > 1 && input_strides[3] == 0) {
-        // We allow users to encode the repeat_count as a dimension 3 stride
-        // of 0. This must lower to a iteration wrap of 0, so no stride is
-        // ever added. We then repeat the BD using the repeat_count in
-        // NpuPushQueueOp.
-        iteration_size = 0;
-        iteration_stride = 0;
       }
 
       // Ensure the total transfer length and the length expressed in the lowest
@@ -1019,7 +1057,7 @@ struct AIEDMATasksToNPUPass
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
         /*d2_size=*/d2size, /*d2_stride=*/d2stride,
-        /*iteration_current=*/f.iteration_current,
+        /*iteration_current=*/iteration_current,
         /*iteration_size=*/iteration_size,
         /*iteration_stride=*/iteration_stride,
         /*next_bd=*/f.next_bd_id,
