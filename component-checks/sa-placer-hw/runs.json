@@ -43,6 +43,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "38032463451",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38032463451",
+   "date": "2026-10-10T06:52:50+00:00",
+   "commit": {
+    "id": "58484c8cfbadbd81e6e0a892c2d94517e615a22d",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/58484c8cfbadbd81e6e0a892c2d94517e615a22d",
+    "message": "[kernels] Retire Peano workarounds the 94b320c0 pin fixes (#3911)",
+    "timestamp": "2026-10-10T01:56:10Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Strix",
+   "device_raw": "NPU Strix",
+   "provenance": {
+    "commit": "58484c8cfb",
+    "peano": "22.0.0+94b320c0",
+    "kernels": "2e65e623d94e",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.26.0_20261008",
+    "xrt": "2.26.0",
+    "host": "aie9",
+    "device": "NPU Strix",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 49,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
