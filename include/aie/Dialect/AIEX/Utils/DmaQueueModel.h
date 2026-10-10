@@ -49,19 +49,25 @@ public:
             static_cast<int>(channel)};
   }
 
-  /// True when a push on `key` would land on a full queue. `depth` of 0 means
-  /// the target has no queued-task model and nothing can overflow.
-  bool wouldOverflow(const ChannelKey &key, uint32_t depth) const {
-    if (depth == 0)
-      return false;
-    auto it = queued.find(key);
-    return it != queued.end() && it->second.pushes.size() >= depth;
+  /// One channel's queue: its pushes not yet known to have completed, oldest
+  /// first, each true when it issues a completion token.
+  struct ChannelState {
+    llvm::SmallVector<bool, 8> pushes;
+    bool unknownTokens = false;
+    bool operator==(const ChannelState &other) const {
+      return pushes == other.pushes && unknownTokens == other.unknownTokens;
+    }
+  };
+
+  /// True when a push would land on a full queue. `depth` of 0 means the
+  /// target has no queued-task model and nothing can overflow.
+  static bool wouldOverflow(const ChannelState &q, uint32_t depth) {
+    return depth != 0 && q.pushes.size() >= depth;
   }
 
   /// Record a push. Every push occupies a slot, not just issue_token ones, and
   /// one push occupies exactly one whatever its repeat_count.
-  void push(const ChannelKey &key, bool issuesToken) {
-    auto &q = queued[key];
+  static void push(ChannelState &q, bool issuesToken) {
     q.pushes.push_back(issuesToken && !q.unknownTokens);
   }
 
@@ -70,11 +76,7 @@ public:
   /// token-issuing push, not necessarily the task the await names -- and
   /// in-order execution means everything queued ahead of it has drained too.
   /// With no token-issuing push queued, nothing can be retired.
-  void awaitToken(const ChannelKey &key) {
-    auto it = queued.find(key);
-    if (it == queued.end())
-      return;
-    auto &q = it->second;
+  static void awaitToken(ChannelState &q) {
     if (q.unknownTokens)
       return;
     auto *tok = llvm::find(q.pushes, true);
@@ -82,12 +84,11 @@ public:
       q.pushes.erase(q.pushes.begin(), std::next(tok));
   }
 
-  /// Record that a queue-space poll has guaranteed room on `key`. Keeps the
-  /// newest depth-1 entries rather than clearing. Polling does not consume
-  /// completion tokens: if it drops a token-bearing entry, later syncs cannot
-  /// safely be credited to newer pushes.
-  void noteSpaceGuaranteed(const ChannelKey &key, uint32_t depth) {
-    auto &q = queued[key];
+  /// Record that a queue-space poll has guaranteed room. Keeps the newest
+  /// depth-1 entries rather than clearing. Polling does not consume completion
+  /// tokens: if it drops a token-bearing entry, later syncs cannot safely be
+  /// credited to newer pushes.
+  static void noteSpaceGuaranteed(ChannelState &q, uint32_t depth) {
     if (depth > 0 && q.pushes.size() > depth - 1) {
       auto end = q.pushes.end() - (depth - 1);
       q.unknownTokens |=
@@ -96,6 +97,24 @@ public:
       if (q.unknownTokens)
         llvm::fill(q.pushes, false);
     }
+  }
+
+  bool wouldOverflow(const ChannelKey &key, uint32_t depth) const {
+    auto it = queued.find(key);
+    return it != queued.end() && wouldOverflow(it->second, depth);
+  }
+
+  void push(const ChannelKey &key, bool issuesToken) {
+    push(queued[key], issuesToken);
+  }
+
+  void awaitToken(const ChannelKey &key) {
+    if (auto it = queued.find(key); it != queued.end())
+      awaitToken(it->second);
+  }
+
+  void noteSpaceGuaranteed(const ChannelKey &key, uint32_t depth) {
+    noteSpaceGuaranteed(queued[key], depth);
   }
 
   /// True the first time a channel is reported. An over-subscribed channel
@@ -111,17 +130,9 @@ public:
     return it == queued.end() ? 0 : it->second.pushes.size();
   }
 
-  /// The whole per-channel queue, which is what the rolled-loop fixed point
-  /// below iterates on. `reported` is deliberately not part of it: it is
+  /// Every channel's queue. `reported` is deliberately not part of it: it is
   /// diagnostic bookkeeping, not queue state, and folding it in would stop
   /// two otherwise identical states from comparing equal.
-  struct ChannelState {
-    llvm::SmallVector<bool, 8> pushes;
-    bool unknownTokens = false;
-    bool operator==(const ChannelState &other) const {
-      return pushes == other.pushes && unknownTokens == other.unknownTokens;
-    }
-  };
   using State = std::map<ChannelKey, ChannelState>;
   const State &state() const { return queued; }
   void setState(State s) { queued = std::move(s); }
@@ -297,7 +308,8 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
                                    static_cast<AIE::DMAChannelDir>(k[2]));
   };
 
-  using States = llvm::SmallVector<DmaQueueModel::State, 8>;
+  // One channel's queue along each reachable path.
+  using States = llvm::SmallVector<DmaQueueModel::ChannelState, 8>;
   std::set<DmaQueueModel::ChannelKey> keys;
   for (const auto &[key, channel] : queue.state())
     if (depthOf(key) != 0)
@@ -352,11 +364,18 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
                                                           : QueueEffect{};
     };
     llvm::SetVector<mlir::Operation *> overflowing;
-    std::map<mlir::Operation *, DmaQueueModel::State> witnesses;
+    std::map<mlir::Operation *, DmaQueueModel::ChannelState> witnesses;
     auto append = [](States &to, const States &from) {
       for (const auto &state : from)
         if (!llvm::is_contained(to, state))
           to.push_back(state);
+    };
+    auto dedupe = [&](States &states) {
+      if (states.size() < 2)
+        return;
+      States unique;
+      append(unique, states);
+      states = std::move(unique);
     };
 
     // Earlier passes may already have guarded a start. Credit only polls whose
@@ -385,16 +404,14 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
         if (e.kind != QueueEffect::Kind::Push)
           return;
         for (auto &state : states) {
-          auto &channel = state[e.key];
-          channel.pushes.assign(depth, false);
-          channel.unknownTokens = true;
+          state.pushes.assign(depth, false);
+          state.unknownTokens = true;
           if (overflowing.insert(op))
             witnesses[op] = state;
         }
       });
-      States unique;
-      append(unique, states);
-      return unique;
+      dedupe(states);
+      return states;
     };
 
     std::function<States(mlir::Region &, States)> analyze;
@@ -434,64 +451,51 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
 
         if (auto poll = mlir::dyn_cast<NpuMaskPollOp>(&op))
           if (pollsChannel(poll)) {
-            States polled;
-            for (const auto &state : states) {
-              DmaQueueModel path;
-              path.setState(state);
-              path.noteSpaceGuaranteed(key, depth);
-              append(polled, States{path.state()});
-            }
-            states = std::move(polled);
+            for (auto &state : states)
+              DmaQueueModel::noteSpaceGuaranteed(state, depth);
+            dedupe(states);
           }
 
         QueueEffect e = channelEffectOf(&op);
         if (e.kind == QueueEffect::Kind::Ignore)
           continue;
-        States next;
-        for (const auto &state : states) {
-          DmaQueueModel path;
-          path.setState(state);
+        for (auto &state : states) {
           if (e.kind == QueueEffect::Kind::Await) {
-            path.awaitToken(e.key);
-          } else {
-            if (path.wouldOverflow(e.key, depth)) {
-              if (overflowing.insert(&op))
-                witnesses[&op] = state;
-              path.noteSpaceGuaranteed(e.key, depth);
-            }
-            path.push(e.key, e.issuesToken);
+            DmaQueueModel::awaitToken(state);
+            continue;
           }
-          append(next, States{path.state()});
+          if (DmaQueueModel::wouldOverflow(state, depth)) {
+            if (overflowing.insert(&op))
+              witnesses[&op] = state;
+            DmaQueueModel::noteSpaceGuaranteed(state, depth);
+          }
+          DmaQueueModel::push(state, e.issuesToken);
         }
-        states = std::move(next);
+        dedupe(states);
       }
       return states;
     };
 
-    DmaQueueModel::State channelEntry;
+    DmaQueueModel::ChannelState channelEntry;
     if (auto it = entry.find(key); it != entry.end())
-      channelEntry.insert(*it);
+      channelEntry = it->second;
     States exits = analyze(body, States{channelEntry});
     for (mlir::Operation *push : overflowing) {
-      queue.setState(witnesses[push]);
+      queue.setState({{key, witnesses[push]}});
       guardQueueOverflow(queue, push, tm, key, depth, enforce);
     }
 
     // Preserve exact straight-line state for callers. If control-flow paths
     // disagree, retain the largest occupancy without crediting ambiguous
     // tokens.
-    DmaQueueModel::State channelExit = exits.front();
+    DmaQueueModel::ChannelState channelExit = exits.front();
     for (const auto &state : exits)
-      for (const auto &[key, channel] : state) {
-        auto &dest = channelExit[key];
-        if (!(dest == channel)) {
-          dest.pushes.assign(
-              std::max(dest.pushes.size(), channel.pushes.size()), false);
-          dest.unknownTokens = true;
-        }
+      if (!(channelExit == state)) {
+        channelExit.pushes.assign(
+            std::max(channelExit.pushes.size(), state.pushes.size()), false);
+        channelExit.unknownTokens = true;
       }
-    if (auto it = channelExit.find(key); it != channelExit.end())
-      merged[key] = it->second;
+    merged[key] = channelExit;
   }
   queue.setState(std::move(merged));
 }
