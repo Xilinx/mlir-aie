@@ -406,6 +406,13 @@ its own id, and each end keeps its own `aie.shim_dma_allocation`, so every
 transfer stamps its own header. A design that fits without sharing is lowered
 exactly as before.
 
+`--aie-place-tiles` counts shim channels by the same rule (`ShimTransferSpans`):
+logical shim tiles are placed one channel per end as before, and only when no
+shim tile has room does it count the ends that can take turns once, so a pack
+whose members together need more shim channels than the device has can still
+be placed. Every id comes from one device-wide space of 32, so the number of
+ends that can share is bounded by it.
+
 ### 5. `--aie-objectfifo-lower-dmas`
 
 Turns each `dma_endpoint` into the BD chain that walks its pool's buffers,

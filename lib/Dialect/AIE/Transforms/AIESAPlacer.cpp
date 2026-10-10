@@ -845,10 +845,25 @@ int SAPlacer::computeDMAChannelPenalty() const {
   int penalty = 0;
   for (auto &[tilePos, usage] : currentDMAUsage) {
     auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
-    if (usage.first > maxIn)
-      penalty += (usage.first - maxIn) * config.dmaPenaltyPerChannel;
-    if (usage.second > maxOut)
-      penalty += (usage.second - maxOut) * config.dmaPenaltyPerChannel;
+    int used[2] = {usage.first, usage.second};
+    int max[2] = {maxIn, maxOut};
+    for (int dir : {0, 1}) {
+      if (used[dir] <= max[dir])
+        continue;
+      if (shimSpans && targetModel->getTileType(tilePos.col, tilePos.row) ==
+                           AIETileType::ShimNOCTile) {
+        SmallVector<StringAttr> ends;
+        for (auto &[lt, own] : shareableShimEnds) {
+          auto at = currentPlacement.find(lt);
+          if (at != currentPlacement.end() && at->second == tilePos)
+            llvm::append_range(ends, own[dir]);
+        }
+        used[dir] += static_cast<int>(shimSpans->groups(ends).size()) -
+                     static_cast<int>(ends.size());
+      }
+      penalty +=
+          std::max(0, used[dir] - max[dir]) * config.dmaPenaltyPerChannel;
+    }
   }
   return penalty;
 }
@@ -1365,6 +1380,13 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   buildNetModel(objectFifos, objectFifoLinks);
   buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
   buildRouteModel(device, collected.routes);
+  shareableShimEnds = collectShareableShimEnds(device, objectFifos);
+  shimSpans.emplace(device, [&](StringAttr symbol) {
+    return isa_and_nonnull<ObjectFifoCreateOp>(
+               SymbolTable::lookupNearestSymbolFrom(device, symbol))
+               ? symbol
+               : StringAttr();
+  });
   cascadeAdjacency = buildCascadeAdjacency(collected.cascadeFlows);
   LLVM_DEBUG(llvm::dbgs() << "[SA] Cascade adjacency: "
                           << cascadeAdjacency.edges.size() << " edges\n");
