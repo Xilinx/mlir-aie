@@ -13,6 +13,7 @@ import numpy as np
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
+    ObjectFifoLinkMode,
     ObjectFifoPort,
 )
 from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
@@ -941,6 +942,126 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         _ = ObjectFifoLink(subfifo_cons, self, tile, offsets, [])
         return subfifos
 
+    def merge(
+        self,
+        num_inputs: int,
+        tile: Tile | None = AnyMemTile,
+        depths: list[int] | None = None,
+        names: Sequence[str | None] | None = None,
+        transports: Sequence[Transport | str | None] | None = None,
+    ) -> list[ObjectFifo]:
+        """Construct ObjectFifos that take turns feeding whole objects into this producer.
+
+        Unlike join(), where each input fills a slice of every object, each
+        input here sends whole objects of this fifo's type, and they share one
+        channel at the link tile through one packet-switched fan-in route.
+        Objects arrive in whatever order the inputs send them. Only valid for
+        producer ObjectFifoHandles.
+
+        Args:
+            num_inputs (int): How many ObjectFifos take turns; at least two.
+            tile (Tile, optional): The tile where the merge occurs. Also accepts
+                None (treated as AnyMemTile). Defaults to AnyMemTile.
+            depths (list[int] | None, optional): The depth of each new
+                ObjectFifo. Defaults to this handle's depth.
+            names (Sequence[str | None] | None, optional): The name of each new
+                ObjectFifo. Defaults to this one's name with ``_merge{i}``.
+            transports (Sequence[Transport | str | None] | None, optional): Each
+                new ObjectFifo's transport, for example to pin the packet header
+                they share. Defaults to None.
+
+        Raises:
+            ValueError: Arguments are validated.
+
+        Returns:
+            list[ObjectFifo]: The new ObjectFifos whose consumers feed this merge.
+        """
+        if not self._is_prod:
+            raise ValueError(f"Cannot merge() a {self.handle_type} ObjectFifoHandle")
+        subfifos = self._turn_fifos("merge", num_inputs, depths, names, transports)
+        _ = ObjectFifoLink(
+            [s.cons() for s in subfifos],
+            self,
+            tile,
+            mode=ObjectFifoLinkMode.Time,
+        )
+        return subfifos
+
+    def dispatch(
+        self,
+        num_outputs: int,
+        tile: Tile | None = AnyMemTile,
+        depths: list[int] | None = None,
+        names: Sequence[str | None] | None = None,
+        transports: Sequence[Transport | str | None] | None = None,
+    ) -> list[ObjectFifo]:
+        """Construct ObjectFifos that take turns receiving this consumer's objects.
+
+        Unlike split(), where each output takes a slice of every object, object
+        k goes whole to output k mod `num_outputs`, over one channel at the
+        link tile and one packet-switched route per output. Each output has one
+        consumer. Only valid for consumer ObjectFifoHandles.
+
+        Args:
+            num_outputs (int): How many ObjectFifos take turns; at least two.
+            tile (Tile, optional): The tile where the dispatch occurs. Also
+                accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
+            depths (list[int] | None, optional): The depth of each new
+                ObjectFifo. Defaults to this handle's depth.
+            names (Sequence[str | None] | None, optional): The name of each new
+                ObjectFifo. Defaults to this one's name with ``_dispatch{i}``.
+            transports (Sequence[Transport | str | None] | None, optional): Each
+                new ObjectFifo's transport, for example to pin its turn's packet
+                header. Defaults to None.
+
+        Raises:
+            ValueError: Arguments are validated.
+
+        Returns:
+            list[ObjectFifo]: The new ObjectFifos whose producers take the turns.
+        """
+        if self._is_prod:
+            raise ValueError(f"Cannot dispatch() a {self.handle_type} ObjectFifoHandle")
+        subfifos = self._turn_fifos("dispatch", num_outputs, depths, names, transports)
+        _ = ObjectFifoLink(
+            self,
+            [s.prod() for s in subfifos],
+            tile,
+            mode=ObjectFifoLinkMode.Time,
+        )
+        return subfifos
+
+    def _turn_fifos(
+        self,
+        what: str,
+        count: int,
+        depths: list[int] | None,
+        names: Sequence[str | None] | None,
+        transports: Sequence[Transport | str | None] | None,
+    ) -> list[ObjectFifo]:
+        """Build the ObjectFifos of a merge or dispatch, one per turn."""
+        if count < 2:
+            raise ValueError(f"{what}() takes turns between at least two fifos")
+        for given, label in (
+            (depths, "depths"),
+            (names, "names"),
+            (transports, "transports"),
+        ):
+            if given is not None and len(given) != count:
+                raise ValueError(f"{what}() got {len(given)} {label} for {count} fifos")
+        depths = [self.depth] * count if depths is None else list(depths)
+        names = names or [self._derived_name(f"_{what}{i}") for i in range(count)]
+        transports = transports or [None] * count
+        return [
+            ObjectFifo(
+                self._object_fifo.obj_type,
+                name=names[i],
+                depth=depths[i],
+                transport=transports[i],
+            )
+            for i in range(count)
+        ]
+
     def split(
         self,
         offsets: list[int],
@@ -1143,6 +1264,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
         tile: Tile | None = AnyMemTile,
         src_offsets: list[int] | None = None,
         dst_offsets: list[int] | None = None,
+        mode: ObjectFifoLinkMode = ObjectFifoLinkMode.Space,
     ):
         """Construct an ObjectFifoLink. This is either a many-to-one, one-to-many, or one-to-one operation.
 
@@ -1154,11 +1276,16 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
                 is required to split the destination. Defaults to None (empty list).
             dst_offsets (list[int] | None, optional): If many destinations, one offset per
                 destination is required to split the source. Defaults to None (empty list).
+            mode (ObjectFifoLinkMode, optional): ``Space`` splits every object
+                between the many side's fifos at the offsets; ``Time`` has them
+                take turns with whole objects (merge() and dispatch()). Defaults
+                to ``Space``.
 
         Raises:
             ValueError: Arguments are validated.
         """
         self._site = SourceSite.capture()
+        self._mode = mode
         self._srcs = single_elem_or_list_to_list(srcs)
         self._dsts = single_elem_or_list_to_list(dsts)
         self._src_offsets = src_offsets if src_offsets is not None else []
@@ -1181,6 +1308,8 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
             raise ValueError(
                 "The number of destination offsets does not match the number of destinations"
             )
+        if mode == ObjectFifoLinkMode.Time and (self._src_offsets or self._dst_offsets):
+            raise ValueError("A time link moves whole objects and takes no offsets")
         self._op = None
         for s in self._srcs:
             s.endpoint = self
@@ -1210,6 +1339,8 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
         """
         srcs = [h._object_fifo for h in self._srcs]
         dsts = [h._object_fifo for h in self._dsts]
+        if self._mode == ObjectFifoLinkMode.Time:
+            return [math.prod(of.shape)]
         if len(srcs) == len(dsts) == 1:
             in_size, out_size = math.prod(srcs[0].shape), math.prod(dsts[0].shape)
             padded = dsts[0].to_stream is not None and dsts[0].to_stream.padding
@@ -1251,6 +1382,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
                 dst_ops,
                 self._src_offsets,
                 self._dst_offsets,
+                mode=self._mode,
                 loc=loc or self._site.location(),
                 ip=ip,
             )
