@@ -6,7 +6,6 @@
 
 import os
 import shutil
-import sys
 import time
 from pathlib import Path
 
@@ -205,22 +204,18 @@ def test_identical_rebuild_does_not_replace_mapped_generation(tmp_path):
     assert not list(tmp_path.glob("dispatch.staging.*"))
 
 
-def test_failed_compile_cleans_linker_companions(tmp_path, monkeypatch):
+def test_failed_link_leaves_no_staging(tmp_path):
+    """A link that fails once the source has compiled takes its staging
+    directory with it, along with whatever it wrote there: on Windows, the
+    .lib and .exp beside the DLL."""
     path = _compile(tmp_path)
     before = path.read_bytes()
-
-    linker = tmp_path / "partial-linker"
-    linker.write_text(
-        f"#!{sys.executable}\n"
-        "import pathlib, sys\n"
-        "staging = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])\n"
-        "for suffix in ('.dll', '.lib', '.exp'):\n"
-        "    staging.with_suffix(suffix).write_bytes(b'partial link')\n"
-        "sys.exit('link failed')\n"
-    )
-    linker.chmod(0o755)
-    monkeypatch.setenv("CXX", str(linker))
-    with pytest.raises(DispatchCompileError, match="link failed"):
+    with (tmp_path / "dispatch_gen.cpp").open("a") as source:
+        source.write(
+            '\nextern "C" __attribute__((visibility("hidden"))) int aie_missing();\n'
+            'extern "C" int aie_use_missing() { return aie_missing(); }\n'
+        )
+    with pytest.raises(DispatchCompileError, match="aie_missing"):
         compile_dispatch_bridge(tmp_path, ["param", "n"], [np.int32, np.uintp])
     assert path.read_bytes() == before
     assert not list(tmp_path.glob("dispatch.staging.*"))
