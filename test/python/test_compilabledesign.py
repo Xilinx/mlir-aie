@@ -20,17 +20,18 @@ import sys
 from pathlib import Path
 from types import CodeType
 
+import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 import numpy as np
 import pytest
-
-import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
+from aie.iron import DeviceConfiguration, Program, Runtime, kernels
 from aie.iron.algorithms import _pipeline
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
-from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+from aie.utils.jit import jit
 from aie.utils.compile.jit import _hash as _hash_mod
+from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 from aie.utils.compile.jit._hash import _compute_artifact_hash, _compute_recipe_hash
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
@@ -1742,9 +1743,9 @@ def test_specialized_dispatch_runtime_constant_preserves_dtype(
     dtype, boundary, npu2_device
 ):
     """Generate real IR for every scalar width, without a compiler or an NPU."""
+    from aie.helpers.util import np_dtype_to_mlir_type
     from aie.ir import IntegerAttr
     from aie.iron import Program, Runtime
-    from aie.helpers.util import np_dtype_to_mlir_type
 
     observed = {}
     literal = int(getattr(np.iinfo(dtype), boundary))
@@ -2028,6 +2029,23 @@ module {
     assert parse_dma_sizes(tmp_path) is None
 
 
+def test_parse_dma_sizes_selects_explicit_multi_device_entry(tmp_path):
+    sample_mlir = """\
+module {
+    aie.device(npu1) @first {
+        aie.runtime_sequence @run(%x: memref<1024xi32>) {
+    }
+    }
+    aie.device(npu2) @second {
+        aie.runtime_sequence @run(%y: memref<2048xi16>) {
+    }
+    }
+}
+"""
+    (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
+    assert parse_dma_sizes(tmp_path, entry="second:run") == [2048 * 16]
+
+
 def test_parse_dma_sizes_returns_none_for_dynamic_shape_arg(tmp_path):
     """A dynamic-dim memref arg means the kernel's host contract isn't a
     fixed element count — skip validation rather than guess."""
@@ -2069,8 +2087,6 @@ def test_compute_hash_changes_when_active_device_changes_arch():
     inline passthrough) hit cache collision until the hash started
     tracking the iron-active device.
     """
-    import aie.iron as iron
-
     gen = _gemm_gen()
     cd = CompilableDesign(gen, compile_kwargs={"M": 64, "K": 64, "N": 64})
 
@@ -2097,8 +2113,8 @@ def test_kernels_mm_mac_dims_per_arch():
     and silently produce garbage on AIE2P, which uses (4, 4, 8) for the
     same i16/i16 dtype combo.
     """
-    import numpy as np
     import aie.iron.kernels as kernels
+    import numpy as np
 
     set_current_device(NPU1Col1())
     mm_aie2 = kernels.mm(
@@ -2203,6 +2219,129 @@ def test_mlir_path_compile_forwards_include_paths_and_stages_objects(
     assert calls == [([], (include_path,))]
 
 
+def test_non_full_elf_allows_raw_multi_device_mlir(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module { aie.device(npu1) @a {} aie.device(npu1) @b {} }")
+
+    design = CompilableDesign(mlir_path)
+    design._generate_mlir(ExternalFunction)
+
+
+def test_multi_configuration_program_implies_full_elf(tmp_path, monkeypatch):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "main:sequence"} {}'
+    )
+    design = CompilableDesign(mlir_path)
+    elf_path = tmp_path / "design.elf"
+
+    def compile_full_elf(_external_function, requested_path):
+        assert requested_path is None
+        return elf_path, None
+
+    monkeypatch.setattr(design, "_compile_full_elf", compile_full_elf)
+
+    assert design.compile() == (elf_path, None)
+    assert design.full_elf is True
+
+
+def test_multi_configuration_program_accepts_explicit_full_elf_path(
+    tmp_path, monkeypatch
+):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "main:sequence"} {}'
+    )
+    design = CompilableDesign(mlir_path)
+    elf_path = tmp_path / "design.elf"
+
+    monkeypatch.setattr(
+        design,
+        "_compile_full_elf",
+        lambda _external_function, requested_path: (Path(requested_path), None),
+    )
+
+    assert design.compile(full_elf_path=elf_path) == (elf_path, None)
+
+
+def test_inferred_full_elf_rejects_standard_paths_after_generation(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "main:sequence"} {}'
+    )
+    design = CompilableDesign(mlir_path)
+
+    design.generate_mlir()
+
+    with pytest.raises(ValueError, match="requires full-ELF compilation"):
+        design.compile(
+            xclbin_path=tmp_path / "design.xclbin",
+            inst_path=tmp_path / "insts.bin",
+        )
+
+
+def test_iron_jit_infers_full_elf_for_composed_program():
+    @jit
+    def generate():
+        runtime_a = Runtime(lambda: None, [])
+        runtime_b = Runtime(lambda: None, [])
+        configuration_a = DeviceConfiguration(NPU2Col1(), runtimes=[runtime_a])
+        configuration_b = DeviceConfiguration(NPU2Col1(), runtimes=[runtime_b])
+        return Program.compose(
+            [configuration_a, configuration_b], entry=runtime_a
+        ).resolve_program()
+
+    mlir = generate.as_mlir()
+
+    assert generate.compilable.full_elf is True
+    assert "iron.configuration_count = 2 : i32" in mlir
+
+
+@pytest.mark.parametrize(
+    "expand_load_pdis,expected",
+    [
+        (None, []),
+        (False, ["--expand-load-pdis=false"]),
+        (True, ["--expand-load-pdis=true"]),
+    ],
+)
+def test_full_elf_reconfiguration_options(tmp_path, expand_load_pdis, expected):
+    attributes = (
+        ""
+        if expand_load_pdis is None
+        else f" attributes {{iron.expand_load_pdis = {str(expand_load_pdis).lower()}}}"
+    )
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(f"module{attributes} {{}}")
+    design = CompilableDesign(mlir_path)
+    module = design._generate_mlir(ExternalFunction, full_elf=True)
+
+    assert design._full_elf_reconfiguration_options(module) == expected
+
+
+def test_full_elf_kernel_name_selects_explicit_entry(tmp_path):
+    (tmp_path / "full_elf_config.json").write_text(
+        json.dumps(
+            {
+                "xrt-kernels": [
+                    {"name": "first", "instance": [{"id": "run"}]},
+                    {"name": "entry", "instance": [{"id": "sequence"}]},
+                ]
+            }
+        )
+    )
+
+    assert (
+        CompilableDesign._parse_full_elf_kernel_name(tmp_path, "entry:sequence")
+        == "entry:sequence"
+    )
+    with pytest.raises(RuntimeError, match="does not contain entry"):
+        CompilableDesign._parse_full_elf_kernel_name(tmp_path, "missing:sequence")
+
+
 # ---------------------------------------------------------------------------
 # specialize(): config overrides + CompileTime[T] kwargs
 # ---------------------------------------------------------------------------
@@ -2251,6 +2390,17 @@ def test_specialize_preserves_other_config():
     assert s.aiecc_flags == ("--dynamic-objFifos",)
     assert s.use_cache is False
     assert s.compile_kwargs == {"M": 512}
+
+
+def test_specialize_preserves_updated_public_config():
+    d = CompilableDesign(_gemm_gen())
+    d.use_cache = False
+    d.aiecc_flags = ("--verbose",)
+
+    s = d.specialize(M=512)
+
+    assert s.use_cache is False
+    assert s.aiecc_flags == ("--verbose",)
 
 
 def test_specialize_mixes_config_and_compile_kwargs():
@@ -2419,6 +2569,19 @@ def test_compile_dispatch_time_rejects_full_elf_path_kwarg():
     d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
     with pytest.raises(NotImplementedError, match="full_elf"):
         d.compile(full_elf_path="foo.elf")
+
+
+def test_compile_insts_only_accepts_inst_path(monkeypatch, tmp_path):
+    inst_path = tmp_path / "insts.bin"
+    design = CompilableDesign(_gemm_gen(), insts_only=True)
+    monkeypatch.setattr(design, "_infer_full_elf", lambda: False)
+    monkeypatch.setattr(
+        design,
+        "_compile_insts_only",
+        lambda ExternalFunction, path: (None, Path(path)),
+    )
+
+    assert design.compile(inst_path=inst_path) == (None, inst_path)
 
 
 @pytest.mark.parametrize("extra", [{"inst_path": "foo.bin"}, {"elf_path": "foo.elf"}])

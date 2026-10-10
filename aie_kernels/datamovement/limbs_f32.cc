@@ -16,7 +16,8 @@
 #endif
 
 #if AIE_TUNED_AIE2
-// Storing a 32-lane plane whole trips Peano assertions (ISel, peephole).
+// Storing a 32-lane plane whole trips Peano assertions (ISel, peephole)
+// (llvm-aie#1372).
 constexpr int limbs_lanes = 32;
 constexpr int store_lanes = 16;
 #else

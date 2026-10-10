@@ -46,13 +46,13 @@ from ...dialects.aie import (
 )
 from ...helpers.sourceloc import SourceSite
 from ..device import Tile  # noqa: F401  (re-exported via package)
-from ..resolvable import NotResolvedError, Resolvable
+from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 from ..runtime._context import active_sequence
 from ..runtime.dmatask import emit_shim_transfer
 from .tile_dma import _SHIM_TILE_TYPES, DmaEndpoint
 
 
-class _Route(Resolvable):
+class _Route(PerDeviceConfigurationResolvable):
     """What Flow and PacketFlow share: named ends, endpoints and shim transfers.
 
     Subclasses set ``_src``, ``_dsts``, ``_name``, ``_shim_symbol``,

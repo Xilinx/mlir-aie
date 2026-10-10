@@ -415,9 +415,8 @@ CASES: list[Case] = [
         dict(**_mm, input_dtype=np.int8, output_dtype=np.int32),
         calls=16,
     ),
-    # Peano miscompiles the fully unrolled int8 -> int32 K loop from K = 416,
-    # so mm_aie2p.h rolls K up there; the 16x16 tile still unrolls. The same
-    # long-K shapes cover mm_aie2.h.
+    # mm_aie2p.h rolls the int8 -> int32 K loop from K = 416; the 16x16 tile
+    # still unrolls. The same long-K shapes cover mm_aie2.h.
     *[
         check(
             "mm",
