@@ -77,6 +77,7 @@ class DeviceResources:
     def __init__(self) -> None:
         self._flows = []
         self._locks = []
+        self._buffers = []
         self._tile_dmas = []
         self._resolved_tile_dmas = None
 
@@ -87,6 +88,15 @@ class DeviceResources:
     def add_lock(self, lock) -> None:
         if lock not in self._locks:
             self._locks.append(lock)
+
+    def add_buffer(self, buffer) -> None:
+        if buffer.tile is None:
+            raise ValueError(
+                "A Buffer registered with the Runtime needs a tile; no Worker "
+                "or TileDma places it."
+            )
+        if buffer not in self._buffers:
+            self._buffers.append(buffer)
 
     def add_tile_dma(self, tile_dma) -> None:
         from .runtime.runtime import IronRuntimeError
@@ -129,6 +139,10 @@ class DeviceResources:
     @property
     def locks(self) -> list:
         return list(self._locks)
+
+    @property
+    def buffers(self) -> list:
+        return list(self._buffers)
 
     @property
     def tile_dmas(self) -> list:

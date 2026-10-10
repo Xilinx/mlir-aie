@@ -285,6 +285,9 @@ class DeviceConfiguration(DeviceResources):
             for lock in self._locks:
                 self._claim(lock, owners)
                 all_tiles.append(lock.tile)
+            for buffer in self._buffers:
+                self._claim(buffer, owners)
+                all_tiles.append(buffer.tile)
 
             for tile in all_tiles:
                 self._claim(tile, owners)
@@ -294,6 +297,8 @@ class DeviceConfiguration(DeviceResources):
                 handle.resolve()
             for lock in self._locks:
                 lock.resolve()
+            for buffer in self._buffers:
+                buffer.resolve()
             for tile_dma in self._tile_dmas:
                 buffers, locks = tile_dma.all_buffers_and_locks()
                 for lock in locks:

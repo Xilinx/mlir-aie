@@ -343,6 +343,8 @@ class Runtime(DeviceResources, Resolvable):
             configuration.add_flow(flow)
         for lock in self._locks:
             configuration.add_lock(lock)
+        for buffer in self._buffers:
+            configuration.add_buffer(buffer)
         for tile_dma in self._tile_dmas:
             configuration.add_tile_dma(tile_dma)
 
@@ -399,6 +401,21 @@ class Runtime(DeviceResources, Resolvable):
         super().add_lock(lock)
         if self._configuration is not None:
             self._configuration.add_lock(lock)
+
+    def add_buffer(self, buffer) -> None:
+        """Register a [`Buffer`][iron.Buffer] only runtime tasks reach.
+
+        A Buffer a Worker's ``fn_args`` or a TileDma's Bds name is found from
+        them. One reached only by a task is otherwise emitted when the first
+        task names it, so a sequence that names it on some shapes and not
+        others would change the device; a registered one is always emitted.
+
+        Raises:
+            ValueError: `buffer` has no tile.
+        """
+        super().add_buffer(buffer)
+        if self._configuration is not None:
+            self._configuration.add_buffer(buffer)
 
     def add_tile_dma(self, tile_dma) -> None:
         """Register a TileDma; channels sharing a Tile are combined at resolution."""
