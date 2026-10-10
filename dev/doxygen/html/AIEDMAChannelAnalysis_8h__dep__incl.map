@@ -1,7 +1,0 @@
-<map id="include/aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h" name="include/aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="109,5,341,60"/>
-<area shape="rect" id="Node000002" href="$AIEDMAChannelAnalysis_8cpp.html" title=" " alt="" coords="5,108,219,148"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="184,71,137,110,133,106,181,67"/>
-<area shape="rect" id="Node000003" href="$AIEObjectFifoAllocate_8cpp.html" title=" " alt="" coords="243,108,437,148"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="270,67,319,106,315,110,267,71"/>
-</map>
