@@ -127,8 +127,18 @@ can only remove deadlocks, never add one, so the model uses:
 - the least buffering a path can have, to accept;
 - the most it can have, to report a deadlock.
 
-Where the two disagree the design is undecided. **To confirm:** the words a
-switchbox hop and a DMA port hold, for each device.
+Where the two disagree the design is undecided.
+
+Measured on npu2 (Strix, 2026-10-10, `test/npu-xrt/deadlock_model_head_of_line`
+and `test/deadlock-model/Inputs/hw_head_of_line_*`): a packet stream from a
+shim MM2S channel into a core tile's S2MM channel holds **8 words** beyond the
+words the receiving BD has taken. A sender with 8 more words than its receiver
+can take finishes, and one more word hangs it. The count is the same whether
+the path crosses 3 switchboxes (to row 2) or 6 (to row 5), so the buffering
+sits at the ends of the path, not in each hop.
+
+**To confirm:** circuit streams, memtile ends, core-to-core streams, and
+npu1.
 
 ## Determinism
 

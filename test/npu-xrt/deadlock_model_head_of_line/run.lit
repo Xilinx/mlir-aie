@@ -1,0 +1,10 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings
+//
+// RUN: %aiecc --get-xclbin --xclbin-name=aie.xclbin %S/aie.mlir
+// RUN: %aiecc --get-npu-insts --sequence-name=first_a --npu-insts-name=insts_a.bin %S/aie.mlir
+// RUN: %aiecc --get-npu-insts --sequence-name=first_b --npu-insts-name=insts_b.bin %S/aie.mlir
+// RUN: %run_on_npu2% %python %S/test.py --xclbin aie.xclbin --insts insts_a.bin
+// RUN: %run_on_npu2% %python %S/test.py --xclbin aie.xclbin --insts insts_b.bin

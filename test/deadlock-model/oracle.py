@@ -8,7 +8,7 @@
 # RUN: %python %s --design %t.mlir | FileCheck %s --check-prefix=LOWERED
 
 """The deadlock model's oracle (aiemodel.program) on designs worked by hand,
-and on an objectFifo design lowered by aie-opt.
+on designs run on an NPU, and on an objectFifo design lowered by aie-opt.
 
 Each case names a design in Inputs, the runtime sequence to dispatch, the
 words of buffering in front of each receiver, and what docs/DeadlockModel.md
@@ -40,6 +40,14 @@ CASES = [
     ("hidden_channel", "run", 0, "undecided"),
     # The dispatch ends with a transfer still in flight.
     ("unquiesced", "run", 0, "unquiesced"),
+    # Measured on npu2: a packet stream from a shim to a core tile buffers
+    # 8 words beyond the receiving BD. With that buffering the model agrees
+    # with every run: 8 extra words pass, 9 hang, and issued the other way
+    # round both pass.
+    ("hw_head_of_line_k8", "first_a", 8, "accept"),
+    ("hw_head_of_line_k8", "first_b", 8, "accept"),
+    ("hw_head_of_line_k9", "first_a", 8, "deadlock"),
+    ("hw_head_of_line_k9", "first_b", 8, "accept"),
 ]
 
 
@@ -73,6 +81,10 @@ def main():
 # CHECK: contended_lock run capacity 0: undecided (some orders deadlock and some finish{{.*}}) OK
 # CHECK: hidden_channel run capacity 0: undecided (a flow names ((0, 1), 0, 0), whose channel the design does not program) OK
 # CHECK: unquiesced run capacity 0: unquiesced (((0, 0), 1, 0) still has work) OK
+# CHECK: hw_head_of_line_k8 first_a capacity 8: accept ({{.*}}) OK
+# CHECK: hw_head_of_line_k8 first_b capacity 8: accept ({{.*}}) OK
+# CHECK: hw_head_of_line_k9 first_a capacity 8: deadlock ({{.*}}) OK
+# CHECK: hw_head_of_line_k9 first_b capacity 8: accept ({{.*}}) OK
 # CHECK-NOT: WRONG
 
 # LOWERED: run_a: accept
