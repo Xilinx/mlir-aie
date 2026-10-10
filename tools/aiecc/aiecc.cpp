@@ -340,6 +340,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
     std::mutex mutex;
     // Canonical module, arch and stack space -> the object; empty on failure.
     std::map<std::string, std::shared_future<std::string>> objects;
+    std::set<std::string> stems;
   };
   auto shared = std::make_shared<SharedObjects>();
   EdgeWithTypedOutput<Directory> &peanoObject =
@@ -378,19 +379,21 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                                   '\0' + stack.asString();
                 std::promise<std::string> promise;
                 std::shared_future<std::string> object;
-                bool first;
+                std::string stem;
                 {
                   std::lock_guard<std::mutex> lock(shared->mutex);
                   auto [it, inserted] = shared->objects.try_emplace(key);
                   if (inserted) {
                     it->second = promise.get_future().share();
+                    stem =
+                        "canonical_" + llvm::utohexstr(llvm::xxh3_64bits(key));
+                    while (!shared->stems.insert(stem).second) {
+                      stem += "_";
+                    }
                   }
                   object = it->second;
-                  first = inserted;
                 }
-                if (first) {
-                  std::string stem =
-                      "canonical_" + llvm::utohexstr(llvm::xxh3_64bits(key));
+                if (!stem.empty()) {
                   Item<std::string> input;
                   input.key = out.key;
                   input.filePath = workDir + "/" + stem + ".ll";
