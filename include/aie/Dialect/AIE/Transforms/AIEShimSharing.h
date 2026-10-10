@@ -22,6 +22,7 @@ namespace xilinx::AIE {
 /// transfers before the next starts); within one, an end's transfers must all
 /// be awaited or freed before the other's first, and a loop spans its body.
 /// Ends are known by their objectFIFO's name, before or after split.
+/// The placer and objectFIFO allocation both decide by this, so they agree.
 class ShimTransferSpans {
 public:
   /// `fifoOf` maps a symbol a runtime sequence transfers through to the

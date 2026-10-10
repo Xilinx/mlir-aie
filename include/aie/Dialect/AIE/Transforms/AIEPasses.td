@@ -59,7 +59,9 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
     tiles nearby, allowing multiple logical tiles per physical tile.
     It checks DMA demand; memory, locks and spill-dependent channel eligibility
     are checked by `aie-objectfifo-allocate` after splitting. Allocation failures
-    do not trigger re-placement or undo merges.
+    do not trigger re-placement or undo merges. When no shim tile has a channel
+    left, shim ends the runtime sequences never have in flight together count
+    once, as allocation will share their channel.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";

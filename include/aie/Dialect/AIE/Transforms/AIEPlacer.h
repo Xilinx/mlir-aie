@@ -10,7 +10,9 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 
+#include <array>
 #include <deque>
 #include <random>
 
@@ -134,6 +136,17 @@ public:
   static Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
                                       llvm::ArrayRef<PacketFlowOp> pktFlows);
 
+  // The objectFIFO ends each shim LTO hosts that may take turns on a channel
+  // with ends never in flight with them (ShimTransferSpans): DMA ends naming
+  // no channel, [0] receiving and [1] sending, as objectFIFO allocation sees
+  // them.
+  using ShareableShimEnds =
+      llvm::DenseMap<mlir::Operation *,
+                     std::array<llvm::SmallVector<mlir::StringAttr>, 2>>;
+  static ShareableShimEnds
+  collectShareableShimEnds(DeviceOp device,
+                           llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
 protected:
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;
@@ -239,6 +252,16 @@ private:
   // non-core aie.logical_tile onto a tile that already hosts one.
   llvm::DenseSet<TileID> assignedNonCoreTiles;
   int deviceCoresPerCol = 0; // Actual cores per column in device
+
+  // Shim channels are counted one per end until a shim tile runs out; then
+  // ends never in flight together count once, as allocation will share them.
+  std::optional<ShimTransferSpans> shimSpans;
+  ShareableShimEnds shareableShimEnds;
+  llvm::DenseMap<TileID, std::array<llvm::SmallVector<mlir::StringAttr>, 2>>
+      shimEndsAt;
+  bool fitsSharingShim(TileID tile, mlir::Operation *logicalTile,
+                       std::pair<int, int> required);
+  void recordShimEnds(TileID tile, mlir::Operation *logicalTile);
 
   // DMA channel direction selector.
   enum class DmaDir { In, Out };
@@ -673,6 +696,10 @@ private:
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
   llvm::DenseMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
+  // An over-full shim tile is charged only for the channels allocation
+  // still needs once ends never in flight together share them.
+  std::optional<ShimTransferSpans> shimSpans;
+  ShareableShimEnds shareableShimEnds;
 
   // Cascade
   Adjacency cascadeAdjacency;
