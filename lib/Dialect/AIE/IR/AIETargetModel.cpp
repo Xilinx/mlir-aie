@@ -74,8 +74,9 @@ std::optional<uint32_t> AIETargetModel::lookupEvent(llvm::StringRef name,
   return db->lookupEvent(name, getModuleForTileEvents(*this, tile, isMem));
 }
 
-uint32_t AIETargetModel::encodeFieldValue(const BitFieldInfo &field,
-                                          uint32_t value) const {
+std::optional<uint32_t>
+AIETargetModel::encodeFieldValue(const BitFieldInfo &field,
+                                 uint32_t value) const {
   const auto *db = getRegisterDatabase();
   if (!db)
     return 0;
