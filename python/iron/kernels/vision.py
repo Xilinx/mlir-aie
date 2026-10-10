@@ -182,7 +182,7 @@ def rgba2gray(line_width: int = 1920, use_chess: bool = False) -> ExternalFuncti
     flags = []
     if not use_chess and _tuned_arch() == "aie2p":
         # The pre-RA pipeliner's schedule of the 64-pixel loop ends up at II13
-        # after register allocation; the postpipeliner finds II11.
+        # after register allocation; the postpipeliner finds II11 (llvm-aie#1066).
         flags += ["-mllvm", "--aie-force-postpipeliner"]
     return _color_convert_kernel(
         "rgba2grayLine",

@@ -86,23 +86,15 @@ static inline void silu_impl(bfloat16 *restrict input_vector,
 }
 
 #if AIE_TUNED_AIE2
-// AIE2's tanh reads a table; lut_map_bf16 lays the loop out around the reads.
 // The sigmoid is exactly 0 from x = -8 down, so x is clamped there before it
 // multiplies it, which keeps -inf from making -inf * 0.
 static inline void silu_aie2(bfloat16 *restrict input_vector,
                              bfloat16 *restrict output_vector,
                              const int32_t vector_size) {
-  aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
-  aie::accum<accfloat, 16> half;
-  half.from_vector(register_0_5);
   lut_map_bf16(input_vector, output_vector, SILU_ELEMS,
-               [&](aie::vector<bfloat16, 16> x) {
-                 aie::vector<bfloat16, 16> sigmoid_approx =
-                     aie::mac(half, tanh_bf16_v16(aie::mul(x, register_0_5)),
-                              register_0_5)
-                         .to_vector<bfloat16>();
+               [](aie::vector<bfloat16, 16> x) {
                  return aie::vector<bfloat16, 16>(
-                     aie::mul(aie::max(x, bfloat16(-8.0f)), sigmoid_approx)
+                     aie::mul(aie::max(x, bfloat16(-8.0f)), sigmoid_lut_bf16(x))
                          .to_vector<bfloat16>());
                });
 }
@@ -118,8 +110,11 @@ static inline void silu_lut_aie2p(bfloat16 *restrict input_vector,
   auto it_in = aie::begin_restrict_vector<32>(input_vector);
   auto it_sig = aie::begin_restrict_vector<32>(output_vector);
 #pragma clang loop pipeline_initiation_interval(16)
-  for (int i = 0; i < num_elems; i += 32)
-    *it_sig++ = sigmoid_lut_bf16(*it_in++);
+  for (int i = 0; i < num_elems; i += 32) {
+    const aie::vector<bfloat16, 32> x = *it_in++;
+    *it_sig++ = aie::concat(sigmoid_lut_bf16(x.extract<16>(0)),
+                            sigmoid_lut_bf16(x.extract<16>(1)));
+  }
 
   auto it_x = aie::begin_restrict_vector<32>(input_vector);
   auto it_s = aie::begin_vector<32>(output_vector);

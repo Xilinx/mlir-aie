@@ -103,4 +103,4 @@ def test_designs_compiled_from_threads_keep_their_own_kernels(tmp_path):
     assert overlapped == [False]
     for name, (xclbin, insts) in built.items():
         assert xclbin.exists() and insts.exists()
-        assert [k.name for k in designs[name]._generated[1]] == [name]
+        assert [k.name for k in designs[name]._generated.external_kernels] == [name]

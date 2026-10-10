@@ -16,3 +16,10 @@ extern "C" void zero(ZERO_TYPE *__restrict output) {
 #endif
   event1();
 }
+
+extern "C" void zero_window(ZERO_TYPE *__restrict output, int32_t offset,
+                            int32_t count) {
+  event0();
+  zero_vectorized(output + offset, count);
+  event1();
+}

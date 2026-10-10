@@ -67,7 +67,8 @@ static inline V _argmax_load_v(const T *in) {
   V value = aie::load_v<V::size()>(in);
   if constexpr (std::is_same_v<T, bfloat16>) {
     const auto bits = value.template cast_to<int16_t>();
-    // -0 is INT16_MIN. lt, because eq against it crashes Peano's legalizer.
+    // -0 is INT16_MIN. lt, because eq against it crashes Peano's legalizer
+    // (llvm-aie#1356).
     value = aie::select(bits, aie::zeros<int16_t, V::size()>(),
                         aie::lt(bits, (int16_t)(INT16_MIN + 1)))
                 .template cast_to<bfloat16>();

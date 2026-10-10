@@ -88,7 +88,7 @@ def test_static_mlir_compile_does_not_bind_a_device(tmp_path):
     """Compiling a written MLIR file takes its target from the file, not the runtime."""
     set_current_device(NPU2Col1())
     mlir_path = tmp_path / "design.mlir"
-    mlir_path.write_text(CompilableDesign(copy)._generated[0])
+    mlir_path.write_text(CompilableDesign(copy)._generated.mlir_text)
     set_current_device(None)
 
     cd = CompilableDesign(mlir_path, use_cache=False)
@@ -106,7 +106,7 @@ def test_compile_mode_switch_replaces_artifact_state(tmp_path, monkeypatch):
     monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path / "cache")
     set_current_device(NPU2Col1())
     mlir_path = tmp_path / "design.mlir"
-    mlir_path.write_text(CompilableDesign(copy)._generated[0])
+    mlir_path.write_text(CompilableDesign(copy)._generated.mlir_text)
     out = tmp_path / "out"
 
     design = CompilableDesign(mlir_path)

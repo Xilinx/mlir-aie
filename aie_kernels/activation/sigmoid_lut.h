@@ -11,18 +11,24 @@
 #include "../common/activations.h"
 #include <aie_api/aie.hpp>
 
-#if AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
+#if (AIE_TUNED_AIE2 || AIE_TUNED_AIE2P) && !ACTIVATIONS_NATIVE_TANH
 #include "aie_bank_placement.h"
-// AIE2P's LUT sigmoid reads its own table rather than tanh's: tanh_lut_ab/cd
+// The LUT sigmoid reads its own table rather than tanh's: tanh_lut_ab/cd
 // with each segment rewritten for 0.5 + 0.5 * tanh(x/2), the slope over 4 and
 // the offset 0.5 + 0.5 * offset, indexed by x in segments of 0.5 over [-8, 8).
 // That drops the x/2 and 0.5 * (1 + t) passes around the table reads and one
 // of the two bf16 roundings. Every slope is still a bf16, which the lookup
 // reads as the high half of each float.
-// The lookup reads the 32 segments four at a time and wants each group of
-// four stored twice, as tanh_lut_ab/cd are; the two banks hold the same table.
-// Each row below is one group of four {slope, offset} pairs, left to right.
+// Each bank run of AIE_LUT_16B_RUN uint16 holds AIE_LUT_16B_RUN / 4 {slope,
+// offset} pairs, and the lookup wants every run stored twice, as tanh_lut_ab/cd
+// are; the two banks hold the same table. Each row below is four pairs, left to
+// right.
+#if AIE_LUT_16B_RUN == 8
+#define SIGMOID_LUT_ROW(s0, o0, s1, o1, s2, o2, s3, o3)                        \
+  s0, o0, s1, o1, s0, o0, s1, o1, s2, o2, s3, o3, s2, o2, s3, o3
+#else
 #define SIGMOID_LUT_ROW(...) __VA_ARGS__, __VA_ARGS__
+#endif
 // clang-format off
 #define SIGMOID_LUT_TABLE {                           \
   SIGMOID_LUT_ROW(0.0f, 0.0f,                         \
@@ -70,12 +76,6 @@ AIE_BANK_B alignas(aie::vector_decl_align) inline float sigmoid_lut_cd[128] =
 
 __attribute__((always_inline)) inline aie::vector<bfloat16, 16>
 sigmoid_lut_bf16(aie::vector<bfloat16, 16> x) {
-  return lut_segments_acc<5>(sigmoid_lut_ab, sigmoid_lut_cd, x)
-      .to_vector<bfloat16>();
-}
-
-__attribute__((always_inline)) inline aie::vector<bfloat16, 32>
-sigmoid_lut_bf16(aie::vector<bfloat16, 32> x) {
   return lut_segments_acc<5>(sigmoid_lut_ab, sigmoid_lut_cd, x)
       .to_vector<bfloat16>();
 }

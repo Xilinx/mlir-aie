@@ -24,6 +24,8 @@ from aie.utils.callabledesign import CallableDesign
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
 from aie.utils.jit import _JIT_CONFIG_KEYS, jit
+from aie.utils.trace import TraceConfig
+from aie.utils.trace.parse import DEFAULT_KERNEL
 
 # ---------------------------------------------------------------------------
 # CallableDesign construction
