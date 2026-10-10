@@ -161,8 +161,11 @@ static inline void swiglu_aie2p(bfloat16 *restrict input_vector,
 
   auto it_y_in = aie::begin_vector<32>(output_vector);
   auto it_sig = aie::begin_vector<32>(output_vector);
-  for (int i = 0; i < num_elems; i += 32)
-    *it_sig++ = sigmoid_lut_bf16(*it_y_in++);
+  for (int i = 0; i < num_elems; i += 32) {
+    const aie::vector<bfloat16, 32> y = *it_y_in++;
+    *it_sig++ = aie::concat(sigmoid_lut_bf16(y.extract<16>(0)),
+                            sigmoid_lut_bf16(y.extract<16>(1)));
+  }
 #endif
 
   aie::accum<accfloat, 32> half;

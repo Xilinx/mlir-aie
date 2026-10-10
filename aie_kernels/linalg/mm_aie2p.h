@@ -468,9 +468,8 @@ static inline void matmul_vectorized_8x8x8_i8_i32(const int8 *__restrict pA,
   static_assert(k % s == 0);
   static_assert(n % (2 * t) == 0);
 
-  // From K = 416, Peano's post-increment combine makes some of the unrolled
-  // A loads read the wrong address (16xKx32, 32xKx16, 16xKx48, 48xKx16; the
-  // 16x16 tile compiles correctly). Roll K up there instead.
+  // From K = 416 the unrolled K loop takes 6-30% more cycles than the rolled
+  // one; the 16x16 tile unrolls at every K.
   constexpr bool unroll_k = k < 416 || (m == 2 * r && n == 2 * t);
 
   return matmul_vectorized_2x2_mmul<int8, int32, (m / r), (k / s), (n / t), r,

@@ -28,8 +28,9 @@ using bf16 = bfloat16;
 /// K taps over C channels, accumulating in float and narrowing on store.
 ///
 /// Both operands arrive as K independent pointers. Deriving the weight planes
-/// from one base as `w + t * stride` miscompiled under the full unroll below:
-/// in the first 32-lane group, planes 0..K-2 all resolved to plane 0.
+/// from one base as `w + t * stride` miscompiled under the full unroll below
+/// before llvm-aie#1313's fix: in the first 32-lane group, planes 0..K-2 all
+/// resolved to plane 0.
 // The taps go outermost over four groups at a time: each group still sums its
 // taps in order, but ten pointers walked one group at a time leave the loads
 // single-issued between pointer moves. AIE2 groups are 32 lanes; AIE2P's

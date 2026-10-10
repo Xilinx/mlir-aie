@@ -42,8 +42,11 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
   auto it_in = aie::begin_vector<32>(input_vector);
   auto it_out = aie::begin_vector<32>(output_vector);
 #pragma clang loop pipeline_initiation_interval(16)
-  for (int i = 0; i < num_elems; i += 32)
-    *it_out++ = sigmoid_lut_bf16(*it_in++);
+  for (int i = 0; i < num_elems; i += 32) {
+    const aie::vector<bfloat16, 32> x = *it_in++;
+    *it_out++ = aie::concat(sigmoid_lut_bf16(x.extract<16>(0)),
+                            sigmoid_lut_bf16(x.extract<16>(1)));
+  }
 #else
   auto it_in = aie::begin_restrict_vector<32>((bfloat16 *)input_vector);
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);
