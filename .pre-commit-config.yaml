@@ -13,7 +13,7 @@ repos:
 
 # Formatting hooks (run on pre-push to catch issues before CI)
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: e2b496dc2bd8340c2524cb9a2d2a943cde1bb6df  # frozen: v23.1.1
+  rev: a9a8a861f30ed207ead7d5a3b7e8032283ba5da7  # frozen: v23.1.2
   hooks:
     - id: clang-format
       # Keep this extension list in sync with lintAndFormat.yml's clang-format
