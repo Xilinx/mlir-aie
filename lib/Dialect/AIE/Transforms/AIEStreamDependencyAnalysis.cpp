@@ -938,8 +938,8 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
       to = getOrCreate(*agent);
     if (!from || !to || *from == *to)
       continue;
-    addEdge(*from, *to, EdgeKind::Stream);
-    addEdge(*to, *from, EdgeKind::Stream);
+    addEdge(*from, *to, EdgeKind::Stream, /*sends=*/true);
+    addEdge(*to, *from, EdgeKind::Stream, /*sends=*/false, /*receives=*/true);
   }
 
   // The host issues a channel's transfer only after every wait before it in
@@ -1103,11 +1103,16 @@ std::optional<unsigned> StreamWaitGraph::lookup(const Agent &agent) const {
   return it->second;
 }
 
-void StreamWaitGraph::addEdge(unsigned from, unsigned to, EdgeKind kind) {
-  if (llvm::none_of(edges[from], [&](const Edge &e) {
-        return e.to == to && e.kind == kind;
-      }))
-    edges[from].push_back({to, kind});
+void StreamWaitGraph::addEdge(unsigned from, unsigned to, EdgeKind kind,
+                              bool sends, bool receives) {
+  for (Edge &e : edges[from]) {
+    if (e.to == to && e.kind == kind) {
+      e.sends |= sends;
+      e.receives |= receives;
+      return;
+    }
+  }
+  edges[from].push_back({to, kind, sends, receives});
 }
 
 std::optional<unsigned> StreamWaitGraph::agentAt(const StreamEndpoint &endpoint,
@@ -1130,26 +1135,49 @@ SmallVector<unsigned> StreamWaitGraph::drainersOf(unsigned agent) const {
 SmallVector<unsigned>
 StreamWaitGraph::waitChain(ArrayRef<unsigned> from, ArrayRef<unsigned> targets,
                            ArrayRef<unsigned> avoid) const {
-  llvm::DenseMap<unsigned, std::optional<unsigned>> parent;
-  for (unsigned a : avoid)
-    parent.try_emplace(a, std::nullopt);
-  std::deque<unsigned> worklist;
+  // A state is an agent and whether the chain reached it as a receiver taking
+  // a sender's data, where its other DMA senders are no wait of its.
+  using State = std::pair<unsigned, bool>;
+  std::map<State, std::optional<State>> parent;
+  for (unsigned a : avoid) {
+    parent.try_emplace({a, false}, std::nullopt);
+    parent.try_emplace({a, true}, std::nullopt);
+  }
+  std::deque<State> worklist;
   for (unsigned a : from)
-    if (parent.try_emplace(a, std::nullopt).second)
-      worklist.push_back(a);
+    if (parent.try_emplace({a, false}, std::nullopt).second)
+      worklist.emplace_back(a, false);
   while (!worklist.empty()) {
-    unsigned a = worklist.front();
+    State state = worklist.front();
     worklist.pop_front();
+    auto [a, taking] = state;
     if (llvm::is_contained(targets, a)) {
       SmallVector<unsigned> chain;
-      for (std::optional<unsigned> at = a; at; at = parent.lookup(*at))
-        chain.push_back(*at);
+      for (std::optional<State> at = state; at; at = parent[*at])
+        chain.push_back(at->first);
       std::reverse(chain.begin(), chain.end());
       return chain;
     }
-    for (const Edge &e : edges[a])
-      if (parent.try_emplace(e.to, a).second)
-        worklist.push_back(e.to);
+    // Reached without restriction, the agent already waits on everything.
+    if (taking && parent.count({a, false}))
+      continue;
+    auto onChain = [&](unsigned agent) {
+      for (std::optional<State> at = state; at; at = parent[*at])
+        if (at->first == agent)
+          return true;
+      return false;
+    };
+    for (const Edge &e : edges[a]) {
+      if (taking && e.receives && !e.sends &&
+          agents[e.to].kind == Agent::Kind::Channel)
+        continue;
+      // A chain through an agent twice would have it wait on itself.
+      if (parent.count({e.to, false}) || onChain(e.to))
+        continue;
+      State next{e.to, e.kind == EdgeKind::Stream && e.sends};
+      if (parent.try_emplace(next, state).second)
+        worklist.push_back(next);
+    }
   }
   return {};
 }

@@ -208,7 +208,9 @@ private:
 /// the host it is done. A channel with no program in the design may wait on
 /// anything on its tile. A receiving channel that takes in all it is sent
 /// before its locks run out waits on no lock. Program order within an agent
-/// is not modeled.
+/// is not modeled. A receiver taking one sender's data waits on none of its
+/// other DMA senders: a DMA channel sends a packet whole once it starts, so
+/// it never holds the receiver while waiting on anything.
 class StreamWaitGraph {
 public:
   /// A core, a DMA channel, or a tile's controller. A core's or controller's
@@ -264,11 +266,16 @@ private:
   struct Edge {
     unsigned to;
     EdgeKind kind;
+    /// A stream edge from a sender to the receiver it waits on to take its
+    /// data, or from a receiver to the sender it waits on for data.
+    bool sends = false;
+    bool receives = false;
   };
 
   unsigned getOrCreate(const Agent &agent);
   std::optional<unsigned> lookup(const Agent &agent) const;
-  void addEdge(unsigned from, unsigned to, EdgeKind kind);
+  void addEdge(unsigned from, unsigned to, EdgeKind kind, bool sends = false,
+               bool receives = false);
 
   std::vector<Agent> agents;
   std::vector<llvm::SmallVector<Edge, 4>> edges;
