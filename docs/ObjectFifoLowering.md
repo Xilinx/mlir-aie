@@ -397,9 +397,13 @@ When a shim tile runs out of channels, shim ends that are never in flight
 together take turns on one channel instead. Ends that different runtime
 sequences use never are: one dispatch runs one sequence and is taken to finish
 its transfers before the next starts, the same contract that lets one design
-be dispatched twice in a row. Within one sequence, one end's transfers must be
-awaited or freed (`aiex.dma_free_task`) before the other's first is issued, and
-an end used inside a loop counts as in flight for the whole loop. An end no
+be dispatched twice in a row. Within one sequence, a receiving (S2MM) end's
+transfers must be awaited or freed (`aiex.dma_free_task`) before the other's
+first is issued, and an end used inside a loop counts as in flight for the
+whole loop. A sending (MM2S) end stays in flight to the end of its sequence:
+a shim MM2S task reports itself complete once the shim has read its data, up
+to about 1580 words before they have entered the stream (measured on npu2),
+so awaiting it proves nothing about a later transfer queued behind it. An end no
 runtime sequence names is never shared. Only as many ends share as the tile
 needs. The routes of ends sharing a channel become packet-switched, with ids
 that differ from one another; other shared channels reuse the same ids, as the

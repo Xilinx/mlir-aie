@@ -184,12 +184,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       buildChannelRequirements(objectFifos, objectFifoLinks);
   addChannelRequirementsFromFlows(flows, pktFlows, routes, channelRequirements);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
-  shimSpans.emplace(device, [&](StringAttr symbol) {
-    return isa_and_nonnull<ObjectFifoCreateOp>(
-               SymbolTable::lookupNearestSymbolFrom(device, symbol))
-               ? symbol
-               : StringAttr();
-  });
+  shimSpans.emplace(
+      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); });
   shimEndsAt.clear();
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
@@ -1165,6 +1161,17 @@ Placer::collectShareableShimEnds(DeviceOp device,
         ends[lt][0].push_back(fifo.getSymNameAttr());
   }
   return ends;
+}
+
+std::optional<ShimTransferSpans::End> Placer::shimEndOf(DeviceOp device,
+                                                        StringAttr symbol) {
+  auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(
+      SymbolTable::lookupNearestSymbolFrom(device, symbol));
+  if (!fifo)
+    return std::nullopt;
+  auto producer =
+      dyn_cast_or_null<TileLike>(fifo.getProducerTile().getDefiningOp());
+  return ShimTransferSpans::End{symbol, producer && producer.isShimTile()};
 }
 
 Placer::Adjacency Placer::buildFlowAdjacency(ArrayRef<FlowOp> flows,

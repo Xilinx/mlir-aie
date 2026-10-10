@@ -14,22 +14,33 @@
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
+#include <optional>
+
 namespace xilinx::AIE {
 
 /// When the runtime sequences have each shim end's transfers in flight, so
 /// that ends never in flight together can take turns on one shim channel.
 /// Different runtime sequences never overlap (a dispatch finishes its
-/// transfers before the next starts); within one, an end's transfers must all
-/// be awaited or freed before the other's first, and a loop spans its body.
+/// transfers before the next starts). Within one, a receiving end's transfers
+/// must all be awaited or freed before the other's first, and a loop spans
+/// its body; a sending end stays in flight to the end of its sequence, as a
+/// shim MM2S task reports itself complete before its words leave the shim.
 /// Ends are known by their objectFIFO's name, before or after split.
 /// The placer and objectFIFO allocation both decide by this, so they agree.
 class ShimTransferSpans {
 public:
-  /// `fifoOf` maps a symbol a runtime sequence transfers through to the
-  /// objectFIFO it belongs to, or a null attribute when it belongs to none.
+  /// A shim end a runtime sequence transfers through.
+  struct End {
+    mlir::StringAttr fifo;
+    /// An MM2S end, sending into the array.
+    bool sends;
+  };
+
+  /// `endOf` maps a symbol a runtime sequence transfers through to the
+  /// objectFIFO end it belongs to, or nothing when it belongs to none.
   ShimTransferSpans(
       DeviceOp device,
-      llvm::function_ref<mlir::StringAttr(mlir::StringAttr)> fifoOf);
+      llvm::function_ref<std::optional<End>(mlir::StringAttr)> endOf);
 
   /// Whether the ends of `a` and `b` are never in flight together.
   bool apart(mlir::StringAttr a, mlir::StringAttr b) const;
@@ -45,6 +56,7 @@ private:
     int64_t last = -1;
     int64_t lastIssue = -1;
     int64_t lastDone = -1;
+    bool sends = false;
   };
   llvm::SmallVector<llvm::DenseMap<mlir::StringAttr, Span>> spans;
 };
