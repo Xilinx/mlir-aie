@@ -123,24 +123,21 @@ jobs:
           PYTHON_VERSION: ${{ matrix.python_version }}
         run: echo "name=mlir_aie_rtti_${ENABLE_RTTI}-${PYTHON_VERSION}" >> "${GITHUB_OUTPUT}"
 
-      - uses: uraimo/run-on-arch-action@fd7aa8593480287702b446a273a68f788a9bad3a  # v3
+      - uses: ./.github/actions/run_x86_container
         name: Build mlir-aie
         id: runcmd
         with:
-          distro: none
-          arch: none
-          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:1.2
-          githubToken: ${{ github.token }}
-          dockerRunArgs: |
-            --mac-address 02:42:ac:11:00:02
+          image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:1.2
+          github-token: ${{ github.token }}
+          mac-address: 02:42:ac:11:00:02
           env: |
-            VITIS: ${{ env.VITIS }}
-            XILINXD_LICENSE_FILE: ${{ env.XILINXD_LICENSE_FILE }}
-            PIP_RETRIES: ${{ env.PIP_RETRIES }}
-            PIP_RESUME_RETRIES: ${{ env.PIP_RESUME_RETRIES }}
-            PIP_TIMEOUT: ${{ env.PIP_TIMEOUT }}
-            PIP_DISABLE_PIP_VERSION_CHECK: ${{ env.PIP_DISABLE_PIP_VERSION_CHECK }}
-            AIE_WHEEL_VERSION: ${{ steps.wheel_version.outputs.version }}
+            VITIS=${{ env.VITIS }}
+            XILINXD_LICENSE_FILE=${{ env.XILINXD_LICENSE_FILE }}
+            PIP_RETRIES=${{ env.PIP_RETRIES }}
+            PIP_RESUME_RETRIES=${{ env.PIP_RESUME_RETRIES }}
+            PIP_TIMEOUT=${{ env.PIP_TIMEOUT }}
+            PIP_DISABLE_PIP_VERSION_CHECK=${{ env.PIP_DISABLE_PIP_VERSION_CHECK }}
+            AIE_WHEEL_VERSION=${{ steps.wheel_version.outputs.version }}
           run: |
             git config --global --add safe.directory $PWD
             MLIR_VERSION=$(git rev-parse --short HEAD)
