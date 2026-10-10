@@ -1,7 +1,0 @@
-<map id="include/aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h" name="include/aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="102,5,378,60"/>
-<area shape="rect" id="Node000002" href="$AIECreatePathFindFlows_8cpp.html" title=" " alt="" coords="5,108,216,148"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="194,70,138,110,135,106,191,66"/>
-<area shape="rect" id="Node000003" href="$AIEStreamDependencyAnalysis_8cpp.html" title=" " alt="" coords="241,108,498,148"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="289,66,345,106,342,110,286,70"/>
-</map>
