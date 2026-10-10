@@ -203,6 +203,7 @@ LogicalResult appendBlockWrite(
   std::vector<uint32_t> payload;
   payload.reserve(data.size());
   if (auto words = data.tryGetValues<uint32_t>(); succeeded(words))
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
     payload.assign(words->begin(), words->end());
   else
     for (auto d : data)
