@@ -551,6 +551,47 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 }
 
+def AIECheckDeadlock : Pass<"aie-check-deadlock", "DeviceOp"> {
+  let summary = "Decide whether dispatching each runtime sequence can deadlock";
+  let description = [{
+    Runs the deadlock model of docs/DeadlockModel.md on each runtime sequence
+    of the device (or on the device alone when it has none), after the
+    objectFIFO lowering and before routing. Within the subset the model
+    decides, one run in any order is every run:
+
+    - with no buffering in the fabric, the dispatch finishes: accepted;
+    - it deadlocks even with `buffering` words in front of each receiver and
+      `shim-buffering` words read ahead by each shim MM2S channel: an error,
+      with each blocked agent and what it waits for;
+    - it deadlocks only without that buffering: undecided.
+
+    A dispatch that finishes with work still in flight (a task still queued
+    or running, words read ahead or in front of a receiver, a completion
+    token nobody waited for) is an error: the next dispatch would find it.
+    A design outside the subset (a receiver several channels send to, a lock
+    several agents acquire, counts the IR does not fix, ...) is undecided.
+    An undecided design is an error unless `allow-undecided` is set, which
+    turns it into a warning.
+  }];
+
+  let constructor = "xilinx::AIE::createAIECheckDeadlockPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+
+  let options =
+      [Option<"clAllowUndecided", "allow-undecided", "bool",
+              /*default=*/"false",
+              "Warn of, rather than fail on, a design the model cannot "
+              "decide.">,
+       Option<"clBuffering", "buffering", "unsigned", /*default=*/"8",
+              "Words the fabric holds in front of a receiver, at most "
+              "(measured on npu2).">,
+       Option<"clShimBuffering", "shim-buffering", "unsigned",
+              /*default=*/"1580",
+              "Words a shim MM2S channel reads ahead of its stream, at most "
+              "(measured on npu2).">,
+  ];
+}
+
 def AIEAssignPacketIds : Pass<"aie-assign-packet-ids", "DeviceOp"> {
   let summary = "Give every packet-switched route a packet id";
   let description = [{

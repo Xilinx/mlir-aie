@@ -1,0 +1,37 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// --aie-check-deadlock on the designs the oracle is checked on.
+
+// The measured head-of-line pair (npu2): 9 extra words hang whatever the
+// fabric holds; 8 finish only because the path holds 8, which the pass does
+// not count on; issued the other way round, both finish.
+// RUN: not aie-opt --aie-check-deadlock %S/Inputs/hw_head_of_line_k9.mlir -o /dev/null 2>&1 | FileCheck %s --check-prefix=K9
+// K9: error: dispatching @first_a deadlocks
+// K9-DAG: note: the host waits for a completion token from (0, 0) S2MM 0
+// K9-DAG: note: core (0, 2) waits to acquire cb (holds 0, wants 1)
+// K9-DAG: note: (0, 2) S2MM 0 waits to acquire pa (holds 0, wants 1)
+// K9-NOT: @first_b
+// RUN: not aie-opt --aie-check-deadlock %S/Inputs/hw_head_of_line_k8.mlir -o /dev/null 2>&1 | FileCheck %s --check-prefix=K8
+// K8: error: dispatching @first_a deadlocks unless the fabric buffers more than it is known to
+// K8-NOT: @first_b
+// RUN: aie-opt --aie-check-deadlock=allow-undecided %S/Inputs/hw_head_of_line_k8.mlir -o /dev/null 2>&1 | FileCheck %s --check-prefix=K8W
+// K8W: warning: dispatching @first_a deadlocks unless
+
+// Outside the subset: two cores race for a lock, and a channel nothing
+// programs.
+// RUN: not aie-opt --aie-check-deadlock %S/Inputs/contended_lock.mlir -o /dev/null 2>&1 | FileCheck %s --check-prefix=RACE
+// RACE: error: cannot decide whether dispatching @run can deadlock
+// RACE: note: a lock more than one agent acquires (l): which gets it first is not proven
+// RUN: not aie-opt --aie-check-deadlock %S/Inputs/hidden_channel.mlir -o /dev/null 2>&1 | FileCheck %s --check-prefix=HIDDEN
+// HIDDEN: note: a stream into (0, 1) S2MM 0, which the design does not program
+
+// A dispatch that ends with a transfer stuck halfway.
+// RUN: not aie-opt --aie-check-deadlock %S/Inputs/unquiesced.mlir -o /dev/null 2>&1 | FileCheck %s --check-prefix=FLIGHT
+// FLIGHT: error: dispatching @run ends with work still in flight
+// FLIGHT: note: (0, 2) S2MM 0 has 4 words in front of it nobody took
+
+// An objectFIFO design lowered by aie-opt: lock amounts computed from
+// loop-carried values, accepted.
+// RUN: sed 's/NPUDEVICE/npu2/' %S/../npu-xrt/add_one_objFifo/aie.mlir | aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform --aie-check-deadlock -o /dev/null 2>&1 | FileCheck %s --check-prefix=OBJFIFO --allow-empty
+// OBJFIFO-NOT: {{error|warning}}

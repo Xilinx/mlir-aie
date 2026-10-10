@@ -3,11 +3,14 @@
 
 # The deadlock model
 
-**Status:** specification. Nothing in the compiler reads it yet. It is what
-the exact deadlock engine and its Python oracle
-(`test/create-packet-flows/nightly/aiemodel/`) implement, and what their
-hardware checks hold the NPU to. Entries marked **to confirm** are stated as
-the model will treat them until a hardware case settles them.
+**Status:** `--aie-check-deadlock` implements this model for designs whose
+counts the IR fixes (the deterministic subset below, at the physical level:
+BD chains, locks, cores, flows and the runtime sequence, after the objectFIFO
+lowering). It is not in aiecc's pipeline yet. Its Python oracle
+(`test/create-packet-flows/nightly/aiemodel/program.py`) tries every order on
+small designs, and `test/deadlock-model/engine_vs_oracle.py` holds the two to
+the same answers. Entries marked **to confirm** are stated as the model
+treats them until a hardware case settles them.
 
 ## What the model decides
 
