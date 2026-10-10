@@ -31,6 +31,7 @@ import pytest
 
 import aie.iron as iron
 from aie.iron import (
+    CompilableDesign,
     CompileTime,
     DeviceConfiguration,
     In,
@@ -274,8 +275,11 @@ def add_configuration(name, value):
     return configuration, runtime
 
 
-@iron.jit
-def reconfigure_add(data: InOut):
+_generations = []
+
+
+def reconfigure_add_program(data: InOut):
+    _generations.append(data)
     add_two, add_two_sequence = add_configuration("add_two", 2)
     add_three, add_three_sequence = add_configuration("add_three", 3)
 
@@ -288,6 +292,9 @@ def reconfigure_add(data: InOut):
     entry = Runtime(coordinator, [Whole])
     main = DeviceConfiguration("main", NPU2Col1(), runtimes=[entry])
     return Program.compose([main, add_two, add_three], entry=entry).resolve_program()
+
+
+reconfigure_add = iron.jit(reconfigure_add_program)
 
 
 def test_composed_program_compiles_to_full_elf_once():
@@ -305,6 +312,19 @@ def test_composed_program_compiles_to_full_elf_once():
         kernels.append(list(reconfigure_add._kernel_cache.values()))
     assert len(kernels[1]) == 1 and kernels[1][0] is kernels[0][0]
     assert kernels[0][0].elf_path is not None
+
+
+def test_composed_program_served_from_cache_without_generating():
+    """A design that learned it needs a full ELF keeps that in its cache entry,
+    so a fresh design object finds the ELF without running the generator."""
+    CompilableDesign(reconfigure_add_program).compile()
+    generations = len(_generations)
+    design = CompilableDesign(reconfigure_add_program)
+    elf_path, insts = design.compile()
+    assert len(_generations) == generations
+    assert insts is None and elf_path.stat().st_size > 0
+    assert design.full_elf is True
+    assert design._full_elf_kernel_name == "main:sequence"
 
 
 def test_composed_program_takes_full_elf_path(tmp_path):

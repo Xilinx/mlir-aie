@@ -92,6 +92,11 @@ COMPILE_LOCK_TIMEOUT_SECONDS = 1800
 # run concurrently.
 _GENERATION_LOCK = threading.RLock()
 
+_MULTI_CONFIGURATION_OUTPUTS = (
+    "A multi-configuration Program requires full-ELF compilation and does not "
+    "produce xclbin, instruction, wrapped-ELF, or standalone-PDI outputs."
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -586,18 +591,11 @@ class CompilableDesign:
                 "compile(): DispatchTime[T] designs have no static instructions; "
                 "inst_path and elf_path must be None."
             )
-        inferred_full_elf = self._inferred_full_elf or (
-            not requested_full_elf and self._infer_full_elf()
-        )
         full_elf = self.full_elf or full_elf_path is not None
-        if inferred_full_elf and any(
+        if self._inferred_full_elf and any(
             path is not None for path in (xclbin_path, inst_path, elf_path, pdi_path)
         ):
-            raise ValueError(
-                "A multi-configuration Program requires full-ELF compilation "
-                "and does not produce xclbin, instruction, wrapped-ELF, or "
-                "standalone-PDI outputs."
-            )
+            raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
         if full_elf and has_dispatch:
             # Architectural boundary, not a TODO: full-ELF bakes one static TXN
             # into the ELF, and XRT's full-ELF dispatch path has no instruction-
@@ -729,6 +727,15 @@ class CompilableDesign:
             if (
                 not explicit_paths
                 and self.use_cache
+                and self._serve_cached_full_elf(kernel_dir, kernel_dir / "design.elf")
+            ):
+                self.full_elf = True
+                self._inferred_full_elf = True
+                return kernel_dir / "design.elf", None
+
+            if (
+                not explicit_paths
+                and self.use_cache
                 and xclbin_exists
                 and (inst_exists or has_dispatch)
             ):
@@ -770,6 +777,18 @@ class CompilableDesign:
                 )
 
             try:
+                if self._infer_full_elf():
+                    if explicit_paths:
+                        raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
+                    if has_dispatch:
+                        raise NotImplementedError(
+                            "DispatchTime[T] parameters in a multi-configuration "
+                            "Program: it compiles to a full ELF, which bakes one "
+                            "static instruction stream."
+                        )
+                    return self._build_full_elf(
+                        kernel_dir, kernel_dir / "design.elf", build_key=None
+                    )
                 generated = self._generated_for(full_elf=False)
                 external_kernels = generated.external_kernels
                 use_chess = self._resolve_use_chess(external_kernels)
@@ -881,18 +900,15 @@ class CompilableDesign:
         """
         if not isinstance(self.mlir_generator, Path):
             self._bind_generation_device()
-        expected_kernel_name = self._generated_for(full_elf=True).entry
 
         explicit_path = full_elf_path is not None
-        cache_hash = None
-        build_key = ""
+        build_key = None
         if explicit_path:
             assert full_elf_path is not None
             elf_path = Path(full_elf_path).resolve()
             kernel_dir = elf_path.parent / f"{elf_path.stem}.prj"
         else:
-            cache_hash = self._compute_cache_hash()
-            kernel_dir = NPU_CACHE_HOME / cache_hash
+            kernel_dir = NPU_CACHE_HOME / self._compute_cache_hash()
             elf_path = kernel_dir / "design.elf"
         lock_file_path = kernel_dir / ".lock"
 
@@ -904,9 +920,7 @@ class CompilableDesign:
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"full_elf": elf_path}
                 ):
-                    kernel_name = self._cached_full_elf_kernel_name(
-                        kernel_dir, expected_kernel_name
-                    )
+                    kernel_name = _manifest.resolve_full_elf_kernel(kernel_dir)
                     if kernel_name is not None:
                         self._record_artifacts(
                             kernel_dir, elf=elf_path, full_elf_kernel_name=kernel_name
@@ -916,77 +930,98 @@ class CompilableDesign:
             if (
                 not explicit_path
                 and self.use_cache
-                and elf_path.exists()
-                and not _manifest.is_valid(kernel_dir)
+                and self._serve_cached_full_elf(kernel_dir, elf_path)
             ):
-                logger.debug(
-                    "Inputs changed for '%s'; discarding full-ELF cache entry",
-                    self.generator_name,
+                return elf_path, None
+
+            return self._build_full_elf(kernel_dir, elf_path, build_key=build_key)
+
+    def _serve_cached_full_elf(self, kernel_dir: Path, elf_path: Path) -> bool:
+        """Take the full ELF cached at `elf_path` as this design's build.
+
+        Args:
+            kernel_dir: The cache entry, whose lock the caller holds.
+            elf_path: Where the entry keeps its full ELF.
+
+        Returns:
+            Whether the entry holds a current full ELF. A stale one, or one
+            without the kernel name its build recorded, is cleared for the
+            rebuild.
+        """
+        if not elf_path.exists():
+            return False
+        kernel_name = _manifest.resolve_full_elf_kernel(kernel_dir)
+        if kernel_name is None or not _manifest.is_valid(kernel_dir):
+            logger.debug(
+                "Inputs changed for '%s'; discarding full-ELF cache entry",
+                self.generator_name,
+            )
+            _cleanup_failed_compilation(kernel_dir)
+            return False
+        logger.debug(
+            "Full-ELF cache hit for '%s' in %s", self.generator_name, kernel_dir
+        )
+        self._record_artifacts(
+            kernel_dir, elf=elf_path, full_elf_kernel_name=kernel_name
+        )
+        return True
+
+    def _build_full_elf(
+        self, kernel_dir: Path, elf_path: Path, *, build_key: str | None
+    ) -> tuple[Path, None]:
+        """Build the full ELF at `elf_path`, under the caller's `kernel_dir` lock.
+
+        Args:
+            kernel_dir: The build's work directory.
+            elf_path: Where the full ELF goes.
+            build_key: The explicit-path build's key, or None for a cache entry.
+
+        Returns:
+            ``(elf_path, None)``.
+        """
+        try:
+            generated = self._generated_for(full_elf=True)
+            external_kernels = generated.external_kernels
+            use_chess = self._resolve_use_chess(external_kernels)
+            aiecc_options = [*self.aiecc_flags, *generated.aiecc_options]
+
+            compile_mlir_module(
+                mlir_module=generated.mlir_text,
+                full_elf_path=elf_path,
+                work_dir=kernel_dir,
+                use_chess=use_chess,
+                options=aiecc_options or None,
+                device_cache_dir=self._device_cache_dir(),
+                build_link_files=functools.partial(
+                    self._build_kernels, kernel_dir, external_kernels
+                ),
+            )
+
+            if not elf_path.exists():
+                raise RuntimeError(
+                    "[aiecc] Full-ELF compilation appeared to succeed (exit "
+                    "code 0) but the expected output file was not created: "
+                    f"{elf_path}"
                 )
-                _cleanup_failed_compilation(kernel_dir)
 
-            if not explicit_path and self.use_cache and elf_path.exists():
-                kernel_name = self._cached_full_elf_kernel_name(
-                    kernel_dir, expected_kernel_name
+            kernel_name = self._parse_full_elf_kernel_name(kernel_dir, generated.entry)
+            _manifest.record(
+                kernel_dir,
+                external_kernels,
+                self.source_files,
+                used_chess=use_chess,
+                full_elf_kernel=kernel_name,
+            )
+            if build_key is not None:
+                self._record_explicit_outputs(
+                    kernel_dir, build_key, {"full_elf": elf_path}
                 )
-                if kernel_name is None:
-                    _cleanup_failed_compilation(kernel_dir)
-                else:
-                    logger.debug(
-                        "Full-ELF cache hit for '%s' (hash=%s)",
-                        self.generator_name,
-                        cache_hash,
-                    )
-                    self._record_artifacts(
-                        kernel_dir, elf=elf_path, full_elf_kernel_name=kernel_name
-                    )
-                    return elf_path, None
-
-            try:
-                generated = self._generated_for(full_elf=True)
-                external_kernels = generated.external_kernels
-                use_chess = self._resolve_use_chess(external_kernels)
-                aiecc_options = [*self.aiecc_flags, *generated.aiecc_options]
-
-                compile_mlir_module(
-                    mlir_module=generated.mlir_text,
-                    full_elf_path=elf_path,
-                    work_dir=kernel_dir,
-                    use_chess=use_chess,
-                    options=aiecc_options or None,
-                    device_cache_dir=self._device_cache_dir(),
-                    build_link_files=functools.partial(
-                        self._build_kernels, kernel_dir, external_kernels
-                    ),
-                )
-
-                if not elf_path.exists():
-                    raise RuntimeError(
-                        "[aiecc] Full-ELF compilation appeared to succeed (exit "
-                        "code 0) but the expected output file was not created: "
-                        f"{elf_path}"
-                    )
-
-                _manifest.record(
-                    kernel_dir,
-                    external_kernels,
-                    self.source_files,
-                    used_chess=use_chess,
-                )
-                if explicit_path:
-                    self._record_explicit_outputs(
-                        kernel_dir, build_key, {"full_elf": elf_path}
-                    )
-            except Exception:
-                _cleanup_failed_compilation(kernel_dir)
-                raise
+        except Exception:
+            _cleanup_failed_compilation(kernel_dir)
+            raise
 
         self._record_artifacts(
-            kernel_dir,
-            elf=elf_path,
-            full_elf_kernel_name=self._parse_full_elf_kernel_name(
-                kernel_dir, expected_kernel_name
-            ),
+            kernel_dir, elf=elf_path, full_elf_kernel_name=kernel_name
         )
         return elf_path, None
 
@@ -1048,6 +1083,8 @@ class CompilableDesign:
 
             try:
                 generated = self._generated_for(full_elf=False)
+                if generated.configuration_count > 1:
+                    raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
                 external_kernels = generated.external_kernels
                 use_chess = self._resolve_use_chess(external_kernels)
 
@@ -1171,8 +1208,9 @@ class CompilableDesign:
 
         The full-ELF runtime addresses the kernel by the device symbol name and
         runtime-sequence symbol name (e.g. ``main:sequence``). Both are read from
-        ``full_elf_config.json``, the config aiecc assembles the ELF from, so a
-        cache hit needs no MLIR and the name is one the ELF actually holds.
+        ``full_elf_config.json``, the config aiecc assembles the ELF from, so the
+        name is one the ELF actually holds. The build records it in the cache
+        manifest, so a cache hit needs no MLIR.
         """
         config_path = kernel_dir / "full_elf_config.json"
         config = json.loads(config_path.read_text())
@@ -1189,21 +1227,6 @@ class CompilableDesign:
                 f"found {available}."
             )
         raise RuntimeError(f"{config_path} names no runtime sequence.")
-
-    @classmethod
-    def _cached_full_elf_kernel_name(
-        cls, kernel_dir: Path, expected: str | None = None
-    ) -> str | None:
-        """Return a cached full ELF's kernel name, or ``None`` to rebuild it.
-
-        A cached ELF is only usable with its ``full_elf_config.json``; one that
-        is missing or unreadable makes the hit a miss instead of an error.
-        """
-        try:
-            return cls._parse_full_elf_kernel_name(kernel_dir, expected)
-        except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
-            logger.debug("Rebuilding full ELF in %s: %s", kernel_dir, exc)
-            return None
 
     def get_artifacts(self) -> tuple[Path, Path] | None:
         """Return cached artifact paths without recompiling, or ``None``."""
@@ -1632,7 +1655,11 @@ class CompilableDesign:
             self.object_files,
             self.aiecc_flags,
             self.compile_flags,
-            self.full_elf if full_elf is None else full_elf,
+            (
+                self.full_elf and not self._inferred_full_elf
+                if full_elf is None
+                else full_elf
+            ),
             self._resolve_fold_ddr_addr_offset(),
             bool(self.dispatch_params),
             self.include_paths,

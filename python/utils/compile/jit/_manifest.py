@@ -162,7 +162,12 @@ def _parse_depfile(depfile: Path) -> list[Path]:
 
 
 def record(
-    kernel_dir, external_kernels, source_files, used_chess=False, dispatch_library=None
+    kernel_dir,
+    external_kernels,
+    source_files,
+    used_chess=False,
+    dispatch_library=None,
+    full_elf_kernel=None,
 ) -> None:
     """Record the inputs this build consumed, if they can be known exactly.
 
@@ -186,7 +191,13 @@ def record(
             "an incomplete manifest, inputs will not be checked",
             len(compiled),
         )
-        _write(kernel_dir, {}, complete=False, dispatch_library=dispatch_library)
+        _write(
+            kernel_dir,
+            {},
+            complete=False,
+            dispatch_library=dispatch_library,
+            full_elf_kernel=full_elf_kernel,
+        )
         return
 
     found: dict[Path, os.stat_result] = {}
@@ -209,7 +220,13 @@ def record(
                 "be checked",
                 dep,
             )
-            _write(kernel_dir, {}, complete=False, dispatch_library=dispatch_library)
+            _write(
+                kernel_dir,
+                {},
+                complete=False,
+                dispatch_library=dispatch_library,
+                full_elf_kernel=full_elf_kernel,
+            )
             return
 
     # Declared paths are the caller's, read where the caller stands -- the same
@@ -236,6 +253,7 @@ def record(
             if stat.S_ISREG(st.st_mode)
         },
         dispatch_library=dispatch_library,
+        full_elf_kernel=full_elf_kernel,
     )
 
 
@@ -244,6 +262,7 @@ def _write(
     inputs: dict[Path, os.stat_result],
     complete: bool = True,
     dispatch_library: str | None = None,
+    full_elf_kernel: str | None = None,
 ) -> None:
     entries: list[dict] = []
     for path, st in inputs.items():
@@ -261,6 +280,8 @@ def _write(
     payload = {"version": _VERSION, "complete": complete, "inputs": entries}
     if dispatch_library is not None:
         payload["dispatch_library"] = dispatch_library
+    if full_elf_kernel is not None:
+        payload["full_elf_kernel"] = full_elf_kernel
     with _staged(str(Path(kernel_dir) / MANIFEST_NAME)) as tmp:
         Path(tmp).write_text(json.dumps(payload))
 
@@ -283,6 +304,18 @@ def resolve_dispatch_library(kernel_dir: Path) -> Path | None:
         return None
     path = kernel_dir / name
     return path if path.is_file() else None
+
+
+def resolve_full_elf_kernel(kernel_dir: Path) -> str | None:
+    """Return the `"device:sequence"` kernel the build chose to run its full ELF."""
+    try:
+        payload = json.loads((kernel_dir / MANIFEST_NAME).read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, dict) or payload.get("version") != _VERSION:
+        return None
+    name = payload.get("full_elf_kernel")
+    return name if isinstance(name, str) else None
 
 
 def is_valid(kernel_dir: Path) -> bool:
