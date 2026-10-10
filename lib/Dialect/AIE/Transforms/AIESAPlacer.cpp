@@ -1381,12 +1381,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
   buildRouteModel(device, collected.routes);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
-  shimSpans.emplace(device, [&](StringAttr symbol) {
-    return isa_and_nonnull<ObjectFifoCreateOp>(
-               SymbolTable::lookupNearestSymbolFrom(device, symbol))
-               ? symbol
-               : StringAttr();
-  });
+  shimSpans.emplace(
+      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); });
   cascadeAdjacency = buildCascadeAdjacency(collected.cascadeFlows);
   LLVM_DEBUG(llvm::dbgs() << "[SA] Cascade adjacency: "
                           << cascadeAdjacency.edges.size() << " edges\n");

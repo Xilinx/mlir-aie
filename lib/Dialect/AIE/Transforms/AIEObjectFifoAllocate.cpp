@@ -958,11 +958,17 @@ struct AIEObjectFifoAllocatePass
   /// ends share as the tile needs. Packet headers tell a shared channel's ends
   /// apart.
   bool planShimSharing(TileLike exhausted, DMAChannelDir dir) {
-    ShimTransferSpans spans(device, [&](StringAttr symbol) {
-      auto endpoint =
-          SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(device, symbol);
-      return endpoint ? endpoint.getFifoNameAttr() : StringAttr();
-    });
+    ShimTransferSpans spans(
+        device,
+        [&](StringAttr symbol) -> std::optional<ShimTransferSpans::End> {
+          auto endpoint = SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(
+              device, symbol);
+          if (!endpoint || !endpoint.getFifoName())
+            return std::nullopt;
+          return ShimTransferSpans::End{endpoint.getFifoNameAttr(),
+                                        endpoint.getRouteDirection() ==
+                                            DMAChannelDir::MM2S};
+        });
     SmallVector<Operation *> candidates;
     SmallVector<StringAttr> fifos;
     for (auto endpoint : device.getOps<RouteEndpointOp>()) {

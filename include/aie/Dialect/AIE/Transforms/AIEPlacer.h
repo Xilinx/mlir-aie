@@ -147,6 +147,11 @@ public:
   collectShareableShimEnds(DeviceOp device,
                            llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
+  // The objectFIFO end a runtime sequence names `symbol` for, before split:
+  // the fifo itself, sending when its producer is a shim tile.
+  static std::optional<ShimTransferSpans::End>
+  shimEndOf(DeviceOp device, mlir::StringAttr symbol);
+
 protected:
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;

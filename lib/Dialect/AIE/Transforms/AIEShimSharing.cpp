@@ -16,7 +16,7 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 ShimTransferSpans::ShimTransferSpans(
-    DeviceOp device, function_ref<StringAttr(StringAttr)> fifoOf) {
+    DeviceOp device, function_ref<std::optional<End>(StringAttr)> endOf) {
   for (auto sequence : device.getOps<RuntimeSequenceOp>()) {
     DenseMap<Operation *, int64_t> position, end;
     int64_t next = 0;
@@ -33,8 +33,8 @@ ShimTransferSpans::ShimTransferSpans(
     auto &byFifo = spans.emplace_back();
     DenseMap<Value, AIEX::DMAConfigureTaskForOp> tasks;
     auto note = [&](Operation *op, StringAttr symbol, bool issues) {
-      StringAttr fifo = fifoOf(symbol);
-      if (!fifo)
+      std::optional<End> shimEnd = endOf(symbol);
+      if (!shimEnd)
         return;
       int64_t from = position[op], to = position[op];
       for (Operation *parent = op->getParentOp(); parent != sequence;
@@ -43,7 +43,8 @@ ShimTransferSpans::ShimTransferSpans(
           from = position[parent];
           to = end[parent];
         }
-      Span &span = byFifo[fifo];
+      Span &span = byFifo[shimEnd->fifo];
+      span.sends |= shimEnd->sends;
       span.first = std::min(span.first, from);
       span.last = std::max(span.last, to);
       int64_t &mark = issues ? span.lastIssue : span.lastDone;
@@ -85,7 +86,7 @@ bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
     if (sa == byFifo.end() || sb == byFifo.end())
       continue;
     auto before = [](const Span &x, const Span &y) {
-      return x.last < y.first && x.lastDone > x.lastIssue;
+      return !x.sends && x.last < y.first && x.lastDone > x.lastIssue;
     };
     if (!before(sa->second, sb->second) && !before(sb->second, sa->second))
       return false;
