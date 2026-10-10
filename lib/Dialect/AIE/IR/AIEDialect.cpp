@@ -4280,7 +4280,7 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
 
   mlir::LogicalResult
   matchAndRewrite(DMABDOp op, mlir::PatternRewriter &rewriter) const override {
-    if (!op.getStaticSizes() || op.getStaticSizes()->empty())
+    if (op.getStaticSizes().value_or(llvm::ArrayRef<int64_t>{}).empty())
       return mlir::failure();
 
     // Only fire for shim DMA BDs: ExternalBufferOp buffer
