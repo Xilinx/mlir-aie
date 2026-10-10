@@ -273,8 +273,6 @@ struct AIELowerDmaChannelResetPass
     RewritePatternSet patterns(&getContext());
     patterns.add<DmaChannelResetToMaskWrite32Pattern>(&getContext());
 
-    // Rooted at the DmaChannelResetOps alone, the driver skips the rest of the
-    // runtime sequences.
     SmallVector<Operation *> roots;
     device.walk([&](DmaChannelResetOp op) { roots.push_back(op); });
     if (failed(applyPartialConversion(roots, target, std::move(patterns))))
