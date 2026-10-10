@@ -271,6 +271,7 @@ nav:
       - C++ AIE kernels: api/aie_kernels.md
     - MLIR / C++:
       - ObjectFifo Lowering: ObjectFifoLowering.md
+      - Deadlock Model: DeadlockModel.md
       - AIE Dialect: AIEDialect.md
       - AIEX Dialect: AIEXDialect.md
       - AIEVec Dialect: AIEVecDialect.md
