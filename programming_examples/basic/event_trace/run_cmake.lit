@@ -1,0 +1,28 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Build+run via CMake + ctest (no make; works on Windows).
+// add_aie_run_test's ctest already wraps run_on_npu.py, so ctest runs directly.
+// Two tests are registered: test.cpp (`run_trace`) and test.py (`run_trace_py`).
+//
+// The trace post-processing the Makefile does inside those recipes is here
+// instead. final.prj is the JIT's per-xclbin scratch dir (<xclbin stem>.prj),
+// the CMake-path equivalent of the Makefile's build/final.prj. The
+// visualize_trace.py step is deliberately left out: it needs matplotlib and
+// asserts nothing the summary does not.
+//
+// REQUIRES: ryzen_ai, peano, cmake_examples
+//
+// RUN: cmake -G Ninja -S %S -B %t.cmake -DAIE_DEVICE=%aie_cmake_device% -DPython3_EXECUTABLE=%python
+// RUN: cmake --build %t.cmake
+// RUN: ctest --test-dir %t.cmake --output-on-failure --no-tests=error
+//
+// RUN: %python %S/../../../python/utils/trace/parse.py --input %t.cmake/trace_cpp.txt --mlir %t.cmake/final.prj/input_with_addresses.mlir --output %t.cmake/trace_cpp.json
+// RUN: %python %S/../../../python/utils/trace/get_trace_summary.py --input %t.cmake/trace_cpp.json | FileCheck %s --check-prefix=CPP
+// The cycle counts are device-specific, but this line is only printed when the
+// trace held at least one complete kernel invocation.
+// CPP: First/Min/Avg/Max cycles is
+//
+// RUN: %python %S/../../../python/utils/trace/parse.py --input %t.cmake/trace_py.txt --mlir %t.cmake/final.prj/input_with_addresses.mlir --output %t.cmake/trace_py.json
+// RUN: %python %S/../../../python/utils/trace/get_trace_summary.py --input %t.cmake/trace_py.json | FileCheck %s --check-prefix=PY
+// PY: First/Min/Avg/Max cycles is
