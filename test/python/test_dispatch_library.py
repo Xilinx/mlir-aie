@@ -4,8 +4,8 @@
 # RUN: %pytest %s
 """Compiler-only integration tests using real MLIR and the host C++ compiler."""
 
-import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -29,23 +29,13 @@ from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In
 from aie.utils.compile.utils import _run_aiecc
 
 
+@pytest.mark.skipif(shutil.which("xclbinutil") is None, reason="xclbinutil")
 @pytest.mark.parametrize("emit_shim", [False, True])
-def test_compile_mlir_module_requests_cpp_with_device_outputs(
-    tmp_path, monkeypatch, emit_shim
-):
-    argv = tmp_path / "argv.json"
-    stand_in = tmp_path / "aiecc"
-    stand_in.write_text(
-        f"#!{sys.executable}\n"
-        "import json, os, sys\n"
-        f"json.dump([os.getcwd(), sys.argv[1:]], open({str(argv)!r}, 'w'))\n"
-    )
-    stand_in.chmod(0o755)
-    monkeypatch.setenv("AIECC_PATH", str(stand_in))
+def test_compile_mlir_module_writes_cpp_beside_device_outputs(tmp_path, emit_shim):
     cpp = tmp_path / "dispatch_gen.cpp"
     xclbin = tmp_path / "design.xclbin"
     compile_utils.compile_mlir_module(
-        "module {}",
+        _source(arg_idx=5),
         xclbin_path=xclbin,
         work_dir=tmp_path,
         npu_cpp_path=cpp,
@@ -53,15 +43,14 @@ def test_compile_mlir_module_requests_cpp_with_device_outputs(
         fold_ddr_addr_offset=False,
         options=["--get=npu_lowered.mlir"],
     )
-    cwd, args = json.loads(argv.read_text())
-    assert Path(cwd) == tmp_path
-    assert "--get-xclbin" in args
-    assert f"--xclbin-name={xclbin}" in args
-    assert "--get-npu-cpp" in args
-    assert f"--npu-cpp-name={cpp}" in args
-    assert ("--npu-cpp-emit-dispatch-shim" in args) == emit_shim
-    assert "--get=npu_lowered.mlir" in args
-    assert "--fold-ddr-addr-offset=false" in args
+    assert xclbin.stat().st_size > 0
+    assert (tmp_path / "npu_lowered.mlir").is_file()
+    assert ("AIE_DISPATCH_EXPORT" in cpp.read_text()) == emit_shim
+    if emit_shim:
+        path = compile_dispatch_bridge(tmp_path, ["param", "n"], [np.int32, np.uintp])
+        patches = _words(DispatchBridge(path, ["param", "n"]), 1)[4:].reshape(1, 12)
+        # Unfolded, the patch for buffer 5 carries its offset alone.
+        np.testing.assert_array_equal(patches[:, 10], 16)
 
 
 def _patch_bar_then_baz(

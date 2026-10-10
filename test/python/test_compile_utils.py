@@ -4,20 +4,58 @@
 # RUN: %pytest --noconftest %s
 # REQUIRES: peano
 
-"""Compiler invocation tests against a stand-in aiecc."""
+"""How compile_mlir_module and _run_aiecc drive the real aiecc."""
 
 import importlib.util
-import json
+import logging
 import os
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
-import sys
-import time
 
 import pytest
 
 import aie.utils.config as config
 from aie.iron import ExternalFunction
 from aie.iron.device import NPU1Col1
+
+# One core storing a constant: a whole build, with no kernel to link.
+DESIGN = """module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    %buf = aie.buffer(%core) {sym_name = "buf"} : memref<16xi32>
+    aie.core(%core) {
+      %c7 = arith.constant 7 : i32
+      %c0 = arith.constant 0 : index
+      memref.store %c7, %buf[%c0] : memref<16xi32>
+      aie.end
+    }
+    aie.runtime_sequence(%a: memref<16xi32>) {
+    }
+  }
+}
+"""
+
+# One core calling a kernel it links from `fill.o`.
+LINKED_DESIGN = """module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    %buf = aie.buffer(%core) {sym_name = "buf"} : memref<16xi32>
+    func.func private @fill(memref<16xi32>) attributes {link_with = "fill.o"}
+    aie.core(%core) {
+      func.call @fill(%buf) : (memref<16xi32>) -> ()
+      aie.end
+    }
+    aie.runtime_sequence(%a: memref<16xi32>) {
+    }
+  }
+}
+"""
+
+KERNEL = 'extern "C" void fill(int *out) { for (int i = 0; i < 16; i++) out[i] = 7; }\n'
 
 
 @pytest.fixture
@@ -29,49 +67,30 @@ def compile_utils():
     return module
 
 
-@pytest.fixture
-def aiecc(tmp_path, monkeypatch):
-    """An executable at `AIECC_PATH` that records each call, a JSON line in the
-    file this returns.
-
-    It writes `AIECC_STDOUT` and `AIECC_STDERR` (`AIECC_STDERR_TIMES` times); given --await-link-files, it
-    then creates `awaiting` beside that file and reads stdin to its end. It
-    exits with `AIECC_EXIT`.
-    """
-    calls = tmp_path / "aiecc_calls.jsonl"
-    stand_in = tmp_path / "tools" / "aiecc"
-    stand_in.parent.mkdir()
-    stand_in.write_text(
-        f"#!{sys.executable}\n"
-        "import json, os, sys\n"
-        "from pathlib import Path\n"
-        "call = {'argv': sys.argv, 'cwd': os.getcwd(),\n"
-        "        'input': Path(sys.argv[1]).read_text()}\n"
-        "sys.stdout.write(os.environ.get('AIECC_STDOUT', ''))\n"
-        "sys.stderr.write(os.environ.get('AIECC_STDERR', '')\n"
-        "                 * int(os.environ.get('AIECC_STDERR_TIMES', '1')))\n"
-        "sys.stdout.flush()\n"
-        "sys.stderr.flush()\n"
-        "if '--await-link-files' in sys.argv:\n"
-        f"    Path({str(tmp_path / 'awaiting')!r}).touch()\n"
-        "    call['stdin'] = sys.stdin.read()\n"
-        "    call['linked'] = sorted(os.listdir())\n"
-        f"with open({str(calls)!r}, 'a') as f:\n"
-        "    f.write(json.dumps(call) + '\\n')\n"
-        "sys.exit(int(os.environ.get('AIECC_EXIT', '0')))\n"
+def compile_kernel(directory: Path) -> None:
+    """Build `KERNEL` for npu1 into `directory`/fill.o."""
+    source = directory / "fill.cc"
+    source.write_text(KERNEL)
+    subprocess.run(
+        [
+            config.peano_cxx_path(),
+            "--target=aie2-none-unknown-elf",
+            "-O2",
+            "-c",
+            str(source),
+            "-o",
+            str(directory / "fill.o"),
+        ],
+        check=True,
     )
-    stand_in.chmod(0o755)
-    monkeypatch.setenv("AIECC_PATH", str(stand_in))
-    monkeypatch.chdir(tmp_path)
-    return calls
 
 
 @pytest.mark.parametrize("relative", [False, True])
-@pytest.mark.parametrize("use_chess", [False, True])
 @pytest.mark.parametrize("full_elf", [False, True])
-def test_compile_uses_work_dir(
-    compile_utils, aiecc, tmp_path, relative, use_chess, full_elf
+def test_compile_writes_outputs_through_work_dir(
+    compile_utils, monkeypatch, tmp_path, relative, full_elf
 ):
+    monkeypatch.chdir(tmp_path)
     work_dir = tmp_path / "build dir"
     work_dir.mkdir()
     output = tmp_path / "output.bin"
@@ -80,123 +99,100 @@ def test_compile_uses_work_dir(
         paths["full_elf_path"] = output
 
     compile_utils.compile_mlir_module(
-        "module {}",
+        DESIGN,
         work_dir=os.path.relpath(work_dir) if relative else work_dir,
-        use_chess=use_chess,
         pdi_path="design.pdi",
         elf_path="design.elf",
         **paths,
     )
 
     assert Path.cwd() == tmp_path
-    [call] = map(json.loads, aiecc.read_text().splitlines())
-    cmd = call["argv"]
-    assert Path(call["cwd"]) == work_dir
-    assert Path(cmd[0]) == tmp_path / "tools/aiecc"
-    assert call["input"] == "module {}"
-    assert Path(cmd[1]) == work_dir / "aie.mlir"
-    assert f"--tmpdir={work_dir}" in cmd
-    assert f"--output-dir={work_dir}" in cmd
-    assert "--get-input-with-addresses" in cmd
-    assert "--await-link-files" not in cmd
-    if use_chess:
-        assert "--xchesscc" in cmd
-    else:
-        assert f"--peano={os.path.abspath(config.peano_install_dir())}" in cmd
-    if full_elf:
-        assert f"--full-elf-name={output}" in cmd
-        assert "--get-npu-insts" not in cmd
-        assert "--get-xclbin" not in cmd
-    else:
-        assert f"--npu-insts-name={output}" in cmd
-        assert "--xclbin-name=design.xclbin" in cmd
-    assert "--pdi-name=design.pdi" in cmd
-    assert "--elf-name=design.elf" in cmd
+    assert (work_dir / "aie.mlir").read_text() == DESIGN
+    assert (work_dir / "input_with_addresses.mlir").is_file()
+    for name in ("design.pdi", "design.elf"):
+        assert (work_dir / name).stat().st_size > 0
+    assert (output.read_bytes()[:4] == b"\x7fELF") == full_elf
+    assert (work_dir / "design.xclbin").is_file() != full_elf
 
 
-@pytest.mark.parametrize("failure", [None, "stderr", "stdout"])
+@pytest.mark.skipif(shutil.which("xchesscc") is None, reason="xchesscc")
+def test_chess_compile_drives_xchesscc(compile_utils, caplog, tmp_path):
+    with caplog.at_level(logging.DEBUG, logger=compile_utils.logger.name):
+        compile_utils.compile_mlir_module(
+            DESIGN,
+            work_dir=tmp_path,
+            use_chess=True,
+            insts_path=tmp_path / "insts.bin",
+            xclbin_path=tmp_path / "design.xclbin",
+            options=["-n", "--verbose"],
+        )
+    assert "xchesscc" in caplog.text
+
+
+@pytest.mark.parametrize("broken", [False, True])
 def test_no_work_dir_preserves_cwd_and_cleans_up(
-    compile_utils, aiecc, monkeypatch, tmp_path, failure
+    compile_utils, monkeypatch, tmp_path, broken
 ):
-    if failure:
-        monkeypatch.setenv("AIECC_EXIT", "1")
-        monkeypatch.setenv(f"AIECC_{failure.upper()}", "compiler failed")
-        with pytest.raises(RuntimeError, match="exit code 1:\ncompiler failed"):
-            compile_utils.compile_mlir_module("module {}", insts_path="insts.bin")
+    monkeypatch.chdir(tmp_path)
+    scratch = tmp_path / "tmp"
+    scratch.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+    if broken:
+        with pytest.raises(RuntimeError, match="exit code 1:\n.*error: "):
+            compile_utils.compile_mlir_module(
+                DESIGN.replace("aie.end", "aie.bogus"), insts_path="insts.bin"
+            )
     else:
-        compile_utils.compile_mlir_module("module {}", insts_path="insts.bin")
-    [call] = map(json.loads, aiecc.read_text().splitlines())
-    assert Path(call["cwd"]) == tmp_path
-    assert call["input"] == "module {}"
-    assert "--npu-insts-name=insts.bin" in call["argv"]
-    assert not any(arg.startswith("--output-dir=") for arg in call["argv"])
-    assert not Path(call["argv"][1]).exists()
+        compile_utils.compile_mlir_module(DESIGN, insts_path="insts.bin")
+        assert (tmp_path / "insts.bin").stat().st_size > 0
     assert Path.cwd() == tmp_path
+    assert not list(scratch.iterdir())
 
 
-def test_link_files_are_built_while_aiecc_waits(compile_utils, aiecc, tmp_path):
+def test_link_files_are_built_while_aiecc_waits(compile_utils, tmp_path):
+    """aiecc reads none of the files its cores link until they are built."""
     work_dir = tmp_path / "build"
     work_dir.mkdir()
-
-    def build_link_files():
-        (work_dir / "kernel.o").write_bytes(b"object")
+    insts = tmp_path / "insts.bin"
+    xclbin = tmp_path / "design.xclbin"
 
     compile_utils.compile_mlir_module(
-        "module {}",
-        insts_path="insts.bin",
+        LINKED_DESIGN,
+        insts_path=insts,
+        xclbin_path=xclbin,
         work_dir=work_dir,
-        build_link_files=build_link_files,
+        build_link_files=lambda: compile_kernel(work_dir),
     )
 
-    [call] = map(json.loads, aiecc.read_text().splitlines())
-    assert "--await-link-files" in call["argv"]
-    assert call["stdin"] == "\n"
-    assert call["linked"] == ["aie.mlir", "kernel.o"]
+    assert insts.stat().st_size > 0
+    assert xclbin.stat().st_size > 0
 
 
-def test_aiecc_output_does_not_stall_it_while_link_files_build(
-    compile_utils, aiecc, monkeypatch, tmp_path
-):
+def test_link_files_failure_stops_aiecc(compile_utils, tmp_path):
     work_dir = tmp_path / "build"
     work_dir.mkdir()
-    monkeypatch.setenv("AIECC_STDERR", "progress\n")
-    monkeypatch.setenv("AIECC_STDERR_TIMES", str(1 << 17))
-
-    def build_link_files():
-        deadline = time.monotonic() + 60
-        while not (tmp_path / "awaiting").exists():
-            assert time.monotonic() < deadline, "aiecc stalled on its output"
-            time.sleep(0.01)
-
-    compile_utils.compile_mlir_module(
-        "module {}",
-        insts_path="insts.bin",
-        work_dir=work_dir,
-        build_link_files=build_link_files,
-    )
-
-
-def test_link_files_failure_stops_aiecc(compile_utils, aiecc, tmp_path):
-    work_dir = tmp_path / "build"
-    work_dir.mkdir()
+    insts = tmp_path / "insts.bin"
+    xclbin = tmp_path / "design.xclbin"
 
     def build_link_files():
         raise ValueError("kernel failed to compile")
 
     with pytest.raises(ValueError, match="kernel failed to compile"):
         compile_utils.compile_mlir_module(
-            "module {}",
-            insts_path="insts.bin",
+            LINKED_DESIGN,
+            insts_path=insts,
+            xclbin_path=xclbin,
             work_dir=work_dir,
             build_link_files=build_link_files,
         )
-    assert not aiecc.exists()
+    assert not insts.exists()
+    assert not xclbin.exists()
 
 
-def test_link_files_need_work_dir(compile_utils, aiecc):
+def test_link_files_need_work_dir(compile_utils):
     with pytest.raises(ValueError, match="build_link_files requires work_dir"):
         compile_utils.compile_mlir_module(
-            "module {}", insts_path="insts.bin", build_link_files=lambda: None
+            DESIGN, insts_path="insts.bin", build_link_files=lambda: None
         )
 
 
@@ -206,18 +202,23 @@ def test_run_aiecc_child_resolves_kernel_in_work_dir(
     monkeypatch.chdir(tmp_path)
     work_dir = tmp_path / "build dir"
     work_dir.mkdir()
-    (tmp_path / "kernel.o").write_text("stale caller object")
-    (work_dir / "kernel.o").write_text("build object")
-    script = work_dir / "check_cwd.py"
-    script.write_text(
-        "from pathlib import Path\n"
-        "assert Path.cwd() == Path(__file__).parent\n"
-        "assert Path('kernel.o').read_text() == 'build object'\n"
+    (tmp_path / "fill.o").write_text("stale caller object")
+    compile_kernel(work_dir)
+    design = work_dir / "aie.mlir"
+    design.write_text(LINKED_DESIGN)
+
+    compile_utils._run_aiecc(
+        os.path.relpath(design),
+        [
+            f"--peano={config.peano_install_dir()}",
+            "--get-npu-insts",
+            f"--npu-insts-name={tmp_path / 'insts.bin'}",
+            f"--tmpdir={work_dir}",
+        ],
+        cwd=work_dir,
     )
-    monkeypatch.setenv("AIECC_PATH", os.path.relpath(sys.executable))
 
-    compile_utils._run_aiecc(os.path.relpath(script), [], cwd=work_dir)
-
+    assert (tmp_path / "insts.bin").stat().st_size > 0
     assert Path.cwd() == tmp_path
 
 
@@ -262,21 +263,22 @@ def test_copy_object_files_missing_source(compile_utils, tmp_path):
     assert dest.read_bytes() == b"stale object"
 
 
-def test_compile_mlir_module_ignores_stale_external_functions(
-    compile_utils, aiecc, tmp_path
-):
+def test_compile_mlir_module_ignores_stale_external_functions(compile_utils, tmp_path):
     """Only kernels the current module declares reach the auto-build and its
     arch check: `ExternalFunction._instances` also holds kernels left over from
     an earlier, unrelated compile in the same process."""
     work_dir = tmp_path / "build"
     work_dir.mkdir()
-    referenced_source = tmp_path / "referenced.cc"
-    referenced_source.write_text('extern "C" void referenced_kernel() {}\n')
+    referenced_source = tmp_path / "fill.cc"
+    referenced_source.write_text(KERNEL)
     stale_source = tmp_path / "stale.cc"
     stale_source.write_text("#error a stale kernel is not built\n")
     ExternalFunction._instances.clear()
     referenced = ExternalFunction(
-        "referenced_kernel", source_file=str(referenced_source), arg_types=[]
+        "fill",
+        source_file=str(referenced_source),
+        arg_types=[],
+        object_file_name="fill.o",
     )
     stale = ExternalFunction(
         "stale_kernel_from_earlier_compile",
@@ -286,14 +288,15 @@ def test_compile_mlir_module_ignores_stale_external_functions(
     stale.built_for_arch = "aie2p"
 
     compile_utils.compile_mlir_module(
-        "module { func.func private @referenced_kernel() }",
-        insts_path="insts.bin",
+        LINKED_DESIGN,
+        insts_path=tmp_path / "insts.bin",
         work_dir=work_dir,
         device=NPU1Col1(),
     )
 
     assert (work_dir / referenced.object_file_name).is_file()
     assert not (work_dir / stale.object_file_name).exists()
+    assert (tmp_path / "insts.bin").stat().st_size > 0
 
 
 def test_declared_link_with_picks_among_kernels_sharing_a_symbol(compile_utils):
