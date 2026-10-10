@@ -1200,19 +1200,13 @@ ParseResult xilinx::AIE::parseDMAStartChannel(OpAsmParser &parser,
 
 LogicalResult xilinx::AIE::verifyDMAChannelsResolved(DeviceOp device) {
   bool resolved = true;
-  device.walk<WalkOrder::PreOrder>([&](Operation *op) {
-    if (isa<RuntimeSequenceOp>(op))
-      return WalkResult::skip();
-    auto start = dyn_cast<DMAStartOp>(op);
-    if (!start)
-      return WalkResult::advance();
+  device.walkOutsideRuntimeSequences<DMAStartOp>([&](DMAStartOp start) {
     if (FlatSymbolRefAttr endpoint = start.getEndpoint()) {
       start.emitOpError() << "names route endpoint " << endpoint
                           << " in place of a channel index; run "
                              "--aie-objectfifo-allocate to assign one";
       resolved = false;
     }
-    return WalkResult::advance();
   });
   return success(resolved);
 }
