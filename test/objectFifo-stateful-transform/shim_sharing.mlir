@@ -153,6 +153,79 @@ module @freed {
 
 // -----
 
+// Two shim tiles each run out of MM2S channels. The ends sharing one channel
+// need ids that differ, but the other tile's sharing ends reuse them: the
+// router keeps flows with one id apart wherever their destinations differ.
+// CHECK-LABEL: module @reused_ids
+// CHECK:       aie.shim_dma_allocation @in_a_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID0:[0-9]+]]>)
+// CHECK:       aie.shim_dma_allocation @in_b_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID1:[0-9]+]]>)
+// CHECK:       aie.shim_dma_allocation @in_c_shim_alloc(%{{.*}}, MM2S, 1)
+// CHECK:       aie.shim_dma_allocation @in_d_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID0]]>)
+// CHECK:       aie.shim_dma_allocation @in_e_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID1]]>)
+// CHECK:       aie.shim_dma_allocation @in_f_shim_alloc(%{{.*}}, MM2S, 1)
+module @reused_ids {
+  aie.device(npu2) {
+    %s0 = aie.tile(0, 0)
+    %s1 = aie.tile(1, 0)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %c = aie.tile(0, 4)
+    %d = aie.tile(1, 2)
+    %e = aie.tile(1, 3)
+    %f = aie.tile(1, 4)
+    aie.objectfifo @in_a(%s0, {%a}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_b(%s0, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_c(%s0, {%c}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_d(%s1, {%d}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_e(%s1, {%e}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_f(%s1, {%f}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%a) {
+      %x = aie.objectfifo.acquire @in_a(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @in_a(Consume, 1)
+      aie.end
+    }
+    aie.core(%b) {
+      %x = aie.objectfifo.acquire @in_b(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @in_b(Consume, 1)
+      aie.end
+    }
+    aie.core(%c) {
+      %x = aie.objectfifo.acquire @in_c(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @in_c(Consume, 1)
+      aie.end
+    }
+    aie.core(%d) {
+      %x = aie.objectfifo.acquire @in_d(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @in_d(Consume, 1)
+      aie.end
+    }
+    aie.core(%e) {
+      %x = aie.objectfifo.acquire @in_e(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @in_e(Consume, 1)
+      aie.end
+    }
+    aie.core(%f) {
+      %x = aie.objectfifo.acquire @in_f(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @in_f(Consume, 1)
+      aie.end
+    }
+    aie.runtime_sequence @run_a(%in : memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_a, id = 0 : i64} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_d, id = 1 : i64} : memref<16xi32>
+    }
+    aie.runtime_sequence @run_b(%in : memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_b, id = 0 : i64} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_e, id = 1 : i64} : memref<16xi32>
+    }
+    aie.runtime_sequence @run_c(%in : memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_c, id = 0 : i64} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_f, id = 1 : i64} : memref<16xi32>
+    }
+  }
+}
+
+// -----
+
 // in_a's transfer is never awaited, so it may still be in flight when the
 // others go; in_b and in_c take turns on one channel and in_a has the other.
 // CHECK-LABEL: module @partly_awaited
