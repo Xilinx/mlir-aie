@@ -2345,6 +2345,52 @@
     "offered": 89,
     "checked": 86
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "38030448219",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38030448219",
+   "date": "2026-10-10T06:17:58+00:00",
+   "commit": {
+    "id": "58484c8cfbadbd81e6e0a892c2d94517e615a22d",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/58484c8cfbadbd81e6e0a892c2d94517e615a22d",
+    "message": "[kernels] Retire Peano workarounds the 94b320c0 pin fixes (#3911)",
+    "timestamp": "2026-10-10T01:56:10Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "58484c8cfb",
+    "peano": "22.0.0+94b320c0",
+    "kernels": "2e65e623d94e",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie1",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 765,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 495,
+    "failed": 0,
+    "timed": 196,
+    "timing_failed": 0,
+    "untimed": 299,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 89,
+    "checked": 86
+   }
   }
  ]
 }

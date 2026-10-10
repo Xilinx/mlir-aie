@@ -1080,6 +1080,70 @@
     "offered": 129,
     "checked": 114
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "38030448219",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38030448219",
+   "date": "2026-10-10T06:17:58+00:00",
+   "commit": {
+    "id": "58484c8cfbadbd81e6e0a892c2d94517e615a22d",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/58484c8cfbadbd81e6e0a892c2d94517e615a22d",
+    "message": "[kernels] Retire Peano workarounds the 94b320c0 pin fixes (#3911)",
+    "timestamp": "2026-10-10T01:56:10Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "58484c8cfb",
+    "peano": "22.0.0+94b320c0",
+    "kernels": "2e65e623d94e",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 925,
+   "exitstatus": 1,
+   "failed": [
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[bn_conv2dk3_dw/960x8/uint8/input_channels=32/input_width=30/output_channels=32/middle-row/alternating/s0]",
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[bn_conv2dk3_dw/960x8/uint8/input_channels=32/input_width=30/output_channels=32/middle-row/max/s0]",
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[bn_conv2dk3_dw/960x8/uint8/input_channels=32/input_width=30/output_channels=32/middle-row/min/s0]",
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[bn_conv2dk3_dw/960x8/uint8/input_channels=32/input_width=30/output_channels=32/middle-row/random/s0]",
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[bn_conv2dk3_dw/960x8/uint8/input_channels=32/input_width=30/output_channels=32/middle-row/random/s1]",
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[bn_conv2dk3_dw/960x8/uint8/input_channels=32/input_width=30/output_channels=32/middle-row/random/s2]",
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[bn_conv2dk3_dw/960x8/uint8/input_channels=32/input_width=30/output_channels=32/middle-row/zeros/s0]",
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[mm_bfp_shuffle/256x4/bfp16ebs8/unshuffle=False/random/s0]",
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[mm_bfp_shuffle/256x4/bfp16ebs8/unshuffle=False/random/s1]",
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[mm_bfp_shuffle/256x4/bfp16ebs8/unshuffle=False/random/s2]",
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[mm_bfp_shuffle/512x4/bfp16ebs8/random/s1]",
+    "test.python.npu.test_kernels_e2e::test_kernel_extensive[mm_bfp_shuffle/512x4/bfp16ebs8/random/s2]",
+    "test/python/npu/test_kernels_perf.py::test_kernel_perf[fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/epilogue=gelu/mmul_shape=(8, 8, 8)/out_chunk=512]",
+    "test/python/npu/test_kernels_perf.py::test_kernel_perf[fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/epilogue=silu/mmul_shape=(8, 8, 8)/out_chunk=512]",
+    "test/python/npu/test_kernels_perf.py::test_kernel_perf[fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/mmul_shape=(8, 8, 8)/out_chunk=512]",
+    "test/python/npu/test_kernels_perf.py::test_kernel_perf[mm_bfp_shuffle/256x4/bfp16ebs8/unshuffle=False]",
+    "test/python/npu/test_kernels_perf.py::test_kernel_perf[mm_bfp_shuffle/512x4/bfp16ebs8]"
+   ],
+   "truncated": [],
+   "cases": {
+    "passed": 612,
+    "failed": 3,
+    "timed": 237,
+    "timing_failed": 5,
+    "untimed": 372,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 129,
+    "checked": 114
+   }
   }
  ]
 }
