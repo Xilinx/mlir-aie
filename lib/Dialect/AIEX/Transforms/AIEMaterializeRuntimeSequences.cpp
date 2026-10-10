@@ -768,12 +768,17 @@ struct AIEMaterializeRuntimeSequencesPass
       patterns_1.insert<InsertLoadPdiForConfigurePattern>(ctx);
       walkAndApplyPatterns(deviceOp, std::move(patterns_1));
 
-      // Canonicalize to remove duplicate back-to-back load_pdi ops
+      // Canonicalize to remove duplicate back-to-back load_pdi ops, visiting
+      // only the load_pdi ops rather than every op of the sequences.
       RewritePatternSet canonicalize_patterns(ctx);
       AIEX::NpuLoadPdiOp::getCanonicalizationPatterns(canonicalize_patterns,
                                                       ctx);
-      if (failed(applyPatternsGreedily(
-              deviceOp, std::move(canonicalize_patterns), rewriter_config))) {
+      SmallVector<Operation *> loadPdis;
+      deviceOp.walk([&](NpuLoadPdiOp op) { loadPdis.push_back(op); });
+      GreedyRewriteConfig loadPdiConfig = rewriter_config;
+      loadPdiConfig.setStrictness(GreedyRewriteStrictness::ExistingOps);
+      if (failed(applyOpPatternsGreedily(
+              loadPdis, std::move(canonicalize_patterns), loadPdiConfig))) {
         return signalPassFailure();
       }
 
