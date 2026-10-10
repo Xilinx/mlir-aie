@@ -8,7 +8,9 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
+#include "aie/Dialect/AIE/Transforms/AIEPacketIdSpace.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Attributes.h"
@@ -48,6 +50,8 @@ struct AIEObjectFifoAllocatePass
   SmallVector<Operation *> loweredFlows;
   llvm::MapVector<ObjectFifoDmaEndpointOp, llvm::StringMap<PacketInfoAttr>>
       dispatchHeaders;
+  /// Shim ends that take another end's channel, by the end they take it from.
+  llvm::MapVector<Operation *, Operation *> shimChannelSharers;
   DenseMap<Value, SmallVector<int64_t>> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
@@ -853,7 +857,8 @@ struct AIEObjectFifoAllocatePass
       std::optional<int> channel = endpoint.getRouteChannel();
       // A core's stream port is named by the design, not drawn from the tile's
       // DMA channels; checkStreamPorts has claimed it.
-      if (endpoint.getRouteBundle() == WireBundle::Core)
+      if (endpoint.getRouteBundle() == WireBundle::Core ||
+          shimChannelSharers.count(endpoint.getOperation()))
         continue;
 
       if (channel) {
@@ -942,7 +947,67 @@ struct AIEObjectFifoAllocatePass
       channelAssignments[endpoint.getOperation()] = channel;
       noteDemand(endpoint, channel);
     }
+    for (auto [sharer, owner] : shimChannelSharers)
+      channelAssignments[sharer] = channelAssignments.lookup(owner);
     channelDemand = std::move(demand);
+    return success();
+  }
+
+  /// Gives one more shim end of `exhausted` the channel of ends it is never in
+  /// flight with, in the order ShimTransferSpans groups them, so only as many
+  /// ends share as the tile needs. Packet headers tell a shared channel's ends
+  /// apart.
+  bool planShimSharing(TileLike exhausted, DMAChannelDir dir) {
+    ShimTransferSpans spans(device, [&](StringAttr symbol) {
+      auto endpoint =
+          SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(device, symbol);
+      return endpoint ? endpoint.getFifoNameAttr() : StringAttr();
+    });
+    SmallVector<Operation *> candidates;
+    SmallVector<StringAttr> fifos;
+    for (auto endpoint : device.getOps<RouteEndpointOp>()) {
+      if (endpoint.getBundle() != WireBundle::DMA ||
+          endpoint.getChannelIndex() || !endpoint.getFifoName() ||
+          endpoint.getTile() != exhausted->getResult(0) ||
+          endpoint.getRouteDirection() != dir)
+        continue;
+      candidates.push_back(endpoint);
+      fifos.push_back(endpoint.getFifoNameAttr());
+    }
+    for (auto &members : spans.groups(fifos))
+      for (unsigned sharer : llvm::drop_begin(members))
+        if (shimChannelSharers
+                .insert({candidates[sharer], candidates[members.front()]})
+                .second)
+          return true;
+    return false;
+  }
+
+  /// A route reaching or leaving a shared shim channel carries a packet
+  /// header; one that has none gets a free id.
+  LogicalResult headShimSharingRoutes() {
+    DenseSet<Operation *> sharing;
+    for (auto [sharer, owner] : shimChannelSharers) {
+      sharing.insert(sharer);
+      sharing.insert(owner);
+    }
+    auto shares = [&](StringRef name) {
+      auto endpoint = lookupEndpoint(name);
+      return endpoint && sharing.contains(endpoint.getOperation());
+    };
+    PacketIdSpace ids(device);
+    for (auto route : device.getOps<RouteOp>()) {
+      if (route.getPacket() ||
+          (llvm::none_of(route.getSourceNames(), shares) &&
+           llvm::none_of(route.getDestinationNames(), shares)))
+        continue;
+      std::optional<int> id = ids.takeLowestFrom();
+      if (!id)
+        return route.emitOpError("shares a shim channel, but no packet id is "
+                                 "left to tell its transfers apart");
+      route.setPacketAttr(PacketInfoAttr::get(builder.getContext(), 0,
+                                              static_cast<uint16_t>(*id)));
+    }
     return success();
   }
 
@@ -1451,6 +1516,19 @@ struct AIEObjectFifoAllocatePass
         allocated = planAllocation(demandOrdered, tried);
       }
     }
+    // Out of shim channels, ends never in flight together can take turns on
+    // one, a shim tile and direction at a time.
+    while (failed(allocated) && channelFailure &&
+           tileOf(channelFailure).isShimTile() &&
+           planShimSharing(tileOf(channelFailure),
+                           channelFailure.getRouteDirection())) {
+      localPools.clear();
+      tried.clear();
+      allocated = planAllocation(pools, tried);
+    }
+    if (succeeded(allocated) && !shimChannelSharers.empty() &&
+        failed(headShimSharingRoutes()))
+      return signalPassFailure();
     if (failed(allocated)) {
       localPools.clear();
       if (failed(planBuffers(pools))) {

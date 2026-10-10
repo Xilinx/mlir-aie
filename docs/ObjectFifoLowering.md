@@ -393,6 +393,19 @@ Attributes already present are kept, so writing `aie.buffer` ops and naming them
 in the pool, attaching locks to a segment, or setting `channelIndex` on an
 endpoint overrides that choice; this pass fills in the rest.
 
+When a shim tile runs out of channels, shim ends that are never in flight
+together take turns on one channel instead. Ends that different runtime
+sequences use never are: one dispatch runs one sequence and is taken to finish
+its transfers before the next starts, the same contract that lets one design
+be dispatched twice in a row. Within one sequence, one end's transfers must be
+awaited or freed (`aiex.dma_free_task`) before the other's first is issued, and
+an end used inside a loop counts as in flight for the whole loop. An end no
+runtime sequence names is never shared. Only as many ends share as the tile
+needs. The routes of ends sharing a channel become packet-switched, each with
+its own id, and each end keeps its own `aie.shim_dma_allocation`, so every
+transfer stamps its own header. A design that fits without sharing is lowered
+exactly as before.
+
 ### 5. `--aie-objectfifo-lower-dmas`
 
 Turns each `dma_endpoint` into the BD chain that walks its pool's buffers,
