@@ -1,3 +1,10 @@
+//===- unquiesced.mlir -----------------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
 // The sequence sends 8 words to a tile that takes 4 and never waits, so the
 // dispatch ends with the shim channel stuck halfway: the next dispatch would
 // find it still running.

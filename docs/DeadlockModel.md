@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # The deadlock model
 
 **Status:** specification. Nothing in the compiler reads it yet. It is what

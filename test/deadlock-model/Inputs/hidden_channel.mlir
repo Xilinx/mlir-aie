@@ -1,3 +1,10 @@
+//===- hidden_channel.mlir -------------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
 // The shim sends to memtile S2MM 0, whose program is not in the design.
 module {
   aie.device(npu2_1col) {

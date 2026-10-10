@@ -1,3 +1,10 @@
+//===- head_of_line.mlir ---------------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
 // Two transfers share shim MM2S 0 by packet id, both into tile (0, 2). The
 // core needs to_b's object before it frees to_a's buffer, so to_a's 8 words
 // stop after the 4 its one buffer holds; issued first, to_a then keeps to_b

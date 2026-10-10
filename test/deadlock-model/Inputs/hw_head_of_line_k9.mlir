@@ -1,3 +1,10 @@
+//===- hw_head_of_line_k9.mlir ---------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
 // HW: HANG for first_a, PASS for first_b (npu2 Strix, 2026-10-10)
 // to_a sends 1 + 9 words into a 1-word buffer the core frees only after to_b,
 // which shim MM2S 0 sends next. The path buffers 8 words, so first_a

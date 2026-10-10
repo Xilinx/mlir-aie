@@ -1,3 +1,10 @@
+//===- contended_lock.mlir -------------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
 // Two cores acquire one lock. If (0, 3) takes it first it releases both, and
 // (0, 2) finishes and lets the result out; if (0, 2) takes it first it waits
 // on a lock only (0, 3) releases, and (0, 3) waits on the lock (0, 2) holds.
