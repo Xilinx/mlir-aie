@@ -5,8 +5,8 @@
 
 # RUN: %python %s | FileCheck %s
 
-"""The deadlock rules router_properties.py checks the router with, against
-what happened on hardware.
+"""The deadlock rules router_properties.py checks the router with (the
+aiemodel package), against what happened on hardware.
 
 Each file in Inputs/hw_verdicts is a design as the router got it, then, after
 `// -----`, the routing that ran on an NPU2 (Strix): this router's, the one
@@ -23,7 +23,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-import router_properties as rp  # noqa: E402
+from aiemodel.design import load_design  # noqa: E402
+from aiemodel.deadlock import Analysis  # noqa: E402
+from aiemodel.verify import verify  # noqa: E402
 
 UNSAFE = ("conflicting", "hold cycle")
 
@@ -40,9 +42,9 @@ def main():
                 break
             head[key] = value
         src, routed = text.split("\n// -----\n")
-        d = rp.load_design(src)
+        d = load_design(src)
         hops_on = head.get("hops") != "off"
-        problems, stats = rp.verify(d, rp.Analysis(d), routed, hops_on)
+        problems, stats = verify(d, Analysis(d), routed, hops_on)
         unsafe = [p for p in problems if p.startswith(UNSAFE)]
         if stats["shared_receiver_cycle"]:
             unsafe.append(

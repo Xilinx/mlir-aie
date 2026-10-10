@@ -43,7 +43,39 @@ sys.path.insert(
         Path(__file__).resolve().parents[2] / "test" / "create-packet-flows" / "nightly"
     ),
 )
-import router_properties as rp  # noqa: E402
+from aiemodel.params import PARAMS  # noqa: E402
+from aiemodel.fabric import (
+    CTRL,
+    DIRECTIONAL,
+    DIRS,
+    DMA,
+    MM2S,
+    NORTH,
+    SOUTH,
+    fmt_ep,
+    fmt_port,
+)  # noqa: E402
+from aiemodel.design import (
+    design_signature,
+    keeps_header,
+    last_keep,
+    load_design,
+    overlay_keep_conflicts,
+)  # noqa: E402
+from aiemodel.deadlock import Analysis, sent_packet_ids  # noqa: E402
+from aiemodel.run import aie_opt, aie_opt_path, first_error  # noqa: E402
+from aiemodel.output import box_view, trace_output  # noqa: E402
+from aiemodel.routing import construct, priority_trees  # noqa: E402
+from aiemodel.verify import known_bug, verify  # noqa: E402
+from aiemodel.generate import (
+    add_programs,
+    canonical,
+    direct_ok,
+    fix_ir,
+    flow_endpoints,
+    generate,
+    verdict,
+)  # noqa: E402
 import router_shrink as shrinker  # noqa: E402
 
 # Design surgery.
@@ -57,7 +89,7 @@ def endpoints(d, sending):
 def busy(d):
     """Endpoints flows, switchboxes or shim muxes already use: (sending,
     receiving)."""
-    srcs, dsts = map(set, rp.flow_endpoints(d))
+    srcs, dsts = map(set, flow_endpoints(d))
     for tile, ops in d.boxes.items():
         for op in ops:
             if op[0] == "connect":
@@ -87,11 +119,11 @@ def loopback(s, x):
 
 
 def circuit_ok(t, s, x):
-    return rp.direct_ok(t, s, x) and not loopback(s, x)
+    return direct_ok(t, s, x) and not loopback(s, x)
 
 
 def fresh_id(d, rng):
-    claimed = [(f["mask"] or rp.PARAMS["max_id"], f["id"]) for f in d.packet_flows]
+    claimed = [(f["mask"] or PARAMS["max_id"], f["id"]) for f in d.packet_flows]
     claimed += [
         (m, v)
         for ops in d.boxes.values()
@@ -101,7 +133,7 @@ def fresh_id(d, rng):
     ]
     free = [
         i
-        for i in range(rp.PARAMS["max_id"] + 1)
+        for i in range(PARAMS["max_id"] + 1)
         if all(i & m != v & m for m, v in claimed)
     ]
     return rng.choice(free) if free else None
@@ -110,10 +142,10 @@ def fresh_id(d, rng):
 def resend(d, src, old, new):
     """What `src` sends with id `old` carries `new` instead."""
     c, r, b, ch = src
-    if b != rp.DMA:
+    if b != DMA:
         return
     for p in d.programs:
-        if p["tile"] == (c, r) and p["dir"] == rp.MM2S and p["ch"] == ch:
+        if p["tile"] == (c, r) and p["dir"] == MM2S and p["ch"] == ch:
             p["seq"] = [
                 [
                     ("bd", op[1], new) if op[0] == "bd" and op[2] == old else op
@@ -124,7 +156,7 @@ def resend(d, src, old, new):
     syms = {
         s
         for s, a in d.allocs.items()
-        if a["tile"] == (c, r) and a["dir"] == rp.MM2S and a["ch"] == ch
+        if a["tile"] == (c, r) and a["dir"] == MM2S and a["ch"] == ch
     }
     for s in syms:
         if d.allocs[s]["pkt"] == old:
@@ -173,9 +205,9 @@ def cut_capacity(t, r, up):
     for c in range(t.cols):
         lo, hi = (c, r), (c, r + 1)
         if up:
-            total += min(t.masters[lo][rp.NORTH], t.slaves[hi][rp.SOUTH])
+            total += min(t.masters[lo][NORTH], t.slaves[hi][SOUTH])
         else:
-            total += min(t.masters[hi][rp.SOUTH], t.slaves[lo][rp.NORTH])
+            total += min(t.masters[hi][SOUTH], t.slaves[lo][NORTH])
     return total
 
 
@@ -217,20 +249,20 @@ def must_reject(d):
         into[x].add(s)
     for x, ss in into.items():
         if len(ss) > 1:
-            return f"circuit flows from {len(ss)} sources into {rp.fmt_ep(x)}"
-    for x, _ in rp.overlay_keep_conflicts(d) if d.reload else ():
+            return f"circuit flows from {len(ss)} sources into {fmt_ep(x)}"
+    for x, _ in overlay_keep_conflicts(d) if d.reload else ():
         return (
-            f"the last flow into {rp.fmt_ep(x)} keeps headers otherwise than "
+            f"the last flow into {fmt_ep(x)} keeps headers otherwise than "
             "the prioritized flows into it"
         )
     csrc = {s for s, _ in d.flows}
     for f in d.packet_flows:
         for s in f["srcs"]:
             if s in csrc:
-                return f"{rp.fmt_ep(s)} sends both circuit and packet flows"
+                return f"{fmt_ep(s)} sends both circuit and packet flows"
         for x in f["dsts"]:
             if x in into:
-                return f"{rp.fmt_ep(x)} receives both circuit and packet flows"
+                return f"{fmt_ep(x)} receives both circuit and packet flows"
     for r in range(t.rows - 1):
         for up in (True, False):
             load, cap = cut_load(d, r, up), cut_capacity(t, r, up)
@@ -275,7 +307,7 @@ def m_add_flow(rng, d, ctx):
     packet = rng.random() < 0.5
     rng.shuffle(fs)
     for s in fs:
-        xs = [x for x in fr if (rp.direct_ok if packet else circuit_ok)(t, s, x)]
+        xs = [x for x in fr if (direct_ok if packet else circuit_ok)(t, s, x)]
         if not xs:
             continue
         x = rng.choice(xs)
@@ -288,7 +320,7 @@ def m_add_flow(rng, d, ctx):
         else:
             e.flows.append((s, x))
         return (
-            f"{'packet' if packet else 'circuit'} {rp.fmt_ep(s)} -> {rp.fmt_ep(x)}",
+            f"{'packet' if packet else 'circuit'} {fmt_ep(s)} -> {fmt_ep(x)}",
             e,
             "model",
         )
@@ -300,11 +332,11 @@ def monotone(d, e):
     changes what its senders send, a prioritized source's route alone changes,
     or two streams no longer share a source or destination, so a hazard
     between them the router only warned of becomes one it has to avoid."""
-    before, after = rp.last_keep(d), rp.last_keep(e)
+    before, after = last_keep(d), last_keep(e)
     if any(before[x] != v for x, v in after.items()):
         return "model"
     prio = {s for f in d.packet_flows if f["priority"] for s in f["srcs"]}
-    a, b = rp.Analysis(d), rp.Analysis(e)
+    a, b = Analysis(d), Analysis(e)
     key = {(s.src, s.dst, s.pid): i for i, s in enumerate(a.streams)}
     old = [key.get((s.src, s.dst, s.pid)) for s in b.streams]
     if None in old or {k for k in key if k[0] in prio} != {
@@ -327,7 +359,7 @@ def m_remove_flow(rng, d, ctx):
     e = d.copy()
     if k < len(d.flows):
         s, x = e.flows.pop(k)
-        what = f"drop flow {rp.fmt_ep(s)} -> {rp.fmt_ep(x)}"
+        what = f"drop flow {fmt_ep(s)} -> {fmt_ep(x)}"
     else:
         f = e.packet_flows.pop(k - len(d.flows))
         what = f"drop packet flow id {f['id']}"
@@ -347,7 +379,7 @@ def m_remove_end(rng, d, ctx):
     e = d.copy()
     ep = e.packet_flows[k][key].pop(rng.randrange(len(d.packet_flows[k][key])))
     return (
-        f"drop {key[:-1]} {rp.fmt_ep(ep)} of id {d.packet_flows[k]['id']}",
+        f"drop {key[:-1]} {fmt_ep(ep)} of id {d.packet_flows[k]['id']}",
         e,
         monotone(d, e),
     )
@@ -363,11 +395,11 @@ def m_add_dest(rng, d, ctx):
         e = d.copy()
         if kind == "packet":
             f = e.packet_flows[k]
-            xs = [x for x in fr if all(rp.direct_ok(t, s, x) for s in f["srcs"])]
+            xs = [x for x in fr if all(direct_ok(t, s, x) for s in f["srcs"])]
             if xs:
                 f["dsts"].append(rng.choice(xs))
                 return (
-                    f"broadcast id {f['id']} to {rp.fmt_ep(f['dsts'][-1])}",
+                    f"broadcast id {f['id']} to {fmt_ep(f['dsts'][-1])}",
                     e,
                     "model",
                 )
@@ -376,7 +408,7 @@ def m_add_dest(rng, d, ctx):
             if xs:
                 e.flows.append((k, rng.choice(xs)))
                 return (
-                    f"broadcast circuit {rp.fmt_ep(k)} to {rp.fmt_ep(e.flows[-1][1])}",
+                    f"broadcast circuit {fmt_ep(k)} to {fmt_ep(e.flows[-1][1])}",
                     e,
                     "model",
                 )
@@ -421,13 +453,13 @@ def m_multi_source(rng, d, ctx):
         ss = [
             s
             for s in fs
-            if s not in csrc and all(rp.direct_ok(t, s, x) for x in f["dsts"])
+            if s not in csrc and all(direct_ok(t, s, x) for x in f["dsts"])
         ]
         if ss:
             e = d.copy()
             s = rng.choice(ss)
             e.packet_flows[k]["srcs"].append(s)
-            return f"id {f['id']} also from {rp.fmt_ep(s)}", e, "model"
+            return f"id {f['id']} also from {fmt_ep(s)}", e, "model"
     return None
 
 
@@ -449,13 +481,13 @@ def m_ctrl(rng, d, ctx):
     fs, _ = free_endpoints(d)
     _, dsts = busy(d)
     ctrl = [
-        (*tile, rp.CTRL, 0)
+        (*tile, CTRL, 0)
         for tile in sorted(t.kinds)
-        if t.masters[tile][rp.CTRL] and (*tile, rp.CTRL, 0) not in dsts
+        if t.masters[tile][CTRL] and (*tile, CTRL, 0) not in dsts
     ]
     rng.shuffle(fs)
     for s in fs:
-        xs = [x for x in ctrl if rp.direct_ok(t, s, x)]
+        xs = [x for x in ctrl if direct_ok(t, s, x)]
         if xs:
             e = d.copy()
             pid = fresh_id(e, rng)
@@ -463,7 +495,7 @@ def m_ctrl(rng, d, ctx):
                 return None
             x = rng.choice(xs)
             e.add_packet_flow(pid, [s], [x], priority=rng.choice([True, None]))
-            return f"control packets {rp.fmt_ep(s)} -> {rp.fmt_ep(x)}", e, "model"
+            return f"control packets {fmt_ep(s)} -> {fmt_ep(x)}", e, "model"
     return None
 
 
@@ -471,7 +503,7 @@ def m_fixed(rng, d, ctx):
     con = ctx["witness"]()
     if con is None:
         return None
-    e = rp.fix_ir(rng, d, con)
+    e = fix_ir(rng, d, con)
     return None if e is None else ("pin the witness of one flow", e, "model")
 
 
@@ -483,13 +515,13 @@ def free_box_ports(d, tile):
     t = d.target
     ss = [
         (b, i)
-        for b in rp.DIRECTIONAL
+        for b in DIRECTIONAL
         for i in range(t.slaves[tile][b])
         if (b, i) not in slaves
     ]
     ms = [
         (b, i)
-        for b in rp.DIRECTIONAL
+        for b in DIRECTIONAL
         for i in range(t.masters[tile][b])
         if (b, i) not in masters
     ]
@@ -513,12 +545,12 @@ def m_pin_config(rng, d, ctx):
     box = e.boxes.setdefault(tile, [])
     if rng.random() < 0.5:
         box.append(("connect", s, m))
-        return f"pin connect {rp.fmt_port(s)} -> {rp.fmt_port(m)} at {tile}", e, "model"
+        return f"pin connect {fmt_port(s)} -> {fmt_port(m)} at {tile}", e, "model"
     used = {(op[2], op[3]) for op in box if op[0] == "amsel"}
     free = [
         (a, n)
-        for a in range(rp.PARAMS["arbiters"])
-        for n in range(rp.PARAMS["msels"])
+        for a in range(PARAMS["arbiters"])
+        for n in range(PARAMS["msels"])
         if (a, n) not in used
     ]
     if not free:
@@ -529,9 +561,9 @@ def m_pin_config(rng, d, ctx):
         return None
     box.insert(0, ("amsel", "pin", a, n))
     box.append(("masterset", m, ["pin"], None, False))
-    box.append(("rules", s, [(rp.PARAMS["max_id"], pid, "pin")], False))
+    box.append(("rules", s, [(PARAMS["max_id"], pid, "pin")], False))
     return (
-        f"pin amsel<{a}> ({n}) {rp.fmt_port(s)} -> {rp.fmt_port(m)} id {pid} at {tile}",
+        f"pin amsel<{a}> ({n}) {fmt_port(s)} -> {fmt_port(m)} id {pid} at {tile}",
         e,
         "model",
     )
@@ -555,7 +587,7 @@ def m_neighbors(rng, d, ctx):
             x0, x1 = sorted(by_tile[xk])[:2]
             if rng.random() < 0.5:
                 x0, x1 = x1, x0
-            if circuit_ok(t, s0, x0) and rp.direct_ok(t, s1, x1):
+            if circuit_ok(t, s0, x0) and direct_ok(t, s1, x1):
                 e = d.copy()
                 pid = fresh_id(e, rng)
                 if pid is None:
@@ -563,8 +595,8 @@ def m_neighbors(rng, d, ctx):
                 e.flows.append((s0, x0))
                 e.add_packet_flow(pid, [s1], [x1])
                 return (
-                    f"circuit {rp.fmt_ep(s0)} -> {rp.fmt_ep(x0)} beside packet "
-                    f"{rp.fmt_ep(s1)} -> {rp.fmt_ep(x1)}",
+                    f"circuit {fmt_ep(s0)} -> {fmt_ep(x0)} beside packet "
+                    f"{fmt_ep(s1)} -> {fmt_ep(x1)}",
                     e,
                     "model",
                 )
@@ -592,7 +624,7 @@ def m_same_port(rng, d, ctx):
         pid = fresh_id(e, rng)
         if way == "packet from a circuit source":
             s = rng.choice(csrc)
-            xs = [x for x in fr if rp.direct_ok(t, s, x)]
+            xs = [x for x in fr if direct_ok(t, s, x)]
             if xs and pid is not None:
                 e.add_packet_flow(pid, [s], [rng.choice(xs)])
                 return way, e, "reject"
@@ -636,7 +668,7 @@ def m_drop_program(rng, d, ctx):
     e = d.copy()
     p = d.programs[k]
     drop_program(e, k)
-    return f"drop the {rp.DIRS[p['dir']]} {p['ch']} program at {p['tile']}", e, "model"
+    return f"drop the {DIRS[p['dir']]} {p['ch']} program at {p['tile']}", e, "model"
 
 
 def m_add_programs(rng, d, ctx):
@@ -653,7 +685,7 @@ def m_add_programs(rng, d, ctx):
         return None
     tile = rng.choice(tiles)
     e = d.copy()
-    rp.add_programs(rng, e, [tile])
+    add_programs(rng, e, [tile])
     if len(e.programs) == len(d.programs):
         return None
     return f"program the DMA at {tile}", e, "model"
@@ -695,18 +727,16 @@ def m_move_endpoint(rng, d, ctx):
                 pool = [
                     p
                     for p in pool
-                    if p not in csrc and all(rp.direct_ok(t, p, x) for x in f["dsts"])
+                    if p not in csrc and all(direct_ok(t, p, x) for x in f["dsts"])
                 ]
             else:
-                pool = [
-                    p for p in pool if all(rp.direct_ok(t, s, p) for s in f["srcs"])
-                ]
+                pool = [p for p in pool if all(direct_ok(t, s, p) for s in f["srcs"])]
             if not pool:
                 continue
             new = rng.choice(pool)
             f[c[2]][c[3]] = new
         return (
-            f"move {rp.fmt_ep(here)} ({t.kind(here[:2])}) to {rp.fmt_ep(new)} "
+            f"move {fmt_ep(here)} ({t.kind(here[:2])}) to {fmt_ep(new)} "
             f"({t.kind(new[:2])})",
             e,
             "model",
@@ -748,12 +778,12 @@ def judge(e, expect, hops_on, seed):
     model-limit."""
     why = must_reject(e)
     try:
-        e = rp.canonical(e)
+        e = canonical(e)
     except Exception as x:
         if not why:
             return "model-limit", f"emit: {x!r}"
         # The IR verifier rejects it before the router runs.
-        p = rp.aie_opt(e.emit(), hops_on, timeout=120)
+        p = aie_opt(e.emit(), hops_on, timeout=120)
         if p.returncode == 0:
             return "soundness", f"router routes it, must reject: {why}"
         return "ok", f"rejected by the verifier ({why})"
@@ -762,19 +792,19 @@ def judge(e, expect, hops_on, seed):
         expect = "reject"
     elif expect == "model":
         try:
-            v = rp.verdict(e, hops_on, seed)
+            v = verdict(e, hops_on, seed)
         except Exception as x:
             return "model-limit", f"verdict: {x!r}"
         expect = {True: "route", False: "reject", None: None}[v["routable"]]
         why = v["reason"]
-    p = rp.aie_opt(e.emit(), hops_on, timeout=120)
+    p = aie_opt(e.emit(), hops_on, timeout=120)
     if p.returncode < 0:
-        return "crash", rp.first_error(p.stderr)[:300]
+        return "crash", first_error(p.stderr)[:300]
     if p.returncode:
-        err = rp.first_error(p.stderr)
+        err = first_error(p.stderr)
         if expect != "route":
             return "ok", f"rejected ({expect})"
-        if rp.known_bug(e, [err]):
+        if known_bug(e, [err]):
             return "known", err[:200]
         return "completeness", f"model routes it, router: {err[:300]}"
     if expect == "reject":
@@ -783,11 +813,11 @@ def judge(e, expect, hops_on, seed):
             return "known", label
         return "soundness", f"router routes it, must reject: {why}"
     try:
-        problems, _ = rp.verify(e, rp.Analysis(e), p.stdout, hops_on)
+        problems, _ = verify(e, Analysis(e), p.stdout, hops_on)
     except Exception as x:
         return "model-limit", f"verify: {x!r}"
     if problems:
-        if rp.known_bug(e, problems):
+        if known_bug(e, problems):
             return "known", problems[0][:200]
         return "illegal", problems[0][:300]
     return "ok", f"routed ({expect})"
@@ -800,10 +830,10 @@ def judge(e, expect, hops_on, seed):
 def routing_key(text):
     """The switch settings of a routed output, independent of op order and
     amsel names."""
-    out = rp.load_design(text)
+    out = load_design(text)
     key = set()
     for tile, ops in out.boxes.items():
-        conns, amsels, ms, rules, _ = rp.box_view(ops)
+        conns, amsels, ms, rules, _ = box_view(ops)
         for s, m in conns.items():
             key |= {(tile, "c", s, x) for x in m}
         for port, op in ms.items():
@@ -832,7 +862,7 @@ def r_permute(rng, d, routed):
     keeps, last = defaultdict(set), {}
     for k, f in enumerate(d.packet_flows):
         for t in f["dsts"]:
-            keeps[t].add(rp.keeps_header(t[:2], t[2:], f["keep"]))
+            keeps[t].add(keeps_header(t[:2], t[2:], f["keep"]))
             last[t] = k
     tail = sorted({last[t] for t in last if len(keeps[t]) > 1})
     order = [k for k in range(len(d.packet_flows)) if k not in tail]
@@ -897,13 +927,13 @@ def rename(d, c):
 def r_rename(rng, d, routed):
     if not d.packet_flows:
         return None
-    c = rng.randrange(1, rp.PARAMS["max_id"] + 1)
+    c = rng.randrange(1, PARAMS["max_id"] + 1)
     return f"ids x -> x ^ {c}", rename(d, c), None
 
 
 def find_flows(text):
     p = subprocess.run(
-        [rp.aie_opt_path(), "--aie-find-flows", "-"],
+        [aie_opt_path(), "--aie-find-flows", "-"],
         input=text,
         capture_output=True,
         text=True,
@@ -934,17 +964,17 @@ def delivered(x, d):
     ids = defaultdict(set)
     claims = defaultdict(set)
     for f in d.packet_flows:
-        m = rp.PARAMS["max_id"] if f["mask"] is None else f["mask"]
+        m = PARAMS["max_id"] if f["mask"] is None else f["mask"]
         for s in f["srcs"]:
             ids[s].add(f["id"])
             claims[s].add((m, f["id"] & m))
-    for (c, r, dr, ch), v in rp.sent_packet_ids(d).items():
-        s = (c, r, rp.DMA, ch)
-        if dr == rp.MM2S:
+    for (c, r, dr, ch), v in sent_packet_ids(d).items():
+        s = (c, r, DMA, ch)
+        if dr == MM2S:
             ids[s] |= {pid for pid in v if any(pid & m == x for m, x in claims[s])}
     out = set()
     for f in x.packet_flows:
-        m = rp.PARAMS["max_id"] if f["mask"] is None else f["mask"]
+        m = PARAMS["max_id"] if f["mask"] is None else f["mask"]
         for s in f["srcs"]:
             for pid in ids[s]:
                 if pid & m == f["id"] & m:
@@ -957,9 +987,9 @@ def r_lift(rng, d, routed):
     for, and routing those again lifts to the same."""
     p = find_flows(routed)
     if p.returncode:
-        return "lift", None, f"aie-find-flows fails: {rp.first_error(p.stderr)[:200]}"
-    lifted = rp.load_design(p.stdout)
-    out = rp.load_design(routed)
+        return "lift", None, f"aie-find-flows fails: {first_error(p.stderr)[:200]}"
+    lifted = load_design(p.stdout)
+    out = load_design(routed)
     left = {
         (tile, op[1])
         for tile, ops in lifted.boxes.items()
@@ -969,7 +999,7 @@ def r_lift(rng, d, routed):
 
     def partial(src, dst, pid):
         """find-flows leaves what it cannot lift as switchbox configuration."""
-        hops = rp.trace_output(out, src, pid)[0].get(dst, [])
+        hops = trace_output(out, src, pid)[0].get(dst, [])
         return any((tile, s) in left or (tile, m) in left for tile, s, m, _ in hops)
 
     asked, got = delivered(d, d), delivered(lifted, d)
@@ -984,8 +1014,8 @@ def r_lift(rng, d, routed):
     def check(text):
         q = find_flows(text)
         if q.returncode:
-            return f"aie-find-flows fails on the rerouted output: {rp.first_error(q.stderr)[:200]}"
-        again = rp.load_design(q.stdout)
+            return f"aie-find-flows fails on the rerouted output: {first_error(q.stderr)[:200]}"
+        again = load_design(q.stdout)
         if left:
             if not set(lifted.flows) <= set(again.flows) or not got <= delivered(
                 again, d
@@ -1011,7 +1041,7 @@ def r_disjoint(rng, d, routed):
     """A circuit flow on a column whose switchboxes nothing uses, in the design
     or in its routing."""
     t = d.target
-    out = rp.load_design(routed)
+    out = load_design(routed)
     used = {x[0] for x in d.used_tiles()} | {x[0] for x in out.boxes if out.boxes[x]}
     used |= {x[0] for x in out.muxes}
     cols = [c for c in range(t.cols) if c not in used]
@@ -1026,7 +1056,7 @@ def r_disjoint(rng, d, routed):
             e = d.copy()
             e.flows.append(rng.choice(pairs))
             return (
-                f"circuit {rp.fmt_ep(e.flows[-1][0])} -> {rp.fmt_ep(e.flows[-1][1])} on free column {c}",
+                f"circuit {fmt_ep(e.flows[-1][0])} -> {fmt_ep(e.flows[-1][1])} on free column {c}",
                 e,
                 None,
             )
@@ -1070,14 +1100,14 @@ def k_msel_range(rng, out, ctx):
     tile, i = rng.choice(sites)
     op = out.boxes[tile][i]
     if rng.random() < 0.5:
-        out.boxes[tile][i] = (op[0], op[1], op[2], rp.PARAMS["msels"])
-        return f"amsel msel {rp.PARAMS['msels']} at {tile}"
-    out.boxes[tile][i] = (op[0], op[1], rp.PARAMS["arbiters"], op[3])
-    return f"amsel arbiter {rp.PARAMS['arbiters']} at {tile}"
+        out.boxes[tile][i] = (op[0], op[1], op[2], PARAMS["msels"])
+        return f"amsel msel {PARAMS['msels']} at {tile}"
+    out.boxes[tile][i] = (op[0], op[1], PARAMS["arbiters"], op[3])
+    return f"amsel arbiter {PARAMS['arbiters']} at {tile}"
 
 
 def used_masters(out, tile):
-    view = rp.box_view(out.boxes[tile])
+    view = box_view(out.boxes[tile])
     return {m for ms in view[0].values() for m in ms} | set(view[2])
 
 
@@ -1089,7 +1119,7 @@ def k_connect(rng, out, ctx):
     op = out.boxes[tile][i]
     if rng.random() < 0.3:
         del out.boxes[tile][i]
-        return f"drop connect {rp.fmt_port(op[1])} -> {rp.fmt_port(op[2])} at {tile}"
+        return f"drop connect {fmt_port(op[1])} -> {fmt_port(op[2])} at {tile}"
     t = out.target
     busy_m = used_masters(out, tile)
     ms = [
@@ -1099,7 +1129,9 @@ def k_connect(rng, out, ctx):
         return None
     m = rng.choice(ms)
     out.boxes[tile][i] = ("connect", op[1], m)
-    return f"connect {rp.fmt_port(op[1])} -> {rp.fmt_port(m)}, not {rp.fmt_port(op[2])}, at {tile}"
+    return (
+        f"connect {fmt_port(op[1])} -> {fmt_port(m)}, not {fmt_port(op[2])}, at {tile}"
+    )
 
 
 def k_rule(rng, out, ctx):
@@ -1156,7 +1188,7 @@ def k_rule(rng, out, ctx):
         rules[j] = (mask, value, n)
         what = f"rule ({mask}, {value}) to another amsel"
     out.boxes[tile][i] = (op[0], op[1], rules, op[3])
-    return f"{what} on {rp.fmt_port(op[1])} at {tile}"
+    return f"{what} on {fmt_port(op[1])} at {tile}"
 
 
 def k_masterset(rng, out, ctx):
@@ -1169,7 +1201,7 @@ def k_masterset(rng, out, ctx):
     t = out.target
     if how < 0.25:
         del out.boxes[tile][i]
-        return f"drop masterset {rp.fmt_port(op[1])} at {tile}"
+        return f"drop masterset {fmt_port(op[1])} at {tile}"
     if how < 0.5:
         busy_m = used_masters(out, tile)
         ms = [m for m in t.master_ports(tile) if m not in busy_m]
@@ -1177,15 +1209,13 @@ def k_masterset(rng, out, ctx):
             return None
         m = rng.choice(ms)
         out.boxes[tile].append(("masterset", m, list(op[2]), op[3], op[4]))
-        return (
-            f"extra masterset {rp.fmt_port(m)} copying {rp.fmt_port(op[1])} at {tile}"
-        )
+        return f"extra masterset {fmt_port(m)} copying {fmt_port(op[1])} at {tile}"
     if how < 0.75:
-        keep = not rp.keeps_header(tile, op[1], op[3])
+        keep = not keeps_header(tile, op[1], op[3])
         out.boxes[tile][i] = (op[0], op[1], op[2], keep, op[4])
-        return f"keep_pkt_header on {rp.fmt_port(op[1])} at {tile} -> {keep}"
+        return f"keep_pkt_header on {fmt_port(op[1])} at {tile} -> {keep}"
     out.boxes[tile][i] = (op[0], op[1], op[2], op[3], not op[4])
-    return f"is_ctrl_pkt_overlay on {rp.fmt_port(op[1])} at {tile} -> {not op[4]}"
+    return f"is_ctrl_pkt_overlay on {fmt_port(op[1])} at {tile} -> {not op[4]}"
 
 
 def k_mux(rng, out, ctx):
@@ -1196,10 +1226,10 @@ def k_mux(rng, out, ctx):
     s, m = out.muxes[tile][i]
     if rng.random() < 0.5:
         del out.muxes[tile][i]
-        return f"drop shim mux {rp.fmt_port(s)} -> {rp.fmt_port(m)} at {tile}"
+        return f"drop shim mux {fmt_port(s)} -> {fmt_port(m)} at {tile}"
     t = out.target
-    if m[0] == rp.NORTH:
-        n = t.slaves[tile][rp.SOUTH]
+    if m[0] == NORTH:
+        n = t.slaves[tile][SOUTH]
     else:
         n = t.mux_masters[tile][m[0]]
     other = [
@@ -1211,9 +1241,7 @@ def k_mux(rng, out, ctx):
         return None
     c = rng.choice(other)
     out.muxes[tile][i] = (s, (m[0], c))
-    return (
-        f"shim mux {rp.fmt_port(s)} -> {rp.fmt_port((m[0], c))}, not {rp.fmt_port(m)}"
-    )
+    return f"shim mux {fmt_port(s)} -> {fmt_port((m[0], c))}, not {fmt_port(m)}"
 
 
 def k_conflict_arbiter(rng, out, ctx):
@@ -1225,7 +1253,7 @@ def k_conflict_arbiter(rng, out, ctx):
         ka, kb = amsels[a_name], amsels[b_name]
         oa, ob = out.boxes[tile][ka], out.boxes[tile][kb]
         taken = {(op[2], op[3]) for op in out.boxes[tile] if op[0] == "amsel"}
-        free = [m for m in range(rp.PARAMS["msels"]) if (ob[2], m) not in taken]
+        free = [m for m in range(PARAMS["msels"]) if (ob[2], m) not in taken]
         if not free:
             continue
         out.boxes[tile][ka] = (oa[0], oa[1], ob[2], free[0])
@@ -1237,11 +1265,11 @@ def k_five_msels(rng, out, ctx):
     """Five amsels on one arbiter: one more than it has msels."""
     for tile, ops in sorted(out.boxes.items()):
         am = [k for k, op in enumerate(ops) if op[0] == "amsel"]
-        if len(am) > rp.PARAMS["msels"]:
+        if len(am) > PARAMS["msels"]:
             arb = ops[am[0]][2]
-            for n, k in enumerate(am[: rp.PARAMS["msels"] + 1]):
+            for n, k in enumerate(am[: PARAMS["msels"] + 1]):
                 ops[k] = (ops[k][0], ops[k][1], arb, n)
-            return f"{rp.PARAMS['msels'] + 1} amsels on arbiter {arb} at {tile}"
+            return f"{PARAMS['msels'] + 1} amsels on arbiter {arb} at {tile}"
     return None
 
 
@@ -1258,7 +1286,7 @@ KILLERS = {
 
 def kill_context(d, an, routed):
     """Where the routing's streams go, to aim corruptions that are wrong."""
-    out = rp.load_design(routed)
+    out = load_design(routed)
     ids_at = defaultdict(set)
     hops_of = {}
     reach, via = defaultdict(set), defaultdict(set)
@@ -1267,7 +1295,7 @@ def kill_context(d, an, routed):
         for tile, ops in out.boxes.items()
     }
     for i, s in enumerate(an.streams[: an.num_requested]):
-        ends, _ = rp.trace_output(out, s.src, s.pid)
+        ends, _ = trace_output(out, s.src, s.pid)
         hops = ends.get(s.dst, [])
         hops_of[i] = hops
         for tile, slave, m, arb in hops:
@@ -1302,11 +1330,11 @@ def kill_context(d, an, routed):
 
 def shared_pairs(d, routed):
     """Packet flows whose streams share a link in the routing."""
-    out = rp.load_design(routed)
+    out = load_design(routed)
     links = defaultdict(set)
     for k, f in enumerate(d.packet_flows):
         for s in f["srcs"]:
-            ends, _ = rp.trace_output(out, s, f["id"])
+            ends, _ = trace_output(out, s, f["id"])
             for hops in ends.values():
                 for tile, _, m, _ in hops:
                     links[k].add((tile, m))
@@ -1320,7 +1348,7 @@ def run_seed(seed, args):
     rows = []
     hops_on = not args.hops_off
     try:
-        case = rp.generate(seed, device=args.device)
+        case = generate(seed, device=args.device)
     except Exception:
         return [
             ("base", "model-limit", "generate", traceback.format_exc(limit=2), None)
@@ -1328,12 +1356,12 @@ def run_seed(seed, args):
     if case is None:
         return rows
     d = case["design"]
-    p = rp.aie_opt(d.emit(), hops_on, timeout=120)
+    p = aie_opt(d.emit(), hops_on, timeout=120)
     if p.returncode:
-        return [("base", "base-fails", "", rp.first_error(p.stderr)[:200], d)]
+        return [("base", "base-fails", "", first_error(p.stderr)[:200], d)]
     routed = p.stdout
-    an = rp.Analysis(d)
-    problems, _ = rp.verify(d, an, routed, hops_on)
+    an = Analysis(d)
+    problems, _ = verify(d, an, routed, hops_on)
     if problems:
         return [("base", "base-illegal", "", problems[0][:200], d)]
 
@@ -1342,10 +1370,10 @@ def run_seed(seed, args):
     def get_witness():
         if not witness:
             c = d.copy()
-            before = rp.design_signature(c)
-            built = rp.construct(c, seed)
+            before = design_signature(c)
+            built = construct(c, seed)
             witness.append(
-                built[0] if built and rp.design_signature(c) == before else None
+                built[0] if built and design_signature(c) == before else None
             )
         return witness[0]
 
@@ -1385,16 +1413,16 @@ def run_seed(seed, args):
         if e is None:
             rows.append(("relation", "broken", name, f"{what}: {check}", d))
             continue
-        q = rp.aie_opt(e.emit(), hops_on, timeout=120)
+        q = aie_opt(e.emit(), hops_on, timeout=120)
         # Reshaping flows can move a prioritized source's own route (see the
         # pinned overlay in AIECreatePathFindFlows.cpp), so the model judges.
-        if q.returncode and rp.priority_trees(d, trees) != rp.priority_trees(e, trees):
+        if q.returncode and priority_trees(d, trees) != priority_trees(e, trees):
             outcome, detail = judge(e, "model", hops_on, seed)
             rows.append(("relation", outcome, name, f"{what}: {detail}", e))
             continue
         if q.returncode:
-            err = rp.first_error(q.stderr)
-            kind = "known" if rp.known_bug(e, [err]) else "broken"
+            err = first_error(q.stderr)
+            kind = "known" if known_bug(e, [err]) else "broken"
             if getattr(check, "partial", False):
                 kind = "partial-lift"
             if name == "lift" and "which both match id" in err:
@@ -1404,8 +1432,8 @@ def run_seed(seed, args):
             )
             continue
         try:
-            ce = rp.canonical(e)
-            probs, _ = rp.verify(ce, rp.Analysis(ce), q.stdout, hops_on)
+            ce = canonical(e)
+            probs, _ = verify(ce, Analysis(ce), q.stdout, hops_on)
         except Exception as x:
             rows.append(("relation", "model-limit", name, f"{what}: {x!r}", e))
             continue
@@ -1427,7 +1455,7 @@ def run_seed(seed, args):
     if not args.only or "kill" in args.only:
         kctx = kill_context(d, an, routed)
         for name, fn in KILLERS.items():
-            out = rp.load_design(routed)
+            out = load_design(routed)
             try:
                 what = fn(random.Random(f"{seed}-{name}"), out, kctx)
             except Exception:
@@ -1439,7 +1467,7 @@ def run_seed(seed, args):
                 rows.append(("kill", "n/a", name, "", None))
                 continue
             try:
-                probs, _ = rp.verify(d, an, out.emit(), hops_on)
+                probs, _ = verify(d, an, out.emit(), hops_on)
             except Exception as x:
                 rows.append(
                     ("kill", "killed", name, f"{what}: verifier raised {x!r}", None)
@@ -1469,7 +1497,7 @@ def shrink_failure(kind, name, payload, hops_on, seed, verbose):
             except Exception:
                 return False
 
-        return shrinker.shrink(rp.canonical(e), holds)
+        return shrinker.shrink(canonical(e), holds)
     return payload
 
 

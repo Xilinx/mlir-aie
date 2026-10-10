@@ -26,7 +26,11 @@ sys.path.insert(
         Path(__file__).resolve().parents[2] / "test" / "create-packet-flows" / "nightly"
     ),
 )
-import router_properties as rp  # noqa: E402
+from aiemodel.params import FAMILIES  # noqa: E402
+from aiemodel.design import load_design  # noqa: E402
+from aiemodel.deadlock import Analysis  # noqa: E402
+from aiemodel.run import aie_opt  # noqa: E402
+from aiemodel.verify import verify  # noqa: E402
 
 
 def holds_fn(pattern, hops_on, verbose=False, timeout=60):
@@ -40,7 +44,7 @@ def holds_fn(pattern, hops_on, verbose=False, timeout=60):
         except (KeyError, IndexError, ValueError):
             return False
         t0 = time.monotonic()
-        p = rp.aie_opt(text, hops_on, timeout=timeout)
+        p = aie_opt(text, hops_on, timeout=timeout)
         spent = time.monotonic() - t0
         if verbose and spent > 1:
             print(f"  slow aie-opt: {spent:.1f}s", file=sys.stderr)
@@ -49,8 +53,8 @@ def holds_fn(pattern, hops_on, verbose=False, timeout=60):
         if p.returncode:
             return bool(rx.search(p.stderr))
         try:
-            again = rp.load_design(text)
-            problems, _ = rp.verify(again, rp.Analysis(again), p.stdout, hops_on)
+            again = load_design(text)
+            problems, _ = verify(again, Analysis(again), p.stdout, hops_on)
         except Exception as e:  # a model limit, not the property
             if verbose:
                 print(f"  model: {e!r}", file=sys.stderr)
@@ -131,7 +135,7 @@ def candidates(d):
         e = d.copy()
         e.tiles = []
         yield e
-    fam = [x for devs in rp.FAMILIES.values() for x in devs if d.dev in devs]
+    fam = [x for devs in FAMILIES.values() for x in devs if d.dev in devs]
     for dev in fam[: fam.index(d.dev)] if d.dev in fam else []:
         e = d.copy()
         e.dev = dev
@@ -174,7 +178,7 @@ def main():
     cli.add_argument("--out", type=Path)
     cli.add_argument("-v", action="store_true")
     args = cli.parse_args()
-    d = rp.load_design(args.design.read_text())
+    d = load_design(args.design.read_text())
     holds = holds_fn(args.match, not args.hops_off, args.v)
     if not holds(d):
         sys.exit("the property does not hold on the input")
