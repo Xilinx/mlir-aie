@@ -23,11 +23,12 @@ namespace xilinx::aiecc {
 
 // Assemble an aie2 full ELF from `configJson` (the `aiebu-asm -t aie2_config`
 // config). A file the config names is taken from `files` (name -> contents)
-// if listed there and read from disk otherwise. On success fills `elf` and
-// returns an empty string; otherwise returns aiebu's error message.
+// if listed there and read from disk otherwise; aiebu takes the contents
+// without copying them. On success fills `elf` and returns an empty string;
+// otherwise returns aiebu's error message.
 std::string assembleAie2ConfigElf(
     const std::string &configJson,
-    const std::vector<std::pair<std::string, std::vector<char>>> &files,
+    std::vector<std::pair<std::string, std::vector<char>>> &&files,
     std::vector<char> &elf);
 
 } // namespace xilinx::aiecc

@@ -2162,9 +2162,19 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto &npuProgramFullElf = buildNpuProgramSubgraph(
       perSeq, "npu_program_full_elf_{0}.bin", /*foldDDRAddrOffset=*/false,
       /*withLocmap=*/false);
-  auto &npuInstsFullElf = npuProgramFullElf.map<std::vector<char>>(
-      "npu_insts_full_elf_{0}.bin",
-      [](const NpuProgram &p) { return p.insts; });
+  auto &npuInstsFullElf =
+      npuProgramFullElf
+          .map<std::vector<char>>(
+              "npu_insts_full_elf_{0}.bin",
+              [](auto &&item,
+                 Item<std::vector<char>> &out) -> mlir::LogicalResult {
+                if constexpr (std::is_rvalue_reference_v<decltype(item)>)
+                  out.value = std::move(item.value->insts);
+                else
+                  out.value = item.get().insts;
+                return mlir::success();
+              })
+          .takesInput();
 
   // Full ELF: all PDIs + NPU insts + control packet data if applicable.
   //
@@ -2329,8 +2339,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                       fullElfInputPath(item),
                       std::vector<char>(json.begin(), json.end()));
                 }
-                return assembleFullElf(configItem.asString(), files, out,
-                                       verbose);
+                return assembleFullElf(configItem.asString(), std::move(files),
+                                       out, verbose);
               });
 #else
   auto &fullElf =
