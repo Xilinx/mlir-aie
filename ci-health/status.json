@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-11T07:05:26+00:00",
+ "generated_at": "2026-10-11T12:59:44+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -2007,11 +2007,11 @@
     {
      "id": 38119556824,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38119556824",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-10-11T06:53:58Z",
      "run_started_at": "2026-10-11T06:53:58Z",
-     "updated_at": "2026-10-11T06:58:51Z",
+     "updated_at": "2026-10-11T07:24:05Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Nightly Component Checks",
      "attempt": 1
@@ -2129,18 +2129,26 @@
     {
      "name": "SA placer seed sweep (CPU-only)",
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38119556824/job/114411279829",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-10-11T06:53:59Z",
      "started_at": "2026-10-11T06:54:14Z"
     },
     {
      "name": "SA placer hardware check (mobilenet, npu2)",
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38119556824/job/114411280044",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-10-11T06:53:59Z",
      "started_at": "2026-10-11T06:58:51Z"
+    },
+    {
+     "name": "publish",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38119556824/job/114416103546",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-11T07:23:21Z",
+     "started_at": "2026-10-11T07:23:43Z"
     }
    ]
   },
@@ -2153,11 +2161,11 @@
     {
      "id": 38110186162,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38110186162",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "failure",
      "created_at": "2026-10-11T04:00:19Z",
      "run_started_at": "2026-10-11T04:00:19Z",
-     "updated_at": "2026-10-11T04:00:36Z",
+     "updated_at": "2026-10-11T08:19:14Z",
      "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
      "title": "Router nightly tests",
      "attempt": 1
@@ -2620,6 +2628,30 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 38139166428,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38139166428",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-11T12:24:58Z",
+     "run_started_at": "2026-10-11T12:24:58Z",
+     "updated_at": "2026-10-11T12:58:50Z",
+     "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 38124533786,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38124533786",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-11T08:21:49Z",
+     "run_started_at": "2026-10-11T08:21:49Z",
+     "updated_at": "2026-10-11T08:47:35Z",
+     "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 38111292397,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38111292397",
      "status": "completed",
@@ -2736,30 +2768,6 @@
      "run_started_at": "2026-10-09T16:17:45Z",
      "updated_at": "2026-10-09T16:42:59Z",
      "head_sha": "4d131d29be806b8f991ff275bb1870ac319e1d87",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 37929847508,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37929847508",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-09T12:24:45Z",
-     "run_started_at": "2026-10-09T12:24:45Z",
-     "updated_at": "2026-10-09T12:59:34Z",
-     "head_sha": "35fa6b1667f7e5cd6f3b61d8134f5d2f72575e19",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 37904854400,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37904854400",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-09T08:25:24Z",
-     "run_started_at": "2026-10-09T08:25:24Z",
-     "updated_at": "2026-10-09T08:51:23Z",
-     "head_sha": "35fa6b1667f7e5cd6f3b61d8134f5d2f72575e19",
      "title": "MLIR Distro",
      "attempt": 1
     }
