@@ -850,9 +850,13 @@ def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
     the entry to `bd_id | issue_token << 31`. That update clears the low two
     bits of the word it writes, so 'bd_id' must be a constant multiple of 4;
     the runtime-sequence BD allocator gives such an id to the head of a task
-    started with a repeat parameter. It also rewrites the register after the
-    queue (the next channel's control register, or the channel status block
-    after the last queue) with its own value.
+    started with a repeat parameter. It also writes back the register after
+    the queue with the value it reads. After MM2S 0's queue and the two S2MM
+    queues that is a channel's control register, which nothing else writes.
+    After MM2S 1's queue it is `DMA_S2MM_Status_0`, whose sticky error bits
+    (16 to 18: AXI decode error, AXI slave error, task queue overflow) are
+    write-1-to-clear: a push on MM2S 1 clears any S2MM 0 error of its tile
+    that is pending. The data moved is unaffected.
   }];
 }
 
@@ -1479,7 +1483,8 @@ def AIE_DMAStartTaskOp
     `--aie-lower-scratchpad-parameters` rewrites `repeat_parameter` to
     `repeat_state_table_idx`, and the push becomes an
     `aiex.npu.update_from_scratchpad` of the channel's task queue register
-    (see `aiex.npu.push_queue`).
+    (see `aiex.npu.push_queue`). On shim MM2S 1 that update also clears the
+    tile's pending S2MM 0 sticky error bits.
 
     Example:
     ```mlir

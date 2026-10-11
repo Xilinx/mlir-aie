@@ -86,6 +86,33 @@ aie.device(npu2) {
 
 // -----
 
+// On MM2S 1 of tile (0, 0) the update is at its task queue, 0x1D21C = 119324.
+// It writes the pair of registers from there: the queue and 0x1D220,
+// DMA_S2MM_Status_0, written back with the value read, which clears its
+// sticky write-1-to-clear error bits (16 to 18). This pins that address.
+
+// CHECK-LABEL: aie.runtime_sequence @mm2s1
+// CHECK: aiex.npu.update_from_scratchpad {address = 119324 : ui32, func_arg = 4 : ui32, state_table_idx = 0 : ui8}
+aiex.scratchpad_parameter @runs : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence @mm2s1(%arg0 : memref<1024xi32>, %arg1 : memref<1024xi32>) {
+    %out = aiex.dma_configure_task(%t, S2MM, 0) {
+      aie.dma_bd(%arg1 : memref<1024xi32> offset = 0 len = 1024)
+      aie.end
+    } {issue_token = true}
+    %in = aiex.dma_configure_task(%t, MM2S, 1) {
+      aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 64)
+      aie.end
+    } {repeat_count = 15 : i32}
+    aiex.dma_start_task(%out)
+    aiex.dma_start_task(%in) {repeat_parameter = @runs}
+    aiex.dma_await_task(%out)
+  }
+}
+
+// -----
+
 // A token-issuing task through a shim allocation, repeating one tile (no
 // iteration): the token bit joins the update's func_arg, after the controller
 // id the token needs is set as for any push. The S2MM task holds BD 0, so the
