@@ -757,6 +757,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         managed=True,
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
+        repeat_parameter: ScratchpadParameter | str | None = None,
     ):
         """Shared body for fill()/drain().
 
@@ -792,6 +793,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             managed=managed,
             length_parameter=length_parameter,
             length_unit=length_unit,
+            repeat_parameter=repeat_parameter,
         )
 
     def fill(
@@ -805,6 +807,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         managed: bool = True,
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
+        repeat_parameter: ScratchpadParameter | str | None = None,
     ):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
 
@@ -825,6 +828,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             managed,
             length_parameter,
             length_unit,
+            repeat_parameter,
         )
 
     def drain(
@@ -838,6 +842,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         managed: bool = True,
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
+        repeat_parameter: ScratchpadParameter | str | None = None,
     ):
         """Drain this consumer ObjectFifo, writing data to the ``dest`` runtime buffer.
 
@@ -858,6 +863,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             managed,
             length_parameter,
             length_unit,
+            repeat_parameter,
         )
 
     def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:
