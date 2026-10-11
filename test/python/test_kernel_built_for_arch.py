@@ -33,6 +33,7 @@ from aie.iron.kernels.activation import (
     _LUT_MODEL_TOLERANCE,
     _vtanh_family_tolerance,
 )
+from aie.iron.kernels.fused import fused_mm
 from aie.iron.kernels.norm import (
     _LAYER_NORM_BF16_AIE2,
     _LAYER_NORM_BF16_AIE2P,
@@ -305,6 +306,25 @@ def test_a_portable_compile_pairs_with_the_portable_row(
     assert tuned_o != portable_o
     assert tuned.contract_for().tolerance is _NORM_F32_AIE2
     assert portable.contract_for().tolerance is _NORM_F32
+
+
+def test_attention_and_fused_matmul_built_unbound_are_judged_where_they_ran(
+    no_device,
+):
+    softmax = kernels.mha_softmax()
+    fv = kernels.prefill_fv()
+    fused = fused_mm(epilogue="gelu")
+    set_current_device(NPU1Col1())
+    npu1_softmax = softmax.contract_for().tolerance
+    assert "exp2_bf16.h cubic" in npu1_softmax.note
+    assert fv.contract_for().tolerance.kind == "bound"
+    assert fused.contract_for().tolerance.kind == "relative"
+    set_current_device(NPU2Col1())
+    npu2_softmax = softmax.contract_for().tolerance
+    assert "aie::exp2 interpolant" in npu2_softmax.note
+    assert npu1_softmax.rtol < npu2_softmax.rtol
+    assert fv.contract_for().tolerance.kind == "relative"
+    assert fused.contract_for().tolerance.kind == "bound"
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")

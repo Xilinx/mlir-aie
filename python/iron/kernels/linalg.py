@@ -19,6 +19,7 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     ARCH_TRAITS,
+    BUILDS,
     KernelContract,
     Param,
     TensorLayout,
@@ -27,7 +28,6 @@ from ._common import (
     _detect_arch,
     _kernel_source,
     _make_extern,
-    _tuned_arch,
     dtypes,
 )
 from .core import conv_even
@@ -1336,7 +1336,6 @@ def mha_softmax(
             roles=(In, Out, InOut, *([Param] * 6)),
             parameter_bindings=((4, scale), (5, dim_m), (6, dim_n)),
             initializers=((2, _zero_output),),
-            reference=partial(mha_softmax_ref, scale=scale, **band),
             # aie::exp2<bfloat16> interpolates 2**frac linearly, overshooting
             # by up to 6.15%, and two bf16 roundings bring it to 6.98%
             # (test_mha_e2e.py's _RTOL_EXP2). This form's rtol multiplies
@@ -1345,33 +1344,42 @@ def mha_softmax(
             # exp2_bf16.h's cubic instead, 0.74% from exp2 at worst with the
             # bf16 store on npu1 (0.37% of |a| + |b|), so its rtol is 0.4% of
             # |a| + |b| and its floor only admits the underflow to 0.
-            tolerance=(
-                Tolerance.bounded(
-                    partial(
-                        _mha_softmax_accurate_bound,
-                        scale=scale,
-                        # npu1 measured P within 0.5012 ulp, and 0.63 with
-                        # exp2's f_lo term dropped; npu2 measured 0.73.
-                        half_ulp_p=_detect_arch() == "aie2",
-                        **band,
+            per_build=tuple(
+                (
+                    build,
+                    partial(mha_softmax_ref, scale=scale, **band),
+                    (
+                        Tolerance.bounded(
+                            partial(
+                                _mha_softmax_accurate_bound,
+                                scale=scale,
+                                # npu1 measured P within 0.5012 ulp, and 0.63
+                                # with exp2's f_lo term dropped; npu2 measured
+                                # 0.73.
+                                half_ulp_p=build.arch == "aie2",
+                                **band,
+                            ),
+                            note="exp2 1e-5 past half an ulp, then each store's "
+                            "rounding; P measured 0.5012 ulp on npu1, 0.73 on npu2",
+                        )
+                        if accurate_exp2
+                        else (
+                            Tolerance.relative(
+                                0.004,
+                                2.0**-120,
+                                note="exp2_bf16.h cubic, 0.74% worst element on npu1",
+                            )
+                            if not ARCH_TRAITS[build.arch].native_exp2
+                            else Tolerance.relative(
+                                0.035,
+                                4 * 2.0**-7,
+                                note="aie::exp2 interpolant envelope, 6.98% "
+                                "(test_mha_e2e.py)",
+                            )
+                        )
                     ),
-                    note="exp2 1e-5 past half an ulp, then each store's "
-                    "rounding; P measured 0.5012 ulp on npu1, 0.73 on npu2",
                 )
-                if accurate_exp2
-                else (
-                    Tolerance.relative(
-                        0.004,
-                        2.0**-120,
-                        note="exp2_bf16.h cubic, 0.74% worst element on npu1",
-                    )
-                    if not _arch_traits().native_exp2
-                    else Tolerance.relative(
-                        0.035,
-                        4 * 2.0**-7,
-                        note="aie::exp2 interpolant envelope, 6.98% (test_mha_e2e.py)",
-                    )
-                )
+                for build in BUILDS
             ),
         ),
     )
@@ -1471,7 +1479,6 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             roles=(InOut, In, In, Param),
             parameter_bindings=((3, 0),),
             initializers=((0, partial(_zero_output, index=0)),),
-            reference=partial(prefill_fv_ref, dim_m=lq, dim_k=lk, dim_n=head_dim),
             acc_dtype=np.float32,
             reduction=lk,
             # Derived, not inherited: _linalg_tolerance(bfloat16)'s 0.05/0.5 is
@@ -1484,20 +1491,30 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             # tuned branch the mmul sums in a different order, and on large inputs whose
             # products cancel that order error exceeds any relative bound, so
             # it is judged against the order bound itself.
-            tolerance=(
-                Tolerance.bounded(
-                    partial(_prefill_fv_bound, dim_m=lq, dim_k=lk, dim_n=head_dim),
-                    note="f32 summation order over lk exact bf16 products, in "
-                    "the kernel and the reference; measured worst 0.12 of it "
-                    "on npu1",
+            per_build=tuple(
+                (
+                    build,
+                    partial(prefill_fv_ref, dim_m=lq, dim_k=lk, dim_n=head_dim),
+                    (
+                        Tolerance.bounded(
+                            partial(
+                                _prefill_fv_bound, dim_m=lq, dim_k=lk, dim_n=head_dim
+                            ),
+                            note="f32 summation order over lk exact bf16 products, "
+                            "in the kernel and the reference; measured worst 0.12 "
+                            "of it on npu1",
+                        )
+                        if build.tuned != "aie2p"
+                        else Tolerance.relative(
+                            1e-5,
+                            1e-5,
+                            note="f32 accumulation order over lk<=16 exact bf16 "
+                            "products: lk * 2**-24 ~ 1e-6; verified on npu2 at "
+                            "this bound",
+                        )
+                    ),
                 )
-                if _tuned_arch() != "aie2p"
-                else Tolerance.relative(
-                    1e-5,
-                    1e-5,
-                    note="f32 accumulation order over lk<=16 exact bf16 "
-                    "products: lk * 2**-24 ~ 1e-6; verified on npu2 at this bound",
-                )
+                for build in BUILDS
             ),
             ops_per_call=2 * lq * lk * head_dim,
         ),

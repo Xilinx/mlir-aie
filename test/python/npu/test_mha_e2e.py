@@ -328,7 +328,7 @@ def test_partial_softmax_matches_masked_attention(
     # rows must be exact zeros. On aie2, the factory's bound (0.389% measured).
     # The accurate exp2 is held to one ulp, or to its flush to +0.
     aie2 = resolve_target_arch(iron.get_current_device()) == "aie2"
-    tol = kernels.mha_softmax().contract.tolerance
+    tol = kernels.mha_softmax().contract_for().tolerance
     assert tol.rtol is not None and tol.atol is not None
     ulp = 2**-7
     if accurate_exp2:

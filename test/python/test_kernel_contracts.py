@@ -18,6 +18,7 @@ of which is silent until a device run otherwise:
   generator the device tests and benchmarks run.
 """
 
+import dataclasses
 import inspect
 import re
 import sys
@@ -463,9 +464,51 @@ def test_factory_contract_follows_device_switch():
     set_current_device(NPU1Col1())
     npu1 = kernels.mha_softmax()
     assert npu1 != npu2
-    assert npu1.contract.tolerance.rtol < npu2.contract.tolerance.rtol
+    assert (
+        npu1.contract_for("aie2").tolerance.rtol
+        < npu2.contract_for("aie2p").tolerance.rtol
+    )
     set_current_device(NPU2Col1())
     assert kernels.mha_softmax() == npu2
+
+
+@pytest.mark.parametrize("case_id", list(CASES))
+def test_a_kernel_built_before_binding_is_judged_as_one_built_bound(case_id):
+    fkw, opts = CASES[case_id]
+    factory = _factory(case_id)
+    set_current_device(None)
+    try:
+        early = factory(**fkw)
+    except (ValueError, NotImplementedError):
+        pytest.skip("aie2 refuses this configuration")
+    set_current_device(NPU2Col1())
+    late = factory(**fkw)
+    if (early.arg_types(), early.contract.layouts) != (
+        late.arg_types(),
+        late.contract.layouts,
+    ):
+        pytest.skip(
+            "its operands differ by arch, so the two describe different kernels"
+        )
+    if late.contract.unsupported:
+        pytest.skip(late.contract.unsupported)
+    ins = kd.sample_inputs(late, calls=1)
+    scalars = opts.get("scalars", ())
+    want, got = late.contract_for().tolerance, early.contract_for().tolerance
+    if want is None or got is None:
+        assert want is got
+    else:
+        for f in dataclasses.fields(Tolerance):
+            if f.name != "bound":
+                assert getattr(got, f.name) == getattr(want, f.name), f.name
+        if want.kind == "bound":
+            args = late._reference_args(ins, scalars)
+            bounds = got.bound(*args), want.bound(*args)
+            for a, b in zip(*(x if isinstance(x, tuple) else (x,) for x in bounds)):
+                np.testing.assert_array_equal(a, b)
+    refs = late.expected(ins, scalars=scalars), early.expected(ins, scalars=scalars)
+    for a, b in zip(*(r if isinstance(r, tuple) else (r,) for r in refs)):
+        np.testing.assert_array_equal(a, b)
 
 
 @pytest.mark.parametrize("mode", list(kernels.RoundingMode))
