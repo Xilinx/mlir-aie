@@ -4976,17 +4976,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#iron.dataflow.tile_dma.BdIteration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        BdIteration
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#iron.dataflow.tile_dma.Bd" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -8317,17 +8306,6 @@
     <span class="md-ellipsis">
       
         Release
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#iron.dataflow.tile_dma.BdIteration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        BdIteration
       
     </span>
   </a>
@@ -22509,7 +22487,25 @@ packets. Needs a channel given by index.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/dataflow/tile_dma.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-251">251</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#__codelineno-0-236">236</a></span>
+<span class="normal"><a href="#__codelineno-0-237">237</a></span>
+<span class="normal"><a href="#__codelineno-0-238">238</a></span>
+<span class="normal"><a href="#__codelineno-0-239">239</a></span>
+<span class="normal"><a href="#__codelineno-0-240">240</a></span>
+<span class="normal"><a href="#__codelineno-0-241">241</a></span>
+<span class="normal"><a href="#__codelineno-0-242">242</a></span>
+<span class="normal"><a href="#__codelineno-0-243">243</a></span>
+<span class="normal"><a href="#__codelineno-0-244">244</a></span>
+<span class="normal"><a href="#__codelineno-0-245">245</a></span>
+<span class="normal"><a href="#__codelineno-0-246">246</a></span>
+<span class="normal"><a href="#__codelineno-0-247">247</a></span>
+<span class="normal"><a href="#__codelineno-0-248">248</a></span>
+<span class="normal"><a href="#__codelineno-0-249">249</a></span>
+<span class="normal"><a href="#__codelineno-0-250">250</a></span>
+<span class="normal"><a href="#__codelineno-0-251">251</a></span>
 <span class="normal"><a href="#__codelineno-0-252">252</a></span>
 <span class="normal"><a href="#__codelineno-0-253">253</a></span>
 <span class="normal"><a href="#__codelineno-0-254">254</a></span>
@@ -22591,125 +22587,107 @@ packets. Needs a channel given by index.</p>
 <span class="normal"><a href="#__codelineno-0-330">330</a></span>
 <span class="normal"><a href="#__codelineno-0-331">331</a></span>
 <span class="normal"><a href="#__codelineno-0-332">332</a></span>
-<span class="normal"><a href="#__codelineno-0-333">333</a></span>
-<span class="normal"><a href="#__codelineno-0-334">334</a></span>
-<span class="normal"><a href="#__codelineno-0-335">335</a></span>
-<span class="normal"><a href="#__codelineno-0-336">336</a></span>
-<span class="normal"><a href="#__codelineno-0-337">337</a></span>
-<span class="normal"><a href="#__codelineno-0-338">338</a></span>
-<span class="normal"><a href="#__codelineno-0-339">339</a></span>
-<span class="normal"><a href="#__codelineno-0-340">340</a></span>
-<span class="normal"><a href="#__codelineno-0-341">341</a></span>
-<span class="normal"><a href="#__codelineno-0-342">342</a></span>
-<span class="normal"><a href="#__codelineno-0-343">343</a></span>
-<span class="normal"><a href="#__codelineno-0-344">344</a></span>
-<span class="normal"><a href="#__codelineno-0-345">345</a></span>
-<span class="normal"><a href="#__codelineno-0-346">346</a></span>
-<span class="normal"><a href="#__codelineno-0-347">347</a></span>
-<span class="normal"><a href="#__codelineno-0-348">348</a></span>
-<span class="normal"><a href="#__codelineno-0-349">349</a></span>
-<span class="normal"><a href="#__codelineno-0-350">350</a></span>
-<span class="normal"><a href="#__codelineno-0-351">351</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="k">def</span><span class="w"> </span><span class="nf">task</span><span class="p">(</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a>    <span class="o">*</span><span class="n">bds</span><span class="p">:</span> <span class="s2">&quot;Bd | Buffer&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a>    <span class="n">runs</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-0-255" name="__codelineno-0-255"></a>    <span class="n">wait</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="n">out_of_order</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;TileDmaTask&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Configure a runtime-sequence task that walks ``bds`` on this channel.</span>
+<span class="normal"><a href="#__codelineno-0-333">333</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="k">def</span><span class="w"> </span><span class="nf">task</span><span class="p">(</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>    <span class="o">*</span><span class="n">bds</span><span class="p">:</span> <span class="s2">&quot;Bd | Buffer&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="n">runs</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>    <span class="n">wait</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="n">out_of_order</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;TileDmaTask&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Configure a runtime-sequence task that walks ``bds`` on this channel.</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="sd">    Call from within a [`Runtime`][iron.Runtime] sequence body on a mem or</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a><span class="sd">    core tile&#39;s channel (a shim channel moves host memory: use</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">    ``fill``/``drain``). The buffer descriptors are written here, at the</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">    call; [`start`][iron.runtime.dmataskhandle.Task.start] pushes the task</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="sd">    onto the channel queue, as often as needed, and</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">    [`free`][iron.runtime.dmataskhandle.Task.free] returns its descriptors</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="sd">    after the last start.</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">    ```python</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">    load = into.endpoint(mem).task(</span>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">        Bd(resident, tap=TensorAccessPattern.full((N,))[:n])</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    )</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">    load.start()</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">    ...</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">    load.start()</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">    load.free()</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="sd">    ```</span>
 <a id="__codelineno-0-259" name="__codelineno-0-259"></a>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">    Call from within a [`Runtime`][iron.Runtime] sequence body on a mem or</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">    core tile&#39;s channel (a shim channel moves host memory: use</span>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">    ``fill``/``drain``). The buffer descriptors are written here, at the</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">    call; [`start`][iron.runtime.dmataskhandle.Task.start] pushes the task</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    onto the channel queue, as often as needed, and</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">    [`free`][iron.runtime.dmataskhandle.Task.free] returns its descriptors</span>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    after the last start.</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">    ```python</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">    load = into.endpoint(mem).task(</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        Bd(resident, tap=TensorAccessPattern.full((N,))[:n])</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">    )</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">    load.start()</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">    ...</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">    load.start()</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">    load.free()</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">    ```</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">    Each [`Bd`][iron.Bd] is spelled as in a [`TileDma`][iron.TileDma], but</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">    without ``next``, and its ``tap`` may hold dispatch-time values. An</span>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">    ``iteration`` takes the descriptor&#39;s outermost dimension, so its</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    ``tap`` gets one dimension fewer. A buffer that has no tile yet is</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">    placed on this one.</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">        *bds: The descriptors, walked in order as one task; a bare</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">            [`Buffer`][iron.Buffer] stands for ``Bd(buffer)``.</span>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">        runs (int | Value): How many times the whole chain runs per start.</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">            Defaults to 1.</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">        wait: Issue a completion token, so the task can be awaited.</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">        out_of_order: Run an S2MM channel in out-of-order mode, as</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">            [`DmaChannel.out_of_order`][iron.DmaChannel] does: a Bd with</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">            no ``bd_id`` takes its position in ``bds``, and ``runs`` counts</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">            packets. Needs a channel given by index.</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">        The configured [`TileDmaTask`][iron.TileDmaTask].</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a>    <span class="n">active</span> <span class="o">=</span> <span class="n">active_sequence</span><span class="p">()</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="o">.</span><span class="n">effective_tile_type</span> <span class="ow">in</span> <span class="n">_SHIM_TILE_TYPES</span><span class="p">:</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a>            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> is a shim channel, which moves host memory; use the &quot;</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>            <span class="s2">&quot;Flow&#39;s fill()/drain() for it.&quot;</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a>        <span class="p">)</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">bds</span><span class="p">:</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;A task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> needs at least one Bd.&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a>    <span class="n">bds</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">bd</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bd</span><span class="p">,</span> <span class="n">Bd</span><span class="p">)</span> <span class="k">else</span> <span class="n">Bd</span><span class="p">(</span><span class="n">bd</span><span class="p">)</span> <span class="k">for</span> <span class="n">bd</span> <span class="ow">in</span> <span class="n">bds</span><span class="p">)</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">bd</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>        <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">next</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a>                <span class="sa">f</span><span class="s2">&quot;Bd </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> of a task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> sets next=</span><span class="si">{</span><span class="n">bd</span><span class="o">.</span><span class="n">next</span><span class="si">!r}</span><span class="s2">; a task &quot;</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>                <span class="s2">&quot;runs its Bds in order and ends after the last.&quot;</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a>            <span class="p">)</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="o">.</span><span class="n">place</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="p">)</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="p">:</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a>                <span class="sa">f</span><span class="s2">&quot;A task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> was given a buffer on </span><span class="si">{</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="o">.</span><span class="n">tile</span><span class="si">}</span><span class="s2">; a &quot;</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a>                <span class="s2">&quot;tile&#39;s DMA can only address buffers on that tile.&quot;</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a>            <span class="p">)</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>        <span class="n">active</span><span class="o">.</span><span class="n">resolve_in_device</span><span class="p">(</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="p">)</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>        <span class="k">for</span> <span class="n">use</span> <span class="ow">in</span> <span class="p">(</span><span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">acquires</span><span class="p">,</span> <span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">releases</span><span class="p">):</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>            <span class="n">active</span><span class="o">.</span><span class="n">resolve_in_device</span><span class="p">(</span><span class="n">use</span><span class="o">.</span><span class="n">lock</span><span class="p">)</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="k">if</span> <span class="n">out_of_order</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">channel</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>            <span class="sa">f</span><span class="s2">&quot;An out-of-order task needs a channel given by index, not the &quot;</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a>            <span class="sa">f</span><span class="s2">&quot;compiler-assigned </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2">.&quot;</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a>        <span class="p">)</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">runs</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">)):</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>        <span class="n">repeat</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">repeat_count</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">runs</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a>        <span class="n">repeat</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">repeat_count_val</span><span class="o">=</span><span class="n">runs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a>    <span class="n">operand</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operand</span><span class="p">()</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">operand</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a>        <span class="n">op</span> <span class="o">=</span> <span class="n">dma_configure_task_for</span><span class="p">(</span><span class="n">operand</span><span class="p">,</span> <span class="n">issue_token</span><span class="o">=</span><span class="n">wait</span><span class="p">,</span> <span class="o">**</span><span class="n">repeat</span><span class="p">)</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a>        <span class="n">op</span> <span class="o">=</span> <span class="n">dma_configure_task</span><span class="p">(</span>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="o">.</span><span class="n">op</span><span class="p">,</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">direction</span><span class="p">,</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a>            <span class="n">operand</span><span class="p">,</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>            <span class="n">issue_token</span><span class="o">=</span><span class="n">wait</span><span class="p">,</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a>            <span class="n">out_of_order</span><span class="o">=</span><span class="n">out_of_order</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a>            <span class="o">**</span><span class="n">repeat</span><span class="p">,</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a>        <span class="p">)</span>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="k">with</span> <span class="n">bd_blocks</span><span class="p">(</span><span class="n">op</span><span class="p">)</span> <span class="k">as</span> <span class="n">block</span><span class="p">:</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a>        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">bd</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>            <span class="k">with</span> <span class="n">block</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
-<a id="__codelineno-0-346" name="__codelineno-0-346"></a>                <span class="n">bd</span><span class="o">.</span><span class="n">_emit</span><span class="p">(</span><span class="n">i</span> <span class="k">if</span> <span class="n">out_of_order</span> <span class="ow">and</span> <span class="n">bd</span><span class="o">.</span><span class="n">bd_id</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">bd</span><span class="o">.</span><span class="n">bd_id</span><span class="p">)</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>                <span class="k">if</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a>                    <span class="n">next_bd</span><span class="p">(</span><span class="n">block</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
-<a id="__codelineno-0-349" name="__codelineno-0-349"></a>                <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a>                    <span class="n">EndOp</span><span class="p">()</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="k">return</span> <span class="n">TileDmaTask</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">op</span><span class="o">.</span><span class="n">result</span><span class="p">)</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">    Each [`Bd`][iron.Bd] is spelled as in a [`TileDma`][iron.TileDma], but</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">    without ``next``, and its ``tap`` may hold dispatch-time values. An</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">    ``iteration`` takes the descriptor&#39;s outermost dimension, so its</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">    ``tap`` gets one dimension fewer. A buffer that has no tile yet is</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    placed on this one.</span>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">        *bds: The descriptors, walked in order as one task; a bare</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">            [`Buffer`][iron.Buffer] stands for ``Bd(buffer)``.</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">        runs (int | Value): How many times the whole chain runs per start.</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">            Defaults to 1.</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">        wait: Issue a completion token, so the task can be awaited.</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">        out_of_order: Run an S2MM channel in out-of-order mode, as</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">            [`DmaChannel.out_of_order`][iron.DmaChannel] does: a Bd with</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">            no ``bd_id`` takes its position in ``bds``, and ``runs`` counts</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">            packets. Needs a channel given by index.</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        The configured [`TileDmaTask`][iron.TileDmaTask].</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>    <span class="n">active</span> <span class="o">=</span> <span class="n">active_sequence</span><span class="p">()</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="o">.</span><span class="n">effective_tile_type</span> <span class="ow">in</span> <span class="n">_SHIM_TILE_TYPES</span><span class="p">:</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> is a shim channel, which moves host memory; use the &quot;</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a>            <span class="s2">&quot;Flow&#39;s fill()/drain() for it.&quot;</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a>        <span class="p">)</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">bds</span><span class="p">:</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;A task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> needs at least one Bd.&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>    <span class="n">bds</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">bd</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bd</span><span class="p">,</span> <span class="n">Bd</span><span class="p">)</span> <span class="k">else</span> <span class="n">Bd</span><span class="p">(</span><span class="n">bd</span><span class="p">)</span> <span class="k">for</span> <span class="n">bd</span> <span class="ow">in</span> <span class="n">bds</span><span class="p">)</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">bd</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">next</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>                <span class="sa">f</span><span class="s2">&quot;Bd </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> of a task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> sets next=</span><span class="si">{</span><span class="n">bd</span><span class="o">.</span><span class="n">next</span><span class="si">!r}</span><span class="s2">; a task &quot;</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>                <span class="s2">&quot;runs its Bds in order and ends after the last.&quot;</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>            <span class="p">)</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a>        <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="o">.</span><span class="n">place</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="p">)</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="p">:</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a>                <span class="sa">f</span><span class="s2">&quot;A task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> was given a buffer on </span><span class="si">{</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="o">.</span><span class="n">tile</span><span class="si">}</span><span class="s2">; a &quot;</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>                <span class="s2">&quot;tile&#39;s DMA can only address buffers on that tile.&quot;</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a>            <span class="p">)</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a>        <span class="n">active</span><span class="o">.</span><span class="n">resolve_in_device</span><span class="p">(</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="p">)</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a>        <span class="k">for</span> <span class="n">use</span> <span class="ow">in</span> <span class="p">(</span><span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">acquires</span><span class="p">,</span> <span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">releases</span><span class="p">):</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>            <span class="n">active</span><span class="o">.</span><span class="n">resolve_in_device</span><span class="p">(</span><span class="n">use</span><span class="o">.</span><span class="n">lock</span><span class="p">)</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>    <span class="k">if</span> <span class="n">out_of_order</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">channel</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a>            <span class="sa">f</span><span class="s2">&quot;An out-of-order task needs a channel given by index, not the &quot;</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a>            <span class="sa">f</span><span class="s2">&quot;compiler-assigned </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2">.&quot;</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>        <span class="p">)</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">runs</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">)):</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a>        <span class="n">repeat</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">repeat_count</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">runs</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="n">repeat</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">repeat_count_val</span><span class="o">=</span><span class="n">runs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="n">operand</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operand</span><span class="p">()</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">operand</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>        <span class="n">op</span> <span class="o">=</span> <span class="n">dma_configure_task_for</span><span class="p">(</span><span class="n">operand</span><span class="p">,</span> <span class="n">issue_token</span><span class="o">=</span><span class="n">wait</span><span class="p">,</span> <span class="o">**</span><span class="n">repeat</span><span class="p">)</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>        <span class="n">op</span> <span class="o">=</span> <span class="n">dma_configure_task</span><span class="p">(</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="o">.</span><span class="n">op</span><span class="p">,</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">direction</span><span class="p">,</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>            <span class="n">operand</span><span class="p">,</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>            <span class="n">issue_token</span><span class="o">=</span><span class="n">wait</span><span class="p">,</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>            <span class="n">out_of_order</span><span class="o">=</span><span class="n">out_of_order</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>            <span class="o">**</span><span class="n">repeat</span><span class="p">,</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>        <span class="p">)</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="k">with</span> <span class="n">bd_blocks</span><span class="p">(</span><span class="n">op</span><span class="p">)</span> <span class="k">as</span> <span class="n">block</span><span class="p">:</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a>        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">bd</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>            <span class="k">with</span> <span class="n">block</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a>                <span class="n">bd</span><span class="o">.</span><span class="n">_emit</span><span class="p">(</span><span class="n">i</span> <span class="k">if</span> <span class="n">out_of_order</span> <span class="ow">and</span> <span class="n">bd</span><span class="o">.</span><span class="n">bd_id</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">bd</span><span class="o">.</span><span class="n">bd_id</span><span class="p">)</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a>                <span class="k">if</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a>                    <span class="n">next_bd</span><span class="p">(</span><span class="n">block</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a>                <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a>                    <span class="n">EndOp</span><span class="p">()</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>    <span class="k">return</span> <span class="n">TileDmaTask</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">op</span><span class="o">.</span><span class="n">result</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -24458,64 +24436,6 @@ least 1 for <code>greater_equal</code>).</p>
 
 
 
-<h2 id="iron.dataflow.tile_dma.BdIteration" class="doc doc-heading">
-            <span class="doc doc-object-name doc-class-name">BdIteration</span>
-
-
-  <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
-  </span>
-
-<a href="#iron.dataflow.tile_dma.BdIteration" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">BdIteration</span><span class="p">(</span><span class="n">size</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span> <span class="n">stride</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span> <span class="n">current</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
-</code></pre></div>
-
-    <div class="doc doc-contents ">
-
-
-
-        <p>Iteration state of a buffer descriptor for aie.dma_bd.</p>
-<p>Lets one BD cover <code>size</code> sub-buffers over <code>size</code> executions instead of an
-N-deep chain. Values are true/element: the base advances by <code>stride</code>
-elements each execution and wraps after <code>size</code> executions; <code>current</code> is
-the starting step (default 0). The lowering applies the hardware <code>-1</code> bias
-and element-&gt;word scaling. NOTE: the identically-named <code>iteration_*</code> family
-on the runtime-sequence path uses RAW register values instead -- do not copy
-numbers between them.</p>
-
-
-
-
-
-
-
-
-
-
-
-<div class="doc doc-children">
-
-
-
-
-
-
-
-
-
-
-
-
-  </div>
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-class">
-
-
-
 <h2 id="iron.dataflow.tile_dma.Bd" class="doc doc-heading">
             <span class="doc doc-object-name doc-class-name">Bd</span>
 
@@ -24543,12 +24463,7 @@ numbers between them.</p>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="nb">next</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="n"><span title="str">str</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">packet</span><span class="p">:</span> <span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="int">int</span></span><span class="p">,</span> <span class="n"><span title="int">int</span></span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">bd_id</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">iteration</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="BdIteration
-
-
-  
-      dataclass
-   (iron.dataflow.tile_dma.BdIteration)" href="#iron.dataflow.tile_dma.BdIteration">BdIteration</a></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">iteration</span><span class="p">:</span> <span class="n"><span title="iron.dialects.aie.BdIteration">BdIteration</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">out_of_order_id</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">)</span>
 </code></pre></div>
@@ -24659,13 +24574,13 @@ runtime-sequence task on it with
 
                   <details class="mkdocstrings-source">
                     <summary>Source code in <code>python/iron/dataflow/tile_dma.py</code></summary>
-                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-205">205</a></span>
-<span class="normal"><a href="#__codelineno-0-206">206</a></span>
-<span class="normal"><a href="#__codelineno-0-207">207</a></span>
-<span class="normal"><a href="#__codelineno-0-208">208</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-205" name="__codelineno-0-205"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tile</span><span class="p">:</span> <span class="n">Tile</span><span class="p">,</span> <span class="n">direction</span><span class="p">:</span> <span class="n">DMAChannelDir</span><span class="p">,</span> <span class="n">channel</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_direction</span> <span class="o">=</span> <span class="n">direction</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_channel</span> <span class="o">=</span> <span class="n">channel</span>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#__codelineno-0-190">190</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tile</span><span class="p">:</span> <span class="n">Tile</span><span class="p">,</span> <span class="n">direction</span><span class="p">:</span> <span class="n">DMAChannelDir</span><span class="p">,</span> <span class="n">channel</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_direction</span> <span class="o">=</span> <span class="n">direction</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_channel</span> <span class="o">=</span> <span class="n">channel</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -24939,7 +24854,25 @@ packets. Needs a channel given by index.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/dataflow/tile_dma.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-251">251</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#__codelineno-0-236">236</a></span>
+<span class="normal"><a href="#__codelineno-0-237">237</a></span>
+<span class="normal"><a href="#__codelineno-0-238">238</a></span>
+<span class="normal"><a href="#__codelineno-0-239">239</a></span>
+<span class="normal"><a href="#__codelineno-0-240">240</a></span>
+<span class="normal"><a href="#__codelineno-0-241">241</a></span>
+<span class="normal"><a href="#__codelineno-0-242">242</a></span>
+<span class="normal"><a href="#__codelineno-0-243">243</a></span>
+<span class="normal"><a href="#__codelineno-0-244">244</a></span>
+<span class="normal"><a href="#__codelineno-0-245">245</a></span>
+<span class="normal"><a href="#__codelineno-0-246">246</a></span>
+<span class="normal"><a href="#__codelineno-0-247">247</a></span>
+<span class="normal"><a href="#__codelineno-0-248">248</a></span>
+<span class="normal"><a href="#__codelineno-0-249">249</a></span>
+<span class="normal"><a href="#__codelineno-0-250">250</a></span>
+<span class="normal"><a href="#__codelineno-0-251">251</a></span>
 <span class="normal"><a href="#__codelineno-0-252">252</a></span>
 <span class="normal"><a href="#__codelineno-0-253">253</a></span>
 <span class="normal"><a href="#__codelineno-0-254">254</a></span>
@@ -25021,125 +24954,107 @@ packets. Needs a channel given by index.</p>
 <span class="normal"><a href="#__codelineno-0-330">330</a></span>
 <span class="normal"><a href="#__codelineno-0-331">331</a></span>
 <span class="normal"><a href="#__codelineno-0-332">332</a></span>
-<span class="normal"><a href="#__codelineno-0-333">333</a></span>
-<span class="normal"><a href="#__codelineno-0-334">334</a></span>
-<span class="normal"><a href="#__codelineno-0-335">335</a></span>
-<span class="normal"><a href="#__codelineno-0-336">336</a></span>
-<span class="normal"><a href="#__codelineno-0-337">337</a></span>
-<span class="normal"><a href="#__codelineno-0-338">338</a></span>
-<span class="normal"><a href="#__codelineno-0-339">339</a></span>
-<span class="normal"><a href="#__codelineno-0-340">340</a></span>
-<span class="normal"><a href="#__codelineno-0-341">341</a></span>
-<span class="normal"><a href="#__codelineno-0-342">342</a></span>
-<span class="normal"><a href="#__codelineno-0-343">343</a></span>
-<span class="normal"><a href="#__codelineno-0-344">344</a></span>
-<span class="normal"><a href="#__codelineno-0-345">345</a></span>
-<span class="normal"><a href="#__codelineno-0-346">346</a></span>
-<span class="normal"><a href="#__codelineno-0-347">347</a></span>
-<span class="normal"><a href="#__codelineno-0-348">348</a></span>
-<span class="normal"><a href="#__codelineno-0-349">349</a></span>
-<span class="normal"><a href="#__codelineno-0-350">350</a></span>
-<span class="normal"><a href="#__codelineno-0-351">351</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="k">def</span><span class="w"> </span><span class="nf">task</span><span class="p">(</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a>    <span class="o">*</span><span class="n">bds</span><span class="p">:</span> <span class="s2">&quot;Bd | Buffer&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a>    <span class="n">runs</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-0-255" name="__codelineno-0-255"></a>    <span class="n">wait</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="n">out_of_order</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;TileDmaTask&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Configure a runtime-sequence task that walks ``bds`` on this channel.</span>
+<span class="normal"><a href="#__codelineno-0-333">333</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="k">def</span><span class="w"> </span><span class="nf">task</span><span class="p">(</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>    <span class="o">*</span><span class="n">bds</span><span class="p">:</span> <span class="s2">&quot;Bd | Buffer&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="n">runs</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>    <span class="n">wait</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="n">out_of_order</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;TileDmaTask&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Configure a runtime-sequence task that walks ``bds`` on this channel.</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="sd">    Call from within a [`Runtime`][iron.Runtime] sequence body on a mem or</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a><span class="sd">    core tile&#39;s channel (a shim channel moves host memory: use</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">    ``fill``/``drain``). The buffer descriptors are written here, at the</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">    call; [`start`][iron.runtime.dmataskhandle.Task.start] pushes the task</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="sd">    onto the channel queue, as often as needed, and</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">    [`free`][iron.runtime.dmataskhandle.Task.free] returns its descriptors</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="sd">    after the last start.</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">    ```python</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">    load = into.endpoint(mem).task(</span>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">        Bd(resident, tap=TensorAccessPattern.full((N,))[:n])</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    )</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">    load.start()</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">    ...</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">    load.start()</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">    load.free()</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="sd">    ```</span>
 <a id="__codelineno-0-259" name="__codelineno-0-259"></a>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">    Call from within a [`Runtime`][iron.Runtime] sequence body on a mem or</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">    core tile&#39;s channel (a shim channel moves host memory: use</span>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">    ``fill``/``drain``). The buffer descriptors are written here, at the</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">    call; [`start`][iron.runtime.dmataskhandle.Task.start] pushes the task</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    onto the channel queue, as often as needed, and</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">    [`free`][iron.runtime.dmataskhandle.Task.free] returns its descriptors</span>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    after the last start.</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">    ```python</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">    load = into.endpoint(mem).task(</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        Bd(resident, tap=TensorAccessPattern.full((N,))[:n])</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">    )</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">    load.start()</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">    ...</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">    load.start()</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">    load.free()</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">    ```</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">    Each [`Bd`][iron.Bd] is spelled as in a [`TileDma`][iron.TileDma], but</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">    without ``next``, and its ``tap`` may hold dispatch-time values. An</span>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">    ``iteration`` takes the descriptor&#39;s outermost dimension, so its</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    ``tap`` gets one dimension fewer. A buffer that has no tile yet is</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">    placed on this one.</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">        *bds: The descriptors, walked in order as one task; a bare</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">            [`Buffer`][iron.Buffer] stands for ``Bd(buffer)``.</span>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">        runs (int | Value): How many times the whole chain runs per start.</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">            Defaults to 1.</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">        wait: Issue a completion token, so the task can be awaited.</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">        out_of_order: Run an S2MM channel in out-of-order mode, as</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">            [`DmaChannel.out_of_order`][iron.DmaChannel] does: a Bd with</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">            no ``bd_id`` takes its position in ``bds``, and ``runs`` counts</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">            packets. Needs a channel given by index.</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">        The configured [`TileDmaTask`][iron.TileDmaTask].</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a>    <span class="n">active</span> <span class="o">=</span> <span class="n">active_sequence</span><span class="p">()</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="o">.</span><span class="n">effective_tile_type</span> <span class="ow">in</span> <span class="n">_SHIM_TILE_TYPES</span><span class="p">:</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a>            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> is a shim channel, which moves host memory; use the &quot;</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>            <span class="s2">&quot;Flow&#39;s fill()/drain() for it.&quot;</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a>        <span class="p">)</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">bds</span><span class="p">:</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;A task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> needs at least one Bd.&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a>    <span class="n">bds</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">bd</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bd</span><span class="p">,</span> <span class="n">Bd</span><span class="p">)</span> <span class="k">else</span> <span class="n">Bd</span><span class="p">(</span><span class="n">bd</span><span class="p">)</span> <span class="k">for</span> <span class="n">bd</span> <span class="ow">in</span> <span class="n">bds</span><span class="p">)</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">bd</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>        <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">next</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a>                <span class="sa">f</span><span class="s2">&quot;Bd </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> of a task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> sets next=</span><span class="si">{</span><span class="n">bd</span><span class="o">.</span><span class="n">next</span><span class="si">!r}</span><span class="s2">; a task &quot;</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>                <span class="s2">&quot;runs its Bds in order and ends after the last.&quot;</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a>            <span class="p">)</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="o">.</span><span class="n">place</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="p">)</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="p">:</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a>                <span class="sa">f</span><span class="s2">&quot;A task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> was given a buffer on </span><span class="si">{</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="o">.</span><span class="n">tile</span><span class="si">}</span><span class="s2">; a &quot;</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a>                <span class="s2">&quot;tile&#39;s DMA can only address buffers on that tile.&quot;</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a>            <span class="p">)</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>        <span class="n">active</span><span class="o">.</span><span class="n">resolve_in_device</span><span class="p">(</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="p">)</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>        <span class="k">for</span> <span class="n">use</span> <span class="ow">in</span> <span class="p">(</span><span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">acquires</span><span class="p">,</span> <span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">releases</span><span class="p">):</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>            <span class="n">active</span><span class="o">.</span><span class="n">resolve_in_device</span><span class="p">(</span><span class="n">use</span><span class="o">.</span><span class="n">lock</span><span class="p">)</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="k">if</span> <span class="n">out_of_order</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">channel</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>            <span class="sa">f</span><span class="s2">&quot;An out-of-order task needs a channel given by index, not the &quot;</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a>            <span class="sa">f</span><span class="s2">&quot;compiler-assigned </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2">.&quot;</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a>        <span class="p">)</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">runs</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">)):</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>        <span class="n">repeat</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">repeat_count</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">runs</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a>        <span class="n">repeat</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">repeat_count_val</span><span class="o">=</span><span class="n">runs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a>    <span class="n">operand</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operand</span><span class="p">()</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">operand</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a>        <span class="n">op</span> <span class="o">=</span> <span class="n">dma_configure_task_for</span><span class="p">(</span><span class="n">operand</span><span class="p">,</span> <span class="n">issue_token</span><span class="o">=</span><span class="n">wait</span><span class="p">,</span> <span class="o">**</span><span class="n">repeat</span><span class="p">)</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a>        <span class="n">op</span> <span class="o">=</span> <span class="n">dma_configure_task</span><span class="p">(</span>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="o">.</span><span class="n">op</span><span class="p">,</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">direction</span><span class="p">,</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a>            <span class="n">operand</span><span class="p">,</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>            <span class="n">issue_token</span><span class="o">=</span><span class="n">wait</span><span class="p">,</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a>            <span class="n">out_of_order</span><span class="o">=</span><span class="n">out_of_order</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a>            <span class="o">**</span><span class="n">repeat</span><span class="p">,</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a>        <span class="p">)</span>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="k">with</span> <span class="n">bd_blocks</span><span class="p">(</span><span class="n">op</span><span class="p">)</span> <span class="k">as</span> <span class="n">block</span><span class="p">:</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a>        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">bd</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>            <span class="k">with</span> <span class="n">block</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
-<a id="__codelineno-0-346" name="__codelineno-0-346"></a>                <span class="n">bd</span><span class="o">.</span><span class="n">_emit</span><span class="p">(</span><span class="n">i</span> <span class="k">if</span> <span class="n">out_of_order</span> <span class="ow">and</span> <span class="n">bd</span><span class="o">.</span><span class="n">bd_id</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">bd</span><span class="o">.</span><span class="n">bd_id</span><span class="p">)</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>                <span class="k">if</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a>                    <span class="n">next_bd</span><span class="p">(</span><span class="n">block</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
-<a id="__codelineno-0-349" name="__codelineno-0-349"></a>                <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a>                    <span class="n">EndOp</span><span class="p">()</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="k">return</span> <span class="n">TileDmaTask</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">op</span><span class="o">.</span><span class="n">result</span><span class="p">)</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">    Each [`Bd`][iron.Bd] is spelled as in a [`TileDma`][iron.TileDma], but</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">    without ``next``, and its ``tap`` may hold dispatch-time values. An</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">    ``iteration`` takes the descriptor&#39;s outermost dimension, so its</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">    ``tap`` gets one dimension fewer. A buffer that has no tile yet is</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    placed on this one.</span>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">        *bds: The descriptors, walked in order as one task; a bare</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">            [`Buffer`][iron.Buffer] stands for ``Bd(buffer)``.</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">        runs (int | Value): How many times the whole chain runs per start.</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">            Defaults to 1.</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">        wait: Issue a completion token, so the task can be awaited.</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">        out_of_order: Run an S2MM channel in out-of-order mode, as</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">            [`DmaChannel.out_of_order`][iron.DmaChannel] does: a Bd with</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">            no ``bd_id`` takes its position in ``bds``, and ``runs`` counts</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">            packets. Needs a channel given by index.</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        The configured [`TileDmaTask`][iron.TileDmaTask].</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>    <span class="n">active</span> <span class="o">=</span> <span class="n">active_sequence</span><span class="p">()</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="o">.</span><span class="n">effective_tile_type</span> <span class="ow">in</span> <span class="n">_SHIM_TILE_TYPES</span><span class="p">:</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> is a shim channel, which moves host memory; use the &quot;</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a>            <span class="s2">&quot;Flow&#39;s fill()/drain() for it.&quot;</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a>        <span class="p">)</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">bds</span><span class="p">:</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;A task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> needs at least one Bd.&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>    <span class="n">bds</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">bd</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bd</span><span class="p">,</span> <span class="n">Bd</span><span class="p">)</span> <span class="k">else</span> <span class="n">Bd</span><span class="p">(</span><span class="n">bd</span><span class="p">)</span> <span class="k">for</span> <span class="n">bd</span> <span class="ow">in</span> <span class="n">bds</span><span class="p">)</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">bd</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">next</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>                <span class="sa">f</span><span class="s2">&quot;Bd </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> of a task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> sets next=</span><span class="si">{</span><span class="n">bd</span><span class="o">.</span><span class="n">next</span><span class="si">!r}</span><span class="s2">; a task &quot;</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>                <span class="s2">&quot;runs its Bds in order and ends after the last.&quot;</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>            <span class="p">)</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a>        <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="o">.</span><span class="n">place</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="p">)</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="p">:</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a>                <span class="sa">f</span><span class="s2">&quot;A task on </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2"> was given a buffer on </span><span class="si">{</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="o">.</span><span class="n">tile</span><span class="si">}</span><span class="s2">; a &quot;</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>                <span class="s2">&quot;tile&#39;s DMA can only address buffers on that tile.&quot;</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a>            <span class="p">)</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a>        <span class="n">active</span><span class="o">.</span><span class="n">resolve_in_device</span><span class="p">(</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="p">)</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a>        <span class="k">for</span> <span class="n">use</span> <span class="ow">in</span> <span class="p">(</span><span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">acquires</span><span class="p">,</span> <span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">releases</span><span class="p">):</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>            <span class="n">active</span><span class="o">.</span><span class="n">resolve_in_device</span><span class="p">(</span><span class="n">use</span><span class="o">.</span><span class="n">lock</span><span class="p">)</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>    <span class="k">if</span> <span class="n">out_of_order</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">channel</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a>            <span class="sa">f</span><span class="s2">&quot;An out-of-order task needs a channel given by index, not the &quot;</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a>            <span class="sa">f</span><span class="s2">&quot;compiler-assigned </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2">.&quot;</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>        <span class="p">)</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">runs</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">)):</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a>        <span class="n">repeat</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">repeat_count</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">runs</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="n">repeat</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">repeat_count_val</span><span class="o">=</span><span class="n">runs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="n">operand</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operand</span><span class="p">()</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">operand</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>        <span class="n">op</span> <span class="o">=</span> <span class="n">dma_configure_task_for</span><span class="p">(</span><span class="n">operand</span><span class="p">,</span> <span class="n">issue_token</span><span class="o">=</span><span class="n">wait</span><span class="p">,</span> <span class="o">**</span><span class="n">repeat</span><span class="p">)</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>        <span class="n">op</span> <span class="o">=</span> <span class="n">dma_configure_task</span><span class="p">(</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">tile</span><span class="o">.</span><span class="n">op</span><span class="p">,</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">direction</span><span class="p">,</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>            <span class="n">operand</span><span class="p">,</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>            <span class="n">issue_token</span><span class="o">=</span><span class="n">wait</span><span class="p">,</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>            <span class="n">out_of_order</span><span class="o">=</span><span class="n">out_of_order</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>            <span class="o">**</span><span class="n">repeat</span><span class="p">,</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>        <span class="p">)</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="k">with</span> <span class="n">bd_blocks</span><span class="p">(</span><span class="n">op</span><span class="p">)</span> <span class="k">as</span> <span class="n">block</span><span class="p">:</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a>        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">bd</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>            <span class="k">with</span> <span class="n">block</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a>                <span class="n">bd</span><span class="o">.</span><span class="n">_emit</span><span class="p">(</span><span class="n">i</span> <span class="k">if</span> <span class="n">out_of_order</span> <span class="ow">and</span> <span class="n">bd</span><span class="o">.</span><span class="n">bd_id</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">bd</span><span class="o">.</span><span class="n">bd_id</span><span class="p">)</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a>                <span class="k">if</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">bds</span><span class="p">):</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a>                    <span class="n">next_bd</span><span class="p">(</span><span class="n">block</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a>                <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a>                    <span class="n">EndOp</span><span class="p">()</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>    <span class="k">return</span> <span class="n">TileDmaTask</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">op</span><span class="o">.</span><span class="n">result</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -25188,11 +25103,11 @@ already configured. It is a <a class="autorefs autorefs-internal" title="Task" h
 
                   <details class="mkdocstrings-source">
                     <summary>Source code in <code>python/iron/dataflow/tile_dma.py</code></summary>
-                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-369">369</a></span>
-<span class="normal"><a href="#__codelineno-0-370">370</a></span>
-<span class="normal"><a href="#__codelineno-0-371">371</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-369" name="__codelineno-0-369"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endpoint</span><span class="p">:</span> <span class="n">DmaEndpoint</span><span class="p">,</span> <span class="n">handle</span><span class="p">):</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">handle</span><span class="p">)</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_endpoint</span> <span class="o">=</span> <span class="n">endpoint</span>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-351">351</a></span>
+<span class="normal"><a href="#__codelineno-0-352">352</a></span>
+<span class="normal"><a href="#__codelineno-0-353">353</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-351" name="__codelineno-0-351"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endpoint</span><span class="p">:</span> <span class="n">DmaEndpoint</span><span class="p">,</span> <span class="n">handle</span><span class="p">):</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">handle</span><span class="p">)</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_endpoint</span> <span class="o">=</span> <span class="n">endpoint</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -25545,17 +25460,17 @@ that total.</p>
 
                   <details class="mkdocstrings-source">
                     <summary>Source code in <code>python/iron/dataflow/tile_dma.py</code></summary>
-                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-511">511</a></span>
-<span class="normal"><a href="#__codelineno-0-512">512</a></span>
-<span class="normal"><a href="#__codelineno-0-513">513</a></span>
-<span class="normal"><a href="#__codelineno-0-514">514</a></span>
-<span class="normal"><a href="#__codelineno-0-515">515</a></span>
-<span class="normal"><a href="#__codelineno-0-516">516</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tile</span><span class="p">:</span> <span class="n">Tile</span><span class="p">,</span> <span class="n">channels</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">DmaChannel</span><span class="p">]):</span>
-<a id="__codelineno-0-512" name="__codelineno-0-512"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_site</span> <span class="o">=</span> <span class="n">SourceSite</span><span class="o">.</span><span class="n">capture</span><span class="p">()</span>
-<a id="__codelineno-0-513" name="__codelineno-0-513"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span>
-<a id="__codelineno-0-514" name="__codelineno-0-514"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">DmaChannel</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">add_channels</span><span class="p">(</span><span class="n">channels</span><span class="p">)</span>
-<a id="__codelineno-0-516" name="__codelineno-0-516"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_resolved</span> <span class="o">=</span> <span class="kc">False</span>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-493">493</a></span>
+<span class="normal"><a href="#__codelineno-0-494">494</a></span>
+<span class="normal"><a href="#__codelineno-0-495">495</a></span>
+<span class="normal"><a href="#__codelineno-0-496">496</a></span>
+<span class="normal"><a href="#__codelineno-0-497">497</a></span>
+<span class="normal"><a href="#__codelineno-0-498">498</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-493" name="__codelineno-0-493"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tile</span><span class="p">:</span> <span class="n">Tile</span><span class="p">,</span> <span class="n">channels</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">DmaChannel</span><span class="p">]):</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_site</span> <span class="o">=</span> <span class="n">SourceSite</span><span class="o">.</span><span class="n">capture</span><span class="p">()</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">DmaChannel</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-497" name="__codelineno-0-497"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">add_channels</span><span class="p">(</span><span class="n">channels</span><span class="p">)</span>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_resolved</span> <span class="o">=</span> <span class="kc">False</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -25598,21 +25513,21 @@ already reached.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/dataflow/tile_dma.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-526">526</a></span>
-<span class="normal"><a href="#__codelineno-0-527">527</a></span>
-<span class="normal"><a href="#__codelineno-0-528">528</a></span>
-<span class="normal"><a href="#__codelineno-0-529">529</a></span>
-<span class="normal"><a href="#__codelineno-0-530">530</a></span>
-<span class="normal"><a href="#__codelineno-0-531">531</a></span>
-<span class="normal"><a href="#__codelineno-0-532">532</a></span>
-<span class="normal"><a href="#__codelineno-0-533">533</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-526" name="__codelineno-0-526"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_channel</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">channel</span><span class="p">:</span> <span class="n">DmaChannel</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-527" name="__codelineno-0-527"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Add a channel to this tile&#39;s DMA program.</span>
-<a id="__codelineno-0-528" name="__codelineno-0-528"></a>
-<a id="__codelineno-0-529" name="__codelineno-0-529"></a><span class="sd">    A tile has one DMA program, so a helper that wires transfers one at a</span>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a><span class="sd">    time needs somewhere to put the second channel it wants on a tile it has</span>
-<a id="__codelineno-0-531" name="__codelineno-0-531"></a><span class="sd">    already reached.</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">add_channels</span><span class="p">([</span><span class="n">channel</span><span class="p">])</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-508">508</a></span>
+<span class="normal"><a href="#__codelineno-0-509">509</a></span>
+<span class="normal"><a href="#__codelineno-0-510">510</a></span>
+<span class="normal"><a href="#__codelineno-0-511">511</a></span>
+<span class="normal"><a href="#__codelineno-0-512">512</a></span>
+<span class="normal"><a href="#__codelineno-0-513">513</a></span>
+<span class="normal"><a href="#__codelineno-0-514">514</a></span>
+<span class="normal"><a href="#__codelineno-0-515">515</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-508" name="__codelineno-0-508"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_channel</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">channel</span><span class="p">:</span> <span class="n">DmaChannel</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Add a channel to this tile&#39;s DMA program.</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a>
+<a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="sd">    A tile has one DMA program, so a helper that wires transfers one at a</span>
+<a id="__codelineno-0-512" name="__codelineno-0-512"></a><span class="sd">    time needs somewhere to put the second channel it wants on a tile it has</span>
+<a id="__codelineno-0-513" name="__codelineno-0-513"></a><span class="sd">    already reached.</span>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">add_channels</span><span class="p">([</span><span class="n">channel</span><span class="p">])</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -25642,35 +25557,35 @@ already reached.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/dataflow/tile_dma.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-535">535</a></span>
-<span class="normal"><a href="#__codelineno-0-536">536</a></span>
-<span class="normal"><a href="#__codelineno-0-537">537</a></span>
-<span class="normal"><a href="#__codelineno-0-538">538</a></span>
-<span class="normal"><a href="#__codelineno-0-539">539</a></span>
-<span class="normal"><a href="#__codelineno-0-540">540</a></span>
-<span class="normal"><a href="#__codelineno-0-541">541</a></span>
-<span class="normal"><a href="#__codelineno-0-542">542</a></span>
-<span class="normal"><a href="#__codelineno-0-543">543</a></span>
-<span class="normal"><a href="#__codelineno-0-544">544</a></span>
-<span class="normal"><a href="#__codelineno-0-545">545</a></span>
-<span class="normal"><a href="#__codelineno-0-546">546</a></span>
-<span class="normal"><a href="#__codelineno-0-547">547</a></span>
-<span class="normal"><a href="#__codelineno-0-548">548</a></span>
-<span class="normal"><a href="#__codelineno-0-549">549</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-535" name="__codelineno-0-535"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_channels</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">channels</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">DmaChannel</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Add channels after checking all hardware channel keys.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a>    <span class="n">channels</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">channels</span><span class="p">)</span>
-<a id="__codelineno-0-538" name="__codelineno-0-538"></a>    <span class="n">keys</span> <span class="o">=</span> <span class="p">{</span><span class="n">channel</span><span class="o">.</span><span class="n">_key</span> <span class="k">for</span> <span class="n">channel</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="p">}</span>
-<a id="__codelineno-0-539" name="__codelineno-0-539"></a>    <span class="k">for</span> <span class="n">channel</span> <span class="ow">in</span> <span class="n">channels</span><span class="p">:</span>
-<a id="__codelineno-0-540" name="__codelineno-0-540"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">channel</span><span class="o">.</span><span class="n">channel</span><span class="p">,</span> <span class="n">DmaEndpoint</span><span class="p">):</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a>            <span class="n">channel</span><span class="o">.</span><span class="n">channel</span><span class="o">.</span><span class="n">_check_on</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="p">,</span> <span class="n">channel</span><span class="o">.</span><span class="n">direction</span><span class="p">)</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a>        <span class="n">key</span> <span class="o">=</span> <span class="n">channel</span><span class="o">.</span><span class="n">_key</span>
-<a id="__codelineno-0-543" name="__codelineno-0-543"></a>        <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
-<a id="__codelineno-0-544" name="__codelineno-0-544"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-545" name="__codelineno-0-545"></a>                <span class="sa">f</span><span class="s2">&quot;TileDma for </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="si">}</span><span class="s2"> already has &quot;</span>
-<a id="__codelineno-0-546" name="__codelineno-0-546"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">channel</span><span class="o">.</span><span class="n">direction</span><span class="si">}</span><span class="s2"> channel </span><span class="si">{</span><span class="n">channel</span><span class="o">.</span><span class="n">channel</span><span class="si">}</span><span class="s2">.&quot;</span>
-<a id="__codelineno-0-547" name="__codelineno-0-547"></a>            <span class="p">)</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a>        <span class="n">keys</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">channels</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-517">517</a></span>
+<span class="normal"><a href="#__codelineno-0-518">518</a></span>
+<span class="normal"><a href="#__codelineno-0-519">519</a></span>
+<span class="normal"><a href="#__codelineno-0-520">520</a></span>
+<span class="normal"><a href="#__codelineno-0-521">521</a></span>
+<span class="normal"><a href="#__codelineno-0-522">522</a></span>
+<span class="normal"><a href="#__codelineno-0-523">523</a></span>
+<span class="normal"><a href="#__codelineno-0-524">524</a></span>
+<span class="normal"><a href="#__codelineno-0-525">525</a></span>
+<span class="normal"><a href="#__codelineno-0-526">526</a></span>
+<span class="normal"><a href="#__codelineno-0-527">527</a></span>
+<span class="normal"><a href="#__codelineno-0-528">528</a></span>
+<span class="normal"><a href="#__codelineno-0-529">529</a></span>
+<span class="normal"><a href="#__codelineno-0-530">530</a></span>
+<span class="normal"><a href="#__codelineno-0-531">531</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-517" name="__codelineno-0-517"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_channels</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">channels</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">DmaChannel</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-518" name="__codelineno-0-518"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Add channels after checking all hardware channel keys.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-519" name="__codelineno-0-519"></a>    <span class="n">channels</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">channels</span><span class="p">)</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a>    <span class="n">keys</span> <span class="o">=</span> <span class="p">{</span><span class="n">channel</span><span class="o">.</span><span class="n">_key</span> <span class="k">for</span> <span class="n">channel</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="p">}</span>
+<a id="__codelineno-0-521" name="__codelineno-0-521"></a>    <span class="k">for</span> <span class="n">channel</span> <span class="ow">in</span> <span class="n">channels</span><span class="p">:</span>
+<a id="__codelineno-0-522" name="__codelineno-0-522"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">channel</span><span class="o">.</span><span class="n">channel</span><span class="p">,</span> <span class="n">DmaEndpoint</span><span class="p">):</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>            <span class="n">channel</span><span class="o">.</span><span class="n">channel</span><span class="o">.</span><span class="n">_check_on</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="p">,</span> <span class="n">channel</span><span class="o">.</span><span class="n">direction</span><span class="p">)</span>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a>        <span class="n">key</span> <span class="o">=</span> <span class="n">channel</span><span class="o">.</span><span class="n">_key</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a>        <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+<a id="__codelineno-0-526" name="__codelineno-0-526"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-527" name="__codelineno-0-527"></a>                <span class="sa">f</span><span class="s2">&quot;TileDma for </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="si">}</span><span class="s2"> already has &quot;</span>
+<a id="__codelineno-0-528" name="__codelineno-0-528"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">channel</span><span class="o">.</span><span class="n">direction</span><span class="si">}</span><span class="s2"> channel </span><span class="si">{</span><span class="n">channel</span><span class="o">.</span><span class="n">channel</span><span class="si">}</span><span class="s2">.&quot;</span>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a>            <span class="p">)</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>        <span class="n">keys</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">channels</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -25697,35 +25612,35 @@ be resolved before that lock or buffer is.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/dataflow/tile_dma.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-551">551</a></span>
-<span class="normal"><a href="#__codelineno-0-552">552</a></span>
-<span class="normal"><a href="#__codelineno-0-553">553</a></span>
-<span class="normal"><a href="#__codelineno-0-554">554</a></span>
-<span class="normal"><a href="#__codelineno-0-555">555</a></span>
-<span class="normal"><a href="#__codelineno-0-556">556</a></span>
-<span class="normal"><a href="#__codelineno-0-557">557</a></span>
-<span class="normal"><a href="#__codelineno-0-558">558</a></span>
-<span class="normal"><a href="#__codelineno-0-559">559</a></span>
-<span class="normal"><a href="#__codelineno-0-560">560</a></span>
-<span class="normal"><a href="#__codelineno-0-561">561</a></span>
-<span class="normal"><a href="#__codelineno-0-562">562</a></span>
-<span class="normal"><a href="#__codelineno-0-563">563</a></span>
-<span class="normal"><a href="#__codelineno-0-564">564</a></span>
-<span class="normal"><a href="#__codelineno-0-565">565</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-551" name="__codelineno-0-551"></a><span class="k">def</span><span class="w"> </span><span class="nf">all_tiles</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return this DMA&#39;s tile plus the tiles of the Buffers and Locks it uses.</span>
-<a id="__codelineno-0-553" name="__codelineno-0-553"></a>
-<a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="sd">    A mem tile DMA may use a neighbor&#39;s lock or buffer, whose tile must</span>
-<a id="__codelineno-0-555" name="__codelineno-0-555"></a><span class="sd">    be resolved before that lock or buffer is.</span>
-<a id="__codelineno-0-556" name="__codelineno-0-556"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a>    <span class="n">tiles</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="p">]</span>
-<a id="__codelineno-0-558" name="__codelineno-0-558"></a>    <span class="n">bufs</span><span class="p">,</span> <span class="n">locks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_buffers_and_locks</span><span class="p">()</span>
-<a id="__codelineno-0-559" name="__codelineno-0-559"></a>    <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">bufs</span><span class="p">:</span>
-<a id="__codelineno-0-560" name="__codelineno-0-560"></a>        <span class="k">if</span> <span class="n">b</span><span class="o">.</span><span class="n">tile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">b</span><span class="o">.</span><span class="n">tile</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tiles</span><span class="p">:</span>
-<a id="__codelineno-0-561" name="__codelineno-0-561"></a>            <span class="n">tiles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">tile</span><span class="p">)</span>
-<a id="__codelineno-0-562" name="__codelineno-0-562"></a>    <span class="k">for</span> <span class="n">lk</span> <span class="ow">in</span> <span class="n">locks</span><span class="p">:</span>
-<a id="__codelineno-0-563" name="__codelineno-0-563"></a>        <span class="k">if</span> <span class="n">lk</span><span class="o">.</span><span class="n">tile</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tiles</span><span class="p">:</span>
-<a id="__codelineno-0-564" name="__codelineno-0-564"></a>            <span class="n">tiles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">lk</span><span class="o">.</span><span class="n">tile</span><span class="p">)</span>
-<a id="__codelineno-0-565" name="__codelineno-0-565"></a>    <span class="k">return</span> <span class="n">tiles</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-533">533</a></span>
+<span class="normal"><a href="#__codelineno-0-534">534</a></span>
+<span class="normal"><a href="#__codelineno-0-535">535</a></span>
+<span class="normal"><a href="#__codelineno-0-536">536</a></span>
+<span class="normal"><a href="#__codelineno-0-537">537</a></span>
+<span class="normal"><a href="#__codelineno-0-538">538</a></span>
+<span class="normal"><a href="#__codelineno-0-539">539</a></span>
+<span class="normal"><a href="#__codelineno-0-540">540</a></span>
+<span class="normal"><a href="#__codelineno-0-541">541</a></span>
+<span class="normal"><a href="#__codelineno-0-542">542</a></span>
+<span class="normal"><a href="#__codelineno-0-543">543</a></span>
+<span class="normal"><a href="#__codelineno-0-544">544</a></span>
+<span class="normal"><a href="#__codelineno-0-545">545</a></span>
+<span class="normal"><a href="#__codelineno-0-546">546</a></span>
+<span class="normal"><a href="#__codelineno-0-547">547</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-533" name="__codelineno-0-533"></a><span class="k">def</span><span class="w"> </span><span class="nf">all_tiles</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return this DMA&#39;s tile plus the tiles of the Buffers and Locks it uses.</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="sd">    A mem tile DMA may use a neighbor&#39;s lock or buffer, whose tile must</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">    be resolved before that lock or buffer is.</span>
+<a id="__codelineno-0-538" name="__codelineno-0-538"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a>    <span class="n">tiles</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="p">]</span>
+<a id="__codelineno-0-540" name="__codelineno-0-540"></a>    <span class="n">bufs</span><span class="p">,</span> <span class="n">locks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_buffers_and_locks</span><span class="p">()</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a>    <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">bufs</span><span class="p">:</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a>        <span class="k">if</span> <span class="n">b</span><span class="o">.</span><span class="n">tile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">b</span><span class="o">.</span><span class="n">tile</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tiles</span><span class="p">:</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a>            <span class="n">tiles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">tile</span><span class="p">)</span>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a>    <span class="k">for</span> <span class="n">lk</span> <span class="ow">in</span> <span class="n">locks</span><span class="p">:</span>
+<a id="__codelineno-0-545" name="__codelineno-0-545"></a>        <span class="k">if</span> <span class="n">lk</span><span class="o">.</span><span class="n">tile</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tiles</span><span class="p">:</span>
+<a id="__codelineno-0-546" name="__codelineno-0-546"></a>            <span class="n">tiles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">lk</span><span class="o">.</span><span class="n">tile</span><span class="p">)</span>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a>    <span class="k">return</span> <span class="n">tiles</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -25751,35 +25666,35 @@ be resolved before that lock or buffer is.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/dataflow/tile_dma.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-567">567</a></span>
-<span class="normal"><a href="#__codelineno-0-568">568</a></span>
-<span class="normal"><a href="#__codelineno-0-569">569</a></span>
-<span class="normal"><a href="#__codelineno-0-570">570</a></span>
-<span class="normal"><a href="#__codelineno-0-571">571</a></span>
-<span class="normal"><a href="#__codelineno-0-572">572</a></span>
-<span class="normal"><a href="#__codelineno-0-573">573</a></span>
-<span class="normal"><a href="#__codelineno-0-574">574</a></span>
-<span class="normal"><a href="#__codelineno-0-575">575</a></span>
-<span class="normal"><a href="#__codelineno-0-576">576</a></span>
-<span class="normal"><a href="#__codelineno-0-577">577</a></span>
-<span class="normal"><a href="#__codelineno-0-578">578</a></span>
-<span class="normal"><a href="#__codelineno-0-579">579</a></span>
-<span class="normal"><a href="#__codelineno-0-580">580</a></span>
-<span class="normal"><a href="#__codelineno-0-581">581</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-567" name="__codelineno-0-567"></a><span class="k">def</span><span class="w"> </span><span class="nf">all_buffers_and_locks</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-0-568" name="__codelineno-0-568"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Iterate every Buffer + Lock this program touches.</span>
-<a id="__codelineno-0-569" name="__codelineno-0-569"></a>
-<a id="__codelineno-0-570" name="__codelineno-0-570"></a><span class="sd">    Program uses this to make sure they&#39;re all resolved before us.</span>
-<a id="__codelineno-0-571" name="__codelineno-0-571"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-572" name="__codelineno-0-572"></a>    <span class="n">seen_buffers</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Buffer</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-573" name="__codelineno-0-573"></a>    <span class="n">seen_locks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Lock</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-574" name="__codelineno-0-574"></a>    <span class="k">for</span> <span class="n">ch</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="p">:</span>
-<a id="__codelineno-0-575" name="__codelineno-0-575"></a>        <span class="k">for</span> <span class="n">bd</span> <span class="ow">in</span> <span class="n">ch</span><span class="o">.</span><span class="n">bds</span><span class="p">:</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a>            <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">buffer</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_buffers</span><span class="p">:</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>                <span class="n">seen_buffers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="p">)</span>
-<a id="__codelineno-0-578" name="__codelineno-0-578"></a>            <span class="k">for</span> <span class="n">use</span> <span class="ow">in</span> <span class="p">(</span><span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">acquires</span><span class="p">,</span> <span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">releases</span><span class="p">):</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a>                <span class="k">if</span> <span class="n">use</span><span class="o">.</span><span class="n">lock</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_locks</span><span class="p">:</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a>                    <span class="n">seen_locks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">use</span><span class="o">.</span><span class="n">lock</span><span class="p">)</span>
-<a id="__codelineno-0-581" name="__codelineno-0-581"></a>    <span class="k">return</span> <span class="n">seen_buffers</span><span class="p">,</span> <span class="n">seen_locks</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-549">549</a></span>
+<span class="normal"><a href="#__codelineno-0-550">550</a></span>
+<span class="normal"><a href="#__codelineno-0-551">551</a></span>
+<span class="normal"><a href="#__codelineno-0-552">552</a></span>
+<span class="normal"><a href="#__codelineno-0-553">553</a></span>
+<span class="normal"><a href="#__codelineno-0-554">554</a></span>
+<span class="normal"><a href="#__codelineno-0-555">555</a></span>
+<span class="normal"><a href="#__codelineno-0-556">556</a></span>
+<span class="normal"><a href="#__codelineno-0-557">557</a></span>
+<span class="normal"><a href="#__codelineno-0-558">558</a></span>
+<span class="normal"><a href="#__codelineno-0-559">559</a></span>
+<span class="normal"><a href="#__codelineno-0-560">560</a></span>
+<span class="normal"><a href="#__codelineno-0-561">561</a></span>
+<span class="normal"><a href="#__codelineno-0-562">562</a></span>
+<span class="normal"><a href="#__codelineno-0-563">563</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-549" name="__codelineno-0-549"></a><span class="k">def</span><span class="w"> </span><span class="nf">all_buffers_and_locks</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-550" name="__codelineno-0-550"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Iterate every Buffer + Lock this program touches.</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a>
+<a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="sd">    Program uses this to make sure they&#39;re all resolved before us.</span>
+<a id="__codelineno-0-553" name="__codelineno-0-553"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a>    <span class="n">seen_buffers</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Buffer</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-555" name="__codelineno-0-555"></a>    <span class="n">seen_locks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Lock</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-556" name="__codelineno-0-556"></a>    <span class="k">for</span> <span class="n">ch</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="p">:</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a>        <span class="k">for</span> <span class="n">bd</span> <span class="ow">in</span> <span class="n">ch</span><span class="o">.</span><span class="n">bds</span><span class="p">:</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a>            <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">buffer</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_buffers</span><span class="p">:</span>
+<a id="__codelineno-0-559" name="__codelineno-0-559"></a>                <span class="n">seen_buffers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="p">)</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a>            <span class="k">for</span> <span class="n">use</span> <span class="ow">in</span> <span class="p">(</span><span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">acquires</span><span class="p">,</span> <span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">releases</span><span class="p">):</span>
+<a id="__codelineno-0-561" name="__codelineno-0-561"></a>                <span class="k">if</span> <span class="n">use</span><span class="o">.</span><span class="n">lock</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_locks</span><span class="p">:</span>
+<a id="__codelineno-0-562" name="__codelineno-0-562"></a>                    <span class="n">seen_locks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">use</span><span class="o">.</span><span class="n">lock</span><span class="p">)</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a>    <span class="k">return</span> <span class="n">seen_buffers</span><span class="p">,</span> <span class="n">seen_locks</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
