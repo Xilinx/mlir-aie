@@ -102,9 +102,12 @@ inline constexpr int kMinHostBOs = 5;
 // are unvalidated and rejected.
 inline constexpr int kMaxHostBOs = 16;
 
-// Argument count of `dev`'s selected non-empty runtime sequence, or nullopt.
-// A non-empty `seqFilter` (--sequence-name) restricts the choice to that
-// sequence, matching the instruction/control-packet paths.
+// Host buffer argument count of `dev`'s selected non-empty runtime sequence,
+// or nullopt. Only its memref arguments are host buffers: a scalar one is a
+// dispatch-time value the dispatch bridge folds into the instruction stream,
+// never passed to the kernel. A non-empty `seqFilter` (--sequence-name)
+// restricts the choice to that sequence, matching the
+// instruction/control-packet paths.
 inline std::optional<int>
 getRuntimeSequenceArgCount(xilinx::AIE::DeviceOp dev,
                            llvm::StringRef seqFilter) {
@@ -112,7 +115,10 @@ getRuntimeSequenceArgCount(xilinx::AIE::DeviceOp dev,
     if (!seqFilter.empty() && seqOp.getSymName() != seqFilter)
       continue;
     if (!seqOp.getBody().empty())
-      return static_cast<int>(seqOp.getBody().front().getNumArguments());
+      return static_cast<int>(llvm::count_if(
+          seqOp.getBody().front().getArguments(), [](mlir::BlockArgument arg) {
+            return llvm::isa<mlir::BaseMemRefType>(arg.getType());
+          }));
   }
   return std::nullopt;
 }
