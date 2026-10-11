@@ -28,7 +28,11 @@ from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import BUILDS, Build, KernelContract
-from aie.iron.kernels.activation import _GELU_VTANH_TOLERANCE, _LUT_MODEL_TOLERANCE
+from aie.iron.kernels.activation import (
+    _GELU_VTANH_TOLERANCE,
+    _LUT_MODEL_TOLERANCE,
+    _vtanh_family_tolerance,
+)
 from aie.iron.kernels.norm import (
     _LAYER_NORM_BF16_AIE2,
     _LAYER_NORM_BF16_AIE2P,
@@ -47,6 +51,7 @@ from aie.iron.kernels.transformer import (
 from aie.utils import config, get_current_device
 from aie.utils.compile.utils import compile_external_kernels
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16
 
 # Every finite bf16, as 64 calls of 1024 (the last 256 lanes repeat zero).
@@ -300,3 +305,27 @@ def test_a_portable_compile_pairs_with_the_portable_row(
     assert tuned_o != portable_o
     assert tuned.contract_for().tolerance is _NORM_F32_AIE2
     assert portable.contract_for().tolerance is _NORM_F32
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_lut_silu_sized_is_judged_by_its_table_model(npu2_device, tmp_path):
+    vtanh = kernels.silu_sized(tile_size=1024)
+    lut = kernels.silu_sized(tile_size=1024, use_lut=True)
+    assert "-DACTIVATIONS_TANH_LUT=1" in lut.compile_flags
+    assert vtanh.contract_for().reference is kernels.silu_ref
+    c = lut.contract_for()
+    assert (c.reference, c.tolerance) == (kernels.silu_table_ref, _LUT_MODEL_TOLERANCE)
+    compile_external_kernels([vtanh, lut], str(tmp_path), "aie2p")
+    assert (tmp_path / lut.object_file_name).read_bytes() != (
+        tmp_path / vtanh.object_file_name
+    ).read_bytes()
+    # The table build against the true function, every finite bf16, is held
+    # to an eighth of the relative error measured for vtanh's on npu2.
+    x = _FINITE_BF16.astype(np.float64)
+    with np.errstate(over="ignore"):
+        silu = np.nan_to_num(x / (1 + np.exp(-x)))
+    table = kernels.silu_table_ref(_FINITE_BF16).astype(np.float32)
+    lut_bound = Tolerance.relative(0.01, 0.02)
+    verdict = compare(table, silu.astype(np.float32), lut_bound)
+    assert verdict, verdict.detail
+    assert _vtanh_family_tolerance("silu").rtol >= 8 * lut_bound.rtol

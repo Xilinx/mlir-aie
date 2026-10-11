@@ -519,12 +519,16 @@ def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
-def silu_sized(tile_size: int = 1024) -> ExternalFunction:
+def silu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     """SiLU (Swish) for bf16 tiles, with a compiled-in element count.
 
     Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
     keeps the ``(in, out, size)`` ABI. Positive whole vectors are required
     (16 on aie2, 32 on aie2p).
+
+    Args:
+        tile_size: Elements per call.
+        use_lut: As for [`silu`][iron.kernels.activation.silu].
     """
     width = _arch_traits().bf16_lanes
     _require_vector_alignment("silu_sized", tile_size, width)
@@ -537,9 +541,11 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
         contract=_unary_lut_contract(
             silu_ref,
             count=tile_size,
+            use_lut=use_lut,
             elementwise=silu_table_ref,
             tolerance=_vtanh_family_tolerance("silu"),
         ),
+        use_lut_tanh=use_lut,
     )
 
 
