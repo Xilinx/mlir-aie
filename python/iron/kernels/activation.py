@@ -296,7 +296,7 @@ def _unary_lut_contract(
 
     ``elementwise`` is the exact model of a LUT build, and
     ``aie2_elementwise`` that of AIE2's tuned branch where the source compiles
-    a header of its own for it. A build either does not describe keeps ``ref``
+    a header of its own for it. A build neither model covers keeps ``ref``
     and ``tolerance``. Without either model the contract is the same for
     every build.
     """
