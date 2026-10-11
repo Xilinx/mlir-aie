@@ -30,7 +30,7 @@ from aie.iron import In, InOut, Out, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
-from aie.iron.kernels import KernelContract, Param
+from aie.iron.kernels import BUILDS, KernelContract, Param
 from aie.iron.kernels._common import ARCH_TRAITS
 from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
@@ -257,25 +257,29 @@ def test_roles_match_arg_types(case_id):
 def test_reference_takes_what_the_contract_hands_it(case_id):
     fkw, _ = CASES[case_id]
     c = _factory(case_id)(**fkw).contract
-    assert c.reference is not None, f"{case_id}: contract has no reference"
-    params = [
-        p
-        for p in inspect.signature(c.reference).parameters.values()
-        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
-    ]
-    assert len(params) == len(c.reference_indices())
+    for build in BUILDS:
+        reference = c.for_build(build).reference
+        assert reference is not None, f"{case_id}: no reference for {build}"
+        params = [
+            p
+            for p in inspect.signature(reference).parameters.values()
+            if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+        ]
+        assert len(params) == len(c.reference_indices()), build
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
 def test_tolerance_is_declared_with_its_evidence(case_id):
     fkw, _ = CASES[case_id]
-    tol = _factory(case_id)(**fkw).contract.tolerance
-    assert isinstance(
-        tol, Tolerance
-    ), f"{case_id}: tolerance is the default; declare it"
-    assert (
-        tol.note
-    ), f"{case_id}: tolerance needs a note saying where the number comes from"
+    c = _factory(case_id)(**fkw).contract
+    for build in BUILDS:
+        tol = c.for_build(build).tolerance
+        assert isinstance(
+            tol, Tolerance
+        ), f"{case_id}: tolerance for {build} is the default; declare it"
+        assert (
+            tol.note
+        ), f"{case_id}: tolerance needs a note saying where the number comes from"
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
@@ -439,7 +443,7 @@ def test_exp_factory_can_include_shared_clamp_header(arch):
     runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
     assert str(runtime_dir) in fn.include_dirs
     if arch == "aie2":
-        tolerance = fn.contract.tolerance
+        tolerance = fn.contract_for().tolerance
         assert tolerance is not None
         assert tolerance.atol == 2.0**-126
 
@@ -450,7 +454,7 @@ def test_exp_factory_can_include_shared_clamp_header(arch):
 )
 def test_swiglu_default_reference_matches_architecture(device, reference):
     set_current_device(device())
-    assert kernels.swiglu().contract.reference is reference
+    assert kernels.swiglu().contract_for().reference is reference
 
 
 def test_factory_contract_follows_device_switch():

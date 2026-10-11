@@ -31,7 +31,9 @@ Submodules:
 Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
 ``.contract``: the role of each argument (``In``, ``Out``, ``InOut``,
 ``Param``), a numpy reference, a tolerance and the dtype facts a signature
-cannot say. It is what ``aie.iron.algorithms.kernel_design`` uses to build,
+cannot say. A kernel whose arithmetic differs by ``Build`` declares the
+reference and tolerance per build, and ``fn.contract_for()`` picks the one of
+the build that produced an output. It is what ``aie.iron.algorithms.kernel_design`` uses to build,
 run and check any kernel, and the ``*_ref`` functions exported here are those
 references. ``factories`` lists the factory names.
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
@@ -44,6 +46,8 @@ from typing import get_type_hints
 from aie.iron.kernel import ExternalFunction
 
 from ._common import (
+    BUILDS,
+    Build,
     KernelContract,
     Param,
     TensorLayout,
@@ -304,6 +308,8 @@ from .vision import (
 from .zero import zero
 
 __all__ = [
+    "BUILDS",
+    "Build",
     "KernelContract",
     "MatrixKernel",
     "TensorLayout",

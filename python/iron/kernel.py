@@ -638,6 +638,26 @@ class ExternalFunction(Kernel):
             )
         return self.contract
 
+    def contract_for(self, arch: str | None = None):
+        """Return the contract as it judges this kernel's output from ``arch``.
+
+        A contract with ``per_build`` rows is resolved for the build that
+        produced the output: ``arch``, by default the bound device's, and this
+        kernel's own portable flag. Any other contract is returned as is.
+
+        Args:
+            arch: The architecture the output came from.
+
+        Raises:
+            ValueError: When the kernel has no contract, or its contract is
+                per build and neither ``arch`` nor a bound device names one.
+        """
+        # kernels._common imports this module.
+        from .kernels._common import Build
+
+        c = self._require_contract()
+        return c.for_build(Build.of(self, arch)) if c.per_build else c
+
     def param_values(self, inputs: list) -> list:
         """Pick the ``Param`` arrays out of one logical input list.
 
@@ -708,9 +728,13 @@ class ExternalFunction(Kernel):
         tensors, s = iter(inputs), iter(scalars)
         return [next(tensors) if tensor else next(s) for tensor in is_tensor]
 
-    def expected(self, inputs: list, *, scalars: tuple = ()):
-        """Return reference output(s), cast to each output argument's dtype."""
-        c = self._require_contract()
+    def expected(self, inputs: list, *, scalars: tuple = (), arch: str | None = None):
+        """Return reference output(s), cast to each output argument's dtype.
+
+        ``arch`` names the architecture the output to judge came from; see
+        [`contract_for`][iron.kernel.ExternalFunction.contract_for].
+        """
+        c = self.contract_for(arch)
         if c.reference is None:
             raise ValueError(f"{self.name}: contract has no reference")
         result = c.reference(*self._reference_args(inputs, scalars))
@@ -762,6 +786,7 @@ class ExternalFunction(Kernel):
         tolerance=None,
         inputs: list | None = None,
         scalars: tuple = (),
+        arch: str | None = None,
     ):
         """Compare a flat device output against a reference under the contract.
 
@@ -771,7 +796,9 @@ class ExternalFunction(Kernel):
         Without streamed inputs, a complete one-call reference may be repeated.
         With no streamed inputs, a one-tile reference is repeated across calls.
         A tolerance that is a function of the inputs needs the ``inputs`` and
-        ``scalars`` the reference was given.
+        ``scalars`` the reference was given. Without ``tolerance``, the
+        contract's is that of the build ``arch`` names; see
+        [`contract_for`][iron.kernel.ExternalFunction.contract_for].
         """
         from aie.utils.compile.jit.markers import In
         from aie.utils.verify import Tolerance, Verdict, compare
@@ -786,7 +813,7 @@ class ExternalFunction(Kernel):
             or len(references) != len(c.out_indices)
         ):
             raise ValueError("provide one actual and reference array per output")
-        tol = tolerance or c.tolerance
+        tol = tolerance or self.contract_for(arch).tolerance
         bounds = (None,) * len(c.out_indices)
         if tol is not None and tol.kind == "bound":
             if inputs is None:

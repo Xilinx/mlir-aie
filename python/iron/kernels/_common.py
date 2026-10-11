@@ -7,7 +7,7 @@
 
 import hashlib
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
 
@@ -19,7 +19,9 @@ from aie.helpers.npdtypes import (
 )
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction
+from aie.utils import get_current_device
 from aie.utils.compile.jit.markers import In, InOut, Out
+from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.verify import Tolerance
 
 
@@ -106,6 +108,49 @@ class Trace:
 
 
 @dataclass(frozen=True)
+class Build:
+    """The branch of a kernel's source that one compile selects.
+
+    Attributes:
+        arch: The architecture compiled for, as ``resolve_target_arch`` names it.
+        portable: Compiled with ``AIE_KERNELS_PORTABLE``, which turns every
+            ``AIE_TUNED_*`` branch off and builds the untuned one.
+    """
+
+    arch: str
+    portable: bool = False
+
+    @property
+    def tuned(self) -> str:
+        """The ``AIE_TUNED_*`` branch compiled: ``arch``, or ``"portable"``."""
+        return "portable" if self.portable else self.arch
+
+    @classmethod
+    def of(cls, fn: ExternalFunction, arch: str | None = None) -> "Build":
+        """Return the build of ``fn`` that ran on ``arch``, by default the bound device's.
+
+        The arch is the device's, not the one ``fn``'s factory saw: a kernel
+        returned before any device was bound describes the kernel a design
+        built for the device it then ran on.
+
+        Args:
+            fn: The kernel whose output is judged; its compile flags say
+                whether it was built portable.
+            arch: The architecture the output came from.
+
+        Raises:
+            ValueError: When ``arch`` is None and no device is bound.
+        """
+        arch = arch or _bound_arch()
+        if arch is None:
+            raise ValueError(
+                f"kernel '{fn.name}' is judged by the build that produced its "
+                "output; bind the device it ran on, or pass arch="
+            )
+        return cls(arch, "-DAIE_KERNELS_PORTABLE" in fn.compile_flags)
+
+
+@dataclass(frozen=True)
 class KernelContract:
     """What a kernel computes, declared next to the factory that builds it.
 
@@ -124,10 +169,16 @@ class KernelContract:
             saturating kernel's reference clips). Called with every unbound
             non-output argument in order: ``In`` tiles as ``(calls, n)``
             arrays, ``Param`` values as arrays or numbers. Returns the
-            output for all calls, a tuple for several outputs. ``None``
-            builds the kernel but does not judge it.
+            output for all calls, a tuple for several outputs. ``None``,
+            without ``per_build``, builds the kernel but does not judge it.
         tolerance: How close the device must come; ``None`` is
             ``Tolerance.default_for`` the output dtype.
+        per_build: ``(build, reference, tolerance)`` for each of ``BUILDS``,
+            for a kernel whose arithmetic or measured bound differs by build:
+            a LUT one build reads and another does not, a bound measured on
+            each arch. ``reference`` and ``tolerance`` are then ``None``, and
+            ``for_build`` picks the row of the build that produced an output,
+            once that is known.
         ops_per_call: Arithmetic operations per call; ``None`` means one
             per output element.
         out_valid: Meaningful leading elements of a DMA-padded output tile;
@@ -194,6 +245,7 @@ class KernelContract:
     trace: Trace | None = None
     uses_lut: bool = False
     alignments: tuple[tuple[int, int], ...] = ()
+    per_build: tuple[tuple[Build, Callable | None, Tolerance | None], ...] = ()
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in _ROLES]
@@ -248,6 +300,31 @@ class KernelContract:
             not 0 <= i < len(self.roles) or align < 1 for i, align in self.alignments
         ):
             raise ValueError("alignments must name arguments with positive byte counts")
+        if self.per_build:
+            builds = [build for build, _, _ in self.per_build]
+            if len(set(builds)) != len(builds) or set(builds) != set(BUILDS):
+                raise ValueError(f"per_build must have one row for each of {BUILDS}")
+            if self.reference is not None or self.tolerance is not None:
+                raise ValueError(
+                    "a per_build contract leaves reference and tolerance to its rows"
+                )
+
+    def for_build(self, build: Build) -> "KernelContract":
+        """Return this contract with the reference and tolerance of ``build``'s row.
+
+        A contract without ``per_build`` is the same for every build.
+
+        Raises:
+            ValueError: When ``per_build`` has no row for ``build``.
+        """
+        if not self.per_build:
+            return self
+        for row, reference, tolerance in self.per_build:
+            if row == build:
+                return replace(
+                    self, reference=reference, tolerance=tolerance, per_build=()
+                )
+        raise ValueError(f"no per_build row for {build}")
 
     @property
     def out_indices(self) -> tuple[int, ...]:
@@ -380,17 +457,24 @@ ARCH_TRAITS = {
     )
 }
 
+BUILDS = tuple(
+    Build(arch, portable) for arch in ARCH_TRAITS for portable in (False, True)
+)
 
-def _detect_arch() -> str:
-    """Return the bound device's architecture, or ``'aie2'`` when none is bound.
+
+def _bound_arch() -> str | None:
+    """Return the bound device's architecture, or ``None`` when none is bound.
 
     Raises:
         RuntimeError: When the bound device's architecture has no kernels.
     """
-    from aie.utils import get_current_device
-    from aie.utils.compile.utils import resolve_target_arch
+    device = get_current_device(probe_runtime=False)
+    return None if device is None else resolve_target_arch(device)
 
-    return resolve_target_arch(get_current_device(probe_runtime=False))
+
+def _detect_arch() -> str:
+    """Return the bound device's architecture, or ``'aie2'`` when none is bound."""
+    return _bound_arch() or "aie2"
 
 
 def _arch_traits() -> ArchTraits:
@@ -401,10 +485,11 @@ def _arch_traits() -> ArchTraits:
 def _tuned_arch() -> str:
     """Return the arch whose ``AIE_TUNED_*`` code is built, or ``"portable"``.
 
-    A factory choice that follows the code of one branch -- a tolerance, a
-    reference model -- keys on this rather than on
-    ``_detect_arch``, so that it pairs with the branch built when
-    ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch.
+    A compile-side choice that follows one branch's code (a setup kernel, an
+    alignment) keys on this rather than on ``_detect_arch``, so that it pairs
+    with the branch built when ``AIE_KERNELS_PORTABLE=1`` asks for every
+    kernel's untuned branch. A reference or tolerance is picked by
+    ``KernelContract.for_build`` from the build that ran instead.
     """
     if os.environ.get("AIE_KERNELS_PORTABLE") == "1":
         return "portable"
