@@ -288,8 +288,7 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
     assert(kind && stateTableIdx &&
            "expected --aie-lower-scratchpad-parameters to have assigned "
            "kind/state_table_idx to every parameter");
-    StringRef kindStr =
-        *kind == AIEX::ScratchpadParameterKind::Addr ? "addr" : "core";
+    StringRef kindStr = AIEX::stringifyScratchpadParameterKind(*kind);
     os << p.getSymName() << " " << static_cast<unsigned>(*stateTableIdx) << " "
        << typeStr << " " << kindStr;
     auto minValue = p.getMinValue();

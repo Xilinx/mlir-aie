@@ -219,7 +219,8 @@ static std::optional<int64_t> getMaxLengthSteps(AIE::DMABDOp op) {
 /// Returns true iff the parameter-sync preamble (create_scratchpad + set_lock)
 /// should be emitted into this sequence. Reads the explicit attribute if
 /// present; otherwise defaults to true iff the parent device uses any
-/// scratchpad parameter, from a core or a DMA BD, and the runtime sequence does
+/// scratchpad parameter, from a core, a DMA BD or a task start, and the
+/// runtime sequence does
 /// not already contain a `aiex.sync_scratchpad_parameters_from_host` marker.
 static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
   if (auto attr = seqOp.getEmitParameterSyncPreambleAttr()) {
@@ -243,7 +244,9 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
         op->hasAttr("offset_parameter") ||
         op->hasAttr("offset_state_table_idx") ||
         op->hasAttr("length_parameter") ||
-        op->hasAttr("length_state_table_idx")) {
+        op->hasAttr("length_state_table_idx") ||
+        op->hasAttr("repeat_parameter") ||
+        op->hasAttr("repeat_state_table_idx")) {
       found = true;
     }
   });
@@ -547,12 +550,32 @@ struct AIELowerScratchpadParametersPass
     moduleOp.walk([&](AIE::DMABDOp op) {
       markDmaUses(op.getOffsetParameterAttr(), op.getLengthParameterAttr());
     });
+    // A repeat count is written shifted into the task queue's repeat field,
+    // an encoding no other use shares.
+    DenseMap<StringRef, bool> usedAsRepeat;
+    moduleOp.walk([&](DMAStartTaskOp op) {
+      if (FlatSymbolRefAttr ref = op.getRepeatParameterAttr())
+        usedAsRepeat[ref.getValue()] = true;
+    });
 
     for (auto p : allParams) {
       StringRef name = p.getSymName();
       bool core = usedAsCore.lookup(name);
       bool length = usedAsLength.lookup(name);
       bool addr = usedAsAddr.lookup(name);
+      if (usedAsRepeat.lookup(name)) {
+        if (core || length || addr) {
+          p.emitError("parameter '")
+              << name
+              << "' is an aiex.dma_start_task repeat_parameter (repeat) and "
+                 "also read by a core or used as a DMA offset or length; a "
+                 "repeat parameter must have no other use";
+          return signalPassFailure();
+        }
+        p.setKindAttr(ScratchpadParameterKindAttr::get(
+            &getContext(), ScratchpadParameterKind::Repeat));
+        continue;
+      }
       if (core && addr) {
         p.emitError("parameter '")
             << name
@@ -697,6 +720,34 @@ struct AIELowerScratchpadParametersPass
     if (rewriteResult.wasInterrupted()) {
       return signalPassFailure();
     }
+    // A repeat parameter is bounded by its task's own repeat count, the
+    // largest the start may push.
+    WalkResult repeatResult = moduleOp.walk([&](DMAStartTaskOp op) {
+      FlatSymbolRefAttr ref = op.getRepeatParameterAttr();
+      if (!ref)
+        return WalkResult::advance();
+      auto task = op.getTask().getDefiningOp<DMAConfigureTaskLike>();
+      if (!task) {
+        op.emitOpError("has a repeat_parameter, so it must start the task "
+                       "where it is configured: the task's repeat count "
+                       "bounds the parameter");
+        return WalkResult::interrupt();
+      }
+      if (task.getRepeatCountVal()) {
+        op.emitOpError("has a repeat_parameter, which its task's repeat count "
+                       "bounds, but that is a runtime value");
+        return WalkResult::interrupt();
+      }
+      if (failed(rewriteParam(op, ref, "repeat_parameter",
+                              "repeat_state_table_idx")))
+        return WalkResult::interrupt();
+      auto &[lo, hi] =
+          bounds.try_emplace(ref.getValue(), 0, INT32_MAX).first->second;
+      hi = std::min<int64_t>(hi, task.getRepeatCount());
+      return WalkResult::advance();
+    });
+    if (repeatResult.wasInterrupted())
+      return signalPassFailure();
     for (ScratchpadParameterOp p : allParams) {
       auto it = bounds.find(p.getSymName());
       if (it == bounds.end())

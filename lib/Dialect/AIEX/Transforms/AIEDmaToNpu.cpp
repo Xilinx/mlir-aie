@@ -224,6 +224,22 @@ public:
         getConstantInt64Operand(op.getRepeatCount());
     uint32_t issueBit = op.getIssueToken() ? 0x80000000 : 0;
 
+    // A scratchpad repeat count: the host writes it already shifted into the
+    // repeat field, and the update adds it to the rest of the command word.
+    // The verifier holds bd_id to a constant multiple of 4, which the
+    // update's clearing of bits [1:0] keeps.
+    if (IntegerAttr idx = op.getRepeatStateTableIdxAttr()) {
+      NpuUpdateFromScratchpadOp::create(
+          rewriter, loc, static_cast<uint8_t>(idx.getUInt()),
+          StateTableFunc::Incr,
+          // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+          /*func_arg=*/(*bd_id & bdIdMask) | issueBit,
+          /*address=*/queue_offset, /*buffer=*/nullptr, /*column=*/nullptr,
+          /*row=*/nullptr);
+      rewriter.eraseOp(op);
+      return success();
+    }
+
     Value cmdVal;
     if (bd_id && repeat_cnt) {
       cmdVal = createConstantI32(rewriter, loc,
@@ -556,7 +572,8 @@ public:
         createConstantI32(rewriter, op->getLoc(),
                           static_cast<uint32_t>(repeat_count.getInt())),
         createConstantI32(rewriter, op->getLoc(),
-                          static_cast<uint32_t>(bd_id.getInt())));
+                          static_cast<uint32_t>(bd_id.getInt())),
+        /*repeat_state_table_idx=*/nullptr);
 
     rewriter.eraseOp(op);
     return success();
@@ -696,7 +713,8 @@ public:
     NpuPushQueueOp::create(
         rewriter, loc, column, row, infoOp.getChannelDirAttr(),
         infoOp.getChannelIndexAttr(), issue_token, repeatCount,
-        createConstantI32(rewriter, loc, op.getId()));
+        createConstantI32(rewriter, loc, op.getId()),
+        /*repeat_state_table_idx=*/nullptr);
 
     rewriter.eraseOp(op);
     return success();
