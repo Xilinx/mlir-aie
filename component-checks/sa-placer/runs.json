@@ -90,6 +90,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "38119556824",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38119556824",
+   "date": "2026-10-11T06:53:58+00:00",
+   "commit": {
+    "id": "766aca40deaf57b2a12b14e1e15985b878e7faae",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/766aca40deaf57b2a12b14e1e15985b878e7faae",
+    "message": "[AIEX] Support the iteration attribute in dma_configure_task [MED] (#3629)",
+    "timestamp": "2026-10-10T23:14:38Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "766aca40de",
+    "fixtures": "3aa7139253a0"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

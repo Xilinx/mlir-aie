@@ -1,21 +1,21 @@
 {
  "schema": 1,
  "target": "sa-placer-hw",
- "id": "38032463451",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38032463451",
- "date": "2026-10-10T06:52:50+00:00",
+ "id": "38119556824",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38119556824",
+ "date": "2026-10-11T06:53:58+00:00",
  "commit": {
-  "id": "58484c8cfbadbd81e6e0a892c2d94517e615a22d",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/58484c8cfbadbd81e6e0a892c2d94517e615a22d",
-  "message": "[kernels] Retire Peano workarounds the 94b320c0 pin fixes (#3911)",
-  "timestamp": "2026-10-10T01:56:10Z"
+  "id": "766aca40deaf57b2a12b14e1e15985b878e7faae",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/766aca40deaf57b2a12b14e1e15985b878e7faae",
+  "message": "[AIEX] Support the iteration attribute in dma_configure_task [MED] (#3629)",
+  "timestamp": "2026-10-10T23:14:38Z"
  },
  "event": "schedule",
  "pmode": "turbo",
  "device": "Strix",
  "device_raw": "NPU Strix",
  "provenance": {
-  "commit": "58484c8cfb",
+  "commit": "766aca40de",
   "peano": "22.0.0+94b320c0",
   "kernels": "2e65e623d94e",
   "runtime": "CachedXRTRuntime",
@@ -61,35 +61,35 @@
   },
   "mobilenet/seed=3/batch=1": {
    "us_per_image": {
-    "value": 293.7,
+    "value": 290.9,
     "unit": "us",
-    "range": "median 296.00, MAD 1.80, p95 304.70"
+    "range": "median 297.50, MAD 2.20, p95 303.10"
    },
    "e2e_us_per_image": {
-    "value": 347.0,
+    "value": 349.1,
     "unit": "us",
-    "range": "median 352.30, MAD 1.80, p95 362.70"
+    "range": "median 355.30, MAD 2.80, p95 362.50"
    },
    "compile_s": {
-    "value": 45.8,
+    "value": 44.5,
     "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=4": {
    "us_per_image": {
-    "value": 120.88,
+    "value": 120.85,
     "unit": "us",
-    "range": "median 123.85, MAD 0.28, p95 124.45"
+    "range": "median 123.47, MAD 0.60, p95 124.45"
    },
    "streaming_us": {
-    "value": 63.27,
+    "value": 64.17,
     "unit": "us",
-    "range": "from b1 293.7 and b4 483.5"
+    "range": "from b1 290.9 and b4 483.4"
    },
    "e2e_us_per_image": {
-    "value": 135.28,
+    "value": 136.32,
     "unit": "us",
-    "range": "median 138.60, MAD 0.38, p95 139.30"
+    "range": "median 138.95, MAD 0.72, p95 147.15"
    },
    "compile_s": {
     "value": 45.1,
@@ -98,201 +98,201 @@
   },
   "mobilenet/seed=3/batch=16": {
    "us_per_image": {
-    "value": 79.58,
+    "value": 79.2,
     "unit": "us",
-    "range": "median 79.90, MAD 0.26, p95 80.80"
+    "range": "median 79.64, MAD 0.23, p95 80.02"
    },
    "streaming_us": {
-    "value": 65.31,
+    "value": 65.09,
     "unit": "us",
-    "range": "from b1 293.7 and b16 1273.3"
+    "range": "from b1 290.9 and b16 1267.2"
    },
    "e2e_us_per_image": {
-    "value": 83.16,
+    "value": 82.86,
     "unit": "us",
-    "range": "median 83.55, MAD 0.36, p95 89.68"
+    "range": "median 83.33, MAD 0.27, p95 83.84"
    },
    "compile_s": {
-    "value": 45.2,
+    "value": 43.7,
     "unit": "s"
    }
   },
   "mobilenet/seed=3/batch=64": {
    "us_per_image": {
-    "value": 68.47,
+    "value": 68.78,
     "unit": "us",
-    "range": "median 68.76, MAD 0.02, p95 68.80"
+    "range": "median 68.82, MAD 0.02, p95 68.94"
    },
    "streaming_us": {
-    "value": 64.9,
+    "value": 65.26,
     "unit": "us",
-    "range": "from b1 293.7 and b64 4382.1"
+    "range": "from b1 290.9 and b64 4402.2"
    },
    "e2e_us_per_image": {
-    "value": 69.48,
+    "value": 71.03,
     "unit": "us",
-    "range": "median 71.02, MAD 0.04, p95 71.18"
+    "range": "median 71.13, MAD 0.04, p95 71.22"
    },
    "compile_s": {
-    "value": 45.9,
+    "value": 44.8,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=1": {
    "us_per_image": {
-    "value": 286.2,
+    "value": 289.3,
     "unit": "us",
-    "range": "median 300.00, MAD 1.00, p95 302.40"
+    "range": "median 299.90, MAD 1.00, p95 306.20"
    },
    "e2e_us_per_image": {
-    "value": 346.5,
+    "value": 348.5,
     "unit": "us",
-    "range": "median 355.70, MAD 1.10, p95 358.80"
+    "range": "median 356.60, MAD 1.10, p95 363.10"
    },
    "compile_s": {
-    "value": 47.2,
+    "value": 44.8,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=4": {
    "us_per_image": {
-    "value": 120.88,
+    "value": 121.9,
     "unit": "us",
-    "range": "median 123.88, MAD 0.85, p95 125.20"
+    "range": "median 123.83, MAD 0.33, p95 124.30"
    },
    "streaming_us": {
-    "value": 65.77,
+    "value": 66.1,
     "unit": "us",
-    "range": "from b1 286.2 and b4 483.5"
+    "range": "from b1 289.3 and b4 487.6"
    },
    "e2e_us_per_image": {
-    "value": 136.03,
+    "value": 136.53,
     "unit": "us",
-    "range": "median 137.78, MAD 0.72, p95 140.20"
+    "range": "median 137.62, MAD 0.62, p95 138.88"
    },
    "compile_s": {
-    "value": 46.0,
+    "value": 45.1,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=16": {
    "us_per_image": {
-    "value": 78.58,
+    "value": 79.35,
     "unit": "us",
-    "range": "median 79.34, MAD 0.26, p95 79.91"
+    "range": "median 79.61, MAD 0.14, p95 80.64"
    },
    "streaming_us": {
-    "value": 64.73,
+    "value": 65.35,
     "unit": "us",
-    "range": "from b1 286.2 and b16 1257.2"
+    "range": "from b1 289.3 and b16 1269.6"
    },
    "e2e_us_per_image": {
-    "value": 82.35,
+    "value": 82.92,
     "unit": "us",
-    "range": "median 83.02, MAD 0.23, p95 83.74"
+    "range": "median 83.17, MAD 0.16, p95 89.45"
    },
    "compile_s": {
-    "value": 45.6,
+    "value": 45.4,
     "unit": "s"
    }
   },
   "mobilenet/seed=2/batch=64": {
    "us_per_image": {
-    "value": 68.6,
+    "value": 68.8,
     "unit": "us",
-    "range": "median 68.89, MAD 0.01, p95 68.91"
+    "range": "median 68.90, MAD 0.01, p95 69.03"
    },
    "streaming_us": {
-    "value": 65.14,
+    "value": 65.3,
     "unit": "us",
-    "range": "from b1 286.2 and b64 4390.2"
+    "range": "from b1 289.3 and b64 4403"
    },
    "e2e_us_per_image": {
-    "value": 69.59,
+    "value": 71.0,
     "unit": "us",
-    "range": "median 71.20, MAD 0.05, p95 71.35"
+    "range": "median 71.18, MAD 0.05, p95 71.70"
    },
    "compile_s": {
-    "value": 46.6,
+    "value": 43.7,
     "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=1": {
    "us_per_image": {
-    "value": 295.2,
+    "value": 295.6,
     "unit": "us",
-    "range": "median 297.40, MAD 1.20, p95 305.90"
+    "range": "median 303.10, MAD 1.10, p95 305.40"
    },
    "e2e_us_per_image": {
-    "value": 350.2,
+    "value": 351.4,
     "unit": "us",
-    "range": "median 353.50, MAD 1.60, p95 363.60"
+    "range": "median 359.40, MAD 2.20, p95 362.60"
    },
    "compile_s": {
-    "value": 45.6,
+    "value": 44.8,
     "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=4": {
    "us_per_image": {
-    "value": 121.22,
+    "value": 120.28,
     "unit": "us",
-    "range": "median 124.17, MAD 0.42, p95 125.25"
+    "range": "median 123.38, MAD 0.23, p95 124.55"
    },
    "streaming_us": {
-    "value": 63.23,
+    "value": 61.83,
     "unit": "us",
-    "range": "from b1 295.2 and b4 484.9"
+    "range": "from b1 295.6 and b4 481.1"
    },
    "e2e_us_per_image": {
-    "value": 136.72,
+    "value": 135.55,
     "unit": "us",
-    "range": "median 138.47, MAD 0.60, p95 140.28"
+    "range": "median 137.65, MAD 0.45, p95 139.60"
    },
    "compile_s": {
-    "value": 46.5,
+    "value": 44.2,
     "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=16": {
    "us_per_image": {
-    "value": 79.35,
+    "value": 79.17,
     "unit": "us",
-    "range": "median 79.51, MAD 0.09, p95 80.23"
+    "range": "median 79.28, MAD 0.10, p95 79.72"
    },
    "streaming_us": {
-    "value": 64.96,
+    "value": 64.74,
     "unit": "us",
-    "range": "from b1 295.2 and b16 1269.6"
+    "range": "from b1 295.6 and b16 1266.7"
    },
    "e2e_us_per_image": {
-    "value": 82.89,
+    "value": 82.75,
     "unit": "us",
-    "range": "median 83.16, MAD 0.12, p95 83.92"
+    "range": "median 82.96, MAD 0.11, p95 83.41"
    },
    "compile_s": {
-    "value": 46.0,
+    "value": 44.5,
     "unit": "s"
    }
   },
   "mobilenet/seed=7/batch=64": {
    "us_per_image": {
-    "value": 68.83,
+    "value": 68.69,
     "unit": "us",
-    "range": "median 68.93, MAD 0.01, p95 68.97"
+    "range": "median 68.91, MAD 0.02, p95 68.95"
    },
    "streaming_us": {
-    "value": 65.23,
+    "value": 65.09,
     "unit": "us",
-    "range": "from b1 295.2 and b64 4404.9"
+    "range": "from b1 295.6 and b64 4396"
    },
    "e2e_us_per_image": {
-    "value": 71.17,
+    "value": 71.08,
     "unit": "us",
-    "range": "median 71.25, MAD 0.03, p95 71.35"
+    "range": "median 71.19, MAD 0.04, p95 71.29"
    },
    "compile_s": {
-    "value": 46.2,
+    "value": 44.5,
     "unit": "s"
    }
   }
@@ -302,17 +302,17 @@
    "seed": 3,
    "batch": 1,
    "passed": true,
-   "us_per_image": 293.7,
-   "e2e_us_per_image": 347.0,
-   "compile_s": 45.8,
+   "us_per_image": 290.9,
+   "e2e_us_per_image": 349.1,
+   "compile_s": 44.5,
    "placement": "b71aac1b8820"
   },
   {
    "seed": 3,
    "batch": 4,
    "passed": true,
-   "us_per_image": 120.88,
-   "e2e_us_per_image": 135.28,
+   "us_per_image": 120.85,
+   "e2e_us_per_image": 136.32,
    "compile_s": 45.1,
    "placement": "b71aac1b8820"
   },
@@ -320,90 +320,90 @@
    "seed": 3,
    "batch": 16,
    "passed": true,
-   "us_per_image": 79.58,
-   "e2e_us_per_image": 83.16,
-   "compile_s": 45.2,
+   "us_per_image": 79.2,
+   "e2e_us_per_image": 82.86,
+   "compile_s": 43.7,
    "placement": "b71aac1b8820"
   },
   {
    "seed": 3,
    "batch": 64,
    "passed": true,
-   "us_per_image": 68.47,
-   "e2e_us_per_image": 69.48,
-   "compile_s": 45.9,
+   "us_per_image": 68.78,
+   "e2e_us_per_image": 71.03,
+   "compile_s": 44.8,
    "placement": "b71aac1b8820"
   },
   {
    "seed": 2,
    "batch": 1,
    "passed": true,
-   "us_per_image": 286.2,
-   "e2e_us_per_image": 346.5,
-   "compile_s": 47.2,
+   "us_per_image": 289.3,
+   "e2e_us_per_image": 348.5,
+   "compile_s": 44.8,
    "placement": "36c2b91a501f"
   },
   {
    "seed": 2,
    "batch": 4,
    "passed": true,
-   "us_per_image": 120.88,
-   "e2e_us_per_image": 136.03,
-   "compile_s": 46.0,
+   "us_per_image": 121.9,
+   "e2e_us_per_image": 136.53,
+   "compile_s": 45.1,
    "placement": "36c2b91a501f"
   },
   {
    "seed": 2,
    "batch": 16,
    "passed": true,
-   "us_per_image": 78.58,
-   "e2e_us_per_image": 82.35,
-   "compile_s": 45.6,
+   "us_per_image": 79.35,
+   "e2e_us_per_image": 82.92,
+   "compile_s": 45.4,
    "placement": "36c2b91a501f"
   },
   {
    "seed": 2,
    "batch": 64,
    "passed": true,
-   "us_per_image": 68.6,
-   "e2e_us_per_image": 69.59,
-   "compile_s": 46.6,
+   "us_per_image": 68.8,
+   "e2e_us_per_image": 71.0,
+   "compile_s": 43.7,
    "placement": "36c2b91a501f"
   },
   {
    "seed": 7,
    "batch": 1,
    "passed": true,
-   "us_per_image": 295.2,
-   "e2e_us_per_image": 350.2,
-   "compile_s": 45.6,
+   "us_per_image": 295.6,
+   "e2e_us_per_image": 351.4,
+   "compile_s": 44.8,
    "placement": "07a89ab8a4ee"
   },
   {
    "seed": 7,
    "batch": 4,
    "passed": true,
-   "us_per_image": 121.22,
-   "e2e_us_per_image": 136.72,
-   "compile_s": 46.5,
+   "us_per_image": 120.28,
+   "e2e_us_per_image": 135.55,
+   "compile_s": 44.2,
    "placement": "07a89ab8a4ee"
   },
   {
    "seed": 7,
    "batch": 16,
    "passed": true,
-   "us_per_image": 79.35,
-   "e2e_us_per_image": 82.89,
-   "compile_s": 46.0,
+   "us_per_image": 79.17,
+   "e2e_us_per_image": 82.75,
+   "compile_s": 44.5,
    "placement": "07a89ab8a4ee"
   },
   {
    "seed": 7,
    "batch": 64,
    "passed": true,
-   "us_per_image": 68.83,
-   "e2e_us_per_image": 71.17,
-   "compile_s": 46.2,
+   "us_per_image": 68.69,
+   "e2e_us_per_image": 71.08,
+   "compile_s": 44.5,
    "placement": "07a89ab8a4ee"
   }
  ]
