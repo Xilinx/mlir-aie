@@ -30,7 +30,11 @@ extern "C" {
 
 // summary: one column's sample_select summary (SAMPLE_SUMMARY_WORDS,
 // SAMPLE_K_MAX == the router's top_k); ids: SAMPLE_K_MAX expert ids;
-// weights: SAMPLE_K_MAX bf16 softmax weights, ids[i] paired with weights[i].
+// weights: 2 * SAMPLE_K_MAX bf16 words, the softmax weight for ids[i] at
+// weights[2 * i], a zeroed pad word at weights[2 * i + 1] -- every real
+// weight then sits at a 4-byte-aligned bf16 index, which a 1-element
+// Copy slice of it needs (the shim's scratch-argument addressing drops
+// low bits below 4 bytes).
 void router_top_k(const int32_t *summary, int32_t *ids, bfloat16 *weights) {
   event0();
   int32_t n = 0;
@@ -64,8 +68,10 @@ void router_top_k(const int32_t *summary, int32_t *ids, bfloat16 *weights) {
     w[i] = exp64((double)d);
     sum += w[i];
   }
-  for (int32_t i = 0; i < SAMPLE_K_MAX; ++i)
-    weights[i] = (bfloat16)(float)(w[i] / sum);
+  for (int32_t i = 0; i < SAMPLE_K_MAX; ++i) {
+    weights[2 * i] = (bfloat16)(float)(w[i] / sum);
+    weights[2 * i + 1] = (bfloat16)0.0f;
+  }
   event1();
 }
 

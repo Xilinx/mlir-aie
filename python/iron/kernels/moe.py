@@ -32,8 +32,15 @@ def router_top_k(*, slice_size=32, top_k=8) -> ExternalFunction:
     ``router_top_k(summary, ids, weights)`` takes the ``summary_words(slice_size,
     top_k)`` int32 words a ``sample_select(slice_size=slice_size, chunk=slice_size,
     k_max=top_k)`` call produces for the whole row in one pass, and writes
-    ``top_k`` int32 ``ids`` and ``top_k`` bf16 ``weights``, ``ids[i]`` paired
-    with ``weights[i]``.
+    ``top_k`` int32 ``ids`` and ``2 * top_k`` bf16 ``weights``: ``ids[i]``
+    pairs with ``weights[2 * i]``, ``weights[2 * i + 1]`` a zeroed, never
+    meaningful pad word. The padding keeps every real weight at a
+    4-byte-aligned bf16 index, which a graph's ``Copy`` of one selected
+    weight into another buffer needs (found tracing a real
+    ``iron/common/image/fusion.py`` alignment failure, not assumed: the
+    allocator always places a buffer's own base 64-byte aligned, so an
+    unpadded ``weights[i]`` at odd ``i`` is the one place the misalignment
+    could come from).
     """
     if slice_size < top_k:
         raise ValueError(
@@ -50,7 +57,7 @@ def router_top_k(*, slice_size=32, top_k=8) -> ExternalFunction:
         [
             np.ndarray[(summary_words(slice_size, top_k),), np.dtype[np.int32]],
             np.ndarray[(top_k,), np.dtype[np.int32]],
-            np.ndarray[(top_k,), np.dtype[bfloat16]],
+            np.ndarray[(2 * top_k,), np.dtype[bfloat16]],
         ],
         compile_flags=_STRICT_FP
         + [f"-DSAMPLE_SLICE={slice_size}", f"-DSAMPLE_K_MAX={top_k}"],
@@ -63,7 +70,9 @@ def router_top_k(*, slice_size=32, top_k=8) -> ExternalFunction:
 
 def router_top_k_ref(logits, top_k: int) -> tuple[np.ndarray, np.ndarray]:
     """``(ids, weights)`` the device's ``router_top_k`` writes for one row,
-    bit for bit: see ``router_top_k.cc``.
+    bit for bit: see ``router_top_k.cc``. ``weights`` is ``2 * top_k``
+    wide, a real weight at every even index (``weights[2 * i]`` pairs with
+    ``ids[i]``) and a zeroed pad word at every odd one.
 
     Exact top-``top_k`` of ``logits`` (ties broken by ascending index, as
     ``torch.topk`` does), then a softmax over the selected values: a
@@ -87,5 +96,7 @@ def router_top_k_ref(logits, top_k: int) -> tuple[np.ndarray, np.ndarray]:
     values = row[ids].astype(np.float32)
     shifted = (values - max_value).astype(np.float32)
     w = exp64_ref(shifted.astype(np.float64))
-    weights = (w / w.sum()).astype(np.float32).astype(bfloat16)
+    packed = (w / w.sum()).astype(np.float32).astype(bfloat16)
+    weights = np.zeros(2 * top_k, dtype=bfloat16)
+    weights[0::2] = packed
     return ids, weights
