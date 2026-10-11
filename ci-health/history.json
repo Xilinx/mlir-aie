@@ -151,21 +151,21 @@
    "critical": {
     "buildAndTestRyzenAI.yml": {
      "main": 0.917,
-     "pull_requests": 0.533,
+     "pull_requests": 0.532,
      "flaky": 0.068,
      "minutes_median": 56.1,
      "queued_median": 0.0
     },
     "buildAndTestRyzenAIWindows.yml": {
      "main": 0.636,
-     "pull_requests": 0.426,
+     "pull_requests": 0.428,
      "flaky": 0.024,
      "minutes_median": 60.3,
      "queued_median": 0.0
     },
     "buildAndTestMulti.yml": {
      "main": 1.0,
-     "pull_requests": 0.801,
+     "pull_requests": 0.8,
      "flaky": 0.131,
      "minutes_median": 9.4,
      "queued_median": 0.0
@@ -173,7 +173,7 @@
     "buildAndTestPythons.yml": {
      "main": 1.0,
      "pull_requests": 0.833,
-     "flaky": 0.138,
+     "flaky": 0.139,
      "minutes_median": 8.8,
      "queued_median": 0.0
     },
