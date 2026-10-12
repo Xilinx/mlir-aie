@@ -19,6 +19,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -47,6 +48,44 @@ static LogicalResult emitUnplacedTileError(Operation *op,
   if (task_op.getOperation() != op)
     err.attachNote(task_op.getLoc()) << "Task configured here.";
   return err;
+}
+
+struct ResolvedLockInfo {
+  std::optional<int32_t> lockID;
+  int col = 0;
+  int row = 0;
+};
+
+static FailureOr<ResolvedLockInfo> resolveLockInfo(UseLockOp useLock) {
+  ResolvedLockInfo info;
+  if (auto lock = dyn_cast_or_null<AIE::LockOp>(useLock.getLock().getDefiningOp())) {
+    info.lockID = lock.getLockID();
+    info.col = lock.colIndex();
+    info.row = lock.rowIndex();
+    return info;
+  }
+  auto getLock = dyn_cast_or_null<AIE::GetLockOp>(useLock.getLock().getDefiningOp());
+  if (!getLock) {
+    useLock.emitOpError("expected lock operand from aie.lock or aie.get_lock");
+    return failure();
+  }
+  auto lockDecl = SymbolTable::lookupNearestSymbolFrom<AIE::LockDeclOp>(
+      getLock, getLock.getLockAttr());
+  if (!lockDecl) {
+    useLock.emitOpError("references unknown lock symbol ")
+        << getLock.getLockAttr();
+    return failure();
+  }
+  auto tile = dyn_cast_or_null<AIE::TileOp>(lockDecl.getTile().getDefiningOp());
+  if (!tile) {
+    useLock.emitOpError(
+        "expected lock_decl tile operand to be defined by aie.tile");
+    return failure();
+  }
+  info.lockID = lockDecl.getLockID();
+  info.col = tile.colIndex();
+  info.row = tile.rowIndex();
+  return info;
 }
 
 struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
@@ -482,12 +521,18 @@ struct AIEDMATasksToNPUPass
     auto lock_ops = getOptionalLockOpsForBlock(block, outOfOrder);
     if (lock_ops) {
       auto [acquire_op, release_op] = *lock_ops;
-      AIE::LockOp rel_lock = release_op.getLockOp();
+      FailureOr<ResolvedLockInfo> relLockInfo = resolveLockInfo(release_op);
+      if (failed(relLockInfo))
+        return failure();
+      std::optional<ResolvedLockInfo> acqLockInfo;
 
       // Acquire is optional under out-of-order (release-only completion).
       if (acquire_op) {
-        AIE::LockOp acq_lock = acquire_op.getLockOp();
-        if (std::optional<int32_t> acqLockId = acq_lock.getLockID()) {
+        FailureOr<ResolvedLockInfo> acqLockInfoOr = resolveLockInfo(*acquire_op);
+        if (failed(acqLockInfoOr))
+          return failure();
+        acqLockInfo = *acqLockInfoOr;
+        if (std::optional<int32_t> acqLockId = acqLockInfo->lockID) {
           f.lock_acq_id = *acqLockId;
           FailureOr<int32_t> value = acquire_op.getConstantValue();
           if (failed(value))
@@ -504,7 +549,7 @@ struct AIEDMATasksToNPUPass
         }
       }
 
-      if (std::optional<int32_t> relLockId = rel_lock.getLockID()) {
+      if (std::optional<int32_t> relLockId = relLockInfo->lockID) {
         f.lock_rel_id = *relLockId;
         FailureOr<int32_t> value = release_op.getConstantValue();
         if (failed(value))
@@ -517,12 +562,10 @@ struct AIEDMATasksToNPUPass
       // AIERT.cpp implementation.
       if (target_model.isMemTile(tile.getCol(), tile.getRow())) {
         auto lockOffset = target_model.getLockLocalBaseIndex(
-            tile.getCol(), tile.getRow(), rel_lock.colIndex(),
-            rel_lock.rowIndex());
-        if (lockOffset && acquire_op &&
-            acquire_op.getLockOp().getLockID().has_value())
+            tile.getCol(), tile.getRow(), relLockInfo->col, relLockInfo->row);
+        if (lockOffset && acquire_op && acqLockInfo->lockID.has_value())
           f.lock_acq_id += lockOffset.value();
-        if (lockOffset && rel_lock.getLockID().has_value())
+        if (lockOffset && relLockInfo->lockID.has_value())
           f.lock_rel_id += lockOffset.value();
       }
     }

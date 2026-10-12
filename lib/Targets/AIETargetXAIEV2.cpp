@@ -14,6 +14,7 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 
@@ -184,10 +185,32 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     bool hasAcq = false, hasRel = false;
     int acqLockID = 0, relLockID = 0;
     for (auto op : block->getOps<UseLockOp>()) {
-      LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
-      int lockCol = lock.colIndex();
-      int lockRow = lock.rowIndex();
-      int lockID = lock.getLockIDValue();
+      int lockCol = 0, lockRow = 0, lockID = 0;
+      if (auto lock = dyn_cast_or_null<LockOp>(op.getLock().getDefiningOp())) {
+        lockCol = lock.colIndex();
+        lockRow = lock.rowIndex();
+        lockID = lock.getLockIDValue();
+      } else if (auto getLock =
+                     dyn_cast_or_null<GetLockOp>(op.getLock().getDefiningOp())) {
+        auto decl = SymbolTable::lookupNearestSymbolFrom<LockDeclOp>(
+            getLock, getLock.getLockAttr());
+        if (!decl)
+          return op.emitOpError("references unknown lock symbol ")
+                 << getLock.getLockAttr();
+        auto tileOp = dyn_cast_or_null<TileOp>(decl.getTile().getDefiningOp());
+        if (!tileOp)
+          return op.emitOpError(
+              "expected lock_decl tile operand to be defined by aie.tile");
+        lockCol = tileOp.colIndex();
+        lockRow = tileOp.rowIndex();
+        if (!decl.getLockID().has_value())
+          return op.emitOpError(
+              "expected lock_decl to have a concrete lock ID by this stage");
+        lockID = decl.getLockID().value();
+      } else {
+        return op.emitOpError("expected lock operand from aie.lock or "
+                              "aie.get_lock");
+      }
       // Memtile DMAs can access neighboring tiles.
       if (targetModel.isMemTile(col, row)) {
         auto lockOffset =

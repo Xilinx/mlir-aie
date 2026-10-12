@@ -121,8 +121,11 @@ struct LoweringContext {
         device, StringAttr::get(op->getContext(), name));
   }
 
-  LockOp lockOf(FlatSymbolRefAttr name) {
-    return SymbolTable::lookupNearestSymbolFrom<LockOp>(device, name);
+  Value lockOf(OpBuilder &builder, Location loc, FlatSymbolRefAttr name) {
+    if (!SymbolTable::lookupNearestSymbolFrom<LockDeclOp>(device, name))
+      return nullptr;
+    return GetLockOp::create(builder, loc, builder.getIndexType(), name)
+        .getResult();
   }
 };
 
@@ -192,8 +195,14 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
           rewriter, loc, rewriter.getI32IntegerAttr(count));
       for (FlatSymbolRefAttr name :
            segmentLocksFor(endpoint, LockAction::Release)) {
-        UseLockOp::create(rewriter, loc, ctx.lockOf(name), LockAction::Release,
-                          amount);
+        Value lock = ctx.lockOf(rewriter, loc, name);
+        if (!lock) {
+          releaseOp->emitOpError("references unknown lock symbol ")
+              << name.getValue();
+          ctx.sawError = true;
+          return failure();
+        }
+        UseLockOp::create(rewriter, loc, lock, LockAction::Release, amount);
       }
 
       memref::AllocaOp held = ctx.heldCount.lookup(key);
@@ -266,8 +275,15 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
     }
     for (FlatSymbolRefAttr name :
          segmentLocksFor(endpoint, LockAction::AcquireGreaterEqual)) {
-      UseLockOp::create(rewriter, loc, ctx.lockOf(name),
-                        LockAction::AcquireGreaterEqual, delta);
+      Value lock = ctx.lockOf(rewriter, loc, name);
+      if (!lock) {
+        acquireOp->emitOpError("references unknown lock symbol ")
+            << name.getValue();
+        ctx.sawError = true;
+        return failure();
+      }
+      UseLockOp::create(rewriter, loc, lock, LockAction::AcquireGreaterEqual,
+                        delta);
     }
 
     Value next = arith::AddIOp::create(rewriter, loc, current, delta);

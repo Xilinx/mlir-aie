@@ -2823,6 +2823,10 @@ TileOp MemOp::getTileOp() {
   return cast<TileElement>(this->getOperation()).getTileOp();
 }
 
+static Operation *resolveLockDefOp(UseLockOp useLock);
+static TileOp resolveLockTile(UseLockOp useLock);
+static std::optional<int32_t> resolveLockID(UseLockOp useLock);
+
 //===----------------------------------------------------------------------===//
 // MemTileDMAOp
 //===----------------------------------------------------------------------===//
@@ -2880,15 +2884,15 @@ LogicalResult MemTileDMAOp::verify() {
             }
           }
           for (auto useLock : b->getOps<UseLockOp>()) {
-            if (auto lockOp = useLock.getLockOp();
-                lockOp.getTile() != getTile()) {
+            if (auto lockTile = resolveLockTile(useLock);
+                lockTile && lockTile.getResult() != getTile()) {
               InFlightDiagnostic err =
                   useLock.emitOpError()
                   << "is reachable from DMA channel "
                   << startOp.getChannelIndex()
                   << " and attempts to access a non-local lock\n";
               err.attachNote(startOp->getLoc()) << "channel";
-              err.attachNote(lockOp->getLoc()) << "lock";
+              err.attachNote(lockTile->getLoc()) << "lock";
               return err;
             }
           }
@@ -2974,12 +2978,12 @@ xilinx::AIE::verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
   for (DMABDOp bd : bds)
     for (auto useLock : bd->getBlock()->getOps<UseLockOp>())
       if (useLock.release())
-        if (Operation *lockDef = useLock.getLock().getDefiningOp())
+        if (Operation *lockDef = resolveLockDefOp(useLock))
           releasedByRecvBd.try_emplace(lockDef, bd.getOperation());
   for (DMABDOp bd : bds)
     for (auto useLock : bd->getBlock()->getOps<UseLockOp>())
       if (useLock.acquire() || useLock.acquireGE())
-        if (Operation *lockDef = useLock.getLock().getDefiningOp()) {
+        if (Operation *lockDef = resolveLockDefOp(useLock)) {
           auto it = releasedByRecvBd.find(lockDef);
           if (it != releasedByRecvBd.end() && it->second != bd.getOperation())
             return bd.emitOpError(
@@ -4021,16 +4025,45 @@ static std::optional<int32_t> getConstantLockValue(UseLockOp op) {
   return std::nullopt;
 }
 
+static Operation *resolveLockDefOp(UseLockOp useLock) {
+  if (auto lock = dyn_cast_or_null<LockOp>(useLock.getLock().getDefiningOp()))
+    return lock.getOperation();
+  if (auto getLock = dyn_cast_or_null<GetLockOp>(useLock.getLock().getDefiningOp()))
+    if (auto lockDecl = SymbolTable::lookupNearestSymbolFrom<LockDeclOp>(
+            getLock, getLock.getLockAttr()))
+      return lockDecl.getOperation();
+  return nullptr;
+}
+
+static TileOp resolveLockTile(UseLockOp useLock) {
+  if (auto lock = dyn_cast_or_null<LockOp>(useLock.getLock().getDefiningOp()))
+    return lock.getTileOp();
+  if (auto getLock = dyn_cast_or_null<GetLockOp>(useLock.getLock().getDefiningOp()))
+    if (auto lockDecl = SymbolTable::lookupNearestSymbolFrom<LockDeclOp>(
+            getLock, getLock.getLockAttr()))
+      return dyn_cast_or_null<TileOp>(lockDecl.getTile().getDefiningOp());
+  return {};
+}
+
+static std::optional<int32_t> resolveLockID(UseLockOp useLock) {
+  if (auto lock = dyn_cast_or_null<LockOp>(useLock.getLock().getDefiningOp()))
+    return lock.getLockID();
+  if (auto getLock = dyn_cast_or_null<GetLockOp>(useLock.getLock().getDefiningOp()))
+    if (auto lockDecl = SymbolTable::lookupNearestSymbolFrom<LockDeclOp>(
+            getLock, getLock.getLockAttr()))
+      return lockDecl.getLockID();
+  return std::nullopt;
+}
+
 struct UsesOneLockInDMABlock {
   static LogicalResult verifyTrait(Operation *op) {
     auto *block = op->getBlock();
     int lockID = -1;
     for (auto op : block->getOps<UseLockOp>()) {
-      if (auto lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
-          lock.getLockID().has_value()) {
-        if (lockID != -1 && lockID != lock.getLockIDValue())
+      if (auto thisLockID = resolveLockID(op); thisLockID.has_value()) {
+        if (lockID != -1 && lockID != *thisLockID)
           return failure();
-        lockID = lock.getLockIDValue();
+        lockID = *thisLockID;
       }
     }
     return success();
@@ -4067,7 +4100,8 @@ struct AccessesLocalLocks {
   static LogicalResult verifyTrait(Operation *op) {
     if (auto memOp = op->getParentOfType<MemOp>()) {
       auto useLock = cast<UseLockOp>(op);
-      if (auto lock = useLock.getLockOp(); lock.getTile() != memOp.getTile())
+      if (auto lockTile = resolveLockTile(useLock);
+          lockTile && lockTile.getResult() != memOp.getTile())
         return failure();
     }
     return success();

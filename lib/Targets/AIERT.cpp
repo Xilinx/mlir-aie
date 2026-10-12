@@ -9,6 +9,7 @@
 #include "aie/Targets/AIETargetShared.h"
 
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallPtrSet.h"
 
@@ -330,18 +331,30 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
   bool acqEn = false;
 
   // switch (lock->getAc)
-  AIE::LockOp lock;
+  std::optional<int> lockId;
   for (auto op : block.getOps<AIE::UseLockOp>()) {
     // Only dyn_cast if you are going to check if it was of the type
     // expected; if you aren't checking use cast instead as it will at
     // least assert in debug mode with an easier to understand error than
     // dereferencing.
-    lock = cast<AIE::LockOp>(op.getLock().getDefiningOp());
+    if (auto lockOp = dyn_cast_or_null<AIE::LockOp>(op.getLock().getDefiningOp()))
+      lockId = lockOp.getLockIDValue();
+    else if (auto getLock =
+                 dyn_cast_or_null<AIE::GetLockOp>(op.getLock().getDefiningOp())) {
+      auto lockDecl = SymbolTable::lookupNearestSymbolFrom<AIE::LockDeclOp>(
+          getLock, getLock.getLockAttr());
+      if (!lockDecl || !lockDecl.getLockID())
+        return op.emitOpError("expected aie.get_lock to reference a lock symbol "
+                              "with assigned lockID");
+      lockId = *lockDecl.getLockID();
+    } else
+      return op.emitOpError("expected use_lock operand to come from aie.lock or "
+                            "aie.get_lock");
     switch (op.getAction()) {
     case AIE::LockAction::Acquire:
     case AIE::LockAction::AcquireGreaterEqual: {
       acqEn = op.getAcqEn();
-      acqLockId = lock.getLockIDValue();
+      acqLockId = lockId;
       auto value = op.getConstantValue();
       if (failed(value))
         return failure();
@@ -352,7 +365,7 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
       break;
     }
     case AIE::LockAction::Release: {
-      relLockId = lock.getLockIDValue();
+      relLockId = lockId;
       auto value = op.getConstantValue();
       if (failed(value))
         return failure();

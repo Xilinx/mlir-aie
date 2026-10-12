@@ -142,13 +142,23 @@ struct AIEObjectFifoAllocatePass
     pool.setBuffersAttr(builder.getArrayAttr(names));
   }
 
-  LockOp createLock(ObjectFifoPoolOp pool, StringRef name, int value) {
+  LockOp createBinaryLock(ObjectFifoPoolOp pool, StringRef name, int value) {
     setInsertionPointOn(pool.getTile());
     auto lock = LockOp::create(builder, pool.getLoc(), pool.getTile(), value);
     lastPlaced[pool.getTile()] = lock;
     lock->setAttr(SymbolTable::getSymbolAttrName(),
                   builder.getStringAttr(name));
     return lock;
+  }
+
+  void createSemaphoreLockDecl(ObjectFifoPoolOp pool, StringRef name,
+                               int value) {
+    setInsertionPointOn(pool.getTile());
+    auto lock = LockDeclOp::create(builder, pool.getLoc(),
+                                   builder.getStringAttr(name), pool.getTile(),
+                                   /*lockID=*/nullptr,
+                                   builder.getI32IntegerAttr(value));
+    lastPlaced[pool.getTile()] = lock;
   }
 
   /// AIE1 guards each buffer with one binary lock that rotates with it; AIE2
@@ -184,7 +194,7 @@ struct AIEObjectFifoAllocatePass
       SmallVector<Attribute> names;
       for (int i = 0; i < depth; i++) {
         std::string name = (base + "_lock_" + std::to_string(i)).str();
-        createLock(pool, name, filled ? 1 : 0);
+        createBinaryLock(pool, name, filled ? 1 : 0);
         names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
       }
       pool.setLocksAttr(builder.getArrayAttr(names));
@@ -199,8 +209,8 @@ struct AIEObjectFifoAllocatePass
           (base + "_prod_lock_" + std::to_string(index)).str();
       std::string consume =
           (base + "_cons_lock_" + std::to_string(index)).str();
-      createLock(pool, produce, (depth - filled) * repeat);
-      createLock(pool, consume, filled * repeat);
+      createSemaphoreLockDecl(pool, produce, (depth - filled) * repeat);
+      createSemaphoreLockDecl(pool, consume, filled * repeat);
       segment.setProduceLockAttr(
           FlatSymbolRefAttr::get(builder.getContext(), produce));
       segment.setConsumeLockAttr(

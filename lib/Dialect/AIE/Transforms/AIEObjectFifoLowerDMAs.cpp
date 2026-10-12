@@ -139,23 +139,35 @@ struct AIEObjectFifoLowerDMAsPass
     Location loc = endpoint.getLoc();
     int count = drains ? 1 : pool.getRepeatCount().value_or(1);
 
-    LockOp acquireLock, releaseLock;
+    Value acquireLock, releaseLock;
     int acquireValue = count, releaseValue = count;
     auto action = LockAction::AcquireGreaterEqual;
     if (binaryLocks) {
       // A binary lock's value encodes which side owns the buffer.
       SmallVector<LockOp> locks = pool.getLockOps();
       if (descriptor.binaryLock < (int64_t)locks.size()) {
-        acquireLock = releaseLock = locks[descriptor.binaryLock];
+        acquireLock = releaseLock = locks[descriptor.binaryLock].getResult();
         acquireValue = drains ? 1 : 0;
         releaseValue = drains ? 0 : 1;
         action = LockAction::Acquire;
       }
     } else if (descriptor.acquireLock) {
-      acquireLock = SymbolTable::lookupNearestSymbolFrom<LockOp>(
-          device, descriptor.acquireLock);
-      releaseLock = SymbolTable::lookupNearestSymbolFrom<LockOp>(
-          device, descriptor.releaseLock);
+      if (!SymbolTable::lookupNearestSymbolFrom<LockDeclOp>(device,
+                                                            descriptor.acquireLock))
+        return endpoint.emitOpError("references unknown acquire lock symbol ")
+               << descriptor.acquireLock.getValue();
+      if (!SymbolTable::lookupNearestSymbolFrom<LockDeclOp>(device,
+                                                            descriptor.releaseLock))
+        return endpoint.emitOpError("references unknown release lock symbol ")
+               << descriptor.releaseLock.getValue();
+      acquireLock =
+          GetLockOp::create(builder, loc, builder.getIndexType(),
+                            descriptor.acquireLock)
+              .getResult();
+      releaseLock =
+          GetLockOp::create(builder, loc, builder.getIndexType(),
+                            descriptor.releaseLock)
+              .getResult();
     }
 
     if (acquireLock) {

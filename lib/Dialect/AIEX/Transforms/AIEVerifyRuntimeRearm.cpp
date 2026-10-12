@@ -31,6 +31,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -57,10 +58,20 @@ using ChannelKey = std::array<int, 4>; // {col, row, direction, channel}
 struct AIEVerifyRuntimeRearmPass
     : xilinx::AIEX::impl::AIEVerifyRuntimeRearmBase<AIEVerifyRuntimeRearmPass> {
 
+  static Operation *resolveLockDef(Value lockVal) {
+    if (auto lock = dyn_cast_or_null<LockOp>(lockVal.getDefiningOp()))
+      return lock.getOperation();
+    if (auto getLock = dyn_cast_or_null<GetLockOp>(lockVal.getDefiningOp()))
+      if (auto lockDecl = SymbolTable::lookupNearestSymbolFrom<LockDeclOp>(
+              getLock, getLock.getLockAttr()))
+        return lockDecl.getOperation();
+    return nullptr;
+  }
+
   // channel -> the objectFIFO locks its BD chain uses, built in one device
   // walk.
-  std::map<ChannelKey, SmallVector<LockOp>> mapChannelLocks(DeviceOp dev) {
-    std::map<ChannelKey, SmallVector<LockOp>> m;
+  std::map<ChannelKey, SmallVector<Operation *>> mapChannelLocks(DeviceOp dev) {
+    std::map<ChannelKey, SmallVector<Operation *>> m;
     dev.walk([&](DMAStartOp start) {
       Operation *memOp = start->getParentOp();
       TileOp tile;
@@ -73,14 +84,14 @@ struct AIEVerifyRuntimeRearmPass
       ChannelKey key{tile.getCol(), tile.getRow(),
                      static_cast<int>(start.getChannelDir()),
                      static_cast<int>(start.getChannelIndex())};
-      SmallVector<LockOp> &locks = m[key];
+      SmallVector<Operation *> &locks = m[key];
       // Walk the BD chain (dest, then next_bd successors); the last next_bd
       // loops back, so stop on a revisit.
       llvm::SmallPtrSet<Block *, 8> visited;
       for (Block *b = start.getDest(); b && visited.insert(b).second;
            b = (b->getNumSuccessors() == 1 ? b->getSuccessor(0) : nullptr))
         for (auto use : b->getOps<UseLockOp>())
-          if (auto l = dyn_cast_or_null<LockOp>(use.getLock().getDefiningOp()))
+          if (Operation *l = resolveLockDef(use.getLock()))
             if (!llvm::is_contained(locks, l))
               locks.push_back(l);
     });
@@ -89,7 +100,7 @@ struct AIEVerifyRuntimeRearmPass
 
   void runOnOperation() override {
     DeviceOp dev = getOperation();
-    std::map<ChannelKey, SmallVector<LockOp>> channelLocks =
+    std::map<ChannelKey, SmallVector<Operation *>> channelLocks =
         mapChannelLocks(dev);
 
     // Locks re-armed anywhere in the module by an aiex.set_lock. Module-wide so
@@ -101,8 +112,8 @@ struct AIEVerifyRuntimeRearmPass
       reArmedBySetLock.insert(sl.getLockOp().getOperation());
     });
 
-    auto isReArmed = [&](LockOp l) -> bool {
-      return reArmedBySetLock.contains(l.getOperation());
+    auto isReArmed = [&](Operation *l) -> bool {
+      return reArmedBySetLock.contains(l);
     };
 
     WalkResult wr = dev.walk([&](DmaChannelResetOp reset) -> WalkResult {
@@ -115,8 +126,8 @@ struct AIEVerifyRuntimeRearmPass
       auto it = channelLocks.find(key);
       if (it == channelLocks.end())
         return WalkResult::advance();
-      SmallVector<LockOp> frozen;
-      for (LockOp l : it->second)
+      SmallVector<Operation *> frozen;
+      for (Operation *l : it->second)
         if (!isReArmed(l))
           frozen.push_back(l);
       if (frozen.empty())
@@ -126,8 +137,8 @@ struct AIEVerifyRuntimeRearmPass
           "semaphore counter stays frozen and the channel's peer will block "
           "forever on acquire (a runtime deadlock). Re-arm each bound lock "
           "with an aiex.set_lock");
-      for (LockOp l : frozen)
-        err.attachNote(l.getLoc())
+      for (Operation *l : frozen)
+        err.attachNote(l->getLoc())
             << "this lock is bound to the reset channel and is not re-armed";
       return WalkResult::interrupt();
     });
