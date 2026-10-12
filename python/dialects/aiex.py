@@ -44,6 +44,7 @@ from ..ir import (
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
+from ..extras.dialects import arith
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..helpers.taplib import TensorAccessPattern
 from ..helpers.taplib._symbolic import is_sym, si32, sprod
