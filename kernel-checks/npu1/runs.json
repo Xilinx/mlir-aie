@@ -2437,6 +2437,52 @@
     "offered": 89,
     "checked": 86
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "38212752221",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38212752221",
+   "date": "2026-10-12T06:29:18+00:00",
+   "commit": {
+    "id": "766aca40deaf57b2a12b14e1e15985b878e7faae",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/766aca40deaf57b2a12b14e1e15985b878e7faae",
+    "message": "[AIEX] Support the iteration attribute in dma_configure_task [MED] (#3629)",
+    "timestamp": "2026-10-10T23:14:38Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "766aca40de",
+    "peano": "22.0.0+94b320c0",
+    "kernels": "2e65e623d94e",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie2",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 765,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 495,
+    "failed": 0,
+    "timed": 196,
+    "timing_failed": 0,
+    "untimed": 299,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 89,
+    "checked": 86
+   }
   }
  ]
 }
