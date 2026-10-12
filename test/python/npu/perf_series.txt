@@ -238,6 +238,8 @@ flm_gemma4_swa_attn_kv_core/4256x4/bfloat16_float32
 flm_gemma4_swa_attn_kv_core/8352x4/bfloat16_float32/geometry=gemma4_e4b
 flm_gemma4_swa_prefill/16x4/bfloat16
 flm_gemma4_v_norm_core/512x4/bfloat16
+fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/epilogue=gelu/mmul_shape=(8, 8, 8)/out_chunk=512
+fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/epilogue=silu/mmul_shape=(8, 8, 8)/out_chunk=512
 fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/mmul_shape=(8, 8, 8)/out_chunk=512
 fused_mm/16x64x16x4/bfloat16/band_m=16/bfp16_b=True/chunk_k=32/out_chunk=64
 fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/emulate_bf16_mmul_with_bfp16=True/out_chunk=256
@@ -311,6 +313,7 @@ mha/16x256x64x4/bfloat16/pv=True
 mha/64x64x64x4/bfloat16
 mha/64x64x64x4/bfloat16/pv=True
 mha_softmax/2048x4/bfloat16_bfloat16+float32/half-block-diagonal
+mha_softmax/256x4/bfloat16_bfloat16+float32/accurate_exp2=True/accurate-diagonal-padded
 mha_softmax/256x4/bfloat16_bfloat16+float32/diagonal-padded
 mha_softmax/4096x4/bfloat16_bfloat16+float32
 mha_softmax/4096x4/bfloat16_bfloat16+float32/accurate_exp2=True/accurate
@@ -530,10 +533,15 @@ transpose/1024x16/bfloat16/subtile=8
 transpose/1024x16/uint32/subtile=8
 transpose/1024x16/uint8/subtile=4
 transpose/8192x16/bfloat16/subtile=8/llama-decode
+zero/116x3/uint8/vector-tail
 zero/12x3/bfp16ebs8/vector-tail
+zero/204x4/int16/window=51/window
+zero/20x3/float32/vector-tail
 zero/34x3/int16/vectorized=False
+zero/404x4/uint8/window=101/window
 zero/4096x4/int32
 zero/64x4/bfloat16
 zero/64x4/bfp16ebs8
 zero/64x4/int32
 zero/68x3/uint8/vector-tail
+zero/84x4/float32/window=21/window

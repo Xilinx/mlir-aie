@@ -175,13 +175,19 @@ static inline void epilogue_body(bfloat16 *__restrict y_out,
   // inputs round(clamp(f, lo, hi)) == clamp(round(f), round(lo), round(hi))
   // and the output is bit-identical to clamping in f32. aie2p has no native
   // f32 min/max.
+  //
+  // aie2's LUT tanh orders its table reads against every other load and
+  // store, so a loop that loads, looks up and stores one vector runs its
+  // vectors one after another. Its activations load K vectors, look them all
+  // up, then store them, as lut_map_bf16 does for bf16 inputs.
+  constexpr bool batched = AIE_TUNED_AIE2 && MODE != 0;
 #ifdef MM_FUSED_C_HALVES
   // The k step leaves each r x t block as its left then right t/2 columns.
   // The conversion is lane-wise, so the halves are rejoined after it, and the
   // clamp, also lane-wise, runs on the rejoined vectors at full width.
   constexpr int HALF = R * T / 2;
   static_assert(CHUNK % (R * T) == 0 && HALF % V == 0);
-  constexpr int W = HALF;
+  constexpr int W = batched ? 2 * V : HALF;
 #else
   constexpr int W = V;
 #endif
@@ -191,33 +197,64 @@ static inline void epilogue_body(bfloat16 *__restrict y_out,
   bound.from_vector(aie::broadcast<float, W>(clamp_max));
   const aie::vector<bfloat16, W> hi = bound.template to_vector<bfloat16>();
 
+  if constexpr (batched) {
 #ifdef MM_FUSED_C_HALVES
-  AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / (R * T))
-  for (int j = 0; j < CHUNK / (R * T); j++) {
-    aie::vector<bfloat16, HALF> left, right;
-    for (int p = 0; p < HALF / V; p++) {
-      left.insert(p, epilogue_vec<MODE>(aie::load_v<V>(src + p * V)));
-      right.insert(p, epilogue_vec<MODE>(aie::load_v<V>(src + HALF + p * V)));
-    }
-    src += R * T;
-    auto [top, bottom] = aie::interleave_zip(left, right, T / 2);
-    aie::store_v(y_out, aie::max(aie::min(top, hi), lo));
-    aie::store_v(y_out + HALF, aie::max(aie::min(bottom, hi), lo));
-    y_out += R * T;
-  }
+    constexpr int K = R * T / V;
 #else
-  // Walking cursors rather than src + j * V, which Peano recomputes each
-  // trip.
-  AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / V)
-  AIE_LOOP_UNROLL(2)
-  for (int j = 0; j < CHUNK / V; j++) {
-    aie::store_v(
-        y_out,
-        aie::max(aie::min(epilogue_vec<MODE>(aie::load_v<V>(src)), hi), lo));
-    src += V;
-    y_out += V;
-  }
+    constexpr int K = CHUNK % (4 * V) == 0 ? 4 : CHUNK % (2 * V) == 0 ? 2 : 1;
 #endif
+    AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / (K * V))
+    for (int j = 0; j < CHUNK / (K * V); j++) {
+      aie::vector<float, V> x[K];
+      for (int k = 0; k < K; k++)
+        x[k] = aie::load_v<V>(src + k * V);
+      src += K * V;
+      aie::vector<bfloat16, V> y[K];
+      AIE_LOOP_UNROLL_FULL
+      for (int k = 0; k < K; k++)
+        y[k] = epilogue_vec<MODE>(x[k]);
+#ifdef MM_FUSED_C_HALVES
+      static_assert(V % (T / 2) == 0);
+      for (int p = 0; p < K / 2; p++) {
+        auto [top, bottom] = aie::interleave_zip(y[p], y[K / 2 + p], T / 2);
+        aie::store_v(y_out + p * W,
+                     aie::max(aie::min(aie::concat(top, bottom), hi), lo));
+      }
+#else
+      for (int k = 0; k < K; k++)
+        aie::store_v(y_out + k * V, aie::max(aie::min(y[k], hi), lo));
+#endif
+      y_out += K * V;
+    }
+  } else {
+#ifdef MM_FUSED_C_HALVES
+    AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / (R * T))
+    for (int j = 0; j < CHUNK / (R * T); j++) {
+      aie::vector<bfloat16, HALF> left, right;
+      for (int p = 0; p < HALF / V; p++) {
+        left.insert(p, epilogue_vec<MODE>(aie::load_v<V>(src + p * V)));
+        right.insert(p, epilogue_vec<MODE>(aie::load_v<V>(src + HALF + p * V)));
+      }
+      src += R * T;
+      auto [top, bottom] = aie::interleave_zip(left, right, T / 2);
+      aie::store_v(y_out, aie::max(aie::min(top, hi), lo));
+      aie::store_v(y_out + HALF, aie::max(aie::min(bottom, hi), lo));
+      y_out += R * T;
+    }
+#else
+    // Walking cursors rather than src + j * V, which Peano recomputes each
+    // trip.
+    AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / V)
+    AIE_LOOP_UNROLL(2)
+    for (int j = 0; j < CHUNK / V; j++) {
+      aie::store_v(
+          y_out,
+          aie::max(aie::min(epilogue_vec<MODE>(aie::load_v<V>(src)), hi), lo));
+      src += V;
+      y_out += V;
+    }
+#endif
+  }
 }
 } // namespace
 

@@ -19,7 +19,8 @@ nothing models the device's arithmetic. On AIE2P, ``aie::exp2`` is a linear
 interpolant that overshoots by up to 6.15%, so raw weights get that envelope
 (``_RTOL_EXP2``) and the round, where it divides out, gets bf16 rounding only.
 On AIE2 mha.cc evaluates a cubic instead, and the weights are held to
-``kernels.mha_softmax``'s tolerance. Each parametrized configuration is the
+``kernels.mha_softmax``'s tolerance. With ``accurate_exp2`` both take the same
+polynomial and are held to one ulp. Each parametrized configuration is the
 only one that catches some mask or carry bug.
 
 Not covered: a key block that is all padding inside the causal region.
@@ -293,10 +294,7 @@ def _softmax_case_data(q_block, kv_first, kv_second, s_q_eff, s_kv_eff):
         (1, 0, 1, 100, 70),  # short key tail under padded query rows
     ],
 )
-@pytest.mark.parametrize(
-    "accurate_exp2",
-    [False, pytest.param(True, marks=pytest.mark.supported_devices("npu2"))],
-)
+@pytest.mark.parametrize("accurate_exp2", [False, True])
 def test_partial_softmax_matches_masked_attention(
     q_block, kv_first, kv_second, s_q_eff, s_kv_eff, accurate_exp2
 ):
@@ -654,10 +652,7 @@ def _check_round(q_block, n_kv, s_q_eff, s_kv_eff, accurate_exp2, **shape):
         (1, 1, _B, _B, _B),  # a query block wholly past s_q_eff
     ],
 )
-@pytest.mark.parametrize(
-    "accurate_exp2",
-    [False, pytest.param(True, marks=pytest.mark.supported_devices("npu2"))],
-)
+@pytest.mark.parametrize("accurate_exp2", [False, True])
 def test_mha_round_matches_masked_attention(
     q_block, n_kv, s_q_eff, s_kv_eff, b_q, accurate_exp2
 ):
@@ -683,10 +678,7 @@ def test_mha_round_matches_masked_attention(
         (3, 6, 90, dict(b_q=16, b_kv=16, causal=False, window=16)),
     ],
 )
-@pytest.mark.parametrize(
-    "accurate_exp2",
-    [False, pytest.param(True, marks=pytest.mark.supported_devices("npu2"))],
-)
+@pytest.mark.parametrize("accurate_exp2", [False, True])
 def test_mha_round_keeps_its_band(q_block, n_kv, s_eff, shape, accurate_exp2):
     _check_round(q_block, n_kv, s_eff, s_eff, accurate_exp2, **shape)
 
@@ -825,10 +817,7 @@ def mha_long_round(
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
-@pytest.mark.parametrize(
-    "accurate_exp2",
-    [False, pytest.param(True, marks=pytest.mark.supported_devices("npu2"))],
-)
+@pytest.mark.parametrize("accurate_exp2", [False, True])
 def test_a_long_context_keeps_the_running_state_accurate(accurate_exp2):
     """The running sum and output gain a key block's worth at a time.
 

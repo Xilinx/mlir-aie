@@ -55,6 +55,9 @@ extern "C" void magnitude_f32(float *restrict x, float *restrict out,
     // s = p y, then s += y / 2 (p - s^2): each step multiplies the error by
     // y's, and p - s^2 is taken from s's exact limb products.
     f32_acc s = aie::mac(aie::mac(aie::mul(pl, y), pm, y), ph, y);
+#if AIE_TUNED_AIE2
+    AIE_LOOP_UNROLL_FULL
+#endif
     for (int k = 0; k < 3; k++) {
       bf16_vec sh, sm, sl;
       split3(s, sh, sm, sl, one);

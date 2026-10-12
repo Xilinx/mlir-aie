@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 #include "../aie_arch.h"
+#include "../common/zero.h"
 #include <aie_api/aie.hpp>
 
 #if AIE_TUNED_AIE2P
@@ -1700,6 +1701,11 @@ void fused_conv2dk1_xy_pool_i8_large_scalar(
 // #endif
 
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
+#if AIE_TUNED_AIE2 && defined(CONV_XYPOOL_FUSED_LARGE_PADDED)
+// One build serves every shape; MobileNet's 7-pixel head takes the window
+// walker.
+#define K1W_WIDTH 7
+#endif
 #include "bn_conv2dk1_aie2.h"
 
 // Rounds half to even and saturates like the scalar.
@@ -1768,20 +1774,6 @@ constexpr int32_t K1_POOL_MAX_WIDTH = 32;
 #define K1_POOL_NOINLINE
 #endif
 
-K1_POOL_NOINLINE static void k1_pool_pad(uint16_t *output, const int32_t start,
-                                         const int32_t end) {
-#if AIE_TUNED_AIE2P
-  if (((uintptr_t)(output + start) & 31) == 0 && ((end - start) & 15) == 0) {
-    aie::vector<uint16, 16> *p = (aie::vector<uint16, 16> *)(output + start);
-    for (int32_t i = (end - start) / 16; i > 0; i--)
-      *p++ = aie::zeros<uint16, 16>();
-    return;
-  }
-#endif
-  for (int32_t c = start; c < end; c++)
-    output[c] = 0;
-}
-
 K1_POOL_NOINLINE static aie::vector<int32, 16>
 k1_pool_avg(const aie::vector<int32, 16> res) {
   // (acc * 42799) >> 21 as (acc << 16) - acc * 22737, rounded down.
@@ -1815,9 +1807,8 @@ k1_xy_pool_vector(const int8_t *input, const int8_t *kernels, uint16_t *output,
                   const int32_t output_channels_padd, const int scale,
                   const int y_index, int32_t output_split,
                   int32_t weight_index) {
-  alignas(32) uint8_t row[K1_POOL_MAX_WIDTH * 8];
-  for (int i = 0; i < K1_POOL_MAX_WIDTH * 8; i += 32)
-    aie::store_v(row + i, aie::zeros<uint8, 32>());
+  alignas(64) uint8_t row[K1_POOL_MAX_WIDTH * 8];
+  zero_vectorized<uint8_t, K1_POOL_MAX_WIDTH * 8, 1, false>(row);
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
   const int32_t oc_tile = output_channels / output_split;
@@ -1856,7 +1847,8 @@ k1_xy_pool_vector(const int8_t *input, const int8_t *kernels, uint16_t *output,
     aie::store_v(o, aie::filter_even(aie::vector_cast<uint16>(res), 1)
                         .template extract<8>(0));
   }
-  k1_pool_pad(output, output_channels, output_channels_padd);
+  zero_vectorized(output + output_channels,
+                  output_channels_padd - output_channels);
 }
 
 #if AIE_TUNED_AIE2P
@@ -1946,7 +1938,8 @@ k1_xy_pool_narrow(const int8_t *input, const int8_t *kernels, uint16_t *output,
   for (; oc < blocks; oc++)
     k1_pool_group<1>(input, kernels + oc * ic_blocks * 64, end, o + oc * 8, row,
                      ic_blocks, scale, keep, prior, last);
-  k1_pool_pad(output, output_channels, output_channels_padd);
+  zero_vectorized(output + output_channels,
+                  output_channels_padd - output_channels);
 }
 #endif
 

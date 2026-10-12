@@ -228,6 +228,34 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
 
   // m need not be a multiple of four.
   for (uint32_t row = groups * 4; row < m; row++, c++) {
+#if AIE_TUNED_AIE2
+    // mac_elem_16_2 sums lanes i and i + 16, so each accumulator folds 32
+    // products per chunk.
+    if constexpr (r % 64 == 0 && chunks > 1) {
+      constexpr uint32_t P = r / 32;
+      v16accfloat acc[P];
+      AIE_LOOP_UNROLL_FULL
+      for (uint32_t q = 0; q < P; q++)
+        acc[q] = mul_elem_16_2(aie::load_v<32>(a + 32 * q).to_native(),
+                               aie::load_v<32>(b + 32 * q).to_native());
+      a += r;
+      const bfloat16 *__restrict pb = b + r;
+      AIE_LOOP_MIN_ITERATION_COUNT(chunks - 1)
+      for (uint32_t i = 1; i < chunks; i++, a += r, pb += r) {
+        AIE_LOOP_UNROLL_FULL
+        for (uint32_t q = 0; q < P; q++)
+          acc[q] =
+              mac_elem_16_2(aie::load_v<32>(a + 32 * q).to_native(),
+                            aie::load_v<32>(pb + 32 * q).to_native(), acc[q]);
+      }
+      aie::accum<accfloat, 16> sum(acc[0]);
+      AIE_LOOP_UNROLL_FULL
+      for (uint32_t q = 1; q < P; q++)
+        sum = aie::add(sum, aie::accum<accfloat, 16>(acc[q]));
+      *c = static_cast<bfloat16>(aie::reduce_add(sum.to_vector<float>()));
+      continue;
+    }
+#endif
     aie::accum<accfloat, r> acc = aie::zeros<accfloat, r>();
     AIE_LOOP_MIN_ITERATION_COUNT(chunks)
     for (uint32_t i = 0; i < chunks; i++, a += r)

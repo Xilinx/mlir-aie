@@ -12,6 +12,7 @@
 // every CHUNK-byte image chunk (a row is whole chunks); core c owns patch
 // columns c, c + CORES, ..., at most COLS of them.
 
+#include "../common/zero.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -336,8 +337,7 @@ extern "C" void resize_emit(uint16_t *out, int32_t i) {
   if (next < SIDE)
     ok = false;
   if (!ok || i >= owned) {
-    for (int k = 0; k < SIDE * SIDE * 3; k += 32)
-      aie::store_v(out + k, aie::zeros<uint16_t, 32>());
+    zero_vectorized<uint16_t, SIDE * SIDE * 3, 1, false>(out);
     return;
   }
   // Four pixels, a word of each plane in and six out. Byte loads here

@@ -8,13 +8,13 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-// 2^x rounded to bf16: aie::exp2<bfloat16> on AIE2P, or a polynomial under
-// -DEXP2_BF16_ACCURATE (below). AIE2 has no exp2, so
+// 2^x rounded to bf16: a polynomial under -DEXP2_BF16_ACCURATE (below) on
+// either architecture, else aie::exp2<bfloat16> on AIE2P. AIE2 has no exp2, so
 // there x = k + f with k = round(x) and |f| <= 1/2. 2^f is a cubic in bf16
 // products, within 0.2% of 2^f, and 2^k is added into its f32 exponent field.
 // x is clamped to [-200, 127]. Past the bottom of the exponent field the sum
 // goes negative, and is clamped to +0.
-#if !AIE_HAS_NATIVE_EXP2
+#if !AIE_HAS_NATIVE_EXP2 && !defined(EXP2_BF16_ACCURATE)
 static inline aie::vector<bfloat16, 16> exp2_bf16_16(aie::vector<float, 16> x) {
   x = aie::max(x, aie::broadcast<float, 16>(-200.0f));
   x = aie::min(x, aie::broadcast<float, 16>(127.0f));
@@ -56,7 +56,7 @@ static inline aie::vector<bfloat16, N> exp2_bf16(aie::vector<float, N> x) {
   }
 }
 #elif defined(EXP2_BF16_ACCURATE)
-// exp2f_vec.cc's AIE2P limb Horner, rounded once to bf16: within 2.8e-6 of
+// exp2f_vec.cc's limb Horner, rounded once to bf16: within 2.8e-6 of
 // 2^x before that rounding, where aie::exp2<bfloat16> is off by 6% on [-1, 0]
 // and by 49% on [-100, 0]. The caller sets conv_even. k = round(x) and
 // f = x - k in [-1/2, 1/2]; k is added into p(f)'s exponent field, which

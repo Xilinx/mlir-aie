@@ -64,6 +64,9 @@ extern "C" void log_f32_bf16(float *restrict x, bfloat16 *restrict y, int32_t n,
 
     f32_acc q =
         aie::add(f32_acc(aie::broadcast<float, f32_lanes>(0.0f)), log_q[9]);
+#if AIE_TUNED_AIE2
+    AIE_LOOP_UNROLL_FULL
+#endif
     for (int k = 8; k >= 0; k--) {
       bf16_vec qh, qm, ql;
       split3(q, qh, qm, ql, one);
