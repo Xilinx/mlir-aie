@@ -27,7 +27,7 @@ aie.device(npu1_1col) {
   %compute0 = aie.tile(0, 2)
   %sb = aie.switchbox(%shim0) {
     %ctrl = aie.amsel<5> (0)
-    %m = aie.masterset(South : 0, %ctrl) {is_ctrl_pkt_overlay}
+    %m = aie.masterset(South : 0, %ctrl) {aie.is_ctrl_pkt_overlay}
     aie.packet_rules(TileControl : 0) {
       aie.rule(31, 15, %ctrl)
     }

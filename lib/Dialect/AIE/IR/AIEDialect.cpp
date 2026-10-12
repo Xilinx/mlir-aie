@@ -2745,6 +2745,60 @@ LogicalResult MasterSetOp::verify() {
   return success();
 }
 
+bool MasterSetOp::keepsPktHeader() {
+  return AIE::keepsPktHeader(
+      (*this)->getParentOfType<SwitchboxOp>().getTileOp().getTileID(),
+      destPort(), getKeepPktHeader());
+}
+
+bool xilinx::AIE::keepsPktHeader(TileID tile, Port master,
+                                 std::optional<bool> keep) {
+  if (keep)
+    return *keep;
+  return master.bundle != WireBundle::DMA &&
+         (tile.row != 0 || master.bundle != WireBundle::South);
+}
+
+// A Core or DMA port a flow starts or ends at on a placed tile must exist
+// there. The placer checks logical tiles' channel budgets.
+static LogicalResult verifyFlowEndpoint(Operation *op, Value tile, Port port,
+                                        bool isSource) {
+  if (port.bundle != WireBundle::Core && port.bundle != WireBundle::DMA)
+    return success();
+  auto tileOp = dyn_cast_or_null<TileOp>(tile.getDefiningOp());
+  if (!tileOp)
+    return success();
+  size_t channels = isSource ? tileOp.getNumDestConnections(port.bundle)
+                             : tileOp.getNumSourceConnections(port.bundle);
+  if (static_cast<size_t>(port.channel) < channels)
+    return success();
+  return op->emitOpError() << (isSource ? "source " : "destination ")
+                           << stringifyWireBundle(port.bundle) << ":"
+                           << port.channel << " does not exist: tile ("
+                           << tileOp.getCol() << ", " << tileOp.getRow()
+                           << ") has " << channels << " "
+                           << stringifyWireBundle(port.bundle) << " port"
+                           << (channels == 1 ? "" : "s")
+                           << (isSource ? " into" : " out of")
+                           << " its stream switch";
+}
+
+LogicalResult FlowOp::verify() {
+  if (failed(verifyFlowEndpoint(*this, getSource(),
+                                {getSourceBundle(), sourceIndex()}, true)))
+    return failure();
+  return verifyFlowEndpoint(*this, getDest(), {getDestBundle(), destIndex()},
+                            false);
+}
+
+LogicalResult PacketSourceOp::verify() {
+  return verifyFlowEndpoint(*this, getTile(), port(), true);
+}
+
+LogicalResult PacketDestOp::verify() {
+  return verifyFlowEndpoint(*this, getTile(), port(), false);
+}
+
 LogicalResult PacketFlowOp::verify() {
   Region &body = getPorts();
   if (body.empty())
@@ -2878,7 +2932,8 @@ LogicalResult CoreOp::verify() {
   // more than one defect. Size and placement are separate faults: a stack can
   // fit the tile yet be placed so it runs off the end.
   if (stackRun.size >= localMem)
-    return emitOpError("stack_size ")
+    return emitOpError(getStackSize() ? "stack_size "
+                                      : "measured stack requirement ")
            << stackRun.size
            << " leaves no local memory for this tile's buffers (" << localMem
            << " bytes total)";
@@ -2907,8 +2962,15 @@ TileOp CoreOp::getTileOp() {
 }
 
 uint32_t CoreOp::getEffectiveStackSize() {
-  return getStackSize().value_or(
-      getTargetModel(*this).getDefaultCoreStackSize());
+  if (auto declared = getStackSize())
+    return *declared;
+  const auto &targetModel = getTargetModel(*this);
+  uint32_t fallback = targetModel.getDefaultCoreStackSize();
+  if (auto measured = getMeasuredStackSize())
+    return std::max<uint32_t>(
+        fallback,
+        llvm::alignTo(*measured, targetModel.getCoreStackAlignment()));
+  return fallback;
 }
 
 MemoryRun CoreOp::getStackRun() {

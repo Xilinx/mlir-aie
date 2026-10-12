@@ -371,13 +371,10 @@ struct AIEDMATasksToNPUPass
             "address.");
       }
       uint64_t buf_addr = *bufferAddr;
-      // On AIE2p (NPU2), memtile DMAs use an offset-based address
-      // space where the base depends on the relative position of the
-      // buffer's tile (west=0, internal=getMemTileSize, east=2x).
-      // On AIE2 (NPU1), memtile DMAs address local memory directly
-      // starting at 0. Only add the offset for AIE2p.
-      if (target_model.isMemTile(col, row) &&
-          target_model.getTargetArch() == AIE::AIEArch::AIE2p) {
+      // A memtile DMA addresses its west neighbour, itself and its east
+      // neighbour as three windows (west=0, own=getMemTileSize, east=2x), as
+      // the static lowering in AIERT.cpp does.
+      if (target_model.isMemTile(col, row)) {
         auto addrOffset = target_model.getMemLocalBaseAddress(
             col, row, buffer.getTileOp().getCol(), buffer.getTileOp().getRow());
         if (addrOffset)

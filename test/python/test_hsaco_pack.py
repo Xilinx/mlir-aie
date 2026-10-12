@@ -449,6 +449,23 @@ def test_full_elf_names_every_comdat_group(tmp_path):
     assert all((k["kernarg_size"], k["num_cols"]) == (64, 4) for k in kernels)
 
 
+def test_full_elf_names_select_kernels(tmp_path):
+    # An MLIR-AIR full ELF also carries an internal sequence that is not meant to
+    # be dispatched; the caller names the kernels to keep, in its own order.
+    blob = make_full_elf([("k0", "i0"), ("k1", "i1"), ("k2", "i2")], num_cols=4)
+    path = _write(tmp_path / "final.elf", blob)
+
+    kernels = pack.kernels_from_full_elf(path, names=["k2:i2", "k0:i0"])
+    assert [k["name"] for k in kernels] == ["k2:i2", "k0:i0"]
+    assert all(k["insts"] == blob for k in kernels)
+
+
+def test_full_elf_unknown_name_is_rejected(tmp_path):
+    path = _write(tmp_path / "final.elf", make_full_elf([("k0", "i0")], num_cols=4))
+    with pytest.raises(ValueError, match=r"no kernel named 'k1:i1'.*'k0:i0'"):
+        pack.kernels_from_full_elf(path, names=["k1:i1"])
+
+
 def test_full_elf_image_is_embedded_once(tmp_path):
     blob = make_full_elf([("k0", "i0"), ("k1", "i1"), ("k2", "i2")], num_cols=8)
     path = _write(tmp_path / "final.elf", blob)
@@ -1054,6 +1071,40 @@ def test_long_form_full_elf(tmp_path):
     assert [k["name"] for k in kernels] == ["k0:i0", "k1:i1"]
     assert all(k["kind"] == hsaco_format.KIND_FULL_ELF for k in kernels)
     assert all((k["kernarg_size"], k["num_cols"]) == (96, 4) for k in kernels)
+
+
+def test_long_form_full_elf_kernel_name(tmp_path):
+    path = _write(tmp_path / "final.elf", make_full_elf([("k0", "i0"), ("k1", "i1")]))
+    # One name per --kernel-elf; a second kernel of the same ELF repeats it, and
+    # the image is still embedded once.
+    kernels = pack.kernels_from_options(
+        [
+            ("kernel_elf", path),
+            ("kernel_elf_name", "k1:i1"),
+            ("kernel_cols", 4),
+            ("kernel_elf", path),
+            ("kernel_elf_name", "k0:i0"),
+            ("kernel_cols", 4),
+        ]
+    )
+    assert [k["name"] for k in kernels] == ["k1:i1", "k0:i0"]
+    with pytest.raises(argparse.ArgumentTypeError, match="no kernel named 'k2:i2'"):
+        pack.kernels_from_options(
+            [("kernel_elf", path), ("kernel_elf_name", "k2:i2"), ("kernel_cols", 4)]
+        )
+
+
+def test_kernel_elf_name_needs_a_full_elf(tmp_path):
+    insts = _write(tmp_path / "insts.bin", b"\x01")
+    with pytest.raises(argparse.ArgumentTypeError, match="--kernel-elf-name selects"):
+        pack.kernels_from_options(
+            [
+                ("kernel_name", "k"),
+                ("kernel_insts", insts),
+                ("kernel_cols", 1),
+                ("kernel_elf_name", "k:i"),
+            ]
+        )
 
 
 @needs_posix

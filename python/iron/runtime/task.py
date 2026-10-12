@@ -9,7 +9,7 @@ from .taskgroup import TaskGroup
 
 
 class RuntimeTask(Resolvable):
-    """A RuntimeTask is a task to be performed during runtime. A task may be synchronous or asynchronous."""
+    """A sequence-local operation resolved while one Runtime body executes."""
 
     def __init__(self, task_group: TaskGroup | None = None):
         """Construct a RuntimeTask. It may be associated with a TaskGroup.

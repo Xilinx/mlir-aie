@@ -222,14 +222,22 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
            << (elemWidth / 8) << "-byte elements: the DMA moves whole "
            << (addressGranularity / 8) << "-byte words.";
 
-  if (!skipTransformationChecks && hardwareSizes[0] > (1 << wrap_bits) - 1)
-    return forOp->emitOpError(
-        "Size 0 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
-        "] range.");
-  if (!skipTransformationChecks && hardwareSizes[1] > (1 << wrap_bits) - 1)
-    return forOp->emitOpError(
-        "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
-        "] range.");
+  auto outOfRange = [&](const char *what, int dim, int64_t written,
+                        int64_t encoded, int64_t lo, int64_t hi) {
+    return forOp->emitOpError()
+           << what << " " << dim << " is " << written << " (encoded as "
+           << encoded << "), which exceeds the [" << lo << ":" << hi
+           << "] range.";
+  };
+
+  int64_t maxWrap = (1 << wrap_bits) - 1;
+  int64_t maxStep = 1 << step_bits;
+
+  for (int dim : {0, 1}) {
+    if (!skipTransformationChecks && hardwareSizes[dim] > maxWrap)
+      return outOfRange("Size", dim, inputSizes[dim], hardwareSizes[dim], 0,
+                        maxWrap);
+  }
   // A zero d3 stride is a pure repeat: the lowerings leave the iteration fields
   // 0 and carry the count on the queue push, so the repeat limit applies.
   bool pureRepeat = inputStrides[3] == 0;
@@ -240,20 +248,16 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
     return forOp->emitOpError()
            << (pureRepeat ? "repeat count " : "iteration count ")
            << inputSizes[3] << " exceeds the [1:" << maxCount << "] range.";
-  if (hardwareStrides[0] > (1 << step_bits) - 1)
-    return forOp->emitOpError("Stride 0 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
-  if (hardwareStrides[1] > (1 << step_bits) - 1)
-    return forOp->emitOpError("Stride 1 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
-  if (hardwareStrides[2] > (1 << step_bits) - 1)
-    return forOp->emitOpError("Stride 2 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
+  for (int dim : {0, 1, 2}) {
+    if (hardwareStrides[dim] > maxStep - 1)
+      return outOfRange("Stride", dim, inputStrides[dim], hardwareStrides[dim],
+                        1, maxStep);
+  }
   // strides[3] exceeding the range is ok iff the sizes[3] is one, which is
   // checked below
-  if (hardwareStrides[3] > (1 << step_bits) - 1 && hardwareSizes[3] > 0)
-    return forOp->emitOpError("Stride 3 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
+  if (hardwareStrides[3] > maxStep - 1 && hardwareSizes[3] > 0)
+    return outOfRange("Stride", 3, inputStrides[3], hardwareStrides[3], 1,
+                      maxStep);
 
   return success();
 }

@@ -78,6 +78,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/hsaruntime/hostruntime.py
     utils/hostruntime/hsaruntime/tensor.py
     utils/compile/__init__.py
+    utils/compile/readobj.py
     utils/compile/remarks.py
     utils/compile/utils.py
     utils/compile/cache/utils.py

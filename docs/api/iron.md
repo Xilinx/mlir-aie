@@ -37,6 +37,12 @@ The objects most designs are built from.
     options:
       show_root_heading: false
 
+### DeviceConfiguration
+
+::: iron.configuration
+    options:
+      show_root_heading: false
+
 ### Worker
 
 ::: iron.worker

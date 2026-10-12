@@ -681,6 +681,13 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
   if (lowerable(pattern))
     return success();
 
+  // Iteration uses the outermost ND slot, so there is no free dimension to
+  // factor into, and chain-slicing has no defined iteration semantics.
+  if (op.getIteration())
+    return op.emitOpError()
+           << "buffer descriptor with the iteration attribute is too large "
+              "to lower and cannot be decomposed";
+
   // Outer iteration dimensions that re-read the same data only repeat what
   // is inside them, as the task's repeat count does. They go, and a pass
   // shrinks to what they repeat: where that is all the pattern needs it

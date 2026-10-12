@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import inspect
 from typing import List, Tuple, Dict, Any, Union
 import contextlib
+import os
 from enum import Enum, IntEnum
 
 import numpy as np
@@ -54,6 +55,7 @@ from ..extras.util import (
     get_user_code_loc,
     region_adder,
 )
+from ..helpers.sourceloc import AIE_ROOT
 from ..helpers.taplib import TensorAccessPattern
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
@@ -81,6 +83,8 @@ from ..ir import (
 # Comes from _aie
 register_dialect(get_dialect_registry())
 assert _cext.globals._check_dialect_module_loaded("aie")
+# Lets ir.loc_tracebacks() skip this package; the exclusion is a path prefix.
+_cext.globals.register_traceback_file_exclusion(f"{AIE_ROOT}{os.sep}")
 
 # The generated `use_lock` builder takes the lock value as an SSA i32 operand.
 # Wrap it so callers may still pass a plain Python int (materialized as an
@@ -222,6 +226,8 @@ class external_func(FuncOp):
         link_with=None,
         link_with_mode=None,
         stack_size_override=None,
+        loc=None,
+        ip=None,
     ):
         # Validate before building the op so a rejected declaration never lands
         # in the IR at the current insertion point.
@@ -266,6 +272,8 @@ class external_func(FuncOp):
             name=name,
             type=FunctionType.get(mlir_inputs, mlir_outputs),
             visibility=visibility,
+            loc=loc,
+            ip=ip,
         )
         if link_with is not None:
             self.operation.attributes["link_with"] = StringAttr.get(link_with)
@@ -300,11 +308,35 @@ def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
     )
 
 
+@dataclass
+class BdIteration:
+    """Iteration state of a buffer descriptor for aie.dma_bd.
+
+    Lets one BD cover ``size`` sub-buffers over ``size`` executions instead of an
+    N-deep chain. Values are true/element: the base advances by ``stride``
+    elements each execution and wraps after ``size`` executions; ``current`` is
+    the starting step (default 0). The lowering applies the hardware ``-1`` bias
+    and element->word scaling. NOTE: the identically-named ``iteration_*`` family
+    on the runtime-sequence path uses RAW register values instead -- do not copy
+    numbers between them.
+    """
+
+    size: int
+    stride: int
+    current: int = 0
+
+
 @register_attribute_builder("BDIterationAttr")
-def bd_iteration_attr_builder(tup: Tuple[int] | List[int], context=None):
-    assert (isinstance(tup, list) or isinstance(tup, tuple)) and len(tup) == 3
+def bd_iteration_attr_builder(
+    value: BdIteration | Tuple[int] | List[int], context=None
+):
+    if isinstance(value, BdIteration):
+        size, stride, current = value.size, value.stride, value.current
+    else:
+        assert (isinstance(value, list) or isinstance(value, tuple)) and len(value) == 3
+        size, stride, current = value
     return Attribute.parse(
-        f"#aie.bd_iteration<size = {tup[0]}, stride = {tup[1]}, current = {tup[2]}>",
+        f"#aie.bd_iteration<size = {size}, stride = {stride}, current = {current}>",
         context=context,
     )
 
@@ -666,6 +698,8 @@ class object_fifo(ObjectFifoCreateOp):
         consumer_datatype=None,
         packet=None,
         packet_id=None,
+        loc=None,
+        ip=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
         self.consumer_datatype = (
@@ -724,6 +758,8 @@ class object_fifo(ObjectFifoCreateOp):
             iter_count=iter_count,
             packet=packet,
             packet_id=packet_id,
+            loc=loc,
+            ip=ip,
         )
         if consumerElemType is not None:
             self.attributes["consumerElemType"] = consumerElemType
@@ -770,7 +806,9 @@ class object_fifo(ObjectFifoCreateOp):
 class object_fifo_link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python variables"""
 
-    def __init__(self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[]):
+    def __init__(
+        self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[], *, loc=None, ip=None
+    ):
         if not isinstance(fifoIns, List):
             fifoIns = [fifoIns]
         if not isinstance(fifoOuts, List):
@@ -786,6 +824,8 @@ class object_fifo_link(ObjectFifoLinkOp):
             fifoOuts=fifoOutRefs,
             src_offsets=srcOffsets,
             dst_offsets=dstOffsets,
+            loc=loc,
+            ip=ip,
         )
 
 
@@ -801,15 +841,25 @@ class packetflow(PacketFlowOp):
         source_channel,
         dests: Union[Dict, List[Dict]],
         keep_pkt_header: bool | None = None,
+        priority_route: bool | None = None,
+        *,
+        loc=None,
+        ip=None,
     ):
-        super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
+        super().__init__(
+            ID=pkt_id,
+            keep_pkt_header=keep_pkt_header,
+            priority_route=priority_route,
+            loc=loc,
+            ip=ip,
+        )
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
-            PacketSourceOp(source, source_port, source_channel)
+            PacketSourceOp(source, source_port, source_channel, loc=loc)
             dests = [dests] if isinstance(dests, dict) else dests
             for dest in dests:
-                PacketDestOp(dest["dest"], dest["port"], dest["channel"])
-            EndOp()
+                PacketDestOp(dest["dest"], dest["port"], dest["channel"], loc=loc)
+            EndOp(loc=loc)
 
 
 core = region_op(Core, terminator=lambda *_: EndOp())
@@ -1118,6 +1168,9 @@ def flow(
     dest=None,
     dest_bundle=None,
     dest_channel=None,
+    *,
+    loc=None,
+    ip=None,
 ):
     assert dest is not None
     if source_bundle is None:
@@ -1129,7 +1182,14 @@ def flow(
     if dest_channel is None:
         dest_channel = 0
     return FlowOp(
-        source, source_bundle, source_channel, dest, dest_bundle, dest_channel
+        source,
+        source_bundle,
+        source_channel,
+        dest,
+        dest_bundle,
+        dest_channel,
+        loc=loc,
+        ip=ip,
     )
 
 

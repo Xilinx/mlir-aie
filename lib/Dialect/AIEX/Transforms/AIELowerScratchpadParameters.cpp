@@ -430,7 +430,9 @@ struct AIELowerScratchpadParametersPass
     OpBuilder builder(syncOp);
     Location loc = syncOp.getLoc();
 
-    NpuCreateScratchpadOp::create(builder, loc, scratchpadSize);
+    // A module with no parameters has nothing to stage, and size 0 is invalid.
+    if (scratchpadSize > 0)
+      NpuCreateScratchpadOp::create(builder, loc, scratchpadSize);
 
     for (auto &[stateIdx, bufRef] : paramEntries) {
       // Zero the destination before the additive UpdateScratchpad.

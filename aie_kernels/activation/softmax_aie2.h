@@ -90,6 +90,72 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   return;
 }
 
+// The three passes of softmax_simple_bf16 over a row split into blocks, one
+// call per block and pass. Between calls state[0, 16) holds the per-lane exp
+// sums and state[16] the row maximum, so every lane sums its elements in the
+// same order and the row rounds exactly as one call would.
+template <int MinIters>
+void softmax_max_block(bfloat16 *restrict input_vector, float *restrict state,
+                       const int32_t first, const int32_t vector_size) {
+  auto it_in = aie::cbegin_restrict_vector<16>(input_vector);
+  const int elem_iters = vector_size / 16;
+
+  aie::vector<bfloat16, 16> max_accum_vec = aie::broadcast<bfloat16, 16>(
+      first ? std::numeric_limits<bfloat16>::lowest() : (bfloat16)state[16]);
+  if (first)
+    aie::store_v(state, aie::zeros<float, 16>());
+
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(MinIters)
+  for (int i = 0; i < elem_iters; i++) {
+    max_accum_vec = aie::max(max_accum_vec, *it_in++);
+  }
+  state[16] = (float)aie::reduce_max(max_accum_vec);
+}
+
+template <int MinIters>
+void softmax_sum_block(bfloat16 *restrict input_vector, float *restrict state,
+                       const int32_t vector_size) {
+  auto it_in = aie::cbegin_restrict_vector<16>(input_vector);
+  const int elem_iters = vector_size / 16;
+
+  aie::vector<bfloat16, 16> max_val_vec =
+      aie::broadcast<bfloat16, 16>((bfloat16)state[16]);
+  aie::accum<accfloat, 16> exp_val_accum;
+  exp_val_accum.from_vector(aie::load_v<16>(state));
+
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(MinIters)
+  for (int i = 0; i < elem_iters; i++) {
+    aie::vector<bfloat16, 16> exp_val =
+        to_v16bfloat16(getExpBf16(aie::sub(*it_in++, max_val_vec)));
+    exp_val_accum = add(exp_val_accum, exp_val);
+  }
+  aie::store_v(state, exp_val_accum.to_vector<float>());
+}
+
+template <int MinIters>
+void softmax_scale_block(bfloat16 *restrict input_vector,
+                         bfloat16 *restrict output_vector,
+                         float *restrict state, const int32_t vector_size) {
+  auto it_in = aie::cbegin_restrict_vector<16>(input_vector);
+  auto it_out = aie::begin_restrict_vector<16>(output_vector);
+  const int elem_iters = vector_size / 16;
+
+  aie::vector<bfloat16, 16> max_val_vec =
+      aie::broadcast<bfloat16, 16>((bfloat16)state[16]);
+  aie::vector<float, 16> reduce = aie::load_v<16>(state);
+  bfloat16 col_sum_inv = (bfloat16)aie::inv(aie::reduce_add(reduce));
+
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(MinIters)
+  for (int i = 0; i < elem_iters; i++) {
+    aie::vector<bfloat16, 16> exp_val =
+        to_v16bfloat16(getExpBf16(aie::sub(*it_in++, max_val_vec)));
+    *it_out++ = aie::mul(exp_val, col_sum_inv).to_vector<bfloat16>();
+  }
+}
+
 extern "C" {
 
 void softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
@@ -100,6 +166,36 @@ void softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
     softmax_simple_bf16<8>(input, output, input_size);
   else
     softmax_simple_bf16<1>(input, output, input_size);
+}
+
+void softmax_max_bf16(bfloat16 *restrict input, float *restrict state,
+                      const int32_t first, const int32_t input_size) {
+  event0();
+  if (input_size >= 16 * 8)
+    softmax_max_block<8>(input, state, first, input_size);
+  else
+    softmax_max_block<1>(input, state, first, input_size);
+  event1();
+}
+
+void softmax_sum_bf16(bfloat16 *restrict input, float *restrict state,
+                      const int32_t input_size) {
+  event0();
+  if (input_size >= 16 * 8)
+    softmax_sum_block<8>(input, state, input_size);
+  else
+    softmax_sum_block<1>(input, state, input_size);
+  event1();
+}
+
+void softmax_scale_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
+                        float *restrict state, const int32_t input_size) {
+  event0();
+  if (input_size >= 16 * 8)
+    softmax_scale_block<8>(input, output, state, input_size);
+  else
+    softmax_scale_block<1>(input, output, state, input_size);
+  event1();
 }
 
 // Fill [unmasked_size, total_size) with -inf, so a following softmax zeros

@@ -144,10 +144,10 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
 
   let options = [Option<"clPlacementBudget", "placement-budget", "int64_t",
                         /*default=*/"100000",
-                        "Placements the search may try per tile before it "
-                        "gives up. A node count rather than a time limit, so "
-                        "a build stays reproducible; raise it for a tile that "
-                        "reports the budget was hit.">];
+                        "Placements each search, ranked then exhaustive, may "
+                        "try per tile before it gives up. A node count rather "
+                        "than a time limit, so a build stays reproducible; "
+                        "raise it for a tile that reports hitting it.">];
 
   // Placement is a bounded search. A change that degrades it without breaking
   // it outright moves these rather than failing anything, so they are worth
@@ -159,6 +159,8 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
                  "Placements undone and retried">,
        Statistic<"numBudgetExhausted", "budget-exhausted",
                  "Tiles abandoned at the placement budget">,
+       Statistic<"numTilesCompacted", "tiles-compacted",
+                 "Tiles only the exhaustive search could place">,
   ];
 }
 
@@ -315,15 +317,25 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
     and aie.packet_rules operations.
 
     An arbiter holds its grant until end of packet, so two slave ports sharing
-    one arbiter serialize even on different master ports. Where that can
-    deadlock, amsel allocation separates them; with no independent arbiter free
-    it keeps the sharing and warns. Only oversubscribed switchboxes are
-    affected.
+    one arbiter serialize even on different master ports. A switchbox with
+    more packet master ports than arbiters first turns packet hops that alone
+    use both their ports into aie.connect, which passes the header through to
+    the next switchbox and needs no arbiter. Where master ports still have to
+    share, amsel allocation keeps apart the flows that can deadlock, judged
+    from the design's locks, streams, BD lengths and runtime waits. Where a
+    routing leaves no such allocation, the router routes the flows involved
+    elsewhere. If flows that can deadlock pairwise must take more arbiters at
+    some switchbox than it has, whatever the routing, or no routing keeps them
+    apart, the pass fails and names the flows and what it assumed about them.
+    It also fails where flows can deadlock however they are routed, as one
+    source or receiver orders them, or where packet flows into receivers they
+    share hold arbiters in a cycle no routing found breaks, unless
+    allow-deadlock-prone is set, which only warns of those.
 
     This reads buffer descriptor lengths from the DMA bodies (aie.mem,
-    aie.memtile_dma, aie.shim_dma), so run the pass after those exist. Channels
-    with no body here (e.g. shim channels, once the runtime sequence is lowered
-    away) are simply left to the remaining rules.
+    aie.memtile_dma, aie.shim_dma), so run the pass after those exist. A
+    channel with no body here is assumed to wait on anything on its tile, and
+    a flow whose volume is unknown to overrun its receiver.
   }];
 
   let constructor = "xilinx::AIE::createAIEPathfinderPass()";
@@ -334,6 +346,15 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
               "Flag to enable aie.flow lowering.">,
        Option<"clRoutePacket", "route-packet", "bool", /*default=*/"true",
               "Flag to enable aie.packetflow lowering.">,
+       Option<"clCircuitSwitchHops", "circuit-switch-hops", "bool",
+              /*default=*/"true",
+              "Circuit-switch exclusive packet hops at switchboxes with more "
+              "packet master ports than free arbiters.">,
+       Option<"clAllowDeadlockProne", "allow-deadlock-prone", "bool",
+              /*default=*/"false",
+              "Warn of, rather than fail on, flows that can deadlock however "
+              "they are routed, and hold cycles through receivers packet "
+              "flows share that no routing found avoids.">,
   ];
 }
 
@@ -441,6 +462,48 @@ def AIEHoistVectorTransferPointers
   }];
 
   let constructor = "xilinx::AIE::createAIEHoistVectorTransferPointersPass()";
+}
+
+def AIECoreIntRangeNarrowing
+    : Pass<"aie-core-int-range-narrowing", "DeviceOp"> {
+  let summary = "Narrow index loops and arithmetic in core code to 32 bits "
+                "where integer range analysis proves it safe";
+  let description = [{
+    `index` lowers to `i64` on the cores, which have 32-bit registers: every
+    `index` loop counter costs two registers and a carry, and every `index`
+    add or compare a multi-instruction sequence. This pass runs the upstream
+    `arith-int-range-narrowing` patterns over the body of each `aie.core` and
+    each `func.func` in the device. Where integer range analysis proves the
+    values fit, `scf.for` bounds, steps and induction variables become `i32`
+    and `index` arithmetic is done in `i32`, with casts back to `index` where
+    an op needs one (such as a `memref.load` index).
+
+    Only provably safe rewrites are made. A loop whose bounds do not fit, such
+    as a `0` to `INT64_MAX` "forever" loop, or whose bounds are unknown, keeps
+    its `index` counter.
+
+    Runtime sequences are left alone. Must run before SCF-to-CF lowering,
+    since loop bounds are only narrowed on `scf.for`.
+
+    Example:
+      Before:
+        scf.for %i = %c0 to %c32 step %c1 {
+          %v = memref.load %buf[%i] : memref<32xi32>
+        }
+
+      After:
+        scf.for %i = %c0_i32 to %c32_i32 step %c1_i32 : i32 {
+          %idx = arith.index_castui %i : i32 to index
+          %v = memref.load %buf[%idx] : memref<32xi32>
+        }
+  }];
+
+  let constructor = "xilinx::AIE::createAIECoreIntRangeNarrowingPass()";
+  let dependentDialects = ["mlir::arith::ArithDialect"];
+  let options = [ListOption<"bitwidthsSupported", "int-bitwidths-supported",
+                            "unsigned",
+                            "Integer bitwidths to narrow to, tried in order">,
+  ];
 }
 
 def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {

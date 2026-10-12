@@ -17,10 +17,14 @@ import numpy as np
 import pytest
 
 import aie.utils as utils
+import aie.utils.compile.jit.compilabledesign as compilabledesign_module
+from aie.dialects.aiex import npu_address_patch
 from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.utils import get_current_device, set_current_device
+from aie.utils.compile.jit import _manifest
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
+from aie.utils.compile.jit.markers import DispatchTime
 
 needs_xclbinutil = pytest.mark.skipif(
     shutil.which("xclbinutil") is None, reason="xclbinutil"
@@ -85,3 +89,38 @@ def test_static_mlir_compile_does_not_bind_a_device(tmp_path):
         inst_path.resolve(),
     )
     assert get_current_device(probe_runtime=False) is None
+
+
+def patch_bar_then_baz(
+    *, bar: DispatchTime[np.int32] = 3, baz: DispatchTime[np.int32] = 7
+):
+    def sequence(baz_value, bar_value):
+        npu_address_patch(addr=119300, arg_idx=0, arg_plus=bar_value)
+        npu_address_patch(addr=119304, arg_idx=0, arg_plus=baz_value)
+
+    return Program(NPU2Col1(), Runtime(sequence, [baz, bar])).resolve_program()
+
+
+@needs_xclbinutil
+@pytest.mark.parametrize("cache_hit", [False, True])
+def test_dispatch_library_selected_once_per_compile(
+    tmp_path, monkeypatch, npu2_device, cache_hit
+):
+    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
+    if cache_hit:
+        CompilableDesign(patch_bar_then_baz).compile()
+    design = CompilableDesign(patch_bar_then_baz)
+    design.compile()
+    first = design.get_dispatch_lib_path()
+    xclbin = design.get_cache_entry().xclbin
+    built = xclbin.stat()
+
+    second = first.with_name(f"dispatch-{'b' * 64}{first.suffix}")
+    shutil.copy(first, second)
+    _manifest._write(first.parent, [], dispatch_library=second.name)
+    # A later publication must not silently change this design's selected ABI.
+    assert design.get_dispatch_lib_path() == first
+    design.compile()
+    assert design.get_dispatch_lib_path() == second
+    after = xclbin.stat()
+    assert (built.st_ino, built.st_mtime_ns) == (after.st_ino, after.st_mtime_ns)

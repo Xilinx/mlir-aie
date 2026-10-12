@@ -48,6 +48,12 @@ def AIE_DeviceOp
     The design itself is described using a region of code contained by the device
     operation.
 
+    The optional `has_ctrl_pkt_overlay` attribute marks a design that a
+    control-packet reload (`aiecc --load-pdi-to-ctrl-pkt`) installs. The reload
+    configures the `@ctrl_pkt_overlay` device first and the rest of the design
+    through it, so the router keeps the switch settings the overlay's flows
+    take on their own. `aie-generate-column-control-overlay` sets it.
+
     Example:
     ```
     aie.device(xcvc1902) {
@@ -58,7 +64,8 @@ def AIE_DeviceOp
   }];
 
   let arguments = (ins AIEDevice:$device,
-      DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name);
+      DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name,
+      DefaultValuedOptionalAttr<BoolAttr, "false">:$has_ctrl_pkt_overlay);
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
     `(` $device `)` ($sym_name^)? regions attr-dict
@@ -344,8 +351,8 @@ def AIE_CoreOp
       Results<(outs Index)> {
   let arguments =
       (ins Index:$tile,
-          // Absent means "use this target's default"; read
-          // getEffectiveStackSize().
+          // Absent means "size it from measured_stack_size, or use this
+          // target's default"; read getEffectiveStackSize().
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
           // Where the stack starts, tile-relative. Absent means 0 unless
           // stack_bank requires the allocator to resolve it. The stack grows
@@ -359,8 +366,9 @@ def AIE_CoreOp
           // an address inside it and writes `stack_address`, the way it does
           // for a `mem_bank`-only aie.buffer.
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$stack_bank,
-          // Written by aiecc from the compiled core object and the call graph.
-          // Absent when aiecc cannot measure the core.
+          // Written by aiecc from the call graph of the core's probe link,
+          // before placement, or else from its final link. Absent when aiecc
+          // cannot measure the core exactly.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
           // Bytes to set aside for the core's own .data, .rodata and .bss.
@@ -368,7 +376,7 @@ def AIE_CoreOp
           // run after placing all buffers.
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$data_size,
           // Written by aiecc from the linked ELF. Absent when aiecc cannot
-          // measure the core.
+          // measure the core; aiecc drops any value its input carries.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_data_size,
           // Bytes this core's own sections need in each bank, indexed by bank
@@ -376,6 +384,8 @@ def AIE_CoreOp
           // aiecc from a probe link, so that placement can leave the room the
           // real link will need. Absent when there is nothing to probe or the
           // probe could not run, in which case placement proceeds as before.
+          // Like every measured_* attribute, aiecc drops any value its input
+          // carries.
           OptionalAttr<DenseI32ArrayAttr>:$measured_bank_sizes,
           OptionalAttr<DenseI32ArrayAttr>:$measured_data_ranges,
           // Deprecated: attach link_with to func.func declarations instead and
@@ -421,8 +431,10 @@ def AIE_CoreOp
     file.
 
     This op has an optional `stack_size` attribute, to control the amount of memory (in bytes)
-    reserved for the stack.  When absent the target's default is used
-    (`AIETargetModel::getDefaultCoreStackSize()`).  The stack (and other data allocations)
+    reserved for the stack.  When absent the reservation is the larger of the
+    target's default (`AIETargetModel::getDefaultCoreStackSize()`) and
+    `measured_stack_size` rounded up to the stack ABI alignment, or the default
+    alone when `measured_stack_size` is absent.  The stack (and other data allocations)
     are always stored in the local core memory, to avoid conflicts with static data
     allocations in other cores.
 
@@ -444,14 +456,17 @@ def AIE_CoreOp
 
     By default the stack sits directly below the buffers with no clearance, so a
     `stack_size` below the core's use overwrites those buffers. `aiecc` measures
-    the stack this core needs, writes it to the `measured_stack_size` attribute,
-    and fails the build
-    when `stack_size` is smaller. `aiecc` measures the whole live call chain. That
+    the stack this core needs from a probe link before placing buffers, and
+    writes it to the `measured_stack_size` attribute, so a core that leaves
+    `stack_size` absent gets the stack it needs. After the final link it
+    measures again, and fails the build when the reservation is smaller than
+    the requirement. `aiecc` measures the whole live call chain. That
     chain starts above the core body: the runtime enters at `__start` (crt0), which
     calls `_main_init` (crt1), which calls the core body, which calls its kernels.
     `_main_init` holds a frame that stays live across the whole chain. `aiecc`
     measures the linked core, so the chain covers crt0 and crt1 too.
-    `measured_stack_size` stays absent when `aiecc` cannot measure the core. The
+    `aiecc` drops any `measured_stack_size` its input carries, so the attribute
+    stays absent when `aiecc` cannot measure the core. The
     measurement reads the relocations of the linked core, which the Peano link
     keeps and the chess/BCF link drops, so a `--xbridge` build leaves every core
     unmeasured. See `programming_guide/core_data_memory.md` for the mechanism, the
@@ -523,7 +538,7 @@ def AIE_CoreOp
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     bool isEmpty();
     /// The stack reservation in bytes: the `stack_size` attribute when set,
-    /// otherwise this target's default.
+    /// otherwise this target's default grown to cover `measured_stack_size`.
     uint32_t getEffectiveStackSize();
     /// Where the stack sits in this tile's data memory. Absent `stack_address`
     /// means offset 0, which is where every core put it before the attribute
@@ -629,6 +644,7 @@ def AIE_FlowOp : AIE_Op<"flow", []> {
     int sourceIndex() { return getSourceChannel(); }
     int destIndex() { return getDestChannel(); }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_AMSelOp
@@ -718,6 +734,7 @@ def AIE_MasterSetOp
   let extraClassDeclaration = [{
     int destIndex() { return getDestChannel(); }
     Port destPort() { return {getDestBundle(), destIndex()}; }
+    bool keepsPktHeader();
   }];
 
   let hasVerifier = 1;
@@ -817,10 +834,11 @@ def AIE_PacketFlowOp
 
     The optional attribute keep_pkt_header indicates whether each
     data packet's packet header gets preserved at the flow's
-    destination. The optional attribute priority_route indicates
-    whether the packet flow is routed in priority over other flows,
-    so that they always get allocated with the same master, slave
-    ports, arbiters and master selects (msel).
+    destination. The optional attribute priority_route routes the flow
+    first, on its own, and the other flows route around it. If the design
+    cannot route that way, the flow routes with the others. In a device
+    with `has_ctrl_pkt_overlay`, the control overlay's flows (those to or
+    from a TileControl port) always keep the route they take on their own.
 
     The optional attribute mask, written after the ID in the parentheses,
     states the packet-rule mask of the flow. A slave port accepts a packet
@@ -892,6 +910,7 @@ def AIE_PacketSourceOp : AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return getChannel(); }
     Port port() { return {getBundle(), channelIndex()}; }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_PacketDestOp : AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
@@ -914,6 +933,7 @@ def AIE_PacketDestOp : AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return getChannel(); }
     Port port() { return {getBundle(), channelIndex()}; }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_DMABDPACKETOp : AIE_Op<"dma_bd_packet", []> {

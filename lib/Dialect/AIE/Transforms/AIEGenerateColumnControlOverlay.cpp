@@ -153,7 +153,7 @@ struct AIEGenerateColumnControlOverlayPass
     for (auto dev : sourceDevices) {
       if (deviceOptedOut(dev)) {
         if (clEmitStandaloneOverlay) {
-          dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(false));
+          dev.setHasCtrlPktOverlay(false);
         }
         continue;
       }
@@ -161,7 +161,7 @@ struct AIEGenerateColumnControlOverlayPass
       // second one.
       if (deviceHasControlOverlay(dev)) {
         if (clEmitStandaloneOverlay) {
-          dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+          dev.setHasCtrlPktOverlay(true);
         }
         continue;
       }
@@ -186,7 +186,7 @@ struct AIEGenerateColumnControlOverlayPass
       if (failed(applyOverlayToDevice(dev, tokenTiles)))
         return signalPassFailure();
       if (clEmitStandaloneOverlay)
-        dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+        dev.setHasCtrlPktOverlay(true);
     }
 
     // Emit standalone `@ctrl_pkt_overlay` device.
@@ -285,7 +285,7 @@ struct AIEGenerateColumnControlOverlayPass
     if (failed(applyOverlayToDevice(overlayDevice, tokenTiles)))
       return failure();
 
-    overlayDevice->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+    overlayDevice.setHasCtrlPktOverlay(true);
     return success();
   }
 
@@ -518,6 +518,7 @@ struct AIEGenerateColumnControlOverlayPass
   static bool hasRoutedPacket(DeviceOp device, int pktID, TileID from,
                               ArrayRef<Port> startPorts, TileID to,
                               Port toPort) {
+    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
     DenseMap<TileID, AIE::SwitchboxOp> switchboxes;
     for (auto switchbox : device.getOps<AIE::SwitchboxOp>()) {
       auto tile = dyn_cast<TileLike>(switchbox.getTile().getDefiningOp());
@@ -566,7 +567,7 @@ struct AIEGenerateColumnControlOverlayPass
 
       for (auto [dest, op] : outputs) {
         if (tileID == to && dest == toPort) {
-          if (op->hasAttr("is_ctrl_pkt_overlay"))
+          if (overlay.isAttrPresent(op))
             return true;
           continue;
         }

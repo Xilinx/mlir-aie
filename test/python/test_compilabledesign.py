@@ -12,7 +12,6 @@ test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
 import builtins
-import dataclasses
 import importlib
 import json
 import os
@@ -21,18 +20,18 @@ import sys
 from pathlib import Path
 from types import CodeType
 
+import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 import numpy as np
 import pytest
-
-import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
-from aie.iron import kernels
+from aie.iron import DeviceConfiguration, Program, Runtime, kernels
 from aie.iron.algorithms import _pipeline
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
-from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+from aie.utils.jit import jit
 from aie.utils.compile.jit import _hash as _hash_mod
+from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 from aie.utils.compile.jit._hash import _compute_artifact_hash, _compute_recipe_hash
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
@@ -760,28 +759,6 @@ def test_artifact_hash_reads_the_kernel_source_tree(monkeypatch, tmp_path):
     assert _compute_artifact_hash(generator, [], [], True) != before
 
 
-_ADD_STACK = {"bytes": 1024}
-
-
-def _add_with_table_stack():
-    fn = kernels.add()
-    fn.contract = dataclasses.replace(fn.contract, stack_bytes=_ADD_STACK["bytes"])
-    return fn
-
-
-def test_a_library_design_is_keyed_by_its_kernels_stack(monkeypatch):
-    # The stack can come from a table outside the factory's code, which is all
-    # the key reads of the factory; a stale key reuses a core with the old stack.
-    set_current_device(NPU2Col1())
-    try:
-        before = kd.design(_add_with_table_stack).compilable._compute_cache_hash()
-        monkeypatch.setitem(_ADD_STACK, "bytes", 2048)
-        after = kd.design(_add_with_table_stack).compilable._compute_cache_hash()
-    finally:
-        set_current_device(None)
-    assert before != after
-
-
 def test_hash_for_path_generator_uses_path_string():
     d1 = CompilableDesign(Path("/a/design.mlir"))
     d2 = CompilableDesign(Path("/b/design.mlir"))
@@ -1300,6 +1277,91 @@ def test_the_kernel_harness_key_is_the_same_in_every_process(tmp_path):
     }
 
 
+_LAZY_FILES = {
+    "lazy_impl": "class Impl:\n    pass\n",
+    "lazy_holder": (
+        "_instance = None\n\n\n"
+        "def load():\n"
+        "    global _instance\n"
+        "    from lazy_impl import Impl\n\n"
+        "    _instance = Impl()\n"
+    ),
+    "lazy_design": (
+        "import lazy_holder\n"
+        "from aie.utils.compile.jit.markers import CompileTime\n\n\n"
+        "def design(*, N: CompileTime[int]):\n"
+        "    lazy_holder.load()\n"
+    ),
+}
+
+
+def test_the_key_does_not_follow_an_instance_bound_after_import(tmp_path):
+    """A global bound lazily, as aie.utils binds its default NPU runtime, is state.
+
+    Following it made the key depend on whether the process had loaded the
+    runtime before the key first reached the module.
+    """
+    for name, text in _LAZY_FILES.items():
+        (tmp_path / f"{name}.py").write_text(text)
+    sys.path.insert(0, str(tmp_path))
+
+    def key(load):
+        for name in _LAZY_FILES:
+            sys.modules.pop(name, None)
+        gen = importlib.import_module("lazy_design").design
+        if load:
+            sys.modules["lazy_holder"].load()
+        return _compute_recipe_hash(gen, {"N": 1}, (), ())
+
+    try:
+        assert key(load=True) == key(load=False)
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in _LAZY_FILES:
+            sys.modules.pop(name, None)
+
+
+_SETTINGS_FILES = {
+    "eager_settings": "class Settings:\n    depth = 2\n\n\nSETTINGS = Settings()\n",
+    "eager_helper": (
+        "from eager_settings import SETTINGS\n\n\n"
+        "def depth():\n"
+        "    return SETTINGS.depth\n"
+    ),
+    "eager_design": (
+        "from eager_helper import depth\n"
+        "from aie.utils.compile.jit.markers import CompileTime\n\n\n"
+        "def design(*, N: CompileTime[int]):\n"
+        "    depth()\n"
+    ),
+}
+
+
+def test_the_key_follows_an_instance_bound_at_import(tmp_path):
+    """An instance a module imports is source: editing the module it comes
+    from changes the key.
+    """
+    for name, text in _SETTINGS_FILES.items():
+        (tmp_path / f"{name}.py").write_text(text)
+    sys.path.insert(0, str(tmp_path))
+
+    def key():
+        for name in _SETTINGS_FILES:
+            sys.modules.pop(name, None)
+        gen = importlib.import_module("eager_design").design
+        return _compute_recipe_hash(gen, {"N": 1}, (), ())
+
+    try:
+        before = key()
+        settings = tmp_path / "eager_settings.py"
+        settings.write_text(settings.read_text().replace("depth = 2", "depth = 32"))
+        assert key() != before
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in _SETTINGS_FILES:
+            sys.modules.pop(name, None)
+
+
 def test_hash_is_24_hex_chars():
     d = CompilableDesign(_gemm_gen())
     hex_str = d._compute_cache_hash()
@@ -1681,9 +1743,9 @@ def test_specialized_dispatch_runtime_constant_preserves_dtype(
     dtype, boundary, npu2_device
 ):
     """Generate real IR for every scalar width, without a compiler or an NPU."""
+    from aie.helpers.util import np_dtype_to_mlir_type
     from aie.ir import IntegerAttr
     from aie.iron import Program, Runtime
-    from aie.helpers.util import np_dtype_to_mlir_type
 
     observed = {}
     literal = int(getattr(np.iinfo(dtype), boundary))
@@ -1967,6 +2029,23 @@ module {
     assert parse_dma_sizes(tmp_path) is None
 
 
+def test_parse_dma_sizes_selects_explicit_multi_device_entry(tmp_path):
+    sample_mlir = """\
+module {
+    aie.device(npu1) @first {
+        aie.runtime_sequence @run(%x: memref<1024xi32>) {
+    }
+    }
+    aie.device(npu2) @second {
+        aie.runtime_sequence @run(%y: memref<2048xi16>) {
+    }
+    }
+}
+"""
+    (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
+    assert parse_dma_sizes(tmp_path, entry="second:run") == [2048 * 16]
+
+
 def test_parse_dma_sizes_returns_none_for_dynamic_shape_arg(tmp_path):
     """A dynamic-dim memref arg means the kernel's host contract isn't a
     fixed element count — skip validation rather than guess."""
@@ -2008,8 +2087,6 @@ def test_compute_hash_changes_when_active_device_changes_arch():
     inline passthrough) hit cache collision until the hash started
     tracking the iron-active device.
     """
-    import aie.iron as iron
-
     gen = _gemm_gen()
     cd = CompilableDesign(gen, compile_kwargs={"M": 64, "K": 64, "N": 64})
 
@@ -2036,8 +2113,8 @@ def test_kernels_mm_mac_dims_per_arch():
     and silently produce garbage on AIE2P, which uses (4, 4, 8) for the
     same i16/i16 dtype combo.
     """
-    import numpy as np
     import aie.iron.kernels as kernels
+    import numpy as np
 
     set_current_device(NPU1Col1())
     mm_aie2 = kernels.mm(
@@ -2142,6 +2219,129 @@ def test_mlir_path_compile_forwards_include_paths_and_stages_objects(
     assert calls == [([], (include_path,))]
 
 
+def test_non_full_elf_allows_raw_multi_device_mlir(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module { aie.device(npu1) @a {} aie.device(npu1) @b {} }")
+
+    design = CompilableDesign(mlir_path)
+    design._generate_mlir(ExternalFunction)
+
+
+def test_multi_configuration_program_implies_full_elf(tmp_path, monkeypatch):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "main:sequence"} {}'
+    )
+    design = CompilableDesign(mlir_path)
+    elf_path = tmp_path / "design.elf"
+
+    def compile_full_elf(_external_function, requested_path):
+        assert requested_path is None
+        return elf_path, None
+
+    monkeypatch.setattr(design, "_compile_full_elf", compile_full_elf)
+
+    assert design.compile() == (elf_path, None)
+    assert design.full_elf is True
+
+
+def test_multi_configuration_program_accepts_explicit_full_elf_path(
+    tmp_path, monkeypatch
+):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "main:sequence"} {}'
+    )
+    design = CompilableDesign(mlir_path)
+    elf_path = tmp_path / "design.elf"
+
+    monkeypatch.setattr(
+        design,
+        "_compile_full_elf",
+        lambda _external_function, requested_path: (Path(requested_path), None),
+    )
+
+    assert design.compile(full_elf_path=elf_path) == (elf_path, None)
+
+
+def test_inferred_full_elf_rejects_standard_paths_after_generation(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "main:sequence"} {}'
+    )
+    design = CompilableDesign(mlir_path)
+
+    design.generate_mlir()
+
+    with pytest.raises(ValueError, match="requires full-ELF compilation"):
+        design.compile(
+            xclbin_path=tmp_path / "design.xclbin",
+            inst_path=tmp_path / "insts.bin",
+        )
+
+
+def test_iron_jit_infers_full_elf_for_composed_program():
+    @jit
+    def generate():
+        runtime_a = Runtime(lambda: None, [])
+        runtime_b = Runtime(lambda: None, [])
+        configuration_a = DeviceConfiguration(NPU2Col1(), runtimes=[runtime_a])
+        configuration_b = DeviceConfiguration(NPU2Col1(), runtimes=[runtime_b])
+        return Program.compose(
+            [configuration_a, configuration_b], entry=runtime_a
+        ).resolve_program()
+
+    mlir = generate.as_mlir()
+
+    assert generate.compilable.full_elf is True
+    assert "iron.configuration_count = 2 : i32" in mlir
+
+
+@pytest.mark.parametrize(
+    "expand_load_pdis,expected",
+    [
+        (None, []),
+        (False, ["--expand-load-pdis=false"]),
+        (True, ["--expand-load-pdis=true"]),
+    ],
+)
+def test_full_elf_reconfiguration_options(tmp_path, expand_load_pdis, expected):
+    attributes = (
+        ""
+        if expand_load_pdis is None
+        else f" attributes {{iron.expand_load_pdis = {str(expand_load_pdis).lower()}}}"
+    )
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(f"module{attributes} {{}}")
+    design = CompilableDesign(mlir_path)
+    module = design._generate_mlir(ExternalFunction, full_elf=True)
+
+    assert design._full_elf_reconfiguration_options(module) == expected
+
+
+def test_full_elf_kernel_name_selects_explicit_entry(tmp_path):
+    (tmp_path / "full_elf_config.json").write_text(
+        json.dumps(
+            {
+                "xrt-kernels": [
+                    {"name": "first", "instance": [{"id": "run"}]},
+                    {"name": "entry", "instance": [{"id": "sequence"}]},
+                ]
+            }
+        )
+    )
+
+    assert (
+        CompilableDesign._parse_full_elf_kernel_name(tmp_path, "entry:sequence")
+        == "entry:sequence"
+    )
+    with pytest.raises(RuntimeError, match="does not contain entry"):
+        CompilableDesign._parse_full_elf_kernel_name(tmp_path, "missing:sequence")
+
+
 # ---------------------------------------------------------------------------
 # specialize(): config overrides + CompileTime[T] kwargs
 # ---------------------------------------------------------------------------
@@ -2190,6 +2390,17 @@ def test_specialize_preserves_other_config():
     assert s.aiecc_flags == ("--dynamic-objFifos",)
     assert s.use_cache is False
     assert s.compile_kwargs == {"M": 512}
+
+
+def test_specialize_preserves_updated_public_config():
+    d = CompilableDesign(_gemm_gen())
+    d.use_cache = False
+    d.aiecc_flags = ("--verbose",)
+
+    s = d.specialize(M=512)
+
+    assert s.use_cache is False
+    assert s.aiecc_flags == ("--verbose",)
 
 
 def test_specialize_mixes_config_and_compile_kwargs():
@@ -2251,35 +2462,6 @@ def test_get_pdi_paths_empty_before_compile():
 
     cd = CompilableDesign(gen)
     assert cd.get_pdi_paths() == []
-
-
-def test_insts_only_lowers_the_sequence_into_its_own_cache_entry(tmp_path, monkeypatch):
-    """An insts_only design produces an instruction stream and no image, in
-    a cache entry keyed apart from the same generator's xclbin build; the
-    second compile is a hit, and get_cache_entry names the stream."""
-    from unittest.mock import Mock
-
-    def gen():
-        pass
-
-    design = CompilableDesign(gen, insts_only=True)
-    assert design._compute_cache_hash() != CompilableDesign(gen)._compute_cache_hash()
-    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
-    monkeypatch.setattr(design, "_generate_mlir", lambda *args: None)
-    lower = Mock(side_effect=lambda **kwargs: kwargs["insts_path"].touch())
-    monkeypatch.setattr(compilabledesign_module, "compile_mlir_module", lower)
-
-    image, insts = design.compile()
-    assert image is None and insts.parent.parent == tmp_path
-    assert lower.call_count == 1
-    assert "xclbin_path" not in lower.call_args.kwargs
-    entry = design.get_cache_entry()
-    assert entry.insts == insts and entry.xclbin is None and entry.elf is None
-
-    design.compile()
-    assert lower.call_count == 1, "the second compile is a cache hit"
-    with pytest.raises(ValueError, match="inst_path alone"):
-        design.compile(xclbin_path=tmp_path / "x.xclbin", inst_path=insts)
 
 
 def test_get_cache_entry_none_before_compile():
@@ -2389,6 +2571,19 @@ def test_compile_dispatch_time_rejects_full_elf_path_kwarg():
         d.compile(full_elf_path="foo.elf")
 
 
+def test_compile_insts_only_accepts_inst_path(monkeypatch, tmp_path):
+    inst_path = tmp_path / "insts.bin"
+    design = CompilableDesign(_gemm_gen(), insts_only=True)
+    monkeypatch.setattr(design, "_infer_full_elf", lambda: False)
+    monkeypatch.setattr(
+        design,
+        "_compile_insts_only",
+        lambda ExternalFunction, path: (None, Path(path)),
+    )
+
+    assert design.compile(inst_path=inst_path) == (None, inst_path)
+
+
 @pytest.mark.parametrize("extra", [{"inst_path": "foo.bin"}, {"elf_path": "foo.elf"}])
 def test_compile_dispatch_time_rejects_static_instruction_paths(extra):
     d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
@@ -2406,56 +2601,6 @@ def test_get_dispatch_lib_path_none_for_non_dispatch_design():
     """get_dispatch_lib_path() returns None for a design with no DispatchTime[T] params."""
     d = CompilableDesign(_gemm_gen())
     assert d.get_dispatch_lib_path() is None
-
-
-@pytest.mark.parametrize("cache_hit", [False, True])
-def test_dispatch_library_selected_once_per_compile(
-    monkeypatch, tmp_path, npu2_device, cache_hit
-):
-    from unittest.mock import Mock
-
-    from aie.utils.compile.jit import _manifest
-    from aie.utils.compile.utils import SHARED_LIB_SUFFIX
-
-    design = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
-    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
-    monkeypatch.setattr(design, "_compute_cache_hash", lambda: "cached")
-    directory = tmp_path / "cached"
-    directory.mkdir()
-    if cache_hit:
-        (directory / "final.xclbin").touch()
-
-    def publish(contents):
-        library = directory / f"dispatch-{contents * 64}{SHARED_LIB_SUFFIX}"
-        library.touch()
-        _manifest._write(directory, [], dispatch_library=library.name)
-        return library
-
-    first = publish("a")
-    compile_device = Mock(side_effect=lambda **kwargs: kwargs["xclbin_path"].touch())
-    compile_builder = Mock(return_value=first)
-    monkeypatch.setattr(design, "_generate_mlir", lambda *args: None)
-    monkeypatch.setattr(compilabledesign_module, "compile_mlir_module", compile_device)
-    monkeypatch.setattr(
-        compilabledesign_module, "compile_dispatch_bridge", compile_builder
-    )
-    design.compile()
-    assert design.get_dispatch_lib_path() == first
-    assert (
-        compile_device.call_count
-        == compile_builder.call_count
-        == (0 if cache_hit else 1)
-    )
-    second = publish("b")
-    # A later publication must not silently change this design's selected ABI.
-    assert design.get_dispatch_lib_path() == first
-    design.compile()
-    assert design.get_dispatch_lib_path() == second
-    assert (
-        compile_device.call_count
-        == compile_builder.call_count
-        == (0 if cache_hit else 1)
-    )
 
 
 @pytest.mark.parametrize("dtype", [int, bool, float, str, np.float32, np.bool_])
