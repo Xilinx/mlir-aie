@@ -3688,6 +3688,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-split-flow-vias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-split-flow-vias
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-standard-lowering" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4596,6 +4607,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-split-flow-vias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-split-flow-vias
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-standard-lowering" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4911,7 +4933,8 @@ Set <code>keep-partial-flows=false</code> to restrict recovery to flows
 that begin at a core/DMA and end on a core/DMA.</p>
 <h4 id="options_4">Options<a class="headerlink" href="#options_4" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>-keep-partial-flows : Also recover flows that do not start or end at a core or DMA.
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>-remove-lifted      : Remove the interconnect configuration (connects, packet rules, mastersets, amsels, wires) that was lifted into recovered flows, leaving only configuration that could not be lifted.
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>-emit-vias          : Emit each recovered flow with a via list pinning every switchbox hop, so the flow carries its own route and the router can skip it.
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>-remove-lifted      : Remove the interconnect configuration (connects, packet rules, mastersets, amsels, wires) that was lifted into recovered flows, leaving only configuration that could not be lifted.
 </code></pre></div>
 <h3 id="-aie-generate-column-control-overlay"><code>-aie-generate-column-control-overlay</code><a class="headerlink" href="#-aie-generate-column-control-overlay" title="Permanent link">&para;</a></h3>
 <p><em>Spawns streaming interconnect network for column control</em></p>
@@ -5152,6 +5175,16 @@ except the buffer's address.</p>
 exist before the core is lowered. This pass names every unnamed buffer and
 checks buffer placement, which rejects a malformed design before any core
 is compiled.</p>
+<h3 id="-aie-split-flow-vias"><code>-aie-split-flow-vias</code><a class="headerlink" href="#-aie-split-flow-vias" title="Permanent link">&para;</a></h3>
+<p><em>Split flow operations that pin via ports into segments</em></p>
+<p>Each <code>aie.flow</code> or <code>aie.packet_flow</code> that carries a <code>via</code> list is rewritten into the
+disaggregated flows that meet on the via ports, plus a local flow at every
+via tile joining its pinned ingress and egress ports.
+A flow <code>A via (B : in -&gt; eg) to C</code> becomes <code>aie.flow(A, B:in)</code>,
+<code>aie.flow(B:in, B:eg)</code>, and <code>aie.flow(B:eg, C)</code>. The pass elides a segment
+whose source and destination coincide, which happens when the flow already
+begins or ends on a via port. The router assigns switchbox resources to the
+resulting flows.</p>
 <h3 id="-aie-standard-lowering"><code>-aie-standard-lowering</code><a class="headerlink" href="#-aie-standard-lowering" title="Permanent link">&para;</a></h3>
 <p><em>Lowering operations in AIE cores' regions to Standard</em></p>
 <p>Outline code inside AIE.core operations into the llvm dialect.
