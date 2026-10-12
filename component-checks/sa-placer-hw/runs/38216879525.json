@@ -1,0 +1,410 @@
+{
+ "schema": 1,
+ "target": "sa-placer-hw",
+ "id": "38216879525",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38216879525",
+ "date": "2026-10-12T07:17:05+00:00",
+ "commit": {
+  "id": "766aca40deaf57b2a12b14e1e15985b878e7faae",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/766aca40deaf57b2a12b14e1e15985b878e7faae",
+  "message": "[AIEX] Support the iteration attribute in dma_configure_task [MED] (#3629)",
+  "timestamp": "2026-10-10T23:14:38Z"
+ },
+ "event": "schedule",
+ "pmode": "turbo",
+ "device": "Krackan",
+ "device_raw": "NPU Krackan 1",
+ "provenance": {
+  "commit": "766aca40de",
+  "peano": "22.0.0+94b320c0",
+  "kernels": "2e65e623d94e",
+  "runtime": "CachedXRTRuntime",
+  "xdna": "2.25.0_20260902",
+  "xrt": "2.25.0",
+  "host": "aie8",
+  "device": "NPU Krackan 1",
+  "pmode": "turbo"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 49,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "mobilenet": {
+   "failed_seeds": {
+    "value": 0,
+    "unit": "seeds"
+   }
+  },
+  "mobilenet/seed=3": {
+   "placement_cost": {
+    "value": 293,
+    "unit": "cost",
+    "range": "placement b71aac1b8820"
+   }
+  },
+  "mobilenet/seed=2": {
+   "placement_cost": {
+    "value": 295,
+    "unit": "cost",
+    "range": "placement 36c2b91a501f"
+   }
+  },
+  "mobilenet/seed=7": {
+   "placement_cost": {
+    "value": 292,
+    "unit": "cost",
+    "range": "placement 07a89ab8a4ee"
+   }
+  },
+  "mobilenet/seed=3/batch=1": {
+   "us_per_image": {
+    "value": 296.2,
+    "unit": "us",
+    "range": "median 300.00, MAD 0.40, p95 302.60"
+   },
+   "e2e_us_per_image": {
+    "value": 356.4,
+    "unit": "us",
+    "range": "median 357.50, MAD 0.50, p95 359.70"
+   },
+   "compile_s": {
+    "value": 60.3,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=3/batch=4": {
+   "us_per_image": {
+    "value": 122.97,
+    "unit": "us",
+    "range": "median 126.65, MAD 0.12, p95 126.92"
+   },
+   "streaming_us": {
+    "value": 65.23,
+    "unit": "us",
+    "range": "from b1 296.2 and b4 491.9"
+   },
+   "e2e_us_per_image": {
+    "value": 137.75,
+    "unit": "us",
+    "range": "median 142.05, MAD 0.33, p95 142.43"
+   },
+   "compile_s": {
+    "value": 59.2,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=3/batch=16": {
+   "us_per_image": {
+    "value": 82.49,
+    "unit": "us",
+    "range": "median 83.44, MAD 0.19, p95 83.93"
+   },
+   "streaming_us": {
+    "value": 68.24,
+    "unit": "us",
+    "range": "from b1 296.2 and b16 1319.8"
+   },
+   "e2e_us_per_image": {
+    "value": 90.66,
+    "unit": "us",
+    "range": "median 104.16, MAD 0.50, p95 105.61"
+   },
+   "compile_s": {
+    "value": 59.2,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=3/batch=64": {
+   "us_per_image": {
+    "value": 72.4,
+    "unit": "us",
+    "range": "median 73.39, MAD 0.41, p95 78.52"
+   },
+   "streaming_us": {
+    "value": 68.84,
+    "unit": "us",
+    "range": "from b1 296.2 and b64 4633.3"
+   },
+   "e2e_us_per_image": {
+    "value": 79.46,
+    "unit": "us",
+    "range": "median 82.73, MAD 0.89, p95 87.92"
+   },
+   "compile_s": {
+    "value": 57.8,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=2/batch=1": {
+   "us_per_image": {
+    "value": 300.7,
+    "unit": "us",
+    "range": "median 303.80, MAD 2.40, p95 333.50"
+   },
+   "e2e_us_per_image": {
+    "value": 358.6,
+    "unit": "us",
+    "range": "median 362.30, MAD 1.90, p95 392.00"
+   },
+   "compile_s": {
+    "value": 60.5,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=2/batch=4": {
+   "us_per_image": {
+    "value": 121.92,
+    "unit": "us",
+    "range": "median 124.10, MAD 0.23, p95 127.85"
+   },
+   "streaming_us": {
+    "value": 62.33,
+    "unit": "us",
+    "range": "from b1 300.7 and b4 487.7"
+   },
+   "e2e_us_per_image": {
+    "value": 139.38,
+    "unit": "us",
+    "range": "median 139.85, MAD 0.35, p95 144.60"
+   },
+   "compile_s": {
+    "value": 59.3,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=2/batch=16": {
+   "us_per_image": {
+    "value": 79.57,
+    "unit": "us",
+    "range": "median 80.40, MAD 0.03, p95 81.07"
+   },
+   "streaming_us": {
+    "value": 64.83,
+    "unit": "us",
+    "range": "from b1 300.7 and b16 1273.1"
+   },
+   "e2e_us_per_image": {
+    "value": 83.89,
+    "unit": "us",
+    "range": "median 84.29, MAD 0.09, p95 86.16"
+   },
+   "compile_s": {
+    "value": 59.8,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=2/batch=64": {
+   "us_per_image": {
+    "value": 69.57,
+    "unit": "us",
+    "range": "median 69.66, MAD 0.02, p95 69.70"
+   },
+   "streaming_us": {
+    "value": 65.9,
+    "unit": "us",
+    "range": "from b1 300.7 and b64 4452.7"
+   },
+   "e2e_us_per_image": {
+    "value": 74.63,
+    "unit": "us",
+    "range": "median 74.75, MAD 0.07, p95 74.98"
+   },
+   "compile_s": {
+    "value": 59.8,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=7/batch=1": {
+   "us_per_image": {
+    "value": 289.8,
+    "unit": "us",
+    "range": "median 303.70, MAD 0.90, p95 304.60"
+   },
+   "e2e_us_per_image": {
+    "value": 350.4,
+    "unit": "us",
+    "range": "median 361.40, MAD 1.10, p95 363.00"
+   },
+   "compile_s": {
+    "value": 59.9,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=7/batch=4": {
+   "us_per_image": {
+    "value": 123.75,
+    "unit": "us",
+    "range": "median 127.28, MAD 0.40, p95 127.67"
+   },
+   "streaming_us": {
+    "value": 68.4,
+    "unit": "us",
+    "range": "from b1 289.8 and b4 495"
+   },
+   "e2e_us_per_image": {
+    "value": 139.1,
+    "unit": "us",
+    "range": "median 142.53, MAD 1.02, p95 143.57"
+   },
+   "compile_s": {
+    "value": 58.5,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=7/batch=16": {
+   "us_per_image": {
+    "value": 80.28,
+    "unit": "us",
+    "range": "median 81.49, MAD 1.14, p95 83.83"
+   },
+   "streaming_us": {
+    "value": 66.31,
+    "unit": "us",
+    "range": "from b1 289.8 and b16 1284.5"
+   },
+   "e2e_us_per_image": {
+    "value": 84.14,
+    "unit": "us",
+    "range": "median 89.17, MAD 4.89, p95 104.31"
+   },
+   "compile_s": {
+    "value": 58.7,
+    "unit": "s"
+   }
+  },
+  "mobilenet/seed=7/batch=64": {
+   "us_per_image": {
+    "value": 72.94,
+    "unit": "us",
+    "range": "median 73.31, MAD 0.26, p95 76.67"
+   },
+   "streaming_us": {
+    "value": 69.5,
+    "unit": "us",
+    "range": "from b1 289.8 and b64 4668"
+   },
+   "e2e_us_per_image": {
+    "value": 79.9,
+    "unit": "us",
+    "range": "median 82.83, MAD 0.19, p95 84.53"
+   },
+   "compile_s": {
+    "value": 58.8,
+    "unit": "s"
+   }
+  }
+ },
+ "detail": [
+  {
+   "seed": 3,
+   "batch": 1,
+   "passed": true,
+   "us_per_image": 296.2,
+   "e2e_us_per_image": 356.4,
+   "compile_s": 60.3,
+   "placement": "b71aac1b8820"
+  },
+  {
+   "seed": 3,
+   "batch": 4,
+   "passed": true,
+   "us_per_image": 122.97,
+   "e2e_us_per_image": 137.75,
+   "compile_s": 59.2,
+   "placement": "b71aac1b8820"
+  },
+  {
+   "seed": 3,
+   "batch": 16,
+   "passed": true,
+   "us_per_image": 82.49,
+   "e2e_us_per_image": 90.66,
+   "compile_s": 59.2,
+   "placement": "b71aac1b8820"
+  },
+  {
+   "seed": 3,
+   "batch": 64,
+   "passed": true,
+   "us_per_image": 72.4,
+   "e2e_us_per_image": 79.46,
+   "compile_s": 57.8,
+   "placement": "b71aac1b8820"
+  },
+  {
+   "seed": 2,
+   "batch": 1,
+   "passed": true,
+   "us_per_image": 300.7,
+   "e2e_us_per_image": 358.6,
+   "compile_s": 60.5,
+   "placement": "36c2b91a501f"
+  },
+  {
+   "seed": 2,
+   "batch": 4,
+   "passed": true,
+   "us_per_image": 121.92,
+   "e2e_us_per_image": 139.38,
+   "compile_s": 59.3,
+   "placement": "36c2b91a501f"
+  },
+  {
+   "seed": 2,
+   "batch": 16,
+   "passed": true,
+   "us_per_image": 79.57,
+   "e2e_us_per_image": 83.89,
+   "compile_s": 59.8,
+   "placement": "36c2b91a501f"
+  },
+  {
+   "seed": 2,
+   "batch": 64,
+   "passed": true,
+   "us_per_image": 69.57,
+   "e2e_us_per_image": 74.63,
+   "compile_s": 59.8,
+   "placement": "36c2b91a501f"
+  },
+  {
+   "seed": 7,
+   "batch": 1,
+   "passed": true,
+   "us_per_image": 289.8,
+   "e2e_us_per_image": 350.4,
+   "compile_s": 59.9,
+   "placement": "07a89ab8a4ee"
+  },
+  {
+   "seed": 7,
+   "batch": 4,
+   "passed": true,
+   "us_per_image": 123.75,
+   "e2e_us_per_image": 139.1,
+   "compile_s": 58.5,
+   "placement": "07a89ab8a4ee"
+  },
+  {
+   "seed": 7,
+   "batch": 16,
+   "passed": true,
+   "us_per_image": 80.28,
+   "e2e_us_per_image": 84.14,
+   "compile_s": 58.7,
+   "placement": "07a89ab8a4ee"
+  },
+  {
+   "seed": 7,
+   "batch": 64,
+   "passed": true,
+   "us_per_image": 72.94,
+   "e2e_us_per_image": 79.9,
+   "compile_s": 58.8,
+   "placement": "07a89ab8a4ee"
+  }
+ ]
+}
