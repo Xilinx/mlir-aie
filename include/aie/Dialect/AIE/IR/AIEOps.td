@@ -1614,6 +1614,32 @@ def AIE_LockOp: AIE_Op<"lock", [
   let hasVerifier = 1;
 }
 
+def AIE_LockDeclOp: AIE_Op<"lock_decl", [HasParent<"DeviceOp">, Symbol]> {
+  let summary = "Declare a symbolic lock definition";
+  let description = [{
+    Symbol-only definition form of a lock.
+    Use `aie.get_lock` to materialize an SSA lock value from this symbol.
+  }];
+
+  let arguments = (
+    ins SymbolNameAttr:$sym_name,
+        Index:$tile,
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$lockID,
+        OptionalAttr<AIEI32Attr>:$init
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    $sym_name `(` $tile (`,` $lockID^ )? `)` attr-dict
+  }];
+}
+
+def AIE_GetLockOp: AIE_Op<"get_lock", [HasParent<"DeviceOp">]> {
+  let summary = "Materialize an SSA lock value from a lock symbol";
+  let arguments = (ins FlatSymbolRefAttr:$lock);
+  let results = (outs Index:$result);
+  let assemblyFormat = [{ $lock attr-dict }];
+}
+
 def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   let summary = "acquire/release lock op";
   let description = [{
@@ -1813,6 +1839,52 @@ def AIE_ExternalBufferOp
         setNameFn(getResult(), name().str());
     }
   }];
+}
+
+def AIE_BufferDeclOp : AIE_Op<"buffer_decl", [HasParent<"DeviceOp">, Symbol]> {
+  let summary = "Declare a symbolic buffer definition";
+  let description = [{
+    Symbol-only definition form of a local-memory buffer.
+    Use `aie.get_buffer` to materialize an SSA memref from this symbol.
+  }];
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
+      TypeAttr:$type,
+      OptionalAttr<AIEI32Attr>:$address,
+      OptionalAttr<ElementsAttr>:$initial_value,
+      OptionalAttr<AIEI32Attr>:$mem_bank, UnitAttr:$core_data,
+      DefaultValuedAttr<BoolAttr, "true">:$aligned);
+  let results = (outs);
+  let assemblyFormat = [{
+    $sym_name `(` $tile `)` attr-dict `:` $type
+    custom<BufferInitialValue>(ref($type), $initial_value)
+  }];
+}
+
+def AIE_GetBufferOp : AIE_Op<"get_buffer", [HasParent<"DeviceOp">]> {
+  let summary = "Materialize an SSA memref from a local buffer symbol";
+  let arguments = (ins FlatSymbolRefAttr:$buffer);
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{ $buffer attr-dict `:` type($result) }];
+}
+
+def AIE_ExternalBufferDeclOp
+    : AIE_Op<"external_buffer_decl", [HasParent<"DeviceOp">, Symbol]> {
+  let summary = "Declare a symbolic external buffer definition";
+  let description = [{
+    Symbol-only definition form of an external buffer.
+    Use `aie.get_external_buffer` to materialize an SSA memref from this symbol.
+  }];
+  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttr:$type,
+      OptionalAttr<AIEI64Attr>:$address);
+  let results = (outs);
+  let assemblyFormat = [{ $sym_name attr-dict `:` $type }];
+}
+
+def AIE_GetExternalBufferOp : AIE_Op<"get_external_buffer", [HasParent<"DeviceOp">]> {
+  let summary = "Materialize an SSA memref from an external buffer symbol";
+  let arguments = (ins FlatSymbolRefAttr:$buffer);
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{ $buffer attr-dict `:` type($result) }];
 }
 
 def AIE_EventOp: AIE_Op<"event", []> {
