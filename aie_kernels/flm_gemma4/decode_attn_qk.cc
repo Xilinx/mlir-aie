@@ -26,7 +26,6 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bf16 *__restrict pY,
               bf16 *__restrict m, float *__restrict c, aie::mask<16> &mask,
               bool &is_first);
 
-
 // ---------------------------------------------------------------------------
 // Entry points. See decode_attn_kv.cc; k has the role of v there. q arrives
 // through an ObjectFifo, so this kernel has no q lock. The k parity persists
