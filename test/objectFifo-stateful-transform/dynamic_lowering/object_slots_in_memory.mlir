@@ -19,8 +19,8 @@
 // CHECK:       memref.store %{{.*}}buff_0, %[[S0]][]
 // CHECK:       %[[S1:.*]] = memref.alloca() : memref<memref<8xi8>>
 // CHECK:       memref.store %{{.*}}buff_1, %[[S1]][]
-// CHECK-NOT:   iter_args
 // CHECK:       scf.for
+// CHECK-NOT:   iter_args
 // CHECK:         %[[OBJ:.*]] = memref.load %[[S0]][] : memref<memref<8xi8>>
 // CHECK:         memref.load %[[OBJ]]
 // CHECK:       aie.end

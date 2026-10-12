@@ -56,3 +56,27 @@ module {
     }
   }
 }
+
+// -----
+
+// Even unused acquisitions require resolved buffers, diagnosed once per pool.
+module {
+  aie.device(xcve2302) {
+    %t = aie.tile(1, 2)
+    %b0 = aie.buffer(%t) {sym_name = "b0"} : memref<16xi32>
+    %free = aie.lock(%t) {init = 2 : i32, sym_name = "free"}
+    %full = aie.lock(%t) {init = 0 : i32, sym_name = "full"}
+    // expected-error@+1 {{expects every one of its 'depth' buffers to resolve}}
+    aie.objectfifo.pool @pool(%t) {depth = 2 : i32, buffers = [@b0, @missing]} : memref<16xi32> {
+      aie.objectfifo.segment @s0 {consumeLock = @full, offset = 0 : i32, produceLock = @free, size = 16 : i32}
+    }
+    aie.objectfifo.core_endpoint @writer(%t) fills @pool
+    %core = aie.core(%t) {
+      %e0 = aie.objectfifo.acquire @writer (1) : memref<16xi32>
+      aie.objectfifo.release @writer (1)
+      %e1 = aie.objectfifo.acquire @writer (1) : memref<16xi32>
+      aie.objectfifo.release @writer (1)
+      aie.end
+    }
+  }
+}

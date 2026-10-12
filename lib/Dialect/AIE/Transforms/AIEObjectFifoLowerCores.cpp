@@ -132,6 +132,7 @@ segmentLocksFor(ObjectFifoCoreEndpointOp endpoint, LockAction action) {
 struct LoweringContext {
   DeviceOp device;
   bool usesSemaphoreLocks;
+  DenseMap<Operation *, SmallVector<Value>> poolBuffers{};
   /// Per-(core, endpoint) runtime bookkeeping: the rotating object index (which
   /// selects binary locks), the objects in rotation order, starting with the
   /// next one to acquire, and, where locks count, the number of objects
@@ -358,19 +359,12 @@ struct AIEObjectFifoLowerCoresPass
   /// One slot per object of the pool, in rotation order from `start`, or the
   /// object itself if the pool has only one. The slots are not promoted here;
   /// see kObjectFifoObjectSlotAttrName.
-  LogicalResult trackObjects(OpBuilder &builder, Location loc,
-                             ObjectFifoCoreEndpointOp endpoint, int64_t start,
-                             std::pair<Operation *, Operation *> key,
-                             LoweringContext &ctx) {
+  void trackObjects(OpBuilder &builder, Location loc,
+                    ObjectFifoCoreEndpointOp endpoint, int64_t start,
+                    std::pair<Operation *, Operation *> key,
+                    LoweringContext &ctx) {
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
-    SmallVector<Value> buffers;
-    for (BufferLike buffer : pool.getBufferOps()) {
-      buffers.push_back(buffer.getBuffer());
-    }
-    if (static_cast<int64_t>(buffers.size()) != pool.getDepth()) {
-      return pool.emitOpError("expects every one of its 'depth' buffers to "
-                              "resolve");
-    }
+    SmallVector<Value> buffers = ctx.poolBuffers.lookup(pool.getOperation());
     // An endpoint holding one side of a join or distribute reaches only its
     // own run of each object.
     MemRefType accessType = endpoint.getAccessType();
@@ -385,7 +379,7 @@ struct AIEObjectFifoLowerCoresPass
     }
     if (buffers.size() == 1) {
       ctx.soleObject[key] = buffers.front();
-      return success();
+      return;
     }
     SmallVector<memref::AllocaOp> &slots = ctx.objectSlots[key];
     for (size_t k = 0; k < buffers.size(); ++k) {
@@ -393,7 +387,6 @@ struct AIEObjectFifoLowerCoresPass
                                buffers[(start + k) % buffers.size()],
                                kObjectFifoObjectSlotAttrName));
     }
-    return success();
   }
 
   void emitCounters(CoreOp coreOp, LoweringContext &ctx, OpBuilder &builder) {
@@ -441,14 +434,29 @@ struct AIEObjectFifoLowerCoresPass
     // Objects are only tracked where the core uses one.
     coreOp.walk([&](ObjectFifoAcquireOp a) {
       auto endpoint = ctx.endpointOf(coreOp, a.getObjFifoName());
-      if (!endpoint || a->use_empty()) {
+      if (!endpoint) {
+        return;
+      }
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      auto [buffers, inserted] =
+          ctx.poolBuffers.try_emplace(pool.getOperation());
+      if (inserted) {
+        for (BufferLike buffer : pool.getBufferOps()) {
+          buffers->second.push_back(buffer.getBuffer());
+        }
+        if (static_cast<int64_t>(buffers->second.size()) != pool.getDepth()) {
+          pool.emitOpError(
+              "expects every one of its 'depth' buffers to resolve");
+          ctx.sawError = true;
+        }
+      }
+      if (ctx.sawError || a->use_empty()) {
         return;
       }
       auto key = std::make_pair(core, endpoint.getOperation());
-      if (!ctx.objectSlots.count(key) && !ctx.soleObject.count(key) &&
-          failed(trackObjects(builder, coreOp.getLoc(), endpoint,
-                              firstObject(endpoint), key, ctx))) {
-        ctx.sawError = true;
+      if (!ctx.objectSlots.count(key) && !ctx.soleObject.count(key)) {
+        trackObjects(builder, coreOp.getLoc(), endpoint, firstObject(endpoint),
+                     key, ctx);
       }
     });
     if (!ctx.usesSemaphoreLocks) {
