@@ -1,9 +1,0 @@
-<map id="xilinx::AIE::Routing" name="xilinx::AIE::Routing">
-<area shape="rect" id="Node000001" title=" " alt="" coords="328,77,473,102"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="7,5,197,45"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="210,46,341,74,340,79,209,51"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="5,69,199,109"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="212,87,328,87,328,92,212,92"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="17,134,187,189"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="200,135,347,99,348,105,202,140"/>
-</map>
