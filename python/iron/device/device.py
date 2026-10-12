@@ -25,8 +25,9 @@ from .tile import Tile
 class Device(Resolvable):
     """A representation of a device of a specific type.
 
-    Provides device metadata (column/row counts) and emits
-    aie.logical_tile ops for Tile objects during resolve.
+    Provides device metadata and emits ``aie.logical_tile`` operations for Tile
+    objects. A DeviceConfiguration reconstructs this descriptor before it emits
+    an ``aie.device``, so the descriptor does not own one configuration's IR.
     """
 
     def __init__(self, device: AIEDevice) -> None:

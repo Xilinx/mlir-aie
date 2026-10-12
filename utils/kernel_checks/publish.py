@@ -30,7 +30,7 @@ the page, where the package is not installed.
     publish.py rebuild --out kernel-checks/npu1 [--drop-pmode default]
     publish.py backfill --out kernel-checks/npu1 --runs runs.jsonl
         [--keep-pmode turbo]
-    publish.py redirect --out component-checks --to ../kernel-checks/#view=components
+    publish.py redirect --out kernel-checks --to ../dashboard/#view=night
 
 ``perf`` reads the timing step's ``perf.json`` and ``meta.json`` and the
 catalogue. Every publish first migrates a directory that still holds a
@@ -80,6 +80,8 @@ MAX_RUNS = 400
 SCHEMA = 1
 REPO = "https://github.com/Xilinx/mlir-aie"
 COMPONENTS = ("sa-placer", "sa-placer-hw")
+# The dashboard section each component check's old page now redirects to.
+SECTION_OF = {"sa-placer": "placement", "sa-placer-hw": "performance"}
 TARGETS = ("npu1", "npu2") + COMPONENTS
 # Provenance fields worth a column in the history (the rest stay in the record).
 HISTORY_PROVENANCE = (
@@ -512,14 +514,24 @@ def backfill(out: Path, runs: dict[str, dict]) -> int:
 
 
 def redirect(out: Path, to: str) -> Path:
-    """Write ``out/index.html``, sending a browser on to ``to``."""
+    """Write ``out/index.html``, sending a browser on to ``to``.
+
+    A link that carries its own ``#...`` keeps it, so an old link to one
+    view lands on that view; without one, ``to``'s own hash is used.
+    """
     out.mkdir(parents=True, exist_ok=True)
     page = out / "index.html"
+    base = to.split("#", 1)[0]
+    script = (
+        f"<script>location.replace({json.dumps(base)} + "
+        f"(location.hash || {json.dumps(to[len(base):])}));</script>\n"
+    )
     page.write_text(
         "<!DOCTYPE html>\n"
         '<meta charset="utf-8">\n'
-        "<title>Nightly checks</title>\n"
-        f'<meta http-equiv="refresh" content="0; url={to}">\n'
+        "<title>Maintainer dashboard</title>\n"
+        + script
+        + f'<meta http-equiv="refresh" content="0; url={to}">\n'
         f'<link rel="canonical" href="{to}">\n'
         f'<p>This page moved to <a href="{to}">{to}</a>.</p>\n'
     )

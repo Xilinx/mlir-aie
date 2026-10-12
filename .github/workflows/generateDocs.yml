@@ -227,8 +227,10 @@ jobs:
 
           # Remove legacy Jekyll/CMake detritus from the gh-pages root. mike
           # owns versioned subdirs (dev/, 1.x.y/, versions.json, index.html);
-          # kernel-checks/ belongs to the kernel workflows and must survive
-          # deployment. Its old home, bench/, is legacy and goes with the rest.
+          # dashboard/, kernel-checks/, component-checks/ and ci-health/
+          # belong to the nightly check and CI health workflows and must
+          # survive deployment. The old
+          # home of the kernel checks, bench/, is legacy and goes with the rest.
           cd ../gh-pages-wt
           # Keep the versioned dirs (dev/, 1.x.y/) plus the bare "latest"
           # alias mike writes as a symlink (a file literally named "latest",
@@ -238,7 +240,7 @@ jobs:
             | grep -zv '^\.nojekyll$' \
             | grep -zv '^index\.html$' \
             | grep -zv '^versions\.json$' \
-            | grep -zv '^kernel-checks/' \
+            | grep -zvE '^(dashboard|kernel-checks|component-checks|ci-health)/' \
             | grep -zvE '^(dev|latest)(/|$)' \
             | grep -zvE '^[0-9]+\.' \
             | xargs -0 -r git rm -rf --ignore-unmatch -q

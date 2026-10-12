@@ -1,0 +1,30 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// RUN: %python %S/route_vias.py --dev npu2 --emit-mlir > %t.logical.mlir
+// RUN: FileCheck %s --check-prefix=LOGICAL < %t.logical.mlir
+// RUN: rm -rf %t.routed %t.edited
+// RUN: aiecc -j2 --get=input_physical.mlir --output-dir=%t.routed %t.logical.mlir
+// RUN: FileCheck %s --check-prefix=ROUTED < %t.routed/input_physical.mlir
+// RUN: aie-opt %t.routed/input_physical.mlir --aie-find-flows=emit-vias=true -o %t.lifted.mlir
+// RUN: FileCheck %s --check-prefix=LIFTED < %t.lifted.mlir
+// RUN: sed 's/%%tile_0_2 : DMA : 0 -> South : 0, //' %t.lifted.mlir > %t.edited.mlir
+// RUN: FileCheck %s --check-prefix=EDITED < %t.edited.mlir
+// RUN: aiecc -j2 --get=input_physical.mlir --get-xclbin --get-npu-insts --output-dir=%t.edited %t.edited.mlir
+// RUN: FileCheck %s --check-prefix=RELOWERED < %t.edited/input_physical.mlir
+// RUN: %run_on_npu2% %python %S/route_vias.py --dev npu2 --run-xclbin %t.edited/aie.xclbin --run-insts %t.edited/insts_main_sequence.bin
+
+// LOGICAL: aie.flow({{.*}}, DMA : 0, {{.*}}, DMA : 0)
+// LOGICAL-NEXT: aie.shim_dma_allocation
+// LOGICAL-NEXT: aie.flow({{.*}}, DMA : 0, {{.*}}, DMA : 0) via ({{.*}} : DMA : 0 -> South : 0, {{.*}} : North : 0 -> South : 0, {{.*}} : North : 0 -> DMA : 0)
+
+// ROUTED: aie.connect<North : 0, South : 0>
+// ROUTED: aie.connect<DMA : 0, South : 0>
+
+// LIFTED: aie.flow(%tile_0_2, DMA : 0, %shim_noc_tile_0_0, DMA : 0) via (%tile_0_2 : DMA : 0 -> South : 0, %mem_tile_0_1 : North : 0 -> South : 0, %shim_noc_tile_0_0 : North : 0 -> South : 2)
+
+// EDITED: aie.flow(%tile_0_2, DMA : 0, %shim_noc_tile_0_0, DMA : 0) via (%mem_tile_0_1 : North : 0 -> South : 0, %shim_noc_tile_0_0 : North : 0 -> South : 2)
+
+// RELOWERED-DAG: aie.connect<North : 0, South : 0>
+// RELOWERED-DAG: aie.connect<DMA : 0, South : 0>
+// RELOWERED-DAG: aie.connect<North : 0, South : 2>

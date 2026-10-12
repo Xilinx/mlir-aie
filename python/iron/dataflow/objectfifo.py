@@ -31,7 +31,7 @@ from ...helpers.taplib import TensorAccessPattern
 from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
-from ..resolvable import NotResolvedError, Resolvable
+from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from .endpoint import ObjectFifoEndpoint
 
@@ -84,7 +84,7 @@ def _same_shim_pin(a: "Tile | None", b: "Tile | None") -> bool:
     return (a.col, a.row) == (b.col, b.row)
 
 
-class ObjectFifo(Resolvable):
+class ObjectFifo(PerDeviceConfigurationResolvable):
     """A synchronized, explicit dataflow channel between IRON program components such as [`Worker`][iron.Worker]s and the [`Runtime`][iron.Runtime].
 
     Internally, an ObjectFifo is a circular buffer with a given depth and
@@ -125,7 +125,8 @@ class ObjectFifo(Resolvable):
         Args:
             obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
             depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
-            name (str | None, optional): The name of the ObjectFifo. If None is given, the Program names it when it resolves. Defaults to None.
+            name (str | None, optional): The name of the ObjectFifo. If None is
+                given, its DeviceConfiguration names it. Defaults to None.
             to_stream (TensorAccessPattern | None, optional): How the producer's DMA
                 walks each object onto the AXI stream: a pattern over a tensor the
                 size of one object (of each input's object, for a join's output),
@@ -211,7 +212,7 @@ class ObjectFifo(Resolvable):
         self._repeat_count: int | None = repeat_count
         self._disable_synchronization: bool = disable_synchronization
         # Delegate tile for shared-memory buffer placement (lowers to aie.objectfifo.allocate).
-        # Must be resolved before resolve() runs — Program.resolve() picks this up via
+        # Must be resolved before resolve() runs; DeviceConfiguration finds it via
         # ObjectFifo._delegate_tile when collecting tiles to assign MLIR ops to.
         self._delegate_tile: Tile | None = delegate_tile
         self._via_DMA: bool = via_DMA
@@ -572,7 +573,7 @@ class ObjectFifo(Resolvable):
         self.op.release(port, num_elem)
 
 
-class ObjectFifoHandle(Resolvable):
+class ObjectFifoHandle(PerDeviceConfigurationResolvable):
     """A handle to an [`ObjectFifo`][iron.ObjectFifo], of type *producer* or *consumer*.
 
     Producer and consumer handles are what [`Worker`][iron.Worker] core
@@ -674,7 +675,7 @@ class ObjectFifoHandle(Resolvable):
 
     @property
     def name(self) -> str | None:
-        """The name of the ObjectFifo, None until the Program names an unnamed one."""
+        """The name, or None until its DeviceConfiguration assigns one."""
         return self._object_fifo.name
 
     def _derived_name(self, suffix: str) -> str | None:
@@ -1150,7 +1151,7 @@ class ObjectFifoHandle(Resolvable):
         self._object_fifo.resolve(loc=loc, ip=ip)
 
 
-class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
+class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
     """This is an object used internally by split(), join() and forward() operations."""
 
     def __init__(

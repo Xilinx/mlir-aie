@@ -227,7 +227,7 @@ struct ShellCommand {
   std::string tool;
   std::vector<Part> parts;
   std::function<void(llvm::StringRef, llvm::StringRef)> failureHint;
-  bool failureIsEmpty = false;
+  std::shared_ptr<const bool> failureIsEmpty;
 
   inline static std::vector<std::string> searchPaths;
   inline static std::map<std::string, std::string> toolPathCache;
@@ -404,12 +404,14 @@ struct ShellCommand {
   }
 
   // Treat a nonzero exit as "no result" rather than as a build failure, and say
-  // nothing about it. For a tool run to learn something optional, where not
-  // learning it costs quality rather than correctness: the caller is expected
-  // to cope with the missing output, and whatever went wrong will be reported
-  // by the step that genuinely needs the tool to work.
-  ShellCommand &optional() {
-    failureIsEmpty = true;
+  // nothing about it, while `*when` holds when the tool runs. For a tool run to
+  // learn something optional, where not learning it costs quality rather than
+  // correctness: the caller is expected to cope with the missing output, and
+  // whatever went wrong will be reported by the step that genuinely needs the
+  // tool to work. `when` is read at run time, so a driver can decide it once
+  // it knows whether such a step runs at all.
+  ShellCommand &optional(std::shared_ptr<const bool> when) {
+    failureIsEmpty = std::move(when);
     return *this;
   }
 
@@ -587,11 +589,12 @@ private:
     }
     int rc = llvm::sys::ExecuteAndWait(cmd[0], argv, std::nullopt, redirectRef,
                                        0, 0, &errMsg);
+    bool quiet = failureIsEmpty && *failureIsEmpty;
     std::unique_lock<std::mutex> log;
     if (capture) {
       // Verbose replays a successful run too, in place of the live output the
       // capture suppressed.
-      if ((rc != 0 && !failureIsEmpty) || verbose) {
+      if ((rc != 0 && !quiet) || verbose) {
         // Move off the live --progress status line before the tool's output.
         log = endProgressLine();
         if (auto buf = llvm::MemoryBuffer::getFile(logPath)) {
@@ -604,7 +607,7 @@ private:
       llvm::sys::fs::remove(logPath);
     }
     if (rc != 0) {
-      if (failureIsEmpty) {
+      if (quiet) {
         return mlir::success();
       }
       if (!log.owns_lock())

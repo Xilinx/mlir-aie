@@ -91,7 +91,6 @@ def _row_kernel(
     ops,
     *,
     setup=None,
-    stack_bytes=None,
 ) -> ExternalFunction:
     _cols(name, cols)
     in_ty = np.ndarray[(cols,), np.dtype[in_dt]]
@@ -110,7 +109,6 @@ def _row_kernel(
             acc_dtype=np.float32,
             reduction=cols,
             setup=setup,
-            stack_bytes=stack_bytes,
         ),
     )
 

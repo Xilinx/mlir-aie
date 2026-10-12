@@ -59,6 +59,17 @@ def _logits(rng, n, *, ties=0, scale=3.0):
     return logits
 
 
+@pytest.fixture(params=list(ARCH_TRAITS))
+def arch(request):
+    """Bind a one-column device of each architecture and yield its name."""
+    previous = get_current_device(probe_runtime=False)
+    set_current_device(from_name(ARCH_TRAITS[request.param].device, n_cols=1))
+    try:
+        yield request.param
+    finally:
+        set_current_device(previous)
+
+
 # --- factory arguments -----------------------------------------------------
 
 
@@ -84,8 +95,12 @@ def test_factories_reject_non_positive_integers(factory, name, bad):
     [
         (kernels.sample_select, dict(slice_size=32, chunk=32, k_max=33), "k_max"),
         (kernels.sample_combine, dict(slice_size=32, k_max=33), "k_max"),
-        (kernels.sample_select, dict(slice_size=1024, chunk=256, k_max=129), "stack"),
-        (kernels.sample_combine, dict(slice_size=1024, k_max=129), "stack"),
+        (
+            kernels.sample_select,
+            dict(slice_size=1024, chunk=256, k_max=129),
+            "verified",
+        ),
+        (kernels.sample_combine, dict(slice_size=1024, k_max=129), "verified"),
         (kernels.sample_select, dict(slice_size=1 << 24, chunk=1 << 12), "2\\*\\*24"),
         (kernels.sample_combine, dict(slice_size=1 << 24, columns=1), "2\\*\\*24"),
         (kernels.sample_select, dict(slice_size=1024, chunk=384), "divide"),
@@ -98,7 +113,7 @@ def test_factories_reject_bad_geometry(factory, kwargs, match):
         factory(**kwargs)
 
 
-def test_factories_accept_their_edges(npu2_device):
+def test_factories_accept_their_edges(arch):
     kernels.sample_select(slice_size=64, chunk=64, k_max=64)
     kernels.sample_select(slice_size=(1 << 24) - 2, chunk=2, k_max=1)
     kernels.sample_select(slice_size=np.int64(1030), chunk=np.int32(206), k_max=8)
@@ -497,7 +512,7 @@ def test_reference_rejects_a_non_finite_scaled_maximum():
 # --- factory metadata ------------------------------------------------------
 
 
-def test_select_factory_metadata(npu2_device):
+def test_select_factory_metadata(arch):
     fn = kernels.sample_select(slice_size=2048, chunk=512, k_max=32)
     assert Path(fn._source_file).name == "sample_select.cc"
     assert Path(fn._source_file).parent.name == "sample"
@@ -518,7 +533,7 @@ def test_select_factory_metadata(npu2_device):
     assert fn == kernels.sample_select(slice_size=2048, chunk=512, k_max=32)
 
 
-def test_combine_factory_metadata(npu2_device):
+def test_combine_factory_metadata(arch):
     fn = kernels.sample_combine(columns=3, slice_size=2048, k_max=32)
     assert Path(fn._source_file).name == "sample_combine.cc"
     for flag in (
@@ -534,7 +549,6 @@ def test_combine_factory_metadata(npu2_device):
     assert fn.arg_shape(2) == fn.arg_shape(3) == (1,)
     assert all(fn.arg_dtype(i) == np.int32 for i in range(4))
     assert fn.contract.roles == (In, In, Out, Out)
-    assert fn.contract.stack_bytes == 4096
 
 
 # --- builds ----------------------------------------------------------------
@@ -548,7 +562,6 @@ def _peano_available() -> bool:
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
-@pytest.mark.parametrize("arch", list(ARCH_TRAITS))
 @pytest.mark.parametrize(
     "factory, kwargs",
     [
@@ -560,12 +573,7 @@ def _peano_available() -> bool:
 def test_kernels_build_for_every_architecture(arch, factory, kwargs, tmp_path):
     # An object, not a syntax check: a builtin the backend cannot lower (ctz
     # and popcount on aie2) passes -fsyntax-only.
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(from_name(ARCH_TRAITS[arch].device, n_cols=1))
-    try:
-        fn = getattr(kernels, factory)(**kwargs)
-    finally:
-        set_current_device(previous)
+    fn = vars(kernels)[factory](**kwargs)
     source = Path(fn._source_file)
     compile_cxx_core_function(
         str(source),

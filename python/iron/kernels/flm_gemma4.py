@@ -1386,9 +1386,7 @@ def _attn_kv_round_sample(rng, calls, *, dh, kv_width):
     return [sv, ly.astype(np.float32)]
 
 
-def _attn_kv_round_core(
-    base, source, symbol, *, dh, kv_width, impl, rows, ref, stack_bytes=None
-):
+def _attn_kv_round_core(base, source, symbol, *, dh, kv_width, impl, rows, ref):
     ly = _attn_kv_ly(dh)
     sv = np.ndarray[(_ATTN_KV_S + _DECODE_KEYS_PER_ROUND * kv_width,), _BF16]
     head = (np.int32,) if impl == "kvh2" else ()
@@ -1408,7 +1406,6 @@ def _attn_kv_round_core(
             ),
             # Two per multiply-add of the rows' s @ v, one per rescaled y.
             ops_per_call=2 * rows * _DECODE_KEYS_PER_ROUND * dh + 8 * dh,
-            stack_bytes=stack_bytes,
         ),
     )
 
@@ -1433,7 +1430,6 @@ def flm_gemma4_attn_kv_core(
         impl="1x8x1",
         rows=8,
         ref=partial(flm_gemma4_attn_kv_core_ref, dh=dh),
-        stack_bytes=2304,  # aiecc measured_stack_size
     )
 
 
@@ -2184,7 +2180,6 @@ def flm_gemma4_rms_residual_core(
             ),
             # Per element: square-add and two multiplies, then the add.
             ops_per_call=5 * geometry.model_dim,
-            stack_bytes=1792,  # aiecc measured_stack_size
         ),
     )
 

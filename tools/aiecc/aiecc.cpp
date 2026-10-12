@@ -723,8 +723,36 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   std::vector<EdgeBase *> outputs;
   auto &input = g.fileInput(inputFile, "input.mlir");
 
+  // --default-stack-size stands in for the target's built-in default on any
+  // core that leaves stack_size absent. It runs ahead of every reader of
+  // CoreOp::getEffectiveStackSize(): tile placement, buffer placement, the
+  // stack-size check, and the core, BCF and ldscript emitters.
+  auto &withDefaultStackSize = input.map<ModRef>(
+      "default_stack_size.mlir",
+      [stackSize = defaultStackSize.getValue(), ctx = &context](
+          const Item<File> &in, Item<ModRef> &out) -> mlir::LogicalResult {
+        out.value = asModule(in, ctx);
+        if (!out.value->get()) {
+          return mlir::failure();
+        }
+        if (stackSize > 0) {
+          populateDefaultStackSize(out.value->get(), stackSize);
+        }
+        // Measurements carried in the input are an earlier build's; this one
+        // takes its own or goes without.
+        out.value->get().walk([](CoreOp core) {
+          core.removeMeasuredStackSizeAttr();
+          core.removeMeasuredDataSizeAttr();
+          core.removeMeasuredDataAlignmentAttr();
+          core.removeMeasuredBankSizesAttr();
+          core.removeMeasuredBankAlignmentsAttr();
+          core.removeMeasuredDataRangesAttr();
+        });
+        return verifyStackSizeOverrides(out.value->get());
+      });
+
   auto &traced =
-      input
+      withDefaultStackSize
           .map<ModRef>(
               "placed.mlir",
               PassPipeline{getPlacementPipeline(
@@ -732,25 +760,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   saSeed.getValue(), saEffort.getValue())})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 
-  // --default-stack-size stands in for the target's built-in default on any
-  // core that leaves stack_size absent. It runs ahead of every reader of
-  // CoreOp::getEffectiveStackSize(): buffer placement, the stack-size check,
-  // and the core, BCF and ldscript emitters.
-  auto &withDefaultStackSize = traced.map<ModRef>(
-      "default_stack_size.mlir",
-      [stackSize = defaultStackSize.getValue()](
-          const Item<ModRef> &in, Item<ModRef> &out) -> mlir::LogicalResult {
-        out.value =
-            stackSize > 0
-                ? ModRef(populateDefaultStackSize(in.get().get(), stackSize))
-                : ModRef(in.get().get().clone());
-        return verifyStackSizeOverrides(out.value->get());
-      });
-
   // Everything a core needs before it can be compiled: objectFifo lowering
   // (which creates buffers), lock and BD ids, and the core-body lowerings.
   // Buffer addresses are not among them; see the placement edge below.
-  auto &withSymbols = withDefaultStackSize.map<ModRef>(
+  auto &withSymbols = traced.map<ModRef>(
       "input_with_symbols.mlir",
       PassPipeline{
           &context,
@@ -858,40 +871,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       [](const Item<OpInModule<CoreOp>> &core,
          Item<std::string> &out) -> mlir::LogicalResult {
         CoreOp op(core.get().op);
-        auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
-        const auto &tm = getTargetModel(op);
-        int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
-        int64_t bankSize =
-            numBanks > 0 ? tm.getLocalMemorySize() / numBanks : 0;
-        // An address space names one bank, so it can only describe a stack that
-        // lies inside one. Claiming a bank for a stack that spans two would
-        // tell Peano's bank-conflict model that every stack access hits that
-        // bank when most do not, so say nothing instead.
-        //
-        // Measured across the stack's extent, not its size: a stack smaller
-        // than a bank still spans two when it starts part-way through one. A
-        // `stack_bank` core has no resolved address here -- placement runs
-        // after this -- but the verifier holds that case to a single bank.
-        xilinx::AIE::MemoryRun stackRun = op.getStackRun();
-        bool spansBanks =
-            !op.getStackBank() && bankSize > 0 &&
-            stackRun.start / bankSize != (stackRun.end() - 1) / bankSize;
-        if (spansBanks) {
+        std::optional<int> bank = stackAddressSpaceBank(op);
+        if (!bank) {
           out.value = "";
           return mlir::success();
         }
-        int bank = 0;
-        // Prefer the declared `stack_bank`. Codegen needs the bank, not the
-        // address, and the bank is an input attribute whereas the address is
-        // resolved later by the allocator: deriving it from `getStackRun()`
-        // would make this edge depend on buffer placement, which runs after the
-        // core is compiled.
-        if (auto stackBank = op.getStackBank()) {
-          bank = *stackBank;
-        } else if (bankSize > 0) {
-          bank = static_cast<int>(op.getStackRun().start / bankSize);
-        }
-        if (bank != 0) {
+        if (*bank != 0) {
           bool hasObjects = false;
           if (auto files = op.getLinkFiles())
             hasObjects = !files->empty();
@@ -907,7 +892,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
             return mlir::failure();
           }
         }
-        out.value = std::to_string(5 + bank);
+        out.value = std::to_string(5 + *bank);
         return mlir::success();
       });
 
@@ -995,12 +980,18 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
             });
       });
 
+  // Whether the real link runs; see the end of this function, which decides it
+  // once the outputs are known.
+  auto realLinkFollows = std::make_shared<bool>(true);
+
   // The probe link. Same objects, same garbage collection and the same script
   // generator as the real link, but with every region offered whole, so the
   // sections that land in each bank are sized only by what the objects hold.
-  // Buffer symbols are left undefined rather than placed: their addresses are
-  // not known yet, and reachability -- which is all garbage collection depends
-  // on -- does not care where they live.
+  // Buffer symbols stand at their memory's base rather than placed: their
+  // addresses are not known yet, and reachability -- which is all garbage
+  // collection depends on -- does not care where they live. Every other symbol
+  // must resolve, as in the real link: a call to a missing function would
+  // leave a frame out of the measured stack.
   EdgeWithTypedOutput<Directory> &probeElfs =
       bundle(perCoreArches.out, objects.out, probeScripts.out)
           .map<Directory>(
@@ -1011,16 +1002,19 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .arg(lldPath.empty() ? "-fuse-ld=lld" : "-fuse-ld=" + lldPath)
                   .input()
                   .arg("-Wl,--gc-sections")
+                  .arg("-Wl,--emit-relocs")
                   .arg("-Wl,--orphan-handling=error")
-                  .arg("-Wl,--unresolved-symbols=ignore-all")
                   .arg("-Wl,--no-check-sections")
                   .input("-Wl,-T,")
                   .output("-o")
                   // A probe that cannot run costs placement quality, never
-                  // correctness: the core is placed as it was before any of
-                  // this, and whatever stopped the probe stops the real link
-                  // too, where it is reported properly.
-                  .optional())
+                  // correctness, when the real link runs: the core is placed
+                  // as it was before any of this, and whatever stopped the
+                  // probe stops the real link too, where it is reported
+                  // properly. Without one (an instruction stream alone),
+                  // nothing would, and the stream would address buffers
+                  // placed apart from the image's, so the probe must run.
+                  .optional(realLinkFollows))
           .threadSafe();
 
   // Compile before placement so the probe can reserve each bank's static data.
@@ -1031,18 +1025,24 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   bool useProbe = !xchesscc && !xbridge;
   auto &placementInput = useProbe ? probeElfs : objects;
   auto &physical =
-      bundle(placementInput.out, compileInput.out)
+      bundle(placementInput.out, objects.out, compileInput.out)
           .join<ModRef>(
               "input_with_addresses.mlir",
-              [&context, elfLookup, bankDemand, useProbe,
-               cache](const Node<Directory> &probes, const Node<ModRef> &modN,
-                      Item<ModRef> &out) -> mlir::LogicalResult {
+              [&context, elfLookup, bankDemand, useProbe, cache](
+                  const Node<Directory> &probes,
+                  const Node<Directory> &coreObjects, const Node<ModRef> &modN,
+                  Item<ModRef> &out) -> mlir::LogicalResult {
                 out.value = ModRef(modN.get().get().clone());
                 mlir::ModuleOp mod = out.value->get();
                 auto placeCompiled = [&]() -> mlir::LogicalResult {
                   if (useProbe) {
                     recordBankDemand(mod, elfLookup(probes), *bankDemand,
                                      !noMeasureDataSize.getValue());
+                    if (!noMeasureStackSize.getValue() &&
+                        mlir::failed(recordStackDemand(
+                            mod, elfLookup(probes), elfLookup(coreObjects)))) {
+                      return mlir::failure();
+                    }
                   }
                   // A prebaked core is never probed -- its ELF is used
                   // verbatim -- so read the extents it already holds straight
@@ -2283,6 +2283,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
     *sequenceCoresOnly = !needed.count(&perCore) && !needed.count(&physical);
   }
 
+  {
+    std::vector<EdgeBase *> roots = outputs;
+    roots.insert(roots.end(), cutEdges.begin(), cutEdges.end());
+    roots.insert(roots.end(), checkEdges.begin(), checkEdges.end());
+    *realLinkFollows = reachableEdges(roots).count(&peanoElfs);
+  }
+
   // A cached device reaches the build only through the placed and the
   // ELF-patched modules, so the cache serves exactly the builds whose outputs
   // read the cores through those two alone. A locmap would name the storing
@@ -2472,6 +2479,16 @@ int main(int argc, char **argv) {
   if (!ShellCommand::addInstallPrefix("peano", peanoInstallDir)) {
     return 1;
   }
+  // A crash stack trace is only symbolized when llvm-symbolizer is found, and
+  // aiecc is PIE, so raw addresses cannot be symbolized after the fact.
+#ifndef _WIN32
+  if (!peanoInstallDir.empty() && !std::getenv("LLVM_SYMBOLIZER_PATH")) {
+    llvm::SmallString<256> symbolizer(peanoInstallDir);
+    llvm::sys::path::append(symbolizer, "bin", "llvm-symbolizer");
+    if (llvm::sys::fs::can_execute(symbolizer))
+      ::setenv("LLVM_SYMBOLIZER_PATH", symbolizer.c_str(), 1);
+  }
+#endif
   // discoverAietoolsDir has the same shape: it falls through to $AIETOOLS_ROOT
   // and then to xchesscc on PATH.
   if (!aietoolsDir.empty() && !llvm::sys::fs::is_directory(aietoolsDir)) {

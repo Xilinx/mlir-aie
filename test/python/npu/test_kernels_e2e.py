@@ -727,6 +727,129 @@ def test_cascade_mm_chain(combo, shape, tiles, full_range):
     )
 
 
+# ---------------------------------------------------------------------------
+# mm's k_tail: each call zeroes one operand's tail (the other's goes to a
+# scratch tile) and multiplies, so a tail the call leaves unzeroed (NaN, or
+# the integer maximum) reaches C through the other operand's random tail.
+# ---------------------------------------------------------------------------
+
+_K_TAIL_CONFIGS = {
+    "bf16_f32": dict(input_dtype=bfloat16, output_dtype=np.float32),
+    "bf16_f32_b_col": dict(
+        input_dtype=bfloat16, output_dtype=np.float32, b_col_maj=True
+    ),
+    "bf16_f32_emulated": dict(
+        input_dtype=bfloat16,
+        output_dtype=np.float32,
+        emulate_bf16_mmul_with_bfp16=True,
+    ),
+    "bf16_f32_emulated_b_col": dict(
+        input_dtype=bfloat16,
+        output_dtype=np.float32,
+        emulate_bf16_mmul_with_bfp16=True,
+        b_col_maj=True,
+    ),
+    "i8_i32": dict(input_dtype=np.int8, output_dtype=np.int32),
+    "i16_i32": dict(input_dtype=np.int16, output_dtype=np.int32),
+    "i16_i32_b_col": dict(input_dtype=np.int16, output_dtype=np.int32, b_col_maj=True),
+    "scalar_bf16_f32": dict(
+        input_dtype=bfloat16, output_dtype=np.float32, vectorized=False
+    ),
+    "scalar_bf16_f32_b_col": dict(
+        input_dtype=bfloat16, output_dtype=np.float32, vectorized=False, b_col_maj=True
+    ),
+    "scalar_i16_i32": dict(
+        input_dtype=np.int16, output_dtype=np.int32, vectorized=False
+    ),
+}
+_K_TAIL_DIM = 64
+# Every boundary inside, at and past a micro-tile of K (1, 4 or 8 wide), and
+# bounds outside the tile, which clamp to it.
+_K_TAIL_VALID = (-9, -1, 0, 1, 3, 4, 5, 7, 8, 9, 33, 63, 64, 65)
+_K_TAIL_CALLS = [(kv, side) for kv in _K_TAIL_VALID for side in "ab"]
+
+
+@iron.jit
+def _k_tail_design(a: In, b: In, c: Out, *, config: CompileTime[str]):
+    fn = kernels.mm(_K_TAIL_DIM, _K_TAIL_DIM, _K_TAIL_DIM, **_K_TAIL_CONFIGS[config])
+    a_ty, b_ty, c_ty = fn.arg_types()
+    of_a = ObjectFifo(a_ty, name="a", depth=1)
+    of_b = ObjectFifo(b_ty, name="b", depth=1)
+    of_c = ObjectFifo(c_ty, name="c", depth=1)
+    # Square, so one scratch tile stands in for either operand.
+    scratch = Buffer(a_ty, name="scratch")
+
+    def core(of_a, of_b, of_c, scratch, mm, zero, k_tail):
+        for kv, side in _K_TAIL_CALLS:
+            ta, tb, tc = of_a.acquire(1), of_b.acquire(1), of_c.acquire(1)
+            zero(tc)
+            if side == "a":
+                k_tail(ta, scratch, kv)
+            else:
+                k_tail(scratch, tb, kv)
+            mm(ta, tb, tc)
+            of_a.release(1)
+            of_b.release(1)
+            of_c.release(1)
+
+    worker = Worker(
+        core,
+        [of_a.cons(), of_b.cons(), of_c.prod(), scratch, fn, fn.zero, fn.k_tail],
+    )
+
+    def seq(host_a, host_b, host_c, a_in, b_in, c_out):
+        a_in.fill(host_a)
+        b_in.fill(host_b)
+        c_out.drain(host_c, wait=True)
+
+    calls = len(_K_TAIL_CALLS)
+    hosts = [
+        np.ndarray[(calls * kd.elems(t),), np.dtype[kd.shape_dtype(t)[1]]]
+        for t in (a_ty, b_ty, c_ty)
+    ]
+    rt = Runtime(seq, hosts + [of_a.prod(), of_b.prod(), of_c.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+def _k_tail_cases():
+    for config, kw in _K_TAIL_CONFIGS.items():
+        # AIE2 has no bfp16 to emulate bf16 with.
+        npu2 = kw.get("emulate_bf16_mmul_with_bfp16", False)
+        marks = [pytest.mark.supported_devices("npu2")] if npu2 else []
+        yield pytest.param(config, marks=marks, id=config)
+
+
+@pytest.mark.kernel_check("mm")
+@pytest.mark.parametrize("config", list(_k_tail_cases()))
+def test_mm_k_tail_zeroes_each_operand_past_k_valid(config):
+    fn = kernels.mm(_K_TAIL_DIM, _K_TAIL_DIM, _K_TAIL_DIM, **_K_TAIL_CONFIGS[config])
+    in_dt = np.dtype(_K_TAIL_CONFIGS[config]["input_dtype"])
+    out_dt = np.dtype(_K_TAIL_CONFIGS[config]["output_dtype"])
+    calls = len(_K_TAIL_CALLS)
+    a, b = kd.sample_inputs(fn, calls=calls, rng=np.random.default_rng(5))
+    poison = np.iinfo(in_dt).max if in_dt.kind == "i" else np.nan
+    for i, (kv, side) in enumerate(_K_TAIL_CALLS):
+        clamped = min(max(kv, 0), _K_TAIL_DIM)
+        if side == "a":
+            a[i, :, clamped:] = poison
+        else:
+            b[i, clamped:] = poison
+    a_dev = iron.tensor(fn.contract.layouts[0].encode(a).reshape(-1), dtype=in_dt)
+    b_dev = iron.tensor(fn.contract.layouts[1].encode(b).reshape(-1), dtype=in_dt)
+    c_dev = iron.tensor(
+        np.zeros(calls * _K_TAIL_DIM * _K_TAIL_DIM, out_dt), dtype=out_dt
+    )
+    _k_tail_design(a_dev, b_dev, c_dev, config=config)
+    got = c_dev.numpy().copy().reshape(calls, -1)
+
+    wide = np.int64 if in_dt.kind == "i" else np.float64
+    for i, (kv, side) in enumerate(_K_TAIL_CALLS):
+        clamped = min(max(kv, 0), _K_TAIL_DIM)
+        exact = a[i, :, :clamped].astype(wide) @ b[i, :clamped].astype(wide)
+        verdict = fn.judge(got[i], exact.astype(out_dt)[None])
+        assert verdict, f"k_valid {kv}, {side}'s tail: {verdict.detail}"
+
+
 _LUT_PAIR_SRC = """#include <aie_api/aie.hpp>
 #include <stdint.h>
 __attribute__((section(".aie.bank1"), aligned(32))) int16 tbl_ab[512];
