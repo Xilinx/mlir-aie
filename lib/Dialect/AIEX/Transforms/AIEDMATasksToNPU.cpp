@@ -653,20 +653,12 @@ struct AIEDMATasksToNPUPass
       strides4[4 - strides.size() + i] = strides[i];
     }
 
-    // Override the outermost (iteration) slot:
-    //  - runtime SSA values (iteration_size_val/stride_val) take priority;
-    //  - a compile-time BDIterationAttr fills the slot with i64 constants so
-    //    buildBdWords applies the same -1 bias and granule scaling as for the
-    //    runtime case via encodeHardwareStridesWraps.
-    // The hardware word[6] encoder uses sizesRev[3]/stridesRev[3]
-    // (i.e. sizes4[0]/strides4[0] after outermost-first reversal).
+    // See AIEOps.td ## BD iteration for the encoding contract.
     if (iterSizeVal) {
-      // Cast i32 → i64 to match the I64 type expected by buildShimBdWords.
-      auto i64ty = builder.getIntegerType(64);
-      sizes4[0] =
-          arith::ExtSIOp::create(builder, loc, i64ty, iterSizeVal).getResult();
-      strides4[0] = arith::ExtSIOp::create(builder, loc, i64ty, iterStrideVal)
-                        .getResult();
+      // iteration_size_val/stride_val are I64, matching buildShimBdWords.
+      sizes4[0] = iterSizeVal;
+      strides4[0] = iterStrideVal ? OpFoldResult(iterStrideVal)
+                                  : OpFoldResult(builder.getI64IntegerAttr(0));
     } else if (iterAttr) {
       sizes4[0] = builder.getI64IntegerAttr(iterAttr->getSize());
       strides4[0] = builder.getI64IntegerAttr(iterAttr->getStride());
@@ -798,8 +790,13 @@ struct AIEDMATasksToNPUPass
         llvm::any_of(block.getOps<AIE::UseLockOp>(), [](AIE::UseLockOp op) {
           return !getConstantIntValue(op.getValue());
         });
-    // Runtime iteration SSA values also require the dynamic BD-word path.
-    bool runtimeIteration = bd_op.getIterationSizeVal() != nullptr;
+    // Constant iteration SSA values fold to the static NpuWriteBdOp path.
+    bool runtimeIteration = false;
+    if (Value iterSizeVal = bd_op.getIterationSizeVal()) {
+      Value iterStrideVal = bd_op.getIterationStrideVal();
+      runtimeIteration = !getConstantIntValue(iterSizeVal) ||
+                         (iterStrideVal && !getConstantIntValue(iterStrideVal));
+    }
     if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId ||
         runtimeNextBd || runtimeLock || runtimeIteration) {
       // The verifier leaves a runtime offset, bd_id, next_bd or lock value as
@@ -869,7 +866,12 @@ struct AIEDMATasksToNPUPass
     // The iteration attribute rides in the outermost (iteration) slot of the
     // dimensioned form, so a BD without dims becomes one contiguous dimension.
     std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration();
-    if (iter && dimsStorage->empty())
+    // A constant iteration_size_val acts like a BDIterationAttr on the static
+    // path: it occupies the outermost slot and needs a placeholder inner dim.
+    bool hasIterOrConstSizeVal =
+        iter || (bd_op.getIterationSizeVal() &&
+                 getConstantIntValue(bd_op.getIterationSizeVal()));
+    if (hasIterOrConstSizeVal && dimsStorage->empty())
       dimsStorage->push_back(AIE::BDDimLayoutAttr::get(
           builder.getContext(), len / bd_op.getBufferElementTypeWidthInBytes(),
           1));
@@ -921,6 +923,13 @@ struct AIEDMATasksToNPUPass
       if (iter) {
         input_sizes[3] = iter->getSize();
         input_strides[3] = iter->getStride();
+      } else if (Value sv = bd_op.getIterationSizeVal()) {
+        // Constant iteration_size_val folded to the static encoder.
+        if (auto sz = getConstantIntValue(sv))
+          input_sizes[3] = *sz;
+        if (Value sv2 = bd_op.getIterationStrideVal())
+          if (auto st = getConstantIntValue(sv2))
+            input_strides[3] = *st;
       }
 
       // d3 (repeat) is excluded; a repeated linear transfer is still linear.
@@ -979,9 +988,24 @@ struct AIEDMATasksToNPUPass
           }
           iteration_current = iter->getCurrent();
         }
+      } else if (Value sv = bd_op.getIterationSizeVal()) {
+        if (auto sz = getConstantIntValue(sv)) {
+          if (*sz > 1) {
+            uint32_t elemWidthInBytes =
+                bd_op.getBufferElementTypeWidthInBytes();
+            uint32_t gran = target_model.getAddressGenGranularity();
+            iteration_size = *sz - 1;
+            if (Value sv2 = bd_op.getIterationStrideVal()) {
+              if (auto st = getConstantIntValue(sv2)) {
+                if (*st > 0)
+                  iteration_stride = (*st * elemWidthInBytes * 8 / gran) - 1;
+                else
+                  iteration_size = 0; // stride-0 = pure repeat
+              }
+            }
+          }
+        }
       } else {
-        // Implicit path: outermost dim hoisted; getHardwareStridesWraps has
-        // already applied the -1 bias and word-scaling.
         iteration_size = sizes[3];
         iteration_stride = strides[3];
         if (input_sizes[3] > 1 && input_strides[3] == 0) {

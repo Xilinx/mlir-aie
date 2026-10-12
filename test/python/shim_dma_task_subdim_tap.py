@@ -126,25 +126,25 @@ case("rank5", (2, 2, 2, 2, 2), [2, 2, 2, 2, 2], [16, 8, 4, 2, 1])
 # rank 5 that does not coalesce: passes through for the compiler to split.
 # CHECK-LABEL: CASE rank5_transposed
 # CHECK: aie.dma_bd(%{{.*}} : memref<32xbf16> offset = {{.*}} len = 8 sizes = [2, 2, 2, 2, 2] strides = [1, 2, 4, 8, 16])
-# CHECK: repeat_count = 1
+# CHECK: repeat_count = 3
 case("rank5_transposed", (2, 2, 2, 2, 2), [2, 2, 2, 2, 2], [1, 2, 4, 8, 16])
 
 # CHECK-LABEL: CASE rank5_explicit
 # CHECK: aie.dma_bd(%{{.*}} : memref<32xbf16> offset = {{.*}} len = 8 sizes = [2, 2, 2, 2, 2] strides = [16, 8, 4, 2, 1])
-# CHECK: repeat_count = 1
+# CHECK: repeat_count = 3
 case("rank5_explicit", None, [2, 2, 2, 2, 2], [16, 8, 4, 2, 1], use_tap=False)
 
 # rank 5 without strides: the default strides take the rank of sizes.
 # CHECK-LABEL: CASE rank5_no_strides
 # CHECK: aie.dma_bd(%{{.*}} : memref<64xbf16> offset = {{.*}} len = 16 sizes = [2, 2, 1, 1, 16] strides = [0, 0, 0, 0, 1])
-# CHECK: repeat_count = 1
+# CHECK: repeat_count = 3
 case("rank5_no_strides", None, [2, 2, 1, 1, 16], None, use_tap=False)
 
 
-# rank 5 with a runtime size: sizes[0] is stripped to repeat_count_val,
-# leaving 4 dims which is within the shim tile's limit.
+# rank 5 with a runtime size: sizes[0] is stripped to iteration_size_val,
+# leaving 4 inner dims — exceeds the 3-dim limit when iteration is set.
 # CHECK-LABEL: CASE rank5_runtime
-# CHECK-NOT: RAISED
+# CHECK: RAISED MLIRError
 print("// CASE rank5_runtime")
 try:
     with mlir_mod_ctx() as ctx:

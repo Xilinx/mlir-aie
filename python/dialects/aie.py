@@ -180,8 +180,7 @@ def dma_bd(
     offset_operand, static_offset = _split_i32_scalar(offset)
     len_operand, static_len = _split_i32_scalar(transfer_len)
 
-    # Detect a runtime iteration pair (size_val, stride_val) — both SSA Values
-    # — and route to the new operands instead of the BDIterationAttr.
+    # Route SSA iteration pair to operands; attr tuple to BDIterationAttr.
     iteration = kwargs.pop("iteration", None)
     if (
         iteration is not None

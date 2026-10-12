@@ -1481,7 +1481,11 @@ staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
       return std::nullopt;
     for (AIE::DMABDOp bd : scc->front()->getOps<AIE::DMABDOp>()) {
       std::optional<int64_t> len = staticBdLenBytes(bd);
-      if (!len || bd.getIteration() || bd.getNextBdId())
+      if (!len || bd.getNextBdId())
+        return std::nullopt;
+      // Static iteration only steps the address between repeats;
+      // a runtime one leaves the count unknown.
+      if (bd.getIterationSizeVal())
         return std::nullopt;
       moved = llvm::checkedAdd(*moved, *len);
       if (!moved)
@@ -2003,7 +2007,7 @@ AIEX::BlockFloatType::getBlockFormat(StringRef blockType) {
       blockFormatsMap = {
           {"v8bfp16ebs8", {8, 8, 8, 0}},
           {"v16bfp16ebs16", {16, 8, 8, 0}},
-      };
+  };
 
   auto it = blockFormatsMap.find(blockType);
   if (it != blockFormatsMap.end()) {

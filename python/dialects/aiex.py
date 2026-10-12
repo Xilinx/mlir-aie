@@ -44,6 +44,7 @@ from ..ir import (
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
+from ..extras.dialects import arith
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..helpers.taplib import TensorAccessPattern
 from ..helpers.taplib._symbolic import is_sym, si32, sprod
@@ -443,8 +444,9 @@ def shim_dma_single_bd_task(
                 runs = int(np.prod([int(v) for v in outer]))
                 if runs > 1:
                     repeat_count = runs - 1
-                # Strip the outermost dim and emit iteration when applicable.
-                if len(sizes) == 4:
+                # Strip the outermost dim when it fits the hardware iteration
+                # register (size ≤ 64); larger counts stay in the implicit path.
+                if len(sizes) == 4 and int(sizes[0]) <= 64:
                     st0 = strides[0] if strides is not None else 0
                     if isinstance(st0, (int, np.integer)) and int(st0) != 0:
                         iteration = (int(sizes[0]), int(st0), 0)
@@ -453,21 +455,29 @@ def shim_dma_single_bd_task(
                     sizes = list(sizes[1:])
                     strides = list(strides[1:])
             else:
-                # Runtime SSA sizes[0]: strip and emit iteration via SSA operands.
-                s0_i32 = sizes[0]
-                if s0_i32.type != T.i32():
-                    s0_i32 = arith.trunci(T.i32(), s0_i32)
+                # Runtime SSA sizes[0]: strip and emit iteration via SSA.
+                # Keep values as i64 to match the BD's native type and avoid
+                # ExtSIOp(i32→i64) which prevents constant folding in packBdWords.
+                s0 = sizes[0]
+                s0_i32 = s0
+                if hasattr(s0, 'type') and s0.type != T.i32():
+                    s0_i32 = arith.trunci(T.i32(), s0)
                 repeat_count_val = s0_i32 - _as_i32(1)
                 st0 = strides[0] if strides is not None else 0
-                if isinstance(st0, (int, np.integer)):
-                    st0 = _as_i32(int(st0))
-                elif st0.type != T.i32():
-                    st0 = arith.trunci(T.i32(), st0)
+                # iteration pair as i64 (native BD dim type)
+                def _as_i64(v):
+                    if isinstance(v, (int, np.integer)):
+                        return arith.ConstantOp(T.i64(), int(v)).result
+                    if hasattr(v, 'type') and v.type != T.i64():
+                        return arith.extsi(T.i64(), v)
+                    return v
+                s0_i64 = _as_i64(s0)
+                st0_i64 = _as_i64(st0)
                 if strides is None:
                     strides = [0] * (len(sizes) - 1) + [1]
                 sizes = list(sizes[1:])
                 strides = list(strides[1:])
-                iteration = (s0_i32, st0)
+                iteration = (s0_i64, st0_i64)
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,

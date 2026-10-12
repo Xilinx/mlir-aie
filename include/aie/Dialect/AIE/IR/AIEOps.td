@@ -1253,7 +1253,7 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // Can be given as a compile-time BDIterationAttr or runtime SSA values
       // (iteration_size_val / iteration_stride_val); mutually exclusive.
       OptionalAttr<BDIterationAttr>:$iteration,
-      Optional<I32>:$iteration_size_val, Optional<I32>:$iteration_stride_val,
+      Optional<I64>:$iteration_size_val, Optional<I64>:$iteration_stride_val,
       // if set, the aiex.scratchpad_parameter value added to the BD's address
       // as an offset. The value is an ELEMENT count, scaled by the buffer's
       // element size at lowering. The firmware masks the address register
