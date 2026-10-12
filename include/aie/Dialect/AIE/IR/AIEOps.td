@@ -1633,7 +1633,7 @@ def AIE_LockDeclOp: AIE_Op<"lock_decl", [HasParent<"DeviceOp">, Symbol]> {
   }];
 }
 
-def AIE_GetLockOp: AIE_Op<"get_lock", [HasParent<"DeviceOp">]> {
+def AIE_GetLockOp: AIE_Op<"get_lock", []> {
   let summary = "Materialize an SSA lock value from a lock symbol";
   let arguments = (ins FlatSymbolRefAttr:$lock);
   let results = (outs Index:$result);
@@ -1860,7 +1860,7 @@ def AIE_BufferDeclOp : AIE_Op<"buffer_decl", [HasParent<"DeviceOp">, Symbol]> {
   }];
 }
 
-def AIE_GetBufferOp : AIE_Op<"get_buffer", [HasParent<"DeviceOp">]> {
+def AIE_GetBufferOp : AIE_Op<"get_buffer", []> {
   let summary = "Materialize an SSA memref from a local buffer symbol";
   let arguments = (ins FlatSymbolRefAttr:$buffer);
   let results = (outs AnyMemRef:$result);
@@ -1880,7 +1880,7 @@ def AIE_ExternalBufferDeclOp
   let assemblyFormat = [{ $sym_name attr-dict `:` $type }];
 }
 
-def AIE_GetExternalBufferOp : AIE_Op<"get_external_buffer", [HasParent<"DeviceOp">]> {
+def AIE_GetExternalBufferOp : AIE_Op<"get_external_buffer", []> {
   let summary = "Materialize an SSA memref from an external buffer symbol";
   let arguments = (ins FlatSymbolRefAttr:$buffer);
   let results = (outs AnyMemRef:$result);
