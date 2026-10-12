@@ -14,7 +14,6 @@ template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
              y_acc_dtype *__restrict pY);
 
-
 extern "C" {
 
 // ---------------------------------------------------------------------------
