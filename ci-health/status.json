@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-12T13:21:04+00:00",
+ "generated_at": "2026-10-12T18:59:23+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 697,
+   "runs": 675,
    "main": {
     "passed": 11,
     "failed": 1,
@@ -245,9 +245,9 @@
     }
    ],
    "pull_requests": {
-    "passed": 175,
-    "failed": 153,
-    "rate": 0.534
+    "passed": 171,
+    "failed": 139,
+    "rate": 0.552
    },
    "merge_queue": {
     "passed": 70,
@@ -255,11 +255,11 @@
     "rate": 0.588
    },
    "flaky": {
-    "commits": 678,
-    "flaky": 46,
-    "rate": 0.068
+    "commits": 656,
+    "flaky": 47,
+    "rate": 0.072
    },
-   "minutes_median": 56.1,
+   "minutes_median": 59.9,
    "minutes_p90": 152.5,
    "queued_median": 0.0
   },
@@ -269,7 +269,7 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 697,
+   "runs": 675,
    "main": {
     "passed": 8,
     "failed": 3,
@@ -480,19 +480,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 89,
-    "failed": 118,
-    "rate": 0.43
+    "passed": 91,
+    "failed": 109,
+    "rate": 0.455
    },
    "merge_queue": {
-    "passed": 44,
-    "failed": 32,
-    "rate": 0.579
+    "passed": 46,
+    "failed": 31,
+    "rate": 0.597
    },
    "flaky": {
-    "commits": 678,
-    "flaky": 16,
-    "rate": 0.024
+    "commits": 656,
+    "flaky": 17,
+    "rate": 0.026
    },
    "minutes_median": 60.4,
    "minutes_p90": 103.2,
@@ -504,38 +504,62 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 767,
+   "runs": 745,
    "main": {
     "passed": 83,
     "failed": 0,
     "rate": 1.0
    },
    "latest_main": {
-    "id": 38189429798,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38189429798",
+    "id": 38287543055,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38287543055",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-12T00:48:35Z",
-    "run_started_at": "2026-10-12T00:48:35Z",
-    "updated_at": "2026-10-12T01:11:21Z",
-    "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
-    "title": "Compile across platforms",
+    "created_at": "2026-10-12T17:56:19Z",
+    "run_started_at": "2026-10-12T17:56:19Z",
+    "updated_at": "2026-10-12T18:05:14Z",
+    "head_sha": "412f465c1705749af9f5551870910a0a4e2d192b",
+    "title": "Add a reconfiguration programming example and benchmark (#3395)",
     "attempt": 1
    },
    "newest_main": {
-    "id": 38189429798,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38189429798",
+    "id": 38287543055,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38287543055",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-12T00:48:35Z",
-    "run_started_at": "2026-10-12T00:48:35Z",
-    "updated_at": "2026-10-12T01:11:21Z",
-    "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
-    "title": "Compile across platforms",
+    "created_at": "2026-10-12T17:56:19Z",
+    "run_started_at": "2026-10-12T17:56:19Z",
+    "updated_at": "2026-10-12T18:05:14Z",
+    "head_sha": "412f465c1705749af9f5551870910a0a4e2d192b",
+    "title": "Add a reconfiguration programming example and benchmark (#3395)",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 38287543055,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38287543055",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-12T17:56:19Z",
+     "run_started_at": "2026-10-12T17:56:19Z",
+     "updated_at": "2026-10-12T18:05:14Z",
+     "head_sha": "412f465c1705749af9f5551870910a0a4e2d192b",
+     "title": "Add a reconfiguration programming example and benchmark (#3395)",
+     "attempt": 1
+    },
+    {
+     "id": 38279644347,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38279644347",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-12T16:45:40Z",
+     "run_started_at": "2026-10-12T16:45:40Z",
+     "updated_at": "2026-10-12T17:08:46Z",
+     "head_sha": "7040e7cffa58ef4f5d8c359ad48bda4e3c22923b",
+     "title": "Add route pinning to `aie.flow` with `via` (#3421)",
+     "attempt": 1
+    },
     {
      "id": 38189429798,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38189429798",
@@ -991,49 +1015,25 @@
      "head_sha": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
      "title": "Compile across platforms",
      "attempt": 1
-    },
-    {
-     "id": 37389010650,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37389010650",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-05T23:31:55Z",
-     "run_started_at": "2026-10-05T23:31:55Z",
-     "updated_at": "2026-10-05T23:40:37Z",
-     "head_sha": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
-     "title": "[AIEX] Allow a length_parameter BD whose offset comes from a runtime-\u2026",
-     "attempt": 1
-    },
-    {
-     "id": 37386334572,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37386334572",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-05T23:04:13Z",
-     "run_started_at": "2026-10-05T23:04:13Z",
-     "updated_at": "2026-10-05T23:12:05Z",
-     "head_sha": "f6c2bc315b601d95bea98eb8def7d78fb106976d",
-     "title": "row_wise_bias_add: add a per-column affine cast to bf16 [LOW] (#3626)",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 368,
-    "failed": 92,
-    "rate": 0.8
+    "passed": 361,
+    "failed": 79,
+    "rate": 0.82
    },
    "merge_queue": {
-    "passed": 113,
-    "failed": 6,
-    "rate": 0.95
+    "passed": 112,
+    "failed": 7,
+    "rate": 0.941
    },
    "flaky": {
-    "commits": 678,
+    "commits": 656,
     "flaky": 88,
-    "rate": 0.13
+    "rate": 0.134
    },
    "minutes_median": 9.3,
-   "minutes_p90": 20.5,
+   "minutes_p90": 20.3,
    "queued_median": 0.0
   },
   {
@@ -1042,38 +1042,62 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 767,
+   "runs": 745,
    "main": {
     "passed": 84,
     "failed": 0,
     "rate": 1.0
    },
    "latest_main": {
-    "id": 38187192170,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38187192170",
+    "id": 38287543145,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38287543145",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-12T00:13:37Z",
-    "run_started_at": "2026-10-12T00:13:37Z",
-    "updated_at": "2026-10-12T00:31:40Z",
-    "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
-    "title": "Build and Test across Python versions",
+    "created_at": "2026-10-12T17:56:19Z",
+    "run_started_at": "2026-10-12T17:56:19Z",
+    "updated_at": "2026-10-12T18:04:52Z",
+    "head_sha": "412f465c1705749af9f5551870910a0a4e2d192b",
+    "title": "Add a reconfiguration programming example and benchmark (#3395)",
     "attempt": 1
    },
    "newest_main": {
-    "id": 38187192170,
-    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38187192170",
+    "id": 38287543145,
+    "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38287543145",
     "status": "completed",
     "conclusion": "success",
-    "created_at": "2026-10-12T00:13:37Z",
-    "run_started_at": "2026-10-12T00:13:37Z",
-    "updated_at": "2026-10-12T00:31:40Z",
-    "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
-    "title": "Build and Test across Python versions",
+    "created_at": "2026-10-12T17:56:19Z",
+    "run_started_at": "2026-10-12T17:56:19Z",
+    "updated_at": "2026-10-12T18:04:52Z",
+    "head_sha": "412f465c1705749af9f5551870910a0a4e2d192b",
+    "title": "Add a reconfiguration programming example and benchmark (#3395)",
     "attempt": 1
    },
    "latest_main_jobs": null,
    "main_runs": [
+    {
+     "id": 38287543145,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38287543145",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-12T17:56:19Z",
+     "run_started_at": "2026-10-12T17:56:19Z",
+     "updated_at": "2026-10-12T18:04:52Z",
+     "head_sha": "412f465c1705749af9f5551870910a0a4e2d192b",
+     "title": "Add a reconfiguration programming example and benchmark (#3395)",
+     "attempt": 1
+    },
+    {
+     "id": 38279644250,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38279644250",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-12T16:45:40Z",
+     "run_started_at": "2026-10-12T16:45:40Z",
+     "updated_at": "2026-10-12T17:07:37Z",
+     "head_sha": "7040e7cffa58ef4f5d8c359ad48bda4e3c22923b",
+     "title": "Add route pinning to `aie.flow` with `via` (#3421)",
+     "attempt": 1
+    },
     {
      "id": 38187192170,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38187192170",
@@ -1529,36 +1553,12 @@
      "head_sha": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
      "title": "Build and Test across Python versions",
      "attempt": 1
-    },
-    {
-     "id": 37389011671,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37389011671",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-05T23:31:56Z",
-     "run_started_at": "2026-10-05T23:31:56Z",
-     "updated_at": "2026-10-05T23:39:52Z",
-     "head_sha": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
-     "title": "[AIEX] Allow a length_parameter BD whose offset comes from a runtime-\u2026",
-     "attempt": 1
-    },
-    {
-     "id": 37386334677,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37386334677",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-05T23:04:13Z",
-     "run_started_at": "2026-10-05T23:04:13Z",
-     "updated_at": "2026-10-05T23:11:38Z",
-     "head_sha": "f6c2bc315b601d95bea98eb8def7d78fb106976d",
-     "title": "row_wise_bias_add: add a per-column affine cast to bf16 [LOW] (#3626)",
-     "attempt": 1
     }
    ],
    "pull_requests": {
-    "passed": 398,
-    "failed": 80,
-    "rate": 0.833
+    "passed": 391,
+    "failed": 67,
+    "rate": 0.854
    },
    "merge_queue": {
     "passed": 115,
@@ -1566,9 +1566,9 @@
     "rate": 0.958
    },
    "flaky": {
-    "commits": 678,
+    "commits": 656,
     "flaky": 93,
-    "rate": 0.137
+    "rate": 0.142
    },
    "minutes_median": 8.8,
    "minutes_p90": 16.6,
@@ -1580,7 +1580,7 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 697,
+   "runs": 675,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -1782,9 +1782,9 @@
     }
    ],
    "pull_requests": {
-    "passed": 372,
-    "failed": 132,
-    "rate": 0.738
+    "passed": 364,
+    "failed": 118,
+    "rate": 0.755
    },
    "merge_queue": {
     "passed": 117,
@@ -1792,9 +1792,9 @@
     "rate": 0.975
    },
    "flaky": {
-    "commits": 678,
-    "flaky": 89,
-    "rate": 0.131
+    "commits": 656,
+    "flaky": 88,
+    "rate": 0.134
    },
    "minutes_median": 3.8,
    "minutes_p90": 7.2,
@@ -1803,11 +1803,11 @@
  ],
  "merge_time": {
   "merged": 74,
-  "hours_median": 23.3,
-  "hours_p90": 209.7,
-  "open": 73,
+  "hours_median": 24.5,
+  "hours_p90": 283.5,
+  "open": 71,
   "open_drafts": 24,
-  "open_over_30_days": 46
+  "open_over_30_days": 44
  },
  "workflows": [
   {
@@ -2664,6 +2664,18 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 38276411350,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38276411350",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-12T16:17:57Z",
+     "run_started_at": "2026-10-12T16:17:57Z",
+     "updated_at": "2026-10-12T18:31:41Z",
+     "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 38250118869,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38250118869",
      "status": "completed",
@@ -2791,18 +2803,6 @@
      "created_at": "2026-10-10T20:16:19Z",
      "run_started_at": "2026-10-10T20:16:19Z",
      "updated_at": "2026-10-10T20:43:05Z",
-     "head_sha": "58484c8cfbadbd81e6e0a892c2d94517e615a22d",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 38067054668,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38067054668",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-10T16:17:26Z",
-     "run_started_at": "2026-10-10T16:17:26Z",
-     "updated_at": "2026-10-10T17:26:20Z",
      "head_sha": "58484c8cfbadbd81e6e0a892c2d94517e615a22d",
      "title": "MLIR Distro",
      "attempt": 1
