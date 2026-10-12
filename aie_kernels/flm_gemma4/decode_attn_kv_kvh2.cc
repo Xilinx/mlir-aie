@@ -16,7 +16,6 @@ template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
              y_acc_dtype *__restrict pY, bool is_up);
 
-
 extern "C" {}
 
 // IS_UP is a template parameter, so the half-select in the loop is resolved at
@@ -83,9 +82,7 @@ static PingPong v_pingpong;
 
 extern "C" {
 
-void attn_kv_begin(float *y, float *l) {
-  attn_kv_begin_impl<8 * DH>(y, l);
-}
+void attn_kv_begin(float *y, float *l) { attn_kv_begin_impl<8 * DH>(y, l); }
 
 // Start of an s round: fold the new scores into l and rescale the accumulator.
 // The Worker calls it once per s object, before either v half.

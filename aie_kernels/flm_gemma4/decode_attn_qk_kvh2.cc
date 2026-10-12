@@ -19,7 +19,6 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bf16 *__restrict pY,
               bf16 *__restrict m, float *__restrict c, aie::mask<16> &mask,
               bool &is_first, bool &is_up);
 
-
 // Written for a head dim of 512.
 template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bfloat16 *__restrict pY,

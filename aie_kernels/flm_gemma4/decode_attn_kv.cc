@@ -14,7 +14,6 @@ template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
              y_acc_dtype *__restrict pY, float *__restrict c);
 
-
 extern "C" {}
 template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
@@ -105,9 +104,7 @@ static PingPong v_pingpong;
 
 extern "C" {
 
-void attn_kv_begin(float *y, float *l) {
-  attn_kv_begin_impl<8 * DH>(y, l);
-}
+void attn_kv_begin(float *y, float *l) { attn_kv_begin_impl<8 * DH>(y, l); }
 
 // One round. s is the ObjectFifo object.
 void attn_kv_round(bf16 *s, bf16 *v_ping, bf16 *v_pong, float *y, float *l) {
@@ -119,8 +116,7 @@ void attn_kv_round(bf16 *s, bf16 *v_ping, bf16 *v_pong, float *y, float *l) {
 }
 
 void attn_kv_finish(float *y, bf16 *o, float *l) {
-  attn_kv_finish_impl<8 * DH>(y, o,
-                                                                        l);
+  attn_kv_finish_impl<8 * DH>(y, o, l);
 }
 }
 #endif
