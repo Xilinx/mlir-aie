@@ -272,7 +272,7 @@ def _unary_lut_contract(
     setup: Callable[[], object] | None = conv_even,
     use_lut: bool = False,
     elementwise: Callable | None = None,
-    aie2_elementwise: Callable | None = None,
+    branch_models: dict[str, Callable] | None = None,
     lut_tolerance: Tolerance = _LUT_MODEL_TOLERANCE,
 ) -> KernelContract:
     """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
@@ -294,18 +294,16 @@ def _unary_lut_contract(
     a tolerance sized to the instruction's measured error -- a much weaker
     statement, and deliberately a different one.
 
-    ``elementwise`` is the exact model of a LUT build, and
-    ``aie2_elementwise`` that of AIE2's tuned branch where the source compiles
-    a header of its own for it. A build neither model covers keeps ``ref``
-    and ``tolerance``. Without either model the contract is the same for
-    every build.
+    ``elementwise`` is the exact model of a LUT build. ``branch_models``
+    replaces it for a build whose ``Build.tuned`` branch the source compiles
+    a header of its own for. A build no model covers keeps ``ref`` and
+    ``tolerance``. Without a model the contract is the same for every build.
     """
     per_build = []
-    if elementwise is not None or aie2_elementwise is not None:
+    branch_models = branch_models or {}
+    if elementwise is not None or branch_models:
         for build in BUILDS:
-            model = elementwise
-            if build.tuned == "aie2" and aie2_elementwise is not None:
-                model = aie2_elementwise
+            model = branch_models.get(build.tuned, elementwise)
             # Without a tanh instruction the LUT path is taken whatever the
             # caller asked for, and gets the exact model too.
             lut = use_lut or not ARCH_TRAITS[build.arch].native_tanh
@@ -487,7 +485,7 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             tolerance=_GELU_VTANH_TOLERANCE,
             use_lut=use_lut,
             elementwise=gelu_lut_ref,
-            aie2_elementwise=gelu_aie2_lut_ref,
+            branch_models={"aie2": gelu_aie2_lut_ref},
         ),
         use_lut_tanh=use_lut,
     )
@@ -573,7 +571,7 @@ def gelu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction
             tolerance=_GELU_VTANH_TOLERANCE,
             use_lut=use_lut,
             elementwise=gelu_lut_ref,
-            aie2_elementwise=gelu_aie2_lut_ref,
+            branch_models={"aie2": gelu_aie2_lut_ref},
         ),
         use_lut_tanh=use_lut,
     )
@@ -633,7 +631,7 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
             # range-reduced polynomial, which this model does not describe,
             # so it keeps the true-function reference and a measured bound,
             # whether or not there is a tanh instruction.
-            aie2_elementwise=bf16_exp_lut_ref,
+            branch_models={"aie2": bf16_exp_lut_ref},
             lut_tolerance=_EXP_LUT_TOLERANCE,
             use_lut=True,
             tolerance=_EXP_POLY_TOLERANCE,
