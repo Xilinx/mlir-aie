@@ -45,6 +45,34 @@ def test_fill_repeat_parameter():
     print(Program(NPU2Col1(), rt).resolve_program())
 
 
+# CHECK-LABEL: test_drain_repeat_parameter
+# CHECK: aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 0 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1]) {length_parameter = @tiles, length_unit = 64 : i32}
+# CHECK: %[[OUT:.*]] = aiex.dma_configure_task_for @of_out {
+# CHECK: aie.dma_bd(%arg1 : memref<1024xi32> offset = 0 len = 64 sizes = [16, 1, 1, 64] strides = [64, 0, 0, 1])
+# CHECK: } {issue_token = true, repeat_count = 15 : i32}
+# CHECK: aiex.dma_start_task(%[[OUT]]) {repeat_parameter = @reps}
+# CHECK: aiex.dma_await_task(%[[OUT]])
+def test_drain_repeat_parameter():
+    print("test_drain_repeat_parameter")
+    buf_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+    tile_ty = np.ndarray[(64,), np.dtype[np.int32]]
+
+    reps = ScratchpadParameter("reps", np.int32)
+    tiles = ScratchpadParameter("tiles", np.int32)
+
+    of_in = ObjectFifo(tile_ty, name="of_in")
+    of_out = of_in.cons().forward(name="of_out")
+
+    def sequence(a, b, in_h, out_h):
+        stepped = TensorAccessPattern((1024,), 0, [16, 1, 1, 64], [64, 0, 0, 1])
+        row = TensorAccessPattern((1024,), 0, [1, 1, 1, 64], [0, 0, 0, 1])
+        in_h.fill(a, tap=row, length_parameter=tiles)
+        out_h.drain(b, tap=stepped, wait=True, repeat_parameter=reps)
+
+    rt = Runtime(sequence, [buf_ty, buf_ty, of_in.prod(), of_out.cons()])
+    print(Program(NPU2Col1(), rt).resolve_program())
+
+
 # CHECK-LABEL: test_one_count_per_start
 # CHECK: takes a repeat_count or a repeat_parameter, not both
 def test_one_count_per_start():
@@ -56,4 +84,5 @@ def test_one_count_per_start():
 
 
 test_fill_repeat_parameter()
+test_drain_repeat_parameter()
 test_one_count_per_start()
