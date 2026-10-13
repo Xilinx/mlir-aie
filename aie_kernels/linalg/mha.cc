@@ -24,6 +24,18 @@
 
 #define VECTOR_LENGTH 64
 
+// The QK^T score tile: float32 under MHA_F32_SCORES, else bf16. A bf16 score
+// steps by 2^-8 of its magnitude, which past |A| = 2^15 or so is coarser than
+// the softmax can take.
+#ifdef MHA_F32_SCORES
+#if AIE_ARCH_AIE2
+#error "MHA_F32_SCORES: the float32 score path is written for AIE2P only"
+#endif
+using score_t = float;
+#else
+using score_t = bfloat16;
+#endif
+
 #define ROUNDING_MODE aie::rounding_mode::conv_even
 
 // The query at position q keeps the keys k with q - MHA_WINDOW <= k <= q +
@@ -493,12 +505,21 @@ static inline void advance_state_w(float *scale_buffer, int32_t B_q,
     VecW l_i_minus_1 = aie::load_v<W>(scale_buffer + 2 * B_q + i);
     VecW accum_exp_val = aie::load_v<W>(scale_buffer + 3 * B_q + i);
 
-    aie::accum<accfloat, W> prev, cur;
+    aie::accum<accfloat, W> prev;
     prev.from_vector(aie::load_v<W>(scale_buffer + i));
+#ifdef MHA_F32_SCORES
+    // Float maxima; see partial_softmax_row_f32.
+    const Limbs<W> dl = bf16_limbs(aie::sub(prev, m_i));
+    aie::accum<accfloat, W> diff = aie::mul(dl.hi, s);
+    diff = aie::mac(diff, dl.mid, s);
+    diff = aie::mac(diff, dl.lo, s);
+#else
+    aie::accum<accfloat, W> cur;
     cur.from_vector(m_i);
     aie::accum<accfloat, W> diff =
         aie::msc(aie::mul(prev.template to_vector<bfloat16>(), s),
                  cur.template to_vector<bfloat16>(), s);
+#endif
     const auto max_diff_exp = exp2_bf16(diff.template to_vector<float>());
 
     aie::store_v(
@@ -547,6 +568,45 @@ static inline void invert_sums_w(float *scale_buffer, int32_t B_q) {
   }
 }
 
+#ifdef MHA_F32_SCORES
+// One query row of float32 scores: partial_softmax_alias_bf16 with the row's
+// max and A - m in float32 and (A - m) * s as three bf16 limbs times s, so
+// the largest argument is exactly 0 and the rest keep 2^-24 of their size.
+template <unsigned W>
+static inline void
+partial_softmax_row_f32(const float *__restrict A, bfloat16 *__restrict P,
+                        float *__restrict scale_buffer, int32_t n, int32_t row,
+                        int32_t num_rows, bfloat16 scale) {
+  aie::vector<float, W> top =
+      aie::broadcast<float, W>((float)std::numeric_limits<bfloat16>::lowest());
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
+  for (int32_t c = 0; c < n; c += W)
+    top = aie::max(top, aie::load_v<W>(A + c));
+  const float m = aie::max(aie::broadcast<float, 16>(aie::reduce_max(top)),
+                           aie::broadcast<float, 16>(scale_buffer[row]))
+                      .get(0);
+  scale_buffer[num_rows + row] = m;
+
+  const auto s = aie::broadcast<bfloat16, W>(scale);
+  const auto m_vec = aie::broadcast<float, W>(m);
+  aie::accum<accfloat, W> sum = aie::zeros<accfloat, W>();
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
+  for (int32_t c = 0; c < n; c += W) {
+    aie::accum<accfloat, W> d;
+    d.from_vector(aie::load_v<W>(A + c));
+    const Limbs<W> dl = bf16_limbs(aie::sub(d, m_vec));
+    aie::accum<accfloat, W> x = aie::mul(dl.hi, s);
+    x = aie::mac(x, dl.mid, s);
+    x = aie::mac(x, dl.lo, s);
+    const aie::vector<bfloat16, W> p = exp2_bf16(x.template to_vector<float>());
+    sum = aie::add(sum, p);
+    aie::store_v(P + c, p);
+  }
+  scale_buffer[3 * num_rows + row] =
+      aie::reduce_add(sum.template to_vector<float>());
+}
+#endif
+
 extern "C" {
 void partial_softmax_bf16(bfloat16 *input, bfloat16 *output,
                           float *scale_buffer, const int32_t input_size,
@@ -554,7 +614,7 @@ void partial_softmax_bf16(bfloat16 *input, bfloat16 *output,
                           const bfloat16 scale);
 void passThroughLine(int32_t *in, int32_t *out, int32_t lineWidth);
 
-void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out,
+void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, score_t *c_out,
                               int32_t *idx_buffer) {
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
@@ -569,14 +629,22 @@ void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out,
     return;
   }
 
+#ifdef MHA_F32_SCORES
+  matmul_bf16_f32(a_in, b_in, c_out);
+#else
   matmul_bf16_bf16(a_in, b_in, c_out);
+#endif
   ::aie::set_rounding(saved_rounding);
 }
 
 void matmul_bf16_bf16_wrapper_scalar(bfloat16 *a_in, bfloat16 *b_in,
-                                     bfloat16 *c_out) {
+                                     score_t *c_out) {
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
+#ifdef MHA_F32_SCORES
+  matmul_scalar_bf16_f32(a_in, b_in, c_out);
+#else
   matmul_scalar_bf16_bf16(a_in, b_in, c_out);
+#endif
   ::aie::set_rounding(saved_rounding);
 }
 
@@ -641,7 +709,7 @@ void rescale_O(float *O, bfloat16 *out, float *scale_buffer, int32_t B_q,
   event1();
 }
 
-void partial_softmax(bfloat16 *A, bfloat16 *P, float *scale_buffer,
+void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
                      int32_t *idx_buffer, bfloat16 inv_scale, int32_t B_q,
                      int32_t B_kv, int32_t S_q_eff, int32_t S_kv_eff) {
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
@@ -690,8 +758,8 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, float *scale_buffer,
   constexpr unsigned MW = DIM_N % VECTOR_LENGTH == 0 ? VECTOR_LENGTH
                           : DIM_N % SM_VEC_LEN == 0  ? SM_VEC_LEN
                                                      : SM_LANES;
-  const auto lowest =
-      aie::broadcast<bfloat16, MW>(std::numeric_limits<bfloat16>::lowest());
+  const auto lowest = aie::broadcast<score_t, MW>(
+      (score_t)std::numeric_limits<bfloat16>::lowest());
 
   // Tail mask: invalidate padded Q rows.  They are the end of A, so the walk
   // over (row, vector) is one linear fill.
@@ -702,18 +770,24 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, float *scale_buffer,
   // partial_softmax_rows takes a row's maximum before scaling, which gives
   // the same maximum only for a positive, finite scale.
   uint16_t scale_bits = __builtin_bit_cast(uint16_t, inv_scale);
+#ifdef MHA_F32_SCORES
+  // Every block takes the per-row path: the row-group one is bf16 lanes.
+  (void)scale_bits;
+  {
+#else
   if (B_kv == VECTOR_LENGTH && B_q % SM_ROWS == 0 && B_q >= 2 * SM_ROWS &&
       scale_bits > 0 && scale_bits < 0x7f80) {
     partial_softmax_rows(A, P, scale_buffer, scale_buffer + B_q,
                          scale_buffer + 3 * B_q, valid_q_rows, valid_kv_cols,
                          diagonal, inv_scale);
   } else {
+#endif
     constexpr unsigned SW = MW < SM_VEC_LEN ? MW : SM_VEC_LEN;
     if ((BAND_AHEAD && diagonal + AHEAD < B_kv - 1) || valid_kv_cols < B_kv ||
         (BAND_BEHIND && valid_q_rows - 1 + diagonal > MHA_WINDOW)) {
       const auto lane = aie::load_v<MW>(sm_lane_idx);
       for (int32_t i = 0; i < valid_q_rows; i++) {
-        bfloat16 *row = A + i * B_kv;
+        score_t *row = A + i * B_kv;
         for (int32_t c = 0; c < B_kv; c += MW) {
           aie::store_v(row + c,
                        aie::select(aie::load_v<MW>(row + c), lowest,
@@ -723,6 +797,11 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, float *scale_buffer,
       }
     }
 
+#ifdef MHA_F32_SCORES
+    for (int32_t i = 0; i < valid_q_rows; i++)
+      partial_softmax_row_f32<SW>(A + B_kv * i, P + B_kv * i, scale_buffer,
+                                  B_kv, i, B_q, inv_scale);
+#else
     // The alias form, not the partial_softmax_bf16 entry point, which brackets
     // each row with markers of its own.
     int32_t i = 0;
@@ -740,6 +819,7 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, float *scale_buffer,
       partial_softmax_alias_bf16<SW>(A + B_kv * i, P + B_kv * i, scale_buffer,
                                      B_kv, i, B_q, inv_scale);
     }
+#endif
   }
   // Zero out P rows corresponding to padded Q rows, which are again a suffix
   // and so one linear fill.

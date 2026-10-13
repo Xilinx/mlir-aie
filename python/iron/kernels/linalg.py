@@ -1079,6 +1079,7 @@ def mha(
     accurate_exp2: bool = False,
     causal: bool = True,
     window: int = 0,
+    f32_scores: bool = False,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1127,6 +1128,10 @@ def mha(
         window: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: a
             query keeps no key more than ``window`` positions from it; 0 is
             no window.
+        f32_scores: Keep the ``QK^T`` scores in float32 (``-DMHA_F32_SCORES``):
+            ``matmul_bf16_bf16_wrapper`` writes, and ``partial_softmax``
+            reads, a float32 tile. AIE2P only. At 64-key blocks a design
+            places only with ``P V`` split over two cores.
 
     Returns:
         MatrixKernel for ``matmul_bf16_bf16_wrapper``, or with ``pv``
@@ -1145,7 +1150,10 @@ def mha(
             raise ValueError(
                 f"mha: {name} must be a positive multiple of {mult}, got {v}"
             )
-    tile = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
+    if f32_scores and _arch_traits().name == "aie2":
+        raise NotImplementedError("mha: f32_scores is written for AIE2P only")
+    score = np.float32 if f32_scores and not pv else bfloat16
+    tile = np.ndarray[(dim_m * dim_n,), np.dtype[score]]
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
@@ -1154,7 +1162,11 @@ def mha(
         f"-DDIM_M={dim_m}",
         f"-DDIM_K={dim_k}",
         f"-DDIM_N={dim_n}",
-        "-Dbf16_bf16_ONLY",
+        *(
+            ["-DMHA_F32_SCORES", "-Dbf16_f32_ONLY"]
+            if f32_scores
+            else ["-Dbf16_bf16_ONLY"]
+        ),
     ]
     if b_col_maj:
         flags.append("-DB_COL_MAJ")

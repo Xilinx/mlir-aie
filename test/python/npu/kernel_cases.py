@@ -2132,6 +2132,7 @@ CASES += [
     check("mv", dict(dim_m=32, dim_k=32), smoke=True),
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
     Case("mha", calls=4, smoke=True),
+    Case("mha", dict(f32_scores=True), calls=4, smoke=True, devices=("npu2",)),
     # ...and its P*V product, mha.cc's own 8x8x8 expansion. Same tile, but a
     # different micro-tile and so a different blocked operand order, which is
     # the part a shared case could not check.
