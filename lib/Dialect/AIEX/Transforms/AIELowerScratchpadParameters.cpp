@@ -394,10 +394,14 @@ struct AIELowerScratchpadParametersPass
         WalkResult early = op.walk([&](Operation *inner) {
           auto dmaOp = dyn_cast<NpuDmaMemcpyNdOp>(inner);
           auto bdOp = dyn_cast<AIE::DMABDOp>(inner);
+          auto startOp = dyn_cast<DMAStartTaskOp>(inner);
+          auto pushOp = dyn_cast<NpuPushQueueOp>(inner);
           if ((dmaOp && (dmaOp.getOffsetStateTableIdxAttr() ||
                          dmaOp.getLengthStateTableIdxAttr())) ||
               (bdOp && (bdOp.getOffsetStateTableIdxAttr() ||
-                        bdOp.getLengthStateTableIdxAttr()))) {
+                        bdOp.getLengthStateTableIdxAttr())) ||
+              (startOp && startOp.getRepeatStateTableIdxAttr()) ||
+              (pushOp && pushOp.getRepeatStateTableIdxAttr())) {
             inner->emitOpError(
                 "reads a scratchpad parameter before the last "
                 "aiex.npu.load_pdi of its runtime sequence, which is where "
