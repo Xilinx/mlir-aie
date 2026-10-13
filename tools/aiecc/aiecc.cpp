@@ -1997,10 +1997,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   [](const std::vector<char> &bin) { return !bin.empty(); });
 
   // When control packets are enabled, the control data is passed into the
-  // runtime sequence as an argument. `fullElfPatchInfo` captures which host
-  // buffer slot holds that control data and the size of the control-data
-  // buffer: THIS sequence's host buffer count, since ctrl-packet-to-DMA appends
-  // the control buffer as the sequence's next argument.
+  // runtime sequence as an argument; `fullElfPatchInfo` records its slot (see
+  // makePatchInfoJson) and size.
   auto &fullElfPatchInfo =
       bundle(fullElfCtrlpkt.out, ctrlPktSeqs.out)
           .map<llvm::json::Value>(
