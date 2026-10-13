@@ -266,9 +266,23 @@ class PrecompiledAieApi:
 class KernelObjectCache:
     """Content-addressed store of compiled kernel objects under ``root``."""
 
-    def __init__(self, root: Path, lock_timeout_seconds: int):
+    def __init__(
+        self,
+        root: Path,
+        lock_timeout_seconds: int,
+        digests: dict[str, str] | None = None,
+    ):
+        """Open the store at ``root`` for one build.
+
+        Args:
+            root: The store's directory.
+            lock_timeout_seconds: How long to wait for an entry another build holds.
+            digests: The build's input digests (see ``_manifest.record``), shared
+                with its design manifest; a new record when None.
+        """
         self.root = Path(root).absolute()
         self.lock_timeout_seconds = lock_timeout_seconds
+        self.digests = {} if digests is None else digests
 
     @staticmethod
     def accepts(func) -> bool:
@@ -316,7 +330,7 @@ class KernelObjectCache:
                         _compile_external_kernel(
                             func, str(entry), target_arch, include_dirs, embed_bitcode
                         )
-                    _manifest.record(entry, [func], [])
+                    _manifest.record(entry, [func], [], digests=self.digests)
                 except BaseException:
                     _cleanup_failed_compilation(entry)
                     raise
@@ -422,5 +436,5 @@ class KernelObjectCache:
                         _cleanup_failed_compilation(entry)
                         return None
                 PrecompiledAieApi.scan(entry)
-                _manifest.record(entry, [], [])
+                _manifest.record(entry, [], [], digests=self.digests)
         return PrecompiledAieApi(entry)

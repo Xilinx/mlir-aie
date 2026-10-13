@@ -103,26 +103,15 @@ def _digest(path: Path) -> str:
     return h.hexdigest()
 
 
-# Every kernel of a design reads the same few hundred headers. A write moves
-# ctime, which no caller can set back, so a matching stat names bytes digested.
-_DIGESTS: dict[tuple, str] = {}
-
-
-def _entry(path: Path, st: os.stat_result) -> dict:
-    key = (str(path), st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
-    sha256 = _DIGESTS.get(key)
-    if sha256 is None:
+def _entry(path: Path, st: os.stat_result, digests: dict[str, str] | None) -> dict:
+    if digests is None:
         sha256 = _digest(path)
-        after = path.stat()
-        # A file written while it was read is recorded, not remembered.
-        if key[1:] == (
-            after.st_dev,
-            after.st_ino,
-            after.st_size,
-            after.st_mtime_ns,
-            after.st_ctime_ns,
-        ):
-            _DIGESTS[key] = sha256
+    else:
+        # Within one build the file's content is what this build read; a
+        # later build digests it afresh.
+        sha256 = digests.get(str(path))
+        if sha256 is None:
+            sha256 = digests[str(path)] = _digest(path)
     return {
         "path": str(path),
         "size": st.st_size,
@@ -168,6 +157,7 @@ def record(
     used_chess=False,
     dispatch_library=None,
     full_elf_kernel=None,
+    digests: dict[str, str] | None = None,
 ) -> None:
     """Record the inputs this build consumed, if they can be known exactly.
 
@@ -177,6 +167,10 @@ def record(
     therefore unknown.  Rather than record a set that is silently short, mark
     the manifest ``complete: false``: the entry stays usable, so such a design
     keeps exactly the behaviour it has now, but nothing claims it was checked.
+
+    ``digests`` is one build's record of the inputs it has digested, by path.
+    The records of a build's kernels and of the design share it, so a header
+    every kernel reads is digested once. It must not outlive the build.
     """
     kernel_dir = Path(kernel_dir)
     compiled = [
@@ -254,6 +248,7 @@ def record(
         },
         dispatch_library=dispatch_library,
         full_elf_kernel=full_elf_kernel,
+        digests=digests,
     )
 
 
@@ -263,11 +258,12 @@ def _write(
     complete: bool = True,
     dispatch_library: str | None = None,
     full_elf_kernel: str | None = None,
+    digests: dict[str, str] | None = None,
 ) -> None:
     entries: list[dict] = []
     for path, st in inputs.items():
         try:
-            entries.append(_entry(path, st))
+            entries.append(_entry(path, st, digests))
         except OSError:
             # Unverifiable, but not uncacheable: mark it incomplete rather than
             # writing nothing and costing the entry on every later lookup.

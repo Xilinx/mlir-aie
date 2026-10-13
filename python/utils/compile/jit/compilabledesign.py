@@ -800,6 +800,7 @@ class CompilableDesign:
                 generated = self._generated_for(full_elf=False)
                 external_kernels = generated.external_kernels
                 use_chess = self._resolve_use_chess(external_kernels)
+                digests: dict[str, str] = {}
 
                 compiler_options = list(self.aiecc_flags)
                 if has_dispatch:
@@ -820,7 +821,7 @@ class CompilableDesign:
                     npu_cpp_emit_dispatch_shim=has_dispatch,
                     device_cache_dir=self._device_cache_dir(),
                     build_link_files=functools.partial(
-                        self._build_kernels, kernel_dir, external_kernels
+                        self._build_kernels, kernel_dir, external_kernels, digests
                     ),
                 )
 
@@ -869,6 +870,7 @@ class CompilableDesign:
                     dispatch_library=(
                         dispatch_so_path.name if dispatch_so_path is not None else None
                     ),
+                    digests=digests,
                 )
                 if explicit_paths:
                     if dispatch_so_path is not None:
@@ -991,6 +993,7 @@ class CompilableDesign:
             generated = self._generated_for(full_elf=True)
             external_kernels = generated.external_kernels
             use_chess = self._resolve_use_chess(external_kernels)
+            digests: dict[str, str] = {}
             aiecc_options = [*self.aiecc_flags, *generated.aiecc_options]
 
             compile_mlir_module(
@@ -1001,7 +1004,7 @@ class CompilableDesign:
                 options=aiecc_options or None,
                 device_cache_dir=self._device_cache_dir(),
                 build_link_files=functools.partial(
-                    self._build_kernels, kernel_dir, external_kernels
+                    self._build_kernels, kernel_dir, external_kernels, digests
                 ),
             )
 
@@ -1019,6 +1022,7 @@ class CompilableDesign:
                 self.source_files,
                 used_chess=use_chess,
                 full_elf_kernel=kernel_name,
+                digests=digests,
             )
             if build_key is not None:
                 self._record_explicit_outputs(
@@ -1095,6 +1099,7 @@ class CompilableDesign:
                     raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
                 external_kernels = generated.external_kernels
                 use_chess = self._resolve_use_chess(external_kernels)
+                digests: dict[str, str] = {}
 
                 compile_mlir_module(
                     mlir_module=generated.mlir_text,
@@ -1107,7 +1112,7 @@ class CompilableDesign:
                     # placed them, and that placement reserves each bank's
                     # kernel data, which only the built objects show.
                     build_link_files=functools.partial(
-                        self._build_kernels, kernel_dir, external_kernels
+                        self._build_kernels, kernel_dir, external_kernels, digests
                     ),
                 )
                 if not inst_path.exists():
@@ -1121,6 +1126,7 @@ class CompilableDesign:
                     external_kernels,
                     self.source_files,
                     used_chess=use_chess,
+                    digests=digests,
                 )
                 if explicit_path:
                     self._record_explicit_outputs(
@@ -1163,12 +1169,15 @@ class CompilableDesign:
             return None
         return parse_dma_sizes(self._kernel_dir, self._full_elf_kernel_name)
 
-    def _build_kernels(self, kernel_dir: Path, external_kernels: list) -> None:
+    def _build_kernels(
+        self, kernel_dir: Path, external_kernels: list, digests: dict[str, str]
+    ) -> None:
         """Build the design's kernels' objects into `kernel_dir`.
 
         Args:
             kernel_dir: The directory aiecc links the objects from.
             external_kernels: The design's `ExternalFunction` kernels.
+            digests: The build's input digests, shared with its manifest.
         """
         # aie.utils imports this module before it defines this name.
         from aie.utils import get_current_device
@@ -1184,7 +1193,7 @@ class CompilableDesign:
             # it here keeps the two from disagreeing, and aiecc_flags is
             # already in the cache key.
             embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
-            object_cache=self._kernel_object_cache(),
+            object_cache=self._kernel_object_cache(digests),
         )
         _copy_object_files(self.object_files, kernel_dir)
 
@@ -1733,12 +1742,21 @@ class CompilableDesign:
         if shared and build_cache is not None:
             build_cache.store(build_key, kernel_dir, dict(outputs))
 
-    def _kernel_object_cache(self) -> KernelObjectCache | None:
-        """Share compiled kernel objects across designs unless caching is off."""
+    def _kernel_object_cache(
+        self, digests: dict[str, str] | None = None
+    ) -> KernelObjectCache | None:
+        """Share compiled kernel objects across designs unless caching is off.
+
+        Args:
+            digests: The build's input digests, shared with its design manifest.
+
+        Returns:
+            The store, or None with caching off.
+        """
         if not self.use_cache:
             return None
         return KernelObjectCache(
-            NPU_CACHE_HOME / "objects", COMPILE_LOCK_TIMEOUT_SECONDS
+            NPU_CACHE_HOME / "objects", COMPILE_LOCK_TIMEOUT_SECONDS, digests
         )
 
     def _build_cache(self) -> BuildCache | None:

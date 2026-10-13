@@ -170,29 +170,33 @@ def _recorded_digests(kernel_dir):
     }
 
 
-def test_header_shared_by_two_kernels_is_recorded_alike(tmp_path):
-    """Kernels of one design read the same headers; each records the header."""
+def test_header_shared_by_two_kernels_is_digested_once_per_build(tmp_path):
+    """Kernels of one build read the same headers; the build digests each once."""
     header = tmp_path / "hdr.h"
     header.write_text("// h")
+    digests: dict[str, str] = {}
     entries = [tmp_path / "a", tmp_path / "b"]
     for entry in entries:
         entry.mkdir()
         _depfile(entry, "k.o", [header])
-        _manifest.record(entry, [_Kernel(source_string="// k")], ())
+        _manifest.record(entry, [_Kernel(source_string="// k")], (), digests=digests)
     expected = {str(header): hashlib.sha256(b"// h").hexdigest()}
     assert [_recorded_digests(e) for e in entries] == [expected, expected]
+    assert digests == expected
 
 
-def test_same_size_edit_with_its_mtime_restored_is_recorded_anew(tmp_path):
-    """A header rewritten between two kernels' records, at the same size and
-    with its mtime set back, must be recorded with its new digest: the edit
-    moved its ctime, which no caller can set."""
+def test_later_build_records_a_same_size_edit_with_its_mtime_restored(tmp_path):
+    """A build digests its inputs afresh.
+
+    An edit that keeps the header's size and sets its mtime back is still
+    recorded with its new digest.
+    """
     header = tmp_path / "hdr.h"
     header.write_text("aaaa")
     first, second = tmp_path / "first", tmp_path / "second"
     first.mkdir()
     _depfile(first, "k.o", [header])
-    _manifest.record(first, [_Kernel(source_string="// k")], ())
+    _manifest.record(first, [_Kernel(source_string="// k")], (), digests={})
 
     before = header.stat()
     time.sleep(0.01)
@@ -200,7 +204,7 @@ def test_same_size_edit_with_its_mtime_restored_is_recorded_anew(tmp_path):
     os.utime(header, ns=(before.st_atime_ns, before.st_mtime_ns))
     second.mkdir()
     _depfile(second, "k.o", [header])
-    _manifest.record(second, [_Kernel(source_string="// k")], ())
+    _manifest.record(second, [_Kernel(source_string="// k")], (), digests={})
 
     assert _recorded_digests(second) == {
         str(header): hashlib.sha256(b"bbbb").hexdigest()
