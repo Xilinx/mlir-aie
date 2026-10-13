@@ -154,7 +154,9 @@ def _kernel_pch(pch_cmd: list[str]) -> str | None:
 _PCH_BUILD_LOCK = threading.Lock()
 
 
-def _build_kernel_pch(pch_cmd, cache, key, pch):
+def _build_kernel_pch(
+    pch_cmd: list[str], cache: Path, key: str, pch: Path
+) -> str | None:
     tmp_path = None
     try:
         empty = cache / f"{key}.h"
@@ -165,7 +167,7 @@ def _build_kernel_pch(pch_cmd, cache, key, pch):
             tmp_path = tmp.name
         ret = subprocess.run(
             [
-                {_PCH_SOURCE: str(empty), _PCH_OUTPUT: tmp_path}.get(arg, arg)
+                {_PCH_SOURCE: str(empty), _PCH_OUTPUT: tmp.name}.get(arg, arg)
                 for arg in pch_cmd
             ],
             cwd=cache,
