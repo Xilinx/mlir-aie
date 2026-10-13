@@ -37,9 +37,9 @@ int main(int argc, const char *argv[]) {
     buf_in[i] = i;
   bo_in.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  xrt::bo bo_out = xrt::ext::bo{device, N * sizeof(int32_t)};
+  xrt::bo bo_out = xrt::ext::bo{device, 2 * N * sizeof(int32_t)};
   auto *buf_out = bo_out.map<int32_t *>();
-  xrt::bo bo_out2 = xrt::ext::bo{device, N * sizeof(int32_t)};
+  xrt::bo bo_out2 = xrt::ext::bo{device, 2 * N * sizeof(int32_t)};
   auto *buf_out2 = bo_out2.map<int32_t *>();
 
   auto run = xrt::run(kernel);
@@ -51,7 +51,7 @@ int main(int argc, const char *argv[]) {
 
   bool all_pass = true;
   for (int32_t reps : {2, 0, 6, MAX_REPS, 2}) {
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < 2 * N; ++i) {
       buf_out[i] = -1;
       buf_out2[i] = -1;
     }
@@ -70,15 +70,18 @@ int main(int argc, const char *argv[]) {
 
     int moved = (reps + 1) * TILE;
     int errors = 0;
-    for (int i = 0; i < N; ++i) {
-      int32_t expected = i < moved ? i % TILE : int32_t(-1);
+    // The plain pushes' two tiles land in the second half.
+    for (int i = 0; i < 2 * N; ++i) {
+      int j = i < N ? i : i - N;
+      int filled = i < N ? moved : 2 * TILE;
+      int32_t expected = j < filled ? j % TILE : int32_t(-1);
       if (buf_out[i] != expected) {
         if (errors < 8)
           std::cout << "  out[" << i << "] = " << buf_out[i] << ", expected "
                     << expected << std::endl;
         ++errors;
       }
-      int32_t expected2 = i < moved ? i : int32_t(-1);
+      int32_t expected2 = j < filled ? j : int32_t(-1);
       if (buf_out2[i] != expected2) {
         if (errors < 8)
           std::cout << "  out2[" << i << "] = " << buf_out2[i] << ", expected "
