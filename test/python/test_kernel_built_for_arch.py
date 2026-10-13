@@ -329,6 +329,8 @@ def test_attention_and_fused_matmul_built_unbound_are_judged_where_they_ran(
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_a_lut_silu_sized_is_judged_by_its_table_model(npu2_device, tmp_path):
+    if not (Path(config.aie_runtime_lib_dir()) / "AIE2P").is_dir():
+        pytest.skip("this build has no aie_runtime_lib/AIE2P")
     vtanh = kernels.silu_sized(tile_size=1024)
     lut = kernels.silu_sized(tile_size=1024, use_lut=True)
     assert "-DACTIVATIONS_TANH_LUT=1" in lut.compile_flags
