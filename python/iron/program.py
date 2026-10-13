@@ -196,7 +196,7 @@ class Program:
         )
 
     def resolve_program(
-        self, device_name="main", context: ir.Context | None = None
+        self, device_name: str = "main", context: ir.Context | None = None
     ) -> ir.Module:
         """Resolve the program components in order to generate MLIR.
 

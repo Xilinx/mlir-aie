@@ -155,8 +155,10 @@ class _CompileConfig:
 
 @dataclass(frozen=True)
 class _GeneratedDesign:
-    """A generated design's text and kernels, with the IRON module attributes
-    compilation reads, taken from the live module so no compile reparses it."""
+    """A generated design's text, kernels and IRON module attributes.
+
+    The attributes are taken from the live module, so no compile reparses it.
+    """
 
     mlir_text: str
     external_kernels: list
@@ -473,8 +475,11 @@ class CompilableDesign:
 
     @property
     def full_elf_requested(self) -> bool:
-        """Whether the caller asked for a full ELF, rather than the design
-        taking one because its Program composes several configurations."""
+        """Whether the caller asked for a full ELF.
+
+        False when the design takes one only because its Program composes
+        several configurations.
+        """
         return self.full_elf and not self._inferred_full_elf
 
     def _config(self) -> dict[str, Any]:
@@ -1148,11 +1153,10 @@ class CompilableDesign:
 
     @functools.cached_property
     def expected_tensor_sizes(self) -> list[int] | None:
-        """Each host tensor's footprint in bits, in ``aie.runtime_sequence``
-        order, from the compiled design; None before ``compile()`` or where
-        ``parse_dma_sizes`` cannot tell.
+        """Each host tensor's footprint in bits, from the compiled design.
 
-        Read when first asked, not at every compile or cache hit: parsing the
+        In ``aie.runtime_sequence`` order; None before ``compile()`` or where
+        ``parse_dma_sizes`` cannot tell. Read when first asked, not at every compile or cache hit: parsing the
         lowered module costs more than the hit.
         """
         if self._kernel_dir is None:
