@@ -77,7 +77,7 @@ _loading_lock = threading.Lock()
 
 
 def _invocations(text: bytes, names: set[bytes]) -> list[bytes]:
-    """The argument text of each call in ``text`` of a macro in ``names``."""
+    """Return the argument text of each call in ``text`` of a macro in ``names``."""
     pattern = re.compile(rb"\b(?:" + b"|".join(map(re.escape, names)) + rb")\s*\(")
     found = []
     for m in pattern.finditer(text):
@@ -343,7 +343,7 @@ class KernelObjectCache:
     def precompiled_header(
         self, func, entry, target_arch, include_dirs, embed_bitcode
     ) -> PrecompiledAieApi | None:
-        """The ``aie_api`` PCH ``func``'s object can be compiled against, if any.
+        """Return the ``aie_api`` PCH ``func``'s object can be compiled against, if any.
 
         Only for a kernel library source compiled to a plain object: the
         library is written to read the header before anything of its own,
