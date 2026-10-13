@@ -6,9 +6,11 @@
 """Source locations for IRON objects, recorded where the user declares them."""
 
 import contextlib
+import functools
 import inspect
 import itertools
 import os
+import sys
 from pathlib import Path
 from types import CodeType, FunctionType
 
@@ -16,14 +18,23 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 
 # Unresolved, like co_filename: a dev build symlinks build/python/aie to source.
 AIE_ROOT = Path(__file__).parent.parent
-_AIE_PREFIX = f"{AIE_ROOT}{os.sep}"
-# A statement's column, by its code and instruction: finding one walks the code.
-_COLUMNS: dict[tuple[CodeType, int], int] = {}
+# normcase: Windows paths compare without regard to case.
+_AIE_PREFIX = os.path.normcase(f"{AIE_ROOT}{os.sep}")
 
 
 def is_internal_file(filename: str) -> bool:
     """Whether `filename` is part of the `aie` package rather than user code."""
-    return filename.startswith(_AIE_PREFIX)
+    return os.path.normcase(filename).startswith(_AIE_PREFIX)
+
+
+# Finding a statement's column walks its code, and captures repeat a few sites.
+@functools.lru_cache(maxsize=4096)
+def _column(code: CodeType, lasti: int) -> int:
+    if sys.version_info < (3, 11):
+        return 0
+    # f_lasti counts bytes; co_positions has an entry per 2-byte unit.
+    positions = itertools.islice(code.co_positions(), lasti // 2, None)
+    return next(positions)[2] or 0
 
 
 class SourceSite:
@@ -51,15 +62,11 @@ class SourceSite:
             frame = frame.f_back
         if frame is None:
             return cls(None)
-        key = (frame.f_code, frame.f_lasti)
-        col = _COLUMNS.get(key)
-        if col is None:
-            # f_lasti counts bytes; co_positions has an entry per 2-byte unit.
-            positions = itertools.islice(
-                frame.f_code.co_positions(), frame.f_lasti // 2, None
-            )
-            col = _COLUMNS[key] = next(positions)[2] or 0
-        return cls(frame.f_code.co_filename, frame.f_lineno, col)
+        return cls(
+            frame.f_code.co_filename,
+            frame.f_lineno,
+            _column(frame.f_code, frame.f_lasti),
+        )
 
     def location(self, name: str | None = None) -> "ir.Location":
         """Return this site as an `ir.Location` in the current Context.
