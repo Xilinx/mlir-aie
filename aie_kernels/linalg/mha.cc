@@ -294,17 +294,17 @@ exp2_neg_bf16(aie::vector<bfloat16, 2 * SM_LANES> x,
 }
 #endif
 
-static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
-                                 const float *__restrict m_prev,
-                                 float *__restrict m_new,
-                                 float *__restrict l_new, int32_t rows,
-                                 int32_t valid_cols, int32_t diagonal,
-                                 bfloat16 scale) {
-  using Vec16bf16 = aie::vector<bfloat16, SM_LANES>;
+// T is the score type: bfloat16, or float under MHA_F32_SCORES.
+template <typename T>
+static void
+partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
+                     const float *__restrict m_prev, float *__restrict m_new,
+                     float *__restrict l_new, int32_t rows, int32_t valid_cols,
+                     int32_t diagonal, bfloat16 scale) {
   using Vec16f = aie::vector<float, SM_LANES>;
   const auto scale_vec = aie::broadcast<bfloat16, VECTOR_LENGTH>(scale);
-  const auto lowest_vec = aie::broadcast<bfloat16, VECTOR_LENGTH>(
-      std::numeric_limits<bfloat16>::lowest());
+  const auto lowest_vec = aie::broadcast<T, VECTOR_LENGTH>(
+      (T)std::numeric_limits<bfloat16>::lowest());
   const auto lane = aie::load_v<VECTOR_LENGTH>(sm_lane_idx);
   auto fold_max = [](auto a, auto b, unsigned step) {
     auto [lo, hi] = aie::interleave_unzip(a, b, step);
@@ -323,7 +323,7 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
   if ((BAND_AHEAD && diagonal + AHEAD < VECTOR_LENGTH - 1) ||
       valid_cols < VECTOR_LENGTH ||
       (BAND_BEHIND && group_rows - 1 + diagonal > MHA_WINDOW)) {
-    bfloat16 *__restrict row = A;
+    T *__restrict row = A;
     AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
     AIE_LOOP_UNROLL(4)
     for (int32_t i = 0; i < group_rows; i++) {
@@ -345,28 +345,29 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
   // the exponentials' own products, so a row's largest argument is exactly 0.
   // A max scaled and rounded to bf16 can sit half an ulp (128 from 2^15 on)
   // below its element's product, and 2^128 overflows.
-  alignas(32) bfloat16 m_rows[DIM_M];
-  const bfloat16 *__restrict a = A;
+  alignas(32) T m_rows[DIM_M];
+  const T *__restrict a = A;
   AIE_LOOP_MIN_ITERATION_COUNT(2)
   for (int32_t g = 0; g < group_end; g += SM_ROWS) {
-    Vec16bf16 o = fold_rows<bfloat16, SM_VEC_LEN>(
-                      [&](int32_t r) {
-                        auto row =
-                            aie::load_v<VECTOR_LENGTH>(a + r * VECTOR_LENGTH);
-                        return aie::max(row.extract<SM_VEC_LEN>(0),
-                                        row.extract<SM_VEC_LEN>(1));
-                      },
-                      fold_max)
-                      .extract<SM_LANES>(0);
+    aie::vector<T, SM_LANES> o =
+        fold_rows<T, SM_VEC_LEN>(
+            [&](int32_t r) {
+              auto row = aie::load_v<VECTOR_LENGTH>(a + r * VECTOR_LENGTH);
+              return aie::max(row.template extract<SM_VEC_LEN>(0),
+                              row.template extract<SM_VEC_LEN>(1));
+            },
+            fold_max)
+            .template extract<SM_LANES>(0);
     a += SM_ROWS * VECTOR_LENGTH;
     aie::accum<accfloat, SM_ROWS> prev, kept;
     prev.from_vector(aie::load_v<SM_ROWS>(m_prev + g));
     kept.from_vector(aie::load_v<SM_ROWS>(m_new + g));
-    auto m = aie::select(kept.to_vector<bfloat16>(),
-                         aie::max(aie::max(lowest_vec.extract<SM_ROWS>(0),
-                                           o.extract<SM_ROWS>(0)),
-                                  prev.to_vector<bfloat16>()),
-                         live(g));
+    auto m =
+        aie::select(kept.to_vector<T>(),
+                    aie::max(aie::max(lowest_vec.template extract<SM_ROWS>(0),
+                                      o.template extract<SM_ROWS>(0)),
+                             prev.to_vector<T>()),
+                    live(g));
     aie::store_v(m_rows + g, m);
     aie::store_v(m_new + g,
                  aie::accum<accfloat, SM_ROWS>(m).to_vector<float>());
@@ -374,56 +375,80 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
 
   // Each row's exponentials go to P.  A discarded lane's is +0.
   bfloat16 *__restrict p = P;
-  const bfloat16 *__restrict m = m_rows;
-#if AIE_TUNED_AIE2 && !defined(EXP2_BF16_ACCURATE)
-  // Half a row per pass keeps the loop within the registers; a whole row
-  // spills.
-  const auto neg_scale = aie::concat(aie::broadcast<bfloat16, SM_LANES>(-scale),
-                                     aie::broadcast<bfloat16, SM_LANES>(scale));
-  aie::accum<accfloat, SM_LANES> magic;
-  magic.from_vector(aie::broadcast<float, SM_LANES>(12582912.0f));
-  aie::saturation_mode saved_saturation =
-      aie::swap_saturation(aie::saturation_mode::saturate);
-  for (int32_t h = 0; h < VECTOR_LENGTH; h += 2 * SM_LANES) {
-    a = A + h;
-    p = P + h;
-    m = m_rows;
+  if constexpr (std::is_same_v<T, float>) {
+    // A float32 max leaves A - m exact in the accumulator, so (A - m) * s is
+    // taken as three bf16 limbs, each times s.
+    const auto s = aie::broadcast<bfloat16, SM_VEC_LEN>(scale);
+    a = A;
     AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
     for (int32_t i = 0; i < group_rows; i++) {
-      const auto m_vec = aie::broadcast<bfloat16, SM_LANES>(*m++);
-      aie::store_v(p,
-                   exp2_neg_bf16(aie::concat(aie::load_v<SM_LANES>(a), m_vec),
-                                 neg_scale, magic));
-      aie::store_v(
-          p + SM_LANES,
-          exp2_neg_bf16(aie::concat(aie::load_v<SM_LANES>(a + SM_LANES), m_vec),
-                        neg_scale, magic));
+      const auto m_vec = aie::broadcast<float, SM_VEC_LEN>(m_rows[i]);
+      for (int32_t h = 0; h < VECTOR_LENGTH; h += SM_VEC_LEN) {
+        aie::accum<accfloat, SM_VEC_LEN> d;
+        d.from_vector(aie::load_v<SM_VEC_LEN>(a + h));
+        const Limbs<SM_VEC_LEN> dl = bf16_limbs(aie::sub(d, m_vec));
+        aie::accum<accfloat, SM_VEC_LEN> x = aie::mul(dl.hi, s);
+        x = aie::mac(x, dl.mid, s);
+        x = aie::mac(x, dl.lo, s);
+        aie::store_v(p + h, exp2_bf16(x.to_vector<float>()));
+      }
       a += VECTOR_LENGTH;
       p += VECTOR_LENGTH;
     }
-  }
-  aie::set_saturation(saved_saturation);
+  } else {
+    const T *__restrict m = m_rows;
+#if AIE_TUNED_AIE2 && !defined(EXP2_BF16_ACCURATE)
+    // Half a row per pass keeps the loop within the registers; a whole row
+    // spills.
+    const auto neg_scale =
+        aie::concat(aie::broadcast<bfloat16, SM_LANES>(-scale),
+                    aie::broadcast<bfloat16, SM_LANES>(scale));
+    aie::accum<accfloat, SM_LANES> magic;
+    magic.from_vector(aie::broadcast<float, SM_LANES>(12582912.0f));
+    aie::saturation_mode saved_saturation =
+        aie::swap_saturation(aie::saturation_mode::saturate);
+    for (int32_t h = 0; h < VECTOR_LENGTH; h += 2 * SM_LANES) {
+      a = A + h;
+      p = P + h;
+      m = m_rows;
+      AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
+      for (int32_t i = 0; i < group_rows; i++) {
+        const auto m_vec = aie::broadcast<bfloat16, SM_LANES>(*m++);
+        aie::store_v(p,
+                     exp2_neg_bf16(aie::concat(aie::load_v<SM_LANES>(a), m_vec),
+                                   neg_scale, magic));
+        aie::store_v(
+            p + SM_LANES,
+            exp2_neg_bf16(
+                aie::concat(aie::load_v<SM_LANES>(a + SM_LANES), m_vec),
+                neg_scale, magic));
+        a += VECTOR_LENGTH;
+        p += VECTOR_LENGTH;
+      }
+    }
+    aie::set_saturation(saved_saturation);
 #else
-  // Taking m off as m * s in the multiplier subtracts the product the row's
-  // largest element takes, without widening m to 64 accumulator lanes first.
-  a = A;
-  AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
-  AIE_LOOP_UNROLL(2)
-  for (int32_t i = 0; i < group_rows; i++) {
-    aie::accum<accfloat, VECTOR_LENGTH> exp_in =
-        aie::msc(aie::mul(aie::load_v<VECTOR_LENGTH>(a), scale_vec),
-                 aie::broadcast<bfloat16, VECTOR_LENGTH>(*m++), scale_vec);
-    aie::store_v(p, exp2_bf16(exp_in.to_vector<float>()));
-    a += VECTOR_LENGTH;
-    p += VECTOR_LENGTH;
-  }
+    // Taking m off as m * s in the multiplier subtracts the product the row's
+    // largest element takes, without widening m to 64 accumulator lanes first.
+    a = A;
+    AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
+    AIE_LOOP_UNROLL(2)
+    for (int32_t i = 0; i < group_rows; i++) {
+      aie::accum<accfloat, VECTOR_LENGTH> exp_in =
+          aie::msc(aie::mul(aie::load_v<VECTOR_LENGTH>(a), scale_vec),
+                   aie::broadcast<bfloat16, VECTOR_LENGTH>(*m++), scale_vec);
+      aie::store_v(p, exp2_bf16(exp_in.to_vector<float>()));
+      a += VECTOR_LENGTH;
+      p += VECTOR_LENGTH;
+    }
 #endif
+  }
 
   // Their sums, narrowed to 16 lanes, are parked in the A rows, which nothing
   // reads after this call.  Doing this in the loop above would make each
   // row's load wait on the previous row's store.
   p = P;
-  bfloat16 *__restrict sums = A;
+  T *__restrict sums = A;
   AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
   AIE_LOOP_UNROLL(2)
   for (int32_t i = 0; i < group_rows; i++) {
@@ -436,7 +461,7 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
         aie::add(aie::accum<accfloat, SM_LANES>(s.extract<SM_LANES>(0)),
                  s.extract<SM_LANES>(1))
             .to_vector<float>();
-    aie::store_v(sums, aie::vector_cast<bfloat16>(half));
+    aie::store_v(sums, aie::vector_cast<T>(half));
     sums += VECTOR_LENGTH;
   }
 
@@ -446,7 +471,8 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
     Vec16f t = fold_rows<float, SM_LANES>(
         [&](int32_t r) {
           return aie::vector_cast<float>(
-              aie::load_v<2 * SM_LANES>(sums + r * VECTOR_LENGTH));
+              aie::load_v<SM_LANES * sizeof(float) / sizeof(T)>(
+                  sums + r * VECTOR_LENGTH));
         },
         fold_add);
     sums += SM_ROWS * VECTOR_LENGTH;
@@ -770,18 +796,12 @@ void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
   // partial_softmax_rows takes a row's maximum before scaling, which gives
   // the same maximum only for a positive, finite scale.
   uint16_t scale_bits = __builtin_bit_cast(uint16_t, inv_scale);
-#ifdef MHA_F32_SCORES
-  // Every block takes the per-row path: the row-group one is bf16 lanes.
-  (void)scale_bits;
-  {
-#else
   if (B_kv == VECTOR_LENGTH && B_q % SM_ROWS == 0 && B_q >= 2 * SM_ROWS &&
       scale_bits > 0 && scale_bits < 0x7f80) {
     partial_softmax_rows(A, P, scale_buffer, scale_buffer + B_q,
                          scale_buffer + 3 * B_q, valid_q_rows, valid_kv_cols,
                          diagonal, inv_scale);
   } else {
-#endif
     constexpr unsigned SW = MW < SM_VEC_LEN ? MW : SM_VEC_LEN;
     if ((BAND_AHEAD && diagonal + AHEAD < B_kv - 1) || valid_kv_cols < B_kv ||
         (BAND_BEHIND && valid_q_rows - 1 + diagonal > MHA_WINDOW)) {
