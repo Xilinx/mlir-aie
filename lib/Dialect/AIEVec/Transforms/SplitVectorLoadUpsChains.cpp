@@ -4,11 +4,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// This pass optimizes chains of vector.load followed by aievec.ups operations
-// for AIE2p targets. Instead of loading a 1024-bit vector and then shuffling
-// it into two halves for separate UPS operations (3 shuffles total), it splits
-// both the load and UPS into two 512-bit halves, requiring only 1 shuffle for
-// concatenation.
+// Splits 1024-bit vector loads and stores into 512-bit halves where the
+// value is widened or narrowed one half at a time on AIE2P: vector.load +
+// aievec.ups, aievec.srs + vector.store, and bf16 loads feeding the LHS of
+// aievec.matmul_aie2p. Each half then maps to its own memory access instead of
+// a shuffle of the full-width value.
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
@@ -20,6 +20,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/Sequence.h"
 
 #define DEBUG_TYPE "aievec-split-load-ups-chains"
 
@@ -294,6 +295,59 @@ struct SplitVectorSrsStoreChainPattern
   }
 };
 
+/// Splits a 1024-bit bf16 vector.load that only feeds the LHS of bf16 8x8x8
+/// aievec.matmul_aie2p ops into two 512-bit loads joined by a vector.shuffle.
+///
+/// The matmul lowering widens the LHS to accfloat one 32-lane half at a time.
+/// With a single 64-lane load, each half is extracted by a shuffle before it is
+/// widened. After this split, and once LLVM folds the halves of the joining
+/// shuffle back to the two loads, each widening reads its own 512-bit load,
+/// which the backend can fuse into a single load-and-convert.
+struct SplitVectorLoadMatMulLhsPattern
+    : public OpRewritePattern<vector::LoadOp> {
+  using OpRewritePattern<vector::LoadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::LoadOp loadOp,
+                                PatternRewriter &rewriter) const override {
+    VectorType loadTy = loadOp.getVectorType();
+    if (loadTy.getRank() != 1 || loadTy.getNumElements() != 64 ||
+        !loadTy.getElementType().isBF16())
+      return failure();
+
+    auto bf16Tile = VectorType::get({8, 8}, rewriter.getBF16Type());
+    auto f32Tile = VectorType::get({8, 8}, rewriter.getF32Type());
+    auto feedsOnlyMatMulLhs = [&](Operation *user) {
+      auto cast = dyn_cast<vector::ShapeCastOp>(user);
+      if (!cast || cast.getResultVectorType() != bf16Tile)
+        return false;
+      return llvm::all_of(cast->getUses(), [&](OpOperand &use) {
+        auto matmul = dyn_cast<MatMulOp_AIE2P>(use.getOwner());
+        return matmul && use.getOperandNumber() == 0 &&
+               matmul.getRhs().getType() == bf16Tile &&
+               matmul.getAcc().getType() == f32Tile;
+      });
+    };
+    if (loadOp->use_empty() ||
+        !llvm::all_of(loadOp->getUsers(), feedsOnlyMatMulLhs))
+      return failure();
+
+    Location loc = loadOp.getLoc();
+    auto halfTy = VectorType::get({32}, rewriter.getBF16Type());
+    SmallVector<Value> hiIndices(loadOp.getIndices());
+    Value c32 = arith::ConstantIndexOp::create(rewriter, loc, 32);
+    hiIndices.back() =
+        arith::AddIOp::create(rewriter, loc, hiIndices.back(), c32);
+    Value lo = vector::LoadOp::create(rewriter, loc, halfTy, loadOp.getBase(),
+                                      loadOp.getIndices());
+    Value hi = vector::LoadOp::create(rewriter, loc, halfTy, loadOp.getBase(),
+                                      hiIndices);
+    SmallVector<int64_t> concatMask =
+        llvm::to_vector(llvm::seq<int64_t>(0, 64));
+    rewriter.replaceOpWithNewOp<vector::ShuffleOp>(loadOp, lo, hi, concatMask);
+    return success();
+  }
+};
+
 /// Pass to split vector.load + aievec.ups chains for better performance
 struct SplitVectorLoadUpsChainsPass
     : public PassWrapper<SplitVectorLoadUpsChainsPass, OperationPass<>> {
@@ -302,7 +356,8 @@ struct SplitVectorLoadUpsChainsPass
   StringRef getArgument() const final { return "aievec-split-load-ups-chains"; }
 
   StringRef getDescription() const final {
-    return "Split vector.load + aievec.ups chains to reduce shuffle operations";
+    return "Split 1024-bit vector loads and stores whose halves are widened "
+           "or narrowed separately";
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -317,8 +372,8 @@ struct SplitVectorLoadUpsChainsPass
     RewritePatternSet patterns(context);
 
     patterns
-        .add<SplitVectorLoadUpsChainPattern, SplitVectorSrsStoreChainPattern>(
-            context);
+        .add<SplitVectorLoadUpsChainPattern, SplitVectorSrsStoreChainPattern,
+             SplitVectorLoadMatMulLhsPattern>(context);
 
     if (failed(applyPatternsGreedily(op, std::move(patterns)))) {
       signalPassFailure();

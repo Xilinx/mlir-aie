@@ -33,7 +33,6 @@ from aie.dialects.aiex import (
     npu_address_patch,
     npu_push_queue,
     npu_sync,
-    npu_write32,
     npu_writebd,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.iron import (
@@ -120,7 +119,7 @@ def chaining_channels(
     )
 
     # Memtile DMA: a self-chained MM2S BD that fires every time the runtime
-    # sequence releases memtile_lock (lock at 0xC0000 on NPU2).
+    # sequence sets memtile_lock.
     memtile_dma = TileDma(
         tile=mem_tile,
         channels=[
@@ -130,11 +129,8 @@ def chaining_channels(
                 bds=[
                     Bd(
                         buffer=memtile_buff,
-                        offset=0,
-                        length=n_elements,
                         acquires=[Acquire(memtile_lock, value=1)],
                         releases=[Release(memtile_lock, value=0)],
-                        next="self",
                     ),
                 ],
             ),
@@ -152,11 +148,8 @@ def chaining_channels(
                 bds=[
                     Bd(
                         buffer=compute_buff,
-                        offset=0,
-                        length=n_elements_read,
                         acquires=[Acquire(compute_prod_lock, value=1)],
                         releases=[Release(compute_cons_lock, value=1)],
-                        next="self",
                     ),
                 ],
             ),
@@ -179,7 +172,7 @@ def chaining_channels(
     # ---- runtime sequence: manual BD writes (THE lesson) ---------------
     def sequence(a, b):
         # Release the MemTile lock to trigger the memtile MM2S BD.
-        npu_write32(column=col, row=1, address=0xC0000, value=1)
+        memtile_lock.set(1)
 
         # BD 0: S2MM channel 0 on the shim (MemTile -> DDR, buffer `a`).
         npu_writebd(
@@ -281,8 +274,6 @@ def chaining_channels(
     rt = Runtime(sequence, [vector_ty, vector_ty_read])
     rt.add_flow(mem_to_shim_flow)
     rt.add_flow(shim_to_compute_flow)
-    for lk in (memtile_lock, compute_prod_lock, compute_cons_lock):
-        rt.add_lock(lk)
     rt.add_tile_dma(memtile_dma)
     rt.add_tile_dma(compute_dma)
 

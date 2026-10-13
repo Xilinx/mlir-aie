@@ -69,7 +69,8 @@ struct TransactionBinaryOperation {
     uint32_t action;
     uint32_t addr;
     int32_t argIdx;
-    int32_t argPlus;
+    // Words 10-11 of the op; see txn_append_address_patch.
+    uint64_t argPlus;
   };
 
   std::optional<SyncPayload> sync;
@@ -278,7 +279,8 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         uint32_t action = read32(i + 20);
         uint32_t addr = read32(i + 24);
         int32_t argIdx = static_cast<int32_t>(read32(i + 32));
-        int32_t argPlus = static_cast<int32_t>(read32(i + 40));
+        uint64_t argPlus = static_cast<uint64_t>(read32(i + 40)) |
+                           (static_cast<uint64_t>(read32(i + 44)) << 32);
         TransactionBinaryOperation::AddressPatchPayload payload{
             action, addr, argIdx, argPlus};
         op.addressPatch = payload;
@@ -402,7 +404,8 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         uint32_t action = read32(i + 20);
         uint32_t addr = read32(i + 24);
         int32_t argIdx = static_cast<int32_t>(read32(i + 32));
-        int32_t argPlus = static_cast<int32_t>(read32(i + 40));
+        uint64_t argPlus = static_cast<uint64_t>(read32(i + 40)) |
+                           (static_cast<uint64_t>(read32(i + 44)) << 32);
         TransactionBinaryOperation::AddressPatchPayload payload{
             action, addr, argIdx, argPlus};
         op.addressPatch = payload;
@@ -465,15 +468,30 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
                    std::vector<TransactionBinaryOperation> &operations,
                    std::vector<memref::GlobalOp> &global_data) {
 
+  // One constant per distinct value. They all land in the same block through
+  // `builder`, so the first use dominates every later one.
+  //
+  // Because the first use is what creates the op, callers must bind the
+  // operands to locals rather than call this inside an argument list: the
+  // evaluation order of function arguments is unspecified, and it decides the
+  // order the constants are emitted in.
+  llvm::DenseMap<uint32_t, Value> constantCache;
+  auto constant = [&](Location loc, uint32_t value) {
+    Value &cached = constantCache[value];
+    if (!cached)
+      cached = AIEX::createConstantI32(builder, loc, value);
+    return cached;
+  };
+
   // create the txn ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
     Location loc = op.sourceLoc.value_or(fallbackLoc);
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
-      AIEX::NpuWrite32Op::create(
-          builder, loc, AIEX::createConstantI32(builder, loc, op.cmd.RegOff),
-          AIEX::createConstantI32(builder, loc, op.cmd.Value), nullptr, nullptr,
-          nullptr);
+      Value address = constant(loc, op.cmd.RegOff);
+      Value value = constant(loc, op.cmd.Value);
+      AIEX::NpuWrite32Op::create(builder, loc, address, value, nullptr, nullptr,
+                                 nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
       auto memref = memref::GetGlobalOp::create(builder, loc, payload.getType(),
                                                 payload.getName());
@@ -481,24 +499,25 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
           builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff),
           memref.getResult(), nullptr, nullptr, nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      AIEX::NpuMaskWrite32Op::create(
-          builder, loc, AIEX::createConstantI32(builder, loc, op.cmd.RegOff),
-          AIEX::createConstantI32(builder, loc, op.cmd.Value),
-          AIEX::createConstantI32(builder, loc, op.cmd.Mask), nullptr, nullptr,
-          nullptr);
+      Value address = constant(loc, op.cmd.RegOff);
+      Value value = constant(loc, op.cmd.Value);
+      Value mask = constant(loc, op.cmd.Mask);
+      AIEX::NpuMaskWrite32Op::create(builder, loc, address, value, mask,
+                                     nullptr, nullptr, nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_TCT) {
       if (!op.sync) {
         llvm::errs() << "Missing sync payload while emitting transaction\n";
         return failure();
       }
       const TransactionBinaryOperation::SyncPayload &sync = *op.sync;
-      AIEX::NpuSyncOp::create(
-          builder, loc, AIEX::createConstantI32(builder, loc, sync.column),
-          AIEX::createConstantI32(builder, loc, sync.row),
-          AIEX::createConstantI32(builder, loc, sync.direction),
-          AIEX::createConstantI32(builder, loc, sync.channel),
-          AIEX::createConstantI32(builder, loc, sync.columnCount),
-          AIEX::createConstantI32(builder, loc, sync.rowCount));
+      Value column = constant(loc, sync.column);
+      Value row = constant(loc, sync.row);
+      Value direction = constant(loc, sync.direction);
+      Value channel = constant(loc, sync.channel);
+      Value columnCount = constant(loc, sync.columnCount);
+      Value rowCount = constant(loc, sync.rowCount);
+      AIEX::NpuSyncOp::create(builder, loc, column, row, direction, channel,
+                              columnCount, rowCount);
     } else if (op.cmd.Opcode == 0x8 /* XAie_TxnOpcode::XAIE_IO_LOAD_PDI */) {
       if (!op.loadPdi) {
         llvm::errs() << "Missing load_pdi payload while emitting transaction\n";
@@ -530,7 +549,7 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
       AIEX::NpuAddressPatchOp::create(
           builder, loc, patch.addr,
           /*addr_val=*/mlir::Value(), static_cast<int32_t>(patch.argIdx),
-          AIEX::createConstantI32(builder, loc, patch.argPlus));
+          AIEX::createConstantArgPlus(builder, loc, patch.argPlus));
     } else if (op.cmd.Opcode == 0x6 /*  XAie_TxnOpcode::XAIE_IO_PREEMPT */) {
       auto ui8Ty =
           IntegerType::get(builder.getContext(), 8, IntegerType::Unsigned);

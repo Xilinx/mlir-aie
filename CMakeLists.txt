@@ -41,8 +41,11 @@ if(POLICY CMP0091)
   cmake_policy(SET CMP0091 NEW)
 endif()
 
+# LLVM's tablegen() macro emits a depfile only under CMP0116 NEW. The depfile
+# lists the transitive .td includes, so a generated file rebuilds whenever any
+# .td it includes changes.
 if(POLICY CMP0116)
-  cmake_policy(SET CMP0116 OLD)
+  cmake_policy(SET CMP0116 NEW)
 endif()
 
 if(POLICY CMP0144)
@@ -85,6 +88,29 @@ find_package(MLIR REQUIRED CONFIG)
 
 message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+
+# mlir-aie tracks a specific LLVM commit (utils/clone-llvm.sh) and uses MLIR
+# APIs that LLVM release branches do not have. Building against an older LLVM,
+# such as a distro package, otherwise fails part-way through the build with an
+# unrelated-looking tablegen or C++ error (e.g. "Variable not defined:
+# 'SymbolName'"), so reject it here. Newer versions are allowed, since they are
+# what an LLVM bump is tested against.
+set(AIE_CLONE_LLVM_SH "${CMAKE_CURRENT_SOURCE_DIR}/utils/clone-llvm.sh")
+if(EXISTS "${AIE_CLONE_LLVM_SH}")
+  file(STRINGS "${AIE_CLONE_LLVM_SH}" AIE_PINNED_LLVM_LINE REGEX "^WHEEL_VERSION=")
+  if(AIE_PINNED_LLVM_LINE MATCHES "^WHEEL_VERSION=([0-9]+)\\.")
+    set(AIE_PINNED_LLVM_VERSION_MAJOR ${CMAKE_MATCH_1})
+    if(LLVM_VERSION_MAJOR VERSION_LESS AIE_PINNED_LLVM_VERSION_MAJOR)
+      message(FATAL_ERROR
+        "Found LLVM/MLIR ${LLVM_PACKAGE_VERSION} (${LLVM_DIR}), but mlir-aie "
+        "requires the LLVM ${AIE_PINNED_LLVM_VERSION_MAJOR} development commit "
+        "pinned in utils/clone-llvm.sh; released LLVM versions are not supported. "
+        "Either run utils/build-mlir-aie-from-wheels.sh, which downloads the "
+        "matching prebuilt MLIR, or build that commit with utils/clone-llvm.sh "
+        "and utils/build-llvm-local.sh and pass -DMLIR_DIR=<llvm-install>/lib/cmake/mlir.")
+    endif()
+  endif()
+endif()
 
 # Reuse LLVM's build machinery, which requires setting these output dirs explicitly.
 set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
@@ -207,8 +233,18 @@ else()
 endif()
 
 # Find AIEBU library for direct ELF generation (optional, falls back to subprocess)
+# XRT ships it, so look in the XRT the build was pointed at (XRT_ROOT, as the
+# wheel builds pass) before the default install locations.
+set(_aiebu_search_paths)
+foreach(_xrt_root IN ITEMS "${XRT_ROOT}" "$ENV{XRT_ROOT}" "$ENV{XILINX_XRT}")
+  if(_xrt_root)
+    file(TO_CMAKE_PATH "${_xrt_root}" _xrt_root)
+    list(APPEND _aiebu_search_paths "${_xrt_root}/share/cmake/AIEBU")
+  endif()
+endforeach()
 find_package(aiebu QUIET NO_DEFAULT_PATH
-  PATHS /opt/xilinx/xrt/share/cmake/AIEBU
+  PATHS ${_aiebu_search_paths}
+        /opt/xilinx/xrt/share/cmake/AIEBU
         /usr/share/cmake/AIEBU
 )
 if(aiebu_FOUND)
@@ -386,12 +422,25 @@ add_subdirectory(aie_runtime_lib)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
 
-# Bundle llvm-objcopy alongside the AIE bin/ tools.
+# Bundle llvm-nm and llvm-objcopy alongside the AIE bin/ tools.
 #
 # The IRON JIT external-kernel path renames symbols in Peano-compiled objects
-# via `objcopy --redefine-sym`. Those objects use the AIEngine ELF e_machine,
-# which GNU binutils objcopy can't parse; however, the llvm-objcopy
-# implementation is architecture-agnostic, so we ship it along our tools.
+# by first listing them with `llvm-nm`, then rewriting them with
+# `objcopy --redefine-syms`. Those objects are ordinary ELF32 relocatables, but
+# they carry the AIEngine e_machine (0x108), which no GNU BFD backend claims.
+# GNU nm reads them anyway -- an unknown architecture is no obstacle to listing
+# a symbol table -- but GNU objcopy refuses to auto-detect an input target and
+# fails outright. The LLVM tools need no such hint, so we ship both here; see
+# aie.utils.config, which resolves them and records the asymmetry in full.
+set(_aie_llvm_nm "${LLVM_TOOLS_BINARY_DIR}/llvm-nm${CMAKE_EXECUTABLE_SUFFIX}")
+if(EXISTS "${_aie_llvm_nm}")
+  install(PROGRAMS "${_aie_llvm_nm}"
+          DESTINATION bin
+          COMPONENT aie-tools)
+else()
+  message(FATAL_ERROR "llvm-nm not found at ${_aie_llvm_nm}")
+endif()
+
 set(_aie_llvm_objcopy "${LLVM_TOOLS_BINARY_DIR}/llvm-objcopy${CMAKE_EXECUTABLE_SUFFIX}")
 if(EXISTS "${_aie_llvm_objcopy}")
   install(PROGRAMS "${_aie_llvm_objcopy}"

@@ -1,4 +1,5 @@
 // RUN: aie-opt --aie-objectfifo-lower-cores %s | FileCheck %s
+// RUN: aie-opt --aie-objectfifo-lower-cores --mlir-print-debuginfo %s | FileCheck %s --check-prefix=LOC --implicit-check-not='loc(unknown)'
 // RUN: aie-opt --aie-objectfifo-lower-cores %s -o %t1.mlir
 // RUN: aie-opt --aie-objectfifo-lower-cores %t1.mlir -o %t2.mlir
 // RUN: diff %t1.mlir %t2.mlir
@@ -27,8 +28,8 @@ module @counting {
     aie.objectfifo.core_endpoint @writer(%tile12) fills @pool
 
     %core = aie.core(%tile12) {
-      %e = aie.objectfifo.acquire @writer (1) : memref<16xi32>
-      aie.objectfifo.release @writer (1)
+      %e = aie.objectfifo.acquire @writer (1) : memref<16xi32> loc("fifo_user.py":50:4)
+      aie.objectfifo.release @writer (1) loc("fifo_user.py":60:4)
       aie.end
     }
   }
@@ -52,3 +53,12 @@ module @counting {
 // CHECK-NOT: aie.objectfifo.acquire
 // CHECK-NOT: aie.objectfifo.release
 // CHECK-NOT: aie.objectfifo.core_endpoint
+
+// Check provenance as well as coverage: acquire/release lower to the same op
+// kind but must still point at their respective user source lines.
+// LOC-DAG: arith.maxsi {{.*}} loc(#[[ACQUIRE:loc[0-9]*]])
+// LOC-DAG: aie.use_lock(%free, AcquireGreaterEqual, {{.*}}) loc(#[[ACQUIRE]])
+// LOC-DAG: scf.yield %b0 {{.*}} loc(#[[ACQUIRE]])
+// LOC-DAG: aie.use_lock(%full, Release, {{.*}}) loc(#[[RELEASE:loc[0-9]*]])
+// LOC-DAG: #[[ACQUIRE]] = loc("fifo_user.py":50:4)
+// LOC-DAG: #[[RELEASE]] = loc("fifo_user.py":60:4)

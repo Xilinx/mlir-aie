@@ -7,9 +7,9 @@
 
 Two halves so callers can distinguish "recipe changed" from "rebuild needed":
 
-* :func:`_compute_recipe_hash`   — generator identity + compile_kwargs +
-  aiecc/compile flags. Target-independent design identity.
-* :func:`_compute_artifact_hash` — source / object content + tool mtimes +
+* `_compute_recipe_hash`   — generator identity + the Python it reaches +
+  compile_kwargs + aiecc/compile flags. Target-independent design identity.
+* `_compute_artifact_hash` — source / object content + tool mtimes +
   target device.  Captures things that change the *output* of compilation
   without changing the *recipe*.
 
@@ -20,7 +20,15 @@ without changing a byte, and restoring one hides a change that did happen.  Tool
 identity stays on mtime, which is cheap and moves whenever the toolchain is
 rebuilt or reinstalled.
 
-:func:`_compute_hash` composes both into the 24-hex cache-key
+The Python a generator reaches is identified by what is running, which is
+not always what is on disk, and cheaply, since the key is taken on every
+call. A module imported from a file is named by its source's mtime and size
+when the key first reaches that import; a reload looks again. Code with no
+file behind it (a notebook cell, the REPL) and the script being run are
+identified by their code and the plain constants they read, since those can
+change without any file changing.
+
+`_compute_hash` composes both into the 24-hex cache-key
 ``CompilableDesign`` uses to address ``$NPU_CACHE_HOME``.
 
 Carved out of ``compilabledesign.py`` to keep the main file focused on the
@@ -29,13 +37,21 @@ Carved out of ``compilabledesign.py`` to keep the main file focused on the
 
 from __future__ import annotations
 
+import dis
 import hashlib
 import json
 import logging
 import marshal
+import os
+import site
+import sys
+import sysconfig
+from functools import cache, partial
 from pathlib import Path
-from types import CodeType
+from types import CodeType, FunctionType, MethodType, ModuleType
 from typing import Any, Callable, Mapping
+
+from ._introspect import _introspect_generator
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +99,8 @@ def _without_location(const):
     """
     if isinstance(const, tuple):
         return tuple(_without_location(c) for c in const)
+    if isinstance(const, slice):
+        return (Ellipsis, "slice", const.start, const.stop, const.step)
     if not isinstance(const, CodeType):
         return const
     return const.replace(
@@ -103,10 +121,243 @@ def _code_identity(code: CodeType) -> bytes:
     and ``matmul_i8(a, b, c)`` compile to identical bytecode.
 
     Location is stripped first: it is not part of the design, and keying on it
-    would split the cache per checkout. Version 4 is pinned because
-    ``marshal.version`` is 4 through 3.13 and 5 from 3.14.
+    would split the cache per checkout. Format 3 and up write an object a
+    second time as a back-reference only when its refcount is above one, so
+    before 3.12 made interned names immortal the bytes moved with whatever
+    else held a name. Format 2 has no references; it cannot write the
+    constant slices 3.14 folds into ``co_consts``, so those go in as tuples.
     """
-    return marshal.dumps(_without_location(code), 4)
+    return marshal.dumps(_without_location(code), 2)
+
+
+_PLAIN = (int, float, complex, str, bytes, bool, type(None))
+
+
+def _plain(value) -> bool:
+    if isinstance(value, tuple):
+        return all(_plain(v) for v in value)
+    return isinstance(value, _PLAIN)
+
+
+def _names(code: CodeType) -> set[str]:
+    """Return the global and attribute names ``code`` and its nested code use."""
+    names, todo = set(), [code]
+    while todo:
+        c = todo.pop()
+        names.update(c.co_names)
+        todo.extend(k for k in c.co_consts if isinstance(k, CodeType))
+    return names
+
+
+_STORE_GLOBAL = bytes([dis.opmap["STORE_GLOBAL"]])
+
+
+def _rebound_globals(module: ModuleType) -> set[str]:
+    """Return the globals of ``module`` its own functions assign (``global x``).
+
+    Such a global is state bound after import, as aie.utils binds its default
+    NPU runtime on first use; one bound by the module's body, or imported
+    into it, is not.
+    """
+    todo = []
+    for value in vars(module).values():
+        own = isinstance(value, type) and value.__module__ == module.__name__
+        members = vars(value).values() if own else (value,)
+        for f in members:
+            if isinstance(f, (staticmethod, classmethod)):
+                f = f.__func__
+            if isinstance(f, FunctionType) and f.__module__ == module.__name__:
+                todo.append(f.__code__)
+    names = set()
+    while todo:
+        code = todo.pop()
+        todo.extend(k for k in code.co_consts if isinstance(k, CodeType))
+        # Opcodes sit at even offsets; a match there is worth disassembling.
+        if _STORE_GLOBAL in code.co_code[::2]:
+            names.update(
+                i.argval
+                for i in dis.get_instructions(code)
+                if i.opname == "STORE_GLOBAL"
+            )
+    return names
+
+
+@cache
+def _installed_dirs() -> tuple[Path, ...]:
+    paths = sysconfig.get_paths()
+    dirs = {paths[k] for k in ("stdlib", "platstdlib", "purelib", "platlib")}
+    dirs.add(site.getusersitepackages())
+    return tuple(Path(d).resolve() for d in dirs)
+
+
+@cache
+def _design_source(package: str, file: str | None) -> Path | None:
+    """Return the source a module is identified by, or None if the key does not follow it.
+
+    That is any Python source but the interpreter's and installed packages',
+    whose versions do not move under a design, except mlir-aie's own, which
+    decides what the design generates.
+    """
+    if not file or not file.endswith(".py"):
+        return None
+    path = Path(file).resolve()
+    if package != "aie" and any(path.is_relative_to(d) for d in _installed_dirs()):
+        return None
+    return path
+
+
+def _stamped_module(value) -> ModuleType | None:
+    """Return the module ``value`` is, or comes from, if the key identifies it by its file."""
+    if not isinstance(value, ModuleType):
+        owner = value if isinstance(value, (type, FunctionType)) else type(value)
+        value = sys.modules.get(owner.__module__ or "")
+    if value is None or value.__name__ == "__main__":
+        return None
+    package = value.__name__.partition(".")[0]
+    if _design_source(package, vars(value).get("__file__")) is None:
+        return None
+    return value
+
+
+# Per import of a file-backed module: the spec it was imported under, its
+# source's "mtime_ns:size" when the key first reached it, and the modules its
+# globals reach. A reload brings a new spec, so the module is looked at again.
+_IMPORTS: dict[str, tuple[Any, str, tuple[str, ...]]] = {}
+
+
+def _import_identity(module: ModuleType) -> tuple[str, tuple[str, ...]]:
+    entry = _IMPORTS.get(module.__name__)
+    if entry is None or entry[0] is not module.__spec__:
+        try:
+            stat = os.stat(module.__file__ or "")
+            stamp = f"{stat.st_mtime_ns}:{stat.st_size}"
+        except OSError as exc:
+            stamp = f"<unreadable:{type(exc).__name__}>"
+        # Importing a submodule binds it on its package, so a package's
+        # namespace grows with whatever else the process imports. Its
+        # submodules are reached through what they define, or by the code that
+        # names them (see _python_identity). Likewise a global the module's
+        # functions rebind holds whatever the process has done so far.
+        rebound = _rebound_globals(module)
+        reached = {
+            _stamped_module(v)
+            for k, v in vars(module).items()
+            if k not in rebound
+            and (
+                not isinstance(v, ModuleType) or v.__name__ != f"{module.__name__}.{k}"
+            )
+        }
+        names = tuple(sorted(m.__name__ for m in reached if m is not None))
+        entry = _IMPORTS[module.__name__] = (module.__spec__, stamp, names)
+    return entry[1], entry[2]
+
+
+def _python_identity(roots) -> bytes:
+    """Identify the Python ``roots`` reach: their code, helpers and modules.
+
+    A generator's bytecode names a helper but does not contain it, so the key
+    follows globals, closure cells and attributes of modules. Functions and
+    classes with no file behind them, or in the script being run, are
+    identified by their code and the plain constants they read; a module
+    imported from a file by its source's stamp (see ``_import_identity``),
+    and every module its globals reach in turn. Installed third-party code is
+    not followed. No design is generated to find any of it.
+
+    An ``ExternalFunction`` it reaches is recorded by its content-based repr,
+    as a ``CompileTime`` one is: the cache manifest never sees a kernel's
+    compile flags.
+    """
+    # aie.iron imports this module.
+    from aie.iron.kernel import ExternalFunction
+
+    records: set[bytes] = set()
+    seen: set[int] = set()
+    todo: list = []
+    modules: list[ModuleType] = []
+
+    def visit(value, where: str):
+        if isinstance(value, (staticmethod, classmethod)):
+            value = value.__func__
+        if isinstance(value, property):
+            for f in (value.fget, value.fset, value.fdel):
+                visit(f, where)
+        elif _plain(value) or isinstance(value, ExternalFunction):
+            records.add(f"{where}={value!r}".encode())
+        elif (module := _stamped_module(value)) is not None:
+            modules.append(module)
+        elif isinstance(value, (FunctionType, type)) and id(value) not in seen:
+            home = sys.modules.get(value.__module__)
+            # Followed by code only where no file stands for it; an
+            # installed package's is versioned with the install.
+            if (
+                home is None
+                or home.__name__ == "__main__"
+                or not vars(home).get("__file__")
+            ):
+                seen.add(id(value))
+                todo.append(value)
+
+    for root in roots:
+        if isinstance(root, FunctionType) and id(root) not in seen:
+            seen.add(id(root))
+            todo.append(root)
+        else:
+            visit(root, "<root>")
+    roots = set(map(id, todo))
+    while todo:
+        obj = todo.pop()
+        name = f"{obj.__module__}.{obj.__qualname__}"
+        if isinstance(obj, type):
+            for attr, value in vars(obj).items():
+                if not attr.startswith("__") or isinstance(value, FunctionType):
+                    visit(value, f"{name}.{attr}")
+            continue
+        if id(obj) not in roots:
+            records.add(name.encode() + _code_identity(obj.__code__))
+            visit(obj.__defaults__, f"{name}.__defaults__")
+            visit(tuple(sorted((obj.__kwdefaults__ or {}).items())), f"{name}.kw")
+        names = _names(obj.__code__)
+        scope = dict(obj.__globals__)
+        where = {n: f"{obj.__module__}.{n}" for n in scope}
+        # A closure reaches its helpers and constants through cells rather
+        # than globals; those shadow a global of the same name.
+        for n, cell in zip(obj.__code__.co_freevars, obj.__closure__ or ()):
+            try:
+                scope[n] = cell.cell_contents
+            except ValueError:  # an empty cell
+                continue
+            where[n] = f"{name}.<closure>.{n}"
+            names.add(n)
+        if (module := _stamped_module(obj)) is not None:
+            modules.append(module)
+        for n in names & scope.keys():
+            visit(scope[n], where[n])
+            owners = [scope[n]]
+            while owners:
+                owner = owners.pop()
+                if not isinstance(owner, ModuleType):
+                    continue
+                members = vars(owner)
+                for m in names & members.keys():
+                    member = members[m]
+                    visit(member, f"{owner.__name__}.{m}")
+                    if (
+                        isinstance(member, ModuleType)
+                        and member.__name__ == f"{owner.__name__}.{m}"
+                    ):
+                        owners.append(member)
+
+    stamps: dict[str, str] = {}
+    pending = [m.__name__ for m in modules]
+    while pending:
+        name = pending.pop()
+        module = sys.modules.get(name)
+        if name in stamps or module is None:
+            continue
+        stamps[name], reached = _import_identity(module)
+        pending += reached
+    records.update(f"{n}@{s}".encode() for n, s in stamps.items())
+    return b"\0".join(sorted(records))
 
 
 def _compute_recipe_hash(
@@ -116,8 +367,9 @@ def _compute_recipe_hash(
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
     include_paths: list[Path] | tuple[Path, ...] = (),
+    insts_only: bool = False,
 ) -> str:
-    """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
+    """Hash of the "recipe": generator bytecode + reached Python + CompileTime[T] kwargs + flags.
 
     Captures the target-independent generator and compile configuration. It
     omits device identity, so equal recipe hashes can produce different
@@ -142,13 +394,30 @@ def _compute_recipe_hash(
         h.update(_code_identity(generator.__code__))
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(getattr(generator, "__module__", "").encode())
-        # A CompileTime[T] left to its Python default never reaches
-        # compile_kwargs, and the default lives outside the code object.
-        h.update(repr(getattr(generator, "__defaults__", None)).encode())
-        h.update(repr(getattr(generator, "__kwdefaults__", None)).encode())
+        h.update(_python_identity([generator, *compile_kwargs.values()]))
+        hints, sig, (_, _, dispatch_params, _) = _introspect_generator(generator)
+        # Dispatch defaults are call-time values; explicitly bound defaults are
+        # unused. Neither changes the compiled program.
+        h.update(
+            repr(
+                [
+                    param.replace(
+                        annotation=hints.get(name, param.annotation),
+                        default=(
+                            param.empty
+                            if name in dispatch_params or name in compile_kwargs
+                            else param.default
+                        ),
+                    )
+                    for name, param in sig.parameters.items()
+                ]
+            ).encode()
+        )
 
     def _kwarg_repr(v):
-        if callable(v) and hasattr(v, "__code__"):
+        if isinstance(v, MethodType):
+            v = v.__func__
+        if isinstance(v, FunctionType):
             closure = (
                 tuple(c.cell_contents for c in v.__closure__) if v.__closure__ else None
             )
@@ -159,8 +428,8 @@ def _compute_recipe_hash(
             return (
                 "fn:",
                 _code_identity(v.__code__).hex(),
-                repr(getattr(v, "__defaults__", None)),
-                repr(getattr(v, "__kwdefaults__", None)),
+                repr(v.__defaults__),
+                repr(v.__kwdefaults__),
                 closure_repr,
             )
         return str(v)
@@ -177,8 +446,42 @@ def _compute_recipe_hash(
     h.update(repr(sorted(compile_flags)).encode())
     h.update(f"full_elf={full_elf}".encode())
     h.update(repr([str(p) for p in include_paths]).encode())
+    if insts_only:
+        # An instruction stream alone is a different artifact from the
+        # xclbin + insts pair the same generator would otherwise produce.
+        h.update(b"insts_only=True")
 
     return h.hexdigest()
+
+
+def _tool_identity(
+    name: str, resolve: Callable[[], str | Path], *, expected: bool = True
+) -> str:
+    """Identify a resolved compiler component without probing an executable.
+
+    A tool that is not ``expected`` may legitimately be missing, so its absence
+    is hashed without a warning.
+    """
+    try:
+        path = Path(resolve()).resolve()
+        stat = path.stat()
+        return f"{path}:{stat.st_mtime_ns}:{stat.st_size}"
+    except (ImportError, AttributeError, OSError, RuntimeError) as exc:
+        if expected:
+            logger.warning("_compute_artifact_hash: %s absent (%s)", name, exc)
+        return "absent"
+
+
+def _aiecc_option(flags: list[str] | tuple[str, ...], name: str) -> str | None:
+    """Return the value of a string-valued aiecc option."""
+    options = (f"--{name}", f"-{name}")
+    for index, flag in enumerate(flags):
+        for option in options:
+            if flag.startswith(f"{option}="):
+                return flag.split("=", 1)[1]
+            if flag == option and index + 1 < len(flags):
+                return flags[index + 1]
+    return None
 
 
 def _compute_artifact_hash(
@@ -186,6 +489,12 @@ def _compute_artifact_hash(
     source_files: list[Path] | tuple[Path, ...],
     object_files: list[Path] | tuple[Path, ...],
     fold_ddr_addr_offset: bool,
+    has_dispatch_params: bool = False,
+    full_elf: bool = False,
+    insts_only: bool = False,
+    aiecc_flags: list[str] | tuple[str, ...] = (),
+    emit_elf: bool = False,
+    work_dir: Path | None = None,
 ) -> str:
     """Hash of the "artifacts": source/object content + tool mtimes + device.
 
@@ -197,8 +506,26 @@ def _compute_artifact_hash(
     a folded ``insts.bin`` and HRX an unfolded one, so the two must never share a
     cache entry. It is resolved once by the caller and passed in explicitly (no
     silent default) so the cache key and the compilation can never disagree.
+
+    ``has_dispatch_params`` additionally hashes the host C++ compiler used to
+    build the dispatch library. Its generated source is covered by aiecc's
+    identity above; Python does not run a separate translation pipeline.
+
+    Every tool that packages a requested image is hashed too: ``aiebu-asm`` for
+    an ELF, ``xclbinutil`` for an xclbin, and nothing for an instruction stream
+    alone. Both images embed a PDI, so they also hash the ``bootgen`` aiecc
+    would run. aiecc may link bootgen and aiebu in instead, which Python cannot
+    tell, so a missing ``bootgen`` or ``aiebu-asm`` is not an error.
     """
+    from aie.utils import config as _config
+
     h = hashlib.sha256()
+    tools = {
+        "peano": _config.peano_cxx_path,
+        "aiecc": _config.aiecc_path,
+        "nm": _config.nm_path,
+        "objcopy": _config.objcopy_path,
+    }
 
     for sf in sorted(source_files, key=str):
         h.update(str(sf).encode())
@@ -209,7 +536,6 @@ def _compute_artifact_hash(
         h.update(_content_digest(of).encode())
 
     h.update(f"fold_ddr_addr_offset={fold_ddr_addr_offset}".encode())
-
     # Static .mlir is target-agnostic; compiled kernels need a device identifier.
     # Missing components collapse to a constant + WARNING log so cross-target
     # cache collisions surface instead of silently aliasing.
@@ -229,52 +555,48 @@ def _compute_artifact_hash(
             target_arch = "unknown"
             target_device = ("unknown", "", "", "")
 
-        try:
-            from aie.utils import config as _config
+        h.update(f"target_arch={target_arch}|target_device={target_device!r}".encode())
+        if has_dispatch_params:
+            tools["host_cxx"] = _config.host_cxx_path
+        # Library factories pick their sources from this tree when the
+        # generator runs, after the key is taken, so the key names the tree
+        # and its contents, which a candidate edited in place changes.
+        if kernel_tree := os.environ.get("MLIR_AIE_KERNEL_SOURCES"):
+            from aie.utils.benchmark import kernel_tree_digest
 
-            peano_cxx = _config.peano_cxx_path()
-            peano_mtime = str(Path(peano_cxx).stat().st_mtime)
-        except (
-            ImportError,
-            AttributeError,
-            FileNotFoundError,
-            OSError,
-            RuntimeError,
-        ) as exc:
-            try:
-                from aie.utils import config as _config
-
-                peano_mtime = f"path:{_config.peano_install_dir()}"
-                logger.warning(
-                    "_compute_artifact_hash: peano cxx unavailable (%s); "
-                    "keying on install dir path only",
-                    exc,
-                )
-            except (ImportError, AttributeError, RuntimeError) as exc2:
-                logger.warning("_compute_artifact_hash: peano absent (%s)", exc2)
-                peano_mtime = "absent"
-
-        try:
-            from aie.utils import config as _config
-
-            # Resolve aiecc the way the compile does.  Probing PATH instead
-            # misses the bundled bin/aiecc that _run_aiecc actually invokes,
-            # and then every aiecc aliases onto the constant below.
-            aiecc_mtime = str(Path(_config.aiecc_path()).stat().st_mtime)
-        except (
-            ImportError,
-            AttributeError,
-            FileNotFoundError,
-            OSError,
-            RuntimeError,
-        ) as exc:
-            logger.warning("_compute_artifact_hash: aiecc absent (%s)", exc)
-            aiecc_mtime = "absent"
-
-        h.update(
-            f"target_arch={target_arch}|target_device={target_device!r}|"
-            f"peano_mtime={peano_mtime}|aiecc_mtime={aiecc_mtime}".encode()
+            h.update(f"kernel_sources={kernel_tree}|{kernel_tree_digest()}".encode())
+    optional = {"aiebu-asm"}
+    if full_elf or not insts_only:
+        tools["bootgen"] = partial(_config.aiecc_tool_path, "bootgen")
+        optional.add("bootgen")
+    if full_elf:
+        tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
+    elif not insts_only:
+        xclbinutil_override = _aiecc_option(aiecc_flags, "xclbinutil-path")
+        if not xclbinutil_override:
+            xclbinutil_override = os.environ.get("AIE_XCLBINUTIL")
+        if (
+            xclbinutil_override
+            and not Path(xclbinutil_override).is_absolute()
+            and any(sep and sep in xclbinutil_override for sep in (os.sep, os.altsep))
+            and work_dir is None
+        ):
+            raise ValueError(
+                "A relative xclbinutil path requires an explicit output path so "
+                "it can be resolved from aie's work directory; use an absolute "
+                "path with the JIT cache."
+            )
+        tools["xclbinutil"] = partial(
+            _config.aiecc_tool_path,
+            "xclbinutil",
+            override=xclbinutil_override,
+            cwd=work_dir,
         )
+        if emit_elf:
+            tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
+    for name, resolve in tools.items():
+        identity = _tool_identity(name, resolve, expected=name not in optional)
+        h.update(f"{name}={identity}".encode())
 
     return h.hexdigest()
 
@@ -288,13 +610,32 @@ def _compute_hash(
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
     fold_ddr_addr_offset: bool = True,
+    has_dispatch_params: bool = False,
     include_paths: list[Path] | tuple[Path, ...] = (),
+    insts_only: bool = False,
+    emit_elf: bool = False,
+    work_dir: Path | None = None,
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(
-        generator, compile_kwargs, aiecc_flags, compile_flags, full_elf, include_paths
+        generator,
+        compile_kwargs,
+        aiecc_flags,
+        compile_flags,
+        full_elf,
+        include_paths,
+        insts_only,
     )
     artifact = _compute_artifact_hash(
-        generator, source_files, object_files, fold_ddr_addr_offset
+        generator,
+        source_files,
+        object_files,
+        fold_ddr_addr_offset,
+        has_dispatch_params,
+        full_elf,
+        insts_only,
+        aiecc_flags,
+        emit_elf,
+        work_dir,
     )
     return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]

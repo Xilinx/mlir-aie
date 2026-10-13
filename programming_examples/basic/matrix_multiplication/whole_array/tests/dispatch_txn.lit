@@ -1,0 +1,6 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: peano, ryzen_ai || hrxxclbinutil
+//
+// RUN: %python %S/dispatch_txn.py | FileCheck %S/dispatch_txn.py

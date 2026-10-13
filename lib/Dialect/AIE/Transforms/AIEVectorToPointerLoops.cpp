@@ -46,6 +46,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 
 #define DEBUG_TYPE "aie-vector-to-pointer-loops"
@@ -80,7 +81,8 @@ static bool analyzeLoopForVectorAccesses(
     Value base = loadOp.getBase();
     auto indices = loadOp.getIndices();
 
-    // Only handle 1D access for now
+    // Only handle 1D access for now. vector.load requires a unit innermost
+    // stride, so one index step of a 1D access is one element.
     if (indices.size() != 1)
       return;
 
@@ -115,6 +117,62 @@ static bool analyzeLoopForVectorAccesses(
   return foundPattern;
 }
 
+/// Whether the index iter_arg at `pos` can become a pointer into `memref`.
+/// The body rewrite only understands the index as the sole index of a
+/// top-level vector.load/store on `memref`, as an operand of a top-level
+/// arith.addi (whose result is then held to the same rules), and as the value
+/// the loop yields back to it. Any other use (inside a nested loop, a scalar
+/// memref.load, a comparison, the loop result) would receive a pointer where
+/// it expects an index.
+static bool canConvertIndexIterArg(scf::ForOp forOp, unsigned pos, Value memref,
+                                   DenseSet<Value> &chain) {
+  if (!forOp.isDefinedOutsideOfLoop(memref))
+    return false;
+  if (!forOp.getResult(pos).use_empty())
+    return false;
+
+  Block *body = forOp.getBody();
+  Operation *yield = body->getTerminator();
+  SmallVector<Value> worklist = {forOp.getRegionIterArgs()[pos]};
+  chain.insert(worklist.begin(), worklist.end());
+  while (!worklist.empty()) {
+    Value v = worklist.pop_back_val();
+    for (OpOperand &use : v.getUses()) {
+      Operation *user = use.getOwner();
+      if (user->getBlock() != body)
+        return false;
+      if (user == yield) {
+        if (use.getOperandNumber() != pos)
+          return false;
+        continue;
+      }
+      if (auto load = dyn_cast<vector::LoadOp>(user)) {
+        if (load.getBase() != memref || load.getIndices().size() != 1 ||
+            load.getIndices()[0] != v)
+          return false;
+        continue;
+      }
+      if (auto store = dyn_cast<vector::StoreOp>(user)) {
+        if (store.getBase() != memref || store.getIndices().size() != 1 ||
+            store.getIndices()[0] != v || store.getValueToStore() == v)
+          return false;
+        continue;
+      }
+      if (auto addi = dyn_cast<arith::AddIOp>(user)) {
+        // Only pointer + offset is supported, not pointer + pointer.
+        if (chain.contains(addi.getLhs()) && chain.contains(addi.getRhs()))
+          return false;
+        if (chain.insert(addi.getResult()).second)
+          worklist.push_back(addi.getResult());
+        continue;
+      }
+      return false;
+    }
+  }
+  // The yielded value becomes the next pointer, so it must be in the chain.
+  return chain.contains(yield->getOperand(pos));
+}
+
 /// Transform an scf.for loop to use pointer iter_args
 struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
   using OpRewritePattern<scf::ForOp>::OpRewritePattern;
@@ -136,11 +194,51 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
     if (memrefAccesses.empty())
       return failure();
 
+    // Step 1: Identify which iter_args are indices used in vector ops. This
+    // step must not modify the IR: a pattern that returns failure after
+    // creating ops keeps the greedy driver from converging.
+    SmallVector<unsigned> indexIterArgPositions;
+    SmallVector<Value> correspondingMemrefs;
+
+    // Values derived from the iter_args accepted so far. Two chains that meet
+    // (e.g. %a + %b) would add a pointer to a pointer.
+    DenseSet<Value> converted;
+    for (auto [idx, iterArg] : llvm::enumerate(forOp.getRegionIterArgs())) {
+      Value owner;
+      for (auto &[memref, access] : memrefAccesses) {
+        if (!llvm::is_contained(access.indices, iterArg)) {
+          continue;
+        }
+        // A pointer is derived from a single memref, so an index shared by
+        // two memrefs cannot be converted.
+        if (owner) {
+          return failure();
+        }
+        owner = memref;
+      }
+      if (owner) {
+        DenseSet<Value> chain;
+        if (!canConvertIndexIterArg(forOp, idx, owner, chain)) {
+          return failure();
+        }
+        for (Value v : chain) {
+          if (!converted.insert(v).second) {
+            return failure();
+          }
+        }
+        indexIterArgPositions.push_back(idx);
+        correspondingMemrefs.push_back(owner);
+      }
+    }
+
+    if (indexIterArgPositions.empty())
+      return failure();
+
     Location loc = forOp.getLoc();
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPoint(forOp);
 
-    // Step 1: Convert memrefs to pointers before the loop
+    // Step 2: Convert memrefs to pointers before the loop
     DenseMap<Value, Value> memrefToPtrMap;
     DenseMap<Value, Type>
         memrefToGenericTypeMap; // Track generic-space memref types
@@ -156,8 +254,10 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
       Value memrefToConvert = memref;
       Type genericMemrefType = memrefType;
 
-      // If memref has a different memory space, cast it to generic_space first
-      if (memorySpace && !llvm::isa<ptr::GenericSpaceAttr>(memorySpace)) {
+      // ptr.to_ptr requires the memref and pointer memory spaces to match,
+      // so cast anything not already in generic_space, including the default
+      // (attribute-less) space.
+      if (!llvm::isa_and_nonnull<ptr::GenericSpaceAttr>(memorySpace)) {
         // Create new memref type with generic_space
         auto newMemrefType =
             MemRefType::get(memrefType.getShape(), memrefType.getElementType(),
@@ -179,23 +279,6 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
       memrefToConvertedMap[memref] =
           memrefToConvert; // Store the converted memref
     }
-
-    // Step 2: Identify which iter_args are indices used in vector ops
-    SmallVector<unsigned> indexIterArgPositions;
-    SmallVector<Value> correspondingMemrefs;
-
-    for (auto [idx, iterArg] : llvm::enumerate(forOp.getRegionIterArgs())) {
-      for (auto &[memref, access] : memrefAccesses) {
-        if (llvm::is_contained(access.indices, iterArg)) {
-          indexIterArgPositions.push_back(idx);
-          correspondingMemrefs.push_back(memref);
-          break;
-        }
-      }
-    }
-
-    if (indexIterArgPositions.empty())
-      return failure();
 
     // Step 3: Build new init args with pointers
     SmallVector<Value> newInitArgs;
@@ -237,6 +320,9 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
     auto newForOp =
         scf::ForOp::create(rewriter, loc, forOp.getLowerBound(),
                            forOp.getUpperBound(), forOp.getStep(), newInitArgs);
+    // Keep the loop's attributes: unsignedCmp and discardable ones such as
+    // loop_annotation.
+    newForOp->setAttrs(forOp->getAttrDictionary());
 
     // Step 5: Transform loop body (simplified - doesn't handle all cases yet)
     IRMapping mapper;
@@ -247,6 +333,15 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
       mapper.map(oldArg, newArg);
     }
 
+    // The memref each pointer points into, used to scale its increments by
+    // the right element size. Holds the pointer iter_args and every
+    // ptr.ptr_add derived from them.
+    DenseMap<Value, Value> ptrToMemref;
+    for (auto [pos, memref] :
+         llvm::zip(indexIterArgPositions, correspondingMemrefs)) {
+      ptrToMemref[newForOp.getRegionIterArgs()[pos]] = memref;
+    }
+
     rewriter.setInsertionPointToStart(newForOp.getBody());
 
     // Clone operations with transformation (c0 already created above)
@@ -254,7 +349,7 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
       // Transform vector.load operations
       if (auto loadOp = dyn_cast<vector::LoadOp>(&op)) {
         Value idx = loadOp.getIndices()[0];
-        Value mappedIdx = mapper.lookup(idx);
+        Value mappedIdx = mapper.lookupOrDefault(idx);
 
         // Check if the index is now a pointer (was transformed)
         if (llvm::isa<ptr::PtrType>(mappedIdx.getType())) {
@@ -282,7 +377,7 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
       // Transform vector.store operations
       if (auto storeOp = dyn_cast<vector::StoreOp>(&op)) {
         Value idx = storeOp.getIndices()[0];
-        Value mappedIdx = mapper.lookup(idx);
+        Value mappedIdx = mapper.lookupOrDefault(idx);
 
         if (llvm::isa<ptr::PtrType>(mappedIdx.getType())) {
           // Get the generic-space memref type for this base
@@ -310,17 +405,13 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
       if (auto addiOp = dyn_cast<arith::AddIOp>(&op)) {
         Value lhs = mapper.lookupOrDefault(addiOp.getLhs());
         Value rhs = mapper.lookupOrDefault(addiOp.getRhs());
+        if (llvm::isa<ptr::PtrType>(rhs.getType())) {
+          std::swap(lhs, rhs);
+        }
 
-        // If LHS is a pointer, convert to ptr.ptr_add
+        // If an operand is a pointer, convert to ptr.ptr_add
         if (llvm::isa<ptr::PtrType>(lhs.getType())) {
-          // Find which memref this pointer corresponds to
-          Value memrefForPtr = nullptr;
-          for (const auto &[memref, access] : memrefAccesses) {
-            // Check if lhs comes from this memref's pointer chain
-            // For now, find any memref being accessed (simplified)
-            memrefForPtr = memref;
-            break;
-          }
+          Value memrefForPtr = ptrToMemref.lookup(lhs);
 
           Value byteOffset = rhs;
           if (memrefForPtr) {
@@ -339,6 +430,7 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
 
           auto ptrAddOp =
               ptr::PtrAddOp::create(rewriter, addiOp.getLoc(), lhs, byteOffset);
+          ptrToMemref[ptrAddOp.getResult()] = memrefForPtr;
           mapper.map(addiOp.getResult(), ptrAddOp.getResult());
           continue;
         }

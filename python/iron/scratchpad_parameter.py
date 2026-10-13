@@ -7,7 +7,9 @@
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import aiex
-from ..helpers.util import NpuDType, np_dtype_to_mlir_type
+from ..helpers.npdtypes import NpuDType
+from ..helpers.sourceloc import SourceSite
+from ..helpers.util import np_dtype_to_mlir_type
 from .resolvable import Resolvable
 
 
@@ -53,6 +55,7 @@ class ScratchpadParameter(Resolvable):
                    scratchpad encoding zeroes the top 2 bits of the value,
                    which clobbers the sign and top exponent bits of an f32.
         """
+        self._site = SourceSite.capture()
         self._name = name
         self._dtype = dtype
         self._resolved = False
@@ -88,6 +91,9 @@ class ScratchpadParameter(Resolvable):
         if not self._resolved:
             mlir_type = np_dtype_to_mlir_type(self._dtype)
             aiex.scratchpad_parameter(  # pyright: ignore[reportAttributeAccessIssue]
-                self._name, mlir_type, loc=loc, ip=ip
+                self._name,
+                mlir_type,
+                loc=loc or self._site.location(self._name),
+                ip=ip,
             )
             self._resolved = True

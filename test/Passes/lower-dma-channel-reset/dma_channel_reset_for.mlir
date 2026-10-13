@@ -24,8 +24,10 @@
 // CHECK-LABEL: @core_tile
 // CHECK: aiex.npu.maskwrite32(%{{.*}}, %{{.*}}, %{{.*}}) {column = 0 : i32, row = 3 : i32}
 // CHECK: aiex.npu.maskwrite32(%{{.*}}, %{{.*}}, %{{.*}}) {column = 0 : i32, row = 3 : i32}
-// CHECK: aiex.set_lock(%{{.*}}, 1)
-// CHECK: aiex.set_lock(%{{.*}}, 0)
+// CHECK: %[[ONE:.*]] = arith.constant 1 : i32
+// CHECK-NEXT: aiex.set_lock(%{{.*}}, %[[ONE]])
+// CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0 : i32
+// CHECK-NEXT: aiex.set_lock(%{{.*}}, %[[ZERO]])
 // The bd_id/repeat constant order is not part of the contract; match them
 // order-independently.
 // CHECK-DAG: %[[BD:.*]] = arith.constant 5 : i32

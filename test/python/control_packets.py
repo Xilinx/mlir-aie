@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: python %s | FileCheck %s
+# RUN: %python %s | FileCheck %s
 
 from aie.dialects.aie import *
 import aie.dialects.aiex as aiex
@@ -19,10 +19,7 @@ def gen_cp_sequence():
         @device(AIEDevice.npu1)
         def device_body():
             params = []
-            t = tile(0, 0)
-            t.attributes["controller_id"] = aiex.AttrBuilder.get("PacketInfoAttr")(
-                [2, 3]
-            )
+            t = tile(0, 0, packet_type=2, packet_id=3)
 
             @aiex.runtime_sequence(*params)
             def sequence(*args):

@@ -30,16 +30,21 @@ include = [
   "programming_examples/ml/mobilenet/**/*.py",
   "programming_examples/ml/bottleneck/**/*.py",
   "programming_examples/ml/conv2d/**/*.py",
+  "programming_examples/ml/cast_f32_bf16/**/*.py",
   "programming_examples/ml/conv2d_14x14/**/*.py",
+  "programming_examples/ml/dwconv1d/**/*.py",
   "programming_examples/ml/eltwise/**/*.py",
   "programming_examples/ml/eltwise_unary/**/*.py",
   "programming_examples/ml/magika/**/*.py",
+  "programming_examples/ml/mm_activation_epilogue/**/*.py",
   "programming_examples/ml/norm/**/*.py",
   "programming_examples/ml/resnet/**/*.py",
   "programming_examples/ml/rope/**/*.py",
   "programming_examples/ml/scale_shift/**/*.py",
   "programming_examples/ml/softmax/**/*.py",
   "programming_examples/ml/swiglu/**/*.py",
+  "utils/kernel_checks/**/*.py",
+  "utils/component_checks/**/*.py",
 ]
 
 # Same generated/vendored dirs excluded from the black pre-commit hook.

@@ -18,7 +18,7 @@
 // bank_aware_mem_bank_pin_with_reservation_error.mlir for a reservation that
 // fits neither run.
 
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
 // A reservation that fits only the larger [24576, 65536) run is placed there,
 // and the bank pin stays where it is.

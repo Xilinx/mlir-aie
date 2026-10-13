@@ -20,3 +20,24 @@ module {
   }
 }
 
+// -----
+
+module {
+  aie.device(npu2) {
+    aie.runtime_sequence @seq_scratchpad(%arg0: memref<8xi32>) {
+      // expected-error @+1 {{needs the scratchpad of a full-ELF context}}
+      aiex.npu.create_scratchpad {size = 4 : ui32}
+    }
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2) {
+    aie.runtime_sequence @seq_scratchpad_update(%arg0: memref<8xi32>) {
+      // expected-error @+1 {{needs the scratchpad of a full-ELF context}}
+      aiex.npu.update_from_scratchpad<mul> {address = 118884 : ui32, func_arg = 4 : ui32, state_table_idx = 0 : ui8}
+    }
+  }
+}

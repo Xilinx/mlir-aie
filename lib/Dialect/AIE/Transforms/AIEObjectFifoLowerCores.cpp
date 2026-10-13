@@ -122,7 +122,7 @@ struct LoweringContext {
   }
 
   LockOp lockOf(FlatSymbolRefAttr name) {
-    return SymbolTable::lookupNearestSymbolFrom<LockOp>(device, name);
+    return lookupNamedOp<LockOp>(device, name.getAttr());
   }
 };
 
@@ -343,7 +343,7 @@ struct AIEObjectFifoLowerCoresPass
 
     auto record = [&](DenseMap<std::pair<Operation *, Operation *>,
                                memref::AllocaOp> &slots,
-                      StringRef name) {
+                      StringRef name, bool rotating) {
       auto endpoint = ctx.endpointOf(coreOp, name);
       if (!endpoint) {
         return;
@@ -352,24 +352,41 @@ struct AIEObjectFifoLowerCoresPass
       if (slots.count(key)) {
         return;
       }
-      if (!zero) {
-        zero = arith::ConstantOp::create(builder, coreOp.getLoc(),
-                                         builder.getI32IntegerAttr(0));
+      // A pool whose initial contents fill only its first objects is next
+      // written at the first object they leave empty.
+      int64_t start = 0;
+      if (rotating && !endpoint.drains()) {
+        ObjectFifoPoolOp pool = endpoint.getPoolOp();
+        if (auto initValues = pool.getInitValues();
+            initValues && pool.getDepth() > 0) {
+          start = static_cast<int64_t>(initValues->size()) % pool.getDepth();
+        }
       }
-      slots[key] = makeSlot(builder, coreOp.getLoc(), zero);
+      Value initial;
+      if (start != 0) {
+        initial = arith::ConstantOp::create(builder, coreOp.getLoc(),
+                                            builder.getI32IntegerAttr(start));
+      } else {
+        if (!zero) {
+          zero = arith::ConstantOp::create(builder, coreOp.getLoc(),
+                                           builder.getI32IntegerAttr(0));
+        }
+        initial = zero;
+      }
+      slots[key] = makeSlot(builder, coreOp.getLoc(), initial);
     };
 
     coreOp.walk([&](ObjectFifoAcquireOp a) {
-      record(ctx.objectIndex, a.getObjFifoName());
+      record(ctx.objectIndex, a.getObjFifoName(), /*rotating=*/true);
     });
     if (!ctx.usesSemaphoreLocks) {
       return;
     }
     coreOp.walk([&](ObjectFifoAcquireOp a) {
-      record(ctx.heldCount, a.getObjFifoName());
+      record(ctx.heldCount, a.getObjFifoName(), /*rotating=*/false);
     });
     coreOp.walk([&](ObjectFifoReleaseOp r) {
-      record(ctx.heldCount, r.getObjFifoName());
+      record(ctx.heldCount, r.getObjFifoName(), /*rotating=*/false);
     });
   }
 

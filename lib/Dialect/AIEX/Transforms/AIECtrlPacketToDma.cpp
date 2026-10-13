@@ -192,15 +192,9 @@ struct AIECtrlPacketToDmaPass
 
         SymbolRefAttr metadata =
             SymbolRefAttr::get(builder.getContext(), batchIt->shimDmaAllocName);
-        NpuDmaMemcpyNdOp::create(builder, loc, newBlockArg,
-                                 SmallVector<Value>{}, SmallVector<Value>{},
-                                 SmallVector<Value>{}, ArrayRef(staticOffsets),
-                                 ArrayRef(staticSizes), ArrayRef(staticStrides),
-                                 nullptr, metadata, 0, true, 0, 0, 0, 0, 0, 0,
-                                 /*burst_length=*/0,
-                                 /*axcache=*/IntegerAttr(),
-                                 /*offset_parameter=*/FlatSymbolRefAttr(),
-                                 /*offset_state_table_idx=*/IntegerAttr());
+        NpuDmaMemcpyNdOp::create(builder, loc, newBlockArg, staticOffsets,
+                                 staticSizes, staticStrides, metadata,
+                                 /*id=*/0, /*issue_token=*/true);
 
         Value shimRow = AIEX::createConstantI32(builder, loc, 0);
         Value shimCol = AIEX::createConstantI32(builder, loc, col);

@@ -37,6 +37,10 @@ jobs:
 
     runs-on: ubuntu-${{ matrix.ubuntu_version }}
 
+    # The hosted runners have node: test the kernel checks page, don't skip it.
+    env:
+      MLIR_AIE_REQUIRE_NODE: 1
+
     strategy:
       # Run all the test even if there are some which fail
       fail-fast: false

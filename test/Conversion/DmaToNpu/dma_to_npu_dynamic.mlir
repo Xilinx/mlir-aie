@@ -7,18 +7,24 @@
 
 // Dynamic (runtime SSA size/stride) shim-NOC dma_memcpy_nd lowering: the whole
 // BD register block is computed from the runtime operands and packed into one
-// npu.blockwrite_values, with a host-side bounds guard for a runtime size
-// landing in a narrow BD field.
+// npu.blockwrite_values. Every runtime operand is guarded host-side with a
+// cf.assert: its BD field range, the granule alignment, and the host buffer
+// bounds of the whole walk. Guards that fold to true are dropped.
 
 // RUN: aie-opt --split-input-file --aie-dma-to-npu %s | FileCheck %s
 
 // A non-contiguous transfer with a runtime d1 size. d1 lands in the 10-bit
 // wrap field, so a guard is emitted; the guards precede the block-write that
-// consumes the guarded words. The block-write address is the BD register base
-// (bd 0 on shim 0,0 = 118784) and it covers the word the address patch targets.
+// consumes the guarded words. The size bounds keep buffer_length in range, so
+// it needs no guard. The block-write address is the BD register base (bd 0 on
+// shim 0,0 = 118784) and it covers the word the address patch targets.
 // CHECK-LABEL: @seq
-// CHECK: aiex.npu.assert_bd_field(%{{.*}}) {max = 1023 : i32}
+// CHECK: %[[D1:.*]] = arith.subi %arg1, %c1{{.*}} : i64
+// CHECK: %[[OK:.*]] = arith.cmpi ule, %[[D1]], %c1022{{.*}} : i64
+// CHECK: cf.assert %[[OK]], "a runtime DMA d1 size must be in [1:1023]"
+// CHECK-NOT: buffer_length
 // CHECK: aiex.npu.blockwrite_values(%c118784{{.*}} : i32) values
+// CHECK: cf.assert %{{.*}}, "a runtime DMA access runs past the end of its 4096-element host buffer"
 // CHECK: aiex.npu.address_patch
 module {
   aie.device(npu1) {
@@ -33,9 +39,11 @@ module {
 // -----
 
 // A contiguous transfer with a runtime size takes linear mode: the count goes
-// into buffer_length (word 0, full width) and no d0/d1 guard is needed.
+// into buffer_length (word 0, full width), so only that field bounds it.
 // CHECK-LABEL: @lin
-// CHECK-NOT: aiex.npu.assert_bd_field
+// CHECK-NOT: [1:1023]
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d1 size must be in [1:4294967295]"
+// CHECK: cf.assert %{{.*}}, "a runtime DMA transfer exceeds the 4294967295-granule BD buffer_length"
 // CHECK: aiex.npu.blockwrite_values
 module {
   aie.device(npu1) {
@@ -54,7 +62,9 @@ module {
 // emits a runtime realizability guard (value % 4 for int8 vs the 32-bit
 // granule) that yields no stream host-side if the runtime value is unrealizable.
 // CHECK-LABEL: @subgran
-// CHECK: aiex.npu.assert_bd_divisible(%{{.*}}) {divisor = 4 : i32}
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d0 size must be in [1:4092]"
+// CHECK: arith.remui %arg1, %c4{{.*}} : i64
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d0 size must be a multiple of 4 elements (whole 4-byte granules)"
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)
@@ -71,7 +81,8 @@ module {
 // encoder resolves the d0 collapse with a select. For a granule-aligned element
 // type (int32) no realizability guard is needed.
 // CHECK-LABEL: @rt_inner_i32
-// CHECK-NOT: aiex.npu.assert_bd_divisible
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d0 stride must be in [1:1048576] when its size > 1"
+// CHECK-NOT: multiple of
 // CHECK: aiex.npu.blockwrite_values
 module {
   aie.device(npu1) {
@@ -85,11 +96,12 @@ module {
 
 // -----
 
-// A runtime innermost stride on a sub-word type is guarded with the unit-stride
-// exemption: stride 1 (contiguous) is realizable, a non-unit sub-granule stride
-// is not, so the guard is `value == 1 || value % 4 == 0`.
+// A runtime innermost stride on a sub-word type must be 1: the DMA steps whole
+// 4-byte granules, so it can only walk 1-byte elements contiguously.
 // CHECK-LABEL: @rt_inner_i8
-// CHECK: aiex.npu.assert_bd_divisible(%{{.*}}) {allow_unit, divisor = 4 : i32}
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d0 stride must be in [1:4194304] when its size > 1"
+// CHECK: %[[UNIT:.*]] = arith.cmpi eq, %arg1, %c1{{.*}} : i64
+// CHECK: cf.assert %[[UNIT]], "a runtime DMA d0 stride must be 1 for 1-byte elements (the DMA moves whole 4-byte granules)"
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)
@@ -103,12 +115,16 @@ module {
 // -----
 
 // A runtime OFFSET is supported: the byte offset (offset * stride * elemBytes)
-// is built with arith and flows through the SSA arg_plus of the address patch.
-// Here offset %o with innermost stride 1 on i32 gives arg_plus = %o * 4.
+// is built in i64 and flows through the SSA arg_plus of the address patch.
+// Here offset %o with innermost stride 1 on i32 gives arg_plus = %o * 4, which
+// is always granule-aligned, so only the bounds guard (%o + 63 <= 4095) stays.
 // CHECK-LABEL: @rt_offset
-// CHECK: %[[T:.*]] = arith.trunci %arg1 : i64 to i32
-// CHECK: arith.muli %[[T]]
-// CHECK: aiex.npu.address_patch(%{{.*}} : i32)
+// CHECK: %[[END:.*]] = arith.addi %arg1, %c63{{.*}} : i64
+// CHECK: arith.cmpi ule, %[[END]], %c4095{{.*}} : i64
+// CHECK: cf.assert %{{.*}}, "a runtime DMA access runs past the end of its 4096-element host buffer"
+// CHECK-NOT: aligned
+// CHECK: %[[BYTES:.*]] = arith.muli %arg1, %c4{{.*}} : i64
+// CHECK: aiex.npu.address_patch(%[[BYTES]] : i64)
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)
@@ -124,7 +140,8 @@ module {
 // A runtime offset paired with a runtime stride: offset * stride is a single
 // arith.muli (both operands runtime). No made-up "constant stride" restriction.
 // CHECK-LABEL: @rt_offset_stride
-// CHECK: aiex.npu.address_patch(%{{.*}} : i32)
+// CHECK: arith.muli %arg1, %arg2 : i64
+// CHECK: aiex.npu.address_patch(%{{.*}} : i64)
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)
@@ -142,7 +159,7 @@ module {
 // with arith rather than via getOffsetInBytes() (which would read the runtime
 // stride as a constant). Regression for that crash.
 // CHECK-LABEL: @const_offset_rt_stride
-// CHECK: aiex.npu.address_patch(%{{.*}} : i32)
+// CHECK: aiex.npu.address_patch(%{{.*}} : i64)
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)
@@ -169,6 +186,85 @@ module {
     aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
     aie.runtime_sequence @const_repeat_rt_size(%arg0: memref<8192xi32>, %n: i64) {
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][4, 1, %n, 32][0, 0, 32, 1]) {id = 0 : i64, metadata = @alloc0} : memref<8192xi32>
+    }
+  }
+}
+
+// -----
+
+// A runtime pure repeat (constant zero outer stride) never touches the 6-bit
+// iteration wrap, so it gets no iteration guard; the queue push refuses a
+// count past its 8-bit repeat_count instead.
+// CHECK-LABEL: @rt_repeat
+// CHECK: cf.assert %{{.*}}, "a runtime DMA repeat count must be in [1:256]"
+// CHECK-NOT: [1:64]
+// CHECK: cf.assert %{{.*}}, "a runtime DMA repeat count exceeds the task queue's [0:255] range (at most 256 executions)"
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @rt_repeat(%arg0: memref<32xi32>, %r: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][%r, 1, 1, 32][0, 0, 0, 1]) {id = 0 : i64, metadata = @alloc0} : memref<32xi32>
+    }
+  }
+}
+
+// -----
+
+// With a runtime outer stride the iteration wrap is written whenever that
+// stride is positive, so the field it would land in is guarded.
+// CHECK-LABEL: @rt_outer_stride
+// CHECK: %[[PURE:.*]] = arith.cmpi eq, %arg2, %c0{{.*}} : i64
+// CHECK: %[[IT:.*]] = arith.cmpi ule, %{{.*}}, %c63{{.*}} : i64
+// CHECK: %[[OK:.*]] = arith.ori %[[PURE]], %[[IT]] : i1
+// CHECK: cf.assert %[[OK]], "a runtime DMA iteration count must be in [1:64]"
+// CHECK: cf.assert %{{.*}}, "a runtime DMA iteration stride must be in [0:1048576] when its size > 1"
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @rt_outer_stride(%arg0: memref<8192xi32>, %r: i64, %s: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][%r, 1, 1, 32][%s, 0, 0, 1]) {id = 0 : i64, metadata = @alloc0} : memref<8192xi32>
+    }
+  }
+}
+
+// -----
+
+// A runtime d1 stride is checked in the element domain, before it is scaled
+// to granules: one unsigned compare of stride-1 refuses 0 and anything that
+// would wrap the 20-bit field (134217792 would otherwise encode as 64).
+// CHECK-LABEL: @rt_d1_stride
+// CHECK: %[[S1:.*]] = arith.subi %arg1, %c1{{.*}} : i64
+// CHECK: %[[OK:.*]] = arith.cmpi ule, %[[S1]], %c1048575{{.*}} : i64
+// CHECK: cf.assert %[[OK]], "a runtime DMA d1 stride must be in [1:1048576] when its size > 1"
+// CHECK: cf.assert %{{.*}}, "a runtime DMA access runs past the end of its 8192-element host buffer"
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @rt_d1_stride(%arg0: memref<8192xi32>, %s: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 4, 32][0, 0, %s, 1]) {id = 0 : i64, metadata = @alloc0} : memref<8192xi32>
+    }
+  }
+}
+
+// -----
+
+// A runtime d2 size has no wrap field of its own; it reaches the hardware
+// through buffer_length, which is computed in 64 bits and guarded.
+// CHECK-LABEL: @rt_d2_size
+// CHECK: cf.assert %{{.*}}, "a runtime DMA d2 size must be in [1:4294967295]"
+// CHECK: %[[LEN:.*]] = arith.muli %arg1, %c128{{.*}} : i64
+// CHECK: %[[FITS:.*]] = arith.cmpi ule, %[[LEN]], %c4294967295{{.*}} : i64
+// CHECK: cf.assert %[[FITS]], "a runtime DMA transfer exceeds the 4294967295-granule BD buffer_length"
+// CHECK: cf.assert %{{.*}}, "a runtime DMA access runs past the end of its 8192-element host buffer"
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @rt_d2_size(%arg0: memref<8192xi32>, %n: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, %n, 4, 32][0, 256, 32, 1]) {id = 0 : i64, metadata = @alloc0} : memref<8192xi32>
     }
   }
 }

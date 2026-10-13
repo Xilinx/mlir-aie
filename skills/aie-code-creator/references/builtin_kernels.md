@@ -197,7 +197,7 @@ asymmetric fan-out, multi-stage pipelines, cascades, custom placement, RTP-gated
 ## MMUL geometry without guessing: `.mac_dims`
 
 `kernels.mm(...)` (and `cascade_mm`) expose the micro-kernel geometry the freshly-compiled
-kernel actually expects, so you can compute tile shapes and `dims_to_stream` layouts from
+kernel actually expects, so you can compute tile shapes and `to_stream` layouts from
 the kernel rather than from a table that may drift:
 
 ```python

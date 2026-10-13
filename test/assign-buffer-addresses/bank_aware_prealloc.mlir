@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-prepare-buffers --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --aie-prepare-buffers --aie-assign-buffer-addresses %s | FileCheck %s
 // CHECK: {{.*}} aie.buffer({{.*}}) {address = {{[0-9]+}} : i32, mem_bank = 2 : i32, sym_name = "core02_buff_internal"} : memref<256xi8>
 // CHECK: {{.*}} aie.buffer({{.*}}) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "core02_buff_in"} : memref<256xi8>
 // CHECK: {{.*}} aie.buffer({{.*}}) {address = 1024 : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "core02_rtp_Buffer"} : memref<256xi8>

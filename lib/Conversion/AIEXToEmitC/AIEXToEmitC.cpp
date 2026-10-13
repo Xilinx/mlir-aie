@@ -19,30 +19,59 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Runtime/TxnEncoding.h"
 
 #include "mlir/Conversion/ArithToEmitC/ArithToEmitC.h"
 #include "mlir/Conversion/SCFToEmitC/SCFToEmitC.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Transforms/Passes.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/RegionUtils.h"
 
-#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
 
 namespace xilinx {
+// DECL as well as DEF: the ConvertAIEXToEmitCPass(Options) constructor below
+// needs ConvertAIEXToEmitCOptions declared in this translation unit.
+#define GEN_PASS_DECL_CONVERTAIEXTOEMITC
 #define GEN_PASS_DEF_CONVERTAIEXTOEMITC
 #include "aie/Conversion/Passes.h.inc"
 } // namespace xilinx
 
 using namespace mlir;
+
+// The C++ that declines a build with a reason. `why` becomes a string
+// literal (quotes and backslashes escaped, line breaks flattened). When the
+// snippet goes through an emitc.verbatim with operands, `{}` is a
+// placeholder and `{{` its escape, so a `{` in the message is doubled; a
+// verbatim without operands is emitted literally.
+static std::string refuse(StringRef why, bool inFormat) {
+  std::string lit;
+  for (char ch : why) {
+    if (ch == '\n' || ch == '\r')
+      lit += ' ';
+    else if (ch == '"' || ch == '\\')
+      (lit += '\\') += ch;
+    else if (ch == '{' && inFormat)
+      lit += "{{";
+    else
+      lit += ch;
+  }
+  return "return aie_runtime::txn_refused(\"" + lit + "\");";
+}
+
 using namespace xilinx;
 
 namespace {
@@ -54,10 +83,14 @@ emitc::OpaqueType getU32Type(MLIRContext *ctx) {
   return emitc::OpaqueType::get(ctx, "uint32_t");
 }
 
-// The C++ variable name of the runtime BD pool for a tile. One pool per tile
-// that draws BD ids at runtime, declared in the generated function's prologue.
-std::string bdPoolName(uint32_t col, uint32_t row) {
-  return "bd_pool_" + std::to_string(col) + "_" + std::to_string(row);
+// The C++ variable name of a runtime BD pool, declared in the generated
+// function's prologue. One pool per tile and BD partition: channels sharing a
+// partition must share one pool, or they would hand out the same id twice.
+template <typename PoolOp>
+std::string bdPoolName(PoolOp op) {
+  return "bd_pool_" + std::to_string(op.getColumn()) + "_" +
+         std::to_string(op.getRow()) + "_" + std::to_string(op.getBdBegin()) +
+         "_" + std::to_string(op.getBdEnd());
 }
 
 // BD ids the static allocator has already placed on (col, row), read off the
@@ -107,15 +140,30 @@ struct DeviceResolved {
 class AIEXToEmitCConverter {
 public:
   AIEXToEmitCConverter(emitc::FuncOp funcOp, Value txnVec,
-                       const DeviceResolved &resolved, Value opCountVar)
+                       const DeviceResolved &resolved, Value opCountVar,
+                       bool foldDDRAddrOffset)
       : funcOp(funcOp), txnVec(txnVec), resolved(resolved),
-        opCountVar(opCountVar) {}
+        opCountVar(opCountVar), foldDDRAddrOffset(foldDDRAddrOffset) {}
 
   // Convert every npu/pool op in the body, recursing into scf regions. Returns
   // the compile-time op count for a straight-line body (the literal op_count),
   // or nullopt on error. With a runtime op-count var (a loop is present) each
   // op increments it instead and the returned count is unused.
   std::optional<uint32_t> run() {
+    // DMA lowering consumes buffer views but can leave dead subview/cast
+    // chains behind (notably after configure/run materialization). They are
+    // not transaction operations and must not reach the C++ converter.
+    bool erased;
+    do {
+      erased = false;
+      funcOp.walk([&](Operation *op) {
+        if (isa<memref::MemRefDialect>(op->getDialect()) &&
+            isOpTriviallyDead(op)) {
+          op->erase();
+          erased = true;
+        }
+      });
+    } while (erased);
     uint32_t count = 0;
     SmallVector<Operation *> consumed;
     convertBlockRecursive(funcOp.getBlocks().front(), count, consumed);
@@ -205,10 +253,34 @@ private:
                       {addrV, mw.getValue(), mw.getMask()});
           countOp(b, loc, count);
         })
+        .Case<AIEX::NpuMaskPollOp>([&](auto mp) {
+          Value addrV = runtimeOrResolvedAddr(b, loc, mp, mp.getAddress());
+          if (!addrV)
+            return fail(mp, "cannot convert a symbolic/unresolved maskpoll "
+                            "address to the C++ TXN target");
+          emitTxnCall(b, loc, "txn_append_maskpoll32", txnVec,
+                      {addrV, mp.getValue(), mp.getMask()});
+          countOp(b, loc, count);
+        })
         .Case<AIEX::NpuSyncOp>([&](auto s) {
           emitTxnCall(b, loc, "txn_append_sync", txnVec,
                       {s.getColumn(), s.getRow(), s.getDirection(),
                        s.getChannel(), s.getColumnNum(), s.getRowNum()});
+          countOp(b, loc, count);
+        })
+        .Case<AIEX::NpuLoadPdiOp>([&](auto pdi) {
+          Value address = emitc::ConstantOp::create(
+              b, loc, emitc::OpaqueType::get(b.getContext(), "uint64_t"),
+              emitc::OpaqueAttr::get(b.getContext(),
+                                     std::to_string(pdi.getAddress()) + "ULL"));
+          emitTxnCall(b, loc, "txn_append_loadpdi", txnVec,
+                      {u32Literal(b, loc, pdi.getId()),
+                       u32Literal(b, loc, pdi.getSize()), address});
+          countOp(b, loc, count);
+        })
+        .Case<AIEX::NpuPreemptOp>([&](auto preempt) {
+          emitTxnCall(b, loc, "txn_append_preempt", txnVec,
+                      {u32Literal(b, loc, preempt.getLevel())});
           countOp(b, loc, count);
         })
         .Case<AIEX::NpuAddressPatchOp>([&](auto ap) {
@@ -223,8 +295,21 @@ private:
           Value idxV = emitc::ConstantOp::create(
               b, loc, emitc::OpaqueType::get(b.getContext(), "int32_t"),
               emitc::OpaqueAttr::get(b.getContext(), std::to_string(*argIdx)));
-          emitTxnCall(b, loc, "txn_append_address_patch", txnVec,
-                      {addrV, idxV, ap.getArgPlus()});
+          // txn_append_arg_patch applies the DDR-aperture fold itself, so the
+          // rule lives only in TxnEncoding.h. Both operands are literals here,
+          // so -O2 folds the branch away.
+          Value foldV = emitc::ConstantOp::create(
+              b, loc, emitc::OpaqueType::get(b.getContext(), "bool"),
+              emitc::OpaqueAttr::get(b.getContext(),
+                                     foldDDRAddrOffset ? "true" : "false"));
+          Value argPlus = ap.getArgPlus();
+          // i32 offsets are unsigned bit patterns in the static emitter.
+          // Cast before widening so bit 31 is not sign-extended to 64 bits.
+          if (argPlus.getType().isInteger(32))
+            argPlus = emitc::CastOp::create(b, loc, getU32Type(b.getContext()),
+                                            argPlus);
+          emitTxnCall(b, loc, "txn_append_arg_patch", txnVec,
+                      {addrV, idxV, argPlus, foldV});
           countOp(b, loc, count);
         })
         .Case<AIEX::NpuBlockWriteOp>([&](auto bw) {
@@ -235,31 +320,13 @@ private:
           convertBlockWriteValues(b, loc, bw);
           countOp(b, loc, count);
         })
-        .Case<AIEX::NpuAssertBdFieldOp>([&](auto g) {
-          // Host-side bounds guard: if the runtime value overflows its narrow
-          // BD field, the builder yields no stream (std::nullopt) rather than a
-          // truncated one. Appends nothing, so not counted.
-          emitc::VerbatimOp::create(b, loc,
-                                    "if ({} > " + std::to_string(g.getMax()) +
-                                        ") return std::nullopt;",
-                                    ValueRange{g.getValue()});
-        })
-        .Case<AIEX::NpuAssertBdDivisibleOp>([&](auto g) {
-          // Host-side realizability guard: a runtime size/stride whose byte
-          // extent isn't a whole number of granules can't be encoded, so the
-          // builder yields no stream. allow_unit exempts a unit stride (the
-          // contiguous sub-granule case). Appends nothing, so not counted.
-          std::string d = std::to_string(g.getDivisor());
-          if (g.getAllowUnit())
-            emitc::VerbatimOp::create(b, loc,
-                                      "if ({} != 1 && {} % " + d +
-                                          " != 0) return "
-                                          "std::nullopt;",
-                                      ValueRange{g.getValue(), g.getValue()});
-          else
-            emitc::VerbatimOp::create(
-                b, loc, "if ({} % " + d + " != 0) return std::nullopt;",
-                ValueRange{g.getValue()});
+        .Case<cf::AssertOp>([&](auto a) {
+          // Host-side guard: a violated condition yields no stream
+          // (std::nullopt), and its message is what the host reports. Appends
+          // nothing, so not counted.
+          emitc::VerbatimOp::create(
+              b, loc, "if (!({})) " + refuse(a.getMsg(), /*inFormat=*/true),
+              ValueRange{a.getArg()});
         })
         .Case<AIEX::DMABdPoolPopOp>([&](AIEX::DMABdPoolPopOp pop) {
           // Draw a BD id from the tile's runtime pool (declared in the
@@ -270,8 +337,13 @@ private:
           emitc::VerbatimOp::create(
               b, loc,
               "uint32_t " + var + "; if (!aie_runtime::bd_pool_pop(" +
-                  bdPoolName(pop.getColumn(), pop.getRow()) + ", " + var +
-                  ")) return std::nullopt;");
+                  bdPoolName(pop) + ", " + var + ")) " +
+                  refuse("no free buffer descriptor on tile (" +
+                             std::to_string(pop.getColumn()) + ", " +
+                             std::to_string(pop.getRow()) +
+                             "): the sequence keeps more transfers in flight "
+                             "than the tile has descriptors",
+                         /*inFormat=*/false));
           Value ref =
               emitc::LiteralOp::create(b, loc, pop.getBdId().getType(), var);
           pop.getBdId().replaceAllUsesWith(ref);
@@ -280,9 +352,17 @@ private:
           // Return a BD id to the tile's runtime pool.
           emitc::CallOpaqueOp::create(
               b, loc, TypeRange{}, "aie_runtime::bd_pool_push",
-              ValueRange{poolRef(b, loc, push.getColumn(), push.getRow()),
-                         push.getBdId()});
+              ValueRange{poolRef(b, loc, bdPoolName(push)), push.getBdId()});
         })
+        // XRT allocates the scratchpad only for a full-ELF context, which has
+        // no per-call instruction buffer to carry a generated stream.
+        .Case<AIEX::NpuCreateScratchpadOp, AIEX::NpuUpdateFromScratchpadOp>(
+            [&](Operation *sp) {
+              fail(sp, "needs the scratchpad of a full-ELF context, which the "
+                       "C++ TXN target's per-call streams run without; use a "
+                       "runtime sequence argument instead of a scratchpad "
+                       "parameter");
+            })
         // memref.get_global feeding a blockwrite is consumed by
         // convertBlockWrite (data inlined); the now-dead op is erased later.
         .Case<memref::GetGlobalOp>([&](auto) {})
@@ -327,12 +407,12 @@ private:
     ok = false;
   }
 
-  // An emitc.literal referencing a tile's pool variable (for pass-by-reference
-  // into bd_pool_push).
-  Value poolRef(OpBuilder &b, Location loc, uint32_t col, uint32_t row) {
+  // An emitc.literal referencing a pool variable (for pass-by-reference into
+  // bd_pool_push).
+  Value poolRef(OpBuilder &b, Location loc, StringRef name) {
     return emitc::LiteralOp::create(
         b, loc, emitc::OpaqueType::get(b.getContext(), "aie_runtime::BdPool"),
-        bdPoolName(col, row));
+        name);
   }
 
   void convertBlockWrite(OpBuilder &b, Location loc, AIEX::NpuBlockWriteOp bw) {
@@ -426,10 +506,17 @@ private:
   bool ok = true;
   // Counter for unique popped-BD-id C++ variable names.
   unsigned nextPoolVar = 0;
+  bool foldDDRAddrOffset;
 };
 
 struct ConvertAIEXToEmitCPass
     : xilinx::impl::ConvertAIEXToEmitCBase<ConvertAIEXToEmitCPass> {
+  ConvertAIEXToEmitCPass() = default;
+  // foldDDRAddrOffset is `protected` on the generated base, settable only via
+  // a -pass-pipeline string; this constructor is the programmatic equivalent.
+  explicit ConvertAIEXToEmitCPass(const ConvertAIEXToEmitCOptions &options)
+      : ConvertAIEXToEmitCBase(options) {}
+
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
     MLIRContext *ctx = &getContext();
@@ -442,6 +529,13 @@ struct ConvertAIEXToEmitCPass
     moduleOp.walk([&](AIE::RuntimeSequenceOp seq) {
       sequences.push_back({seq, seq->getParentOfType<AIE::DeviceOp>()});
     });
+    if (emitDispatchShim && sequences.size() != 1) {
+      moduleOp.emitOpError()
+          << "emit-dispatch-shim needs exactly one aie.runtime_sequence to "
+             "wrap, found "
+          << sequences.size();
+      return signalPassFailure();
+    }
     if (sequences.empty())
       return;
 
@@ -451,8 +545,15 @@ struct ConvertAIEXToEmitCPass
         seqOp.emitOpError("must be nested inside an aie.device");
         return signalPassFailure();
       }
-      if (failed(emitFunction(builder, moduleOp, seqOp, deviceOp)))
+      std::optional<emitc::FuncOp> gen =
+          emitFunction(builder, moduleOp, seqOp, deviceOp);
+      if (!gen)
         return signalPassFailure();
+      if (emitDispatchShim) {
+        emitc::FuncOp generated = *gen;
+        if (failed(emitDispatchShimFuncs(builder, moduleOp, generated)))
+          return signalPassFailure();
+      }
     }
 
     // Replace the module body with just the generated emitc funcs + includes.
@@ -487,6 +588,21 @@ struct ConvertAIEXToEmitCPass
   // generated functions in one pass: a rolled dynamic loop is scf.for, and its
   // bounds / iter_args are arith, so both must lower together.
   LogicalResult lowerArithAndScfToEmitC(ModuleOp moduleOp) {
+    // ArithToEmitC has no patterns for the integer ops the Python bindings
+    // emit for `//`, ceildiv, min and max on staged scalars. Expand them to
+    // the divsi/cmpi/select forms it does lower before converting.
+    {
+      RewritePatternSet expand(moduleOp.getContext());
+      arith::populateCeilFloorDivExpandOpsPatterns(expand);
+      arith::populateExpandMinMaxIPatterns(expand);
+      // Rewrite only: folding or CSE here would reshape the sequence the
+      // per-op conversion below expects (and the C++ its tests check).
+      GreedyRewriteConfig config;
+      config.enableFolding(false).enableConstantCSE(false);
+      if (failed(applyPatternsGreedily(moduleOp, std::move(expand), config)))
+        return failure();
+    }
+
     TypeConverter typeConverter;
     typeConverter.addConversion([](Type t) { return t; });
     populateEmitCSizeTTypeConversions(typeConverter);
@@ -503,6 +619,104 @@ struct ConvertAIEXToEmitCPass
   }
 
 private:
+  // The C spelling emitc's translator emits for a parameter type, for the ABI
+  // string only. Must mirror CppEmitter::emitType down to its signedness rule,
+  // or the reported ABI disagrees with the emitted signature.
+  static std::optional<std::string> cTypeName(Type t) {
+    if (isa<emitc::SizeTType>(t))
+      return std::string("size_t");
+    auto intTy = dyn_cast<IntegerType>(t);
+    if (!intTy || !emitc::isSupportedIntegerType(intTy))
+      return std::nullopt;
+    if (intTy.getWidth() == 1)
+      return std::string("bool");
+    return (intTy.isUnsigned() ? "uint" : "int") +
+           std::to_string(intTy.getWidth()) + "_t";
+  }
+
+  // Emit the ctypes-callable entry points: dispatch_abi() reporting the
+  // parameter types, and dispatch_generate() handing back a pointer + word
+  // count into thread-local storage, or -2 when the builder declined.
+  LogicalResult emitDispatchShimFuncs(OpBuilder &builder, ModuleOp moduleOp,
+                                      emitc::FuncOp gen) {
+    MLIRContext *ctx = moduleOp.getContext();
+    Location loc = gen.getLoc();
+    TypeRange genParams = gen.getFunctionType().getInputs();
+
+    SmallVector<std::string> abiTypes;
+    for (Type t : genParams) {
+      std::optional<std::string> name = cTypeName(t);
+      if (!name)
+        return gen.emitOpError()
+               << "runtime-sequence parameter type " << t
+               << " has no dispatch ABI spelling; it cannot be passed from the "
+                  "host at dispatch time";
+      abiTypes.push_back(*name);
+    }
+
+    builder.setInsertionPointToEnd(moduleOp.getBody());
+    // Python resolves these two by name out of the built shared library. ELF
+    // exports every extern symbol unless told otherwise, but MSVC-target
+    // linking exports nothing without an explicit marker, so on Windows the
+    // DLL would load and then fail to resolve dispatch_abi. The macro comes
+    // from TxnEncoding.h, which the emitted file already includes, and expands
+    // to nothing off Windows.
+    auto externC =
+        builder.getStrArrayAttr({"extern \"C\"", "AIE_DISPATCH_EXPORT"});
+
+    // Pointers must be emitc.ptr: an opaque type may not have a pointer as its
+    // outer type.
+    auto charPtrTy =
+        emitc::PointerType::get(emitc::OpaqueType::get(ctx, "const char"));
+    auto abiFn = emitc::FuncOp::create(builder, loc, "dispatch_abi",
+                                       FunctionType::get(ctx, {}, {charPtrTy}));
+    abiFn.setSpecifiersAttr(externC);
+    OpBuilder ab = OpBuilder::atBlockBegin(abiFn.addEntryBlock());
+    Value abiStr = emitc::LiteralOp::create(
+        ab, loc, charPtrTy, "\"" + llvm::join(abiTypes, ",") + "\"");
+    emitc::ReturnOp::create(ab, loc, abiStr);
+
+    SmallVector<Type> shimParams(genParams);
+    shimParams.push_back(
+        emitc::PointerType::get(emitc::PointerType::get(getU32Type(ctx))));
+    auto i64Ty = emitc::OpaqueType::get(ctx, "int64_t");
+    auto shimFn =
+        emitc::FuncOp::create(builder, loc, "dispatch_generate",
+                              FunctionType::get(ctx, shimParams, {i64Ty}));
+    shimFn.setSpecifiersAttr(externC);
+    Block *shimBlock = shimFn.addEntryBlock();
+    OpBuilder sb = OpBuilder::atBlockBegin(shimBlock);
+
+    SmallVector<Value> genArgs(shimBlock->getArguments().drop_back());
+    SmallVector<StringRef> holes(genArgs.size(), "{}");
+    std::string call = "auto __result = " + gen.getSymName().str() + "(" +
+                       llvm::join(holes, ", ") + ");";
+    emitc::VerbatimOp::create(
+        sb, loc, "static thread_local " + kTxnVecType.str() + " __txn;");
+    emitc::VerbatimOp::create(sb, loc, "aie_runtime::txn_refusal = nullptr;");
+    emitc::VerbatimOp::create(sb, loc, call, genArgs);
+    emitc::VerbatimOp::create(sb, loc, "if (!__result) return -2;");
+    emitc::VerbatimOp::create(sb, loc, "__txn = std::move(*__result);");
+    emitc::VerbatimOp::create(sb, loc, "*{} = __txn.data();",
+                              ValueRange{shimBlock->getArguments().back()});
+    emitc::ReturnOp::create(
+        sb, loc,
+        emitc::LiteralOp::create(sb, loc, i64Ty,
+                                 "static_cast<int64_t>(__txn.size())"));
+
+    // dispatch_last_refusal(): why the last dispatch_generate() on this
+    // thread returned -2 (a string literal in this library), or null.
+    auto whyFn = emitc::FuncOp::create(builder, loc, "dispatch_last_refusal",
+                                       FunctionType::get(ctx, {}, {charPtrTy}));
+    whyFn.setSpecifiersAttr(externC);
+    OpBuilder wb = OpBuilder::atBlockBegin(whyFn.addEntryBlock());
+    emitc::ReturnOp::create(
+        wb, loc,
+        emitc::LiteralOp::create(wb, loc, charPtrTy,
+                                 "aie_runtime::txn_refusal"));
+    return success();
+  }
+
   // Resolve `orig`'s device-dependent values (still under the device) keyed by
   // its detached `clone`.
   static void recordDeviceResolved(Operation *orig, Operation *clone,
@@ -512,6 +726,9 @@ private:
         resolved.absoluteAddr[clone] = *a;
     } else if (auto mw = dyn_cast<AIEX::NpuMaskWrite32Op>(orig)) {
       if (auto a = mw.getAbsoluteAddress())
+        resolved.absoluteAddr[clone] = *a;
+    } else if (auto mp = dyn_cast<AIEX::NpuMaskPollOp>(orig)) {
+      if (auto a = mp.getAbsoluteAddress())
         resolved.absoluteAddr[clone] = *a;
     } else if (auto bw = dyn_cast<AIEX::NpuBlockWriteOp>(orig)) {
       if (auto a = bw.getAbsoluteAddress())
@@ -525,9 +742,9 @@ private:
     }
   }
 
-  LogicalResult emitFunction(OpBuilder &builder, ModuleOp moduleOp,
-                             AIE::RuntimeSequenceOp seqOp,
-                             AIE::DeviceOp deviceOp) {
+  FailureOr<emitc::FuncOp> emitFunction(OpBuilder &builder, ModuleOp moduleOp,
+                                        AIE::RuntimeSequenceOp seqOp,
+                                        AIE::DeviceOp deviceOp) {
     Location loc = seqOp.getLoc();
     Block &entry = seqOp.getBody().front();
 
@@ -574,36 +791,32 @@ private:
     Value txnVec = emitc::LiteralOp::create(fb, loc, txnVecType, "txn");
     emitTxnCall(fb, loc, "txn_init", txnVec, {});
 
-    // Declare a runtime BD free-list pool for each tile that draws ids at
-    // runtime (dynamic free-list path). The pool size is the tile's BD count
-    // from the target model -- never hardcoded here. One decl per distinct
-    // tile.
-    const AIE::AIETargetModel &targetModel = deviceOp.getTargetModel();
-    llvm::SmallSet<std::pair<uint32_t, uint32_t>, 4> pooledTiles;
-    seqOp.walk([&](Operation *op) {
-      uint32_t col, row;
-      if (auto pop = dyn_cast<AIEX::DMABdPoolPopOp>(op)) {
-        col = pop.getColumn();
-        row = pop.getRow();
-      } else if (auto push = dyn_cast<AIEX::DMABdPoolPushOp>(op)) {
-        col = push.getColumn();
-        row = push.getRow();
-      } else {
+    // Declare each runtime BD free-list pool the sequence draws ids from,
+    // with the bounds its ops name.
+    llvm::StringSet<> declaredPools;
+    auto declarePool = [&](auto poolOp) {
+      std::string name = bdPoolName(poolOp);
+      if (!declaredPools.insert(name).second)
         return;
-      }
-      if (!pooledTiles.insert({col, row}).second)
-        return;
-      uint32_t numBDs = targetModel.getNumBDs(col, row);
+      uint32_t lo = poolOp.getBdBegin(), hi = poolOp.getBdEnd();
       emitc::VerbatimOp::create(fb, loc,
-                                "aie_runtime::BdPool " + bdPoolName(col, row) +
-                                    " = aie_runtime::bd_pool_init(" +
-                                    std::to_string(numBDs) + ");");
+                                "aie_runtime::BdPool " + name +
+                                    " = aie_runtime::bd_pool_init_range(" +
+                                    std::to_string(lo) + ", " +
+                                    std::to_string(hi) + ");");
       // Hand back the ids the static allocator already placed on this tile.
-      for (uint32_t id : staticBdIdsOnTile(deviceOp, col, row))
-        emitc::VerbatimOp::create(fb, loc,
-                                  "aie_runtime::bd_pool_reserve(" +
-                                      bdPoolName(col, row) + ", " +
-                                      std::to_string(id) + ");");
+      for (uint32_t id :
+           staticBdIdsOnTile(deviceOp, poolOp.getColumn(), poolOp.getRow()))
+        if (id >= lo && id < hi)
+          emitc::VerbatimOp::create(fb, loc,
+                                    "aie_runtime::bd_pool_reserve(" + name +
+                                        ", " + std::to_string(id) + ");");
+    };
+    seqOp.walk([&](Operation *op) {
+      if (auto pop = dyn_cast<AIEX::DMABdPoolPopOp>(op))
+        declarePool(pop);
+      else if (auto push = dyn_cast<AIEX::DMABdPoolPushOp>(op))
+        declarePool(push);
     });
 
     // A rolled loop makes the op count a runtime quantity: declare a __opcount
@@ -642,7 +855,8 @@ private:
       });
     }
 
-    AIEXToEmitCConverter conv(funcOp, txnVec, resolved, opCountVar);
+    AIEXToEmitCConverter conv(funcOp, txnVec, resolved, opCountVar,
+                              foldDDRAddrOffset);
     std::optional<uint32_t> count = conv.run();
     if (!count)
       return failure();
@@ -651,15 +865,17 @@ private:
     // runtime `__opcount` when the sequence has a loop, else the compile-time
     // literal.
     const AIE::AIETargetModel &tm = deviceOp.getTargetModel();
-    uint8_t devGen = isa<AIE::BaseNPU2TargetModel>(tm) ? 4 : 3;
     OpBuilder eb(funcBlock, funcBlock->end());
     std::string countStr =
         hasControlFlow ? "__opcount" : (std::to_string(*count) + "u");
+    // txn_device_info assigns TxnDeviceInfo by field name, so a field added or
+    // reordered there cannot silently mis-encode this generated header.
     std::string header = "aie_runtime::txn_prepend_header(txn, " + countStr +
-                         ", {0, 1, " + std::to_string(devGen) + ", " +
+                         ", aie_runtime::txn_device_info(" +
+                         std::to_string(AIE::txnDeviceGen(tm)) + ", " +
                          std::to_string(tm.rows()) + ", " +
                          std::to_string(tm.columns()) + ", " +
-                         std::to_string(tm.getNumMemTileRows()) + "});";
+                         std::to_string(tm.getNumMemTileRows()) + "));";
     emitc::VerbatimOp::create(eb, loc, header);
     // Return the vector as the optional result. The literal text differs from
     // the "txn" accumulator literal (so the two are not deduplicated) and is
@@ -667,7 +883,7 @@ private:
     // relies on the implicit std::vector -> std::optional conversion in C++.
     Value ret = emitc::LiteralOp::create(eb, loc, txnRetType, "std::move(txn)");
     emitc::ReturnOp::create(eb, loc, ret);
-    return success();
+    return funcOp;
   }
 };
 
@@ -676,4 +892,13 @@ private:
 std::unique_ptr<OperationPass<ModuleOp>>
 xilinx::createConvertAIEXToEmitCPass() {
   return std::make_unique<ConvertAIEXToEmitCPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::createConvertAIEXToEmitCPass(bool foldDDRAddrOffset,
+                                     bool emitDispatchShim) {
+  ConvertAIEXToEmitCOptions options;
+  options.foldDDRAddrOffset = foldDDRAddrOffset;
+  options.emitDispatchShim = emitDispatchShim;
+  return std::make_unique<ConvertAIEXToEmitCPass>(options);
 }

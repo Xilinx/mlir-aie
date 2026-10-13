@@ -5,7 +5,7 @@
 #
 """Per-tile tensor access exploration — IRON + ``@iron.jit``.
 
-Demonstrates how ``TensorTiler2D.simple_tiler`` decomposes an output
+Demonstrates how ``TensorAccessPattern.full(...).tile(...)`` decomposes an output
 tensor into tiles, and how one ``rt.drain`` per tile reorders the
 otherwise-sequential per-element write order into a tiled layout.  The
 core produces values ``0, 1, 2, ...`` in element-walk order; the drain
@@ -23,7 +23,7 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import Buffer, CompileTime, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args
@@ -46,8 +46,8 @@ def per_tile(
     flattened_tensor = np.ndarray[(tensor_size,), np.dtype[dtype]]
     flattened_tile = np.ndarray[(tile_size,), np.dtype[dtype]]
 
-    tiler = TensorTiler2D.simple_tiler(
-        (tensor_height, tensor_width), (tile_height, tile_width)
+    tiler = TensorAccessPattern.full((tensor_height, tensor_width)).tile(
+        (tile_height, tile_width)
     )
 
     of_out = ObjectFifo(flattened_tile)
@@ -63,8 +63,9 @@ def per_tile(
     worker = Worker(access_order, [of_out.prod(), access_counter])
 
     def sequence(tensor_out, out_h):
-        for t in tiler:
-            out_h.drain(tensor_out, t, wait=True)
+        for row in tiler:
+            for t in row:
+                out_h.drain(tensor_out, t, wait=True)
 
     rt = Runtime(
         sequence,
@@ -106,26 +107,23 @@ def _run_and_verify(opts):
     per_tile(out_t, **_compile_kwargs(opts))
 
     expected = (
-        TensorTiler2D.simple_tiler(
-            (opts.tensor_height, opts.tensor_width),
-            (opts.tile_height, opts.tile_width),
-        )
+        TensorAccessPattern.full((opts.tensor_height, opts.tensor_width))
+        .tile((opts.tile_height, opts.tile_width))
         .access_order()
         .flatten()
     )
     assert_pass(
         out_t.numpy(),
         expected,
-        fail_msg="output does not match TensorTiler2D.simple_tiler access order",
+        fail_msg="output does not match TensorAccessPattern.tile() access order",
     )
 
 
 def main():
     opts = _make_argparser().parse_args()
     if opts.generate_access_map:
-        tiler = TensorTiler2D.simple_tiler(
-            (opts.tensor_height, opts.tensor_width),
-            (opts.tile_height, opts.tile_width),
+        tiler = TensorAccessPattern.full((opts.tensor_height, opts.tensor_width)).tile(
+            (opts.tile_height, opts.tile_width)
         )
         tiler.visualize(file_path="per_tile.png")
         return

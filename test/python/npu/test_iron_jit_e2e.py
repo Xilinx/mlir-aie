@@ -20,7 +20,7 @@ Coverage:
 - Cache invalidation: different compile_kwargs produce different cached kernels
 - Correct output for each configuration
 - CompileTime[T] param missing → TypeError before any NPU interaction
-- TraceConfig passed to a design that never calls enable_trace → HostRuntimeError
+- Runtime tensor counts, including implicit trace buffers, match the compiled ABI
 """
 
 from pathlib import Path
@@ -208,6 +208,46 @@ def test_compile_on_demand_second_call_hits_cache(input_array, N):
     np.testing.assert_array_equal(out2.numpy(), expected)
 
 
+@pytest.mark.parametrize("trace_size", [0, 65536])
+def test_variadic_tensor_count_checked_before_dispatch(N, trace_size, tmp_path):
+    from aie.iron.algorithms import transform_binary
+    from aie.utils.trace.config import TraceConfig
+
+    trace_config = (
+        TraceConfig(trace_size=trace_size, trace_file=str(tmp_path / "trace.txt"))
+        if trace_size
+        else None
+    )
+
+    @iron.jit(trace_config=trace_config)
+    def add(
+        *tensors: In,
+        N: CompileTime[int],
+        trace_size: CompileTime[int] = 0,
+    ):
+        tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
+        return transform_binary(
+            lambda a, b: a + b,
+            tensor_ty,
+            tile_size=16,
+            trace_size=trace_size,
+        )
+
+    a = iron.arange(N, dtype=np.int32)
+    b = iron.arange(N, dtype=np.int32)
+    out = iron.zeros(N, dtype=np.int32, device="npu")
+    for count in [2, 4, 3, 2, 4, 3]:
+        tensors = [a, b, out, out][:count]
+        if count == 3:
+            add(*tensors, N=N)
+            np.testing.assert_array_equal(out.numpy(), a.numpy() + b.numpy())
+        else:
+            with pytest.raises(
+                RuntimeError, match=f"expects 3 tensor argument.*received {count}"
+            ):
+                add(*tensors, N=N)
+
+
 # ---------------------------------------------------------------------------
 # 5. Cache isolation: different compile_kwargs produce separate artifacts
 # ---------------------------------------------------------------------------
@@ -283,11 +323,10 @@ def test_use_cache_false_recompiles_but_output_correct(input_array, N):
 
 def test_trace_config_without_enable_trace_raises(input_array, N):
     """Passing a TraceConfig to a design that never calls enable_trace must
-    raise HostRuntimeError. The guard in the runtime catches the mismatch:
+    raise before dispatch. The compiled-signature validation catches the mismatch:
     the xclbin declares only the data BOs but the host would append a trace
     buffer, which would segfault in XRT argument setup."""
     from aie.utils.trace.config import TraceConfig
-    from aie.utils.hostruntime.hostruntime import HostRuntimeError
 
     trace_cfg = TraceConfig(trace_size=65536)
 
@@ -303,7 +342,7 @@ def test_trace_config_without_enable_trace_raises(input_array, N):
         return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 
     out = iron.zeros(N, dtype=np.int32, device="npu")
-    with pytest.raises(HostRuntimeError, match="host buffer argument"):
+    with pytest.raises(RuntimeError, match="expects 1 tensor argument.*received 2"):
         add_traced(input_array, out, N=N, add_value=9, trace_config=trace_cfg)
 
 

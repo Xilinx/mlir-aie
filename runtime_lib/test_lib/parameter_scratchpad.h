@@ -26,6 +26,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #if !defined(TEST_UTILS_USE_XRT)
@@ -89,12 +90,24 @@ public:
 
   /// Write a raw 32-bit value by name.  For core-kind parameters, the bits
   /// are left-shifted by 2 (firmware requirement).  For addr-kind parameters,
-  /// the value is written directly (no shift).
+  /// the value is written directly (no shift). A DMA offset or length
+  /// parameter's value, read as an int32, must lie in the range the compiler
+  /// gave it, which keeps its transfers within their buffers.
   void writeBits(const std::string &name, uint32_t bits) {
     auto it = paramMap.find(name);
     if (it == paramMap.end()) {
       throw std::runtime_error("ParameterScratchpad: unknown parameter '" +
                                name + "'");
+    }
+    if (auto range = ranges.find(name); range != ranges.end()) {
+      int32_t value = static_cast<int32_t>(bits);
+      if (value < range->second.first || value > range->second.second)
+        throw std::invalid_argument(
+            "ParameterScratchpad: value " + std::to_string(value) + " of '" +
+            name + "' is outside [" + std::to_string(range->second.first) +
+            ", " + std::to_string(range->second.second) +
+            "], which keeps its DMA transfers within their buffers");
+      values[name] = value;
     }
     uint8_t idx = it->second;
     uint32_t encoded = bits;
@@ -122,9 +135,32 @@ public:
     writeBits(name, bits);
   }
 
+  /// Check the written values of each offset and length parameter pair that
+  /// one DMA transfer uses. Throws std::invalid_argument if they take the
+  /// transfer past the end of its buffer.
+  void validate() const {
+    for (const JointBound &bound : jointBounds) {
+      int64_t offset = values.at(bound.offset);
+      int64_t length = values.at(bound.length);
+      int64_t end = offset + bound.lengthStep * length;
+      if (end > bound.max)
+        throw std::invalid_argument(
+            "ParameterScratchpad: '" + bound.offset +
+            "' = " + std::to_string(offset) + " plus " +
+            std::to_string(bound.lengthStep) + " * '" + bound.length +
+            "' = " + std::to_string(length) + " is " + std::to_string(end) +
+            ", above " + std::to_string(bound.max) +
+            ", so a DMA transfer using both runs past its buffer");
+    }
+  }
+
 #if TEST_UTILS_USE_XRT
-  /// Sync the scratchpad buffer to device. Call after all writes for this run.
-  void sync() { scratchpadBo.sync(XCL_BO_SYNC_BO_TO_DEVICE); }
+  /// Validate, then sync the scratchpad buffer to device. Call after all writes
+  /// for this run.
+  void sync() {
+    validate();
+    scratchpadBo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  }
 #endif
 
   /// Read back a parameter's current encoded value (for debugging).
@@ -145,6 +181,13 @@ private:
   size_t scratchpadSizeBytes = 0;
   std::unordered_map<std::string, uint8_t> paramMap;
   std::unordered_set<std::string> coreParams; // params with kind="core"
+  std::unordered_map<std::string, std::pair<int32_t, int32_t>> ranges;
+  std::unordered_map<std::string, int32_t> values; // of the ranged params
+  struct JointBound {
+    std::string length, offset;
+    int64_t lengthStep, max;
+  };
+  std::vector<JointBound> jointBounds;
 
   void clear() {
     for (size_t i = 0; i < scratchpadSizeBytes / 4; i++) {
@@ -161,17 +204,25 @@ private:
 
     // Format:
     //   <num_parameters>
-    //   <name> <state_table_idx> <type> <kind>
+    //   <name> <state_table_idx> <type> <kind> <min> <max>
     //   ...
-    // where kind is "core" or "addr".
+    //   <num_joint_bounds>
+    //   <length> <offset> <length_step> <max>
+    //   ...
+    // where kind is "core" or "addr", and <min> <max> is "- -" for a
+    // parameter with no range. A joint bound requires
+    // offset + length_step * length <= max.
     unsigned numParams = 0;
     file >> numParams;
     scratchpadSizeBytes = numParams * 4;
 
     for (unsigned i = 0; i < numParams; i++) {
-      std::string name, type, kind;
+      std::string name, type, kind, min, max;
       unsigned idx;
-      file >> name >> idx >> type >> kind;
+      file >> name >> idx >> type >> kind >> min >> max;
+      if (!file)
+        throw std::runtime_error("ParameterScratchpad: malformed entry " +
+                                 std::to_string(i) + " in '" + path + "'");
       if (idx > 255)
         throw std::runtime_error("ParameterScratchpad: state_table_idx " +
                                  std::to_string(idx) + " for '" + name +
@@ -186,6 +237,35 @@ private:
       } else if (kind == "core") {
         coreParams.insert(name);
       }
+      if (min != "-") {
+        try {
+          ranges[name] = {std::stoi(min), std::stoi(max)};
+        } catch (const std::logic_error &) {
+          throw std::runtime_error("ParameterScratchpad: malformed range '" +
+                                   min + " " + max + "' for parameter '" +
+                                   name + "' in '" + path + "'");
+        }
+        values[name] = 0;
+      }
+    }
+
+    unsigned numJointBounds = 0;
+    file >> numJointBounds;
+    if (!file)
+      throw std::runtime_error(
+          "ParameterScratchpad: missing joint bound count in '" + path + "'");
+    for (unsigned i = 0; i < numJointBounds; i++) {
+      JointBound bound;
+      file >> bound.length >> bound.offset >> bound.lengthStep >> bound.max;
+      if (!file)
+        throw std::runtime_error("ParameterScratchpad: malformed joint bound " +
+                                 std::to_string(i) + " in '" + path + "'");
+      for (const std::string &name : {bound.length, bound.offset})
+        if (!ranges.count(name))
+          throw std::runtime_error("ParameterScratchpad: joint bound " +
+                                   std::to_string(i) + " names '" + name +
+                                   "', which has no range, in '" + path + "'");
+      jointBounds.push_back(bound);
     }
   }
 };

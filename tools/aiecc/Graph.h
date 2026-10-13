@@ -72,13 +72,21 @@ inline std::mutex &fileWriteMutex() {
   return m;
 }
 
-// Serializes diagnostic/progress writes to the shared stdout/stderr so that
-// concurrent worker threads (and the tool-invocation echo) don't interleave
-// their lines. Any code that prints a full log line from a worker thread should
-// hold this across the write (and flush before releasing).
-inline std::mutex &logMutex() {
-  static std::mutex m;
-  return m;
+// The --progress line has no trailing newline. `endProgressLine` returns with
+// `logMutex()` held; keep the lock until the diagnostic is written.
+inline bool &progressLineOpen() {
+  static bool open = false;
+  return open;
+}
+
+inline std::unique_lock<std::mutex> endProgressLine() {
+  std::unique_lock<std::mutex> log(logMutex());
+  if (!progressLineOpen())
+    return log;
+  progressLineOpen() = false;
+  llvm::errs() << '\n';
+  llvm::errs().flush();
+  return log;
 }
 
 //===----------------------------------------------------------------------===//
@@ -140,6 +148,11 @@ struct Item : ItemBase {
       Serializer<T>::write(*value, os);
       return out;
     }
+  }
+
+  // The path asFile() materializes the item to, without writing anything.
+  const std::string &path() const {
+    return aliasSource ? aliasSource->path() : filePath;
   }
 
   const std::string &asFile() const override {
@@ -333,12 +346,11 @@ struct NodeDeserializer<OpInModule<KeyOp>> {
     std::vector<Item<OpInModule<KeyOp>>> items;
     if (!entries)
       return items;
+    SharedModule shared{std::move(parsed)};
     for (const llvm::json::Value &e : *entries) {
       const llvm::json::Object *eo = e.getAsObject();
       int64_t walkIdx = eo->getInteger("walkIdx").value_or(-1);
-      // Each item owns its own module (matching the split); clone per item.
-      mlir::OwningOpRef<mlir::ModuleOp> clone(parsed.get().clone());
-      KeyOp op = opAtWalkIndex<KeyOp>(clone.get(), walkIdx);
+      KeyOp op = opAtWalkIndex<KeyOp>(shared.get(), walkIdx);
       if (!op) {
         llvm::errs() << "aiecc: cannot resume: focus op index " << walkIdx
                      << " out of range\n";
@@ -346,7 +358,7 @@ struct NodeDeserializer<OpInModule<KeyOp>> {
       }
       Item<OpInModule<KeyOp>> it;
       it.key = eo->getString("key").value_or("").str();
-      it.value = OpInModule<KeyOp>{std::move(clone), op};
+      it.value = OpInModule<KeyOp>{shared, op};
       items.push_back(std::move(it));
     }
     return items;

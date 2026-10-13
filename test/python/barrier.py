@@ -26,7 +26,8 @@ from aie.iron.device import (
 # CHECK:         aie.use_lock(%[[LOCK]], Release, %{{.*}})
 # CHECK:     }
 # CHECK:     aie.runtime_sequence(%arg0: memref<16xi32>) {
-# CHECK:       aiex.set_lock(%[[LOCK]], 1)
+# CHECK:       %[[ONE:.*]] = arith.constant 1 : i32
+# CHECK-NEXT:  aiex.set_lock(%[[LOCK]], %[[ONE]])
 # CHECK:     }
 # CHECK:   }
 # CHECK: }

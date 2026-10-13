@@ -51,7 +51,7 @@ my_worker = Worker(core_fn, [buf], tile=Tile(0, 2), while_true=False)
 
 > **NOTE 2:** The Worker above is instantiated with `while_true=False`. By default this is `True`, which wraps the kernel body in a `while True`-style loop simulated by a `for _ in range(sys.maxsize):`. Depending on the body (e.g., creating a local buffer with a unique name) the infinite-loop wrapper can cause compiler issues.
 >
-> **NOTE 3:** A `Buffer` such as `buf` above shares the tile's local memory with the Worker's call stack and with the Worker's compiled code. See [Core Data Memory](../core_data_memory.md) for how the compiler checks that memory, and what to do when a stack or memory build error fires.
+> **NOTE 3:** A `Buffer` such as `buf` above shares the tile's local data memory with the Worker's call stack and compiled static data, including bank-pinned LUT tables; instructions occupy separate program memory. See [Core Data Memory](../core_data_memory.md) for placement controls, compiler checks, and what to do when a stack or memory build error fires.
 
 Data movement between Workers will get its own [section](../section-2/section-2d/); host-to/from-NPU data movement is configured inside the `Runtime` sequence body. In this minimal example the sequence body has one host-facing tensor argument and does no data movement; the Worker is passed to the `Program`:
 
@@ -78,7 +78,7 @@ By default the `--aie-place-tiles` pass uses a sequential placer that assigns ti
 aiecc --placer=sa_placer --sa-seed=3 ...
 ```
 
-The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See [color_detect](../../programming_examples/vision/color_detect/) for an example that wires this up as `make use_sa_placer=1`.
+The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See [color_detect](../../programming_examples/vision/color_detect/) for an example that wires this up as `make use_sa_placer=1`. The SA placer's nightly checks are on the [maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=placement).
 
 ## Other Tile Types
 

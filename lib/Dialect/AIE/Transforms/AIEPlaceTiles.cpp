@@ -9,8 +9,11 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 
+#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
+
+#include <cmath>
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEPLACETILES
@@ -38,11 +41,15 @@ struct ConvertLogicalTileToTile : OpConversionPattern<LogicalTileOp> {
       return logicalTile.emitError("no placement found for logical tile");
 
     // Handle merging multiple logical tiles to same physical tile
-    TileOp tileOp =
-        TileOp::getOrCreate(rewriter, device, placement->col, placement->row);
+    TileOp tileOp = TileOp::getOrCreate(rewriter, device, placement->col,
+                                        placement->row, logicalTile.getLoc());
+    rewriter.modifyOpInPlace(tileOp, [&] {
+      tileOp->setLoc(
+          rewriter.getFusedLoc({tileOp.getLoc(), logicalTile.getLoc()}));
+    });
 
-    if (auto scheme = logicalTile.getAllocationScheme())
-      tileOp.setAllocationScheme(scheme);
+    if (auto controllerId = logicalTile->getAttr("controller_id"))
+      tileOp->setAttr("controller_id", controllerId);
 
     rewriter.replaceOp(logicalTile, tileOp.getResult());
     return success();
@@ -66,23 +73,35 @@ struct AIEPlaceTilesPass
 
     // Create placer
     std::shared_ptr<Placer> placer;
+    std::shared_ptr<SAPlacer> saPlacer;
     switch (clPlacerType) {
     case PlacerType::SequentialPlacer: {
       std::optional<int> coresPerCol = std::nullopt;
       if (clCoresPerCol >= 0)
         coresPerCol = clCoresPerCol;
-      placer =
-          std::make_shared<SequentialPlacer>(coresPerCol, clMergeLogicalTiles);
+      placer = std::make_shared<SequentialPlacer>(
+          coresPerCol, clMergeLogicalTiles, clSpreadUnanchoredTiles);
       break;
     }
-    case PlacerType::SAPlacer:
-      placer = std::make_shared<SAPlacer>(clSASeed);
+    case PlacerType::SAPlacer: {
+      double effort = clSAEffort.getValue();
+      if (!std::isfinite(effort) || effort <= 0) {
+        device.emitError("sa-effort must be positive and finite, got ")
+            << effort;
+        return signalPassFailure();
+      }
+      SAConfig config;
+      config.effort = effort;
+      placer = saPlacer = std::make_shared<SAPlacer>(clSASeed, config);
       break;
+    }
     }
 
     placer->initialize(device.getTargetModel());
     if (failed(placer->place(device)))
       return signalPassFailure();
+    if (saPlacer)
+      saFinalCost += saPlacer->getFinalCost();
 
     ConversionTarget target(getContext());
     target.addLegalOp<TileOp>();
@@ -114,8 +133,9 @@ struct AIEPlaceTilesPass
         OpBuilder builder(ofOp->getContext());
         builder.setInsertionPointAfter(ofOp);
 
-        TileOp delegateTile = TileOp::getOrCreate(
-            builder, device, delegateTileID.col, delegateTileID.row);
+        TileOp delegateTile =
+            TileOp::getOrCreate(builder, device, delegateTileID.col,
+                                delegateTileID.row, ofOp.getLoc());
         ObjectFifoAllocateOp::create(
             builder, ofOp.getLoc(),
             SymbolRefAttr::get(builder.getContext(), ofOp.getSymName()),

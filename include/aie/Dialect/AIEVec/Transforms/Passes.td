@@ -14,22 +14,24 @@
 include "mlir/Pass/PassBase.td"
 
 def SplitVectorLoadUpsChains : Pass<"aievec-split-load-ups-chains"> {
-  let summary = "Split vector.load + aievec.ups chains to reduce shuffle operations";
+  let summary = "Split 1024-bit vector loads and stores whose halves are "
+                "widened or narrowed separately";
   let description = [{
-    This pass optimizes chains of vector.load followed by aievec.ups operations
-    for AIE2p targets. Instead of loading a 1024-bit vector and then shuffling
-    it into two halves for separate UPS operations (3 shuffles total), it splits
-    both the load and UPS into two 512-bit halves, requiring only 1 shuffle for
-    concatenation.
+    On AIE2P, splits a 1024-bit vector access into two 512-bit accesses when
+    the value is only used, or produced, one half at a time:
+    - vector.load feeding aievec.ups (v64i16 -> v64i32);
+    - aievec.srs (v64i32 -> v64i16) feeding vector.store;
+    - vector.load of v64bf16 feeding only the LHS of bf16 8x8x8
+      aievec.matmul_aie2p ops, whose lowering widens the LHS in two halves.
+    Each half then gets its own memory access instead of being extracted from
+    the full-width value with shuffles.
   }];
   let constructor = "xilinx::aievec::createSplitVectorLoadUpsChainsPass()";
-  let dependentDialects = [
-    "mlir::vector::VectorDialect",
-    "mlir::arith::ArithDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::affine::AffineDialect",
-    "xilinx::aievec::AIEVecDialect"
-  ];
+  let dependentDialects = ["mlir::vector::VectorDialect",
+                           "mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
+                           "mlir::affine::AffineDialect",
+                           "xilinx::aievec::AIEVecDialect"];
 }
 
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES

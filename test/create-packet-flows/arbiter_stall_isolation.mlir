@@ -1,0 +1,71 @@
+//===- arbiter_stall_isolation.mlir -----------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOWARN --allow-empty
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>/dev/null | FileCheck %s
+
+// Memtile (0,1) emits flows 0..3 and receives flows 4 and 5, filling all six
+// arbiters. Flow 6 only passes through, so it has to share.
+//
+// The grant is held until tlast, so a co-tenant still to leave the switchbox
+// waits behind whatever the holder waits on. Flows 0..3 are all emitted by
+// this tile's DMA and stall when their consumer falls behind, and flows 4 and
+// 5 feed that DMA. But nothing any of them waits on waits on flow 6 in turn:
+// core (0,5) runs on its own and nothing drains shim (0,0) but the host. So
+// flow 6 can share with any of them, and takes the first arbiter.
+
+module {
+  aie.device(npu2) {
+    %s0 = aie.tile(0, 0)
+    %s1 = aie.tile(1, 0)
+    %s2 = aie.tile(2, 0)
+    %s3 = aie.tile(3, 0)
+    %m  = aie.tile(0, 1)
+    %c2 = aie.tile(0, 2)
+    %c3 = aie.tile(0, 3)
+    %c4 = aie.tile(0, 4)
+    %c5 = aie.tile(0, 5)
+
+    // Core-bound, emitted here: each stalls on the core that drains it.
+    aie.packet_flow(0) { aie.packet_source<%m, DMA : 0>  aie.packet_dest<%c2, DMA : 0> }
+    aie.packet_flow(1) { aie.packet_source<%m, DMA : 1>  aie.packet_dest<%c3, DMA : 0> }
+    aie.packet_flow(2) { aie.packet_source<%m, DMA : 2>  aie.packet_dest<%c4, DMA : 0> }
+
+    // Shim-bound, emitted here. Stalls too: the host drains it.
+    aie.packet_flow(3) { aie.packet_source<%m, DMA : 3>  aie.packet_dest<%s1, DMA : 0> }
+
+    // End at this memtile's DMA, so neither holds a grant waiting on anyone.
+    aie.packet_flow(4) { aie.packet_source<%s2, DMA : 0>  aie.packet_dest<%m, DMA : 0> }
+    aie.packet_flow(5) { aie.packet_source<%s3, DMA : 0>  aie.packet_dest<%m, DMA : 1> }
+
+    // Passes through (0,1) on its way south. Placed last, so it has to share.
+    aie.packet_flow(6) { aie.packet_source<%c5, DMA : 0>  aie.packet_dest<%s0, DMA : 0> }
+
+    // The host issues every shim channel up front.
+    aie.runtime_sequence() {
+      %bd = arith.constant 0 : i32
+      aiex.npu.push_queue(0, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(1, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(2, 0, MM2S : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(3, 0, MM2S : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+    }
+  }
+}
+
+// Flow 6 joins flow 5 on arbiter 0.
+
+// NOWARN-NOT: warning
+
+// CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
+// CHECK:         %[[ENDSHERE:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[SHARED:.*]] = aie.amsel<0> (1)
+// CHECK:         aie.masterset(DMA : 1, %[[ENDSHERE]])
+// CHECK:         aie.masterset(South : 0, %[[SHARED]])
+// CHECK:         aie.packet_rules(North : 0) {
+// CHECK-NEXT:      aie.rule(31, 6, %[[SHARED]])
+// CHECK:         aie.packet_rules(South : 2) {
+// CHECK-NEXT:      aie.rule(31, 5, %[[ENDSHERE]])
