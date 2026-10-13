@@ -69,9 +69,10 @@ def router_top_k(*, slice_size=32, top_k=8) -> ExternalFunction:
 
 
 def router_top_k_ref(logits, top_k: int) -> tuple[np.ndarray, np.ndarray]:
-    """``(ids, weights)`` the device's ``router_top_k`` writes for one row,
-    bit for bit: see ``router_top_k.cc``. ``weights`` is ``2 * top_k``
-    wide, a real weight at every even index (``weights[2 * i]`` pairs with
+    """``(ids, weights)`` as the device's ``router_top_k`` writes one row.
+
+    Bit for bit: see ``router_top_k.cc``. ``weights`` is ``2 * top_k`` wide,
+    a real weight at every even index (``weights[2 * i]`` pairs with
     ``ids[i]``) and a zeroed pad word at every odd one.
 
     Exact top-``top_k`` of ``logits`` (ties broken by ascending index, as
