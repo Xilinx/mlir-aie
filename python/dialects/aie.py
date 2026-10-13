@@ -307,11 +307,35 @@ def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
     )
 
 
+@dataclass
+class BdIteration:
+    """Iteration state of a buffer descriptor for aie.dma_bd.
+
+    Lets one BD cover ``size`` sub-buffers over ``size`` executions instead of an
+    N-deep chain. Values are true/element: the base advances by ``stride``
+    elements each execution and wraps after ``size`` executions; ``current`` is
+    the starting step (default 0). The lowering applies the hardware ``-1`` bias
+    and element->word scaling. NOTE: the identically-named ``iteration_*`` family
+    on the runtime-sequence path uses RAW register values instead -- do not copy
+    numbers between them.
+    """
+
+    size: int
+    stride: int
+    current: int = 0
+
+
 @register_attribute_builder("BDIterationAttr")
-def bd_iteration_attr_builder(tup: Tuple[int] | List[int], context=None):
-    assert (isinstance(tup, list) or isinstance(tup, tuple)) and len(tup) == 3
+def bd_iteration_attr_builder(
+    value: BdIteration | Tuple[int] | List[int], context=None
+):
+    if isinstance(value, BdIteration):
+        size, stride, current = value.size, value.stride, value.current
+    else:
+        assert (isinstance(value, list) or isinstance(value, tuple)) and len(value) == 3
+        size, stride, current = value
     return Attribute.parse(
-        f"#aie.bd_iteration<size = {tup[0]}, stride = {tup[1]}, current = {tup[2]}>",
+        f"#aie.bd_iteration<size = {size}, stride = {stride}, current = {current}>",
         context=context,
     )
 
@@ -805,6 +829,21 @@ class object_fifo_link(ObjectFifoLinkOp):
 
 
 # Create a packet flow between source and destination tile ports.
+def _unpack_vias(vias):
+    if not vias:
+        return [], [], [], [], []
+    tiles, ingress_bundles, ingress_channels, egress_bundles, egress_channels = zip(
+        *vias
+    )
+    return (
+        list(tiles),
+        list(ingress_bundles),
+        list(ingress_channels),
+        list(egress_bundles),
+        list(egress_channels),
+    )
+
+
 class packetflow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
 
@@ -817,14 +856,23 @@ class packetflow(PacketFlowOp):
         dests: Union[Dict, List[Dict]],
         keep_pkt_header: bool | None = None,
         priority_route: bool | None = None,
+        vias=None,
         *,
         loc=None,
         ip=None,
     ):
+        via_tiles, in_bundles, in_channels, out_bundles, out_channels = _unpack_vias(
+            vias
+        )
         super().__init__(
             ID=pkt_id,
             keep_pkt_header=keep_pkt_header,
             priority_route=priority_route,
+            vias=via_tiles,
+            via_ingress_bundles=in_bundles,
+            via_ingress_channels=in_channels,
+            via_egress_bundles=out_bundles,
+            via_egress_channels=out_channels,
             loc=loc,
             ip=ip,
         )
@@ -1143,6 +1191,7 @@ def flow(
     dest=None,
     dest_bundle=None,
     dest_channel=None,
+    vias=None,
     *,
     loc=None,
     ip=None,
@@ -1156,6 +1205,7 @@ def flow(
         dest_bundle = WireBundle.DMA
     if dest_channel is None:
         dest_channel = 0
+    via_tiles, in_bundles, in_channels, out_bundles, out_channels = _unpack_vias(vias)
     return FlowOp(
         source,
         source_bundle,
@@ -1163,6 +1213,11 @@ def flow(
         dest,
         dest_bundle,
         dest_channel,
+        vias=via_tiles,
+        via_ingress_bundles=in_bundles,
+        via_ingress_channels=in_channels,
+        via_egress_bundles=out_bundles,
+        via_egress_channels=out_channels,
         loc=loc,
         ip=ip,
     )
