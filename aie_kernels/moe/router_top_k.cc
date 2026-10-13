@@ -24,6 +24,14 @@ float bf16_to_f32(uint32_t bits) {
   return __builtin_bit_cast(float, bits << 16);
 }
 
+// A float cast to bfloat16 rounds in the core's mode, floor unless a design
+// sets it; this rounds to nearest even whatever the mode. weights are finite.
+bfloat16 f32_to_bf16(float value) {
+  const uint32_t bits = __builtin_bit_cast(uint32_t, value);
+  const uint16_t rounded = (bits + 0x7fffu + ((bits >> 16) & 1u)) >> 16;
+  return __builtin_bit_cast(bfloat16, rounded);
+}
+
 } // namespace
 
 extern "C" {
@@ -69,7 +77,7 @@ void router_top_k(const int32_t *summary, int32_t *ids, bfloat16 *weights) {
     sum += w[i];
   }
   for (int32_t i = 0; i < SAMPLE_K_MAX; ++i) {
-    weights[2 * i] = (bfloat16)(float)(w[i] / sum);
+    weights[2 * i] = f32_to_bf16((float)(w[i] / sum));
     weights[2 * i + 1] = (bfloat16)0.0f;
   }
   event1();
