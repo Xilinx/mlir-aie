@@ -20,10 +20,6 @@ extern "C" float __subsf3(float, float);
 
 namespace {
 
-float bf16_to_f32(uint32_t bits) {
-  return __builtin_bit_cast(float, bits << 16);
-}
-
 // A float cast to bfloat16 rounds in the core's mode, floor unless a design
 // sets it; this rounds to nearest even whatever the mode. weights are finite.
 bfloat16 f32_to_bf16(float value) {
@@ -50,10 +46,10 @@ void router_top_k(const int32_t *summary, int32_t *ids, bfloat16 *weights) {
   const int32_t entries = summary[SAMPLE_ENTRIES];
   for (int32_t e = 0; e < entries; ++e) {
     ids[n] = summary[SAMPLE_HEADER + 2 * e];
-    values[n] = bf16_to_f32(sample_bits(summary[SAMPLE_HEADER + 2 * e + 1]));
+    values[n] = sample_value(summary[SAMPLE_HEADER + 2 * e + 1]);
     ++n;
   }
-  const float tau_value = bf16_to_f32(sample_bits(summary[SAMPLE_TAU]));
+  const float tau_value = sample_value(summary[SAMPLE_TAU]);
   const uint32_t *bitmap = (const uint32_t *)(summary + SAMPLE_BITMAP);
   for (int32_t w = 0; n < SAMPLE_K_MAX; ++w) {
     uint32_t bits = bitmap[w];
@@ -68,7 +64,7 @@ void router_top_k(const int32_t *summary, int32_t *ids, bfloat16 *weights) {
   // The row's largest key is always among the top-k, so the summary's own
   // SAMPLE_MAX_KEY is the softmax max -- no float comparison needed, the
   // same reason sample_combine.cc never compares raw floats either.
-  const float max_value = bf16_to_f32(sample_bits(summary[SAMPLE_MAX_KEY]));
+  const float max_value = sample_value(summary[SAMPLE_MAX_KEY]);
   double w[SAMPLE_K_MAX];
   double sum = 0.0;
   for (int32_t i = 0; i < SAMPLE_K_MAX; ++i) {
