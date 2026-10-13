@@ -580,6 +580,9 @@ struct AIELowerScratchpadParametersPass
             &getContext(), ScratchpadParameterKind::Repeat));
         continue;
       }
+      // Step 3b drops the symbol uses, so a lowered parameter keeps its kind.
+      if (!core && !length && !addr && p.getKindAttr())
+        continue;
       if (core && addr) {
         p.emitError("parameter '")
             << name
