@@ -156,6 +156,12 @@ std::optional<unsigned> AIEX::getHostBufferArgIndex(BlockArgument arg) {
   return std::nullopt;
 }
 
+unsigned AIEX::getHostBufferCount(Block &block) {
+  return llvm::count_if(block.getArguments(), [](BlockArgument arg) {
+    return isa<BaseMemRefType>(arg.getType());
+  });
+}
+
 memref::GlobalOp AIEX::getOrCreateDataMemref(
     OpBuilder &builder, AIE::DeviceOp dev, mlir::Location loc,
     ArrayRef<uint32_t> words,

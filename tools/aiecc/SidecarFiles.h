@@ -18,6 +18,7 @@
 #include "IRTransforms.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "llvm/ADT/DenseSet.h"
@@ -115,10 +116,8 @@ getRuntimeSequenceArgCount(xilinx::AIE::DeviceOp dev,
     if (!seqFilter.empty() && seqOp.getSymName() != seqFilter)
       continue;
     if (!seqOp.getBody().empty())
-      return static_cast<int>(llvm::count_if(
-          seqOp.getBody().front().getArguments(), [](mlir::BlockArgument arg) {
-            return llvm::isa<mlir::BaseMemRefType>(arg.getType());
-          }));
+      return static_cast<int>(
+          xilinx::AIEX::getHostBufferCount(seqOp.getBody().front()));
   }
   return std::nullopt;
 }
@@ -305,8 +304,8 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
     int argCount = 3;
     devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
       if (!seq.getBody().empty())
-        argCount =
-            std::max<int>(argCount, seq.getBody().front().getNumArguments());
+        argCount = std::max<int>(
+            argCount, xilinx::AIEX::getHostBufferCount(seq.getBody().front()));
     });
     llvm::json::Array arguments;
     for (int i = 0; i < argCount; ++i)
