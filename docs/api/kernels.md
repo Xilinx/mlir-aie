@@ -231,6 +231,16 @@ the bit-exact host reference.
     options:
       show_root_heading: false
 
+## Mixture of experts
+
+`router_top_k` turns one `sample_select` summary into a router's `top_k`
+expert ids and their softmax weights, deterministically. `router_top_k_ref`
+is the bit-exact host reference.
+
+::: iron.kernels.moe
+    options:
+      show_root_heading: false
+
 ## FastFlowLM Gemma 4
 
 ::: iron.kernels.flm_gemma4
