@@ -21,7 +21,7 @@ from aie.utils.compile.jit.markers import In, Out
 from ml_dtypes import bfloat16
 
 from ._common import KernelContract, Trace, _kernel_source, _make_extern
-from .sample import K_MAX_LIMIT, exp64_ref, order_keys, summary_words
+from .sample import _check_slice, _positive, exp64_ref, order_keys, summary_words
 
 _STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
 
@@ -42,15 +42,8 @@ def router_top_k(*, slice_size=32, top_k=8) -> ExternalFunction:
     unpadded ``weights[i]`` at odd ``i`` is the one place the misalignment
     could come from).
     """
-    if slice_size < top_k:
-        raise ValueError(
-            f"router_top_k: slice_size ({slice_size}) must be at least top_k ({top_k})"
-        )
-    if top_k > K_MAX_LIMIT:
-        raise ValueError(
-            f"router_top_k: top_k {top_k} is above {K_MAX_LIMIT}, the largest "
-            "sample_select summary verified on hardware"
-        )
+    _positive("router_top_k", slice_size=slice_size, top_k=top_k)
+    _check_slice("router_top_k", slice_size, top_k)
     return _make_extern(
         "router_top_k",
         _kernel_source("moe/router_top_k.cc"),
