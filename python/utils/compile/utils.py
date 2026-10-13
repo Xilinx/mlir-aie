@@ -73,9 +73,8 @@ def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[
 # --- Precompiled header for the driver-injected intrinsics -------------------
 #
 # The AIE driver -includes its intrinsics header into every TU; for aie2p that is
-# 67k lines of inline definitions reparsed per kernel, 2.14 s on an empty TU.
-# Parsing it once into a PCH and passing that back with -mno-vitis-headers takes
-# aie_kernels/aie2p/mha.cc from 5.28 s to 2.80 s, object byte-identical.
+# 67k lines of inline definitions reparsed per kernel. Parsing it once into a
+# PCH, passed back with -mno-vitis-headers, builds a byte-identical object.
 #
 # The PCH source is an EMPTY header, so the driver injects into its TU exactly
 # what it would inject into a kernel's. It is built with the kernel's own
