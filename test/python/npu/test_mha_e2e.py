@@ -116,15 +116,20 @@ def _keep(
 
 
 def _softmax_step(scores, keep, m_prev, l_prev):
-    """One key block of the online softmax: (weights, running max, row sum)."""
-    scaled = scores.astype(np.float32) * np.float32(_INV_SCALE)
-    m_new = np.where(keep, scaled, -np.float32(np.inf)).max(axis=1)
-    # The kernel stores the running max in bf16 before exponentiating against it.
-    m_new = np.maximum(m_new.astype(bfloat16).astype(np.float32), m_prev)
-    p = np.exp2(np.where(keep, scaled, m_new[:, None]) - m_new[:, None])
+    """One key block of the online softmax: (weights, running max, row sum).
+
+    The running max is of the unscaled scores, as the kernel keeps it; each
+    product with the bf16 scale is exact in float32.
+    """
+    s = np.float32(_INV_SCALE)
+    scores = scores.astype(np.float32)
+    m_new = np.where(keep, scores, -np.float32(np.inf)).max(axis=1)
+    m_new = np.maximum(m_new, m_prev)
+    top = (m_new * s)[:, None]
+    p = np.exp2(np.where(keep, scores * s, top) - top)
     # The row sum accumulates the stored bf16 weights.
     p = np.where(keep, p.astype(bfloat16).astype(np.float32), np.float32(0))
-    l_new = np.exp2(m_prev - m_new) * l_prev + p.sum(axis=1)
+    l_new = np.exp2(m_prev * s - m_new * s) * l_prev + p.sum(axis=1)
     return p, m_new, l_new
 
 
@@ -136,7 +141,7 @@ def _attention(scores, v, keep, *, inv_scale):
     scaled = scores.astype(np.float32) * np.float32(inv_scale)
     live = keep.any(axis=1)
     peak = np.where(live, np.where(keep, scaled, -np.inf).max(axis=1), 0)
-    p = np.exp2(scaled - peak.astype(bfloat16).astype(np.float32)[:, None])
+    p = np.exp2(scaled - peak[:, None])
     p = np.where(keep, p.astype(bfloat16).astype(np.float32), np.float32(0))
     y = p @ v.astype(np.float32)
     inv_l = np.float32(1.0) / np.where(live, p.sum(axis=1), np.float32(1))
@@ -347,11 +352,8 @@ def test_partial_softmax_matches_masked_attention(
 
     # Carried state, on live rows only; padded rows' state is unspecified.
     live = keeps[0].any(axis=1) | keeps[1].any(axis=1)
-    # The max is never exponentiated, so it gets no relative allowance.
-    m_ulp = 2**-7 * float(np.abs(m[live]).max())
-    np.testing.assert_allclose(
-        got_scale[:_B][live], m[live], rtol=0, atol=_ATOL_ULP * m_ulp
-    )
+    # The max is a score, kept as it came.
+    np.testing.assert_array_equal(got_scale[:_B][live], m[live])
     # A sum of weights shares their envelope. On aie2 it is c * l_prev + sum(P)
     # with c an exp2 too, so it gets two weights' allowance (0.54% measured).
     got_l = got_scale[2 * _B : 3 * _B][live]
@@ -681,6 +683,63 @@ def test_mha_round_matches_masked_attention(
 @pytest.mark.parametrize("accurate_exp2", [False, True])
 def test_mha_round_keeps_its_band(q_block, n_kv, s_eff, shape, accurate_exp2):
     _check_round(q_block, n_kv, s_eff, s_eff, accurate_exp2, **shape)
+
+
+# A bf16 score whose product with _INV_SCALE, 45695, is 127 above its own bf16
+# rounding: past 2^15 bf16 steps by 256. A running max kept as that rounding
+# made every key tied at the top weigh 2^127, and two of them overflow.
+_PAST_2_15 = 252928.0
+
+
+@pytest.mark.parametrize(
+    "b_q,b_kv", [(_B, _B), (32, 32)], ids=["row_groups", "per_row"]
+)
+@pytest.mark.parametrize("accurate_exp2", [False, True])
+def test_mha_round_keeps_scores_past_2_15_finite(b_q, b_kv, accurate_exp2):
+    """Each row's top keys tie at a scaled score past 2^15, the rest far below."""
+    scaled = np.float32(_PAST_2_15) * np.float32(_INV_SCALE)
+    assert scaled - np.float32(bfloat16(scaled)) == 127
+    q_block, s_eff = 1, 2 * b_q
+    n_kv = s_eff // b_kv
+    rng = np.random.default_rng(20261013)
+    top = rng.random((b_q, n_kv * b_kv)) < 0.5
+    top[:, 0] = True
+    scores = np.where(top, _PAST_2_15, -_PAST_2_15).astype(bfloat16)
+    v = _dyadic(rng, (n_kv * b_kv, _B), 0.25, mag=2)
+    keep = np.concatenate(
+        [_keep(q_block, kv, s_eff, s_eff, b_q, b_kv) for kv in range(n_kv)], axis=1
+    )
+    s_host = np.concatenate(
+        [scores[:, b * b_kv : (b + 1) * b_kv].reshape(-1) for b in range(n_kv)]
+    )
+    v_host = np.concatenate(
+        [
+            TensorAccessPattern.full((b_kv, _B))
+            .tile((8, 8))
+            .gather(v[b * b_kv : (b + 1) * b_kv])
+            for b in range(n_kv)
+        ]
+    )
+
+    o_t = iron.zeros((b_q * _B,), dtype=bfloat16)
+    mha_round(
+        iron.tensor(s_host, dtype=bfloat16),
+        iron.tensor(v_host, dtype=bfloat16),
+        o_t,
+        q_block=q_block,
+        n_kv=n_kv,
+        s_q_eff=s_eff,
+        s_kv_eff=s_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        accurate_exp2=accurate_exp2,
+    )
+    got = _unblock(o_t.numpy(), b_q, _B).astype(np.float32)
+
+    # Each row is the mean of V over its kept top keys.
+    ref = _attention(scores, v, keep, inv_scale=_INV_SCALE).astype(np.float32)
+    ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
+    np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
 
 
 @jit

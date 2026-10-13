@@ -1267,10 +1267,12 @@ def mha_softmax(
 ) -> ExternalFunction:
     """One block of ``mha.cc``'s online softmax, ``partial_softmax``.
 
-    Writes the block's unnormalized weights ``P = exp2(A * s - m)``, with
-    ``s`` the bf16 ``scale`` and ``m`` each query row's running maximum, and
-    updates the running state ``scale_buffer``: ``[m, m, l, exp2(m_prev -
-    m)]``, ``dim_m`` float32 rows each. The state is zeroed before every
+    Writes the block's unnormalized weights ``P = exp2(A * s - m * s)``,
+    with ``s`` the bf16 ``scale`` and ``m`` each query row's running maximum
+    of ``A``, unscaled, and updates the running state ``scale_buffer``:
+    ``[m, m, l, exp2((m_prev - m) * s)]``, ``dim_m`` float32 rows each. Both
+    products are of bf16s, so exact in float32, and a row's largest weight is
+    exactly 1. The state is zeroed before every
     call, so each call is a first key block against a running maximum of 0;
     the carry across blocks is ``test_mha_e2e.py``'s. The kernel masks by
     overwriting ``A``'s masked entries in place.
@@ -1391,9 +1393,9 @@ def mha_softmax_ref(
     """Numpy reference for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: ``(P, scale_buffer)``.
 
     True ``exp2`` rather than the device's interpolant, from a zeroed
-    running state. ``m`` is rounded to bf16 before ``P`` uses it, as the
-    kernel stores it. A padded row keeps ``m = l = 0``; a skipped or wholly
-    padded block leaves the state untouched.
+    running state. ``m`` is the unscaled maximum, as the kernel stores it. A
+    padded row keeps ``m = l = 0``; a skipped or wholly padded block leaves
+    the state untouched.
     """
     kv, q = (int(i) for i in np.asarray(idx).ravel())
     rows, cols = np.indices((dim_m, dim_n))
@@ -1407,11 +1409,11 @@ def mha_softmax_ref(
         return np.zeros((len(a), dim_m * dim_n)), np.zeros(
             (len(a), 4 * dim_m), np.float32
         )
-    scaled = a.astype(np.float32).reshape(-1, dim_m, dim_n) * np.float32(scale)
-    m = np.where(keep, scaled, -np.inf).max(axis=2)
-    m = np.maximum(m.astype(bfloat16).astype(np.float32), 0)
-    p = np.exp2(np.where(keep, scaled - m[..., None], -np.inf))
-    state = np.concatenate([m, m, p.sum(axis=2), np.exp2(-m)], axis=1)
+    scores = a.astype(np.float32).reshape(-1, dim_m, dim_n)
+    m = np.maximum(np.where(keep, scores, -np.inf).max(axis=2), 0)
+    s = np.float32(scale)
+    p = np.exp2(np.where(keep, scores * s - (m * s)[..., None], -np.inf))
+    state = np.concatenate([m, m, p.sum(axis=2), np.exp2(-m * s)], axis=1)
     return p.reshape(len(p), -1), state
 
 
