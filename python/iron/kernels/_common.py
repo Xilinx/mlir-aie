@@ -125,30 +125,6 @@ class Build:
         """The ``AIE_TUNED_*`` branch compiled: ``arch``, or ``"portable"``."""
         return "portable" if self.portable else self.arch
 
-    @classmethod
-    def of(cls, fn: ExternalFunction, arch: str | None = None) -> "Build":
-        """Return the build of ``fn`` that ran on ``arch``, by default the bound device's.
-
-        The arch is the device's, not the one ``fn``'s factory saw: a kernel
-        returned before any device was bound describes the kernel a design
-        built for the device it then ran on.
-
-        Args:
-            fn: The kernel whose output is judged; its compile flags say
-                whether it was built portable.
-            arch: The architecture the output came from.
-
-        Raises:
-            ValueError: When ``arch`` is None and no device is bound.
-        """
-        arch = arch or _bound_arch()
-        if arch is None:
-            raise ValueError(
-                f"kernel '{fn.name}' is judged by the build that produced its "
-                "output; bind the device it ran on, or pass arch="
-            )
-        return cls(arch, "-DAIE_KERNELS_PORTABLE" in fn.compile_flags)
-
 
 @dataclass(frozen=True)
 class KernelContract:

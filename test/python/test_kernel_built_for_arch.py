@@ -289,7 +289,7 @@ def test_the_portable_flag_comes_from_the_kernel_not_the_environment(
     monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
     assert tuned.contract_for().tolerance is _NORM_F32_AIE2
     assert epilogue.contract_for().tolerance is _EPILOGUE_LUT_TOLERANCE
-    assert Build.of(kernels.layer_norm_f32(cols=1024)) == Build("aie2", True)
+    assert kernels.layer_norm_f32(cols=1024).build_for() == Build("aie2", True)
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")

@@ -629,6 +629,31 @@ class ExternalFunction(Kernel):
                 "iron.set_current_device()"
             )
 
+    def build_for(self, arch: str | None = None):
+        """Return the ``Build`` of this kernel that ran on ``arch``.
+
+        The arch is the device's, by default the bound one's, not the one this
+        kernel's factory saw: a kernel returned before any device was bound
+        describes the kernel a design built for the device it then ran on. The
+        compile flags say whether it was built portable.
+
+        Args:
+            arch: The architecture the output came from.
+
+        Raises:
+            ValueError: When ``arch`` is None and no device is bound.
+        """
+        # kernels._common imports this module.
+        from .kernels._common import Build, _bound_arch
+
+        arch = arch or _bound_arch()
+        if arch is None:
+            raise ValueError(
+                f"kernel '{self.name}' is judged by the build that produced its "
+                "output; bind the device it ran on, or pass arch="
+            )
+        return Build(arch, "-DAIE_KERNELS_PORTABLE" in self.compile_flags)
+
     def _require_contract(self):
         if self.contract is None:
             raise ValueError(
@@ -652,11 +677,8 @@ class ExternalFunction(Kernel):
             ValueError: When the kernel has no contract, or its contract is
                 per build and neither ``arch`` nor a bound device names one.
         """
-        # kernels._common imports this module.
-        from .kernels._common import Build
-
         c = self._require_contract()
-        return c.for_build(Build.of(self, arch)) if c.per_build else c
+        return c.for_build(self.build_for(arch)) if c.per_build else c
 
     def param_values(self, inputs: list) -> list:
         """Pick the ``Param`` arrays out of one logical input list.
