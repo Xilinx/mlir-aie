@@ -78,29 +78,7 @@ By default the `--aie-place-tiles` pass uses a sequential placer that assigns ti
 aiecc --placer=sa_placer --sa-seed=3 ...
 ```
 
-The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See [color_detect](../../programming_examples/vision/color_detect/) for an example that wires this up as `make use_sa_placer=1`.
-
-### Nightly SA placer checks
-
-Two nightly checks track the SA placer, and their results are in the [components view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=components) of the Nightly Kernel Checks dashboard:
-
-* **Seed sweep** ([`utils/component_checks/sa_placer.py`](../../utils/component_checks/sa_placer.py), no hardware): `aie-opt` places two fixtures, the 4-core design from `test/place-tiles/sa_placer/test_sa_effort.mlir` and MobileNet before placement, with seeds 1 to 20 at full effort. It records how many seeds failed to place, the SA placer's final cost (mean and max), and the CPU time and peak memory each placement took.
-* **Hardware** ([`utils/component_checks/sa_placer_hw.py`](../../utils/component_checks/sa_placer_hw.py), NPU2): MobileNet is placed with seeds 3, 2 and 7, then compiled, run and verified at batch 1, 4, 16 and 64, every image checked. For each seed and batch it records whether the run passed, the compile time, and, from the minimum over 20 launches, the NPU time per image and the host's end-to-end time per image. Above batch 1 it also records the streaming time, `(T(N) − T(1)) / (N − 1)`: what one more image in a launch costs, with the launch's fixed cost taken out. For each seed it records the placement (a digest of the placed tiles and its SA cost).
-
-To reproduce one seed of the sweep:
-
-```bash
-aie-opt '--aie-place-tiles=placer=sa_placer sa-seed=N sa-effort=1.0' \
-    --mlir-pass-statistics utils/component_checks/fixtures/mobilenet.mlir
-```
-
-and of the hardware check, from `programming_examples/ml`:
-
-```bash
-python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 1.0 --batch B
-```
-
-To rerun a whole check, run its script with `--out perf.json --meta meta.json` (the sweep also needs `--aie-opt "$(which aie-opt)"`; the hardware check takes `--seeds` and `--batches`). It prints a table with one row per seed, or per seed and batch.
+The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See [color_detect](../../programming_examples/vision/color_detect/) for an example that wires this up as `make use_sa_placer=1`. The SA placer's nightly checks are on the [maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=placement).
 
 ## Other Tile Types
 

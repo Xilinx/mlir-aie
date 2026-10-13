@@ -75,3 +75,11 @@ func.func @invalidElementTypeMulElem(%arg0 : vector<32xi8>, %arg1 : vector<32xi8
   %t11 = aievec.mul_elem %arg0, %arg1 : vector<32xi8>, vector<32xi8>, vector<32xi64>
   return %t11 : vector<32xi64>
 }
+
+// -----
+
+func.func @invalidMulElem64LanesInt(%arg0 : vector<64xi16>, %arg1 : vector<64xi16>) -> vector<64xi32> {
+  // expected-error @+1 {{64 lanes are supported only for bf16 operands with an f32 result}}
+  %0 = aievec.mul_elem %arg0, %arg1 : vector<64xi16>, vector<64xi16>, vector<64xi32>
+  return %0 : vector<64xi32>
+}

@@ -81,8 +81,10 @@ jobs:
 
       # The page and the publisher are copied out before switching branches,
       # since neither is on gh-pages; results/ is untracked and survives the
-      # switch. An NPU directory that still holds github-action-benchmark's
-      # data.js is migrated first (once), and an NPU whose leg wrote nothing
+      # switch. The page is the maintainer dashboard, at dashboard/; the
+      # kernel checks' old address redirects there, keeping a link's #view.
+      # An NPU directory that still holds github-action-benchmark's data.js
+      # is migrated first (once), and an NPU whose leg wrote nothing
       # keeps its previous files. `backfill` is idempotent: it dates and
       # labels every record of a listed run, and drops the numbers of any run
       # charted in a mode other than turbo (the default-mode history
@@ -92,8 +94,10 @@ jobs:
           cp utils/kernel_checks/index.html "$RUNNER_TEMP/index.html"
           cp utils/kernel_checks/publish.py "$RUNNER_TEMP/publish.py"
           git switch -q gh-pages
-          mkdir -p kernel-checks
-          cp "$RUNNER_TEMP/index.html" kernel-checks/index.html
+          mkdir -p dashboard
+          cp "$RUNNER_TEMP/index.html" dashboard/index.html
+          python3 "$RUNNER_TEMP/publish.py" redirect --out kernel-checks \
+            --to "../dashboard/#view=night"
           for npu in npu1 npu2; do
             dir="kernel-checks/$npu"
             python3 "$RUNNER_TEMP/publish.py" migrate --out "$dir"
@@ -111,7 +115,7 @@ jobs:
                 --runs "$RUNNER_TEMP/runs.jsonl" --keep-pmode turbo
             fi
           done
-          git add -A kernel-checks
+          git add -A kernel-checks dashboard
           git diff --cached --quiet || git -c user.name=kernel-checks \
             -c user.email=github@users.noreply.github.com \
             commit -q -m "Publish kernel checks for ${GITHUB_SHA:0:10}"

@@ -4,16 +4,13 @@
 # RUN: %pytest %s
 """Only declared whole-call trace regions may become benchmark cycle metrics."""
 
-from types import SimpleNamespace
-
 import numpy as np
 import pytest
 from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
-from aie.iron.device import NPU2Col1
 from aie.iron.kernels import KernelContract, Trace
 from aie.utils.compile.jit import InOut
-from aie.utils.hostruntime import set_current_device
+from aie.utils.trace import TraceConfig
 
 
 def _kernel(name, contract, arg_types=()):
@@ -22,11 +19,6 @@ def _kernel(name, contract, arg_types=()):
     )
     kernel.contract = contract
     return kernel
-
-
-@pytest.fixture
-def fn():
-    return _kernel("profiled", KernelContract(roles=(), trace=Trace.whole_call()))
 
 
 def _run(fn, tmp_path, calls=1):
@@ -70,15 +62,11 @@ def test_a_traced_initializer_is_one_more_interval_per_call():
     )
 
 
-def test_the_library_mm_is_zeroed_then_timed_each_call():
+def test_the_library_mm_is_zeroed_then_timed_each_call(npu2_device):
     # zero's markers bracket its call, so every mm call emits two intervals;
     # set_rounding, the eltwise setup, emits none.
-    set_current_device(NPU2Col1())
-    try:
-        assert kd.traced_intervals(kernels.mm(), calls=4) == 8
-        assert kd.traced_intervals(kernels.add(), calls=4) == 4
-    finally:
-        set_current_device(None)
+    assert kd.traced_intervals(kernels.mm(), calls=4) == 8
+    assert kd.traced_intervals(kernels.add(), calls=4) == 4
 
 
 def test_a_partial_initializer_cannot_be_split_off(tmp_path):
@@ -134,39 +122,36 @@ def test_more_flush_intervals_than_pairs_is_an_error():
 
 
 @pytest.mark.parametrize(
-    "intervals,expected",
-    [
-        ([17, 19], kd.CallCycles(kernel=(17, 19))),
-        ([17], kd.CallCycles(kernel=(17,), truncated=True)),
-        ([], RuntimeError),
-        # Each call emitted two pairs, longer than a flush pair.
-        ([170, 190, 170, 190], RuntimeError),
-    ],
+    "intervals,kernel,truncated",
+    [([17, 19], (17, 19), False), ([17], (17,), True), ([], (), True)],
 )
-def test_cycle_protocol_requires_one_complete_pair_per_call(
-    monkeypatch, tmp_path, fn, intervals, expected
-):
-    cfg = SimpleNamespace(
-        physical_mlir_path="physical.mlir", trace_to_json=lambda *args: None
+def test_each_call_takes_one_pair(intervals, kernel, truncated):
+    assert kd.split_intervals(intervals, calls=2, per_call=1, flush=kd.TRACE_FLUSH) == (
+        (),
+        [kernel],
+        truncated,
     )
-    monkeypatch.setattr(kd, "TraceConfig", lambda **kwargs: cfg)
-    monkeypatch.setattr(kd, "upload", lambda *args, **kwargs: ([], object()))
-    monkeypatch.setattr(kd, "get_cycles_summary", lambda path: [(0, *intervals)])
 
-    def run():
-        return kd.cycles_per_call(
-            lambda *args, **kwargs: None,
-            [],
-            1,
-            int,
-            fn=fn,
-            trace_size=1024,
-            workdir=tmp_path,
-            calls=2,
+
+def test_two_pairs_per_call_are_not_flushes():
+    with pytest.raises(RuntimeError, match="does not declare"):
+        kd.split_intervals(
+            [170, 190, 170, 190], calls=2, per_call=1, flush=kd.TRACE_FLUSH
         )
 
-    if expected is RuntimeError:
-        with pytest.raises(RuntimeError, match="trace"):
-            run()
-    else:
-        assert run() == expected
+
+def test_an_inputless_kernel_waits_for_the_trace(tmp_path, npu2_device):
+    # Without the barrier zero's first calls run before the sequence starts
+    # the trace, and the flush pairs are read as calls.
+    design = kd.design(kernels.zero, tile_size=64, calls=4)
+    traced = design.as_mlir(
+        None,
+        trace_config=TraceConfig(
+            trace_size=1024, trace_file=str(tmp_path / "trace.txt")
+        ),
+    )
+    untraced = design.as_mlir(None)
+    sequence = traced[traced.index("aie.runtime_sequence") :]
+    assert sequence.index("aie.trace.start_config") < sequence.index("aiex.set_lock")
+    assert "aie.use_lock" in traced
+    assert "aie.lock" not in untraced

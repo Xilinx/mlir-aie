@@ -102,6 +102,22 @@ def test_jit_default_does_not_hide_unknown_keyword(
     runtime.load_and_run.assert_not_called()
 
 
+def test_jit_unknown_keyword_does_not_run_static_generator(
+    monkeypatch, runtime, npu2_device
+):
+    @jit
+    def design(a: In):
+        pytest.fail("runtime keyword validation must precede generation")
+
+    kernel = NPUKernel()
+    monkeypatch.setattr(design, "_compile_and_build_kernel", lambda *args: kernel)
+
+    with pytest.raises(TypeError, match="unexpected keyword.*'n_tile'"):
+        design(object(), n_tile=6)
+
+    runtime.load_and_run.assert_not_called()
+
+
 @pytest.mark.parametrize("kwargs,expected", [({}, 3), ({"n_tiles": 6}, 6)])
 def test_jit_dispatch_default_and_override(
     monkeypatch, runtime, npu2_device, kwargs, expected

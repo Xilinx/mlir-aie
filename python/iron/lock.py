@@ -22,10 +22,10 @@ from ..dialects.aie import (
 from ..dialects.aiex import set_lock_value as _set_lock_value
 from ..helpers.sourceloc import SourceSite
 from .device import Tile
-from .resolvable import NotResolvedError, Resolvable
+from .resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 
 
-class Lock(Resolvable):
+class Lock(PerDeviceConfigurationResolvable):
     """A named hardware lock on a specific tile."""
 
     def __init__(
@@ -66,6 +66,9 @@ class Lock(Resolvable):
         if self._op is None:
             raise NotResolvedError()
         return self._op
+
+    def tiles(self) -> list[Tile]:
+        return [self._tile]
 
     def resolve(
         self,

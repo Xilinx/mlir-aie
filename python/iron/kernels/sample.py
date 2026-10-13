@@ -54,7 +54,7 @@ SELECT_PASSES = 2
 # int32 words before a summary's (index, key) entries (sample.h).
 SUMMARY_HEADER = 8
 # The largest k_max: sample_combine's stack holds a table of k_max weights.
-# 128 is the largest verified on hardware; see sample_combine's stack_bytes.
+# 128 is the largest verified on hardware.
 K_MAX_LIMIT = 128
 
 _STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
@@ -81,8 +81,8 @@ def _check_slice(owner: str, slice_size: int, k_max: int) -> None:
         raise ValueError(f"{owner}: a slice must hold at least k_max logits")
     if k_max > K_MAX_LIMIT:
         raise ValueError(
-            f"{owner}: k_max {k_max} is above {K_MAX_LIMIT}, the most "
-            "sample_combine's 4096-byte stack holds"
+            f"{owner}: k_max {k_max} is above {K_MAX_LIMIT}, the largest "
+            "verified on hardware"
         )
     if slice_size >= 1 << 24:
         raise ValueError(f"{owner}: slice_size must be below 2**24")
@@ -168,12 +168,6 @@ def sample_combine(*, columns=4, slice_size=32064, k_max=64) -> ExternalFunction
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, Out, Out),
-            # The weight table (12 bytes a k_max entry) and the 256-bin
-            # histogram below it: 2240 bytes at k_max 64, 3008 at
-            # K_MAX_LIMIT. The soft-float builtins carry no stack sizes for
-            # aiecc to count; the deepest call that reaches them, 320 bytes
-            # with their 64, stays above the histogram's 1024.
-            stack_bytes=4096,
         ),
     )
 

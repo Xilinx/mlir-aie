@@ -152,6 +152,10 @@ The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of t
 export XRT_CONTEXT_CACHE_SIZE=1
 ```
 
+The instruction streams it has loaded are cached apart from the contexts, up to
+`XRT_INSTS_CACHE_SIZE` of them (256 by default). They hold no hardware context,
+and a stream is released with the context it was loaded into.
+
 ## IRON HRX Runtime Cache Size
 
 `HRX_EXE_CACHE_SIZE` bounds the loaded-executable cache in `CachedHRXRuntime`.

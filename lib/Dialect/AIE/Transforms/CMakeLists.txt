@@ -16,10 +16,12 @@ add_mlir_dialect_library(
   AIEAssignLockIDs.cpp
   AIEFindFlows.cpp
   AIEStreamDependencyAnalysis.cpp
+  AIESplitFlowVias.cpp
   AIEPathFinder.cpp
   AIERoutingDiagnostics.cpp
   AIECreatePathFindFlows.cpp
   AIECoreToStandard.cpp
+  AIECoreIntRangeNarrowing.cpp
   AIECanonicalizeDevice.cpp
   AIELocalizeLocks.cpp
   AIENormalizeDmaBdDims.cpp
@@ -54,6 +56,8 @@ add_mlir_dialect_library(
   MLIRAIEPassIncGen
 
   LINK_LIBS PUBLIC
+  MLIRAnalysis
+  MLIRArithTransforms
   MLIRIR
   MLIRPass
   MLIRSupport
