@@ -144,6 +144,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "38360165361",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38360165361",
+   "date": "2026-10-13T07:02:03+00:00",
+   "commit": {
+    "id": "e04ad858a0a9e3dfece25089044ae6a44e262683",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e04ad858a0a9e3dfece25089044ae6a44e262683",
+    "message": "build(deps): bump torch in /python (#3900)",
+    "timestamp": "2026-10-12T22:36:06Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "e04ad858a0",
+    "fixtures": "3aa7139253a0"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
