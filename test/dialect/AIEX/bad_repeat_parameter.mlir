@@ -107,3 +107,24 @@ aie.device(npu2) {
     aiex.dma_start_task(%task) {repeat_parameter = @n}
   }
 }
+
+// -----
+
+// A start of a task picked at run time cannot know which task bounds it.
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence(%arg0 : memref<64xi32>, %c : i1) {
+    %a = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64)
+      aie.end
+    } {repeat_count = 3 : i32}
+    %b = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64)
+      aie.end
+    } {repeat_count = 7 : i32}
+    %task = arith.select %c, %a, %b : index
+    // expected-error @+1 {{has a repeat_parameter, so it must start the task where it is configured: the task's repeat count bounds the parameter}}
+    aiex.dma_start_task(%task) {repeat_parameter = @n}
+  }
+}
