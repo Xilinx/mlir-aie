@@ -1271,11 +1271,11 @@ def mha_softmax(
     with ``s`` the bf16 ``scale`` and ``m`` each query row's running maximum
     of ``A``, unscaled, and updates the running state ``scale_buffer``:
     ``[m, m, l, exp2((m_prev - m) * s)]``, ``dim_m`` float32 rows each. Both
-    products are of bf16s, so exact in float32, and a row's largest weight is
-    exactly 1. The state is zeroed before every
-    call, so each call is a first key block against a running maximum of 0;
-    the carry across blocks is ``test_mha_e2e.py``'s. The kernel masks by
-    overwriting ``A``'s masked entries in place.
+    products are of bf16s, so exact in float32, and the key that sets a row's
+    running maximum takes an exponent of exactly 0. The state is zeroed
+    before every call, so each call is a first key block against a running
+    maximum of 0; the carry across blocks is ``test_mha_e2e.py``'s. The
+    kernel masks by overwriting ``A``'s masked entries in place.
 
     Which block it is stays a runtime operand, as in the kernel: ``idx`` is
     ``(key block, query block)``, a block no query row keeps a key of is
