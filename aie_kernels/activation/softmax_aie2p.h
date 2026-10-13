@@ -134,10 +134,9 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
 // blocks.  scale_buffer layout, indexed by row: [0*num_rows + r] = prev max
 // m_{i-1}; [1*num_rows + r] = new max m_i (written here), both unscaled
 // scores; [3*num_rows + r] = this block's exp-sum l_i (written here).
-// `scale` is the log2-domain factor (1/sqrt(d) folded with log2e) broadcast in
-// place of the plain log2e, and positive, so the largest score is the largest
-// scaled one.  The row is read W lanes at a time, so vector_size is a multiple
-// of W.
+// `scale` is the positive log2-domain factor (1/sqrt(d) folded with log2e)
+// broadcast in place of the plain log2e.  The row is read W lanes at a time,
+// so vector_size is a multiple of W.
 template <unsigned W = SM_VEC_LEN>
 void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
                                 bfloat16 *restrict output_vector,
@@ -164,10 +163,8 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
   log2e_vec = aie::broadcast<bfloat16, W>((bfloat16)scale);
 
   // First pass - the block's largest score, reduced once at the end: a
-  // scalar float compare is a libcall. The running max is kept unscaled, where
-  // a bf16 max of bf16 scores is exact. Scaled and rounded to bf16 it can sit
-  // half an ulp (128 from 2^15 on) below the product the second pass subtracts
-  // it from, and 2^128 overflows.
+  // scalar float compare is a libcall. It stays unscaled; see
+  // partial_softmax_rows in ../linalg/mha.cc.
   aie::vector<bfloat16, W> max_accum_vec =
       aie::broadcast<bfloat16, W>(std::numeric_limits<bfloat16>::lowest());
   AIE_LOOP_MIN_ITERATION_COUNT(1)
@@ -182,9 +179,7 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
 
   max_val_vec = aie::broadcast<bfloat16, W>(max_val);
 
-  // Second pass - unnormalized exponentials, accumulating the block sum. The
-  // max is scaled by the product its element takes, so that element's
-  // argument is exactly 0 (bf16 products are exact in the accumulator).
+  // Second pass - unnormalized exponentials, accumulating the block sum.
   AIE_LOOP_MIN_ITERATION_COUNT(1)
   for (int i = 0; i < elem_iters; i++) {
     input_bf16 = *it_exp_in++;

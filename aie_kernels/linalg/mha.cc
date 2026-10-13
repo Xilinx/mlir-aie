@@ -331,6 +331,8 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
   };
   // The maxima are of the unscaled scores, exact in bf16, and are scaled in
   // the exponentials' own products, so a row's largest argument is exactly 0.
+  // A max scaled and rounded to bf16 can sit half an ulp (128 from 2^15 on)
+  // below its element's product, and 2^128 overflows.
   alignas(32) bfloat16 m_rows[DIM_M];
   const bfloat16 *__restrict a = A;
   AIE_LOOP_MIN_ITERATION_COUNT(2)
