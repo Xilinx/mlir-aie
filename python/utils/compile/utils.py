@@ -8,6 +8,7 @@
 import concurrent.futures
 import contextlib
 import filecmp
+import functools
 import hashlib
 import json
 import logging
@@ -68,6 +69,7 @@ def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[
         str(out),
     ]
 
+
 # --- Precompiled header for the driver-injected intrinsics -------------------
 #
 # The AIE driver -includes its intrinsics header into every TU; for aie2p that is
@@ -76,15 +78,17 @@ def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[
 # aie_kernels/aie2p/mha.cc from 5.28 s to 2.80 s, object byte-identical.
 #
 # The PCH source is an EMPTY header, so the driver injects into its TU exactly
-# what it would inject into a kernel's.  The key covers the compiler and the
-# flags fixed here, never a caller's -I/-D, which keeps it to one PCH per target;
-# a conflicting define is a hard clang error, and the retry below turns that back
-# into an ordinary compile.
+# what it would inject into a kernel's. It is built with the kernel's own
+# command, every -I and -D included, so clang reads from it what the kernel's
+# compile would read; the key is that command and the compiler.
 #
 # Set AIE_KERNEL_PCH=0 to disable.
-_PCH_ENABLED = os.environ.get("AIE_KERNEL_PCH", "1") != "0"
+_PCH_SOURCE = "<pch-source>"
+_PCH_OUTPUT = "<pch-output>"
+_SEARCH_PATH_FLAGS = ("-I", "-isystem", "-iquote", "-idirafter")
 
 
+@functools.lru_cache(maxsize=None)
 def _compiler_identity(cxx: str) -> str:
     """Key on the compiler build, not on where it sits.
 
@@ -103,17 +107,18 @@ def _compiler_identity(cxx: str) -> str:
     ).strip()
 
 
-def _kernel_pch(cxx: str, pch_flags: list[str]) -> str | None:
-    """Path to a PCH built with ``pch_flags``, building it on first use.
+def _kernel_pch(pch_cmd: list[str]) -> str | None:
+    """Path to a PCH built by ``pch_cmd``, building it on first use.
 
+    ``pch_cmd`` names its source and output ``_PCH_SOURCE`` and ``_PCH_OUTPUT``.
     Fails OPEN: every error returns None and the caller compiles normally.
     Written under a temporary name and renamed into place, so a concurrent kernel
     compile can never read a half-written PCH.
     """
-    ident = _compiler_identity(cxx)
+    ident = _compiler_identity(pch_cmd[0])
     if not ident:
         return None
-    key = hashlib.sha256("\0".join([ident, *pch_flags]).encode()).hexdigest()[:32]
+    key = hashlib.sha256("\0".join([ident, *pch_cmd]).encode()).hexdigest()[:32]
     try:
         # Deferred: aie.utils.compile.__init__ imports this module, so
         # NPU_CACHE_HOME cannot be imported at module scope.
@@ -141,16 +146,16 @@ def _kernel_pch(cxx: str, pch_flags: list[str]) -> str | None:
             with file_lock(str(cache / f"{key}.lock"), timeout_seconds=300):
                 if pch.exists():
                     return str(pch)
-                return _build_kernel_pch(cxx, pch_flags, cache, key, pch)
+                return _build_kernel_pch(pch_cmd, cache, key, pch)
         except (TimeoutError, OSError):
             # A PCH is an optimisation: never let the lock be why a build stalls.
-            return _build_kernel_pch(cxx, pch_flags, cache, key, pch)
+            return _build_kernel_pch(pch_cmd, cache, key, pch)
 
 
 _PCH_BUILD_LOCK = threading.Lock()
 
 
-def _build_kernel_pch(cxx, pch_flags, cache, key, pch):
+def _build_kernel_pch(pch_cmd, cache, key, pch):
     tmp_path = None
     try:
         empty = cache / f"{key}.h"
@@ -160,7 +165,11 @@ def _build_kernel_pch(cxx, pch_flags, cache, key, pch):
         ) as tmp:
             tmp_path = tmp.name
         ret = subprocess.run(
-            [cxx, "-x", "c++-header", str(empty), "-o", tmp_path, *pch_flags],
+            [
+                {_PCH_SOURCE: str(empty), _PCH_OUTPUT: tmp_path}.get(arg, arg)
+                for arg in pch_cmd
+            ],
+            cwd=cache,
             capture_output=True,
             check=False,
         )
@@ -492,10 +501,13 @@ def cxx_core_compile_command(
             f"-I{config.cxx_header_path()}",
         ]
     else:
-        # The flags this function fixes for every kernel, in one place: they go
-        # into the compile AND into the PCH key, and a second copy would let the
-        # two disagree about what a header was parsed with.
-        peano_flags = [
+        cmd = [
+            config.peano_cxx_path(),
+            source_path,
+            *emit_flags,
+            "-o",
+            f"{output_path}",
+            f"-I{config.cxx_header_path()}",
             "-std=c++20",
             "-Wno-parentheses",
             "-Wno-attributes",
@@ -507,6 +519,11 @@ def cxx_core_compile_command(
             "-Werror=undef",
             "-O2",
             "-DNDEBUG",
+            # Have the compiler report what it actually read, the way ninja and
+            # ccache learn a translation unit's real inputs.
+            "-MD",
+            "-MF",
+            f"{output_path}.d",
             # Pre-trip aie_api's aie_adf.hpp include guard so stock upstream
             # aie_api never pulls in <adf.h> (Vitis-only, absent from Peano).
             # No mlir-aie kernel uses adf:: symbols, so this only elides dead
@@ -521,30 +538,9 @@ def cxx_core_compile_command(
             # the same stack accounting. -ffunction-sections and
             # -fdata-sections give each symbol its own section, which the
             # attribution in StackSizeAnalysis.h needs.
-            peano_flags += [
-                "-ffunction-sections",
-                "-fdata-sections",
-                "-fstack-size-section",
-            ]
-
-        cmd = [
-            config.peano_cxx_path(),
-            source_path,
-            *emit_flags,
-            "-o",
-            f"{output_path}",
-            f"-I{config.cxx_header_path()}",
-            # Have the compiler report what it actually read, the way ninja and
-            # ccache learn a translation unit's real inputs.
-            "-MD",
-            "-MF",
-            f"{output_path}.d",
-            *peano_flags,
-        ]
-        if _PCH_ENABLED:
-            pch = _kernel_pch(cmd[0], peano_flags)
-            if pch is not None:
-                cmd[1:1] = ["-mno-vitis-headers", "-include-pch", pch]
+            cmd.extend(
+                ["-ffunction-sections", "-fdata-sections", "-fstack-size-section"]
+            )
 
     # Add include directories
     if include_dirs:
@@ -632,28 +628,49 @@ def compile_cxx_core_function(
         inline=inline,
     )
 
-    logger.debug("Compiling with: %s", " ".join(cmd))
-    ret = subprocess.run(
-        cmd,
-        cwd=cwd,
-        check=False,
-        capture_output=True,
+    pch = None
+    if not use_chess and not inline and os.environ.get("AIE_KERNEL_PCH", "1") != "0":
+        pch_cmd = cxx_core_compile_command(
+            _PCH_SOURCE,
+            target_arch,
+            _PCH_OUTPUT,
+            include_dirs=include_dirs,
+            compile_args=compile_args,
+        )
+        i = pch_cmd.index("-MD")
+        del pch_cmd[i : i + 3]
+        pch_cmd[1:1] = ["-x", "c++-header"]
+        search_paths = [str(d) for d in include_dirs or ()]
+        args = list(compile_args or ())
+        for arg, value in zip(args, [*args[1:], ""]):
+            for flag in _SEARCH_PATH_FLAGS:
+                if arg == flag:
+                    search_paths.append(value)
+                elif arg.startswith(flag):
+                    search_paths.append(arg[len(flag) :])
+        # The PCH builds in its own directory, so a relative search path would
+        # name another one there; a caller's -include would be read twice.
+        if all(os.path.isabs(d) for d in search_paths) and not any(
+            arg.startswith(("-include", "-imacros")) for arg in args
+        ):
+            pch = _kernel_pch(pch_cmd)
+
+    run = (
+        cmd
+        if pch is None
+        else [cmd[0], "-mno-vitis-headers", "-include-pch", pch, *cmd[1:]]
     )
-    if (
-        ret.returncode != 0
-        and "-include-pch" in cmd
-        # Both flags are injected together below; without the marker the
-        # -include-pch came from compile_args and is not ours to strip.
-        and "-mno-vitis-headers" in cmd
-    ):
-        # The PCH is an optimisation and must never be the reason a build fails
-        # or the reason an error message is confusing.  Redo the compile without
-        # it and report THAT, so what surfaces is the kernel's own diagnostic.
-        i = cmd.index("-include-pch")
-        plain = [a for j, a in enumerate(cmd) if j not in (i, i + 1)]
-        plain.remove("-mno-vitis-headers")
-        logger.debug("Retrying without the PCH: %s", " ".join(plain))
-        ret = subprocess.run(plain, cwd=cwd, check=False, capture_output=True)
+    logger.debug("Compiling with: %s", " ".join(run))
+    ret = subprocess.run(run, cwd=cwd, check=False, capture_output=True)
+    if ret.returncode != 0 and pch is not None:
+        # The key cannot see the headers' content, and clang refuses a PCH
+        # whose inputs changed since it was built. The plain compile tells
+        # the two apart, and its diagnostic is the kernel's own.
+        logger.debug("Retrying without the PCH: %s", " ".join(cmd))
+        ret = subprocess.run(cmd, cwd=cwd, check=False, capture_output=True)
+        if ret.returncode == 0:
+            with contextlib.suppress(OSError):
+                os.unlink(pch)
     if ret.stdout:
         logger.debug("%s", ret.stdout.decode())
     if ret.returncode != 0:

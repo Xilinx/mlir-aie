@@ -144,6 +144,21 @@ from another checkout to compare the two.
 MLIR_AIE_KERNEL_SOURCES=/path/to/mlir-aie python my_script.py
 ```
 
+## Kernel Precompiled Header (`AIE_KERNEL_PCH`)
+
+Peano adds its intrinsics header to every kernel compile, and parsing it is a
+large share of a small kernel's compile time. A Peano kernel compile therefore
+reads that header from a precompiled header (PCH) under
+`$NPU_CACHE_HOME/pch/`, built once for each compiler and compile command. The
+object is the one a plain compile builds. A compile that fails against the PCH
+is run again without it, and a PCH the compiler refuses is rebuilt by the next
+compile. A command with a relative include directory, or with an `-include` of
+its own, compiles without a PCH. Set `AIE_KERNEL_PCH=0` to compile without one.
+
+```bash
+AIE_KERNEL_PCH=0 python my_script.py
+```
+
 ## IRON XRT Runtime Cache Size
 
 The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of this cache can be configured using the `XRT_CONTEXT_CACHE_SIZE` environment variable. This is particularly useful in CI environments where multiple tests run in parallel and might exhaust the available NPU contexts.
