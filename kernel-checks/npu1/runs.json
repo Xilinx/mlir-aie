@@ -2483,6 +2483,52 @@
     "offered": 89,
     "checked": 86
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "38356281267",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38356281267",
+   "date": "2026-10-13T06:21:55+00:00",
+   "commit": {
+    "id": "e04ad858a0a9e3dfece25089044ae6a44e262683",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e04ad858a0a9e3dfece25089044ae6a44e262683",
+    "message": "build(deps): bump torch in /python (#3900)",
+    "timestamp": "2026-10-12T22:36:06Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "e04ad858a0",
+    "peano": "22.0.0+94b320c0",
+    "kernels": "2e65e623d94e",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie1",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 765,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 495,
+    "failed": 0,
+    "timed": 196,
+    "timing_failed": 0,
+    "untimed": 299,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 89,
+    "checked": 86
+   }
   }
  ]
 }
