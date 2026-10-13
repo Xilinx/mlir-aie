@@ -1,0 +1,36 @@
+//===- html-viewer.test ----------------------------------------*- ShTest -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// REQUIRES: aie-visualize
+// RUN: FileCheck %s < %S/../../build/bin/aie-visualize.html
+// RUN: aie-visualize --emit-dot --topology-only %S/requires-vias.mlir -o %t.dot
+// RUN: dot -Tsvg %t.dot -o %t-topology.svg
+
+// CHECK: <meta name="aie-visualize-svg" content="">
+// CHECK: <meta name="aie-visualize-title" content="">
+// CHECK: aside { min-height: 0; overflow-y: auto
+// CHECK: svg.hide-detail-buffers g.detail-buffers
+// CHECK: svg.hide-detail-arbitration g.detail-arbitration
+// CHECK: svg.hide-detail-packet-ids g.detail-packet-ids text
+// CHECK: svg g.flow { opacity: 1
+// CHECK: svg g.flow.hover-active { opacity: 1
+// CHECK: <button id="open" type="button">Open SVG</button>
+// CHECK: <aside aria-label="Visualization controls">
+// CHECK: const selectedFlows = new Set()
+// CHECK: const stack = (kind, matched)
+// CHECK: stack("node", true)
+// CHECK: stack("edge", false)
+// CHECK: stack("edge", true)
+// CHECK: const detailSettings = [
+// CHECK: ["buffers", "Buffers"]
+// CHECK: ["arbitration", "Arbitration"]
+// CHECK: svg.classList.toggle(`hide-detail-${name}`
+// CHECK: row.innerHTML = `<input type="checkbox"
+// CHECK: hoveredFlows = flowClasses(element)
+// CHECK: if (!drag.moved && drag.flows.length) toggleFlows(drag.flows)
+// CHECK: listen(viewport, "click"
+// CHECK: fetch(url, {cache: "no-store"})
