@@ -10,9 +10,10 @@
 expert ids and their softmax weights, deterministically: where
 ``sample_combine`` draws one token stochastically from every candidate at or
 above its threshold, routing instead takes exactly the ``top_k`` candidates
-the summary already holds (the entries strictly above tau, then ties at tau
-in index order, matching ``torch.topk``'s tie-break) and a softmax over their
-values alone.
+the summary already holds (the entries strictly above tau in index order,
+then the lowest-index ties at tau, not ranked by value) and a softmax over
+their values alone. That softmax is the weighting of routers that normalize
+over the selected experts (Granite-MoE, Mixtral, ``norm_topk_prob=True``).
 """
 
 import numpy as np
@@ -68,9 +69,11 @@ def router_top_k_ref(logits, top_k: int) -> tuple[np.ndarray, np.ndarray]:
     a real weight at every even index (``weights[2 * i]`` pairs with
     ``ids[i]``) and a zeroed pad word at every odd one.
 
-    Exact top-``top_k`` of ``logits`` (ties broken by ascending index, as
-    ``torch.topk`` does), then a softmax over the selected values: a
-    soft-float IEEE float32 subtraction against the row's max (what
+    Exact top-``top_k`` of ``logits``, the lowest indices winning a tie at
+    the ``top_k``-th value. ``ids`` holds the entries above that value in
+    index order, then the tied ones in index order, not ranked by value as
+    ``torch.topk(sorted=True)`` is. Then a softmax over the selected values:
+    a soft-float IEEE float32 subtraction against the row's max (what
     ``__subsf3`` gives the device, where Peano's native ``-`` would not),
     ``exp64`` (``sample.py``'s bit-exact float64 exponential, the same
     primitive ``sample_combine`` uses) and a plain float64 sum and divide,

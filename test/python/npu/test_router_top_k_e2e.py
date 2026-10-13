@@ -16,7 +16,7 @@ several rows, so the select core's state is also checked to reset itself
 between them.
 
 The rows are chosen for the places a ranking can go wrong: ties at the k-th
-value (broken by index, as torch.topk does), a whole row of one value,
+value (the lowest index wins), a whole row of one value,
 signed zeros, rows that are mostly -inf, and the largest value last.
 """
 
