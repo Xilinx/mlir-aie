@@ -363,10 +363,9 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
 // external_buffers.json patch fed to `aiebu-asm -t aie2txn -j` (or the
 // in-memory `aiebu_assembler_get_elf` patch argument) when assembling a
 // combined control-packet ELF. Describes the runtime control-packet buffer:
-// `xrt_id` is the control buffer's argument slot (the runtime sequence's
-// pre-lowering argument count, since ctrl-packet-to-DMA appends the ctrl
-// buffer as the next argument) and `size_in_bytes` is the control-packet
-// binary size.
+// `xrt_id` is the control buffer's host buffer slot (the runtime sequence's
+// host buffer count, since ctrl-packet-to-DMA appends the ctrl buffer as the
+// next argument) and `size_in_bytes` is the control-packet binary size.
 inline llvm::json::Value makeCtrlpktExtBufJson(xilinx::AIE::DeviceOp devOp,
                                                uint64_t ctrlPktSize,
                                                llvm::StringRef seqFilter) {
