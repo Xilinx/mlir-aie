@@ -69,6 +69,11 @@ _DISPATCH_HEADER = (
     | (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCACQUIRE_FENCE_SCOPE)
     | (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCRELEASE_FENCE_SCOPE)
 )
+# Arguments to hsa_executable_create_alt / hsa_executable_symbol_get_info.
+HSA_PROFILE_FULL = 1
+HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT = 0
+HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT = 22
+
 # Block indefinitely (UINT64_MAX timeout) in hsa_signal_wait_scacquire.
 _HSA_WAIT_FOREVER = 0xFFFFFFFFFFFFFFFF
 
@@ -83,6 +88,9 @@ hsa_agent_t = ctypes.c_uint64
 hsa_amd_memory_pool_t = ctypes.c_uint64
 hsa_signal_t = ctypes.c_int64  # signal handle is a 64-bit value
 hsa_amd_vmem_alloc_handle_t = ctypes.c_uint64
+hsa_code_object_reader_t = ctypes.c_uint64
+hsa_executable_t = ctypes.c_uint64
+hsa_executable_symbol_t = ctypes.c_uint64
 
 
 class HSAError(RuntimeError):
@@ -119,14 +127,14 @@ class HsaAieKernelDispatchPacket(ctypes.Structure):
         ("reserved1", ctypes.c_uint8),
         ("completion_signal", hsa_signal_t),
         ("reserved2", ctypes.c_uint32),
-        ("insts_addr_low", ctypes.c_uint32),
-        ("insts_addr_high", ctypes.c_uint32),
+        ("kernel_object_low", ctypes.c_uint32),
+        ("kernel_object_high", ctypes.c_uint32),
         ("num_kernargs", ctypes.c_uint16),
         ("reserved3", ctypes.c_uint16),
         ("kernarg_address", ctypes.c_void_p),
-        ("insts_size", ctypes.c_uint64),
-        ("pdi_addr", ctypes.c_void_p),
         ("reserved4", ctypes.c_uint64),
+        ("reserved5", ctypes.c_void_p),
+        ("reserved6", ctypes.c_uint64),
     ]
 
 
@@ -245,17 +253,6 @@ class _HsaLib:
             [hsa_amd_memory_pool_t, ctypes.c_int, ctypes.c_void_p],
         )
         decl(
-            "hsa_amd_memory_pool_allocate",
-            ctypes.c_int,
-            [
-                hsa_amd_memory_pool_t,
-                ctypes.c_size_t,
-                ctypes.c_uint32,
-                ctypes.POINTER(ctypes.c_void_p),
-            ],
-        )
-        decl("hsa_amd_memory_pool_free", ctypes.c_int, [ctypes.c_void_p])
-        decl(
             "hsa_amd_vmem_handle_create",
             ctypes.c_int,
             [
@@ -305,6 +302,63 @@ class _HsaLib:
                 ctypes.c_size_t,
             ],
         )
+
+        decl(
+            "hsa_code_object_reader_create_from_memory",
+            ctypes.c_int,
+            [
+                ctypes.c_void_p,
+                ctypes.c_size_t,
+                ctypes.POINTER(hsa_code_object_reader_t),
+            ],
+        )
+        decl(
+            "hsa_code_object_reader_destroy",
+            ctypes.c_int,
+            [hsa_code_object_reader_t],
+        )
+        decl(
+            "hsa_executable_create_alt",
+            ctypes.c_int,
+            [
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.POINTER(hsa_executable_t),
+            ],
+        )
+        decl(
+            "hsa_executable_load_agent_code_object",
+            ctypes.c_int,
+            [
+                hsa_executable_t,
+                hsa_agent_t,
+                hsa_code_object_reader_t,
+                ctypes.c_char_p,
+                ctypes.c_void_p,
+            ],
+        )
+        decl(
+            "hsa_executable_freeze",
+            ctypes.c_int,
+            [hsa_executable_t, ctypes.c_char_p],
+        )
+        decl(
+            "hsa_executable_get_symbol_by_name",
+            ctypes.c_int,
+            [
+                hsa_executable_t,
+                ctypes.c_char_p,
+                ctypes.POINTER(hsa_agent_t),
+                ctypes.POINTER(hsa_executable_symbol_t),
+            ],
+        )
+        decl(
+            "hsa_executable_symbol_get_info",
+            ctypes.c_int,
+            [hsa_executable_symbol_t, ctypes.c_int, ctypes.c_void_p],
+        )
+        decl("hsa_executable_destroy", ctypes.c_int, [hsa_executable_t])
 
         decl(
             "hsa_queue_create",

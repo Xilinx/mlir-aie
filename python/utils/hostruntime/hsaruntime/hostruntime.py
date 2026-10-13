@@ -5,12 +5,17 @@
 #
 """HSA/ROCR implementation of the HostRuntime.
 
-Consumes the aiecc artifacts ``insts.bin`` + ``main.pdi`` (the xclbin is
-ignored on this path) and dispatches them as AIE AQL packets:
+Packs the aiecc artifacts into an hsaco (HSA code object), loads it through
+ROCR's code-object loader, and dispatches its kernel object as AIE AQL packets:
 
-    insts.bin + main.pdi -> HSA device heap (hsa_amd_memory_pool_allocate)
-    I/O tensors          -> pooled kernarg slot of 2*N uint64 (VAs then sizes)
+    xclbin + insts.bin, or full ELF -> hsaco -> HSA executable -> kernel object
+    I/O tensors -> pooled kernarg slot of 2*N uint64 (VAs then sizes)
     fill AQL packet(s), ring doorbell, wait on completion signal
+
+An xclbin contributes its PDI and partition column count, and the kernel is a
+PDI plus instruction sequence. A full ELF (aie2p only) carries its own PDIs and
+control code. A DispatchTime[T] design has no static instruction sequence: each
+distinct per-call sequence is packed and loaded as its own executable.
 
 A single ``run`` issues one packet; ``run_chain`` issues N packets that share
 one completion signal on the in-order AIE queue (producer -> consumer ordering
@@ -18,13 +23,15 @@ via the queue order plus the packets' system-scope fences).
 """
 
 import atexit
-import ctypes
 import logging
 import os
+import tempfile
 import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from aie.compiler.hsaco import pack
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 from ._bindings import HSA_SIGNAL_CONDITION_EQ, HSA_WAIT_STATE_BLOCKED, lib
@@ -36,13 +43,12 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-_TRACE_UNSUPPORTED_MSG = (
-    "Trace capture is not supported on the HSA backend. Re-run without a "
-    "trace_config, or use the XRT backend (NPU_RUNTIME=xrt) for trace-enabled "
-    "designs."
-)
-
 _DEFAULT_EXE_CACHE_SIZE = 32
+
+# Executables a DispatchTime[T] handle keeps loaded, one per distinct per-call
+# instruction sequence, so that alternating between a few scalar values does not
+# repack and reload on every call.
+_MAX_CACHED_STREAMS = 16
 
 
 def _exe_cache_size() -> int:
@@ -67,14 +73,31 @@ def _exe_cache_size() -> int:
         return _DEFAULT_EXE_CACHE_SIZE
 
 
-class HSAKernelHandle(KernelHandle):
-    """Handle for a loaded HSA kernel (PDI + insts in region memory)."""
+def _pack_hsaco(arch, kernels):
+    """Return the bytes of an hsaco holding ``kernels`` in its ``arch`` section."""
+    section = pack.build_section(arch, kernels)
+    with tempfile.TemporaryDirectory() as scratch:
+        path = os.path.join(scratch, "kernel.hsaco")
+        pack.ensure_hsaco(path)
+        pack.inject(path, arch, section)
+        return Path(path).read_bytes()
 
-    def __init__(self, pdi_ptr, insts_ptr, insts_size):
-        super().__init__(needs_dispatch_insts=insts_ptr is None)
-        self.pdi_ptr = pdi_ptr
-        self.insts_ptr = insts_ptr
-        self.insts_size = insts_size
+
+class HSAKernelHandle(KernelHandle):
+    """Handle for a loaded HSA kernel.
+
+    ``executable`` is the loaded `HSAExecutable` dispatched by ``run``. A
+    DispatchTime[T] design has none: ``stream_kernel`` instead holds what its
+    per-call instruction sequences are packed with (name, PDI, column count),
+    and ``streams`` the executables already loaded for them, keyed by the
+    sequence's bytes, least recently used first.
+    """
+
+    def __init__(self, executable, stream_kernel=None):
+        super().__init__(needs_dispatch_insts=executable is None)
+        self.executable = executable
+        self.stream_kernel = stream_kernel
+        self.streams = OrderedDict()
 
 
 class HSAKernelResult(KernelResult):
@@ -91,85 +114,132 @@ class HSAKernelResult(KernelResult):
 class HSAHostRuntime(HostRuntime):
     """Uncached HostRuntime that dispatches IRON designs through HSA/ROCR.
 
-    Every `load` copies the design's insts + PDI into fresh HSA region
-    allocations and never reuses them across calls -- the analogue of
-    `XRTHostRuntime` / `HRXHostRuntime`. Allocations are tracked
-    so `cleanup` frees them; `CachedHSAHostRuntime` layers an LRU
-    cache on top for the common single-process case.
+    Every `load` packs the design into an hsaco and loads it as a fresh HSA
+    executable, never reusing one across calls -- the analogue of
+    `XRTHostRuntime` / `HRXHostRuntime`. Executables are tracked so
+    `cleanup` destroys them; `CachedHSAHostRuntime` layers an LRU cache on
+    top for the common single-process case.
     """
 
     _tensor_class = HSATensor
 
     def __init__(self):
         self._ctx = HSAContext.get()
-        # Handles created by load(), retained so cleanup() frees their region
-        # allocations (this uncached runtime never reuses one across loads).
+        # Handles created by load(), retained so cleanup() destroys their
+        # executables (this uncached runtime never reuses one across loads).
         self._handles = []
-        self._pending_dispatch_insts = []
+        # (executable, signal) for every executable a failed dispatch may still
+        # be running, and the executables their owner gave up meanwhile; see
+        # _release and _reclaim_pending.
+        self._in_flight = []
+        self._released = []
         self._pending_cleanup_registered = False
 
-    def _find_pdi(self, xclbin_path: Path) -> Path:
-        kernel_dir = xclbin_path.parent
-        main_pdi = kernel_dir / "main.pdi"
-        if main_pdi.is_file():
-            return main_pdi
-        pdis = sorted(kernel_dir.glob("*.pdi"))
-        if pdis:
-            return pdis[0]
-        raise HostRuntimeError(
-            f"No PDI (main.pdi) found in {kernel_dir}. The HSA backend needs a "
-            f"PDI; ensure aiecc emitted one alongside the xclbin."
-        )
-
     def _resolve_kernel(self, npu_kernel):
-        """Resolve + validate an npu_kernel to (insts_path, pdi_path, name)."""
+        """Resolve + validate an npu_kernel to (source_path, insts_path, name, full_elf).
+
+        ``source_path`` is the full ELF when ``full_elf``, and the xclbin
+        otherwise. ``insts_path`` is None for a full ELF, and for a
+        DispatchTime[T] design, which has no static instruction sequence.
+        """
         self.check_device_consistency()
+        kernel_name = npu_kernel.kernel_name or "MLIR_AIE"
+        if npu_kernel.elf_path is not None:
+            return Path(npu_kernel.elf_path).resolve(), None, kernel_name, True
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = self._resolve_insts_path(npu_kernel)
-        kernel_name = npu_kernel.kernel_name or "MLIR_AIE"
-        pdi_path = self._find_pdi(xclbin_path)
-        return insts_path, pdi_path, kernel_name
+        return xclbin_path, insts_path, kernel_name, False
 
-    def _copy_to_device(self, data):
-        ptr = self._ctx.alloc_dev(len(data))
+    def _load_hsaco(self, kernel):
+        """Pack ``kernel`` into an hsaco of its own and load it, returning the executable."""
         try:
-            ctypes.memmove(ptr, data, len(data))
-        except BaseException:
-            self._ctx.free_dev(ptr)
-            raise
-        return ptr
+            hsaco = _pack_hsaco(self._ctx.arch, [kernel])
+        except (OSError, ValueError, RuntimeError) as e:
+            raise HostRuntimeError(
+                f"could not pack kernel {kernel['name']!r} into an hsaco: {e}"
+            ) from e
+        return self._ctx.load_executable(hsaco, kernel["name"])
 
-    def _build_handle(self, insts_path, pdi_path) -> HSAKernelHandle:
-        """Copy static instructions (if any) and PDI into device allocations."""
-        pdi_bytes = pdi_path.read_bytes()
+    def _build_handle(
+        self, source_path, insts_path, kernel_name, full_elf
+    ) -> HSAKernelHandle:
+        """Pack the kernel at ``source_path`` and load it (see `_resolve_kernel`)."""
+        if full_elf:
+            try:
+                (kernel,) = pack.kernels_from_full_elf(
+                    str(source_path), names=[kernel_name]
+                )
+            except (OSError, ValueError) as e:
+                raise HostRuntimeError(
+                    f"could not read full ELF {source_path}: {e}"
+                ) from e
+            return HSAKernelHandle(self._load_hsaco(kernel))
+
+        try:
+            pdi, num_cols = pack.partition_from_xclbin(str(source_path))
+        except (ValueError, RuntimeError) as e:
+            raise HostRuntimeError(
+                f"could not read the PDI out of {source_path}: {e}"
+            ) from e
+        if num_cols is None:
+            raise HostRuntimeError(
+                f"{source_path} does not record its partition's column count"
+            )
+        kernel = {"name": kernel_name, "pdi": pdi, "num_cols": num_cols}
         if insts_path is None:
-            pdi_ptr = self._copy_to_device(pdi_bytes)
-            return HSAKernelHandle(pdi_ptr, None, 0)
+            return HSAKernelHandle(None, stream_kernel=kernel)
 
         insts_bytes = insts_path.read_bytes()
         if len(insts_bytes) % 4 != 0:
             raise HostRuntimeError("insts.bin length is not a multiple of 4 bytes")
+        return HSAKernelHandle(self._load_hsaco({**kernel, "insts": insts_bytes}))
 
-        insts_ptr = self._copy_to_device(insts_bytes)
-        try:
-            pdi_ptr = self._copy_to_device(pdi_bytes)
-        except BaseException:
-            self._ctx.free_dev(insts_ptr)
-            raise
-        return HSAKernelHandle(pdi_ptr, insts_ptr, len(insts_bytes))
+    def _stream_executable(self, handle, dispatch_insts):
+        """Return the executable for one call of a DispatchTime[T] design.
+
+        Loaded on first use of an instruction sequence and kept in
+        ``handle.streams``, evicting the least recently used one.
+        """
+        key = dispatch_insts.tobytes()
+        executable = handle.streams.get(key)
+        if executable is not None:
+            handle.streams.move_to_end(key)
+            return executable
+        executable = self._load_hsaco({**handle.stream_kernel, "insts": key})
+        while len(handle.streams) >= _MAX_CACHED_STREAMS:
+            _, old = handle.streams.popitem(last=False)
+            self._release(old)
+        handle.streams[key] = executable
+        return executable
 
     def _free_handle(self, handle) -> None:
-        if any(h is handle for _, _, h in self._pending_dispatch_insts):
-            # Cache eviction must not release the PDI of an unfinished dispatch.
-            if handle not in self._handles:
-                self._handles.append(handle)
-            return
-        self._ctx.free_dev(handle.pdi_ptr)
-        if handle.insts_ptr is not None:
-            self._ctx.free_dev(handle.insts_ptr)
+        if handle.executable is not None:
+            self._release(handle.executable)
+        while handle.streams:
+            self._release(handle.streams.popitem()[1])
 
-    def _reclaim_dispatch_insts(self):
-        """Reclaim failed submissions only after observing their completion.
+    def _track_in_flight(self, executables, signal):
+        """Record that a failed dispatch on ``signal`` may still run ``executables``."""
+        self._in_flight.extend((executable, signal) for executable in executables)
+        if not self._pending_cleanup_registered:
+            atexit.register(self._reclaim_at_exit)
+            self._pending_cleanup_registered = True
+
+    def _release(self, executable):
+        """Destroy an executable its owner no longer needs.
+
+        Every owner -- a handle, its stream cache, the design cache -- gives up
+        executables through here, so none is destroyed while a failed dispatch
+        may still be running it: such an executable waits in ``_released``
+        until `_reclaim_pending` sees that dispatch complete.
+        """
+        if any(e is executable for e, _ in self._in_flight):
+            self._released.append(executable)
+        else:
+            executable.destroy()
+
+    def _reclaim_pending(self):
+        """Forget failed dispatches once they have completed, destroying what they held.
 
         A drained queue (or destroying/inactivating it) is not proof that a
         dispatched kernel has stopped using its operands. Each retained signal
@@ -181,17 +251,18 @@ class HSAHostRuntime(HostRuntime):
         Discarded signals are deliberately leaked by the context, so they remain
         valid to inspect here. Do not destroy or reuse them.
         """
-        for entry in self._pending_dispatch_insts[:]:
-            ptr, signal, _ = entry
-            if (
-                lib.hsa_signal_wait_scacquire(
-                    signal, HSA_SIGNAL_CONDITION_EQ, 0, 0, HSA_WAIT_STATE_BLOCKED
-                )
-                == 0
-            ):
-                self._ctx.free_dev(ptr)
-                self._pending_dispatch_insts.remove(entry)
-        if not self._pending_dispatch_insts and self._pending_cleanup_registered:
+        self._in_flight = [
+            (executable, signal)
+            for executable, signal in self._in_flight
+            if lib.hsa_signal_wait_scacquire(
+                signal, HSA_SIGNAL_CONDITION_EQ, 0, 0, HSA_WAIT_STATE_BLOCKED
+            )
+            != 0
+        ]
+        released, self._released = self._released, []
+        for executable in released:
+            self._release(executable)
+        if not self._in_flight and self._pending_cleanup_registered:
             atexit.unregister(self._reclaim_at_exit)
             self._pending_cleanup_registered = False
 
@@ -204,8 +275,7 @@ class HSAHostRuntime(HostRuntime):
         self.cleanup()
 
     def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
-        insts_path, pdi_path, _ = self._resolve_kernel(npu_kernel)
-        handle = self._build_handle(insts_path, pdi_path)
+        handle = self._build_handle(*self._resolve_kernel(npu_kernel))
         self._handles.append(handle)
         return handle
 
@@ -285,39 +355,31 @@ class HSAHostRuntime(HostRuntime):
         _release_dispatch note below for the one path where cleanup is
         intentionally skipped rather than run unconditionally).
 
-        ``dispatch_insts`` (np.ndarray | None): Per-call instruction words,
-        copied into a fresh device buffer retained until completion. Failed
-        submissions are rechecked on subsequent dispatches and during cleanup.
+        ``dispatch_insts`` (np.ndarray | None): Per-call instruction words. Each
+        distinct sequence is packed and loaded as its own executable, cached on
+        the handle.
+
+        A failed submission the device may still be running keeps its executable
+        alive until completion is observed, on a later dispatch or during
+        cleanup, even if its owner is freed or evicted meanwhile.
         """
         assert isinstance(kernel_handle, HSAKernelHandle)
-        if trace_config is not None:
-            raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
         self._require_dispatch_insts(kernel_handle, dispatch_insts)
         self.check_device_consistency()
-        self._reclaim_dispatch_insts()
+        self._reclaim_pending()
 
         kept = self._validate_args(args)
+        if dispatch_insts is not None:
+            executable = self._stream_executable(kernel_handle, dispatch_insts)
+        else:
+            executable = kernel_handle.executable
         failed = False
         overflows = []
-        dispatch_ptr = None
         signal = self._ctx.arm_signal(1)
         try:
-            if dispatch_insts is not None:
-                nbytes = dispatch_insts.nbytes
-                dispatch_ptr = self._ctx.alloc_dev(nbytes)
-                ctypes.memmove(dispatch_ptr, dispatch_insts.ctypes.data, nbytes)
-                insts_ptr, insts_size = dispatch_ptr, nbytes
-            else:
-                insts_ptr = kernel_handle.insts_ptr
-                insts_size = kernel_handle.insts_size
-
             start = time.perf_counter_ns()
             overflows = self._ctx.dispatch(
-                kernel_handle.pdi_ptr,
-                insts_ptr,
-                insts_size,
-                self._arg_pairs(kept),
-                signal,
+                executable.kernel_object, self._arg_pairs(kept), signal
             )
             self._ctx.wait(signal)
             stop = time.perf_counter_ns()
@@ -325,22 +387,12 @@ class HSAHostRuntime(HostRuntime):
             failed = True
             raise
         finally:
-            # Snapshot before _release_dispatch replaces the signal and clears
-            # its publication flag. Unpublished failures never exposed these
-            # words to the device; published failures may still be reading them.
-            in_flight = failed and self._ctx.signal_in_flight()
-            if dispatch_ptr is not None and in_flight:
-                self._pending_dispatch_insts.append(
-                    (dispatch_ptr, signal, kernel_handle)
-                )
-                if not self._pending_cleanup_registered:
-                    atexit.register(self._reclaim_at_exit)
-                    self._pending_cleanup_registered = True
-            try:
-                self._release_dispatch(failed, overflows)
-            finally:
-                if dispatch_ptr is not None and not in_flight:
-                    self._ctx.free_dev(dispatch_ptr)
+            # Checked before _release_dispatch replaces the signal and clears
+            # its publication flag. Unpublished failures never reached the
+            # device; published ones may still be running this executable.
+            if failed and self._ctx.signal_in_flight():
+                self._track_in_flight([executable], signal)
+            self._release_dispatch(failed, overflows)
 
         self._mark_device_resident(kept)
         return HSAKernelResult(stop - start, success=True)
@@ -354,7 +406,8 @@ class HSAHostRuntime(HostRuntime):
         single wait covers the whole chain. Ordering (producer -> consumer) is
         guaranteed by the in-order queue plus the system-scope acquire/release
         fences in every packet header. Chains longer than the queue capacity
-        auto-batch (wrap-around).
+        auto-batch (wrap-around). ROCR rejects a batch that mixes PDI-plus-
+        instruction kernels with full-ELF ones.
 
         Kernargs are written into the context's fixed slot pool as each packet's
         ring slot is reserved -- never all up front, since a chain longer than
@@ -364,7 +417,7 @@ class HSAHostRuntime(HostRuntime):
         HSA always raises on failure via the context's ``_check``.
         """
         self.check_device_consistency()
-        self._reclaim_dispatch_insts()
+        self._reclaim_pending()
         runs = list(runs)
         if not runs:
             return HSAKernelResult(0, success=True)
@@ -381,12 +434,7 @@ class HSAHostRuntime(HostRuntime):
             kept = self._validate_args(args)
             tensors.extend(kept)
             items.append(
-                (
-                    kernel_handle.pdi_ptr,
-                    kernel_handle.insts_ptr,
-                    kernel_handle.insts_size,
-                    self._arg_pairs(kept),
-                )
+                (kernel_handle.executable.kernel_object, self._arg_pairs(kept))
             )
 
         failed = False
@@ -401,22 +449,12 @@ class HSAHostRuntime(HostRuntime):
             failed = True
             raise
         finally:
+            if failed and self._ctx.signal_in_flight():
+                self._track_in_flight([h.executable for h, _ in runs], signal)
             self._release_dispatch(failed, overflows)
 
         self._mark_device_resident(tensors)
         return HSAKernelResult(stop - start, success=True)
-
-    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
-        """Reject trace up front, then defer to the base load/run pipeline.
-
-        The base ``load_and_run`` mutates ``run_args`` (appends a trace buffer
-        via ``prepare_args_for_trace``) *before* calling ``run``. HSA cannot
-        honor trace, so fail here -- before touching the args -- keeping the
-        caller's ``run_args`` untouched on the error path (mirrors HRX).
-        """
-        if getattr(npu_kernel, "trace_config", None) is not None:
-            raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
-        return super().load_and_run(npu_kernel, run_args, dispatch_scalars, **kwargs)
 
     def device(self) -> "Device":
         from aie.iron.device import from_name
@@ -424,10 +462,8 @@ class HSAHostRuntime(HostRuntime):
         return from_name(self._ctx.device_gen, n_cols=None)
 
     def cleanup(self) -> None:
-        """Free the region allocations this runtime created."""
-        self._reclaim_dispatch_insts()
-        if self._pending_dispatch_insts:
-            return
+        """Destroy the executables this runtime loaded."""
+        self._reclaim_pending()
         handles = getattr(self, "_handles", None)
         if not handles:
             return
@@ -438,10 +474,10 @@ class HSAHostRuntime(HostRuntime):
 class CachedHSAHostRuntime(HSAHostRuntime):
     """HSA runtime that caches loaded kernels (analogue of CachedXRTRuntime).
 
-    Reuses a handle's region allocations across `load` calls for the same
-    artifacts, evicting the least-recently-used entry once ``HSA_EXE_CACHE_SIZE``
+    Reuses a handle's executable across `load` calls for the same artifacts,
+    evicting the least-recently-used entry once ``HSA_EXE_CACHE_SIZE``
     (default 32) is exceeded. Registers an ``atexit`` cleanup so cached
-    allocations are freed at interpreter shutdown.
+    executables are destroyed at interpreter shutdown.
     """
 
     def __init__(self):
@@ -451,22 +487,24 @@ class CachedHSAHostRuntime(HSAHostRuntime):
         atexit.register(self.cleanup)
 
     def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
-        insts_path, pdi_path, kernel_name = self._resolve_kernel(npu_kernel)
-        # With no insts.bin, the key rests on the PDI alone, so repeated
-        # calls share one allocation. run() builds its own words per call
-        # whatever this cache does.
+        source_path, insts_path, kernel_name, full_elf = self._resolve_kernel(
+            npu_kernel
+        )
+        # With no insts.bin, the key rests on the xclbin or full ELF alone, so
+        # repeated calls share one handle -- and a DispatchTime[T] design its
+        # cached per-call executables.
         key = (
+            str(source_path),
+            source_path.stat().st_mtime,
             str(insts_path) if insts_path else None,
             insts_path.stat().st_mtime if insts_path else None,
-            str(pdi_path),
-            pdi_path.stat().st_mtime,
             kernel_name,
         )
         if key in self._exe_cache:
             self._exe_cache.move_to_end(key)
             return self._exe_cache[key]
 
-        handle = self._build_handle(insts_path, pdi_path)
+        handle = self._build_handle(source_path, insts_path, kernel_name, full_elf)
         if self._cache_size <= 0:
             # Caching disabled. Track the handle so cleanup still frees it,
             # rather than never evicting (which is what a bare `>= size` test
@@ -481,9 +519,7 @@ class CachedHSAHostRuntime(HSAHostRuntime):
 
     def cleanup(self) -> None:
         """Free cached handles, then any tracked by the base runtime."""
-        self._reclaim_dispatch_insts()
-        if self._pending_dispatch_insts:
-            return
+        self._reclaim_pending()
         cache = getattr(self, "_exe_cache", None)
         if cache:
             while cache:
