@@ -1130,8 +1130,9 @@ def mha(
             no window.
         f32_scores: Keep the ``QK^T`` scores in float32 (``-DMHA_F32_SCORES``):
             ``matmul_bf16_bf16_wrapper`` writes, and ``partial_softmax``
-            reads, a float32 tile. AIE2P only. At 64-key blocks a design
-            places only with ``P V`` split over two cores.
+            reads, a float32 tile, held to float32 summation order. AIE2P
+            only, and not with ``emulate_bf16_mmul_with_bfp16``. At 64-key
+            blocks a design places only with ``P V`` split over two cores.
 
     Returns:
         MatrixKernel for ``matmul_bf16_bf16_wrapper``, or with ``pv``
@@ -1152,6 +1153,11 @@ def mha(
             )
     if f32_scores and _arch_traits().name == "aie2":
         raise NotImplementedError("mha: f32_scores is written for AIE2P only")
+    if f32_scores and emulate_bf16_mmul_with_bfp16:
+        raise ValueError(
+            "mha: f32_scores keeps the scores to float32 summation order, which "
+            "a bfp16-emulated product gives up"
+        )
     score = np.float32 if f32_scores and not pv else bfloat16
     tile = np.ndarray[(dim_m * dim_n,), np.dtype[score]]
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
@@ -1208,7 +1214,17 @@ def mha(
             initializers=((2, _zero_output),),
             acc_dtype=np.float32,
             reduction=dim_k,
-            tolerance=_linalg_tolerance(bfloat16),
+            tolerance=(
+                Tolerance.bounded(
+                    partial(
+                        _f32_sum_order_bound, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n
+                    ),
+                    note="float32 scores: f32 summation order over dim_k exact "
+                    "bf16 products",
+                )
+                if f32_scores and not pv
+                else _linalg_tolerance(bfloat16)
+            ),
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
@@ -1512,7 +1528,10 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
                     (
                         Tolerance.bounded(
                             partial(
-                                _prefill_fv_bound, dim_m=lq, dim_k=lk, dim_n=head_dim
+                                _f32_sum_order_bound,
+                                dim_m=lq,
+                                dim_k=lk,
+                                dim_n=head_dim,
                             ),
                             note="f32 summation order over lk exact bf16 products, "
                             "in the kernel and the reference; measured worst 0.12 "
@@ -1558,12 +1577,12 @@ def prefill_fv_ref(s, v, *, dim_m: int, dim_k: int, dim_n: int):
     return (s @ v).reshape(len(s), dim_m * dim_n)
 
 
-def _prefill_fv_bound(s, v, *, dim_m: int, dim_k: int, dim_n: int):
-    """Per-output bound on ``|y - prefill_fv_ref|`` from summation order alone.
+def _f32_sum_order_bound(s, v, *, dim_m: int, dim_k: int, dim_n: int):
+    """Per-output bound on a bf16 matmul's float32 result from summation order alone.
 
-    Every product is exact in float32, so a ``dim_k``-term float32 sum in any
-    order is within ``dim_k * 2**-24 * sum|s*v|`` of the exact dot product.
-    The kernel and the float32 reference each carry that error, hence 2.
+    Every bf16 product is exact in float32, so a ``dim_k``-term float32 sum in
+    any order is within ``dim_k * 2**-24 * sum|s*v|`` of the exact dot
+    product. The kernel and a float32 reference each carry that error, hence 2.
     """
     s = np.abs(np.asarray(s, np.float64)).reshape(-1, dim_m, dim_k)
     v = np.abs(np.asarray(v, np.float64)).reshape(-1, dim_k, dim_n)
