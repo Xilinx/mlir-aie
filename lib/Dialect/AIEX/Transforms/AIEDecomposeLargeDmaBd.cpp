@@ -19,6 +19,7 @@
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
@@ -42,31 +43,21 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-static bool allConstant(NpuDmaMemcpyNdOp op) {
-  return llvm::all_of(op.getMixedSizes(),
-                      [](OpFoldResult s) {
-                        return getConstantIntValue(s).has_value();
-                      }) &&
-         llvm::all_of(op.getMixedStrides(),
-                      [](OpFoldResult s) {
-                        return getConstantIntValue(s).has_value();
-                      }) &&
-         llvm::all_of(op.getMixedOffsets(), [](OpFoldResult s) {
-           return getConstantIntValue(s).has_value();
-         });
-}
-
-static NdDmaPattern patternFromOp(NpuDmaMemcpyNdOp op) {
+// `op`'s pattern, innermost first, when its offsets, sizes and strides are
+// constant.
+static std::optional<NdDmaPattern> constantPattern(NpuDmaMemcpyNdOp op) {
+  std::optional<SmallVector<int64_t>> offsets =
+      getConstantIntValues(op.getMixedOffsets());
+  std::optional<SmallVector<int64_t>> sizes =
+      getConstantIntValues(op.getMixedSizes());
+  std::optional<SmallVector<int64_t>> strides =
+      getConstantIntValues(op.getMixedStrides());
+  if (!offsets || !sizes || !strides)
+    return std::nullopt;
   NdDmaPattern pattern;
-  pattern.offsets = llvm::map_to_vector(
-      llvm::reverse(op.getMixedOffsets()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-  pattern.sizes = llvm::map_to_vector(
-      llvm::reverse(op.getMixedSizes()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-  pattern.strides = llvm::map_to_vector(
-      llvm::reverse(op.getMixedStrides()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+  pattern.offsets.assign(offsets->rbegin(), offsets->rend());
+  pattern.sizes.assign(sizes->rbegin(), sizes->rend());
+  pattern.strides.assign(strides->rbegin(), strides->rend());
   return pattern;
 }
 
@@ -500,13 +491,14 @@ static void orderSlices(Block &block, Slices &state) {
 }
 
 static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
-  if (!allConstant(op))
+  std::optional<NdDmaPattern> constant = constantPattern(op);
+  if (!constant)
     return;
   // A runtime length stays whole; see DMABDOp::verify.
   if (op.getLengthParameterAttr() || op.getLengthStateTableIdxAttr())
     return;
 
-  NdDmaPattern pattern = patternFromOp(op);
+  const NdDmaPattern &pattern = *constant;
   if (isContiguousTransfer(pattern.sizes, pattern.strides))
     return;
 

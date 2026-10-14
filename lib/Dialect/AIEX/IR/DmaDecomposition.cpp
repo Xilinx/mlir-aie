@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Utils/BdLowering.h"
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/STLExtras.h"
@@ -394,51 +395,25 @@ void squeezeUnitDims(NdDmaPattern &pattern) {
   }
 }
 
-bool allConstant(AIE::DMABDOp op) {
-  if (op.getPadDimensions().has_value())
-    return false;
-  if (op.getOffset() && !op.getConstantOffset())
-    return false;
-  if (op.getLen() && !op.getConstantLen())
-    return false;
-  if (op.getMixedSizes().empty())
-    return false;
-  return llvm::all_of(op.getMixedSizes(),
-                      [](OpFoldResult s) {
-                        return getConstantIntValue(s).has_value();
-                      }) &&
-         llvm::all_of(op.getMixedStrides(), [](OpFoldResult s) {
-           return getConstantIntValue(s).has_value();
-         });
-}
-
-// Only called after allConstant(op) confirmed every size/stride resolves to
-// a constant, so the has_value() checks below are redundant in practice --
-// asserted rather than re-verified to keep that invariant visible here too.
-NdDmaPattern patternFromDmaBd(AIE::DMABDOp op) {
-  SmallVector<int64_t, kNdDmaDims> outerSizes;
-  SmallVector<int64_t, kNdDmaDims> outerStrides;
-  for (OpFoldResult s : op.getMixedSizes()) {
-    auto c = getConstantIntValue(s);
-    assert(c && "size must be constant (already checked by allConstant)");
-    outerSizes.push_back(*c);
-  }
-  for (OpFoldResult s : op.getMixedStrides()) {
-    auto c = getConstantIntValue(s);
-    assert(c && "stride must be constant (already checked by allConstant)");
-    outerStrides.push_back(*c);
-  }
-  while (outerSizes.size() < kNdDmaDims) {
-    outerSizes.insert(outerSizes.begin(), 1);
-    outerStrides.insert(outerStrides.begin(), 0);
-  }
-
+// `op`'s pattern, innermost first and padded to kNdDmaDims, when it has no
+// padding and a constant offset, length, sizes and strides.
+std::optional<NdDmaPattern> constantPattern(AIE::DMABDOp op) {
+  if (op.getPadDimensions().has_value() ||
+      (op.getOffset() && !op.getConstantOffset()) ||
+      (op.getLen() && !op.getConstantLen()))
+    return std::nullopt;
+  std::optional<SmallVector<int64_t>> sizes =
+      getConstantIntValues(op.getMixedSizes());
+  std::optional<SmallVector<int64_t>> strides =
+      getConstantIntValues(op.getMixedStrides());
+  if (!sizes || !strides || sizes->empty())
+    return std::nullopt;
   NdDmaPattern pattern;
-  pattern.offsets.assign(outerSizes.size(), 0);
-  pattern.sizes = llvm::map_to_vector(llvm::reverse(outerSizes),
-                                      [](int64_t v) { return v; });
-  pattern.strides = llvm::map_to_vector(llvm::reverse(outerStrides),
-                                        [](int64_t v) { return v; });
+  pattern.sizes.assign(sizes->rbegin(), sizes->rend());
+  pattern.strides.assign(strides->rbegin(), strides->rend());
+  pattern.sizes.resize(std::max<size_t>(pattern.sizes.size(), kNdDmaDims), 1);
+  pattern.strides.resize(pattern.sizes.size(), 0);
+  pattern.offsets.assign(pattern.sizes.size(), 0);
   return pattern;
 }
 
@@ -567,7 +542,8 @@ FailureOr<TaskBdDecomposition>
 AIEX::decomposeTaskBdPattern(AIE::DMABDOp bd,
                              const AIE::AIETargetModel &targetModel,
                              int tileCol, int tileRow) {
-  if (!allConstant(bd))
+  std::optional<NdDmaPattern> pattern = constantPattern(bd);
+  if (!pattern)
     return failure();
   auto bufferType = cast<BaseMemRefType>(bd.getBuffer().getType());
   // See contiguousAndFits for why only d3 can make one too long.
@@ -581,7 +557,7 @@ AIEX::decomposeTaskBdPattern(AIE::DMABDOp bd,
   };
 
   TaskBdDecomposition plan;
-  plan.pass = patternFromDmaBd(bd);
+  plan.pass = *pattern;
   if (lowerable(plan.pass)) {
     plan.legal = true;
     return plan;
