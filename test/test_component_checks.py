@@ -303,8 +303,9 @@ def test_a_failed_nightly_lit_test_fails_the_router_check(tmp_path):
         "config.test_format = lit.formats.ShTest()\n"
         'config.suffixes = [".mlir"]\n'
     )
-    (suite / "routes.mlir").write_text("// RUN: true\n")
-    (suite / "hw_verdicts.mlir").write_text("// RUN: false\n")
+    # Split so the outer lit doesn't read these as this file's own RUN lines.
+    (suite / "routes.mlir").write_text("// RUN" ": true\n")
+    (suite / "hw_verdicts.mlir").write_text("// RUN" ": false\n")
     results = tmp_path / "lit.json"
     run = subprocess.run(
         [sys.executable, "-c", "from lit.main import main; main()"]
