@@ -53,7 +53,7 @@ def check_synthesized_body():
         NPU1Col1(), Runtime(lambda: None), workers=[worker]
     ).resolve_program()
     core = next(op for op in walk(module.operation) if op.name == "aie.core")
-    loops = [op for op in walk(core) if op.name == "scf.for"]
+    loops = [op for op in walk(core) if op.name == "scf.while"]
     assert len(loops) == 2
     for op in walk(core):
         loc = op.location

@@ -12,7 +12,10 @@
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -30,6 +33,31 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+bool xilinx::AIE::isForeverLoop(scf::WhileOp whileOp) {
+  scf::ConditionOp condition = whileOp.getConditionOp();
+  return matchPattern(condition.getCondition(), m_One()) &&
+         llvm::equal(condition.getArgs(), whileOp.getBeforeArguments()) &&
+         llvm::all_of(whileOp.getBeforeBody()->without_terminator(),
+                      [](Operation &op) { return isPure(&op); });
+}
+
+bool xilinx::AIE::isObjectFifoLoop(Operation *op) {
+  if (auto whileOp = dyn_cast<scf::WhileOp>(op)) {
+    return isForeverLoop(whileOp);
+  }
+  return isa<scf::ForOp>(op);
+}
+
+Operation *xilinx::AIE::getObjectFifoLoopParent(Operation *op) {
+  for (Operation *parent = op->getParentOp(); parent;
+       parent = parent->getParentOp()) {
+    if (isObjectFifoLoop(parent)) {
+      return parent;
+    }
+  }
+  return nullptr;
+}
+
 namespace {
 
 // Statically known trip count of a loop, or nullopt if it cannot be computed.
@@ -41,6 +69,32 @@ static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
     }
   }
   return std::nullopt;
+}
+
+// Unroll a forever loop by `factor`: its body runs `factor` times per trip
+// around the loop, each copy taking the values the previous one yields. The
+// loop never exits, so there is no remainder to handle.
+static void unrollForeverLoop(scf::WhileOp whileOp, int64_t factor) {
+  Block *body = whileOp.getAfterBody();
+  auto yield = cast<scf::YieldOp>(body->getTerminator());
+  SmallVector<Operation *> bodyOps;
+  for (Operation &op : body->without_terminator()) {
+    bodyOps.push_back(&op);
+  }
+  OpBuilder builder(yield);
+  SmallVector<Value> yielded(yield.getOperands());
+  SmallVector<Value> carried = yielded;
+  for (int64_t i = 1; i < factor; ++i) {
+    IRMapping mapping;
+    mapping.map(body->getArguments(), carried);
+    for (Operation *op : bodyOps) {
+      builder.clone(*op, mapping);
+    }
+    for (auto [next, value] : llvm::zip_equal(carried, yielded)) {
+      next = mapping.lookupOrDefault(value);
+    }
+  }
+  yield->setOperands(carried);
 }
 
 // Remove redundant AIE1 binary-lock acquires.
@@ -215,26 +269,38 @@ struct AIEObjectFifoUnrollPass
       // hints, skip unrolling); their runtime bookkeeping is tidied by the
       // shared fold/cleanup pipeline below.
       if (coreOp.getDynamicObjfifoLowering().value_or(clDefaultDynamic)) {
-        coreOp.walk([&](scf::ForOp forOp) {
-          forOp->removeAttr(kObjectFifoUnrollHintAttrName);
+        coreOp.walk([&](Operation *op) {
+          op->removeAttr(kObjectFifoUnrollHintAttrName);
         });
         continue;
       }
-      SmallVector<scf::ForOp> loops;
-      coreOp.walk([&](scf::ForOp forOp) { loops.push_back(forOp); });
+      SmallVector<Operation *> loops;
+      coreOp.walk([&](Operation *op) {
+        if (isObjectFifoLoop(op)) {
+          loops.push_back(op);
+        }
+      });
 
       // Operation::walk uses post-order traversal by default, so a nested loop
       // is visited before its enclosing loop; iterating the list in order thus
       // processes the innermost loops first. Unrolling innermost loops first
       // avoids invalidating references to inner loops when an outer loop (which
       // duplicates its nested loops) is unrolled.
-      for (scf::ForOp forOp : loops) {
+      for (Operation *loop : loops) {
         // Loops without the objectFifo unroll hint (the LCM of the accessed
         // fifo depths) carry no objectFifo access; factor 1 leaves them rolled.
         auto hint =
-            forOp->getAttrOfType<IntegerAttr>(kObjectFifoUnrollHintAttrName);
+            loop->getAttrOfType<IntegerAttr>(kObjectFifoUnrollHintAttrName);
         int64_t unrollFactor = hint ? hint.getInt() : 1;
         if (unrollFactor <= 1) {
+          continue;
+        }
+
+        // A forever loop has no trip count to cover, so repeating its body
+        // once per rotation is enough.
+        auto forOp = dyn_cast<scf::ForOp>(loop);
+        if (!forOp) {
+          unrollForeverLoop(cast<scf::WhileOp>(loop), unrollFactor);
           continue;
         }
 
@@ -275,8 +341,8 @@ struct AIEObjectFifoUnrollPass
       }
 
       // Drop any lingering unroll hints so they do not leak into the output.
-      coreOp.walk([&](scf::ForOp forOp) {
-        forOp->removeAttr(kObjectFifoUnrollHintAttrName);
+      coreOp.walk([&](Operation *op) {
+        op->removeAttr(kObjectFifoUnrollHintAttrName);
       });
     }
 
