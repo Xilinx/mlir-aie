@@ -65,6 +65,11 @@ int main(int argc, const char *argv[]) {
     std::cout << "Kernel timed out.\n";
     return 1;
   }
+  ert_cmd_state r = run.state();
+  if (r != ERT_CMD_STATE_COMPLETED) {
+    std::cout << "Kernel did not complete. Returned status: " << r << "\n";
+    return 1;
+  }
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   // Each source contributes one contiguous 256-byte block; the block order is
