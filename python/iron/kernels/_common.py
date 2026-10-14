@@ -21,7 +21,7 @@ from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction
 from aie.utils import get_current_device
 from aie.utils.compile.jit.markers import In, InOut, Out
-from aie.utils.compile.utils import resolve_target_arch
+from aie.utils.compile.utils import AIE_API_PREFIX_FLAGS, resolve_target_arch
 from aie.utils.verify import Tolerance
 
 
@@ -721,6 +721,10 @@ def _make_extern(
     the ``.cc`` and collide at link.
     """
     flags_tuple = tuple(compile_flags or []) + _portable_flags()
+    # A source that includes aie_api reads it first, so a precompiled header of it
+    # builds the same object.
+    if not use_chess and "#include <aie_api/aie.hpp>" in Path(source_path).read_text():
+        flags_tuple += AIE_API_PREFIX_FLAGS
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
     # One source serves every arch, so the arch is part of the kernel's identity.
     identity = (

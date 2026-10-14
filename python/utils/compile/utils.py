@@ -20,6 +20,7 @@ import sys
 import tempfile
 import threading
 import weakref
+from collections.abc import Callable
 from pathlib import Path
 
 import aie.utils.config as config
@@ -84,6 +85,11 @@ def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[
 # Set AIE_KERNEL_PCH=0 to disable.
 _PCH_SOURCE = "<pch-source>"
 _PCH_OUTPUT = "<pch-output>"
+# A kernel library source that includes aie_api is compiled with these, so it
+# reads the header first and a PCH of the header stands in for it. Passed to
+# cc1 directly: the driver puts a plain -include ahead of the intrinsics header
+# it injects, which defines the __AIE_ARCH__ aie_api needs.
+AIE_API_PREFIX_FLAGS = ("-Xclang", "-include", "-Xclang", "aie_api/aie.hpp")
 # What clang reads from the environment that can change what a header reads;
 # none of it shows in the command, so it joins the key.
 _CLANG_SEARCH_PATHS = (
@@ -740,14 +746,25 @@ def compile_cxx_core_function(
 
     pch = None
     if not use_chess and not inline and os.environ.get("AIE_KERNEL_PCH", "1") != "0":
+        args = list(compile_args or ())
+        prefix: list[str] = []
+        n = len(AIE_API_PREFIX_FLAGS)
+        for i in range(len(args) - n + 1):
+            if tuple(args[i : i + n]) == AIE_API_PREFIX_FLAGS:
+                prefix = list(AIE_API_PREFIX_FLAGS)
+                del args[i : i + n]
+                break
         pch_cmds = []
-        for dirs, args in ((include_dirs, compile_args), (None, None)):
+        for dirs, extra in (
+            (include_dirs, compile_args),
+            (None, prefix or None),
+        ):
             pch_cmd = cxx_core_compile_command(
                 _PCH_SOURCE,
                 target_arch,
                 _PCH_OUTPUT,
                 include_dirs=dirs,
-                compile_args=args,
+                compile_args=extra,
             )
             i = pch_cmd.index("-MD")
             del pch_cmd[i : i + 3]
@@ -757,7 +774,6 @@ def compile_cxx_core_function(
         search_paths = [str(d) for d in include_dirs or ()]
         macros: list[str] = []
         others: list[str] = []
-        args = list(compile_args or ())
         i = 0
         while i < len(args):
             arg = args[i]
@@ -785,7 +801,8 @@ def compile_cxx_core_function(
             if name in os.environ:
                 search_paths.extend(os.environ[name].split(os.pathsep))
         # The PCH builds in its own directory, so a relative search path would
-        # name another one there; a caller's -include would be read twice.
+        # name another one there; a caller's -include would be read twice
+        # (aie_api's own, taken out above, is guarded and part of the PCH).
         if all(os.path.isabs(d) for d in search_paths) and not any(
             arg.startswith(("-include", "-imacros")) for arg in others
         ):
@@ -932,20 +949,51 @@ def aiecc_diagnostics(log: str, limit: int = 20) -> list[str]:
     return kept
 
 
-def _run_aiecc(mlir_file: str, args: list[str], cwd: str | Path | None = None):
+def _run_aiecc(
+    mlir_file: str,
+    args: list[str],
+    cwd: str | Path | None = None,
+    build_link_files: Callable[[], None] | None = None,
+):
     aiecc_bin = os.path.abspath(config.aiecc_path())
     cmd = [aiecc_bin, os.path.abspath(mlir_file)] + args
+    if build_link_files is not None:
+        cmd.append("--await-link-files")
     logger.debug("Running: %s", " ".join(cmd))
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
-    if result.stdout:
-        logger.debug("%s", result.stdout)
-    if result.stderr:
-        logger.debug("%s", result.stderr)
+    # Files rather than pipes: a pipe nobody reads while the link files build
+    # would fill and stall aiecc's lowering on its next write.
+    with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as err:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdin=(
+                subprocess.PIPE if build_link_files is not None else subprocess.DEVNULL
+            ),
+            stdout=out,
+            stderr=err,
+            text=True,
+        )
+        if build_link_files is not None:
+            try:
+                build_link_files()
+            except BaseException:
+                proc.kill()
+                proc.wait()
+                raise
+        proc.communicate("\n" if build_link_files is not None else None)
+        out.seek(0)
+        stdout = out.read()
+        err.seek(0)
+        stderr = err.read()
+    if stdout:
+        logger.debug("%s", stdout)
+    if stderr:
+        logger.debug("%s", stderr)
         # Diagnostics from a build that succeeded would otherwise be dropped:
         # debug logging is off by default and the failure path below only runs
         # on a non-zero exit.
-        if result.returncode == 0:
-            for line in result.stderr.splitlines():
+        if proc.returncode == 0:
+            for line in stderr.splitlines():
                 # Notes are the explanation, not decoration. A warning that
                 # queue-depth enforcement could not be applied says why in an
                 # attached note, so dropping notes leaves the generic overflow
@@ -956,14 +1004,14 @@ def _run_aiecc(mlir_file: str, args: list[str], cwd: str | Path | None = None):
                     for severity in ("warning", "error", "note")
                 ):
                     print(f"[aiecc] {line}", file=sys.stderr)
-    if result.returncode != 0:
-        error_msg = result.stderr if result.stderr else result.stdout
+    if proc.returncode != 0:
+        error_msg = stderr if stderr else stdout
         summary = "\n".join(aiecc_diagnostics(error_msg))
         # Lead with the diagnostics so a truncated traceback still names the
         # fix; keep the whole log after them for everything they leave out.
         detail = f"{summary}\n\n--- full aiecc log ---\n{error_msg}"
         exc = RuntimeError(
-            f"[aiecc] Compilation failed with exit code {result.returncode}:\n"
+            f"[aiecc] Compilation failed with exit code {proc.returncode}:\n"
             f"{detail if summary else error_msg}"
         )
         attach_tool_location(exc, error_msg)
@@ -986,6 +1034,7 @@ def compile_mlir_module(
     npu_cpp_path: str | Path | None = None,
     npu_cpp_emit_dispatch_shim: bool = False,
     device_cache_dir: str | Path | None = None,
+    build_link_files: Callable[[], None] | None = None,
 ):
     """Compile MLIR to instruction, PDI, ELF, xclbin, or C++ files using aiecc.
 
@@ -1019,8 +1068,9 @@ def compile_mlir_module(
             the target architecture (aie2 vs aie2p) for any
             `aie.iron.kernel.ExternalFunction` instances that have
             a ``source_file=`` and haven't been compiled yet.  When set
-            and ``work_dir`` is provided, those externals are auto-built
-            into ``work_dir`` before aiecc runs (matching the @iron.jit
+            and ``work_dir`` is provided, those externals are built into
+            ``work_dir`` while aiecc lowers the module, as
+            ``build_link_files`` would build them (matching the @iron.jit
             behavior).  Without this, low-level designs going through
             ``compile_mlir_module`` directly (e.g. ``basic/packet_switch``)
             still need a Makefile-side ``.o`` rule.
@@ -1032,7 +1082,21 @@ def compile_mlir_module(
         device_cache_dir: Directory aiecc keeps each ``aie.device``'s compiled
             cores in (``--device-cache``), so a later build of an unchanged
             device reuses them. Ignored with Chess.
+        build_link_files: Writes the files the module's cores link into
+            ``work_dir``. aiecc lowers the module meanwhile and reads none of
+            them until this returns (``--await-link-files``); if it raises,
+            aiecc is stopped and the exception propagates. Requires
+            ``work_dir``, and is given by ``device`` when that is set.
+
+    Raises:
+        ValueError: Both ``device`` and ``build_link_files`` are given, or
+            ``build_link_files`` without ``work_dir``.
     """
+    if device is not None and build_link_files is not None:
+        raise ValueError(
+            "device= builds the module's kernels as its build_link_files; "
+            "pass one of them."
+        )
     if work_dir:
         work_dir = os.path.abspath(work_dir)
     # --unified lowers each device once and carves out every core, where the
@@ -1105,16 +1169,18 @@ def compile_mlir_module(
         # uses, so the module's declarations scope this compile: an instance
         # left over from an earlier, unrelated design in the same process is
         # neither built nor checked against this design's arch.
-        target_arch = resolve_target_arch(device)
-        compile_external_kernels(
-            _select_declared_kernels(
-                [f for f in ExternalFunction._instances if f.source_file],
-                _declared_objects(mlir_module),
-            ),
-            str(work_dir),
-            target_arch,
-            embed_bitcode=_check_lut_banks_enabled(options or []),
+        kernels = _select_declared_kernels(
+            [f for f in ExternalFunction._instances if f.source_file],
+            _declared_objects(mlir_module),
         )
+        if kernels:
+            build_link_files = functools.partial(
+                compile_external_kernels,
+                kernels,
+                str(work_dir),
+                resolve_target_arch(device),
+                embed_bitcode=_check_lut_banks_enabled(options or []),
+            )
 
     # When work_dir is provided, invoke the aiecc binary as a subprocess so
     # that it resolves relative link_with paths (e.g. "add_one.o") against the
@@ -1126,7 +1192,9 @@ def compile_mlir_module(
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
             f.write(mlir_text)
-        _run_aiecc(mlir_file, args, cwd=work_dir)
+        _run_aiecc(mlir_file, args, cwd=work_dir, build_link_files=build_link_files)
+    elif build_link_files is not None:
+        raise ValueError("build_link_files requires work_dir.")
     else:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".mlir", delete=False) as f:
             f.write(mlir_text)
@@ -1723,7 +1791,11 @@ def compile_external_kernel(
 
 
 def _compile_external_kernel(
-    func, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
+    func,
+    kernel_dir,
+    target_arch,
+    include_dirs=None,
+    embed_bitcode=False,
 ):
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
     # prefixed func._name, but an inline kernel is emitted as a textual .ll whose

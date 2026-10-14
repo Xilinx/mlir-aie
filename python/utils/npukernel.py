@@ -201,6 +201,26 @@ class NPUKernel:
             )
         return np.fromfile(self._insts_path, dtype=np.uint32)
 
+    @staticmethod
+    def check_keywords(dispatch_params: list[str], kwargs: dict) -> None:
+        """Reject keywords a kernel with ``dispatch_params`` would not accept.
+
+        Args:
+            dispatch_params: The kernel's declared dispatch parameter names.
+            kwargs: The keyword arguments of a call.
+
+        Raises:
+            TypeError: If a keyword is neither a dispatch parameter nor the
+                ``retry`` runtime option.
+        """
+        unknown = set(kwargs) - set(dispatch_params) - {"retry"}
+        if unknown:
+            raise TypeError(
+                f"NPUKernel got unexpected keyword argument(s): {sorted(unknown)}; "
+                f"expected dispatch parameters {dispatch_params!r} "
+                "or runtime option 'retry'"
+            )
+
     # Blocking call.
     def __call__(self, *args, **kwargs):
         """Run the kernel with the given arguments.
@@ -219,14 +239,8 @@ class NPUKernel:
         Raises:
             TypeError: If an unknown keyword argument is supplied.
         """
+        self.check_keywords(self._dispatch_params, kwargs)
         dispatch_names = set(self._dispatch_params)
-        unknown = set(kwargs) - dispatch_names - {"retry"}
-        if unknown:
-            raise TypeError(
-                f"NPUKernel got unexpected keyword argument(s): {sorted(unknown)}; "
-                f"expected dispatch parameters {self._dispatch_params!r} "
-                "or runtime option 'retry'"
-            )
 
         from . import DefaultNPURuntime
 

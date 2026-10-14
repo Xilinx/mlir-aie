@@ -51,18 +51,25 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/IR/InstIterator.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace xilinx::aiecc {
 
@@ -1266,6 +1273,69 @@ inline std::string downgradeIRForChess(llvm::StringRef ir) {
   return result;
 }
 
+inline constexpr llvm::StringLiteral canonicalGlobalPrefix = "__aiecc_canon_";
+
+// A core's module with the names that only identify the core made positional.
+struct CanonicalCoreIR {
+  std::string text;
+  // `names[i]` is the symbol the text calls `canonicalGlobalPrefix + i`.
+  std::vector<std::string> names;
+};
+
+// Rename the external globals of a core's module (its own function, the
+// buffers, locks and parameters it reads) to positional names, and drop the
+// external variable declarations it never uses, so cores that run one program
+// over different buffers print alike. Declared functions keep their names:
+// opt and llc recognize library calls by name. Returns nullopt for a module
+// that could name a symbol outside a global reference (assembly, comdats,
+// aliases, ifuncs), which is compiled as it is.
+inline std::optional<CanonicalCoreIR> canonicalizeCoreIR(llvm::StringRef ir) {
+  llvm::LLVMContext context;
+  llvm::SMDiagnostic error;
+  std::unique_ptr<llvm::Module> module =
+      llvm::parseIR(llvm::MemoryBufferRef(ir, "core"), error, context);
+  if (!module || !module->getModuleInlineAsm().empty() ||
+      !module->getComdatSymbolTable().empty() || !module->alias_empty() ||
+      !module->ifunc_empty())
+    return std::nullopt;
+  for (llvm::GlobalValue &value : module->global_values())
+    if (value.getName().starts_with(canonicalGlobalPrefix))
+      return std::nullopt;
+  for (llvm::Function &function : *module)
+    for (llvm::Instruction &inst : llvm::instructions(function))
+      if (auto *call = llvm::dyn_cast<llvm::CallBase>(&inst);
+          call && call->isInlineAsm())
+        return std::nullopt;
+
+  for (llvm::GlobalVariable &variable :
+       llvm::make_early_inc_range(module->globals()))
+    if (variable.isDeclaration() && variable.use_empty())
+      variable.eraseFromParent();
+
+  CanonicalCoreIR canonical;
+  auto rename = [&](llvm::GlobalValue &value) {
+    if (!value.hasName() || value.hasLocalLinkage() ||
+        value.getName().starts_with("llvm."))
+      return;
+    canonical.names.push_back(value.getName().str());
+    value.setName(canonicalGlobalPrefix +
+                  llvm::Twine(canonical.names.size() - 1));
+  };
+  for (llvm::GlobalVariable &variable : module->globals())
+    rename(variable);
+  for (llvm::Function &function : *module)
+    if (!function.isDeclaration())
+      rename(function);
+
+  // Printed by aiecc's LLVM, read by Peano's older opt: downgrade the reprint
+  // as the in-process link does.
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  module->print(os, nullptr);
+  canonical.text = downgradeIRForPeano(text, /*stripAlign=*/false);
+  return canonical;
+}
+
 //===----------------------------------------------------------------------===//
 // Pass-pipeline factories
 //
@@ -1876,11 +1946,17 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  // Region simplification stays off: a runtime sequence is one block of
+  // structured ops, and the device's DMA programs keep every block they
+  // declare. It was ~40% of each canonicalize here.
+  mlir::GreedyRewriteConfig canonicalize;
+  canonicalize.setRegionSimplificationLevel(
+      mlir::GreedySimplifyRegionLevel::Disabled);
   dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIEUnrollRuntimeSequenceLoopsPass());
-  dpm.addPass(mlir::createCanonicalizerPass());
+  dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
   dpm.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());
   // Decompose oversized non-contiguous ND transfers (wrap/stride exceeding the
   // hardware BD field limits) into legal sub-transfers before BD lowering.
@@ -1892,7 +1968,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   X::AIELowerDynamicBDPoolOptions poolOpts;
   poolOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   dpm.addPass(X::createAIELowerDynamicBDPoolPass(poolOpts));
-  dpm.addPass(mlir::createCanonicalizerPass());
+  dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
@@ -1911,6 +1987,9 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIEDmaToNpuPass(dmaToNpuOpts));
   dpm.addPass(X::createAIELowerSetLockPass());
   dpm.addPass(X::createAIELowerCoreResetPass());
+  // The lowerings give each write its own constants; shared, the sequence
+  // carries about half the ops into every later edge.
+  dpm.addPass(mlir::createCSEPass());
   return pm;
 }
 
@@ -1958,7 +2037,11 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
-  dpm.addPass(mlir::createCanonicalizerPass());
+  // Without region simplification; see getNpuDmaLoweringPipeline.
+  mlir::GreedyRewriteConfig canonicalize;
+  canonicalize.setRegionSimplificationLevel(
+      mlir::GreedySimplifyRegionLevel::Disabled);
+  dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
   dpm.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   X::AIEDmaToNpuOptions dmaToNpuOpts;

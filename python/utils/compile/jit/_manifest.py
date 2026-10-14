@@ -74,7 +74,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
+import stat
 from pathlib import Path
 
 from aie.utils.compile.utils import _is_dispatch_library_name, _staged
@@ -101,13 +103,20 @@ def _digest(path: Path) -> str:
     return h.hexdigest()
 
 
-def _entry(path: Path) -> dict:
-    st = path.stat()
+def _entry(path: Path, st: os.stat_result, digests: dict[str, str] | None) -> dict:
+    if digests is None:
+        sha256 = _digest(path)
+    else:
+        # Within one build the file's content is what this build read; a
+        # later build digests it afresh.
+        sha256 = digests.get(str(path))
+        if sha256 is None:
+            sha256 = digests[str(path)] = _digest(path)
     return {
         "path": str(path),
         "size": st.st_size,
         "mtime": st.st_mtime,
-        "sha256": _digest(path),
+        "sha256": sha256,
     }
 
 
@@ -142,7 +151,13 @@ def _parse_depfile(depfile: Path) -> list[Path]:
 
 
 def record(
-    kernel_dir, external_kernels, source_files, used_chess=False, dispatch_library=None
+    kernel_dir,
+    external_kernels,
+    source_files,
+    used_chess=False,
+    dispatch_library=None,
+    full_elf_kernel=None,
+    digests: dict[str, str] | None = None,
 ) -> None:
     """Record the inputs this build consumed, if they can be known exactly.
 
@@ -152,12 +167,16 @@ def record(
     therefore unknown.  Rather than record a set that is silently short, mark
     the manifest ``complete: false``: the entry stays usable, so such a design
     keeps exactly the behaviour it has now, but nothing claims it was checked.
+
+    ``digests`` is one build's record of the inputs it has digested, by path.
+    The records of a build's kernels and of the design share it, so a header
+    every kernel reads is digested once. It must not outlive the build.
     """
     kernel_dir = Path(kernel_dir)
     compiled = [
-        f
+        f.object_file._source
         for f in external_kernels
-        if getattr(f, "_source_file", None) or getattr(f, "_source_string", None)
+        if f.object_file._source is not None
     ]
     depfiles = list(kernel_dir.glob("*.d"))
     if used_chess or (compiled and not depfiles):
@@ -166,20 +185,27 @@ def record(
             "an incomplete manifest, inputs will not be checked",
             len(compiled),
         )
-        _write(kernel_dir, [], complete=False, dispatch_library=dispatch_library)
+        _write(
+            kernel_dir,
+            {},
+            complete=False,
+            dispatch_library=dispatch_library,
+            full_elf_kernel=full_elf_kernel,
+        )
         return
 
-    found: set[Path] = set()
+    found: dict[Path, os.stat_result] = {}
     for dep in depfiles:
         try:
             # Peano runs with cwd=kernel_dir, so that is what a relative token means.
             read = {_absolute(kernel_dir, p) for p in _parse_depfile(dep)}
+            found.update((p, p.stat()) for p in read - found.keys())
         except OSError:
             read = None
         # The compiler opened every entry, so one that is not a file now cannot
         # be checked: it has gone since, or was renamed in the writing -- clang
         # writes a backslash in a path as a slash.
-        if read is None or not all(p.is_file() for p in read):
+        if read is None or not all(stat.S_ISREG(found[p].st_mode) for p in read):
             # Unknowable, as for Chess. Writing nothing would instead read as a
             # miss, and the caller answers a miss by discarding the entry.
             logger.debug(
@@ -188,35 +214,56 @@ def record(
                 "be checked",
                 dep,
             )
-            _write(kernel_dir, [], complete=False, dispatch_library=dispatch_library)
+            _write(
+                kernel_dir,
+                {},
+                complete=False,
+                dispatch_library=dispatch_library,
+                full_elf_kernel=full_elf_kernel,
+            )
             return
-        found |= read
 
     # Declared paths are the caller's, read where the caller stands -- the same
     # reading compile_external_kernel gives them. A missing one is already in
     # the cache key, so it is left out rather than making the set incomplete.
     cwd = Path.cwd()
-    for f in compiled:
-        if getattr(f, "_source_file", None):
-            found.add(_absolute(cwd, Path(f._source_file)))
-    found.update(_absolute(cwd, Path(sf)) for sf in source_files)
+    declared = [
+        _absolute(cwd, Path(recipe.source_file))
+        for recipe in compiled
+        if recipe.source_file
+    ]
+    declared += [_absolute(cwd, Path(sf)) for sf in source_files]
+    for path in declared:
+        if path not in found:
+            try:
+                found[path] = path.stat()
+            except OSError:
+                pass
     _write(
         kernel_dir,
-        sorted({p for p in found if p.is_file()}, key=str),
+        {
+            path: st
+            for path, st in sorted(found.items(), key=lambda item: str(item[0]))
+            if stat.S_ISREG(st.st_mode)
+        },
         dispatch_library=dispatch_library,
+        full_elf_kernel=full_elf_kernel,
+        digests=digests,
     )
 
 
 def _write(
     kernel_dir: Path,
-    inputs: list[Path],
+    inputs: dict[Path, os.stat_result],
     complete: bool = True,
     dispatch_library: str | None = None,
+    full_elf_kernel: str | None = None,
+    digests: dict[str, str] | None = None,
 ) -> None:
     entries: list[dict] = []
-    for path in inputs:
+    for path, st in inputs.items():
         try:
-            entries.append(_entry(path))
+            entries.append(_entry(path, st, digests))
         except OSError:
             # Unverifiable, but not uncacheable: mark it incomplete rather than
             # writing nothing and costing the entry on every later lookup.
@@ -229,13 +276,15 @@ def _write(
     payload = {"version": _VERSION, "complete": complete, "inputs": entries}
     if dispatch_library is not None:
         payload["dispatch_library"] = dispatch_library
+    if full_elf_kernel is not None:
+        payload["full_elf_kernel"] = full_elf_kernel
     with _staged(str(Path(kernel_dir) / MANIFEST_NAME)) as tmp:
         Path(tmp).write_text(json.dumps(payload))
 
 
 def write_for_test(kernel_dir, inputs) -> None:
     """Write a manifest directly. For tests that fabricate a cache entry."""
-    _write(Path(kernel_dir), [Path(i) for i in inputs])
+    _write(Path(kernel_dir), {Path(i): Path(i).stat() for i in inputs})
 
 
 def resolve_dispatch_library(kernel_dir: Path) -> Path | None:
@@ -251,6 +300,18 @@ def resolve_dispatch_library(kernel_dir: Path) -> Path | None:
         return None
     path = kernel_dir / name
     return path if path.is_file() else None
+
+
+def resolve_full_elf_kernel(kernel_dir: Path) -> str | None:
+    """Return the `"device:sequence"` kernel the build chose to run its full ELF."""
+    try:
+        payload = json.loads((kernel_dir / MANIFEST_NAME).read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, dict) or payload.get("version") != _VERSION:
+        return None
+    name = payload.get("full_elf_kernel")
+    return name if isinstance(name, str) else None
 
 
 def is_valid(kernel_dir: Path) -> bool:

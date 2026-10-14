@@ -36,8 +36,10 @@ namespace {
 struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
 
-  Write32SymToAddr(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  Write32SymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuWrite32Op op, OpAdaptor adaptor,
@@ -46,7 +48,7 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> address = op.getAbsoluteAddress();
+    std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
     if (!address.has_value()) {
       return failure();
     }
@@ -61,8 +63,10 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
 struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  BlockWriteSymToAddr(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  BlockWriteSymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuBlockWriteOp op, OpAdaptor adaptor,
@@ -71,7 +75,7 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> address = op.getAbsoluteAddress();
+    std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
     if (!address.has_value()) {
       return failure();
     }
@@ -84,8 +88,10 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
 struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
 
-  MaskWrite32SymToAddr(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  MaskWrite32SymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuMaskWrite32Op op, OpAdaptor adaptor,
@@ -94,7 +100,7 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress();
+    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress(&names);
     if (!absoluteAddress.has_value()) {
       return failure();
     }
@@ -111,13 +117,18 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
 struct MaskPollSymToAddr : OpConversionPattern<NpuMaskPollOp> {
   using OpConversionPattern::OpConversionPattern;
 
+  MaskPollSymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
+
   LogicalResult
   matchAndRewrite(NpuMaskPollOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     if (!op.getBuffer())
       return failure();
 
-    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress();
+    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress(&names);
     if (!absoluteAddress)
       return failure();
 
@@ -133,16 +144,16 @@ struct MaskPollSymToAddr : OpConversionPattern<NpuMaskPollOp> {
 struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  RtpToWrite32Pattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  RtpToWrite32Pattern(MLIRContext *context, const AIE::NamedOpTable &names)
+      : OpConversionPattern(context), names(names) {}
+
+  const AIE::NamedOpTable &names;
 
   LogicalResult
   matchAndRewrite(NpuWriteRTPOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    auto device = op->getParentOfType<AIE::DeviceOp>();
-
-    auto buffer = AIE::lookupNamedOpIn<AIE::BufferOp>(device, op.getBuffer());
+    auto buffer = names.lookup<AIE::BufferOp>(op.getBufferAttr().getAttr());
     if (!buffer) {
       op->emitError("buffer '" + op.getBuffer() + "' not found in device");
       return failure();
@@ -410,8 +421,9 @@ public:
     // row
     row = IntegerAttr::get(i32ty, tileRow);
 
-    if (failed(verifyStridesWraps(op, bufferType, tileCol, tileRow, inputSizes,
-                                  inputStrides, sizes, strides, isLinear))) {
+    if (failed(verifyStridesWraps(
+            op, [&] { return op->emitOpError(); }, bufferType, tileCol, tileRow,
+            inputSizes, inputStrides, sizes, strides, isLinear))) {
       return failure();
     }
 
@@ -771,17 +783,12 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
   using OpConversionPattern::OpConversionPattern;
 
 public:
-  WriteBdToBlockWritePattern(
-      MLIRContext *context,
-      llvm::DenseMap<Attribute, memref::GlobalOp> *dedupCache, unsigned *nextId,
-      PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), dedupCache(dedupCache),
-        nextId(nextId) {}
+  WriteBdToBlockWritePattern(MLIRContext *context,
+                             BlockwriteData &blockwriteData,
+                             PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), blockwriteData(blockwriteData) {}
 
-  // Per-pass-run memo + next free name index for blockwrite data globals (see
-  // getOrCreateDataMemref). Owned by the pass; live only during the conversion.
-  llvm::DenseMap<Attribute, memref::GlobalOp> *dedupCache;
-  unsigned *nextId;
+  BlockwriteData &blockwriteData;
 
   LogicalResult
   matchAndRewrite(NpuWriteBdOp op, OpAdaptor adaptor,
@@ -848,8 +855,7 @@ public:
     {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPoint(op->getParentOfType<AIE::RuntimeSequenceOp>());
-      global = getOrCreateDataMemref(rewriter, dev, op.getLoc(), words,
-                                     dedupCache, nextId);
+      global = blockwriteData.getOrCreate(rewriter, op.getLoc(), words);
     }
     auto memref = memref::GetGlobalOp::create(
         rewriter, op.getLoc(), global.getType(), global.getName());
@@ -918,37 +924,31 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addDynamicallyLegalOp<NpuMaskPollOp>(
         [&](NpuMaskPollOp op) { return !op.getBuffer(); });
 
-    // Seed, from the device's existing globals, a dedup cache (initial-value ->
-    // global) and the next free "blockwrite_data_<n>" name index (one past the
-    // current max). WriteBdToBlockWritePattern keeps both in sync as it creates
-    // globals, giving O(1) dedup and name-uniquing per BD; seeding the index
-    // past the max keeps names unique by construction. Both are locals holding
-    // raw op handles and must not outlive this conversion.
-    llvm::DenseMap<Attribute, memref::GlobalOp> dataMemrefCache;
-    unsigned nextBlockwriteId = 0;
-    for (auto g : device.getOps<memref::GlobalOp>()) {
-      if (auto initVal = g.getInitialValue())
-        dataMemrefCache.try_emplace(*initVal, g);
-      StringRef suffix = g.getSymName();
-      if (suffix.consume_front("blockwrite_data_")) {
-        unsigned idx;
-        if (!suffix.getAsInteger(10, idx) && idx >= nextBlockwriteId)
-          nextBlockwriteId = idx + 1;
-      }
-    }
+    BlockwriteData blockwriteData(device, "blockwrite_data_");
+    AIE::NamedOpTable names(device);
 
     RewritePatternSet patterns(&getContext());
-    patterns.insert<BlockWriteSymToAddr>(&getContext());
+    patterns.insert<BlockWriteSymToAddr>(&getContext(), names);
     patterns.insert<DmaToNpuPattern>(&getContext());
     patterns.insert<DmaWaitToSyncPattern>(&getContext());
-    patterns.insert<MaskWrite32SymToAddr>(&getContext());
-    patterns.insert<MaskPollSymToAddr>(&getContext());
-    patterns.insert<RtpToWrite32Pattern>(&getContext());
-    patterns.insert<Write32SymToAddr>(&getContext());
-    patterns.insert<WriteBdToBlockWritePattern>(&getContext(), &dataMemrefCache,
-                                                &nextBlockwriteId);
+    patterns.insert<MaskWrite32SymToAddr>(&getContext(), names);
+    patterns.insert<MaskPollSymToAddr>(&getContext(), names);
+    patterns.insert<RtpToWrite32Pattern>(&getContext(), names);
+    patterns.insert<Write32SymToAddr>(&getContext(), names);
+    patterns.insert<WriteBdToBlockWritePattern>(&getContext(), blockwriteData);
 
-    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+    // The driver converts the illegal ops alone; started from the device, it
+    // would visit every op of the runtime sequences.
+    SmallVector<Operation *> illegal;
+    device.walk([&](Operation *op) {
+      if (target.isIllegal(op))
+        illegal.push_back(op);
+    });
+    ConversionConfig config;
+    config.foldingMode = DialectConversionFoldingMode::Never;
+    config.allowPatternRollback = false;
+    if (failed(applyPartialConversion(illegal, target, std::move(patterns),
+                                      config))) {
       signalPassFailure();
       return;
     }
@@ -958,7 +958,10 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addIllegalOp<NpuPushQueueOp>();
     RewritePatternSet pushPatterns(&getContext());
     pushPatterns.insert<PushQueuetoWrite32Pattern>(&getContext());
-    if (failed(applyPartialConversion(device, target, std::move(pushPatterns))))
+    SmallVector<Operation *> pushes;
+    device.walk([&](NpuPushQueueOp op) { pushes.push_back(op); });
+    if (failed(applyPartialConversion(pushes, target, std::move(pushPatterns),
+                                      config)))
       signalPassFailure();
 
     eraseDeadArith(device);

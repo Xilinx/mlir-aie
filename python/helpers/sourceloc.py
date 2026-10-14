@@ -6,20 +6,35 @@
 """Source locations for IRON objects, recorded where the user declares them."""
 
 import contextlib
+import functools
 import inspect
+import itertools
+import os
 import sys
 from pathlib import Path
-from types import FunctionType
+from types import CodeType, FunctionType
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 # Unresolved, like co_filename: a dev build symlinks build/python/aie to source.
 AIE_ROOT = Path(__file__).parent.parent
+# normcase: Windows paths compare without regard to case.
+_AIE_PREFIX = os.path.normcase(f"{AIE_ROOT}{os.sep}")
 
 
 def is_internal_file(filename: str) -> bool:
     """Whether `filename` is part of the `aie` package rather than user code."""
-    return Path(filename).is_relative_to(AIE_ROOT)
+    return os.path.normcase(filename).startswith(_AIE_PREFIX)
+
+
+# Finding a statement's column walks its code, and captures repeat a few sites.
+@functools.lru_cache(maxsize=4096)
+def _column(code: CodeType, lasti: int) -> int:
+    if sys.version_info < (3, 11):
+        return 0
+    # f_lasti counts bytes; co_positions has an entry per 2-byte unit.
+    positions = itertools.islice(code.co_positions(), lasti // 2, None)
+    return next(positions)[2] or 0
 
 
 class SourceSite:
@@ -47,11 +62,11 @@ class SourceSite:
             frame = frame.f_back
         if frame is None:
             return cls(None)
-        col = 0
-        if sys.version_info >= (3, 11):
-            positions = inspect.getframeinfo(frame, 0).positions
-            col = (positions and positions.col_offset) or 0
-        return cls(frame.f_code.co_filename, frame.f_lineno, col)
+        return cls(
+            frame.f_code.co_filename,
+            frame.f_lineno,
+            _column(frame.f_code, frame.f_lasti),
+        )
 
     def location(self, name: str | None = None) -> "ir.Location":
         """Return this site as an `ir.Location` in the current Context.
@@ -66,6 +81,20 @@ class SourceSite:
             return ir.Location.current
         loc = ir.Location.file(self.filename, self.line, self.col)
         return ir.Location.name(name, childLoc=loc) if name else loc
+
+
+def user_code_location() -> "ir.Location | None":
+    """Return the innermost statement outside the `aie` package as a location.
+
+    Returns:
+        Its file location in the current Context, or None, so that an op
+        takes the ambient location, outside a Context or when the whole stack
+        is internal.
+    """
+    if ir.Context.current is None:
+        return None
+    site = SourceSite.capture()
+    return site.location() if site.filename else None
 
 
 def traced_body(fn) -> contextlib.AbstractContextManager:

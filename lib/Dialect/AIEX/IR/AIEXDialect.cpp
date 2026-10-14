@@ -142,14 +142,15 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
   }
 }
 
-mlir::LogicalResult
-AIEX::verifyStridesWraps(mlir::Operation *forOp,
-                         mlir::BaseMemRefType referencedBufType, int tileCol,
-                         int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
-                         llvm::SmallVector<int64_t, 4> inputStrides,
-                         llvm::SmallVector<int64_t, 4> hardwareSizes,
-                         llvm::SmallVector<int64_t, 4> hardwareStrides,
-                         bool skipTransformationChecks) {
+mlir::LogicalResult AIEX::verifyStridesWraps(
+    mlir::Operation *forOp,
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+    mlir::BaseMemRefType referencedBufType, int tileCol, int tileRow,
+    llvm::SmallVector<int64_t, 4> inputSizes,
+    llvm::SmallVector<int64_t, 4> inputStrides,
+    llvm::SmallVector<int64_t, 4> hardwareSizes,
+    llvm::SmallVector<int64_t, 4> hardwareStrides,
+    bool skipTransformationChecks) {
   const auto &targetModel = AIE::getTargetModel(forOp);
   auto addressGranularity = targetModel.getAddressGenGranularity();
   DataLayout dataLayout = DataLayout::closest(forOp);
@@ -160,16 +161,15 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
   if (!targetModel.isCoreTile(tileCol, tileRow) &&
       !targetModel.isMemTile(tileCol, tileRow) &&
       !targetModel.isShimNOCTile(tileCol, tileRow))
-    return forOp->emitOpError(
-        "Unsupported tile type at (" + std::to_string(tileCol) + ", " +
-        std::to_string(tileRow) + ") Must be ShimNOC, Mem or Core.");
+    return emitError() << "Unsupported tile type at (" << tileCol << ", "
+                       << tileRow << ") Must be ShimNOC, Mem or Core.";
 
   uint32_t wrap_bits = targetModel.getDmaBdWrapBits(tileCol, tileRow);
   uint32_t step_bits = targetModel.getDmaBdStepBits(tileCol, tileRow);
 
   for (int i = 0; i < 4; i++) {
     if (inputSizes[i] <= 0) {
-      return forOp->emitOpError("Size ") << i << " must be a positive integer.";
+      return emitError() << "Size " << i << " must be a positive integer.";
     }
   }
 
@@ -180,7 +180,7 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
         << " bytes each equal " << (inputSizes[0] * elemWidth / 8)
         << " bytes, which is not divisible by " << (addressGranularity / 8)
         << ". ";
-    return forOp->emitOpError(msg.str());
+    return emitError() << msg.str();
   }
 
   for (int i = 0; i < 3; i++) {
@@ -188,14 +188,13 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
       // If inputSize[i] == 1, anything is allowable in the stride, since that
       // stride will never be applied. For any larger size, we must verify that
       // the stride is positive.
-      return forOp->emitOpError("Stride ")
-             << i << " must be a positive integer.";
+      return emitError() << "Stride " << i << " must be a positive integer.";
     }
   }
   // A value of zero is allowable for the fourth-dimension stride
   // (this indicates an interation stride for the repeat of 0)
   if (inputSizes[3] > 1 && inputStrides[3] < 0) {
-    return forOp->emitOpError("Stride 3 must be a non-negative integer.");
+    return emitError() << "Stride 3 must be a non-negative integer.";
   }
 
   for (int i = 0; i < 4; i++) {
@@ -210,24 +209,23 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
           << (elemWidth / 8) << " bytes = " << (inputStrides[i] * elemWidth / 8)
           << " bytes, which is not divisible by " << (addressGranularity / 8)
           << ". ";
-      return forOp->emitOpError(msg.str());
+      return emitError() << msg.str();
     }
   }
   // The innermost dimension steps whole granules, so for elements of another
   // width it can only be contiguous.
   if (elemWidth != addressGranularity && inputSizes[0] > 1 &&
       inputStrides[0] != 1)
-    return forOp->emitOpError("Stride 0 is ")
-           << inputStrides[0] << " elements, but must be 1 for "
-           << (elemWidth / 8) << "-byte elements: the DMA moves whole "
-           << (addressGranularity / 8) << "-byte words.";
+    return emitError() << "Stride 0 is " << inputStrides[0]
+                       << " elements, but must be 1 for " << (elemWidth / 8)
+                       << "-byte elements: the DMA moves whole "
+                       << (addressGranularity / 8) << "-byte words.";
 
   auto outOfRange = [&](const char *what, int dim, int64_t written,
                         int64_t encoded, int64_t lo, int64_t hi) {
-    return forOp->emitOpError()
-           << what << " " << dim << " is " << written << " (encoded as "
-           << encoded << "), which exceeds the [" << lo << ":" << hi
-           << "] range.";
+    return emitError() << what << " " << dim << " is " << written
+                       << " (encoded as " << encoded << "), which exceeds the ["
+                       << lo << ":" << hi << "] range.";
   };
 
   int64_t maxWrap = (1 << wrap_bits) - 1;
@@ -245,9 +243,9 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
       pureRepeat ? targetModel.getMaxRepeatCount() + 1
                  : 1LL << targetModel.getDmaBdIterBits(tileCol, tileRow);
   if (inputSizes[3] > maxCount)
-    return forOp->emitOpError()
-           << (pureRepeat ? "repeat count " : "iteration count ")
-           << inputSizes[3] << " exceeds the [1:" << maxCount << "] range.";
+    return emitError() << (pureRepeat ? "repeat count " : "iteration count ")
+                       << inputSizes[3] << " exceeds the [1:" << maxCount
+                       << "] range.";
   for (int dim : {0, 1, 2}) {
     if (hardwareStrides[dim] > maxStep - 1)
       return outOfRange("Stride", dim, inputStrides[dim], hardwareStrides[dim],
@@ -746,8 +744,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
                                          inputStrides)) {
       // ok: will be decomposed before lowering
     } else if (failed(verifyStridesWraps(
-                   *this, buffer, col, row, inputSizes, inputStrides,
-                   hardwareSizes, hardwareStrides, skipTransformationChecks))) {
+                   *this, [&] { return emitOpError(); }, buffer, col, row,
+                   inputSizes, inputStrides, hardwareSizes, hardwareStrides,
+                   skipTransformationChecks))) {
       return failure();
     }
   }
@@ -928,14 +927,18 @@ uint32_t AIEX::NpuWriteBdOp::getAxcacheOrDefault() {
 }
 
 std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
-  mlir::APInt cst;
-  if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
-    return std::nullopt;
-  return static_cast<uint32_t>(cst.getZExtValue());
+  if (std::optional<uint64_t> cst = getConstantInt64Operand(v))
+    return static_cast<uint32_t>(*cst);
+  return std::nullopt;
 }
 
 // Widthwise counterpart of getConstantIntOperand; see createConstantArgPlus.
 std::optional<uint64_t> AIEX::getConstantInt64Operand(mlir::Value v) {
+  // An arith.constant is read in place: the generic match folds the op, which
+  // dominates translating a sequence of a million writes.
+  if (auto constant = v.getDefiningOp<arith::ConstantOp>())
+    if (auto attr = dyn_cast<IntegerAttr>(constant.getValue()))
+      return attr.getValue().getZExtValue();
   mlir::APInt cst;
   if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
     return std::nullopt;
@@ -963,8 +966,9 @@ mlir::Value AIEX::createConstantArgPlus(mlir::OpBuilder &builder,
 //===----------------------------------------------------------------------===//
 
 template <typename T>
-static std::optional<uint32_t> getAbsoluteAddress(T *op,
-                                                  uint32_t addressOffset) {
+static std::optional<uint32_t>
+getAbsoluteAddress(T *op, uint32_t addressOffset,
+                   const AIE::NamedOpTable *names) {
   AIE::DeviceOp device =
       op->getOperation()->template getParentOfType<AIE::DeviceOp>();
   if (!device) {
@@ -979,7 +983,8 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op,
   // relative to the buffer's start address.
   if (auto bufferSym = op->getBuffer()) {
     AIE::BufferOp buffer =
-        AIE::lookupNamedOpIn<AIE::BufferOp>(device, *bufferSym);
+        names ? names->lookup<AIE::BufferOp>(op->getBufferAttr().getAttr())
+              : AIE::lookupNamedOpIn<AIE::BufferOp>(device, *bufferSym);
     if (!buffer) {
       op->emitError() << "buffer '" << *bufferSym << "' not found in device";
       return std::nullopt;
@@ -1014,11 +1019,12 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op,
   return address;
 }
 
-std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
+std::optional<uint32_t>
+AIEX::NpuWrite32Op::getAbsoluteAddress(const AIE::NamedOpTable *names) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset);
+  return ::getAbsoluteAddress(this, *addressOffset, names);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1042,8 +1048,9 @@ LogicalResult AIEX::NpuAddressPatchOp::verify() {
 // NpuUpdateFromScratchpadOp
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::NpuUpdateFromScratchpadOp::getAbsoluteAddress() {
-  return ::getAbsoluteAddress(this, getAddress());
+std::optional<uint32_t> AIEX::NpuUpdateFromScratchpadOp::getAbsoluteAddress(
+    const AIE::NamedOpTable *names) {
+  return ::getAbsoluteAddress(this, getAddress(), names);
 }
 
 LogicalResult AIEX::NpuUpdateFromScratchpadOp::verify() {
@@ -1113,9 +1120,8 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
 
   NpuCreateScratchpadOp firstSeen;
   runtimeSeq.walk([&](NpuCreateScratchpadOp op) {
-    if (!firstSeen) {
-      firstSeen = op;
-    }
+    firstSeen = op;
+    return WalkResult::interrupt();
   });
   if (firstSeen != *this) {
     InFlightDiagnostic diag =
@@ -1133,30 +1139,33 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
 // NpuMaskWrite32Op
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
+std::optional<uint32_t>
+AIEX::NpuMaskWrite32Op::getAbsoluteAddress(const AIE::NamedOpTable *names) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset);
+  return ::getAbsoluteAddress(this, *addressOffset, names);
 }
 
 //===----------------------------------------------------------------------===//
 // NpuMaskPollOp
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::NpuMaskPollOp::getAbsoluteAddress() {
+std::optional<uint32_t>
+AIEX::NpuMaskPollOp::getAbsoluteAddress(const AIE::NamedOpTable *names) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset);
+  return ::getAbsoluteAddress(this, *addressOffset, names);
 }
 
 //===----------------------------------------------------------------------===//
 // NpuBlockWriteOp
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::NpuBlockWriteOp::getAbsoluteAddress() {
-  return ::getAbsoluteAddress(this, getAddress());
+std::optional<uint32_t>
+AIEX::NpuBlockWriteOp::getAbsoluteAddress(const AIE::NamedOpTable *names) {
+  return ::getAbsoluteAddress(this, getAddress(), names);
 }
 
 DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
@@ -1839,4 +1848,63 @@ LogicalResult AIEX::NpuLoadPdiOp::canonicalize(AIEX::NpuLoadPdiOp op,
   }
 
   return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuWriteConfigOp
+//===----------------------------------------------------------------------===//
+
+static AIEX::NpuLoadPdiOp precedingLoadPdi(Operation *op) {
+  for (Operation *prev = op->getPrevNode(); prev; prev = prev->getPrevNode())
+    if (auto load = dyn_cast<AIEX::NpuLoadPdiOp>(prev))
+      return load;
+  return {};
+}
+
+LogicalResult AIEX::NpuWriteConfigOp::verify() {
+  AIEX::NpuLoadPdiOp reset = precedingLoadPdi(*this);
+  if (!reset)
+    return emitOpError("must follow the load_pdi that resets the array");
+  // The load the firmware ran before the reset; ahead of the sequence's first,
+  // that is its last, as the host runs the sequence again on each dispatch.
+  AIEX::NpuLoadPdiOp before = precedingLoadPdi(reset);
+  if (!before)
+    for (Operation &op : llvm::reverse(*reset->getBlock()))
+      if ((before = dyn_cast<AIEX::NpuLoadPdiOp>(op)))
+        break;
+  if (before.getDeviceRefAttr() == reset.getDeviceRefAttr() &&
+      before.getId() == reset.getId() && before.getSize() == reset.getSize() &&
+      before.getAddress() == reset.getAddress()) {
+    InFlightDiagnostic diag = emitOpError(
+        "follows a load_pdi the firmware skips, as it loads the PDI loaded "
+        "just before it, so the array is not reset");
+    diag.attachNote(before.getLoc()) << "the PDI is loaded here";
+    return diag;
+  }
+  return success();
+}
+
+LogicalResult
+AIEX::NpuWriteConfigOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
+  if (!isa_and_present<AIE::DeviceOp>(
+          symbolTable.lookupSymbolIn(scope, getDeviceRefAttr())))
+    return emitOpError() << getDeviceRefAttr() << " is not a device";
+  AIEX::NpuLoadPdiOp reset = precedingLoadPdi(*this);
+  FlatSymbolRefAttr resetRef = reset ? reset.getDeviceRefAttr() : nullptr;
+  auto empty = resetRef ? dyn_cast_or_null<AIE::DeviceOp>(
+                              symbolTable.lookupSymbolIn(scope, resetRef))
+                        : nullptr;
+  // The transaction conversion gives every device a `@configure` sequence; an
+  // empty one still configures nothing.
+  if (reset &&
+      (!empty ||
+       !llvm::all_of(empty.getBody()->without_terminator(), [](Operation &op) {
+         return isa<AIE::RuntimeSequenceOp>(op) &&
+                llvm::all_of(op.getRegion(0),
+                             [](Block &block) { return block.empty(); });
+       })))
+    return emitOpError("must follow a load_pdi of an empty device, which "
+                       "resets the array");
+  return success();
 }
