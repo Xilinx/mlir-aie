@@ -2709,7 +2709,8 @@ int main(int argc, char **argv) {
   mlir::registerAllExtensions(registry);
   xilinx::aievec::registerTransformDialectExtension(registry);
   registerLLVMIRTranslations(registry);
-  // -j bounds the threads that run the per-device pass pipelines as well.
+  // -j bounds the threads that run the per-device pass pipelines as well. The
+  // pinned MLIR wheel is built without threading, so they run on one for now.
   llvm::DefaultThreadPool mlirThreads(llvm::hardware_concurrency(numThreads));
   mlir::MLIRContext context(registry, mlir::MLIRContext::Threading::DISABLED);
   if (numThreads != 1)

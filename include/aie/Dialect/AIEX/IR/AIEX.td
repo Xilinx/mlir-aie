@@ -1312,6 +1312,11 @@ def AIE_NpuWriteConfigOp
     `aie-expand-load-pdi` places one after the reset it inserts for each
     `load_pdi` it expands to writes.
 
+    The writes are generated when the sequence is translated, from
+    `device_ref` as it is then, so the core ELF files its cores name must still
+    be on disk. With `inline-config=true`, `aie-expand-load-pdi` writes them
+    into the sequence instead, and the IR no longer depends on those files.
+
     The firmware resets the array when it loads an empty device's PDI, unless
     that PDI is the one it loaded last. So the `load_pdi` before this op must
     be of an empty device, and differ from the `load_pdi` before it. For the
