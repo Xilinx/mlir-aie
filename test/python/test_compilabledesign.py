@@ -1649,15 +1649,14 @@ def test_generate_mlir_injects_compile_context():
     assert observed["K"] == 64
 
 
-def test_generate_mlir_clears_external_function_instances_before_call():
+def test_generate_mlir_leaves_earlier_external_function_instances_out():
     """Stale ExternalFunction instances must not leak into a new generation."""
 
     stale = object()
     ExternalFunction._instances.add(stale)
 
     def gen(*, M: CompileTime[int]):
-        # Verify the stale instance was cleared before we ran.
-        assert stale not in ExternalFunction._instances
+        assert stale not in get_compile_arg("_iron_kernel_registry")
 
         with mlir_mod_ctx() as ctx:
             pass

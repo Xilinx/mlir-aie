@@ -5,15 +5,15 @@
 # REQUIRES: peano
 """Designs compiled from several threads each build with their own kernels.
 
-A generator registers its kernels in the process-wide
-`ExternalFunction._instances`, which the next generation clears, so two
-generations must not overlap. The first generator here waits, its kernel
-registered, for the second to start; were they to overlap, the second would
-clear the first's kernel.
+Generation binds the process-wide device, so two generations must not
+overlap. The first generator here waits, its kernel registered, for the second
+to start; were they to overlap, the second would bind the device under the
+first.
 """
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -22,6 +22,7 @@ from aie.iron import ExternalFunction, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2Col1
 from aie.utils import set_current_device
+from aie.utils.compile import compile_mlir_module
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
 
 TILE = 64
@@ -34,21 +35,22 @@ entered = {"fill_seven": threading.Event(), "fill_nine": threading.Event()}
 overlapped: list[bool] = []
 
 
-def fill(symbol: str, value: int):
+def fill(symbol: str, value: int, sources: Path, until: threading.Event | None = None):
     """A design whose one core fills its output with `value` by a kernel of
-    its own, `symbol`."""
+    its own, `symbol`, written under `sources`, generated once `until` (if any)
+    is set."""
+    source = sources / f"{symbol}.cc"
+    source.write_text(f"""
+        extern "C" void {symbol}(int *out) {{
+            for (int i = 0; i < {TILE}; i++)
+                out[i] = {value};
+        }}""")
 
     def generator():
         entered[symbol].set()
-        kernel = ExternalFunction(
-            symbol,
-            source_string=f"""
-                extern "C" void {symbol}(int *out) {{
-                    for (int i = 0; i < {TILE}; i++)
-                        out[i] = {value};
-                }}""",
-            arg_types=[tile_ty],
-        )
+        if until is not None:
+            assert until.wait(timeout=600)
+        kernel = ExternalFunction(symbol, source_file=str(source), arg_types=[tile_ty])
         of_out = ObjectFifo(tile_ty, name="out")
 
         def core(of_out, fn):
@@ -84,8 +86,10 @@ def _device():
 
 def test_designs_compiled_from_threads_keep_their_own_kernels(tmp_path):
     designs = {
-        "fill_seven": CompilableDesign(fill("fill_seven", 7), use_cache=False),
-        "fill_nine": CompilableDesign(fill("fill_nine", 9), use_cache=False),
+        "fill_seven": CompilableDesign(
+            fill("fill_seven", 7, tmp_path), use_cache=False
+        ),
+        "fill_nine": CompilableDesign(fill("fill_nine", 9, tmp_path), use_cache=False),
     }
 
     def build(name):
@@ -104,3 +108,26 @@ def test_designs_compiled_from_threads_keep_their_own_kernels(tmp_path):
     for name, (xclbin, insts) in built.items():
         assert xclbin.exists() and insts.exists()
         assert [k.name for k in designs[name]._generated.external_kernels] == [name]
+
+
+def test_generated_kernels_build_while_another_design_generates(tmp_path):
+    first = CompilableDesign(fill("fill_seven", 7, tmp_path), use_cache=False)
+    text = str(first.generate_mlir())
+    compiled = threading.Event()
+    second = CompilableDesign(fill("fill_nine", 9, tmp_path, compiled), use_cache=False)
+
+    with ThreadPoolExecutor(1) as pool:
+        generating = pool.submit(second.generate_mlir)
+        assert entered["fill_nine"].wait(timeout=60)
+        try:
+            compile_mlir_module(
+                text,
+                work_dir=tmp_path,
+                full_elf_path=tmp_path / "design.elf",
+                device=NPU2Col1(),
+            )
+        finally:
+            compiled.set()
+        generating.result()
+
+    assert (tmp_path / "design.elf").exists()

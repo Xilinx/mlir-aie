@@ -87,9 +87,8 @@ from .context import compile_context
 # file_lock's own 60s default is well under the AIE compiles this guards -- CI
 # budgets individual tests 600-1200s for exactly that reason.
 COMPILE_LOCK_TIMEOUT_SECONDS = 1800
-# Generators register their kernels in the process-wide
-# ExternalFunction._instances, so one generates at a time; the builds after it
-# run concurrently.
+# Generation binds the process-wide current device, so one generates at a
+# time; the builds after it run concurrently.
 _GENERATION_LOCK = threading.RLock()
 
 _MULTI_CONFIGURATION_OUTPUTS = (
@@ -1870,8 +1869,6 @@ class CompilableDesign:
                 f"compile_kwargs do not match CompileTime[T] parameters — {exc}"
             ) from exc
 
-        ExternalFunction._instances.clear()
-
         _tensor_placeholders: dict[str, _TensorPlaceholder | tuple[()]] = {
             name: _TensorPlaceholder(name) for name in self.tensor_params
         }
@@ -1900,16 +1897,18 @@ class CompilableDesign:
             assert declared is not None
             _gen_call_kwargs[name] = declared(self.compile_kwargs[name])
 
-        # Re-register any ExternalFunction instances passed as CompileTime[T] params
-        # so the generator's kernel-call paths see them already-registered.
-        for _v in _gen_call_kwargs.values():
-            if isinstance(_v, ExternalFunction):
-                ExternalFunction._instances.add(_v)
-
+        # The generation's kernels register here, not in the process-wide
+        # registry another thread's manual compile reads. ExternalFunction
+        # instances passed as CompileTime[T] params start out registered, so the
+        # generator's kernel-call paths see them.
+        registry = {
+            v for v in _gen_call_kwargs.values() if isinstance(v, ExternalFunction)
+        }
         with compile_context(
             **self.compile_kwargs,
             _iron_full_elf=full_elf,
             _iron_object_cache=self._kernel_object_cache(),
+            _iron_kernel_registry=registry,
         ):
             with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
                 bound = inspect.BoundArguments(sig, OrderedDict(_gen_call_kwargs))
@@ -1935,10 +1934,9 @@ class CompilableDesign:
                     module,
                     # str() drops locations, and aiecc reports against this text.
                     module.operation.get_asm(enable_debug_info=True),
-                    list(ExternalFunction._instances),
+                    list(registry),
                 )
 
-        ExternalFunction._instances.clear()
         return generated
 
     def __hash__(self) -> int:
