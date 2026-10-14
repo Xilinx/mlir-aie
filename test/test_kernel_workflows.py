@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -366,6 +367,133 @@ def test_a_run_that_publishes_requires_the_power_mode(event, ref, seeds):
         return
     required = evaluate(step["env"]["REQUIRED_PMODE"], context)
     assert required == ("turbo" if publishes else "any")
+
+
+MODEL_INPUTS = (
+    "allocator_seeds",
+    "allocator_bankres_seeds",
+    "router_seeds",
+    "mutation_seeds",
+    "first_seed",
+)
+
+
+@pytest.mark.parametrize(
+    "event, ref",
+    [
+        ("schedule", "refs/heads/main"),
+        ("workflow_dispatch", "refs/heads/main"),
+        ("workflow_dispatch", "refs/heads/topic"),
+    ],
+)
+@pytest.mark.parametrize("given", ["", *MODEL_INPUTS])
+def test_model_based_tests_publish_only_an_unfiltered_run_on_main(event, ref, given):
+    jobs = workflow("modelBasedTests.yml")["jobs"]
+    context = {"github.ref": ref}
+    context.update(
+        {f"inputs.{name}": "7" if name == given else "" for name in MODEL_INPUTS}
+    )
+    assert set(
+        workflow("modelBasedTests.yml")["on"]["workflow_dispatch"]["inputs"]
+    ) == set(MODEL_INPUTS)
+    assert evaluate(jobs["publish"]["if"], context) == (
+        ref == "refs/heads/main" and not given
+    )
+
+
+def test_model_based_tests_publish_both_checks_and_the_page(tmp_path):
+    """modelBasedTests.yml's Publish step, on a local repository, with what
+    model_based.py makes of the scripts' reports."""
+    root = WORKFLOWS.parents[1]
+    job = workflow("modelBasedTests.yml")["jobs"]["publish"]
+    assert job["concurrency"] == {
+        "group": "gh-pages-publish",
+        "cancel-in-progress": "false",
+        "queue": "max",
+    }
+    run = next(s["run"] for s in job["steps"] if s.get("name") == "Publish results")
+    repo = tmp_path / "repo"
+    (repo / "utils/kernel_checks").mkdir(parents=True)
+    for name in ("index.html", "publish.py"):
+        (repo / "utils/kernel_checks" / name).write_bytes(
+            (root / "utils/kernel_checks" / name).read_bytes()
+        )
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "main")
+    git(repo, "switch", "-q", "--orphan", "gh-pages")
+    (repo / "kernel-checks").mkdir()
+    (repo / "kernel-checks/index.html").write_text("redirect")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "pages")
+    git(repo, "switch", "-q", "main")
+
+    allocator = tmp_path / "allocator.json"
+    allocator.write_text(
+        json.dumps(
+            {
+                "properties": [{"name": "legality", "ok": True, "detail": ""}],
+                "counts": {
+                    "unsolved": 0,
+                    "illegal": 0,
+                    "avoidable_crossings": 0,
+                    "bank_pair_sharing": 0.24,
+                    "wall_s": 103.0,
+                },
+            }
+        )
+    )
+    collector = root / "utils/component_checks/model_based.py"
+    for check, report in (("allocator", allocator), ("router", tmp_path / "gone.json")):
+        out = repo / "results" / check
+        out.mkdir(parents=True)
+        subprocess.run(
+            [sys.executable, collector, check, "--report", report]
+            + ["--out", out / "perf.json", "--meta", out / "meta.json"],
+            capture_output=True,
+            check=False,
+        )
+    temp = tmp_path / "runner-temp"
+    temp.mkdir()
+    subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", run],
+        cwd=repo,
+        env={
+            **os.environ,
+            "RUNNER_TEMP": str(temp),
+            "GITHUB_RUN_ID": "42",
+            "GITHUB_SHA": "0123456789abcdef",
+            "RUN_URL": "https://example.com/runs/42",
+            "RUN_STARTED_AT": "2026-10-10T03:17:00Z",
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.com",
+        },
+        check=True,
+        capture_output=True,
+    )
+    assert git(repo, "branch", "--show-current").strip() == "main"
+    files = set(git(repo, "ls-tree", "-r", "--name-only", "gh-pages").split())
+    assert {
+        "dashboard/index.html",
+        "component-checks/allocator/runs/42.json",
+        "component-checks/allocator/history/bank_pair_sharing.json",
+        "component-checks/allocator/index.html",
+        "component-checks/router/runs/42.json",
+        "component-checks/router/index.html",
+    } <= files
+
+    def show(path):
+        return json.loads(git(repo, "show", f"gh-pages:{path}"))
+
+    record = show("component-checks/allocator/runs/42.json")
+    assert record["target"] == "allocator" and record["failed"] == []
+    assert record["rows"]["allocator"]["bank_pair_sharing"]["value"] == 0.24
+    # A router that wrote no report still publishes a record saying so.
+    record = show("component-checks/router/runs/42.json")
+    assert record["failed"] == ["gone: no report"] and record["exitstatus"] == 1
+    assert 'url=../../dashboard/#view=routing"' in git(
+        repo, "show", "gh-pages:component-checks/router/index.html"
+    )
 
 
 def test_every_path_that_triggers_a_pull_request_run_exists():

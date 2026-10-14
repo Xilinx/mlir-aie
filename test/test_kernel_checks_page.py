@@ -1256,6 +1256,106 @@ assert.equal(bad.cards[0].children[1].children[2].text, 'Runsseed 32 of 2 passed
 """)
 
 
+MODEL_NIGHTS = """
+const router = BANDS.find(b => b.id === 'router'), allocator = BANDS.find(b => b.id === 'allocator');
+// Records as model_based.py writes them.
+const cell = (value, unit) => ({ value, unit });
+const routerRecord = (id, date, npu2, extra) => ({ id, date, pmode: null, commit: { ...commit }, provenance: {}, rows: {
+  npu1: { failed_properties: cell(0, 'properties'), unrouted: cell(0, 'routings'), illegal: cell(0, 'routings'),
+          hop_ratio: cell(1.012, '×'), amsels_per_design: cell(14.87, 'amsels'), ms_per_design: cell(10.0, 'ms'),
+          failed_mutations: cell(2, 'cases'), survived_corruptions: cell(1, 'corruptions') },
+  npu2: { failed_properties: cell(npu2, 'properties'), unrouted: cell(0, 'routings'), illegal: cell(npu2, 'routings'),
+          hop_ratio: cell(1.015, '×'), amsels_per_design: cell(14.96, 'amsels'), ms_per_design: cell(13.1, 'ms'),
+          failed_mutations: cell(0, 'cases'), survived_corruptions: cell(0, 'corruptions') },
+}, detail: [
+  { device: 'npu1', run: 'properties', first_seed: 20370000, seeds: 2000, failed: [] },
+  { device: 'npu1', run: 'hops-on', first_seed: 20370000, seeds: 400, killed: 1000, survived: 0, failures: 0 },
+  { device: 'npu1', run: 'hops-off', first_seed: 20370000, seeds: 400, killed: 999, survived: 1, failures: 2 },
+  { device: 'npu2', run: 'properties', first_seed: 20370000, seeds: 2000, failed: npu2 ? ['legality'] : [] },
+], ...(extra || {}) });
+const allocatorRecord = (id, date, sharing, extra) => ({ id, date, pmode: null, commit: { ...commit }, provenance: {}, rows: {
+  allocator: { failed_properties: cell(0, 'properties'), unsolved: cell(0, 'designs'), illegal: cell(0, 'designs'),
+               avoidable_crossings: cell(0, 'crossings'), bank_pair_sharing: cell(sharing, 'pairs'), wall_s: cell(103, 's') },
+}, detail: ['metric-validation', 'legality', 'bank-sharing'].map(name => ({ name, ok: true, detail: '' })), ...(extra || {}) });
+"""
+
+
+def test_a_failed_router_night_names_each_failure_and_how_to_run_it_again(page):
+    page(COMPONENT_RUNS + MODEL_NIGHTS + """
+assert.equal(router.section, 'routing');
+const failed = ['npu2/properties/seed=20370000+2000/legality', 'npu1/hops-off/seed=20370012+1/mutator fanout illegal',
+                'npu1/hops-off/seed=20370040+1/kill amsel survived', 'npu1-hops-on: no report'];
+const latest = routerRecord('7', '2026-10-02T03:17:00Z', 1, { failed });
+const index = { target: 'router', runs: [night('7', latest.date, null, { failed })] };
+const card = componentBand(router, index, latest, NOW);
+assert.equal(card.className, 'verdict bad');
+assert.equal(one(card, n => n.className === 'headline').text,
+             '4 checks failed: npu2 legality, npu1 hops off mutator fanout illegal (seed 20370012), '
+             + 'npu1 hops off kill amsel survived (seed 20370040), npu1-hops-on: no report.');
+const repro = one(card, n => n.className === 'repro');
+assert.ok(card.children.includes(repro));
+assert.ok(repro.text.includes('artifact component-checks-router-7'));
+assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n'), [
+  'git checkout abcdef123456',
+  'python test/create-packet-flows/nightly/router_properties.py --device npu2 --seeds 2000 --first-seed 20370000',
+  'python utils/router_testing/router_mutation.py --device npu1 --hops-off --seeds 1 --first-seed 20370012 --only fanout -v',
+  'python utils/router_testing/router_mutation.py --device npu1 --hops-off --seeds 1 --first-seed 20370040 --only kill -v',
+  '# every check, as the nightly runs them:',
+  ...router.whole.split('\\n'),
+]);
+// A card per device: its seeds, the verifier's kill rate, nonzero failures red.
+assert.deepEqual(card.cards.map(c => c.kase), ['npu1', 'npu2']);
+const [header, grid] = card.cards[0].children;
+assert.ok(header.text.includes('seeds 20,370,000 + 2,000'));
+assert.equal(header.children.at(-1).text, 'kill rate 1.000');
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Failures', 'Unrouted / illegal', 'Missed corruptions', 'Route cost', 'Time / design']);
+assert.equal(grid.children[0].text, 'Failuresproperties0mutations2');
+assert.deepEqual(all(grid.children[0], n => /^vals/.test(n.className || '')).map(n => n.className), ['vals', 'vals worse']);
+assert.equal(grid.children[3].text, 'Route costhops1.012msels14.9');
+assert.equal(grid.children[0].href, '#view=routing&metric=failed_properties');
+const [, grid2] = card.cards[1].children;
+assert.equal(all(grid2.children[1], n => /^vals/.test(n.className || ''))[1].className, 'vals worse');
+// Run by hand with no failure: how to run the whole check.
+const quiet = componentBand(router, { target: 'router', runs: [night('7', latest.date, null)] }, routerRecord('7', latest.date, 0), NOW);
+assert.equal(one(quiet, n => n.className === 'headline').text,
+             'Every property held and every mutation was answered right. npu2: 1.015× the constructed hops, 13.1 ms per design.');
+assert.equal(one(quiet, n => n.tag === 'pre').text.split('\\n')[1],
+             'python test/create-packet-flows/nightly/router_properties.py --device npu2 --seeds 2000 --first-seed N');
+""")
+
+
+def test_the_allocator_band_names_its_failed_properties_under_placement(page):
+    page(COMPONENT_RUNS + MODEL_NIGHTS + """
+assert.equal(allocator.section, 'placement');
+const before = allocatorRecord('6', '2026-10-01T03:17:00Z', 0.2434);
+const failed = ['bank-sharing', 'legality'];
+const after = allocatorRecord('7', '2026-10-02T03:17:00Z', 0.2534, { failed });
+after.detail[1].ok = after.detail[2].ok = false;
+const index = { target: 'allocator', runs: [night('6', before.date, null), night('7', after.date, null, { failed })] };
+const card = componentBand(allocator, index, after, NOW, before);
+assert.equal(one(card, n => n.className === 'headline').text, '2 properties failed: bank-sharing, legality.');
+// Sharing moved 4.1%, past its threshold.
+assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:allocator bank sharing +4.1%');
+// One repro line however many properties failed: the script has no per-property switch.
+assert.deepEqual(one(card, n => n.tag === 'pre').text.split('\\n'), [
+  'git checkout abcdef123456',
+  "python test/assign-buffer-addresses/allocator_properties.py   # check-aie's smaller corpus",
+  '# every property, as the nightly runs them:',
+  allocator.whole,
+]);
+const [header, grid] = card.cards[0].children;
+assert.ok(header.text.includes('1 of 3 properties held'));
+assert.deepEqual(grid.children.map(c => c.children[0].text), ['Failed properties', 'Unplaced / illegal', 'Quality', 'Wall time']);
+assert.equal(grid.children[2].text, 'Qualitycrossings0sharing0.253 +4.1%');
+// The counts both sections chart link to this one's trends.
+assert.equal(grid.children[0].href, '#view=placement&metric=failed_properties');
+const quiet = componentBand(allocator, { target: 'allocator', runs: [night('6', before.date, null)] }, before, NOW);
+assert.ok(one(quiet, n => n.className === 'headline').text.endsWith('0.243 bank pairs shared per design; the run took 103 s.'));
+assert.equal(plural(2, 'property'), '2 properties');
+assert.equal(plural(2, 'day'), '2 days');
+""")
+
+
 def test_the_overview_has_a_tile_per_section_and_says_when_one_is_late(page):
     page(MOVED + RUNS + COMPONENT_RUNS + HW_NIGHTS + """
 const nightsNow = renderDashboard(['npu1'], db, new Map([['npu1', catalogue]]), new Map([['npu1', index]]), 3600 * 1000);
@@ -1276,9 +1376,9 @@ assert.equal(perf.level, 'ok');
 assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['All passing', 'Every run passed.']);
 // The whole of each line is in the row's tooltip.
 assert.ok(perf.title.includes('MobileNet: Every run passed.'));
-// No checks: says so instead of a verdict.
+// A check that has not published yet: says so instead of a verdict.
 assert.equal(routing.level, 'none');
-assert.equal(routing.children[1].text, 'Not tracked yet');
+assert.equal(routing.children[1].text, 'No results yet');
 // Two days without a run: late and red, the line says so first.
 const late = overviewTiles(null, loaded, NOW + 2 * 86400 * 1000);
 assert.equal(late[2].level, 'bad');

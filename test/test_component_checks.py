@@ -280,6 +280,129 @@ def test_a_replayed_placement_matches_placing_the_design(hw, aie_opt):
     assert hw.place_seed(runs[2:], aie_opt, str(SMALL))["placement_cost"] is None
 
 
+def collect(tmp_path, check, *reports):
+    out, meta = tmp_path / "perf.json", tmp_path / "meta.json"
+    args = [arg for report in reports for arg in ("--report", report)]
+    result = subprocess.run(
+        [sys.executable, CHECKS / "model_based.py", check, *map(str, args)]
+        + ["--out", out, "--meta", meta],
+        capture_output=True,
+        text=True,
+    )
+    rows = {r["name"]: (r["value"], r["unit"]) for r in json.loads(out.read_text())}
+    return result, rows, json.loads(meta.read_text())
+
+
+def test_the_router_reports_become_a_case_per_device(aie_opt, tmp_path):
+    properties, hops_on = (
+        tmp_path / "npu1-properties.json",
+        tmp_path / "npu1-hops-on.json",
+    )
+    # Four designs are too few for some properties to hold: a real failure.
+    subprocess.run(
+        [sys.executable, ROOT / "test/create-packet-flows/nightly/router_properties.py"]
+        + ["--device", "npu1", "--seeds", "4", "--report", properties],
+        capture_output=True,
+        check=False,
+    )
+    subprocess.run(
+        [sys.executable, ROOT / "utils/router_testing/router_mutation.py"]
+        + ["--device", "npu1", "--seeds", "2", "--report", hops_on],
+        capture_output=True,
+        check=True,
+    )
+    report = json.loads(properties.read_text())
+    bad = [p["name"] for p in report["properties"] if not p["ok"]]
+    assert bad, "four designs were expected to leave a property undecided"
+    mutation = json.loads(hops_on.read_text())
+    assert (mutation["device"], mutation["hops"], mutation["seeds"]) == (
+        "npu1",
+        "on",
+        2,
+    )
+
+    result, rows, meta = collect(
+        tmp_path, "router", properties, hops_on, tmp_path / "npu1-hops-off.json"
+    )
+    assert result.returncode == 1
+    assert meta["failed"] == [f"npu1/properties/seed=0+4/{p}" for p in bad] + [
+        "npu1-hops-off: no report"
+    ]
+    assert rows["npu1/failed_properties"] == (len(bad), "properties")
+    assert rows["npu1/hop_ratio"] == (report["counts"]["hop_ratio"], "×")
+    assert rows["npu1/survived_corruptions"] == (mutation["survived"], "corruptions")
+    assert [(d["device"], d["run"]) for d in meta["detail"]] == [
+        ("npu1", "properties"),
+        ("npu1", "hops-on"),
+    ]
+    assert meta["provenance"].startswith("commit ")
+
+
+def test_mutation_failures_name_the_first_seed_of_each_kind(tmp_path):
+    report = tmp_path / "npu2-hops-off.json"
+    failures = [
+        {"seed": 12, "kind": "mutator", "name": "fanout", "outcome": "illegal"},
+        {"seed": 15, "kind": "mutator", "name": "fanout", "outcome": "illegal"},
+        {"seed": 15, "kind": "kill", "name": "amsel", "outcome": "survived"},
+        {"seed": 20, "kind": "base", "name": "", "outcome": "base-fails"},
+    ]
+    report.write_text(
+        json.dumps(
+            {
+                "device": "npu2",
+                "hops": "off",
+                "first_seed": 10,
+                "seeds": 20,
+                "killed": 99,
+                "survived": 1,
+                "failures": failures,
+            }
+        )
+    )
+    result, rows, meta = collect(tmp_path, "router", report)
+    assert result.returncode == 1
+    assert meta["failed"] == [
+        "npu2/hops-off/seed=12+1/mutator fanout illegal",
+        "npu2/hops-off/seed=15+1/kill amsel survived",
+        "npu2/hops-off/seed=20+1/base base-fails",
+    ]
+    assert rows == {
+        "npu2/failed_mutations": (4, "cases"),
+        "npu2/survived_corruptions": (1, "corruptions"),
+    }
+
+
+def test_the_allocator_report_is_one_case_named_by_its_failed_properties(tmp_path):
+    report = tmp_path / "allocator.json"
+    counts = {
+        "unsolved": 2,
+        "illegal": 0,
+        "avoidable_crossings": 1,
+        "bank_pair_sharing": 0.25,
+        "wall_s": 103.0,
+    }
+    properties = [
+        {"name": "legality", "ok": True, "detail": "0 illegal of 5000 placed"},
+        {"name": "completeness", "ok": False, "detail": "4998/5000 solved"},
+    ]
+    report.write_text(json.dumps({"properties": properties, "counts": counts}))
+    result, rows, meta = collect(tmp_path, "allocator", report)
+    assert result.returncode == 1 and "FAILED: completeness" in result.stdout
+    assert meta["failed"] == ["completeness"] and meta["detail"] == properties
+    assert rows == {
+        "allocator/failed_properties": (1, "properties"),
+        "allocator/unsolved": (2, "designs"),
+        "allocator/illegal": (0, "designs"),
+        "allocator/avoidable_crossings": (1, "crossings"),
+        "allocator/bank_pair_sharing": (0.25, "pairs"),
+        "allocator/wall_s": (103.0, "s"),
+    }
+    # A crash before the report: a failure, and no rows to chart.
+    result, rows, meta = collect(tmp_path, "allocator", tmp_path / "missing.json")
+    assert result.returncode == 1 and rows == {}
+    assert meta["failed"] == ["missing: no report"]
+
+
 def test_a_placement_that_fails_to_replay_has_no_cost(hw, aie_opt, tmp_path):
     bad = tmp_path / "bad.mlir"
     bad.write_text("not MLIR\n")

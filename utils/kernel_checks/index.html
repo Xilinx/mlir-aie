@@ -4,16 +4,18 @@
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 <!--
   The mlir-aie maintainer dashboard, installed as dashboard/index.html on the
-  publication branch by publishKernelResults.yml and nightlyComponentChecks.yml
-  (kernel-checks/index.html is a redirect here that keeps its #view= links).
+  publication branch by publishKernelResults.yml, nightlyComponentChecks.yml
+  and modelBasedTests.yml (kernel-checks/index.html is a redirect here that
+  keeps its #view= links).
 
   Sections, each a tab: an overview of every section's latest night; CI
   health (the other scheduled workflows, from ../ci-health/status.json, which
   publishCiHealth.yml writes every six hours); Kernels
-  (the IRON kernel library); Placement (the SA placer); Design performance
-  (whole designs on hardware, MobileNet for now); Routing (nothing published
-  yet). A section other than Kernels is a list of bands in BANDS, each one
-  nightly check's latest record, and the trends of the metrics the section
+  (the IRON kernel library); Placement (the SA placer and the buffer
+  allocator); Design performance (whole designs on hardware, MobileNet for
+  now); Routing (the packet router). A section other than Kernels is a list
+  of bands in BANDS, each one nightly check's latest record, and the trends
+  of the metrics the section
   names in SECTIONS; one check (sa-placer-hw) feeds both Placement and Design
   performance. To add a section, add it to SECTIONS and its markup below, and
   give its checks bands.
@@ -490,7 +492,8 @@
           <h3>Where the data is</h3>
           <dl>
             <dt>kernel-checks/&lt;npu&gt;/</dt><dd>the kernel checks, per NPU, written by <code>nightlyKernelChecks.yml</code> through <code>publishKernelResults.yml</code></dd>
-            <dt>component-checks/&lt;check&gt;/</dt><dd>the performance and placement checks, per check (<code>sa-placer</code>, <code>sa-placer-hw</code>), written by <code>nightlyComponentChecks.yml</code></dd>
+            <dt>component-checks/&lt;check&gt;/</dt><dd>the performance, routing and placement checks, per check: <code>sa-placer</code> and <code>sa-placer-hw</code>, written by <code>nightlyComponentChecks.yml</code>;
+              <code>allocator</code> and <code>router</code>, written by <code>modelBasedTests.yml</code></dd>
             <dt>ci-health/</dt><dd><code>status.json</code>, the critical test workflows' figures, merge time and the scheduled workflows' recent runs, and <code>history.json</code>, a point a day of those figures; written every six hours by <code>publishCiHealth.yml</code> (<code>utils/kernel_checks/ci_health.py</code>)</dd>
           </dl>
           <p>Both are written by <a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/kernel_checks/publish.py"><code>utils/kernel_checks/publish.py</code></a> in one format:
@@ -507,7 +510,7 @@
 python3 utils/kernel_checks/preview.py --scenario bad-night      # a synthetic failing night on top
 python3 utils/kernel_checks/preview.py --site components --scenario bad-night
 python3 -m pytest test/test_kernel_checks_page.py                # the page's code, under node</pre>
-          <p>To add a section (routing, say): publish its checks to <code>component-checks/&lt;check&gt;/</code> from a job in <code>nightlyComponentChecks.yml</code>
+          <p>To add a section: publish its checks to <code>component-checks/&lt;check&gt;/</code> from a nightly job
             (add the check to <code>COMPONENTS</code> in <code>publish.py</code>), then add the section to <code>SECTIONS</code> and its checks to <code>BANDS</code> in the page.</p>
         </div>
       </details>
@@ -677,23 +680,39 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
     <section id="routing" hidden>
       <div class="section-head">
         <h2>Routing</h2>
-        <p>The router: does every design still route, and what routing costs.</p>
+        <p>The packet router against its model: does every design still route legally, and what routing costs.</p>
+        <span class="runs">
+          <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/modelBasedTests.yml">Actions runs</a>
+          <a href="https://github.com/Xilinx/mlir-aie/blob/main/lib/Dialect/AIE/Transforms/AIECreatePathFindFlows.cpp">Router source</a>
+        </span>
       </div>
       <div id="routing-bands" class="band-list"></div>
+      <details class="more" id="routing-more">
+        <summary>Trends</summary>
       <section class="block" id="routing-trends" hidden>
         <div class="block-head"><span id="routing-metric" class="seg" role="group" aria-label="metric"></span></div>
         <p id="routing-metric-about" class="note"></p>
         <div id="routing-charts" class="charts"></div>
         <div id="routing-charts-empty" class="empty" hidden>No history published yet.</div>
       </section>
+      </details>
       <details class="howto">
-        <summary>How to add a check here</summary>
+        <summary>How these checks work</summary>
         <div>
-          <p>A routing check is a script in <code>utils/component_checks/</code> that writes <code>perf.json</code> and <code>meta.json</code> as
-            <code>sa_placer.py</code> does: rows of <code>{name, value, unit}</code> per case and metric, smaller is better.</p>
-          <p>Give it a job in <code>nightlyComponentChecks.yml</code> that uploads its results, add the check's name to <code>COMPONENTS</code> in
-            <code>utils/kernel_checks/publish.py</code> and to the publish job's loop, and add a band with <code>section: 'routing'</code> to <code>BANDS</code>
-            in this page (and its metrics to the section in <code>SECTIONS</code>). Its thresholds go in <code>thresholds.json</code>.</p>
+          <p><a href="https://github.com/Xilinx/mlir-aie/actions/workflows/modelBasedTests.yml"><code>modelBasedTests.yml</code></a> runs at 03:17 UTC from main
+            and on demand, on a hosted runner with an assertions build. Each night takes a new range of seeds, so the router meets designs it has not seen;
+            the range is in the run's record, and a failure names the seeds to run again. The nightly and an unfiltered dispatch on main publish,
+            and a check that fails still publishes what it measured.</p>
+          <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/test/create-packet-flows/nightly/router_properties.py"><code>router_properties.py</code></a>
+            generates designs whose routing the model can construct or rule out, on npu1, npu2 and xcvc1902, routes each with hops on and off,
+            and verifies the result: legal, deterministic, as short as the constructed routing, warned and rejected as the model predicts.
+            Per device it records the properties that failed, the routings that failed or were illegal, the hops over the constructed routing,
+            the arbiter msels per design and the time per design.</p>
+          <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/router_testing/router_mutation.py"><code>router_mutation.py</code></a>
+            changes routed designs in ways with a known answer (the router must route it, reject it, or route it the same), and corrupts routed output
+            to measure how often the model's verifier notices. It records the cases that failed and the corruptions the verifier missed.</p>
+          <pre>python test/create-packet-flows/nightly/router_properties.py --device npu2 --seeds 2000 --first-seed N
+python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seeds 400 --first-seed N</pre>
         </div>
       </details>
     </section>
@@ -701,10 +720,12 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
     <section id="placement" hidden>
       <div class="section-head">
         <h2>Placement</h2>
-        <p>The SA tile placer: does every seed still place, and how good the placements are.</p>
+        <p>The SA tile placer and the buffer allocator: does every design still place, and how good the placements are.</p>
         <span class="runs">
-          <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyComponentChecks.yml">Actions runs</a>
+          <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyComponentChecks.yml">Placer runs</a>
           <a href="https://github.com/Xilinx/mlir-aie/blob/main/lib/Dialect/AIE/Transforms/AIESAPlacer.cpp">Placer source</a>
+          <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/modelBasedTests.yml">Allocator runs</a>
+          <a href="https://github.com/Xilinx/mlir-aie/blob/main/lib/Dialect/AIE/Transforms/AIEAssignBuffers.cpp">Allocator source</a>
         </span>
       </div>
       <div id="placement-bands" class="band-list"></div>
@@ -737,6 +758,13 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
             What the placed design then costs to run is under <a href="#view=performance">Performance</a>.</p>
           <p>To rerun a whole check, run its script with <code>--out perf.json --meta meta.json</code> (the sweep also needs <code>--aie-opt "$(which aie-opt)"</code>;
             the hardware check takes <code>--seeds</code> and <code>--batches</code>). It prints a table with a row per seed, or per seed and batch.</p>
+          <h3>Buffer allocator model-based tests (no hardware)</h3>
+          <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/test/assign-buffer-addresses/allocator_properties.py"><code>allocator_properties.py</code></a>,
+            from <a href="https://github.com/Xilinx/mlir-aie/actions/workflows/modelBasedTests.yml"><code>modelBasedTests.yml</code></a> at 03:17 UTC on a hosted runner:
+            <code>aie-opt --aie-assign-buffer-addresses</code> places 5,000 generated designs and 200,000 with per-bank reservations, each built around a layout
+            known to fit, so a design that does not place is a bug. check-aie runs the same test over the first 200 and 12,000. It records the properties
+            that failed, the designs left unplaced or placed illegally, the bank crossings a better placement avoids, the bank pairs cores share, and the run's wall time.</p>
+          <pre>python test/assign-buffer-addresses/allocator_properties.py --seeds 5000 --bankres-seeds 200000</pre>
           <p>How to choose the placer and a seed for your own design is in <a href="https://xilinx.github.io/mlir-aie/dev/programming_guide/section-1/">section 1 of the programming guide</a>.</p>
         </div>
       </details>
@@ -778,12 +806,28 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
       e2e_us_per_image: 'host time of one call, from Python, the fastest of 20, over the images in its batch',
       compile_s: 'wall time of the whole compile, from Python to xclbin',
       placement_cost: 'the SA cost of the placement aiecc chose, replayed with aie-opt; the tooltip names the placement',
+      failed_properties: 'properties of the model-based test that did not hold',
+      unsolved: 'generated designs, each known to fit, that the allocator left unplaced',
+      illegal: 'placements or routings the model\'s verifier rejected',
+      avoidable_crossings: 'buffers placed across a bank boundary when a placement within one bank was free',
+      bank_pair_sharing: 'pairs of a core\'s buffers sharing a bank, mean per design',
+      wall_s: 'wall time of the whole run, on a shared hosted runner',
+      unrouted: 'routable designs the router failed to route, over both hop settings',
+      hop_ratio: 'switchbox hops over the hops of the routing the generator constructed',
+      amsels_per_design: 'arbiter msels the router used, mean per design',
+      ms_per_design: 'routing time of one design, mean, on a shared hosted runner',
+      failed_mutations: 'mutation cases where the router or the model gave the wrong answer, both hop settings',
+      survived_corruptions: 'corruptions of routed output the model\'s verifier did not notice, both hop settings',
     };
     const LABELS = {
       cycles: 'Cycles', cycles_per_kop: 'Cycles / 1k ops', kernel_object_bytes: 'Object size', npu_us: 'Host time',
       failed_seeds: 'Failed seeds', final_cost_mean: 'Cost (mean)', final_cost_max: 'Cost (worst)', cpu_ms_mean: 'CPU time (mean)',
       cpu_ms_max: 'CPU time (max)', peak_rss_mb_max: 'Peak memory', us_per_image: 'Per image', streaming_us: 'Streaming',
       e2e_us_per_image: 'End-to-end / image', compile_s: 'Compile time', placement_cost: 'Placement cost',
+      failed_properties: 'Failed properties', unsolved: 'Unplaced', illegal: 'Illegal', avoidable_crossings: 'Avoidable crossings',
+      bank_pair_sharing: 'Bank sharing', wall_s: 'Wall time', unrouted: 'Unrouted', hop_ratio: 'Hops ÷ constructed',
+      amsels_per_design: 'Msels / design', ms_per_design: 'Time / design', failed_mutations: 'Failed mutations',
+      survived_corruptions: 'Missed corruptions',
     };
     // Where the kernel checks and the component checks publish, beside this
     // page's directory (dashboard/).
@@ -797,9 +841,11 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
     const SECTIONS = {
       performance: { title: 'Performance', about: 'MobileNet compiled, run and verified on an NPU2: time per image, streaming and compile time.',
                      metrics: ['us_per_image', 'streaming_us', 'e2e_us_per_image', 'compile_s'] },
-      routing: { title: 'Routing', about: 'The router. No routing checks publish yet.', metrics: [] },
-      placement: { title: 'Placement', about: 'The SA placer: every seed placed, the placements\' cost, CPU time and memory.',
-                   metrics: ['failed_seeds', 'final_cost_mean', 'final_cost_max', 'placement_cost', 'cpu_ms_mean', 'cpu_ms_max', 'peak_rss_mb_max'] },
+      routing: { title: 'Routing', about: 'The packet router against its model on npu1, npu2 and xcvc1902: legal routes, their cost, and mutation testing.',
+                 metrics: ['failed_properties', 'unrouted', 'illegal', 'failed_mutations', 'survived_corruptions', 'hop_ratio', 'amsels_per_design', 'ms_per_design'] },
+      placement: { title: 'Placement', about: 'The SA placer: every seed placed, the placements\' cost, CPU time and memory. The buffer allocator against its model.',
+                   metrics: ['failed_seeds', 'final_cost_mean', 'final_cost_max', 'placement_cost', 'cpu_ms_mean', 'cpu_ms_max', 'peak_rss_mb_max',
+                             'failed_properties', 'unsolved', 'illegal', 'avoidable_crossings', 'bank_pair_sharing', 'wall_s'] },
     };
     // The view a component metric's trends are in.
     const sectionOfMetric = metric => Object.keys(SECTIONS).find(s => SECTIONS[s].metrics.includes(metric)) || 'placement';
@@ -834,12 +880,41 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
       { id: 'sa-placer-hw', section: 'performance', title: 'MobileNet on NPU2', short: 'MobileNet', ...HW_RUNS, passed: 'Every run passed.',
         about: 'mobilenet placed with seeds 3, 2 and 7, then compiled, run and verified on an NPU2 at batch 1, 4, 16 and 64.',
         cards: seedCards, trend: true, charts: batchCharts, summary: hardwareSummary },
+      { id: 'router', section: 'routing', title: 'Router model-based tests', short: 'Router', failure: 'check',
+        passed: 'Every property held and every mutation was answered right.',
+        about: 'router_properties.py and router_mutation.py (hops on and off) on npu1, npu2 and xcvc1902, on a hosted runner with an assertions build; '
+          + 'each night a new range of seeds.',
+        script: 'test/create-packet-flows/nightly/router_properties.py',
+        whole: ['python test/create-packet-flows/nightly/router_properties.py --device npu2 --seeds 2000 --first-seed N',
+                'python utils/router_testing/router_mutation.py --device npu2 --seeds 400 --first-seed N [--hops-off]',
+                '# and the same on npu1, and on xcvc1902 with a quarter of the seeds'].join('\n'),
+        failedId: /^(\w+)\/(properties|hops-on|hops-off)\/seed=(\d+)\+(\d+)\/(.+)$/,
+        repro: (device, run, first = 'N', count = 2000, what = '') => {
+          if (!device || run === 'properties') {
+            return `python test/create-packet-flows/nightly/router_properties.py --device ${device || 'npu2'} --seeds ${count} --first-seed ${first}`;
+          }
+          const [kind, name] = what.split(' ');
+          const only = ['kill', 'base'].includes(kind) ? kind : name;
+          return `python utils/router_testing/router_mutation.py --device ${device}${run === 'hops-off' ? ' --hops-off' : ''} `
+            + `--seeds ${count} --first-seed ${first} --only ${only} -v`;
+        },
+        say: (device, run, first, count, what) => run === 'properties' ? `${device} ${what}` : `${device} ${run.replace('-', ' ')} ${what} (seed ${first})`,
+        cards: routerCards, charts: () => [], summary: routerSummary },
+      { id: 'allocator', section: 'placement', title: 'Buffer allocator model-based tests', short: 'Buffer allocator', failure: 'property',
+        passed: 'Every property held.',
+        about: 'aie-opt places 5,000 generated designs and 200,000 with per-bank reservations, each around a layout known to fit, on a hosted runner.',
+        script: 'test/assign-buffer-addresses/allocator_properties.py',
+        whole: 'python test/assign-buffer-addresses/allocator_properties.py --seeds 5000 --bankres-seeds 200000',
+        failedId: /^([\w-]+)$/,
+        repro: () => 'python test/assign-buffer-addresses/allocator_properties.py   # check-aie\'s smaller corpus',
+        say: name => name,
+        cards: allocatorCards, charts: () => [], summary: allocatorSummary },
     ];
     const label = m => LABELS[m] || m;
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'kernel_object_bytes', 'npu_us'];
     // Per-metric change thresholds, in percent of the previous value; kept
     // equal to thresholds.json (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "kernel_object_bytes": {"pct": 2, "gated": true}, "npu_us": {"pct": 10, "mad": 3}, "us_per_image": {"pct": 5, "mad": 3}, "streaming_us": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15}, "placement_cost": {"pct": 1}, "final_cost_mean": {"pct": 1}, "final_cost_max": {"pct": 1}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1}, "amsels_per_design": {"pct": 10}, "ms_per_design": {"pct": 50}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => pct(metric) / 100;
@@ -1130,7 +1205,7 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
       return e;
     };
     const link = (href, text, props) => el('a', { href, ...(props || {}) }, text);
-    const plural = (n, word) => `${n} ${word}${n === 1 || word.endsWith('s') ? '' : 's'}`;
+    const plural = (n, word) => `${n} ${n === 1 || word.endsWith('s') ? word : /[^aeiou]y$/.test(word) ? `${word.slice(0, -1)}ies` : `${word}s`}`;
 
     function readHash() {
       return Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
@@ -1157,6 +1232,7 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
       if (unit === 'bytes') return `${(value / 1024).toFixed(1)} KiB`;
       if (unit === 'us') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} µs`;
       if (['s', 'ms', 'MB'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`;
+      if (['×', 'pairs'].includes(unit)) return value.toLocaleString('en-US', { maximumFractionDigits: 3 });
       return value.toLocaleString('en-US', { maximumFractionDigits: unit === 'cycles' ? 0 : 1 });
     }
 
@@ -2474,9 +2550,10 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
       return collect(files.map(readable).filter(Boolean).map(h => ({ ...h, target: check.id })));
     }
 
-    // A component metric's cell on a card: its trends, in whichever section
-    // charts it, one click away.
-    const componentCell = (metric, text, lanes) => ({ metric, text, lanes, href: hashFor({ view: sectionOfMetric(metric), metric }),
+    // A component metric's cell on a card: its trends one click away, in
+    // `view`; by default the first section that charts the metric, since
+    // Routing and Placement both chart the model-based tests' counts.
+    const componentCell = (metric, text, lanes, view = sectionOfMetric(metric)) => ({ metric, text, lanes, href: hashFor({ view, metric }),
       title: `${COMPONENT_METRICS[metric] || ''}\nClick for its trends.` });
 
     // The hardware check's runs as seeds and batches: {seeds: Map(seed ->
@@ -2888,6 +2965,73 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
       return ` ${f}: ${cost}${formatNumber(cpu.value / 1000, 's')} CPU per placement.`;
     }
 
+    // A lane of a model-based test's card; a nonzero count of `bad` metrics is red.
+    function modelLane(c, target, kase, name, metric, color, bad = false) {
+      const m = c && c.metrics.get(metric);
+      return { name, color, key: `${target}|${kase}|${metric}`, metric, m, current: c && c.current, bad: bad && Boolean(m && m.value) };
+    }
+
+    // The router's cards, one per device: its seeds, how often the verifier
+    // caught a corruption, failures, routing quality and time.
+    function routerCards(record, cases, target) {
+      const detail = record.detail || [];
+      return Object.keys(record.rows).map(device => {
+        const c = cases.get(device);
+        const lane = (name, metric, color, bad) => modelLane(c, target, device, name, metric, color, bad);
+        const props = detail.find(d => d.device === device && d.run === 'properties');
+        const runs = detail.filter(d => d.device === device && d.run !== 'properties');
+        const killed = runs.reduce((a, d) => a + d.killed, 0), tried = runs.reduce((a, d) => a + d.killed + d.survived, 0);
+        const header = el('header', {}, el('span', { className: 'case-title', title: device }, el('span', { className: 'shape' }, device),
+          props ? el('span', { className: 'params' }, `seeds ${props.first_seed.toLocaleString('en-US')} + ${props.seeds.toLocaleString('en-US')}`) : ''));
+        if (tried) {
+          header.append(el('span', { className: 'ratio', title: 'corruptions of routed output the verifier noticed, both hop settings' },
+            `kill rate ${(killed / tried).toFixed(3)}`));
+        }
+        const card = glanceGrid(header, [
+          componentCell('failed_properties', 'Failures', [lane('properties', 'failed_properties', 'series-1', true),
+                                                          lane('mutations', 'failed_mutations', 'series-2', true)], 'routing'),
+          componentCell('unrouted', 'Unrouted / illegal', [lane('unrouted', 'unrouted', 'series-1', true), lane('illegal', 'illegal', 'series-2', true)], 'routing'),
+          componentCell('survived_corruptions', label('survived_corruptions'), [lane('', 'survived_corruptions', 'series-5', true)], 'routing'),
+          componentCell('hop_ratio', 'Route cost', [lane('hops', 'hop_ratio', 'series-1'), lane('msels', 'amsels_per_design', 'series-2')], 'routing'),
+          componentCell('ms_per_design', label('ms_per_design'), [lane('', 'ms_per_design', 'series-1')], 'routing'),
+        ]);
+        card.kase = device;
+        return card;
+      });
+    }
+
+    // The router in a sentence: npu2's route cost and time.
+    function routerSummary(rows) {
+      const device = rows.npu2 ? 'npu2' : Object.keys(rows)[0];
+      const r = device && rows[device];
+      if (!r || !r.hop_ratio) return '';
+      return ` ${device}: ${formatNumber(r.hop_ratio.value, '×')}× the constructed hops, ${formatNumber(r.ms_per_design.value, 'ms')} per design.`;
+    }
+
+    // The allocator's card: failures, placement quality and the run's time.
+    function allocatorCards(record, cases, target) {
+      const c = cases.get('allocator');
+      const lane = (name, metric, color, bad) => modelLane(c, target, 'allocator', name, metric, color, bad);
+      const props = record.detail || [];
+      const header = el('header', {}, el('span', { className: 'case-title', title: 'allocator' }, el('span', { className: 'shape' }, 'allocator'),
+        props.length ? el('span', { className: 'params' }, `${props.filter(p => p.ok).length} of ${plural(props.length, 'property')} held`) : ''));
+      const card = glanceGrid(header, [
+        componentCell('failed_properties', label('failed_properties'), [lane('', 'failed_properties', 'series-5', true)], 'placement'),
+        componentCell('unsolved', 'Unplaced / illegal', [lane('unplaced', 'unsolved', 'series-1', true), lane('illegal', 'illegal', 'series-2', true)], 'placement'),
+        componentCell('avoidable_crossings', 'Quality', [lane('crossings', 'avoidable_crossings', 'series-1'), lane('sharing', 'bank_pair_sharing', 'series-2')], 'placement'),
+        componentCell('wall_s', label('wall_s'), [lane('', 'wall_s', 'series-1')], 'placement'),
+      ]);
+      card.kase = 'allocator';
+      return [card];
+    }
+
+    // The allocator in a sentence: bank sharing and the run's time.
+    function allocatorSummary(rows) {
+      const r = rows.allocator;
+      if (!r || !r.bank_pair_sharing || !r.wall_s) return '';
+      return ` ${formatNumber(r.bank_pair_sharing.value, 'pairs')} bank pairs shared per design; the run took ${formatNumber(r.wall_s.value, 's')}.`;
+    }
+
     // A chart box in a band, drawn once it scrolls into view.
     function bandChart(title, about, drawOn) {
       const canvas = el('canvas', { ariaLabel: `${title}: ${about}` });
@@ -3084,7 +3228,7 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
       }
       const lines = run.commit ? [`git checkout ${run.commit.slice(0, 12)}`] : [];
       const found = ids.filter(Boolean);
-      lines.push(...(found.length ? found.slice(0, 6).map(m => check.repro(...m.slice(1))) : [check.repro()]));
+      lines.push(...new Set(found.length ? found.slice(0, 6).map(m => check.repro(...m.slice(1))) : [check.repro()]));
       lines.push(`# every ${check.failure}, as the nightly runs them:`, check.whole);
       const intro = [];
       if (run.url) intro.push('Logs: ', link(run.url, `run ${run.id}`), `, artifact component-checks-${check.id}-${run.id}. `);

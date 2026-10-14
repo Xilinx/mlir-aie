@@ -5665,6 +5665,9 @@ def main(argv=None):
     cli.add_argument(
         "--space-out", type=Path, default=None, help="write route spaces (JSON)"
     )
+    cli.add_argument(
+        "--report", type=Path, default=None, help="write the properties and counts"
+    )
     args = cli.parse_args(argv)
     for kv in args.param:
         k, v = kv.split("=", 1)
@@ -5678,9 +5681,11 @@ def main(argv=None):
     first = args.first_seed
 
     regressions = []
+    properties = []
 
     def report(label, ok, detail):
         print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}", flush=True)
+        properties.append({"name": label, "ok": bool(ok), "detail": detail})
         if not ok:
             regressions.append(label)
 
@@ -6106,6 +6111,29 @@ def main(argv=None):
         f"{per_design:.1f} ms per design (max {max_ms})",
     )
     print(f"total: {time.monotonic() - t_start:.1f}s")
+    if args.report:
+        counts = {
+            "routings": runs,
+            "unrouted": len(failed),
+            "illegal": len(illegal) + len(unknown_illegal),
+            "unstable": nondet,
+            "hop_ratio": round(ratio, 4),
+            "amsels_per_design": round(totals["amsels"] / n, 3),
+            "ms_per_design": round(per_design, 2),
+            "wall_s": round(time.monotonic() - t_start, 1),
+        }
+        args.report.write_text(
+            json.dumps(
+                {
+                    "device": args.device,
+                    "first_seed": first,
+                    "seeds": PARAMS["routable"],
+                    "properties": properties,
+                    "counts": counts,
+                },
+                indent=1,
+            )
+        )
     return 1 if regressions else 0
 
 

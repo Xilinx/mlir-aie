@@ -5,7 +5,8 @@
 
 Each NPU the hardware checks ran on (``npu1``, ``npu2``) has a directory on
 the branch, ``kernel-checks/<npu>/``, and each component check
-(``sa-placer``, ``sa-placer-hw``, nightlyComponentChecks.yml) one at
+(``sa-placer`` and ``sa-placer-hw`` from nightlyComponentChecks.yml,
+``allocator`` and ``router`` from modelBasedTests.yml) one at
 ``component-checks/<check>/``, holding:
 
     runs/<id>.json         one record per run: the Actions run, what started
@@ -79,9 +80,14 @@ MAX_RUNS = 400
 # reader of the old format would get wrong.
 SCHEMA = 1
 REPO = "https://github.com/Xilinx/mlir-aie"
-COMPONENTS = ("sa-placer", "sa-placer-hw")
-# The dashboard section each component check's old page now redirects to.
-SECTION_OF = {"sa-placer": "placement", "sa-placer-hw": "performance"}
+COMPONENTS = ("sa-placer", "sa-placer-hw", "allocator", "router")
+# The dashboard section each component check's page redirects to.
+SECTION_OF = {
+    "sa-placer": "placement",
+    "sa-placer-hw": "performance",
+    "allocator": "placement",
+    "router": "routing",
+}
 TARGETS = ("npu1", "npu2") + COMPONENTS
 # Provenance fields worth a column in the history (the rest stay in the record).
 HISTORY_PROVENANCE = (

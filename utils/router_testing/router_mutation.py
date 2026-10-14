@@ -6,7 +6,7 @@
 
     python utils/router_testing/router_mutation.py --device npu2 --seeds 40 [--first-seed 0]
         [--hops-off] [--only NAME ...] [--shrink] [--repros DIR] [--out DIR]
-        [-v]
+        [--report FILE] [-v]
 
 Each routable design the model generates is routed, then:
 
@@ -28,6 +28,7 @@ Failures are shrunk with router_shrink.py (--shrink) and written to --repros.
 """
 
 import argparse
+import json
 import random
 import subprocess
 import sys
@@ -1486,6 +1487,9 @@ def main():
     cli.add_argument("--shrink", action="store_true")
     cli.add_argument("--repros", type=Path, default=Path("repros"))
     cli.add_argument("--out", type=Path, default=None, help="save failing cases")
+    cli.add_argument(
+        "--report", type=Path, default=None, help="write the tally and failures"
+    )
     cli.add_argument("-v", action="store_true")
     args = cli.parse_args()
     t0 = time.monotonic()
@@ -1539,6 +1543,25 @@ def main():
                 )
             )
             (args.out / f"{kind}-{name}-{outcome}-{seed}.mlir").write_text(text)
+    # Written before shrinking, which can outlast the job's timeout.
+    if args.report:
+        args.report.write_text(
+            json.dumps(
+                {
+                    "device": args.device,
+                    "hops": "off" if args.hops_off else "on",
+                    "first_seed": args.first_seed,
+                    "seeds": args.seeds,
+                    "killed": kills["killed"],
+                    "survived": kills["survived"],
+                    "failures": [
+                        {"seed": seed, "kind": kind, "name": name, "outcome": outcome}
+                        for seed, kind, outcome, name, _, _ in failures
+                    ],
+                },
+                indent=1,
+            )
+        )
     if args.shrink:
         done = set()
         for seed, kind, outcome, name, detail, payload in failures:
