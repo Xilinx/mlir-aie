@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "../common/exp2_bf16.h"
+#include "../common/f32_split.h"
 
 #define SM_VEC_LEN 32   // 32
 #define log2e 1.4453125 // 1.44269504089
@@ -200,24 +201,6 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
   return;
 }
 
-// A float multiplies as three bf16 limbs, as in common/f32_split.h.
-template <unsigned N>
-struct Limbs {
-  aie::vector<bfloat16, N> hi, mid, lo;
-};
-
-template <unsigned N>
-static inline __attribute__((always_inline)) Limbs<N>
-bf16_limbs(aie::accum<accfloat, N> x) {
-  const auto one = aie::broadcast<bfloat16, N>(1.0f);
-  Limbs<N> l;
-  l.hi = x.template to_vector<bfloat16>();
-  x = aie::msc(x, l.hi, one);
-  l.mid = x.template to_vector<bfloat16>();
-  l.lo = aie::msc(x, l.mid, one).template to_vector<bfloat16>();
-  return l;
-}
-
 // One row of float32 scores: the max and A - m in float32, then (A - m) * s
 // as three bf16 limbs, so the largest argument is exactly 0.
 template <unsigned W>
@@ -261,18 +244,6 @@ partial_softmax_row_f32(const float *__restrict A, bfloat16 *__restrict P,
 #ifndef SOFTMAX_SOFT_CAP
 #define SOFTMAX_SOFT_CAP 0.0f
 #endif
-
-// acc + x * c in f32 from three-limb x and c, largest products first.
-static inline __attribute__((always_inline)) aie::accum<accfloat, SM_VEC_LEN>
-mac_limbs(aie::accum<accfloat, SM_VEC_LEN> acc, const Limbs<SM_VEC_LEN> &x,
-          const Limbs<SM_VEC_LEN> &c) {
-  acc = aie::mac(acc, x.hi, c.hi);
-  acc = aie::mac(acc, x.hi, c.mid);
-  acc = aie::mac(acc, x.mid, c.hi);
-  acc = aie::mac(acc, x.hi, c.lo);
-  acc = aie::mac(acc, x.mid, c.mid);
-  return aie::mac(acc, x.lo, c.hi);
-}
 
 // softmax(cap * tanh((x + addend) / cap) + mask) of one float32 row into
 // bf16, with the scaled logits written over x. A mask of lowest or -inf drops
