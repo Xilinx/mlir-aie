@@ -47,7 +47,7 @@ from ...dialects.aie import (
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...dialects.aie import bds as bd_blocks
-from ...dialects.aiex import dma_configure_task, dma_configure_task_for
+from ...dialects.aiex import dma_configure_task, dma_configure_task_for, npu_sync
 from ...helpers.npdtypes import pack_pad_value
 from ...helpers.sourceloc import SourceSite
 from ...helpers.taplib import TensorAccessPattern
@@ -211,6 +211,21 @@ class DmaEndpoint:
         None when the channel is given by index.
         """
         return None
+
+    def sync(self) -> None:
+        """Wait, in a [`Runtime`][iron.Runtime] sequence body, until this
+        channel's tasks have issued their completion tokens: ``aiex.npu_sync``
+        on its tile and channel.
+
+        Raises:
+            ValueError: The tile is not placed or the channel is not given.
+        """
+        tile = self.tile
+        if tile.col is None or tile.row is None or self.channel is None:
+            raise ValueError(
+                f"sync() waits on a placed tile's channel by index; {self} is not one."
+            )
+        npu_sync(tile.col, tile.row, self.direction.value, self.channel)
 
     def _operand(self) -> int | str:
         """Return the channel operand: its index if given, else the endpoint symbol."""

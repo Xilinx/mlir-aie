@@ -226,6 +226,30 @@ class FlowEndpoint(DmaEndpoint):
         self._flow = flow
         self._end = end
 
+    def sync(self) -> None:
+        """Wait, in a [`Runtime`][iron.Runtime] sequence body, until this end's
+        tasks have issued their completion tokens (``DmaEndpoint.sync``).
+
+        A shim end the sequence waits on is driven at run time, so it gets its
+        ``aie.shim_dma_allocation``, as an end a ``fill`` or ``drain`` uses
+        does, and no fifo is given the channel. That is the end a route's
+        other runtime traffic programs, such as a gather's descriptors pushed
+        by control packets.
+
+        Raises:
+            ValueError: The route is not registered with the runtime, or the
+                tile is not placed or the channel is not given.
+        """
+        flow = self._flow
+        if flow not in active_sequence()._runtime.flows:
+            raise ValueError(
+                f"{type(flow).__name__} must be registered with rt.add_flow(flow) "
+                "before the runtime sequence waits on its end."
+            )
+        super().sync()
+        if self.tile.effective_tile_type in _SHIM_TILE_TYPES:
+            flow._shim_ends.add(self._end)
+
     @property
     def symbol(self) -> str | None:
         """The ``aie.route_endpoint`` this end lowers to.

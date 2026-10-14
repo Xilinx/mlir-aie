@@ -97,7 +97,7 @@ else:
 print("\nTEST: fills_and_drains_shim_to_shim")
 
 
-def shim_to_shim(verbs, channels=(1, 0), symbol=None):
+def shim_to_shim(verbs, channels=(1, 0), symbol=None, sync=False):
     # Two shim tiles, as a gather's feed and drain: fill() is MM2S at the
     # source, drain() S2MM at the destination, each with its own allocation.
     feed, drain = Tile(0, 0), Tile(1, 0)
@@ -113,6 +113,8 @@ def shim_to_shim(verbs, channels=(1, 0), symbol=None):
     def sequence(a, c):
         for verb, buffer in zip(verbs, (a, c)):
             getattr(flow, verb)(buffer, tap=buffer[...], wait=verb == "drain")
+        if sync:
+            flow.endpoint(feed).sync()
 
     rt = Runtime(sequence, [back_ty, back_ty])
     rt.add_flow(flow)
@@ -139,6 +141,22 @@ print(shim_to_shim(("drain",), symbol="explicit_shim"))
 # CHECK: aiex.dma_configure_task_for @loop_dst
 # CHECK: aie.shim_dma_allocation @explicit_shim(%{{.*}}, MM2S, 1)
 # CHECK: aie.shim_dma_allocation @loop_dst(%{{.*}}, S2MM, 0)
+
+print("\nTEST: syncs_on_a_shim_end_it_never_fills")
+print(shim_to_shim(("drain",), sync=True))
+unsynced = str(shim_to_shim(("drain",)))
+assert "@loop_src" not in unsynced and unsynced.count("aie.shim_dma_allocation ") == 1
+print("an end nothing fills or syncs on gets no allocation")
+
+# The sequence waits on the source, which the runtime drives by other means
+# (a gather's descriptors pushed by control packets): it is allocated, so no
+# fifo is given the channel, beside the drain's own.
+# CHECK-LABEL: syncs_on_a_shim_end_it_never_fills
+# CHECK: aiex.dma_configure_task_for @loop_dst
+# CHECK: aiex.npu.sync
+# CHECK: aie.shim_dma_allocation @loop_src(%{{.*}}, MM2S, 1)
+# CHECK: aie.shim_dma_allocation @loop_dst(%{{.*}}, S2MM, 0)
+# CHECK: an end nothing fills or syncs on gets no allocation
 
 print("\nTEST: routes_shim_to_shim")
 print(shim_to_shim(("fill", "drain"), channels=(None, None)))
