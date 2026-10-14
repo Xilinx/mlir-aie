@@ -13,16 +13,14 @@ from aie.utils.hostruntime import set_current_device
 
 @pytest.fixture
 def npu1():
-    set_current_device(NPU1Col1())
-    yield
-    set_current_device(None)
+    with set_current_device(NPU1Col1()):
+        yield
 
 
 @pytest.fixture
 def npu2():
-    set_current_device(NPU2Col1())
-    yield
-    set_current_device(None)
+    with set_current_device(NPU2Col1()):
+        yield
 
 
 def test_b_col_maj_packs_transposed_panels(npu1):
