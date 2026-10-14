@@ -11,6 +11,7 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallSet.h"
 
 extern "C" {
 #include "xaiengine/xaie_core.h"
@@ -853,6 +854,93 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     }
   }
 
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::teardownSwitches(DeviceOp &targetOp) {
+  for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
+    XAie_LocType tileLoc =
+        XAie_TileLoc(switchboxOp.colIndex(), switchboxOp.rowIndex());
+    Block &b = switchboxOp.getConnections().front();
+    for (auto connectOp : b.getOps<ConnectOp>()) {
+      TxnLocBracket bracket(*this, connectOp.getLoc());
+      TRY_XAIE_API_EMIT_ERROR(
+          switchboxOp, XAie_StrmConnCctDisable, &aiert->devInst, tileLoc,
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
+          connectOp.sourceIndex(),
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
+          connectOp.destIndex());
+    }
+    for (auto masterSetOp : b.getOps<MasterSetOp>()) {
+      TxnLocBracket bracket(*this, masterSetOp.getLoc());
+      TRY_XAIE_API_EMIT_ERROR(
+          masterSetOp, XAie_StrmPktSwMstrPortDisable, &aiert->devInst, tileLoc,
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(masterSetOp.getDestBundle()),
+          masterSetOp.destIndex());
+    }
+    for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
+      auto rules = packetRulesOp.getRules().front().getOps<PacketRuleOp>();
+      if (rules.empty())
+        continue;
+      TxnLocBracket bracket(*this, packetRulesOp.getLoc());
+      StrmSwPortType port =
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(packetRulesOp.getSourceBundle());
+      TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortDisable,
+                              &aiert->devInst, tileLoc, port,
+                              packetRulesOp.sourceIndex());
+      // A slot stays enabled when its port is disabled.
+      for (auto [slot, rule] : llvm::enumerate(rules))
+        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotDisable,
+                                &aiert->devInst, tileLoc, port,
+                                packetRulesOp.sourceIndex(), slot);
+    }
+  }
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::disableCores(DeviceOp &targetOp) {
+  for (auto coreOp : targetOp.getOps<CoreOp>()) {
+    TileID tile = coreOp.getTileID();
+    TxnLocBracket bracket(*this, coreOp.getLoc());
+    TRY_XAIE_API_EMIT_ERROR(coreOp, XAie_CoreDisable, &aiert->devInst,
+                            XAie_TileLoc(tile.col, tile.row));
+  }
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetDmaChannels(DeviceOp &targetOp) {
+  auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
+  llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
+  for (TileElement memOp : memOps) {
+    TileID tile = memOp.getTileID();
+    XAie_LocType tileLoc = XAie_TileLoc(tile.col, tile.row);
+    llvm::SmallSet<std::pair<DMAChannelDir, int>, 4> reset;
+    auto resetChannel = [&](Operation *op, DMAChannelDir dir,
+                            int channel) -> LogicalResult {
+      if (!reset.insert({dir, channel}).second)
+        return success();
+      TxnLocBracket bracket(*this, op->getLoc());
+      XAie_DmaDirection direction =
+          dir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
+      TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaChannelReset, &aiert->devInst,
+                              tileLoc, channel, direction,
+                              XAie_DmaChReset::DMA_CHANNEL_RESET);
+      TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaChannelReset, &aiert->devInst,
+                              tileLoc, channel, direction,
+                              XAie_DmaChReset::DMA_CHANNEL_UNRESET);
+      return success();
+    };
+    Region &region = memOp.getOperation()->getRegion(0);
+    for (auto dmaOp : region.getOps<DMAOp>())
+      if (failed(resetChannel(dmaOp, dmaOp.getChannelDir(),
+                              dmaOp.getChannelIndex())))
+        return failure();
+    for (Block *block : getOrderedChainOfBlocks(&region))
+      for (auto startOp : block->getOps<DMAStartOp>())
+        if (failed(resetChannel(startOp, startOp.getChannelDir(),
+                                startOp.getChannelIndex())))
+          return failure();
+  }
   return success();
 }
 

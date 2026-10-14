@@ -769,31 +769,11 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   return module;
 }
 
-LogicalResult xilinx::AIE::generateAndInsertConfigOps(
-    OpBuilder &builder, xilinx::AIE::DeviceOp device,
-    AIEX::BlockwriteData &blockwriteData, llvm::StringRef clElfDir,
-    AIE::AIEToConfigurationOutputType outputType, bool skipCtrlPktOverlay) {
-  const AIETargetModel &targetModel =
-      (const AIETargetModel &)device.getTargetModel();
-
-  if (!targetModel.hasProperty(AIETargetModel::IsNPU))
-    return failure();
-
-  bool aieSim = false;
-  bool xaieDebug = false;
-
-  AIERTControl ctl(targetModel);
-  if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
-    return failure();
-
-  // start collecting transactions
-  ctl.startTransaction();
-
-  bool generateElfs = true;
-  if (failed(generateTransactions(ctl, clElfDir, device, aieSim, generateElfs,
-                                  true, true, skipCtrlPktOverlay)))
-    return failure();
-
+// Insert the ops of the transaction `ctl` recorded, as `outputType`.
+static LogicalResult
+insertRecordedTransaction(AIERTControl &ctl, OpBuilder &builder,
+                          AIE::AIEToConfigurationOutputType outputType,
+                          AIEX::BlockwriteData &blockwriteData) {
   // Export the transactions to a binary buffer
   std::vector<uint8_t> txn_data = ctl.exportSerializedTransaction();
 
@@ -823,12 +803,55 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     if (!isa<UnknownLoc>(opLocs[i]))
       operations[i].sourceLoc = opLocs[i];
 
-  if (failed(convertTransactionOpsToMLIR(builder, outputType, operations,
-                                         blockwriteData))) {
-    return failure();
-  }
+  return convertTransactionOpsToMLIR(builder, outputType, operations,
+                                     blockwriteData);
+}
 
-  return success();
+LogicalResult xilinx::AIE::generateAndInsertConfigOps(
+    OpBuilder &builder, xilinx::AIE::DeviceOp device,
+    AIEX::BlockwriteData &blockwriteData, llvm::StringRef clElfDir,
+    AIE::AIEToConfigurationOutputType outputType, bool skipCtrlPktOverlay) {
+  const AIETargetModel &targetModel =
+      (const AIETargetModel &)device.getTargetModel();
+
+  if (!targetModel.hasProperty(AIETargetModel::IsNPU))
+    return failure();
+
+  bool aieSim = false;
+  bool xaieDebug = false;
+
+  AIERTControl ctl(targetModel);
+  if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
+    return failure();
+
+  // start collecting transactions
+  ctl.startTransaction();
+
+  bool generateElfs = true;
+  if (failed(generateTransactions(ctl, clElfDir, device, aieSim, generateElfs,
+                                  true, true, skipCtrlPktOverlay)))
+    return failure();
+
+  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData);
+}
+
+LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
+    OpBuilder &builder, xilinx::AIE::DeviceOp device,
+    AIEX::BlockwriteData &blockwriteData,
+    AIE::AIEToConfigurationOutputType outputType) {
+  const AIETargetModel &targetModel =
+      (const AIETargetModel &)device.getTargetModel();
+  if (!targetModel.hasProperty(AIETargetModel::IsNPU))
+    return failure();
+
+  AIERTControl ctl(targetModel);
+  if (failed(ctl.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
+    return failure();
+  ctl.startTransaction();
+  if (failed(ctl.teardownSwitches(device)) ||
+      failed(ctl.disableCores(device)) || failed(ctl.resetDmaChannels(device)))
+    return failure();
+  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData);
 }
 
 LogicalResult
