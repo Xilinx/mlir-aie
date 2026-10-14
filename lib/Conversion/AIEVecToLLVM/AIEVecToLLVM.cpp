@@ -5519,7 +5519,8 @@ public:
 };
 
 // Convert aievec.tanh to xllvm.tanh intrinsic for AIE2P
-// Supports both lane-16 and lane-32 bf16 vectors
+// Supports lane-16 and lane-32 bf16 and f32 vectors. The intrinsic takes
+// accfloat and returns bf16, so an f32 result is widened back.
 class TanhOpAIE2pConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::TanhOp> {
 public:
@@ -5533,47 +5534,55 @@ public:
     auto srcElemType = srcType.getElementType();
     unsigned laneSize = getVectorLaneSize(srcType);
 
-    // Support v16bfloat16 and v32bfloat16
-    if ((laneSize != 16 && laneSize != 32) || !srcElemType.isBF16())
+    // Support v16 and v32 of bfloat16 or float
+    if ((laneSize != 16 && laneSize != 32) ||
+        (!srcElemType.isBF16() && !srcElemType.isF32()))
       return tanhOp.emitWarning()
-             << "aievec.tanh conversion only supports v16bfloat16 and "
-                "v32bfloat16.\n";
+             << "aievec.tanh conversion only supports v16 and v32 of "
+                "bfloat16 or float.\n";
 
-    // Step 1: Convert bf16 input to f32 using the dedicated UPS intrinsic
+    bool isF32 = srcElemType.isF32();
     auto v16bf16Ty = VectorType::get({16}, rewriter.getBF16Type());
     auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
 
-    // Step 2: Call tanh intrinsic based on lane size
+    auto toF32 = [&](Value v16bf16) -> Value {
+      return xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
+          rewriter, loc, v16f32Ty, v16bf16);
+    };
+
     Value tanhResult;
 
     if (laneSize == 16) {
-      // Lane-16: Convert bf16->f32 then call tanh
-      auto inputF32 = xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
-          rewriter, loc, v16f32Ty, adaptor.getSource());
+      // Lane-16: Convert bf16->f32 if needed, then call tanh
+      Value inputF32 = isF32 ? adaptor.getSource() : toF32(adaptor.getSource());
       tanhResult =
           xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, inputF32);
+      if (isF32)
+        tanhResult = toF32(tanhResult);
     } else {
-      // Lane-32: Split into two v16bf16, convert each, tanh each, recombine
+      // Lane-32: Split into two 16-lane halves, tanh each, recombine
       SmallVector<int64_t> lowerMask, upperMask;
       for (int i = 0; i < 16; ++i) {
         lowerMask.push_back(i);
         upperMask.push_back(16 + i);
       }
 
-      auto lowerBf16 = vector::ShuffleOp::create(
+      Value lowerHalf = vector::ShuffleOp::create(
           rewriter, loc, adaptor.getSource(), adaptor.getSource(), lowerMask);
-      auto upperBf16 = vector::ShuffleOp::create(
+      Value upperHalf = vector::ShuffleOp::create(
           rewriter, loc, adaptor.getSource(), adaptor.getSource(), upperMask);
 
-      auto lowerF32 = xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
-          rewriter, loc, v16f32Ty, lowerBf16);
-      auto upperF32 = xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
-          rewriter, loc, v16f32Ty, upperBf16);
+      Value lowerF32 = isF32 ? lowerHalf : toF32(lowerHalf);
+      Value upperF32 = isF32 ? upperHalf : toF32(upperHalf);
 
-      auto tanhLower =
+      Value tanhLower =
           xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, lowerF32);
-      auto tanhUpper =
+      Value tanhUpper =
           xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, upperF32);
+      if (isF32) {
+        tanhLower = toF32(tanhLower);
+        tanhUpper = toF32(tanhUpper);
+      }
 
       SmallVector<int64_t> combineMask;
       for (int i = 0; i < 32; ++i)

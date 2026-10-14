@@ -913,6 +913,29 @@ static bool matchExpOpForAIE2P(math::ExpOp::Adaptor adaptor) {
          elWidth == 16;
 }
 
+// Check if a vector type matches AIE2P tanh constraints. The tanh intrinsic
+// takes an accfloat operand, so f32 vectors map onto it as well as bf16.
+static bool isAIE2PTanhType(VectorType type) {
+  Type elemType = type.getElementType();
+  unsigned laneSize = getVectorLaneSize(type);
+  return (elemType.isBF16() || elemType.isF32()) &&
+         (laneSize == 16 || laneSize == 32);
+}
+
+// Check if math.tanh or math.erf of `type` is lowered for AIE2P: a bf16 or f32
+// scalar, one-lane vector, or vector matching isAIE2PTanhType.
+static bool isAIE2PTanhOrErfType(Type type) {
+  Type elemType = getElementTypeOrSelf(type);
+  if (!elemType.isBF16() && !elemType.isF32())
+    return false;
+  auto vecType = dyn_cast<VectorType>(type);
+  if (!vecType)
+    return true;
+  if (vecType.getRank() == 1 && vecType.getNumElements() == 1)
+    return true;
+  return isAIE2PTanhType(vecType);
+}
+
 //===----------------------------------------------------------------------===//
 // Rewrite patterns
 //===----------------------------------------------------------------------===//
@@ -3109,12 +3132,29 @@ struct ConvertMathExpToAIEVecExpOpPattern : OpConversionPattern<math::ExpOp> {
   LogicalResult
   matchAndRewrite(math::ExpOp expOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (!matchExpOpForAIE2P(adaptor))
+    if (matchExpOpForAIE2P(adaptor)) {
+      auto srcType = cast<VectorType>(adaptor.getOperand().getType());
+      rewriter.replaceOpWithNewOp<aievec::ExpOp>(expOp, srcType,
+                                                 adaptor.getOperand());
+      return success();
+    }
+
+    // aievec.exp takes bf16, so narrow an f32 operand and widen the result.
+    auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+    if (!srcType || srcType.getRank() != 1 ||
+        !srcType.getElementType().isF32() ||
+        (srcType.getNumElements() != 16 && srcType.getNumElements() != 32))
       return failure();
 
-    auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-    rewriter.replaceOpWithNewOp<aievec::ExpOp>(expOp, srcType,
-                                               adaptor.getOperand());
+    Location loc = expOp.getLoc();
+    auto bf16Type = VectorType::get(srcType.getShape(), rewriter.getBF16Type());
+    auto shift =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    Value input = aievec::SRSOp::create(rewriter, loc, bf16Type,
+                                        adaptor.getOperand(), shift);
+    Value exp = aievec::ExpOp::create(rewriter, loc, bf16Type, input);
+    rewriter.replaceOpWithNewOp<aievec::UPSOp>(expOp, srcType, exp,
+                                               /*shift=*/0);
     return success();
   }
 };
@@ -3129,19 +3169,119 @@ struct ConvertMathTanhToAIEVecTanhOpPattern
   matchAndRewrite(math::TanhOp tanhOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-    if (!srcType)
-      return failure();
-
-    Type scalarType = srcType.getElementType();
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    unsigned laneSize = getVectorLaneSize(srcType);
-    // AIE2P tanh: supports v16bf16 and v32bf16
-    if (!scalarType.isBF16() || (laneSize != 16 && laneSize != 32) ||
-        elWidth != 16)
+    if (!srcType || !isAIE2PTanhType(srcType))
       return failure();
 
     rewriter.replaceOpWithNewOp<aievec::TanhOp>(tanhOp, srcType,
                                                 adaptor.getOperand());
+    return success();
+  }
+};
+
+// Convert math.erf to aievec.tanh for AIE2P, using
+//
+//   erf(x) ~= tanh(a * x + b * x^3),  a = 2/sqrt(pi),  b = 2 * a * 0.044715
+//
+// (the constants of the tanh form of GELU). The tanh argument is accumulated
+// in f32 from bf16 multiplies. `a` is split into bf16 high and low parts so
+// the linear term keeps f32 precision; x^2, x^3 and `b` are rounded to bf16.
+struct ComputeErfOpAIE2PPattern : OpConversionPattern<math::ErfOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::ErfOp erfOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+    if (!srcType || srcType.getRank() != 1 || !isAIE2PTanhType(srcType))
+      return failure();
+
+    constexpr double a = 1.1283791670955126;  // 2/sqrt(pi)
+    constexpr double b = 0.10091092485409293; // 2 * a * 0.044715
+
+    Location loc = erfOp.getLoc();
+    auto bf16Type = VectorType::get(srcType.getShape(), rewriter.getBF16Type());
+    auto f32Type = VectorType::get(srcType.getShape(), rewriter.getF32Type());
+    auto shift =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    auto toBF16 = [&](Value v) -> Value {
+      return aievec::SRSOp::create(rewriter, loc, bf16Type, v, shift);
+    };
+    // A bf16 splat of `value`, and the value it was rounded to.
+    auto splatBF16 = [&](double value) -> std::pair<Value, double> {
+      auto attr = rewriter.getFloatAttr(rewriter.getBF16Type(), value);
+      Value splat = arith::ConstantOp::create(
+          rewriter, loc, DenseElementsAttr::get(bf16Type, attr));
+      return {splat, attr.getValueAsDouble()};
+    };
+
+    Value x = adaptor.getOperand();
+    if (srcType.getElementType().isF32())
+      x = toBF16(x);
+
+    auto [aHi, aHiValue] = splatBF16(a);
+    Value aLo = splatBF16(a - aHiValue).first;
+    Value bSplat = splatBF16(b).first;
+
+    Value x2 = toBF16(aievec::MulElemOp::create(rewriter, loc, f32Type, x, x));
+    Value x3 = toBF16(aievec::MulElemOp::create(rewriter, loc, f32Type, x2, x));
+    Value arg = aievec::MulElemOp::create(rewriter, loc, f32Type, x, aHi);
+    arg = aievec::FMAElemOp::create(rewriter, loc, f32Type, x, aLo, arg,
+                                    /*fmsub=*/false);
+    arg = aievec::FMAElemOp::create(rewriter, loc, f32Type, x3, bSplat, arg,
+                                    /*fmsub=*/false);
+    Value result = aievec::TanhOp::create(rewriter, loc, f32Type, arg);
+    if (srcType.getElementType().isBF16())
+      result = toBF16(result);
+
+    rewriter.replaceOp(erfOp, result);
+    return success();
+  }
+};
+
+// Convert a scalar math.tanh or math.erf for AIE2P by broadcasting it to a
+// 16-lane vector, applying the vector op and extracting lane 0.
+template <typename OpTy>
+struct ComputeScalarMathOpByVectorAIE2PPattern : OpConversionPattern<OpTy> {
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+  using OpAdaptor = typename OpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(OpTy op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type type = adaptor.getOperand().getType();
+    if (!type.isBF16() && !type.isF32())
+      return failure();
+
+    Location loc = op.getLoc();
+    auto vecType = VectorType::get({16}, type);
+    Value splat = aievec::BroadcastScalarOp::create(rewriter, loc, vecType,
+                                                    adaptor.getOperand());
+    Value result = OpTy::create(rewriter, loc, splat);
+    rewriter.replaceOpWithNewOp<vector::ExtractOp>(op, result, 0);
+    return success();
+  }
+};
+
+// Convert a one-lane math.tanh or math.erf for AIE2P to the scalar op, which
+// ComputeScalarMathOpByVectorAIE2PPattern lowers.
+template <typename OpTy>
+struct ComputeOneLaneMathOpAIE2PPattern : OpConversionPattern<OpTy> {
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+  using OpAdaptor = typename OpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(OpTy op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+    if (!srcType || srcType.getRank() != 1 || srcType.getNumElements() != 1)
+      return failure();
+
+    Location loc = op.getLoc();
+    Value scalar =
+        vector::ExtractOp::create(rewriter, loc, adaptor.getOperand(), 0);
+    Value result = OpTy::create(rewriter, loc, scalar);
+    Value poison = ub::PoisonOp::create(rewriter, loc, srcType);
+    rewriter.replaceOpWithNewOp<vector::InsertOp>(op, result, poison, 0);
     return success();
   }
 };
@@ -5291,12 +5431,17 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
                FlattenElementwiseVectorToRank1Pattern<arith::TruncFOp>,
                FlattenElementwiseVectorToRank1Pattern<arith::ExtFOp>,
                FlattenElementwiseVectorToRank1Pattern<math::ExpOp>,
-               FlattenElementwiseVectorToRank1Pattern<math::TanhOp>>(
+               FlattenElementwiseVectorToRank1Pattern<math::TanhOp>,
+               FlattenElementwiseVectorToRank1Pattern<math::ErfOp>>(
       patterns.getContext(), /*benefit=*/3);
-  // Higher benefit to take priority over the AIE2 LUT-based tanh pattern
-  // registered in the common patterns.
-  patterns.add<ConvertMathTanhToAIEVecTanhOpPattern>(patterns.getContext(),
-                                                     /*benefit=*/2);
+  // Higher benefit to take priority over the AIE2 LUT-based tanh and the
+  // emitc-based erf patterns registered in the common patterns.
+  patterns.add<ConvertMathTanhToAIEVecTanhOpPattern, ComputeErfOpAIE2PPattern,
+               ComputeScalarMathOpByVectorAIE2PPattern<math::TanhOp>,
+               ComputeScalarMathOpByVectorAIE2PPattern<math::ErfOp>,
+               ComputeOneLaneMathOpAIE2PPattern<math::TanhOp>,
+               ComputeOneLaneMathOpAIE2PPattern<math::ErfOp>>(
+      patterns.getContext(), /*benefit=*/2);
 }
 
 //===----------------------------------------------------------------------===//
@@ -5698,6 +5843,9 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     Type scalarType = srcType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(srcType);
+    // AIE2P LLVMIR: v16f32 and v32f32 are illegal (uses aievec.exp on bf16)
+    if (scalarType.isF32())
+      return laneSize != 16 && laneSize != 32;
     // AIE2P LLVMIR: v16bf16 and v32bf16 are illegal (uses aievec.exp)
     if (!scalarType.isBF16() || (laneSize != 16 && laneSize != 32) ||
         elWidth != 16)
@@ -5708,19 +5856,14 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     return false;
   });
 
-  // AIE2P-specific legalization for tanh with LLVMIR backend
-  // v16bf16 and v32bf16 tanh are illegal (uses hardware intrinsic)
+  // AIE2P-specific legalization for tanh and erf with LLVMIR backend
+  // bf16 and f32 scalars, and one-, 16- and 32-lane vectors are illegal (uses
+  // aievec.tanh)
   target.addDynamicallyLegalOp<math::TanhOp>([](math::TanhOp tanhOp) {
-    auto srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
-    if (!srcType)
-      return true;
-
-    Type scalarType = srcType.getElementType();
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    unsigned laneSize = getVectorLaneSize(srcType);
-    // AIE2P LLVMIR: v16bf16 and v32bf16 are illegal (uses aievec.tanh)
-    return !scalarType.isBF16() || (laneSize != 16 && laneSize != 32) ||
-           elWidth != 16;
+    return !isAIE2PTanhOrErfType(tanhOp.getOperand().getType());
+  });
+  target.addDynamicallyLegalOp<math::ErfOp>([](math::ErfOp erfOp) {
+    return !isAIE2PTanhOrErfType(erfOp.getOperand().getType());
   });
 
   // AIE2P-specific legalization for divf 1.0/x pattern with LLVMIR backend
