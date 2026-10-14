@@ -121,13 +121,16 @@ def run_once(case: HwCase, out: Path) -> dict:
     handle = runtime.load(NPUKernel(out / "aie.xclbin", out / "insts.bin"))
     outputs = [iron.full(count, -1, dtype=dtype) for count, dtype in case.outputs]
     result = runtime.run(handle, outputs, fail_on_error=False)
+    device = runtime.device_name()
     if not result.is_success():
         state = result.ret if isinstance(result, XRTKernelResult) else None
         # amdxdna's TDR ends a hung run as a timeout; any other end is no hang.
         hung = state == pyxrt.ert_cmd_state.ERT_CMD_STATE_TIMEOUT
-        return {"outcome": "HANG" if hung else "ERROR", "state": f"ended {state}"}
+        outcome = "HANG" if hung else "ERROR"
+        return {"outcome": outcome, "state": f"ended {state}", "device": device}
     problems = case.check([t.numpy() for t in outputs])
-    return {"outcome": "FAIL" if problems else "PASS", "problems": problems[:5]}
+    outcome = "FAIL" if problems else "PASS"
+    return {"outcome": outcome, "problems": problems[:5], "device": device}
 
 
 def run_isolated(case_path: Path, out: Path, timeout_s: int) -> dict:
@@ -159,7 +162,12 @@ def verdict_of(results: list[dict]) -> str:
 
 
 def verdict_file(
-    case: HwCase, variant: Variant, routed: str, verdict: str, counts: Counter
+    case: HwCase,
+    variant: Variant,
+    routed: str,
+    verdict: str,
+    counts: Counter,
+    device: str | None,
 ) -> str:
     observed = ", ".join(f"{n} {o}" for o, n in sorted(counts.items()))
     head = [f"// HW: {verdict}"]
@@ -167,7 +175,7 @@ def verdict_file(
         head.append("// hops: off")
     head.append(
         f"// router_hw.py {case.name}, {variant.name}: {variant.note} "
-        f"Observed on an NPU2 (Strix): {observed}."
+        f"Observed on {device or 'an NPU of unknown model'}: {observed}."
     )
     return (
         "\n".join(head)
@@ -222,7 +230,10 @@ def run_case(args) -> int:
         if args.verdicts and verdict in ("PASS", "HANG"):
             args.verdicts.mkdir(parents=True, exist_ok=True)
             path = args.verdicts / f"{case.name}_{variant.name}.mlir"
-            path.write_text(verdict_file(case, variant, routed, verdict, counts))
+            device = results[-1]["device"]
+            path.write_text(
+                verdict_file(case, variant, routed, verdict, counts, device)
+            )
     return 1 if wrong else 0
 
 
