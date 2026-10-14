@@ -781,7 +781,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
 EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
     EdgeWithTypedOutput<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &perSeq,
     std::string programName, bool foldDDRAddrOffset, bool withLocmap,
-    std::shared_ptr<xilinx::AIE::NpuConfigCache> configs) {
+    const std::shared_ptr<xilinx::AIE::NpuConfigCache> &configs) {
   auto &npuProgram = perSeq.map<NpuProgram>(
       std::move(programName),
       [foldDDRAddrOffset, withLocmap,
