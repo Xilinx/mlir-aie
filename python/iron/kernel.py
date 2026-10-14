@@ -337,8 +337,8 @@ class Kernel(Resolvable):
         symbol name is rejected.
         """
         if self.object_file._source is not None:
-            # JIT clears its discovery registry before generating a design.
-            # Re-register the artifact even when only a sibling binding survives.
+            # A generation collects kernels in a registry of its own, so one made
+            # before it registers again here, as does one only a sibling binds.
             ExternalFunction._register_object(self)
         point = ip if ip is not None else ir.InsertionPoint.current
         table = _enclosing_symbol_table(point)

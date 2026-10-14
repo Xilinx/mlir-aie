@@ -1161,8 +1161,9 @@ class CompilableDesign:
         """Each host tensor's footprint in bits, from the compiled design.
 
         In ``aie.runtime_sequence`` order; None before ``compile()`` or where
-        ``parse_dma_sizes`` cannot tell. Read when first asked, not at every compile or cache hit: parsing the
-        lowered module costs more than the hit.
+        ``parse_dma_sizes`` cannot tell. Read when first asked, not at every
+        compile or cache hit: parsing the lowered module costs more than the
+        hit.
         """
         if self._kernel_dir is None:
             return None
