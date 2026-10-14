@@ -901,9 +901,8 @@ struct AIEDMATasksToNPUPass
       // wrap-size limit.  Canonicalization zeroes size-1 strides before this
       // pass runs, so isContiguousTransfer is sufficient.
       bool treatAsLinear =
-          isLinearTransfer(input_sizes, input_strides) ||
-          (target_model.isShimNOCTile(tile.getCol(), tile.getRow()) &&
-           isContiguousTransfer(input_sizes, input_strides));
+          isLinearModeTransfer(target_model, tile.getCol(), tile.getRow(),
+                               input_sizes, input_strides);
       if (!treatAsLinear && bd_op.getLengthStateTableIdxAttr())
         AIE::placeRuntimeLengthDimension(input_sizes, input_strides);
 

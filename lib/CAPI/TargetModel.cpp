@@ -221,10 +221,8 @@ bool aieDmaBdFits(uint32_t device, int col, int row, MlirType elementType,
     pattern.sizes.push_back(sizes[d]);
     pattern.strides.push_back(strides[d]);
   }
-  bool linear =
-      xilinx::AIEX::isLinearTransfer(pattern.sizes, pattern.strides) ||
-      (tm.isShimNOCTile(col, row) &&
-       xilinx::AIEX::isContiguousTransfer(pattern.sizes, pattern.strides));
+  bool linear = xilinx::AIEX::isLinearModeTransfer(tm, col, row, pattern.sizes,
+                                                   pattern.strides);
   if (!xilinx::AIEX::patternPassesVerification(
           dev, MemRefType::get({ShapedType::kDynamic}, elemType), tm, col, row,
           pattern, linear))

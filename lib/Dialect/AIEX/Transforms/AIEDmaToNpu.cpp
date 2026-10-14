@@ -395,9 +395,8 @@ public:
     // mode (d0_size=d1_size=0) just like an already-canonical linear transfer.
     // This allows naturally-expressed multidimensional transfers (e.g., a 2D
     // image as [height, width]) without hitting the 10-bit ND wrap-size limit.
-    bool isLinear = op.isLinearTransferWithoutTransformation() ||
-                    (targetModel.isShimNOCTile(tileCol, tileRow) &&
-                     isContiguousTransfer(inputSizes, inputStrides));
+    bool isLinear = isLinearModeTransfer(targetModel, tileCol, tileRow,
+                                         inputSizes, inputStrides);
     if (!isLinear && op.getLengthStateTableIdxAttr())
       AIE::placeRuntimeLengthDimension(inputSizes, inputStrides);
     llvm::SmallVector<int64_t, 4> sizes(4);

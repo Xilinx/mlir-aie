@@ -368,6 +368,14 @@ bool AIEX::isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
   return true;
 }
 
+bool AIEX::isLinearModeTransfer(const AIE::AIETargetModel &targetModel, int col,
+                                int row, llvm::ArrayRef<int64_t> sizes,
+                                llvm::ArrayRef<int64_t> strides) {
+  return isLinearTransfer(sizes, strides) ||
+         (targetModel.isShimNOCTile(col, row) &&
+          isContiguousTransfer(sizes, strides));
+}
+
 // dma_memcpy_nd transfers of the form [*, 1, 1, len][*, 0, 0, 1] do not
 // specify any data layout transformation, but simply express a contiguous
 // transfer of `len`. The 4th dimension is excluded because a repeat count
@@ -719,10 +727,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     // A contiguous row-major ND access is also exempt from the ND wrap-size
     // limit: aie-dma-to-npu lowers it to linear mode (d0_size=d1_size=0),
     // and LinearizeContiguousTransfer canonicalizes it to explicit linear form.
-    bool skipTransformationChecks =
-        isLinearTransferWithoutTransformation() ||
-        (targetModel.isShimNOCTile(col, row) &&
-         AIEX::isContiguousTransfer(inputSizes, inputStrides));
+    bool skipTransformationChecks = AIEX::isLinearModeTransfer(
+        targetModel, col, row, inputSizes, inputStrides);
     // An oversized non-contiguous pattern that aie-decompose-large-dma-bd can
     // split into hardware-legal sub-transfers is also allowed to verify: the
     // pass rewrites it before BD lowering. Truly undecomposable patterns (e.g.
