@@ -147,10 +147,20 @@ func.func @test_erf_v1f32(%a: vector<1xf32>) -> vector<1xf32> {
 // CHECK: math.erf %{{.*}} : vector<8xf32>
 // CHECK: math.erf %{{.*}} : vector<16xf16>
 // CHECK: math.erf %{{.*}} : f16
-func.func @test_erf_unsupported(%a: vector<8xf32>, %b: vector<16xf16>, %c: f16)
-    -> (vector<8xf32>, vector<16xf16>, f16) {
+// CHECK: math.erf %{{.*}} : tensor<16xf32>
+// CHECK: math.erf %{{.*}} : vector<[16]xf32>
+// CHECK: math.erf %{{.*}} : vector<[1]xf32>
+func.func @test_erf_unsupported(%a: vector<8xf32>, %b: vector<16xf16>, %c: f16,
+                                %d: tensor<16xf32>, %e: vector<[16]xf32>,
+                                %f: vector<[1]xf32>)
+    -> (vector<8xf32>, vector<16xf16>, f16, tensor<16xf32>, vector<[16]xf32>,
+        vector<[1]xf32>) {
   %0 = math.erf %a : vector<8xf32>
   %1 = math.erf %b : vector<16xf16>
   %2 = math.erf %c : f16
-  return %0, %1, %2 : vector<8xf32>, vector<16xf16>, f16
+  %3 = math.erf %d : tensor<16xf32>
+  %4 = math.erf %e : vector<[16]xf32>
+  %5 = math.erf %f : vector<[1]xf32>
+  return %0, %1, %2, %3, %4, %5 : vector<8xf32>, vector<16xf16>, f16,
+      tensor<16xf32>, vector<[16]xf32>, vector<[1]xf32>
 }

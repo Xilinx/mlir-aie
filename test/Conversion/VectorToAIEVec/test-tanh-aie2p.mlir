@@ -80,11 +80,20 @@ func.func @test_tanh_v1f32_aie2p(%a: vector<1xf32>) -> vector<1xf32> {
 
 // Lane counts and element types without a lowering are left as they are.
 // CHECK-LABEL: func @test_tanh_unsupported_aie2p
-func.func @test_tanh_unsupported_aie2p(%a: vector<8xf32>, %b: f16)
-    -> (vector<8xf32>, f16) {
+func.func @test_tanh_unsupported_aie2p(%a: vector<8xf32>, %b: f16,
+                                       %c: tensor<16xf32>, %d: vector<[16]xf32>,
+                                       %e: vector<[1]xf32>)
+    -> (vector<8xf32>, f16, tensor<16xf32>, vector<[16]xf32>, vector<[1]xf32>) {
     // CHECK: math.tanh %{{.*}} : vector<8xf32>
     %0 = math.tanh %a : vector<8xf32>
     // CHECK: math.tanh %{{.*}} : f16
     %1 = math.tanh %b : f16
-    return %0, %1 : vector<8xf32>, f16
+    // CHECK: math.tanh %{{.*}} : tensor<16xf32>
+    %2 = math.tanh %c : tensor<16xf32>
+    // CHECK: math.tanh %{{.*}} : vector<[16]xf32>
+    %3 = math.tanh %d : vector<[16]xf32>
+    // CHECK: math.tanh %{{.*}} : vector<[1]xf32>
+    %4 = math.tanh %e : vector<[1]xf32>
+    return %0, %1, %2, %3, %4
+        : vector<8xf32>, f16, tensor<16xf32>, vector<[16]xf32>, vector<[1]xf32>
 }

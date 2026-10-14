@@ -48,9 +48,13 @@ func.func @test_exp_v32f32_aie2p(%a: vector<32xf32>) -> vector<32xf32> {
     return %0 : vector<32xf32>
 }
 
-// CHECK-LABEL: func @test_exp_v8f32_aie2p
-func.func @test_exp_v8f32_aie2p(%a: vector<8xf32>) -> vector<8xf32> {
+// CHECK-LABEL: func @test_exp_unsupported_f32_aie2p
+func.func @test_exp_unsupported_f32_aie2p(%a: vector<8xf32>,
+                                          %b: vector<[16]xf32>)
+    -> (vector<8xf32>, vector<[16]xf32>) {
     // CHECK: math.exp %{{.*}} : vector<8xf32>
     %0 = math.exp %a : vector<8xf32>
-    return %0 : vector<8xf32>
+    // CHECK: math.exp %{{.*}} : vector<[16]xf32>
+    %1 = math.exp %b : vector<[16]xf32>
+    return %0, %1 : vector<8xf32>, vector<[16]xf32>
 }

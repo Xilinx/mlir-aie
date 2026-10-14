@@ -916,6 +916,8 @@ static bool matchExpOpForAIE2P(math::ExpOp::Adaptor adaptor) {
 // Check if a vector type matches AIE2P tanh constraints. The tanh intrinsic
 // takes an accfloat operand, so f32 vectors map onto it as well as bf16.
 static bool isAIE2PTanhType(VectorType type) {
+  if (type.isScalable())
+    return false;
   Type elemType = type.getElementType();
   unsigned laneSize = getVectorLaneSize(type);
   return (elemType.isBF16() || elemType.isF32()) &&
@@ -925,14 +927,14 @@ static bool isAIE2PTanhType(VectorType type) {
 // Check if math.tanh or math.erf of `type` is lowered for AIE2P: a bf16 or f32
 // scalar, one-lane vector, or vector matching isAIE2PTanhType.
 static bool isAIE2PTanhOrErfType(Type type) {
-  Type elemType = getElementTypeOrSelf(type);
-  if (!elemType.isBF16() && !elemType.isF32())
-    return false;
   auto vecType = dyn_cast<VectorType>(type);
   if (!vecType)
-    return true;
-  if (vecType.getRank() == 1 && vecType.getNumElements() == 1)
-    return true;
+    return type.isBF16() || type.isF32();
+  if (!vecType.isScalable() && vecType.getRank() == 1 &&
+      vecType.getNumElements() == 1) {
+    Type elemType = vecType.getElementType();
+    return elemType.isBF16() || elemType.isF32();
+  }
   return isAIE2PTanhType(vecType);
 }
 
@@ -3141,7 +3143,7 @@ struct ConvertMathExpToAIEVecExpOpPattern : OpConversionPattern<math::ExpOp> {
 
     // aievec.exp takes bf16, so narrow an f32 operand and widen the result.
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-    if (!srcType || srcType.getRank() != 1 ||
+    if (!srcType || srcType.isScalable() || srcType.getRank() != 1 ||
         !srcType.getElementType().isF32() ||
         (srcType.getNumElements() != 16 && srcType.getNumElements() != 32))
       return failure();
@@ -3273,7 +3275,8 @@ struct ComputeOneLaneMathOpAIE2PPattern : OpConversionPattern<OpTy> {
   matchAndRewrite(OpTy op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-    if (!srcType || srcType.getRank() != 1 || srcType.getNumElements() != 1)
+    if (!srcType || srcType.isScalable() || srcType.getRank() != 1 ||
+        srcType.getNumElements() != 1)
       return failure();
 
     Location loc = op.getLoc();
@@ -5845,7 +5848,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     unsigned laneSize = getVectorLaneSize(srcType);
     // AIE2P LLVMIR: v16f32 and v32f32 are illegal (uses aievec.exp on bf16)
     if (scalarType.isF32())
-      return laneSize != 16 && laneSize != 32;
+      return srcType.isScalable() || (laneSize != 16 && laneSize != 32);
     // AIE2P LLVMIR: v16bf16 and v32bf16 are illegal (uses aievec.exp)
     if (!scalarType.isBF16() || (laneSize != 16 && laneSize != 32) ||
         elWidth != 16)
@@ -6523,11 +6526,11 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     return "Lower vector operations to AIE vector intrinsics";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry
-        .insert<affine::AffineDialect, xilinx::aievec::aie1::AIEVecAIE1Dialect,
-                xilinx::aievec::AIEVecDialect, arith::ArithDialect,
-                memref::MemRefDialect, scf::SCFDialect, vector::VectorDialect,
-                emitc::EmitCDialect, xilinx::AIE::AIEDialect>();
+    registry.insert<
+        affine::AffineDialect, xilinx::aievec::aie1::AIEVecAIE1Dialect,
+        xilinx::aievec::AIEVecDialect, arith::ArithDialect,
+        memref::MemRefDialect, scf::SCFDialect, ub::UBDialect,
+        vector::VectorDialect, emitc::EmitCDialect, xilinx::AIE::AIEDialect>();
   }
 
   Option<std::string> aieTarget{
