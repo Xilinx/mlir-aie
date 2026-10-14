@@ -63,6 +63,15 @@ constexpr int packetFanoutCap = 2;
 constexpr double treeSeedFactor = 0.9;
 // A destination's branch is rerouted only when that saves more than this.
 constexpr double rerouteMinSaving = 1e-6;
+// Iterations without fewer overused channels before the circuit trees that
+// overuse one route first (see findPaths).
+constexpr int stallIterations = 50;
+// Iterations of a stall that route the losing circuit trees first, without
+// fewer overused channels, before the attempt gives up.
+constexpr int maxReorderedStall = 300;
+// How much faster a stalled routing's overused channels that only circuit
+// trees take accrue history, so the trees spread out sooner.
+constexpr int stallHistory = 4;
 } // namespace
 
 void SwitchboxConnect::updateDemand() {
@@ -922,6 +931,9 @@ struct Pathfinder::RouteState {
   // Each packet flow's tree as routed so far this iteration: the state each
   // hop reaches, from which state and by which edge; and its destinations.
   std::vector<llvm::DenseMap<int, std::pair<int, Edge>>> treeOf;
+  // Each circuit flow's hops this iteration, which treeOf keeps for packet
+  // flows only.
+  std::vector<SmallVector<Edge, 8>> circuitHops;
   std::vector<SmallVector<int, 4>> treeDsts;
   // The hops each flow takes only by joining another flow's tree, by the flow
   // it joined. A join the routing check faults is not made again.
@@ -974,8 +986,8 @@ struct Pathfinder::RouteState {
 Pathfinder::RouteState::RouteState(const Pathfinder &pf)
     : pf(pf), processedStamp(2 * pf.nodes.size(), 0), parts(pf.flows),
       conflicting(parts.size(), llvm::BitVector(parts.size())),
-      flowIds(parts.size()), treeOf(parts.size()), treeDsts(parts.size()),
-      joinedHops(parts.size()), splitsOf(parts.size()),
+      flowIds(parts.size()), treeOf(parts.size()), circuitHops(parts.size()),
+      treeDsts(parts.size()), joinedHops(parts.size()), splitsOf(parts.size()),
       partSplits(parts.size()) {
   for (auto [k, f] : llvm::enumerate(parts))
     partsOf[f.src].push_back(k);
@@ -1128,6 +1140,7 @@ int Pathfinder::RouteState::splitPart(int flow, const std::set<int> &ids) {
   groupedFlows[groupOf(f)].push_back(part);
   relateParts();
   treeOf.emplace_back();
+  circuitHops.emplace_back();
   treeDsts.emplace_back();
   joinedHops.emplace_back();
   for (auto [a, b] : std::set<std::pair<int, int>>(noJoin))
@@ -2069,6 +2082,8 @@ void Pathfinder::TreeBuilder::claim() {
     SwitchboxConnect::Cell &cell = sb.at(i, j);
     if (packetId)
       st.treeOf[flow].try_emplace(currId, predId, e);
+    else
+      st.circuitHops[flow].push_back(e);
     cell.isPriority |= part.isPriorityFlow;
     // Two trees with the same id may merge onto one only where nothing fans out
     // after, or where both take the id to the same destinations, so a merged id
@@ -2426,6 +2441,9 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
   int illegalEdges = 0;
   std::optional<Routing> usable;
   int usableAt = 0;
+  int fewestIllegal = std::numeric_limits<int>::max(), sinceFewest = 0;
+  // Iterations of the current stall that moved circuit trees first.
+  int reorderedStall = 0;
   int overlayFaults = 0;
   do {
     if (usable && (iterationCount + 1 >= maxIterations ||
@@ -2433,8 +2451,10 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
       LLVM_DEBUG(llvm::dbgs() << "\t\tKeeping the usable routing\n");
       return std::move(*usable);
     }
-    // if reach maxIterations, throw an error since no routing can be found
-    if (++iterationCount >= maxIterations) {
+    // if reach maxIterations, throw an error since no routing can be found;
+    // so too once routing the losing circuit trees first has stopped helping
+    if (++iterationCount >= maxIterations ||
+        reorderedStall >= maxReorderedStall) {
       LLVM_DEBUG(llvm::dbgs()
                  << "\t\tPathfinder: maxIterations has been exceeded ("
                  << maxIterations
@@ -2474,6 +2494,8 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
     }
     for (auto &tree : st.treeOf)
       tree.clear();
+    for (auto &hops : st.circuitHops)
+      hops.clear();
     for (auto &dsts : st.treeDsts)
       dsts.clear();
     for (auto &hops : st.joinedHops)
@@ -2517,7 +2539,10 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
           SwitchboxConnect::Cell &c = sb.at(i, j);
           // check that every channel does not exceed max capacity
           if (c.usedCapacity > maxCircuitStreamCapacity) {
-            c.overCapacity++;
+            c.overCapacity +=
+                sinceFewest >= stallIterations && c.packetGroupId < 0
+                    ? stallHistory
+                    : 1;
             illegalEdges++;
             LLVM_DEBUG(llvm::dbgs()
                        << "\t\t\tToo much capacity on (" << sb.srcCoords.col
@@ -2531,6 +2556,34 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
           }
         }
       }
+    }
+
+    // Once the overuse stops shrinking, a circuit tree that took an overused
+    // channel only circuit trees take goes first next time, so the trees
+    // routed later fit around it rather than the same one losing each time.
+    // A routing still converging keeps its order, and overuse a packet stream
+    // shares is left to the packet steering, whose order this would upset.
+    if (illegalEdges < fewestIllegal) {
+      fewestIllegal = illegalEdges;
+      sinceFewest = reorderedStall = 0;
+    } else {
+      sinceFewest++;
+    }
+    if (illegalEdges && sinceFewest >= stallIterations) {
+      auto losing = [&](int flow) {
+        return !st.parts[flow].packetId &&
+               llvm::any_of(st.circuitHops[flow], [](const Edge &e) {
+                 const SwitchboxConnect::Cell &c = e.sb->at(e.i, e.j);
+                 return c.usedCapacity > maxCircuitStreamCapacity &&
+                        c.packetGroupId < 0;
+               });
+      };
+      bool moved = false;
+      for (auto &[_, group] : st.groupedFlows) {
+        moved |= llvm::any_of(group, losing);
+        std::stable_partition(group.begin(), group.end(), losing);
+      }
+      reorderedStall += moved;
     }
 
     // A routing that fits the fabric can still be one the caller cannot use;
