@@ -51,14 +51,15 @@ module {
 // -----
 
 // A dynamic core whose loop is a CFG cycle keeps its objects in their slots
-// rather than threading them through block arguments.
+// rather than threading them through block arguments. The loop header may
+// still carry the held-object count, which only a later canonicalize removes.
 
 // CHECK-LABEL: aie.device(npu2)
 // CHECK:     aie.core
 // CHECK:       %[[S0:.*]] = memref.alloca() : memref<memref<8xi8>>
 // CHECK:       %[[S1:.*]] = memref.alloca() : memref<memref<8xi8>>
-// CHECK:       cf.br ^[[LOOP:.*]](%{{.*}} : index)
-// CHECK:     ^[[LOOP]](%{{.*}}: index):
+// CHECK:       cf.br ^[[LOOP:bb[0-9]+]](%{{.*}} : index{{(, i32)?}})
+// CHECK:     ^[[LOOP]](%{{[0-9]+}}: index{{(, %[0-9]+: i32)?}}):
 // CHECK:       %[[OBJ:.*]] = memref.load %[[S0]][] : memref<memref<8xi8>>
 // CHECK:       memref.load %[[OBJ]]
 module {
