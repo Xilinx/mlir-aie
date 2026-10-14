@@ -27,8 +27,10 @@ from aie.iron import In, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import from_name
 from aie.iron.kernels import Param
+from aie.iron.kernels._common import ARCH_TRAITS
 from aie.utils import bfp, get_current_device
 from aie.utils.accuracy import error_stats
+from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
@@ -39,8 +41,9 @@ def device_for(devices: tuple[str, ...]):
 
     Factories pick their source through the current device; an npu2-only one
     (``exp2f_vec``) refuses to build under npu1. Naming and describing such a
-    case on a host with no device set must still work, so the case binds the
-    first device it supports around the factory call.
+    case on a host with no device set must still work, so unless the bound
+    device is one the case supports, the case binds the first one it supports
+    around the factory call.
     """
     if not devices:
         yield
@@ -49,6 +52,11 @@ def device_for(devices: tuple[str, ...]):
         previous = get_current_device(probe_runtime=False)
     except Exception:  # noqa: BLE001 - no device bound
         previous = None
+    if previous is not None and (
+        ARCH_TRAITS[resolve_target_arch(previous)].device in devices
+    ):
+        yield
+        return
     set_current_device(from_name(devices[0], n_cols=1))
     try:
         yield
