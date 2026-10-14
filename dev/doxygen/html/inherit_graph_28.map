@@ -1,9 +1,0 @@
-<map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" title=" " alt="" coords="5,77,120,102"/>
-<area shape="rect" id="Node000001" href="$classxilinx_1_1AIE_1_1DeadlockProneRouting.html" title=" " alt="" coords="168,5,361,45"/>
-<area shape="poly" id="edge2_Node000000_Node000001" title=" " alt="" coords="116,70,200,43,202,48,118,75"/>
-<area shape="rect" id="Node000002" href="$classxilinx_1_1AIE_1_1PinnedRoutingFailure.html" title=" " alt="" coords="170,69,359,109"/>
-<area shape="poly" id="edge3_Node000000_Node000002" title=" " alt="" coords="134,87,170,87,170,92,134,92"/>
-<area shape="rect" id="Node000003" href="$classxilinx_1_1AIE_1_1RoutingFailure.html" title=" " alt="" coords="171,134,359,159"/>
-<area shape="poly" id="edge4_Node000000_Node000003" title=" " alt="" coords="118,104,169,119,214,131,213,136,167,124,116,109"/>
-</map>
