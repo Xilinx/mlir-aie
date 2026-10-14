@@ -1257,8 +1257,10 @@ assert.equal(bad.cards[0].children[1].children[2].text, 'Runsseed 32 of 2 passed
 
 
 MODEL_NIGHTS = """
+// routerRecord and allocatorRecord build one night's record exactly as
+// model_based.py writes it, for the three tests below (a failed property, a
+// failed lit test, a failed allocator property).
 const router = BANDS.find(b => b.id === 'router'), allocator = BANDS.find(b => b.id === 'allocator');
-// Records as model_based.py writes them.
 const cell = (value, unit) => ({ value, unit });
 const routerRecord = (id, date, npu2, extra) => ({ id, date, pmode: null, commit: { ...commit }, provenance: {}, rows: {
   npu1: { failed_properties: cell(0, 'properties'), unrouted: cell(0, 'routings'), illegal: cell(0, 'routings'),

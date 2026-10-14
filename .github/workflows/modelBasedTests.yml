@@ -2,26 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # The buffer allocator's and the packet router's model-based tests at scale,
-# which take too long for check-aie. The allocator's property test runs over a
-# corpus that contains check-aie's and is many times larger. The router runs
-# the lit tests in test/create-packet-flows/nightly (router_properties.py over
-# a fixed corpus, and its deadlock rules against hardware verdicts),
-# router_properties.py over a corpus many times larger, and mutation testing
-# of the router and of the model that checks it: designs are changed in ways
-# with a known answer (the router must route it, must reject it, or must route
-# it the same), and routed output is corrupted to measure how often the
-# model's verifier notices.
+# which take too long for check-aie: allocator_properties.py and
+# router_properties.py over corpora many times check-aie's, and
+# router_mutation.py's mutation testing of the router and its model.
 #
 # One job builds and runs the allocator and the router's lit tests; the
-# router's properties and mutation runs then fan out, one job per device and
-# hop setting, on the tools it built. A collect job turns every report into
-# one record per check.
+# router's properties and mutation runs fan out from there, one job per
+# device and hop setting. A collect job turns every report into one record
+# per check.
 #
-# The nightly and a dispatch with no inputs publish, to component-checks/
-# allocator/ and component-checks/router/ on the site, in the kernel checks'
-# format (utils/kernel_checks/publish.py); the maintainer dashboard shows the
-# allocator under Placement and the router under Routing. A check that fails
-# still publishes what it measured, and its record names what failed.
+# The nightly and a dispatch with no inputs publish to component-checks/
+# {allocator,router}/ (utils/kernel_checks/publish.py); the maintainer
+# dashboard shows them under Placement and Routing. A check that fails
+# still publishes what it measured, with its record naming what failed.
 
 name: Model-based tests
 
