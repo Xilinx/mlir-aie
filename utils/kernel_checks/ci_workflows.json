@@ -56,6 +56,7 @@
    "file": "modelBasedTests.yml",
    "title": "Model-based tests",
    "every": 24,
+   "legs": true,
    "why": "the buffer allocator and the packet router against their models at many times check-aie's scale; the Routing and Placement sections' numbers"
   },
   {
