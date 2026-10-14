@@ -116,15 +116,20 @@ def _keep(
 
 
 def _softmax_step(scores, keep, m_prev, l_prev):
-    """One key block of the online softmax: (weights, running max, row sum)."""
-    scaled = scores.astype(np.float32) * np.float32(_INV_SCALE)
-    m_new = np.where(keep, scaled, -np.float32(np.inf)).max(axis=1)
-    # The kernel stores the running max in bf16 before exponentiating against it.
-    m_new = np.maximum(m_new.astype(bfloat16).astype(np.float32), m_prev)
-    p = np.exp2(np.where(keep, scaled, m_new[:, None]) - m_new[:, None])
+    """One key block of the online softmax: (weights, running max, row sum).
+
+    The running max is of the unscaled scores, as the kernel keeps it; each
+    product with the bf16 scale is exact in float32.
+    """
+    s = np.float32(_INV_SCALE)
+    scores = scores.astype(np.float32)
+    m_new = np.where(keep, scores, -np.float32(np.inf)).max(axis=1)
+    m_new = np.maximum(m_new, m_prev)
+    top = (m_new * s)[:, None]
+    p = np.exp2(np.where(keep, scores * s, top) - top)
     # The row sum accumulates the stored bf16 weights.
     p = np.where(keep, p.astype(bfloat16).astype(np.float32), np.float32(0))
-    l_new = np.exp2(m_prev - m_new) * l_prev + p.sum(axis=1)
+    l_new = np.exp2(m_prev * s - m_new * s) * l_prev + p.sum(axis=1)
     return p, m_new, l_new
 
 
@@ -136,7 +141,7 @@ def _attention(scores, v, keep, *, inv_scale):
     scaled = scores.astype(np.float32) * np.float32(inv_scale)
     live = keep.any(axis=1)
     peak = np.where(live, np.where(keep, scaled, -np.inf).max(axis=1), 0)
-    p = np.exp2(scaled - peak.astype(bfloat16).astype(np.float32)[:, None])
+    p = np.exp2(scaled - peak[:, None])
     p = np.where(keep, p.astype(bfloat16).astype(np.float32), np.float32(0))
     y = p @ v.astype(np.float32)
     inv_l = np.float32(1.0) / np.where(live, p.sum(axis=1), np.float32(1))
@@ -328,7 +333,7 @@ def test_partial_softmax_matches_masked_attention(
     # rows must be exact zeros. On aie2, the factory's bound (0.389% measured).
     # The accurate exp2 is held to one ulp, or to its flush to +0.
     aie2 = resolve_target_arch(iron.get_current_device()) == "aie2"
-    tol = kernels.mha_softmax().contract.tolerance
+    tol = kernels.mha_softmax().contract_for().tolerance
     assert tol.rtol is not None and tol.atol is not None
     ulp = 2**-7
     if accurate_exp2:
@@ -347,11 +352,8 @@ def test_partial_softmax_matches_masked_attention(
 
     # Carried state, on live rows only; padded rows' state is unspecified.
     live = keeps[0].any(axis=1) | keeps[1].any(axis=1)
-    # The max is never exponentiated, so it gets no relative allowance.
-    m_ulp = 2**-7 * float(np.abs(m[live]).max())
-    np.testing.assert_allclose(
-        got_scale[:_B][live], m[live], rtol=0, atol=_ATOL_ULP * m_ulp
-    )
+    # The max is a score, kept as it came.
+    np.testing.assert_array_equal(got_scale[:_B][live], m[live])
     # A sum of weights shares their envelope. On aie2 it is c * l_prev + sum(P)
     # with c an exp2 too, so it gets two weights' allowance (0.54% measured).
     got_l = got_scale[2 * _B : 3 * _B][live]
@@ -410,6 +412,7 @@ def mha_round(
     causal: CompileTime[bool] = True,
     window: CompileTime[int] = 0,
     accurate_exp2: CompileTime[bool] = False,
+    f32_scores: CompileTime[bool] = False,
 ):
     """One round of mha.cc's steps from the mask on, over two cores.
 
@@ -418,8 +421,9 @@ def mha_round(
     its running state with each ``P``, and the other accumulates ``P V``. P
     is reblocked through a memtile on its way to ``matmul_PV``. The query
     block is ``b_q`` rows against a ``b_kv``-row key block, over a head
-    dimension ``d``.
+    dimension ``d``. With ``f32_scores`` the scores are float32.
     """
+    s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
     p_ty = np.ndarray[(b_q * b_kv,), BF]
     v_ty = np.ndarray[(b_kv * d,), BF]
     o_ty = np.ndarray[(b_q * d,), BF]
@@ -435,11 +439,12 @@ def mha_round(
         accurate_exp2=accurate_exp2,
         causal=causal,
         window=window,
+        f32_scores=f32_scores,
     )
     obj = qkt.object_file
     softmax = obj.bind(
         "partial_softmax",
-        [p_ty, p_ty, scale_ty, idx_ty, bfloat16, *([np.int32] * 4)],
+        [s_ty, p_ty, scale_ty, idx_ty, bfloat16, *([np.int32] * 4)],
     )
     init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
     pv = obj.bind(
@@ -451,7 +456,7 @@ def mha_round(
         "passThroughLine", [scale_ty, scale_ty, np.int32]
     )
 
-    of_s = ObjectFifo(p_ty, name="s", depth=2)
+    of_s = ObjectFifo(s_ty, name="s", depth=2)
     # Past d = 64, V, O and the accumulator fill the PV core's L1 alone.
     of_v = ObjectFifo(v_ty, name="v", depth=2 if d == _B else 1)
     of_o = ObjectFifo(o_ty, name="o", depth=1)
@@ -551,7 +556,7 @@ def mha_round(
         of.drain(o_h, wait=True)
 
     host = [
-        np.ndarray[(n_kv * b_q * b_kv,), BF],
+        np.ndarray[(n_kv * b_q * b_kv,), F32 if f32_scores else BF],
         np.ndarray[(n_kv * b_kv * d,), BF],
         o_ty,
     ]
@@ -600,8 +605,16 @@ def _round_case_data(
     return scores, v, keep, s_host, v_host
 
 
-def _check_round(q_block, n_kv, s_q_eff, s_kv_eff, accurate_exp2, **shape):
+def _skip_f32_off_aie2p(f32_scores):
+    if f32_scores and resolve_target_arch(iron.get_current_device()) == "aie2":
+        pytest.skip("mha.cc's float32 scores are written for AIE2P")
+
+
+def _check_round(
+    q_block, n_kv, s_q_eff, s_kv_eff, accurate_exp2, f32_scores=False, **shape
+):
     """Run ``mha_round`` and hold it to masked attention over its band."""
+    _skip_f32_off_aie2p(f32_scores)
     b_q, d = shape.get("b_q", _B), shape.get("d", _B)
     scores, v, keep, s_host, v_host = _round_case_data(
         q_block, n_kv, s_q_eff, s_kv_eff, **shape
@@ -609,7 +622,7 @@ def _check_round(q_block, n_kv, s_q_eff, s_kv_eff, accurate_exp2, **shape):
 
     o_t = iron.zeros((b_q * d,), dtype=bfloat16)
     mha_round(
-        iron.tensor(s_host, dtype=bfloat16),
+        iron.tensor(s_host.astype(np.float32 if f32_scores else bfloat16)),
         iron.tensor(v_host, dtype=bfloat16),
         o_t,
         q_block=q_block,
@@ -617,6 +630,7 @@ def _check_round(q_block, n_kv, s_q_eff, s_kv_eff, accurate_exp2, **shape):
         s_q_eff=s_q_eff,
         s_kv_eff=s_kv_eff,
         accurate_exp2=accurate_exp2,
+        f32_scores=f32_scores,
         **shape,
     )
     got = _unblock(o_t.numpy(), b_q, d).astype(np.float32)
@@ -653,10 +667,11 @@ def _check_round(q_block, n_kv, s_q_eff, s_kv_eff, accurate_exp2, **shape):
     ],
 )
 @pytest.mark.parametrize("accurate_exp2", [False, True])
+@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
 def test_mha_round_matches_masked_attention(
-    q_block, n_kv, s_q_eff, s_kv_eff, b_q, accurate_exp2
+    q_block, n_kv, s_q_eff, s_kv_eff, b_q, accurate_exp2, f32_scores
 ):
-    _check_round(q_block, n_kv, s_q_eff, s_kv_eff, accurate_exp2, b_q=b_q)
+    _check_round(q_block, n_kv, s_q_eff, s_kv_eff, accurate_exp2, f32_scores, b_q=b_q)
 
 
 # Self-attention, so every live row keeps a key of its own.
@@ -679,8 +694,125 @@ def test_mha_round_matches_masked_attention(
     ],
 )
 @pytest.mark.parametrize("accurate_exp2", [False, True])
-def test_mha_round_keeps_its_band(q_block, n_kv, s_eff, shape, accurate_exp2):
-    _check_round(q_block, n_kv, s_eff, s_eff, accurate_exp2, **shape)
+@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
+def test_mha_round_keeps_its_band(
+    q_block, n_kv, s_eff, shape, accurate_exp2, f32_scores
+):
+    _check_round(q_block, n_kv, s_eff, s_eff, accurate_exp2, f32_scores, **shape)
+
+
+# A bf16 score whose product with _INV_SCALE, 45695, is 127 above its own bf16
+# rounding: past 2^15 bf16 steps by 256. A running max kept as that rounding
+# made every key tied at the top weigh 2^127, and two of them overflow.
+_PAST_2_15 = 252928.0
+
+
+@pytest.mark.parametrize(
+    "b_q,b_kv", [(_B, _B), (32, 32)], ids=["row_groups", "per_row"]
+)
+@pytest.mark.parametrize("accurate_exp2", [False, True])
+@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
+def test_mha_round_keeps_scores_past_2_15_finite(b_q, b_kv, accurate_exp2, f32_scores):
+    """Each row's top keys tie at a scaled score past 2^15, the rest far below."""
+    _skip_f32_off_aie2p(f32_scores)
+    scaled = np.float32(_PAST_2_15) * np.float32(_INV_SCALE)
+    assert scaled - np.float32(bfloat16(scaled)) == 127
+    q_block, s_eff = 1, 2 * b_q
+    n_kv = s_eff // b_kv
+    rng = np.random.default_rng(20261013)
+    top = rng.random((b_q, n_kv * b_kv)) < 0.5
+    top[:, 0] = True
+    scores = np.where(top, _PAST_2_15, -_PAST_2_15).astype(bfloat16)
+    v = _dyadic(rng, (n_kv * b_kv, _B), 0.25, mag=2)
+    keep = np.concatenate(
+        [_keep(q_block, kv, s_eff, s_eff, b_q, b_kv) for kv in range(n_kv)], axis=1
+    )
+    s_host = np.concatenate(
+        [scores[:, b * b_kv : (b + 1) * b_kv].reshape(-1) for b in range(n_kv)]
+    )
+    v_host = np.concatenate(
+        [
+            TensorAccessPattern.full((b_kv, _B))
+            .tile((8, 8))
+            .gather(v[b * b_kv : (b + 1) * b_kv])
+            for b in range(n_kv)
+        ]
+    )
+
+    o_t = iron.zeros((b_q * _B,), dtype=bfloat16)
+    mha_round(
+        iron.tensor(s_host.astype(np.float32 if f32_scores else bfloat16)),
+        iron.tensor(v_host, dtype=bfloat16),
+        o_t,
+        q_block=q_block,
+        n_kv=n_kv,
+        s_q_eff=s_eff,
+        s_kv_eff=s_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        accurate_exp2=accurate_exp2,
+        f32_scores=f32_scores,
+    )
+    got = _unblock(o_t.numpy(), b_q, _B).astype(np.float32)
+
+    # Each row is the mean of V over its kept top keys.
+    ref = _attention(scores, v, keep, inv_scale=_INV_SCALE).astype(np.float32)
+    ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
+    np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
+
+
+# 2^17: bf16 steps by 1024 here, float32 by 2^-6.
+_NEAR_TIES = 131072.0
+
+
+@pytest.mark.parametrize("b_q,b_kv", [(_B, _B), (32, 32)], ids=["64_keys", "32_keys"])
+@pytest.mark.parametrize("accurate_exp2", [False, True])
+def test_mha_round_f32_scores_resolve_near_ties(b_q, b_kv, accurate_exp2):
+    """Scores at 2^17 plus multiples of 4, which bf16 would round to one value."""
+    _skip_f32_off_aie2p(True)
+    q_block, s_eff = 1, 2 * b_q
+    n_kv = s_eff // b_kv
+    rng = np.random.default_rng(20261014)
+    # Scaled, a step of 4 is 0.72: within bf16's 1024 they would all tie.
+    scores = (_NEAR_TIES + 4 * rng.integers(0, 8, (b_q, n_kv * b_kv))).astype(
+        np.float32
+    )
+    assert np.unique(scores.astype(bfloat16)).size == 1
+    v = _dyadic(rng, (n_kv * b_kv, _B), 0.25, mag=2)
+    keep = np.concatenate(
+        [_keep(q_block, kv, s_eff, s_eff, b_q, b_kv) for kv in range(n_kv)], axis=1
+    )
+    s_host = np.concatenate(
+        [scores[:, b * b_kv : (b + 1) * b_kv].reshape(-1) for b in range(n_kv)]
+    )
+    v_host = np.concatenate(
+        [
+            TensorAccessPattern.full((b_kv, _B))
+            .tile((8, 8))
+            .gather(v[b * b_kv : (b + 1) * b_kv])
+            for b in range(n_kv)
+        ]
+    )
+
+    o_t = iron.zeros((b_q * _B,), dtype=bfloat16)
+    mha_round(
+        iron.tensor(s_host, dtype=np.float32),
+        iron.tensor(v_host, dtype=bfloat16),
+        o_t,
+        q_block=q_block,
+        n_kv=n_kv,
+        s_q_eff=s_eff,
+        s_kv_eff=s_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        accurate_exp2=accurate_exp2,
+        f32_scores=True,
+    )
+    got = _unblock(o_t.numpy(), b_q, _B).astype(np.float32)
+
+    ref = _attention(scores, v, keep, inv_scale=_INV_SCALE).astype(np.float32)
+    ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
+    np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
 
 
 @jit

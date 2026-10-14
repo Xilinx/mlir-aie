@@ -1769,16 +1769,37 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // CDO + BIF → PDI via bootgen
   auto &bif =
       bundle(staticPerDevice.out, cdo.out)
-          .map<std::string>("bif_{0}.bif",
-                            [](const Item<OpInModule<DeviceOp>> &devItem,
-                               const Item<Directory> &cdoItem,
-                               Item<std::string> &out) -> mlir::LogicalResult {
-                              DeviceOp d = devItem.get().op;
-                              out.value =
-                                  makeBifText(absolutePath(cdoItem.asFile()),
-                                              d.getSymName());
-                              return mlir::success();
-                            });
+          .map<std::string>(
+              "bif_{0}.bif",
+              [](const Item<OpInModule<DeviceOp>> &devItem,
+                 const Item<Directory> &cdoItem,
+                 Item<std::string> &out) -> mlir::LogicalResult {
+                DeviceOp d = devItem.get().op;
+                // The real path drops Windows 8.3 short names
+                // (ADMINI~1), which bootgen cannot read.
+                llvm::SmallString<256> dir;
+                if (llvm::sys::fs::real_path(cdoItem.asFile(), dir))
+                  dir = absolutePath(cdoItem.asFile());
+                llvm::StringRef path = dir;
+                if (path.size() > 1 && path[1] == ':' && llvm::isAlpha(path[0]))
+                  path = path.drop_front(2);
+                // bootgen's BIF lexer reads a file name from
+                // these characters alone.
+                size_t bad = path.find_first_not_of(
+                    "abcdefghijklmnopqrstuvwxyz"
+                    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                    "/\\()@!#$%^&+._ -");
+                if (bad != llvm::StringRef::npos) {
+                  llvm::errs() << "aiecc: bootgen cannot read a path "
+                                  "holding '"
+                               << path[bad] << "': " << dir
+                               << "; build in a directory whose path "
+                                  "has none\n";
+                  return mlir::failure();
+                }
+                out.value = makeBifText(dir, d.getSymName());
+                return mlir::success();
+              });
 
   // BIF → PDI
 #ifdef AIECC_HAS_BOOTGEN_LIBRARY
@@ -2239,10 +2260,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   [](const std::vector<char> &bin) { return !bin.empty(); });
 
   // When control packets are enabled, the control data is passed into the
-  // runtime sequence as an argument. `fullElfPatchInfo` captures which argument
-  // index contains that control data and the size of the control-data buffer,
-  // computed from THIS sequence's pre-lowering argument count (ctrl-packet-to-
-  // DMA appends the control buffer as the sequence's next argument).
+  // runtime sequence as an argument; `fullElfPatchInfo` records its slot (see
+  // makePatchInfoJson) and size.
   auto &fullElfPatchInfo =
       bundle(fullElfCtrlpkt.out, ctrlPktSeqs.out)
           .map<llvm::json::Value>(
@@ -2253,7 +2272,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 RuntimeSequenceOp seq = seqItem.get().op;
                 int argIdx = seq.getBody().empty()
                                  ? 0
-                                 : seq.getBody().front().getNumArguments();
+                                 : xilinx::AIEX::getHostBufferCount(
+                                       seq.getBody().front());
                 out.value =
                     makePatchInfoJson(argIdx, (int64_t)binItem.get().size());
                 return mlir::success();

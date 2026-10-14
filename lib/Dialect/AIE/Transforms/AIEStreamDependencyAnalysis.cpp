@@ -556,7 +556,8 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
             continue;
           // Any other user, such as an scf.yield or an scf.for init, can
           // forward the task to starts this does not count.
-          if (!isa<AIEX::DMAStartTaskOp>(user))
+          auto start = dyn_cast<AIEX::DMAStartTaskOp>(user);
+          if (!start || start.hasRepeatParameter())
             return std::nullopt;
           if (user->getParentOfType<LoopLikeOpInterface>())
             return std::nullopt;

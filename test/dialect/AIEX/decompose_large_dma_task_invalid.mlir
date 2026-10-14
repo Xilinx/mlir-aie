@@ -71,6 +71,27 @@ module {
 
 // -----
 
+// And for one whose count the host sets through a scratchpad parameter.
+
+module {
+  aiex.scratchpad_parameter @n : i32
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @parameter_start_repeat(%in: memref<16x16x4096xi8>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<16x16x4096xi8> offset = 4096 len = 262144 sizes = [1, 8, 8, 4096] strides = [0, 131072, 8192, 1])
+          {burst_length = 0 : i32}
+        aie.end
+      } {issue_token = true, repeat_count = 3 : i32}
+      // expected-error@+1 {{cannot decompose a buffer descriptor this start repeats a runtime number of times: decomposition needs to scale the count by 8}}
+      aiex.dma_start_task(%tk) {repeat_parameter = @n}
+    }
+  }
+}
+
+// -----
+
 // A scaled repeat count past the queue's 8-bit field is split into several
 // pushes later (aie-split-long-repeats), but it still has to fit the 32-bit
 // attribute. Saying so here names the factor that got us there.

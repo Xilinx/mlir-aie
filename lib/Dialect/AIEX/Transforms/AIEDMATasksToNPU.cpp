@@ -98,18 +98,24 @@ struct DMAStartTaskOpPattern : OpRewritePattern<DMAStartTaskOp> {
       return failure();
     }
     Value bdIdVal = getAsValue(rewriter, loc, idOfr, rewriter.getI32Type());
+    if (op.getRepeatParameterAttr())
+      return op.emitOpError("has a repeat_parameter; run "
+                            "--aie-lower-scratchpad-parameters first");
     // A runtime repeat count keeps its width so the push lowering can
-    // range-check it before narrowing.
-    OpFoldResult repeatOfr = op.getPushRepeatCount(task_op);
+    // range-check it before narrowing. A scratchpad one is added to a push
+    // of 0.
+    IntegerAttr repeatIdx = op.getRepeatStateTableIdxAttr();
+    OpFoldResult repeatOfr = repeatIdx ? rewriter.getI32IntegerAttr(0)
+                                       : op.getPushRepeatCount(task_op);
     onlyPushedOnce.try_emplace(task_op, true).first->second &=
-        isConstantIntValue(repeatOfr, 0);
+        !repeatIdx && isConstantIntValue(repeatOfr, 0);
     Value repeatCount = dyn_cast<Value>(repeatOfr);
     if (!repeatCount)
       repeatCount = getAsValue(rewriter, loc, repeatOfr, rewriter.getI32Type());
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
         task_op.getChannel(), op.getPushIssueToken(task_op), repeatCount,
-        bdIdVal);
+        bdIdVal, repeatIdx);
     return success();
   }
 };

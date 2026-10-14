@@ -788,6 +788,28 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
       repeatCount && *repeatCount > maxRepeat)
     return emitOpError("Repeat count exceeds the [0:")
            << maxRepeat << "] range.";
+  if (getRepeatStateTableIdxAttr()) {
+    AIE::AIEArch arch = targetModel.getTargetArch();
+    if (arch != AIE::AIEArch::AIE2 && arch != AIE::AIEArch::AIE2p)
+      return emitOpError("repeat_parameter is only supported on AIE2 and "
+                         "AIE2P devices");
+    if (!targetModel.isShimNOCTile(getColumn(), getRow()))
+      return emitOpError("repeat_parameter is only supported on shim NOC "
+                         "tiles, got tile (")
+             << getColumn() << ", " << getRow() << ")";
+    if (getConstantInt64Operand(getRepeatCount()) != uint64_t{0})
+      return emitOpError("takes its repeat count from the scratchpad, so its "
+                         "repeat_count operand must be 0");
+    std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
+    if (!bdId)
+      return emitOpError("takes its repeat count from the scratchpad, so its "
+                         "bd_id must be a constant");
+    if (*bdId % 4 != 0)
+      return emitOpError("takes its repeat count from the scratchpad, whose "
+                         "update clears the low two bits of the queue word, "
+                         "so its bd_id must be a multiple of 4, got ")
+             << *bdId;
+  }
   return success();
 }
 
@@ -1365,6 +1387,11 @@ LogicalResult AIEX::DMAStartTaskOp::verify() {
   if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
     return emitOpError("repeat_count must be non-negative, got ")
            << rc.getInt();
+  if (hasRepeatParameter() && (getRepeatCountAttr() || getRepeatCountVal()))
+    return emitOpError("takes a repeat_parameter or a repeat count, not both");
+  if (getRepeatParameterAttr() && getRepeatStateTableIdxAttr())
+    return emitOpError("takes repeat_parameter or repeat_state_table_idx, "
+                       "not both");
   return success();
 }
 

@@ -523,16 +523,23 @@ def dma_start_task(
     *args: DMAConfigureTaskForOp,
     repeat_count: int | Value | None = None,
     no_token: bool = False,
+    repeat_parameter: str | None = None,
 ):
     """Push each task onto its channel's queue.
 
     ``repeat_count`` replaces the task's own count for these starts only, and
     ``no_token`` withholds the completion token the task would otherwise issue.
-    A runtime ``repeat_count`` must fit one queue push.
+    A runtime ``repeat_count`` must fit one queue push. ``repeat_parameter``
+    names a scratchpad parameter whose value, written per run, is the count
+    instead, at most the task's own.
     """
     if len(args) == 0:
         raise ValueError(
             "dma_start_task must receive at least one DMAConfigureTaskForOp to start"
+        )
+    if repeat_parameter is not None and repeat_count is not None:
+        raise ValueError(
+            "dma_start_task takes a repeat_count or a repeat_parameter, not both"
         )
     runtime = isinstance(repeat_count, Value)
     repeat_count_val = repeat_count if runtime else None
@@ -542,6 +549,7 @@ def dma_start_task(
             repeat_count=None if runtime else repeat_count,
             repeat_count_val=repeat_count_val,
             no_token=no_token or None,
+            repeat_parameter=repeat_parameter,
         )
 
 

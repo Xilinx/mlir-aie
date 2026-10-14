@@ -154,7 +154,8 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
                              builder.getI32IntegerAttr(ep.row),
                              DMAChannelDirAttr::get(ctx, ep.dir),
                              builder.getI32IntegerAttr(ep.channel),
-                             builder.getBoolAttr(issueToken), repeatVal, bdVal);
+                             builder.getBoolAttr(issueToken), repeatVal, bdVal,
+                             /*repeat_state_table_idx=*/nullptr);
     }
 
     toErase.push_back(op);

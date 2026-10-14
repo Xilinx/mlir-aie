@@ -179,7 +179,7 @@ def test_bf16_exp_saturates_outside_lut_domain():
     assert verdict, verdict.detail
     # Padding must not dilute the mismatch budget for the boundary inputs.
     verdict = compare(
-        got[: len(xs)], expected.ravel()[: len(xs)], fn.contract.tolerance
+        got[: len(xs)], expected.ravel()[: len(xs)], fn.contract_for().tolerance
     )
     assert verdict, verdict.detail
 

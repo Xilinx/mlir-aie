@@ -152,6 +152,12 @@ std::optional<unsigned> AIEX::getHostBufferArgIndex(BlockArgument arg) {
   return std::nullopt;
 }
 
+unsigned AIEX::getHostBufferCount(Block &block) {
+  return llvm::count_if(block.getArguments(), [](BlockArgument arg) {
+    return isa<BaseMemRefType>(arg.getType());
+  });
+}
+
 AIEX::BlockwriteData::BlockwriteData(AIE::DeviceOp dev, StringRef prefix)
     : dev(dev), prefix(prefix) {
   for (Operation &op : dev.getBody()->getOperations()) {
@@ -263,8 +269,7 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
     assert(kind && stateTableIdx &&
            "expected --aie-lower-scratchpad-parameters to have assigned "
            "kind/state_table_idx to every parameter");
-    StringRef kindStr =
-        *kind == AIEX::ScratchpadParameterKind::Addr ? "addr" : "core";
+    StringRef kindStr = AIEX::stringifyScratchpadParameterKind(*kind);
     os << p.getSymName() << " " << static_cast<unsigned>(*stateTableIdx) << " "
        << typeStr << " " << kindStr;
     auto minValue = p.getMinValue();

@@ -18,6 +18,7 @@ of which is silent until a device run otherwise:
   generator the device tests and benchmarks run.
 """
 
+import dataclasses
 import inspect
 import re
 import sys
@@ -30,7 +31,7 @@ from aie.iron import In, InOut, Out, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
-from aie.iron.kernels import KernelContract, Param
+from aie.iron.kernels import BUILDS, KernelContract, Param
 from aie.iron.kernels._common import ARCH_TRAITS
 from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
@@ -74,6 +75,7 @@ NOT_JUDGED = {
     "set_rounding": "sets core state and has no data output; the rounding-mode tests cover it",
     "sample_select": "a state machine across a position's select_streams * slice / chunk calls; test_sample_e2e.py judges it",
     "sample_combine": "reads sample_select's summaries, which the generic builder cannot draw; test_sample_e2e.py judges the pair",
+    "router_top_k": "reads sample_select's summary, which the generic builder cannot draw; test_router_top_k_e2e.py judges the pair",
     "resize": "six entry points share one core's state, driven by counts they write; test_resize_e2e.py judges them",
     **{
         name: "one half of a MobileNet bottleneck cascade pair; test_bn_cascade_pairs.py builds and judges the pair"
@@ -257,25 +259,29 @@ def test_roles_match_arg_types(case_id):
 def test_reference_takes_what_the_contract_hands_it(case_id):
     fkw, _ = CASES[case_id]
     c = _factory(case_id)(**fkw).contract
-    assert c.reference is not None, f"{case_id}: contract has no reference"
-    params = [
-        p
-        for p in inspect.signature(c.reference).parameters.values()
-        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
-    ]
-    assert len(params) == len(c.reference_indices())
+    for build in BUILDS:
+        reference = c.for_build(build).reference
+        assert reference is not None, f"{case_id}: no reference for {build}"
+        params = [
+            p
+            for p in inspect.signature(reference).parameters.values()
+            if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+        ]
+        assert len(params) == len(c.reference_indices()), build
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
 def test_tolerance_is_declared_with_its_evidence(case_id):
     fkw, _ = CASES[case_id]
-    tol = _factory(case_id)(**fkw).contract.tolerance
-    assert isinstance(
-        tol, Tolerance
-    ), f"{case_id}: tolerance is the default; declare it"
-    assert (
-        tol.note
-    ), f"{case_id}: tolerance needs a note saying where the number comes from"
+    c = _factory(case_id)(**fkw).contract
+    for build in BUILDS:
+        tol = c.for_build(build).tolerance
+        assert isinstance(
+            tol, Tolerance
+        ), f"{case_id}: tolerance for {build} is the default; declare it"
+        assert (
+            tol.note
+        ), f"{case_id}: tolerance needs a note saying where the number comes from"
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
@@ -439,7 +445,7 @@ def test_exp_factory_can_include_shared_clamp_header(arch):
     runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
     assert str(runtime_dir) in fn.include_dirs
     if arch == "aie2":
-        tolerance = fn.contract.tolerance
+        tolerance = fn.contract_for().tolerance
         assert tolerance is not None
         assert tolerance.atol == 2.0**-126
 
@@ -450,7 +456,7 @@ def test_exp_factory_can_include_shared_clamp_header(arch):
 )
 def test_swiglu_default_reference_matches_architecture(device, reference):
     set_current_device(device())
-    assert kernels.swiglu().contract.reference is reference
+    assert kernels.swiglu().contract_for().reference is reference
 
 
 def test_factory_contract_follows_device_switch():
@@ -459,9 +465,51 @@ def test_factory_contract_follows_device_switch():
     set_current_device(NPU1Col1())
     npu1 = kernels.mha_softmax()
     assert npu1 != npu2
-    assert npu1.contract.tolerance.rtol < npu2.contract.tolerance.rtol
+    assert (
+        npu1.contract_for("aie2").tolerance.rtol
+        < npu2.contract_for("aie2p").tolerance.rtol
+    )
     set_current_device(NPU2Col1())
     assert kernels.mha_softmax() == npu2
+
+
+@pytest.mark.parametrize("case_id", list(CASES))
+def test_a_kernel_built_before_binding_is_judged_as_one_built_bound(case_id):
+    fkw, opts = CASES[case_id]
+    factory = _factory(case_id)
+    set_current_device(None)
+    try:
+        early = factory(**fkw)
+    except (ValueError, NotImplementedError):
+        pytest.skip("aie2 refuses this configuration")
+    set_current_device(NPU2Col1())
+    late = factory(**fkw)
+    if (early.arg_types(), early.contract.layouts) != (
+        late.arg_types(),
+        late.contract.layouts,
+    ):
+        pytest.skip(
+            "its operands differ by arch, so the two describe different kernels"
+        )
+    if late.contract.unsupported:
+        pytest.skip(late.contract.unsupported)
+    ins = kd.sample_inputs(late, calls=1)
+    scalars = opts.get("scalars", ())
+    want, got = late.contract_for().tolerance, early.contract_for().tolerance
+    if want is None or got is None:
+        assert want is got
+    else:
+        for f in dataclasses.fields(Tolerance):
+            if f.name != "bound":
+                assert getattr(got, f.name) == getattr(want, f.name), f.name
+        if want.kind == "bound":
+            args = late._reference_args(ins, scalars)
+            bounds = got.bound(*args), want.bound(*args)
+            for a, b in zip(*(x if isinstance(x, tuple) else (x,) for x in bounds)):
+                np.testing.assert_array_equal(a, b)
+    refs = late.expected(ins, scalars=scalars), early.expected(ins, scalars=scalars)
+    for a, b in zip(*(r if isinstance(r, tuple) else (r,) for r in refs)):
+        np.testing.assert_array_equal(a, b)
 
 
 @pytest.mark.parametrize("mode", list(kernels.RoundingMode))
