@@ -50,6 +50,54 @@ module {
 
 // -----
 
+// As above, but the core also picks between its own buffers with selects that
+// fold once the inner loop is unrolled. The objects are still rotated by one
+// every outer iteration, so they stay in their slots: the folded selects must
+// not make up for objects promotion would carry through the loop.
+
+// CHECK-LABEL: aie.device(npu2)
+// CHECK:     aie.core
+// CHECK:       %[[S0:.*]] = memref.alloca() : memref<memref<8xi8>>
+// CHECK:       %[[S1:.*]] = memref.alloca() : memref<memref<8xi8>>
+// CHECK:       scf.for
+// CHECK-NOT:   iter_args
+// CHECK:         %[[OBJ:.*]] = memref.load %[[S0]][] : memref<memref<8xi8>>
+// CHECK:         memref.load %[[OBJ]]
+// CHECK-NOT:     arith.select
+// CHECK:       aie.end
+module {
+  aie.device(npu2) {
+    %t1 = aie.tile(0, 1)
+    %t2 = aie.tile(0, 2)
+    %b0 = aie.buffer(%t2) {sym_name = "b0"} : memref<8xi8>
+    %b1 = aie.buffer(%t2) {sym_name = "b1"} : memref<8xi8>
+    aie.objectfifo @fifo(%t1, {%t2}, 2 : i32) : !aie.objectfifo<memref<8xi8>>
+    %core = aie.core(%t2) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      %c3 = arith.constant 3 : index
+      %cmax = arith.constant 9223372036854775807 : index
+      scf.for %o = %c0 to %cmax step %c1 {
+        scf.for %i = %c0 to %c3 step %c1 {
+          %x = aie.objectfifo.acquire @fifo(Consume, 1) : memref<8xi8>
+          %v = memref.load %x[%c0] : memref<8xi8>
+          %r = arith.remui %i, %c2 : index
+          %even = arith.cmpi eq, %r, %c0 : index
+          %d0 = arith.select %even, %b0, %b1 : memref<8xi8>
+          memref.store %v, %d0[%c0] : memref<8xi8>
+          %d1 = arith.select %even, %b1, %b0 : memref<8xi8>
+          memref.store %v, %d1[%c0] : memref<8xi8>
+          aie.objectfifo.release @fifo(Consume, 1)
+        }
+      }
+      aie.end
+    } {dynamic_objfifo_lowering = false}
+  }
+}
+
+// -----
+
 // A dynamic core whose loop is a CFG cycle keeps its objects in their slots
 // rather than threading them through block arguments. The loop header may
 // still carry the held-object count, which only a later canonicalize removes.

@@ -238,8 +238,12 @@ struct AIEObjectFifoUnrollPass
   /// through control flow, which LLVM's alias analysis cannot tell apart from
   /// the others; left in memory, SROA reduces it to a pointer. Whether the
   /// rotations fold depends on the fold pipeline, so as with peeling each core
-  /// is promoted for real and measured against a detached clone, which is
-  /// swapped back in, slots untagged, if more memrefs are picked at run time.
+  /// is promoted for real against a detached clone. A promoted core that picks
+  /// no memref at run time is kept outright. Otherwise the clone is swapped in,
+  /// slots untagged, and folded too, so the two are compared folded: folding
+  /// unrelated to the slots (a select between the core's own buffers going
+  /// constant, say) cannot hide an object promotion left picked at run time.
+  /// The promoted core is swapped back if it picks no more memrefs.
   LogicalResult foldPromotingObjectSlots(DeviceOp device,
                                          ArrayRef<memref::AllocaOp> slots,
                                          OpPassManager &foldPipeline) {
@@ -249,7 +253,6 @@ struct AIEObjectFifoUnrollPass
     struct Trial {
       CoreOp core;
       Operation *unpromoted;
-      int64_t runtimeMemrefsBefore;
     };
     SmallVector<Trial> trials;
     llvm::SmallPtrSet<Operation *, 8> seen;
@@ -257,7 +260,7 @@ struct AIEObjectFifoUnrollPass
     for (memref::AllocaOp slot : slots) {
       auto core = slot->getParentOfType<CoreOp>();
       if (seen.insert(core).second) {
-        trials.push_back({core, core->clone(), countRuntimeMemrefs(core)});
+        trials.push_back({core, core->clone()});
       }
       allocators.push_back(
           cast<PromotableAllocationOpInterface>(slot.getOperation()));
@@ -275,6 +278,19 @@ struct AIEObjectFifoUnrollPass
     }
 
     IRRewriter rewriter(device.getContext());
+    // Puts `in` in place of `out` and detaches `out`.
+    auto swap = [&](Operation *out, Operation *in) {
+      rewriter.setInsertionPoint(out);
+      rewriter.insert(in);
+      rewriter.replaceAllOpUsesWith(out, in->getResults());
+      out->remove();
+    };
+    struct Contest {
+      Operation *promoted;
+      Operation *unpromoted;
+      int64_t promotedRuntimeMemrefs;
+    };
+    SmallVector<Contest> contests;
     bool restoredAny = false;
     for (Trial &trial : trials) {
       // mem2reg may also have left a slot in place.
@@ -283,22 +299,43 @@ struct AIEObjectFifoUnrollPass
                    ? WalkResult::interrupt()
                    : WalkResult::advance();
       });
-      if (!leftover.wasInterrupted() &&
-          countRuntimeMemrefs(trial.core) <= trial.runtimeMemrefsBefore) {
+      int64_t runtimeMemrefs = countRuntimeMemrefs(trial.core);
+      if (!leftover.wasInterrupted() && runtimeMemrefs == 0) {
         trial.unpromoted->erase();
         continue;
       }
-      rewriter.setInsertionPoint(trial.core);
-      Operation *restored = rewriter.insert(trial.unpromoted);
-      rewriter.replaceOp(trial.core, restored->getResults());
-      restored->walk([&](memref::AllocaOp allocaOp) {
+      swap(trial.core, trial.unpromoted);
+      trial.unpromoted->walk([&](memref::AllocaOp allocaOp) {
         allocaOp->removeAttr(kObjectFifoObjectSlotAttrName);
       });
+      if (leftover.wasInterrupted()) {
+        trial.core->erase();
+      } else {
+        contests.push_back({trial.core, trial.unpromoted, runtimeMemrefs});
+      }
       restoredAny = true;
     }
+    if (!restoredAny) {
+      return success();
+    }
+
     // The restored cores have not been folded yet.
-    return success(!restoredAny ||
-                   succeeded(runPipeline(foldPipeline, device)));
+    if (failed(runPipeline(foldPipeline, device))) {
+      for (Contest &contest : contests) {
+        contest.promoted->erase();
+      }
+      return failure();
+    }
+    for (Contest &contest : contests) {
+      if (contest.promotedRuntimeMemrefs <=
+          countRuntimeMemrefs(contest.unpromoted)) {
+        swap(contest.unpromoted, contest.promoted);
+        contest.unpromoted->erase();
+      } else {
+        contest.promoted->erase();
+      }
+    }
+    return success();
   }
 
   void runOnOperation() override {
