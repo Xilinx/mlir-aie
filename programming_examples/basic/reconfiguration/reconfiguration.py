@@ -32,6 +32,7 @@ MODES = (
     "separate-dispatch",
     "load-pdi",
     "expand-load-pdis",
+    "expand-load-pdis-teardown",
     "control-packets",
 )
 
@@ -192,7 +193,8 @@ def reconfigure(
     return Program.compose(
         configurations,
         entry=entry,
-        expand_load_pdis=True if mode == "expand-load-pdis" else None,
+        expand_load_pdis=True if mode.startswith("expand-load-pdis") else None,
+        reconfig_teardown=True if mode == "expand-load-pdis-teardown" else None,
     ).resolve_program()
 
 
