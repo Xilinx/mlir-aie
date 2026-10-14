@@ -85,6 +85,11 @@ def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[
 # Set AIE_KERNEL_PCH=0 to disable.
 _PCH_SOURCE = "<pch-source>"
 _PCH_OUTPUT = "<pch-output>"
+# A kernel library source that includes aie_api is compiled with these, so it
+# reads the header first and a PCH of the header stands in for it. Passed to
+# cc1 directly: the driver puts a plain -include ahead of the intrinsics header
+# it injects, which defines the __AIE_ARCH__ aie_api needs.
+AIE_API_PREFIX_FLAGS = ("-Xclang", "-include", "-Xclang", "aie_api/aie.hpp")
 # What clang reads from the environment that can change what a header reads;
 # none of it shows in the command, so it joins the key.
 _CLANG_SEARCH_PATHS = (
@@ -750,14 +755,25 @@ def compile_cxx_core_function(
 
     pch = None
     if not use_chess and not inline and os.environ.get("AIE_KERNEL_PCH", "1") != "0":
+        args = list(compile_args or ())
+        prefix: list[str] = []
+        n = len(AIE_API_PREFIX_FLAGS)
+        for i in range(len(args) - n + 1):
+            if tuple(args[i : i + n]) == AIE_API_PREFIX_FLAGS:
+                prefix = list(AIE_API_PREFIX_FLAGS)
+                del args[i : i + n]
+                break
         pch_cmds = []
-        for dirs, args in ((include_dirs, compile_args), (None, None)):
+        for dirs, extra in (
+            (include_dirs, compile_args),
+            (None, prefix or None),
+        ):
             pch_cmd = cxx_core_compile_command(
                 _PCH_SOURCE,
                 target_arch,
                 _PCH_OUTPUT,
                 include_dirs=dirs,
-                compile_args=args,
+                compile_args=extra,
             )
             i = pch_cmd.index("-MD")
             del pch_cmd[i : i + 3]
@@ -767,7 +783,6 @@ def compile_cxx_core_function(
         search_paths = [str(d) for d in include_dirs or ()]
         macros: list[str] = []
         others: list[str] = []
-        args = list(compile_args or ())
         i = 0
         while i < len(args):
             arg = args[i]
@@ -795,7 +810,8 @@ def compile_cxx_core_function(
             if name in os.environ:
                 search_paths.extend(os.environ[name].split(os.pathsep))
         # The PCH builds in its own directory, so a relative search path would
-        # name another one there; a caller's -include would be read twice.
+        # name another one there; a caller's -include would be read twice
+        # (aie_api's own, taken out above, is guarded and part of the PCH).
         if all(os.path.isabs(d) for d in search_paths) and not any(
             arg.startswith(("-include", "-imacros")) for arg in others
         ):

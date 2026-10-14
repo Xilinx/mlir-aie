@@ -18,6 +18,7 @@ import pytest
 
 from aie.utils import config
 from aie.utils.compile.cache.utils import file_lock
+from aie.utils.compile.utils import AIE_API_PREFIX_FLAGS
 
 _COMPILE = """
 import sys
@@ -317,3 +318,60 @@ def test_relative_environment_search_path_compiles_plainly(tmp_path, cpath):
     assert ret.returncode == 0, ret.stderr
     assert with_pch.read_bytes() == plain.read_bytes()
     assert len(_pchs(cache)) == 1
+
+
+_AIE_API_KERNEL = """
+#include <aie_api/aie.hpp>
+extern "C" void fill(bfloat16 *out) {
+#ifdef VALUE
+  ::aie::store_v(out, ::aie::broadcast<bfloat16, 32>(VALUE));
+#else
+  ::aie::store_v(out, ::aie::broadcast<bfloat16, 32>(1.0f));
+#endif
+}
+"""
+
+
+def test_aie_api_kernels_share_one_pch(tmp_path):
+    cache = tmp_path / "cache"
+    for value in ("2", "3"):
+        args = [*AIE_API_PREFIX_FLAGS, f"-DVALUE={value}"]
+        ret, with_pch = _compile(
+            tmp_path, cache, f"with{value}", args, source=_AIE_API_KERNEL
+        )
+        assert ret.returncode == 0, ret.stderr
+        ret, plain = _compile(
+            tmp_path, cache, f"plain{value}", args, source=_AIE_API_KERNEL, pch=False
+        )
+        assert ret.returncode == 0, ret.stderr
+        assert with_pch.read_bytes() == plain.read_bytes()
+    assert len(_pchs(cache)) == 1
+
+
+def test_aie_api_and_intrinsics_pchs_are_separate(tmp_path):
+    cache = tmp_path / "cache"
+    ret, _ = _compile(
+        tmp_path, cache, "aie_api", list(AIE_API_PREFIX_FLAGS), source=_AIE_API_KERNEL
+    )
+    assert ret.returncode == 0, ret.stderr
+    ret, _ = _compile(tmp_path, cache, "intrinsics")
+    assert ret.returncode == 0, ret.stderr
+    assert len(_pchs(cache)) == 2
+
+
+def test_macro_aie_api_reads_gets_its_own_pch(tmp_path):
+    cache = tmp_path / "cache"
+    prefix = list(AIE_API_PREFIX_FLAGS)
+    emulated = [*prefix, "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16"]
+    assert (
+        _compile(tmp_path, cache, "bare", prefix, source=_AIE_API_KERNEL)[0].returncode
+        == 0
+    )
+    ret, with_pch = _compile(tmp_path, cache, "own", emulated, source=_AIE_API_KERNEL)
+    assert ret.returncode == 0, ret.stderr
+    ret, plain = _compile(
+        tmp_path, cache, "plain", emulated, source=_AIE_API_KERNEL, pch=False
+    )
+    assert ret.returncode == 0, ret.stderr
+    assert with_pch.read_bytes() == plain.read_bytes()
+    assert len(_pchs(cache)) == 2
