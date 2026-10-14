@@ -27,21 +27,28 @@
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Allocator.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Program.h"
+#include "llvm/Support/StringSaver.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -67,11 +74,21 @@ auto emitBinary(Fill fill) {
 
 // Materialize an MLIR module from an item whose payload carries IR. Overloaded
 // per module-bearing payload type: ModRef and OpInModule clone their in-memory
-// module; File re-parses its .mlir text into `ctx`.
+// module; File re-parses its .mlir text into `ctx`. A ModRef item handed over
+// as an rvalue (by an edge that owns its input) gives up its module instead.
 inline mlir::OwningOpRef<mlir::ModuleOp>
 asModule(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &in,
          mlir::MLIRContext * /*ctx*/) {
   return mlir::OwningOpRef<mlir::ModuleOp>(in.get().get().clone());
+}
+
+inline mlir::OwningOpRef<mlir::ModuleOp>
+asModule(Item<mlir::OwningOpRef<mlir::ModuleOp>> &&in,
+         mlir::MLIRContext * /*ctx*/) {
+  assert(!in.aliasSource && in.value && "only an owned payload can be taken");
+  mlir::OwningOpRef<mlir::ModuleOp> mod = std::move(*in.value);
+  in.value.reset();
+  return mod;
 }
 
 template <typename KeyOp>
@@ -130,11 +147,10 @@ struct PassPipeline {
   explicit PassPipeline(std::unique_ptr<mlir::PassManager> pm)
       : ctx(pm->getContext()), prebuilt(std::move(pm)) {}
 
-  template <typename T>
+  template <typename InItem>
   mlir::LogicalResult
-  operator()(const Item<T> &in,
-             Item<mlir::OwningOpRef<mlir::ModuleOp>> &out) const {
-    auto mod = asModule(in, ctx);
+  operator()(InItem &&in, Item<mlir::OwningOpRef<mlir::ModuleOp>> &out) const {
+    auto mod = asModule(std::forward<InItem>(in), ctx);
     if (!mod) {
       llvm::errs() << "aiecc: PassPipeline could not obtain input module\n";
       return mlir::failure();
@@ -159,8 +175,8 @@ struct PassPipeline {
 
 // SplitIRAction — walks a ModuleOp for KeyOp instances and produces one item
 // per match, each focused on its own op. Use `.filter` downstream to skip
-// matches. The items share one clone of the design (see SharedModule); the
-// clone keeps a split's output isolated from its input.
+// matches. The items view the source item's module rather than a copy of it
+// (see SharedModule): items live as long as the graph.
 template <typename KeyOp>
 struct SplitIRAction {
   using KeyFn = std::function<std::string(KeyOp)>;
@@ -170,25 +186,13 @@ struct SplitIRAction {
 
   mlir::FailureOr<std::vector<std::pair<std::string, OpInModule<KeyOp>>>>
   operator()(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &item) const {
-    std::vector<std::string> keys;
-    item.get().get().walk([&](KeyOp op) { keys.push_back(keyFn(op)); });
-
-    SharedModule shared{
-        mlir::OwningOpRef<mlir::ModuleOp>(item.get().get().clone())};
-    std::vector<KeyOp> ops;
-    ops.reserve(keys.size());
-    shared.get().walk([&](KeyOp op) { ops.push_back(op); });
-    if (ops.size() != keys.size()) {
-      llvm::errs() << "aiecc: split found " << ops.size() << " ops in the "
-                   << "cloned module but " << keys.size() << " in its source\n";
-      return mlir::failure();
-    }
-
+    SharedModule shared{item.get().get()};
     std::vector<std::pair<std::string, OpInModule<KeyOp>>> out;
-    out.reserve(keys.size());
-    for (size_t i = 0; i < keys.size(); ++i) {
-      out.emplace_back(std::move(keys[i]), OpInModule<KeyOp>{shared, ops[i]});
-    }
+    // A key op never nests another, so the walk does not enter one.
+    shared.get()->walk<mlir::WalkOrder::PreOrder>([&](KeyOp op) {
+      out.emplace_back(keyFn(op), OpInModule<KeyOp>{shared, op});
+      return mlir::WalkResult::skip();
+    });
     return out;
   }
 };
@@ -495,13 +499,13 @@ private:
     return mlir::success();
   }
 
-  mlir::LogicalResult runResolved(std::string resolved,
-                                  llvm::ArrayRef<const ItemBase *> sources,
-                                  llvm::StringRef outputFile,
-                                  llvm::StringRef outputDirPath,
-                                  llvm::StringRef key) const {
-    std::vector<std::string> cmd{std::move(resolved)};
-    cmd.reserve(parts.size() + 2);
+public:
+  // Append the arguments this command passes for `sources` and `outputFile`
+  // to `cmd`, materializing the sources it names by path.
+  mlir::LogicalResult appendArgs(std::vector<std::string> &cmd,
+                                 llvm::ArrayRef<const ItemBase *> sources,
+                                 llvm::StringRef outputFile,
+                                 llvm::StringRef outputDirPath) const {
     size_t cursor = 0;
     for (const auto &p : parts) {
       switch (p.kind) {
@@ -549,6 +553,20 @@ private:
         cmd.push_back(p.text + outputDirPath.str());
         break;
       }
+    }
+    return mlir::success();
+  }
+
+private:
+  mlir::LogicalResult runResolved(std::string resolved,
+                                  llvm::ArrayRef<const ItemBase *> sources,
+                                  llvm::StringRef outputFile,
+                                  llvm::StringRef outputDirPath,
+                                  llvm::StringRef key) const {
+    std::vector<std::string> cmd{std::move(resolved)};
+    cmd.reserve(parts.size() + 2);
+    if (mlir::failed(appendArgs(cmd, sources, outputFile, outputDirPath))) {
+      return mlir::failure();
     }
     if (verbose) {
       // Echo the command on stdout so callers that capture stdout can see it.
@@ -616,6 +634,129 @@ private:
       return mlir::failure();
     }
     return mlir::success();
+  }
+};
+
+// A clang link, `driver`, taking the arch, the object and the linker script,
+// run as the linker command the driver expands it to. The driver costs as much
+// as the link and its expansion depends on the target alone, so `clang -###`
+// runs once per target and each link runs the linker itself, its own object,
+// script and output in the expansion's places. A target whose expansion cannot
+// be read links through the driver.
+struct ExpandedLink {
+  ShellCommand driver;
+  struct Expansions {
+    std::mutex mutex;
+    std::map<std::string, std::shared_future<std::optional<ShellCommand>>>
+        byArch;
+  };
+  std::shared_ptr<Expansions> expansions = std::make_shared<Expansions>();
+
+  explicit ExpandedLink(ShellCommand driver) : driver(std::move(driver)) {}
+
+  template <typename Arch, typename Object, typename Script>
+  mlir::LogicalResult operator()(const Arch &arch, const Object &object,
+                                 const Script &script,
+                                 Item<Directory> &out) const {
+    if (ShellCommand::dryRun) {
+      return driver(arch, object, script, out);
+    }
+    std::promise<std::optional<ShellCommand>> promise;
+    std::shared_future<std::optional<ShellCommand>> expansion;
+    bool first;
+    {
+      std::lock_guard<std::mutex> lock(expansions->mutex);
+      auto [it, inserted] = expansions->byArch.try_emplace(arch.asString());
+      if (inserted) {
+        it->second = promise.get_future().share();
+      }
+      expansion = it->second;
+      first = inserted;
+    }
+    if (first) {
+      promise.set_value(expand({&arch, &object, &script}));
+    }
+    if (!expansion.get()) {
+      return driver(arch, object, script, out);
+    }
+    return (*expansion.get())(object, script, out);
+  }
+
+private:
+  std::optional<ShellCommand>
+  expand(std::array<const ItemBase *, 3> sources) const {
+    std::string clang = ShellCommand::resolveTool(driver.tool);
+    if (clang.empty()) {
+      return std::nullopt;
+    }
+    std::string objectPath = sources[1]->asFile();
+    std::string scriptPath = sources[2]->asFile();
+    // The driver checks that inputs exist, not outputs.
+    llvm::StringLiteral outputPath = "aiecc-expanded-link-output";
+    std::vector<std::string> cmd{clang, "-###"};
+    if (mlir::failed(driver.appendArgs(cmd, sources, outputPath, ""))) {
+      return std::nullopt;
+    }
+    if (ShellCommand::verbose) {
+      std::lock_guard<std::mutex> lock(logMutex());
+      llvm::outs() << "aiecc: exec:";
+      for (const auto &a : cmd) {
+        llvm::outs() << ' ' << a;
+      }
+      llvm::outs() << '\n';
+    }
+    llvm::SmallString<128> logPath;
+    int logFd;
+    if (llvm::sys::fs::createTemporaryFile("aiecc-link", "log", logFd,
+                                           logPath)) {
+      return std::nullopt;
+    }
+    llvm::sys::Process::SafelyCloseFileDescriptor(logFd);
+    llvm::SmallVector<llvm::StringRef> argv(cmd.begin(), cmd.end());
+    std::array<std::optional<llvm::StringRef>, 3> redirects = {
+        std::nullopt, llvm::StringRef(logPath), llvm::StringRef(logPath)};
+    int rc = llvm::sys::ExecuteAndWait(clang, argv, std::nullopt, redirects);
+    auto log = llvm::MemoryBuffer::getFile(logPath);
+    llvm::sys::fs::remove(logPath);
+    if (rc != 0 || !log) {
+      return std::nullopt;
+    }
+    // The last job line is the linker's, each argument quoted and escaped.
+    llvm::StringRef job;
+    for (llvm::StringRef line : llvm::split((*log)->getBuffer(), '\n')) {
+      if (line.starts_with(" \"")) {
+        job = line;
+      }
+    }
+    llvm::BumpPtrAllocator alloc;
+    llvm::StringSaver saver(alloc);
+    llvm::SmallVector<const char *> tokens;
+    llvm::cl::TokenizeGNUCommandLine(job, saver, tokens);
+    if (tokens.empty()) {
+      return std::nullopt;
+    }
+    ShellCommand link{tokens.front()};
+    link.failureHint = driver.failureHint;
+    link.failureIsEmpty = driver.failureIsEmpty;
+    unsigned inputs = 0, outputs = 0;
+    for (llvm::StringRef token : llvm::ArrayRef(tokens).drop_front()) {
+      if (inputs == 0 && token == objectPath) {
+        link.input();
+        ++inputs;
+      } else if (inputs == 1 && token == scriptPath) {
+        link.input();
+        ++inputs;
+      } else if (token == outputPath) {
+        link.output();
+        ++outputs;
+      } else {
+        link.arg(token.str());
+      }
+    }
+    if (inputs != 2 || outputs != 1) {
+      return std::nullopt;
+    }
+    return link;
   }
 };
 

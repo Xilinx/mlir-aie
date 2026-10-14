@@ -69,17 +69,21 @@ constexpr bool IsFileLikeV =
     std::is_same_v<T, File> || std::is_same_v<T, Directory>;
 
 // The design module a split's items share. READ-ONLY to its consumers: every
-// consumer that transforms it clones first.
+// consumer that transforms it clones first. A split views its source item's
+// module, which outlives it, so `owner` is set only on a module read back on
+// resume.
 struct SharedModule {
   std::shared_ptr<mlir::OwningOpRef<mlir::ModuleOp>> owner;
+  mlir::ModuleOp module;
 
   SharedModule() = default;
   explicit SharedModule(mlir::OwningOpRef<mlir::ModuleOp> m)
       : owner(
-            std::make_shared<mlir::OwningOpRef<mlir::ModuleOp>>(std::move(m))) {
-  }
+            std::make_shared<mlir::OwningOpRef<mlir::ModuleOp>>(std::move(m))),
+        module(owner->get()) {}
+  explicit SharedModule(mlir::ModuleOp view) : module(view) {}
 
-  mlir::ModuleOp get() const { return owner ? owner->get() : mlir::ModuleOp(); }
+  mlir::ModuleOp get() const { return module; }
 };
 
 // A design module paired with a pointer to one op inside it. Lambdas see the

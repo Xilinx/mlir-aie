@@ -109,6 +109,10 @@ An explicit `-j` or `--nthreads` takes precedence over `AIECC_JOBS`, which in
 turn takes precedence over the default. The environment variable accepts the
 same non-negative integer values as `-j`, including `0` for auto-detection.
 
+`-j` also sizes the thread pool MLIR runs the per-device pass pipelines on, and
+`-j 1` keeps them on one thread. With the pinned MLIR wheel, which is built
+without MLIR threading, those pipelines run on one thread either way.
+
 ### Reusing compiled devices: `--device-cache`
 
 `--device-cache=<dir>` keeps what compiling each `aie.device`'s cores produced
@@ -129,6 +133,23 @@ The cache is Peano-only, and a build that emits something from inside a
 core's compilation (`--get-core-elfs`, `--get-locmap`, `--dump-intermediates`)
 bypasses it. Concurrent builds can share a directory. Nothing is ever evicted;
 delete the directory to reclaim space.
+
+### Cores that run one program: `--no-share-core-objects`
+
+Cores that run the same program over their own buffers and locks are compiled
+once: the first such core's module runs `opt` and `llc` under positional
+symbol names, and every core links that object with the names renamed back to
+its own. The core ELFs are byte-identical to compiling each core on its own.
+`--no-share-core-objects` compiles each core separately, should the sharing
+ever need to be ruled out.
+
+### Building the link files meanwhile: `--await-link-files`
+
+With `--await-link-files`, `aiecc` lowers the design but reads no file a core
+links (`link_with`, `link_files`) until a line arrives on its standard input,
+so a caller can build those objects while `aiecc` works. Standard input closing
+before that line fails the build. The IRON JIT uses this to compile a design's
+kernels while `aiecc` lowers it.
 
 ### Core memory placement and validation
 
