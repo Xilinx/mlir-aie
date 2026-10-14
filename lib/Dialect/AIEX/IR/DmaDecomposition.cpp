@@ -565,11 +565,8 @@ AIEX::decomposeTaskBdPattern(AIE::DMABDOp bd,
     return plan;
   }
 
-  // Outer iteration dimensions that re-read the same data only repeat what
-  // is inside them, as the task's repeat count does. They go, and a pass
-  // shrinks to what they repeat: where that is all the pattern needs it
-  // lowers as it is, and otherwise the pieces it splits into are restarted
-  // rather than configured once per repeat.
+  // Outer dimensions that only re-read the same data repeat, as the task's
+  // repeat count does, so they go and the pieces restart instead.
   for (unsigned d = plan.pass.sizes.size();
        d-- > 3 && (plan.pass.sizes[d] == 1 || plan.pass.strides[d] == 0);)
     plan.pass.sizes[d] = 1;

@@ -67,10 +67,8 @@ bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
 bool isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
                           llvm::ArrayRef<int64_t> strides);
 
-// Whether the DMA lowerings encode a BD on tile (col, row) in linear mode,
-// carried by buffer_length and exempt from the ND wrap limits: a linear
-// transfer, or a contiguous one on a shim NOC tile. Sizes and strides are
-// innermost first.
+// Whether the DMA lowerings encode the BD in linear mode (no ND wrap limits):
+// a linear transfer, or a contiguous one on a shim NOC tile. Innermost first.
 bool isLinearModeTransfer(const AIE::AIETargetModel &targetModel, int col,
                           int row, llvm::ArrayRef<int64_t> sizes,
                           llvm::ArrayRef<int64_t> strides);

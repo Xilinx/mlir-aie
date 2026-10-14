@@ -410,14 +410,11 @@ _SOFTMAX_ACCURATE_TOLERANCE = Tolerance.bf16_ulps(
 )
 
 
-# The float path's error per output, relative, before its logits' share: four
-# bf16 roundings (2^x, the sum's terms, 1 / sum and the product), 2^x within
-# 1e-5 before its rounding in the output and in the sum, and aie::inv,
-# measured within 8.2e-8 (2^-23.5) of 1 / x on npu2.
+# Float path, relative per output before the logits' share: four bf16
+# roundings, 2^x's 1e-5 twice, and aie::inv (8.2e-8 measured on npu2).
 _SOFTMAX_F32_REL = 4 * 2.0**-8 + 2 * 1e-5 + 2.0**-20
-# What the float soft cap adds to a logit, over the cap: half of 2^x's 1e-5
-# (tanh's derivative in 2^x is at most a half), plus the reciprocal (2.7e-7
-# relative after its two Newton steps) and the f32 sums around it.
+# The soft cap's error per logit, over the cap: half of 2^x's 1e-5 (tanh's
+# derivative in 2^x is at most a half), plus the reciprocal and f32 sums.
 _SOFT_CAP_ERR = 1e-5 / 2 + 2.0**-20
 
 
@@ -432,12 +429,9 @@ def softmax(
     """Softmax over a row of ``tile_size`` elements, into bf16.
 
     With bf16 input this is ``softmax_bf16(x, y, n)``. With float32 input it
-    is ``softmax_f32_bf16(x, [addend], [mask], y, n)``
-    (``-DSOFTMAX_F32_INPUT``), which computes
-    ``softmax(cap * tanh((x + addend) / cap) + mask)``: the logits in float32
-    (the cap's tanh from 2^x's float32 polynomial, not a table or vtanh),
-    their maximum and differences as ``mha.cc``'s float32 scores take them,
-    and 2^x from the accurate polynomial. It overwrites ``x``.
+    is ``softmax_f32_bf16(x, [addend], [mask], y, n)``, which computes
+    ``softmax(cap * tanh((x + addend) / cap) + mask)`` with the logits in
+    float32 and overwrites ``x``.
 
     Args:
         tile_size: Number of elements per tile, passed at run time; a
@@ -1379,14 +1373,10 @@ def softmax_f32_bound(
 ):
     """Return the float path's per-element bound on ``|y - softmax_ref|``.
 
-    An output is ``bf16(P * bf16(1 / sum P))``, ``P = bf16(2^(z - m))``, so
-    it carries four bf16 roundings, 2^x's error before its rounding in ``P``
-    and in the sum, ``aie::inv``'s, and the sum's float32 rounding: one per
-    lane and step of the row and five to reduce the lanes. The logits enter
-    twice, in the element and in the sum, each off by its float32 roundings,
-    at most ``2^-21`` of the row's largest kept logit, and by the cap's
-    tanh, ``_SOFT_CAP_ERR`` of the cap. Below ``2^-125`` an output may be
-    +0, where 2^x flushed.
+    Four bf16 roundings, 2^x's and ``aie::inv``'s errors and the sum's
+    float32 rounding, plus twice the logits' error: ``2^-21`` of the row's
+    largest kept logit, and the cap's tanh. Below ``2^-125`` an output may
+    be +0.
     """
     z = _softmax_logits(x, addend, mask, tile_size=tile_size, soft_cap=soft_cap)
     kept = np.where(z > -1e30, np.abs(z), 0.0)

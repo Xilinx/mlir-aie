@@ -8,11 +8,9 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-// exp2f_vec.cc's limb Horner, on either architecture: p(f) * 2^k in f32 for
-// k = round(x) and f = x - k in [-1/2, 1/2], p within 2.8e-6 of 2^f. k is added
-// into p(f)'s exponent field, which leaves the normal floats when k = -126
-// and p < 1, so the lanes x < -125.5 (and -inf), x >= 128 and NaN are
-// flagged for the caller to set. The caller sets conv_even.
+// exp2f_vec.cc's limb Horner: p(f) * 2^k in f32, k = round(x), p within
+// 2.8e-6 of 2^f. Lanes x < -125.5 (and -inf), x >= 128 and NaN are flagged
+// for the caller to set. The caller sets conv_even.
 struct Exp2F32 {
   aie::vector<int32_t, 32> bits;
   aie::mask<32> is_nan, below, overflow;
@@ -116,9 +114,8 @@ static inline aie::vector<bfloat16, N> exp2_bf16(aie::vector<float, N> x) {
   }
 }
 #elif defined(EXP2_BF16_ACCURATE)
-// exp2_f32_32 rounded once to bf16, where aie::exp2<bfloat16> is off by 6% on
-// [-1, 0] and by 49% on [-100, 0]: x < -125.5 (and -inf) gives +0, x >= 128
-// gives +inf, and NaN stays NaN. The caller sets conv_even.
+// exp2_f32_32 rounded once to bf16 (aie::exp2<bfloat16> is off by up to 49%):
+// x < -125.5 gives +0, x >= 128 +inf. The caller sets conv_even.
 static inline aie::vector<bfloat16, 32> exp2_bf16_32(aie::vector<float, 32> x) {
   using acc_t = aie::accum<accfloat, 32>;
   using bf_t = aie::vector<bfloat16, 32>;

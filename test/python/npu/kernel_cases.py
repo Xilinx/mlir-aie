@@ -242,11 +242,8 @@ CASES: list[Case] = [
         tag="accurate-short",
         smoke=True,
     ),
-    # The float32 input path: plain, capped, masked and with an addend, on
-    # rows of one vector and of 32; a soft-capped attention row (32 wide,
-    # capped at 50, masked, with relative-position logits); and the ends of
-    # the cap's range. The contract's sample reaches |logit| >= 32, saturates
-    # the cap and masks tails.
+    # The float32 input path: each option, a soft-capped attention row (cap
+    # 50, masked, with an addend), and the ends of the cap's range.
     *[
         check(
             "softmax",

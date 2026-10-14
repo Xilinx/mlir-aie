@@ -1649,9 +1649,8 @@ void SequentialPlacer::buildRuntimeBdProfiles(
   if (shimTile == availability.nonCompTiles.end())
     return;
 
-  // (shim LTO, change in its live BDs), in program order. A task holds its
-  // BDs from its configure until its await or free, or else to the end of
-  // its sequence.
+  // (shim LTO, change in live BDs) in program order; a task holds its BDs from
+  // configure to await or free, else to the end of its sequence.
   SmallVector<std::pair<Operation *, int>> events;
   device.walk([&](RuntimeSequenceOp seq) {
     llvm::MapVector<Value, std::pair<Operation *, int>> live;

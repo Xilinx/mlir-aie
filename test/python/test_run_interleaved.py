@@ -143,10 +143,8 @@ def starved(cpu):
 
 @pytest.mark.skipif(cpu_wait_us() is None, reason="no /proc/thread-self/schedstat")
 def test_a_figure_whose_calls_waited_for_a_cpu_is_refused():
-    # A nice-0 process on the timing thread's only core, the timing process
-    # at nice 19 so that every wakeup waits for the core (measured: 3.7 to
-    # 5.7 ms median); at equal nice, whether a wakeup preempts the spinner
-    # depends on the scheduler's lag, and the waits come and go.
+    # Nice 19 beside a nice-0 spinner makes every wakeup wait (3.7-5.7 ms);
+    # at equal nice the waits come and go.
     cpu = max(os.sched_getaffinity(0))
     spinner = subprocess.Popen(
         [sys.executable, "-c", SPIN, str(cpu)], stdout=subprocess.PIPE, text=True

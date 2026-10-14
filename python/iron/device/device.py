@@ -76,9 +76,7 @@ class Device(Resolvable):
     def core_memory_banks(self) -> int:
         """Banks a compute tile's data memory is divided into, as the buffer allocator places buffers.
 
-        These are the programmer's banks. On AIE2 and AIE2P each is two
-        hardware banks interleaved (AM020, AM027: eight hardware banks of
-        8 KB present four of 16 KB).
+        Each is two interleaved hardware banks on AIE2 and AIE2P (AM020, AM027).
         """
         return self._tm.get_num_banks(0, self.core_rows[0])
 

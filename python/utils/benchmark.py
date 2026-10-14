@@ -164,9 +164,8 @@ def run_iters(
     )
 
 
-# Kernel work holds the timing thread's core for tens of microseconds, mostly
-# outside the timed call; another process, under lazy preemption, until the
-# core's next tick, hundreds of microseconds on.
+# Kernel work delays the timing thread tens of microseconds; another process,
+# under lazy preemption, hundreds.
 CPU_WAIT_US = 100.0
 
 
@@ -188,12 +187,9 @@ def cpu_wait_us() -> float | None:
 class CompletionCores(AbstractContextManager):
     """While entered, the calling thread held on the CPUs the NPU's completions interrupted.
 
-    A core in deep idle when a completion arrives adds its exit latency to
-    the run, but only once the gap between completions is long enough for
-    the idle governor to choose it: long runs would carry it and short ones
-    not. A spinner at nice 19 on each of those CPUs' SMT siblings holds the
-    core shallow without delaying the completion work on it, and the waiting
-    thread is woken on that core. Linux only; elsewhere nothing is held.
+    A core in deep idle adds its exit latency to long runs but not short ones.
+    A nice-19 spinner on each of those CPUs' SMT siblings keeps the core
+    shallow. Linux only; elsewhere nothing is held.
 
     Args:
         before (Mapping[str, int]): ``interrupts()`` before the calls whose

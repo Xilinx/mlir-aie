@@ -268,9 +268,8 @@ private:
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
 
   // targetCol == nullopt means no routing anchor is known, so candidates are
-  // ranked by DMA load rather than by distance to a column. With
-  // `withinBudgets`, a candidate must also fit `logicalTile`'s streams and
-  // runtime BDs (fitsStreamAndBdBudgets).
+  // ranked by DMA load rather than by distance to a column. `withinBudgets`
+  // also requires fitsStreamAndBdBudgets.
   std::optional<TileID>
   findTileWithCapacity(std::optional<int> targetCol,
                        llvm::ArrayRef<TileID> tiles, int requiredInputChannels,
@@ -297,18 +296,13 @@ private:
 
   void updateChannelUsage(TileID tile, DmaDir direction, int numChannels);
 
-  // Streams each non-core LTO's ObjectFifos carry through its stream switch.
-  // A memtile's DMA takes 6 inputs, but only 4 streams arrive from the core
-  // above it and it has no East/West ports, so merges that fit the DMA can
-  // still leave the router a detour through the shim row, or no route.
+  // North/South streams of each non-core LTO's ObjectFifos: a memtile has 6
+  // DMA inputs but only 4 streams from the core above, and no East/West.
   llvm::DenseMap<mlir::Operation *, StreamDemand> streamDemand;
   void buildStreamDemand(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
-  // Live runtime-sequence BDs of each ShimNOCTile LTO after every task
-  // configure, await and free, in program order: what
-  // aie-assign-runtime-sequence-bd-ids allocates once each descriptor is split
-  // as aie-decompose-large-dma-bd splits it. Shim LTOs whose DMA channels fit
-  // one tile can still need more BDs at once than it has.
+  // Live runtime-sequence BDs of each ShimNOCTile LTO after every task event,
+  // counting each descriptor as aie-decompose-large-dma-bd splits it.
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<int>> runtimeBdProfiles;
   void buildRuntimeBdProfiles(DeviceOp device,
                               llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);

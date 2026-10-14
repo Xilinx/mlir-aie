@@ -218,9 +218,8 @@ bf16_limbs(aie::accum<accfloat, N> x) {
   return l;
 }
 
-// One row of float32 scores: partial_softmax_alias_bf16 with the row's
-// max and A - m in float32 and (A - m) * s as three bf16 limbs times s, so
-// the largest argument is exactly 0 and the rest keep 2^-24 of their size.
+// One row of float32 scores: the max and A - m in float32, then (A - m) * s
+// as three bf16 limbs, so the largest argument is exactly 0.
 template <unsigned W>
 static inline void
 partial_softmax_row_f32(const float *__restrict A, bfloat16 *__restrict P,
@@ -263,9 +262,7 @@ partial_softmax_row_f32(const float *__restrict A, bfloat16 *__restrict P,
 #define SOFTMAX_SOFT_CAP 0.0f
 #endif
 
-// acc + x * c in f32, x and c as three bf16 limbs: the six products down to
-// 2^-16 of the leading one, largest first, so a sum that cancels against acc
-// keeps the small ones.
+// acc + x * c in f32 from three-limb x and c, largest products first.
 static inline __attribute__((always_inline)) aie::accum<accfloat, SM_VEC_LEN>
 mac_limbs(aie::accum<accfloat, SM_VEC_LEN> acc, const Limbs<SM_VEC_LEN> &x,
           const Limbs<SM_VEC_LEN> &c) {
@@ -277,13 +274,9 @@ mac_limbs(aie::accum<accfloat, SM_VEC_LEN> acc, const Limbs<SM_VEC_LEN> &x,
   return aie::mac(acc, x.lo, c.hi);
 }
 
-// softmax(cap * tanh((x + addend) / cap) + mask) of one float32 row into bf16:
-// the logits in f32, times log2(e) as scale_log2e's three limbs, written over
-// x, then partial_softmax_row_f32 at scale 1 and the normalizing pass of
-// softmax_simple_bf16. addend and mask are read only when compiled in, and
-// the cap only when positive. A mask of lowest or -inf drops its element, as
-// a logit of lowest does without a cap; x + addend is otherwise within bf16's
-// finite range.
+// softmax(cap * tanh((x + addend) / cap) + mask) of one float32 row into
+// bf16, with the scaled logits written over x. A mask of lowest or -inf drops
+// its element; x + addend must be finite.
 static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
                             const bfloat16 *__restrict mask,
                             bfloat16 *__restrict y, const int32_t n) {
@@ -301,9 +294,8 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
   };
   const Limbs<SM_VEC_LEN> log2e_limbs{limb(0x3fb9), limb(0xbb2c), limb(0x36ec)};
   constexpr float cap = SOFTMAX_SOFT_CAP;
-  // cap * tanh(|s| / cap) * log2(e) = k0 (2 r - 1), r = 1 / (1 + 2^a) with
-  // a = -|s| * 2 log2(e) / cap: a <= 0, so 2^a is in [0, 1] and r in
-  // [1/2, 1], and 2^a flushing to 0 below -125.5 saturates it at k0.
+  // cap * tanh(|s| / cap) * log2(e) = k0 (2r - 1), r = 1 / (1 + 2^a) with
+  // a = -|s| * 2 log2(e) / cap <= 0; 2^a flushing to 0 saturates it at k0.
   constexpr float k0 = cap * 1.44269504088896341f;
   const Limbs<SM_VEC_LEN> a_limbs =
       bf16_limbs(splat(cap > 0.0f ? 2.88539008177792682f / cap : 0.0f));
@@ -391,9 +383,8 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
       z = aie::mac(z, m, log2e_limbs.mid);
       z = aie::mac(z, m, log2e_limbs.lo);
     }
-    // lowest times log2(e) overflows to -inf, which partial_softmax_row_f32's
-    // limbs would turn into NaN, so anything below lowest (its bits above
-    // lowest's) is lowest, whose 2^x is 0.
+    // lowest * log2(e) is -inf, which the limbs would turn into NaN: clamp to
+    // lowest, whose 2^x is 0.
     const auto z_bits = z.to_vector<float>().cast_to<uint32_t>();
     aie::store_v(x + c, aie::select(z_bits, bits(0xff7f0000u),
                                     aie::gt(z_bits, bits(0xff7f0000u)))
