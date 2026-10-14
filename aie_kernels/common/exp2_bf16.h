@@ -8,9 +8,10 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-// exp2f_vec.cc's limb Horner: p(f) * 2^k in f32, k = round(x), p within
-// 2.8e-6 of 2^f. Lanes x < -125.5 (and -inf), x >= 128 and NaN are flagged
-// for the caller to set. The caller sets conv_even.
+// 2^x in f32 for every x: 2^k * p(f), k = round(x), with p a polynomial in
+// f = x - k (|f| <= 1/2) evaluated by Horner's rule on bf16 limbs, within
+// 2.8e-6 of 2^f. Lanes past f32's range (x < -125.5, x >= 128) and NaN are
+// flagged for the caller. The caller sets conv_even.
 struct Exp2F32 {
   aie::vector<int32_t, 32> bits;
   aie::mask<32> is_nan, below, overflow;
