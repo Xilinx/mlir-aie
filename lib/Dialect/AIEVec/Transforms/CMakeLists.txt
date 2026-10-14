@@ -13,6 +13,7 @@ add_mlir_dialect_library(MLIRAIEVecTransforms
   CopyRemoval.cpp
   DynamicSizeNoImplicitBroadcast.cpp
   SplitVectorLoadUpsChains.cpp
+  OneLaneInsertToBitcast.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/../../../include/aie/Dialect/AIEVec/Transforms

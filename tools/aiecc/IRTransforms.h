@@ -1661,6 +1661,7 @@ getCoreLLVMLoweringPipeline(mlir::MLIRContext *ctx, llvm::StringRef deviceName,
   }
   pm->addPass(mlir::createConvertVectorToLLVMPass());
   pm->addPass(mlir::createUBToLLVMConversionPass());
+  pm->addPass(xilinx::aievec::createOneLaneInsertToBitcastPass());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   return pm;
