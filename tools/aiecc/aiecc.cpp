@@ -1440,15 +1440,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                               << "aiecc: core " << key
                               << " needs space for up to " << need
                               << " bytes of static data (constant arrays such "
-                                 "as "
-                                 "lookup tables and strings). That does not "
-                                 "fit in "
-                                 "the space left after buffer allocation, but "
-                                 "it "
-                                 "may fit if you reserve it explicitly. Set "
-                                 "data_size on the core: aie.core(%tile) { ... "
-                                 "} "
-                                 "{ data_size = "
+                                 "as lookup tables and strings). That does not "
+                                 "fit in the space left after buffer "
+                                 "allocation, but it may fit if you reserve it "
+                                 "explicitly. Set data_size on the core: "
+                                 "aie.core(%tile) { ... } { data_size = "
                               << need
                               << " : i32 }, or Worker(..., data_size=" << need
                               << ") in IRON.\n";
@@ -1477,22 +1473,18 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                               << ". Placement reserves what a core's objects "
                                  "measure, so either that measurement was "
                                  "unavailable for this core, or something "
-                                 "outside "
-                                 "it grew afterwards.\n";
+                                 "outside it grew afterwards.\n";
                         }
                         if (log.contains("will not fit in region 'program'")) {
                           llvm::errs()
                               << "aiecc: core " << key
                               << ": its code exceeds the tile's program "
-                                 "memory. "
-                                 "That region covers all of the program "
-                                 "memory, so "
-                                 "only the code itself can shrink. Split the "
-                                 "work "
-                                 "across more cores, remove unused kernels "
-                                 "from "
-                                 "link_files, or build the core at a lower "
-                                 "optimization level.\n";
+                                 "memory. That region covers all of the "
+                                 "program memory, so only the code itself can "
+                                 "shrink. Split the work across more cores, "
+                                 "remove unused kernels from link_files, or "
+                                 "build the core at a lower optimization "
+                                 "level.\n";
                         }
                       })})
           .threadSafe();
