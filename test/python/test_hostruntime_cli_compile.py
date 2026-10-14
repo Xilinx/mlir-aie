@@ -22,11 +22,8 @@ from aie.utils.hostruntime import cli
 
 @pytest.fixture
 def keep_device():
-    previous = get_current_device(probe_runtime=False)
-    try:
+    with set_current_device(get_current_device(probe_runtime=False)):
         yield
-    finally:
-        set_current_device(previous)
 
 
 def _forwarded_copy():

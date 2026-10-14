@@ -20,7 +20,7 @@ from aie.iron import kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.algorithms._transform import transform, transform_parallel
 from aie.iron.device import NPU1Col1
-from aie.utils import config, get_current_device
+from aie.utils import config
 from aie.utils.hostruntime import set_current_device
 
 try:
@@ -35,12 +35,8 @@ needs_peano = pytest.mark.skipif(
 
 @pytest.fixture
 def npu1_device():
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(NPU1Col1())
-    try:
+    with set_current_device(NPU1Col1()):
         yield
-    finally:
-        set_current_device(previous)
 
 
 @pytest.mark.parametrize("num_channels", [1, 2])

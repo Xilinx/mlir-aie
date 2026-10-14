@@ -1322,10 +1322,8 @@ def test_mha_answers_its_micro_tile_without_building_a_kernel(
     kw = dict(pv=pv, emulate_bf16_mmul_with_bfp16=emulate)
     # mha.cc includes mm_aie2p.h even on AIE2, unlike mm.cc.
     expected = (8, 8, 8) if pv or (emulate and arch == "aie2p") else (4, 8, 8)
-    previous = get_current_device(probe_runtime=False)
     target = device()
-    set_current_device(target)
-    try:
+    with set_current_device(target):
         instances = ExternalFunction._instances.copy()
         assert kernels.mha.mac_dims(**kw) == expected
         assert kernels.mha.mac_dims(device=target, **kw) == expected
@@ -1341,8 +1339,6 @@ def test_mha_answers_its_micro_tile_without_building_a_kernel(
         assert ("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" in fn._compile_flags) == (
             emulate and arch == "aie2p"
         )
-    finally:
-        set_current_device(previous)
 
 
 _C_ELEMENT_NAMES = {bfloat16: "bf16", np.float32: "float", np.int32: "int"}

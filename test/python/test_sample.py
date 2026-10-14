@@ -22,7 +22,7 @@ from aie.iron import In, InOut, Out, kernels
 from aie.iron.device import from_name
 from aie.iron.kernels import sample
 from aie.iron.kernels._common import ARCH_TRAITS
-from aie.utils import config, get_current_device
+from aie.utils import config
 from aie.utils.compile.utils import compile_cxx_core_function
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
@@ -62,12 +62,8 @@ def _logits(rng, n, *, ties=0, scale=3.0):
 @pytest.fixture(params=list(ARCH_TRAITS))
 def arch(request):
     """Bind a one-column device of each architecture and yield its name."""
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(from_name(ARCH_TRAITS[request.param].device, n_cols=1))
-    try:
+    with set_current_device(from_name(ARCH_TRAITS[request.param].device, n_cols=1)):
         yield request.param
-    finally:
-        set_current_device(previous)
 
 
 # --- factory arguments -----------------------------------------------------
