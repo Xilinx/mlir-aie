@@ -170,6 +170,22 @@ mm.contract.reduction    # 64: products summed per output per call (dim_k)
 kernels.mm.dtypes        # every (input_dtype, output_dtype) the factory supports
 ```
 
+Some kernels compute differently by build: `gelu` reads a LUT on AIE2 and
+uses AIE2P's tanh instruction, and `rms_norm` holds a bound measured on each
+NPU. Their contract lists one row per `Build` (an architecture, and whether
+`AIE_KERNELS_PORTABLE` compiled the untuned branch) in `contract.per_build`,
+and leaves `contract.reference` and `contract.tolerance` unset. The row is
+picked when an output is checked, for the build that produced it, so a kernel
+returned before any device was bound is still judged by the build that ran:
+
+```python
+fn = kernels.rms_norm()
+fn.contract.tolerance               # None: judged per build
+fn.contract_for().tolerance         # the bound device's row; raises if none is bound
+fn.contract_for("aie2p").tolerance  # one bf16 ulp, measured on npu2
+fn.expected(inputs, arch="aie2p")   # expected() and judge() take arch= too
+```
+
 The contract is what lets `aie.iron.algorithms.kernel_design` build, run and check
 a kernel without a hand-written design:
 

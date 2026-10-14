@@ -15,6 +15,7 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     ARCH_TRAITS,
+    BUILDS,
     KernelContract,
     Param,
     TensorLayout,
@@ -434,27 +435,36 @@ def fused_mm(
             (4, clamp_bits[0]),
             (5, clamp_bits[1]),
         ),
-        reference=reference,
         # Without a tanh instruction the epilogue reads getTanhBf16's table,
         # which this box cannot measure.
-        tolerance=(
-            Tolerance.relative(
-                0.02 if epilogue == "none" else 0.04,
-                0.01 if epilogue == "none" else 0.04,
-                note="bf16 store; activated path additionally narrows tanh to bf16",
-            )
-            if not native_tanh
-            else Tolerance.bounded(
-                error_bound,
-                note=(
-                    "f32 accumulation, vtanh's error measured on npu2 and one "
-                    "bf16 ulp per rounding step, carried through each step"
-                    if steps
-                    else "f32 accumulation, vtanh's error measured on npu2 and "
-                    "one bf16 store ulp, per output; fails a 1.5% change to "
-                    "gelu's 1.702 and a 3% change to silu's or sigmoid's 1/2"
+        per_build=tuple(
+            (
+                build,
+                reference,
+                (
+                    Tolerance.relative(
+                        0.02 if epilogue == "none" else 0.04,
+                        0.01 if epilogue == "none" else 0.04,
+                        note="bf16 store; activated path additionally narrows "
+                        "tanh to bf16",
+                    )
+                    if not ARCH_TRAITS[build.arch].native_tanh
+                    else Tolerance.bounded(
+                        error_bound,
+                        note=(
+                            "f32 accumulation, vtanh's error measured on npu2 and "
+                            "one bf16 ulp per rounding step, carried through each "
+                            "step"
+                            if steps
+                            else "f32 accumulation, vtanh's error measured on npu2 "
+                            "and one bf16 store ulp, per output; fails a 1.5% "
+                            "change to gelu's 1.702 and a 3% change to silu's or "
+                            "sigmoid's 1/2"
+                        ),
+                    )
                 ),
             )
+            for build in BUILDS
         ),
         acc_dtype=np.float32,
         reduction=dim_k,

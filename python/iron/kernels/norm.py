@@ -14,6 +14,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    BUILDS,
     KernelContract,
     Param,
     Trace,
@@ -51,6 +52,8 @@ _LAYER_NORM_BF16_AIE2P = Tolerance.bf16_ulps(
     atol=1e-5,
     note="aie2p, measured on npu2: one ulp; atol covers the cancellation near 0",
 )
+_RMS_NORM_TOLERANCE = {"aie2": _RMS_NORM_BF16_AIE2, "aie2p": _RMS_NORM_BF16_AIE2P}
+_LAYER_NORM_TOLERANCE = {"aie2": _LAYER_NORM_BF16_AIE2, "aie2p": _LAYER_NORM_BF16_AIE2P}
 
 
 def _norm_extern(
@@ -99,13 +102,12 @@ def rms_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunct
             setup=None if _tuned_arch() == "aie2" else conv_even,
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
-            reference=rms_norm_ref,
+            per_build=tuple(
+                (build, rms_norm_ref, _RMS_NORM_TOLERANCE.get(build.tuned, _NORM_BF16))
+                for build in BUILDS
+            ),
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance={
-                "aie2": _RMS_NORM_BF16_AIE2,
-                "aie2p": _RMS_NORM_BF16_AIE2P,
-            }.get(_tuned_arch(), _NORM_BF16),
             ops_per_call=4 * tile_size,
         ),
     )
@@ -124,13 +126,16 @@ def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalF
             setup=None if _tuned_arch() == "aie2" else conv_even,
             roles=(In, Out, Param, Param),
             parameter_bindings=((2, tile_size),),
-            reference=lambda x, epsilon: rms_norm_ref(x, eps=epsilon),
+            per_build=tuple(
+                (
+                    build,
+                    lambda x, epsilon: rms_norm_ref(x, eps=epsilon),
+                    _RMS_NORM_TOLERANCE.get(build.tuned, _NORM_BF16),
+                )
+                for build in BUILDS
+            ),
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance={
-                "aie2": _RMS_NORM_BF16_AIE2,
-                "aie2p": _RMS_NORM_BF16_AIE2P,
-            }.get(_tuned_arch(), _NORM_BF16),
             ops_per_call=4 * tile_size,
         ),
     )
@@ -152,13 +157,16 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
             trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
-            reference=layer_norm_ref,
+            per_build=tuple(
+                (
+                    build,
+                    layer_norm_ref,
+                    _LAYER_NORM_TOLERANCE.get(build.tuned, _NORM_BF16),
+                )
+                for build in BUILDS
+            ),
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance={
-                "aie2": _LAYER_NORM_BF16_AIE2,
-                "aie2p": _LAYER_NORM_BF16_AIE2P,
-            }.get(_tuned_arch(), _NORM_BF16),
             ops_per_call=6 * tile_size,
         ),
     )
