@@ -3,8 +3,10 @@
 #
 # RUN: %python %s
 # REQUIRES: peano
-"""Kernel IR retention, read from what Peano and llvm-objcopy leave on disk,
-and the make recipe's; no NPU needed."""
+"""Kernel IR retention, read from what Peano and llvm-objcopy leave on disk.
+
+The make recipe's own retention is checked too; no NPU needed.
+"""
 
 import os
 from pathlib import Path
