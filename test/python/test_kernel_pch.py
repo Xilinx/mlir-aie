@@ -79,7 +79,7 @@ def test_pch_compile_builds_the_plain_object(tmp_path):
     assert with_pch.read_bytes() == plain.read_bytes()
 
 
-def test_each_command_gets_its_own_pch(tmp_path):
+def test_macros_the_headers_ignore_share_one_pch(tmp_path):
     cache = tmp_path / "cache"
     for value in ("2", "3"):
         ret, with_pch = _compile(tmp_path, cache, f"with{value}", [f"-DVALUE={value}"])
@@ -89,6 +89,36 @@ def test_each_command_gets_its_own_pch(tmp_path):
         )
         assert ret.returncode == 0, ret.stderr
         assert with_pch.read_bytes() == plain.read_bytes()
+    assert len(_pchs(cache)) == 1
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["-D_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER"],
+        ["-D__int_least64_t=long"],
+        ["-ffast-math"],
+        ["-I", "shadow"],
+    ],
+    ids=[
+        "macro-the-headers-test",
+        "macro-a-header-defines",
+        "language-flag",
+        "shadowing-dir",
+    ],
+)
+def test_command_the_headers_read_differently_gets_its_own_pch(tmp_path, args):
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    (shadow / "stdint.h").write_text("#define SHADOWED 1\n#include_next <stdint.h>\n")
+    args = [str(shadow) if a == "shadow" else a for a in args]
+    cache = tmp_path / "cache"
+    assert _compile(tmp_path, cache, "bare")[0].returncode == 0
+    ret, with_pch = _compile(tmp_path, cache, "own", args)
+    assert ret.returncode == 0, ret.stderr
+    ret, plain = _compile(tmp_path, cache, "plain", args, pch=False)
+    assert ret.returncode == 0, ret.stderr
+    assert with_pch.read_bytes() == plain.read_bytes()
     assert len(_pchs(cache)) == 2
 
 

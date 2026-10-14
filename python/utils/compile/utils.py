@@ -77,9 +77,9 @@ def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[
 # PCH, passed back with -mno-vitis-headers, builds a byte-identical object.
 #
 # The PCH source is an EMPTY header, so the driver injects into its TU exactly
-# what it would inject into a kernel's. It is built with the kernel's own
-# command, every -I and -D included, so clang reads from it what the kernel's
-# compile would read; the key is that command and the compiler.
+# what it would inject into a kernel's. A command that only adds macros and
+# search paths shares the PCH of the bare command when clang preprocesses the
+# injected headers alike under both; any other is built under its own command.
 #
 # Set AIE_KERNEL_PCH=0 to disable.
 _PCH_SOURCE = "<pch-source>"
@@ -106,6 +106,64 @@ def _compiler_identity(cxx: str) -> str:
     ).strip()
 
 
+def _pch_cache() -> Path | None:
+    """Return the directory PCHs live in, or None where it cannot be made."""
+    try:
+        # Deferred: aie.utils.compile.__init__ imports this module, so
+        # NPU_CACHE_HOME cannot be imported at module scope.
+        from aie.utils.compile import NPU_CACHE_HOME
+
+        cache = NPU_CACHE_HOME / "pch"
+        cache.mkdir(parents=True, exist_ok=True)
+    except (ImportError, OSError):
+        return None
+    return cache
+
+
+@functools.lru_cache(maxsize=1024)
+def _preprocessed(pch_cmd: tuple[str, ...]) -> tuple[str, frozenset[str]] | None:
+    """Preprocess what ``pch_cmd`` reads into its PCH.
+
+    Returns:
+        The digest of the preprocessed headers, and every macro name a header
+        #defines or #undefs; None if the preprocessor fails.
+    """
+    cache = _pch_cache()
+    if cache is None:
+        return None
+    empty = cache / "empty.h"
+    try:
+        if not empty.exists():
+            empty.write_text("")
+        ret = subprocess.run(
+            [
+                {_PCH_SOURCE: str(empty), _PCH_OUTPUT: "-"}.get(arg, arg)
+                for arg in pch_cmd
+            ]
+            + ["-E"],
+            capture_output=True,
+            check=False,
+            timeout=_PCH_BUILD_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if ret.returncode != 0:
+        return None
+    headers = set(re.findall(rb'^# \d+ "([^"<]+)"', ret.stdout, re.M))
+    directives: set[str] = set()
+    for header in headers:
+        with contextlib.suppress(OSError):
+            directives.update(
+                name.decode()
+                for name in re.findall(
+                    rb"^[ \t]*#[ \t]*(?:define|undef)[ \t]+(\w+)",
+                    Path(os.fsdecode(header)).read_bytes(),
+                    re.M,
+                )
+            )
+    return hashlib.sha256(ret.stdout).hexdigest(), frozenset(directives)
+
+
 def _kernel_pch(pch_cmd: list[str]) -> str | None:
     """Path to a PCH built by ``pch_cmd``, building it on first use.
 
@@ -120,14 +178,8 @@ def _kernel_pch(pch_cmd: list[str]) -> str | None:
     # The compiler's identity, not where it is installed, with the rest of the
     # command.
     key = hashlib.sha256("\0".join([ident, *pch_cmd[1:]]).encode()).hexdigest()[:32]
-    try:
-        # Deferred: aie.utils.compile.__init__ imports this module, so
-        # NPU_CACHE_HOME cannot be imported at module scope.
-        from aie.utils.compile import NPU_CACHE_HOME
-
-        cache = NPU_CACHE_HOME / "pch"
-        cache.mkdir(parents=True, exist_ok=True)
-    except (ImportError, OSError):
+    cache = _pch_cache()
+    if cache is None:
         return None
 
     pch = cache / f"{key}.pch"
@@ -206,6 +258,27 @@ def _build_kernel_pch(
             with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
     return str(pch)
+
+
+def _discard_pch(pch: str, used: os.stat_result) -> None:
+    """Remove ``pch`` if it is still the file a refused compile used.
+
+    Another process may have rebuilt it since; that one is left alone.
+    """
+    from aie.utils.compile.cache.utils import file_lock
+
+    with contextlib.suppress(OSError, TimeoutError):
+        with file_lock(
+            str(Path(pch).with_suffix(".lock")),
+            timeout_seconds=_PCH_LOCK_TIMEOUT_SECONDS,
+        ):
+            now = os.stat(pch)
+            if (now.st_ino, now.st_size, now.st_mtime_ns) == (
+                used.st_ino,
+                used.st_size,
+                used.st_mtime_ns,
+            ):
+                os.unlink(pch)
 
 
 def resolve_target_arch(device=None) -> str:
@@ -646,47 +719,81 @@ def compile_cxx_core_function(
 
     pch = None
     if not use_chess and not inline and os.environ.get("AIE_KERNEL_PCH", "1") != "0":
-        pch_cmd = cxx_core_compile_command(
-            _PCH_SOURCE,
-            target_arch,
-            _PCH_OUTPUT,
-            include_dirs=include_dirs,
-            compile_args=compile_args,
-        )
-        i = pch_cmd.index("-MD")
-        del pch_cmd[i : i + 3]
-        pch_cmd[1:1] = ["-x", "c++-header"]
+        pch_cmds = []
+        for dirs, args in ((include_dirs, compile_args), (None, None)):
+            pch_cmd = cxx_core_compile_command(
+                _PCH_SOURCE,
+                target_arch,
+                _PCH_OUTPUT,
+                include_dirs=dirs,
+                compile_args=args,
+            )
+            i = pch_cmd.index("-MD")
+            del pch_cmd[i : i + 3]
+            pch_cmd[1:1] = ["-x", "c++-header"]
+            pch_cmds.append(pch_cmd)
+        own_cmd, bare_cmd = pch_cmds
         search_paths = [str(d) for d in include_dirs or ()]
+        macros: list[str] = []
+        others: list[str] = []
         args = list(compile_args or ())
-        for arg, value in zip(args, [*args[1:], ""]):
-            for flag in _SEARCH_PATH_FLAGS:
-                if arg == flag:
-                    search_paths.append(value)
-                elif arg.startswith(flag):
-                    search_paths.append(arg[len(flag) :])
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            for flag, found in (
+                ("-I", search_paths),
+                ("-isystem", search_paths),
+                ("-iquote", search_paths),
+                ("-idirafter", search_paths),
+                ("-D", macros),
+                ("-U", macros),
+            ):
+                if arg == flag and i + 1 < len(args):
+                    found.append(args[i + 1])
+                    i += 1
+                    break
+                if arg.startswith(flag) and arg != flag:
+                    found.append(arg[len(flag) :])
+                    break
+            else:
+                others.append(arg)
+            i += 1
+        names = {m.split("=", 1)[0] for m in macros}
         # The PCH builds in its own directory, so a relative search path would
         # name another one there; a caller's -include would be read twice.
         if all(os.path.isabs(d) for d in search_paths) and not any(
-            arg.startswith(("-include", "-imacros")) for arg in args
+            arg.startswith(("-include", "-imacros")) for arg in others
         ):
-            pch = _kernel_pch(pch_cmd)
+            own, bare = _preprocessed(tuple(own_cmd)), _preprocessed(tuple(bare_cmd))
+            shared = (
+                not others
+                and own is not None
+                and bare is not None
+                and own[0] == bare[0]
+                and not names & bare[1]
+            )
+            pch = _kernel_pch(bare_cmd if shared else own_cmd)
 
+    used = None
+    if pch is not None:
+        with contextlib.suppress(OSError):
+            used = os.stat(pch)
     run = (
         cmd
-        if pch is None
+        if used is None
         else [cmd[0], "-mno-vitis-headers", "-include-pch", pch, *cmd[1:]]
     )
     logger.debug("Compiling with: %s", " ".join(run))
     ret = subprocess.run(run, cwd=cwd, check=False, capture_output=True)
-    if ret.returncode != 0 and pch is not None:
+    if ret.returncode != 0 and used is not None:
         # The key cannot see the headers' content, and clang refuses a PCH
         # whose inputs changed since it was built. The plain compile tells
         # the two apart, and its diagnostic is the kernel's own.
         logger.debug("Retrying without the PCH: %s", " ".join(cmd))
         ret = subprocess.run(cmd, cwd=cwd, check=False, capture_output=True)
         if ret.returncode == 0:
-            with contextlib.suppress(OSError):
-                os.unlink(pch)
+            assert pch is not None
+            _discard_pch(pch, used)
     if ret.stdout:
         logger.debug("%s", ret.stdout.decode())
     if ret.returncode != 0:
