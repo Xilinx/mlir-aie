@@ -1567,6 +1567,11 @@ def main():
         )
     if args.shrink:
         done = set()
+        # One shared deadline for every failure shrunk in this run, not a
+        # fresh --shrink-budget-s per failure: a regression that introduces
+        # several distinct failure kinds at once must not multiply the
+        # shrink phase's wall-clock by how many of them there are.
+        shrink_deadline = time.monotonic() + args.shrink_budget_s
         for seed, kind, outcome, name, detail, payload in failures:
             if (
                 kind != "mutator"
@@ -1575,6 +1580,7 @@ def main():
             ):
                 continue
             done.add((name, outcome))
+            remaining = max(0.0, shrink_deadline - time.monotonic())
             small, finished = shrink_failure(
                 kind,
                 name,
@@ -1582,13 +1588,16 @@ def main():
                 not args.hops_off,
                 seed,
                 args.v,
-                args.shrink_budget_s,
+                remaining,
             )
             args.repros.mkdir(parents=True, exist_ok=True)
             path = args.repros / f"{name}-{outcome}-{seed}.mlir"
             head = f"// router_mutation.py seed {seed} {args.device}, {name}: {outcome}\n// {detail.strip()[:300]}\n"
             if not finished:
-                head += f"// Shrinking stopped after {args.shrink_budget_s:.0f} s.\n"
+                head += (
+                    f"// Shrinking stopped: the run's --shrink-budget-s "
+                    f"{args.shrink_budget_s:.0f} s was spent.\n"
+                )
             path.write_text(head + small.emit())
             stopped = "" if finished else ", budget spent"
             print(f"shrunk to {path} (size {shrinker.size(small)}{stopped})")

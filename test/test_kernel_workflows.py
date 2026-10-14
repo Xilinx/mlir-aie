@@ -496,14 +496,15 @@ def test_model_based_tests_publish_both_checks_and_the_page(tmp_path):
         "component-checks/router/index.html",
     } <= files
 
-    def show(path):
-        return json.loads(git(repo, "show", f"gh-pages:{path}"))
-
-    record = show("component-checks/allocator/runs/42.json")
+    record = json.loads(
+        git(repo, "show", "gh-pages:component-checks/allocator/runs/42.json")
+    )
     assert record["target"] == "allocator" and record["failed"] == []
     assert record["rows"]["allocator"]["bank_pair_sharing"]["value"] == 0.24
     # A router that wrote no report still publishes a record saying so.
-    record = show("component-checks/router/runs/42.json")
+    record = json.loads(
+        git(repo, "show", "gh-pages:component-checks/router/runs/42.json")
+    )
     assert record["failed"] == ["gone: no report"] and record["exitstatus"] == 1
     assert 'url=../../dashboard/#view=routing"' in git(
         repo, "show", "gh-pages:component-checks/router/index.html"
