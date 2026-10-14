@@ -53,6 +53,8 @@ def _compile(tmp_path, cache, name, args=(), source=_KERNEL, pch=True, peano=Non
     env = dict(
         os.environ, NPU_CACHE_HOME=str(cache), AIE_KERNEL_PCH="1" if pch else "0"
     )
+    if peano is not None:
+        env["PEANO_INSTALL_DIR"] = str(peano)
     ret = subprocess.run(
         [sys.executable, "-c", _COMPILE, str(src), str(out), *args],
         cwd=work,
