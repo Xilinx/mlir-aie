@@ -4,8 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: env AIE_NPU_EXCLUSIVE_DEVICE=1 %run_on_npu1_xrt% %pytest %s
-# RUN: env AIE_NPU_EXCLUSIVE_DEVICE=1 %run_on_npu2_xrt% %pytest %s
+# RUN: %if ryzen_ai_npu1 %{ env AIE_NPU_EXCLUSIVE_DEVICE=1 %run_on_npu1_xrt% %pytest %s %}
+# RUN: %if ryzen_ai_npu2 %{ env AIE_NPU_EXCLUSIVE_DEVICE=1 %run_on_npu2_xrt% %pytest %s %}
 # REQUIRES: xrt_python_bindings
 """run_interleaved on the NPU: real copies, timed with the NPU otherwise idle.
 

@@ -254,14 +254,18 @@ class CompletionCores(AbstractContextManager):
         return cpus
 
     def __enter__(self) -> CompletionCores:
-        if self.cpus:
-            self._affinity = os.sched_getaffinity(0)
-            os.sched_setaffinity(0, self.cpus)
-        for cpu in sorted(self.siblings):
-            spinner = subprocess.Popen([sys.executable, "-c", "while True: pass"])
-            os.sched_setaffinity(spinner.pid, {cpu})
-            os.setpriority(os.PRIO_PROCESS, spinner.pid, 19)
-            self._spinners.append(spinner)
+        try:
+            if self.cpus:
+                self._affinity = os.sched_getaffinity(0)
+                os.sched_setaffinity(0, self.cpus)
+            for cpu in sorted(self.siblings):
+                spinner = subprocess.Popen([sys.executable, "-c", "while True: pass"])
+                self._spinners.append(spinner)
+                os.sched_setaffinity(spinner.pid, {cpu})
+                os.setpriority(os.PRIO_PROCESS, spinner.pid, 19)
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
         return self
 
     def __exit__(self, *exc_info) -> None:
@@ -351,8 +355,11 @@ def run_interleaved(
             ``CPU_WAIT_US`` (`cpu_wait_us`) in its median round: the host was
             busy enough to hold the timing thread off its core, so the
             figures are refused. Measure with the host otherwise idle.
-        ValueError: `groups` is not one per callable.
+        ValueError: `rounds` or `calls` is below one, or `groups` is not one
+            per callable.
     """
+    if rounds < 1 or calls < 1:
+        raise ValueError(f"{rounds} rounds of {calls} calls: both must be positive")
     if groups is not None and len(groups) != len(fns):
         raise ValueError(f"{len(groups)} groups for {len(fns)} callables")
     for fn in fns:
@@ -376,8 +383,9 @@ def run_interleaved(
                     start = time.perf_counter()
                     ret = fns[i]()
                     elapsed_us = (time.perf_counter() - start) * 1e6
-                    if wait is not None:
-                        waits.append(cpu_wait_us() - wait)
+                    waited_after = cpu_wait_us()
+                    if wait is not None and waited_after is not None:
+                        waits.append(waited_after - wait)
                     npu_ns = _extract_npu_time_ns(ret)
                     times.append(elapsed_us if npu_ns is None else npu_ns / 1e3)
                 timed[i] = (

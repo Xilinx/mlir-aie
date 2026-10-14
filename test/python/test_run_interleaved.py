@@ -16,10 +16,11 @@ import subprocess
 import sys
 import time
 from functools import partial
+from pathlib import Path
 
 import pytest
 
-from aie.utils.benchmark import cpu_wait_us, run_interleaved
+from aie.utils.benchmark import CompletionCores, cpu_wait_us, run_interleaved
 
 N = 2_000
 
@@ -103,6 +104,12 @@ def test_groups_must_be_one_per_callable():
         run_interleaved([partial(work, N)], groups=["a", "b"])
 
 
+@pytest.mark.parametrize("rounds,calls", [(0, 3), (3, 0)])
+def test_rounds_and_calls_must_be_positive(rounds, calls):
+    with pytest.raises(ValueError, match="both must be positive"):
+        run_interleaved([partial(work, N)], rounds=rounds, calls=calls)
+
+
 SPIN = """
 import os
 import sys
@@ -151,6 +158,28 @@ def test_a_figure_whose_calls_waited_for_a_cpu_is_refused():
     assert timing.wait() == 0
     assert outcome.startswith("refused: "), outcome
     assert "for a CPU" in outcome
+
+
+def children():
+    return {
+        int(pid)
+        for task in Path("/proc/self/task").iterdir()
+        for pid in (task / "children").read_text().split()
+    }
+
+
+@pytest.mark.skipif(not Path("/proc/self/task").is_dir(), reason="no /proc/self/task")
+def test_completion_cores_undo_a_partial_entry():
+    # Pinned to one CPU, a spinner started, then a sibling that does not exist.
+    cores = CompletionCores({})
+    cores.cpus = {max(os.sched_getaffinity(0))}
+    cores.siblings = {min(os.sched_getaffinity(0)), os.cpu_count() + 64}
+    before, others = os.sched_getaffinity(0), children()
+    with pytest.raises(OSError):
+        with cores:
+            pass
+    assert os.sched_getaffinity(0) == before
+    assert children() == others
 
 
 @pytest.mark.skipif(cpu_wait_us() is None, reason="no /proc/thread-self/schedstat")

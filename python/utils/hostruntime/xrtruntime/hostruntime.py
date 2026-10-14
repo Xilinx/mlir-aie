@@ -167,8 +167,8 @@ class XRTHostRuntime(HostRuntime):
         """Return the pids ``xrt-smi`` reports holding a context on this device, less this one.
 
         Read from ``xrt-smi examine --report aie-partitions`` for the device's
-        BDF, as XRT exposes no API for it. A missing or failing ``xrt-smi``
-        gives ``None``.
+        BDF, as XRT exposes no API for it. A missing or failing ``xrt-smi``,
+        or a report not of that schema, gives ``None``.
         """
         xrt_smi = xrt_smi_path()
         if xrt_smi is None:
@@ -184,16 +184,22 @@ class XRTHostRuntime(HostRuntime):
                     timeout=10,
                     check=True,
                 )
-            except (OSError, subprocess.SubprocessError):
+                devices = json.loads(report.read_text())["devices"]
+                # xrt-smi writes an empty string, not a list, for no partitions.
+                return {
+                    int(context["pid"])
+                    for device in devices
+                    for partition in device["aie_partitions"]["partitions"] or []
+                    for context in partition["hw_contexts"] or []
+                } - {os.getpid()}
+            except (
+                OSError,
+                subprocess.SubprocessError,
+                ValueError,
+                LookupError,
+                TypeError,
+            ):
                 return None
-            devices = json.loads(report.read_text())["devices"]
-        # xrt-smi writes an empty string, not a list, for no partitions.
-        return {
-            int(context["pid"])
-            for device in devices
-            for partition in device["aie_partitions"]["partitions"] or []
-            for context in partition["hw_contexts"] or []
-        } - {os.getpid()}
 
     def device_name(self) -> str | None:
         return self._device_type_str
