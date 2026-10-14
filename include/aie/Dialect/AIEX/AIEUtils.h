@@ -5,6 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef AIEX_UTILS_H
+#define AIEX_UTILS_H
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -62,6 +65,9 @@ std::optional<SubviewTraceResult> traceSubviewToBlockArgument(Value value);
 // therefore over-counts them. Returns nullopt when `arg` is not a memref.
 std::optional<unsigned> getHostBufferArgIndex(BlockArgument arg);
 
+// The number of host buffers `block`'s arguments take: its memref arguments.
+unsigned getHostBufferCount(Block &block);
+
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime offset
 // (held in the scratchpad slot referenced by `bdOp`'s
 // `offset_state_table_idx` attribute, multiplied by the element size of
@@ -110,3 +116,5 @@ DMAConfigureTaskOp getUniqueReachableConfigure(Value task);
 void emitScratchpadParamsFile(mlir::ModuleOp moduleOp, llvm::raw_ostream &os);
 } // namespace AIEX
 } // namespace xilinx
+
+#endif // AIEX_UTILS_H

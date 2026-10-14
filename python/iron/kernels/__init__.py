@@ -15,6 +15,8 @@ Submodules:
 - `norm` — rms_norm, rms_norm_eps, layer_norm
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
 - `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
+- `moe` — router_top_k (a mixture-of-experts router's top-k ids and softmax
+  weights, deterministic, from a `sample_select` summary)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
 - `flm_gemma4` — core kernels extracted from FastFlowLM's Gemma 4
   implementation (AIE2P): prefill attention, the q4nx LM head and the decode
@@ -31,7 +33,9 @@ Submodules:
 Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
 ``.contract``: the role of each argument (``In``, ``Out``, ``InOut``,
 ``Param``), a numpy reference, a tolerance and the dtype facts a signature
-cannot say. It is what ``aie.iron.algorithms.kernel_design`` uses to build,
+cannot say. A kernel whose arithmetic differs by ``Build`` declares the
+reference and tolerance per build, and ``fn.contract_for()`` picks the one of
+the build that produced an output. It is what ``aie.iron.algorithms.kernel_design`` uses to build,
 run and check any kernel, and the ``*_ref`` functions exported here are those
 references. ``factories`` lists the factory names.
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
@@ -44,6 +48,8 @@ from typing import get_type_hints
 from aie.iron.kernel import ExternalFunction
 
 from ._common import (
+    BUILDS,
+    Build,
     KernelContract,
     Param,
     TensorLayout,
@@ -251,6 +257,7 @@ from .linalg import (
     prefill_fv,
     prefill_fv_ref,
 )
+from .moe import router_top_k, router_top_k_ref
 from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
 from .quant import q4nx_dequant, q4nx_dequant_ref
 from .reduce import (
@@ -304,6 +311,8 @@ from .vision import (
 from .zero import zero
 
 __all__ = [
+    "BUILDS",
+    "Build",
     "KernelContract",
     "MatrixKernel",
     "TensorLayout",
@@ -328,6 +337,8 @@ __all__ = [
     "sample_combine",
     "sample_ref",
     "exp64_ref",
+    "router_top_k",
+    "router_top_k_ref",
     "rms_norm_ref",
     "layer_norm",
     "layer_norm_ref",

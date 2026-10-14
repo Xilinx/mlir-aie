@@ -98,9 +98,11 @@ def test_bfp16_macs_see_the_packed_blocks(npu2, b_col_maj):
     a = rng.standard_normal((16, 64)).astype(np.float32)
     b = rng.standard_normal((64, 32)) * np.exp2(rng.integers(-12, 12, (1, 32)))
     b = b.astype(np.float32)
-    converted = fused_mm(
-        **dims, b_col_maj=b_col_maj, emulate_bf16_mmul_with_bfp16=True
-    ).contract.reference(a, b)
-    packed = fused_mm(**dims, bfp16_b=True).contract.reference(a, b)
+    converted = (
+        fused_mm(**dims, b_col_maj=b_col_maj, emulate_bf16_mmul_with_bfp16=True)
+        .contract_for()
+        .reference(a, b)
+    )
+    packed = fused_mm(**dims, bfp16_b=True).contract_for().reference(a, b)
     np.testing.assert_array_equal(converted, packed)
     assert not np.array_equal(converted, a @ b)

@@ -28,10 +28,6 @@ extern "C" float __divsf3(float, float);
 
 namespace {
 
-float bf16_to_f32(uint32_t bits) {
-  return __builtin_bit_cast(float, bits << 16);
-}
-
 // The weight of every distinct key >= tau.
 struct weights {
   float temperature;
@@ -44,7 +40,7 @@ struct weights {
 };
 
 double weight_of_key(const weights *t, int32_t key) {
-  const float xv = __divsf3(bf16_to_f32(sample_bits(key)), t->temperature);
+  const float xv = __divsf3(sample_value(key), t->temperature);
   const float d = __subsf3(xv, t->xm);
   // Above 1 (or NaN) takes a NaN logit or a non-finite max / T, which the
   // contract excludes; clamped to 1 so every sum stays in range.
@@ -247,7 +243,7 @@ int32_t combine(const int32_t *summaries, const int32_t *row) {
 
   weights t;
   t.temperature = __builtin_bit_cast(float, temperature_bits);
-  t.xm = __divsf3(bf16_to_f32(sample_bits(max_key)), t.temperature);
+  t.xm = __divsf3(sample_value(max_key), t.temperature);
   t.tau = union_tau(summaries, sample_top_k(row));
   t.w_tau = weight_of_key(&t, t.tau);
   t.n = 0;

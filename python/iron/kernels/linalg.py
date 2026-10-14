@@ -19,6 +19,7 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     ARCH_TRAITS,
+    BUILDS,
     KernelContract,
     Param,
     TensorLayout,
@@ -27,7 +28,6 @@ from ._common import (
     _detect_arch,
     _kernel_source,
     _make_extern,
-    _tuned_arch,
     dtypes,
 )
 from .core import conv_even
@@ -1079,6 +1079,7 @@ def mha(
     accurate_exp2: bool = False,
     causal: bool = True,
     window: int = 0,
+    f32_scores: bool = False,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1127,6 +1128,11 @@ def mha(
         window: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: a
             query keeps no key more than ``window`` positions from it; 0 is
             no window.
+        f32_scores: Keep the ``QK^T`` scores in float32 (``-DMHA_F32_SCORES``):
+            ``matmul_bf16_bf16_wrapper`` writes, and ``partial_softmax``
+            reads, a float32 tile, held to float32 summation order. AIE2P
+            only, and not with ``emulate_bf16_mmul_with_bfp16``. At 64-key
+            blocks a design places only with ``P V`` split over two cores.
 
     Returns:
         MatrixKernel for ``matmul_bf16_bf16_wrapper``, or with ``pv``
@@ -1145,7 +1151,15 @@ def mha(
             raise ValueError(
                 f"mha: {name} must be a positive multiple of {mult}, got {v}"
             )
-    tile = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
+    if f32_scores and _arch_traits().name == "aie2":
+        raise NotImplementedError("mha: f32_scores is written for AIE2P only")
+    if f32_scores and emulate_bf16_mmul_with_bfp16:
+        raise ValueError(
+            "mha: f32_scores keeps the scores to float32 summation order, which "
+            "a bfp16-emulated product gives up"
+        )
+    score = np.float32 if f32_scores and not pv else bfloat16
+    tile = np.ndarray[(dim_m * dim_n,), np.dtype[score]]
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
@@ -1154,7 +1168,11 @@ def mha(
         f"-DDIM_M={dim_m}",
         f"-DDIM_K={dim_k}",
         f"-DDIM_N={dim_n}",
-        "-Dbf16_bf16_ONLY",
+        *(
+            ["-DMHA_F32_SCORES", "-Dbf16_f32_ONLY"]
+            if f32_scores
+            else ["-Dbf16_bf16_ONLY"]
+        ),
     ]
     if b_col_maj:
         flags.append("-DB_COL_MAJ")
@@ -1196,7 +1214,17 @@ def mha(
             initializers=((2, _zero_output),),
             acc_dtype=np.float32,
             reduction=dim_k,
-            tolerance=_linalg_tolerance(bfloat16),
+            tolerance=(
+                Tolerance.bounded(
+                    partial(
+                        _f32_sum_order_bound, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n
+                    ),
+                    note="float32 scores: f32 summation order over dim_k exact "
+                    "bf16 products",
+                )
+                if f32_scores and not pv
+                else _linalg_tolerance(bfloat16)
+            ),
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
@@ -1267,13 +1295,15 @@ def mha_softmax(
 ) -> ExternalFunction:
     """One block of ``mha.cc``'s online softmax, ``partial_softmax``.
 
-    Writes the block's unnormalized weights ``P = exp2(A * s - m)``, with
-    ``s`` the bf16 ``scale`` and ``m`` each query row's running maximum, and
-    updates the running state ``scale_buffer``: ``[m, m, l, exp2(m_prev -
-    m)]``, ``dim_m`` float32 rows each. The state is zeroed before every
-    call, so each call is a first key block against a running maximum of 0;
-    the carry across blocks is ``test_mha_e2e.py``'s. The kernel masks by
-    overwriting ``A``'s masked entries in place.
+    Writes the block's unnormalized weights ``P = exp2(A * s - m * s)``,
+    with ``s`` the bf16 ``scale`` and ``m`` each query row's running maximum
+    of ``A``, unscaled, and updates the running state ``scale_buffer``:
+    ``[m, m, l, exp2((m_prev - m) * s)]``, ``dim_m`` float32 rows each. Both
+    products are of bf16s, so exact in float32, and the key that sets a row's
+    running maximum takes an exponent of exactly 0. The state is zeroed
+    before every call, so each call is a first key block against a running
+    maximum of 0; the carry across blocks is ``test_mha_e2e.py``'s. The
+    kernel masks by overwriting ``A``'s masked entries in place.
 
     Which block it is stays a runtime operand, as in the kernel: ``idx`` is
     ``(key block, query block)``, a block no query row keeps a key of is
@@ -1336,7 +1366,6 @@ def mha_softmax(
             roles=(In, Out, InOut, *([Param] * 6)),
             parameter_bindings=((4, scale), (5, dim_m), (6, dim_n)),
             initializers=((2, _zero_output),),
-            reference=partial(mha_softmax_ref, scale=scale, **band),
             # aie::exp2<bfloat16> interpolates 2**frac linearly, overshooting
             # by up to 6.15%, and two bf16 roundings bring it to 6.98%
             # (test_mha_e2e.py's _RTOL_EXP2). This form's rtol multiplies
@@ -1345,33 +1374,42 @@ def mha_softmax(
             # exp2_bf16.h's cubic instead, 0.74% from exp2 at worst with the
             # bf16 store on npu1 (0.37% of |a| + |b|), so its rtol is 0.4% of
             # |a| + |b| and its floor only admits the underflow to 0.
-            tolerance=(
-                Tolerance.bounded(
-                    partial(
-                        _mha_softmax_accurate_bound,
-                        scale=scale,
-                        # npu1 measured P within 0.5012 ulp, and 0.63 with
-                        # exp2's f_lo term dropped; npu2 measured 0.73.
-                        half_ulp_p=_detect_arch() == "aie2",
-                        **band,
+            per_build=tuple(
+                (
+                    build,
+                    partial(mha_softmax_ref, scale=scale, **band),
+                    (
+                        Tolerance.bounded(
+                            partial(
+                                _mha_softmax_accurate_bound,
+                                scale=scale,
+                                # npu1 measured P within 0.5012 ulp, and 0.63
+                                # with exp2's f_lo term dropped; npu2 measured
+                                # 0.73.
+                                half_ulp_p=build.arch == "aie2",
+                                **band,
+                            ),
+                            note="exp2 1e-5 past half an ulp, then each store's "
+                            "rounding; P measured 0.5012 ulp on npu1, 0.73 on npu2",
+                        )
+                        if accurate_exp2
+                        else (
+                            Tolerance.relative(
+                                0.004,
+                                2.0**-120,
+                                note="exp2_bf16.h cubic, 0.74% worst element on npu1",
+                            )
+                            if not ARCH_TRAITS[build.arch].native_exp2
+                            else Tolerance.relative(
+                                0.035,
+                                4 * 2.0**-7,
+                                note="aie::exp2 interpolant envelope, 6.98% "
+                                "(test_mha_e2e.py)",
+                            )
+                        )
                     ),
-                    note="exp2 1e-5 past half an ulp, then each store's "
-                    "rounding; P measured 0.5012 ulp on npu1, 0.73 on npu2",
                 )
-                if accurate_exp2
-                else (
-                    Tolerance.relative(
-                        0.004,
-                        2.0**-120,
-                        note="exp2_bf16.h cubic, 0.74% worst element on npu1",
-                    )
-                    if not _arch_traits().native_exp2
-                    else Tolerance.relative(
-                        0.035,
-                        4 * 2.0**-7,
-                        note="aie::exp2 interpolant envelope, 6.98% (test_mha_e2e.py)",
-                    )
-                )
+                for build in BUILDS
             ),
         ),
     )
@@ -1383,9 +1421,9 @@ def mha_softmax_ref(
     """Numpy reference for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: ``(P, scale_buffer)``.
 
     True ``exp2`` rather than the device's interpolant, from a zeroed
-    running state. ``m`` is rounded to bf16 before ``P`` uses it, as the
-    kernel stores it. A padded row keeps ``m = l = 0``; a skipped or wholly
-    padded block leaves the state untouched.
+    running state. ``m`` is the unscaled maximum, as the kernel stores it. A
+    padded row keeps ``m = l = 0``; a skipped or wholly padded block leaves
+    the state untouched.
     """
     kv, q = (int(i) for i in np.asarray(idx).ravel())
     rows, cols = np.indices((dim_m, dim_n))
@@ -1399,11 +1437,11 @@ def mha_softmax_ref(
         return np.zeros((len(a), dim_m * dim_n)), np.zeros(
             (len(a), 4 * dim_m), np.float32
         )
-    scaled = a.astype(np.float32).reshape(-1, dim_m, dim_n) * np.float32(scale)
-    m = np.where(keep, scaled, -np.inf).max(axis=2)
-    m = np.maximum(m.astype(bfloat16).astype(np.float32), 0)
-    p = np.exp2(np.where(keep, scaled - m[..., None], -np.inf))
-    state = np.concatenate([m, m, p.sum(axis=2), np.exp2(-m)], axis=1)
+    scores = a.astype(np.float32).reshape(-1, dim_m, dim_n)
+    m = np.maximum(np.where(keep, scores, -np.inf).max(axis=2), 0)
+    s = np.float32(scale)
+    p = np.exp2(np.where(keep, scores * s - (m * s)[..., None], -np.inf))
+    state = np.concatenate([m, m, p.sum(axis=2), np.exp2(-m * s)], axis=1)
     return p.reshape(len(p), -1), state
 
 
@@ -1471,7 +1509,6 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             roles=(InOut, In, In, Param),
             parameter_bindings=((3, 0),),
             initializers=((0, partial(_zero_output, index=0)),),
-            reference=partial(prefill_fv_ref, dim_m=lq, dim_k=lk, dim_n=head_dim),
             acc_dtype=np.float32,
             reduction=lk,
             # Derived, not inherited: _linalg_tolerance(bfloat16)'s 0.05/0.5 is
@@ -1484,20 +1521,33 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             # tuned branch the mmul sums in a different order, and on large inputs whose
             # products cancel that order error exceeds any relative bound, so
             # it is judged against the order bound itself.
-            tolerance=(
-                Tolerance.bounded(
-                    partial(_prefill_fv_bound, dim_m=lq, dim_k=lk, dim_n=head_dim),
-                    note="f32 summation order over lk exact bf16 products, in "
-                    "the kernel and the reference; measured worst 0.12 of it "
-                    "on npu1",
+            per_build=tuple(
+                (
+                    build,
+                    partial(prefill_fv_ref, dim_m=lq, dim_k=lk, dim_n=head_dim),
+                    (
+                        Tolerance.bounded(
+                            partial(
+                                _f32_sum_order_bound,
+                                dim_m=lq,
+                                dim_k=lk,
+                                dim_n=head_dim,
+                            ),
+                            note="f32 summation order over lk exact bf16 products, "
+                            "in the kernel and the reference; measured worst 0.12 "
+                            "of it on npu1",
+                        )
+                        if build.tuned != "aie2p"
+                        else Tolerance.relative(
+                            1e-5,
+                            1e-5,
+                            note="f32 accumulation order over lk<=16 exact bf16 "
+                            "products: lk * 2**-24 ~ 1e-6; verified on npu2 at "
+                            "this bound",
+                        )
+                    ),
                 )
-                if _tuned_arch() != "aie2p"
-                else Tolerance.relative(
-                    1e-5,
-                    1e-5,
-                    note="f32 accumulation order over lk<=16 exact bf16 "
-                    "products: lk * 2**-24 ~ 1e-6; verified on npu2 at this bound",
-                )
+                for build in BUILDS
             ),
             ops_per_call=2 * lq * lk * head_dim,
         ),
@@ -1527,12 +1577,12 @@ def prefill_fv_ref(s, v, *, dim_m: int, dim_k: int, dim_n: int):
     return (s @ v).reshape(len(s), dim_m * dim_n)
 
 
-def _prefill_fv_bound(s, v, *, dim_m: int, dim_k: int, dim_n: int):
-    """Per-output bound on ``|y - prefill_fv_ref|`` from summation order alone.
+def _f32_sum_order_bound(s, v, *, dim_m: int, dim_k: int, dim_n: int):
+    """Per-output bound on a bf16 matmul's float32 result from summation order alone.
 
-    Every product is exact in float32, so a ``dim_k``-term float32 sum in any
-    order is within ``dim_k * 2**-24 * sum|s*v|`` of the exact dot product.
-    The kernel and the float32 reference each carry that error, hence 2.
+    Every bf16 product is exact in float32, so a ``dim_k``-term float32 sum in
+    any order is within ``dim_k * 2**-24 * sum|s*v|`` of the exact dot
+    product. The kernel and a float32 reference each carry that error, hence 2.
     """
     s = np.abs(np.asarray(s, np.float64)).reshape(-1, dim_m, dim_k)
     v = np.abs(np.asarray(v, np.float64)).reshape(-1, dim_k, dim_n)

@@ -267,6 +267,13 @@ CASES: list[Case] = [
     check("silu_sized", dict(tile_size=160), tag="unroll-tail", smoke=True),
     # AIE2 silu runs the same 64-element trips as gelu below.
     check("silu_sized", dict(tile_size=96), tag="short-trip", smoke=True),
+    check(
+        "silu_sized",
+        dict(tile_size=160, use_lut=True),
+        tag="lut-unroll-tail",
+        devices=("npu2",),
+        smoke=True,
+    ),
     Case("gelu_sized", calls=16, smoke=True),
     # On aie2p gelu's 32-lane loop is unrolled four ways too, so it has the
     # same remainder pass and the same need for a size that is not a multiple
@@ -2063,6 +2070,13 @@ CASES: list[Case] = [
     ),
     # ffn gate activation
     Case("silu_sized", dict(tile_size=4096), calls=16, tag="llama-prefill"),
+    Case(
+        "silu_sized",
+        dict(tile_size=4096, use_lut=True),
+        calls=16,
+        tag="llama-prefill-lut",
+        devices=("npu2",),
+    ),
     Case("silu_sized", dict(tile_size=1024), calls=16, tag="llama-decode"),
     # ffn gate product and attention-score scaling
     Case("mul_sized", dict(tile_size=4096), calls=16, tag="llama-prefill-ffn"),
@@ -2118,6 +2132,7 @@ CASES += [
     check("mv", dict(dim_m=32, dim_k=32), smoke=True),
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
     Case("mha", calls=4, smoke=True),
+    Case("mha", dict(f32_scores=True), calls=4, smoke=True, devices=("npu2",)),
     # ...and its P*V product, mha.cc's own 8x8x8 expansion. Same tile, but a
     # different micro-tile and so a different blocked operand order, which is
     # the part a shared case could not check.

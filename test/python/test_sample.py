@@ -83,6 +83,8 @@ def arch(request):
         (kernels.sample_combine, "slice_size"),
         (kernels.sample_combine, "columns"),
         (kernels.sample_combine, "k_max"),
+        (kernels.router_top_k, "slice_size"),
+        (kernels.router_top_k, "top_k"),
     ],
 )
 def test_factories_reject_non_positive_integers(factory, name, bad):
@@ -106,6 +108,9 @@ def test_factories_reject_non_positive_integers(factory, name, bad):
         (kernels.sample_select, dict(slice_size=1024, chunk=384), "divide"),
         (kernels.sample_select, dict(slice_size=1023, chunk=341), "even"),
         (kernels.sample_combine, dict(slice_size=1 << 23, columns=256), "int32"),
+        (kernels.router_top_k, dict(slice_size=32, top_k=33), "k_max"),
+        (kernels.router_top_k, dict(slice_size=1024, top_k=129), "verified"),
+        (kernels.router_top_k, dict(slice_size=1 << 24), "2\\*\\*24"),
     ],
 )
 def test_factories_reject_bad_geometry(factory, kwargs, match):
@@ -120,6 +125,8 @@ def test_factories_accept_their_edges(arch):
     kernels.sample_combine(slice_size=(1 << 23) - 1, columns=256, k_max=1)
     kernels.sample_select(slice_size=1024, chunk=256, k_max=sample.K_MAX_LIMIT)
     kernels.sample_combine(slice_size=1024, k_max=sample.K_MAX_LIMIT)
+    kernels.router_top_k(slice_size=np.int64(64), top_k=np.int32(64))
+    kernels.router_top_k(slice_size=1024, top_k=sample.K_MAX_LIMIT)
 
 
 # --- geometry --------------------------------------------------------------
