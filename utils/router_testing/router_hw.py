@@ -14,14 +14,15 @@ router does, and pinned onto shared arbiters or links that should or should
 not deadlock. Each variant is routed with aie-opt, compiled with aiecc, and
 run with NPUKernel and IRON tensors, --runs times, each run in a process of
 its own. A run that completes has its outputs checked against the case's
-reference; one the driver ends unfinished (amdxdna's TDR) is a HANG. The
-variant's verdict is HANG if any run hung, FAIL if any output was wrong,
-and PASS otherwise, and the command exits 1 when a verdict differs from what
-the variant expects.
+reference; one the driver ends with a timeout (amdxdna's TDR) is a HANG, and
+one it ends in any other state an ERROR. The variant's verdict is ERROR if any
+run erred, HANG if any hung, FAIL if any output was wrong, and PASS
+otherwise, and the command exits 1 when a verdict differs from what the
+variant expects.
 
 A hang can wedge the driver (every later open of the device blocks), so the
 variants expected to hang run last, and every variant stops at its first
-hang, expected or not. A run whose
+hang or error, expected or not. A run whose
 process outlives --process-timeout-s is taken for a wedged device: the
 command names it and stops, exit 2, leaving the reload or reboot that
 recovers the device to whoever runs it.
@@ -50,7 +51,9 @@ from aie.ir import Context, Location, Module
 import aie.dialects.aie  # noqa: F401
 import aie.dialects.aiex  # noqa: F401
 import aie.utils
+import pyxrt
 from aie.utils import NPUKernel
+from aie.utils.hostruntime.xrtruntime.hostruntime import XRTKernelResult
 
 from hw_case import HwCase, Variant
 
@@ -117,8 +120,12 @@ def run_once(case: HwCase, out: Path) -> dict:
     runtime = aie.utils.DefaultNPURuntime
     handle = runtime.load(NPUKernel(out / "aie.xclbin", out / "insts.bin"))
     outputs = [iron.full(count, -1, dtype=dtype) for count, dtype in case.outputs]
-    if not runtime.run(handle, outputs, fail_on_error=False).is_success():
-        return {"outcome": "HANG", "state": "the driver ended the run unfinished"}
+    result = runtime.run(handle, outputs, fail_on_error=False)
+    if not result.is_success():
+        state = result.ret if isinstance(result, XRTKernelResult) else None
+        # amdxdna's TDR ends a hung run as a timeout; any other end is no hang.
+        hung = state == pyxrt.ert_cmd_state.ERT_CMD_STATE_TIMEOUT
+        return {"outcome": "HANG" if hung else "ERROR", "state": f"ended {state}"}
     problems = case.check([t.numpy() for t in outputs])
     return {"outcome": "FAIL" if problems else "PASS", "problems": problems[:5]}
 
@@ -196,7 +203,7 @@ def run_case(args) -> int:
                     "driver looks wedged. Stopping: reload amdxdna or reboot."
                 )
                 return 2
-            if results[-1]["outcome"] == "HANG":
+            if results[-1]["outcome"] in ("HANG", "ERROR"):
                 break
         counts = Counter(r["outcome"] for r in results)
         verdict = verdict_of(results)
