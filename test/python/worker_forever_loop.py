@@ -12,7 +12,23 @@ import numpy as np
 from aie.iron import Program, Runtime, Worker, WorkerRuntimeBarrier
 from aie.iron.device import NPU2Col1
 
-# CHECK-LABEL: aie.device(npu2_1col)
+
+def worker_module(while_true):
+    barrier = WorkerRuntimeBarrier()
+
+    def task(barrier):
+        barrier.wait_for_value(1)
+
+    worker = Worker(task, fn_args=[barrier], while_true=while_true)
+
+    def sequence(x):
+        barrier.set(1)
+
+    rt = Runtime(sequence, [np.ndarray[(16,), np.dtype[np.int32]]])
+    return Program(NPU2Col1(), rt, workers=[worker]).resolve_program()
+
+
+# CHECK-LABEL: forever
 # CHECK:         aie.core
 # CHECK-NOT:       scf.for
 # CHECK:           scf.while : () -> () {
@@ -21,31 +37,15 @@ from aie.iron.device import NPU2Col1
 # CHECK:           } do {
 # CHECK:             aie.use_lock(%{{.*}}, Acquire, %{{.*}})
 # CHECK:             scf.yield
-# CHECK:           }
 # CHECK:           aie.end
+print("forever")
+print(worker_module(True))
+
+# CHECK-LABEL: once
 # CHECK:         aie.core
 # CHECK-NOT:       scf.while
 # CHECK:           scf.for %{{.*}} = %c0 to %c1 step %c1
 # CHECK:             aie.use_lock(%{{.*}}, Acquire, %{{.*}})
 # CHECK:           aie.end
-
-
-def worker_loops():
-    forever_barrier = WorkerRuntimeBarrier()
-    once_barrier = WorkerRuntimeBarrier()
-
-    def task(barrier):
-        barrier.wait_for_value(1)
-
-    forever = Worker(task, fn_args=[forever_barrier])
-    once = Worker(task, fn_args=[once_barrier], while_true=False)
-
-    def sequence(x):
-        forever_barrier.set(1)
-        once_barrier.set(1)
-
-    rt = Runtime(sequence, [np.ndarray[(16,), np.dtype[np.int32]]])
-    print(Program(NPU2Col1(), rt, workers=[forever, once]).resolve_program())
-
-
-worker_loops()
+print("once")
+print(worker_module(False))
