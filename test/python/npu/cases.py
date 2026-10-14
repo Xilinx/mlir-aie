@@ -52,9 +52,15 @@ def device_for(devices: tuple[str, ...]):
         previous = get_current_device(probe_runtime=False)
     except Exception:  # noqa: BLE001 - no device bound
         previous = None
-    if previous is not None and (
-        ARCH_TRAITS[resolve_target_arch(previous)].device in devices
-    ):
+    try:
+        bound = (
+            None
+            if previous is None
+            else ARCH_TRAITS[resolve_target_arch(previous)].device
+        )
+    except RuntimeError:  # an AIE1 device, which no case supports
+        bound = None
+    if bound in devices:
         yield
         return
     set_current_device(from_name(devices[0], n_cols=1))
