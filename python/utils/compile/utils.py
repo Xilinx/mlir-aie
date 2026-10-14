@@ -86,12 +86,15 @@ _PCH_SOURCE = "<pch-source>"
 _PCH_OUTPUT = "<pch-output>"
 # What clang reads from the environment that can change what a header reads;
 # none of it shows in the command, so it joins the key.
-_CLANG_ENVIRONMENT = (
+_CLANG_SEARCH_PATHS = (
     "CPATH",
     "C_INCLUDE_PATH",
     "CPLUS_INCLUDE_PATH",
     "OBJC_INCLUDE_PATH",
     "OBJCPLUS_INCLUDE_PATH",
+)
+_CLANG_ENVIRONMENT = (
+    *_CLANG_SEARCH_PATHS,
     "CCC_OVERRIDE_OPTIONS",
     "CLANG_NO_DEFAULT_CONFIG",
 )
@@ -777,6 +780,10 @@ def compile_cxx_core_function(
                 others.append(arg)
             i += 1
         names = {m.split("=", 1)[0] for m in macros}
+        # An empty entry names the working directory.
+        for name in _CLANG_SEARCH_PATHS:
+            if name in os.environ:
+                search_paths.extend(os.environ[name].split(os.pathsep))
         # The PCH builds in its own directory, so a relative search path would
         # name another one there; a caller's -include would be read twice.
         if all(os.path.isabs(d) for d in search_paths) and not any(

@@ -287,3 +287,33 @@ def test_environment_search_path_gets_its_own_pch(tmp_path):
     assert ret.returncode == 0, ret.stderr
     assert with_pch.read_bytes() == plain.read_bytes()
     assert bare.read_bytes() != plain.read_bytes()
+
+
+@pytest.mark.parametrize("cpath", ["../shadow", f"{os.pathsep}/nonexistent"])
+def test_relative_environment_search_path_compiles_plainly(tmp_path, cpath):
+    """A relative CPATH entry, or an empty one (the working directory), names
+    another directory where the PCH builds, so the compile takes none."""
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    (shadow / "stdint.h").write_text("#define SHADOWED 1\n#include_next <stdint.h>\n")
+    cache = tmp_path / "cache"
+    environ = {"CPATH": cpath}
+    assert (
+        _compile(tmp_path, cache, "bare", source=_SHADOW_AWARE_KERNEL)[0].returncode
+        == 0
+    )
+    ret, with_pch = _compile(
+        tmp_path, cache, "relative", source=_SHADOW_AWARE_KERNEL, environ=environ
+    )
+    assert ret.returncode == 0, ret.stderr
+    ret, plain = _compile(
+        tmp_path,
+        cache,
+        "plain",
+        source=_SHADOW_AWARE_KERNEL,
+        pch=False,
+        environ=environ,
+    )
+    assert ret.returncode == 0, ret.stderr
+    assert with_pch.read_bytes() == plain.read_bytes()
+    assert len(_pchs(cache)) == 1
