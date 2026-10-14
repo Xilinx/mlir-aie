@@ -189,9 +189,12 @@ def verdict_file(
 
 def run_case(args) -> int:
     case = load_case(args.case)
-    variants = [
-        v for v in case.variants() if not args.variant or v.name in args.variant
-    ]
+    all_variants = case.variants()
+    unknown = sorted(set(args.variant) - {v.name for v in all_variants})
+    if unknown:
+        print(f"{case.name}: no such variant {', '.join(unknown)}", file=sys.stderr)
+        return 2
+    variants = [v for v in all_variants if not args.variant or v.name in args.variant]
     variants.sort(key=lambda v: v.expect == "HANG")
     wrong = 0
     for variant in variants:
@@ -258,6 +261,8 @@ def main() -> int:
         return 0
     if not args.peano:
         cli.error("--peano or $PEANO_INSTALL_DIR is required")
+    if args.runs < 1:
+        cli.error("--runs must be at least 1")
     return run_case(args)
 
 

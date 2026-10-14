@@ -161,7 +161,9 @@ def shrink(d, holds, log=None, budget_s=None):
     while changed:
         changed = False
         for e in candidates(d):
-            if deadline is not None and time.monotonic() > deadline:
+            # >=, not >: a budget of 0 must stop before the first candidate,
+            # even if the clock has not ticked since the deadline was set.
+            if deadline is not None and time.monotonic() >= deadline:
                 return d, False
             if holds(e):
                 d, changed = e, True

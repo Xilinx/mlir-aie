@@ -5,17 +5,48 @@
 
 """The router's model and shrinker, with the real aie-opt; no NPU required."""
 
+import argparse
+import importlib.util
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+ROUTER_TESTING = ROOT / "utils/router_testing"
 sys.path.insert(0, str(ROOT / "test/create-packet-flows/nightly"))
-sys.path.insert(0, str(ROOT / "utils/router_testing"))
+sys.path.insert(0, str(ROUTER_TESTING))
 import router_properties as rp  # noqa: E402  (paths set just above)
 import router_shrink  # noqa: E402
+
+# A case module with one variant, for router_hw.py's argument validation:
+# these never route, compile or touch an NPU.
+HW_CASE = """\
+from hw_case import HwCase, Variant
+
+
+class Case(HwCase):
+    name = "fixture"
+    description = "a fixture case; never actually routed"
+    outputs = []
+
+    def variants(self):
+        return [
+            Variant(
+                name="real",
+                design="",
+                pinned=None,
+                expect="PASS",
+                options="",
+                note="",
+            )
+        ]
+
+    def check(self, outputs):
+        return []
+"""
 
 # The task-complete-token route aiecc adds at a shim, and a flow beside it.
 PRIORITY = """module {
@@ -109,3 +140,59 @@ def test_an_unbounded_shrink_finishes_on_what_fails():
     assert finished
     assert len(small.flows) == 7
     assert holds(small)
+
+
+@pytest.fixture
+def hw_case(tmp_path):
+    path = tmp_path / "fixture.py"
+    path.write_text(HW_CASE)
+    return path
+
+
+@pytest.fixture(scope="module")
+def router_hw():
+    # router_hw.py imports pyxrt at module scope, an optional dependency this
+    # file's other tests do not need; load it lazily so only these two tests
+    # require it, and skip them where XRT is not installed.
+    pytest.importorskip("pyxrt")
+    spec = importlib.util.spec_from_file_location(
+        "router_hw", ROUTER_TESTING / "router_hw.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_an_unknown_variant_name_fails_instead_of_running_nothing(
+    router_hw, hw_case, tmp_path
+):
+    args = argparse.Namespace(
+        case=hw_case,
+        variant=["typo"],
+        runs=20,
+        process_timeout_s=120,
+        work=tmp_path / "work",
+        verdicts=None,
+        peano="unused",
+    )
+    assert router_hw.run_case(args) != 0
+    assert not (tmp_path / "work").exists()
+
+
+def test_a_nonpositive_runs_count_is_rejected(router_hw, hw_case):
+    result = subprocess.run(
+        [
+            sys.executable,
+            router_hw.__file__,
+            "run",
+            str(hw_case),
+            "--runs",
+            "0",
+            "--peano",
+            "unused",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "--runs" in result.stderr
