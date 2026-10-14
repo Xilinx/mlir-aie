@@ -171,6 +171,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "38524846313",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38524846313",
+   "date": "2026-10-14T06:53:03+00:00",
+   "commit": {
+    "id": "da0398dc072e4e3f563eeee5c92827ff907e24df",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/da0398dc072e4e3f563eeee5c92827ff907e24df",
+    "message": "[python] Reuse a precompiled header for the injected AIE intrinsics [MED] (#3684)",
+    "timestamp": "2026-10-14T04:35:12Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": null,
+   "device_raw": null,
+   "provenance": {
+    "commit": "da0398dc07",
+    "fixtures": "3aa7139253a0"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
