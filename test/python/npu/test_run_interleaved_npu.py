@@ -9,23 +9,18 @@
 # REQUIRES: xrt_python_bindings
 """run_interleaved on the NPU: real copies, timed with the NPU otherwise idle.
 
-The device is taken whole (AIE_NPU_EXCLUSIVE_DEVICE), since a round waits for
-every other process to leave the NPU.
+The device is taken whole (AIE_NPU_EXCLUSIVE_DEVICE), since another test's
+dispatches would land on the figures these tests compare.
 """
 
-import argparse
-import logging
 import os
 import subprocess
 import sys
-import time
 from functools import partial
 
+import aie.iron as iron
 import numpy as np
 import pytest
-
-import aie.iron as iron
-import aie.utils as utils
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime
 from aie.utils.benchmark import CompletionCores, run_interleaved
 
@@ -58,9 +53,7 @@ def copies(*lengths):
 
 def test_a_copy_four_times_as_long_takes_longer_but_at_most_four_times():
     (short, a1, b1), (long, a4, b4) = copies(N, 4 * N)
-    t1, t4 = run_interleaved(
-        [short, long], rounds=4, calls=10, runtime=utils.DefaultNPURuntime
-    )
+    t1, t4 = run_interleaved([short, long], rounds=4, calls=10, completion_cores=True)
     np.testing.assert_array_equal(b1.numpy(), a1.numpy())
     np.testing.assert_array_equal(b4.numpy(), a4.numpy())
     assert t1.n == t4.n == 4
@@ -77,7 +70,7 @@ def test_the_timing_thread_is_held_on_the_completion_cores():
         return run()
 
     before = os.sched_getaffinity(0)
-    run_interleaved([recorded], rounds=2, calls=3, runtime=utils.DefaultNPURuntime)
+    run_interleaved([recorded], rounds=2, calls=3, completion_cores=True)
     np.testing.assert_array_equal(b.numpy(), a.numpy())
     # Every CPU an NPU completion interrupt has ever been taken on.
     irq_cpus = CompletionCores({}).cpus
@@ -101,7 +94,7 @@ def test_a_figure_taken_beside_another_process_on_the_completion_cores_is_refuse
     # Another session's build on the cores the completions interrupt holds
     # the woken timing thread off them until the core's next tick.
     ((run, a, b),) = copies(N)
-    quiet = run_interleaved([run], rounds=4, calls=5, runtime=utils.DefaultNPURuntime)[
+    quiet = run_interleaved([run], rounds=4, calls=5, completion_cores=True)[
         0
     ].median_us
     before = CompletionCores.interrupts()
@@ -116,9 +109,9 @@ def test_a_figure_taken_beside_another_process_on_the_completion_cores_is_refuse
     ]
     try:
         assert all(s.stdout.readline().strip() == "spinning" for s in spinners)
-        busy = run_interleaved(
-            [run], rounds=4, calls=5, runtime=utils.DefaultNPURuntime
-        )[0].median_us
+        busy = run_interleaved([run], rounds=4, calls=5, completion_cores=True)[
+            0
+        ].median_us
     except RuntimeError as e:
         assert "for a CPU" in str(e), e
     else:
@@ -130,32 +123,3 @@ def test_a_figure_taken_beside_another_process_on_the_completion_cores_is_refuse
             s.kill()
             s.wait()
     np.testing.assert_array_equal(b.numpy(), a.numpy())
-
-
-def hold(seconds):
-    """Hold an NPU context for `seconds`, having said so on stdout."""
-    ((run, a, b),) = copies(N)
-    run()
-    np.testing.assert_array_equal(b.numpy(), a.numpy())
-    print("held", flush=True)
-    time.sleep(seconds)
-
-
-def test_a_round_waits_for_another_process_to_leave_the_npu(caplog):
-    holder = subprocess.Popen(
-        [sys.executable, __file__, "--hold", "8"], stdout=subprocess.PIPE, text=True
-    )
-    assert holder.stdout.readline().strip() == "held"
-    assert holder.pid in utils.DefaultNPURuntime.other_processes()
-    ((run, a, b),) = copies(N)
-    with caplog.at_level(logging.WARNING, logger="aie.utils.benchmark"):
-        run_interleaved([run], rounds=2, calls=3, runtime=utils.DefaultNPURuntime)
-    assert holder.wait(timeout=60) == 0
-    assert f"in use by pid [{holder.pid}]" in caplog.text, caplog.text
-    np.testing.assert_array_equal(b.numpy(), a.numpy())
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--hold", type=float, required=True, metavar="SECONDS")
-    hold(parser.parse_args().hold)

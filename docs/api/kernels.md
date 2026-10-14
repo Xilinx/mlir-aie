@@ -161,7 +161,6 @@ and cycles in `--perf-meta`. The timing helpers live here:
         - run_interleaved
         - CompletionCores
         - cpu_wait_us
-        - wait_until_idle
         - preflight
         - provenance
         - kernel_tree_digest

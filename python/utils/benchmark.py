@@ -18,7 +18,6 @@ them alike.
 from __future__ import annotations
 
 import hashlib
-import logging
 import math
 import os
 import re
@@ -31,15 +30,10 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 import numpy as np
 from aie.utils import config
-
-if TYPE_CHECKING:
-    from aie.utils.hostruntime.hostruntime import HostRuntime
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -170,10 +164,6 @@ def run_iters(
     )
 
 
-# Seconds between looks at an NPU another process holds, and the most waited.
-IDLE_POLL_S = 5.0
-IDLE_WAIT_S = 1800.0
-
 # Kernel work holds the timing thread's core for tens of microseconds, mostly
 # outside the timed call; another process, under lazy preemption, until the
 # core's next tick, hundreds of microseconds on.
@@ -278,37 +268,6 @@ class CompletionCores(AbstractContextManager):
             self._affinity = None
 
 
-def wait_until_idle(runtime: HostRuntime) -> None:
-    """Return once no other process holds a context on `runtime`'s NPU.
-
-    Args:
-        runtime: The runtime whose NPU to watch.
-
-    Raises:
-        RuntimeError: `runtime` cannot tell which processes hold its NPU.
-        TimeoutError: Another has held it for ``IDLE_WAIT_S`` seconds. Two
-            processes timing at once would each wait for the other.
-    """
-    held, told = runtime.other_processes(), set()
-    if held is None:
-        raise RuntimeError(
-            f"{type(runtime).__name__} cannot tell whether another process "
-            "holds the NPU; time with runtime=None to skip the check"
-        )
-    start = time.monotonic()
-    while held:
-        if held != told:
-            logger.warning("the NPU is in use by pid %s: waiting", sorted(held))
-            told = held
-        if time.monotonic() - start > IDLE_WAIT_S:
-            raise TimeoutError(
-                f"pid {sorted(held)} has held the NPU for {IDLE_WAIT_S:.0f} s; "
-                "time once it is idle"
-            )
-        time.sleep(IDLE_POLL_S)
-        held = runtime.other_processes() or set()
-
-
 def run_interleaved(
     fns: Sequence[Callable[[], object]],
     *,
@@ -318,7 +277,7 @@ def run_interleaved(
     cutoff: float = 1.5,
     groups: Sequence[Hashable | None] | None = None,
     fastest_us: float = math.inf,
-    runtime: HostRuntime | None = None,
+    completion_cores: bool = False,
 ) -> list[Stats]:
     """Time callables against each other in interleaved rounds.
 
@@ -341,11 +300,9 @@ def run_interleaved(
             callable is timed every round if not given.
         fastest_us: The fastest group's slowest median from callables timed
             before these, which `cutoff` also measures against.
-        runtime: The runtime the callables dispatch to. Given, each round
-            starts once no other process holds its NPU and is timed again if
-            one holds it when the round ends, and the timing thread is held
-            on the CPUs the callables' completions interrupt
-            (`CompletionCores`).
+        completion_cores: Hold the timing thread on the CPUs the callables'
+            NPU completions interrupt (`CompletionCores`), for callables that
+            dispatch to the NPU.
 
     Returns:
         list[Stats]: Per callable, the statistics of its per-round medians.
@@ -370,12 +327,8 @@ def run_interleaved(
     medians: list[list[float]] = [[] for _ in fns]
     waited: list[list[float]] = [[] for _ in fns]
     live = set(range(len(fns)))
-    if runtime is not None:
-        wait_until_idle(runtime)
-    r = 0
-    with CompletionCores(before) if runtime is not None else nullcontext():
-        while r < rounds:
-            timed = {}
+    with CompletionCores(before) if completion_cores else nullcontext():
+        for r in range(1, rounds + 1):
             for i in sorted(live):
                 times, waits = [], []
                 for _ in range(calls):
@@ -388,20 +341,8 @@ def run_interleaved(
                         waits.append(waited_after - wait)
                     npu_ns = _extract_npu_time_ns(ret)
                     times.append(elapsed_us if npu_ns is None else npu_ns / 1e3)
-                timed[i] = (
-                    float(np.median(times)),
-                    float(np.median(waits)) if waits else 0.0,
-                )
-            if runtime is not None and runtime.other_processes():
-                logger.warning(
-                    "another process used the NPU during a round: timing it again"
-                )
-                wait_until_idle(runtime)
-                continue
-            for i, (us, wait) in timed.items():
-                medians[i].append(us)
-                waited[i].append(wait)
-            r += 1
+                medians[i].append(float(np.median(times)))
+                waited[i].append(float(np.median(waits)) if waits else 0.0)
             if groups is None or r < settle:
                 continue
             slowest: dict[Hashable | None, float] = {}

@@ -33,17 +33,16 @@ print_benchmark(bench)
 
 [vector_scalar_mul.py](./vector_scalar_mul.py) uses this directly; running `make run` (or `python3 vector_scalar_mul.py --iters 10 --warmup 4`) prints the canonical `avg/min/max us` pair for both NPU and end-to-end timings.
 
-To compare designs, time them against each other with `run_interleaved`: each round runs every callable in turn and keeps its median call, so a drift in the host or the NPU lands on all of them alike. Given the runtime, a round waits for no other process to hold the NPU, the timing thread is held on the cores the NPU's completions interrupt, and a figure whose calls waited for a CPU is refused rather than reported:
+To compare designs, time them against each other with `run_interleaved`: each round runs every callable in turn and keeps its median call, so a drift in the host or the NPU lands on all of them alike. With `completion_cores=True` the timing thread is held on the cores the NPU's completions interrupt, and either way a figure whose calls waited for a CPU is refused rather than reported:
 
 ```python
 from functools import partial
 
-import aie.utils as utils
 from aie.utils.benchmark import run_interleaved
 
 small, large = run_interleaved(
     [partial(design, a, b, n=n), partial(design, a4, b4, n=4 * n)],
-    runtime=utils.DefaultNPURuntime,
+    completion_cores=True,
 )
 print(small.median_us, small.median_se_us, large.median_us)
 ```

@@ -5,13 +5,11 @@
 
 import atexit
 import gc
-import json
 import logging
 import os
 import re
 import stat
 import subprocess
-import tempfile
 import time
 import weakref
 from collections import OrderedDict
@@ -162,44 +160,6 @@ class XRTHostRuntime(HostRuntime):
             return None
         m = re.search(r"(?i)\b(?:performance|power)\s*mode\s*:\s*(\S+)", out)
         return m.group(1).lower() if m else None
-
-    def other_processes(self) -> set[int] | None:
-        """Return the pids ``xrt-smi`` reports holding a context on this device, less this one.
-
-        Read from ``xrt-smi examine --report aie-partitions`` for the device's
-        BDF, as XRT exposes no API for it. A missing or failing ``xrt-smi``,
-        or a report not of that schema, gives ``None``.
-        """
-        xrt_smi = xrt_smi_path()
-        if xrt_smi is None:
-            return None
-        bdf = self._device.get_info(pyxrt.xrt_info_device.bdf)
-        with tempfile.TemporaryDirectory() as d:
-            report = Path(d) / "partitions.json"
-            try:
-                subprocess.run(
-                    [xrt_smi, "examine", "-d", bdf, "-r", "aie-partitions"]
-                    + ["-f", "JSON", "-o", str(report)],
-                    capture_output=True,
-                    timeout=10,
-                    check=True,
-                )
-                devices = json.loads(report.read_text())["devices"]
-                # xrt-smi writes an empty string, not a list, for no partitions.
-                return {
-                    int(context["pid"])
-                    for device in devices
-                    for partition in device["aie_partitions"]["partitions"] or []
-                    for context in partition["hw_contexts"] or []
-                } - {os.getpid()}
-            except (
-                OSError,
-                subprocess.SubprocessError,
-                ValueError,
-                LookupError,
-                TypeError,
-            ):
-                return None
 
     def device_name(self) -> str | None:
         return self._device_type_str
