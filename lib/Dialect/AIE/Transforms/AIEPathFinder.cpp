@@ -1289,6 +1289,10 @@ llvm::Error Pathfinder::cutOverflow() const {
     int below = rows ? std::min(a.row, b.row) : std::min(a.col, b.col);
     bool up = rows ? b.row > a.row : b.col > a.col;
     const SwitchboxConnect &x = xbar->second;
+    // A boundary with no available channel at all (every one is a fixed
+    // connection's) still needs an entry, so flows that must cross it are
+    // not skipped as if the boundary did not exist.
+    channels[{rows, below, up}] += 0;
     for (Port port : sb.srcPorts) {
       int k = x.dstIndex(port);
       if (k >= 0 &&
