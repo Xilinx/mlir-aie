@@ -9,6 +9,7 @@ import shutil
 import time
 from pathlib import Path
 
+import aie.utils.configure as configure
 import numpy as np
 import pytest
 from aie.dialects.aiex import npu_address_patch
@@ -29,6 +30,7 @@ from aie.utils.compile.utils import _run_aiecc
 
 
 @pytest.mark.skipif(shutil.which("xclbinutil") is None, reason="xclbinutil")
+@pytest.mark.skipif(not os.path.isdir(configure.peano_install_dir), reason="Peano")
 @pytest.mark.parametrize("emit_shim", [False, True])
 def test_compile_mlir_module_writes_cpp_beside_device_outputs(tmp_path, emit_shim):
     cpp = tmp_path / "dispatch_gen.cpp"
