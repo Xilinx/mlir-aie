@@ -505,7 +505,7 @@ class Design:
                     if keep is not None:
                         attrs.append(f"keep_pkt_header = {str(keep).lower()}")
                     if ctrl:
-                        attrs.append("is_ctrl_pkt_overlay")
+                        attrs.append("aie.is_ctrl_pkt_overlay")
                     out.append(
                         f"      %m_{BUNDLES[port[0]]}_{port[1]} = aie.masterset("
                         f"{BUNDLES[port[0]]} : {port[1]}, "
@@ -522,9 +522,11 @@ class Design:
                     for (mask, value, name), tag in zip(rules, tagged):
                         out.append(
                             f"        aie.rule({mask}, {value}, %{name})"
-                            + (" {is_ctrl_pkt_overlay}" if tag else "")
+                            + (" {aie.is_ctrl_pkt_overlay}" if tag else "")
                         )
-                    out.append("      }" + (" {is_ctrl_pkt_overlay}" if ctrl else ""))
+                    out.append(
+                        "      }" + (" {aie.is_ctrl_pkt_overlay}" if ctrl else "")
+                    )
             out.append("    }")
         for (c, r), conns in sorted(self.muxes.items()):
             out.append(f"    %mux_{c}_{r} = aie.shim_mux(%t_{c}_{r}) {{")
@@ -878,7 +880,7 @@ def load_design(text):
                                 if "keep_pkt_header" in a
                                 else None
                             ),
-                            "is_ctrl_pkt_overlay" in a,
+                            "aie.is_ctrl_pkt_overlay" in a,
                         )
                     )
                 elif x.name == "aie.packet_rules":
@@ -893,13 +895,13 @@ def load_design(text):
                                     names.get(value_key(y.operands[0])),
                                 )
                             )
-                            tagged.append("is_ctrl_pkt_overlay" in ya)
+                            tagged.append("aie.is_ctrl_pkt_overlay" in ya)
                     out.append(
                         (
                             "rules",
                             (_int(a["source_bundle"]), _int(a["source_channel"])),
                             rules,
-                            "is_ctrl_pkt_overlay" in a,
+                            "aie.is_ctrl_pkt_overlay" in a,
                             tagged,
                         )
                     )
@@ -3734,19 +3736,20 @@ def verify(d, an, text, hops_on):
 
     keeps = last_keep(d)
     mixed_ctrl, low_priority, ctrl_used = set(), set(), set()
-    # Without a control-packet reload, a routing that cannot keep the overlay
-    # routes the prioritized flows as the others.
-    prioritized = d.reload or any(
-        op[4] for ops in out.boxes.values() for op in box_view(ops)[2].values()
-    )
-    # A source's packets with a priority flow's id route as that flow does.
-    prio_sent = {
-        (src, f["id"])
+
+    # The router marks a prioritized flow's hops as the control overlay's,
+    # whether or not it could route it first, but a control-packet reload
+    # configures one with no TileControl end with the rest of the design.
+    marked = [
+        bool(f["priority"])
+        and (not d.reload or any(e[2] == CTRL for e in f["srcs"] + f["dsts"]))
         for f in d.packet_flows
-        if f["priority"] and prioritized
-        for src in f["srcs"]
+    ]
+    # A source's packets with a marked flow's id route as that flow does.
+    prio_sent = {
+        (src, f["id"]) for f, m in zip(d.packet_flows, marked) if m for src in f["srcs"]
     }
-    for f in d.packet_flows:
+    for f, f_marked in zip(d.packet_flows, marked):
         for dst in f["dsts"]:
             for src in f["srcs"]:
                 hops = paths.get((src, dst, f["id"]))
@@ -3770,7 +3773,7 @@ def verify(d, an, text, hops_on):
                         )
                     if (src, f["id"]) in prio_sent:
                         ctrl_used.add((tile, m))
-                    if not (f["priority"] and prioritized):
+                    if not f_marked:
                         if ctrl:
                             mixed_ctrl.add((tile, m))
                         continue

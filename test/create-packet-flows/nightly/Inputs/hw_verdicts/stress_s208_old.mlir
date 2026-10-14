@@ -235,10 +235,10 @@ module {
     %switchbox_4_0 = aie.switchbox(%shim_noc_tile_4_0) {
       aie.connect<East : 2, South : 3>
       %0 = aie.amsel<5> (3)
-      %1 = aie.masterset(South : 0, %0) {is_ctrl_pkt_overlay, keep_pkt_header = true}
+      %1 = aie.masterset(South : 0, %0) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
       aie.packet_rules(TileControl : 0) {
-        aie.rule(31, 15, %0) {priority_route}
-      } {is_ctrl_pkt_overlay}
+        aie.rule(31, 15, %0) {aie.priority_route}
+      } {aie.is_ctrl_pkt_overlay}
     }
     %shim_mux_4_0 = aie.shim_mux(%shim_noc_tile_4_0) {
       aie.connect<North : 3, DMA : 1>
@@ -249,11 +249,11 @@ module {
       %1 = aie.amsel<1> (0)
       %2 = aie.amsel<5> (3)
       %3 = aie.masterset(South : 3, %1)
-      %4 = aie.masterset(South : 0, %2) {is_ctrl_pkt_overlay, keep_pkt_header = true}
+      %4 = aie.masterset(South : 0, %2) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
       %5 = aie.masterset(North : 1, %0)
       aie.packet_rules(TileControl : 0) {
-        aie.rule(31, 15, %2) {priority_route}
-      } {is_ctrl_pkt_overlay}
+        aie.rule(31, 15, %2) {aie.priority_route}
+      } {aie.is_ctrl_pkt_overlay}
       aie.packet_rules(South : 3) {
         aie.rule(31, 28, %0)
       }
