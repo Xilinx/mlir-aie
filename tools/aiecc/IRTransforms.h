@@ -51,10 +51,14 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/IR/InstIterator.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
@@ -1283,117 +1287,52 @@ struct CanonicalCoreIR {
 // external variable declarations it never uses, so cores that run one program
 // over different buffers print alike. Declared functions keep their names:
 // opt and llc recognize library calls by name. Returns nullopt for a module
-// that could name a symbol outside an `@` reference (assembly, comdats,
-// aliases), which is compiled as it is.
+// that could name a symbol outside a global reference (assembly, comdats,
+// aliases, ifuncs), which is compiled as it is.
 inline std::optional<CanonicalCoreIR> canonicalizeCoreIR(llvm::StringRef ir) {
-  for (llvm::StringRef unsafe : {" asm ", "module asm", "comdat", " alias ",
-                                 " ifunc ", canonicalGlobalPrefix.data()}) {
-    if (ir.contains(unsafe)) {
+  llvm::LLVMContext context;
+  llvm::SMDiagnostic error;
+  std::unique_ptr<llvm::Module> module =
+      llvm::parseIR(llvm::MemoryBufferRef(ir, "core"), error, context);
+  if (!module || !module->getModuleInlineAsm().empty() ||
+      !module->getComdatSymbolTable().empty() || !module->alias_empty() ||
+      !module->ifunc_empty())
+    return std::nullopt;
+  for (llvm::GlobalValue &value : module->global_values())
+    if (value.getName().starts_with(canonicalGlobalPrefix))
       return std::nullopt;
-    }
-  }
-  struct Ref {
-    size_t begin, end;
-    std::string symbol;
-  };
-  std::vector<Ref> refs;
-  llvm::StringMap<unsigned> uses;
-  auto isNameChar = [](char c) {
-    return std::isalnum(static_cast<unsigned char>(c)) || c == '-' ||
-           c == '$' || c == '.' || c == '_';
-  };
-  for (size_t i = 0; i < ir.size();) {
-    char c = ir[i];
-    if (c == ';') {
-      i = std::min(ir.find('\n', i), ir.size());
-    } else if (c == '"') {
-      i = std::min(ir.find('"', i + 1), ir.size() - 1) + 1;
-    } else if (c != '@') {
-      ++i;
-    } else if (i + 1 < ir.size() && ir[i + 1] == '"') {
-      size_t close = ir.find('"', i + 2);
-      if (close == llvm::StringRef::npos) {
+  for (llvm::Function &function : *module)
+    for (llvm::Instruction &inst : llvm::instructions(function))
+      if (auto *call = llvm::dyn_cast<llvm::CallBase>(&inst);
+          call && call->isInlineAsm())
         return std::nullopt;
-      }
-      std::string symbol;
-      llvm::StringRef quoted = ir.slice(i + 2, close);
-      for (size_t k = 0; k < quoted.size(); ++k) {
-        unsigned byte;
-        if (quoted[k] == '\\' && k + 2 < quoted.size() &&
-            !quoted.substr(k + 1, 2).getAsInteger(16, byte)) {
-          symbol.push_back(static_cast<char>(byte));
-          k += 2;
-        } else {
-          symbol.push_back(quoted[k]);
-        }
-      }
-      refs.push_back({i, close + 1, symbol});
-      ++uses[symbol];
-      i = close + 1;
-    } else {
-      size_t end = i + 1;
-      while (end < ir.size() && isNameChar(ir[end])) {
-        ++end;
-      }
-      refs.push_back({i, end, ir.slice(i + 1, end).str()});
-      ++uses[refs.back().symbol];
-      i = end;
-    }
-  }
 
-  // A module-level entity is named by the first reference on its line: a
-  // variable's line starts with it, a function's with `define`/`declare`.
-  std::vector<std::pair<size_t, size_t>> dropped;
-  llvm::StringSet<> renamed;
-  for (size_t r = 0; r < refs.size(); ++r) {
-    size_t lineBegin = ir.rfind('\n', refs[r].begin);
-    lineBegin = lineBegin == llvm::StringRef::npos ? 0 : lineBegin + 1;
-    if (r > 0 && refs[r - 1].begin >= lineBegin) {
-      continue;
-    }
-    llvm::StringRef head = ir.slice(lineBegin, refs[r].begin);
-    llvm::StringRef rest = ir.substr(refs[r].end).ltrim(" =");
-    llvm::StringRef symbol = refs[r].symbol;
-    if (symbol.starts_with("llvm.")) {
-      continue;
-    }
-    if (head.empty()) {
-      if (rest.starts_with("external ") && uses[symbol] == 1) {
-        size_t lineEnd = std::min(ir.find('\n', refs[r].end), ir.size() - 1);
-        dropped.emplace_back(lineBegin, lineEnd + 1);
-      } else if (!rest.starts_with("private ") &&
-                 !rest.starts_with("internal ")) {
-        renamed.insert(symbol);
-      }
-    } else if (head.starts_with("define ") && !head.contains(" private ") &&
-               !head.contains(" internal ")) {
-      renamed.insert(symbol);
-    }
-  }
+  for (llvm::GlobalVariable &variable :
+       llvm::make_early_inc_range(module->globals()))
+    if (variable.isDeclaration() && variable.use_empty())
+      variable.eraseFromParent();
 
   CanonicalCoreIR canonical;
-  llvm::StringMap<size_t> index;
-  size_t cursor = 0;
-  auto drop = dropped.begin();
-  for (const Ref &ref : refs) {
-    while (drop != dropped.end() && ref.begin >= drop->first) {
-      canonical.text += ir.slice(cursor, drop->first);
-      cursor = drop->second;
-      ++drop;
-    }
-    if (ref.begin < cursor || !renamed.contains(ref.symbol)) {
-      continue;
-    }
-    auto [it, fresh] = index.try_emplace(ref.symbol, canonical.names.size());
-    if (fresh) {
-      canonical.names.push_back(ref.symbol);
-    }
-    canonical.text += ir.slice(cursor, ref.begin);
-    canonical.text +=
-        ("@" + canonicalGlobalPrefix + llvm::Twine(it->second)).str();
-    cursor = ref.end;
-  }
-  canonical.text += ir.substr(cursor);
+  auto rename = [&](llvm::GlobalValue &value) {
+    if (!value.hasName() || value.hasLocalLinkage() ||
+        value.getName().starts_with("llvm."))
+      return;
+    canonical.names.push_back(value.getName().str());
+    value.setName(canonicalGlobalPrefix +
+                  llvm::Twine(canonical.names.size() - 1));
+  };
+  for (llvm::GlobalVariable &variable : module->globals())
+    rename(variable);
+  for (llvm::Function &function : *module)
+    if (!function.isDeclaration())
+      rename(function);
+
+  // Printed by aiecc's LLVM, read by Peano's older opt: downgrade the reprint
+  // as the in-process link does.
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  module->print(os, nullptr);
+  canonical.text = downgradeIRForPeano(text, /*stripAlign=*/false);
   return canonical;
 }
 
