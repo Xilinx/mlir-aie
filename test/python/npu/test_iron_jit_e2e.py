@@ -21,6 +21,8 @@ Coverage:
 - Correct output for each configuration
 - CompileTime[T] param missing → TypeError before any NPU interaction
 - Runtime tensor counts, including implicit trace buffers, match the compiled ABI
+- The runtime's device is bound before a call's cache lookup and as_mlir()'s
+  generation, and a cached kernel missing an artifact is rebuilt
 """
 
 from pathlib import Path
@@ -29,6 +31,7 @@ import numpy as np
 import pytest
 
 import aie.iron as iron
+import aie.utils as aie_utils
 from aie.iron import (
     CompileTime,
     In,
@@ -42,6 +45,7 @@ from aie.iron import (
     compileconfig,
 )
 from aie.iron.controlflow import range_
+from aie.utils.hostruntime import set_current_device
 
 # A real two-device design (one aie.device per PDI), used to exercise the
 # multi-PDI accessors against genuine aiecc output rather than fabricated files.
@@ -404,3 +408,103 @@ def test_get_pdi_paths_multi_device(tmp_path):
     assert pdi2.exists()
     assert pdi2.name == "design2.pdi"
     assert design2.get_pdi_path(device_name="design2") == pdi2
+
+
+# ---------------------------------------------------------------------------
+# Device binding and the in-process kernel cache
+# ---------------------------------------------------------------------------
+
+
+def test_call_binds_runtime_device_before_in_process_cache(input_array, N):
+    """A call with no bound device binds the runtime's before its cache lookup."""
+    seen = []
+
+    @iron.jit(N=N, add_value=4)
+    def add_four(
+        input_buf: In,
+        output_buf: Out,
+        *,
+        N: CompileTime[int],
+        add_value: CompileTime[int],
+    ):
+        seen.append(type(aie_utils.get_current_device(probe_runtime=False)).__name__)
+        return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
+
+    runtime_device = type(aie_utils.DefaultNPURuntime.device()).__name__
+    output = iron.zeros(N, dtype=np.int32, device="npu")
+    set_current_device(None)
+    try:
+        add_four(input_array, output)
+    finally:
+        set_current_device(None)
+
+    output.to("cpu")
+    np.testing.assert_array_equal(output.numpy(), input_array.numpy() + 4)
+    assert seen == [runtime_device]
+    key = next(iter(add_four._kernel_cache))
+    assert key[-1][0] == "device"
+    assert "__iron_device__" not in key[1]
+
+
+@pytest.mark.parametrize(
+    "artifact",
+    [lambda kernel: kernel.xclbin_path, lambda kernel: kernel.insts_path],
+    ids=["xclbin", "insts"],
+)
+def test_call_rebuilds_removed_cached_artifacts(input_array, N, artifact):
+    """A cached kernel whose xclbin or instructions were removed is rebuilt."""
+
+    @iron.jit(N=N, add_value=9)
+    def add_nine(
+        input_buf: In,
+        output_buf: Out,
+        *,
+        N: CompileTime[int],
+        add_value: CompileTime[int],
+    ):
+        return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
+
+    expected = input_array.numpy() + 9
+    first = iron.zeros(N, dtype=np.int32, device="npu")
+    add_nine(input_array, first)
+    first.to("cpu")
+    np.testing.assert_array_equal(first.numpy(), expected)
+    built = next(iter(add_nine._kernel_cache.values()))
+    Path(artifact(built)).unlink()
+
+    second = iron.zeros(N, dtype=np.int32, device="npu")
+    add_nine(input_array, second)
+    second.to("cpu")
+    np.testing.assert_array_equal(second.numpy(), expected)
+    rebuilt = next(iter(add_nine._kernel_cache.values()))
+    assert rebuilt is not built
+    assert Path(artifact(rebuilt)).exists()
+
+
+def test_as_mlir_binds_runtime_device_before_generation(N):
+    """Inspection follows the same device binding invariant as __call__."""
+    seen = []
+
+    @iron.jit(N=N, add_value=1)
+    def add_one(
+        input_buf: In,
+        output_buf: Out,
+        *,
+        N: CompileTime[int],
+        add_value: CompileTime[int],
+    ):
+        seen.append(type(aie_utils.get_current_device(probe_runtime=False)).__name__)
+        return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
+
+    runtime_device = type(aie_utils.DefaultNPURuntime.device()).__name__
+    set_current_device(None)
+    try:
+        mlir_text = add_one.as_mlir()
+    finally:
+        set_current_device(None)
+
+    assert seen == [runtime_device]
+    assert "aie.device" in mlir_text
+    keys = list(add_one.compilable._generated_cache)
+    assert len(keys) == 1
+    assert runtime_device in keys[0][2]

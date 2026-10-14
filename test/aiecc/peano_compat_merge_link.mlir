@@ -14,14 +14,14 @@
 // size-less `llvm.lifetime.*`.
 //
 // The whole peano path runs here, so Peano's own opt/llc decide.  Drop the
-// post-link downgrade and this fails at `opted_{0}.ll` with those errors.
+// post-link downgrade and this fails in Peano's opt with those errors.
 
 // REQUIRES: peano
 
 // RUN: rm -rf %t && mkdir -p %t
 // RUN: aiecc --tmpdir %t %s
 // RUN: FileCheck %s --check-prefix=LINKED --input-file %t/peano-linked_main_core_0_2.ll --implicit-check-not=nocreateundeforpoison --implicit-check-not=target_mem
-// RUN: FileCheck %s --check-prefix=OPTED --input-file %t/opted_main_core_0_2.ll --implicit-check-not=@merge_kernel
+// RUN: cat %t/peano-opted_canonical_*.ll | FileCheck %s --check-prefix=OPTED --implicit-check-not=@merge_kernel
 
 // The kernel arrived, and the merged text is back in a dialect Peano parses: no
 // unknown attribute (--implicit-check-not above) and lifetime markers carrying
@@ -46,8 +46,9 @@
 
 // Peano's opt then folds the alwaysinline kernel in and dead-strips the
 // linkonce_odr definition: no `@merge_kernel` survives (--implicit-check-not
-// above; the inliner's `merge_kernel.exit` label carries no `@`).
-// OPTED: define void @core_0_2
+// above; the inliner's `merge_kernel.exit` label carries no `@`). Opt runs on
+// the core's canonical module (see dedup_identical_cores.mlir).
+// OPTED: define void @__aiecc_canon_{{[0-9]+}}()
 
 module {
   aie.device(npu1_1col) {

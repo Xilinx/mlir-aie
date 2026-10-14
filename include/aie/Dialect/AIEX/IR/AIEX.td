@@ -886,7 +886,8 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
 }
 
@@ -919,7 +920,8 @@ def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
 }
 
@@ -948,7 +950,8 @@ def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", []> {
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
-    std::optional<uint32_t> getAbsoluteAddress();
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
 }
 
@@ -972,7 +975,9 @@ def AIE_NpuBlockWriteOp : AIEX_Op<"npu.blockwrite", []> {
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
   let extraClassDeclaration = [{
-    std::optional<uint32_t> getAbsoluteAddress();
+    // `names` resolves a referenced buffer without a scan of the device.
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
     mlir::DenseIntElementsAttr getDataWords();
   }];
 }
@@ -1218,7 +1223,9 @@ def AIE_NpuUpdateFromScratchpadOp : AIEX_Op<"npu.update_from_scratchpad", []> {
 
   }];
   let extraClassDeclaration = [{
-    std::optional<uint32_t> getAbsoluteAddress();
+    // `names` resolves a referenced buffer without a scan of the device.
+    std::optional<uint32_t>
+    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
   }];
   let hasVerifier = 1;
 }
@@ -1308,6 +1315,43 @@ def AIE_NpuLoadPdiOp : AIEX_Op<"npu.load_pdi", []> {
     The easiest workaround is to create an empty `aie.device(npu2) @empty {}` and load that before the main device load.
   }];
   let hasCanonicalizeMethod = 1;
+}
+
+def AIE_NpuWriteConfigOp
+    : AIEX_Op<"npu.write_config", [HasParent<"AIE::RuntimeSequenceOp">,
+                                   DeclareOpInterfaceMethods<
+                                       SymbolUserOpInterface>]> {
+  let summary = "Write a device's configuration as register writes";
+  let description = [{
+    Writes the configuration of `device_ref` (its cores' programs and its
+    switch, lock and DMA settings) as the register writes that load it, without
+    resetting the array first. The NPU translation emits the writes, generating
+    them once per device however many times the sequence writes it.
+    `aie-expand-load-pdi` places one after the reset it inserts for each
+    `load_pdi` it expands to writes.
+
+    The writes are generated when the sequence is translated, from
+    `device_ref` as it is then, so the core ELF files its cores name must still
+    be on disk. With `inline-config=true`, `aie-expand-load-pdi` writes them
+    into the sequence instead, and the IR no longer depends on those files.
+
+    The firmware resets the array when it loads an empty device's PDI, unless
+    that PDI is the one it loaded last. So the `load_pdi` before this op must
+    be of an empty device, and differ from the `load_pdi` before it. For the
+    sequence's first `load_pdi`, that is its last one: the host runs the
+    sequence again on each dispatch. An empty device may hold runtime sequences
+    with no ops, such as the `@configure` that `convert-aie-to-transaction`
+    adds.
+
+    Example:
+    ```
+      aiex.npu.load_pdi {device_ref = @empty_0}
+      aiex.npu.write_config @dev
+    ```
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$device_ref);
+  let assemblyFormat = [{ $device_ref attr-dict }];
+  let hasVerifier = 1;
 }
 
 def AIE_DMAConfigureTaskOp

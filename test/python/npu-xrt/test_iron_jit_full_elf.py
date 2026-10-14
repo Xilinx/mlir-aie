@@ -19,7 +19,9 @@ Coverage:
 - npu.load_pdi is generated when the runtime does not configure a device
 - AOT compile(full_elf_path=...) writes a single ELF and no xclbin/insts
 - Full-ELF result matches the same design on the default xclbin path
-- Trace on the full-ELF path
+- Trace on the full-ELF path, and a TraceConfig reused across both paths
+- A Program composing several device configurations compiles to a full ELF
+  without asking, and its kernel is reused from the in-process cache
 """
 
 import os
@@ -29,8 +31,11 @@ import pytest
 
 import aie.iron as iron
 from aie.iron import (
+    CompilableDesign,
     CompileTime,
+    DeviceConfiguration,
     In,
+    InOut,
     Out,
     ObjectFifo,
     Program,
@@ -38,8 +43,10 @@ from aie.iron import (
     Worker,
 )
 from aie.iron.controlflow import range_
+from aie.iron.device import NPU2Col1
 from aie.utils import tensor
 from aie.utils.trace import TraceConfig, parse_trace
+from aie.utils.trace.parse import DEFAULT_KERNEL
 
 _TILE_SIZE = 16
 
@@ -149,6 +156,7 @@ def add_const_full_elf_trace(
     N: CompileTime[int],
     add_value: CompileTime[int],
     trace_config: CompileTime[TraceConfig | None] = None,
+    runtime_name: CompileTime[str | None] = None,
 ):
     tile_ty = np.ndarray[(_TILE_SIZE,), np.dtype[np.int32]]
     tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
@@ -171,7 +179,11 @@ def add_const_full_elf_trace(
         in_h.fill(a)
         out_h.drain(b, wait=True)
 
-    rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
+        name=runtime_name,
+    )
     prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:
         prog.enable_trace(trace_config.trace_size, workers=[worker])
@@ -200,6 +212,130 @@ def test_full_elf_trace(trace_size):
     trace_buffer = trace_config.read_trace()
     trace_events = parse_trace(trace_buffer, physical_mlir_str)
     assert len(trace_events) > 0
+
+
+def test_reused_trace_config_follows_each_compile(tmp_path):
+    """A TraceConfig reused by a full-ELF design and then an xclbin one decodes
+    each against the kernel that design dispatched."""
+    ref = np.arange(_N, dtype=np.int32)
+    trace_config = TraceConfig(trace_size=8192)
+    for full_elf, runtime_name, kernel in (
+        (True, "traced", "main:traced"),
+        (False, None, DEFAULT_KERNEL),
+    ):
+        a = tensor(ref, dtype=np.int32)
+        c = tensor(np.zeros(_N, dtype=np.int32), dtype=np.int32)
+        add_const_full_elf_trace.specialize(full_elf=full_elf)(
+            a,
+            c,
+            N=_N,
+            add_value=4,
+            trace_config=trace_config,
+            runtime_name=runtime_name,
+        )
+        c.to("cpu")
+        np.testing.assert_array_equal(c.numpy(), ref + 4)
+        assert trace_config.kernel == kernel
+        assert trace_config.trace_to_json(
+            trace_config.physical_mlir_path, str(tmp_path / f"{kernel}.json")
+        )
+
+
+Chunk = np.ndarray[(4,), np.dtype[np.int32]]
+Whole = np.ndarray[(16,), np.dtype[np.int32]]
+
+
+def add_configuration(name, value):
+    """A configuration whose one core adds `value` to a 4-element chunk."""
+    input_fifo = ObjectFifo(Chunk, name=f"{name}_in")
+    output_fifo = ObjectFifo(Chunk, name=f"{name}_out")
+
+    def core(input_handle, output_handle):
+        input_element = input_handle.acquire(1)
+        output_element = output_handle.acquire(1)
+        for index in range_(4):
+            output_element[index] = input_element[index] + value
+        input_handle.release(1)
+        output_handle.release(1)
+
+    worker = Worker(core, [input_fifo.cons(), output_fifo.prod()])
+
+    def sequence(data, input_handle, output_handle):
+        input_handle.fill(data)
+        output_handle.drain(data, wait=True)
+
+    runtime = Runtime(
+        sequence,
+        [Chunk, input_fifo.prod(), output_fifo.cons()],
+        name=f"{name}_sequence",
+    )
+    configuration = DeviceConfiguration(
+        name, NPU2Col1(), workers=[worker], runtimes=[runtime]
+    )
+    return configuration, runtime
+
+
+_generations = []
+
+
+def reconfigure_add_program(data: InOut):
+    _generations.append(data)
+    add_two, add_two_sequence = add_configuration("add_two", 2)
+    add_three, add_three_sequence = add_configuration("add_three", 3)
+
+    def coordinator(whole):
+        with add_two.configure():
+            add_two_sequence.call(whole.window(0, (4,)))
+        with add_three.configure():
+            add_three_sequence.call(whole.window(4, (4,)))
+
+    entry = Runtime(coordinator, [Whole])
+    main = DeviceConfiguration("main", NPU2Col1(), runtimes=[entry])
+    return Program.compose([main, add_two, add_three], entry=entry).resolve_program()
+
+
+reconfigure_add = iron.jit(reconfigure_add_program)
+
+
+def test_composed_program_compiles_to_full_elf_once():
+    """Several device configurations need a full ELF, so the design becomes one
+    without asking, and a second call reuses the kernel the first built."""
+    expected = np.arange(16, dtype=np.int32)
+    expected[0:4] += 2
+    expected[4:8] += 3
+    kernels = []
+    for _ in range(2):
+        data = iron.arange(16, dtype=np.int32, device="npu")
+        reconfigure_add(data)
+        data.to("cpu")
+        np.testing.assert_array_equal(data.numpy(), expected)
+        kernels.append(list(reconfigure_add._kernel_cache.values()))
+    assert len(kernels[1]) == 1 and kernels[1][0] is kernels[0][0]
+    assert kernels[0][0].elf_path is not None
+
+
+def test_composed_program_served_from_cache_without_generating():
+    """A design that learned it needs a full ELF keeps that in its cache entry,
+    so a fresh design object finds the ELF without running the generator."""
+    CompilableDesign(reconfigure_add_program).compile()
+    generations = len(_generations)
+    design = CompilableDesign(reconfigure_add_program)
+    elf_path, insts = design.compile()
+    assert len(_generations) == generations
+    assert insts is None and elf_path.stat().st_size > 0
+    assert design.full_elf is True
+    assert design._full_elf_kernel_name == "main:sequence"
+
+
+def test_composed_program_takes_full_elf_path(tmp_path):
+    elf_path = tmp_path / "design.elf"
+    design = reconfigure_add.compilable.specialize()
+    assert design.compile(full_elf_path=elf_path) == (elf_path, None)
+    assert elf_path.stat().st_size > 0
+    with pytest.raises(ValueError, match="requires full-ELF compilation"):
+        design.compile(
+            xclbin_path=tmp_path / "design.xclbin", inst_path=tmp_path / "insts.bin"
+        )
 
 
 if __name__ == "__main__":

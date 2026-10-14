@@ -75,6 +75,18 @@ def AIE_DeviceOp
     static xilinx::AIE::DeviceOp getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol);
     static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
     static llvm::StringRef getDefaultDeviceName() { return "main"; }
+    // Visits each OpT the device holds outside its runtime sequences, which
+    // hold host-side ops alone.
+    template <typename OpT, typename FnT>
+    void walkOutsideRuntimeSequences(FnT &&fn) {
+      (*this)->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
+        if (llvm::isa<xilinx::AIE::RuntimeSequenceOp>(op))
+          return mlir::WalkResult::skip();
+        if (auto typed = llvm::dyn_cast<OpT>(op))
+          fn(typed);
+        return mlir::WalkResult::advance();
+      });
+    }
   }];
   let hasVerifier = 1;
 }
@@ -345,7 +357,8 @@ def AIE_ShimDMAOp
 }
 
 def AIE_CoreOp
-    : AIE_Op<"core", [IsFlowEndPoint, IsCoreTile, TileElement,
+    : AIE_Op<"core", [ParentOneOf<["DeviceOp", "::mlir::ModuleOp"]>,
+                      IsFlowEndPoint, IsCoreTile, TileElement,
                       AutomaticAllocationScope,
                       DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
       Results<(outs Index)> {
@@ -615,7 +628,8 @@ def AIE_ConnectOp
   }];
 }
 
-def AIE_FlowOp : AIE_Op<"flow", []> {
+def AIE_FlowOp
+    : AIE_Op<"flow", [ParentOneOf<["DeviceOp", "::mlir::ModuleOp"]>]> {
   let arguments = (ins Index:$source, WireBundle:$source_bundle,
       ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel, Index:$dest,
       WireBundle:$dest_bundle,
@@ -853,7 +867,8 @@ def AIE_PacketRuleOp : AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
 }
 
 def AIE_PacketFlowOp
-    : AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
+    : AIE_Op<"packet_flow", [ParentOneOf<["DeviceOp", "::mlir::ModuleOp"]>,
+                             SingleBlockImplicitTerminator<"EndOp">]> {
   let summary = "Packet switched flow";
   let description = [{
     A logical packet-switched flow between tiles.  During place and

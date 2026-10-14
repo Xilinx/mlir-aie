@@ -54,7 +54,8 @@ static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
 // block entry. That keeps the very first acquire of each unrolled loop body
 // (which legitimately re-establishes the window across the back-edge) while
 // dropping the intra-body re-acquires of locks whose element is still held.
-static void removeRedundantBinaryAcquires(DeviceOp device) {
+static bool removeRedundantBinaryAcquires(DeviceOp device) {
+  bool erased = false;
   device.walk([&](Block *block) {
     llvm::DenseSet<Value> held;
     SmallVector<UseLockOp> toErase;
@@ -76,7 +77,9 @@ static void removeRedundantBinaryAcquires(DeviceOp device) {
     for (UseLockOp op : toErase) {
       op.erase();
     }
+    erased |= !toErase.empty();
   });
+  return erased;
 }
 
 // Marks a loop already offered to the peeling trial below, so that neither the
@@ -94,6 +97,19 @@ static int64_t countRuntimeLockValues(Operation *op) {
     }
   });
   return count;
+}
+
+// Canonicalize, SCCP, canonicalize. The fold needs the folding patterns only:
+// region simplification walks every region of the device, runtime sequences
+// included, and the canonicalizes after this pass still run it.
+static OpPassManager buildFoldPipeline() {
+  GreedyRewriteConfig config;
+  config.setRegionSimplificationLevel(GreedySimplifyRegionLevel::Disabled);
+  OpPassManager pipeline(DeviceOp::getOperationName());
+  pipeline.addPass(mlir::createCanonicalizerPass(config));
+  pipeline.addPass(mlir::createSCCPPass());
+  pipeline.addPass(mlir::createCanonicalizerPass(config));
+  return pipeline;
 }
 
 struct AIEObjectFifoUnrollPass
@@ -121,10 +137,7 @@ struct AIEObjectFifoUnrollPass
   /// never unmarked while draining, so the number of rounds is bounded by the
   /// most objectFifo loops in any one core.
   LogicalResult peelObjectFifoLoops(DeviceOp device) {
-    OpPassManager foldPipeline(DeviceOp::getOperationName());
-    foldPipeline.addPass(mlir::createCanonicalizerPass());
-    foldPipeline.addPass(mlir::createSCCPPass());
-    foldPipeline.addPass(mlir::createCanonicalizerPass());
+    OpPassManager foldPipeline = buildFoldPipeline();
 
     IRRewriter rewriter(device.getContext());
     struct Trial {
@@ -288,10 +301,7 @@ struct AIEObjectFifoUnrollPass
     // exposes the constants, SCCP propagates them across any remainder loop
     // that survives a partial unroll, and a final canonicalize deletes the
     // now-dead counter arithmetic and iter_args.
-    OpPassManager foldPipeline(DeviceOp::getOperationName());
-    foldPipeline.addPass(mlir::createCanonicalizerPass());
-    foldPipeline.addPass(mlir::createSCCPPass());
-    foldPipeline.addPass(mlir::createCanonicalizerPass());
+    OpPassManager foldPipeline = buildFoldPipeline();
     if (failed(runPipeline(foldPipeline, device))) {
       return signalPassFailure();
     }
@@ -301,9 +311,12 @@ struct AIEObjectFifoUnrollPass
     }
 
     // With the window acquires now folded to concrete per-lock `Acquire` ops,
-    // drop the ones that re-acquire an already-held AIE1 binary lock, then run
-    // a final canonicalize to delete the constants they leave dead.
-    removeRedundantBinaryAcquires(device);
+    // drop the ones that re-acquire an already-held AIE1 binary lock. Only a
+    // drop leaves dead constants for a final canonicalize; the fold left the
+    // device canonical otherwise.
+    if (!removeRedundantBinaryAcquires(device)) {
+      return;
+    }
     OpPassManager cleanupPipeline(DeviceOp::getOperationName());
     cleanupPipeline.addPass(mlir::createCanonicalizerPass());
     if (failed(runPipeline(cleanupPipeline, device))) {
