@@ -394,6 +394,54 @@ void squeezeUnitDims(NdDmaPattern &pattern) {
   }
 }
 
+bool allConstant(AIE::DMABDOp op) {
+  if (op.getPadDimensions().has_value())
+    return false;
+  if (op.getOffset() && !op.getConstantOffset())
+    return false;
+  if (op.getLen() && !op.getConstantLen())
+    return false;
+  if (op.getMixedSizes().empty())
+    return false;
+  return llvm::all_of(op.getMixedSizes(),
+                      [](OpFoldResult s) {
+                        return getConstantIntValue(s).has_value();
+                      }) &&
+         llvm::all_of(op.getMixedStrides(), [](OpFoldResult s) {
+           return getConstantIntValue(s).has_value();
+         });
+}
+
+// Only called after allConstant(op) confirmed every size/stride resolves to
+// a constant, so the has_value() checks below are redundant in practice --
+// asserted rather than re-verified to keep that invariant visible here too.
+NdDmaPattern patternFromDmaBd(AIE::DMABDOp op) {
+  SmallVector<int64_t, kNdDmaDims> outerSizes;
+  SmallVector<int64_t, kNdDmaDims> outerStrides;
+  for (OpFoldResult s : op.getMixedSizes()) {
+    auto c = getConstantIntValue(s);
+    assert(c && "size must be constant (already checked by allConstant)");
+    outerSizes.push_back(*c);
+  }
+  for (OpFoldResult s : op.getMixedStrides()) {
+    auto c = getConstantIntValue(s);
+    assert(c && "stride must be constant (already checked by allConstant)");
+    outerStrides.push_back(*c);
+  }
+  while (outerSizes.size() < kNdDmaDims) {
+    outerSizes.insert(outerSizes.begin(), 1);
+    outerStrides.insert(outerStrides.begin(), 0);
+  }
+
+  NdDmaPattern pattern;
+  pattern.offsets.assign(outerSizes.size(), 0);
+  pattern.sizes = llvm::map_to_vector(llvm::reverse(outerSizes),
+                                      [](int64_t v) { return v; });
+  pattern.strides = llvm::map_to_vector(llvm::reverse(outerStrides),
+                                        [](int64_t v) { return v; });
+  return pattern;
+}
+
 } // namespace
 
 bool AIEX::patternPassesVerification(Operation *forOp,
@@ -513,4 +561,48 @@ AIEX::decomposeNdDmaPattern(Operation *forOp, BaseMemRefType referencedBufType,
 
   return decompose4d(forOp, referencedBufType, targetModel, tileCol, tileRow,
                      pattern);
+}
+
+FailureOr<TaskBdDecomposition>
+AIEX::decomposeTaskBdPattern(AIE::DMABDOp bd,
+                             const AIE::AIETargetModel &targetModel,
+                             int tileCol, int tileRow) {
+  if (!allConstant(bd))
+    return failure();
+  auto bufferType = cast<BaseMemRefType>(bd.getBuffer().getType());
+  // See contiguousAndFits for why only d3 can make one too long.
+  auto lowerable = [&](const NdDmaPattern &p) {
+    if (p.sizes.size() != kNdDmaDims)
+      return false;
+    if (isContiguousTransfer(p.sizes, p.strides))
+      return p.sizes[3] <= maxIterations(targetModel, tileCol, tileRow);
+    return patternPassesVerification(bd, bufferType, targetModel, tileCol,
+                                     tileRow, p);
+  };
+
+  TaskBdDecomposition plan;
+  plan.pass = patternFromDmaBd(bd);
+  if (lowerable(plan.pass)) {
+    plan.legal = true;
+    return plan;
+  }
+
+  // Outer iteration dimensions that re-read the same data only repeat what
+  // is inside them, as the task's repeat count does. They go, and a pass
+  // shrinks to what they repeat: where that is all the pattern needs it
+  // lowers as it is, and otherwise the pieces it splits into are restarted
+  // rather than configured once per repeat.
+  for (unsigned d = plan.pass.sizes.size();
+       d-- > 3 && (plan.pass.sizes[d] == 1 || plan.pass.strides[d] == 0);)
+    plan.pass.sizes[d] = 1;
+  if (lowerable(plan.pass)) {
+    plan.pieces = {plan.pass};
+    return plan;
+  }
+  FailureOr<SmallVector<NdDmaPattern>> pieces = decomposeNdDmaPattern(
+      bd, bufferType, plan.pass, targetModel, tileCol, tileRow);
+  if (succeeded(pieces))
+    plan.pieces =
+        std::move(*pieces); // NOLINT(bugprone-unchecked-optional-access)
+  return plan;
 }
