@@ -1374,6 +1374,22 @@ assert.equal(plural(2, 'day'), '2 days');
 """)
 
 
+def test_router_and_allocator_cards_chart_every_metric(page):
+    # Same spark mechanism as mobilenet's (placement_cost, us_per_image): one
+    # per metric cell, filled from history by fillSparks. Here just that the
+    # Map exists with the right keys; fillSparks itself is covered above.
+    page(COMPONENT_RUNS + MODEL_NIGHTS + """
+const routerIndex = { target: 'router', runs: [night('7', '2026-10-02T03:17:00Z', null)] };
+const routerCard = componentBand(router, routerIndex, routerRecord('7', '2026-10-02T03:17:00Z', 0), NOW);
+assert.deepEqual([...routerCard.cards[0].sparks.keys()],
+                 ['failed_properties', 'unrouted', 'survived_corruptions', 'hop_ratio', 'ms_per_design']);
+const allocatorIndex = { target: 'allocator', runs: [night('6', '2026-10-01T03:17:00Z', null)] };
+const allocatorCard = componentBand(allocator, allocatorIndex, allocatorRecord('6', '2026-10-01T03:17:00Z', 0.2434), NOW);
+assert.deepEqual([...allocatorCard.cards[0].sparks.keys()],
+                 ['failed_properties', 'unsolved', 'avoidable_crossings', 'wall_s']);
+""")
+
+
 def test_the_overview_has_a_tile_per_section_and_says_when_one_is_late(page):
     page(MOVED + RUNS + COMPONENT_RUNS + HW_NIGHTS + """
 const nightsNow = renderDashboard(['npu1'], db, new Map([['npu1', catalogue]]), new Map([['npu1', index]]), 3600 * 1000);
