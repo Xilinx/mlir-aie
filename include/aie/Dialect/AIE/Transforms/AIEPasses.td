@@ -57,8 +57,11 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
   let description = [{
     The sequential placer maps cores column-major and FIFO-connected Shim/Mem
     tiles nearby, allowing multiple logical tiles per physical tile.
-    It checks DMA demand; memory, locks and spill-dependent channel eligibility
-    are checked by `aie-objectfifo-allocate` after splitting. Allocation failures
+    It checks DMA demand, and among tiles with the DMA channels it prefers one
+    whose North/South stream ports still fit the merged ObjectFifos and, for a
+    Shim tile, whose buffer descriptors still fit the runtime-sequence tasks
+    live at once. Memory, locks and spill-dependent channel eligibility are
+    checked by `aie-objectfifo-allocate` after splitting. Allocation failures
     do not trigger re-placement or undo merges.
   }];
 
