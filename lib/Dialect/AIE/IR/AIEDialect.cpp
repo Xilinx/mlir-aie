@@ -2963,6 +2963,7 @@ LogicalResult AMSelOp::verify() {
     scheduled.insert({static_cast<int>(slot.getSlaveBundle()),
                       static_cast<int>(slot.getSlaveChannel())});
 
+  llvm::SmallSet<std::pair<int, int>, 8> fed;
   for (auto rules : switchbox.getOps<PacketRulesOp>()) {
     bool feedsThisArbiter = false;
     for (auto rule : rules.getRules().front().getOps<PacketRuleOp>())
@@ -2971,6 +2972,8 @@ LogicalResult AMSelOp::verify() {
         feedsThisArbiter = true;
     if (!feedsThisArbiter)
       continue;
+    fed.insert(
+        {static_cast<int>(rules.getSourceBundle()), rules.sourceIndex()});
     if (!scheduled.count(
             {static_cast<int>(rules.getSourceBundle()), rules.sourceIndex()}))
       return emitOpError("deterministic merge on arbiter ")
@@ -2979,6 +2982,18 @@ LogicalResult AMSelOp::verify() {
              << rules.sourceIndex()
              << ", which is routed to that arbiter and would never be granted";
   }
+
+  // The arbiter waits at each slot for its packets, so a slot whose slave no
+  // packet rules route to this arbiter stalls it there forever.
+  for (auto slot : *slots)
+    if (!fed.count({static_cast<int>(slot.getSlaveBundle()),
+                    static_cast<int>(slot.getSlaveChannel())}))
+      return emitOpError("deterministic merge on arbiter ")
+             << arbiterIndex() << " schedules slave port "
+             << stringifyWireBundle(slot.getSlaveBundle()) << " : "
+             << slot.getSlaveChannel()
+             << ", which no packet rules route to that arbiter, so the "
+                "arbiter would wait at that slot forever";
 
   return success();
 }

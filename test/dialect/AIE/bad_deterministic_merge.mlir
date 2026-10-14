@@ -104,3 +104,34 @@ module {
     }
   }
 }
+
+// -----
+
+// The arbiter waits at each slot for that slot's packets, so a slot whose
+// slave no packet rules route to the arbiter stalls it there forever.
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 3)
+    aie.switchbox(%t) {
+      // expected-error @+1 {{schedules slave port West : 0, which no packet rules route to that arbiter}}
+      %a0 = aie.amsel<0> (0) deterministic_merge [<North : 1, 1>, <West : 0, 1>]
+      aie.masterset(South : 1, %a0)
+      aie.packet_rules(North : 1) { aie.rule(31, 2, %a0) }
+    }
+  }
+}
+
+// -----
+
+// A port the stream switch does not have is never routed to the arbiter.
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 3)
+    aie.switchbox(%t) {
+      // expected-error @+1 {{schedules slave port NOC : 0, which no packet rules route to that arbiter}}
+      %a0 = aie.amsel<0> (0) deterministic_merge [<North : 1, 1>, <NOC : 0, 1>]
+      aie.masterset(South : 1, %a0)
+      aie.packet_rules(North : 1) { aie.rule(31, 2, %a0) }
+    }
+  }
+}
