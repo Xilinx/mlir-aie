@@ -1376,12 +1376,27 @@ def softmax_f32_bound(
     """Return the float path's per-element bound on ``|y - softmax_ref|``.
 
     Four bf16 roundings, 2^x's and ``aie::inv``'s errors and the sum's
-    float32 rounding, plus twice the logits' error: ``2^-21`` of the row's
-    largest kept logit, and the cap's tanh. Below ``2^-125`` an output may
-    be +0.
+    float32 rounding, plus twice the logits' error, ``2^-21`` of a kept
+    logit's size. Capped, that is the row's largest logit plus the cap's
+    tanh. Uncapped, the kernel centres the logits first, so the size is 128
+    (the logits near the max) or a logit whose ``x + addend`` or ``+ mask``
+    rounds in float32. Below ``2^-125`` an output may be +0.
     """
     z = _softmax_logits(x, addend, mask, tile_size=tile_size, soft_cap=soft_cap)
-    kept = np.where(z > -1e30, np.abs(z), 0.0)
+    if soft_cap is not None:
+        size = np.abs(z)
+    else:
+        rows = z.shape
+        s = _f64(x).reshape(rows)
+        if addend is not None:
+            s = s + _f64(addend).reshape(rows)
+        size = np.maximum(np.where(s.astype(np.float32) != s, np.abs(s), 0), 128.0)
+        if mask is not None:
+            sm = s.astype(np.float32).astype(np.float64) + _f64(mask).reshape(rows)
+            size = np.maximum(
+                size, np.where(sm.astype(np.float32) != sm, np.abs(sm), 0)
+            )
+    kept = np.where(z > -1e30, size, 0.0)
     logit = 2.0**-21 * kept.max(axis=1, keepdims=True)
     if soft_cap is not None:
         logit = logit + soft_cap * _SOFT_CAP_ERR
@@ -1408,7 +1423,8 @@ def softmax_f32_sample(
     with +/-32 and two near ties, the second is all 3e38 and the third leads
     with +/-2e38. The addend is uniform on [-8, 8]. A mask keeps a random
     leading run of at least one element and masks the tail with lowest and
-    -inf, and one kept element in eight with lowest.
+    -inf, and one kept element in eight with lowest; uncapped, the fourth row
+    is 2^127 and 2^127 - 2^104 under a mask of -2^127.
     """
     top = 400.0 if soft_cap is not None else 48.0
     spans = np.geomspace(4.0, top, calls)[:, None]
@@ -1428,5 +1444,9 @@ def softmax_f32_sample(
         m = np.where(cols[None, :] < keep[:, None], 0.0, lowest)
         m[:, 1::2] = np.where(m[:, 1::2] < 0, -np.inf, 0.0)
         m[:, 1:][rng.random((calls, tile_size - 1)) < 1 / 8] = lowest
+        if soft_cap is None and calls >= 4:
+            x[3] = 2.0**127 - 2.0**104
+            x[3, 0] = 2.0**127
+            m[3] = -(2.0**127)
         inputs.append(m.astype(bfloat16))
     return inputs

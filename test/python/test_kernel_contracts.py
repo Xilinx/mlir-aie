@@ -1741,21 +1741,50 @@ def test_softmax_float_input_builds_on_aie2():
 
 
 def test_softmax_f32_bound_holds_four_roundings_and_the_logits_per_row():
-    # One row of logits within 4 and one reaching 3e4: the second's float32
-    # roundings widen its bound, and the cap adds its tanh's error to both.
+    # Uncapped, only a logit float32 rounds widens the bound; the cap adds its
+    # tanh's error and the row's largest capped logit.
     x = np.zeros((2, 32), np.float32)
     x[0] = np.linspace(-4, 4, 32)
     x[1] = np.linspace(-3e4, 3e4, 32)
+    addend = np.full((2, 32), 0.1, np.float32)
+
     plain = softmax_f32_bound(x, tile_size=32) / kernels.softmax_ref(
         x, tile_size=32
+    ).clip(2.0**-125)
+    added = softmax_f32_bound(x, addend, tile_size=32) / kernels.softmax_ref(
+        x, addend, tile_size=32
     ).clip(2.0**-125)
     capped = softmax_f32_bound(x, tile_size=32, soft_cap=50.0) / kernels.softmax_ref(
         x, tile_size=32, soft_cap=50.0
     ).clip(2.0**-125)
     four = 4 * 2.0**-8
     assert four < plain[0].min() <= plain[0].max() < four * 1.01
-    assert plain[1, -1] > plain[0, -1] + 2 * 2.0**-21 * 2.9e4
-    assert np.isclose(capped[0, -1] - plain[0, -1], 2 * 50.0 * 5.95e-6, rtol=1e-3)
+    assert plain[1, -1] < four * 1.01
+    assert added[1, -1] > plain[1, -1] + 2 * 2.0**-21 * 2.9e4
+    largest = 50.0 * np.tanh(4 / 50.0)
+    cap_share = 2 * (50.0 * 5.9537e-6 + 2.0**-21 * (largest - 128))
+    assert np.isclose(capped[0, -1] - plain[0, -1], cap_share, rtol=1e-3)
+
+
+def test_softmax_f32_sample_uncapped_cancels_a_large_logit_with_its_mask():
+    # Once a uniform row: the mask was added after the centred logit clamped.
+    x, mask = kernels.softmax(32, input_dtype=np.float32, masked=True).contract.sample(
+        np.random.default_rng(0), 8
+    )
+    assert x[3, 0] == 2.0**127 and (x[3, 1:] == np.float32(2.0**127 - 2.0**104)).all()
+    assert (mask[3] == bfloat16(-(2.0**127))).all()
+
+
+def test_softmax_f32_bound_is_tight_for_a_centred_row_of_3e38():
+    # Centred, a constant 3e38 row is uniform within four roundings, so an
+    # all-zero output is refused.
+    x = np.full((1, 32), 3e38, np.float32)
+    ref = kernels.softmax_ref(x, tile_size=32)
+    bound = softmax_f32_bound(x, tile_size=32)
+    assert (bound < 0.02 * ref).all()
+    fn = kernels.softmax(32, input_dtype=np.float32)
+    zeros = np.zeros_like(ref, dtype=bfloat16)
+    assert not compare(zeros, ref, fn.contract.tolerance, bound=bound)
 
 
 def test_softmax_f32_bound_rejects_a_wrong_output_and_admits_masked_zeros():

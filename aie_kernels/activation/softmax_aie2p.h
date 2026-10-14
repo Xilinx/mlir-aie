@@ -289,7 +289,6 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
     }
     centre = aie::broadcast<float, SM_VEC_LEN>(aie::reduce_max(top));
   }
-  const auto big = aie::broadcast<float, SM_VEC_LEN>(0x1p126f);
   const auto neg_big = aie::broadcast<float, SM_VEC_LEN>(-0x1p126f);
 
   AIE_LOOP_MIN_ITERATION_COUNT(1)
@@ -336,23 +335,23 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
           aie::sub(aie::zeros<accfloat, SM_VEC_LEN>(), t.to_vector<float>())
               .to_vector<float>(),
           negative));
+      if (mask) {
+        const auto m = aie::load_v<SM_VEC_LEN>(mask + c);
+        z = aie::mac(z, m, log2e_limbs.hi);
+        z = aie::mac(z, m, log2e_limbs.mid);
+        z = aie::mac(z, m, log2e_limbs.lo);
+      }
     } else {
-      // Clamped to +-2^126 by the bits: -inf where x - centre overflows, and
-      // a masked element's own x may lie far above the centre.
+      // The same s + mask as the pre-pass, so t <= 0; -inf where it
+      // overflows is clamped to -2^126 by the bits.
+      if (mask)
+        s = aie::add(s, aie::load_v<SM_VEC_LEN>(mask + c));
       auto t = aie::sub(s, centre).to_vector<float>();
-      t = aie::select(t, big,
-                      aie::gt(t.cast_to<int32_t>(), big.cast_to<int32_t>()));
       t = aie::select(
           t, neg_big,
           aie::gt(t.cast_to<uint32_t>(), neg_big.cast_to<uint32_t>()));
       z = mac_limbs(aie::zeros<accfloat, SM_VEC_LEN>(), bf16_limbs(Acc(t)),
                     log2e_limbs);
-    }
-    if (mask) {
-      const auto m = aie::load_v<SM_VEC_LEN>(mask + c);
-      z = aie::mac(z, m, log2e_limbs.hi);
-      z = aie::mac(z, m, log2e_limbs.mid);
-      z = aie::mac(z, m, log2e_limbs.lo);
     }
     // lowest * log2(e) is -inf, which the limbs would turn into NaN: clamp to
     // lowest, whose 2^x is 0.
