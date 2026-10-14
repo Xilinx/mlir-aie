@@ -888,8 +888,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         whole: ['python test/create-packet-flows/nightly/router_properties.py --device npu2 --seeds 2000 --first-seed N',
                 'python utils/router_testing/router_mutation.py --device npu2 --seeds 400 --first-seed N [--hops-off]',
                 '# and the same on npu1, and on xcvc1902 with a quarter of the seeds'].join('\n'),
-        failedId: /^(\w+)\/(properties|hops-on|hops-off)\/seed=(\d+)\+(\d+)\/(.+)$/,
-        repro: (device, run, first = 'N', count = 2000, what = '') => {
+        // A script's failure, or a test of the nightly lit suite (`lit/<path>`).
+        failedId: /^(?:(\w+)\/(properties|hops-on|hops-off)\/seed=(\d+)\+(\d+)\/(.+)|lit\/(.+))$/,
+        repro: (device, run, first = 'N', count = 2000, what = '', test) => {
+          if (test) return `lit -sv -D router_nightly=1 build/test/${test}`;
           if (!device || run === 'properties') {
             return `python test/create-packet-flows/nightly/router_properties.py --device ${device || 'npu2'} --seeds ${count} --first-seed ${first}`;
           }
@@ -898,7 +900,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           return `python utils/router_testing/router_mutation.py --device ${device}${run === 'hops-off' ? ' --hops-off' : ''} `
             + `--seeds ${count} --first-seed ${first} --only ${only} -v`;
         },
-        say: (device, run, first, count, what) => run === 'properties' ? `${device} ${what}` : `${device} ${run.replace('-', ' ')} ${what} (seed ${first})`,
+        say: (device, run, first, count, what, test) => test ? `lit ${test}`
+          : run === 'properties' ? `${device} ${what}` : `${device} ${run.replace('-', ' ')} ${what} (seed ${first})`,
         cards: routerCards, charts: () => [], summary: routerSummary },
       { id: 'allocator', section: 'placement', title: 'Buffer allocator model-based tests', short: 'Buffer allocator', failure: 'property',
         passed: 'Every property held.',

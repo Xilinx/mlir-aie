@@ -1324,6 +1324,22 @@ assert.equal(one(quiet, n => n.tag === 'pre').text.split('\\n')[1],
 """)
 
 
+def test_a_failed_nightly_lit_test_names_the_test_and_its_lit_command(page):
+    page(COMPONENT_RUNS + MODEL_NIGHTS + """
+const failed = ['lit/create-packet-flows/nightly/hw_verdicts.py'];
+const latest = routerRecord('8', '2026-10-03T03:17:00Z', 0, { failed });
+const index = { target: 'router', runs: [night('8', latest.date, null, { failed })] };
+const card = componentBand(router, index, latest, NOW);
+assert.equal(card.className, 'verdict bad');
+assert.equal(one(card, n => n.className === 'headline').text,
+             '1 check failed: lit create-packet-flows/nightly/hw_verdicts.py.');
+assert.deepEqual(one(one(card, n => n.className === 'repro'), n => n.tag === 'pre').text.split('\\n').slice(0, 2), [
+  'git checkout abcdef123456',
+  'lit -sv -D router_nightly=1 build/test/create-packet-flows/nightly/hw_verdicts.py',
+]);
+""")
+
+
 def test_the_allocator_band_names_its_failed_properties_under_placement(page):
     page(COMPONENT_RUNS + MODEL_NIGHTS + """
 assert.equal(allocator.section, 'placement');

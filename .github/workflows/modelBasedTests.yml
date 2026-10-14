@@ -179,7 +179,8 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 30
         run: |
-          lit -sv -D router_nightly=1 build_release/test/create-packet-flows/nightly
+          lit -sv -D router_nightly=1 -o results/router/reports/lit.json \
+            build_release/test/create-packet-flows/nightly
 
       # Each script exits nonzero on any REGRESSION line. Failing designs are
       # saved under results/router/failures/ for the artifact below. A design
@@ -240,6 +241,7 @@ jobs:
             done
           done
           python utils/component_checks/model_based.py router "${reports[@]}" \
+            --lit results/router/reports/lit.json \
             --out results/router/perf.json --meta results/router/meta.json || status=1
           exit "${status:-0}"
 

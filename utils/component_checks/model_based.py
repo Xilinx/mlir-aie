@@ -20,9 +20,10 @@ Every metric is smaller-is-better. A failed id names what to run again: an
 allocator property by name; a router property as
 ``<device>/properties/seed=<first>+<count>/<property>``; a mutation failure,
 the first seed of each kind, as
-``<device>/hops-<on|off>/seed=<seed>+1/<kind> <name> <outcome>``. A report
-that is missing (its script crashed before writing it) fails as
-``<file stem>: no report``.
+``<device>/hops-<on|off>/seed=<seed>+1/<kind> <name> <outcome>``; a test of
+the router's nightly lit suite, whose results ``--lit`` reads from lit's
+``-o`` JSON, as ``lit/<test path>``. A report that is missing (its script
+crashed before writing it) fails as ``<file stem>: no report``.
 """
 
 import argparse
@@ -39,6 +40,7 @@ ALLOCATOR_COUNTS = {
     "bank_pair_sharing": "pairs",
     "wall_s": "s",
 }
+LIT_FAILURES = {"FAIL", "XPASS", "UNRESOLVED", "TIMEOUT"}
 ROUTER_COUNTS = {
     "unrouted": "routings",
     "illegal": "routings",
@@ -70,10 +72,23 @@ def allocator(reports: dict[str, dict | None]) -> tuple[list, list, list]:
     return rows, failed, detail
 
 
-def router(reports: dict[str, dict | None]) -> tuple[list, list, list]:
+def router(
+    reports: dict[str, dict | None], lits: dict[str, dict | None]
+) -> tuple[list, list, list]:
     """Return the router's rows, failed ids and detail, a case per device."""
     cases: dict[str, dict] = {}
     failed, detail = [], []
+    for stem, lit in lits.items():
+        if lit is None:
+            failed.append(f"{stem}: no report")
+            continue
+        bad = [
+            t["name"].split(" :: ", 1)[-1]
+            for t in lit["tests"]
+            if t["code"] in LIT_FAILURES
+        ]
+        failed += [f"lit/{name}" for name in bad]
+        detail.append({"run": "lit", "tests": len(lit["tests"]), "failed": bad})
     for stem, report in reports.items():
         if report is None:
             failed.append(f"{stem}: no report")
@@ -140,13 +155,22 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--report", action="append", required=True, type=Path, help="repeatable"
     )
+    parser.add_argument(
+        "--lit",
+        action="append",
+        default=[],
+        type=Path,
+        help="lit -o results of the router's nightly lit suite; repeatable",
+    )
     parser.add_argument("--out", required=True, help="perf.json to write")
     parser.add_argument("--meta", required=True, help="meta.json to write")
     args = parser.parse_args(argv)
 
     reports = {path.stem: read(path) for path in args.report}
-    collect = allocator if args.check == "allocator" else router
-    rows, failed, detail = collect(reports)
+    if args.check == "allocator":
+        rows, failed, detail = allocator(reports)
+    else:
+        rows, failed, detail = router(reports, {p.stem: read(p) for p in args.lit})
     for line in failed:
         print("FAILED:", line)
     with open(args.out, "w") as f:

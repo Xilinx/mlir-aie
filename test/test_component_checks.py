@@ -280,9 +280,10 @@ def test_a_replayed_placement_matches_placing_the_design(hw, aie_opt):
     assert hw.place_seed(runs[2:], aie_opt, str(SMALL))["placement_cost"] is None
 
 
-def collect(tmp_path, check, *reports):
+def collect(tmp_path, check, *reports, lits=()):
     out, meta = tmp_path / "perf.json", tmp_path / "meta.json"
     args = [arg for report in reports for arg in ("--report", report)]
+    args += [arg for lit in lits for arg in ("--lit", lit)]
     result = subprocess.run(
         [sys.executable, CHECKS / "model_based.py", check, *map(str, args)]
         + ["--out", out, "--meta", meta],
@@ -291,6 +292,40 @@ def collect(tmp_path, check, *reports):
     )
     rows = {r["name"]: (r["value"], r["unit"]) for r in json.loads(out.read_text())}
     return result, rows, json.loads(meta.read_text())
+
+
+def test_a_failed_nightly_lit_test_fails_the_router_check(tmp_path):
+    suite = tmp_path / "suite"
+    suite.mkdir()
+    (suite / "lit.cfg.py").write_text(
+        "import lit.formats\n"
+        'config.name = "AIE_TEST"\n'
+        "config.test_format = lit.formats.ShTest()\n"
+        'config.suffixes = [".mlir"]\n'
+    )
+    (suite / "routes.mlir").write_text("// RUN: true\n")
+    (suite / "hw_verdicts.mlir").write_text("// RUN: false\n")
+    results = tmp_path / "lit.json"
+    run = subprocess.run(
+        [sys.executable, "-c", "from lit.main import main; main()"]
+        + ["-q", "-o", str(results), str(suite)],
+        capture_output=True,
+    )
+    assert run.returncode == 1, run.stderr
+
+    result, rows, meta = collect(
+        tmp_path,
+        "router",
+        tmp_path / "npu1-hops-on.json",
+        lits=(results, tmp_path / "lit-rerun.json"),
+    )
+    assert result.returncode == 1
+    assert meta["failed"] == [
+        "lit/hw_verdicts.mlir",
+        "lit-rerun: no report",
+        "npu1-hops-on: no report",
+    ]
+    assert {"run": "lit", "tests": 2, "failed": ["hw_verdicts.mlir"]} in meta["detail"]
 
 
 def test_the_router_reports_become_a_case_per_device(aie_opt, tmp_path):
