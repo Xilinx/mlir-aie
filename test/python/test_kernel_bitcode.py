@@ -11,8 +11,8 @@ recipe) are in test_kernel_bitcode_host.py; no NPU needed.
 
 import os
 from pathlib import Path
-import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -197,7 +197,8 @@ class KernelBitcodeTest(unittest.TestCase):
             self.output.write_bytes(b"object without bitcode")
             bitcode = Path(f"{self.output}.bc")
             bitcode.write_bytes(b"unattached IR")
-            os.environ["AIE_OBJCOPY_PATH"] = shutil.which("false")
+            # An executable on every host that fails on objcopy's arguments.
+            os.environ["AIE_OBJCOPY_PATH"] = sys.executable
             with self.assertRaisesRegex(RuntimeError, "attach bitcode"):
                 self.compile(embed_bitcode=True)
             self.assertFalse(self.output.exists())
