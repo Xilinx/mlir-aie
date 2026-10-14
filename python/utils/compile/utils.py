@@ -142,24 +142,28 @@ def _kernel_pch(pch_cmd: list[str]) -> str | None:
 
     with _PCH_BUILD_LOCKS_GUARD:
         lock = _PCH_BUILD_LOCKS.setdefault(key, threading.Lock())
-    with lock:
+    # A build takes seconds; one held this long is stuck, and a PCH is an
+    # optimisation, so every wait is bounded and ends in compiling without it.
+    if not lock.acquire(timeout=_PCH_LOCK_TIMEOUT_SECONDS):
+        return None
+    try:
         if pch.exists():
             return str(pch)
-        try:
-            with file_lock(
-                str(cache / f"{key}.lock"),
-                timeout_seconds=_PCH_LOCK_TIMEOUT_SECONDS,
-            ):
-                if pch.exists():
-                    return str(pch)
-                return _build_kernel_pch(pch_cmd, cache, key, pch)
-        except (TimeoutError, OSError):
-            # A build takes seconds; one held this long is stuck, and a PCH is
-            # an optimisation, so compile without it.
-            return None
+        with file_lock(
+            str(cache / f"{key}.lock"),
+            timeout_seconds=_PCH_LOCK_TIMEOUT_SECONDS,
+        ):
+            if pch.exists():
+                return str(pch)
+            return _build_kernel_pch(pch_cmd, cache, key, pch)
+    except (TimeoutError, OSError):
+        return None
+    finally:
+        lock.release()
 
 
 _PCH_LOCK_TIMEOUT_SECONDS = 30
+_PCH_BUILD_TIMEOUT_SECONDS = 120
 _PCH_BUILD_LOCKS: dict[str, threading.Lock] = {}
 _PCH_BUILD_LOCKS_GUARD = threading.Lock()
 
@@ -183,6 +187,7 @@ def _build_kernel_pch(
             cwd=cache,
             capture_output=True,
             check=False,
+            timeout=_PCH_BUILD_TIMEOUT_SECONDS,
         )
         if ret.returncode != 0 or not os.path.getsize(tmp_path):
             logger.debug(
@@ -192,7 +197,7 @@ def _build_kernel_pch(
             return None
         os.replace(tmp_path, pch)
         tmp_path = None
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return None
     finally:
         # Nothing else ever names this file, so an early return would strand it
