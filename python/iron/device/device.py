@@ -68,6 +68,21 @@ class Device(Resolvable):
         return self._tm.get_local_memory_size()
 
     @property
+    def core_memory_banks(self) -> int:
+        """Banks a compute tile's data memory is divided into, as the buffer allocator places buffers.
+
+        These are the programmer's banks. On AIE2 and AIE2P each is two
+        hardware banks interleaved (AM020, AM027: eight hardware banks of
+        8 KB present four of 16 KB).
+        """
+        return self._tm.get_num_banks(0, self.core_rows[0])
+
+    @property
+    def core_memory_bank_bytes(self) -> int:
+        """Bytes in one of `core_memory_banks`."""
+        return self.core_memory_bytes // self.core_memory_banks
+
+    @property
     def default_core_stack_bytes(self) -> int:
         """Stack a Worker gets when nothing it calls declares a larger need."""
         return self._tm.get_default_core_stack_size()

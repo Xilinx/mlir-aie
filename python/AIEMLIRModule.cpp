@@ -356,6 +356,10 @@ NB_MODULE(_aie, m) {
            [](PyAieTargetModel &self) {
              return aieTargetModelGetMemTileSize(self.get());
            })
+      .def("get_num_banks",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetNumBanks(self.get(), col, row);
+           })
       .def("get_num_dest_switchbox_connections",
            [](PyAieTargetModel &self, int col, int row, uint32_t bundle) {
              return aieTargetModelGetNumDestSwitchboxConnections(
