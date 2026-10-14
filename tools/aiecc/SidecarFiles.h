@@ -18,6 +18,7 @@
 #include "IRTransforms.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "llvm/ADT/DenseSet.h"
@@ -102,9 +103,9 @@ inline constexpr int kMinHostBOs = 5;
 // are unvalidated and rejected.
 inline constexpr int kMaxHostBOs = 16;
 
-// Argument count of `dev`'s selected non-empty runtime sequence, or nullopt.
-// A non-empty `seqFilter` (--sequence-name) restricts the choice to that
-// sequence, matching the instruction/control-packet paths.
+// The host buffer count of `dev`'s selected non-empty runtime sequence, or
+// nullopt. A non-empty `seqFilter` (--sequence-name) restricts the choice to
+// that sequence, matching the instruction/control-packet paths.
 inline std::optional<int>
 getRuntimeSequenceArgCount(xilinx::AIE::DeviceOp dev,
                            llvm::StringRef seqFilter) {
@@ -112,7 +113,8 @@ getRuntimeSequenceArgCount(xilinx::AIE::DeviceOp dev,
     if (!seqFilter.empty() && seqOp.getSymName() != seqFilter)
       continue;
     if (!seqOp.getBody().empty())
-      return static_cast<int>(seqOp.getBody().front().getNumArguments());
+      return static_cast<int>(
+          xilinx::AIEX::getHostBufferCount(seqOp.getBody().front()));
   }
   return std::nullopt;
 }
@@ -244,9 +246,9 @@ inline llvm::json::Value makePartitionJson(xilinx::AIE::DeviceOp devOp,
 
 // Patch-info JSON for external buffers (the runtime control-packet buffer).
 // Consumed by aiebu via the `patch_info_file` field in the full-ELF
-// config JSON. `ctrlPktArgIdx` is the runtime-sequence argument slot the
-// control-packet buffer occupies (the sequence's pre-lowering argument count,
-// since ctrl-packet-to-DMA appends the ctrl buffer as the next argument).
+// config JSON. `ctrlPktArgIdx` is the host buffer slot the control-packet
+// buffer occupies: ctrl-packet-to-DMA appends it after the sequence's own
+// arguments, so the slot is the sequence's host buffer count.
 inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
                                            int64_t ctrlPktSizeBytes) {
   using O = llvm::json::Object;
@@ -299,8 +301,8 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
     int argCount = 3;
     devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
       if (!seq.getBody().empty())
-        argCount =
-            std::max<int>(argCount, seq.getBody().front().getNumArguments());
+        argCount = std::max<int>(
+            argCount, xilinx::AIEX::getHostBufferCount(seq.getBody().front()));
     });
     llvm::json::Array arguments;
     for (int i = 0; i < argCount; ++i)
@@ -357,10 +359,8 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
 // external_buffers.json patch fed to `aiebu-asm -t aie2txn -j` (or the
 // in-memory `aiebu_assembler_get_elf` patch argument) when assembling a
 // combined control-packet ELF. Describes the runtime control-packet buffer:
-// `xrt_id` is the control buffer's argument slot (the runtime sequence's
-// pre-lowering argument count, since ctrl-packet-to-DMA appends the ctrl
-// buffer as the next argument) and `size_in_bytes` is the control-packet
-// binary size.
+// `xrt_id` is its slot, as for makePatchInfoJson, and `size_in_bytes` the
+// control-packet binary size.
 inline llvm::json::Value makeCtrlpktExtBufJson(xilinx::AIE::DeviceOp devOp,
                                                uint64_t ctrlPktSize,
                                                llvm::StringRef seqFilter) {

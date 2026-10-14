@@ -1266,7 +1266,7 @@ def test_norm_tail_and_vector_constraints(kernel_arch):
     assert kernels.rms_norm(cols=33).contract.setup is expected_setup
     x = np.ones((2, 33), dtype=bfloat16)
     np.testing.assert_array_equal(
-        fn.contract.reference(x, 0.5), kernels.rms_norm_ref(x, eps=0.5)
+        fn.contract_for().reference(x, 0.5), kernels.rms_norm_ref(x, eps=0.5)
     )
     for cols in (16, 208):
         assert kernels.layer_norm(cols=cols).arg_shape(0) == (cols,)
@@ -1308,13 +1308,13 @@ def test_sized_factory_contracts(name, kernel_arch):
     binary = name in ("add_sized", "mul_sized")
     assert fn.contract.roles == ((In, In, Out, Param) if binary else (In, Out, Param))
     assert fn.contract.parameter_bindings == ((3 if binary else 2, 1024),)
-    assert fn.contract.tolerance.note
+    assert fn.contract_for().tolerance.note
     inputs = [np.ones(1024, dtype=bfloat16)] * (2 if binary else 1)
     reference_name = name.replace("_sized", "_ref")
     if name == "silu_sized" and kernel_arch == "aie2":
         reference_name = "silu_table_ref"
     expected = getattr(kernels, reference_name)(*inputs)
-    np.testing.assert_array_equal(fn.contract.reference(*inputs), expected)
+    np.testing.assert_array_equal(fn.contract_for().reference(*inputs), expected)
     with pytest.raises(ValueError):
         getattr(kernels, name)(tile_size=0)
     if binary:
