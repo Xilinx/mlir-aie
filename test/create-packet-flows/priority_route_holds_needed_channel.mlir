@@ -84,12 +84,12 @@ module {
 
 // -----
 
-// A control-packet reload keeps the route the control overlay takes alone, up
-// the column to every tile's TileControl, which holds one of the channels up
-// from (0,1) to (0,2) the six circuit flows need.
+// The control overlay goes up the column to every tile's TileControl, so it
+// takes one of the six channels up from (0,1) to (0,2) the six circuit flows
+// need, wherever a control-packet reload would let it go.
 
 module {
-  // expected-error@+1 {{Unable to find a legal routing: packet flows from (0, 0) DMA:0 are prioritized (priority_route) in a design a control-packet reload configures (has_ctrl_pkt_overlay), so they keep the route they take alone, as in @ctrl_pkt_overlay, and it holds a channel from tile (0, 1) to (0, 2) the other flows need.}}
+  // expected-error@+1 {{Unable to find a legal routing: the circuit flows from (0, 1) DMA:0, (0, 1) DMA:1, (0, 1) DMA:2, (0, 1) DMA:3 and 2 more, with packet flows, cross from row 1 to row 2, which takes 7 channels across, and it has 6.}}
   aie.device(npu2_1col) {
     %t_0_0 = aie.tile(0, 0)
     %t_0_1 = aie.tile(0, 1)

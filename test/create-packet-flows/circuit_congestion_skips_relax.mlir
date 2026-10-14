@@ -10,11 +10,12 @@
 
 // Five circuit flows need the four links from (0,2) down to the memtile. The
 // packet flows take other links, so loosening how they are routed cannot help,
-// and the router reports the failure without searching again.
+// and the router reports the failure without searching again: before routing
+// at all, as the five cannot fit the four however they are routed.
 
 // CHECK: No packet stream crosses an overused link
 // CHECK-NOT: Relax:
-// CHECK: error: Unable to find a legal routing: the flows from (0, 2) Core:0, (0, 2) DMA:0, (0, 2) DMA:1, (0, 3) DMA:0 and 1 more need the links from tile (0, 2) to (0, 1)
+// CHECK: error: Unable to find a legal routing: the circuit flows from (0, 2) Core:0, (0, 2) DMA:0, (0, 2) DMA:1, (0, 3) DMA:0 and 1 more cross from row 2 to row 1, which takes 5 channels across, and it has 4.
 
 module {
   aie.device(npu1_1col) {

@@ -437,6 +437,9 @@ private:
   int applyRoutingFaults(RouteState &st, const RoutingFaults &faults);
   // A RoutingFailure saying why the last iteration's routing does not fit.
   llvm::Error explainNoRouting(const RouteState &st) const;
+  // A RoutingFailure if the flows crossing some row or column boundary need
+  // more channels across it than it has, however they are routed.
+  llvm::Error cutOverflow() const;
   bool hasRoom(const SwitchboxConnect &sb) const;
   // The steps of relax.
   bool shareAllChannels();
@@ -488,6 +491,11 @@ private:
   // Trees that share destinations no longer meet (see TreeBuilder::meet), so
   // what is left of their hazard is a hold cycle through those receivers.
   bool meetApart = false;
+  // Whether a tree met another in any attempt, so stopping meeting can change
+  // anything.
+  bool treesMet = false;
+  // The device's columns and rows; the graph has tiles one past each.
+  int columns = 0, rows = 0;
   size_t relaxStep = 0;
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
 };

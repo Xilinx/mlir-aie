@@ -278,6 +278,8 @@ void Pathfinder::initialize(int maxCol, int maxRow,
   priorityIds.clear();
   flowLocs.clear();
   graphBuilt = false;
+  columns = maxCol;
+  rows = maxRow;
   nodeIds.clear();
   nodes.clear();
   adjacency.clear();
@@ -471,7 +473,7 @@ bool Pathfinder::splitSharedIds() {
 // The steps before it bent the routing around the meetings, so the ladder
 // starts over without them.
 bool Pathfinder::stopMeeting() {
-  if (meetApart)
+  if (meetApart || !treesMet)
     return false;
   meetApart = true;
   shareChannels = idsApart = splitShared = false;
@@ -1270,6 +1272,64 @@ llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
       ", and the router found no routing that fits them.");
 }
 
+llvm::Error Pathfinder::cutOverflow() const {
+  // A circuit flow from one side of a boundary to a destination on the other
+  // takes a channel across it of its own, and the packet flows crossing take
+  // at least one more between them. The channels a fixed connection holds
+  // are left in, so this only finds what no routing can fit. A channel counts
+  // only if its tile's crossbar can drive it.
+  auto onDevice = [&](TileID t) { return t.col < columns && t.row < rows; };
+  std::map<std::tuple<bool, int, bool>, size_t> channels;
+  for (const auto &[ends, sb] : graph) {
+    const auto &[a, b] = ends;
+    auto xbar = graph.find({a, a});
+    if (a == b || !onDevice(a) || !onDevice(b) || xbar == graph.end())
+      continue;
+    bool rows = a.col == b.col;
+    int below = rows ? std::min(a.row, b.row) : std::min(a.col, b.col);
+    bool up = rows ? b.row > a.row : b.col > a.col;
+    const SwitchboxConnect &x = xbar->second;
+    for (Port port : sb.srcPorts) {
+      int k = x.dstIndex(port);
+      if (k >= 0 &&
+          llvm::any_of(llvm::seq<size_t>(0, x.srcPorts.size()),
+                       [&](size_t i) { return x.at(i, k).available; }))
+        channels[{rows, below, up}]++;
+    }
+  }
+  for (const auto &[cut, available] : channels) {
+    bool rows = std::get<0>(cut), up = std::get<2>(cut);
+    int below = std::get<1>(cut);
+    auto low = [&](TileID t) { return (rows ? t.row : t.col) <= below; };
+    std::vector<std::string> circuits;
+    bool packets = false;
+    for (const Flow &f : flows) {
+      if (low(f.src.coords) != up ||
+          llvm::none_of(f.dsts, [&](const PathEndPoint &d) {
+            return low(d.coords) != up;
+          }))
+        continue;
+      if (f.packetId)
+        packets = true;
+      else
+        circuits.push_back(describeTilePort(f.src.coords, f.src.port));
+    }
+    size_t needed = circuits.size() + packets;
+    LLVM_DEBUG(llvm::dbgs() << "Cut " << (rows ? "row " : "column ") << below
+                            << (up ? " up" : " down") << ": " << needed
+                            << " of " << available << " channels\n");
+    if (needed <= available)
+      continue;
+    int from = up ? below : below + 1, to = up ? below + 1 : below;
+    return llvm::make_error<RoutingFailure>(llvm::formatv(
+        "the circuit flows from {0}{1} cross from {2} {3} to {2} {4}, which "
+        "takes {5} channels across, and it has {6}.",
+        joinNames(circuits), packets ? ", with packet flows," : "",
+        rows ? "row" : "column", from, to, needed, available));
+  }
+  return llvm::Error::success();
+}
+
 // One flow's tree, grown by routePart.
 struct Pathfinder::TreeBuilder {
   TreeBuilder(Pathfinder &pf, RouteState &st, int flow);
@@ -1531,6 +1591,7 @@ void Pathfinder::TreeBuilder::meet() {
 
 void Pathfinder::TreeBuilder::meet(int owner) {
   st.unmet.insert({flow, owner});
+  pf.treesMet = true;
   bool other = foreign.count(owner);
   const auto &t = st.treeOf[owner];
   const Flow &o = st.parts[owner];
@@ -2330,6 +2391,10 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
   // iterations.
   if (!graphBuilt)
     buildRoutingGraph();
+  if (llvm::Error err = cutOverflow()) {
+    packetsFailed = false;
+    return std::move(err);
+  }
   crowdedTiles.clear();
   // initialize all Channel histories to 0
   for (auto &[_, sb] : graph) {

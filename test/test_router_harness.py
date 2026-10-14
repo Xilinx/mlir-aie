@@ -46,7 +46,7 @@ OVER_CUT = """module {
     aie.flow(%t02, DMA : 1, %t01, DMA : 0)
   }
 }"""
-OVERUSED = r"need the links from tile \(0, 2\) to \(0, 3\)"
+OVERUSED = r"cross from row 2 to row 3, which takes 7 channels across, and it has 6"
 
 
 @pytest.fixture(scope="module", autouse=True)
