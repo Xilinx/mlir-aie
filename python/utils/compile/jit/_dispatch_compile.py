@@ -171,8 +171,10 @@ def compile_dispatch_bridge(
             )
             subprocess.run(cmd, check=True, capture_output=True, text=True)
         except (OSError, subprocess.CalledProcessError) as e:
+            # MSVC's linker reports on stdout what clang++ only summarizes on
+            # stderr, such as the symbol it could not resolve.
             detail = (
-                (e.stderr or e.stdout)
+                "\n".join(s for s in (e.stderr, e.stdout) if s)
                 if isinstance(e, subprocess.CalledProcessError)
                 else str(e)
             )

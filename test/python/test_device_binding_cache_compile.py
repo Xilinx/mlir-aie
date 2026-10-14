@@ -11,13 +11,17 @@
 Nothing here may start the NPU runtime.
 """
 
+import os
 import shutil
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 import aie.utils as utils
-import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.dialects.aiex import npu_address_patch
 from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.device import NPU1Col1, NPU2Col1
@@ -29,6 +33,26 @@ from aie.utils.compile.jit.markers import DispatchTime
 needs_xclbinutil = pytest.mark.skipif(
     shutil.which("xclbinutil") is None, reason="xclbinutil"
 )
+
+
+def run_in_fresh_cache(tmp_path, body):
+    """Run `body` in a new interpreter whose NPU_CACHE_HOME is empty, with this
+    module importable as `designs`."""
+    script = tmp_path / "body.py"
+    script.write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(Path(__file__).parent)!r})\n"
+        f"import {Path(__file__).stem} as designs\n" + textwrap.dedent(body)
+    )
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=tmp_path,
+        env={**os.environ, "NPU_CACHE_HOME": str(tmp_path / "cache")},
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.fixture(autouse=True)
@@ -68,9 +92,19 @@ def test_cache_hit_refreshes_tensor_metadata_for_the_selected_artifact():
     for device in (NPU1Col1(), NPU2Col1(), NPU1Col1()):
         set_current_device(device)
         cd.compile()
-        sizes.setdefault(type(device), cd._expected_tensor_sizes)
-        assert cd._expected_tensor_sizes == sizes[type(device)]
+        sizes.setdefault(type(device), cd.expected_tensor_sizes)
+        assert cd.expected_tensor_sizes == sizes[type(device)]
     assert sizes == {NPU1Col1: [16 * 32] * 2, NPU2Col1: [32 * 32] * 2}
+
+
+@needs_xclbinutil
+def test_tensor_sizes_are_read_when_asked():
+    """A compile leaves the lowered module unparsed until a caller asks."""
+    set_current_device(NPU2Col1())
+    cd = CompilableDesign(copy)
+    cd.compile()
+    assert "expected_tensor_sizes" not in vars(cd)
+    assert cd.expected_tensor_sizes == [32 * 32] * 2
 
 
 @needs_xclbinutil
@@ -78,7 +112,7 @@ def test_static_mlir_compile_does_not_bind_a_device(tmp_path):
     """Compiling a written MLIR file takes its target from the file, not the runtime."""
     set_current_device(NPU2Col1())
     mlir_path = tmp_path / "design.mlir"
-    mlir_path.write_text(CompilableDesign(copy)._generated[0])
+    mlir_path.write_text(CompilableDesign(copy)._generated.mlir_text)
     set_current_device(None)
 
     cd = CompilableDesign(mlir_path, use_cache=False)
@@ -89,6 +123,31 @@ def test_static_mlir_compile_does_not_bind_a_device(tmp_path):
         inst_path.resolve(),
     )
     assert get_current_device(probe_runtime=False) is None
+
+
+@needs_xclbinutil
+def test_compile_mode_switch_replaces_artifact_state(tmp_path):
+    set_current_device(NPU2Col1())
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(CompilableDesign(copy)._generated.mlir_text)
+    out = tmp_path / "out"
+
+    design = CompilableDesign(mlir_path)
+    design.compile(xclbin_path=out / "design.xclbin", inst_path=out / "insts.bin")
+    assert design.get_artifacts() is not None
+
+    design.compile(full_elf_path=out / "design.elf")
+    entry = design.get_cache_entry()
+    assert entry.elf == (out / "design.elf").resolve()
+    assert entry.xclbin is None and entry.insts is None
+    assert design.get_artifacts() is None
+
+    design.compile(xclbin_path=out / "design.xclbin", inst_path=out / "insts.bin")
+    entry = design.get_cache_entry()
+    assert entry.xclbin == (out / "design.xclbin").resolve()
+    assert entry.insts == (out / "insts.bin").resolve()
+    assert entry.elf is None
+    assert design._full_elf_kernel_name is None
 
 
 def patch_bar_then_baz(
@@ -103,24 +162,33 @@ def patch_bar_then_baz(
 
 @needs_xclbinutil
 @pytest.mark.parametrize("cache_hit", [False, True])
-def test_dispatch_library_selected_once_per_compile(
-    tmp_path, monkeypatch, npu2_device, cache_hit
-):
-    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
-    if cache_hit:
-        CompilableDesign(patch_bar_then_baz).compile()
-    design = CompilableDesign(patch_bar_then_baz)
-    design.compile()
-    first = design.get_dispatch_lib_path()
-    xclbin = design.get_cache_entry().xclbin
-    built = xclbin.stat()
+def test_dispatch_library_selected_once_per_compile(tmp_path, cache_hit):
+    run_in_fresh_cache(
+        tmp_path,
+        f"""
+        import shutil
+        from aie.iron.device import NPU2Col1
+        from aie.utils import set_current_device
+        from aie.utils.compile.jit import _manifest
+        from aie.utils.compile.jit.compilabledesign import CompilableDesign
 
-    second = first.with_name(f"dispatch-{'b' * 64}{first.suffix}")
-    shutil.copy(first, second)
-    _manifest._write(first.parent, [], dispatch_library=second.name)
-    # A later publication must not silently change this design's selected ABI.
-    assert design.get_dispatch_lib_path() == first
-    design.compile()
-    assert design.get_dispatch_lib_path() == second
-    after = xclbin.stat()
-    assert (built.st_ino, built.st_mtime_ns) == (after.st_ino, after.st_mtime_ns)
+        set_current_device(NPU2Col1())
+        if {cache_hit}:
+            CompilableDesign(designs.patch_bar_then_baz).compile()
+        design = CompilableDesign(designs.patch_bar_then_baz)
+        design.compile()
+        first = design.get_dispatch_lib_path()
+        xclbin = design.get_cache_entry().xclbin
+        built = xclbin.stat()
+
+        second = first.with_name(f"dispatch-{{'b' * 64}}{{first.suffix}}")
+        shutil.copy(first, second)
+        _manifest._write(first.parent, {{}}, dispatch_library=second.name)
+        # A later publication must not silently change this design's selected ABI.
+        assert design.get_dispatch_lib_path() == first
+        design.compile()
+        assert design.get_dispatch_lib_path() == second
+        after = xclbin.stat()
+        assert (built.st_ino, built.st_mtime_ns) == (after.st_ino, after.st_mtime_ns)
+        """,
+    )

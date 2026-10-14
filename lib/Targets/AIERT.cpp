@@ -685,7 +685,7 @@ LogicalResult xilinx::AIE::AIERTControl::initLocks(DeviceOp &targetOp) {
   }
 
   // Set locks with explicit initializers
-  targetOp.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
+  targetOp.walkOutsideRuntimeSequences<LockOp>([&](LockOp lockOp) {
     if (lockOp.getLockID() && lockOp.getInit()) {
       TxnLocBracket bracket(*this, lockOp.getLoc());
       auto tileLoc = XAie_TileLoc(lockOp.getTileOp().colIndex(),
@@ -702,7 +702,7 @@ LogicalResult xilinx::AIE::AIERTControl::initLocks(DeviceOp &targetOp) {
 
 LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
   // Set buffers with explicit initializers
-  targetOp.walk<WalkOrder::PreOrder>([&](BufferOp bufferOp) {
+  targetOp.walkOutsideRuntimeSequences<BufferOp>([&](BufferOp bufferOp) {
     auto initialValue = bufferOp.getInitialValue();
     if (!initialValue)
       return;

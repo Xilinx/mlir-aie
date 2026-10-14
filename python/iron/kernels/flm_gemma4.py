@@ -26,6 +26,7 @@ from typing import TypeVar, get_args
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.compile.jit import get_compile_arg
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -1020,7 +1021,7 @@ def _wrapper(base: ExternalFunction, source: str, symbol, arg_types, contract):
         flags[lut[0]] = f'-DAIE_LUT_KERNEL_SOURCE="{path}"'
         path = str(_kernel_source("common/lut_kernel.cc"))
     # Only the wrapper is built: base was constructed for its recipe.
-    ExternalFunction._instances.discard(base)
+    get_compile_arg("_iron_kernel_registry", ExternalFunction._instances).discard(base)
     return _make_extern(
         symbol,
         path,

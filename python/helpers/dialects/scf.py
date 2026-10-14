@@ -16,14 +16,12 @@ from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
     constant,
     index_cast,
 )
-from ...extras.util import (  # pyright: ignore[reportMissingImports]
-    get_user_code_loc,
-)
 from ...ir import (  # pyright: ignore[reportMissingImports]
     IndexType,
     InsertionPoint,
     Value,
 )
+from ..sourceloc import user_code_location
 
 
 def _for(
@@ -87,7 +85,7 @@ def _for(
 @contextmanager
 def if_(cond, hasElse=True, insert_yield=True, loc=None, ip=None):
     if loc is None:
-        loc = get_user_code_loc()
+        loc = user_code_location()
     if_op = IfOp(cond, has_else=hasElse, loc=loc, ip=ip)
     with InsertionPoint(if_op.thenRegion.blocks[0]):
         yield if_op
