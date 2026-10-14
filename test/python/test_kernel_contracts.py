@@ -1733,11 +1733,11 @@ def test_softmax_rejects_float_options_it_cannot_build(kwargs):
         kernels.softmax(32, **kwargs)
 
 
-def test_softmax_float_input_is_aie2p_only():
+def test_softmax_float_input_builds_on_aie2():
     with set_current_device(NPU1Col1()):
-        with pytest.raises(NotImplementedError):
-            kernels.softmax(32, input_dtype=np.float32)
-        assert kernels.softmax(32).name.endswith("softmax_bf16")
+        fn = kernels.softmax(32, input_dtype=np.float32, soft_cap=50.0)
+        assert fn.name.endswith("softmax_f32_bf16")
+        assert fn.built_for_arch == "aie2"
 
 
 def test_softmax_f32_bound_holds_four_roundings_and_the_logits_per_row():

@@ -432,8 +432,8 @@ def softmax(
     """Softmax over a row of ``tile_size`` elements, into bf16.
 
     With bf16 input this is ``softmax_bf16(x, y, n)``. With float32 input it
-    is ``softmax_f32_bf16(x, [addend], [mask], y, n)`` (``-DSOFTMAX_F32_INPUT``,
-    AIE2P only), which computes
+    is ``softmax_f32_bf16(x, [addend], [mask], y, n)``
+    (``-DSOFTMAX_F32_INPUT``), which computes
     ``softmax(cap * tanh((x + addend) / cap) + mask)``: the logits in float32
     (the cap's tanh from 2^x's float32 polynomial, not a table or vtanh),
     their maximum and differences as ``mha.cc``'s float32 scores take them,
@@ -464,7 +464,6 @@ def softmax(
         ValueError: A ``tile_size`` that is not a positive multiple of 32, an
             ``input_dtype`` other than the two, a float-only option with bf16
             input, or a ``soft_cap`` outside [2^-100, 2^10].
-        NotImplementedError: Float32 input on AIE2.
     """
     _require_vector_alignment("softmax", tile_size, _RUNTIME_VECTOR_WIDTH)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
@@ -517,8 +516,6 @@ def _softmax_f32(
     tile_size: int, soft_cap: float | None, masked: bool, addend: bool
 ) -> ExternalFunction:
     """[`softmax`][iron.kernels.activation.softmax]'s float32 input path."""
-    if _arch_traits().name == "aie2":
-        raise NotImplementedError("softmax: float32 input is written for AIE2P only")
     # Below, 2 log2(e) / cap's bf16 limbs leave the normal floats; above, the
     # cap's logit error outgrows the output's four bf16 roundings.
     if soft_cap is not None and not 2.0**-100 <= soft_cap <= 2.0**10:
