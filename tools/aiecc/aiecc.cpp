@@ -61,6 +61,7 @@
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
@@ -1545,9 +1546,32 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                const Item<Directory> &cdoItem,
                                Item<std::string> &out) -> mlir::LogicalResult {
                               DeviceOp d = devItem.get().op;
-                              out.value =
-                                  makeBifText(absolutePath(cdoItem.asFile()),
-                                              d.getSymName());
+                              // The real path drops Windows 8.3 short names
+                              // (ADMINI~1), which bootgen cannot read.
+                              llvm::SmallString<256> dir;
+                              if (llvm::sys::fs::real_path(cdoItem.asFile(),
+                                                           dir))
+                                dir = absolutePath(cdoItem.asFile());
+                              llvm::StringRef path = dir;
+                              if (path.size() > 1 && path[1] == ':' &&
+                                  llvm::isAlpha(path[0]))
+                                path = path.drop_front(2);
+                              // bootgen's BIF lexer reads a file name from
+                              // these characters alone.
+                              size_t bad = path.find_first_not_of(
+                                  "abcdefghijklmnopqrstuvwxyz"
+                                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                                  "/\\()@!#$%^&+._ -");
+                              if (bad != llvm::StringRef::npos) {
+                                llvm::errs()
+                                    << "aiecc: bootgen cannot read a path "
+                                       "holding '"
+                                    << path[bad] << "': " << dir
+                                    << "; build in a directory whose path "
+                                       "has none\n";
+                                return mlir::failure();
+                              }
+                              out.value = makeBifText(dir, d.getSymName());
                               return mlir::success();
                             });
 
