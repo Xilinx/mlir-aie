@@ -4747,7 +4747,7 @@ reads the slices to attribute each region to the design that wrote it.</p>
 <h3 id="-aie-lower-core-reset"><code>-aie-lower-core-reset</code><a class="headerlink" href="#-aie-lower-core-reset" title="Permanent link">&para;</a></h3>
 <p><em>Lowers all aiex.core_reset operations to npu.maskwrite32</em></p>
 <h3 id="-aie-lower-dma-channel-reset"><code>-aie-lower-dma-channel-reset</code><a class="headerlink" href="#-aie-lower-dma-channel-reset" title="Permanent link">&para;</a></h3>
-<p><em>Lowers aiex.dma_channel_reset(_for) to npu.maskwrite32 + re-arm</em></p>
+<p>_Lowers aiex.dma_channel_reset(<em>for) to npu.maskwrite32 + re-arm</em></p>
 <p>Two concerns, one pass (kept together like the other reset lowerings):</p>
 <ul>
 <li>Each <code>aiex.dma_channel_reset_for @fifo</code> is first expanded, via the fifo's
