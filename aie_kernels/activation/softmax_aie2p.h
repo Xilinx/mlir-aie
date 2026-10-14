@@ -309,6 +309,26 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
       bf16_limbs(splat(cap > 0.0f ? 2.88539008177792682f / cap : 0.0f));
   const Limbs<SM_VEC_LEN> k1_limbs = bf16_limbs(splat(2.0f * k0));
 
+  // Uncapped, logits are centred on the row's largest before scaling, so no
+  // finite input overflows log2(e) or a difference.
+  aie::vector<float, SM_VEC_LEN> centre = aie::zeros<float, SM_VEC_LEN>();
+  if constexpr (!(cap > 0.0f)) {
+    aie::vector<float, SM_VEC_LEN> top =
+        aie::broadcast<float, SM_VEC_LEN>(std::numeric_limits<float>::lowest());
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    for (int32_t c = 0; c < n; c += SM_VEC_LEN) {
+      Acc s(aie::load_v<SM_VEC_LEN>(x + c));
+      if (addend)
+        s = aie::add(s, aie::load_v<SM_VEC_LEN>(addend + c));
+      if (mask)
+        s = aie::add(s, aie::load_v<SM_VEC_LEN>(mask + c));
+      top = aie::max(top, s.to_vector<float>());
+    }
+    centre = aie::broadcast<float, SM_VEC_LEN>(aie::reduce_max(top));
+  }
+  const auto big = aie::broadcast<float, SM_VEC_LEN>(0x1p126f);
+  const auto neg_big = aie::broadcast<float, SM_VEC_LEN>(-0x1p126f);
+
   AIE_LOOP_MIN_ITERATION_COUNT(1)
   for (int32_t c = 0; c < n; c += SM_VEC_LEN) {
     Acc s(aie::load_v<SM_VEC_LEN>(x + c));
@@ -354,7 +374,15 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
               .to_vector<float>(),
           negative));
     } else {
-      z = mac_limbs(aie::zeros<accfloat, SM_VEC_LEN>(), bf16_limbs(s),
+      // Clamped to +-2^126 by the bits: -inf where x - centre overflows, and
+      // a masked element's own x may lie far above the centre.
+      auto t = aie::sub(s, centre).to_vector<float>();
+      t = aie::select(t, big,
+                      aie::gt(t.cast_to<int32_t>(), big.cast_to<int32_t>()));
+      t = aie::select(
+          t, neg_big,
+          aie::gt(t.cast_to<uint32_t>(), neg_big.cast_to<uint32_t>()));
+      z = mac_limbs(aie::zeros<accfloat, SM_VEC_LEN>(), bf16_limbs(Acc(t)),
                     log2e_limbs);
     }
     if (mask) {

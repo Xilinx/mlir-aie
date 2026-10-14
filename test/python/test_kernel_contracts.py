@@ -1774,13 +1774,16 @@ def test_softmax_f32_bound_rejects_a_wrong_output_and_admits_masked_zeros():
     assert not compare(wrong, ref, tol, bound=bound)
 
 
-def test_softmax_f32_sample_reaches_32_saturates_the_cap_and_masks_tails():
+def test_softmax_f32_sample_reaches_32_overflow_saturation_and_masked_tails():
     rng = np.random.default_rng(0)
     x, addend, mask = kernels.softmax(
         32, input_dtype=np.float32, soft_cap=50.0, masked=True, addend=True
     ).contract.sample(rng, 8)
     assert x.dtype == addend.dtype == np.float32 and mask.dtype == bfloat16
-    assert (np.abs(x[0, :2]) == 32).all() and np.abs(x).max() > 300
+    assert (np.abs(x[0, :2]) == 32).all() and np.abs(x[3:]).max() > 300
+    # Past log2(e)'s overflow: once a row of NaN on the device.
+    assert (x[1] == np.float32(3e38)).all()
+    assert (x[2, :2] == np.float32([2e38, -2e38])).all()
     dropped = mask.astype(np.float32) < -1e30
     assert not dropped[:, 0].any() and dropped[:, -1].sum() >= 1
     assert np.isinf(mask.astype(np.float32)).any()

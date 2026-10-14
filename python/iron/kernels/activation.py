@@ -1412,16 +1412,20 @@ def softmax_f32_sample(
     """Float path inputs: logits to |x| >= 32, near ties, and masked-out tails.
 
     Each call's logits are uniform on a span that grows over the calls, from
-    4 to 48 (and to 400 under a cap, which saturates it), and the first row
-    leads with +/-32 and two near ties. The addend is uniform on [-8, 8]. A
-    mask keeps a random leading run of at least one element and masks the
-    tail with lowest and -inf, and one kept element in eight with lowest.
+    4 to 48 (and to 400 under a cap, which saturates it). The first row leads
+    with +/-32 and two near ties, the second is all 3e38 and the third leads
+    with +/-2e38. The addend is uniform on [-8, 8]. A mask keeps a random
+    leading run of at least one element and masks the tail with lowest and
+    -inf, and one kept element in eight with lowest.
     """
     top = 400.0 if soft_cap is not None else 48.0
     spans = np.geomspace(4.0, top, calls)[:, None]
     x = (rng.uniform(-1.0, 1.0, (calls, tile_size)) * spans).astype(np.float32)
     lead = np.array([32, -32, 5, np.nextafter(np.float32(5), 6)], np.float32)
     x[0, : lead.size] = lead[:tile_size]
+    if calls >= 3:
+        x[1] = 3e38
+        x[2, :2] = [2e38, -2e38]
     inputs = [x]
     if addend:
         inputs.append(rng.uniform(-8.0, 8.0, (calls, tile_size)).astype(np.float32))
