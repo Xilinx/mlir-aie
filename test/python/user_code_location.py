@@ -7,6 +7,7 @@
 # many frames of the aie package lie between them.
 
 import inspect
+import sys
 
 import numpy as np
 
@@ -16,6 +17,8 @@ from aie.iron import Buffer
 from aie.iron.device import Tile
 
 line_type = np.ndarray[(4,), np.dtype[np.int32]]
+# Columns come from co_positions, new in Python 3.11; before it there are none.
+load_col, store_col = (11, 4) if sys.version_info >= (3, 11) else (0, 0)
 
 
 def located(module, names):
@@ -33,8 +36,8 @@ def check(build):
         line = build(t)
     names = ["arith.constant", "memref.load", "arith.constant", "memref.store"]
     load, store = located(ctx.module, names)[1::2]
-    assert load == (__file__, line, 11), load
-    assert store == (__file__, line, 4), store
+    assert load == (__file__, line, load_col), load
+    assert store == (__file__, line, store_col), store
 
 
 def dialect(t):
