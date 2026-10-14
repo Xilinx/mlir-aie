@@ -200,6 +200,193 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
   return;
 }
 
+// A float multiplies as three bf16 limbs, as in common/f32_split.h.
+template <unsigned N>
+struct Limbs {
+  aie::vector<bfloat16, N> hi, mid, lo;
+};
+
+template <unsigned N>
+static inline __attribute__((always_inline)) Limbs<N>
+bf16_limbs(aie::accum<accfloat, N> x) {
+  const auto one = aie::broadcast<bfloat16, N>(1.0f);
+  Limbs<N> l;
+  l.hi = x.template to_vector<bfloat16>();
+  x = aie::msc(x, l.hi, one);
+  l.mid = x.template to_vector<bfloat16>();
+  l.lo = aie::msc(x, l.mid, one).template to_vector<bfloat16>();
+  return l;
+}
+
+// One row of float32 scores: partial_softmax_alias_bf16 with the row's
+// max and A - m in float32 and (A - m) * s as three bf16 limbs times s, so
+// the largest argument is exactly 0 and the rest keep 2^-24 of their size.
+template <unsigned W>
+static inline void
+partial_softmax_row_f32(const float *__restrict A, bfloat16 *__restrict P,
+                        float *__restrict scale_buffer, int32_t n, int32_t row,
+                        int32_t num_rows, bfloat16 scale) {
+  aie::vector<float, W> top =
+      aie::broadcast<float, W>((float)std::numeric_limits<bfloat16>::lowest());
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
+  for (int32_t c = 0; c < n; c += W)
+    top = aie::max(top, aie::load_v<W>(A + c));
+  const float m = aie::max(aie::broadcast<float, 16>(aie::reduce_max(top)),
+                           aie::broadcast<float, 16>(scale_buffer[row]))
+                      .get(0);
+  scale_buffer[num_rows + row] = m;
+
+  const auto s = aie::broadcast<bfloat16, W>(scale);
+  const auto m_vec = aie::broadcast<float, W>(m);
+  aie::accum<accfloat, W> sum = aie::zeros<accfloat, W>();
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
+  for (int32_t c = 0; c < n; c += W) {
+    aie::accum<accfloat, W> d;
+    d.from_vector(aie::load_v<W>(A + c));
+    const Limbs<W> dl = bf16_limbs(aie::sub(d, m_vec));
+    aie::accum<accfloat, W> x = aie::mul(dl.hi, s);
+    x = aie::mac(x, dl.mid, s);
+    x = aie::mac(x, dl.lo, s);
+    const aie::vector<bfloat16, W> p = exp2_bf16(x.template to_vector<float>());
+    sum = aie::add(sum, p);
+    aie::store_v(P + c, p);
+  }
+  scale_buffer[3 * num_rows + row] =
+      aie::reduce_add(sum.template to_vector<float>());
+}
+
+#ifdef SOFTMAX_F32_INPUT
+#ifndef EXP2_BF16_ACCURATE
+#error "SOFTMAX_F32_INPUT takes 2^x from the accurate exp2: EXP2_BF16_ACCURATE"
+#endif
+#ifndef SOFTMAX_SOFT_CAP
+#define SOFTMAX_SOFT_CAP 0.0f
+#endif
+
+// acc + x * c in f32, x and c as three bf16 limbs: the six products down to
+// 2^-16 of the leading one, largest first, so a sum that cancels against acc
+// keeps the small ones.
+static inline __attribute__((always_inline)) aie::accum<accfloat, SM_VEC_LEN>
+mac_limbs(aie::accum<accfloat, SM_VEC_LEN> acc, const Limbs<SM_VEC_LEN> &x,
+          const Limbs<SM_VEC_LEN> &c) {
+  acc = aie::mac(acc, x.hi, c.hi);
+  acc = aie::mac(acc, x.hi, c.mid);
+  acc = aie::mac(acc, x.mid, c.hi);
+  acc = aie::mac(acc, x.hi, c.lo);
+  acc = aie::mac(acc, x.mid, c.mid);
+  return aie::mac(acc, x.lo, c.hi);
+}
+
+// softmax(cap * tanh((x + addend) / cap) + mask) of one float32 row into bf16:
+// the logits in f32, times log2(e) as scale_log2e's three limbs, written over
+// x, then partial_softmax_row_f32 at scale 1 and the normalizing pass of
+// softmax_simple_bf16. addend and mask are read only when compiled in, and
+// the cap only when positive. A mask of lowest or -inf drops its element, as
+// a logit of lowest does without a cap; x + addend is otherwise within bf16's
+// finite range.
+static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
+                            const bfloat16 *__restrict mask,
+                            bfloat16 *__restrict y, const int32_t n) {
+  using Acc = aie::accum<accfloat, SM_VEC_LEN>;
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
+  auto splat = [](float c) {
+    return Acc(aie::broadcast<float, SM_VEC_LEN>(c));
+  };
+  auto limb = [](int16_t bits) {
+    return aie::broadcast<int16_t, SM_VEC_LEN>(bits).cast_to<bfloat16>();
+  };
+  auto bits = [](uint32_t b) {
+    return aie::broadcast<uint32_t, SM_VEC_LEN>(b);
+  };
+  const Limbs<SM_VEC_LEN> log2e_limbs{limb(0x3fb9), limb(0xbb2c), limb(0x36ec)};
+  constexpr float cap = SOFTMAX_SOFT_CAP;
+  // cap * tanh(|s| / cap) * log2(e) = k0 (2 r - 1), r = 1 / (1 + 2^a) with
+  // a = -|s| * 2 log2(e) / cap: a <= 0, so 2^a is in [0, 1] and r in
+  // [1/2, 1], and 2^a flushing to 0 below -125.5 saturates it at k0.
+  constexpr float k0 = cap * 1.44269504088896341f;
+  const Limbs<SM_VEC_LEN> a_limbs =
+      bf16_limbs(splat(cap > 0.0f ? 2.88539008177792682f / cap : 0.0f));
+  const Limbs<SM_VEC_LEN> k1_limbs = bf16_limbs(splat(2.0f * k0));
+
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
+  for (int32_t c = 0; c < n; c += SM_VEC_LEN) {
+    Acc s(aie::load_v<SM_VEC_LEN>(x + c));
+    if (addend)
+      s = aie::add(s, aie::load_v<SM_VEC_LEN>(addend + c));
+    Acc z;
+    if constexpr (cap > 0.0f) {
+      // The sign by the bits' compare and -s in the accumulator: Peano
+      // cannot legalize a 32-lane f32 fneg or 1024-bit OR.
+      const auto sv = s.to_vector<float>();
+      const auto negative =
+          aie::lt(sv.cast_to<int32_t>(), aie::zeros<int32_t, SM_VEC_LEN>());
+      const auto neg = aie::sub(aie::zeros<accfloat, SM_VEC_LEN>(), sv);
+      const Acc neg_abs(aie::select(neg.to_vector<float>(), sv, negative));
+      const aie::vector<float, SM_VEC_LEN> a =
+          mac_limbs(aie::zeros<accfloat, SM_VEC_LEN>(), bf16_limbs(neg_abs),
+                    a_limbs)
+              .to_vector<float>();
+      const Exp2F32 e2a = exp2_f32_32(a);
+      const Acc d = aie::add(
+          splat(1.0f), aie::select(e2a.bits.cast_to<float>(),
+                                   aie::zeros<float, SM_VEC_LEN>(), e2a.below));
+
+      // r = 1 / d, d in [1, 2]: a quadratic within 2%, then two Newton steps
+      // r -= r (d r - 1), the first from r in bf16.
+      const Limbs<SM_VEC_LEN> dl = bf16_limbs(d);
+      const auto q = aie::mac(splat(-1.4515766f), dl.hi, limb(0x3ea5))
+                         .to_vector<bfloat16>();
+      const auto r0 =
+          aie::mac(splat(2.1190739f), q, dl.hi).to_vector<bfloat16>();
+      Limbs<SM_VEC_LEN> e = bf16_limbs(aie::mac(
+          aie::mac(aie::mac(splat(-1.0f), dl.hi, r0), dl.mid, r0), dl.lo, r0));
+      const Acc r1 = aie::msc(aie::msc(Acc(r0), r0, e.hi), r0, e.mid);
+      const Limbs<SM_VEC_LEN> rl = bf16_limbs(r1);
+      e = bf16_limbs(mac_limbs(splat(-1.0f), dl, rl));
+      const Acc r = aie::msc(aie::msc(aie::msc(r1, rl.hi, e.hi), rl.hi, e.mid),
+                             rl.mid, e.hi);
+
+      const auto t = mac_limbs(splat(-k0), bf16_limbs(r), k1_limbs);
+      z = Acc(aie::select(
+          t.to_vector<float>(),
+          aie::sub(aie::zeros<accfloat, SM_VEC_LEN>(), t.to_vector<float>())
+              .to_vector<float>(),
+          negative));
+    } else {
+      z = mac_limbs(aie::zeros<accfloat, SM_VEC_LEN>(), bf16_limbs(s),
+                    log2e_limbs);
+    }
+    if (mask) {
+      const auto m = aie::load_v<SM_VEC_LEN>(mask + c);
+      z = aie::mac(z, m, log2e_limbs.hi);
+      z = aie::mac(z, m, log2e_limbs.mid);
+      z = aie::mac(z, m, log2e_limbs.lo);
+    }
+    // lowest times log2(e) overflows to -inf, which partial_softmax_row_f32's
+    // limbs would turn into NaN, so anything below lowest (its bits above
+    // lowest's) is lowest, whose 2^x is 0.
+    const auto z_bits = z.to_vector<float>().cast_to<uint32_t>();
+    aie::store_v(x + c, aie::select(z_bits, bits(0xff7f0000u),
+                                    aie::gt(z_bits, bits(0xff7f0000u)))
+                            .cast_to<float>());
+  }
+
+  alignas(aie::vector_decl_align) float state[4] = {
+      (float)std::numeric_limits<bfloat16>::lowest(), 0.0f, 0.0f, 0.0f};
+  partial_softmax_row_f32<SM_VEC_LEN>(x, y, state, n, 0, 1, (bfloat16)1.0f);
+
+  const bfloat16 sum_inv = (bfloat16)aie::inv(state[3]);
+  auto it_in = aie::cbegin_restrict_vector<SM_VEC_LEN>(y);
+  auto it_out = aie::begin_restrict_vector<SM_VEC_LEN>(y);
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
+  for (int32_t c = 0; c < n; c += SM_VEC_LEN)
+    *it_out++ = aie::mul(*it_in++, sum_inv).to_vector<bfloat16>();
+
+  ::aie::set_rounding(saved_rounding);
+}
+#endif
+
 // The three passes of softmax_simple_bf16 over a row split into blocks, one
 // call per block and pass. Between calls state[0, SM_VEC_LEN) holds the
 // per-lane exp sums and state[SM_VEC_LEN] the row maximum, so every lane sums
@@ -356,5 +543,28 @@ void softmax_rows_causal_bf16(bfloat16 *restrict input,
   }
   event1();
 }
+
+#ifdef SOFTMAX_F32_INPUT
+// The row is input_size float32 logits, a multiple of SM_VEC_LEN; input is
+// overwritten.
+void softmax_f32_bf16(float *restrict input,
+#ifdef SOFTMAX_ADDEND
+                      float *restrict addend,
+#endif
+#ifdef SOFTMAX_MASKED
+                      bfloat16 *restrict mask,
+#endif
+                      bfloat16 *restrict output, const int32_t input_size) {
+#ifndef SOFTMAX_ADDEND
+  constexpr float *addend = nullptr;
+#endif
+#ifndef SOFTMAX_MASKED
+  constexpr bfloat16 *mask = nullptr;
+#endif
+  event0();
+  softmax_f32_row(input, addend, mask, output, input_size);
+  event1();
+}
+#endif
 
 } // extern "C"

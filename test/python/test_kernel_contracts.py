@@ -33,8 +33,10 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import BUILDS, KernelContract, Param
 from aie.iron.kernels._common import ARCH_TRAITS
+from aie.iron.kernels.activation import softmax_f32_bound
 from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
+from aie.utils.accuracy import round_to
 from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16
 
@@ -1685,6 +1687,100 @@ def test_softmax_tolerance_rejects_an_unwritten_tile():
     assert float(ref.max()) < 0.05
     assert compare(ref, ref, fn.contract.tolerance)
     assert not compare(np.zeros_like(ref), ref, fn.contract.tolerance)
+
+
+@pytest.mark.parametrize("addend", [False, True])
+@pytest.mark.parametrize("masked", [False, True])
+def test_softmax_float_path_takes_its_rows_in_order(addend, masked):
+    # (x, [addend], [mask], y, n): the options add rows and flags, in order.
+    fn = kernels.softmax(
+        32, input_dtype=np.float32, soft_cap=50.0, masked=masked, addend=addend
+    )
+    assert fn.name.endswith("softmax_f32_bf16")
+    dtypes = [kd.shape_dtype(t)[1] for t in fn.arg_types()[:-1]]
+    rows = [np.float32] * (1 + addend) + [bfloat16] * masked
+    assert dtypes == [np.dtype(d) for d in [*rows, bfloat16]]
+    assert fn.contract.roles == (*[In] * len(rows), Out, Param)
+    params = inspect.signature(fn.contract.reference).parameters
+    assert list(params) == [
+        "x",
+        *(["addend"] if addend else []),
+        *(["mask"] if masked else []),
+    ]
+    flags = set(fn.compile_flags)
+    assert {"-DSOFTMAX_F32_INPUT", "-DEXP2_BF16_ACCURATE=1"} <= flags
+    assert "-DSOFTMAX_SOFT_CAP=50.0f" in flags
+    assert ("-DSOFTMAX_ADDEND" in flags) == addend
+    assert ("-DSOFTMAX_MASKED" in flags) == masked
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        dict(soft_cap=50.0),
+        dict(masked=True),
+        dict(addend=True),
+        dict(input_dtype=np.float16),
+        dict(input_dtype=np.float32, soft_cap=0.0),
+        dict(input_dtype=np.float32, soft_cap=np.inf),
+    ],
+)
+def test_softmax_rejects_float_options_it_cannot_build(kwargs):
+    with pytest.raises(ValueError):
+        kernels.softmax(32, **kwargs)
+
+
+def test_softmax_float_input_is_aie2p_only():
+    with set_current_device(NPU1Col1()):
+        with pytest.raises(NotImplementedError):
+            kernels.softmax(32, input_dtype=np.float32)
+        assert kernels.softmax(32).name.endswith("softmax_bf16")
+
+
+def test_softmax_f32_bound_holds_four_roundings_and_the_logits_per_row():
+    # One row of logits within 4 and one reaching 3e4: the second's float32
+    # roundings widen its bound, and the cap adds its tanh's error to both.
+    x = np.zeros((2, 32), np.float32)
+    x[0] = np.linspace(-4, 4, 32)
+    x[1] = np.linspace(-3e4, 3e4, 32)
+    plain = softmax_f32_bound(x, tile_size=32) / kernels.softmax_ref(
+        x, tile_size=32
+    ).clip(2.0**-125)
+    capped = softmax_f32_bound(x, tile_size=32, soft_cap=50.0) / kernels.softmax_ref(
+        x, tile_size=32, soft_cap=50.0
+    ).clip(2.0**-125)
+    four = 4 * 2.0**-8
+    assert four < plain[0].min() <= plain[0].max() < four * 1.01
+    assert plain[1, -1] > plain[0, -1] + 2 * 2.0**-21 * 2.9e4
+    assert np.isclose(capped[0, -1] - plain[0, -1], 2 * 50.0 * 5.95e-6, rtol=1e-3)
+
+
+def test_softmax_f32_bound_rejects_a_wrong_output_and_admits_masked_zeros():
+    fn = kernels.softmax(32, input_dtype=np.float32, soft_cap=50.0, masked=True)
+    x, mask = fn.contract.sample(np.random.default_rng(1), 4)
+    ref = fn.contract.reference(x, mask)
+    bound = fn.contract.tolerance.bound(x, mask)
+    tol = fn.contract.tolerance
+    assert (ref[mask.astype(np.float32) < -1e30] == 0).all()
+    assert compare(round_to(ref, bfloat16), ref, tol, bound=bound)
+    # Off by 2% where the bound allows 1.6% and change: four bf16 roundings.
+    assert not compare((ref * 1.02).astype(bfloat16), ref, tol, bound=bound)
+    # A masked element is 0, and only flushing admits anything else.
+    wrong = round_to(ref, bfloat16)
+    wrong[mask.astype(np.float32) < -1e30] = 2.0**-120
+    assert not compare(wrong, ref, tol, bound=bound)
+
+
+def test_softmax_f32_sample_reaches_32_saturates_the_cap_and_masks_tails():
+    rng = np.random.default_rng(0)
+    x, addend, mask = kernels.softmax(
+        32, input_dtype=np.float32, soft_cap=50.0, masked=True, addend=True
+    ).contract.sample(rng, 8)
+    assert x.dtype == addend.dtype == np.float32 and mask.dtype == bfloat16
+    assert (np.abs(x[0, :2]) == 32).all() and np.abs(x).max() > 300
+    dropped = mask.astype(np.float32) < -1e30
+    assert not dropped[:, 0].any() and dropped[:, -1].sum() >= 1
+    assert np.isinf(mask.astype(np.float32)).any()
 
 
 def test_exp2f_vec_reference_clamps_like_the_kernel():

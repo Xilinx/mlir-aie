@@ -178,3 +178,30 @@ def test_softmax_ref_is_correctly_rounded_per_tile():
     assert got.dtype == bfloat16
     bad = got.view(np.uint16) != want.view(np.uint16)
     assert not bad.any(), f"softmax_ref: {bad.sum()} outputs not correctly rounded"
+
+
+def test_softmax_ref_float_path_caps_adds_and_masks():
+    # The logits are x + addend, capped to cap * tanh(. / cap), plus the
+    # mask, in float64; the result rounds once, to float32.
+    rng = np.random.default_rng(3)
+    x = rng.uniform(-400, 400, (2, 32)).astype(np.float32)
+    addend = rng.uniform(-8, 8, (2, 32)).astype(np.float32)
+    mask = np.zeros((2, 32), bfloat16)
+    mask[0, 20:] = ml_dtypes.finfo(bfloat16).min
+    mask[1, 25:] = -np.inf
+    z = 50.0 * np.tanh((x.astype(np.float64) + addend) / 50.0)
+    z = z + mask.astype(np.float64)
+    e = np.exp(z - z.max(axis=1, keepdims=True))
+    want = round_to(e / e.sum(axis=1, keepdims=True), np.float32)
+    got = kernels.softmax_ref(x, addend, mask, tile_size=32, soft_cap=50.0)
+    assert got.dtype == np.float32
+    assert (got == want).all()
+    assert (got[0, 20:] == 0).all() and (got[1, 25:] == 0).all()
+
+
+def test_softmax_ref_soft_cap_saturates():
+    # tanh saturates: 1e4 and -1e4 are logits cap and -cap.
+    x = np.full(32, -1e4, np.float32)
+    x[0] = 1e4
+    got = kernels.softmax_ref(x, tile_size=32, soft_cap=30.0).astype(np.float64)
+    assert np.isclose(got[0] / got[1], np.exp(60.0), rtol=1e-6)

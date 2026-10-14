@@ -242,6 +242,30 @@ CASES: list[Case] = [
         tag="accurate-short",
         smoke=True,
     ),
+    # The float32 input path, AIE2P only: plain, capped, masked and with an
+    # addend, on rows of one vector and of 32, and EG2's audio row (32 wide,
+    # capped at 50, masked, with relative-position logits). The contract's
+    # sample reaches |logit| >= 32, saturates the cap and masks tails.
+    *[
+        check(
+            "softmax",
+            dict(tile_size=n, input_dtype=np.float32, **kw),
+            calls=8,
+            tag="f32",
+            smoke=smoke,
+            devices=("npu2",),
+        )
+        for n, kw, smoke in (
+            (32, {}, True),
+            (1024, {}, False),
+            (32, dict(soft_cap=50.0), False),
+            (1024, dict(soft_cap=50.0), False),
+            (32, dict(masked=True), False),
+            (160, dict(addend=True), False),
+            (32, dict(soft_cap=50.0, masked=True, addend=True), True),
+            (1024, dict(soft_cap=30.0, masked=True, addend=True), False),
+        )
+    ],
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     # 160 is a multiple of the kernel's 32-element step but not of the 128 its
