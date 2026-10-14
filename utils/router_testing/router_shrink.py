@@ -143,17 +143,32 @@ def candidates(d):
             pass
 
 
-def shrink(d, holds, log=None):
+def shrink(d, holds, log=None, budget_s=None):
+    """Shrink `d` while `holds` keeps holding.
+
+    Args:
+        d: The design to shrink; `holds(d)` must be true.
+        holds: The property to keep.
+        log: Called with each smaller design that holds.
+        budget_s: Seconds to stop after, keeping the smallest design so far;
+            `None` shrinks until no candidate holds.
+
+    Returns:
+        The smallest design reached, and whether shrinking finished.
+    """
+    deadline = None if budget_s is None else time.monotonic() + budget_s
     changed = True
     while changed:
         changed = False
         for e in candidates(d):
+            if deadline is not None and time.monotonic() > deadline:
+                return d, False
             if holds(e):
                 d, changed = e, True
                 if log:
                     log(d)
                 break
-    return d
+    return d, True
 
 
 def size(d):
@@ -172,6 +187,7 @@ def main():
     cli.add_argument("--match", required=True)
     cli.add_argument("--hops-off", action="store_true")
     cli.add_argument("--out", type=Path)
+    cli.add_argument("--budget-s", type=float, default=None)
     cli.add_argument("-v", action="store_true")
     args = cli.parse_args()
     d = rp.load_design(args.design.read_text())
@@ -183,7 +199,9 @@ def main():
         if args.v:
             print(f"  size {size(d)} after {holds.calls[0]} runs", file=sys.stderr)
 
-    d = shrink(d, holds, log)
+    d, finished = shrink(d, holds, log, args.budget_s)
+    if not finished:
+        print(f"stopped after --budget-s {args.budget_s}", file=sys.stderr)
     text = d.emit()
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
