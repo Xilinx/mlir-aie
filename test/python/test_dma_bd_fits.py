@@ -29,6 +29,8 @@ SPAN = 1 << 24
 def lowers(dev, col, row, sizes, strides):
     """Whether aie-dma-tasks-to-npu lowers the int32 pattern as one task's BD.
 
+    aie-normalize-dma-bd-dims runs first, as it does in aiecc's pipelines.
+
     The buffer is as long as the pattern reaches, and the BD's length leaves
     out the iteration dimension, as the BD verifier requires.
     """
@@ -53,9 +55,10 @@ def lowers(dev, col, row, sizes, strides):
     with Context(), Location.unknown():
         try:
             module = Module.parse(text)
-            PassManager.parse("builtin.module(aie.device(aie-dma-tasks-to-npu))").run(
-                module.operation
-            )
+            PassManager.parse(
+                "builtin.module(aie.device(aie-normalize-dma-bd-dims,"
+                "aie-dma-tasks-to-npu))"
+            ).run(module.operation)
         except MLIRError:
             return False
     return True
@@ -140,14 +143,55 @@ def test_the_buffer_length_field_bounds_linear_and_nd_transfers(device, tile_typ
 @pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
 @pytest.mark.parametrize("tile_type", TILES, ids=lambda t: t.name)
 def test_a_contiguous_2d_transfer_is_linear_only_on_a_shim(device, tile_type):
+    # Re-read twice, so the normalize pass leaves it as written: only a shim
+    # takes a contiguous transfer in linear mode.
     dev = device()
     col, row = tile_of(dev, tile_type)
     wrap = (1 << dev.get_dma_bd_wrap_bits(col, row)) - 1
     shim = tile_type is AIETileType.ShimNOCTile
-    sizes, strides = [1, 1, 2, wrap + 1], [0, 0, wrap + 1, 1]
-    tap = TensorAccessPattern((SPAN,), 0, sizes[2:], strides[2:])
+    sizes, strides = [2, 1, 2, wrap + 1], [0, 0, wrap + 1, 1]
+    tap = TensorAccessPattern((SPAN,), 0, [2, 2, wrap + 1], [0, wrap + 1, 1])
     assert dev.dma_bd_fits(col, row, tap, np.int32) is shim
     assert lowers(dev, col, row, sizes, strides) is shim
+
+
+@pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
+@pytest.mark.parametrize("tile_type", TILES, ids=lambda t: t.name)
+def test_a_contiguous_2d_transfer_the_normalize_pass_flattens_fits(device, tile_type):
+    # Its length is all of it, so aie-normalize-dma-bd-dims makes it one
+    # linear transfer on every tile.
+    dev = device()
+    col, row = tile_of(dev, tile_type)
+    wrap = (1 << dev.get_dma_bd_wrap_bits(col, row)) - 1
+    tap = TensorAccessPattern((SPAN,), 0, [2, wrap + 1], [wrap + 1, 1])
+    assert dev.dma_bd_fits(col, row, tap, np.int32)
+    assert lowers(dev, col, row, [1, 1, 2, wrap + 1], [0, 0, wrap + 1, 1])
+
+
+@pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
+def test_a_leading_re_read_stays_in_the_iteration_dimension(device):
+    # As shim_dma_single_bd_task lays it out: [3, 1, 16, 512], the re-read
+    # outside the length. Padded in front instead, the zero stride would land
+    # in d2.
+    dev = device()
+    col, row = tile_of(dev, AIETileType.ShimNOCTile)
+    tap = TensorAccessPattern((16 * 512,), 0, [3, 16, 512], [0, 512, 1])
+    assert dev.dma_bd_fits(col, row, tap, np.int32)
+    assert lowers(dev, col, row, [3, 1, 16, 512], [0, 0, 512, 1])
+
+
+@pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
+@pytest.mark.parametrize("tile_type", TILES, ids=lambda t: t.name)
+def test_dropping_a_unit_dimension_can_move_one_into_a_wrap(device, tile_type):
+    # [1, 2000, 1, 512] is [2000, 512] once its unit dimensions go, and 2000
+    # lands in d1's wrap.
+    dev = device()
+    col, row = tile_of(dev, tile_type)
+    wrap = (1 << dev.get_dma_bd_wrap_bits(col, row)) - 1
+    n = wrap + 977
+    unit = TensorAccessPattern((SPAN,), 0, [1, n, 1, 512], [0, 1024, 0, 1])
+    assert not dev.dma_bd_fits(col, row, unit, np.int32)
+    assert not lowers(dev, col, row, [1, n, 1, 512], [0, 1024, 0, 1])
 
 
 def test_offsets_and_element_sizes_are_whole_granules():
@@ -167,8 +211,14 @@ def test_offsets_and_element_sizes_are_whole_granules():
 
 def test_a_pattern_of_five_dimensions_does_not_fit():
     dev = NPU2Col1()
-    tap = TensorAccessPattern((SPAN,), 0, [2, 2, 2, 2, 4], [64, 32, 16, 8, 1])
+    tap = TensorAccessPattern((SPAN,), 0, [2, 2, 2, 2, 4], [1000, 300, 70, 9, 1])
     assert not dev.dma_bd_fits(0, 0, tap, np.int32)
+    # On a shim, five dimensions that coalesce to fewer fit, as a fill
+    # coalesces them; elsewhere a descriptor takes them as written.
+    contiguous = TensorAccessPattern((SPAN,), 0, [2, 2, 2, 2, 4], [64, 32, 16, 8, 1])
+    assert dev.dma_bd_fits(0, 0, contiguous, np.int32)
+    col, row = tile_of(dev, AIETileType.MemTile)
+    assert not dev.dma_bd_fits(col, row, contiguous, np.int32)
 
 
 def test_coordinates_outside_the_device_raise():

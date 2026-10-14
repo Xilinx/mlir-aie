@@ -197,8 +197,8 @@ uint32_t aieTargetModelGetNumBanks(AieTargetModel targetModel, int col,
 }
 
 bool aieDmaBdFits(uint32_t device, int col, int row, MlirType elementType,
-                  int64_t offset, const int64_t *sizes,
-                  const int64_t *strides) {
+                  int64_t offset, const int64_t *sizes, const int64_t *strides,
+                  int64_t len) {
   Type elemType = unwrap(elementType);
   MLIRContext *ctx = elemType.getContext();
   ctx->getOrLoadDialect<xilinx::AIE::AIEDialect>();
@@ -215,11 +215,33 @@ bool aieDmaBdFits(uint32_t device, int col, int row, MlirType elementType,
   if (offset * elemBits % tm.getAddressGenGranularity())
     return false;
 
+  SmallVector<xilinx::AIE::BDDimLayoutAttr> dims;
+  for (unsigned d = 0; d < xilinx::AIEX::kNdDmaDims; d++) {
+    if (sizes[d] < 0 || sizes[d] > UINT32_MAX || strides[d] < 0 ||
+        strides[d] > UINT32_MAX)
+      return false;
+    dims.push_back(
+        xilinx::AIE::BDDimLayoutAttr::get(ctx, sizes[d], strides[d]));
+  }
+  // The dimensions the lowerings see: a descriptor the normalize pass makes
+  // one linear transfer is held to its length alone.
+  if (std::optional<SmallVector<xilinx::AIE::BDDimLayoutAttr>> normalized =
+          xilinx::AIE::normalizedBDDims(dims, len)) {
+    if (normalized->empty()) {
+      int64_t bits;
+      return !llvm::MulOverflow(len, elemBits, bits) &&
+             static_cast<uint64_t>(bits / tm.getAddressGenGranularity()) <=
+                 tm.getDmaBdMaxLen(col, row);
+    }
+    dims = *normalized;
+  }
+  // Innermost first, the dimensions the descriptor lacks filled with units.
   xilinx::AIEX::NdDmaPattern pattern;
-  for (int d = xilinx::AIEX::kNdDmaDims - 1; d >= 0; d--) {
+  for (unsigned d = 0; d < xilinx::AIEX::kNdDmaDims; d++) {
+    bool held = d < dims.size();
     pattern.offsets.push_back(0);
-    pattern.sizes.push_back(sizes[d]);
-    pattern.strides.push_back(strides[d]);
+    pattern.sizes.push_back(held ? dims[dims.size() - 1 - d].getSize() : 1);
+    pattern.strides.push_back(held ? dims[dims.size() - 1 - d].getStride() : 0);
   }
   bool linear = xilinx::AIEX::isLinearModeTransfer(tm, col, row, pattern.sizes,
                                                    pattern.strides);

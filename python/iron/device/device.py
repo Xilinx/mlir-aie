@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import math
 import re
 
 import numpy as np
@@ -21,6 +22,7 @@ from ...dialects.aie import (
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
+from ...dialects.aiex import _shim_dims
 from ...helpers.taplib import TensorAccessPattern
 from ...helpers.util import np_dtype_to_mlir_type
 from ..resolvable import Resolvable
@@ -171,8 +173,13 @@ class Device(Resolvable):
         or a contiguous one on a shim tile, in linear mode past the wrap
         limits, and any other within the wrap, step and iteration limits;
         either way, the three inner dimensions within the tile's buffer
-        length field. A tap of fewer than four dimensions is padded in front
-        with unit ones, as `shim_dma_single_bd_task` pads it.
+        length field. On a shim tile the tap is laid out as
+        `shim_dma_single_bd_task` lays it out: coalesced, and a leading
+        re-read kept in the iteration dimension. Elsewhere a tap of fewer
+        than four dimensions is padded in front with unit ones. The
+        descriptor's length is its three inner dimensions, and where that
+        is all of it, its unit dimensions go as `aie-normalize-dma-bd-dims`
+        drops them, which can move a large one into a wrap field.
 
         Args:
             col: Column of the tile.
@@ -181,25 +188,35 @@ class Device(Resolvable):
             dtype: The numpy element type the pattern moves.
 
         Returns:
-            bool: False for more than four dimensions, an offset that is not
-            whole address granules, or a pattern past the descriptor's limits.
+            bool: False for more than four dimensions (after coalescing, on a
+            shim tile), padding on a shim tile, an offset that is not whole
+            address granules, or a pattern past the descriptor's limits.
 
         Raises:
             ValueError: The coordinates are outside the device.
         """
         self._validate_coordinates(col, row)
-        if len(tap.sizes) > 4:
+        if self._tm.is_shim_noc_or_pl_tile(col, row):
+            if tap.padding is not None:
+                return False
+            offset, sizes, strides = _shim_dims(tap)
+        else:
+            pad = 4 - len(tap.sizes)
+            offset = tap.offset
+            sizes = [1] * pad + list(tap.sizes)
+            strides = [0] * pad + list(tap.strides)
+        if len(sizes) > 4:
             return False
-        pad = 4 - len(tap.sizes)
         with ir.Context(), ir.Location.unknown():
             return dma_bd_fits(
                 self._device.value,
                 col,
                 row,
                 np_dtype_to_mlir_type(np.dtype(dtype).type),
-                tap.offset,
-                [1] * pad + list(tap.sizes),
-                [0] * pad + list(tap.strides),
+                offset,
+                sizes,
+                strides,
+                math.prod(sizes[1:]),
             )
 
     @property

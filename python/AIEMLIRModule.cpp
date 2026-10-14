@@ -190,16 +190,16 @@ NB_MODULE(_aie, m) {
       "dma_bd_fits",
       [](uint32_t device, int col, int row, MlirType elementType,
          int64_t offset, const std::vector<int64_t> &sizes,
-         const std::vector<int64_t> &strides) {
+         const std::vector<int64_t> &strides, int64_t len) {
         if (sizes.size() != 4 || strides.size() != 4)
           throw nb::value_error("dma_bd_fits takes four sizes and strides");
         return aieDmaBdFits(device, col, row, elementType, offset, sizes.data(),
-                            strides.data());
+                            strides.data(), len);
       },
       "device"_a, "col"_a, "row"_a, "element_type"_a, "offset"_a, "sizes"_a,
-      "strides"_a,
+      "strides"_a, "len"_a,
       "Whether one DMA buffer descriptor of a tile holds an access pattern: "
-      "four sizes and strides, outermost first.");
+      "four sizes and strides, outermost first, and the descriptor's length.");
 
   nb::class_<PyAieTargetModel>(m, "AIETargetModel")
       .def(
