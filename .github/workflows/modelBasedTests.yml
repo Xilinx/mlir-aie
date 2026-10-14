@@ -67,7 +67,9 @@ jobs:
     name: Allocator and router model-based tests
 
     runs-on: ubuntu-24.04
-    timeout-minutes: 330
+    # The steps' timeouts sum to 330, so a step, not the job, times out and
+    # the results are still collected and published.
+    timeout-minutes: 360
 
     steps:
       - name: Get the project repository
@@ -169,7 +171,7 @@ jobs:
       # solve.
       - name: Allocator
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        timeout-minutes: 30
+        timeout-minutes: 15
         run: |
           python test/assign-buffer-addresses/allocator_properties.py \
             --seeds "$ALLOCATOR_SEEDS" --bankres-seeds "$ALLOCATOR_BANKRES_SEEDS" \
@@ -177,7 +179,7 @@ jobs:
 
       - name: Router nightly lit tests
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        timeout-minutes: 30
+        timeout-minutes: 15
         run: |
           lit -sv -D router_nightly=1 -o results/router/reports/lit.json \
             build_release/test/create-packet-flows/nightly
@@ -188,13 +190,13 @@ jobs:
       # runs a quarter of the seeds.
       - name: Router properties
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        timeout-minutes: 90
+        timeout-minutes: 45
         run: |
           status=0
           for device in npu1 npu2 xcvc1902; do
             seeds=$ROUTER_SEEDS
             [ "$device" = xcvc1902 ] && seeds=$((ROUTER_SEEDS / 4))
-            timeout 30m python test/create-packet-flows/nightly/router_properties.py --device "$device" \
+            timeout 15m python test/create-packet-flows/nightly/router_properties.py --device "$device" \
               --seeds "$seeds" --first-seed "$FIRST_SEED" \
               --out "results/router/failures/$device-properties" \
               --report "results/router/reports/$device-properties.json" || status=1
@@ -207,7 +209,7 @@ jobs:
       # its */repros.
       - name: Router mutation testing
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        timeout-minutes: 300
+        timeout-minutes: 255
         run: |
           status=0
           for device in npu1 npu2 xcvc1902; do
