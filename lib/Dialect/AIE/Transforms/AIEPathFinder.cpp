@@ -69,6 +69,10 @@ constexpr int stallIterations = 50;
 // Iterations of a stall that route the losing circuit trees first, without
 // fewer overused channels, before the attempt gives up.
 constexpr int maxReorderedStall = 300;
+// Iterations without fewer overused channels before an attempt that has never
+// fit the fabric gives up. In the nightly's designs, none that routed took
+// over 275.
+constexpr int maxOverusedStall = 400;
 // How much faster a stalled routing's overused channels that only circuit
 // trees take accrue history, so the trees spread out sooner.
 constexpr int stallHistory = 4;
@@ -2450,8 +2454,10 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
       return std::move(*usable);
     }
     // if reach maxIterations, throw an error since no routing can be found;
-    // so too once routing the losing circuit trees first has stopped helping
+    // so too once the overuse stalls for good, or routing the losing circuit
+    // trees first has stopped helping
     if (++iterationCount >= maxIterations ||
+        (fewestIllegal > 0 && sinceFewest >= maxOverusedStall) ||
         reorderedStall >= maxReorderedStall) {
       LLVM_DEBUG(llvm::dbgs()
                  << "\t\tPathfinder: maxIterations has been exceeded ("
