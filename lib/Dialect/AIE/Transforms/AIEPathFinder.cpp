@@ -1325,11 +1325,17 @@ llvm::Error Pathfinder::cutOverflow() const {
     if (needed <= available)
       continue;
     int from = up ? below : below + 1, to = up ? below + 1 : below;
+    auto channel = [](size_t n) { return n == 1 ? "channel" : "channels"; };
+    std::string who = circuits.empty()
+                          ? "the packet flows"
+                          : "the circuit flows from " + joinNames(circuits);
+    if (packets && !circuits.empty())
+      who += ", with packet flows,";
     return llvm::make_error<RoutingFailure>(llvm::formatv(
-        "the circuit flows from {0}{1} cross from {2} {3} to {2} {4}, which "
-        "takes {5} channels across, and it has {6}.",
-        joinNames(circuits), packets ? ", with packet flows," : "",
-        rows ? "row" : "column", from, to, needed, available));
+        "{0} cross from {1} {2} to {1} {3}, which takes {4} {5} across, and "
+        "it has {6} {7}.",
+        who, rows ? "row" : "column", from, to, needed, channel(needed),
+        available, channel(available)));
   }
   return llvm::Error::success();
 }

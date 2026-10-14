@@ -89,7 +89,7 @@ module {
 // need, wherever a control-packet reload would let it go.
 
 module {
-  // expected-error@+1 {{Unable to find a legal routing: the circuit flows from (0, 1) DMA:0, (0, 1) DMA:1, (0, 1) DMA:2, (0, 1) DMA:3 and 2 more, with packet flows, cross from row 1 to row 2, which takes 7 channels across, and it has 6.}}
+  // expected-error@+1 {{Unable to find a legal routing: the circuit flows from (0, 1) DMA:0, (0, 1) DMA:1, (0, 1) DMA:2, (0, 1) DMA:3 and 2 more, with packet flows, cross from row 1 to row 2, which takes 7 channels across, and it has 6 channels.}}
   aie.device(npu2_1col) {
     %t_0_0 = aie.tile(0, 0)
     %t_0_1 = aie.tile(0, 1)

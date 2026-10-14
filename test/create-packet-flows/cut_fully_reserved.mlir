@@ -7,7 +7,7 @@
 
 // RUN: not aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s
 
-// CHECK: error: Unable to find a legal routing: the circuit flows from (0, 1) DMA:0 cross from row 2 to row 3, which takes 1 channels across, and it has 0.
+// CHECK: error: Unable to find a legal routing: the circuit flows from (0, 1) DMA:0 cross from row 2 to row 3, which takes 1 channel across, and it has 0 channels.
 
 // Six fixed connects at (0, 2) drive every one of its six North outputs, so
 // no channel is left across the row 2/3 boundary at all: cutOverflow's map
