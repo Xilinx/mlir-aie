@@ -173,6 +173,17 @@ aieTargetModelGetMemTileSize(AieTargetModel targetModel);
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetNumBanks(AieTargetModel targetModel, int col, int row);
 
+/// Whether one DMA buffer descriptor of the tile at (col, row) on `device`
+/// holds the access pattern as the DMA lowerings encode it: a linear transfer,
+/// or a contiguous one on a shim NOC tile, in linear mode, and any other
+/// within the ND wrap, step and iteration limits. `sizes` and `strides` are
+/// four dimensions, outermost first, in elements of `elementType`; `offset`
+/// must be whole address granules.
+MLIR_CAPI_EXPORTED bool aieDmaBdFits(uint32_t device, int col, int row,
+                                     MlirType elementType, int64_t offset,
+                                     const int64_t *sizes,
+                                     const int64_t *strides);
+
 MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetMaxChannelNumForAdjacentTile(
     AieTargetModel targetModel, int col, int row);
 

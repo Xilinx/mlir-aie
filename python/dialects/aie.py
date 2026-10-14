@@ -29,6 +29,7 @@ from array import array
 # noinspection PyUnresolvedReferences
 from .._mlir_libs._aie import (
     ObjectFifoType,
+    dma_bd_fits,
     get_target_model,
     aie_llvm_link,
     generate_bcf,

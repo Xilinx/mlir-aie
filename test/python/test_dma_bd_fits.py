@@ -1,0 +1,157 @@
+# test_dma_bd_fits.py -*- Python -*-
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+
+# RUN: %pytest %s
+"""Device.dma_bd_fits: one buffer descriptor's limits, as the DMA lowerings verify them.
+
+Every pattern is also lowered as a runtime-sequence task on the same tile
+(aie-dma-tasks-to-npu), and the compiler must refuse exactly the patterns
+`dma_bd_fits` says do not fit.
+"""
+
+import numpy as np
+import pytest
+from ml_dtypes import bfloat16
+
+from aie.dialects._aie_enum_gen import AIETileType
+from aie.helpers.taplib import TensorAccessPattern
+from aie.ir import Context, Location, MLIRError, Module
+from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.passmanager import PassManager
+
+TILES = [AIETileType.ShimNOCTile, AIETileType.MemTile, AIETileType.CoreTile]
+SPAN = 1 << 24
+
+
+def lowers(dev, col, row, sizes, strides):
+    """Whether aie-dma-tasks-to-npu lowers the int32 pattern as one task's BD.
+
+    The buffer is as long as the pattern reaches, and the BD's length leaves
+    out the iteration dimension, as the BD verifier requires.
+    """
+    shim = dev.get_tile_type(col, row) is AIETileType.ShimNOCTile
+    reach = 1 + sum((n - 1) * s for n, s in zip(sizes, strides))
+    memref = f"memref<{reach}xi32>"
+    buffer = "" if shim else f"%buf = aie.buffer(%t) {{address = 0 : i32}} : {memref}"
+    length = int(np.prod(sizes[1:]))
+    text = f"""
+        aie.device({dev.name}) {{
+          %t = aie.tile({col}, {row})
+          {buffer}
+          aie.runtime_sequence({"%buf: " + memref if shim else ""}) {{
+            %task = aiex.dma_configure_task(%t, MM2S, 0) {{
+              aie.dma_bd(%buf : {memref} offset = 0 len = {length}
+                sizes = {list(sizes)} strides = {list(strides)}) {{bd_id = 0 : i32}}
+              aie.end
+            }}
+            aiex.dma_start_task(%task)
+          }}
+        }}"""
+    with Context(), Location.unknown():
+        try:
+            module = Module.parse(text)
+            PassManager.parse("builtin.module(aie.device(aie-dma-tasks-to-npu))").run(
+                module.operation
+            )
+        except MLIRError:
+            return False
+    return True
+
+
+def tile_of(dev, tile_type):
+    return next((0, r) for r in range(dev.rows) if dev.get_tile_type(0, r) is tile_type)
+
+
+def limits(dev, col, row):
+    """The cases at each limit, and one past it, as (name, sizes, strides, fits)."""
+    wrap = (1 << dev.get_dma_bd_wrap_bits(col, row)) - 1
+    step = 1 << dev.get_dma_bd_step_bits(col, row)
+    iterations = 1 << dev.get_dma_bd_iter_bits(col, row)
+    repeats = dev.max_repeat_count + 1
+    cases = []
+    for past in (0, 1):
+        fits = not past
+        d0, d1 = wrap + past, wrap + past
+        cases += [
+            (f"d0 {d0}", [1, 1, 2, d0], [0, 0, d0 + 1, 1], fits),
+            (f"d1 {d1}", [1, 1, d1, 2], [0, 0, 4, 1], fits),
+            (f"d1 step {step + past}", [1, 1, 2, 4], [0, 0, step + past, 1], fits),
+            (f"d2 step {step + past}", [1, 2, 2, 4], [0, step + past, 8, 1], fits),
+            (
+                f"iterations {iterations + past}",
+                [iterations + past, 1, 1, 4],
+                [8, 0, 0, 1],
+                fits,
+            ),
+            (
+                f"repeats {repeats + past}",
+                [repeats + past, 1, 1, 4],
+                [0, 0, 0, 1],
+                fits,
+            ),
+        ]
+    return cases
+
+
+@pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
+@pytest.mark.parametrize("tile_type", TILES, ids=lambda t: t.name)
+def test_each_limit_fits_and_one_past_it_does_not(device, tile_type):
+    dev = device()
+    col, row = tile_of(dev, tile_type)
+    for name, sizes, strides, fits in limits(dev, col, row):
+        tap = TensorAccessPattern((SPAN,), 0, sizes, strides)
+        assert dev.dma_bd_fits(col, row, tap, np.int32) is fits, name
+        assert lowers(dev, col, row, sizes, strides) is fits, name
+
+
+@pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
+@pytest.mark.parametrize("tile_type", TILES, ids=lambda t: t.name)
+def test_a_linear_transfer_fits_whatever_its_length(device, tile_type):
+    dev = device()
+    col, row = tile_of(dev, tile_type)
+    wrap = (1 << dev.get_dma_bd_wrap_bits(col, row)) - 1
+    tap = TensorAccessPattern((SPAN,), 0, [4 * wrap], [1])
+    assert dev.dma_bd_fits(col, row, tap, np.int32)
+    assert lowers(dev, col, row, [1, 1, 1, 4 * wrap], [0, 0, 0, 1])
+
+
+@pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
+@pytest.mark.parametrize("tile_type", TILES, ids=lambda t: t.name)
+def test_a_contiguous_2d_transfer_is_linear_only_on_a_shim(device, tile_type):
+    dev = device()
+    col, row = tile_of(dev, tile_type)
+    wrap = (1 << dev.get_dma_bd_wrap_bits(col, row)) - 1
+    shim = tile_type is AIETileType.ShimNOCTile
+    sizes, strides = [1, 1, 2, wrap + 1], [0, 0, wrap + 1, 1]
+    tap = TensorAccessPattern((SPAN,), 0, sizes[2:], strides[2:])
+    assert dev.dma_bd_fits(col, row, tap, np.int32) is shim
+    assert lowers(dev, col, row, sizes, strides) is shim
+
+
+def test_offsets_and_element_sizes_are_whole_granules():
+    dev = NPU2Col1()
+    col, row = tile_of(dev, AIETileType.ShimNOCTile)
+    assert dev.dma_bd_fits(col, row, TensorAccessPattern((64,), 2, [32], [1]), bfloat16)
+    assert not dev.dma_bd_fits(
+        col, row, TensorAccessPattern((64,), 1, [32], [1]), bfloat16
+    )
+    assert not dev.dma_bd_fits(
+        col, row, TensorAccessPattern((64,), 0, [2, 3], [4, 1]), bfloat16
+    )
+    assert not dev.dma_bd_fits(
+        col, row, TensorAccessPattern((64,), 0, [2, 4], [3, 1]), bfloat16
+    )
+
+
+def test_a_pattern_of_five_dimensions_does_not_fit():
+    dev = NPU2Col1()
+    tap = TensorAccessPattern((SPAN,), 0, [2, 2, 2, 2, 4], [64, 32, 16, 8, 1])
+    assert not dev.dma_bd_fits(0, 0, tap, np.int32)
+
+
+def test_coordinates_outside_the_device_raise():
+    with pytest.raises(ValueError, match="out of range"):
+        NPU2Col1().dma_bd_fits(5, 0, TensorAccessPattern((64,), 0, [64], [1]), np.int32)

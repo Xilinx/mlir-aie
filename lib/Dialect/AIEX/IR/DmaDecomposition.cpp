@@ -399,7 +399,8 @@ void squeezeUnitDims(NdDmaPattern &pattern) {
 bool AIEX::patternPassesVerification(Operation *forOp,
                                      BaseMemRefType referencedBufType,
                                      const AIE::AIETargetModel &tm, int tileCol,
-                                     int tileRow, const NdDmaPattern &pattern) {
+                                     int tileRow, const NdDmaPattern &pattern,
+                                     bool skipTransformationChecks) {
   if (pattern.sizes.size() != kNdDmaDims)
     return false;
   SmallVector<int64_t, kNdDmaDims> hwSizes(kNdDmaDims);
@@ -409,10 +410,9 @@ bool AIEX::patternPassesVerification(Operation *forOp,
 
   ScopedDiagnosticHandler handler(forOp->getContext(),
                                   [](Diagnostic &) { return success(); });
-  return succeeded(verifyStridesWraps(forOp, referencedBufType, tileCol,
-                                      tileRow, pattern.sizes, pattern.strides,
-                                      hwSizes, hwStrides,
-                                      /*skipTransformationChecks=*/false));
+  return succeeded(verifyStridesWraps(
+      forOp, referencedBufType, tileCol, tileRow, pattern.sizes,
+      pattern.strides, hwSizes, hwStrides, skipTransformationChecks));
 }
 
 bool AIEX::isDecomposableNdDmaPattern(Operation *forOp,

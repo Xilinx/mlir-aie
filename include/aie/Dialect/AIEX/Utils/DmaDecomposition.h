@@ -52,13 +52,14 @@ struct NdDmaPattern {
 };
 
 /// Returns true when the pattern passes verifyStridesWraps for the given tile
-/// and memref element type (skipTransformationChecks=false). Diagnostics are
-/// suppressed so callers can probe legality without emitting errors.
+/// and memref element type. Diagnostics are suppressed so callers can probe
+/// legality without emitting errors.
 bool patternPassesVerification(mlir::Operation *forOp,
                                mlir::BaseMemRefType referencedBufType,
                                const xilinx::AIE::AIETargetModel &tm,
                                int tileCol, int tileRow,
-                               const NdDmaPattern &pattern);
+                               const NdDmaPattern &pattern,
+                               bool skipTransformationChecks = false);
 
 /// True when the pattern is fully constant, non-contiguous, currently illegal,
 /// and decomposeNdDmaPattern would produce at least one legal replacement.

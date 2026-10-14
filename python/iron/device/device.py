@@ -6,6 +6,8 @@
 
 import re
 
+import numpy as np
+
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIEArch,
@@ -15,9 +17,12 @@ from ...dialects.aie import (
     AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     LogicalTileOp,
     WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
+    dma_bd_fits,  # pyright: ignore[reportAttributeAccessIssue]
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
+from ...helpers.taplib import TensorAccessPattern
+from ...helpers.util import np_dtype_to_mlir_type
 from ..resolvable import Resolvable
 from .tile import Tile
 
@@ -158,6 +163,43 @@ class Device(Resolvable):
         """Return the iteration (repeat) field width, in bits."""
         self._validate_coordinates(col, row)
         return self._tm.get_dma_bd_iter_bits(col, row)
+
+    def dma_bd_fits(self, col, row, tap: TensorAccessPattern, dtype) -> bool:
+        """Whether one DMA buffer descriptor of the tile at (`col`, `row`) holds `tap`.
+
+        Decided as the DMA lowerings verify a descriptor: a linear transfer,
+        or a contiguous one on a shim tile, in linear mode whatever its
+        length, and any other within the wrap, step and iteration limits.
+        A tap of fewer than four dimensions is padded in front with unit
+        ones, as `shim_dma_single_bd_task` pads it.
+
+        Args:
+            col: Column of the tile.
+            row: Row of the tile.
+            tap: The access pattern, in elements of `dtype`.
+            dtype: The numpy element type the pattern moves.
+
+        Returns:
+            bool: False for more than four dimensions, an offset that is not
+            whole address granules, or a pattern past the descriptor's limits.
+
+        Raises:
+            ValueError: The coordinates are outside the device.
+        """
+        self._validate_coordinates(col, row)
+        if len(tap.sizes) > 4:
+            return False
+        pad = 4 - len(tap.sizes)
+        with ir.Context(), ir.Location.unknown():
+            return dma_bd_fits(
+                self._device.value,
+                col,
+                row,
+                np_dtype_to_mlir_type(np.dtype(dtype).type),
+                tap.offset,
+                [1] * pad + list(tap.sizes),
+                [0] * pad + list(tap.strides),
+            )
 
     @property
     def address_gen_granularity(self) -> int:
