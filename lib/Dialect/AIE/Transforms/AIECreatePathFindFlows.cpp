@@ -2106,6 +2106,20 @@ void PacketFlowRouting::splitFlow(TileID tileId, FlowKey key,
     std::set<Port> partnerUnit = tied(partner, true);
     if (sharesMaster(self->second, partnerUnit))
       continue;
+    // A sibling with the partner's id ties `key` to its arbiter by joining
+    // the partner's tree, which another master port out avoids; into a
+    // receiver they both reach, they merge however they are routed. Once it
+    // no longer joins, the other siblings may no longer tie them either.
+    bool unjoined = false;
+    for (FlowKey other : siblings)
+      if (other.second == partner.second)
+        for (Port m : flows->second.find(other)->second.masters)
+          if (partnerUnit.count(m) && isDirectional(m.bundle)) {
+            hazardConnections.insert({tileId, {other.first, m}});
+            unjoined = true;
+          }
+    if (unjoined)
+      continue;
     std::set<Port> unit = tied(partner, false);
     for (FlowKey other : siblings) {
       const SlaveFlow &f = flows->second.find(other)->second;

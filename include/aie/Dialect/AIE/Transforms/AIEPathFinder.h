@@ -443,6 +443,7 @@ private:
   bool capCrowdedFanOut();
   bool routeIdsApart();
   bool splitSharedIds();
+  bool stopMeeting();
 
   // Flows to be routed
   std::vector<Flow> flows;
@@ -484,6 +485,9 @@ private:
   // rejected a routing, or packet streams cross a link left overused.
   bool packetsFailed = true;
   bool shareChannels = false, idsApart = false, splitShared = false;
+  // Trees that share destinations no longer meet (see TreeBuilder::meet), so
+  // what is left of their hazard is a hold cycle through those receivers.
+  bool meetApart = false;
   size_t relaxStep = 0;
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
 };

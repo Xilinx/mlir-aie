@@ -269,8 +269,9 @@ void Pathfinder::initialize(int maxCol, int maxRow,
                             const AIETargetModel &targetModel) {
   // Reset the graph and flows so a Pathfinder can be reused across analyses
   // and devices; the dense-graph cache must be rebuilt for the new topology.
-  // The relax state (shareChannels, idsApart, relaxStep, cappedTiles,
-  // crowdedTiles) survives, so the ladder advances across attempts.
+  // The relax state (shareChannels, idsApart, meetApart, relaxStep,
+  // cappedTiles, crowdedTiles) survives, so the ladder advances across
+  // attempts.
   graph.clear();
   flows.clear();
   packetIdsTo.clear();
@@ -467,18 +468,34 @@ bool Pathfinder::splitSharedIds() {
   return false;
 }
 
+// The steps before it bent the routing around the meetings, so the ladder
+// starts over without them.
+bool Pathfinder::stopMeeting() {
+  if (meetApart)
+    return false;
+  meetApart = true;
+  shareChannels = idsApart = splitShared = false;
+  cappedTiles.clear();
+  relaxStep = 0;
+  return true;
+}
+
 namespace {
 enum class RelaxStep {
   ShareChannels,
   CapCrowdedTiles,
   RouteIdsApart,
-  SplitSharedIds
+  SplitSharedIds,
+  StopMeeting
 };
+// Stopping meetings comes last, and runs the ladder once more: what it routes
+// can hold arbiters in a cycle through the receivers trees share.
 constexpr RelaxStep relaxLadder[] = {
     RelaxStep::ShareChannels,   RelaxStep::CapCrowdedTiles,
     RelaxStep::RouteIdsApart,   RelaxStep::ShareChannels,
     RelaxStep::CapCrowdedTiles, RelaxStep::SplitSharedIds,
-    RelaxStep::ShareChannels,   RelaxStep::CapCrowdedTiles};
+    RelaxStep::ShareChannels,   RelaxStep::CapCrowdedTiles,
+    RelaxStep::StopMeeting};
 } // namespace
 
 bool Pathfinder::relax() {
@@ -505,16 +522,22 @@ bool Pathfinder::relax() {
         LLVM_DEBUG(llvm::dbgs() << "Relax: route ids apart\n");
         return true;
       }
-      // With one id per source, the steps after it would only repeat.
-      relaxStep = std::size(relaxLadder);
-      return false;
+      // With one id per source, the steps up to the last would only repeat.
+      relaxStep = std::size(relaxLadder) - 1;
+      break;
     case RelaxStep::SplitSharedIds:
       if (splitSharedIds()) {
         LLVM_DEBUG(llvm::dbgs() << "Relax: split shared ids\n");
         return true;
       }
-      relaxStep = std::size(relaxLadder);
-      return false;
+      relaxStep = std::size(relaxLadder) - 1;
+      break;
+    case RelaxStep::StopMeeting:
+      if (stopMeeting()) {
+        LLVM_DEBUG(llvm::dbgs() << "Relax: stop meeting\n");
+        return true;
+      }
+      break;
     }
   }
   return false;
@@ -1480,6 +1503,8 @@ void Pathfinder::TreeBuilder::findJoins() {
 // the other, so two trees meet only when each sends some id to two shared
 // destinations.
 void Pathfinder::TreeBuilder::meet() {
+  if (pf.meetApart)
+    return;
   auto spans = [&](int k, ArrayRef<int> dsts) {
     return llvm::any_of(st.flowIds[k], [&](int id) {
       return llvm::count_if(dsts, [&](int dst) {
