@@ -363,6 +363,10 @@ class CallableDesign:
             runtime_args, scalar_runtime_kwargs
         )
         compilable = self._build_compilable(call_compile_kwargs, tensor_args)
+        from aie.utils.npukernel import NPUKernel
+
+        # A misspelled keyword fails here, not after a fresh design compiles.
+        NPUKernel.check_keywords(compilable.dispatch_params, remaining_scalars)
 
         generator = compilable.mlir_generator
         if callable(generator):

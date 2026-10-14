@@ -171,6 +171,20 @@ def test_jit_default_does_not_hide_unknown_keyword(kernels, specialized):
     assert not b.numpy().any()
 
 
+def test_jit_rejects_unknown_keyword_before_generating():
+    generated = []
+
+    @iron.jit(use_cache=False)
+    def copy_fresh(a: In, b: Out, *, n_tiles: DispatchTime[np.int32] = 3):
+        generated.append(n_tiles)
+        return copy_tiles(n_tiles)
+
+    a, b = source(5), output()
+    with pytest.raises(TypeError, match="unexpected keyword.*'n_tile'"):
+        copy_fresh(a, b, n_tile=6)
+    assert generated == []
+
+
 @pytest.mark.parametrize("kwargs,expected", [({}, 3), ({"n_tiles": 6}, 6)])
 def test_jit_dispatch_default_and_override(kernels, kwargs, expected):
     a, b = source(4), output()
