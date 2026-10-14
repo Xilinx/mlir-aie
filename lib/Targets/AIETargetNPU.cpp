@@ -355,25 +355,19 @@ static void pushLocEntry(std::vector<TxnLocEntry> *locmap,
   locmap->push_back(std::move(e));
 }
 
-// A device's configuration as TXN words: the words, the ops they encode, and
-// their locmap entries at offsets from the first word.
-struct EncodedConfig {
-  std::vector<uint32_t> words;
-  uint32_t count = 0;
-  std::vector<TxnLocEntry> locmap;
-};
-
 // Appends the TXN encoding of a runtime sequence's ops, one op at a time.
 struct TxnEncoder {
   TxnEncoder(DeviceOp device, std::vector<uint32_t> &instructions,
-             std::vector<TxnLocEntry> *locmap, bool foldDDRAddrOffset)
+             std::vector<TxnLocEntry> *locmap, bool foldDDRAddrOffset,
+             NpuConfigCache &configs)
       : device(device), tm(device.getTargetModel()),
         symTab(device.getOperation()), names(device.getOperation()),
-        instructions(instructions), locmap(locmap),
+        configs(configs), instructions(instructions), locmap(locmap),
         foldDDRAddrOffset(foldDDRAddrOffset) {}
 
   void encode(Operation &o);
-  LogicalResult encodeConfig(DeviceOp configured, EncodedConfig &config);
+  LogicalResult encodeConfig(DeviceOp configured,
+                             NpuConfigCache::Config &config);
 
   DeviceOp device;
   const AIETargetModel &tm;
@@ -383,8 +377,7 @@ struct TxnEncoder {
   mlir::SymbolTable symTab;
   NamedOpTable names;
   llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> blockWriteDataCache;
-  // Each written device's configuration, encoded at its first write_config.
-  llvm::DenseMap<mlir::StringAttr, EncodedConfig> configs;
+  NpuConfigCache &configs;
   std::vector<uint32_t> &instructions;
   std::vector<TxnLocEntry> *locmap;
   bool foldDDRAddrOffset;
@@ -397,18 +390,19 @@ struct TxnEncoder {
 };
 
 // Generates `configured`'s configuration ops as the expand-load-pdi pass
-// would inline them into `device`'s sequences, in a scratch copy of `device`,
-// and encodes them as the sequence's own ops are.
+// would inline them, in a scratch device of its own, and encodes them as a
+// sequence's own ops are.
 LogicalResult TxnEncoder::encodeConfig(DeviceOp configured,
-                                       EncodedConfig &config) {
+                                       NpuConfigCache::Config &config) {
   MLIRContext *ctx = device.getContext();
   ctx->getOrLoadDialect<arith::ArithDialect>();
   ctx->getOrLoadDialect<memref::MemRefDialect>();
   OpBuilder builder(ctx);
   OwningOpRef<ModuleOp> scratch = ModuleOp::create(device.getLoc());
   builder.setInsertionPointToStart(scratch->getBody());
-  auto holder = DeviceOp::create(builder, device.getLoc(), device.getDevice(),
-                                 device.getSymName());
+  auto holder =
+      DeviceOp::create(builder, device.getLoc(), configured.getDevice(),
+                       configured.getSymName());
   holder.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(holder.getBodyRegion(), builder, device.getLoc());
   builder.setInsertionPointToStart(holder.getBody());
@@ -421,8 +415,10 @@ LogicalResult TxnEncoder::encodeConfig(DeviceOp configured,
   BlockwriteData payloads(holder, "loadpdi_");
   if (failed(generateAndInsertConfigOps(builder, configured, payloads)))
     return failure();
-  TxnEncoder encoder(holder, config.words, locmap ? &config.locmap : nullptr,
-                     foldDDRAddrOffset);
+  // The locmap is kept whether or not this translation writes one: another
+  // sharing the cache may.
+  TxnEncoder encoder(holder, config.words, &config.locmap, foldDDRAddrOffset,
+                     configs);
   for (Operation &op : *body)
     encoder.encode(op);
   config.count = encoder.count;
@@ -543,24 +539,27 @@ void TxnEncoder::encode(Operation &o) {
                      op->getName().getStringRef(), std::nullopt, op, tm);
       })
       .Case<NpuWriteConfigOp>([&](auto op) {
-        StringAttr name = op.getDeviceRefAttr().getAttr();
-        auto [it, first] = configs.try_emplace(name);
-        if (first) {
-          auto configured =
-              dyn_cast_or_null<DeviceOp>(SymbolTable::lookupSymbolIn(
-                  device->getParentOp(), op.getDeviceRefAttr()));
-          if (!configured || failed(encodeConfig(configured, it->second))) {
-            op.emitOpError("cannot generate the configuration of ")
-                << op.getDeviceRefAttr();
-            result = failure();
-            return;
-          }
+        auto configured =
+            dyn_cast_or_null<DeviceOp>(SymbolTable::lookupSymbolIn(
+                device->getParentOp(), op.getDeviceRefAttr()));
+        const NpuConfigCache::Config *config =
+            configured
+                ? configs.getOrEncode(configured,
+                                      [&](NpuConfigCache::Config &c) {
+                                        return encodeConfig(configured, c);
+                                      })
+                : nullptr;
+        if (!config) {
+          op.emitOpError("cannot generate the configuration of ")
+              << op.getDeviceRefAttr();
+          result = failure();
+          return;
         }
         uint32_t base = byteOffset();
-        llvm::append_range(instructions, it->second.words);
-        count += it->second.count;
+        llvm::append_range(instructions, config->words);
+        count += config->count;
         if (locmap)
-          for (TxnLocEntry entry : it->second.locmap) {
+          for (TxnLocEntry entry : config->locmap) {
             entry.byteOffset += base;
             locmap->push_back(std::move(entry));
           }
@@ -579,10 +578,23 @@ void TxnEncoder::encode(Operation &o) {
 
 } // namespace
 
+const NpuConfigCache::Config *xilinx::AIE::NpuConfigCache::getOrEncode(
+    Operation *device, llvm::function_ref<LogicalResult(Config &)> encode) {
+  std::lock_guard<std::mutex> lock(mutex);
+  auto [it, inserted] = configs.try_emplace(device);
+  if (inserted) {
+    auto config = std::make_unique<Config>();
+    if (succeeded(encode(*config)))
+      it->second = std::move(config);
+  }
+  return it->second.get();
+}
+
 LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     mlir::ModuleOp moduleOp, std::vector<uint32_t> &instructions,
     StringRef deviceName, StringRef sequenceName,
-    std::vector<TxnLocEntry> *locmap, bool foldDDRAddrOffset) {
+    std::vector<TxnLocEntry> *locmap, bool foldDDRAddrOffset,
+    NpuConfigCache *configs) {
 
   DeviceOp deviceOp =
       DeviceOp::getForSymbolInModuleOrError(moduleOp, deviceName);
@@ -606,7 +618,9 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     return failure();
   }
 
-  TxnEncoder encoder(deviceOp, instructions, locmap, foldDDRAddrOffset);
+  NpuConfigCache ownConfigs;
+  TxnEncoder encoder(deviceOp, instructions, locmap, foldDDRAddrOffset,
+                     configs ? *configs : ownConfigs);
   for (Block &block : seq.getBody())
     for (Operation &o : block)
       encoder.encode(o);
