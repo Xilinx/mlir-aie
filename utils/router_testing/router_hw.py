@@ -67,17 +67,28 @@ def load_case(path: Path) -> HwCase:
     return module.Case()
 
 
-def route(variant: Variant, out: Path) -> tuple[str, str]:
+def route(variant: Variant, out: Path, timeout_s: float) -> tuple[str, str]:
     """Route the variant as the router would; returns (routed, diagnostics)."""
     text = variant.pinned if variant.pinned is not None else variant.design
-    p = subprocess.run(
-        ["aie-opt", f"--aie-create-pathfinder-flows={variant.options}", "-"],
-        input=text,
-        capture_output=True,
-        text=True,
-    )
+    # Written before aie-opt runs, so a hang or a crash still leaves the
+    # input and the exact command that reproduces it, not just a message.
+    (out / "input.mlir").write_text(text)
+    opt = f"--aie-create-pathfinder-flows={variant.options}"
+    repro = f"aie-opt '{opt}' {out / 'input.mlir'}"
+    try:
+        p = subprocess.run(
+            ["aie-opt", opt, "-"],
+            input=text,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"{variant.name}: aie-opt did not finish within {timeout_s} s: {repro}"
+        ) from None
     if p.returncode:
-        raise RuntimeError(f"{variant.name}: the router failed:\n{p.stderr}")
+        raise RuntimeError(f"{variant.name}: the router failed:\n{p.stderr}\n{repro}")
     (out / "routed.mlir").write_text(p.stdout)
     return p.stdout, p.stderr
 
@@ -95,23 +106,29 @@ def routing_only(routed: str) -> str:
         return str(module)
 
 
-def compile_variant(out: Path, peano: str) -> None:
-    p = subprocess.run(
-        [
-            "aiecc",
-            f"--peano={peano}",
-            "--get-xclbin",
-            "--get-npu-insts",
-            "--xclbin-name=aie.xclbin",
-            "--npu-insts-name=insts.bin",
-            "routed.mlir",
-        ],
-        cwd=out,
-        capture_output=True,
-        text=True,
-    )
+def compile_variant(out: Path, peano: str, timeout_s: float) -> None:
+    # routed.mlir is already on disk (route() wrote it), so this is enough on
+    # its own to reproduce a hang or a crash.
+    args = [
+        "aiecc",
+        f"--peano={peano}",
+        "--get-xclbin",
+        "--get-npu-insts",
+        "--xclbin-name=aie.xclbin",
+        "--npu-insts-name=insts.bin",
+        "routed.mlir",
+    ]
+    repro = f"cd {out} && {' '.join(args)}"
+    try:
+        p = subprocess.run(
+            args, cwd=out, capture_output=True, text=True, timeout=timeout_s
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"aiecc did not finish within {timeout_s} s: {repro}"
+        ) from None
     if p.returncode:
-        raise RuntimeError(f"aiecc failed in {out}:\n{p.stderr[-4000:]}")
+        raise RuntimeError(f"aiecc failed:\n{p.stderr[-4000:]}\n{repro}")
 
 
 def run_once(case: HwCase, out: Path) -> dict:
@@ -200,11 +217,11 @@ def run_case(args) -> int:
     for variant in variants:
         out = args.work / case.name / variant.name
         out.mkdir(parents=True, exist_ok=True)
-        routed, diagnostics = route(variant, out)
+        routed, diagnostics = route(variant, out, args.compile_timeout_s)
         for line in diagnostics.splitlines():
             if re.search(r"\b(warning|error):", line):
                 print(f"  {variant.name}: router: {line.split(': ', 2)[-1][:200]}")
-        compile_variant(out, args.peano)
+        compile_variant(out, args.peano, args.compile_timeout_s)
         results = []
         for _ in range(args.runs):
             results.append(run_isolated(args.case, out, args.process_timeout_s))
@@ -248,6 +265,7 @@ def main() -> int:
     run.add_argument("--variant", action="append", default=[])
     run.add_argument("--runs", type=int, default=20)
     run.add_argument("--process-timeout-s", type=int, default=120)
+    run.add_argument("--compile-timeout-s", type=int, default=300)
     run.add_argument("--work", type=Path, default=Path("router_hw_work"))
     run.add_argument("--verdicts", type=Path, default=None)
     run.add_argument("--peano", default=os.environ.get("PEANO_INSTALL_DIR", ""))

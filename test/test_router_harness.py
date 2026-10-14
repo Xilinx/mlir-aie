@@ -196,3 +196,56 @@ def test_a_nonpositive_runs_count_is_rejected(router_hw, hw_case):
     )
     assert result.returncode != 0
     assert "--runs" in result.stderr
+
+
+def test_a_router_failure_leaves_the_input_and_a_command_to_reproduce_it(
+    router_hw, tmp_path
+):
+    out = tmp_path / "out"
+    out.mkdir()
+    # Seven circuit flows over six channels: a real, unroutable design.
+    variant = router_hw.Variant(
+        name="over-cut",
+        design=OVER_CUT,
+        pinned=None,
+        expect="PASS",
+        options="",
+        note="",
+    )
+    with pytest.raises(RuntimeError, match=r"aie-opt .*/input\.mlir") as excinfo:
+        router_hw.route(variant, out, timeout_s=60)
+    assert (out / "input.mlir").read_text() == OVER_CUT
+    repro = str(excinfo.value).splitlines()[-1]
+    result = subprocess.run(repro, shell=True, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "cross from row 2 to row 3" in result.stderr
+
+
+def test_a_route_timeout_also_leaves_the_input_and_a_command(router_hw, tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    variant = router_hw.Variant(
+        name="t",
+        design="module { aie.device(npu1_1col) {} }",
+        pinned=None,
+        expect="PASS",
+        options="",
+        note="",
+    )
+    # A timeout real aie-opt startup alone cannot meet, to force the timeout
+    # branch deterministically rather than waiting out a genuine hang.
+    with pytest.raises(RuntimeError, match=r"did not finish within"):
+        router_hw.route(variant, out, timeout_s=0.0001)
+    assert (out / "input.mlir").exists()
+
+
+def test_a_compile_failure_names_the_command_to_reproduce_it(router_hw, tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "routed.mlir").write_text("module { aie.device(npu1_1col) {} }")
+    with pytest.raises(RuntimeError, match=r"aiecc failed") as excinfo:
+        router_hw.compile_variant(out, peano="/no/such/peano", timeout_s=60)
+    repro = str(excinfo.value).splitlines()[-1]
+    assert str(out) in repro and "routed.mlir" in repro
+    result = subprocess.run(repro, shell=True, capture_output=True, text=True)
+    assert result.returncode != 0
