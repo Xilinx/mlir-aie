@@ -927,6 +927,9 @@ struct Pathfinder::RouteState {
   // no slave port there to meet it by. Each of an unmet pair then reaches the
   // destinations it shares with the other by one master port out of it.
   std::set<std::pair<int, int>> trunked;
+  // Sources whose trunk took their tree back through a switchbox it holds an
+  // arbiter in (RoutingFaults::untrunk), which branch freely from then on.
+  std::set<PathEndPoint> untrunked;
   // The flows that met a tree this iteration, by its flow, and how often the
   // routing check faulted a meeting of each pair.
   std::set<std::pair<int, int>> met;
@@ -1353,7 +1356,9 @@ Pathfinder::TreeBuilder::TreeBuilder(Pathfinder &pf, RouteState &st, int flow)
   }
   findJoins();
   for (auto it = st.trunked.lower_bound({flow, 0});
-       it != st.trunked.end() && it->first == flow; ++it) {
+       !st.untrunked.count(part.src) && it != st.trunked.end() &&
+       it->first == flow;
+       ++it) {
     SmallVector<int, 4> shared;
     for (const PathEndPoint &dst : st.parts[it->second].dsts)
       if (llvm::is_contained(part.dsts, dst))
@@ -2242,6 +2247,13 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     illegalEdges++;
     st.relateParts();
   }
+  for (const PathEndPoint &src : faults.untrunk)
+    if (st.untrunked.insert(src).second) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Untrunk: " << describeTilePort(src.coords, src.port)
+                 << "\n");
+      illegalEdges++;
+    }
   std::set<std::pair<int, int>> faulted;
   bool unjoined = false;
   for (const auto &[tile, conn] : faults.connections) {

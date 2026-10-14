@@ -1481,6 +1481,7 @@ struct PacketFlowRouting : PacketPlan {
   std::set<TreeSplit> hazardSplits;
   std::set<std::pair<PathEndPoint, PathEndPoint>> hazardApart;
   std::set<std::pair<PathEndPoint, PathEndPoint>> hazardTogether;
+  std::set<PathEndPoint> hazardUntrunk;
   std::set<TileID> crowdedTiles;
   std::optional<std::string> planFailure;
   // Whether planFailure blames the overlay a reload keeps.
@@ -2155,9 +2156,10 @@ RoutingFaults PacketFlowRouting::faults() const {
   faults.crowded.assign(crowdedTiles.begin(), crowdedTiles.end());
   faults.apart.assign(hazardApart.begin(), hazardApart.end());
   faults.together.assign(hazardTogether.begin(), hazardTogether.end());
+  faults.untrunk.assign(hazardUntrunk.begin(), hazardUntrunk.end());
   faults.onlyOverlayMasters = !overlayConnections.empty() &&
                               hazardSplits.empty() && crowdedTiles.empty() &&
-                              hazardApart.empty() &&
+                              hazardApart.empty() && hazardUntrunk.empty() &&
                               hazardConnections == overlayConnections;
   return faults;
 }
@@ -2593,14 +2595,19 @@ std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
             moveUnit(step.tile, key);
             splitFlow(step.tile, key, keys);
           }
-          if (step.sharer >= numRequested || step.holding >= numRequested ||
-              !streams[step.sharer].packetID || !streams[step.holding].packetID)
+          // On a link, `waiting` queues behind `holding` itself.
+          size_t behind =
+              step.wait == HoldCycle::Wait::Link ? step.waiting : step.sharer;
+          if (behind >= numRequested || step.holding >= numRequested ||
+              !streams[behind].packetID || !streams[step.holding].packetID)
             continue;
-          PathEndPoint a{streams[step.sharer].src.tile,
-                         streams[step.sharer].src.port},
+          PathEndPoint a{streams[behind].src.tile, streams[behind].src.port},
               b{streams[step.holding].src.tile, streams[step.holding].src.port};
+          // holdCycle relates one source's trees only to themselves.
           if (!(a == b))
             hazardApart.insert(std::minmax(a, b));
+          else if (step.wait == HoldCycle::Wait::Arbiter)
+            hazardUntrunk.insert(a);
         }
       }
   };
