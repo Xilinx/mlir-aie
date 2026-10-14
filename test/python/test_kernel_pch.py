@@ -198,3 +198,66 @@ def test_compile_does_not_wait_out_a_stuck_pch_build(tmp_path):
     assert ret.returncode == 0, ret.stderr
     assert _pchs(cache) == []
     assert waited < 120
+
+
+_COMPILE_AROUND_A_NEW_HEADER = """
+import sys
+from pathlib import Path
+from aie.utils.compile.utils import compile_cxx_core_function
+source, before, after, shadow = sys.argv[1:]
+args = ["-I", shadow]
+compile_cxx_core_function(source, "aie2p", before, compile_args=args)
+Path(shadow, "stdint.h").write_text("#define SHADOWED 1\\n#include_next <stdint.h>\\n")
+compile_cxx_core_function(source, "aie2p", after, compile_args=args)
+"""
+
+_SHADOW_AWARE_KERNEL = """
+extern "C" void fill(int *out) {
+#ifdef SHADOWED
+  out[0] = 7;
+#else
+  out[0] = 1;
+#endif
+}
+"""
+
+
+def test_header_created_in_an_include_dir_reaches_the_next_compile(tmp_path):
+    """One process compiles, a header that shadows one the injected headers
+    include appears in the kernel's include dir, and the process compiles
+    again: the second object is the one a plain compile now builds."""
+    cache = tmp_path / "cache"
+    work = tmp_path / "work"
+    shadow = work / "shadow"
+    shadow.mkdir(parents=True)
+    source = work / "kernel.cc"
+    source.write_text(_SHADOW_AWARE_KERNEL)
+    env = dict(os.environ, NPU_CACHE_HOME=str(cache), AIE_KERNEL_PCH="1")
+    ret = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _COMPILE_AROUND_A_NEW_HEADER,
+            str(source),
+            str(work / "before.o"),
+            str(work / "after.o"),
+            str(shadow),
+        ],
+        cwd=work,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert ret.returncode == 0, ret.stderr
+
+    ret, plain = _compile(
+        tmp_path,
+        cache,
+        "plain-run",
+        ["-I", str(shadow)],
+        source=_SHADOW_AWARE_KERNEL,
+        pch=False,
+    )
+    assert ret.returncode == 0, ret.stderr
+    assert (work / "after.o").read_bytes() == plain.read_bytes()
+    assert (work / "before.o").read_bytes() != plain.read_bytes()

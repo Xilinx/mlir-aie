@@ -120,7 +120,6 @@ def _pch_cache() -> Path | None:
     return cache
 
 
-@functools.lru_cache(maxsize=1024)
 def _preprocessed(pch_cmd: tuple[str, ...]) -> tuple[str, frozenset[str]] | None:
     """Preprocess what ``pch_cmd`` reads into its PCH.
 
@@ -162,6 +161,11 @@ def _preprocessed(pch_cmd: tuple[str, ...]) -> tuple[str, frozenset[str]] | None
                 )
             )
     return hashlib.sha256(ret.stdout).hexdigest(), frozenset(directives)
+
+
+# The bare command's search paths are fixed; a caller's can gain a header at any
+# time, so only the bare command is preprocessed once per process.
+_BARE_PREPROCESSED: dict[tuple[str, ...], tuple[str, frozenset[str]] | None] = {}
 
 
 def _kernel_pch(pch_cmd: list[str]) -> str | None:
@@ -764,7 +768,10 @@ def compile_cxx_core_function(
         if all(os.path.isabs(d) for d in search_paths) and not any(
             arg.startswith(("-include", "-imacros")) for arg in others
         ):
-            own, bare = _preprocessed(tuple(own_cmd)), _preprocessed(tuple(bare_cmd))
+            if tuple(bare_cmd) not in _BARE_PREPROCESSED:
+                _BARE_PREPROCESSED[tuple(bare_cmd)] = _preprocessed(tuple(bare_cmd))
+            bare = _BARE_PREPROCESSED[tuple(bare_cmd)]
+            own = _preprocessed(tuple(own_cmd))
             shared = (
                 not others
                 and own is not None
