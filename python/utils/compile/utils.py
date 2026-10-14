@@ -400,16 +400,25 @@ def _end_of_parameter_list(line: str, open_paren: int) -> int:
     return -1
 
 
-def _check_lut_banks_enabled(options) -> bool:
-    """Recognize LLVM boolean option spellings, not just the bare flag."""
+def _aiecc_bool_option(options, name: str) -> bool:
+    """Return the value aiecc gives boolean option ``name`` in ``options``.
+
+    Recognizes LLVM boolean option spellings, not just the bare flag; the last
+    occurrence wins, and an absent option is false.
+    """
     enabled = False
     for option in options:
         if option == "--":
             break
-        name, _, value = option.partition("=")
-        if name in ("--check-lut-banks", "-check-lut-banks"):
+        flag, _, value = option.partition("=")
+        if flag in (f"--{name}", f"-{name}"):
             enabled = value in ("", "1", "true", "True", "TRUE")
     return enabled
+
+
+def _check_lut_banks_enabled(options) -> bool:
+    """Return whether ``options`` turn on aiecc's ``--check-lut-banks``."""
+    return _aiecc_bool_option(options, "check-lut-banks")
 
 
 def _object_has_bitcode(output_path) -> bool:
