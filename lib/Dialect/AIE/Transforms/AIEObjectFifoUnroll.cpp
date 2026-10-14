@@ -236,14 +236,11 @@ struct AIEObjectFifoUnrollPass
   ///
   /// A promoted object still picked at run time is a memref descriptor carried
   /// through control flow, which LLVM's alias analysis cannot tell apart from
-  /// the others; left in memory, SROA reduces it to a pointer. Whether the
-  /// rotations fold depends on the fold pipeline, so as with peeling each core
-  /// is promoted for real against a detached clone. A promoted core that picks
-  /// no memref at run time is kept outright. Otherwise the clone is swapped in,
-  /// slots untagged, and folded too, so the two are compared folded: folding
-  /// unrelated to the slots (a select between the core's own buffers going
-  /// constant, say) cannot hide an object promotion left picked at run time.
-  /// The promoted core is swapped back if it picks no more memrefs.
+  /// the others; left in memory, SROA reduces it to a pointer. As with peeling,
+  /// each core is promoted for real against a detached clone. Unless the
+  /// promoted core picks no memref at run time, the clone is swapped in and
+  /// folded too, and the promoted core returns only if it picks no more: with
+  /// both sides folded, unrelated folding cannot tip the comparison.
   LogicalResult foldPromotingObjectSlots(DeviceOp device,
                                          ArrayRef<memref::AllocaOp> slots,
                                          OpPassManager &foldPipeline) {
