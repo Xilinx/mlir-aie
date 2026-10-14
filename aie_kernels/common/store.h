@@ -21,10 +21,11 @@ inline void store_unaligned_bounded(T *p, aie::vector<T, N> v, bool end) {
   constexpr int bytes = sizeof(T) * N;
   static_assert(bytes == 16 || bytes == 32);
   const int off = end ? bytes - 33 : 0;
-  // Left unrounded, as in aie_api: the hardware rounds a 256-bit access down
-  // to 32 bytes.
-  v32int8 *q = (v32int8 *)((int8_t *)p + off);
-  const unsigned at = (((uintptr_t)p + off) & 31) - off;
+  const unsigned lo = ((uintptr_t)p + off) & 31;
+  // Rounded here, not by the hardware: an unaligned v32int8 * lets the
+  // compiler move a store to a byte of q[1]'s word to before q[1]'s write.
+  v32int8 *q = (v32int8 *)((int8_t *)p + off - lo);
+  const unsigned at = lo - off;
   const v64int8 x = ::shift_bytes(
       ::undef_v64int8(), ::set_v64int8(0, v.template cast_to<int8>()), 64 - at);
   v64int8 y = ::set_v64int8(0, q[0]);

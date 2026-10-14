@@ -43,7 +43,7 @@ references. ``factories`` lists the factory names.
 
 import inspect
 import sys
-from typing import get_type_hints
+from typing import get_origin, get_type_hints
 
 from aie.iron.kernel import ExternalFunction
 
@@ -584,6 +584,11 @@ def factories() -> list[str]:
         declared = inspect.signature(f).return_annotation
         if isinstance(declared, str):
             declared = get_type_hints(f).get("return")
-        return inspect.isclass(declared) and issubclass(declared, ExternalFunction)
+        # Python 3.10 takes a generic alias such as tuple[...] for a class.
+        return (
+            get_origin(declared) is None
+            and inspect.isclass(declared)
+            and issubclass(declared, ExternalFunction)
+        )
 
     return [name for name in __all__ if builds_a_kernel(getattr(module, name))]
