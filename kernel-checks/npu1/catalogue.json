@@ -1,8 +1,8 @@
 {
  "npu": "npu1",
  "arch": "aie2",
- "commit": "e04ad858a0a9e3dfece25089044ae6a44e262683",
- "date": "2026-10-13T06:50:46.076449+00:00",
+ "commit": "dff8d6a8437ff219950482d934406ac368251cf6",
+ "date": "2026-10-14T06:44:15.039736+00:00",
  "swept": true,
  "kernels": [
   {
@@ -256,6 +256,24 @@
    ],
    "builds": [
     "sample_combine"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "no case in test/python/npu/kernel_cases.py"
+  },
+  {
+   "factory": "router_top_k",
+   "family": "moe",
+   "summary": "One column's router: sample_select's summary to top_k ids and weights.",
+   "sources": [
+    "moe/router_top_k.cc"
+   ],
+   "builds": [
+    "router_top_k"
    ],
    "passed": 0,
    "failed": [],

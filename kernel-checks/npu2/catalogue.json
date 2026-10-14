@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "e04ad858a0a9e3dfece25089044ae6a44e262683",
- "date": "2026-10-13T07:06:17.705811+00:00",
+ "commit": "dff8d6a8437ff219950482d934406ac368251cf6",
+ "date": "2026-10-14T07:36:23.408366+00:00",
  "swept": true,
  "kernels": [
   {
@@ -266,6 +266,24 @@
    ],
    "builds": [
     "sample_combine"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "no case in test/python/npu/kernel_cases.py"
+  },
+  {
+   "factory": "router_top_k",
+   "family": "moe",
+   "summary": "One column's router: sample_select's summary to top_k ids and weights.",
+   "sources": [
+    "moe/router_top_k.cc"
+   ],
+   "builds": [
+    "router_top_k"
    ],
    "passed": 0,
    "failed": [],
@@ -1609,13 +1627,14 @@
    "builds": [
     "silu_sized"
    ],
-   "passed": 6,
+   "passed": 8,
    "failed": [],
-   "timed": 2,
+   "timed": 3,
    "timing_failed": [],
    "untimed": [
     "silu_sized/1024x16/bfloat16",
     "silu_sized/160x4/bfloat16/unroll-tail",
+    "silu_sized/160x4/bfloat16/use_lut=True/lut-unroll-tail",
     "silu_sized/32x4/bfloat16/edge-tiny",
     "silu_sized/96x4/bfloat16/short-trip"
    ],
@@ -2015,12 +2034,8 @@
    ],
    "passed": 27,
    "failed": [],
-   "timed": 6,
-   "timing_failed": [
-    "fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/epilogue=gelu/mmul_shape=(8, 8, 8)/out_chunk=512",
-    "fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/epilogue=silu/mmul_shape=(8, 8, 8)/out_chunk=512",
-    "fused_mm/16x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=128/mmul_shape=(8, 8, 8)/out_chunk=512"
-   ],
+   "timed": 9,
+   "timing_failed": [],
    "untimed": [
     "fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/emulate_bf16_mmul_with_bfp16=True/out_chunk=256",
     "fused_mm/32x128x64x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/mmul_shape=(8, 8, 8)/out_chunk=256",
@@ -2053,9 +2068,9 @@
    "builds": [
     "mha"
    ],
-   "passed": 3,
+   "passed": 4,
    "failed": [],
-   "timed": 2,
+   "timed": 3,
    "timing_failed": [],
    "untimed": [
     "mha/16x256x64x4/bfloat16/pv=True"
@@ -2139,16 +2154,10 @@
    "builds": [
     "mm_bfp_shuffle"
    ],
-   "passed": 2,
-   "failed": [
-    "mm_bfp_shuffle/256x4/bfp16ebs8/unshuffle=False",
-    "mm_bfp_shuffle/512x4/bfp16ebs8"
-   ],
-   "timed": 2,
-   "timing_failed": [
-    "mm_bfp_shuffle/256x4/bfp16ebs8/unshuffle=False",
-    "mm_bfp_shuffle/512x4/bfp16ebs8"
-   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 4,
+   "timing_failed": [],
    "untimed": [],
    "flaky": []
   },
@@ -2565,10 +2574,8 @@
    "builds": [
     "bn_conv2dk3_dw"
    ],
-   "passed": 38,
-   "failed": [
-    "bn_conv2dk3_dw/960x8/uint8/input_channels=32/input_width=30/output_channels=32/middle-row"
-   ],
+   "passed": 39,
+   "failed": [],
    "timed": 8,
    "timing_failed": [],
    "untimed": [
@@ -2601,6 +2608,7 @@
     "bn_conv2dk3_dw/6720x8/uint8/input_channels=240/input_width=28/output_channels=240/stride=2/top-row",
     "bn_conv2dk3_dw/7168x8/uint8/input_channels=64/input_width=112/output_channels=64/stride=2/bottom-row",
     "bn_conv2dk3_dw/960x8/uint8/input_channels=24/input_width=40/output_channels=24/middle-row",
+    "bn_conv2dk3_dw/960x8/uint8/input_channels=32/input_width=30/output_channels=32/middle-row",
     "bn_conv2dk3_dw/960x8/uint8/input_channels=48/input_width=20/output_channels=48/bottom-row"
    ],
    "flaky": []

@@ -2529,6 +2529,52 @@
     "offered": 89,
     "checked": 86
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "38521424003",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38521424003",
+   "date": "2026-10-14T06:18:17+00:00",
+   "commit": {
+    "id": "dff8d6a8437ff219950482d934406ac368251cf6",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/dff8d6a8437ff219950482d934406ac368251cf6",
+    "message": "Update Peano version (#3915)",
+    "timestamp": "2026-10-14T04:10:34Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "dff8d6a843",
+    "peano": "22.0.0+83ba9ea9",
+    "kernels": "851b5051e7b9",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie2",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 765,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 495,
+    "failed": 0,
+    "timed": 196,
+    "timing_failed": 0,
+    "untimed": 299,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 90,
+    "checked": 86
+   }
   }
  ]
 }
