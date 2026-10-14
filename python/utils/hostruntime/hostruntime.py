@@ -292,6 +292,15 @@ class HostRuntime(ABC):
         """
         return None
 
+    def other_processes(self) -> set[int] | None:
+        """Return the pids of the other processes holding a context on this NPU, or ``None`` if unknown.
+
+        A timing taken while another process dispatches to the same NPU
+        measures both. Backends that can read it override this; the base
+        implementation cannot.
+        """
+        return None
+
     def device_name(self) -> str | None:
         """Return the NPU's model name (e.g. ``NPU Strix``), or ``None`` if unknown.
 
