@@ -117,7 +117,9 @@ def _kernel_pch(pch_cmd: list[str]) -> str | None:
     ident = _compiler_identity(pch_cmd[0])
     if not ident:
         return None
-    key = hashlib.sha256("\0".join([ident, *pch_cmd]).encode()).hexdigest()[:32]
+    # The compiler's identity, not where it is installed, with the rest of the
+    # command.
+    key = hashlib.sha256("\0".join([ident, *pch_cmd[1:]]).encode()).hexdigest()[:32]
     try:
         # Deferred: aie.utils.compile.__init__ imports this module, so
         # NPU_CACHE_HOME cannot be imported at module scope.
@@ -138,20 +140,28 @@ def _kernel_pch(pch_cmd: list[str]) -> str | None:
     # compiles inside one build AND separate builds on one machine both race.
     from aie.utils.compile.cache.utils import file_lock
 
-    with _PCH_BUILD_LOCK:
+    with _PCH_BUILD_LOCKS_GUARD:
+        lock = _PCH_BUILD_LOCKS.setdefault(key, threading.Lock())
+    with lock:
         if pch.exists():
             return str(pch)
         try:
-            with file_lock(str(cache / f"{key}.lock"), timeout_seconds=300):
+            with file_lock(
+                str(cache / f"{key}.lock"),
+                timeout_seconds=_PCH_LOCK_TIMEOUT_SECONDS,
+            ):
                 if pch.exists():
                     return str(pch)
                 return _build_kernel_pch(pch_cmd, cache, key, pch)
         except (TimeoutError, OSError):
-            # A PCH is an optimisation: never let the lock be why a build stalls.
-            return _build_kernel_pch(pch_cmd, cache, key, pch)
+            # A build takes seconds; one held this long is stuck, and a PCH is
+            # an optimisation, so compile without it.
+            return None
 
 
-_PCH_BUILD_LOCK = threading.Lock()
+_PCH_LOCK_TIMEOUT_SECONDS = 30
+_PCH_BUILD_LOCKS: dict[str, threading.Lock] = {}
+_PCH_BUILD_LOCKS_GUARD = threading.Lock()
 
 
 def _build_kernel_pch(

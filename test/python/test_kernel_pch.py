@@ -10,10 +10,14 @@
 import os
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+
+from aie.utils import config
+from aie.utils.compile.cache.utils import file_lock
 
 _COMPILE = """
 import sys
@@ -33,7 +37,7 @@ extern "C" void fill(int *out) {
 """
 
 
-def _compile(tmp_path, cache, name, args=(), source=_KERNEL, pch=True):
+def _compile(tmp_path, cache, name, args=(), source=_KERNEL, pch=True, peano=None):
     """Compile ``source`` in a fresh interpreter whose NPU_CACHE_HOME is ``cache``.
 
     Each compile has a directory of its own and the same file names, so objects
@@ -135,3 +139,30 @@ def test_concurrent_compiles_build_one_pch(tmp_path):
     assert len(_pchs(cache)) == 1
     objects = {out.read_bytes() for _, out in results}
     assert len(objects) == 1
+
+
+@pytest.mark.skipif(os.name == "nt", reason="creating a symlink needs privileges")
+def test_one_compiler_at_two_paths_shares_its_pch(tmp_path):
+    cache = tmp_path / "cache"
+    other = tmp_path / "other-peano"
+    other.symlink_to(config.peano_install_dir(), target_is_directory=True)
+    ret, first = _compile(tmp_path, cache, "first")
+    assert ret.returncode == 0, ret.stderr
+    ret, second = _compile(tmp_path, cache, "second", peano=other)
+    assert ret.returncode == 0, ret.stderr
+    assert len(_pchs(cache)) == 1
+    assert first.read_bytes() == second.read_bytes()
+
+
+def test_compile_does_not_wait_out_a_stuck_pch_build(tmp_path):
+    cache = tmp_path / "cache"
+    assert _compile(tmp_path, cache, "first")[0].returncode == 0
+    (pch,) = _pchs(cache)
+    pch.unlink()
+    with file_lock(str(pch.with_suffix(".lock"))):
+        start = time.monotonic()
+        ret, plain = _compile(tmp_path, cache, "plain")
+        waited = time.monotonic() - start
+    assert ret.returncode == 0, ret.stderr
+    assert _pchs(cache) == []
+    assert waited < 120
