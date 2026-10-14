@@ -34,17 +34,4 @@ def SplitVectorLoadUpsChains : Pass<"aievec-split-load-ups-chains"> {
                            "xilinx::aievec::AIEVecDialect"];
 }
 
-def OneLaneInsertToBitcast : Pass<"aievec-one-lane-insert-to-bitcast"> {
-  let summary = "Build one-element LLVM vectors with a bitcast";
-  let description = [{
-    Rewrites an llvm.insertelement of a scalar into a one-element vector as an
-    llvm.bitcast of the scalar. Both produce the same value, since the insert
-    overwrites the only lane. Given the insert of an extracted lane, LLVM's
-    instcombine forms a shufflevector with a one-element result, which
-    Peano's AIE combines do not handle; the bitcast leaves nothing to fold.
-  }];
-  let constructor = "xilinx::aievec::createOneLaneInsertToBitcastPass()";
-  let dependentDialects = ["mlir::LLVM::LLVMDialect"];
-}
-
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES

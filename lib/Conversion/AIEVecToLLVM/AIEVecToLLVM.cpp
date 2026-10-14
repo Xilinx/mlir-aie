@@ -5650,6 +5650,57 @@ public:
   }
 };
 
+// A one-element vector built from a scalar is lowered to llvm.bitcast. As an
+// insertelement, LLVM folds it with the extract of a lane into a shufflevector
+// with a one-element result, which Peano's AIE combines do not handle.
+static bool isOneLaneVectorOfScalar(Type resultType, Type sourceType) {
+  auto vecType = dyn_cast<VectorType>(resultType);
+  return vecType && !vecType.isScalable() && vecType.getRank() == 1 &&
+         vecType.getNumElements() == 1 && !isa<VectorType>(sourceType);
+}
+
+static bool isOneLaneBroadcastOfScalar(vector::BroadcastOp op) {
+  return isOneLaneVectorOfScalar(op.getType(), op.getSourceType());
+}
+
+static bool isOneLaneInsertOfScalar(vector::InsertOp op) {
+  return isOneLaneVectorOfScalar(op.getType(),
+                                 op.getValueToStore().getType()) &&
+         !op.hasDynamicPosition();
+}
+
+class OneLaneBroadcastOpConversion
+    : public mlir::ConvertOpToLLVMPattern<vector::BroadcastOp> {
+public:
+  using ConvertOpToLLVMPattern<vector::BroadcastOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::BroadcastOp bcastOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!isOneLaneBroadcastOfScalar(bcastOp))
+      return failure();
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(bcastOp, bcastOp.getType(),
+                                                 adaptor.getSource());
+    return success();
+  }
+};
+
+class OneLaneInsertOpConversion
+    : public mlir::ConvertOpToLLVMPattern<vector::InsertOp> {
+public:
+  using ConvertOpToLLVMPattern<vector::InsertOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::InsertOp insertOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!isOneLaneInsertOfScalar(insertOp))
+      return failure();
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(insertOp, insertOp.getType(),
+                                                 adaptor.getValueToStore());
+    return success();
+  }
+};
+
 // Convert arith.divf for vector<N x f32> to unrolled scalar divisions
 // Uses a noinline helper function call as a barrier to prevent LLVM
 // re-vectorization. Scalar f32 divisions are handled by downstream passes.
@@ -5771,6 +5822,8 @@ static void populateAIEVecToLLVMAIE2ConversionPatterns(
   patterns.add<FMAElemOpConversion>(converter);
   patterns.add<FoldAIECastOps>(converter);
   patterns.add<FdivOpConversion>(converter, "aie2");
+  patterns.add<OneLaneBroadcastOpConversion, OneLaneInsertOpConversion>(
+      converter);
 }
 
 // AIE2p version of ExtractElemOp conversion using LLVM extractelement
@@ -5880,6 +5933,8 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<RsqrtOpAIE2pConversion>(converter);
   patterns.add<FdivOpConversion>(converter, "aie2p");
   patterns.add<FoldAIECastOpsAIE2p>(converter);
+  patterns.add<OneLaneBroadcastOpConversion, OneLaneInsertOpConversion>(
+      converter);
 }
 
 void populateAIEVecToLLVMConversionPatterns(
@@ -5906,6 +5961,12 @@ static void configureAIEVecToLLVMLegalizations(LLVMConversionTarget &target) {
     // Scalar divf is legal
     return true;
   });
+
+  // One-element vectors built from a scalar are illegal (lowered to bitcast)
+  target.addDynamicallyLegalOp<vector::BroadcastOp>(
+      [](vector::BroadcastOp op) { return !isOneLaneBroadcastOfScalar(op); });
+  target.addDynamicallyLegalOp<vector::InsertOp>(
+      [](vector::InsertOp op) { return !isOneLaneInsertOfScalar(op); });
 }
 
 struct ConvertAIEVecToLLVMPass
