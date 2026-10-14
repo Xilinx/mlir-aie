@@ -8,7 +8,8 @@
 //
 // AIE_BF16_LANES    bf16 lanes in one vector multiply.
 // AIE_HAS_*         an instruction the sources use when present.
-// AIE_HAS_CTZ_POPCOUNT  Peano lowers ctz and popcount (aie::mask::count()).
+// AIE_HAS_CTZ_POPCOUNT  Peano lowers ctz and popcount (aie::mask::count();
+//                       on AIE2, llvm-aie#1340).
 // AIE_LUT_16B_RUN   uint16 entries per bank run in an aie::lut table.
 // AIE_TUNED_*       selects a kernel's code written for that architecture.
 

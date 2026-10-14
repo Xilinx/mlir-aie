@@ -92,9 +92,9 @@ def test_ref_keeps_the_tail_float32_loses(name):
 
 
 def test_sigmoid_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
-    # AIE2P's sigmoid table against aie2's 0.5 * (1 + tanh(x/2)), which
-    # rounds tanh to bf16 first: from x = -7.5 to -6.9 that is -1, and the
-    # sigmoid 0. Both are 0 below -7.5, the table's flat end segment.
+    # 0.5 * (1 + tanh(x/2)) with tanh rounded to bf16 first is -1, and the
+    # sigmoid 0, from x = -7.5 to -6.9; the table is not. It is 0 below -7.5,
+    # its flat end segment.
     x = all_bf16(nan=False)
     x = x[(x >= -8) & (x < -2)]
     true = 1.0 / (1.0 + np.exp(-x.astype(np.float64)))
@@ -103,12 +103,9 @@ def test_sigmoid_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
     assert (table[~tail] == 0).all()
     # At worst 7.05% off, at x = -7.
     assert (np.abs(table[tail] - true[tail]) <= 0.071 * true[tail]).all()
-    old = kernels.sigmoid_lut_ref(x).astype(np.float64)
-    assert (old[tail & (x <= -6.9)] == 0).all()
 
 
 def test_silu_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
-    # silu on AIE2P's sigmoid table, against aie2's tanh-path model.
     x = all_bf16(nan=False)
     x = x[(x >= -8) & (x < -2)]
     xf = x.astype(np.float64)
@@ -118,8 +115,6 @@ def test_silu_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
     assert (table[~tail] == 0).all()
     # At worst 7.17% off, at x = -7.
     assert (np.abs(table[tail] - true[tail]) <= 0.072 * np.abs(true[tail])).all()
-    old = kernels.silu_lut_ref(x).astype(np.float64)
-    assert (old[tail & (x <= -6.9)] == 0).all()
     assert kernels.silu_table_ref(np.array([-np.inf], bfloat16))[0] == 0
 
 
@@ -131,27 +126,23 @@ def test_swiglu_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
     table = kernels.swiglu_table_ref(x, one, one).astype(np.float64)
     assert (table[~tail] == 0).all()
     assert (table[tail] > 0).all()
-    old = kernels.swiglu_lut_ref(x, one, one).astype(np.float64)
-    assert (old[tail & (x <= -6.9)] == 0).all()
     ninf = np.array([-np.inf], bfloat16)
     assert kernels.swiglu_table_ref(-ninf, np.array([1], bfloat16), ninf)[0] == 0
 
 
 def test_lut_models_flush_subnormal_products():
     # The accumulator flushes a subnormal product to zero before storing it.
-    # Without that, silu_lut_ref gave 506 subnormals over every bf16 where
+    # Without that, a silu model gave 506 subnormals over every bf16 where
     # npu2 gave 0.
     x = all_bf16()
     one = np.ones_like(x)
     with np.errstate(over="ignore", invalid="ignore"):
         outs = {
-            "silu_lut_ref(x)": kernels.silu_lut_ref(x),
-            "swiglu_lut_ref(x, 1, 1)": kernels.swiglu_lut_ref(x, one, one),
-            "swiglu_lut_ref(1, 1, x)": kernels.swiglu_lut_ref(one, one, x),
             "silu_table_ref(x)": kernels.silu_table_ref(x),
             "swiglu_table_ref(x, 1, 1)": kernels.swiglu_table_ref(x, one, one),
             "swiglu_table_ref(1, 1, x)": kernels.swiglu_table_ref(one, one, x),
             "gelu_lut_ref(x)": kernels.gelu_lut_ref(x),
+            "gelu_aie2_lut_ref(x)": kernels.gelu_aie2_lut_ref(x),
         }
     for name, got in outs.items():
         a = np.abs(got.astype(np.float32))
@@ -160,7 +151,7 @@ def test_lut_models_flush_subnormal_products():
     # x * w2 = 2**-128 flushes, so silu is 0 and the gate zeroes the output
     # however large x * w1 is.
     x, w1, w2 = (np.array([v], bfloat16) for v in (2.0**-64, 2.0**100, 2.0**-64))
-    assert kernels.swiglu_lut_ref(x, w1, w2)[0] == 0
+    assert kernels.swiglu_table_ref(x, w1, w2)[0] == 0
 
 
 def test_swiglu_ref_rounds_the_products_then_is_float64():

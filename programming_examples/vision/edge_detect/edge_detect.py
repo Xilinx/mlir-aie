@@ -13,7 +13,6 @@ map with the original RGBA input (forwarded via ``inOF_L2L1``).
 """
 
 import argparse
-import sys
 
 import aie.iron as iron
 import aie.iron.kernels as kernels
@@ -104,48 +103,47 @@ def edge_detect(
     def filter_fn(of_in, of_out, filter_kernel, filter2d_line):
         # 3-line stencil over height rows.  Top/bottom borders duplicate the
         # adjacent row; the steady-state middle uses real (i-1, i, i+1).
-        for _ in range_(sys.maxsize):
-            # Top border
-            elems_in_pre = of_in.acquire(2)
-            elem_pre_out = of_out.acquire(1)
+        # Top border
+        elems_in_pre = of_in.acquire(2)
+        elem_pre_out = of_out.acquire(1)
+        filter2d_line(
+            elems_in_pre[0],
+            elems_in_pre[0],
+            elems_in_pre[1],
+            elem_pre_out,
+            line_width,
+            filter_kernel,
+        )
+        of_out.release(1)
+
+        # Steady-state
+        for _ in range_(1, height_minus_1):
+            elems_in = of_in.acquire(3)
+            elem_out = of_out.acquire(1)
             filter2d_line(
-                elems_in_pre[0],
-                elems_in_pre[0],
-                elems_in_pre[1],
-                elem_pre_out,
+                elems_in[0],
+                elems_in[1],
+                elems_in[2],
+                elem_out,
                 line_width,
                 filter_kernel,
             )
+            of_in.release(1)
             of_out.release(1)
 
-            # Steady-state
-            for _ in range_(1, height_minus_1):
-                elems_in = of_in.acquire(3)
-                elem_out = of_out.acquire(1)
-                filter2d_line(
-                    elems_in[0],
-                    elems_in[1],
-                    elems_in[2],
-                    elem_out,
-                    line_width,
-                    filter_kernel,
-                )
-                of_in.release(1)
-                of_out.release(1)
-
-            # Bottom border
-            elems_in_post = of_in.acquire(2)
-            elem_post_out = of_out.acquire(1)
-            filter2d_line(
-                elems_in_post[0],
-                elems_in_post[1],
-                elems_in_post[1],
-                elem_post_out,
-                line_width,
-                filter_kernel,
-            )
-            of_in.release(2)
-            of_out.release(1)
+        # Bottom border
+        elems_in_post = of_in.acquire(2)
+        elem_post_out = of_out.acquire(1)
+        filter2d_line(
+            elems_in_post[0],
+            elems_in_post[1],
+            elems_in_post[1],
+            elem_post_out,
+            line_width,
+            filter_kernel,
+        )
+        of_in.release(2)
+        of_out.release(1)
 
     workers.append(
         Worker(
@@ -156,7 +154,6 @@ def edge_detect(
                 filter_kernel_buff,
                 filter2d_line_kernel,
             ],
-            while_true=False,
         )
     )
 

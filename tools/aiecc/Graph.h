@@ -72,15 +72,6 @@ inline std::mutex &fileWriteMutex() {
   return m;
 }
 
-// Serializes diagnostic/progress writes to the shared stdout/stderr so that
-// concurrent worker threads (and the tool-invocation echo) don't interleave
-// their lines. Any code that prints a full log line from a worker thread should
-// hold this across the write (and flush before releasing).
-inline std::mutex &logMutex() {
-  static std::mutex m;
-  return m;
-}
-
 // The --progress line has no trailing newline. `endProgressLine` returns with
 // `logMutex()` held; keep the lock until the diagnostic is written.
 inline bool &progressLineOpen() {

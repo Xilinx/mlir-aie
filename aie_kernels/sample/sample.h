@@ -58,6 +58,11 @@ static inline uint16_t sample_bits(uint32_t key) {
   return (key & 0x8000) ? (uint16_t)(key & 0x7fff) : (uint16_t)~key;
 }
 
+// A key's logit, widened exactly to float.
+static inline float sample_value(uint32_t key) {
+  return __builtin_bit_cast(float, (uint32_t)sample_bits(key) << 16);
+}
+
 static inline int32_t sample_top_k(const int32_t *row) {
   int32_t k = row[SAMPLE_ROW_TOP_K];
   if (k < 1)

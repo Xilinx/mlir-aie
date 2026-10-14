@@ -16,7 +16,7 @@ the full-ELF ``XRTHostRuntime`` path (``pyxrt.hw_context(dev, pyxrt.elf(...))``
 
 Coverage:
 - @iron.jit(full_elf=True) transparent compile + run + verify
-- npu.load_pdi is auto-injected into the runtime sequence
+- npu.load_pdi is generated when the runtime does not configure a device
 - AOT compile(full_elf_path=...) writes a single ELF and no xclbin/insts
 - Full-ELF result matches the same design on the default xclbin path
 - Trace on the full-ELF path
@@ -96,9 +96,9 @@ def test_full_elf_correct_output(input_array, add_value):
 
 
 def test_full_elf_injects_load_pdi(input_array):
-    """The full-ELF path auto-injects npu.load_pdi referencing the device."""
+    """The full-ELF path configures an otherwise unconfigured runtime."""
     mlir = add_const_full_elf.as_mlir(input_array, None, N=_N, add_value=1)
-    assert "npu.load_pdi" in mlir
+    assert mlir.count("npu.load_pdi") == 1
 
 
 def test_full_elf_aot_single_elf(tmp_path):

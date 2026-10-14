@@ -18,7 +18,10 @@
 #include "IRTransforms.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -28,6 +31,8 @@
 #include <optional>
 #include <random>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace xilinx::aiecc {
 
@@ -41,7 +46,8 @@ inline std::string npuSeqKey(llvm::StringRef deviceName,
 
 // BIF text consumed by bootgen to assemble a device's PDI from its CDOs.
 // bootgen never initializes the metaheader revoke_id it writes into the image
-// header, so it is set explicitly to keep the PDI deterministic.
+// header, so it is set explicitly to keep the PDI deterministic. The paths are
+// quoted: bootgen ends an unquoted one at a space.
 inline std::string makeBifText(llvm::StringRef cdoDir,
                                llvm::StringRef devName) {
   return llvm::formatv(R"(all:
@@ -56,9 +62,9 @@ inline std::string makeBifText(llvm::StringRef cdoDir,
   {{
     name=aie_image, id=0x1c000000
     {{ type=cdo
-      file={0}/{1}_aie_cdo_elfs.bin
-      file={0}/{1}_aie_cdo_init.bin
-      file={0}/{1}_aie_cdo_enable.bin
+      file="{0}/{1}_aie_cdo_elfs.bin"
+      file="{0}/{1}_aie_cdo_init.bin"
+      file="{0}/{1}_aie_cdo_enable.bin"
     }
   }
 }
@@ -98,9 +104,9 @@ inline constexpr int kMinHostBOs = 5;
 // are unvalidated and rejected.
 inline constexpr int kMaxHostBOs = 16;
 
-// Argument count of `dev`'s selected non-empty runtime sequence, or nullopt.
-// A non-empty `seqFilter` (--sequence-name) restricts the choice to that
-// sequence, matching the instruction/control-packet paths.
+// The host buffer count of `dev`'s selected non-empty runtime sequence, or
+// nullopt. A non-empty `seqFilter` (--sequence-name) restricts the choice to
+// that sequence, matching the instruction/control-packet paths.
 inline std::optional<int>
 getRuntimeSequenceArgCount(xilinx::AIE::DeviceOp dev,
                            llvm::StringRef seqFilter) {
@@ -108,7 +114,8 @@ getRuntimeSequenceArgCount(xilinx::AIE::DeviceOp dev,
     if (!seqFilter.empty() && seqOp.getSymName() != seqFilter)
       continue;
     if (!seqOp.getBody().empty())
-      return static_cast<int>(seqOp.getBody().front().getNumArguments());
+      return static_cast<int>(
+          xilinx::AIEX::getHostBufferCount(seqOp.getBody().front()));
   }
   return std::nullopt;
 }
@@ -240,9 +247,9 @@ inline llvm::json::Value makePartitionJson(xilinx::AIE::DeviceOp devOp,
 
 // Patch-info JSON for external buffers (the runtime control-packet buffer).
 // Consumed by aiebu via the `patch_info_file` field in the full-ELF
-// config JSON. `ctrlPktArgIdx` is the runtime-sequence argument slot the
-// control-packet buffer occupies (the sequence's pre-lowering argument count,
-// since ctrl-packet-to-DMA appends the ctrl buffer as the next argument).
+// config JSON. `ctrlPktArgIdx` is the host buffer slot the control-packet
+// buffer occupies: ctrl-packet-to-DMA appends it after the sequence's own
+// arguments, so the slot is the sequence's host buffer count.
 inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
                                            int64_t ctrlPktSizeBytes) {
   using O = llvm::json::Object;
@@ -256,10 +263,13 @@ inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
 
 // Full-ELF config.json for aiebu's aie2_config assembler (in-process, or
 // `aiebu-asm -t aie2_config`). One xrt-kernel per device with ≥1 runtime
-// sequence; PDIs array is shared (all devices) so aiebu can resolve any
-// load_pdi reference. Argument count is max(3, max runtime-seq arity). PDI IDs
-// are read from `aiecc.pdi_id` on each DeviceOp (stamped by
-// `assignDevicePdiIds`).
+// sequence. A kernel lists its own device's PDI and the PDIs its instantiated
+// sequences `load_pdi`: aiebu emits a section per PDI per kernel, so listing
+// every PDI in every kernel grows quadratically with the devices and passes
+// aiebu's section limit at about 255 of them. Argument count is max(3, max
+// runtime-seq arity). PDI IDs are read from `aiecc.pdi_id` on each DeviceOp
+// (stamped by `assignDevicePdiIds`, and onto each load_pdi by
+// `assignLoadPdiIds`).
 //
 // `ctrlPktPaths` / `patchInfoPaths` (both keyed per runtime sequence as
 // "<device>_<sequence>" via `npuSeqKey`, optional) carry that sequence's
@@ -279,11 +289,10 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
         d->getAttrOfType<mlir::IntegerAttr>(kPdiIdAttr).getInt());
   };
 
-  llvm::json::Array allPdis;
+  std::vector<std::pair<int, std::string>> allPdis;
   for (const auto &item : devices.items)
     if (auto it = pdiPaths.find(item.key); it != pdiPaths.end())
-      allPdis.push_back(
-          O{{"id", devId(item.get().op)}, {"PDI_file", it->second}});
+      allPdis.emplace_back(devId(item.get().op), it->second);
 
   llvm::json::Array xrtKernels;
   for (const auto &item : devices.items) {
@@ -293,8 +302,8 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
     int argCount = 3;
     devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
       if (!seq.getBody().empty())
-        argCount =
-            std::max<int>(argCount, seq.getBody().front().getNumArguments());
+        argCount = std::max<int>(
+            argCount, xilinx::AIEX::getHostBufferCount(seq.getBody().front()));
     });
     llvm::json::Array arguments;
     for (int i = 0; i < argCount; ++i)
@@ -304,6 +313,7 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
             {"offset", llvm::formatv("0x{0}", llvm::utohexstr(i * 8)).str()}});
 
     llvm::json::Array instances;
+    llvm::SmallDenseSet<int> loaded{devId(devOp)};
     devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
       // One `.bin` per runtime sequence, keyed "<device>_<sequence>". Only
       // sequences that were actually lowered to a control-code binary have an
@@ -326,17 +336,21 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
           patchIt != patchInfoPaths.end())
         inst["patch_info_file"] = patchIt->second;
       instances.push_back(std::move(inst));
+      seq.walk([&](xilinx::AIEX::NpuLoadPdiOp lp) {
+        loaded.insert(static_cast<int>(lp.getId()));
+      });
     });
     if (instances.empty())
       continue;
 
-    llvm::json::Array pdisCopy;
-    for (const auto &p : allPdis)
-      pdisCopy.push_back(llvm::json::Value(p));
+    llvm::json::Array pdis;
+    for (const auto &[id, file] : allPdis)
+      if (loaded.contains(id))
+        pdis.push_back(O{{"id", id}, {"PDI_file", file}});
 
     xrtKernels.push_back(O{{"name", devName},
                            {"arguments", std::move(arguments)},
-                           {"PDIs", std::move(pdisCopy)},
+                           {"PDIs", std::move(pdis)},
                            {"instance", std::move(instances)}});
   }
 
@@ -346,10 +360,8 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
 // external_buffers.json patch fed to `aiebu-asm -t aie2txn -j` (or the
 // in-memory `aiebu_assembler_get_elf` patch argument) when assembling a
 // combined control-packet ELF. Describes the runtime control-packet buffer:
-// `xrt_id` is the control buffer's argument slot (the runtime sequence's
-// pre-lowering argument count, since ctrl-packet-to-DMA appends the ctrl
-// buffer as the next argument) and `size_in_bytes` is the control-packet
-// binary size.
+// `xrt_id` is its slot, as for makePatchInfoJson, and `size_in_bytes` the
+// control-packet binary size.
 inline llvm::json::Value makeCtrlpktExtBufJson(xilinx::AIE::DeviceOp devOp,
                                                uint64_t ctrlPktSize,
                                                llvm::StringRef seqFilter) {

@@ -262,6 +262,10 @@ using Port = struct Port {
   }
 };
 
+std::optional<std::pair<TileID, Port>>
+getConnectingWireEndpoint(const AIETargetModel &targetModel, TileID tile,
+                          Port port);
+
 using Connect = struct Connect {
   Port src;
   Port dst;
@@ -332,6 +336,21 @@ mlir::ParseResult parseObjectFifoConsumerTiles(
 void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
                                   BDDimLayoutArrayArrayAttr dimsPerTileAttr);
+
+mlir::ParseResult
+parseFlowVias(mlir::OpAsmParser &parser,
+              llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &vias,
+              mlir::DenseI32ArrayAttr &ingressBundles,
+              mlir::DenseI32ArrayAttr &ingressChannels,
+              mlir::DenseI32ArrayAttr &egressBundles,
+              mlir::DenseI32ArrayAttr &egressChannels);
+
+void printFlowVias(mlir::OpAsmPrinter &printer, mlir::Operation *op,
+                   mlir::OperandRange vias,
+                   mlir::DenseI32ArrayAttr ingressBundles,
+                   mlir::DenseI32ArrayAttr ingressChannels,
+                   mlir::DenseI32ArrayAttr egressBundles,
+                   mlir::DenseI32ArrayAttr egressChannels);
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 

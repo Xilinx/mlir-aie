@@ -144,10 +144,10 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
 
   let options = [Option<"clPlacementBudget", "placement-budget", "int64_t",
                         /*default=*/"100000",
-                        "Placements the search may try per tile before it "
-                        "gives up. A node count rather than a time limit, so "
-                        "a build stays reproducible; raise it for a tile that "
-                        "reports the budget was hit.">];
+                        "Placements each search, ranked then exhaustive, may "
+                        "try per tile before it gives up. A node count rather "
+                        "than a time limit, so a build stays reproducible; "
+                        "raise it for a tile that reports hitting it.">];
 
   // Placement is a bounded search. A change that degrades it without breaking
   // it outright moves these rather than failing anything, so they are worth
@@ -159,6 +159,8 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
                  "Placements undone and retried">,
        Statistic<"numBudgetExhausted", "budget-exhausted",
                  "Tiles abandoned at the placement budget">,
+       Statistic<"numTilesCompacted", "tiles-compacted",
+                 "Tiles only the exhaustive search could place">,
   ];
 }
 
@@ -380,11 +382,33 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
               /*default=*/"true",
               "Also recover flows that do not start or end at a core or DMA.">,
        Option<
+           "clEmitVias", "emit-vias", "bool", /*default=*/"false",
+           "Emit each recovered flow with a via list pinning every switchbox "
+           "hop, so the flow carries its own route and the router can skip "
+           "it.">,
+       Option<
            "clRemoveLifted", "remove-lifted", "bool", /*default=*/"true",
            "Remove the interconnect configuration (connects, packet rules, "
            "mastersets, amsels, wires) that was lifted into recovered flows, "
            "leaving only configuration that could not be lifted.">,
   ];
+}
+
+def AIESplitFlowVias : Pass<"aie-split-flow-vias", "DeviceOp"> {
+  let summary = "Split flow operations that pin via ports into segments";
+  let description = [{
+    Each `aie.flow` or `aie.packet_flow` that carries a `via` list is rewritten into the
+    disaggregated flows that meet on the via ports, plus a local flow at every
+    via tile joining its pinned ingress and egress ports.
+    A flow `A via (B : in -> eg) to C` becomes `aie.flow(A, B:in)`,
+    `aie.flow(B:in, B:eg)`, and `aie.flow(B:eg, C)`. The pass elides a segment
+    whose source and destination coincide, which happens when the flow already
+    begins or ends on a via port. The router assigns switchbox resources to the
+    resulting flows.
+  }];
+
+  let constructor = "xilinx::AIE::createAIESplitFlowViasPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
 }
 
 def AIEVectorTransferLowering

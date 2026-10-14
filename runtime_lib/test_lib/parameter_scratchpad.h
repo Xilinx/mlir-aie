@@ -80,7 +80,8 @@ public:
 
   /// Write raw bytes (up to 4) by name, interpreted as a little-endian
   /// uint32.  For core-kind parameters, the bits are left-shifted by 2
-  /// (firmware requirement).
+  /// (firmware requirement); for repeat-kind ones, by 16 (into the task
+  /// queue's repeat field).
   /// For addr-kind parameters, the value is written raw (no shift).
   void writeBytes(const std::string &name, const void *data, size_t len) {
     uint32_t bits = 0;
@@ -89,10 +90,12 @@ public:
   }
 
   /// Write a raw 32-bit value by name.  For core-kind parameters, the bits
-  /// are left-shifted by 2 (firmware requirement).  For addr-kind parameters,
+  /// are left-shifted by 2 (firmware requirement); for repeat-kind ones, by
+  /// 16 (into the task queue's repeat field).  For addr-kind parameters,
   /// the value is written directly (no shift). A DMA offset or length
   /// parameter's value, read as an int32, must lie in the range the compiler
-  /// gave it, which keeps its transfers within their buffers.
+  /// gave it, which keeps its transfers within their buffers; a repeat
+  /// parameter's, at most its task's repeat count.
   void writeBits(const std::string &name, uint32_t bits) {
     auto it = paramMap.find(name);
     if (it == paramMap.end()) {
@@ -105,8 +108,10 @@ public:
         throw std::invalid_argument(
             "ParameterScratchpad: value " + std::to_string(value) + " of '" +
             name + "' is outside [" + std::to_string(range->second.first) +
-            ", " + std::to_string(range->second.second) +
-            "], which keeps its DMA transfers within their buffers");
+            ", " + std::to_string(range->second.second) + "], " +
+            (repeatParams.count(name)
+                 ? "its task's largest repeat count"
+                 : "which keeps its DMA transfers within their buffers"));
       values[name] = value;
     }
     uint8_t idx = it->second;
@@ -115,6 +120,8 @@ public:
       // core parameters require shift-2 to survive masking of lowest bits by
       // firmware op
       encoded = bits << 2;
+    } else if (repeatParams.count(name)) {
+      encoded = bits << 16;
     }
     boMap[idx] = encoded;
   }
@@ -180,7 +187,8 @@ private:
   uint32_t *boMap = nullptr;
   size_t scratchpadSizeBytes = 0;
   std::unordered_map<std::string, uint8_t> paramMap;
-  std::unordered_set<std::string> coreParams; // params with kind="core"
+  std::unordered_set<std::string> coreParams;   // params with kind="core"
+  std::unordered_set<std::string> repeatParams; // params with kind="repeat"
   std::unordered_map<std::string, std::pair<int32_t, int32_t>> ranges;
   std::unordered_map<std::string, int32_t> values; // of the ranged params
   struct JointBound {
@@ -209,7 +217,7 @@ private:
     //   <num_joint_bounds>
     //   <length> <offset> <length_step> <max>
     //   ...
-    // where kind is "core" or "addr", and <min> <max> is "- -" for a
+    // where kind is "core", "addr" or "repeat", and <min> <max> is "- -" for a
     // parameter with no range. A joint bound requires
     // offset + length_step * length <= max.
     unsigned numParams = 0;
@@ -231,11 +239,13 @@ private:
         throw std::runtime_error(
             "ParameterScratchpad: duplicate parameter name '" + name + "'");
       paramMap[name] = static_cast<uint8_t>(idx);
-      if (kind != "core" && kind != "addr") {
+      if (kind != "core" && kind != "addr" && kind != "repeat") {
         throw std::runtime_error("ParameterScratchpad: invalid kind '" + kind +
                                  "' for parameter '" + name + "'");
       } else if (kind == "core") {
         coreParams.insert(name);
+      } else if (kind == "repeat") {
+        repeatParams.insert(name);
       }
       if (min != "-") {
         try {

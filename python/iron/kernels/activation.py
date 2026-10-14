@@ -18,6 +18,7 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     ARCH_TRAITS,
+    BUILDS,
     KernelContract,
     Param,
     Trace,
@@ -164,17 +165,6 @@ _EXP_LUT_TOLERANCE = Tolerance.bf16_ulps(
 )
 
 
-# gelu's tanh approximation is its own, and split per architecture; it is not
-# the sigmoid-identity family above. gelu(x) goes to zero for negative x, so
-# this is one of the bounds that needs the floor.
-_GELU_TOLERANCE = Tolerance.relative(
-    0.05,
-    0.020,
-    note="gelu tanh approximation, measured on npu2: 1.56e-2 abs at a "
-    "near-zero expected value",
-)
-
-
 # What AIE2P's vtanh returns, measured on npu2 through gelu over every finite
 # bf16 input and through fused_mm's sigmoid over 262144 f32 arguments: u
 # itself up to |u| = 0.5, then a ramp that meets tanh by 0.8, and exactly
@@ -237,8 +227,30 @@ _GELU_VTANH_TOLERANCE = Tolerance.bounded(
 )
 
 
-def _gelu_tolerance() -> Tolerance:
-    return _GELU_VTANH_TOLERANCE if _arch_traits().native_tanh else _GELU_TOLERANCE
+_LOG_F32_TIE_RTOL = 2.0**-21
+
+
+def _log_f32_bound(x, offset=0.0):
+    """Bound on log_f32.cc's error at ``x``, against bf16 of the true log.
+
+    Zero, except one ulp where the float64 log lies within
+    ``_LOG_F32_TIE_RTOL`` (relative) of a bf16 rounding midpoint, so the
+    kernel's float32 error can round it either way.
+    """
+    z = np.asarray(x, dtype=np.float32) + np.float32(offset)
+    t = np.log(z.astype(np.float64))
+    b = t.astype(bfloat16).astype(np.float64)
+    tie = np.abs(0.5 * _bf16_ulp(t) - np.abs(t - b))
+    return np.where(tie <= _LOG_F32_TIE_RTOL * np.abs(t), _bf16_ulp(b), 0.0)
+
+
+# Correctly rounded away from ties: flooring instead of conv_even, or dropping
+# ln 2's low limb, stays within one ulp of bf16 and still fails this.
+_LOG_F32_TOLERANCE = Tolerance.bounded(
+    _log_f32_bound,
+    note="correctly rounded except within 2^-21 (relative) of a bf16 tie; "
+    "1 of 849,792 results on npu2 needed that slack",
+)
 
 
 def _vtanh_family_tolerance(name: str) -> Tolerance:
@@ -260,8 +272,8 @@ def _unary_lut_contract(
     setup: Callable[[], object] | None = conv_even,
     use_lut: bool = False,
     elementwise: Callable | None = None,
+    branch_models: dict[str, Callable] | None = None,
     lut_tolerance: Tolerance = _LUT_MODEL_TOLERANCE,
-    stack_bytes: int | None = None,
 ) -> KernelContract:
     """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
 
@@ -281,21 +293,35 @@ def _unary_lut_contract(
     has no published spec, so that build keeps the true-function reference and
     a tolerance sized to the instruction's measured error -- a much weaker
     statement, and deliberately a different one.
+
+    ``elementwise`` is the exact model of a LUT build. ``branch_models``
+    replaces it for a build whose ``Build.tuned`` branch the source compiles
+    a header of its own for. A build no model covers keeps ``ref`` and
+    ``tolerance``. Without a model the contract is the same for every build.
     """
-    # Without a tanh instruction the LUT path is taken whatever the caller
-    # asked for, and gets the exact model too.
-    if (use_lut or not _arch_traits().native_tanh) and elementwise is not None:
-        ref, tolerance = elementwise, lut_tolerance
+    per_build = []
+    branch_models = branch_models or {}
+    if elementwise is not None or branch_models:
+        for build in BUILDS:
+            model = branch_models.get(build.tuned, elementwise)
+            # Without a tanh instruction the LUT path is taken whatever the
+            # caller asked for, and gets the exact model too.
+            lut = use_lut or not ARCH_TRAITS[build.arch].native_tanh
+            per_build.append(
+                (build, model, lut_tolerance)
+                if lut and model is not None
+                else (build, ref, tolerance)
+            )
     return KernelContract(
         trace=Trace.whole_call(),
         roles=(In, Out, Param) if count else (In, Out),
         parameter_bindings=((2, count),) if count else (),
-        reference=ref,
-        tolerance=tolerance,
+        reference=None if per_build else ref,
+        tolerance=None if per_build else tolerance,
+        per_build=tuple(per_build),
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
         setup=setup,
         uses_lut=True,
-        stack_bytes=stack_bytes,
     )
 
 
@@ -378,12 +404,10 @@ _SOFTMAX_ACCURATE_TOLERANCE = Tolerance.bf16_ulps(
     2,
     atol=2.0**-125,
     note="exp2 within 2.8e-6 before its bf16 rounding, then 1 / sum and the "
-    "product each rounded to bf16 (1.76 ulp measured on npu2); atol admits "
-    "2^x flushed to +0 below -125.5",
+    "product each rounded to bf16 (1.76 ulp from the exact value measured on "
+    "npu2, 2.08 on npu1, which is two steps from the correctly rounded one); "
+    "atol admits 2^x flushed to +0 below -125.5",
 )
-# As aiecc measures it under IRON's Softmax Worker, whose main frame is 64 B
-# more than kernel_design's: the polynomial's constants spill.
-_SOFTMAX_ACCURATE_STACK_BYTES = 1280
 
 
 def softmax(tile_size: int = 1024, accurate_exp2: bool = False) -> ExternalFunction:
@@ -394,23 +418,14 @@ def softmax(tile_size: int = 1024, accurate_exp2: bool = False) -> ExternalFunct
             positive multiple of 32, the kernel's vector step.
         accurate_exp2: Scale by log2(e) to f32 and take 2^x with a polynomial
             within 2.8e-6 (`-DEXP2_BF16_ACCURATE`), in place of bf16(log2(e))
-            and AIE2P's exp2 instruction. The block entry points
-            (`softmax_sum_bf16`, `softmax_scale_bf16`) bound from this
-            object follow it too.
+            and AIE2P's exp2 instruction, or AIE2's exp lookup table. The
+            block entry points (`softmax_sum_bf16`, `softmax_scale_bf16`)
+            bound from this object follow it too.
 
     Returns:
         ExternalFunction configured for the softmax kernel.
-
-    Raises:
-        NotImplementedError: `accurate_exp2` on an architecture without the
-            exp2 instruction it replaces.
     """
     _require_vector_alignment("softmax", tile_size, _RUNTIME_VECTOR_WIDTH)
-    if accurate_exp2 and not _arch_traits().native_exp2:
-        raise NotImplementedError(
-            "softmax: accurate_exp2 replaces AIE2P's exp2 instruction; "
-            "select an NPU2 device"
-        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "softmax_bf16",
@@ -439,14 +454,11 @@ def softmax(tile_size: int = 1024, accurate_exp2: bool = False) -> ExternalFunct
                 )
             ),
             # softmax_aie2p.h sets conv_even itself; the aie2 LUT path does not.
-            setup=conv_even if _tuned_arch() == "aie2" else None,
-            stack_bytes=_SOFTMAX_ACCURATE_STACK_BYTES if accurate_exp2 else None,
+            setup=(
+                conv_even if _tuned_arch() == "aie2" and not accurate_exp2 else None
+            ),
         ),
     )
-
-
-# aiecc measured 1120 on aie2, past the 1 KiB default.
-_GELU_AIE2_STACK_BYTES = 1280
 
 
 def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
@@ -458,7 +470,8 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             vtanh instruction, which returns its argument up to 0.5, and be
             judged against an exact model of the kernel,
             [`gelu_lut_ref`][iron.kernels.activation.gelu_lut_ref]. Moot on
-            aie2.
+            aie2, which always takes the LUT and is judged against
+            [`gelu_aie2_lut_ref`][iron.kernels.activation.gelu_aie2_lut_ref].
     """
     return _bf16_lut_factory(
         "gelu",
@@ -469,10 +482,10 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
         contract=_unary_lut_contract(
             gelu_ref,
             count=False,
-            tolerance=_gelu_tolerance(),
+            tolerance=_GELU_VTANH_TOLERANCE,
             use_lut=use_lut,
-            elementwise=gelu_lut_ref if _tuned_arch() == "aie2p" else None,
-            stack_bytes=_GELU_AIE2_STACK_BYTES if _tuned_arch() == "aie2" else None,
+            elementwise=gelu_lut_ref,
+            branch_models={"aie2": gelu_aie2_lut_ref},
         ),
         use_lut_tanh=use_lut,
     )
@@ -497,19 +510,23 @@ def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             silu_ref,
             count=False,
             use_lut=use_lut,
-            elementwise=silu_table_ref if _tuned_arch() == "aie2p" else silu_lut_ref,
+            elementwise=silu_table_ref,
             tolerance=_vtanh_family_tolerance("silu"),
         ),
         use_lut_tanh=use_lut,
     )
 
 
-def silu_sized(tile_size: int = 1024) -> ExternalFunction:
+def silu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     """SiLU (Swish) for bf16 tiles, with a compiled-in element count.
 
     Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
     keeps the ``(in, out, size)`` ABI. Positive whole vectors are required
     (16 on aie2, 32 on aie2p).
+
+    Args:
+        tile_size: Elements per call.
+        use_lut: As for [`silu`][iron.kernels.activation.silu].
     """
     width = _arch_traits().bf16_lanes
     _require_vector_alignment("silu_sized", tile_size, width)
@@ -520,8 +537,13 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DSILU_ELEMS={tile_size}"],
         contract=_unary_lut_contract(
-            silu_ref, count=tile_size, tolerance=_vtanh_family_tolerance("silu")
+            silu_ref,
+            count=tile_size,
+            use_lut=use_lut,
+            elementwise=silu_table_ref,
+            tolerance=_vtanh_family_tolerance("silu"),
         ),
+        use_lut_tanh=use_lut,
     )
 
 
@@ -546,10 +568,10 @@ def gelu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction
         contract=_unary_lut_contract(
             gelu_ref,
             count=tile_size,
-            tolerance=_gelu_tolerance(),
+            tolerance=_GELU_VTANH_TOLERANCE,
             use_lut=use_lut,
-            elementwise=gelu_lut_ref if _tuned_arch() == "aie2p" else None,
-            stack_bytes=_GELU_AIE2_STACK_BYTES if _tuned_arch() == "aie2" else None,
+            elementwise=gelu_lut_ref,
+            branch_models={"aie2": gelu_aie2_lut_ref},
         ),
         use_lut_tanh=use_lut,
     )
@@ -560,7 +582,6 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
 
     ``out = (x * w1) * silu(x * w2)``; see [`swiglu_ref`][iron.kernels.activation.swiglu_ref].
     """
-    use_lut_model = use_lut or not _arch_traits().native_tanh
     return _bf16_lut_factory(
         "swiglu",
         "swiglu_bf16",
@@ -571,26 +592,20 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, In, Out),
-            reference=(
-                swiglu_ref
-                if not use_lut_model
-                else swiglu_table_ref if _tuned_arch() == "aie2p" else swiglu_lut_ref
+            per_build=tuple(
+                (
+                    (build, swiglu_table_ref, _LUT_MODEL_TOLERANCE)
+                    if use_lut or not ARCH_TRAITS[build.arch].native_tanh
+                    else (build, swiglu_ref, _vtanh_family_tolerance("swiglu"))
+                )
+                for build in BUILDS
             ),
             acc_dtype=bfloat16,
-            tolerance=(
-                _LUT_MODEL_TOLERANCE
-                if use_lut_model
-                else _vtanh_family_tolerance("swiglu")
-            ),
             ops_per_call=6 * tile_size,
             uses_lut=True,
         ),
         use_lut_tanh=use_lut,
     )
-
-
-# aiecc measured 1600 for the polynomial branch on aie2p.
-_BF16_EXP_POLY_STACK_BYTES = 2048
 
 
 def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
@@ -616,26 +631,23 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
             # range-reduced polynomial, which this model does not describe,
             # so it keeps the true-function reference and a measured bound,
             # whether or not there is a tanh instruction.
-            elementwise=bf16_exp_lut_ref if _tuned_arch() == "aie2" else None,
+            branch_models={"aie2": bf16_exp_lut_ref},
             lut_tolerance=_EXP_LUT_TOLERANCE,
             use_lut=True,
             tolerance=_EXP_POLY_TOLERANCE,
             # The polynomial sets conv_even itself.
             setup=conv_even if _tuned_arch() == "aie2" else None,
-            stack_bytes=(
-                None if _tuned_arch() == "aie2" else _BF16_EXP_POLY_STACK_BYTES
-            ),
         ),
     )
 
 
 def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
-    """Software f32 ``2**x`` kernel: a minimax poly, not a LUT.
+    """Software f32 ``2**x`` kernel: a polynomial, not a LUT.
 
     A float32-output alternative to [`bf16_exp`]
     [iron.kernels.activation.bf16_exp] with a separately configurable
     input domain. See ``aie_kernels/activation/exp2f_vec.cc`` for the
-    accuracy rationale: 9.2e-6 relative error on aie2p, 8.9e-5 on aie2.
+    accuracy rationale: 9.2e-6 relative error on aie2p, 7.4e-6 on aie2.
 
     The same source builds for aie2.
 
@@ -643,8 +655,8 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         tile_size: Number of elements per tile; must be a multiple of 16
             (the kernel's vector width).
         min_x: Input is clamped to this before evaluation. -126 is the
-            hard floor (one f32 exponent field); on aie2p the kernel holds
-            its accuracy down to it.
+            hard floor (one f32 exponent field); the kernel holds its
+            accuracy down to it.
 
     Returns:
         ExternalFunction configured for the exp2f_vec kernel.
@@ -672,20 +684,62 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # The aie2p branch sets conv_even itself.
-            setup=None if _tuned_arch() == "aie2p" else conv_even,
+            # The tuned branches set conv_even themselves.
+            setup=conv_even if _tuned_arch() == "portable" else None,
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
             reference=lambda x: exp2f_vec_ref(x, min_x=min_x),
             acc_dtype=np.float32,
             tolerance=Tolerance.relative(
                 1e-3,
-                note="measured 9.2e-6 on aie2p and 8.9e-5 on aie2; clamping "
+                note="measured 9.2e-6 on aie2p and 7.4e-6 on aie2; clamping "
                 "[127.999, 128) costs up to 7.8e-4",
             ),
-            # aiecc measured 1984 on aie2p (448 portable); remarks gives the
-            # kernel 1792 on aie2 (832 portable).
-            stack_bytes={"aie2": 2048, "aie2p": 2048}.get(_tuned_arch()),
+        ),
+    )
+
+
+def log_f32(tile_size: int = 1024) -> ExternalFunction:
+    """``log(x + offset)`` of float32, rounded once to bf16.
+
+    Takes ``(x, y, size, offset)``: ``tile_size`` float32 in, as many bf16
+    out, and a float32 ``offset`` added to every element first, in float32
+    (a log-mel spectrogram's floor). Defined where ``x + offset`` is a
+    positive normal float32. Every product is of bf16 limbs, exact in the
+    float32 accumulator, so the log is float32-accurate before its one bf16
+    rounding.
+
+    The source sets ``conv_even`` itself and restores the core's mode on
+    exit, and builds for aie2 and aie2p.
+
+    Args:
+        tile_size: Float32 elements per call, a positive multiple of 32.
+
+    Returns:
+        ExternalFunction for ``log_f32_bf16``.
+
+    Raises:
+        ValueError: When ``tile_size`` is not a positive multiple of 32.
+    """
+    _require_vector_alignment("log_f32", tile_size, 32)
+    return _make_extern(
+        "log_f32_bf16",
+        _kernel_source("activation/log_f32.cc"),
+        [
+            np.ndarray[(tile_size,), np.dtype[np.float32]],
+            np.ndarray[(tile_size,), np.dtype[bfloat16]],
+            np.int32,
+            np.float32,
+        ],
+        compile_flags=[f"-DLOG_ELEMS={tile_size}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=log_f32_ref,
+            sample=lambda rng, calls: log_f32_sample(rng, calls, tile_size=tile_size),
+            tolerance=_LOG_F32_TOLERANCE,
+            ops_per_call=tile_size,
         ),
     )
 
@@ -740,9 +794,7 @@ def sigmoid(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             sigmoid_ref,
             count=tile_size,
             use_lut=use_lut,
-            elementwise=(
-                sigmoid_table_ref if _tuned_arch() == "aie2p" else sigmoid_lut_ref
-            ),
+            elementwise=sigmoid_table_ref,
             tolerance=_vtanh_family_tolerance("sigmoid"),
         ),
         use_lut_tanh=use_lut,
@@ -873,6 +925,29 @@ def gelu_lut_ref(x):
     return _bf16_ftz(half_x + t * half_x).astype(np.asarray(x).dtype)
 
 
+def gelu_aie2_lut_ref(x):
+    """Model of AIE2's [`gelu`][iron.kernels.activation.gelu].
+
+    gelu_aie2.h step for step: x is clamped at -8 first, where ``1 + t`` is
+    already 0, then ``x*x``, ``c + d*x^2`` (one f32 mac with c in f32) and
+    ``x * (c + d*x^2)`` are each stored to bf16, and the last is the
+    argument of [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref].
+    ``x/2 + t * bf16(x/2)`` is one f32 mac, rounded once to bf16. Each store
+    flushes a subnormal to zero, and a zero result is +0, as on npu1, even
+    for x = -0.
+    """
+    xl = np.maximum(np.asarray(x).astype(np.float32), np.float32(-8.0))
+    c = np.float32(0.79788456)
+    d = np.float32(bfloat16(c * np.float32(0.044715)))
+    with np.errstate(over="ignore", invalid="ignore"):
+        x2 = _bf16_ftz(xl * xl)
+        p = _bf16_ftz(c + x2 * d)
+        t = np.asarray(tanh_lut_ref(_bf16_ftz(xl * p)), np.float32)
+        half_x = xl * np.float32(0.5)
+        out = _bf16_ftz(half_x + t * _bf16_ftz(half_x)) + np.float32(0)
+    return out.astype(np.asarray(x).dtype)
+
+
 def bf16_exp_lut_ref(x):
     """Model of ``getExpBf16``, the LUT exponential the bf16_exp kernel uses.
 
@@ -916,32 +991,14 @@ def _bf16_ftz(v):
     return _bf16(np.where(np.abs(v) < 2.0**-126, np.copysign(np.float32(0), v), v))
 
 
-def sigmoid_lut_ref(x):
-    """Model of [`sigmoid`][iron.kernels.activation.sigmoid]'s LUT build on aie2.
-
-    AIE2P's reads a table of its own; see
-    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref]. This
-    follows activation/sigmoid.cc's aie2 branch step for step: ``x/2`` is
-    exact (0.5 is a power of two), the accumulator overload of ``tanh_bf16_v16`` narrows to bf16
-    before the table, and the ``+1`` and ``*0.5`` stay in the accumulator so
-    there is a single store rounding at the end.
-    """
-    xf = np.asarray(x).astype(np.float32)
-    t = np.asarray(tanh_lut_ref(_bf16(xf * 0.5)), np.float32)
-    return _bf16((t + 1.0) * 0.5).astype(np.asarray(x).dtype)
-
-
 def sigmoid_table_ref(x):
-    """Model of AIE2P's [`sigmoid`][iron.kernels.activation.sigmoid] built with ``use_lut=True``.
+    """Model of [`sigmoid`][iron.kernels.activation.sigmoid]'s LUT build.
 
-    activation/sigmoid.cc reads its own table there: getTanhBf16's segments
+    activation/sigmoid.cc reads its own table: getTanhBf16's segments
     rewritten for ``0.5 + 0.5 * tanh(x/2)``, so segment ``e`` has slope
     ``slope[e] / 4`` and offset ``0.5 + 0.5 * offset[e]`` and covers 0.5 of x.
     x is clamped to ``[-8, 8 - 1/32]``; the one rounding is the store to bf16,
     as in [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref].
-    [`sigmoid_lut_ref`][iron.kernels.activation.sigmoid_lut_ref] also rounds
-    ``tanh`` to bf16 before ``0.5 * (1 + t)``, which makes it 0 over
-    ``[-7.5, -6.9]``, where this is not.
     """
     xf = np.clip(np.asarray(x).astype(np.float32), -8.0, 8.0 - 1.0 / 32)
     e = np.clip(np.floor(xf * 2.0).astype(np.int64), -16, 15) + 16
@@ -950,57 +1007,32 @@ def sigmoid_table_ref(x):
     return (slope * xf + offset).astype(bfloat16).astype(np.asarray(x).dtype)
 
 
-def silu_lut_ref(x):
-    """Model of [`silu`][iron.kernels.activation.silu]'s LUT build on aie2.
-
-    AIE2P's multiplies by its sigmoid table instead; see
-    [`silu_table_ref`][iron.kernels.activation.silu_table_ref].
-    activation/silu.cc narrows the sigmoid factor to bf16 before the final
-    multiply, so that rounding is modelled too, not folded away. The sigmoid
-    is exactly 0 from x = -8 down, and x is clamped there before the multiply,
-    so -inf gives 0 rather than NaN. A subnormal product is flushed to zero.
-    """
-    xf = np.asarray(x).astype(np.float32)
-    sig = np.asarray(sigmoid_lut_ref(xf), np.float32)
-    return _bf16_ftz(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
-
-
 def silu_table_ref(x):
-    """Model of AIE2P's [`silu`][iron.kernels.activation.silu] built with ``use_lut=True``.
+    """Model of [`silu`][iron.kernels.activation.silu]'s LUT build.
 
-    [`silu_lut_ref`][iron.kernels.activation.silu_lut_ref] with AIE2P's
-    sigmoid table,
-    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref], as the
-    bf16 factor.
+    activation/silu.cc multiplies x by the bf16 sigmoid of
+    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref], so that
+    rounding is modelled too, not folded away. The sigmoid is exactly 0 from
+    x = -8 down, and x is clamped there before the multiply, so -inf gives 0
+    rather than NaN. A subnormal product is flushed to zero.
     """
     xf = np.asarray(x).astype(np.float32)
     sig = np.asarray(sigmoid_table_ref(xf), np.float32)
     return _bf16_ftz(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
 
 
-def swiglu_lut_ref(x, w1, w2):
-    """Model of [`swiglu`][iron.kernels.activation.swiglu]'s LUT build on aie2.
-
-    AIE2P's reads its sigmoid table instead; see
-    [`swiglu_table_ref`][iron.kernels.activation.swiglu_table_ref].
-    activation/swiglu.cc narrows after every multiply -- ``x*w1``, ``x*w2``, the
-    sigmoid factor and the silu product each land in a bf16 register before
-    the next step -- which is what this reproduces. ``x*w2`` is clamped at -8
-    before its multiply, as in silu_lut_ref, and where the silu product is 0
-    the output is 0, so an overflowed ``x*w1`` does not make ``inf * 0``.
-    Each subnormal product is flushed to zero, so a subnormal ``x*w2`` zeroes
-    the output through the gate.
-    """
-    return _swiglu_model(x, w1, w2, sigmoid_lut_ref)
-
-
 def swiglu_table_ref(x, w1, w2):
-    """Model of AIE2P's [`swiglu`][iron.kernels.activation.swiglu] built with ``use_lut=True``.
+    """Model of [`swiglu`][iron.kernels.activation.swiglu]'s LUT build.
 
-    [`swiglu_lut_ref`][iron.kernels.activation.swiglu_lut_ref] with AIE2P's
-    sigmoid table,
-    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref], as the
-    bf16 factor.
+    activation/swiglu.cc narrows after every multiply -- ``x*w1``, ``x*w2``, the
+    sigmoid factor of
+    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref] and the
+    silu product each land in a bf16 register before the next step -- which
+    is what this reproduces. ``x*w2`` is clamped at -8 before its multiply, as
+    in silu_table_ref, and where the silu product is 0 the output is 0, so an
+    overflowed ``x*w1`` does not make ``inf * 0``. Each subnormal product is
+    flushed to zero, so a subnormal ``x*w2`` zeroes the output through the
+    gate.
     """
     return _swiglu_model(x, w1, w2, sigmoid_table_ref)
 
@@ -1079,7 +1111,7 @@ def swiglu_ref(x, w1, w2):
     float64; LUT-approximation territory, pair with ``rtol=0.128``.
 
     Where silu is 0 (``x * w2`` is -inf, or low enough to underflow) the
-    output is 0, as swiglu_lut_ref's is, even where ``x * w1`` overflowed:
+    output is 0, as swiglu_table_ref's is, even where ``x * w1`` overflowed:
     0 is the limit as x goes to -inf, and ``inf * 0`` would be NaN.
     """
     xf = _f64(x)
@@ -1132,6 +1164,49 @@ def exp2f_vec_ref(x, min_x: float = -111.0):
     """
     xf = np.maximum(x.astype(np.float64), min_x)
     return np.exp2(xf).astype(x.dtype)
+
+
+def log_f32_ref(x, offset=0.0):
+    """Numpy reference for [`log_f32`][iron.kernels.activation.log_f32].
+
+    The kernel adds ``offset`` in float32, so the sum rounds as float32 here
+    too; its log is taken in float64 and rounded once to bf16.
+    """
+    z = np.asarray(x, dtype=np.float32) + np.float32(offset)
+    return np.log(z.astype(np.float64)).astype(bfloat16)
+
+
+def log_f32_sample(rng, calls: int, *, tile_size: int) -> list:
+    """Positive float32 over every binade, the first call led by edges.
+
+    The edges are one and its neighbours, the reduction's split point
+    ``sqrt(1/2)`` and ``sqrt(2)`` with theirs, ``e``, a log-mel floor
+    (``1e-3``), and the smallest normal and largest finite float32.
+    """
+    x = (10.0 ** rng.uniform(-37, 38, calls * tile_size)).astype(np.float32)
+    edges = np.array(
+        [
+            0x3F800000,
+            0x3F800001,
+            0x3F7FFFFF,
+            0x3F000000,
+            0x40000000,
+            0x3F3504F2,
+            0x3F3504F3,
+            0x3F3504F4,
+            0x3FB504F2,
+            0x3FB504F3,
+            0x3FB504F4,
+            0x402DF854,
+            0x3A83126F,
+            0x00800000,
+            0x7F7FFFFF,
+            0x7149F2CA,
+        ],
+        dtype=np.uint32,
+    ).view(np.float32)
+    x[: edges.size] = edges[: x.size]
+    return [x.reshape(calls, tile_size)]
 
 
 def softmax_ref(x, *, tile_size: int = 1024):

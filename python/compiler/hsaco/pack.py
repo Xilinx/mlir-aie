@@ -345,11 +345,15 @@ def _resolve_num_cols(recorded, given, path):
     return recorded
 
 
-def kernels_from_full_elf(path, kernarg_size=0, num_cols=None):
-    """Return one kernel descriptor per COMDAT group in a full ELF.
+def kernels_from_full_elf(path, kernarg_size=0, num_cols=None, names=None):
+    """Return one kernel descriptor per COMDAT group in a full ELF, or per named one.
 
     Every descriptor embeds the whole ELF as its ``insts``; the blob pool in
     ``build_section()`` stores it once.
+
+    Not every group is meant to be dispatched on its own: an MLIR-AIR full ELF
+    also carries an internal sequence that loads no PDI, which the runtime
+    refuses to load. ``names`` keeps only the kernels the caller dispatches.
 
     Args:
         path (str): Path to the full ELF.
@@ -357,21 +361,33 @@ def kernels_from_full_elf(path, kernarg_size=0, num_cols=None):
         num_cols (int | None): Column count to record for each kernel. Read
             from the ELF's ``.note.xrt.configuration`` when omitted; must
             match it when given.
+        names (list[str] | None): ``<kernel>:<instance>`` names of the kernels
+            to keep, in the order to emit them. Every group when omitted.
 
     Returns:
         list[dict]: Kernel descriptors of kind ``FullElf``.
 
     Raises:
-        ValueError: If the ELF is malformed, or the column count is missing or
-            disagrees with ``num_cols``.
+        ValueError: If the ELF is malformed, the column count is missing or
+            disagrees with ``num_cols``, or a name in ``names`` is not a kernel
+            of the ELF.
     """
     with open(path, "rb") as f:
         blob = f.read()
     try:
-        names = kernel_names_from_full_elf(blob)
+        found = kernel_names_from_full_elf(blob)
         recorded = partition_size_from_full_elf(blob)
     except ValueError as e:
         raise ValueError(f"{path}: {e}") from e
+    if names is None:
+        names = found
+    else:
+        missing = [n for n in names if n not in found]
+        if missing:
+            raise ValueError(
+                f"{path} has no kernel named {', '.join(map(repr, missing))}; "
+                f"its kernels are {', '.join(map(repr, found))}"
+            )
     num_cols = _resolve_num_cols(recorded, num_cols, path)
     return [
         {
@@ -523,8 +539,13 @@ def _kernel_from_options(group):
                 f"{_flag('kernel_elf')} is self-contained and cannot be combined "
                 f"with {', '.join(clashes)}"
             )
-        return kernels_from_full_elf(group["kernel_elf"], kernarg_size, num_cols)
+        names = [group["kernel_elf_name"]] if "kernel_elf_name" in group else None
+        return kernels_from_full_elf(group["kernel_elf"], kernarg_size, num_cols, names)
 
+    if "kernel_elf_name" in group:
+        raise argparse.ArgumentTypeError(
+            f"{_flag('kernel_elf_name')} selects a kernel of a {_flag('kernel_elf')}"
+        )
     name = group["kernel_name"]
     if "kernel_insts" not in group:
         raise argparse.ArgumentTypeError(
@@ -668,8 +689,9 @@ def main(argv=None):
         "xclbin:NAME:XCLBIN:INSTS:KERNARG_SIZE[:NUM_COLS], or "
         "elf:PATH[:KERNARG_SIZE[:NUM_COLS]]. NUM_COLS is read from an xclbin "
         "or ELF, and must match it if given. Cannot express a path containing "
-        "a colon, or a kernel named 'elf' or 'xclbin' -- use the --kernel-* "
-        "options for those.",
+        "a colon, a kernel named 'elf' or 'xclbin', or a choice of full-ELF "
+        "kernel (whose names contain a colon) -- use the --kernel-* options "
+        "for those.",
     )
     group = ap.add_argument_group(
         "long-form kernel options",
@@ -682,6 +704,12 @@ def main(argv=None):
     )
     group.add_argument(
         "--kernel-elf", action=_KernelOption, help="start a self-contained full ELF"
+    )
+    group.add_argument(
+        "--kernel-elf-name",
+        action=_KernelOption,
+        help="pack only this kernel (<kernel>:<instance>) of the --kernel-elf it "
+        "follows, rather than every kernel; repeat --kernel-elf to pick several",
     )
     group.add_argument(
         "--kernel-insts", action=_KernelOption, help="instruction stream (insts.bin)"

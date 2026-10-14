@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 MARKER = "<!-- kernel-checks-report -->"
-PAGE = "https://xilinx.github.io/mlir-aie/kernel-checks/"
+PAGE = "https://xilinx.github.io/mlir-aie/dashboard/#view=night"
 THRESHOLDS = {
     metric: spec
     for metric, spec in json.loads(

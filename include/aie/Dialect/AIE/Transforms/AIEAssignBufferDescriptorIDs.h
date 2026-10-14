@@ -23,7 +23,9 @@ struct BdIdGenerator {
 
   BdIdGenerator(int col, int row, const AIETargetModel &targetModel);
 
-  std::optional<uint32_t> nextBdId(int channelIndex);
+  // The lowest free id `channelIndex` reaches that is a multiple of
+  // `alignment`.
+  std::optional<uint32_t> nextBdId(int channelIndex, uint32_t alignment = 1);
 
   void assignBdId(uint32_t bdId);
 
