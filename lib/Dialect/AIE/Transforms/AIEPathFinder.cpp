@@ -1287,8 +1287,8 @@ llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
 
 llvm::Error Pathfinder::cutOverflow() const {
   // Each circuit tree crossing a boundary needs a channel of its own, and the
-  // packet flows one more. Fixed connections' channels still count, so this
-  // never rejects a routable design.
+  // packet flows one more. Channels fixed connections hold are not the
+  // router's to use, so this rejects only what it could not route anyway.
   auto onDevice = [&](TileID t) { return t.col < columns && t.row < rows; };
   std::map<std::tuple<bool, int, bool>, size_t> channels;
   for (const auto &[ends, sb] : graph) {
