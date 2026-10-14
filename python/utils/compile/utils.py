@@ -84,6 +84,17 @@ def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[
 # Set AIE_KERNEL_PCH=0 to disable.
 _PCH_SOURCE = "<pch-source>"
 _PCH_OUTPUT = "<pch-output>"
+# What clang reads from the environment that can change what a header reads;
+# none of it shows in the command, so it joins the key.
+_CLANG_ENVIRONMENT = (
+    "CPATH",
+    "C_INCLUDE_PATH",
+    "CPLUS_INCLUDE_PATH",
+    "OBJC_INCLUDE_PATH",
+    "OBJCPLUS_INCLUDE_PATH",
+    "CCC_OVERRIDE_OPTIONS",
+    "CLANG_NO_DEFAULT_CONFIG",
+)
 _SEARCH_PATH_FLAGS = ("-I", "-isystem", "-iquote", "-idirafter")
 
 
@@ -180,8 +191,11 @@ def _kernel_pch(pch_cmd: list[str]) -> str | None:
     if not ident:
         return None
     # The compiler's identity, not where it is installed, with the rest of the
-    # command.
-    key = hashlib.sha256("\0".join([ident, *pch_cmd[1:]]).encode()).hexdigest()[:32]
+    # command and the environment it reads.
+    environment = [f"{name}={os.environ.get(name)}" for name in _CLANG_ENVIRONMENT]
+    key = hashlib.sha256(
+        "\0".join([ident, *pch_cmd[1:], *environment]).encode()
+    ).hexdigest()[:32]
     cache = _pch_cache()
     if cache is None:
         return None

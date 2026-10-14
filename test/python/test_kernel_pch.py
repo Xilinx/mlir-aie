@@ -37,7 +37,9 @@ extern "C" void fill(int *out) {
 """
 
 
-def _compile(tmp_path, cache, name, args=(), source=_KERNEL, pch=True, peano=None):
+def _compile(
+    tmp_path, cache, name, args=(), source=_KERNEL, pch=True, peano=None, environ=None
+):
     """Compile ``source`` in a fresh interpreter whose NPU_CACHE_HOME is ``cache``.
 
     Each compile has a directory of its own and the same file names, so objects
@@ -55,6 +57,7 @@ def _compile(tmp_path, cache, name, args=(), source=_KERNEL, pch=True, peano=Non
     )
     if peano is not None:
         env["PEANO_INSTALL_DIR"] = str(peano)
+    env.update(environ or {})
     ret = subprocess.run(
         [sys.executable, "-c", _COMPILE, str(src), str(out), *args],
         cwd=work,
@@ -261,3 +264,26 @@ def test_header_created_in_an_include_dir_reaches_the_next_compile(tmp_path):
     assert ret.returncode == 0, ret.stderr
     assert (work / "after.o").read_bytes() == plain.read_bytes()
     assert (work / "before.o").read_bytes() != plain.read_bytes()
+
+
+def test_environment_search_path_gets_its_own_pch(tmp_path):
+    """CPATH adds a search path the command does not show; a compile under one
+    that shadows a header the injected headers include must not reuse the PCH
+    built without it."""
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    (shadow / "stdint.h").write_text("#define SHADOWED 1\n#include_next <stdint.h>\n")
+    cache = tmp_path / "cache"
+    cpath = {"CPATH": str(shadow)}
+    ret, bare = _compile(tmp_path, cache, "bare", source=_SHADOW_AWARE_KERNEL)
+    assert ret.returncode == 0, ret.stderr
+    ret, with_pch = _compile(
+        tmp_path, cache, "cpath", source=_SHADOW_AWARE_KERNEL, environ=cpath
+    )
+    assert ret.returncode == 0, ret.stderr
+    ret, plain = _compile(
+        tmp_path, cache, "plain", source=_SHADOW_AWARE_KERNEL, pch=False, environ=cpath
+    )
+    assert ret.returncode == 0, ret.stderr
+    assert with_pch.read_bytes() == plain.read_bytes()
+    assert bare.read_bytes() != plain.read_bytes()
