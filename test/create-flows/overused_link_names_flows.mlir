@@ -9,9 +9,9 @@
 // RUN: not aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 | FileCheck %s
 
 // Five circuit flows need the four links from (0,2) down to the memtile, and
-// the error names the links and the flows that take them.
+// the error names the boundary they cross and the flows that cross it.
 
-// CHECK: error: Unable to find a legal routing: the flows from (0, 2) Core:0, (0, 2) DMA:0, (0, 2) DMA:1, (0, 3) DMA:0 and 1 more need the links from tile (0, 2) to (0, 1), and the router found no routing that fits them.
+// CHECK: error: Unable to find a legal routing: the circuit flows from (0, 2) Core:0, (0, 2) DMA:0, (0, 2) DMA:1, (0, 3) DMA:0 and 1 more cross from row 2 to row 1, which takes 5 channels across, and it has 4.
 
 module {
   aie.device(npu1_1col) {
