@@ -11,6 +11,7 @@
 """
 
 import argparse
+import math
 import os
 import subprocess
 import sys
@@ -40,7 +41,10 @@ def dispatch(n, wait_s):
 
 def test_each_callable_has_one_median_a_round():
     light, heavy = run_interleaved(
-        [partial(work, N), partial(work, 4 * N)], rounds=5, calls=5
+        [partial(work, N), partial(work, 4 * N)],
+        rounds=5,
+        calls=5,
+        max_cpu_wait_us=math.inf,
     )
     assert light.n == heavy.n == 5
     assert len(light.samples_us) == 5
@@ -56,6 +60,7 @@ def test_a_group_past_the_cutoff_stops_once_settled():
         settle=2,
         cutoff=1.5,
         groups=["fast", "slow"],
+        max_cpu_wait_us=math.inf,
     )
     assert fast.n == 6
     assert slow.n == 2
@@ -69,6 +74,7 @@ def test_a_group_stops_together_by_its_slowest():
         settle=2,
         cutoff=1.5,
         groups=["a", "a", "b"],
+        max_cpu_wait_us=math.inf,
     )
     assert a_fast.n == a_slow.n == 2
     assert b.n == 5
@@ -82,6 +88,7 @@ def test_a_callable_of_no_group_is_never_stopped():
         settle=2,
         cutoff=1.5,
         groups=["fast", None],
+        max_cpu_wait_us=math.inf,
     )
     assert fast.n == slow.n == 4
 
@@ -95,6 +102,7 @@ def test_a_faster_figure_from_before_stops_every_group():
         cutoff=1.5,
         groups=["only"],
         fastest_us=1.0,
+        max_cpu_wait_us=math.inf,
     )
     assert only.n == 2
 

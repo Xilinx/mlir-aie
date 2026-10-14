@@ -13,6 +13,7 @@ The device is taken whole (AIE_NPU_EXCLUSIVE_DEVICE), since another test's
 dispatches would land on the figures these tests compare.
 """
 
+import math
 import os
 import subprocess
 import sys
@@ -53,7 +54,13 @@ def copies(*lengths):
 
 def test_a_copy_four_times_as_long_takes_longer_but_at_most_four_times():
     (short, a1, b1), (long, a4, b4) = copies(N, 4 * N)
-    t1, t4 = run_interleaved([short, long], rounds=4, calls=10, completion_cores=True)
+    t1, t4 = run_interleaved(
+        [short, long],
+        rounds=4,
+        calls=10,
+        completion_cores=True,
+        max_cpu_wait_us=math.inf,
+    )
     np.testing.assert_array_equal(b1.numpy(), a1.numpy())
     np.testing.assert_array_equal(b4.numpy(), a4.numpy())
     assert t1.n == t4.n == 4
@@ -70,7 +77,13 @@ def test_the_timing_thread_is_held_on_the_completion_cores():
         return run()
 
     before = os.sched_getaffinity(0)
-    run_interleaved([recorded], rounds=2, calls=3, completion_cores=True)
+    run_interleaved(
+        [recorded],
+        rounds=2,
+        calls=3,
+        completion_cores=True,
+        max_cpu_wait_us=math.inf,
+    )
     np.testing.assert_array_equal(b.numpy(), a.numpy())
     # Every CPU an NPU completion interrupt has ever been taken on.
     irq_cpus = CompletionCores({}).cpus
@@ -94,9 +107,10 @@ def test_a_figure_taken_beside_another_process_on_the_completion_cores_is_refuse
     # Another session's build on the cores the completions interrupt holds
     # the woken timing thread off them until the core's next tick.
     ((run, a, b),) = copies(N)
-    quiet = run_interleaved([run], rounds=4, calls=5, completion_cores=True)[
-        0
-    ].median_us
+    # The baseline only has to exist; the refusal under test is the second's.
+    (quiet,) = run_interleaved(
+        [run], rounds=4, calls=5, completion_cores=True, max_cpu_wait_us=math.inf
+    )
     before = CompletionCores.interrupts()
     run()
     cpus = CompletionCores(before).cpus
@@ -117,7 +131,7 @@ def test_a_figure_taken_beside_another_process_on_the_completion_cores_is_refuse
     else:
         # The scheduler lets the woken thread through in some stretches; a
         # figure from those stands only if it is the quiet one.
-        assert busy == pytest.approx(quiet, rel=0.25), (busy, quiet)
+        assert busy == pytest.approx(quiet.median_us, rel=0.25), (busy, quiet)
     finally:
         for s in spinners:
             s.kill()

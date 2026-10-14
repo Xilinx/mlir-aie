@@ -278,6 +278,7 @@ def run_interleaved(
     groups: Sequence[Hashable | None] | None = None,
     fastest_us: float = math.inf,
     completion_cores: bool = False,
+    max_cpu_wait_us: float = CPU_WAIT_US,
 ) -> list[Stats]:
     """Time callables against each other in interleaved rounds.
 
@@ -303,13 +304,16 @@ def run_interleaved(
         completion_cores: Hold the timing thread on the CPUs the callables'
             NPU completions interrupt (`CompletionCores`), for callables that
             dispatch to the NPU.
+        max_cpu_wait_us: The most a callable's median call may wait for a CPU
+            in its median round before the figures are refused; ``math.inf``
+            accepts figures from a busy host.
 
     Returns:
         list[Stats]: Per callable, the statistics of its per-round medians.
 
     Raises:
         RuntimeError: A callable's median call waited for a CPU past
-            ``CPU_WAIT_US`` (`cpu_wait_us`) in its median round: the host was
+            `max_cpu_wait_us` (`cpu_wait_us`) in its median round: the host was
             busy enough to hold the timing thread off its core, so the
             figures are refused. Measure with the host otherwise idle.
         ValueError: `rounds` or `calls` is below one, or `groups` is not one
@@ -352,7 +356,7 @@ def run_interleaved(
             bar = cutoff * min([fastest_us, *slowest.values()])
             live = {i for i in live if groups[i] is None or slowest[groups[i]] <= bar}
     late = max(float(np.median(w)) for w in waited)
-    if late > CPU_WAIT_US:
+    if late > max_cpu_wait_us:
         raise RuntimeError(
             f"a callable's median call waited {late:.0f} us for a CPU in its "
             "median round; time with the host otherwise idle"
