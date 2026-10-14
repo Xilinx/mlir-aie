@@ -554,6 +554,42 @@ void softmax_f32_bf16(float *restrict input,
   softmax_f32_row(input, addend, mask, output, input_size);
   event1();
 }
+
+// Query row q's valid columns of a `window`-wide band, gathered the way
+// EG2's audio attention does: `j >= max(q % 2, window - 1 - q + q % 2)`
+// and `j < window + q % 2` (an odd query's band starts a column later).
+// `row_len` is at most SM_VEC_LEN: one vector, no block loop.
+static inline void band_mask_row(bfloat16 *restrict band, int32_t q,
+                                 int32_t window, int32_t row_len) {
+  const int32_t parity = q & 1;
+  int32_t lo = window - 1 - q + parity;
+  if (lo < parity)
+    lo = parity;
+  const int32_t hi = window + parity;
+  for (int32_t j = 0; j < row_len; j++)
+    band[j] = (j >= lo && j < hi) ? (bfloat16)0.0f
+                                  : std::numeric_limits<bfloat16>::lowest();
+}
+
+// softmax_f32_row over `rows` rows, each row's mask its own band (above),
+// not read from memory: query row `(row_offset + r) % period` (`period`
+// wraps the band over each of several repeats of the same `period` rows,
+// as EG2 tiles one band over every attention head).
+void softmax_rows_banded_f32_bf16(float *restrict input, float *restrict addend,
+                                  bfloat16 *restrict output, const int32_t rows,
+                                  const int32_t row_len, const int32_t window,
+                                  const int32_t period,
+                                  const int32_t row_offset) {
+  event0();
+  alignas(aie::vector_decl_align) bfloat16 band[SM_VEC_LEN];
+  for (int32_t r = 0; r < rows; r++) {
+    const int32_t q = (row_offset + r) % period;
+    band_mask_row(band, q, window, row_len);
+    softmax_f32_row(input + r * row_len, addend + r * row_len, band,
+                    output + r * row_len, row_len);
+  }
+  event1();
+}
 #endif
 
 } // extern "C"
