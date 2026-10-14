@@ -1028,23 +1028,14 @@ SmallVector<size_t, 8> largestApartSet(const StreamConflicts &conflicts,
 
 /// The amsels, as arbiter + msel * arbiters, the input's switchboxes already
 /// configure, by tile. An amsel no master set uses still has rules steering
-/// packets to it. A deterministic merge schedule covers its whole arbiter, so
-/// every msel of that arbiter counts as configured.
+/// packets to it.
 std::map<TileID, std::set<int>> configuredAmsels(DeviceOp device) {
-  const AIETargetModel &targetModel = device.getTargetModel();
-  const int numArbiters = targetModel.getNumArbiters();
-  const int numMsels = targetModel.getNumMselsPerArbiter();
+  const int numArbiters = device.getTargetModel().getNumArbiters();
   std::map<TileID, std::set<int>> amsels;
   for (auto swboxOp : device.getOps<SwitchboxOp>())
-    for (auto amselOp : swboxOp.getConnections().getOps<AMSelOp>()) {
-      std::set<int> &tileAmsels = amsels[swboxOp.getTileOp().getTileID()];
-      if (amselOp.getDeterministicMerge())
-        for (int m = 0; m < numMsels; m++)
-          tileAmsels.insert(amselOp.arbiterIndex() + m * numArbiters);
-      else
-        tileAmsels.insert(amselOp.arbiterIndex() +
-                          amselOp.getMselValue() * numArbiters);
-    }
+    for (auto amselOp : swboxOp.getConnections().getOps<AMSelOp>())
+      amsels[swboxOp.getTileOp().getTileID()].insert(
+          amselOp.arbiterIndex() + amselOp.getMselValue() * numArbiters);
   return amsels;
 }
 
