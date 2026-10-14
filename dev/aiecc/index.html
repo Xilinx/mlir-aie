@@ -3388,6 +3388,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#cores-that-run-one-program---no-share-core-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cores that run one program: --no-share-core-objects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#building-the-link-files-meanwhile---await-link-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building the link files meanwhile: --await-link-files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#core-memory-placement-and-validation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3805,6 +3827,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#cores-that-run-one-program---no-share-core-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cores that run one program: --no-share-core-objects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#building-the-link-files-meanwhile---await-link-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building the link files meanwhile: --await-link-files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#core-memory-placement-and-validation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4091,6 +4135,9 @@ the <code>AIECC_JOBS</code> environment variable:</p>
 <p>An explicit <code>-j</code> or <code>--nthreads</code> takes precedence over <code>AIECC_JOBS</code>, which in
 turn takes precedence over the default. The environment variable accepts the
 same non-negative integer values as <code>-j</code>, including <code>0</code> for auto-detection.</p>
+<p><code>-j</code> also sizes the thread pool MLIR runs the per-device pass pipelines on, and
+<code>-j 1</code> keeps them on one thread. With the pinned MLIR wheel, which is built
+without MLIR threading, those pipelines run on one thread either way.</p>
 <h3 id="reusing-compiled-devices---device-cache">Reusing compiled devices: <code>--device-cache</code><a class="headerlink" href="#reusing-compiled-devices---device-cache" title="Permanent link">&para;</a></h3>
 <p><code>--device-cache=&lt;dir&gt;</code> keeps what compiling each <code>aie.device</code>'s cores produced
 (its buffer placement and linked core ELFs) in <code>&lt;dir&gt;</code>, and a later build whose
@@ -4106,6 +4153,19 @@ cache. <code>-v</code> reports each device's <code>hit</code>, <code>miss</code>
 core's compilation (<code>--get-core-elfs</code>, <code>--get-locmap</code>, <code>--dump-intermediates</code>)
 bypasses it. Concurrent builds can share a directory. Nothing is ever evicted;
 delete the directory to reclaim space.</p>
+<h3 id="cores-that-run-one-program---no-share-core-objects">Cores that run one program: <code>--no-share-core-objects</code><a class="headerlink" href="#cores-that-run-one-program---no-share-core-objects" title="Permanent link">&para;</a></h3>
+<p>Cores that run the same program over their own buffers and locks are compiled
+once: the first such core's module runs <code>opt</code> and <code>llc</code> under positional
+symbol names, and every core links that object with the names renamed back to
+its own. The core ELFs are byte-identical to compiling each core on its own.
+<code>--no-share-core-objects</code> compiles each core separately, should the sharing
+ever need to be ruled out.</p>
+<h3 id="building-the-link-files-meanwhile---await-link-files">Building the link files meanwhile: <code>--await-link-files</code><a class="headerlink" href="#building-the-link-files-meanwhile---await-link-files" title="Permanent link">&para;</a></h3>
+<p>With <code>--await-link-files</code>, <code>aiecc</code> lowers the design but reads no file a core
+links (<code>link_with</code>, <code>link_files</code>) until a line arrives on its standard input,
+so a caller can build those objects while <code>aiecc</code> works. Standard input closing
+before that line fails the build. The IRON JIT uses this to compile a design's
+kernels while <code>aiecc</code> lowers it.</p>
 <h3 id="core-memory-placement-and-validation">Core memory placement and validation<a class="headerlink" href="#core-memory-placement-and-validation" title="Permanent link">&para;</a></h3>
 <p><code>aiecc</code> checks stack and ordinary static-data requirements after linking.
 Explicit bank annotations are also checked by default, for both Peano and

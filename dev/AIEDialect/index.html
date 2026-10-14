@@ -11663,7 +11663,7 @@ removed).  Specifying both <code>link_with</code> and either <code>link_files</c
 <a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>  aie.end
 <a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>} { stack_size = 2048 : i32, elf_file = &quot;core_33.elf&quot; }
 </code></pre></div></p>
-<p>Traits: <code>AutomaticAllocationScope</code>, <code>IsFlowEndPoint</code></p>
+<p>Traits: <code>AutomaticAllocationScope</code>, <code>HasParent&lt;DeviceOp, ::mlir::ModuleOp&gt;</code>, <code>IsFlowEndPoint</code></p>
 <p>Interfaces: <code>InferTypeOpInterface</code>, <code>OpAsmOpInterface</code>, <code>TileElement</code></p>
 <h4 id="attributes_5">Attributes:<a class="headerlink" href="#attributes_5" title="Permanent link">&para;</a></h4>
 <table>
@@ -12234,6 +12234,7 @@ local flow for each pinned switchbox hop.</p>
 <a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>  aie.flow(%00, &quot;DMA&quot; : 0, %11, &quot;Core&quot; : 1)
 <a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>  aie.flow(%00, &quot;DMA&quot; : 0, %11, &quot;Core&quot; : 1) via (%01 : South : 0 -&gt; North : 0)
 </code></pre></div></p>
+<p>Traits: <code>HasParent&lt;DeviceOp, ::mlir::ModuleOp&gt;</code></p>
 <h4 id="attributes_13">Attributes:<a class="headerlink" href="#attributes_13" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
@@ -13275,7 +13276,7 @@ configuration.</p>
 <a id="__codelineno-79-5" name="__codelineno-79-5" href="#__codelineno-79-5"></a>    aie.packet_dest&lt;%01, &quot;Core&quot; : 0&gt;
 <a id="__codelineno-79-6" name="__codelineno-79-6" href="#__codelineno-79-6"></a>  }
 </code></pre></div></p>
-<p>Traits: <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code></p>
+<p>Traits: <code>HasParent&lt;DeviceOp, ::mlir::ModuleOp&gt;</code>, <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code></p>
 <h4 id="attributes_29">Attributes:<a class="headerlink" href="#attributes_29" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>

@@ -4698,8 +4698,10 @@ handled by canonicalization to linear mode.</p>
 <p>By default (<code>ctrl-pkt = false</code>), each op is replaced with:
 1. A <code>load_pdi { device_ref = @empty_N }</code> op (loading an empty device,
    which causes a device reset).
-2. A sequence of <code>aiex.npu.write32</code>/<code>aiex.npu.blockwrite</code> ops that
-   configure the device.</p>
+2. An <code>aiex.npu.write_config @device</code> op, whose register writes the NPU
+   translation emits from the device, generating them once however many
+   times the device is reloaded. With <code>inline-config = true</code>, the
+   <code>aiex.npu.write32</code>/<code>aiex.npu.blockwrite</code> ops of those writes instead.</p>
 <p>With <code>ctrl-pkt = true</code>, each op is replaced with:
 1. A <code>load_pdi { device_ref = @ctrl_pkt_overlay }</code> op, which loads the
    column control packet overlay needed to stream further configuration
@@ -4712,7 +4714,8 @@ into MLIR operations.</p>
 (i.e., after <code>aiex.configure</code> ops have been turned into
 <code>aiex.npu.load_pdi</code>).</p>
 <h4 id="options_2">Options<a class="headerlink" href="#options_2" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>-ctrl-pkt : If true, lower each load_pdi to an @ctrl_pkt_overlay load_pdi followed by aiex.npu.control_packet ops instead of write32/blockwrite ops with an empty-device reset.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>-ctrl-pkt      : If true, lower each load_pdi to an @ctrl_pkt_overlay load_pdi followed by aiex.npu.control_packet ops instead of write32/blockwrite ops with an empty-device reset.
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>-inline-config : If true, write each reloaded device&#39;s configuration as write32/blockwrite ops rather than an aiex.npu.write_config.
 </code></pre></div>
 <h3 id="-aie-fuse-trace-buffers"><code>-aie-fuse-trace-buffers</code><a class="headerlink" href="#-aie-fuse-trace-buffers" title="Permanent link">&para;</a></h3>
 <p><em>Give every traced sequence a slice of one fused trace buffer</em></p>
