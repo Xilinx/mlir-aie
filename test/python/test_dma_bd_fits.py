@@ -109,13 +109,32 @@ def test_each_limit_fits_and_one_past_it_does_not(device, tile_type):
 
 @pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
 @pytest.mark.parametrize("tile_type", TILES, ids=lambda t: t.name)
-def test_a_linear_transfer_fits_whatever_its_length(device, tile_type):
+def test_a_linear_transfer_fits_past_the_wrap(device, tile_type):
     dev = device()
     col, row = tile_of(dev, tile_type)
     wrap = (1 << dev.get_dma_bd_wrap_bits(col, row)) - 1
     tap = TensorAccessPattern((SPAN,), 0, [4 * wrap], [1])
     assert dev.dma_bd_fits(col, row, tap, np.int32)
     assert lowers(dev, col, row, [1, 1, 1, 4 * wrap], [0, 0, 0, 1])
+
+
+@pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
+@pytest.mark.parametrize("tile_type", TILES, ids=lambda t: t.name)
+def test_the_buffer_length_field_bounds_linear_and_nd_transfers(device, tile_type):
+    # Each side of the core (2^14 words) and memtile (2^17) length fields.
+    dev = device()
+    col, row = tile_of(dev, tile_type)
+    for words in (1 << 13, (1 << 14) - 1, 1 << 14, (1 << 17) - 1, 1 << 17):
+        for sizes, strides in (
+            ([1, 1, 1, words], [0, 0, 0, 1]),
+            ([1, words // 256, 2, 128], [0, 256, 128, 1]),
+        ):
+            tap = TensorAccessPattern((SPAN,), 0, sizes, strides)
+            fits = dev.dma_bd_fits(col, row, tap, np.int32)
+            assert fits is lowers(dev, col, row, sizes, strides), (words, sizes)
+    if tile_type is not AIETileType.ShimNOCTile:
+        tap = TensorAccessPattern((SPAN,), 0, [1 << 17], [1])
+        assert not dev.dma_bd_fits(col, row, tap, np.int32)
 
 
 @pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])

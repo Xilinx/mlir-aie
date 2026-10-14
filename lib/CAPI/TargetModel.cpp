@@ -17,6 +17,8 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 
+#include "llvm/Support/MathExtras.h"
+
 using namespace mlir;
 
 static inline AieTargetModel wrap(const xilinx::AIE::AIETargetModel &tm) {
@@ -223,9 +225,19 @@ bool aieDmaBdFits(uint32_t device, int col, int row, MlirType elementType,
       xilinx::AIEX::isLinearTransfer(pattern.sizes, pattern.strides) ||
       (tm.isShimNOCTile(col, row) &&
        xilinx::AIEX::isContiguousTransfer(pattern.sizes, pattern.strides));
-  return xilinx::AIEX::patternPassesVerification(
-      dev, MemRefType::get({ShapedType::kDynamic}, elemType), tm, col, row,
-      pattern, linear);
+  if (!xilinx::AIEX::patternPassesVerification(
+          dev, MemRefType::get({ShapedType::kDynamic}, elemType), tm, col, row,
+          pattern, linear))
+    return false;
+
+  // The wrap checks leave the length field, d0 * d1 * d2 in address granules,
+  // to NpuWriteBdOp's verifier.
+  int64_t lenBits = elemBits;
+  for (int d = 0; d < 3; d++)
+    if (llvm::MulOverflow(lenBits, pattern.sizes[d], lenBits))
+      return false;
+  return static_cast<uint64_t>(lenBits / tm.getAddressGenGranularity()) <=
+         tm.getDmaBdMaxLen(col, row);
 }
 
 uint32_t aieTargetModelGetNumDestSwitchboxConnections(

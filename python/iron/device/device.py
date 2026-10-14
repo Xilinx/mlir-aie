@@ -164,14 +164,17 @@ class Device(Resolvable):
         self._validate_coordinates(col, row)
         return self._tm.get_dma_bd_iter_bits(col, row)
 
-    def dma_bd_fits(self, col, row, tap: TensorAccessPattern, dtype) -> bool:
+    def dma_bd_fits(
+        self, col: int, row: int, tap: TensorAccessPattern, dtype: type
+    ) -> bool:
         """Whether one DMA buffer descriptor of the tile at (`col`, `row`) holds `tap`.
 
         Decided as the DMA lowerings verify a descriptor: a linear transfer,
-        or a contiguous one on a shim tile, in linear mode whatever its
-        length, and any other within the wrap, step and iteration limits.
-        A tap of fewer than four dimensions is padded in front with unit
-        ones, as `shim_dma_single_bd_task` pads it.
+        or a contiguous one on a shim tile, in linear mode past the wrap
+        limits, and any other within the wrap, step and iteration limits;
+        either way, the three inner dimensions within the tile's buffer
+        length field. A tap of fewer than four dimensions is padded in front
+        with unit ones, as `shim_dma_single_bd_task` pads it.
 
         Args:
             col: Column of the tile.
