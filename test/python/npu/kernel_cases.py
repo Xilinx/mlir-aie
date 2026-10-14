@@ -244,8 +244,9 @@ CASES: list[Case] = [
     ),
     # The float32 input path, AIE2P only: plain, capped, masked and with an
     # addend, on rows of one vector and of 32, and EG2's audio row (32 wide,
-    # capped at 50, masked, with relative-position logits). The contract's
-    # sample reaches |logit| >= 32, saturates the cap and masks tails.
+    # capped at 50, masked, with relative-position logits), and the ends of
+    # the cap's range. The contract's sample reaches |logit| >= 32, saturates
+    # the cap and masks tails.
     *[
         check(
             "softmax",
@@ -264,6 +265,8 @@ CASES: list[Case] = [
             (160, dict(addend=True), False),
             (32, dict(soft_cap=50.0, masked=True, addend=True), True),
             (1024, dict(soft_cap=30.0, masked=True, addend=True), False),
+            (32, dict(soft_cap=2.0**-100, masked=True), False),
+            (1024, dict(soft_cap=2.0**10, addend=True), False),
         )
     ],
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),

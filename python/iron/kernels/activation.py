@@ -424,7 +424,7 @@ _SOFT_CAP_ERR = 1e-5 / 2 + 2.0**-20
 def softmax(
     tile_size: int = 1024,
     accurate_exp2: bool = False,
-    input_dtype=bfloat16,
+    input_dtype: type = bfloat16,
     soft_cap: float | None = None,
     masked: bool = False,
     addend: bool = False,
@@ -450,7 +450,8 @@ def softmax(
             input.
         input_dtype: ``bfloat16``, or ``np.float32`` for the float path.
         soft_cap: Float input only: each logit ``x + addend`` becomes
-            ``cap * tanh((x + addend) / cap)``. Positive and finite.
+            ``cap * tanh((x + addend) / cap)``, within ``6e-6 * cap``. In
+            [2^-100, 2^10].
         masked: Float input only: a bf16 row added to the capped logits;
             lowest or -inf drops an element. A row keeps at least one.
         addend: Float input only: a float32 row added to ``x`` before the
@@ -462,7 +463,7 @@ def softmax(
     Raises:
         ValueError: A ``tile_size`` that is not a positive multiple of 32, an
             ``input_dtype`` other than the two, a float-only option with bf16
-            input, or a ``soft_cap`` that is not positive and finite.
+            input, or a ``soft_cap`` outside [2^-100, 2^10].
         NotImplementedError: Float32 input on AIE2.
     """
     _require_vector_alignment("softmax", tile_size, _RUNTIME_VECTOR_WIDTH)
@@ -518,10 +519,10 @@ def _softmax_f32(
     """[`softmax`][iron.kernels.activation.softmax]'s float32 input path."""
     if _arch_traits().name == "aie2":
         raise NotImplementedError("softmax: float32 input is written for AIE2P only")
-    if soft_cap is not None and not 0 < soft_cap < np.inf:
-        raise ValueError(
-            f"softmax: soft_cap must be positive and finite, got {soft_cap}"
-        )
+    # Below, 2 log2(e) / cap's bf16 limbs leave the normal floats; above, the
+    # cap's logit error outgrows the output's four bf16 roundings.
+    if soft_cap is not None and not 2.0**-100 <= soft_cap <= 2.0**10:
+        raise ValueError(f"softmax: soft_cap must be in [2^-100, 2^10], got {soft_cap}")
     f32_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
     bf16_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     flags = ["-DSOFTMAX_F32_INPUT", "-DEXP2_BF16_ACCURATE=1"]

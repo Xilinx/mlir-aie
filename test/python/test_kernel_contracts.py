@@ -1723,6 +1723,9 @@ def test_softmax_float_path_takes_its_rows_in_order(addend, masked):
         dict(input_dtype=np.float16),
         dict(input_dtype=np.float32, soft_cap=0.0),
         dict(input_dtype=np.float32, soft_cap=np.inf),
+        dict(input_dtype=np.float32, soft_cap=np.nan),
+        dict(input_dtype=np.float32, soft_cap=2.0**-101),
+        dict(input_dtype=np.float32, soft_cap=2.0**10 * 1.01),
     ],
 )
 def test_softmax_rejects_float_options_it_cannot_build(kwargs):
