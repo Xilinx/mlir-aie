@@ -43,6 +43,35 @@ aie.device(npu2) @dev {
 
 // -----
 
+aiex.scratchpad_parameter @runs : i32
+aie.device(npu2) @dev {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence @repeat_before_pdi(%arg0 : memref<4096xi32>) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 64)
+      aie.end
+    } {repeat_count = 15 : i32}
+    // expected-error @+1 {{'aiex.dma_start_task' op reads a scratchpad parameter before the last aiex.npu.load_pdi of its runtime sequence}}
+    aiex.dma_start_task(%task) {repeat_parameter = @runs}
+    aiex.npu.load_pdi {device_ref = @dev}
+  }
+}
+
+// -----
+
+aiex.scratchpad_parameter @runs : i32
+aie.device(npu2) @dev {
+  aie.runtime_sequence @lowered_repeat_before_pdi() {
+    %bd = arith.constant 4 : i32
+    %zero = arith.constant 0 : i32
+    // expected-error @+1 {{'aiex.npu.push_queue' op reads a scratchpad parameter before the last aiex.npu.load_pdi of its runtime sequence}}
+    aiex.npu.push_queue(0, 0, MM2S : 0) bd_id %bd repeat %zero {issue_token = false, repeat_state_table_idx = 0 : ui8} : i32, i32
+    aiex.npu.load_pdi {device_ref = @dev}
+  }
+}
+
+// -----
+
 aiex.scratchpad_parameter @off : i32
 aie.device(npu2) @dev {
   aie.runtime_sequence @placed_by_hand(%arg0 : memref<4096xi32>) {

@@ -329,6 +329,10 @@ whyNotSeparateTasks(AIE::DMABDOp bd, DMAConfigureTaskLike taskOp,
       os << "a start's repeat count is a runtime value";
       return why;
     }
+    if (start.hasRepeatParameter()) {
+      os << "a start's repeat count is a scratchpad parameter";
+      return why;
+    }
     std::optional<uint32_t> rc = start.getRepeatCount();
     int64_t runs = static_cast<int64_t>(rc ? *rc : taskOp.getRepeatCount());
     ++runs;
@@ -424,7 +428,8 @@ static void splitIntoTasks(RewriterBase &rewriter, AIE::DMABDOp bd,
       auto s = DMAStartTaskOp::create(
           rewriter, start.getLoc(), tasks[i]->getResult(0),
           /*repeat_count=*/nullptr, /*repeat_count_val=*/nullptr,
-          /*no_token=*/withholds ? rewriter.getUnitAttr() : nullptr);
+          /*no_token=*/withholds ? rewriter.getUnitAttr() : nullptr,
+          /*repeat_parameter=*/nullptr, /*repeat_state_table_idx=*/nullptr);
       mark(s, k);
     }
   }
@@ -774,7 +779,7 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
         auto start = dyn_cast<DMAStartTaskOp>(user);
         if (!start)
           continue;
-        if (start.getRepeatCountVal())
+        if (start.getRepeatCountVal() || start.hasRepeatParameter())
           return start.emitOpError()
                  << "cannot decompose a buffer descriptor this start repeats "
                     "a runtime number of times: decomposition needs to scale "

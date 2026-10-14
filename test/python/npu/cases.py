@@ -306,7 +306,7 @@ def _reference_outputs(fn, inputs, scalars, widen: bool) -> list[np.ndarray]:
         a.astype(np.float64) if widen and a.dtype in _FLOATS else a
         for a in map(np.asarray, inputs)
     ]
-    result = fn.contract.reference(*fn._reference_args(wide, tuple(scalars)))
+    result = fn.contract_for().reference(*fn._reference_args(wide, tuple(scalars)))
     multiple = len(fn.contract.out_indices) > 1
     return [np.asarray(r) for r in (result if multiple else (result,))]
 

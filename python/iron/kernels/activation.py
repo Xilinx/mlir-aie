@@ -18,6 +18,7 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     ARCH_TRAITS,
+    BUILDS,
     KernelContract,
     Param,
     Trace,
@@ -271,6 +272,7 @@ def _unary_lut_contract(
     setup: Callable[[], object] | None = conv_even,
     use_lut: bool = False,
     elementwise: Callable | None = None,
+    branch_models: dict[str, Callable] | None = None,
     lut_tolerance: Tolerance = _LUT_MODEL_TOLERANCE,
 ) -> KernelContract:
     """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
@@ -291,17 +293,32 @@ def _unary_lut_contract(
     has no published spec, so that build keeps the true-function reference and
     a tolerance sized to the instruction's measured error -- a much weaker
     statement, and deliberately a different one.
+
+    ``elementwise`` is the exact model of a LUT build. ``branch_models``
+    replaces it for a build whose ``Build.tuned`` branch the source compiles
+    a header of its own for. A build no model covers keeps ``ref`` and
+    ``tolerance``. Without a model the contract is the same for every build.
     """
-    # Without a tanh instruction the LUT path is taken whatever the caller
-    # asked for, and gets the exact model too.
-    if (use_lut or not _arch_traits().native_tanh) and elementwise is not None:
-        ref, tolerance = elementwise, lut_tolerance
+    per_build = []
+    branch_models = branch_models or {}
+    if elementwise is not None or branch_models:
+        for build in BUILDS:
+            model = branch_models.get(build.tuned, elementwise)
+            # Without a tanh instruction the LUT path is taken whatever the
+            # caller asked for, and gets the exact model too.
+            lut = use_lut or not ARCH_TRAITS[build.arch].native_tanh
+            per_build.append(
+                (build, model, lut_tolerance)
+                if lut and model is not None
+                else (build, ref, tolerance)
+            )
     return KernelContract(
         trace=Trace.whole_call(),
         roles=(In, Out, Param) if count else (In, Out),
         parameter_bindings=((2, count),) if count else (),
-        reference=ref,
-        tolerance=tolerance,
+        reference=None if per_build else ref,
+        tolerance=None if per_build else tolerance,
+        per_build=tuple(per_build),
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
         setup=setup,
         uses_lut=True,
@@ -467,9 +484,8 @@ def gelu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             count=False,
             tolerance=_GELU_VTANH_TOLERANCE,
             use_lut=use_lut,
-            elementwise=(
-                gelu_lut_ref if _tuned_arch() == "aie2p" else gelu_aie2_lut_ref
-            ),
+            elementwise=gelu_lut_ref,
+            branch_models={"aie2": gelu_aie2_lut_ref},
         ),
         use_lut_tanh=use_lut,
     )
@@ -501,12 +517,16 @@ def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
-def silu_sized(tile_size: int = 1024) -> ExternalFunction:
+def silu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     """SiLU (Swish) for bf16 tiles, with a compiled-in element count.
 
     Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
     keeps the ``(in, out, size)`` ABI. Positive whole vectors are required
     (16 on aie2, 32 on aie2p).
+
+    Args:
+        tile_size: Elements per call.
+        use_lut: As for [`silu`][iron.kernels.activation.silu].
     """
     width = _arch_traits().bf16_lanes
     _require_vector_alignment("silu_sized", tile_size, width)
@@ -519,9 +539,11 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
         contract=_unary_lut_contract(
             silu_ref,
             count=tile_size,
+            use_lut=use_lut,
             elementwise=silu_table_ref,
             tolerance=_vtanh_family_tolerance("silu"),
         ),
+        use_lut_tanh=use_lut,
     )
 
 
@@ -548,9 +570,8 @@ def gelu_sized(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction
             count=tile_size,
             tolerance=_GELU_VTANH_TOLERANCE,
             use_lut=use_lut,
-            elementwise=(
-                gelu_lut_ref if _tuned_arch() == "aie2p" else gelu_aie2_lut_ref
-            ),
+            elementwise=gelu_lut_ref,
+            branch_models={"aie2": gelu_aie2_lut_ref},
         ),
         use_lut_tanh=use_lut,
     )
@@ -561,7 +582,6 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
 
     ``out = (x * w1) * silu(x * w2)``; see [`swiglu_ref`][iron.kernels.activation.swiglu_ref].
     """
-    use_lut_model = use_lut or not _arch_traits().native_tanh
     return _bf16_lut_factory(
         "swiglu",
         "swiglu_bf16",
@@ -572,13 +592,15 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, In, Out),
-            reference=(swiglu_table_ref if use_lut_model else swiglu_ref),
-            acc_dtype=bfloat16,
-            tolerance=(
-                _LUT_MODEL_TOLERANCE
-                if use_lut_model
-                else _vtanh_family_tolerance("swiglu")
+            per_build=tuple(
+                (
+                    (build, swiglu_table_ref, _LUT_MODEL_TOLERANCE)
+                    if use_lut or not ARCH_TRAITS[build.arch].native_tanh
+                    else (build, swiglu_ref, _vtanh_family_tolerance("swiglu"))
+                )
+                for build in BUILDS
             ),
+            acc_dtype=bfloat16,
             ops_per_call=6 * tile_size,
             uses_lut=True,
         ),
@@ -609,7 +631,7 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
             # range-reduced polynomial, which this model does not describe,
             # so it keeps the true-function reference and a measured bound,
             # whether or not there is a tanh instruction.
-            elementwise=bf16_exp_lut_ref if _tuned_arch() == "aie2" else None,
+            branch_models={"aie2": bf16_exp_lut_ref},
             lut_tolerance=_EXP_LUT_TOLERANCE,
             use_lut=True,
             tolerance=_EXP_POLY_TOLERANCE,
